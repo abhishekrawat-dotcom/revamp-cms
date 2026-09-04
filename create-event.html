@@ -1,0 +1,2794 @@
+<!-- ET Oneworld - Self-Serve Microsite Builder : "Create Event" first-run flow -->
+<title>Create Event &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg: #F5F2EA;
+    --surface: #FFFFFF;
+    --surface-2: #ECE7DA;
+    --surface-3: #E2DCCB;
+    --border: #DAD3BF;
+    --text: #221F17;
+    --text-muted: #6F6A58;
+    --text-faint: #948E78;
+
+    --accent: #0F6F5C;
+    --accent-strong: #0A5445;
+    --accent-soft: #DCEEE7;
+    --accent-contrast: #FFFFFF;
+
+    --ok: #2F8F5B;
+    --ok-soft: #DFEEE1;
+    --warn: #9C6B14;
+    --warn-soft: #F3E7C8;
+    --review: #8A5A9E;
+    --review-soft: #EBE0F0;
+    --archived: #857F6A;
+    --archived-soft: #E7E3D2;
+    --crit: #A23B36;
+    --crit-soft: #F3DBD8;
+
+    --shadow-sm: 0 1px 2px rgba(30,26,10,0.08);
+    --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
+    --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
+
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #17150F; --surface: #201D15; --surface-2: #29261B; --surface-3: #332F21;
+      --border: #3C3726; --text: #ECE7D8; --text-muted: #A79F86; --text-faint: #7C755F;
+      --accent: #38C9A3; --accent-strong: #5CDAB9; --accent-soft: #21382F; --accent-contrast: #0B1210;
+      --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
+      --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
+      --crit: #E08078; --crit-soft: #3A211D;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-md: 0 14px 32px -12px rgba(0,0,0,0.6);
+      --shadow-lg: 0 30px 64px -24px rgba(0,0,0,0.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #17150F; --surface: #201D15; --surface-2: #29261B; --surface-3: #332F21;
+    --border: #3C3726; --text: #ECE7D8; --text-muted: #A79F86; --text-faint: #7C755F;
+    --accent: #38C9A3; --accent-strong: #5CDAB9; --accent-soft: #21382F; --accent-contrast: #0B1210;
+    --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
+    --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
+    --crit: #E08078; --crit-soft: #3A211D;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-md: 0 14px 32px -12px rgba(0,0,0,0.6);
+    --shadow-lg: 0 30px 64px -24px rgba(0,0,0,0.75);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg); color: var(--text); font-family: var(--font-body);
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  h1,h2,h3,h4{ font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+  p{ margin: 0; }
+  a{ color: inherit; text-decoration: none; }
+  button{ font-family: var(--font-body); cursor: pointer; }
+  input,select,textarea{ font-family: var(--font-body); font-size: 13.5px; color: var(--text); }
+  ::selection{ background: var(--accent-soft); }
+  :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  [hidden]{ display: none !important; }
+  .mono{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .eyebrow{ font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); }
+  .muted{ color: var(--text-muted); }
+  .faint{ color: var(--text-faint); }
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 13.5px; font-weight: 600; padding: 9px 16px; border-radius: 7px;
+    border: 1px solid transparent; white-space: nowrap;
+    transition: background .12s ease, border-color .12s ease, transform .05s ease, color .12s ease;
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn[disabled]{ opacity: .45; pointer-events: none; }
+  .btn-primary{ background: var(--accent); color: var(--accent-contrast); }
+  .btn-primary:hover{ background: var(--accent-strong); }
+  .btn-secondary{ background: var(--surface); color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover{ background: var(--surface-2); }
+  .btn-ghost{ background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover{ background: var(--surface-2); color: var(--text); }
+  .btn-danger{ background: transparent; color: var(--crit); border-color: transparent; }
+  .btn-danger:hover{ background: var(--crit-soft); }
+  .btn-lg{ padding: 12px 22px; font-size: 14.5px; border-radius: 8px; }
+  .btn-sm{ padding: 6px 11px; font-size: 12.5px; border-radius: 6px; }
+  .btn-xs{ padding: 4px 9px; font-size: 11.5px; border-radius: 5px; font-weight: 700; }
+  .btn-ai{ background: var(--review-soft); color: var(--review); }
+  .btn-ai:hover{ background: var(--review); color: var(--surface); }
+
+  /* ============ WIZARD SHELL ============ */
+  .wiz{ min-height: 100vh; display: flex; flex-direction: column; }
+
+  .wiz-top{
+    position: sticky; top: 0; z-index: 30; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .wiz-top-row{ height: 58px; display: flex; align-items: center; gap: 14px; padding: 0 20px; }
+  .brand-mark{ display:flex; align-items:center; gap: 9px; }
+  .brand-mark .mark{
+    width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-contrast);
+    display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:700; font-size: 13px;
+  }
+  .brand-mark .word{ font-family: var(--font-display); font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+  .wiz-top-row .sep{ width:1px; height: 22px; background: var(--border); }
+  .wiz-title{ font-size: 13.5px; font-weight: 700; }
+  .wiz-title .sub{ display:block; font-size: 11.5px; font-weight: 600; color: var(--text-faint); }
+  .spacer{ flex: 1; }
+  .save-state{ display:flex; align-items:center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-faint); }
+  .save-state .d{ width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+  .icon-btn{
+    width: 32px; height: 32px; border-radius: 7px; border: 1px solid transparent; background: transparent;
+    color: var(--text-muted); display:flex; align-items:center; justify-content:center;
+  }
+  .icon-btn:hover{ background: var(--surface-2); color: var(--text); }
+
+  /* ---------- progress rail ---------- */
+  .rail{ display: flex; align-items: center; padding: 0 20px 12px; overflow-x: auto; scrollbar-width: none; }
+  .rail::-webkit-scrollbar{ display:none; }
+  .rail-step{
+    display:flex; align-items:center; gap: 9px; padding: 5px 10px 5px 6px; border-radius: 100px;
+    background: transparent; border: 1px solid transparent; flex-shrink: 0;
+  }
+  .rail-step .num{
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    background: var(--surface-2); color: var(--text-faint); border: 1px solid var(--border);
+  }
+  .rail-step .lbl{ font-size: 12.5px; font-weight: 600; color: var(--text-faint); white-space: nowrap; }
+  .rail-step[data-state="done"]{ cursor: pointer; }
+  .rail-step[data-state="done"]:hover{ background: var(--surface-2); }
+  .rail-step[data-state="done"] .num{ background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+  .rail-step[data-state="done"] .lbl{ color: var(--text-muted); }
+  .rail-step[data-state="current"]{ background: var(--accent-soft); }
+  .rail-step[data-state="current"] .num{ background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+  .rail-step[data-state="current"] .lbl{ color: var(--accent-strong); font-weight: 700; }
+  .rail-line{ height: 1px; width: 18px; background: var(--border); flex-shrink: 0; }
+  .rail-line.filled{ background: var(--accent); }
+  @media (max-width: 900px){
+    .rail-step .lbl{ display:none; }
+    .rail-step[data-state="current"] .lbl{ display:block; }
+  }
+
+  /* ---------- step body ---------- */
+  .wiz-body{ flex: 1; padding: 30px 24px 40px; }
+  .step-wrap{ max-width: 780px; margin: 0 auto; display:flex; flex-direction:column; gap: 22px; }
+  .step-wrap.wide{ max-width: 1140px; }
+  .step-head h1{ font-size: 26px; letter-spacing: -0.01em; }
+  .step-head .desc{ color: var(--text-muted); font-size: 14px; margin-top: 7px; max-width: 62ch; }
+
+  .panel{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .panel-head h3{ font-size: 14.5px; }
+  .panel-body{ padding: 18px; display:flex; flex-direction:column; gap: 18px; }
+
+  /* ---------- fields ---------- */
+  .field label, .field .flabel{ display:block; font-size: 12.5px; font-weight: 700; margin-bottom: 6px; color: var(--text-muted); }
+  .field .hint{ font-size: 11.5px; color: var(--text-faint); margin-top: 6px; }
+  .field-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px){ .field-grid{ grid-template-columns: 1fr; } }
+  .inp, textarea.inp, select.inp{
+    width: 100%; padding: 10px 12px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13.5px; transition: border-color .12s ease;
+  }
+  .inp:focus{ border-color: var(--accent); outline: none; }
+  textarea.inp{ resize: vertical; min-height: 90px; line-height: 1.55; }
+  select.inp{ appearance: none; cursor: pointer; }
+  .inp::placeholder{ color: var(--text-faint); }
+
+  .segmented{ display:inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 3px; flex-wrap: wrap; }
+  .segmented button{
+    padding: 7px 14px; border-radius: 6px; border: none; background: transparent;
+    font-size: 13px; font-weight: 600; color: var(--text-muted); transition: background .12s ease, color .12s ease;
+  }
+  .segmented button:hover{ color: var(--text); }
+  .segmented button[aria-pressed="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 700; }
+
+  .slug-row{ display:flex; align-items:stretch; }
+  .slug-prefix{
+    display:flex; align-items:center; padding: 0 11px; border: 1px solid var(--border); border-right: none;
+    border-radius: 7px 0 0 7px; background: var(--surface-2); color: var(--text-faint);
+    font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap;
+  }
+  .slug-row .inp{ border-radius: 0 7px 7px 0; font-family: var(--font-mono); font-size: 12.5px; }
+  .slug-status{ display:flex; align-items:center; gap: 6px; font-size: 12px; font-weight: 600; margin-top: 7px; }
+  .slug-status.ok{ color: var(--ok); }
+  .slug-status.bad{ color: var(--crit); }
+  .slug-status.checking{ color: var(--text-faint); }
+
+  .ai-chip{
+    display:inline-flex; align-items:center; gap: 7px; margin-top: 8px; padding: 5px 10px 5px 8px;
+    border-radius: 100px; background: var(--review-soft); color: var(--review);
+    font-size: 12px; font-weight: 600;
+  }
+  .ai-chip button{
+    background: var(--review); color: var(--surface); border: none; border-radius: 100px;
+    font-size: 11px; font-weight: 700; padding: 2px 8px;
+  }
+  .ai-badge{
+    display:inline-flex; align-items:center; gap: 5px; font-size: 10.5px; font-weight: 800;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--review);
+    background: var(--review-soft); padding: 3px 8px; border-radius: 100px;
+  }
+
+  .dropzone{
+    border: 1.5px dashed var(--border); border-radius: 10px; background: var(--bg);
+    padding: 22px; display:flex; flex-direction:column; align-items:center; gap: 8px; text-align:center;
+    transition: border-color .12s ease, background .12s ease; width: 100%;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color: var(--accent); background: var(--accent-soft); }
+  .dropzone .ico{ color: var(--text-faint); }
+  .dropzone .t{ font-size: 13px; font-weight: 700; }
+  .dropzone .s{ font-size: 11.5px; color: var(--text-faint); }
+  .dropzone.filled{ border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+
+  .callout{
+    display:flex; gap: 11px; padding: 13px 15px; border-radius: 10px; font-size: 13px;
+    background: var(--accent-soft); color: var(--accent-strong);
+  }
+  .callout svg{ flex-shrink:0; margin-top: 1px; }
+  .callout strong{ display:block; margin-bottom: 2px; font-size: 12.5px; }
+  .callout.amber{ background: var(--warn-soft); color: var(--warn); }
+  .callout.plain{ background: var(--surface-2); color: var(--text-muted); }
+  .callout.ai{ background: var(--review-soft); color: var(--review); }
+
+  .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding: 3px 9px 3px 7px; border-radius: 100px; white-space:nowrap; }
+  .pill .d{ width:6px; height:6px; border-radius:50%; }
+  .pill-ok{ background: var(--ok-soft); color: var(--ok); } .pill-ok .d{ background: var(--ok); }
+  .pill-draft{ background: var(--archived-soft); color: var(--archived); } .pill-draft .d{ background: var(--archived); }
+  .pill-warn{ background: var(--warn-soft); color: var(--warn); } .pill-warn .d{ background: var(--warn); }
+  .pill-ai{ background: var(--review-soft); color: var(--review); } .pill-ai .d{ background: var(--review); }
+
+  /* ---------- footer bar ---------- */
+  .wiz-foot{
+    position: sticky; bottom: 0; z-index: 25; background: var(--surface); border-top: 1px solid var(--border);
+    padding: 12px 24px; display:flex; align-items:center; gap: 12px;
+  }
+  .wiz-foot .note{ font-size: 12px; color: var(--text-faint); }
+</style>
+<style>
+  /* ============ STEP 2 - PATH CHOICE ============ */
+  .path-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px){ .path-grid{ grid-template-columns: 1fr; } }
+  .path-card{
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 22px;
+    display:flex; flex-direction:column; gap: 14px; text-align:left; position: relative;
+    transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+  }
+  .path-card:hover{ border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .path-card[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); }
+  .path-card .ico{
+    width: 44px; height: 44px; border-radius: 11px; background: var(--accent-soft); color: var(--accent-strong);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .path-card[aria-pressed="true"] .ico{ background: var(--accent); color: var(--accent-contrast); }
+  .path-card h3{ font-size: 17px; }
+  .path-card .lead{ font-size: 13px; color: var(--text-muted); }
+  .path-card .tick{
+    position:absolute; top: 16px; right: 16px; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-contrast); display:flex; align-items:center; justify-content:center;
+  }
+  .path-meta{ display:flex; flex-direction:column; gap: 7px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .path-meta .r{ display:flex; gap: 8px; font-size: 12px; }
+  .path-meta .r .k{ color: var(--text-faint); font-weight: 700; width: 84px; flex-shrink:0; }
+  .path-meta .r .v{ color: var(--text-muted); }
+
+  .cmp{ width:100%; border-collapse: collapse; font-size: 12.5px; }
+  .cmp th, .cmp td{ text-align:left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .cmp tr:last-child td{ border-bottom: none; }
+  .cmp thead th{ font-size: 11px; font-weight: 800; letter-spacing:.07em; text-transform: uppercase; color: var(--text-faint); }
+  .cmp td.k{ font-weight: 700; color: var(--text-muted); width: 130px; }
+  .cmp td{ color: var(--text-muted); }
+
+  /* ============ TEMPLATE PICKER ============ */
+  .tpl-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px){ .tpl-grid{ grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 620px){ .tpl-grid{ grid-template-columns: 1fr; } }
+  .tpl-card{
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden;
+    text-align:left; display:flex; flex-direction:column; transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+  }
+  .tpl-card:hover{ border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .tpl-card[aria-pressed="true"]{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .tpl-thumb{ height: 118px; background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 10px; display:flex; flex-direction:column; gap: 5px; }
+  .tpl-thumb .b{ background: var(--surface-3); border-radius: 3px; }
+  .tpl-thumb .b.hero{ height: 34px; background: var(--accent-soft); }
+  .tpl-thumb .b.row{ height: 9px; }
+  .tpl-thumb .b.half{ width: 55%; }
+  .tpl-thumb .cols{ display:flex; gap: 5px; }
+  .tpl-thumb .cols .b{ flex:1; height: 22px; }
+  .tpl-info{ padding: 13px 15px 15px; display:flex; flex-direction:column; gap: 6px; }
+  .tpl-info h4{ font-size: 14px; }
+  .tpl-info .s{ font-size: 12px; color: var(--text-muted); }
+  .tpl-info .n{ font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); margin-top: 2px; }
+
+  /* ============ STEP 3A - SECTION WORKSPACE ============ */
+  .build-grid{ display:grid; grid-template-columns: 268px minmax(0,1fr); gap: 18px; align-items:start; }
+  @media (max-width: 940px){ .build-grid{ grid-template-columns: 1fr; } }
+
+  .rail-panel{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: sticky; top: 112px; }
+  @media (max-width: 940px){ .rail-panel{ position: static; } }
+  .rail-panel-head{ padding: 13px 15px; border-bottom: 1px solid var(--border); }
+  .rail-panel-head h3{ font-size: 13.5px; }
+  .prog-line{ height: 4px; border-radius: 100px; background: var(--surface-2); margin-top: 10px; overflow: hidden; }
+  .prog-line i{ display:block; height: 100%; background: var(--accent); border-radius: 100px; transition: width .3s ease; }
+  .prog-txt{ font-size: 11.5px; color: var(--text-faint); margin-top: 6px; font-family: var(--font-mono); }
+  .sec-list{ max-height: calc(100vh - 320px); overflow-y: auto; padding: 6px; display:flex; flex-direction:column; gap: 2px; }
+  @media (max-width: 940px){ .sec-list{ max-height: 340px; } }
+  .sec-row{
+    display:flex; align-items:center; gap: 9px; padding: 8px 9px; border-radius: 7px; width: 100%;
+    background: none; border: none; text-align:left; color: var(--text-muted); transition: background .12s ease;
+  }
+  .sec-row:hover{ background: var(--surface-2); color: var(--text); }
+  .sec-row[aria-current="true"]{ background: var(--accent-soft); color: var(--accent-strong); }
+  .sec-row .tick{
+    width: 17px; height: 17px; border-radius: 50%; flex-shrink:0; border: 1.5px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color: transparent; background: var(--surface);
+  }
+  .sec-row.done .tick{ background: var(--ok); border-color: var(--ok); color: #fff; }
+  .sec-row.excluded{ opacity: .45; }
+  .sec-row .nm{ font-size: 12.5px; font-weight: 600; flex: 1; min-width: 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sec-row .idx{ font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); }
+  .sec-row .auto-tag{ font-size: 9.5px; font-weight: 800; letter-spacing:.05em; text-transform: uppercase; color: var(--text-faint); }
+  .rail-panel-foot{ padding: 9px; border-top: 1px solid var(--border); }
+
+  .editor-head{ display:flex; align-items:flex-start; justify-content:space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .editor-head h2{ font-size: 18px; }
+  .editor-head .helper{ font-size: 12.5px; color: var(--text-muted); margin-top: 4px; max-width: 54ch; }
+  .editor-head .tools{ display:flex; align-items:center; gap: 8px; flex-shrink:0; }
+
+  .switch{ display:inline-flex; align-items:center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text-muted); background:none; border:none; padding: 4px; }
+  .switch .track{
+    width: 34px; height: 19px; border-radius: 100px; background: var(--surface-3); border: 1px solid var(--border);
+    position: relative; transition: background .14s ease, border-color .14s ease; flex-shrink:0;
+  }
+  .switch .track i{
+    position:absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--surface); box-shadow: var(--shadow-sm); transition: transform .14s ease;
+  }
+  .switch[aria-pressed="true"] .track{ background: var(--accent); border-color: var(--accent); }
+  .switch[aria-pressed="true"] .track i{ transform: translateX(15px); }
+
+  .editor-body{ padding: 18px; display:flex; flex-direction:column; gap: 16px; }
+  .editor-body.off{ opacity: .42; pointer-events: none; }
+
+  .char-count{ font-size: 11px; font-family: var(--font-mono); color: var(--text-faint); margin-top: 6px; text-align: right; }
+  .char-count.over{ color: var(--crit); font-weight: 600; }
+
+  .rep-list{ display:flex; flex-direction:column; gap: 9px; }
+  .rep-item{
+    display:flex; gap: 10px; align-items:flex-start; padding: 11px 12px; border: 1px solid var(--border);
+    border-radius: 9px; background: var(--bg);
+  }
+  .rep-item .grip{ color: var(--text-faint); cursor: grab; flex-shrink:0; margin-top: 7px; }
+  .rep-item .fields{ flex:1; min-width:0; display:flex; flex-direction:column; gap: 8px; }
+  .rep-item .fields.two{ display:grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 620px){ .rep-item .fields.two{ grid-template-columns: 1fr; } }
+  .rep-item .del{ flex-shrink:0; color: var(--text-faint); background:none; border:none; padding: 4px; border-radius: 6px; margin-top: 4px; }
+  .rep-item .del:hover{ background: var(--crit-soft); color: var(--crit); }
+  .rep-item.dragging{ opacity: .4; }
+  .rep-item.drop-target{ border-color: var(--accent); border-style: dashed; }
+  .add-row{
+    display:flex; align-items:center; justify-content:center; gap: 7px; width: 100%; padding: 10px;
+    border: 1.5px dashed var(--border); border-radius: 9px; background: transparent;
+    font-size: 12.5px; font-weight: 700; color: var(--text-muted);
+  }
+  .add-row:hover{ border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+
+  .chip-wrap{ display:flex; flex-wrap:wrap; gap: 7px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+  .chip{
+    display:inline-flex; align-items:center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 100px;
+    background: var(--surface-2); border: 1px solid var(--border); font-size: 12px; font-weight: 600;
+  }
+  .chip button{ background:none; border:none; color: var(--text-faint); padding: 0 2px; line-height: 1; font-size: 14px; }
+  .chip button:hover{ color: var(--crit); }
+  .chip-wrap input{ border:none; background: transparent; outline: none; flex:1; min-width: 130px; padding: 4px; }
+
+  .tile-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 11px; }
+  .tile{
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 11px;
+    display:flex; flex-direction:column; gap: 8px; position: relative;
+  }
+  .tile .ph{
+    height: 74px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color: var(--text-faint);
+  }
+  .tile .ph.round{ width: 54px; height: 54px; border-radius: 50%; align-self:center; }
+  .tile .inp{ padding: 6px 8px; font-size: 12px; }
+  .tile .del{ position:absolute; top: 6px; right: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-faint); padding: 1px 5px 3px; line-height:1; }
+  .tile .del:hover{ color: var(--crit); border-color: var(--crit); }
+  .tile-add{
+    border: 1.5px dashed var(--border); border-radius: 10px; background: transparent; min-height: 122px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 6px;
+    font-size: 12px; font-weight: 700; color: var(--text-muted);
+  }
+  .tile-add:hover{ border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+
+  .tier-group{ display:flex; flex-direction:column; gap: 10px; }
+  .tier-head{ display:flex; align-items:center; gap: 9px; }
+  .tier-head .t{ font-size: 11.5px; font-weight: 800; letter-spacing:.05em; text-transform: uppercase; color: var(--text-muted); }
+  .tier-head .ln{ flex:1; height:1px; background: var(--border); }
+
+  .kv-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 11px; }
+  .kv-card{ border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 11px; display:flex; flex-direction:column; gap: 7px; position:relative; }
+  .kv-card .inp{ padding: 7px 9px; }
+  .kv-card .inp.num{ font-family: var(--font-mono); font-size: 17px; font-weight: 600; }
+  .kv-card.flagged{ border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .kv-flag{ display:flex; align-items:flex-start; gap: 6px; font-size: 11px; font-weight: 700; color: var(--warn); line-height:1.4; }
+
+  .contact-block{ border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 13px; display:flex; flex-direction:column; gap: 9px; }
+  .contact-block .t{ font-size: 11.5px; font-weight: 800; letter-spacing:.04em; text-transform: uppercase; color: var(--text-muted); }
+  .contact-block .three{ display:grid; grid-template-columns: 1.2fr 1.5fr 1fr; gap: 8px; }
+  @media (max-width: 700px){ .contact-block .three{ grid-template-columns: 1fr; } }
+
+  .auto-note{
+    display:flex; align-items:center; gap: 11px; padding: 15px 16px; border-radius: 10px;
+    background: var(--surface-2); color: var(--text-muted); font-size: 13px;
+  }
+  .auto-note svg{ flex-shrink:0; color: var(--text-faint); }
+
+  /* ============ STEP 3B - DETECTION ============ */
+  .src-tabs{ display:flex; gap: 6px; border-bottom: 1px solid var(--border); padding: 0 6px; overflow-x:auto; scrollbar-width:none; }
+  .src-tabs::-webkit-scrollbar{ display:none; }
+  .src-tab{
+    padding: 11px 13px; background: none; border: none; border-bottom: 2px solid transparent;
+    font-size: 13px; font-weight: 600; color: var(--text-muted); white-space: nowrap;
+  }
+  .src-tab:hover{ color: var(--text); }
+  .src-tab[aria-selected="true"]{ color: var(--accent-strong); border-bottom-color: var(--accent); font-weight: 700; }
+
+  .proc-wrap{ display:flex; flex-direction:column; gap: 22px; align-items:center; padding: 44px 20px; text-align:center; }
+  .proc-orb{ width: 54px; height: 54px; color: var(--accent); }
+  .proc-orb svg{ width:100%; height:100%; animation: spin 1.4s linear infinite; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  .proc-steps{ display:flex; flex-direction:column; gap: 13px; width: 100%; max-width: 400px; text-align:left; }
+  .proc-step{ display:flex; align-items:center; gap: 11px; font-size: 13px; font-weight: 600; color: var(--text-faint); }
+  .proc-step .ic{
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink:0; border: 1.5px solid var(--border);
+    display:flex; align-items:center; justify-content:center; background: var(--surface); color: transparent;
+  }
+  .proc-step.active{ color: var(--text); }
+  .proc-step.active .ic{ border-color: var(--accent); color: var(--accent); }
+  .proc-step.done{ color: var(--text-muted); }
+  .proc-step.done .ic{ background: var(--ok); border-color: var(--ok); color: #fff; }
+  .proc-step .bar{ flex:1; height: 3px; border-radius: 100px; background: var(--surface-2); overflow:hidden; }
+  .proc-step .bar i{ display:block; height:100%; width:0; background: var(--accent); border-radius: 100px; transition: width .45s linear; }
+
+  .det-card{
+    display:grid; grid-template-columns: 180px minmax(0,1fr); border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface); overflow: hidden; transition: opacity .18s ease, border-color .14s ease;
+  }
+  @media (max-width: 700px){ .det-card{ grid-template-columns: 1fr; } }
+  .det-shot{ background: var(--surface-2); border-right: 1px solid var(--border); padding: 12px; display:flex; flex-direction:column; gap: 5px; min-height: 132px; }
+  @media (max-width: 700px){ .det-shot{ border-right:none; border-bottom: 1px solid var(--border); } }
+  .det-shot .b{ background: var(--surface-3); border-radius: 3px; }
+  .det-shot .shot-label{ font-size: 9.5px; font-family: var(--font-mono); color: var(--text-faint); text-align:center; margin-top:auto; padding-top: 6px; }
+  .det-main{ padding: 14px 16px; display:flex; flex-direction:column; gap: 10px; }
+  .det-main .top{ display:flex; align-items:center; gap: 9px; flex-wrap: wrap; }
+  .det-main h4{ font-size: 15px; }
+  .det-main .conf{ font-size: 11px; font-family: var(--font-mono); color: var(--text-faint); }
+  .det-extract{ background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; display:flex; flex-direction:column; gap: 7px; }
+  .det-extract .k{ font-size: 10.5px; font-weight: 800; letter-spacing:.06em; text-transform: uppercase; color: var(--text-faint); }
+  .det-extract .v{ font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+  .det-actions{ display:flex; align-items:center; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+  .det-card.kept{ border-color: var(--ok); }
+  .det-card.removed{ opacity: .45; }
+  .det-card.removed .det-shot{ filter: grayscale(1); }
+
+  /* ============ STEP 5 - PREVIEW ============ */
+  .prev-grid{ display:grid; grid-template-columns: minmax(0,1fr) 300px; gap: 18px; align-items:start; }
+  @media (max-width: 940px){ .prev-grid{ grid-template-columns: 1fr; } }
+  .device-bar{ display:flex; align-items:center; justify-content:space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .frame{
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    display:flex; justify-content:center;
+  }
+  .screen{
+    background: #fff; border-radius: 8px; overflow: hidden; width: 100%;
+    box-shadow: var(--shadow-md); transition: max-width .28s ease; color: #1a1a1a;
+  }
+  .frame.mobile .screen{ max-width: 336px; border-radius: 24px; padding: 8px; background: #14120d; }
+  .frame.mobile .site{ border-radius: 17px; overflow: hidden; }
+  .site{ background: #fff; }
+  .prev-nav{ display:flex; align-items:center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #eceae4; background: #fff; }
+  .prev-nav .lg{ font-family: var(--font-display); font-weight: 700; font-size: 12px; color: #0F6F5C; }
+  .prev-nav .lks{ display:flex; gap: 9px; margin-left:auto; font-size: 8.5px; color: #6b6b6b; font-weight: 600; }
+  .frame.mobile .prev-nav .lks{ display:none; }
+  .prev-nav .cta{ background: #0F6F5C; color:#fff; font-size: 8px; font-weight: 700; padding: 4px 8px; border-radius: 4px; }
+  .frame.mobile .prev-nav .cta{ margin-left:auto; }
+  .prev-hero{ padding: 28px 18px; background: linear-gradient(135deg,#0F6F5C,#0A5445); color:#fff; text-align:center; }
+  .prev-hero h3{ font-size: 18px; color:#fff; line-height:1.22; }
+  .frame.mobile .prev-hero h3{ font-size: 14px; }
+  .prev-hero .tag{ font-size: 9.5px; opacity:.85; margin-top: 6px; }
+  .prev-hero .meta{ font-size: 9px; opacity:.78; margin-top: 9px; font-family: var(--font-mono); }
+  .prev-hero .btns{ display:flex; gap: 7px; justify-content:center; margin-top: 14px; }
+  .prev-hero .btns span{ font-size: 8.5px; font-weight: 700; padding: 5px 11px; border-radius: 4px; background:#fff; color:#0A5445; }
+  .prev-hero .btns span+span{ background: transparent; color:#fff; border: 1px solid rgba(255,255,255,.5); }
+  .prev-sec{ padding: 16px 18px; border-bottom: 1px solid #f2f0ea; }
+  .prev-sec .st{ font-family: var(--font-display); font-weight: 600; font-size: 12.5px; color:#1a1a1a; margin-bottom: 9px; }
+  .prev-sec .sb{ font-size: 9px; color:#6b6b6b; line-height: 1.65; }
+  .prev-stats{ display:flex; gap: 8px; background:#F5F2EA; flex-wrap: wrap; }
+  .prev-stats .s{ flex:1; min-width: 52px; text-align:center; padding: 9px 4px; background:#fff; border-radius: 6px; border: 1px solid #eceae4; }
+  .prev-stats .s .n{ font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: #0F6F5C; }
+  .prev-stats .s .l{ font-size: 7px; color:#6b6b6b; text-transform: uppercase; letter-spacing:.04em; margin-top: 2px; }
+  .prev-logos{ display:flex; flex-wrap:wrap; gap: 7px; }
+  .prev-logos i{ display:block; width: 52px; height: 22px; background:#f0eee8; border-radius: 3px; }
+  .prev-people{ display:flex; gap: 10px; flex-wrap:wrap; }
+  .prev-people .p{ width: 62px; text-align:center; }
+  .prev-people .p i{ display:block; width: 40px; height: 40px; border-radius:50%; background:#f0eee8; margin: 0 auto 5px; }
+  .prev-people .p .n{ font-size: 8px; font-weight: 700; }
+  .prev-people .p .r{ font-size: 7px; color:#8a8a8a; }
+  .prev-chips{ display:flex; flex-wrap:wrap; gap: 5px; }
+  .prev-chips span{ font-size: 8px; font-weight: 600; padding: 3px 8px; border-radius: 100px; background:#F5F2EA; border:1px solid #eceae4; color:#4a4a4a; }
+  .prev-cards{ display:flex; gap: 8px; flex-wrap:wrap; }
+  .prev-cards .c{ flex:1; min-width: 92px; border:1px solid #eceae4; border-radius: 6px; padding: 9px; }
+  .prev-cards .c .t{ font-size: 9px; font-weight: 700; margin-bottom: 3px; }
+  .prev-cards .c .d{ font-size: 7.5px; color:#8a8a8a; line-height:1.55; }
+  .prev-gallery{ display:grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
+  .prev-gallery i{ display:block; padding-top: 68%; background:#f0eee8; border-radius: 4px; }
+  .prev-marquee{ background:#0F6F5C; color:#fff; padding: 7px; font-size: 8.5px; font-weight: 700; letter-spacing:.1em; text-align:center; text-transform: uppercase; }
+  .prev-quote{ border-left: 2px solid #0F6F5C; padding-left: 11px; }
+  .prev-quote .q{ font-size: 9px; font-style: italic; color:#4a4a4a; line-height:1.65; }
+  .prev-quote .a{ font-size: 8px; font-weight: 700; margin-top: 5px; }
+  .prev-foot{ background:#221F17; color:#b5b0a0; padding: 15px 18px; font-size: 8px; display:flex; gap: 13px; flex-wrap:wrap; }
+  .prev-band{ background:#F5F2EA; text-align:center; padding: 13px; font-family: var(--font-display); font-size: 12px; font-weight:600; }
+  .prev-empty{ padding: 44px 18px; text-align:center; color:#9a9a9a; font-size: 10.5px; }
+
+  .ord-list{ display:flex; flex-direction:column; gap: 3px; padding: 6px; max-height: 470px; overflow-y:auto; }
+  .ord-row{
+    display:flex; align-items:center; gap: 8px; padding: 8px 9px; border-radius: 7px;
+    background: transparent; border: 1px solid transparent; font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  }
+  .ord-row:hover{ background: var(--surface-2); color: var(--text); }
+  .ord-row .grip{ color: var(--text-faint); cursor: grab; flex-shrink:0; }
+  .ord-row .nm{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; background:none; border:none; color:inherit; font: inherit; padding: 0; }
+  .ord-row .nm:hover{ color: var(--accent-strong); text-decoration: underline; }
+  .ord-row.dragging{ opacity: .4; }
+  .ord-row.drop-target{ border-color: var(--accent); border-style: dashed; }
+  .ord-row .src{ font-size: 9.5px; font-weight: 800; letter-spacing:.05em; text-transform:uppercase; color: var(--text-faint); }
+
+  .success-banner{
+    display:flex; align-items:center; gap: 14px; padding: 16px 18px; border-radius: 12px;
+    background: var(--ok-soft); color: var(--ok);
+  }
+  .success-banner .ic{ width: 38px; height: 38px; border-radius: 50%; background: var(--ok); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .success-banner .tx strong{ display:block; font-size: 14.5px; font-family: var(--font-display); }
+  .success-banner .tx span{ font-size: 12.5px; color: var(--text-muted); }
+  .success-banner button{ margin-left:auto; flex-shrink:0; }
+
+  /* ============ MODAL ============ */
+  .scrim{ position: fixed; inset: 0; background: rgba(30,26,10,.5); z-index: 60; display:flex; align-items:center; justify-content:center; padding: 22px; }
+  .modal{
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 540px;
+    box-shadow: var(--shadow-lg); max-height: 88vh; display:flex; flex-direction:column; overflow: hidden;
+  }
+  .modal-head{ padding: 17px 19px; border-bottom: 1px solid var(--border); display:flex; align-items:flex-start; gap: 12px; }
+  .modal-head h3{ font-size: 16px; }
+  .modal-head .s{ font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+  .modal-body{ padding: 19px; display:flex; flex-direction:column; gap: 15px; overflow-y:auto; }
+  .modal-foot{ padding: 13px 19px; border-top: 1px solid var(--border); display:flex; gap: 9px; justify-content:flex-end; }
+
+  #toast-region{ position: fixed; bottom: 22px; right: 22px; display:flex; flex-direction:column; gap:8px; z-index: 100; }
+  .toast{
+    background: var(--text); color: var(--bg); font-size: 13px; font-weight:600; padding: 11px 16px; border-radius: 8px;
+    box-shadow: var(--shadow-md); opacity: 0; transform: translateY(6px); transition: opacity .18s ease, transform .18s ease;
+    max-width: 340px;
+  }
+  .toast.show{ opacity: 1; transform: translateY(0); }
+
+  .fade-in{ animation: fadeIn .26s ease both; }
+  @keyframes fadeIn{ from{ opacity:0; transform: translateY(7px); } to{ opacity:1; transform:none; } }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wiz">
+  <!-- ============ TOP: brand + progress rail ============ -->
+  <header class="wiz-top">
+    <div class="wiz-top-row">
+      <div class="brand-mark">
+        <span class="mark">R</span>
+        <span class="word">Revamp</span>
+      </div>
+      <span class="sep"></span>
+      <span class="wiz-title">
+        Create Event
+        <span class="sub">Self&#8209;serve microsite builder</span>
+      </span>
+      <div class="spacer"></div>
+      <span class="save-state" id="save-state"><span class="d"></span>Draft autosaved</span>
+      <button class="btn btn-secondary btn-sm" id="btn-save-exit">Save &amp; exit</button>
+      <button class="icon-btn" id="btn-close" title="Close builder" aria-label="Close builder">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <nav class="rail" id="rail" aria-label="Progress"></nav>
+  </header>
+
+  <!-- ============ BODY ============ -->
+  <main class="wiz-body">
+
+    <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
+    <section class="step-wrap" id="step-1" hidden>
+      <div class="step-head">
+        <span class="eyebrow">Step 2 of 6 &middot; Basic details</span>
+        <h1>The basics of your event</h1>
+        <p class="desc">Nine essentials, one calm screen. This replaces the top of the IRF sheet &mdash; fill it once and it flows straight into the build.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Identity</h3>
+          <span class="eyebrow">Drives defaults later</span>
+        </div>
+        <div class="panel-body">
+          <div class="field">
+            <span class="flabel">Event category</span>
+            <div class="segmented" id="seg-category" role="group" aria-label="Event category"></div>
+            <p class="hint" id="category-hint">Awards adds a nomination deadline; Leadgen keeps the form short.</p>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="f-vertical">Vertical / Portal</label>
+              <select class="inp" id="f-vertical"></select>
+              <p class="hint">IRF: &ldquo;Vertical/Portal Name&rdquo;</p>
+            </div>
+            <div class="field">
+              <label for="f-name">Event / Microsite name</label>
+              <input class="inp" id="f-name" type="text" placeholder="e.g. MarTech+ Summit 2026" autocomplete="off">
+              <p class="hint">IRF: &ldquo;Microsite Name&rdquo;</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="flabel">URL slug</span>
+            <div class="slug-row">
+              <span class="slug-prefix">etoneworld.com/</span>
+              <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
+            </div>
+            <div id="slug-status"></div>
+            <div id="slug-ai"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Format &amp; schedule</h3></div>
+        <div class="panel-body">
+          <div class="field">
+            <span class="flabel">Event type</span>
+            <div class="segmented" id="seg-type" role="group" aria-label="Event type"></div>
+            <p class="hint">IRF: &ldquo;Microsite/Event Type&rdquo;. Virtual hides the physical venue automatically.</p>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="f-start">Starts</label>
+              <input class="inp" id="f-start" type="datetime-local">
+            </div>
+            <div class="field">
+              <label for="f-end">Ends</label>
+              <input class="inp" id="f-end" type="datetime-local">
+            </div>
+          </div>
+
+          <div class="field-grid" id="venue-wrap">
+            <div class="field">
+              <label for="f-venue">Venue</label>
+              <input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Ballroom 2">
+            </div>
+            <div class="field">
+              <label for="f-city">City</label>
+              <input class="inp" id="f-city" type="text" placeholder="e.g. Mumbai">
+            </div>
+          </div>
+
+          <div class="field" id="platform-wrap" hidden>
+            <label for="f-platform">Streaming platform</label>
+            <input class="inp" id="f-platform" type="text" placeholder="e.g. ET Oneworld Live Studio">
+            <p class="hint">Shown instead of a venue because this event is virtual.</p>
+          </div>
+
+          <div class="field" id="deadline-wrap" hidden>
+            <label for="f-deadline">Nomination deadline</label>
+            <input class="inp" id="f-deadline" type="datetime-local">
+            <p class="hint">Awards events need an entry cut&#8209;off on the microsite.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Commercials &amp; brand</h3></div>
+        <div class="panel-body">
+          <div class="field">
+            <span class="flabel">Payment type</span>
+            <div class="segmented" id="seg-payment" role="group" aria-label="Payment type"></div>
+            <p class="hint">IRF: &ldquo;Payment Type (Free/Paid)&rdquo;. Paid events price in <span class="mono">&#8377;</span> INR.</p>
+          </div>
+          <div class="field">
+            <span class="flabel">Event logo</span>
+            <button class="dropzone" id="logo-drop" type="button">
+              <span class="ico">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.9"/><path d="M3 17l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
+              </span>
+              <span class="t">Upload event logo</span>
+              <span class="s">PNG or SVG &middot; minimum 300&times;300 &middot; 1:1 square</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- STEP 2 : CHOOSE PATH ---------- -->
+    <section class="step-wrap" id="step-2" hidden>
+      <div class="step-head">
+        <span class="eyebrow">Step 3 of 6 &middot; Choose path</span>
+        <h1>How do you want to build it?</h1>
+        <p class="desc">Two routes, same destination &mdash; an assembled first preview. Pick whichever matches what you already have in hand.</p>
+      </div>
+
+      <div class="path-grid" id="path-grid"></div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Side by side</h3></div>
+        <table class="cmp">
+          <thead>
+            <tr><th></th><th>Path A &mdash; Clone template</th><th>Path B &mdash; Own design</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="k">Best for</td><td>Standard events, fastest route</td><td>Teams who already designed their site</td></tr>
+            <tr><td class="k">You provide</td><td>Just content</td><td>A design source + light review</td></tr>
+            <tr><td class="k">Input</td><td>Template picker</td><td>Figma / Lovable / builder URL / PSD</td></tr>
+            <tr><td class="k">AI role</td><td>Reshape content to fit each section</td><td>Detect sections, screenshot them, extract content</td></tr>
+            <tr><td class="k">Next screen</td><td>Section&#8209;by&#8209;section fill</td><td>Detected&#8209;section review</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout plain">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
+        <span><strong>Not a one&#8209;way door</strong>You can switch paths later without losing your basic details, and mix template sections into an uploaded design once you are past this screen.</span>
+      </div>
+    </section>
+
+    <!-- ---------- STEP 3 : BUILD CONTENT ---------- -->
+    <section class="step-wrap wide" id="step-3" hidden></section>
+
+    <!-- ---------- STEP 4 : AI ASSEMBLE ---------- -->
+    <section class="step-wrap" id="step-4" hidden></section>
+
+    <!-- ---------- STEP 5 : FIRST PREVIEW ---------- -->
+    <section class="step-wrap wide" id="step-5" hidden></section>
+  </main>
+
+  <!-- ============ FOOTER ACTIONS ============ -->
+  <footer class="wiz-foot" id="wiz-foot">
+    <button class="btn btn-secondary" id="btn-back">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      Back
+    </button>
+    <span class="note" id="foot-note"></span>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="btn-foot-alt" hidden></button>
+    <button class="btn btn-primary btn-lg" id="btn-next">
+      Continue
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+  </footer>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+<script>
+(function(){
+  'use strict';
+
+  /* =========================================================
+     ICONS
+  ========================================================= */
+  function svg(d, w){
+    return '<svg width="' + (w||16) + '" height="' + (w||16) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+  }
+  var IC = {
+    check:  svg('<path d="M20 6L9 17l-5-5"/>', 12),
+    check14:svg('<path d="M20 6L9 17l-5-5"/>', 14),
+    grip:   svg('<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>', 15),
+    trash:  svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', 14),
+    plus:   svg('<path d="M12 5v14M5 12h14"/>', 14),
+    spark:  svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>', 14),
+    warn:   svg('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.6 17.1A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0z"/>', 14),
+    img:    svg('<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.9"/><path d="M3 17l5-4.5 4 3.5 3-2.5 6 5.5"/>', 18),
+    lock:   svg('<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', 15),
+    tpl:    svg('<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 21V9"/>', 22),
+    upload: svg('<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', 22),
+    desktop:svg('<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>', 15),
+    mobile: svg('<rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18.5h2"/>', 15),
+    edit:   svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 14),
+    x:      svg('<path d="M18 6L6 18M6 6l12 12"/>', 14),
+    loader: svg('<path d="M12 3a9 9 0 1 0 9 9" />', 54),
+    info:   svg('<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>', 17),
+    party:  svg('<path d="M4 20l6-14 8 8z"/><path d="M15 4l1 2M19 8l2 .5M17.5 12.5l1.5 1.5"/>', 19),
+    layers: svg('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>', 15)
+  };
+
+  /* =========================================================
+     CANONICAL SECTION LIBRARY - the 16 rows from the spec
+     shape drives which editor renders
+  ========================================================= */
+  var LIBRARY = [
+    { id:'nav',       name:'Top nav',                shape:'auto',    helper:'Menu links are derived from the sections you include — nothing to fill in here.' },
+    { id:'hero',      name:'Hero / Top banner',      shape:'hero',    helper:'The first thing a delegate sees. Logo, title, tagline, date, venue and your primary CTAs.' },
+    { id:'stats',     name:'Stats strip',            shape:'stats',   helper:'Day / Sessions / Speakers / Minutes / Brands — the numbers that prove scale.' },
+    { id:'partners',  name:'Partner logos',          shape:'logos',   helper:'Sponsor and partner logos, grouped by tier.' },
+    { id:'about',     name:'About the event',        shape:'rich',    limit:900, helper:'The overview paragraph with a Read More. Keep it to the point — AI can trim it for you.' },
+    { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.' },
+    { id:'awaits',    name:'What awaits',            shape:'cards',   helper:'Conference / Awards / Studios mini blocks. Icon, title and a line of copy each.' },
+    { id:'verticals', name:'Industry verticals band', shape:'heading', helper:'A full-width heading that breaks the page and names the industries in play.' },
+    { id:'priorities',name:'Key priorities',         shape:'columns', helper:'Three themed columns — the discussion points that guide conversations at your event.' },
+    { id:'speakers',  name:'Speakers',               shape:'people',  helper:'Speaker cards with photo, name, role and company. An All Speakers link is added automatically.' },
+    { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.' },
+    { id:'attend',    name:'Who should attend',      shape:'chips',   helper:'Role chips. Type a role and press Enter — these also power delegate targeting later.' },
+    { id:'insights',  name:'Key insights / Testimonials', shape:'quotes', helper:'Quotes from past attendees with their name, role and company.' },
+    { id:'glimpses',  name:'Previous glimpses',      shape:'gallery', helper:'Photo gallery from the last edition. Six to twelve images works best.' },
+    { id:'contact',   name:'Contact us',             shape:'contacts',helper:'Speaking, delegate and partnership contacts — who a visitor should write to.' },
+    { id:'footer',    name:'Footer + WhatsApp',      shape:'auto',    helper:'Footer links are generated. The floating WhatsApp chat is a simple on/off.' }
+  ];
+  function libBy(id){ for (var i=0;i<LIBRARY.length;i++){ if (LIBRARY[i].id === id) return LIBRARY[i]; } return null; }
+
+  /* =========================================================
+     TEMPLATES
+  ========================================================= */
+  var TEMPLATES = [
+    { id:'summit', name:'Summit & Conference', sub:'The workhorse. Agenda-led, speaker-heavy.',
+      sections:['nav','hero','stats','partners','about','marquee','awaits','verticals','priorities','speakers','whyjoin','attend','insights','glimpses','contact','footer'] },
+    { id:'awards', name:'Awards Night', sub:'Nomination-first, jury and categories up top.',
+      sections:['nav','hero','stats','about','awaits','priorities','speakers','whyjoin','insights','glimpses','partners','contact','footer'] },
+    { id:'leadgen', name:'Leadgen / Roundtable', sub:'Short, one screen, form does the work.',
+      sections:['nav','hero','about','priorities','speakers','attend','whyjoin','contact','footer'] }
+  ];
+
+  var VERTICALS = ['ETGovernment','ET Brand Equity','ET CIO','ET HRWorld','ET BFSI','ET Retail','ET HealthWorld','ET Auto','ET Telecom','ET Legal World','ET Manufacturing','ET Travel World'];
+  var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
+
+  /* =========================================================
+     SEED CONTENT - realistic placeholder data per shape
+  ========================================================= */
+  function seed(id){
+    switch(id){
+      case 'hero': return { title:'', tagline:'Where marketing technology meets measurable growth', cta1:'Register now', cta2:'Download brochure', banner:false };
+      case 'stats': return { items:[
+          {k:'Day', v:'1'}, {k:'Sessions', v:'14'}, {k:'Speakers', v:'32'}, {k:'Minutes', v:'480'}, {k:'Brands', v:'120'}
+        ] };
+      case 'logos': return { tiers:[
+          { t:'Presenting partner', logos:[{n:'Partner one'}] },
+          { t:'Gold partners', logos:[{n:'Partner two'},{n:'Partner three'}] },
+          { t:'Associate partners', logos:[{n:'Partner four'},{n:'Partner five'},{n:'Partner six'}] }
+        ] };
+      case 'rich': return { body:'' };
+      case 'line': return { text:'#MarTechPlus2026' };
+      case 'cards': return { items:[
+          {t:'The Conference', d:'Two stages, fourteen sessions, one agenda built around what practitioners actually ask.'},
+          {t:'The Awards', d:'Recognising the campaigns and teams that moved a number, not just a needle.'},
+          {t:'The Studios', d:'Closed-door studio conversations recorded for the ET Oneworld network.'}
+        ] };
+      case 'heading': return { text:'Industries in the room' };
+      case 'columns': return { items:[
+          {t:'Signal over noise', d:'How teams are cutting through channel sprawl to find the few signals that predict revenue.'},
+          {t:'The consent era', d:'Building first-party data practice that survives regulation and still performs.'},
+          {t:'AI that ships', d:'Where generative tooling is already in production, and where it quietly is not.'}
+        ] };
+      case 'people': return { items:[
+          {n:'', r:'Chief Marketing Officer', c:'Leading FMCG brand'},
+          {n:'', r:'VP, Growth', c:'Consumer internet'},
+          {n:'', r:'Head of Digital', c:'BFSI major'}
+        ] };
+      case 'benefits': return { body:'', items:[
+          {t:'Meet the decision makers', d:'Curated room of senior marketing and growth leaders.'},
+          {t:'Take home a playbook', d:'Every session ends with something you can run on Monday.'}
+        ] };
+      case 'chips': return { items:['CMO','Head of Marketing','Growth Lead','Brand Manager','Media Planner','MarTech Lead','Agency Partner'] };
+      case 'quotes': return { items:[
+          {q:'The only ET forum where I left with three vendor shortlists and a hire.', n:'', r:'Marketing Director', c:'Retail chain'},
+          {q:'Sharp room. Almost no sales pitching from stage.', n:'', r:'Head of Growth', c:'D2C brand'}
+        ] };
+      case 'gallery': return { count:8 };
+      case 'contacts': return { blocks:[
+          { t:'Speaking opportunities', n:'', e:'', p:'' },
+          { t:'Delegate registration', n:'', e:'', p:'' },
+          { t:'Partnerships', n:'', e:'', p:'' }
+        ] };
+      case 'auto': return { whatsapp:true };
+      default: return {};
+    }
+  }
+
+  /* =========================================================
+     DETECTED SECTIONS - Path B canned-but-believable output
+  ========================================================= */
+  var DETECTED = [
+    { id:'d1', lib:'hero',      label:'Hero / Top banner',  conf:98, shot:'hero',
+      extract:[['Title','MarTech+ Summit 2026'],['Tagline','Where marketing technology meets measurable growth'],['CTA','Register now / Download brochure']] },
+    { id:'d2', lib:'stats',     label:'Stats strip',        conf:96, shot:'stats',
+      extract:[['Numbers found','1 Day · 14 Sessions · 32 Speakers · 480 Minutes · 120 Brands']] },
+    { id:'d3', lib:'about',     label:'About the event',    conf:94, shot:'text',
+      extract:[['Heading','About the summit'],['Body','A single-day gathering of marketing, growth and technology leaders working through what actually moves pipeline… (612 characters extracted)']] },
+    { id:'d4', lib:'partners',  label:'Partner logos',      conf:91, shot:'logos',
+      extract:[['Logos found','9 images across 3 visual tiers']] },
+    { id:'d5', lib:'speakers',  label:'Speakers',           conf:97, shot:'people',
+      extract:[['People found','12 cards with photo, name, role, company'],['Sample','CMO · Leading FMCG brand']] },
+    { id:'d6', lib:'attend',    label:'Who should attend',  conf:88, shot:'chips',
+      extract:[['Chips','CMO, Head of Marketing, Growth Lead, Brand Manager, MarTech Lead, Agency Partner']] },
+    { id:'d7', lib:'glimpses',  label:'Previous glimpses',  conf:93, shot:'gallery',
+      extract:[['Images','8 photos in a 4-column grid']] },
+    { id:'d8', lib:'custom',    label:'Unmatched block',    conf:41, shot:'text', unknown:true,
+      extract:[['What we saw','A two-column band with a countdown timer and an embedded map'],['Our read','No canonical match — we will treat it as a custom section you describe in words.']] },
+    { id:'d9', lib:'contact',   label:'Contact us',         conf:90, shot:'text',
+      extract:[['Blocks','Speaking / Delegate / Partnerships with 3 emails and 2 phone numbers']] }
+  ];
+
+  /* =========================================================
+     STATE
+  ========================================================= */
+  var STEPS = ['Create event','Basic details','Choose path','Build content','AI assemble','First preview'];
+  var STORE_KEY = 'revamp.createEvent.draft.v1';
+
+  var S = {
+    step: 1,
+    basics: {
+      category: 'IP', vertical: VERTICALS[0], name: '', type: 'On-ground',
+      start: '', end: '', venue: '', city: '', platform: '', deadline: '',
+      payment: 'Paid', slug: '', slugTouched: false, logo: false
+    },
+    path: null,                 // 'A' | 'B'
+    template: null,             // template id
+    sourceKind: 'figma',
+    sourceValue: '',
+    detectPhase: 'input',       // input | processing | review
+    detectDecisions: {},        // id -> keep | removed
+    sections: [],               // [{id, libId, name, shape, include, data, done, source, customBrief, layout}]
+    active: null,               // active section id
+    device: 'desktop',
+    assembled: false,
+    celebrated: false
+  };
+
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(s){
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function uid(){ return 's' + Math.random().toString(36).slice(2,8); }
+
+  /* ---------- autosave ---------- */
+  var saveTimer = null;
+  function save(){
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch(e){}
+    var el = $('save-state');
+    if (!el) return;
+    el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      el.innerHTML = '<span class="d"></span>Draft autosaved';
+    }, 520);
+  }
+  function restore(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return false;
+      var d = JSON.parse(raw);
+      if (!d || typeof d !== 'object') return false;
+      Object.keys(d).forEach(function(k){ S[k] = d[k]; });
+      return true;
+    } catch(e){ return false; }
+  }
+
+  function toast(msg){
+    var region = $('toast-region');
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    region.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){
+      t.classList.remove('show');
+      setTimeout(function(){ t.remove(); }, 220);
+    }, 2800);
+  }
+
+  /* =========================================================
+     PROGRESS RAIL
+  ========================================================= */
+  function renderRail(){
+    var rail = $('rail');
+    var html = '';
+    for (var i = 0; i < STEPS.length; i++){
+      var n = i + 1;
+      var stage = S.step + 1;
+      var state = n < stage ? 'done' : (n === stage ? 'current' : 'todo');
+      if (i > 0) html += '<span class="rail-line' + (n <= S.step ? ' filled' : '') + '"></span>';
+      html += '<button class="rail-step" data-state="' + state + '" data-goto="' + n + '"' +
+              (state === 'todo' ? ' disabled' : '') + '>' +
+              '<span class="num">' + (state === 'done' ? IC.check : n) + '</span>' +
+              '<span class="lbl">' + STEPS[i] + '</span></button>';
+    }
+    rail.innerHTML = html;
+    rail.querySelectorAll('[data-goto]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var n = parseInt(b.getAttribute('data-goto'), 10);
+        if (n > 1 && n < S.step + 1) goStep(n - 1);
+      });
+    });
+  }
+
+  /* =========================================================
+     STEP NAVIGATION
+  ========================================================= */
+  function goStep(n){
+    S.step = n;
+    for (var i = 1; i <= 5; i++){
+      var el = $('step-' + i);
+      if (el) el.hidden = (i !== n);
+    }
+    var cur = $('step-' + n);
+    if (cur){ cur.classList.remove('fade-in'); void cur.offsetWidth; cur.classList.add('fade-in'); }
+    if (n === 3) renderStep3();
+    if (n === 4) renderStep4();
+    if (n === 5) renderStep5();
+    renderRail();
+    renderFoot();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    save();
+  }
+
+  /* =========================================================
+     FOOTER BAR - label + gating per step
+  ========================================================= */
+  function renderFoot(){
+    var back = $('btn-back'), next = $('btn-next'), alt = $('btn-foot-alt'), note = $('foot-note');
+    back.hidden = (S.step === 1);
+    alt.hidden = true;
+    note.textContent = '';
+    next.hidden = false;
+    next.disabled = false;
+
+    if (S.step === 1){
+      var b = S.basics;
+      var ready = b.name.trim() && b.slug.trim() && b.start && slugFree(b.slug);
+      next.disabled = !ready;
+      next.innerHTML = 'Continue ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+      if (!ready) note.textContent = 'Event name, start date and a free URL slug are needed to continue.';
+    }
+    else if (S.step === 2){
+      next.disabled = !S.path;
+      next.innerHTML = (S.path === 'B' ? 'Continue with my design ' : 'Continue with a template ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
+      if (!S.path) note.textContent = 'Pick a path to continue — you can change it later.';
+    }
+    else if (S.step === 3){
+      if (S.path === 'A' && !S.template){
+        next.disabled = true;
+        next.innerHTML = 'Continue ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+        note.textContent = 'Choose a template to open the section editor.';
+      } else if (S.path === 'B' && S.detectPhase === 'review' && !S.sections.length){
+        renderFootDetect();
+      } else if (S.path === 'B' && S.detectPhase !== 'review'){
+        next.hidden = true;
+        note.textContent = S.detectPhase === 'processing' ? 'Analysing your design — this takes a moment.' : 'Add a design source to start detection.';
+      } else {
+        alt.hidden = false;
+        alt.textContent = 'Switch path';
+        next.innerHTML = 'Assemble my site ' + IC.spark;
+        var inc = S.sections.filter(function(s){ return s.include && s.shape !== 'auto'; });
+        var doneN = inc.filter(function(s){ return s.done; }).length;
+        note.textContent = doneN + ' of ' + inc.length + ' sections filled — you can assemble now and refine after the preview.';
+      }
+    }
+    else if (S.step === 4){
+      back.hidden = true;
+      next.hidden = true;
+      note.textContent = '';
+    }
+    else if (S.step === 5){
+      alt.hidden = false;
+      alt.textContent = 'Save draft';
+      next.innerHTML = 'Continue to publish ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+      note.textContent = 'Publishing, payments and CRM come after this flow.';
+    }
+  }
+
+  /* =========================================================
+     STEP 1 - BASIC DETAILS
+  ========================================================= */
+  function segmented(host, options, current, onPick){
+    host.innerHTML = options.map(function(o){
+      return '<button type="button" aria-pressed="' + (o === current) + '" data-v="' + esc(o) + '">' + esc(o) + '</button>';
+    }).join('');
+    host.querySelectorAll('[data-v]').forEach(function(b){
+      b.addEventListener('click', function(){ onPick(b.getAttribute('data-v')); });
+    });
+  }
+
+  function slugify(str){
+    return String(str).toLowerCase().trim()
+      .replace(/&/g, ' and ')
+      .replace(/\+/g, '-plus')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+  }
+  function slugFree(slug){
+    return !!slug && TAKEN_SLUGS.indexOf(slug) === -1;
+  }
+
+  var slugCheckTimer = null;
+  function renderSlugStatus(checking){
+    var host = $('slug-status');
+    var slug = S.basics.slug;
+    if (!slug){ host.innerHTML = ''; return; }
+    if (checking){
+      host.className = 'slug-status checking';
+      host.innerHTML = 'Checking availability…';
+      return;
+    }
+    if (slugFree(slug)){
+      host.className = 'slug-status ok';
+      host.innerHTML = IC.check + ' etoneworld.com/' + esc(slug) + ' is available';
+    } else {
+      host.className = 'slug-status bad';
+      host.innerHTML = IC.warn + ' That slug is taken — try adding the year or city.';
+    }
+  }
+  function renderSlugAI(){
+    var host = $('slug-ai');
+    var suggestion = slugify(S.basics.name);
+    if (!suggestion || suggestion === S.basics.slug){ host.innerHTML = ''; return; }
+    host.innerHTML = '<span class="ai-chip">' + IC.spark +
+      'AI suggests <span class="mono">' + esc(suggestion) + '</span>' +
+      '<button type="button" id="slug-apply">Use it</button></span>';
+    $('slug-apply').addEventListener('click', function(){
+      S.basics.slug = suggestion;
+      S.basics.slugTouched = true;
+      $('f-slug').value = suggestion;
+      renderSlugStatus(false);
+      renderSlugAI();
+      renderFoot();
+      save();
+      toast('Slug set to /' + suggestion);
+    });
+  }
+
+  function applySmartDefaults(){
+    var b = S.basics;
+    var virtual = (b.type === 'Virtual');
+    $('venue-wrap').hidden = virtual;
+    $('platform-wrap').hidden = !virtual;
+    $('deadline-wrap').hidden = (b.category !== 'Awards');
+    var hint = $('category-hint');
+    if (b.category === 'Awards') hint.textContent = 'Awards: a nomination deadline field was added below.';
+    else if (b.category === 'Leadgen') hint.textContent = 'Leadgen: the template picker will default to the short one-screen layout.';
+    else if (b.category === 'Client') hint.textContent = 'Client: partner logos and contact blocks are pre-included.';
+    else hint.textContent = 'IP: our own property — the full section stack is offered by default.';
+  }
+
+  function initStep1(){
+    var b = S.basics;
+
+    segmented($('seg-category'), ['IP','Client','Awards','Leadgen'], b.category, function(v){
+      b.category = v; applySmartDefaults(); save(); initStep1();
+    });
+    segmented($('seg-type'), ['On-ground','Virtual','Hybrid'], b.type, function(v){
+      b.type = v; applySmartDefaults(); save(); initStep1();
+    });
+    segmented($('seg-payment'), ['Free','Paid'], b.payment, function(v){
+      b.payment = v; save(); initStep1();
+    });
+
+    var vsel = $('f-vertical');
+    if (!vsel.options.length){
+      vsel.innerHTML = VERTICALS.map(function(v){ return '<option>' + esc(v) + '</option>'; }).join('');
+    }
+    vsel.value = b.vertical;
+    vsel.onchange = function(){ b.vertical = vsel.value; save(); };
+
+    var nameEl = $('f-name');
+    nameEl.value = b.name;
+    nameEl.oninput = function(){
+      b.name = nameEl.value;
+      if (!b.slugTouched){
+        b.slug = slugify(b.name);
+        $('f-slug').value = b.slug;
+        renderSlugStatus(false);
+      }
+      renderSlugAI();
+      renderFoot();
+      save();
+    };
+
+    var slugEl = $('f-slug');
+    slugEl.value = b.slug;
+    slugEl.oninput = function(){
+      b.slugTouched = true;
+      b.slug = slugify(slugEl.value);
+      renderSlugStatus(true);
+      clearTimeout(slugCheckTimer);
+      slugCheckTimer = setTimeout(function(){
+        slugEl.value = b.slug;
+        renderSlugStatus(false);
+        renderSlugAI();
+        renderFoot();
+      }, 480);
+      save();
+    };
+
+    [['f-start','start'],['f-end','end'],['f-venue','venue'],['f-city','city'],['f-platform','platform'],['f-deadline','deadline']]
+    .forEach(function(pair){
+      var el = $(pair[0]);
+      el.value = b[pair[1]] || '';
+      el.oninput = function(){ b[pair[1]] = el.value; renderFoot(); save(); };
+      el.onchange = el.oninput;
+    });
+
+    var drop = $('logo-drop');
+    drop.classList.toggle('filled', !!b.logo);
+    if (b.logo){
+      drop.innerHTML = '<span class="ico" style="color:var(--accent-strong)">' + IC.check14 + '</span>' +
+        '<span class="t">event-logo.png &middot; 512&times;512</span>' +
+        '<span class="s">Click to replace</span>';
+    }
+    drop.onclick = function(){
+      b.logo = !b.logo;
+      save();
+      initStep1();
+      toast(b.logo ? 'Logo attached (mocked upload)' : 'Logo removed');
+    };
+
+    applySmartDefaults();
+    renderSlugStatus(false);
+    renderSlugAI();
+  }
+
+  /* =========================================================
+     STEP 2 - CHOOSE PATH
+  ========================================================= */
+  function renderStep2(){
+    var cards = [
+      { key:'A', ico:IC.tpl, h:'Use our template',
+        lead:'Start from one of our proven microsite templates. Pick sections, fill content, we handle the rest.',
+        meta:[['Best for','Standard events, fastest route'],['You provide','Just content'],['AI does','Reshapes your copy to fit each section']] },
+      { key:'B', ico:IC.upload, h:'Upload my own design',
+        lead:'Already designed it? Point us at the file. We read the design, find the sections and pull the content out.',
+        meta:[['Best for','Teams who already designed their site'],['You provide','Figma / Lovable / builder URL / PSD'],['AI does','Detects sections, screenshots and extracts them']] }
+    ];
+    $('path-grid').innerHTML = cards.map(function(c){
+      var on = S.path === c.key;
+      return '<button class="path-card" type="button" aria-pressed="' + on + '" data-path="' + c.key + '">' +
+        (on ? '<span class="tick">' + IC.check + '</span>' : '') +
+        '<span class="ico">' + c.ico + '</span>' +
+        '<span><span class="eyebrow">Path ' + c.key + '</span><h3 style="margin-top:4px">' + c.h + '</h3></span>' +
+        '<p class="lead">' + c.lead + '</p>' +
+        '<span class="path-meta">' + c.meta.map(function(m){
+          return '<span class="r"><span class="k">' + m[0] + '</span><span class="v">' + m[1] + '</span></span>';
+        }).join('') + '</span>' +
+      '</button>';
+    }).join('');
+
+    $('path-grid').querySelectorAll('[data-path]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var next = b.getAttribute('data-path');
+        if (S.path && S.path !== next && S.sections.length){
+          confirmSwitch(next);
+          return;
+        }
+        S.path = next;
+        renderStep2();
+        renderFoot();
+        save();
+      });
+    });
+  }
+
+  function confirmSwitch(next){
+    openModal({
+      title: 'Switch to Path ' + next + '?',
+      sub: 'Your basic details are kept. The content you have filled on the current path is cleared.',
+      body: '<div class="callout amber">' + IC.warn +
+            '<span><strong>What you keep</strong>Event name, dates, venue, slug, logo and payment type all carry over. Only section content resets.</span></div>',
+      confirm: 'Switch path',
+      onConfirm: function(){
+        S.path = next;
+        S.sections = [];
+        S.template = null;
+        S.active = null;
+        S.detectPhase = 'input';
+        S.detectDecisions = {};
+        S.assembled = false;
+        renderStep2();
+        renderFoot();
+        save();
+        toast('Switched to Path ' + next);
+      }
+    });
+  }
+
+  /* =========================================================
+     STEP 3 - ROUTER
+  ========================================================= */
+  function renderStep3(){
+    var host = $('step-3');
+    if (S.path === 'A'){
+      if (!S.template) renderTemplatePicker(host);
+      else renderBuildWorkspace(host);
+    } else {
+      if (S.detectPhase === 'input') renderSourceInput(host);
+      else if (S.detectPhase === 'processing') renderProcessing(host);
+      else if (S.sections.length) renderBuildWorkspace(host);
+      else renderDetectReview(host);
+    }
+    renderFoot();
+  }
+
+  /* ---------- template picker ---------- */
+  function tplThumb(id){
+    if (id === 'leadgen'){
+      return '<span class="b hero"></span><span class="b row"></span><span class="b row half"></span>' +
+             '<span class="cols"><span class="b"></span><span class="b"></span></span>';
+    }
+    if (id === 'awards'){
+      return '<span class="b hero"></span><span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
+             '<span class="b row"></span><span class="b row half"></span>';
+    }
+    return '<span class="b hero"></span><span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
+           '<span class="b row"></span><span class="b row half"></span><span class="b row"></span>';
+  }
+
+  function renderTemplatePicker(host){
+    host.innerHTML =
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 4 of 6 &middot; Path A</span>' +
+        '<h1>Pick a template to start from</h1>' +
+        '<p class="desc">Each one is a stack of our pre-built sections. You can include or exclude any section afterwards, and add custom ones.</p>' +
+      '</div>' +
+      '<div class="tpl-grid">' +
+        TEMPLATES.map(function(t){
+          return '<button class="tpl-card" type="button" aria-pressed="false" data-tpl="' + t.id + '">' +
+            '<span class="tpl-thumb">' + tplThumb(t.id) + '</span>' +
+            '<span class="tpl-info"><h4>' + esc(t.name) + '</h4>' +
+            '<span class="s">' + esc(t.sub) + '</span>' +
+            '<span class="n">' + t.sections.length + ' sections</span></span>' +
+          '</button>';
+        }).join('') +
+      '</div>' +
+      '<div class="callout">' + IC.info +
+        '<span><strong>These are the same sections Ops uses today</strong>The 16 canonical blocks from a live ET microsite — hero, stats, partners, about, speakers, glimpses and the rest. No developer places them.</span></div>';
+
+    host.querySelectorAll('[data-tpl]').forEach(function(b){
+      b.addEventListener('click', function(){
+        applyTemplate(b.getAttribute('data-tpl'));
+      });
+    });
+  }
+
+  function applyTemplate(tplId){
+    var tpl = null;
+    TEMPLATES.forEach(function(t){ if (t.id === tplId) tpl = t; });
+    if (!tpl) return;
+    S.template = tplId;
+    S.sections = tpl.sections.map(function(libId){
+      var l = libBy(libId);
+      return {
+        id: uid(), libId: libId, name: l.name, shape: l.shape, limit: l.limit || null,
+        helper: l.helper, include: true, data: seed(l.shape), done: false, source: 'template'
+      };
+    });
+    var first = S.sections.filter(function(s){ return s.shape !== 'auto'; })[0];
+    S.active = first ? first.id : S.sections[0].id;
+    if (S.basics.name){
+      var hero = S.sections.filter(function(s){ return s.libId === 'hero'; })[0];
+      if (hero) hero.data.title = S.basics.name;
+    }
+    save();
+    renderStep3();
+    toast(tpl.name + ' loaded — ' + tpl.sections.length + ' sections ready');
+  }
+
+  /* ---------- section rail + editor ---------- */
+  function activeSection(){
+    for (var i=0;i<S.sections.length;i++){ if (S.sections[i].id === S.active) return S.sections[i]; }
+    return S.sections[0] || null;
+  }
+
+  function renderBuildWorkspace(host){
+    var editable = S.sections.filter(function(s){ return s.shape !== 'auto'; });
+    var included = editable.filter(function(s){ return s.include; });
+    var doneN = included.filter(function(s){ return s.done; }).length;
+    var pct = included.length ? Math.round(doneN / included.length * 100) : 0;
+
+    host.innerHTML =
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 4 of 6 &middot; Path ' + S.path + '</span>' +
+        '<h1>' + (S.path === 'A' ? 'Fill your sections' : 'Refine your sections') + '</h1>' +
+        '<p class="desc">One section at a time. Paste rough content and let AI shape it to fit, or generate a first draft from your event brief.</p>' +
+      '</div>' +
+      '<div class="build-grid">' +
+        '<div class="rail-panel">' +
+          '<div class="rail-panel-head">' +
+            '<h3>Sections</h3>' +
+            '<div class="prog-line"><i style="width:' + pct + '%"></i></div>' +
+            '<div class="prog-txt">' + doneN + '/' + included.length + ' filled</div>' +
+          '</div>' +
+          '<div class="sec-list" id="sec-list"></div>' +
+          '<div class="rail-panel-foot">' +
+            '<button class="btn btn-ghost btn-sm btn-block" id="btn-add-custom" style="width:100%">' + IC.plus + ' Add custom section</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="panel" id="editor-panel"></div>' +
+      '</div>';
+
+    renderSecList();
+    renderEditor();
+    $('btn-add-custom').addEventListener('click', openCustomSectionModal);
+  }
+
+  function renderSecList(){
+    var host = $('sec-list');
+    if (!host) return;
+    host.innerHTML = S.sections.map(function(s, i){
+      var cls = 'sec-row' + (s.done ? ' done' : '') + (s.include ? '' : ' excluded');
+      var right = s.shape === 'auto'
+        ? '<span class="auto-tag">Auto</span>'
+        : (s.source === 'custom' ? '<span class="auto-tag" style="color:var(--review)">AI</span>' : '<span class="idx">' + (i+1) + '</span>');
+      return '<button class="' + cls + '" data-sec="' + s.id + '" aria-current="' + (s.id === S.active) + '">' +
+        '<span class="tick">' + IC.check + '</span>' +
+        '<span class="nm">' + esc(s.name) + '</span>' + right + '</button>';
+    }).join('');
+    host.querySelectorAll('[data-sec]').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.active = b.getAttribute('data-sec');
+        renderSecList();
+        renderEditor();
+        save();
+      });
+    });
+  }
+
+  /* =========================================================
+     PER-SECTION EDITOR
+  ========================================================= */
+  function renderEditor(){
+    var host = $('editor-panel');
+    if (!host) return;
+    var s = activeSection();
+    if (!s){ host.innerHTML = ''; return; }
+
+    var aiTools = (s.shape === 'auto') ? '' :
+      '<button class="btn btn-ai btn-sm" id="ai-fit">' + IC.spark + ' Fit to section</button>' +
+      '<button class="btn btn-secondary btn-sm" id="ai-gen">Generate</button>';
+
+    host.innerHTML =
+      '<div class="editor-head">' +
+        '<div>' +
+          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+            '<h2>' + esc(s.name) + '</h2>' +
+            (s.source === 'custom' ? '<span class="ai-badge">' + IC.spark + ' AI built</span>' : '') +
+            (s.source === 'detected' ? '<span class="pill pill-ai"><span class="d"></span>From your design</span>' : '') +
+          '</div>' +
+          '<p class="helper">' + esc(s.helper || '') + '</p>' +
+        '</div>' +
+        '<div class="tools">' + aiTools +
+          (s.shape === 'auto' ? '' :
+            '<button class="switch" id="inc-toggle" aria-pressed="' + s.include + '" title="Include this section on the site">' +
+            '<span class="track"><i></i></span>' + (s.include ? 'Included' : 'Excluded') + '</button>') +
+        '</div>' +
+      '</div>' +
+      '<div class="editor-body' + (s.include ? '' : ' off') + '" id="editor-body">' + shapeHTML(s) + '</div>';
+
+    var inc = $('inc-toggle');
+    if (inc) inc.addEventListener('click', function(){
+      s.include = !s.include;
+      save(); renderEditor(); renderSecList(); renderFoot();
+      toast(s.name + (s.include ? ' included' : ' excluded from the site'));
+    });
+    var fit = $('ai-fit');
+    if (fit) fit.addEventListener('click', function(){ aiFit(s); });
+    var gen = $('ai-gen');
+    if (gen) gen.addEventListener('click', function(){ aiGenerate(s); });
+
+    wireShape(s);
+  }
+
+  function markDone(s, val){
+    var was = s.done;
+    s.done = (val === undefined) ? true : val;
+    if (was !== s.done){ renderSecList(); renderFoot(); refreshProgress(); }
+    save();
+  }
+  function refreshProgress(){
+    var included = S.sections.filter(function(s){ return s.shape !== 'auto' && s.include; });
+    var doneN = included.filter(function(s){ return s.done; }).length;
+    var pct = included.length ? Math.round(doneN / included.length * 100) : 0;
+    var bar = document.querySelector('.prog-line i');
+    var txt = document.querySelector('.prog-txt');
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = doneN + '/' + included.length + ' filled';
+  }
+
+  /* ---------- shape renderers ---------- */
+  function shapeHTML(s){
+    var d = s.data || {};
+    switch(s.shape){
+      case 'auto':
+        return '<div class="auto-note">' + IC.lock +
+          '<span>' + esc(s.helper) + '</span></div>' +
+          (s.libId === 'footer'
+            ? '<button class="switch" id="wa-toggle" aria-pressed="' + (d.whatsapp !== false) + '"><span class="track"><i></i></span>Floating WhatsApp chat</button>'
+            : '<div class="callout plain">' + IC.layers + '<span><strong>Menu preview</strong>' +
+              esc(S.sections.filter(function(x){ return x.include && x.shape !== 'auto'; }).slice(0,6).map(function(x){ return x.name; }).join('  ·  ') || 'Include sections to build the menu') +
+              '</span></div>');
+
+      case 'hero':
+        return '<div class="field"><label for="e-title">Event title</label>' +
+            '<input class="inp" id="e-title" value="' + esc(d.title) + '" placeholder="' + esc(S.basics.name || 'Your event name') + '"></div>' +
+          '<div class="field"><label for="e-tag">Tagline</label>' +
+            '<input class="inp" id="e-tag" value="' + esc(d.tagline) + '" placeholder="One line on why this event exists"></div>' +
+          '<div class="field-grid">' +
+            '<div class="field"><label for="e-cta1">Primary CTA</label><input class="inp" id="e-cta1" value="' + esc(d.cta1) + '"></div>' +
+            '<div class="field"><label for="e-cta2">Secondary CTA</label><input class="inp" id="e-cta2" value="' + esc(d.cta2) + '"></div>' +
+          '</div>' +
+          '<div class="field"><span class="flabel">Banner image</span>' +
+            '<button class="dropzone' + (d.banner ? ' filled' : '') + '" id="e-banner" type="button">' +
+              '<span class="ico">' + (d.banner ? IC.check14 : IC.img) + '</span>' +
+              '<span class="t">' + (d.banner ? 'hero-banner.jpg &middot; 1920&times;720' : 'Upload banner') + '</span>' +
+              '<span class="s">' + (d.banner ? 'Click to replace' : '1920&times;720 recommended &middot; JPG or PNG') + '</span>' +
+            '</button></div>' +
+          '<div class="callout plain">' + IC.info + '<span><strong>Auto-filled from Step 1</strong>' +
+            esc([S.basics.start ? fmtDate(S.basics.start) : 'Date pending',
+                 S.basics.type === 'Virtual' ? (S.basics.platform || 'Virtual') : (S.basics.city || 'Venue pending')].join('  ·  ')) +
+            '</span></div>';
+
+      case 'stats':
+        return '<div class="kv-grid" id="kv-grid">' + (d.items||[]).map(function(it, i){
+            var flagged = isSuspect(it);
+            return '<div class="kv-card' + (flagged ? ' flagged' : '') + '">' +
+              '<button class="del" data-kvdel="' + i + '" title="Remove">&times;</button>' +
+              '<input class="inp num" data-kv="v" data-i="' + i + '" value="' + esc(it.v) + '" inputmode="numeric">' +
+              '<input class="inp" data-kv="k" data-i="' + i + '" value="' + esc(it.k) + '" placeholder="Label">' +
+              (flagged ? '<span class="kv-flag">' + IC.warn + 'That number looks off — please confirm.</span>' : '') +
+            '</div>';
+          }).join('') + '</div>' +
+          '<button class="add-row" id="kv-add">' + IC.plus + ' Add a stat</button>';
+
+      case 'logos':
+        return (d.tiers||[]).map(function(tier, ti){
+            return '<div class="tier-group">' +
+              '<div class="tier-head"><span class="t">' + esc(tier.t) + '</span><span class="ln"></span>' +
+                '<button class="btn btn-ghost btn-xs" data-tieradd="' + ti + '">' + IC.plus + ' Logo</button></div>' +
+              '<div class="tile-grid">' + tier.logos.map(function(lg, li){
+                return '<div class="tile">' +
+                  '<button class="del" data-logodel="' + ti + '.' + li + '" title="Remove">&times;</button>' +
+                  '<span class="ph">' + IC.img + '</span>' +
+                  '<input class="inp" data-logo="' + ti + '.' + li + '" value="' + esc(lg.n) + '" placeholder="Partner name">' +
+                '</div>';
+              }).join('') + '</div></div>';
+          }).join('');
+
+      case 'rich':
+        return '<div class="field"><label for="e-body">Overview</label>' +
+            '<textarea class="inp" id="e-body" rows="7" placeholder="Paste your rough copy here — AI will trim and shape it to fit.">' + esc(d.body) + '</textarea>' +
+            '<div class="char-count' + ((d.body||'').length > (s.limit||900) ? ' over' : '') + '" id="cc">' +
+              (d.body||'').length + ' / ' + (s.limit||900) + ' characters</div></div>';
+
+      case 'line':
+        return '<div class="field"><label for="e-line">Marquee text</label>' +
+            '<input class="inp" id="e-line" value="' + esc(d.text) + '" maxlength="' + (s.limit||60) + '" placeholder="#YourEventHashtag">' +
+            '<p class="hint">Scrolls continuously across the page. Short is better.</p></div>';
+
+      case 'heading':
+        return '<div class="field"><label for="e-head">Band heading</label>' +
+            '<input class="inp" id="e-head" value="' + esc(d.text) + '" placeholder="e.g. Industries in the room"></div>';
+
+      case 'cards':
+      case 'columns':
+        return '<div class="rep-list" id="rep-list">' + (d.items||[]).map(function(it, i){
+            return '<div class="rep-item" draggable="true" data-ri="' + i + '">' +
+              '<span class="grip">' + IC.grip + '</span>' +
+              '<span class="fields">' +
+                '<input class="inp" data-rep="t" data-i="' + i + '" value="' + esc(it.t) + '" placeholder="Title">' +
+                '<textarea class="inp" data-rep="d" data-i="' + i + '" rows="2" placeholder="One or two lines">' + esc(it.d) + '</textarea>' +
+              '</span>' +
+              '<button class="del" data-repdel="' + i + '" title="Remove">' + IC.trash + '</button>' +
+            '</div>';
+          }).join('') + '</div>' +
+          '<button class="add-row" id="rep-add">' + IC.plus + ' Add ' + (s.shape === 'columns' ? 'a column' : 'a block') + '</button>';
+
+      case 'people':
+        return '<div class="tile-grid">' + (d.items||[]).map(function(p, i){
+            return '<div class="tile">' +
+              '<button class="del" data-pdel="' + i + '" title="Remove">&times;</button>' +
+              '<span class="ph round">' + IC.img + '</span>' +
+              '<input class="inp" data-p="n" data-i="' + i + '" value="' + esc(p.n) + '" placeholder="Full name">' +
+              '<input class="inp" data-p="r" data-i="' + i + '" value="' + esc(p.r) + '" placeholder="Role">' +
+              '<input class="inp" data-p="c" data-i="' + i + '" value="' + esc(p.c) + '" placeholder="Company">' +
+            '</div>';
+          }).join('') +
+          '<button class="tile-add" id="p-add">' + IC.plus + '<span>Add speaker</span></button></div>' +
+          '<div class="callout plain">' + IC.info + '<span>An <strong style="display:inline">All speakers</strong> link is added automatically when you pass eight speakers.</span></div>';
+
+      case 'benefits':
+        return '<div class="field"><label for="e-body">The advantage</label>' +
+            '<textarea class="inp" id="e-body" rows="4" placeholder="Why should someone give you a day of their time?">' + esc(d.body) + '</textarea>' +
+            '<div class="char-count' + ((d.body||'').length > (s.limit||600) ? ' over' : '') + '" id="cc">' +
+              (d.body||'').length + ' / ' + (s.limit||600) + ' characters</div></div>' +
+          '<div class="field"><span class="flabel">Benefit cards</span>' +
+          '<div class="rep-list" id="rep-list">' + (d.items||[]).map(function(it, i){
+            return '<div class="rep-item" draggable="true" data-ri="' + i + '">' +
+              '<span class="grip">' + IC.grip + '</span>' +
+              '<span class="fields">' +
+                '<input class="inp" data-rep="t" data-i="' + i + '" value="' + esc(it.t) + '" placeholder="Benefit">' +
+                '<textarea class="inp" data-rep="d" data-i="' + i + '" rows="2" placeholder="A line of detail">' + esc(it.d) + '</textarea>' +
+              '</span>' +
+              '<button class="del" data-repdel="' + i + '" title="Remove">' + IC.trash + '</button>' +
+            '</div>';
+          }).join('') + '</div>' +
+          '<button class="add-row" id="rep-add" style="margin-top:9px">' + IC.plus + ' Add a benefit</button></div>';
+
+      case 'chips':
+        return '<div class="field"><span class="flabel">Roles</span>' +
+            '<div class="chip-wrap" id="chip-wrap">' + (d.items||[]).map(function(c, i){
+              return '<span class="chip">' + esc(c) + '<button data-chipdel="' + i + '" title="Remove">&times;</button></span>';
+            }).join('') +
+            '<input id="chip-input" placeholder="Type a role and press Enter"></div>' +
+            '<p class="hint">' + (d.items||[]).length + ' roles &middot; these also power delegate targeting later.</p></div>';
+
+      case 'quotes':
+        return '<div class="rep-list" id="rep-list">' + (d.items||[]).map(function(q, i){
+            return '<div class="rep-item" draggable="true" data-ri="' + i + '">' +
+              '<span class="grip">' + IC.grip + '</span>' +
+              '<span class="fields">' +
+                '<textarea class="inp" data-q="q" data-i="' + i + '" rows="2" placeholder="The quote">' + esc(q.q) + '</textarea>' +
+                '<span class="fields two">' +
+                  '<input class="inp" data-q="n" data-i="' + i + '" value="' + esc(q.n) + '" placeholder="Name">' +
+                  '<input class="inp" data-q="r" data-i="' + i + '" value="' + esc(q.r) + '" placeholder="Role">' +
+                '</span>' +
+                '<input class="inp" data-q="c" data-i="' + i + '" value="' + esc(q.c) + '" placeholder="Company">' +
+              '</span>' +
+              '<button class="del" data-repdel="' + i + '" title="Remove">' + IC.trash + '</button>' +
+            '</div>';
+          }).join('') + '</div>' +
+          '<button class="add-row" id="rep-add">' + IC.plus + ' Add a testimonial</button>';
+
+      case 'gallery':
+        var n = d.count || 0;
+        var tiles = '';
+        for (var g = 0; g < n; g++){
+          tiles += '<div class="tile"><button class="del" data-gdel="' + g + '" title="Remove">&times;</button>' +
+                   '<span class="ph">' + IC.img + '</span>' +
+                   '<span class="faint mono" style="font-size:10.5px;text-align:center">glimpse-' + (g+1) + '.jpg</span></div>';
+        }
+        return '<div class="tile-grid">' + tiles +
+          '<button class="tile-add" id="g-add">' + IC.plus + '<span>Add photos</span></button></div>' +
+          '<p class="hint">' + n + ' images &middot; six to twelve reads best on mobile.</p>';
+
+      case 'contacts':
+        return (d.blocks||[]).map(function(b, i){
+            return '<div class="contact-block">' +
+              '<span class="t">' + esc(b.t) + '</span>' +
+              '<span class="three">' +
+                '<input class="inp" data-c="n" data-i="' + i + '" value="' + esc(b.n) + '" placeholder="Name">' +
+                '<input class="inp" data-c="e" data-i="' + i + '" value="' + esc(b.e) + '" placeholder="Email">' +
+                '<input class="inp" data-c="p" data-i="' + i + '" value="' + esc(b.p) + '" placeholder="Phone">' +
+              '</span></div>';
+          }).join('');
+
+      case 'custom':
+        return '<div class="callout ai">' + IC.spark + '<span><strong>Built from your description</strong>' +
+            esc(s.customBrief || '') + '</span></div>' +
+          '<div class="field"><label for="e-title">Heading</label><input class="inp" id="e-title" value="' + esc(d.title||'') + '"></div>' +
+          '<div class="field"><label for="e-body">Body</label><textarea class="inp" id="e-body" rows="6">' + esc(d.body||'') + '</textarea></div>' +
+          '<div class="field"><span class="flabel">Layout</span><div class="segmented" id="seg-layout">' +
+            ['Single column','Two column','Card grid'].map(function(o){
+              return '<button type="button" data-lay="' + o + '" aria-pressed="' + (d.layout === o) + '">' + o + '</button>';
+            }).join('') + '</div>' +
+            '<p class="hint">Rendered through a safe pre-built component — no hand-written HTML anywhere.</p></div>';
+
+      default:
+        return '<div class="auto-note">' + IC.info + '<span>Nothing to fill in for this section.</span></div>';
+    }
+  }
+
+  function isSuspect(it){
+    var n = parseInt(String(it.v).replace(/[^0-9]/g,''), 10);
+    if (isNaN(n)) return false;
+    if (/minute/i.test(it.k) && n > 1440) return true;
+    if (/day/i.test(it.k) && n > 10) return true;
+    if (/speaker/i.test(it.k) && n > 500) return true;
+    if (/session/i.test(it.k) && n > 200) return true;
+    if (/brand/i.test(it.k) && n > 5000) return true;
+    return false;
+  }
+
+  function fmtDate(v){
+    if (!v) return '';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return v;
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return d.getDate() + ' ' + m[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  /* ---------- wiring per shape ---------- */
+  function wireShape(s){
+    var d = s.data || (s.data = {});
+    var body = $('editor-body');
+    if (!body) return;
+
+    function on(id, ev, fn){ var el = $(id); if (el) el.addEventListener(ev, fn); }
+    function bindText(id, key){
+      on(id, 'input', function(){ d[key] = $(id).value; markDone(s, !!String(d[key]).trim()); });
+    }
+
+    if (s.shape === 'hero'){
+      bindText('e-title','title'); bindText('e-tag','tagline');
+      bindText('e-cta1','cta1'); bindText('e-cta2','cta2');
+      on('e-banner','click', function(){ d.banner = !d.banner; save(); renderEditor(); });
+      on('e-title','input', function(){ markDone(s, !!String(d.title||'').trim()); });
+    }
+
+    if (s.shape === 'rich' || s.shape === 'benefits'){
+      on('e-body','input', function(){
+        d.body = $('e-body').value;
+        var cc = $('cc'), lim = s.limit || 900;
+        if (cc){
+          cc.textContent = d.body.length + ' / ' + lim + ' characters';
+          cc.classList.toggle('over', d.body.length > lim);
+        }
+        markDone(s, d.body.trim().length > 20);
+      });
+    }
+
+    if (s.shape === 'line') bindText('e-line','text');
+    if (s.shape === 'heading') bindText('e-head','text');
+
+    if (s.shape === 'custom'){
+      bindText('e-title','title'); bindText('e-body','body');
+      body.querySelectorAll('[data-lay]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.layout = b.getAttribute('data-lay');
+          save(); renderEditor();
+        });
+      });
+    }
+
+    if (s.shape === 'auto' && s.libId === 'footer'){
+      on('wa-toggle','click', function(){
+        d.whatsapp = !(d.whatsapp !== false);
+        save(); renderEditor();
+      });
+    }
+
+    /* stats */
+    if (s.shape === 'stats'){
+      body.querySelectorAll('[data-kv]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-i');
+          d.items[i][el.getAttribute('data-kv')] = el.value;
+          markDone(s, true);
+        });
+        el.addEventListener('blur', function(){ renderEditor(); });
+      });
+      body.querySelectorAll('[data-kvdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.items.splice(+b.getAttribute('data-kvdel'), 1);
+          save(); renderEditor();
+        });
+      });
+      on('kv-add','click', function(){
+        d.items.push({ k:'New stat', v:'0' });
+        save(); renderEditor();
+      });
+    }
+
+    /* logos */
+    if (s.shape === 'logos'){
+      body.querySelectorAll('[data-logo]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var p = el.getAttribute('data-logo').split('.');
+          d.tiers[+p[0]].logos[+p[1]].n = el.value;
+          markDone(s, true);
+        });
+      });
+      body.querySelectorAll('[data-logodel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var p = b.getAttribute('data-logodel').split('.');
+          d.tiers[+p[0]].logos.splice(+p[1], 1);
+          save(); renderEditor();
+        });
+      });
+      body.querySelectorAll('[data-tieradd]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.tiers[+b.getAttribute('data-tieradd')].logos.push({ n:'' });
+          save(); renderEditor();
+        });
+      });
+    }
+
+    /* repeatable items: cards / columns / benefits */
+    if (s.shape === 'cards' || s.shape === 'columns' || s.shape === 'benefits'){
+      body.querySelectorAll('[data-rep]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-i');
+          d.items[i][el.getAttribute('data-rep')] = el.value;
+          markDone(s, true);
+        });
+      });
+      body.querySelectorAll('[data-repdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.items.splice(+b.getAttribute('data-repdel'), 1);
+          save(); renderEditor();
+        });
+      });
+      on('rep-add','click', function(){
+        d.items.push({ t:'', d:'' });
+        save(); renderEditor();
+      });
+      wireDrag($('rep-list'), 'data-ri', d.items, function(){ save(); renderEditor(); });
+    }
+
+    /* quotes */
+    if (s.shape === 'quotes'){
+      body.querySelectorAll('[data-q]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-i');
+          d.items[i][el.getAttribute('data-q')] = el.value;
+          markDone(s, true);
+        });
+      });
+      body.querySelectorAll('[data-repdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.items.splice(+b.getAttribute('data-repdel'), 1);
+          save(); renderEditor();
+        });
+      });
+      on('rep-add','click', function(){
+        d.items.push({ q:'', n:'', r:'', c:'' });
+        save(); renderEditor();
+      });
+      wireDrag($('rep-list'), 'data-ri', d.items, function(){ save(); renderEditor(); });
+    }
+
+    /* people */
+    if (s.shape === 'people'){
+      body.querySelectorAll('[data-p]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-i');
+          d.items[i][el.getAttribute('data-p')] = el.value;
+          markDone(s, d.items.some(function(p){ return String(p.n||'').trim(); }));
+        });
+      });
+      body.querySelectorAll('[data-pdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.items.splice(+b.getAttribute('data-pdel'), 1);
+          save(); renderEditor();
+        });
+      });
+      on('p-add','click', function(){
+        d.items.push({ n:'', r:'', c:'' });
+        save(); renderEditor();
+      });
+    }
+
+    /* chips */
+    if (s.shape === 'chips'){
+      var input = $('chip-input');
+      if (input){
+        input.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ','){
+            e.preventDefault();
+            var v = input.value.trim();
+            if (v){ d.items.push(v); markDone(s, true); save(); renderEditor(); $('chip-input').focus(); }
+          } else if (e.key === 'Backspace' && !input.value && d.items.length){
+            d.items.pop(); save(); renderEditor(); $('chip-input').focus();
+          }
+        });
+        var wrap = $('chip-wrap');
+        if (wrap) wrap.addEventListener('click', function(e){ if (e.target === wrap) input.focus(); });
+      }
+      body.querySelectorAll('[data-chipdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.items.splice(+b.getAttribute('data-chipdel'), 1);
+          save(); renderEditor();
+        });
+      });
+    }
+
+    /* gallery */
+    if (s.shape === 'gallery'){
+      on('g-add','click', function(){
+        d.count = (d.count || 0) + 4;
+        markDone(s, true); save(); renderEditor();
+        toast('4 photos added (mocked upload)');
+      });
+      body.querySelectorAll('[data-gdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.count = Math.max(0, (d.count||0) - 1);
+          save(); renderEditor();
+        });
+      });
+    }
+
+    /* contacts */
+    if (s.shape === 'contacts'){
+      body.querySelectorAll('[data-c]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-i');
+          d.blocks[i][el.getAttribute('data-c')] = el.value;
+          markDone(s, d.blocks.some(function(b){ return String(b.e||'').trim(); }));
+        });
+      });
+    }
+  }
+
+  /* ---------- generic drag reorder for a list of rows ---------- */
+  function wireDrag(container, attr, arr, after){
+    if (!container) return;
+    var dragIdx = null;
+    container.querySelectorAll('[' + attr + ']').forEach(function(row){
+      row.addEventListener('dragstart', function(){
+        dragIdx = +row.getAttribute(attr);
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', function(){
+        row.classList.remove('dragging');
+        container.querySelectorAll('.drop-target').forEach(function(x){ x.classList.remove('drop-target'); });
+      });
+      row.addEventListener('dragover', function(e){
+        e.preventDefault();
+        if (+row.getAttribute(attr) !== dragIdx) row.classList.add('drop-target');
+      });
+      row.addEventListener('dragleave', function(){ row.classList.remove('drop-target'); });
+      row.addEventListener('drop', function(e){
+        e.preventDefault();
+        var to = +row.getAttribute(attr);
+        if (dragIdx === null || to === dragIdx) return;
+        var moved = arr.splice(dragIdx, 1)[0];
+        arr.splice(to, 0, moved);
+        dragIdx = null;
+        after();
+      });
+    });
+  }
+
+  /* =========================================================
+     AI MOMENTS - fit-to-section + generate-from-brief
+  ========================================================= */
+  function aiBusy(label){
+    var head = document.querySelector('.editor-head .tools');
+    if (head) head.innerHTML = '<span class="ai-chip">' + IC.spark + esc(label) + '</span>';
+  }
+
+  var BRIEF_COPY = {
+    rich: function(){
+      var b = S.basics;
+      return (b.name || 'This event') + ' brings together the people who actually own the number — ' +
+        'marketing, growth and technology leaders from across ' + b.vertical + ' — for ' +
+        (b.type === 'Virtual' ? 'a focused online day' : 'a working day' + (b.city ? ' in ' + b.city : '')) + '. ' +
+        'The agenda is built backwards from the questions practitioners ask in private: what is working, what quietly is not, ' +
+        'and what is worth funding next quarter. Expect short sessions, sharp moderation and a room small enough that you meet the people you came to meet.';
+    },
+    benefits: function(){
+      var b = S.basics;
+      return 'A day at ' + (b.name || 'this event') + ' is designed to pay for itself: a curated room of senior decision makers, ' +
+        'sessions that end with something you can run on Monday, and enough unstructured time to have the three conversations that actually matter.';
+    },
+    custom: function(brief){
+      return 'Drafted from your description. ' + brief;
+    }
+  };
+
+  function aiFit(s){
+    var d = s.data;
+    aiBusy('Reshaping to fit…');
+    setTimeout(function(){
+      if (s.shape === 'rich' || s.shape === 'benefits'){
+        var lim = s.limit || 900;
+        var src = String(d.body || '').trim();
+        if (!src){ d.body = (BRIEF_COPY[s.shape] || BRIEF_COPY.rich)(); }
+        else if (src.length > lim){ d.body = src.slice(0, lim - 1).replace(/\s+\S*$/, '') + '.'; }
+        else { d.body = src.replace(/\s{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1'); }
+      }
+      else if (s.shape === 'columns' || s.shape === 'cards'){
+        d.items = (d.items || []).map(function(it){
+          return {
+            t: (it.t || '').replace(/\.$/, '') || 'Discussion point',
+            d: (it.d || '').length > 140 ? it.d.slice(0, 139).replace(/\s+\S*$/, '') + '.' : (it.d || '')
+          };
+        });
+        if (!d.items.length) d.items = seed(s.shape).items;
+      }
+      else if (s.shape === 'chips'){
+        var seen = {};
+        d.items = (d.items || []).map(function(c){
+          return c.trim().replace(/\b\w/g, function(m){ return m.toUpperCase(); });
+        }).filter(function(c){
+          if (!c || seen[c.toLowerCase()]) return false;
+          seen[c.toLowerCase()] = 1; return true;
+        });
+      }
+      else if (s.shape === 'line'){
+        var t = String(d.text || S.basics.name || '').trim();
+        if (t.charAt(0) !== '#') t = '#' + slugify(t).replace(/-/g,'').slice(0, 24);
+        d.text = t;
+      }
+      else if (s.shape === 'hero'){
+        if (!d.title) d.title = S.basics.name;
+        if (d.tagline && d.tagline.length > 90) d.tagline = d.tagline.slice(0, 89).replace(/\s+\S*$/, '');
+      }
+      else if (s.shape === 'stats'){
+        d.items = (d.items || []).map(function(it){
+          return { k: it.k.replace(/s$/,'') + (parseInt(it.v,10) === 1 ? '' : 's'), v: String(it.v).replace(/[^0-9]/g,'') || '0' };
+        });
+      }
+      else if (s.shape === 'quotes'){
+        d.items = (d.items || []).map(function(q){
+          var t = String(q.q||'').trim();
+          if (t && !/[.!?"]$/.test(t)) t += '.';
+          return { q: t, n: q.n, r: q.r, c: q.c };
+        });
+      }
+      markDone(s, true);
+      save();
+      renderEditor();
+      toast('AI reshaped “' + s.name + '” to fit the section');
+    }, 900);
+  }
+
+  function aiGenerate(s){
+    var d = s.data;
+    aiBusy('Drafting from your brief…');
+    setTimeout(function(){
+      if (s.shape === 'rich' || s.shape === 'benefits'){
+        d.body = (BRIEF_COPY[s.shape] || BRIEF_COPY.rich)();
+        if (s.shape === 'benefits' && !(d.items||[]).length) d.items = seed('benefits').items;
+      }
+      else if (s.shape === 'hero'){
+        d.title = S.basics.name || 'Your event';
+        d.tagline = seed('hero').tagline;
+        d.cta1 = 'Register now'; d.cta2 = 'Download brochure';
+      }
+      else if (s.shape === 'stats'){ d.items = seed('stats').items; }
+      else if (s.shape === 'cards' || s.shape === 'columns'){ d.items = seed(s.shape).items; }
+      else if (s.shape === 'chips'){ d.items = seed('chips').items; }
+      else if (s.shape === 'quotes'){ d.items = seed('quotes').items; }
+      else if (s.shape === 'line'){ d.text = seed('line').text; }
+      else if (s.shape === 'heading'){ d.text = seed('heading').text; }
+      else if (s.shape === 'people'){
+        d.items = [
+          { n:'Aarti Rawat',   r:'Chief Marketing Officer', c:'Leading FMCG brand' },
+          { n:'Sameer Chen',   r:'VP, Growth',              c:'Consumer internet' },
+          { n:'Devika Menon',  r:'Head of Digital',         c:'BFSI major' },
+          { n:'Rohit Iyer',    r:'Director, MarTech',       c:'Retail chain' }
+        ];
+      }
+      else if (s.shape === 'logos'){ d.tiers = seed('logos').tiers; }
+      else if (s.shape === 'gallery'){ d.count = 8; }
+      else if (s.shape === 'contacts'){
+        d.blocks = [
+          { t:'Speaking opportunities', n:'Priya Sharma', e:'speakers@etoneworld.com', p:'+91 98200 00001' },
+          { t:'Delegate registration',  n:'Kabir Nair',   e:'delegates@etoneworld.com', p:'+91 98200 00002' },
+          { t:'Partnerships',           n:'Meera Joshi',  e:'partners@etoneworld.com',  p:'+91 98200 00003' }
+        ];
+      }
+      else if (s.shape === 'custom'){
+        d.title = d.title || 'Your custom section';
+        d.body = d.body || BRIEF_COPY.custom(s.customBrief || '');
+      }
+      markDone(s, true);
+      save();
+      renderEditor();
+      toast('AI drafted “' + s.name + '” — edit anything you disagree with');
+    }, 1100);
+  }
+
+  /* =========================================================
+     CUSTOM SECTION - described in plain language, no code
+  ========================================================= */
+  function openCustomSectionModal(){
+    openModal({
+      title: 'Describe the section you need',
+      sub: 'Plain words are enough. AI maps it onto a safe pre-built component — you never touch HTML or CSS.',
+      body:
+        '<div class="field"><label for="cs-name">Section name</label>' +
+          '<input class="inp" id="cs-name" placeholder="e.g. Jury panel"></div>' +
+        '<div class="field"><label for="cs-brief">What should it show?</label>' +
+          '<textarea class="inp" id="cs-brief" rows="4" placeholder="e.g. A band listing our five jury members with a line on each, above a countdown to the entry deadline."></textarea></div>' +
+        '<div class="field"><label for="cs-content">Paste any content you already have</label>' +
+          '<textarea class="inp" id="cs-content" rows="3" placeholder="Optional — rough notes are fine."></textarea></div>' +
+        '<div class="callout ai">' + IC.spark +
+          '<span><strong>What happens next</strong>We pick the closest pre-built layout, place your content in it, and add it to your section list. Nothing is hand-coded.</span></div>',
+      confirm: 'Build section',
+      onConfirm: function(){
+        var name = ($('cs-name').value || '').trim() || 'Custom section';
+        var brief = ($('cs-brief').value || '').trim();
+        var content = ($('cs-content').value || '').trim();
+        var sec = {
+          id: uid(), libId: 'custom', name: name, shape: 'custom', helper: 'A custom block AI mapped onto a safe pre-built component.',
+          include: true, done: true, source: 'custom', customBrief: brief || 'No description given.',
+          data: { title: name, body: content || BRIEF_COPY.custom(brief), layout: 'Single column' }
+        };
+        var footIdx = S.sections.length;
+        S.sections.forEach(function(x, i){ if (x.libId === 'footer') footIdx = i; });
+        S.sections.splice(footIdx, 0, sec);
+        S.active = sec.id;
+        save();
+        renderBuildWorkspace($('step-3'));
+        renderFoot();
+        toast('“' + name + '” built and added — no developer needed');
+      }
+    });
+  }
+
+  /* =========================================================
+     PATH B - SOURCE INPUT
+  ========================================================= */
+  var SOURCES = [
+    { id:'figma',   label:'Figma',            ph:'https://figma.com/file/…',            hint:'Paste a Figma file or frame link. Make sure link sharing is on for anyone with the link.' },
+    { id:'lovable', label:'Lovable',          ph:'https://yourproject.lovable.app',      hint:'A published Lovable project URL. We read the rendered page, not the code.' },
+    { id:'builder', label:'Other builder URL', ph:'https://…',                            hint:'Webflow, Framer, Wix or any live URL we can reach.' },
+    { id:'psd',     label:'PSD file',          ph:'',                                     hint:'Layered PSD up to 200 MB. Flattened files still work but detect fewer sections.' }
+  ];
+
+  function renderSourceInput(host){
+    var cur = SOURCES.filter(function(x){ return x.id === S.sourceKind; })[0] || SOURCES[0];
+    host.innerHTML =
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 4 of 6 &middot; Path B</span>' +
+        '<h1>Point us at your design</h1>' +
+        '<p class="desc">We read the design, split it into sections, capture a preview of each and pull the content out. You review what we found on the next screen.</p>' +
+      '</div>' +
+      '<div class="panel">' +
+        '<div class="src-tabs" role="tablist">' + SOURCES.map(function(x){
+          return '<button class="src-tab" role="tab" aria-selected="' + (x.id === S.sourceKind) + '" data-src="' + x.id + '">' + esc(x.label) + '</button>';
+        }).join('') + '</div>' +
+        '<div class="panel-body">' +
+          (S.sourceKind === 'psd'
+            ? '<button class="dropzone' + (S.sourceValue ? ' filled' : '') + '" id="psd-drop" type="button">' +
+                '<span class="ico">' + (S.sourceValue ? IC.check14 : IC.upload) + '</span>' +
+                '<span class="t">' + (S.sourceValue ? esc(S.sourceValue) : 'Drop your PSD here, or click to browse') + '</span>' +
+                '<span class="s">' + (S.sourceValue ? 'Click to replace' : 'Layered PSD &middot; up to 200 MB') + '</span>' +
+              '</button>'
+            : '<div class="field"><label for="src-url">' + esc(cur.label) + ' URL</label>' +
+              '<input class="inp mono" id="src-url" value="' + esc(S.sourceValue) + '" placeholder="' + esc(cur.ph) + '" spellcheck="false"></div>') +
+          '<p class="hint">' + esc(cur.hint) + '</p>' +
+          '<div class="callout amber">' + IC.warn +
+            '<span><strong>Honest expectations</strong>Detection is good, not perfect. You will get a Keep / Edit / Remove decision on every section we find, and anything we cannot classify becomes a custom section you describe in words.</span></div>' +
+          '<button class="btn btn-primary btn-lg" id="btn-detect"' + (S.sourceValue ? '' : ' disabled') + '>' +
+            IC.spark + ' Analyse my design</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="callout plain">' + IC.info +
+        '<span><strong>Prefer to start from a template instead?</strong>Your basic details are already saved — switching costs you nothing at this point.</span></div>';
+
+    host.querySelectorAll('[data-src]').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.sourceKind = b.getAttribute('data-src');
+        S.sourceValue = '';
+        save(); renderStep3();
+      });
+    });
+    var url = $('src-url');
+    if (url) url.addEventListener('input', function(){
+      S.sourceValue = url.value.trim();
+      $('btn-detect').disabled = !S.sourceValue;
+      save();
+    });
+    var psd = $('psd-drop');
+    if (psd) psd.addEventListener('click', function(){
+      S.sourceValue = S.sourceValue ? '' : 'martech-summit-2026.psd · 84 MB';
+      save(); renderStep3();
+    });
+    var go = $('btn-detect');
+    if (go) go.addEventListener('click', function(){
+      S.detectPhase = 'processing';
+      save(); renderStep3();
+    });
+  }
+
+  /* =========================================================
+     PATH B - PROCESSING (honest, visible states)
+  ========================================================= */
+  var DETECT_PHASES = [
+    { t:'Detecting sections',  ms:1500 },
+    { t:'Capturing previews',  ms:1400 },
+    { t:'Extracting content',  ms:1600 }
+  ];
+
+  function renderProcessing(host){
+    host.innerHTML =
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 3 of 6 &middot; Path B</span>' +
+        '<h1>Analysing your design&hellip;</h1>' +
+        '<p class="desc">Reading <span class="mono">' + esc(S.sourceValue) + '</span>. This usually takes under a minute — you can leave this screen and come back, the draft is saved.</p>' +
+      '</div>' +
+      '<div class="panel"><div class="proc-wrap">' +
+        '<span class="proc-orb">' + IC.loader + '</span>' +
+        '<div class="proc-steps" id="proc-steps">' + DETECT_PHASES.map(function(p, i){
+          return '<div class="proc-step" data-ps="' + i + '">' +
+            '<span class="ic">' + IC.check + '</span>' +
+            '<span style="width:130px;flex-shrink:0">' + esc(p.t) + '</span>' +
+            '<span class="bar"><i></i></span></div>';
+        }).join('') + '</div>' +
+        '<p class="hint" id="proc-note">Starting up&hellip;</p>' +
+      '</div></div>';
+
+    var i = 0;
+    function runPhase(){
+      var rows = host.querySelectorAll('[data-ps]');
+      if (i >= DETECT_PHASES.length){
+        S.detectPhase = 'review';
+        S.detectDecisions = {};
+        DETECTED.forEach(function(d){ S.detectDecisions[d.id] = 'pending'; });
+        save();
+        renderStep3();
+        toast(DETECTED.length + ' sections detected in your design');
+        return;
+      }
+      var row = rows[i];
+      row.classList.add('active');
+      var bar = row.querySelector('.bar i');
+      var note = $('proc-note');
+      if (note) note.textContent = DETECT_PHASES[i].t + '…';
+      requestAnimationFrame(function(){ bar.style.width = '100%'; });
+      setTimeout(function(){
+        row.classList.remove('active');
+        row.classList.add('done');
+        i++;
+        runPhase();
+      }, DETECT_PHASES[i].ms);
+    }
+    setTimeout(runPhase, 320);
+  }
+
+  /* =========================================================
+     PATH B - DETECTED SECTION REVIEW
+  ========================================================= */
+  function shotHTML(kind){
+    if (kind === 'hero') return '<span class="b" style="height:26px;background:var(--accent-soft)"></span><span class="b" style="height:7px;width:70%"></span><span class="b" style="height:7px;width:45%"></span>';
+    if (kind === 'stats') return '<span style="display:flex;gap:4px">' + '<span class="b" style="flex:1;height:26px"></span>'.repeat(4) + '</span><span class="b" style="height:6px;width:50%"></span>';
+    if (kind === 'logos') return '<span style="display:flex;flex-wrap:wrap;gap:4px">' + '<span class="b" style="width:30%;height:16px"></span>'.repeat(6) + '</span>';
+    if (kind === 'people') return '<span style="display:flex;gap:5px">' + '<span class="b" style="flex:1;height:34px;border-radius:50%"></span>'.repeat(3) + '</span><span class="b" style="height:6px"></span>';
+    if (kind === 'chips') return '<span style="display:flex;flex-wrap:wrap;gap:4px">' + '<span class="b" style="width:44%;height:11px;border-radius:100px"></span>'.repeat(5) + '</span>';
+    if (kind === 'gallery') return '<span style="display:grid;grid-template-columns:1fr 1fr;gap:4px">' + '<span class="b" style="height:26px"></span>'.repeat(4) + '</span>';
+    return '<span class="b" style="height:8px"></span><span class="b" style="height:8px"></span><span class="b" style="height:8px;width:80%"></span><span class="b" style="height:8px;width:55%"></span>';
+  }
+
+  function renderDetectReview(host){
+    var counts = { keep:0, removed:0, pending:0 };
+    DETECTED.forEach(function(d){ counts[S.detectDecisions[d.id] || 'pending']++; });
+
+    host.innerHTML =
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 4 of 6 &middot; Path B</span>' +
+        '<h1>Here is what we found</h1>' +
+        '<p class="desc">' + DETECTED.length + ' sections detected and classified against our canonical library. Keep what is right, edit what needs a nudge, remove what you do not want.</p>' +
+      '</div>' +
+      '<div class="panel" style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+        '<span class="pill pill-ok"><span class="d"></span>' + counts.keep + ' kept</span>' +
+        '<span class="pill pill-draft"><span class="d"></span>' + counts.pending + ' undecided</span>' +
+        '<span class="pill pill-warn"><span class="d"></span>' + counts.removed + ' removed</span>' +
+        '<span class="spacer" style="flex:1"></span>' +
+        '<button class="btn btn-secondary btn-sm" id="btn-keep-all">Keep all</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:13px" id="det-list">' +
+        DETECTED.map(function(d){
+          var dec = S.detectDecisions[d.id] || 'pending';
+          return '<div class="det-card' + (dec === 'keep' ? ' kept' : dec === 'removed' ? ' removed' : '') + '" data-det="' + d.id + '">' +
+            '<div class="det-shot">' + shotHTML(d.shot) +
+              '<span class="shot-label">section preview</span></div>' +
+            '<div class="det-main">' +
+              '<div class="top">' +
+                '<h4>' + esc(d.label) + '</h4>' +
+                (d.unknown
+                  ? '<span class="pill pill-warn"><span class="d"></span>No canonical match</span>'
+                  : '<span class="pill pill-ai"><span class="d"></span>' + esc(libBy(d.lib) ? libBy(d.lib).name : d.lib) + '</span>') +
+                '<span class="conf">' + d.conf + '% confidence</span>' +
+                (dec === 'keep' ? '<span class="pill pill-ok" style="margin-left:auto"><span class="d"></span>Kept</span>' : '') +
+                (dec === 'removed' ? '<span class="pill pill-warn" style="margin-left:auto"><span class="d"></span>Removed</span>' : '') +
+              '</div>' +
+              '<div class="det-extract">' + d.extract.map(function(row){
+                return '<div><div class="k">' + esc(row[0]) + '</div><div class="v">' + esc(row[1]) + '</div></div>';
+              }).join('') + '</div>' +
+              '<div class="det-actions">' +
+                '<button class="btn btn-primary btn-sm" data-keep="' + d.id + '">' + IC.check14 + ' Keep</button>' +
+                '<button class="btn btn-secondary btn-sm" data-edit="' + d.id + '">' + IC.edit + ' Edit</button>' +
+                '<button class="btn btn-danger btn-sm" data-remove="' + d.id + '">' + IC.x + ' Remove</button>' +
+              '</div>' +
+            '</div></div>';
+        }).join('') +
+      '</div>' +
+      '<div class="callout plain">' + IC.info +
+        '<span><strong>Want one of our blocks too?</strong>Sections you keep are mapped to the same pre-built components as Path A, so you can add template sections on the next screen.</span></div>';
+
+    host.querySelectorAll('[data-keep]').forEach(function(b){
+      b.addEventListener('click', function(){ decide(b.getAttribute('data-keep'), 'keep'); });
+    });
+    host.querySelectorAll('[data-remove]').forEach(function(b){
+      b.addEventListener('click', function(){ decide(b.getAttribute('data-remove'), 'removed'); });
+    });
+    host.querySelectorAll('[data-edit]').forEach(function(b){
+      b.addEventListener('click', function(){ openDetected(b.getAttribute('data-edit')); });
+    });
+    $('btn-keep-all').addEventListener('click', function(){
+      DETECTED.forEach(function(d){ S.detectDecisions[d.id] = 'keep'; });
+      save(); renderStep3();
+      toast('All ' + DETECTED.length + ' sections kept');
+    });
+    renderFootDetect();
+  }
+
+  function decide(id, dec){
+    S.detectDecisions[id] = dec;
+    save();
+    renderDetectReview($('step-3'));
+  }
+
+  function renderFootDetect(){
+    var next = $('btn-next'), note = $('foot-note'), alt = $('btn-foot-alt');
+    var kept = 0, pending = 0;
+    DETECTED.forEach(function(d){
+      var v = S.detectDecisions[d.id] || 'pending';
+      if (v === 'keep') kept++;
+      if (v === 'pending') pending++;
+    });
+    next.hidden = false;
+    next.disabled = kept === 0;
+    next.innerHTML = 'Open section editor ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+    alt.hidden = false;
+    alt.textContent = 'Switch path';
+    note.textContent = kept === 0
+      ? 'Keep at least one section to continue.'
+      : kept + ' section' + (kept === 1 ? '' : 's') + ' kept' + (pending ? ' · ' + pending + ' still undecided (they will be dropped)' : '');
+  }
+
+  /* build editable sections from kept detections */
+  function adoptDetected(){
+    var kept = DETECTED.filter(function(d){ return S.detectDecisions[d.id] === 'keep'; });
+    var out = [];
+    var navLib = libBy('nav');
+    out.push({ id: uid(), libId:'nav', name: navLib.name, shape:'auto', helper: navLib.helper, include:true, data: seed('auto'), done:true, source:'template' });
+    kept.forEach(function(d){
+      if (d.unknown){
+        out.push({
+          id: uid(), libId:'custom', name:'Countdown + map band', shape:'custom', include:true, done:true, source:'custom',
+          helper:'An unmatched block from your design, mapped onto a safe pre-built component.',
+          customBrief:'A two-column band with a countdown timer and an embedded map, detected in your design.',
+          data:{ title:'Countdown to doors open', body:'Doors open in — the timer counts down to your start date, with the venue map beside it.', layout:'Two column' }
+        });
+        return;
+      }
+      var l = libBy(d.lib);
+      var sec = {
+        id: uid(), libId: d.lib, name: l.name, shape: l.shape, limit: l.limit || null, helper: l.helper,
+        include: true, data: seed(l.shape), done: true, source: 'detected'
+      };
+      if (d.lib === 'hero'){
+        sec.data.title = S.basics.name || 'MarTech+ Summit 2026';
+        sec.data.tagline = 'Where marketing technology meets measurable growth';
+      }
+      if (d.lib === 'about'){ sec.data.body = BRIEF_COPY.rich(); }
+      if (d.lib === 'speakers'){
+        sec.data.items = [
+          { n:'Aarti Rawat',  r:'Chief Marketing Officer', c:'Leading FMCG brand' },
+          { n:'Sameer Chen',  r:'VP, Growth',              c:'Consumer internet' },
+          { n:'Devika Menon', r:'Head of Digital',         c:'BFSI major' }
+        ];
+      }
+      if (d.lib === 'contact'){
+        sec.data.blocks = [
+          { t:'Speaking opportunities', n:'Priya Sharma', e:'speakers@etoneworld.com', p:'+91 98200 00001' },
+          { t:'Delegate registration',  n:'Kabir Nair',   e:'delegates@etoneworld.com', p:'+91 98200 00002' },
+          { t:'Partnerships',           n:'Meera Joshi',  e:'partners@etoneworld.com',  p:'' }
+        ];
+      }
+      out.push(sec);
+    });
+    var footLib = libBy('footer');
+    out.push({ id: uid(), libId:'footer', name: footLib.name, shape:'auto', helper: footLib.helper, include:true, data: seed('auto'), done:true, source:'template' });
+    S.sections = out;
+    var first = out.filter(function(s){ return s.shape !== 'auto'; })[0];
+    S.active = first ? first.id : out[0].id;
+    save();
+  }
+
+  function openDetected(id){
+    if (S.detectDecisions[id] !== 'keep') S.detectDecisions[id] = 'keep';
+    adoptDetected();
+    var d = null;
+    DETECTED.forEach(function(x){ if (x.id === id) d = x; });
+    if (d){
+      var target = S.sections.filter(function(s){
+        return d.unknown ? s.source === 'custom' : s.libId === d.lib;
+      })[0];
+      if (target) S.active = target.id;
+    }
+    save();
+    renderBuildWorkspace($('step-3'));
+    renderFoot();
+    toast('Opened with the content we extracted — AI cleanup is available here');
+  }
+
+  /* =========================================================
+     STEP 4 - AI ASSEMBLE
+  ========================================================= */
+  var ASSEMBLE_PHASES = [
+    { t:'Reshaping content to fit sections', ms:1300 },
+    { t:'Mapping to pre-built components',   ms:1500 },
+    { t:'Building the menu from sections',   ms:1000 },
+    { t:'Assembling your preview',           ms:1400 }
+  ];
+
+  function renderStep4(){
+    var host = $('step-4');
+    var included = S.sections.filter(function(s){ return s.include; });
+    host.innerHTML =
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 5 of 6</span>' +
+        '<h1>Putting your site together</h1>' +
+        '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. No one is keying this in by hand.</p>' +
+      '</div>' +
+      '<div class="panel"><div class="proc-wrap">' +
+        '<span class="proc-orb">' + IC.loader + '</span>' +
+        '<div class="proc-steps" id="asm-steps">' + ASSEMBLE_PHASES.map(function(p, i){
+          return '<div class="proc-step" data-as="' + i + '">' +
+            '<span class="ic">' + IC.check + '</span>' +
+            '<span style="flex:1">' + esc(p.t) + '</span>' +
+            '<span class="bar" style="max-width:80px"><i></i></span></div>';
+        }).join('') + '</div>' +
+        '<p class="hint" id="asm-note">' + included.length + ' sections queued</p>' +
+      '</div></div>';
+
+    var i = 0;
+    function run(){
+      var rows = host.querySelectorAll('[data-as]');
+      if (i >= ASSEMBLE_PHASES.length){
+        S.assembled = true;
+        save();
+        goStep(5);
+        return;
+      }
+      var row = rows[i];
+      row.classList.add('active');
+      requestAnimationFrame(function(){ row.querySelector('.bar i').style.width = '100%'; });
+      var note = $('asm-note');
+      if (note) note.textContent = ASSEMBLE_PHASES[i].t + '…';
+      setTimeout(function(){
+        row.classList.remove('active');
+        row.classList.add('done');
+        i++;
+        run();
+      }, ASSEMBLE_PHASES[i].ms);
+    }
+    setTimeout(run, 300);
+  }
+
+  /* =========================================================
+     STEP 5 - FIRST PREVIEW
+  ========================================================= */
+  function previewSection(s){
+    var d = s.data || {};
+    var b = S.basics;
+    switch(s.libId){
+      case 'nav':
+        return '<div class="prev-nav"><span class="lg">' + esc(b.vertical) + '</span>' +
+          '<span class="lks">' + S.sections.filter(function(x){ return x.include && x.shape !== 'auto'; })
+            .slice(0,5).map(function(x){ return esc(x.name.split(' ')[0]); }).join('</span><span>') + '</span>' +
+          '<span class="cta">' + esc((S.sections.filter(function(x){ return x.libId==='hero'; })[0]||{data:{}}).data.cta1 || 'Register') + '</span></div>';
+      case 'footer':
+        return '<div class="prev-foot"><span>&copy; ' + new Date().getFullYear() + ' ET Oneworld</span><span>Privacy</span><span>Terms</span><span>Contact</span>' +
+          (d.whatsapp !== false ? '<span style="margin-left:auto;color:#4FAE7A">WhatsApp chat on</span>' : '') + '</div>';
+    }
+    switch(s.shape){
+      case 'hero':
+        return '<div class="prev-hero">' +
+          '<h3>' + esc(d.title || b.name || 'Your event name') + '</h3>' +
+          '<div class="tag">' + esc(d.tagline || '') + '</div>' +
+          '<div class="meta">' + esc([fmtDate(b.start) || 'Date TBC',
+            b.type === 'Virtual' ? (b.platform || 'Online') : ([b.venue, b.city].filter(Boolean).join(', ') || 'Venue TBC')].join('  ·  ')) + '</div>' +
+          '<div class="btns"><span>' + esc(d.cta1 || 'Register') + '</span><span>' + esc(d.cta2 || 'Brochure') + '</span></div></div>';
+      case 'stats':
+        return '<div class="prev-sec prev-stats">' + (d.items||[]).map(function(it){
+          return '<span class="s"><span class="n">' + esc(it.v) + '</span><span class="l">' + esc(it.k) + '</span></span>';
+        }).join('') + '</div>';
+      case 'logos':
+        var total = 0;
+        (d.tiers||[]).forEach(function(t){ total += t.logos.length; });
+        return '<div class="prev-sec"><div class="st">Our partners</div><div class="prev-logos">' +
+          new Array(total + 1).join('x').split('').map(function(){ return '<i></i>'; }).join('') + '</div></div>';
+      case 'rich':
+        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div><div class="sb">' +
+          esc((d.body || 'Content pending — open this section to fill it.').slice(0, 340)) + '</div></div>';
+      case 'benefits':
+        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div><div class="sb" style="margin-bottom:9px">' +
+          esc((d.body || '').slice(0, 220)) + '</div><div class="prev-cards">' + (d.items||[]).map(function(it){
+            return '<span class="c"><span class="t">' + esc(it.t) + '</span><span class="d">' + esc(it.d) + '</span></span>';
+          }).join('') + '</div></div>';
+      case 'line':
+        return '<div class="prev-marquee">' + esc(d.text || '#event') + ' &nbsp;&middot;&nbsp; ' + esc(d.text || '#event') + ' &nbsp;&middot;&nbsp; ' + esc(d.text || '#event') + '</div>';
+      case 'heading':
+        return '<div class="prev-band">' + esc(d.text || s.name) + '</div>';
+      case 'cards':
+      case 'columns':
+        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div><div class="prev-cards">' +
+          (d.items||[]).map(function(it){
+            return '<span class="c"><span class="t">' + esc(it.t || 'Untitled') + '</span><span class="d">' + esc(it.d || '') + '</span></span>';
+          }).join('') + '</div></div>';
+      case 'people':
+        return '<div class="prev-sec"><div class="st">Speakers</div><div class="prev-people">' +
+          (d.items||[]).map(function(p){
+            return '<span class="p"><i></i><span class="n">' + esc(p.n || 'Name TBC') + '</span><span class="r">' + esc(p.r || '') + '</span></span>';
+          }).join('') + '</div></div>';
+      case 'chips':
+        return '<div class="prev-sec"><div class="st">Who should attend</div><div class="prev-chips">' +
+          (d.items||[]).map(function(c){ return '<span>' + esc(c) + '</span>'; }).join('') + '</div></div>';
+      case 'quotes':
+        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div>' +
+          (d.items||[]).map(function(q){
+            return '<div class="prev-quote" style="margin-bottom:9px"><div class="q">&ldquo;' + esc(q.q || '') + '&rdquo;</div>' +
+              '<div class="a">' + esc([q.n, q.r, q.c].filter(Boolean).join(' · ')) + '</div></div>';
+          }).join('') + '</div>';
+      case 'gallery':
+        var g = '';
+        for (var i = 0; i < (d.count || 0); i++) g += '<i></i>';
+        return '<div class="prev-sec"><div class="st">Previous glimpses</div><div class="prev-gallery">' + g + '</div></div>';
+      case 'contacts':
+        return '<div class="prev-sec"><div class="st">Contact us</div><div class="prev-cards">' +
+          (d.blocks||[]).map(function(bk){
+            return '<span class="c"><span class="t">' + esc(bk.t) + '</span><span class="d">' +
+              esc([bk.n, bk.e, bk.p].filter(Boolean).join(' · ') || 'Details pending') + '</span></span>';
+          }).join('') + '</div></div>';
+      case 'custom':
+        return '<div class="prev-sec"><div class="st">' + esc(d.title || s.name) + '</div><div class="sb">' +
+          esc((d.body || '').slice(0, 300)) + '</div></div>';
+      default:
+        return '';
+    }
+  }
+
+  function renderStep5(){
+    var host = $('step-5');
+    var included = S.sections.filter(function(s){ return s.include; });
+    var showCelebration = !S.celebrated;
+
+    host.innerHTML =
+      (showCelebration
+        ? '<div class="success-banner" id="celebrate">' +
+            '<span class="ic">' + IC.party + '</span>' +
+            '<span class="tx"><strong>Your microsite is assembled.</strong>' +
+            '<span>No sheet, no Ops handover, no developer — ' + included.length + ' sections built from what you filled in.</span></span>' +
+            '<button class="btn btn-ghost btn-sm" id="dismiss-cel">Dismiss</button>' +
+          '</div>'
+        : '') +
+      '<div class="step-head">' +
+        '<span class="eyebrow">Step 6 of 6</span>' +
+        '<h1>Your first preview</h1>' +
+        '<p class="desc">Click any section in the list to jump back and edit it, or drag to reorder. Everything here is a draft until you publish.</p>' +
+      '</div>' +
+      '<div class="prev-grid">' +
+        '<div>' +
+          '<div class="device-bar">' +
+            '<div class="segmented" id="seg-device">' +
+              '<button type="button" data-dev="desktop" aria-pressed="' + (S.device === 'desktop') + '">' + IC.desktop + ' Desktop</button>' +
+              '<button type="button" data-dev="mobile" aria-pressed="' + (S.device === 'mobile') + '">' + IC.mobile + ' Mobile</button>' +
+            '</div>' +
+            '<span class="mono faint" style="font-size:12px">etoneworld.com/' + esc(S.basics.slug || 'your-event') + '</span>' +
+          '</div>' +
+          '<div class="frame ' + S.device + '" id="frame">' +
+            '<div class="screen"><div class="site" id="site">' +
+              (included.length ? included.map(previewSection).join('') : '<div class="prev-empty">No sections included yet.</div>') +
+            '</div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:14px">' +
+          '<div class="panel">' +
+            '<div class="panel-head"><h3>Sections</h3><span class="eyebrow">' + included.length + ' live</span></div>' +
+            '<div class="ord-list" id="ord-list">' + S.sections.map(function(s, i){
+              return '<div class="ord-row' + (s.include ? '' : ' excluded') + '" draggable="true" data-oi="' + i + '">' +
+                '<span class="grip">' + IC.grip + '</span>' +
+                '<button class="nm" data-jump="' + s.id + '">' + esc(s.name) + '</button>' +
+                (s.shape === 'auto' ? '<span class="src">Auto</span>'
+                  : s.source === 'custom' ? '<span class="src" style="color:var(--review)">AI</span>'
+                  : s.source === 'detected' ? '<span class="src">Design</span>' : '') +
+                (s.include ? '' : '<span class="src" style="color:var(--crit)">Off</span>') +
+              '</div>';
+            }).join('') + '</div>' +
+          '</div>' +
+          '<div class="panel"><div class="panel-body" style="gap:11px">' +
+            '<span class="eyebrow">Event summary</span>' +
+            summaryRows() +
+          '</div></div>' +
+        '</div>' +
+      '</div>';
+
+    host.querySelectorAll('[data-dev]').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.device = b.getAttribute('data-dev');
+        save(); renderStep5();
+      });
+    });
+    host.querySelectorAll('[data-jump]').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.active = b.getAttribute('data-jump');
+        save();
+        goStep(3);
+        toast('Editing “' + b.textContent + '” — assemble again when you are done');
+      });
+    });
+    wireDrag($('ord-list'), 'data-oi', S.sections, function(){ save(); renderStep5(); });
+
+    var dis = $('dismiss-cel');
+    if (dis) dis.addEventListener('click', function(){
+      S.celebrated = true; save();
+      var el = $('celebrate');
+      if (el) el.remove();
+    });
+  }
+
+  function summaryRows(){
+    var b = S.basics;
+    var rows = [
+      ['Category', b.category],
+      ['Vertical', b.vertical],
+      ['Type', b.type],
+      ['Starts', fmtDate(b.start) || '—'],
+      [b.type === 'Virtual' ? 'Platform' : 'Venue', b.type === 'Virtual' ? (b.platform || '—') : ([b.venue, b.city].filter(Boolean).join(', ') || '—')],
+      ['Payment', b.payment],
+      ['Path', S.path === 'A' ? 'Template — ' + (TEMPLATES.filter(function(t){ return t.id === S.template; })[0]||{}).name : 'Own design'],
+      ['Slug', '/' + (b.slug || '—')]
+    ];
+    if (b.category === 'Awards' && b.deadline) rows.splice(4, 0, ['Nominations close', fmtDate(b.deadline)]);
+    return rows.map(function(r){
+      return '<div style="display:flex;gap:10px;font-size:12.5px">' +
+        '<span class="faint" style="width:112px;flex-shrink:0;font-weight:700">' + esc(r[0]) + '</span>' +
+        '<span class="muted" style="min-width:0;word-break:break-word">' + esc(r[1]) + '</span></div>';
+    }).join('');
+  }
+
+  /* =========================================================
+     MODAL
+  ========================================================= */
+  function openModal(opts){
+    var root = $('modal-root');
+    root.innerHTML =
+      '<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true">' +
+        '<div class="modal-head"><div><h3>' + esc(opts.title) + '</h3>' +
+          (opts.sub ? '<p class="s">' + esc(opts.sub) + '</p>' : '') + '</div>' +
+          '<button class="icon-btn" id="modal-x" style="margin-left:auto" aria-label="Close">' + IC.x + '</button></div>' +
+        '<div class="modal-body">' + (opts.body || '') + '</div>' +
+        '<div class="modal-foot">' +
+          '<button class="btn btn-secondary" id="modal-cancel">Cancel</button>' +
+          '<button class="btn btn-primary" id="modal-ok">' + esc(opts.confirm || 'Confirm') + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    function close(){ root.innerHTML = ''; document.removeEventListener('keydown', onKey); }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    $('modal-x').addEventListener('click', close);
+    $('modal-cancel').addEventListener('click', close);
+    $('scrim').addEventListener('click', function(e){ if (e.target === $('scrim')) close(); });
+    $('modal-ok').addEventListener('click', function(){
+      if (opts.onConfirm) opts.onConfirm();
+      close();
+    });
+    var first = root.querySelector('input, textarea');
+    if (first) first.focus();
+  }
+
+  /* =========================================================
+     NEXT / BACK / ALT
+  ========================================================= */
+  function onNext(){
+    if (S.step === 1){ goStep(2); return; }
+    if (S.step === 2){ goStep(3); return; }
+    if (S.step === 3){
+      if (S.path === 'B' && S.detectPhase === 'review' && !S.sections.length){
+        adoptDetected();
+        renderBuildWorkspace($('step-3'));
+        renderFoot();
+        toast('Kept sections opened for editing');
+        return;
+      }
+      goStep(4);
+      return;
+    }
+    if (S.step === 5){
+      openModal({
+        title: 'Send to publish?',
+        sub: 'Publishing, payments, CRM and email sit outside this flow — this hands your draft to the publish queue.',
+        body: '<div class="callout">' + IC.check14 +
+              '<span><strong>Draft is complete</strong>Every IRF field has a value and all included sections are mapped to components. Ops can review before it goes live.</span></div>',
+        confirm: 'Hand off to publish',
+        onConfirm: function(){ toast('Draft handed to the publish queue'); }
+      });
+    }
+  }
+
+  function onBack(){
+    if (S.step === 3){
+      if (S.path === 'A' && S.template){
+        S.template = null; S.sections = []; S.active = null;
+        save(); renderStep3(); return;
+      }
+      if (S.path === 'B' && S.sections.length){
+        S.sections = []; S.active = null;
+        save(); renderStep3(); return;
+      }
+      if (S.path === 'B' && S.detectPhase === 'review'){
+        S.detectPhase = 'input';
+        save(); renderStep3(); return;
+      }
+      goStep(2); return;
+    }
+    if (S.step > 1) goStep(S.step - 1);
+  }
+
+  function onAlt(){
+    if (S.step === 3){
+      goStep(2);
+      toast('Pick a different path — your basic details are kept');
+      return;
+    }
+    if (S.step === 5){
+      save();
+      toast('Draft saved. You can come back to it from the dashboard.');
+    }
+  }
+
+  /* =========================================================
+     INIT
+  ========================================================= */
+  function init(){
+    var had = restore();
+    initStep1();
+    renderStep2();
+    $('btn-next').addEventListener('click', onNext);
+    $('btn-back').addEventListener('click', onBack);
+    $('btn-foot-alt').addEventListener('click', onAlt);
+
+    $('btn-close').addEventListener('click', function(){
+      openModal({
+        title: 'Leave the builder?',
+        sub: 'Your draft is autosaved — you can pick it back up from the dashboard.',
+        body: '<div class="callout plain">' + IC.info + '<span>Nothing is lost. Every step saves as you go.</span></div>',
+        confirm: 'Leave builder',
+        onConfirm: function(){ window.location.href = 'index.html'; }
+      });
+    });
+    $('btn-save-exit').addEventListener('click', function(){
+      save();
+      toast('Draft saved');
+      setTimeout(function(){ window.location.href = 'index.html'; }, 700);
+    });
+
+    if (had && S.step > 1){
+      if (S.detectPhase === 'processing') S.detectPhase = 'input';
+      if (S.step === 4) S.step = S.assembled ? 5 : 3;
+      goStep(S.step);
+    } else {
+      S.step = 1;
+      goStep(1);
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
