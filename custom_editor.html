@@ -4,18 +4,18 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
   :root{
-    --bg: #F5F2EA;
+    --bg: #FAF7F6;
     --surface: #FFFFFF;
-    --surface-2: #ECE7DA;
-    --surface-3: #E2DCCB;
-    --border: #DAD3BF;
-    --text: #221F17;
-    --text-muted: #6F6A58;
-    --text-faint: #948E78;
+    --surface-2: #F3EEED;
+    --surface-3: #E9E2E0;
+    --border: #E0D7D5;
+    --text: #241B1A;
+    --text-muted: #756865;
+    --text-faint: #A0908C;
 
-    --accent: #0F6F5C;
-    --accent-strong: #0A5445;
-    --accent-soft: #DCEEE7;
+    --accent: #ED1C24;
+    --accent-strong: #B3151B;
+    --accent-soft: #FBDBDC;
     --accent-contrast: #FFFFFF;
 
     --ok: #2F8F5B;
@@ -40,9 +40,9 @@
 
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg: #17150F; --surface: #201D15; --surface-2: #29261B; --surface-3: #332F21;
-      --border: #3C3726; --text: #ECE7D8; --text-muted: #A79F86; --text-faint: #7C755F;
-      --accent: #38C9A3; --accent-strong: #5CDAB9; --accent-soft: #21382F; --accent-contrast: #0B1210;
+      --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
+      --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
+      --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
       --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
       --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
       --crit: #E08078; --crit-soft: #3A211D;
@@ -52,9 +52,9 @@
     }
   }
   :root[data-theme="dark"]{
-    --bg: #17150F; --surface: #201D15; --surface-2: #29261B; --surface-3: #332F21;
-    --border: #3C3726; --text: #ECE7D8; --text-muted: #A79F86; --text-faint: #7C755F;
-    --accent: #38C9A3; --accent-strong: #5CDAB9; --accent-soft: #21382F; --accent-contrast: #0B1210;
+    --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
+    --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
+    --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
     --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
     --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
     --crit: #E08078; --crit-soft: #3A211D;
@@ -326,7 +326,7 @@
     display:flex; align-items:center; gap:7px; padding: 8px 16px; border-radius: 100px; border:1.5px dashed #c7c2b4;
     background:#fff; color:#6a6a6a; font-size:12.5px; font-weight:700;
   }
-  .add-sec-btn:hover{ border-color:#0F6F5C; color:#0F6F5C; background:#DCEEE7; }
+  .add-sec-btn:hover{ border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
   /* ---------- floating element toolbar (Wix-style) ---------- */
   #sel-toolbar{
