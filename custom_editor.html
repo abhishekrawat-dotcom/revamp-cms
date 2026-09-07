@@ -1,0 +1,1501 @@
+<!-- Revamp CMS - Site Editor prototype (Wix-Editor-style click-to-edit builder) -->
+<title>Site Editor &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg: #F5F2EA;
+    --surface: #FFFFFF;
+    --surface-2: #ECE7DA;
+    --surface-3: #E2DCCB;
+    --border: #DAD3BF;
+    --text: #221F17;
+    --text-muted: #6F6A58;
+    --text-faint: #948E78;
+
+    --accent: #0F6F5C;
+    --accent-strong: #0A5445;
+    --accent-soft: #DCEEE7;
+    --accent-contrast: #FFFFFF;
+
+    --ok: #2F8F5B;
+    --ok-soft: #DFEEE1;
+    --warn: #9C6B14;
+    --warn-soft: #F3E7C8;
+    --review: #8A5A9E;
+    --review-soft: #EBE0F0;
+    --archived: #857F6A;
+    --archived-soft: #E7E3D2;
+    --crit: #A23B36;
+    --crit-soft: #F3DBD8;
+
+    --shadow-sm: 0 1px 2px rgba(30,26,10,0.08);
+    --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
+    --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
+
+    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #17150F; --surface: #201D15; --surface-2: #29261B; --surface-3: #332F21;
+      --border: #3C3726; --text: #ECE7D8; --text-muted: #A79F86; --text-faint: #7C755F;
+      --accent: #38C9A3; --accent-strong: #5CDAB9; --accent-soft: #21382F; --accent-contrast: #0B1210;
+      --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
+      --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
+      --crit: #E08078; --crit-soft: #3A211D;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-md: 0 14px 32px -12px rgba(0,0,0,0.6);
+      --shadow-lg: 0 30px 64px -24px rgba(0,0,0,0.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #17150F; --surface: #201D15; --surface-2: #29261B; --surface-3: #332F21;
+    --border: #3C3726; --text: #ECE7D8; --text-muted: #A79F86; --text-faint: #7C755F;
+    --accent: #38C9A3; --accent-strong: #5CDAB9; --accent-soft: #21382F; --accent-contrast: #0B1210;
+    --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
+    --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
+    --crit: #E08078; --crit-soft: #3A211D;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-md: 0 14px 32px -12px rgba(0,0,0,0.6);
+    --shadow-lg: 0 30px 64px -24px rgba(0,0,0,0.75);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; height:100%; }
+  body{
+    background: var(--bg); color: var(--text); font-family: var(--font-body);
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow:hidden;
+  }
+  h1,h2,h3,h4{ font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+  p{ margin: 0; }
+  a{ color: inherit; text-decoration: none; }
+  button{ font-family: var(--font-body); cursor: pointer; }
+  input,select,textarea{ font-family: var(--font-body); font-size: 13.5px; color: var(--text); }
+  ::selection{ background: var(--accent-soft); }
+  :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  [hidden]{ display: none !important; }
+  .mono{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 7px;
+    border: 1px solid transparent; white-space: nowrap;
+    transition: background .12s ease, border-color .12s ease, transform .05s ease, color .12s ease;
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn-primary{ background: var(--accent); color: var(--accent-contrast); }
+  .btn-primary:hover{ background: var(--accent-strong); }
+  .btn-secondary{ background: var(--surface); color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover{ background: var(--surface-2); }
+  .btn-ghost{ background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover{ background: var(--surface-2); color: var(--text); }
+  .btn-sm{ padding: 6px 11px; font-size: 12.5px; border-radius: 6px; }
+
+  /* ============ SHELL ============ */
+  .ed{ height:100vh; display:flex; flex-direction:column; }
+
+  /* ---------- top bar ---------- */
+  .ed-top{
+    height: 54px; flex-shrink:0; display:flex; align-items:center; gap: 12px; padding: 0 14px;
+    background: var(--surface); border-bottom: 1px solid var(--border); z-index: 50; position: relative;
+  }
+  .brand-mark{ display:flex; align-items:center; gap: 8px; flex-shrink:0; }
+  .brand-mark .mark{
+    width: 25px; height: 25px; border-radius: 7px; background: var(--accent); color: var(--accent-contrast);
+    display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:700; font-size: 12.5px;
+  }
+  .brand-mark .word{ font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .ed-top .sep{ width:1px; height: 22px; background: var(--border); flex-shrink:0; }
+
+  .site-picker{
+    display:flex; align-items:center; gap:7px; padding: 6px 10px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; font-size: 13px; font-weight: 700; color: var(--text); flex-shrink:0;
+  }
+  .site-picker:hover{ background: var(--surface-2); }
+  .site-picker svg{ color: var(--text-faint); }
+
+  .zoom-picker{
+    display:flex; align-items:center; gap:6px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--surface); font-size: 12.5px; font-weight: 700; color: var(--text-muted); flex-shrink:0;
+  }
+  .zoom-picker:hover{ background: var(--surface-2); }
+  .zoom-picker select{ border:none; background:none; font: inherit; color: inherit; font-weight:700; -webkit-appearance:none; appearance:none; padding-right:2px; }
+
+  .top-spacer{ flex:1; }
+  .save-state{ display:flex; align-items:center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-faint); flex-shrink:0; }
+  .save-state .d{ width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink:0; }
+  .save-state.saving .d{ background: var(--warn); animation: pulse 1s ease infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.3; } }
+
+  .icon-btn{
+    width: 32px; height: 32px; border-radius: 7px; border: 1px solid transparent; background: transparent;
+    color: var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .icon-btn:hover{ background: var(--surface-2); color: var(--text); }
+  .icon-btn[disabled]{ opacity:.35; pointer-events:none; }
+
+  /* ---------- left icon rail ---------- */
+  .ed-body{ flex:1; min-height:0; display:flex; position:relative; }
+  .ed-rail{
+    width: 62px; flex-shrink:0; background: var(--surface); border-right: 1px solid var(--border);
+    display:flex; flex-direction:column; align-items:center; padding: 10px 0; gap: 3px; z-index: 40;
+  }
+  .rail-btn{
+    width: 48px; height: 52px; border-radius: 10px; border:none; background:transparent; color: var(--text-muted);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 4px; font-size: 10px; font-weight:700;
+  }
+  .rail-btn:hover{ background: var(--surface-2); color: var(--text); }
+  .rail-btn.active{ background: var(--accent-soft); color: var(--accent-strong); }
+  .rail-btn .add-ico{
+    width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-contrast);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .rail-gap{ flex:1; }
+
+  /* ---------- slide-out side panels ---------- */
+  .side-panel{
+    width: 300px; flex-shrink:0; background: var(--surface); border-right: 1px solid var(--border);
+    display:flex; flex-direction:column; z-index: 35;
+  }
+  .side-panel-head{ padding: 15px 16px 12px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .side-panel-head h3{ font-size: 15px; }
+  .side-panel-body{ flex:1; overflow-y:auto; padding: 12px 14px 20px; display:flex; flex-direction:column; gap: 16px; }
+
+  .panel-search{
+    display:flex; align-items:center; gap:8px; background: var(--surface-2); border:1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; color: var(--text-faint);
+  }
+  .panel-search input{ border:none; background:none; outline:none; color:var(--text); font-size:13px; width:100%; }
+
+  .blk-cat{ font-size: 11px; font-weight: 800; letter-spacing:.06em; text-transform:uppercase; color: var(--text-faint); margin-bottom:8px; display:block; }
+  .blk-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .blk-card{
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 12px 8px;
+    display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center;
+    transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+  }
+  .blk-card:hover{ border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+  .blk-card .ic{
+    width: 38px; height: 38px; border-radius: 9px; background: var(--surface-2); color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .blk-card:hover .ic{ background: var(--accent-soft); color: var(--accent-strong); }
+  .blk-card .lbl{ font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+
+  .sec-tpl{
+    border: 1px solid var(--border); border-radius: 10px; overflow:hidden; background: var(--bg); text-align:left;
+    display:flex; flex-direction:column; transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+  }
+  .sec-tpl:hover{ border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+  .sec-tpl .thumb{ height:56px; background: var(--surface-2); display:flex; align-items:center; gap:4px; padding:8px 10px; }
+  .sec-tpl .thumb i{ display:block; background: var(--surface-3); border-radius:2px; }
+  .sec-tpl .lbl{ padding: 8px 10px 10px; font-size: 12px; font-weight:700; color:var(--text-muted); }
+
+  .pg-list{ display:flex; flex-direction:column; gap:2px; }
+  .pg-row{
+    display:flex; align-items:center; gap:9px; padding: 9px 9px; border-radius: 8px; width:100%;
+    background:none; border:1px solid transparent; text-align:left; color: var(--text-muted); font-size:13px; font-weight:600;
+  }
+  .pg-row:hover{ background: var(--surface-2); }
+  .pg-row.active{ background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-soft); }
+  .pg-row svg{ flex-shrink:0; color: var(--text-faint); }
+  .pg-row.active svg{ color: var(--accent-strong); }
+  .pg-row .home-tag{ margin-left:auto; font-size:9.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color: var(--text-faint); }
+
+  .lyr-list{ display:flex; flex-direction:column; gap: 2px; position:relative; padding-top:2px; }
+  .lyr-row{
+    display:flex; align-items:center; gap: 2px; padding: 7px 8px; border-radius: 8px; width:100%;
+    background: none; border: 1.5px solid transparent; border-left: 3px solid transparent;
+    font-size: 12.5px; font-weight:600; color: var(--text-muted);
+    transition: background .12s ease, border-color .12s ease, opacity .15s ease;
+  }
+  .lyr-row:hover{ background: var(--surface-2); color: var(--text); }
+  .lyr-row.current{ background: var(--accent-soft); color: var(--accent-strong); border-left-color: var(--accent); }
+  .lyr-row .grip{
+    color: var(--text-faint); cursor: grab; flex-shrink:0; display:flex; padding:4px 2px; border-radius:5px;
+    opacity:.55; touch-action:none; transition: opacity .12s ease, background .12s ease, color .12s ease;
+  }
+  .lyr-row:hover .grip{ opacity:1; }
+  .lyr-row .grip:hover{ background: var(--surface-3); color: var(--text); }
+  .lyr-row .grip:active{ cursor: grabbing; }
+  .lyr-row .arrows{ display:flex; flex-direction:column; flex-shrink:0; opacity:0; transition: opacity .12s ease; }
+  .lyr-row:hover .arrows{ opacity:1; }
+  .lyr-row .arrows button{
+    width:17px; height:12px; border:none; background:none; color: var(--text-faint);
+    display:flex; align-items:center; justify-content:center; padding:0; border-radius:3px;
+  }
+  .lyr-row .arrows button:hover{ background: var(--surface-3); color: var(--text); }
+  .lyr-row .arrows button[disabled]{ opacity:.2; pointer-events:none; }
+  .lyr-row .nm{
+    flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left;
+    background:none; border:none; color:inherit; font:inherit; padding: 5px 6px; border-radius:6px;
+  }
+  .lyr-row .nm:hover{ background: var(--surface-3); }
+  .lyr-row.hidden-sec{ opacity:.45; }
+  .lyr-row .eye{ flex-shrink:0; color: var(--text-faint); background:none; border:none; padding:5px; border-radius:5px; display:flex; }
+  .lyr-row .eye:hover{ background: var(--surface-3); color: var(--text); }
+
+  .lyr-row.placeholder{ opacity:.4; background: var(--surface-2); border: 1.5px dashed var(--border); border-left: 3px solid transparent; }
+  .lyr-row.placeholder .grip{ cursor: grabbing; }
+
+  .lyr-ghost{
+    position:fixed; z-index:999; pointer-events:none; box-shadow: var(--shadow-lg); border-radius:8px;
+    background: var(--surface); border: 1.5px solid var(--accent); opacity:.98; transform: scale(1.02) rotate(-1deg);
+  }
+  .lyr-drop-indicator{
+    position:absolute; left:4px; right:4px; height:3px; border-radius:100px; background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft); pointer-events:none; z-index:6;
+  }
+  .lyr-drop-indicator::before{
+    content:''; position:absolute; left:-4px; top:50%; transform:translateY(-50%);
+    width:7px; height:7px; border-radius:50%; background: var(--accent);
+  }
+  body.lyr-dragging{ cursor: grabbing !important; }
+  body.lyr-dragging *{ user-select:none; }
+
+  .design-swatches{ display:flex; flex-wrap:wrap; gap:8px; }
+  .swatch{ width:30px; height:30px; border-radius:8px; border: 2px solid var(--border); flex-shrink:0; }
+  .swatch.on{ border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .field label{ font-size:12px; font-weight:700; color: var(--text-muted); }
+  .field .hint{ font-size:11.5px; color: var(--text-faint); }
+
+  /* ---------- canvas ---------- */
+  .ed-main{ flex:1; min-width:0; display:flex; flex-direction:column; background: var(--surface-2); }
+  .canvas-bar{
+    height: 46px; flex-shrink:0; display:flex; align-items:center; gap:10px; padding: 0 16px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .page-drop{
+    display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; padding:6px 9px; border-radius:7px;
+    background:none; border:1px solid transparent; color: var(--text);
+  }
+  .page-drop:hover{ background: var(--surface-2); }
+  .page-drop svg{ color: var(--text-faint); }
+  .site-url{ font-size:12px; color: var(--text-faint); }
+  .site-url a{ color: var(--accent-strong); font-weight:700; }
+  .canvas-bar .top-spacer{ flex:1; }
+  .device-toggle{ display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
+  .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
+  .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
+  .preview-badge{ display:flex; align-items:center; gap:8px; }
+
+  .stage{ flex:1; overflow:auto; padding: 34px 24px 90px; display:flex; justify-content:center; }
+  .frame{
+    width: 100%; max-width: 1180px; background:#fff; border-radius: 10px; box-shadow: var(--shadow-lg);
+    position: relative; transform-origin: top center; color:#1c1c1c; min-height: 10px; align-self:flex-start;
+    outline: 1px solid var(--border);
+  }
+  .stage.device-mobile .frame{ max-width: 380px; }
+
+  /* selection + hover affordances on canvas content */
+  .site-section{ position:relative; }
+  .site-section:hover > .sec-toolbar{ opacity:1; pointer-events:auto; }
+  .site-section.sec-active > .sec-toolbar{ opacity:1; pointer-events:auto; }
+  .sec-toolbar{
+    position:absolute; top:8px; right:8px; z-index:8; display:flex; align-items:center; gap:2px;
+    background: var(--surface); border:1px solid var(--border); border-radius:8px; padding:3px;
+    box-shadow: var(--shadow-md); opacity:0; pointer-events:none; transition: opacity .12s ease;
+  }
+  .sec-toolbar button{
+    width:26px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .sec-toolbar button:hover{ background: var(--surface-2); color: var(--text); }
+  .sec-toolbar button.danger:hover{ background: var(--crit-soft); color: var(--crit); }
+  .sec-name-tag{
+    position:absolute; top:8px; left:8px; z-index:8; font-size:10.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+    background: var(--accent); color:#fff; padding:3px 8px; border-radius:5px; opacity:0; transition:opacity .12s ease; pointer-events:none;
+  }
+  .site-section:hover .sec-name-tag, .site-section.sec-active .sec-name-tag{ opacity:1; }
+
+  [data-editable]{ position:relative; cursor: pointer; border-radius: 2px; }
+  [data-editable]:hover{ outline: 1.5px dashed #8aa; outline-offset: 2px; }
+  [data-editable].ed-selected{ outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+  [data-editable][contenteditable="true"]{ cursor:text; outline: 2px solid var(--accent-strong) !important; outline-offset: 2px; }
+  .preview-mode [data-editable]:hover{ outline:none; }
+  .preview-mode [data-editable]{ cursor:default; }
+  .preview-mode .sec-toolbar, .preview-mode .sec-name-tag, .preview-mode .add-sec-row, .preview-mode #sel-toolbar{ display:none !important; }
+
+  .add-sec-row{ display:flex; align-items:center; justify-content:center; padding: 18px 0; }
+  .add-sec-btn{
+    display:flex; align-items:center; gap:7px; padding: 8px 16px; border-radius: 100px; border:1.5px dashed #c7c2b4;
+    background:#fff; color:#6a6a6a; font-size:12.5px; font-weight:700;
+  }
+  .add-sec-btn:hover{ border-color:#0F6F5C; color:#0F6F5C; background:#DCEEE7; }
+
+  /* ---------- floating element toolbar (Wix-style) ---------- */
+  #sel-toolbar{
+    position:absolute; z-index:20; display:none; align-items:center; gap:2px;
+    background: var(--surface); border:1px solid var(--border); border-radius: 9px; padding: 5px;
+    box-shadow: var(--shadow-lg); white-space:nowrap; color: var(--text);
+  }
+  #sel-toolbar.show{ display:flex; }
+  #sel-toolbar .tb-group{ display:flex; align-items:center; gap:1px; padding: 0 5px; }
+  #sel-toolbar .tb-sep{ width:1px; height:20px; background: var(--border); margin: 0 3px; flex-shrink:0; }
+  #sel-toolbar button{
+    height:28px; min-width:28px; padding:0 6px; border-radius:6px; border:none; background:none; color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center; gap:5px; font-size:12.5px; font-weight:600;
+  }
+  #sel-toolbar button:hover{ background: var(--surface-2); color: var(--text); }
+  #sel-toolbar button.on{ background: var(--accent-soft); color: var(--accent-strong); }
+  #sel-toolbar button.danger:hover{ background: var(--crit-soft); color: var(--crit); }
+  #sel-toolbar .ai-btn{ color: var(--review); font-weight:700; }
+  #sel-toolbar .ai-btn:hover{ background: var(--review-soft); }
+  #sel-toolbar select{
+    height:28px; border:none; background:none; color: var(--text); font-size:12.5px; font-weight:600;
+    padding: 0 4px; border-radius:6px; max-width:104px;
+  }
+  #sel-toolbar select:hover{ background: var(--surface-2); }
+  #sel-toolbar .swatch-dot{ width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border); background:#1c1c1c; }
+
+  /* ---------- Ask Aria fab + popover ---------- */
+  .aria-fab{
+    position:fixed; right:20px; bottom:20px; width:52px; height:52px; border-radius:50%; border:none;
+    background: linear-gradient(135deg, var(--accent), var(--review)); color:#fff; box-shadow: var(--shadow-lg);
+    display:flex; align-items:center; justify-content:center; z-index: 70;
+  }
+  .aria-pop{
+    position:fixed; right:20px; bottom:82px; width:300px; background: var(--surface); border:1px solid var(--border);
+    border-radius:14px; box-shadow: var(--shadow-lg); z-index:70; overflow:hidden;
+  }
+  .aria-pop-head{ display:flex; align-items:center; gap:8px; padding:13px 14px; border-bottom:1px solid var(--border); background: var(--review-soft); }
+  .aria-pop-head strong{ font-size:13.5px; color: var(--review); }
+  .aria-pop-body{ padding: 13px 14px; display:flex; flex-direction:column; gap:10px; }
+  .aria-pop-body p{ font-size:12.5px; color: var(--text-muted); }
+  .aria-chip-row{ display:flex; flex-wrap:wrap; gap:6px; }
+  .aria-chip{ font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:100px; background: var(--surface-2); border:1px solid var(--border); color: var(--text-muted); }
+  .aria-chip:hover{ background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-soft); }
+  .aria-input-row{ display:flex; gap:6px; }
+  .aria-input-row input{ flex:1; border:1px solid var(--border); border-radius:8px; padding:8px 10px; background: var(--bg); font-size:12.5px; }
+
+  /* ---------- publish modal ---------- */
+  .scrim{ position: fixed; inset: 0; background: rgba(30,26,10,.5); z-index: 90; display:flex; align-items:center; justify-content:center; padding: 22px; }
+  .modal{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); overflow:hidden; text-align:center; }
+  .modal-body{ padding: 30px 26px 22px; display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .modal-body .ic{ width:52px; height:52px; border-radius:50%; background: var(--ok-soft); color: var(--ok); display:flex; align-items:center; justify-content:center; }
+  .modal-body h3{ font-size:18px; }
+  .modal-body p{ font-size:13px; color: var(--text-muted); }
+  .modal-body .url{ font-family: var(--font-mono); font-size:12.5px; background: var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:8px 12px; color: var(--accent-strong); font-weight:700; }
+  .modal-foot{ padding: 14px 22px 22px; display:flex; gap:9px; justify-content:center; }
+
+  #toast-region{ position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index: 100; align-items:center; }
+  .toast{
+    background: var(--text); color: var(--bg); font-size: 13px; font-weight:600; padding: 10px 16px; border-radius: 8px;
+    box-shadow: var(--shadow-md); opacity: 0; transform: translateY(6px); transition: opacity .18s ease, transform .18s ease;
+    max-width: 360px; text-align:center;
+  }
+  .toast.show{ opacity: 1; transform: translateY(0); }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
+
+  /* ============ DEMO SITE CONTENT STYLES (scoped, mimics a published site) ============ */
+  .site *{ box-sizing:border-box; }
+  .site{ font-family: 'Manrope', sans-serif; color:#1c1c1c; }
+  .site h1,.site h2,.site h3{ font-family:'Fraunces', serif; font-weight:600; margin:0; }
+  .site p{ margin:0; }
+  .s-nav{ display:flex; align-items:center; gap:26px; padding: 18px 40px; border-bottom:1px solid #eee9dd; }
+  .s-nav .logo{ font-family:'Fraunces',serif; font-weight:700; font-size:19px; letter-spacing:-0.01em; }
+  .s-nav .links{ display:flex; gap:22px; margin-left:16px; font-size:13.5px; font-weight:600; color:#4a4a42; }
+  .s-nav .sp{ flex:1; }
+  .s-nav .cta{ background:#0F6F5C; color:#fff; font-size:13px; font-weight:700; padding:9px 18px; border-radius:100px; }
+  .stage.device-mobile .s-nav .links{ display:none; }
+
+  .s-hero{ display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:30px; padding: 54px 40px; background: linear-gradient(180deg,#FBF9F3,#fff); }
+  .stage.device-mobile .s-hero{ grid-template-columns:1fr; padding:30px 22px; }
+  .s-hero h1{ font-size:42px; line-height:1.14; letter-spacing:-0.01em; }
+  .stage.device-mobile .s-hero h1{ font-size:28px; }
+  .s-hero .lead{ font-size:15px; color:#6a6a5f; margin-top:14px; max-width:44ch; line-height:1.6; }
+  .s-hero .btnrow{ display:flex; gap:10px; margin-top:22px; }
+  .s-btn{ display:inline-flex; align-items:center; padding:11px 20px; border-radius:100px; font-size:13.5px; font-weight:700; }
+  .s-btn.primary{ background:#0F6F5C; color:#fff; }
+  .s-btn.secondary{ background:transparent; color:#0F6F5C; border:1.5px solid #0F6F5C; }
+  .s-hero .imgph{ height:280px; border-radius:16px; background: linear-gradient(135deg,#DCEEE7,#EBE0F0); display:flex; align-items:center; justify-content:center; color:#0A5445; }
+  .stage.device-mobile .s-hero .imgph{ height:180px; }
+
+  .s-stats{ display:flex; gap:14px; padding: 30px 40px; background:#F5F2EA; flex-wrap:wrap; }
+  .stage.device-mobile .s-stats{ padding:20px 22px; }
+  .s-stat{ flex:1; min-width:130px; background:#fff; border-radius:10px; border:1px solid #eee9dd; padding:18px; text-align:center; }
+  .s-stat .n{ font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; color:#0F6F5C; }
+  .s-stat .l{ font-size:11.5px; color:#8a8a7c; text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+
+  .s-cards-sec{ padding: 54px 40px; }
+  .stage.device-mobile .s-cards-sec{ padding:32px 22px; }
+  .s-cards-sec .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#0F6F5C; }
+  .s-cards-sec h2{ font-size:28px; margin-top:8px; max-width:32ch; }
+  .s-cards{ display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:26px; }
+  .stage.device-mobile .s-cards{ grid-template-columns:1fr; }
+  .s-card{ border:1px solid #eee9dd; border-radius:12px; padding:20px; }
+  .s-card .ph{ width:40px; height:40px; border-radius:10px; background:#DCEEE7; margin-bottom:14px; }
+  .s-card h3{ font-size:16px; }
+  .s-card p{ font-size:13px; color:#6a6a5f; margin-top:8px; line-height:1.6; }
+
+  .s-gallery{ padding: 0 40px 54px; }
+  .stage.device-mobile .s-gallery{ padding:0 22px 32px; }
+  .s-gal-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:10px; }
+  .stage.device-mobile .s-gal-grid{ grid-template-columns: repeat(2,1fr); }
+  .s-gal-grid .gi{ padding-top:100%; border-radius:10px; background: linear-gradient(160deg,#ECE7DA,#DCEEE7); position:relative; }
+
+  .s-quote{ padding: 54px 40px; background:#0A5445; color:#fff; text-align:center; }
+  .stage.device-mobile .s-quote{ padding:34px 22px; }
+  .s-quote blockquote{ font-family:'Fraunces',serif; font-size:24px; line-height:1.4; max-width:56ch; margin:0 auto; }
+  .stage.device-mobile .s-quote blockquote{ font-size:18px; }
+  .s-quote .who{ margin-top:16px; font-size:13px; opacity:.8; font-weight:600; }
+
+  .s-cta-band{ padding: 44px 40px; text-align:center; background:#F5F2EA; }
+  .s-cta-band h2{ font-size:24px; }
+  .s-cta-band p{ margin-top:8px; color:#6a6a5f; font-size:13.5px; }
+  .s-cta-band .btnrow{ display:flex; justify-content:center; gap:10px; margin-top:18px; }
+
+  .s-foot{ padding: 30px 40px; background:#221F17; color:#b5b0a0; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
+  .s-foot .logo{ font-family:'Fraunces',serif; font-weight:700; color:#fff; font-size:15px; }
+</style>
+
+<div class="ed">
+  <!-- ============ TOP BAR ============ -->
+  <header class="ed-top">
+    <div class="brand-mark"><span class="mark">R</span><span class="word">Revamp</span></div>
+    <span class="sep"></span>
+    <button class="site-picker" id="btn-site-picker">
+      Northwind Studio
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <span class="sep"></span>
+    <button class="icon-btn" id="btn-undo" title="Undo" aria-label="Undo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-redo" title="Redo" aria-label="Redo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h2"/></svg>
+    </button>
+
+    <div class="top-spacer"></div>
+
+    <label class="zoom-picker">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <select id="zoom-select">
+        <option value="0.6">Fit (60%)</option>
+        <option value="0.75">75%</option>
+        <option value="0.85" selected>Fit (85%)</option>
+        <option value="1">100%</option>
+      </select>
+    </label>
+
+    <span class="save-state" id="save-state"><span class="d"></span><span id="save-state-txt">All changes saved</span></span>
+
+    <button class="btn btn-secondary btn-sm" id="btn-preview">Preview</button>
+    <button class="btn btn-primary" id="btn-publish">Publish</button>
+  </header>
+
+  <div class="ed-body">
+    <!-- ============ LEFT ICON RAIL ============ -->
+    <nav class="ed-rail" aria-label="Editor tools">
+      <button class="rail-btn active" data-panel="add" title="Add elements">
+        <span class="add-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+        Add
+      </button>
+      <button class="rail-btn" data-panel="pages" title="Pages">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/></svg>
+        Pages
+      </button>
+      <button class="rail-btn" data-panel="layers" title="Layers">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+        Layers
+      </button>
+      <button class="rail-btn" data-panel="design" title="Design">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="12" r="2.5"/><circle cx="13.5" cy="17.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/></svg>
+        Design
+      </button>
+      <div class="rail-gap"></div>
+      <button class="rail-btn" id="btn-media" title="Media">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
+        Media
+      </button>
+      <button class="rail-btn" id="btn-apps" title="Apps">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
+        Apps
+      </button>
+    </nav>
+
+    <!-- ============ ADD PANEL ============ -->
+    <aside class="side-panel" id="panel-add">
+      <div class="side-panel-head"><h3>Add elements</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body">
+        <div class="panel-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input placeholder="Search elements"></div>
+
+        <div>
+          <span class="blk-cat">Basic</span>
+          <div class="blk-grid">
+            <button class="blk-card" data-add-block="heading"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v16M18 4v16M6 12h12"/></svg></span><span class="lbl">Heading</span></button>
+            <button class="blk-card" data-add-block="text"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span><span class="lbl">Text</span></button>
+            <button class="blk-card" data-add-block="button"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="4"/></svg></span><span class="lbl">Button</span></button>
+            <button class="blk-card" data-add-block="image"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg></span><span class="lbl">Image</span></button>
+            <button class="blk-card" data-add-block="divider"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16"/></svg></span><span class="lbl">Divider</span></button>
+            <button class="blk-card" data-add-block="spacer"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/></svg></span><span class="lbl">Spacer</span></button>
+          </div>
+        </div>
+
+        <div>
+          <span class="blk-cat">Sections</span>
+          <div class="blk-grid">
+            <button class="sec-tpl" data-add-section="cards" style="grid-column:span 2;">
+              <span class="thumb"><i style="width:30%;height:34px;"></i><i style="width:30%;height:34px;"></i><i style="width:30%;height:34px;"></i></span>
+              <span class="lbl">3-card grid</span>
+            </button>
+            <button class="sec-tpl" data-add-section="cta" style="grid-column:span 2;">
+              <span class="thumb" style="justify-content:center;"><i style="width:60%;height:12px;"></i></span>
+              <span class="lbl">CTA banner</span>
+            </button>
+            <button class="sec-tpl" data-add-section="gallery" style="grid-column:span 2;">
+              <span class="thumb"><i style="flex:1;height:100%;"></i><i style="flex:1;height:100%;"></i><i style="flex:1;height:100%;"></i><i style="flex:1;height:100%;"></i></span>
+              <span class="lbl">Image gallery</span>
+            </button>
+            <button class="sec-tpl" data-add-section="quote" style="grid-column:span 2;">
+              <span class="thumb" style="justify-content:center;"><i style="width:70%;height:8px;"></i></span>
+              <span class="lbl">Testimonial</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ PAGES PANEL ============ -->
+    <aside class="side-panel" id="panel-pages" hidden>
+      <div class="side-panel-head"><h3>Pages</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body">
+        <div class="pg-list" id="pg-list">
+          <button class="pg-row active" data-page="Home"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg>Home<span class="home-tag">Home</span></button>
+          <button class="pg-row" data-page="About"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>About</button>
+          <button class="pg-row" data-page="Work"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Work</button>
+          <button class="pg-row" data-page="Contact"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Contact</button>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="justify-content:flex-start;" id="btn-add-page">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>Add page
+        </button>
+      </div>
+    </aside>
+
+    <!-- ============ LAYERS PANEL ============ -->
+    <aside class="side-panel" id="panel-layers" hidden>
+      <div class="side-panel-head"><h3>Layers &middot; Home</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body">
+        <p class="hint" style="font-size:12px;color:var(--text-faint);">Drag sections to reorder. Click a name to jump to it on the canvas.</p>
+        <div class="lyr-list" id="lyr-list"></div>
+      </div>
+    </aside>
+
+    <!-- ============ DESIGN PANEL ============ -->
+    <aside class="side-panel" id="panel-design" hidden>
+      <div class="side-panel-head"><h3>Design</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body">
+        <div class="field">
+          <label>Site theme color</label>
+          <div class="design-swatches" id="theme-swatches">
+            <button class="swatch on" data-theme-color="#0F6F5C" style="background:#0F6F5C;"></button>
+            <button class="swatch" data-theme-color="#8A5A9E" style="background:#8A5A9E;"></button>
+            <button class="swatch" data-theme-color="#9C6B14" style="background:#9C6B14;"></button>
+            <button class="swatch" data-theme-color="#A23B36" style="background:#A23B36;"></button>
+            <button class="swatch" data-theme-color="#221F17" style="background:#221F17;"></button>
+          </div>
+          <span class="hint">Applies to buttons, links and accents across the site.</span>
+        </div>
+        <div class="field">
+          <label>Heading font</label>
+          <select class="btn btn-secondary btn-sm" id="theme-font" style="width:100%;justify-content:space-between;">
+            <option value="'Fraunces', serif">Fraunces (serif)</option>
+            <option value="'Manrope', sans-serif">Manrope (sans)</option>
+            <option value="'IBM Plex Mono', monospace">IBM Plex Mono</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Corner roundness</label>
+          <select class="btn btn-secondary btn-sm" id="theme-radius" style="width:100%;justify-content:space-between;">
+            <option value="2px">Sharp</option>
+            <option value="10px" selected>Soft</option>
+            <option value="100px">Pill</option>
+          </select>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ CANVAS ============ -->
+    <main class="ed-main">
+      <div class="canvas-bar">
+        <button class="page-drop" id="page-drop-label">Page: Home <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+        <span class="site-url">northwindstudio.revamp-sites.com &middot; <a href="#" id="connect-domain-link">Connect Domain</a></span>
+        <div class="top-spacer"></div>
+        <span class="preview-badge" id="preview-badge" hidden><span class="pill" style="background:var(--warn-soft);color:var(--warn);padding:3px 10px;border-radius:100px;font-size:11.5px;font-weight:700;">Preview mode</span></span>
+        <div class="device-toggle" role="group" aria-label="Device preview">
+          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+          <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
+        </div>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="frame" id="frame">
+          <div id="sel-toolbar"></div>
+
+          <!-- ===== NAV ===== -->
+          <section class="site-section" data-sec-name="Navigation">
+            <span class="sec-name-tag">Navigation</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <nav class="s-nav">
+              <span class="logo" data-editable="text">Northwind Studio</span>
+              <div class="links">
+                <span data-editable="text">Home</span>
+                <span data-editable="text">Work</span>
+                <span data-editable="text">About</span>
+                <span data-editable="text">Contact</span>
+              </div>
+              <div class="sp"></div>
+              <span class="cta" data-editable="button">Get in touch</span>
+            </nav>
+          </section>
+
+          <!-- ===== HERO ===== -->
+          <section class="site-section" data-sec-name="Hero">
+            <span class="sec-name-tag">Hero</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-hero">
+              <div>
+                <h1 data-editable="text">Studio-grade design, without the studio price tag.</h1>
+                <p class="lead" data-editable="text">We design and build brand identities, product sites, and marketing pages for teams who want to move fast without breaking craft.</p>
+                <div class="btnrow">
+                  <span class="s-btn primary" data-editable="button">Start a project</span>
+                  <span class="s-btn secondary" data-editable="button">See our work</span>
+                </div>
+              </div>
+              <div class="imgph" data-editable="image">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== STATS ===== -->
+          <section class="site-section" data-sec-name="Stats">
+            <span class="sec-name-tag">Stats</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-stats">
+              <div class="s-stat"><div class="n" data-editable="text">120+</div><div class="l" data-editable="text">Projects shipped</div></div>
+              <div class="s-stat"><div class="n" data-editable="text">98%</div><div class="l" data-editable="text">Client retention</div></div>
+              <div class="s-stat"><div class="n" data-editable="text">14</div><div class="l" data-editable="text">Countries served</div></div>
+              <div class="s-stat"><div class="n" data-editable="text">9y</div><div class="l" data-editable="text">In business</div></div>
+            </div>
+          </section>
+
+          <!-- ===== CARDS ===== -->
+          <section class="site-section" data-sec-name="Services">
+            <span class="sec-name-tag">Services</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-cards-sec">
+              <span class="kicker" data-editable="text">What we do</span>
+              <h2 data-editable="text">Three ways we help brands grow</h2>
+              <div class="s-cards">
+                <div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Brand identity</h3><p data-editable="text">Logo, type system, and a visual language your team can run with.</p></div>
+                <div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Web design</h3><p data-editable="text">Marketing sites and product UI, designed and built together.</p></div>
+                <div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Content &amp; motion</h3><p data-editable="text">Photography, video, and micro-interactions that add polish.</p></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== GALLERY ===== -->
+          <section class="site-section" data-sec-name="Gallery">
+            <span class="sec-name-tag">Gallery</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-gallery">
+              <div class="s-gal-grid">
+                <div class="gi" data-editable="image"></div>
+                <div class="gi" data-editable="image"></div>
+                <div class="gi" data-editable="image"></div>
+                <div class="gi" data-editable="image"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== QUOTE ===== -->
+          <section class="site-section" data-sec-name="Testimonial">
+            <span class="sec-name-tag">Testimonial</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-quote">
+              <blockquote data-editable="text">&ldquo;Northwind took our half-finished brand and turned it into something our whole team is proud to ship.&rdquo;</blockquote>
+              <div class="who" data-editable="text">&mdash; Priya Nair, Head of Marketing at Fieldnote</div>
+            </div>
+          </section>
+
+          <!-- ===== CTA BAND ===== -->
+          <section class="site-section" data-sec-name="Call to action">
+            <span class="sec-name-tag">Call to action</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-cta-band">
+              <h2 data-editable="text">Ready to start your project?</h2>
+              <p data-editable="text">Tell us about your brand and we&rsquo;ll get back within one business day.</p>
+              <div class="btnrow">
+                <span class="s-btn primary" data-editable="button">Book a call</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== FOOTER ===== -->
+          <section class="site-section" data-sec-name="Footer">
+            <span class="sec-name-tag">Footer</span>
+            <div class="sec-toolbar">
+              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+            <div class="s-foot">
+              <span class="logo" data-editable="text">Northwind Studio</span>
+              <span data-editable="text">&copy; 2026 Northwind Studio. All rights reserved.</span>
+              <span data-editable="text">hello@northwindstudio.com</span>
+            </div>
+          </section>
+
+          <div class="add-sec-row">
+            <button class="add-sec-btn" id="btn-add-section-end">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Add section
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============ ASK ARIA ============ -->
+<button class="aria-fab" id="aria-fab" title="Ask Aria" aria-label="Ask Aria">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/><path d="M12 3v3"/></svg>
+</button>
+<div class="aria-pop" id="aria-pop" hidden>
+  <div class="aria-pop-head"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/><path d="M12 3v3"/></svg><strong>Ask Aria</strong></div>
+  <div class="aria-pop-body">
+    <p>Describe what you want to change and Aria will draft it. (Prototype &mdash; replies are simulated.)</p>
+    <div class="aria-chip-row">
+      <button class="aria-chip" data-aria-prompt="Write a new hero headline">New headline</button>
+      <button class="aria-chip" data-aria-prompt="Suggest a color palette">Color palette</button>
+      <button class="aria-chip" data-aria-prompt="Add a pricing section">Add pricing</button>
+    </div>
+    <div class="aria-input-row">
+      <input type="text" id="aria-input" placeholder="Ask Aria to write, design, or fix anything&hellip;">
+      <button class="btn btn-primary btn-sm" id="aria-send">Send</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-region"></div>
+
+<script>
+(function(){
+  var stage = document.getElementById('stage');
+  var frame = document.getElementById('frame');
+  var selToolbar = document.getElementById('sel-toolbar');
+  var previewMode = false;
+  var currentZoom = 0.85;
+  var selectedEl = null;
+  var activeSectionEl = null;
+
+  /* ---------- toast ---------- */
+  function showToast(msg){
+    var region = document.getElementById('toast-region');
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = msg;
+    region.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 200); }, 2600);
+  }
+
+  /* ---------- save state ---------- */
+  var saveStateEl = document.getElementById('save-state');
+  var saveStateTxt = document.getElementById('save-state-txt');
+  var saveTimer = null;
+  function markSaving(){
+    saveStateEl.classList.add('saving');
+    saveStateTxt.textContent = 'Saving…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      saveStateEl.classList.remove('saving');
+      saveStateTxt.textContent = 'All changes saved';
+    }, 700);
+  }
+
+  /* ---------- history (undo / redo) ---------- */
+  var history = [frame.innerHTML];
+  var histIndex = 0;
+  var restoring = false;
+  function pushHistory(){
+    if (restoring) return;
+    history = history.slice(0, histIndex + 1);
+    history.push(frame.innerHTML);
+    histIndex = history.length - 1;
+    updateUndoRedoBtns();
+  }
+  function restoreHistory(idx){
+    restoring = true;
+    deselect();
+    frame.innerHTML = history[idx];
+    histIndex = idx;
+    restoring = false;
+    updateUndoRedoBtns();
+    rebuildLayersPanel();
+  }
+  function updateUndoRedoBtns(){
+    document.getElementById('btn-undo').disabled = histIndex <= 0;
+    document.getElementById('btn-redo').disabled = histIndex >= history.length - 1;
+  }
+  document.getElementById('btn-undo').addEventListener('click', function(){
+    if (histIndex > 0) { restoreHistory(histIndex - 1); showToast('Undid last change'); }
+  });
+  document.getElementById('btn-redo').addEventListener('click', function(){
+    if (histIndex < history.length - 1) { restoreHistory(histIndex + 1); showToast('Redid change'); }
+  });
+  updateUndoRedoBtns();
+
+  /* ---------- selection ---------- */
+  function deselect(){
+    if (selectedEl){ selectedEl.classList.remove('ed-selected'); exitEditIfNeeded(selectedEl); }
+    selectedEl = null;
+    selToolbar.classList.remove('show');
+    document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
+  }
+
+  function exitEditIfNeeded(el){
+    if (el.getAttribute('contenteditable') === 'true'){
+      el.removeAttribute('contenteditable');
+      pushHistory();
+    }
+  }
+
+  function selectElement(el){
+    if (selectedEl === el) return;
+    if (selectedEl) exitEditIfNeeded(selectedEl);
+    document.querySelectorAll('[data-editable].ed-selected').forEach(function(n){ n.classList.remove('ed-selected'); });
+    document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
+    selectedEl = el;
+    selectedEl.classList.add('ed-selected');
+    var sec = el.closest('.site-section');
+    if (sec){ sec.classList.add('sec-active'); activeSectionEl = sec; }
+    buildToolbar(el);
+    positionToolbar(el);
+  }
+
+  function buildToolbar(el){
+    var type = el.getAttribute('data-editable');
+    var html = '';
+    html += '<div class="tb-group"><button class="ai-btn" data-action="ask-aria">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/></svg>Ask Aria</button></div>';
+    html += '<div class="tb-sep"></div>';
+
+    if (type === 'text' || type === 'button'){
+      html += '<div class="tb-group"><button data-action="edit-text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>Edit Text</button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><select data-action="font-family" title="Font">' +
+        '<option value="">Font</option>' +
+        '<option value="\'Fraunces\', serif">Fraunces</option>' +
+        '<option value="\'Manrope\', sans-serif">Manrope</option>' +
+        '<option value="\'IBM Plex Mono\', monospace">Plex Mono</option>' +
+        '</select></div>';
+      html += '<div class="tb-group"><select data-action="font-size" title="Size">' +
+        '<option value="">Size</option>' +
+        '<option value="12px">12</option><option value="14px">14</option><option value="16px">16</option>' +
+        '<option value="20px">20</option><option value="28px">28</option><option value="42px">42</option>' +
+        '</select></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group">' +
+        '<button data-action="link" title="Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button>' +
+        '<button data-action="color" title="Text color"><span class="swatch-dot"></span></button>' +
+        '</div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group">' +
+        '<button data-action="bold" title="Bold"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 4h7a3.5 3.5 0 0 1 0 7H6zM6 11h8a3.5 3.5 0 0 1 0 7H6z"/></svg></button>' +
+        '<button data-action="italic" title="Italic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 4h6M6 20h6M13 4l-4 16"/></svg></button>' +
+        '<button data-action="underline" title="Underline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M4 21h16"/></svg></button>' +
+        '<button data-action="strike" title="Strikethrough"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M8 6c0-1.5 1.8-2.7 4-2.7s4 1.2 4 2.7M8 18c0 1.5 1.8 2.7 4 2.7s4-1.2 4-2.7"/></svg></button>' +
+        '</div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group">' +
+        '<button data-action="align-left" title="Align left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>' +
+        '<button data-action="align-center" title="Align center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>' +
+        '<button data-action="align-right" title="Align right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>' +
+        '</div>';
+    }
+
+    if (type === 'button'){
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button data-action="button-style" title="Toggle style"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="4"/></svg>Style</button></div>';
+    }
+
+    if (type === 'image'){
+      html += '<div class="tb-group"><button data-action="replace-image" title="Replace"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>Replace image</button>' +
+        '<button data-action="alt-text" title="Alt text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h8"/></svg>Alt text</button></div>';
+    }
+
+    html += '<div class="tb-sep"></div>';
+    html += '<div class="tb-group">' +
+      '<button data-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+      '<button data-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
+      '<button data-action="deselect" title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '</div>';
+
+    selToolbar.innerHTML = html;
+  }
+
+  function positionToolbar(el){
+    var frameRect = frame.getBoundingClientRect();
+    var elRect = el.getBoundingClientRect();
+    selToolbar.classList.add('show');
+    var localTop = (elRect.top - frameRect.top) / currentZoom;
+    var localLeft = (elRect.left - frameRect.left) / currentZoom;
+    var tbH = selToolbar.offsetHeight || 38;
+    var top = localTop - tbH - 10;
+    if (top < 4) top = (elRect.bottom - frameRect.top) / currentZoom + 10;
+    var maxLeft = frame.offsetWidth - selToolbar.offsetWidth - 6;
+    var left = Math.max(6, Math.min(localLeft, maxLeft));
+    selToolbar.style.top = top + 'px';
+    selToolbar.style.left = left + 'px';
+  }
+
+  function enterEdit(el){
+    selectElement(el);
+    el.setAttribute('contenteditable', 'true');
+    el.focus();
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /* ---------- toolbar action handling ---------- */
+  selToolbar.addEventListener('mousedown', function(e){
+    if (e.target.closest('select')) return;
+    e.preventDefault();
+  });
+  selToolbar.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-action]');
+    if (!btn || !selectedEl) return;
+    var action = btn.getAttribute('data-action');
+    switch(action){
+      case 'edit-text': enterEdit(selectedEl); break;
+      case 'bold': document.execCommand('bold'); markSaving(); break;
+      case 'italic': document.execCommand('italic'); markSaving(); break;
+      case 'underline': document.execCommand('underline'); markSaving(); break;
+      case 'strike': document.execCommand('strikeThrough'); markSaving(); break;
+      case 'align-left': selectedEl.style.textAlign = 'left'; markSaving(); break;
+      case 'align-center': selectedEl.style.textAlign = 'center'; markSaving(); break;
+      case 'align-right': selectedEl.style.textAlign = 'right'; markSaving(); break;
+      case 'link':
+        var url = prompt('Link URL', selectedEl.getAttribute('data-href') || 'https://');
+        if (url){ selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); markSaving(); }
+        break;
+      case 'color':
+        var col = prompt('Text color (hex)', '#0F6F5C');
+        if (col){ selectedEl.style.color = col; markSaving(); }
+        break;
+      case 'button-style':
+        selectedEl.classList.toggle('primary');
+        selectedEl.classList.toggle('secondary');
+        markSaving();
+        break;
+      case 'replace-image':
+        showToast('Media library opens here — image swapped (prototype).');
+        selectedEl.style.filter = selectedEl.style.filter ? '' : 'hue-rotate(45deg)';
+        markSaving();
+        break;
+      case 'alt-text':
+        var alt = prompt('Alt text', selectedEl.getAttribute('data-alt') || '');
+        if (alt !== null){ selectedEl.setAttribute('data-alt', alt); markSaving(); }
+        break;
+      case 'duplicate':
+        var clone = selectedEl.cloneNode(true);
+        clone.classList.remove('ed-selected');
+        selectedEl.after(clone);
+        pushHistory(); markSaving();
+        showToast('Duplicated element');
+        selectElement(clone);
+        break;
+      case 'delete':
+        var toRemove = selectedEl;
+        deselect();
+        toRemove.remove();
+        pushHistory(); markSaving();
+        showToast('Element deleted');
+        break;
+      case 'deselect': deselect(); break;
+      case 'ask-aria': openAria('Rewrite this: “' + selectedEl.textContent.trim().slice(0,60) + '…”'); break;
+    }
+    if (action !== 'edit-text') e.stopPropagation();
+  });
+  selToolbar.addEventListener('change', function(e){
+    if (!selectedEl) return;
+    var t = e.target;
+    if (t.getAttribute('data-action') === 'font-family' && t.value){ selectedEl.style.fontFamily = t.value; markSaving(); }
+    if (t.getAttribute('data-action') === 'font-size' && t.value){ selectedEl.style.fontSize = t.value; markSaving(); }
+  });
+
+  /* ---------- canvas click delegation ---------- */
+  stage.addEventListener('click', function(e){
+    if (previewMode) return;
+    if (e.target.closest('#sel-toolbar')) return;
+    var secBtn = e.target.closest('[data-sec-action]');
+    if (secBtn){
+      handleSectionAction(secBtn.getAttribute('data-sec-action'), secBtn.closest('.site-section'));
+      e.stopPropagation();
+      return;
+    }
+    var addEndBtn = e.target.closest('#btn-add-section-end');
+    if (addEndBtn){ openAdd(); return; }
+    var editable = e.target.closest('[data-editable]');
+    if (editable){ selectElement(editable); e.stopPropagation(); }
+    else { deselect(); }
+  });
+  stage.addEventListener('dblclick', function(e){
+    if (previewMode) return;
+    var editable = e.target.closest('[data-editable="text"], [data-editable="button"]');
+    if (editable) enterEdit(editable);
+  });
+  stage.addEventListener('blur', function(e){
+    var el = e.target;
+    if (el && el.hasAttribute && el.hasAttribute('data-editable') && el.getAttribute('contenteditable') === 'true'){
+      el.removeAttribute('contenteditable');
+      pushHistory();
+      markSaving();
+    }
+  }, true);
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){ deselect(); closeAriaPop(); return; }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEl && document.activeElement !== selectedEl){
+      if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+      var toRemove = selectedEl;
+      deselect();
+      toRemove.remove();
+      pushHistory(); markSaving();
+      showToast('Element deleted');
+      e.preventDefault();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey){ document.getElementById('btn-undo').click(); e.preventDefault(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))){ document.getElementById('btn-redo').click(); e.preventDefault(); }
+  });
+
+  /* ---------- section actions ---------- */
+  function handleSectionAction(action, sec){
+    if (!sec) return;
+    if (action === 'duplicate'){
+      var clone = sec.cloneNode(true);
+      clone.classList.remove('sec-active');
+      sec.after(clone);
+      pushHistory(); markSaving(); rebuildLayersPanel();
+      showToast('Section duplicated');
+    } else if (action === 'hide'){
+      sec.classList.toggle('is-hidden-sec');
+      sec.style.display = sec.classList.contains('is-hidden-sec') ? 'none' : '';
+      pushHistory(); markSaving(); rebuildLayersPanel();
+      showToast(sec.classList.contains('is-hidden-sec') ? 'Section hidden' : 'Section shown');
+    } else if (action === 'delete'){
+      if (selectedEl && sec.contains(selectedEl)) deselect();
+      sec.remove();
+      pushHistory(); markSaving(); rebuildLayersPanel();
+      showToast('Section deleted');
+    }
+  }
+
+  /* ---------- rail + side panels ---------- */
+  var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
+  var panels = { add: document.getElementById('panel-add'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+  function openPanel(name){
+    Object.keys(panels).forEach(function(k){ panels[k].hidden = (k !== name); });
+    railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
+    if (name === 'layers') rebuildLayersPanel();
+  }
+  railBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      var name = b.getAttribute('data-panel');
+      var isOpen = !panels[name].hidden;
+      if (isOpen){ panels[name].hidden = true; b.classList.remove('active'); }
+      else openPanel(name);
+    });
+  });
+  document.querySelectorAll('[data-close-panel]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var panel = btn.closest('.side-panel');
+      panel.hidden = true;
+      railBtns.forEach(function(b){ b.classList.remove('active'); });
+    });
+  });
+  function openAdd(){ openPanel('add'); }
+  document.getElementById('btn-media').addEventListener('click', function(){ showToast('Media library opens once the Media module ships.'); });
+  document.getElementById('btn-apps').addEventListener('click', function(){ showToast('App marketplace is a prototype placeholder.'); });
+
+  /* ---------- add elements ---------- */
+  var blockTemplates = {
+    heading: '<h2 data-editable="text" style="font-size:24px;padding:6px 2px;">New heading</h2>',
+    text: '<p data-editable="text" style="font-size:14px;color:#4a4a42;padding:6px 2px;">Add your text here. Click to edit and make it your own.</p>',
+    button: '<span class="s-btn primary" data-editable="button" style="display:inline-flex;margin:6px 2px;">Click me</span>',
+    image: '<div data-editable="image" style="height:140px;border-radius:10px;background:linear-gradient(135deg,#ECE7DA,#DCEEE7);display:flex;align-items:center;justify-content:center;color:#8a8a7c;margin:6px 2px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg></div>',
+    divider: '<div style="height:1px;background:#e6e1d3;margin:18px 2px;"></div>',
+    spacer: '<div style="height:36px;"></div>'
+  };
+  var sectionTemplates = {
+    cards: {name:'Custom cards', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">Section</span><h2 data-editable="text">A new three-card section</h2>' +
+      '<div class="s-cards">' +
+      '<div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Card one</h3><p data-editable="text">Describe this item in a short sentence.</p></div>' +
+      '<div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Card two</h3><p data-editable="text">Describe this item in a short sentence.</p></div>' +
+      '<div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Card three</h3><p data-editable="text">Describe this item in a short sentence.</p></div>' +
+      '</div></div>' },
+    cta: {name:'CTA banner', html:
+      '<div class="s-cta-band"><h2 data-editable="text">Let’s build something great</h2><p data-editable="text">Add a short supporting line here.</p>' +
+      '<div class="btnrow"><span class="s-btn primary" data-editable="button">Get started</span></div></div>' },
+    gallery: {name:'Image gallery', html:
+      '<div class="s-gallery" style="padding-top:44px;"><div class="s-gal-grid">' +
+      '<div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div>' +
+      '</div></div>' },
+    quote: {name:'Testimonial', html:
+      '<div class="s-quote"><blockquote data-editable="text">&ldquo;Add a great customer quote here.&rdquo;</blockquote><div class="who" data-editable="text">&mdash; Customer name, title</div></div>' }
+  };
+
+  document.querySelectorAll('[data-add-block]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-add-block');
+      var wrap = document.createElement('div');
+      wrap.innerHTML = blockTemplates[key];
+      var node = wrap.firstElementChild;
+      var target = activeSectionEl ? activeSectionEl.lastElementChild : frame.querySelector('.site-section:last-of-type');
+      if (target && target.classList && target.classList.contains('sec-toolbar')) target = activeSectionEl;
+      (activeSectionEl || frame.querySelectorAll('.site-section')[frame.querySelectorAll('.site-section').length-1]).appendChild(node);
+      pushHistory(); markSaving();
+      showToast('Added ' + key);
+      selectElement(node);
+      node.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  });
+
+  document.querySelectorAll('[data-add-section]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.getAttribute('data-add-section');
+      var tpl = sectionTemplates[key];
+      var sec = document.createElement('section');
+      sec.className = 'site-section';
+      sec.setAttribute('data-sec-name', tpl.name);
+      sec.innerHTML = '<span class="sec-name-tag">' + tpl.name + '</span>' +
+        '<div class="sec-toolbar">' +
+        '<button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+        '<button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
+        '<button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
+        '</div>' + tpl.html;
+      var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
+      frame.insertBefore(sec, addRow);
+      pushHistory(); markSaving(); rebuildLayersPanel();
+      showToast('Added "' + tpl.name + '" section');
+      sec.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  });
+
+  /* ---------- pages panel ---------- */
+  document.querySelectorAll('.pg-row[data-page]').forEach(function(row){
+    row.addEventListener('click', function(){
+      document.querySelectorAll('.pg-row').forEach(function(r){ r.classList.remove('active'); });
+      row.classList.add('active');
+      var name = row.getAttribute('data-page');
+      document.getElementById('page-drop-label').firstChild.textContent = 'Page: ' + name + ' ';
+      if (name !== 'Home'){ showToast('"' + name + '" page opens once more templates ship — showing Home.'); }
+    });
+  });
+  document.getElementById('btn-add-page').addEventListener('click', function(){
+    showToast('New page flow is a prototype placeholder.');
+  });
+
+  /* ---------- layers panel : custom pointer-based drag reorder ---------- */
+  var lyrList = document.getElementById('lyr-list');
+  var dropIndicator = null;
+
+  function moveSectionBy(sec, dir){
+    var secs = Array.prototype.slice.call(frame.querySelectorAll('.site-section'));
+    var idx = secs.indexOf(sec);
+    var targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= secs.length) return;
+    if (dir < 0) sec.parentNode.insertBefore(sec, secs[targetIdx]);
+    else sec.parentNode.insertBefore(secs[targetIdx], sec);
+    pushHistory(); markSaving(); rebuildLayersPanel();
+    showToast('Reordered sections');
+  }
+
+  function rebuildLayersPanel(){
+    lyrList.innerHTML = '';
+    frame.querySelectorAll('.site-section').forEach(function(sec){
+      var row = document.createElement('div');
+      row.className = 'lyr-row' + (sec.classList.contains('is-hidden-sec') ? ' hidden-sec' : '') + (sec === activeSectionEl ? ' current' : '');
+      row.innerHTML =
+        '<span class="grip" title="Drag to reorder"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.4"/><circle cx="16" cy="6" r="1.4"/><circle cx="8" cy="12" r="1.4"/><circle cx="16" cy="12" r="1.4"/><circle cx="8" cy="18" r="1.4"/><circle cx="16" cy="18" r="1.4"/></svg></span>' +
+        '<span class="arrows">' +
+          '<button class="arrow-up" title="Move up"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M5 15l7-7 7 7"/></svg></button>' +
+          '<button class="arrow-down" title="Move down"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M5 9l7 7 7-7"/></svg></button>' +
+        '</span>' +
+        '<button class="nm">' + (sec.getAttribute('data-sec-name') || 'Section') + '</button>' +
+        '<button class="eye" title="Toggle visibility">' +
+        (sec.classList.contains('is-hidden-sec')
+          ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.5 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a13.6 13.6 0 0 1-3 3.6M6.3 6.9C3.9 8.6 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 3.4-.6"/></svg>'
+          : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>') +
+        '</button>';
+
+      row.querySelector('.eye').addEventListener('click', function(e){ e.stopPropagation(); handleSectionAction('hide', sec); });
+      row.querySelector('.nm').addEventListener('click', function(e){
+        e.stopPropagation();
+        activeSectionEl = sec;
+        rebuildLayersPanel();
+        sec.scrollIntoView({behavior:'smooth', block:'center'});
+      });
+      row.querySelector('.arrow-up').addEventListener('click', function(e){ e.stopPropagation(); moveSectionBy(sec, -1); });
+      row.querySelector('.arrow-down').addEventListener('click', function(e){ e.stopPropagation(); moveSectionBy(sec, 1); });
+      row.querySelector('.grip').addEventListener('pointerdown', function(e){ startLayerDrag(e, row, sec); });
+
+      lyrList.appendChild(row);
+    });
+
+    var upBtns = lyrList.querySelectorAll('.arrow-up');
+    var downBtns = lyrList.querySelectorAll('.arrow-down');
+    if (upBtns.length) upBtns[0].disabled = true;
+    if (downBtns.length) downBtns[downBtns.length - 1].disabled = true;
+
+    dropIndicator = document.createElement('div');
+    dropIndicator.className = 'lyr-drop-indicator';
+    dropIndicator.hidden = true;
+    lyrList.appendChild(dropIndicator);
+  }
+
+  function startLayerDrag(startEvent, row, sec){
+    startEvent.preventDefault();
+    var startRect = row.getBoundingClientRect();
+    var startY = startEvent.clientY;
+    var hasMoved = false;
+
+    var others = Array.prototype.slice.call(lyrList.querySelectorAll('.lyr-row')).filter(function(r){ return r !== row; });
+    var otherRects = others.map(function(r){ return { row: r, rect: r.getBoundingClientRect() }; });
+    var listRect = lyrList.getBoundingClientRect();
+
+    var ghost = row.cloneNode(true);
+    ghost.className = 'lyr-row lyr-ghost';
+    ghost.style.width = startRect.width + 'px';
+    ghost.style.top = startRect.top + 'px';
+    ghost.style.left = startRect.left + 'px';
+    document.body.appendChild(ghost);
+
+    row.classList.add('placeholder');
+    document.body.classList.add('lyr-dragging');
+
+    var pendingBeforeRow = null; // null => drop at end of list
+
+    function onMove(e){
+      var dy = e.clientY - startY;
+      if (Math.abs(dy) > 3) hasMoved = true;
+      ghost.style.top = (startRect.top + dy) + 'px';
+
+      var target = null;
+      for (var i = 0; i < otherRects.length; i++){
+        var mid = otherRects[i].rect.top + otherRects[i].rect.height / 2;
+        if (e.clientY < mid){ target = otherRects[i]; break; }
+      }
+      pendingBeforeRow = target ? target.row : null;
+
+      dropIndicator.hidden = false;
+      var indicatorTop;
+      if (target){
+        indicatorTop = target.rect.top - listRect.top - 3;
+      } else if (otherRects.length){
+        var last = otherRects[otherRects.length - 1].rect;
+        indicatorTop = last.bottom - listRect.top + 2;
+      } else {
+        indicatorTop = 0;
+      }
+      dropIndicator.style.top = indicatorTop + 'px';
+    }
+
+    function sectionForRow(r){
+      var idx = Array.prototype.indexOf.call(lyrList.querySelectorAll('.lyr-row'), r);
+      return frame.querySelectorAll('.site-section')[idx];
+    }
+
+    function onUp(){
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      ghost.remove();
+      row.classList.remove('placeholder');
+      document.body.classList.remove('lyr-dragging');
+      if (dropIndicator) dropIndicator.hidden = true;
+
+      if (hasMoved){
+        if (pendingBeforeRow){
+          var beforeSec = sectionForRow(pendingBeforeRow);
+          if (beforeSec && beforeSec !== sec){
+            beforeSec.parentNode.insertBefore(sec, beforeSec);
+            pushHistory(); markSaving(); rebuildLayersPanel();
+            showToast('Reordered sections');
+            return;
+          }
+        } else {
+          var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
+          if (sec.nextElementSibling !== addRow){
+            sec.parentNode.insertBefore(sec, addRow);
+            pushHistory(); markSaving(); rebuildLayersPanel();
+            showToast('Reordered sections');
+            return;
+          }
+        }
+      }
+      rebuildLayersPanel();
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
+  /* ---------- design panel ---------- */
+  document.querySelectorAll('#theme-swatches [data-theme-color]').forEach(function(sw){
+    sw.addEventListener('click', function(){
+      document.querySelectorAll('#theme-swatches .swatch').forEach(function(s){ s.classList.remove('on'); });
+      sw.classList.add('on');
+      var color = sw.getAttribute('data-theme-color');
+      document.documentElement.style.setProperty('--accent', color);
+      document.querySelectorAll('.s-btn.primary, .cta').forEach(function(b){ b.style.background = color; });
+      document.querySelectorAll('.s-btn.secondary').forEach(function(b){ b.style.color = color; b.style.borderColor = color; });
+      document.querySelectorAll('.kicker').forEach(function(k){ k.style.color = color; });
+      markSaving();
+      showToast('Theme color updated');
+    });
+  });
+  document.getElementById('theme-font').addEventListener('change', function(){
+    frame.querySelectorAll('h1,h2,h3,.logo').forEach(function(h){ h.style.fontFamily = this.value; }.bind(this));
+    markSaving();
+  });
+  document.getElementById('theme-radius').addEventListener('change', function(){
+    frame.querySelectorAll('.s-btn, .cta').forEach(function(b){ b.style.borderRadius = this.value; }.bind(this));
+    frame.querySelectorAll('.s-card, .imgph, .ph, .gi, .s-stat').forEach(function(b){ b.style.borderRadius = (parseInt(this.value) > 40 ? '18px' : this.value); }.bind(this));
+    markSaving();
+  });
+
+  /* ---------- zoom ---------- */
+  document.getElementById('zoom-select').addEventListener('change', function(){
+    currentZoom = parseFloat(this.value);
+    frame.style.transform = 'scale(' + currentZoom + ')';
+    if (selectedEl) positionToolbar(selectedEl);
+  });
+  frame.style.transform = 'scale(' + currentZoom + ')';
+
+  /* ---------- device toggle ---------- */
+  document.querySelectorAll('.device-toggle button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.device-toggle button').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      var device = btn.getAttribute('data-device');
+      stage.classList.toggle('device-mobile', device === 'mobile');
+      if (selectedEl) setTimeout(function(){ positionToolbar(selectedEl); }, 50);
+    });
+  });
+
+  /* ---------- preview mode ---------- */
+  var btnPreview = document.getElementById('btn-preview');
+  var previewBadge = document.getElementById('preview-badge');
+  btnPreview.addEventListener('click', function(){
+    previewMode = !previewMode;
+    document.body.classList.toggle('preview-mode', previewMode);
+    previewBadge.hidden = !previewMode;
+    deselect();
+    btnPreview.textContent = previewMode ? 'Exit preview' : 'Preview';
+    btnPreview.classList.toggle('btn-primary', previewMode);
+    btnPreview.classList.toggle('btn-secondary', !previewMode);
+  });
+
+  /* ---------- publish ---------- */
+  document.getElementById('btn-publish').addEventListener('click', function(){
+    showToast('Publishing…');
+    setTimeout(function(){
+      var scrim = document.createElement('div');
+      scrim.className = 'scrim';
+      scrim.innerHTML =
+        '<div class="modal"><div class="modal-body">' +
+        '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
+        '<h3>Your site is live</h3>' +
+        '<p>Northwind Studio has been published with your latest changes.</p>' +
+        '<span class="url">northwindstudio.revamp-sites.com</span>' +
+        '</div><div class="modal-foot">' +
+        '<button class="btn btn-secondary" id="publish-close">Keep editing</button>' +
+        '<button class="btn btn-primary" id="publish-view">View site</button>' +
+        '</div></div>';
+      document.body.appendChild(scrim);
+      scrim.querySelector('#publish-close').addEventListener('click', function(){ scrim.remove(); });
+      scrim.querySelector('#publish-view').addEventListener('click', function(){ scrim.remove(); showToast('Opening published site (prototype).'); });
+      scrim.addEventListener('click', function(e){ if (e.target === scrim) scrim.remove(); });
+    }, 700);
+  });
+
+  document.getElementById('connect-domain-link').addEventListener('click', function(e){
+    e.preventDefault();
+    showToast('Domain connection opens once the Settings module ships.');
+  });
+  document.getElementById('btn-site-picker').addEventListener('click', function(){
+    showToast('Site switching arrives with the Settings module.');
+  });
+  document.getElementById('page-drop-label').addEventListener('click', function(){
+    openPanel('pages');
+  });
+
+  /* ---------- Ask Aria ---------- */
+  var ariaFab = document.getElementById('aria-fab');
+  var ariaPop = document.getElementById('aria-pop');
+  function openAria(prefill){
+    ariaPop.hidden = false;
+    if (prefill) document.getElementById('aria-input').value = prefill;
+  }
+  function closeAriaPop(){ ariaPop.hidden = true; }
+  ariaFab.addEventListener('click', function(){ ariaPop.hidden = !ariaPop.hidden; });
+  document.querySelectorAll('.aria-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){ document.getElementById('aria-input').value = chip.getAttribute('data-aria-prompt'); });
+  });
+  document.getElementById('aria-send').addEventListener('click', function(){
+    var val = document.getElementById('aria-input').value.trim();
+    if (!val) return;
+    showToast('Aria is drafting: "' + val.slice(0,50) + (val.length>50?'…':'') + '"');
+    document.getElementById('aria-input').value = '';
+    closeAriaPop();
+  });
+  document.addEventListener('click', function(e){
+    if (!ariaPop.hidden && !e.target.closest('#aria-pop') && !e.target.closest('#aria-fab')) closeAriaPop();
+  });
+
+  /* ---------- init ---------- */
+  rebuildLayersPanel();
+})();
+</script>
