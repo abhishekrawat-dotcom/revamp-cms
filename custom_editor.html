@@ -346,6 +346,7 @@
   .site-section{ position:relative; }
   .site-section:hover > .sec-toolbar{ opacity:1; pointer-events:auto; }
   .site-section.sec-active > .sec-toolbar{ opacity:1; pointer-events:auto; }
+  .site-section.sec-active{ outline: 2px solid var(--accent); outline-offset: -2px; z-index: 5; }
   .sec-toolbar{
     position:absolute; top:8px; right:8px; z-index:8; display:flex; align-items:center; gap:2px;
     background: var(--surface); border:1px solid var(--border); border-radius:8px; padding:3px;
@@ -1427,6 +1428,8 @@
       row.querySelector('.eye').addEventListener('click', function(e){ e.stopPropagation(); handleSectionAction('hide', sec); });
       row.querySelector('.nm').addEventListener('click', function(e){
         e.stopPropagation();
+        document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
+        sec.classList.add('sec-active');
         activeSectionEl = sec;
         syncSectionToolbar();
         rebuildLayersPanel();
