@@ -196,6 +196,124 @@
   .segmented button:hover{ color: var(--text); }
   .segmented button[aria-pressed="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 700; }
 
+  /* four-up template-style grid (event category picker) */
+  .tpl-grid.four{ grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 1180px){ .tpl-grid.four{ grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 620px){ .tpl-grid.four{ grid-template-columns: 1fr; } }
+  .tpl-thumb .b.pill{ height: 13px; width: 42%; border-radius: 7px; background: var(--accent-soft); }
+  .tpl-thumb .b.form{ height: 30px; background: var(--surface); border: 1px dashed var(--border); }
+
+  /* compact header row: title + category chip + one-line context */
+  .b-head{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .b-head .ttl{ font-size: 19px; font-weight: 700; letter-spacing: -0.012em; }
+  .b-head-note{ font-size: 12px; color: var(--text-muted); flex: 1 1 240px; min-width: 0; }
+  .cat-chip{
+    display: inline-flex; align-items: center; gap: 8px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 5px 4px 4px;
+  }
+  .cat-chip .ci{
+    width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--accent); color: var(--accent-contrast); flex-shrink: 0;
+  }
+  .cat-chip b{ font-size: 12.5px; font-weight: 700; }
+  .cat-chip button{
+    border: 0; background: var(--surface-2); color: var(--text-muted); font-family: inherit;
+    font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .cat-chip button:hover{ background: var(--accent-soft); color: var(--accent-strong); }
+
+  /* one flat sheet instead of stacked boxes */
+  .sheet{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 2px 20px 18px; }
+  .grp{ padding: 16px 0; border-top: 1px solid var(--border); }
+  .grp:first-child{ border-top: 0; }
+  .grp-h{ display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+  .grp-h h4{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); white-space: nowrap; }
+  .grp-h .ln{ flex: 1; height: 1px; background: var(--border); }
+  .grp-tag{
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--accent-strong); background: var(--accent-soft); padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+
+  /* 12-column field grid — packs tight, no dead columns */
+  .frow{ display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px 16px; align-items: start; }
+  .c3{ grid-column: span 3; } .c4{ grid-column: span 4; } .c5{ grid-column: span 5; }
+  .c6{ grid-column: span 6; } .c8{ grid-column: span 8; } .c12{ grid-column: span 12; }
+  @media (max-width: 1080px){ .c3, .c4, .c5{ grid-column: span 6; } .c8{ grid-column: span 12; } }
+  @media (max-width: 680px){ .frow > *{ grid-column: span 12; } }
+
+  .slug-meta{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+  /* every cell in a row gets the same label band, so the inputs line up exactly */
+  .frow > .field > label,
+  .frow > .field > .flabel,
+  .frow > .field > .flabel-row{
+    display: flex; align-items: center; min-height: 19px; margin-bottom: 7px;
+  }
+  .frow > .field > .flabel-row{ justify-content: space-between; gap: 8px; }
+  .frow > .field > .flabel-row > label,
+  .frow > .field > .flabel-row > .flabel{ min-height: 0; margin-bottom: 0; }
+  /* uniform control height across inputs, selects and the logo tile */
+  .frow .inp{ height: 40px; }
+  .frow textarea.inp{ height: auto; }
+  .frow .slug-row .inp{ height: 40px; }
+
+  /* compact dropzone inside the sheet — the tall default wasted a whole row */
+  .sheet .dropzone{ padding: 11px 12px; gap: 3px; }
+  .sheet .dropzone .ico{ margin-bottom: 0; }
+  .sheet .dropzone .s{ font-size: 10.5px; }
+
+  /* awards stage cell (horizontal, replaces the tall timeline) */
+  .stage{ background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .stage.set{ border-color: var(--accent); background: var(--surface); }
+  .stage.tbd{ border-color: var(--accent); border-style: dashed; background: var(--surface); }
+  .stage .mini-toggle{ margin-top: 10px; }
+
+  /* ===== BASIC DETAILS : wide layout ===== */
+  .step-wrap.full{ max-width: 1300px; }
+  .basics-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 1040px){ .basics-grid{ grid-template-columns: 1fr; } }
+  .bcol{ display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+  .phase{ display: flex; flex-direction: column; gap: 22px; }
+
+  /* TBD toggle */
+  .flabel-row{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .flabel-row .flabel, .flabel-row label{ margin-bottom: 0 !important; }
+  .mini-toggle{
+    display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; padding: 0;
+    cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--text-muted); font-family: inherit; white-space: nowrap;
+  }
+  .mini-toggle:hover{ color: var(--text); }
+  .mini-toggle .track{
+    width: 30px; height: 17px; border-radius: 9px; background: var(--surface-3);
+    border: 1px solid var(--border); position: relative; transition: background .15s, border-color .15s; flex-shrink: 0;
+  }
+  .mini-toggle .track i{
+    position: absolute; top: 1.5px; left: 1.5px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--surface); box-shadow: var(--shadow-sm); transition: transform .15s;
+  }
+  .mini-toggle[aria-pressed="true"]{ color: var(--accent-strong); }
+  .mini-toggle[aria-pressed="true"] .track{ background: var(--accent); border-color: var(--accent); }
+  .mini-toggle[aria-pressed="true"] .track i{ transform: translateX(13px); }
+
+  /* resolved-date preview */
+  .dt-preview{
+    display: flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 650; color: var(--text);
+    background: var(--surface-2); border: 1px dashed var(--border); border-radius: 8px; padding: 9px 11px;
+  }
+  .dt-preview .lb{ font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .045em; color: var(--text-faint); }
+  .dt-preview.tbd{ background: var(--accent-soft); border-color: var(--accent); border-style: solid; }
+  .dt-preview.tbd .lb{ color: var(--accent-strong); }
+
+  /* requirement pills */
+  .pill-req, .pill-opt{
+    font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+    padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+  }
+  .pill-req{ background: var(--accent-soft); color: var(--accent-strong); }
+  .pill-opt{ background: var(--surface-2); color: var(--text-faint); }
+
+
   .slug-row{ display:flex; align-items:stretch; }
   .slug-prefix{
     display:flex; align-items:center; padding: 0 11px; border: 1px solid var(--border); border-right: none;
@@ -621,113 +739,107 @@
   <main class="wiz-body">
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
-    <section class="step-wrap" id="step-1" hidden>
-      <div class="step-head">
-        <span class="eyebrow">Step 2 of 6 &middot; Basic details</span>
-        <h1>The basics of your event</h1>
-        <p class="desc">Nine essentials, one calm screen. This replaces the top of the IRF sheet &mdash; fill it once and it flows straight into the build.</p>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Identity</h3>
-          <span class="eyebrow">Drives defaults later</span>
+    <section class="step-wrap full" id="step-1" hidden>
+      <!-- ===== PHASE 1 : pick the category ===== -->
+      <div class="phase" id="cat-picker" hidden>
+        <div class="step-head">
+          <span class="eyebrow">Step 2 of 6 &middot; Basic details</span>
+          <h1>What kind of event is this?</h1>
+          <p class="desc">Pick a category to begin. Each one opens a different Basic details form &mdash; the date fields, the required fields and the extra panels all change to match how that kind of event actually runs.</p>
         </div>
-        <div class="panel-body">
-          <div class="field">
-            <span class="flabel">Event category</span>
-            <div class="segmented" id="seg-category" role="group" aria-label="Event category"></div>
-            <p class="hint" id="category-hint">Awards adds a nomination deadline; Leadgen keeps the form short.</p>
-          </div>
 
-          <div class="field-grid">
-            <div class="field">
-              <label for="f-vertical">Vertical / Portal</label>
-              <select class="inp" id="f-vertical"></select>
-              <p class="hint">IRF: &ldquo;Vertical/Portal Name&rdquo;</p>
-            </div>
-            <div class="field">
-              <label for="f-name">Event / Microsite name</label>
-              <input class="inp" id="f-name" type="text" placeholder="e.g. MarTech+ Summit 2026" autocomplete="off">
-              <p class="hint">IRF: &ldquo;Microsite Name&rdquo;</p>
-            </div>
-          </div>
+        <div class="tpl-grid four" id="cat-grid"></div>
 
-          <div class="field">
-            <span class="flabel">URL slug</span>
-            <div class="slug-row">
-              <span class="slug-prefix">etoneworld.com/</span>
-              <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
-            </div>
-            <div id="slug-status"></div>
-            <div id="slug-ai"></div>
-          </div>
+        <div class="callout">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span><strong>The category is a switch, not a label</strong>An IP summit can be planned to a quarter, an awards programme runs a nomination window, and a leadgen page usually has no date at all. Pick the closest match &mdash; you can change it on the next screen.</span>
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head"><h3>Format &amp; schedule</h3></div>
-        <div class="panel-body">
-          <div class="field">
-            <span class="flabel">Event type</span>
-            <div class="segmented" id="seg-type" role="group" aria-label="Event type"></div>
-            <p class="hint">IRF: &ldquo;Microsite/Event Type&rdquo;. Virtual hides the physical venue automatically.</p>
-          </div>
+      <!-- ===== PHASE 2 : the basic details form ===== -->
+      <div class="phase" id="basics-form" hidden>
 
-          <div class="field-grid">
-            <div class="field">
-              <label for="f-start">Starts</label>
-              <input class="inp" id="f-start" type="datetime-local">
-            </div>
-            <div class="field">
-              <label for="f-end">Ends</label>
-              <input class="inp" id="f-end" type="datetime-local">
-            </div>
-          </div>
-
-          <div class="field-grid" id="venue-wrap">
-            <div class="field">
-              <label for="f-venue">Venue</label>
-              <input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Ballroom 2">
-            </div>
-            <div class="field">
-              <label for="f-city">City</label>
-              <input class="inp" id="f-city" type="text" placeholder="e.g. Mumbai">
-            </div>
-          </div>
-
-          <div class="field" id="platform-wrap" hidden>
-            <label for="f-platform">Streaming platform</label>
-            <input class="inp" id="f-platform" type="text" placeholder="e.g. ET Oneworld Live Studio">
-            <p class="hint">Shown instead of a venue because this event is virtual.</p>
-          </div>
-
-          <div class="field" id="deadline-wrap" hidden>
-            <label for="f-deadline">Nomination deadline</label>
-            <input class="inp" id="f-deadline" type="datetime-local">
-            <p class="hint">Awards events need an entry cut&#8209;off on the microsite.</p>
-          </div>
+        <div class="b-head">
+          <span class="ttl">Basic details</span>
+          <span class="cat-chip">
+            <span class="ci" id="cat-bar-ico"></span>
+            <b id="cat-bar-name"></b>
+            <button type="button" id="btn-change-cat">Change</button>
+          </span>
+          <span class="b-head-note" id="cat-bar-hint"></span>
         </div>
-      </div>
 
-      <div class="panel">
-        <div class="panel-head"><h3>Commercials &amp; brand</h3></div>
-        <div class="panel-body">
-          <div class="field">
-            <span class="flabel">Payment type</span>
-            <div class="segmented" id="seg-payment" role="group" aria-label="Payment type"></div>
-            <p class="hint">IRF: &ldquo;Payment Type (Free/Paid)&rdquo;. Paid events price in <span class="mono">&#8377;</span> INR.</p>
+        <div class="sheet">
+
+          <div class="grp">
+            <div class="grp-h"><h4>Identity</h4><span class="ln"></span></div>
+            <div class="frow">
+              <div class="field c3" id="vertical-cell">
+                <label for="f-vertical">Vertical / Portal</label>
+                <select class="inp" id="f-vertical"></select>
+              </div>
+              <div class="field c4" id="name-cell">
+                <div class="flabel-row"><label for="f-name">Event / Microsite name</label><span class="pill-req">Required</span></div>
+                <input class="inp" id="f-name" type="text" placeholder="e.g. MarTech+ Summit 2026" autocomplete="off">
+              </div>
+              <div class="field c3" id="client-wrap" hidden>
+                <div class="flabel-row"><label for="f-client">Client / Sponsor</label><span class="pill-req">Required</span></div>
+                <input class="inp" id="f-client" type="text" placeholder="e.g. Tata Capital" autocomplete="off">
+              </div>
+              <div class="field c5" id="slug-cell">
+                <div class="flabel-row"><span class="flabel">URL slug</span><span class="pill-req">Required</span></div>
+                <div class="slug-row">
+                  <span class="slug-prefix">etoneworld.com/</span>
+                  <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
+                </div>
+                <div class="slug-meta"><div id="slug-status"></div><div id="slug-ai"></div></div>
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <span class="flabel">Event logo</span>
-            <button class="dropzone" id="logo-drop" type="button">
-              <span class="ico">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.9"/><path d="M3 17l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
-              </span>
-              <span class="t">Upload event logo</span>
-              <span class="s">PNG or SVG &middot; minimum 300&times;300 &middot; 1:1 square</span>
-            </button>
+
+          <div class="grp">
+            <div class="grp-h"><h4 id="sched-title">Event schedule</h4><span class="ln"></span><span class="grp-tag" id="sched-eyebrow"></span></div>
+            <div class="frow" id="sched-body"></div>
           </div>
+
+          <div class="grp" id="format-panel">
+            <div class="grp-h"><h4>Format, venue &amp; brand</h4><span class="ln"></span></div>
+            <div class="frow">
+              <div class="field c3">
+                <label for="f-type">Event type</label>
+                <select class="inp" id="f-type"></select>
+              </div>
+              <div class="field c4" id="venue-cell">
+                <div class="flabel-row"><label for="f-venue">Venue &amp; city</label><span class="pill-opt">Optional</span></div>
+                <input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Mumbai">
+              </div>
+              <div class="field c4" id="platform-wrap" hidden>
+                <label for="f-platform">Streaming platform</label>
+                <input class="inp" id="f-platform" type="text" placeholder="e.g. ET Oneworld Live Studio">
+              </div>
+              <div class="field c2">
+                <label for="f-payment" id="lbl-payment">Payment</label>
+                <select class="inp" id="f-payment"></select>
+              </div>
+              <div class="field c3">
+                <span class="flabel">Event logo</span>
+                <button class="dropzone" id="logo-drop" type="button">
+                  <span class="ico">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.9"/><path d="M3 17l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
+                  </span>
+                  <span class="t">Upload event logo</span>
+                  <span class="s">PNG or SVG &middot; 300&times;300 &middot; 1:1</span>
+                </button>
+              </div>
+            </div>
+            <p class="hint" id="payment-hint" style="margin-top:10px"></p>
+          </div>
+
+          <div class="grp" id="cat-panel" hidden>
+            <div class="grp-h"><h4 id="cat-panel-title"></h4><span class="ln"></span><span class="grp-tag" id="cat-panel-eyebrow"></span></div>
+            <div class="frow" id="cat-panel-body"></div>
+          </div>
+
         </div>
       </div>
     </section>
@@ -864,6 +976,68 @@
   var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
 
   /* =========================================================
+     EVENT CATEGORY MATRIX
+     How mainstream B2B event backends (Cvent, Swoogo, Bizzabo,
+     Hopin) model this: the category is not a label, it is a
+     switch. Each one turns a different set of fields on, and
+     each has its own idea of what "a date" even means — an IP
+     summit is planned to a quarter, an awards programme runs a
+     nomination window, a leadgen page often has no date at all.
+  ========================================================= */
+  var CAT_ICON = {
+    IP:      '<path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8z"/>',
+    Client:  '<rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V5.5a2 2 0 012-2h3a2 2 0 012 2v2"/><path d="M3 12.5h18"/>',
+    Awards:  '<path d="M7 4h10v4.5a5 5 0 01-10 0z"/><path d="M7 6H4.4a2.6 2.6 0 002.8 3M17 6h2.6a2.6 2.6 0 01-2.8 3"/><path d="M12 13.5V16M8.5 20h7"/>',
+    Leadgen: '<path d="M3.5 5h17l-6.6 7.6V20l-3.8-1.9v-5.5z"/>'
+  };
+
+  var CATS = {
+    IP: {
+      label: 'IP Event',
+      blurb: 'An ET-owned property — summit, conclave or roundtable we run ourselves.',
+      meta: 'Full section stack',
+      dateTitle: 'Event schedule',
+      dateModes: ['exact','month','quarter','tbd'],
+      defaultDateMode: 'exact',
+      venue: true, payment: true, nomination: false, campaign: false, client: false,
+      hint: 'IP: our own property, so the full section stack is offered by default. Lock an exact date, or keep it to a month or quarter while the edition is still being planned.'
+    },
+    Client: {
+      label: 'Client Event',
+      blurb: 'Run for a paying client or sponsor. Partner logos and contact blocks are pre-included.',
+      meta: 'Needs client name',
+      dateTitle: 'Event schedule',
+      dateModes: ['exact','month','tbd'],
+      defaultDateMode: 'exact',
+      venue: true, payment: true, nomination: false, campaign: false, client: true,
+      hint: 'Client: the sponsor name drives the “Presented by” lockup. Client dates are usually contracted, so an exact date is expected — but a month works while the contract is still moving.'
+    },
+    Awards: {
+      label: 'Awards',
+      blurb: 'A nomination-led programme. Entries, jury, shortlist, then a ceremony night.',
+      meta: 'Nomination window',
+      dateTitle: 'Awards ceremony',
+      dateModes: ['exact','month','quarter','tbd'],
+      defaultDateMode: 'month',
+      venue: true, payment: true, nomination: true, campaign: false, client: false,
+      hint: 'Awards: the nomination window is what the microsite actually sells early on — the ceremony date can stay undecided while entries are open.'
+    },
+    Leadgen: {
+      label: 'Leadgen',
+      blurb: 'A short one-screen capture page. Often evergreen, with no event date at all.',
+      meta: 'Date optional',
+      dateTitle: 'Event date',
+      dateModes: ['none','exact','month','tbd'],
+      defaultDateMode: 'none',
+      venue: false, payment: false, nomination: false, campaign: true, client: false,
+      hint: 'Leadgen: most of these are evergreen campaigns with no date to show. Add one only if this page is tied to a specific event.'
+    }
+  };
+
+  var DATE_MODE_LABEL = { exact: 'Exact date', month: 'Month only', quarter: 'Quarter', tbd: 'To be announced', none: 'No date' };
+  var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  /* =========================================================
      SEED CONTENT - realistic placeholder data per shape
   ========================================================= */
   function seed(id){
@@ -948,10 +1122,28 @@
   var S = {
     step: 1,
     basics: {
-      category: 'IP', vertical: VERTICALS[0], name: '', type: 'On-ground',
-      start: '', end: '', venue: '', city: '', platform: '', deadline: '',
+      category: 'IP', vertical: VERTICALS[0], name: '', client: '', type: 'On-ground',
+
+      /* --- flexible event date (B2B events are often booked before a date is fixed) --- */
+      dateMode: 'exact',        // exact | month | quarter | tbd | none
+      start: '', end: '',       // dateMode 'exact'
+      month: '',                // dateMode 'month'    -> 'YYYY-MM'
+      quarter: 'Q1', year: '',  // dateMode 'quarter'
+      dateNote: '',             // public copy shown while the date is undecided
+
+      venue: '', city: '', platform: '',
+
+      /* --- awards: nomination lifecycle, each stage independently deferrable --- */
+      nomOpen: '', nomOpenTbd: false,
+      nomClose: '', nomCloseTbd: false,
+      shortlist: '', shortlistTbd: true,
+
+      /* --- leadgen: campaign window instead of an event date --- */
+      campaignStart: '', campaignEnd: '', evergreen: true,
+
       payment: 'Paid', slug: '', slugTouched: false, logo: false
     },
+    catPicked: false,           // step 1 phase: false = category picker, true = the form
     path: null,                 // 'A' | 'B'
     template: null,             // template id
     sourceKind: 'figma',
@@ -989,7 +1181,30 @@
       if (!raw) return false;
       var d = JSON.parse(raw);
       if (!d || typeof d !== 'object') return false;
+
+      var defBasics = S.basics;                       // pristine defaults
       Object.keys(d).forEach(function(k){ S[k] = d[k]; });
+
+      /* A draft saved before the flexible-date fields existed is missing keys
+         the new step 1 relies on. Backfill from defaults, then migrate. */
+      var merged = {};
+      Object.keys(defBasics).forEach(function(k){ merged[k] = defBasics[k]; });
+      Object.keys(S.basics || {}).forEach(function(k){
+        if (S.basics[k] !== undefined) merged[k] = S.basics[k];
+      });
+
+      if (!CATS[merged.category]) merged.category = 'IP';
+      /* legacy single "deadline" field became the nomination window */
+      if (merged.deadline && !merged.nomClose){
+        merged.nomClose = merged.deadline;
+        merged.nomCloseTbd = false;
+      }
+      delete merged.deadline;
+      /* a legacy draft has no dateMode — infer one from what it did have */
+      if (CATS[merged.category].dateModes.indexOf(merged.dateMode) < 0){
+        merged.dateMode = merged.start ? 'exact' : CATS[merged.category].defaultDateMode;
+      }
+      S.basics = merged;
       return true;
     } catch(e){ return false; }
   }
@@ -1064,11 +1279,15 @@
     next.disabled = false;
 
     if (S.step === 1){
-      var b = S.basics;
-      var ready = b.name.trim() && b.slug.trim() && b.start && slugFree(b.slug);
-      next.disabled = !ready;
-      next.innerHTML = 'Continue ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
-      if (!ready) note.textContent = 'Event name, start date and a free URL slug are needed to continue.';
+      if (!S.catPicked){
+        next.hidden = true;
+        note.textContent = 'Choose an event category to open the Basic details form.';
+      } else {
+        var issue = basicsIssue(S.basics);
+        next.disabled = !!issue;
+        next.innerHTML = 'Continue ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+        note.textContent = issue;
+      }
     }
     else if (S.step === 2){
       next.disabled = !S.path;
@@ -1168,30 +1387,318 @@
     });
   }
 
+  /* ---------- flexible-date helpers ---------- */
+  function two(n){ return (n < 10 ? '0' : '') + n; }
+  function fmtD(v){
+    if (!v) return '';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    return d.getDate() + ' ' + MONTH_NAMES[d.getMonth()].slice(0,3) + ' ' + d.getFullYear();
+  }
+  function fmtDT(v){
+    if (!v) return '';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    var h = d.getHours(), ap = h >= 12 ? 'pm' : 'am', hh = h % 12;
+    if (!hh) hh = 12;
+    return fmtD(v) + ', ' + hh + ':' + two(d.getMinutes()) + ap;
+  }
+  function fmtMonth(v){
+    if (!v) return '';
+    var p = String(v).split('-'), mi = parseInt(p[1], 10) - 1;
+    if (isNaN(mi) || !MONTH_NAMES[mi]) return '';
+    return MONTH_NAMES[mi] + ' ' + p[0];
+  }
+
+  /* What the public microsite will actually print for the date. */
+  function eventDateLabel(b){
+    var m = b.dateMode;
+    if (m === 'none')    return '';
+    if (m === 'tbd')     return (b.dateNote || '').trim() || 'Date to be announced';
+    if (m === 'month')   return fmtMonth(b.month) || 'Month not picked yet';
+    if (m === 'quarter') return b.year ? (b.quarter + ' ' + b.year) : 'Quarter not picked yet';
+    if (!b.start)        return 'Date not picked yet';
+    var s = fmtD(b.start), e = b.end ? fmtD(b.end) : '';
+    return (e && e !== s) ? (s + ' – ' + e) : fmtDT(b.start);
+  }
+
+  /* Location line for previews — categories with no venue print nothing. */
+  function locLabel(b, fallback){
+    if (!CATS[b.category].venue) return '';
+    if (b.type === 'Virtual') return b.platform || (fallback ? 'Online' : '');
+    var v = [b.venue, b.city].filter(Boolean).join(', ');
+    return v || (fallback ? 'Venue TBC' : '');
+  }
+
+  /* A date is "complete" when the chosen mode has what it needs.
+     Deferred modes (tbd / none) are complete by definition - that
+     is the whole point of letting someone decide later. */
+  function dateComplete(b){
+    var m = b.dateMode;
+    if (m === 'none' || m === 'tbd') return true;
+    if (m === 'month')   return !!b.month;
+    if (m === 'quarter') return !!b.year;
+    return !!b.start;
+  }
+
+  function basicsIssue(b){
+    var C = CATS[b.category];
+    if (!b.name.trim())    return 'Event name is needed to continue.';
+    if (!b.slug.trim())    return 'A URL slug is needed to continue.';
+    if (!slugFree(b.slug)) return 'That slug is taken — pick another to continue.';
+    if (C.client && !b.client.trim()) return 'Client / sponsor name is needed for a client event.';
+    if (!dateComplete(b)){
+      if (b.dateMode === 'month')   return 'Pick the month, or switch the date to “To be announced”.';
+      if (b.dateMode === 'quarter') return 'Pick the quarter and year, or switch the date to “To be announced”.';
+      return 'A start date is needed — or switch the date to “To be announced”.';
+    }
+    if (C.nomination && !b.nomCloseTbd && !b.nomClose)
+      return 'Set the nomination close date, or mark it “Decide later”.';
+    return '';
+  }
+
+  /* ---------- small segmented control (value/label pairs) ---------- */
+  /* Fill a <select>. Accepts plain strings or {v,t} pairs. */
+  function selectFrom(el, opts, current, onPick){
+    if (!el) return;
+    el.innerHTML = opts.map(function(o){
+      var v = (o && o.v !== undefined) ? o.v : o;
+      var t = (o && o.t !== undefined) ? o.t : o;
+      return '<option value="' + esc(v) + '"' + (v === current ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('');
+    el.value = current;
+    el.onchange = function(){ onPick(el.value); };
+  }
+
   function applySmartDefaults(){
+    var b = S.basics, C = CATS[b.category], virtual = (b.type === 'Virtual');
+
+    $('venue-cell').hidden    = !(C.venue && !virtual);
+    $('platform-wrap').hidden = !(C.venue && virtual);
+    $('client-wrap').hidden   = !C.client;
+    /* identity packs onto one row; the client field borrows columns when shown */
+    $('vertical-cell').className = 'field c3';
+    $('name-cell').className     = 'field ' + (C.client ? 'c3' : 'c4');
+    $('slug-cell').className     = 'field ' + (C.client ? 'c3' : 'c5');
+
+    $('lbl-payment').textContent = C.nomination ? 'Entry fee' : 'Payment';
+    $('payment-hint').innerHTML  = C.nomination
+      ? 'Awards commonly charge per entry. Free keeps nominations open to everyone.'
+      : 'IRF: &ldquo;Payment Type (Free/Paid)&rdquo;. Paid events price in <span class="mono">&#8377;</span> INR.';
+
+    $('cat-bar-ico').innerHTML     = svg(CAT_ICON[b.category], 19);
+    $('cat-bar-name').textContent  = C.label;
+    $('cat-bar-hint').textContent  = C.hint;
+    $('sched-title').textContent   = C.dateTitle;
+    $('sched-eyebrow').textContent = DATE_MODE_LABEL[b.dateMode] || '';
+  }
+
+  /* ---------- schedule block: reshapes per date mode ---------- */
+  function renderSchedule(){
+    var b = S.basics, C = CATS[b.category], host = $('sched-body'), h = '';
+
+    h += '<div class="field c4">' +
+           '<label for="f-datemode">Date precision</label>' +
+           '<select class="inp" id="f-datemode"></select>' +
+         '</div>';
+
+    if (b.dateMode === 'exact'){
+      h += '<div class="field c4"><div class="flabel-row"><label for="f-start">Starts</label><span class="pill-req">Required</span></div>' +
+             '<input class="inp" id="f-start" type="datetime-local" value="' + esc(b.start) + '"></div>' +
+           '<div class="field c4"><div class="flabel-row"><label for="f-end">Ends</label><span class="pill-opt">Optional</span></div>' +
+             '<input class="inp" id="f-end" type="datetime-local" value="' + esc(b.end) + '"></div>';
+    }
+    else if (b.dateMode === 'month'){
+      h += '<div class="field c8"><div class="flabel-row"><label for="f-month">Month</label><span class="pill-req">Required</span></div>' +
+             '<input class="inp" id="f-month" type="month" value="' + esc(b.month) + '"></div>';
+    }
+    else if (b.dateMode === 'quarter'){
+      h += '<div class="field c4"><label for="f-quarter">Quarter</label><select class="inp" id="f-quarter"></select></div>' +
+           '<div class="field c4"><div class="flabel-row"><label for="f-year">Year</label><span class="pill-req">Required</span></div>' +
+             '<input class="inp" id="f-year" type="number" min="2024" max="2035" placeholder="2026" value="' + esc(b.year) + '"></div>';
+    }
+    else if (b.dateMode === 'tbd'){
+      h += '<div class="field c8"><label for="f-datenote">What the site shows meanwhile</label>' +
+             '<input class="inp" id="f-datenote" type="text" placeholder="Date to be announced" value="' + esc(b.dateNote) + '"></div>';
+    }
+    else if (b.dateMode === 'none'){
+      h += '<div class="field c8"><label>&nbsp;</label>' +
+             '<p class="hint" style="margin:0;line-height:34px">No date block will be rendered on the microsite.</p></div>';
+    }
+
+    host.innerHTML = h;
+
+    selectFrom($('f-datemode'), C.dateModes.map(function(m){ return { v: m, t: DATE_MODE_LABEL[m] }; }), b.dateMode, function(v){
+      b.dateMode = v; save(); initStep1(); renderFoot();
+    });
+
+    if (b.dateMode === 'quarter'){
+      selectFrom($('f-quarter'), ['Q1','Q2','Q3','Q4'], b.quarter, function(v){
+        b.quarter = v; save(); renderSchedule(); renderFoot();
+      });
+    }
+
+    [['f-start','start'],['f-end','end'],['f-month','month'],['f-year','year'],['f-datenote','dateNote']].forEach(function(pair){
+      var el = $(pair[0]);
+      if (!el) return;
+      el.oninput = function(){
+        b[pair[1]] = el.value;
+        $('sched-eyebrow').textContent = DATE_MODE_LABEL[b.dateMode] || '';
+        renderFoot(); save();
+      };
+      el.onchange = el.oninput;
+    });
+  }
+
+  /* ---------- category-specific panel ---------- */
+  function renderCatPanel(){
+    var b = S.basics, C = CATS[b.category], panel = $('cat-panel');
+    if (!C.nomination && !C.campaign){ panel.hidden = true; return; }
+    panel.hidden = false;
+    var body = $('cat-panel-body');
+
+    if (C.nomination){
+      $('cat-panel-title').textContent   = 'Nomination window';
+      $('cat-panel-eyebrow').textContent = 'Drives the entry CTA';
+
+      var stages = [
+        { k:'nomOpen',   t:'nomOpenTbd',   label:'Nominations open',    req:false, hint:'Leave deferred to open entries the moment the site goes live.' },
+        { k:'nomClose',  t:'nomCloseTbd',  label:'Nominations close',   req:true,  hint:'The deadline the microsite counts down to.' },
+        { k:'shortlist', t:'shortlistTbd', label:'Shortlist announced', req:false, hint:'Publish once the jury has met — usually unknown at launch.' }
+      ];
+
+      body.innerHTML = stages.map(function(s){
+        var isTbd = !!b[s.t], val = b[s.k] || '';
+        return '<div class="field c4"><div class="stage ' + (isTbd ? 'tbd' : (val ? 'set' : '')) + '">' +
+            '<div class="flabel-row">' +
+              '<label for="f-' + s.k + '">' + s.label + '</label>' +
+              '<span class="' + (s.req ? 'pill-req' : 'pill-opt') + '">' + (s.req ? 'Required' : 'Optional') + '</span>' +
+            '</div>' +
+            (isTbd
+              ? '<div class="dt-preview tbd"><span class="lb">Shows as</span><span>To be announced</span></div>'
+              : '<input class="inp" id="f-' + s.k + '" type="datetime-local" value="' + esc(val) + '">') +
+            '<button type="button" class="mini-toggle" data-tbd="' + s.t + '" aria-pressed="' + isTbd + '">' +
+              '<span class="track"><i></i></span>Decide later</button>' +
+          '</div></div>';
+      }).join('');
+
+      stages.forEach(function(s){
+        var el = $('f-' + s.k);
+        if (el){
+          el.oninput = function(){ b[s.k] = el.value; renderCatPanelDots(); renderFoot(); save(); };
+          el.onchange = el.oninput;
+        }
+      });
+    }
+
+    if (C.campaign){
+      $('cat-panel-title').textContent   = 'Campaign window';
+      $('cat-panel-eyebrow').textContent = 'When the page collects';
+      body.innerHTML =
+        '<div class="field ' + (b.evergreen ? 'c12' : 'c4') + '">' +
+          '<div class="flabel-row"><span class="flabel">Evergreen campaign</span>' +
+            '<button type="button" class="mini-toggle" data-tbd="evergreen" aria-pressed="' + !!b.evergreen + '">' +
+              '<span class="track"><i></i></span>Always on</button></div>' +
+          '<p class="hint">Evergreen pages stay live until you close them by hand &mdash; the usual choice for leadgen.</p>' +
+        '</div>' +
+        (b.evergreen ? '' :
+          '<div class="field c4"><label for="f-campaignStart">Campaign starts</label>' +
+            '<input class="inp" id="f-campaignStart" type="date" value="' + esc(b.campaignStart) + '"></div>' +
+          '<div class="field c4"><label for="f-campaignEnd">Campaign ends</label>' +
+            '<input class="inp" id="f-campaignEnd" type="date" value="' + esc(b.campaignEnd) + '"></div>');
+
+      ['campaignStart','campaignEnd'].forEach(function(k){
+        var el = $('f-' + k);
+        if (el){
+          el.oninput = function(){ b[k] = el.value; renderFoot(); save(); };
+          el.onchange = el.oninput;
+        }
+      });
+    }
+
+    /* shared: every "decide later" / on-off switch in this panel */
+    body.querySelectorAll('[data-tbd]').forEach(function(bt){
+      bt.addEventListener('click', function(){
+        var k = bt.getAttribute('data-tbd');
+        b[k] = !b[k];
+        save(); renderCatPanel(); renderFoot();
+      });
+    });
+  }
+
+  /* keep the timeline dots in sync without a full re-render */
+  function renderCatPanelDots(){
     var b = S.basics;
-    var virtual = (b.type === 'Virtual');
-    $('venue-wrap').hidden = virtual;
-    $('platform-wrap').hidden = !virtual;
-    $('deadline-wrap').hidden = (b.category !== 'Awards');
-    var hint = $('category-hint');
-    if (b.category === 'Awards') hint.textContent = 'Awards: a nomination deadline field was added below.';
-    else if (b.category === 'Leadgen') hint.textContent = 'Leadgen: the template picker will default to the short one-screen layout.';
-    else if (b.category === 'Client') hint.textContent = 'Client: partner logos and contact blocks are pre-included.';
-    else hint.textContent = 'IP: our own property — the full section stack is offered by default.';
+    var items = document.querySelectorAll('#cat-panel-body .stage');
+    var keys = [['nomOpen','nomOpenTbd'],['nomClose','nomCloseTbd'],['shortlist','shortlistTbd']];
+    for (var i = 0; i < items.length && i < keys.length; i++){
+      var val = b[keys[i][0]], isTbd = !!b[keys[i][1]];
+      items[i].className = 'stage ' + (isTbd ? 'tbd' : (val ? 'set' : ''));
+    }
+  }
+
+  /* ---------- phase 1 : the category picker screen ---------- */
+  function catThumb(k){
+    if (k === 'IP') return '<span class="b hero"></span>' +
+      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
+      '<span class="b row"></span><span class="b row half"></span>';
+    if (k === 'Client') return '<span class="b hero"></span>' +
+      '<span class="cols"><span class="b"></span><span class="b"></span></span>' +
+      '<span class="b row"></span>' +
+      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span></span>';
+    if (k === 'Awards') return '<span class="b hero"></span><span class="b pill"></span>' +
+      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
+      '<span class="b row half"></span>';
+    return '<span class="b hero"></span><span class="b row"></span><span class="b form"></span>';
+  }
+
+  function renderCatPicker(){
+    var b = S.basics, cg = $('cat-grid');
+    cg.innerHTML = Object.keys(CATS).map(function(k){
+      var C = CATS[k];
+      return '<button class="tpl-card" type="button" aria-pressed="' + (S.catPicked && k === b.category) + '" data-cat="' + k + '">' +
+          '<span class="tpl-thumb">' + catThumb(k) + '</span>' +
+          '<span class="tpl-info"><h4>' + esc(C.label) + '</h4>' +
+            '<span class="s">' + esc(C.blurb) + '</span>' +
+            '<span class="n">' + esc(C.meta) + '</span></span>' +
+        '</button>';
+    }).join('');
+    cg.querySelectorAll('[data-cat]').forEach(function(el){
+      el.addEventListener('click', function(){ pickCategory(el.getAttribute('data-cat')); });
+    });
+  }
+
+  function pickCategory(k){
+    var b = S.basics, C = CATS[k], changed = (k !== b.category);
+    b.category = k;
+    /* carry the date over only if the new category understands that mode */
+    if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
+    if (!C.payment) b.payment = 'Free';
+    S.catPicked = true;
+    save(); initStep1(); renderFoot();
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
+    toast(changed ? (C.label + ' selected — form updated') : (C.label + ' selected'));
   }
 
   function initStep1(){
     var b = S.basics;
 
-    segmented($('seg-category'), ['IP','Client','Awards','Leadgen'], b.category, function(v){
-      b.category = v; applySmartDefaults(); save(); initStep1();
+    renderCatPicker();
+    $('cat-picker').hidden  = !!S.catPicked;
+    $('basics-form').hidden = !S.catPicked;
+    if (!S.catPicked) return;   /* nothing else to wire while the picker is up */
+
+    $('btn-change-cat').onclick = function(){
+      S.catPicked = false;
+      save(); initStep1(); renderFoot();
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
+    };
+
+    selectFrom($('f-type'), ['On-ground','Virtual','Hybrid'], b.type, function(v){
+      b.type = v; applySmartDefaults(); save();
     });
-    segmented($('seg-type'), ['On-ground','Virtual','Hybrid'], b.type, function(v){
-      b.type = v; applySmartDefaults(); save(); initStep1();
-    });
-    segmented($('seg-payment'), ['Free','Paid'], b.payment, function(v){
-      b.payment = v; save(); initStep1();
+    selectFrom($('f-payment'), ['Free','Paid'], b.payment, function(v){
+      b.payment = v; save();
     });
 
     var vsel = $('f-vertical');
@@ -1210,10 +1717,12 @@
         $('f-slug').value = b.slug;
         renderSlugStatus(false);
       }
-      renderSlugAI();
-      renderFoot();
-      save();
+      renderSlugAI(); renderFoot(); save();
     };
+
+    var clientEl = $('f-client');
+    clientEl.value = b.client;
+    clientEl.oninput = function(){ b.client = clientEl.value; renderFoot(); save(); };
 
     var slugEl = $('f-slug');
     slugEl.value = b.slug;
@@ -1231,9 +1740,9 @@
       save();
     };
 
-    [['f-start','start'],['f-end','end'],['f-venue','venue'],['f-city','city'],['f-platform','platform'],['f-deadline','deadline']]
-    .forEach(function(pair){
+    [['f-venue','venue'],['f-platform','platform']].forEach(function(pair){
       var el = $(pair[0]);
+      if (!el) return;
       el.value = b[pair[1]] || '';
       el.oninput = function(){ b[pair[1]] = el.value; renderFoot(); save(); };
       el.onchange = el.oninput;
@@ -1247,13 +1756,13 @@
         '<span class="s">Click to replace</span>';
     }
     drop.onclick = function(){
-      b.logo = !b.logo;
-      save();
-      initStep1();
+      b.logo = !b.logo; save(); initStep1();
       toast(b.logo ? 'Logo attached (mocked upload)' : 'Logo removed');
     };
 
     applySmartDefaults();
+    renderSchedule();
+    renderCatPanel();
     renderSlugStatus(false);
     renderSlugAI();
   }
@@ -1552,8 +2061,7 @@
               '<span class="s">' + (d.banner ? 'Click to replace' : '1920&times;720 recommended &middot; JPG or PNG') + '</span>' +
             '</button></div>' +
           '<div class="callout plain">' + IC.info + '<span><strong>Auto-filled from Step 1</strong>' +
-            esc([S.basics.start ? fmtDate(S.basics.start) : 'Date pending',
-                 S.basics.type === 'Virtual' ? (S.basics.platform || 'Virtual') : (S.basics.city || 'Venue pending')].join('  ·  ')) +
+            esc([eventDateLabel(S.basics), locLabel(S.basics, true)].filter(Boolean).join('  ·  ') || 'No date set') +
             '</span></div>';
 
       case 'stats':
@@ -2500,8 +3008,7 @@
         return '<div class="prev-hero">' +
           '<h3>' + esc(d.title || b.name || 'Your event name') + '</h3>' +
           '<div class="tag">' + esc(d.tagline || '') + '</div>' +
-          '<div class="meta">' + esc([fmtDate(b.start) || 'Date TBC',
-            b.type === 'Virtual' ? (b.platform || 'Online') : ([b.venue, b.city].filter(Boolean).join(', ') || 'Venue TBC')].join('  ·  ')) + '</div>' +
+          '<div class="meta">' + esc([eventDateLabel(b), locLabel(b, true)].filter(Boolean).join('  ·  ')) + '</div>' +
           '<div class="btns"><span>' + esc(d.cta1 || 'Register') + '</span><span>' + esc(d.cta2 || 'Brochure') + '</span></div></div>';
       case 'stats':
         return '<div class="prev-sec prev-stats">' + (d.items||[]).map(function(it){
@@ -2643,17 +3150,29 @@
 
   function summaryRows(){
     var b = S.basics;
+    var C = CATS[b.category];
     var rows = [
-      ['Category', b.category],
+      ['Category', C.label],
       ['Vertical', b.vertical],
-      ['Type', b.type],
-      ['Starts', fmtDate(b.start) || '—'],
-      [b.type === 'Virtual' ? 'Platform' : 'Venue', b.type === 'Virtual' ? (b.platform || '—') : ([b.venue, b.city].filter(Boolean).join(', ') || '—')],
-      ['Payment', b.payment],
-      ['Path', S.path === 'A' ? 'Template — ' + (TEMPLATES.filter(function(t){ return t.id === S.template; })[0]||{}).name : 'Own design'],
-      ['Slug', '/' + (b.slug || '—')]
+      ['Type', b.type]
     ];
-    if (b.category === 'Awards' && b.deadline) rows.splice(4, 0, ['Nominations close', fmtDate(b.deadline)]);
+    if (C.client) rows.push(['Client', b.client || '—']);
+    rows.push([C.dateTitle, eventDateLabel(b) || 'Not shown']);
+    if (C.venue) rows.push([b.type === 'Virtual' ? 'Platform' : 'Venue', locLabel(b, false) || '—']);
+    if (C.nomination){
+      rows.push(['Nominations open',  b.nomOpenTbd   ? 'To be announced' : (fmtDate(b.nomOpen)   || '—')]);
+      rows.push(['Nominations close', b.nomCloseTbd  ? 'To be announced' : (fmtDate(b.nomClose)  || '—')]);
+      rows.push(['Shortlist',         b.shortlistTbd ? 'To be announced' : (fmtDate(b.shortlist) || '—')]);
+    }
+    if (C.campaign){
+      rows.push(['Campaign', b.evergreen ? 'Evergreen — always on'
+        : ([fmtD(b.campaignStart), fmtD(b.campaignEnd)].filter(Boolean).join(' – ') || '—')]);
+    }
+    rows.push([C.nomination ? 'Entry fee' : 'Payment', b.payment]);
+    rows.push(['Path', S.path === 'A'
+      ? 'Template — ' + ((TEMPLATES.filter(function(t){ return t.id === S.template; })[0] || {}).name || '—')
+      : 'Own design']);
+    rows.push(['Slug', '/' + (b.slug || '—')]);
     return rows.map(function(r){
       return '<div style="display:flex;gap:10px;font-size:12.5px">' +
         '<span class="faint" style="width:112px;flex-shrink:0;font-weight:700">' + esc(r[0]) + '</span>' +
