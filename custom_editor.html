@@ -288,6 +288,33 @@
   }
   .lyr-row .eye{ flex-shrink:0; color: var(--text-faint); background:none; border:none; padding:5px; border-radius:5px; display:flex; }
   .lyr-row .eye:hover{ background: var(--surface-3); color: var(--text); }
+  .lyr-row .lyr-menu-btn{ flex-shrink:0; color: var(--text-faint); background:none; border:none; padding:5px; border-radius:5px; display:flex; }
+  .lyr-row .lyr-menu-btn:hover{ background: var(--surface-3); color: var(--text); }
+  .lyr-menu{
+    position: fixed; z-index: 200; min-width: 168px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-lg); padding: 6px; display:flex; flex-direction:column; gap:1px;
+  }
+  .lyr-menu button{
+    text-align:left; padding: 8px 10px; border-radius:6px; border:none; background:none; font: inherit;
+    font-size:13px; font-weight:600; color: var(--text);
+  }
+  .lyr-menu button:hover{ background: var(--surface-2); }
+  .lyr-menu button.danger{ color: var(--crit); }
+  .lyr-menu button.danger:hover{ background: var(--crit-soft); }
+  .lyr-menu-sep{ height:1px; background: var(--border); margin: 5px 2px; }
+  .sched-pop{
+    position: fixed; z-index: 200; width: 240px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-lg); padding: 12px; display:flex; flex-direction:column; gap:8px;
+  }
+  .sched-pop label{ font-size:12px; font-weight:700; color: var(--text-muted); }
+  .sched-pop input[type="datetime-local"]{
+    width:100%; border:1px solid var(--border); border-radius:7px; padding:7px 8px; font: inherit; font-size:12.5px; color: var(--text);
+  }
+  .sched-pop-row{ display:flex; justify-content:space-between; gap:8px; margin-top:2px; }
+  .lyr-sched-badge{
+    display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color: var(--warn);
+    background: var(--warn-soft); border-radius:5px; padding:2px 6px; margin-left:6px; flex-shrink:0; white-space:nowrap;
+  }
 
   .lyr-row.placeholder{ opacity:.4; background: var(--surface-2); border: 1.5px dashed var(--border); border-left: 3px solid transparent; }
   .lyr-row.placeholder .grip{ cursor: grabbing; }
@@ -363,6 +390,14 @@
     background: var(--accent); color:#fff; padding:3px 8px; border-radius:5px; opacity:0; transition:opacity .12s ease; pointer-events:none;
   }
   .site-section:hover .sec-name-tag, .site-section.sec-active .sec-name-tag{ opacity:1; }
+  .sec-add-below{
+    position:absolute; left:50%; bottom:0; transform:translate(-50%, 50%); z-index:9;
+    width:30px; height:30px; border-radius:50%; border:none; background: var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center; box-shadow: var(--shadow-md);
+    opacity:0; pointer-events:none; transition: opacity .12s ease, transform .12s ease;
+  }
+  .sec-add-below:hover{ transform:translate(-50%, 50%) scale(1.1); }
+  .site-section:hover .sec-add-below, .site-section.sec-active .sec-add-below{ opacity:1; pointer-events:auto; }
 
   [data-editable]{ position:relative; cursor: pointer; border-radius: 2px; }
   [data-editable]:hover{ outline: 1.5px dashed #8aa; outline-offset: 2px; }
@@ -433,6 +468,26 @@
   .modal-body p{ font-size:13px; color: var(--text-muted); }
   .modal-body .url{ font-family: var(--font-mono); font-size:12.5px; background: var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:8px 12px; color: var(--accent-strong); font-weight:700; }
   .modal-foot{ padding: 14px 22px 22px; display:flex; gap:9px; justify-content:center; }
+
+  /* ---------- add-section source chooser ---------- */
+  .asc-modal{ max-width: 680px; text-align:left; position:relative; }
+  .asc-modal .icon-btn{ position:absolute; top:14px; right:14px; }
+  .asc-modal .modal-body{ align-items:stretch; padding: 26px 26px 24px; }
+  .asc-modal h3{ font-size:18px; text-align:center; }
+  .asc-modal > .modal-body > p{ text-align:center; margin: -4px 0 4px; }
+  .asc-cards{ display:flex; gap:12px; margin-top:6px; }
+  .asc-card{
+    flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left;
+    border:1.5px solid var(--border); border-radius:12px; padding:16px 14px; background:none; color: var(--text);
+    transition: border-color .12s ease, background .12s ease, transform .12s ease;
+  }
+  .asc-card:hover{ border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+  .asc-card .asc-ic{
+    width:36px; height:36px; border-radius:9px; background: var(--accent-soft); color: var(--accent-strong);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .asc-card h4{ font-size:13.5px; }
+  .asc-card p{ font-size:12px; color: var(--text-muted); line-height:1.45; }
 
   #toast-region{ position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index: 100; align-items:center; }
   .toast{
@@ -637,6 +692,29 @@
         <div class="lyr-list" id="lyr-list"></div>
       </div>
     </aside>
+
+    <!-- ============ SECTION ROW CONTEXT MENU ============ -->
+    <div class="lyr-menu" id="lyr-ctx-menu" hidden>
+      <button data-menu-action="add-above">Add section above</button>
+      <button data-menu-action="add-below">Add section below</button>
+      <div class="lyr-menu-sep"></div>
+      <button data-menu-action="rename">Rename</button>
+      <button data-menu-action="duplicate">Duplicate</button>
+      <button data-menu-action="hide" id="lyr-menu-hide">Hide section</button>
+      <button data-menu-action="schedule" id="lyr-menu-schedule">Schedule&hellip;</button>
+      <div class="lyr-menu-sep"></div>
+      <button data-menu-action="delete" class="danger">Delete</button>
+    </div>
+
+    <!-- ============ SCHEDULE POPOVER ============ -->
+    <div class="sched-pop" id="lyr-sched-pop" hidden>
+      <label for="lyr-sched-input">Go live at</label>
+      <input type="datetime-local" id="lyr-sched-input">
+      <div class="sched-pop-row">
+        <button class="btn btn-secondary btn-sm" id="lyr-sched-clear">Clear schedule</button>
+        <button class="btn btn-primary btn-sm" id="lyr-sched-save">Schedule</button>
+      </div>
+    </div>
 
     <!-- ============ DESIGN PANEL (floating tooltip off the rail) ============ -->
     <aside class="side-panel panel-popover" id="panel-design" hidden>
@@ -987,7 +1065,14 @@
     selectedEl = el;
     selectedEl.classList.add('ed-selected');
     var sec = el.closest('.site-section');
-    if (sec){ sec.classList.add('sec-active'); activeSectionEl = sec; syncSectionToolbar(); }
+    if (sec){
+      sec.classList.add('sec-active');
+      activeSectionEl = sec;
+      syncSectionToolbar();
+      rebuildLayersPanel();
+      var currentRow = lyrList.querySelector('.lyr-row.current');
+      if (currentRow) currentRow.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
     buildToolbar(el);
     positionToolbar(el);
   }
@@ -1162,6 +1247,14 @@
     }
     var addEndBtn = e.target.closest('#btn-add-section-end');
     if (addEndBtn){ openAdd(); return; }
+    var addBelowBtn = e.target.closest('.sec-add-below');
+    if (addBelowBtn){
+      var belowSec = addBelowBtn.closest('.site-section');
+      addSectionAnchor = { sec: belowSec, position: 'below' };
+      openAddSectionChooser();
+      e.stopPropagation();
+      return;
+    }
     var editable = e.target.closest('[data-editable]');
     if (editable){ selectElement(editable); e.stopPropagation(); }
     else { deselect(); }
@@ -1284,7 +1377,54 @@
     panel.hidden = true;
     railBtns.forEach(function(b){ b.classList.remove('active'); });
   });
-  function openAdd(){ openPanel('add'); }
+  function openAdd(){ openAddSectionChooser(); }
+
+  /* ---------- add-section source chooser ---------- */
+  function openAddSectionChooser(){
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML =
+      '<div class="modal asc-modal">' +
+      '<button class="icon-btn" id="asc-close" title="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '<div class="modal-body">' +
+      '<h3>How do you want to add this section?</h3>' +
+      '<div class="asc-cards">' +
+        '<button class="asc-card" data-choice="predefined">' +
+          '<span class="asc-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg></span>' +
+          '<h4>Predefined design</h4>' +
+          '<p>Pick a ready-made layout, or clone the design from another website.</p>' +
+        '</button>' +
+        '<button class="asc-card" data-choice="reference">' +
+          '<span class="asc-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></span>' +
+          '<h4>Design reference</h4>' +
+          '<p>Share a link or describe a design you like, and we&rsquo;ll build it.</p>' +
+        '</button>' +
+        '<button class="asc-card" data-choice="ai">' +
+          '<span class="asc-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z" fill="currentColor" stroke="none"/></svg></span>' +
+          '<h4>Create with AI</h4>' +
+          '<p>No design yet? Just share the content and a prompt, and Aria will draft it.</p>' +
+        '</button>' +
+      '</div>' +
+      '</div></div>';
+    document.body.appendChild(scrim);
+    scrim.addEventListener('click', function(e){ if (e.target === scrim) scrim.remove(); });
+    scrim.querySelector('#asc-close').addEventListener('click', function(){ scrim.remove(); });
+    scrim.querySelectorAll('.asc-card').forEach(function(card){
+      card.addEventListener('click', function(){
+        var choice = card.getAttribute('data-choice');
+        scrim.remove();
+        if (choice === 'predefined'){
+          openPanel('add');
+        } else if (choice === 'reference'){
+          var ref = prompt('Paste a link or describe the design you want to clone or reference:');
+          if (ref && ref.trim()) insertGeneratedSection('Section from design reference', ref.trim());
+        } else if (choice === 'ai'){
+          var brief = prompt('Describe the content for this section — Aria will draft it:');
+          if (brief && brief.trim()) insertGeneratedSection('AI-drafted section', brief.trim());
+        }
+      });
+    });
+  }
   document.getElementById('btn-media').addEventListener('click', function(){ showToast('Media library opens once the Media module ships.'); });
   document.getElementById('btn-apps').addEventListener('click', function(){ showToast('App marketplace is a prototype placeholder.'); });
 
@@ -1332,24 +1472,45 @@
     });
   });
 
+  function buildSectionShell(name, bodyHtml){
+    var sec = document.createElement('section');
+    sec.className = 'site-section';
+    sec.setAttribute('data-sec-name', name);
+    sec.innerHTML = '<span class="sec-name-tag">' + name + '</span>' +
+      '<div class="sec-toolbar">' +
+      '<button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+      '<button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
+      '<button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
+      '</div>' + bodyHtml + addSectionBelowMarkup();
+    return sec;
+  }
+
+  function insertSectionAtAnchor(sec, label){
+    if (addSectionAnchor){
+      if (addSectionAnchor.position === 'above') addSectionAnchor.sec.before(sec);
+      else addSectionAnchor.sec.after(sec);
+      addSectionAnchor = null;
+    } else {
+      var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
+      frame.insertBefore(sec, addRow);
+    }
+    pushHistory(); markSaving(); rebuildLayersPanel();
+    showToast('Added "' + label + '" section');
+    sec.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  function insertGeneratedSection(name, note){
+    var safeNote = note.replace(/</g, '&lt;');
+    var html = '<div class="s-cta-band"><h2 data-editable="text">' + name + '</h2>' +
+      '<p data-editable="text">' + safeNote + '</p></div>';
+    insertSectionAtAnchor(buildSectionShell(name, html), name);
+  }
+
   document.querySelectorAll('[data-add-section]').forEach(function(btn){
     btn.addEventListener('click', function(){
       var key = btn.getAttribute('data-add-section');
       var tpl = sectionTemplates[key];
-      var sec = document.createElement('section');
-      sec.className = 'site-section';
-      sec.setAttribute('data-sec-name', tpl.name);
-      sec.innerHTML = '<span class="sec-name-tag">' + tpl.name + '</span>' +
-        '<div class="sec-toolbar">' +
-        '<button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
-        '<button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
-        '<button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
-        '</div>' + tpl.html;
-      var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
-      frame.insertBefore(sec, addRow);
-      pushHistory(); markSaving(); rebuildLayersPanel();
-      showToast('Added "' + tpl.name + '" section');
-      sec.scrollIntoView({behavior:'smooth', block:'center'});
+      insertSectionAtAnchor(buildSectionShell(tpl.name, tpl.html), tpl.name);
     });
   });
 
@@ -1373,6 +1534,119 @@
 
   function isNavSection(sec){ return !!sec && sec.getAttribute('data-sec-name') === 'Navigation'; }
   function notifyNavPinned(){ showToast('Navigation stays pinned to the top of every page'); }
+
+  /* ---------- layers row "more options" menu ---------- */
+  var lyrCtxMenu = document.getElementById('lyr-ctx-menu');
+  var lyrCtxSec = null;
+  var lyrCtxBtn = null;
+  var addSectionAnchor = null;
+  function positionFloating(el, btn){
+    el.hidden = false;
+    var r = btn.getBoundingClientRect();
+    var w = el.offsetWidth || 200;
+    var left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    var top = Math.min(r.bottom + 4, window.innerHeight - el.offsetHeight - 8);
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+  }
+  function openLyrMenu(btn, sec){
+    lyrCtxSec = sec;
+    lyrCtxBtn = btn;
+    document.getElementById('lyr-menu-hide').textContent = sec.classList.contains('is-hidden-sec') ? 'Show section' : 'Hide section';
+    positionFloating(lyrCtxMenu, btn);
+  }
+  function closeLyrMenu(){ lyrCtxMenu.hidden = true; lyrCtxSec = null; }
+  document.addEventListener('mousedown', function(e){
+    if (lyrCtxMenu.hidden) return;
+    if (lyrCtxMenu.contains(e.target) || e.target.closest('.lyr-menu-btn')) return;
+    closeLyrMenu();
+  });
+  lyrCtxMenu.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-menu-action]');
+    if (!btn || !lyrCtxSec) return;
+    var action = btn.getAttribute('data-menu-action');
+    var sec = lyrCtxSec;
+    var anchorBtn = lyrCtxBtn;
+    if (action === 'rename'){
+      var current = sec.getAttribute('data-sec-name') || 'Section';
+      var name = prompt('Section name', current);
+      if (name && name.trim()){
+        sec.setAttribute('data-sec-name', name.trim());
+        pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
+        showToast('Section renamed');
+      }
+      closeLyrMenu();
+    } else if (action === 'add-above' || action === 'add-below'){
+      if (action === 'add-above' && isNavSection(sec)){ notifyNavPinned(); closeLyrMenu(); return; }
+      addSectionAnchor = { sec: sec, position: action === 'add-above' ? 'above' : 'below' };
+      closeLyrMenu();
+      openAddSectionChooser();
+    } else if (action === 'schedule'){
+      openSchedulePopover(sec, anchorBtn);
+    } else {
+      handleSectionAction(action, sec);
+      closeLyrMenu();
+    }
+  });
+
+  /* ---------- section scheduling ---------- */
+  var schedPop = document.getElementById('lyr-sched-pop');
+  var schedInput = document.getElementById('lyr-sched-input');
+  var schedSec = null;
+  function toLocalInputValue(d){
+    var pad = function(n){ return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function formatSchedule(iso){
+    var d = new Date(iso);
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  function openSchedulePopover(sec, anchorBtn){
+    schedSec = sec;
+    closeLyrMenu();
+    var existing = sec.getAttribute('data-scheduled-at');
+    schedInput.value = existing || toLocalInputValue(new Date(Date.now() + 60 * 60000));
+    positionFloating(schedPop, anchorBtn);
+    schedInput.focus();
+  }
+  function closeSchedulePopover(){ schedPop.hidden = true; schedSec = null; }
+  document.addEventListener('mousedown', function(e){
+    if (schedPop.hidden) return;
+    if (schedPop.contains(e.target) || e.target.closest('[data-menu-action="schedule"]')) return;
+    closeSchedulePopover();
+  });
+  document.getElementById('lyr-sched-save').addEventListener('click', function(){
+    if (!schedSec || !schedInput.value) return;
+    schedSec.setAttribute('data-scheduled-at', schedInput.value);
+    schedSec.classList.add('is-hidden-sec');
+    schedSec.style.display = 'none';
+    pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
+    showToast('Scheduled to go live ' + formatSchedule(schedInput.value));
+    closeSchedulePopover();
+  });
+  document.getElementById('lyr-sched-clear').addEventListener('click', function(){
+    if (!schedSec) return;
+    schedSec.removeAttribute('data-scheduled-at');
+    schedSec.classList.remove('is-hidden-sec');
+    schedSec.style.display = '';
+    pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
+    showToast('Schedule cleared');
+    closeSchedulePopover();
+  });
+  setInterval(function(){
+    var due = false;
+    frame.querySelectorAll('.site-section[data-scheduled-at]').forEach(function(sec){
+      if (new Date(sec.getAttribute('data-scheduled-at')) <= new Date()){
+        var name = sec.getAttribute('data-sec-name') || 'Section';
+        sec.removeAttribute('data-scheduled-at');
+        sec.classList.remove('is-hidden-sec');
+        sec.style.display = '';
+        showToast('"' + name + '" section is now live');
+        due = true;
+      }
+    });
+    if (due){ markSaving(); rebuildLayersPanel(); syncSectionToolbar(); }
+  }, 20000);
 
   function moveSectionBy(sec, dir){
     if (isNavSection(sec)){ notifyNavPinned(); return; }
@@ -1417,15 +1691,21 @@
           '<button class="arrow-up" title="Move up"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M5 15l7-7 7 7"/></svg></button>' +
           '<button class="arrow-down" title="Move down"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M5 9l7 7 7-7"/></svg></button>' +
         '</span>' +
-        '<button class="nm">' + (sec.getAttribute('data-sec-name') || 'Section') + '</button>' +
+        '<button class="nm">' + (sec.getAttribute('data-sec-name') || 'Section') +
+        (sec.hasAttribute('data-scheduled-at')
+          ? '<span class="lyr-sched-badge" title="Scheduled to go live ' + formatSchedule(sec.getAttribute('data-scheduled-at')) + '"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>' + formatSchedule(sec.getAttribute('data-scheduled-at')) + '</span>'
+          : '') +
+        '</button>' +
         '<button class="eye" title="Toggle visibility">' +
         (sec.classList.contains('is-hidden-sec')
           ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.5 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a13.6 13.6 0 0 1-3 3.6M6.3 6.9C3.9 8.6 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 3.4-.6"/></svg>'
           : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>') +
-        '</button>';
+        '</button>' +
+        '<button class="lyr-menu-btn" title="More options"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg></button>';
 
       row.insertBefore(buildSectionThumb(sec), row.querySelector('.nm'));
       row.querySelector('.eye').addEventListener('click', function(e){ e.stopPropagation(); handleSectionAction('hide', sec); });
+      row.querySelector('.lyr-menu-btn').addEventListener('click', function(e){ e.stopPropagation(); openLyrMenu(e.currentTarget, sec); });
       row.querySelector('.nm').addEventListener('click', function(e){
         e.stopPropagation();
         document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
@@ -1583,17 +1863,38 @@
     });
   });
 
-  /* ---------- preview mode ---------- */
+  /* ---------- preview in new tab ---------- */
   var btnPreview = document.getElementById('btn-preview');
   var previewBadge = document.getElementById('preview-badge');
+  function openPreviewInNewTab(){
+    var clone = frame.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.removeAttribute('style');
+    clone.querySelectorAll('#sel-toolbar, .sec-toolbar, .sec-name-tag, .sec-add-below, .add-sec-row').forEach(function(n){ n.remove(); });
+    clone.querySelectorAll('.site-section.is-hidden-sec').forEach(function(n){ n.remove(); });
+    clone.querySelectorAll('[data-editable]').forEach(function(el){
+      el.removeAttribute('data-editable');
+      el.removeAttribute('contenteditable');
+      el.classList.remove('ed-selected');
+    });
+    clone.querySelectorAll('.site-section').forEach(function(sec){ sec.classList.remove('sec-active'); });
+
+    var headTags = Array.prototype.map.call(document.querySelectorAll('link[rel="stylesheet"], style'), function(n){ return n.outerHTML; }).join('\n');
+    var doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
+      (document.getElementById('btn-site-picker') ? document.getElementById('btn-site-picker').textContent.trim() : 'Preview') +
+      ' — Preview</title>' + headTags +
+      '<style>body{background:#fff;overflow:auto;} .frame{max-width:100%;margin:0;box-shadow:none;border-radius:0;outline:none;}</style>' +
+      '</head><body>' + clone.outerHTML + '</body></html>';
+
+    var win = window.open('', '_blank');
+    if (!win){ showToast('Allow pop-ups to open the preview in a new tab.'); return; }
+    win.document.open();
+    win.document.write(doc);
+    win.document.close();
+  }
   btnPreview.addEventListener('click', function(){
-    previewMode = !previewMode;
-    document.body.classList.toggle('preview-mode', previewMode);
-    previewBadge.hidden = !previewMode;
     deselect();
-    btnPreview.textContent = previewMode ? 'Exit preview' : 'Preview';
-    btnPreview.classList.toggle('btn-primary', previewMode);
-    btnPreview.classList.toggle('btn-secondary', !previewMode);
+    openPreviewInNewTab();
   });
 
   /* ---------- publish ---------- */
@@ -1668,6 +1969,12 @@
   });
 
   /* ---------- init ---------- */
+  function addSectionBelowMarkup(){
+    return '<button class="sec-add-below" title="Add section below"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>';
+  }
+  frame.querySelectorAll('.site-section').forEach(function(sec){
+    if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
+  });
   rebuildLayersPanel();
   syncSectionToolbar();
 })();
