@@ -14,12 +14,14 @@
     --text-muted: #6C6A60;
     --text-faint: #9B988D;
 
-    --accent: #4A47D9;
-    --accent-strong: #3934C4;
-    --accent-soft: #ECEBFB;
+    --accent: #FF0035;
+    --accent-strong: #D6002C;
+    --accent-soft: #FFE3E8;
     --accent-contrast: #FFFFFF;
 
-    --brand-red: #E11F30;
+    --brand-red: #FF0035;
+    --draft: #8A7A99;
+    --draft-soft: #EEE8F2;
 
     --ok: #16794F;
     --ok-soft: #E4F5EC;
@@ -27,6 +29,13 @@
     --warn-soft: #FBF0DA;
     --crit: #C13333;
     --crit-soft: #FBE8E7;
+
+    --tag-blue: #1D5FA3; --tag-blue-soft: #E3EEFB;
+    --tag-teal: #0E7C6B; --tag-teal-soft: #E0F5F0;
+    --tag-violet: #7A3FA0; --tag-violet-soft: #F1E7F8;
+    --tag-cyan: #0E7490; --tag-cyan-soft: #DFF4F8;
+    --tag-amber: #9C6B0B; --tag-amber-soft: #F7EEDA;
+    --tag-rose: #B23A6B; --tag-rose-soft: #FBE7EF;
 
     --shadow-xs: 0 1px 2px rgba(20,18,12,0.05);
     --shadow-sm: 0 3px 8px -2px rgba(20,18,12,0.08);
@@ -43,18 +52,30 @@
     :root:not([data-theme="light"]){
       --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
       --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
-      --accent:#7C79F0; --accent-strong:#9491F5; --accent-soft:#232066; --accent-contrast:#0C0B1A;
-      --brand-red:#F0596A;
+      --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+      --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
       --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+      --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
+      --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+      --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38;
+      --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+      --tag-amber:#E8C069; --tag-amber-soft:#332711;
+      --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
       --shadow-sm:0 3px 8px -2px rgba(0,0,0,.4); --shadow-md:0 16px 34px -14px rgba(0,0,0,.55); --shadow-lg:0 32px 64px -24px rgba(0,0,0,.7);
     }
   }
   :root[data-theme="dark"]{
     --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
     --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
-    --accent:#7C79F0; --accent-strong:#9491F5; --accent-soft:#232066; --accent-contrast:#0C0B1A;
-    --brand-red:#F0596A;
+    --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+    --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
     --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+    --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
+    --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+    --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38;
+    --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+    --tag-amber:#E8C069; --tag-amber-soft:#332711;
+    --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
     --shadow-sm:0 3px 8px -2px rgba(0,0,0,.4); --shadow-md:0 16px 34px -14px rgba(0,0,0,.55); --shadow-lg:0 32px 64px -24px rgba(0,0,0,.7);
   }
 
@@ -93,24 +114,38 @@
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
   /* ---------- layout shell ---------- */
-  .app{ max-width:1240px; margin:0 auto; padding:28px 24px 70px; display:flex; flex-direction:column; gap:18px; }
-  .brand-row{ display:flex; align-items:center; gap:9px; margin-bottom:2px; }
-  .brand-row .mark{ width:24px; height:24px; border-radius:6px; background:var(--accent); color:var(--accent-contrast); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:700; font-size:12px; position:relative; }
-  .brand-row .mark::after{ content:""; position:absolute; top:-2px; right:-2px; width:7px; height:7px; border-radius:50%; background:var(--brand-red); border:1.5px solid var(--bg); }
-  .brand-row .word{ font-size:13px; font-weight:700; color:var(--text-muted); letter-spacing:.01em; }
-  .brand-row .word b{ color:var(--text); }
+  .app{ max-width:1240px; margin:0 auto; padding:0 24px 70px; display:flex; flex-direction:column; gap:12px; }
 
-  /* ---------- header ---------- */
-  .page-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-  .page-header h1{ font-size:27px; letter-spacing:-0.01em; }
-  .ph-sub{ color:var(--text-muted); font-size:13.5px; margin-top:4px; }
-  .ph-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  /* ---------- main portal navigation (sticky, full-bleed, single row) ---------- */
+  .main-nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:60; }
+  .main-nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:16px; padding:0 24px; }
+  .main-nav-brand{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
+  .brand-logo-img{ height:28px; width:auto; display:block; }
+
+  .main-nav-scroll{ flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; }
+  .main-nav-scroll::-webkit-scrollbar{ display:none; }
+  .main-nav-links{ display:flex; align-items:center; gap:2px; }
+  .main-nav-links a, .mp-btn{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); white-space:nowrap; background:none; border:none; font-family:var(--font-body); cursor:pointer; flex-shrink:0; }
+  .main-nav-links a svg, .mp-btn svg{ flex-shrink:0; opacity:.75; }
+  .main-nav-links a:hover, .mp-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .main-nav-links a.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; }
+  .main-nav-links a.active svg{ opacity:1; }
+  .main-nav-more{ flex-shrink:0; }
+
+  .main-nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .avatar-btn{ width:34px; height:34px; border-radius:50%; border:none; background:none; padding:0; display:flex; align-items:center; justify-content:center; }
+  .avatar-circle{ width:100%; height:100%; border-radius:50%; background:var(--accent); color:var(--accent-contrast); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; font-family:var(--font-display); }
+
+  /* ---------- section bar: tabs + actions, one compact row ---------- */
+  .section-bar{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:10px 0 0; border-bottom:1px solid var(--border); }
+  .section-bar-left{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .section-bar-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; padding-bottom:8px; }
   .sync-btn{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-faint); font-weight:600; padding:6px 9px; border-radius:7px; background:none; border:none; }
   .sync-btn:hover{ background:var(--surface-2); color:var(--text-muted); }
 
   /* ---------- tabs ---------- */
-  .tabs-row{ display:flex; align-items:center; gap:4px; border-bottom:1px solid var(--border); position:relative; }
-  .tabs-row button{ position:relative; background:none; border:none; padding:10px 4px; margin-right:22px; font-size:13.5px; font-weight:600; color:var(--text-muted); display:flex; align-items:center; gap:7px; }
+  .tabs-row{ display:flex; align-items:center; gap:4px; position:relative; }
+  .tabs-row button{ position:relative; background:none; border:none; padding:8px 4px; margin-right:18px; font-size:13.5px; font-weight:600; color:var(--text-muted); display:flex; align-items:center; gap:7px; }
   .tabs-row button:hover{ color:var(--text); }
   .tabs-row button .tc{ font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-faint); background:var(--surface-2); border-radius:100px; padding:1px 7px; }
   .tabs-row button[aria-selected="true"]{ color:var(--text); }
@@ -186,60 +221,94 @@
   .chip-clear{ font-size:12px; font-weight:700; color:var(--text-faint); background:none; border:none; text-decoration:underline; }
   .chip-clear:hover{ color:var(--text); }
 
-  .result-line{ font-size:12.5px; color:var(--text-faint); }
+  .result-line{ font-size:12.5px; color:var(--text-faint); white-space:nowrap; flex-shrink:0; }
 
   /* ---------- table ---------- */
-  .table-wrap{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:auto; box-shadow:var(--shadow-xs); }
-  table.ev-table{ width:100%; border-collapse:collapse; font-size:13.5px; min-width:820px; }
-  .ev-table thead th{ position:sticky; top:0; background:var(--surface); z-index:2; text-align:left; padding:12px 16px; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-faint); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .table-wrap{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:auto; box-shadow:var(--shadow-sm); }
+  table.ev-table{ width:100%; border-collapse:separate; border-spacing:0; font-size:13.5px; min-width:900px; }
+  .ev-table thead th{ position:sticky; top:0; background:var(--surface-2); z-index:2; text-align:left; padding:13px 16px; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); border-bottom:1px solid var(--border-strong); white-space:nowrap; }
   .ev-table th.sortable{ cursor:pointer; user-select:none; }
-  .ev-table th.sortable:hover{ color:var(--text-muted); }
+  .ev-table th.sortable:hover{ color:var(--text); }
   .ev-table th .sort-ic{ margin-left:4px; opacity:.4; }
   .ev-table th.sorted .sort-ic{ opacity:1; color:var(--accent); }
-  .ev-table td{ padding:14px 16px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .ev-table td{ padding:16px; border-bottom:1px solid var(--border); vertical-align:top; }
   .ev-table tbody tr{ transition:background .12s ease; cursor:pointer; }
+  .ev-table tbody tr td:first-child{ box-shadow:inset 3px 0 0 transparent; transition:box-shadow .12s ease; }
+  .ev-table tbody tr.st-upcoming td:first-child{ box-shadow:inset 3px 0 0 var(--accent); }
+  .ev-table tbody tr.st-active td:first-child{ box-shadow:inset 3px 0 0 var(--ok); }
+  .ev-table tbody tr.st-completed td:first-child{ box-shadow:inset 3px 0 0 var(--text-faint); }
+  .ev-table tbody tr.st-cancelled td:first-child{ box-shadow:inset 3px 0 0 var(--warn); }
+  .ev-table tbody tr.st-draft td:first-child{ box-shadow:inset 3px 0 0 var(--draft); }
+  .ev-table tbody tr.st-deleted td:first-child{ box-shadow:inset 3px 0 0 var(--crit); }
   .ev-table tbody tr:hover{ background:var(--surface-2); }
   .ev-table tbody tr:last-child td{ border-bottom:none; }
-  .ev-table tbody tr:hover .row-actions .icon-btn{ opacity:1; }
 
-  .ev-name-cell{ display:flex; gap:10px; align-items:flex-start; min-width:230px; }
-  .status-dot{ width:8px; height:8px; border-radius:50%; margin-top:6px; flex-shrink:0; }
+  .ev-name-cell{ display:flex; gap:11px; align-items:flex-start; min-width:250px; }
+  .status-dot{ width:9px; height:9px; border-radius:50%; margin-top:7px; flex-shrink:0; }
   .status-dot.upcoming{ background:var(--accent); }
   .status-dot.active{ background:var(--ok); }
   .status-dot.completed{ background:var(--text-faint); }
-  .status-dot.draft{ background:var(--warn); }
+  .status-dot.cancelled{ background:var(--warn); }
+  .status-dot.draft{ background:var(--draft); }
   .status-dot.deleted{ background:var(--crit); }
-  .ev-name-main a.ev-link{ font-weight:600; font-size:14px; color:var(--text); }
-  .ev-name-main a.ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
-  .ev-meta-line{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); margin-top:3px; flex-wrap:wrap; }
+  .ev-name-main{ min-width:0; }
+  .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:inline; cursor:pointer; }
+  .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
+  .ev-meta-line{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); margin-top:7px; flex-wrap:wrap; }
   .ev-meta-line .dotsep{ color:var(--text-faint); }
-  .ev-tag{ font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--text-faint); background:var(--surface-2); border-radius:5px; padding:1px 6px; }
+  .ev-tag{ font-size:10.5px; font-weight:800; letter-spacing:.02em; border-radius:100px; padding:3px 10px; }
+  .ev-tag-blue{ color:var(--tag-blue); background:var(--tag-blue-soft); }
+  .ev-tag-teal{ color:var(--tag-teal); background:var(--tag-teal-soft); }
+  .ev-tag-violet{ color:var(--tag-violet); background:var(--tag-violet-soft); }
+  .ev-tag-cyan{ color:var(--tag-cyan); background:var(--tag-cyan-soft); }
+  .ev-tag-amber{ color:var(--tag-amber); background:var(--tag-amber-soft); }
+  .ev-tag-rose{ color:var(--tag-rose); background:var(--tag-rose-soft); }
 
   .ev-date-cell .d1{ font-weight:600; font-size:13.5px; }
   .ev-date-cell .d2{ font-size:12px; color:var(--text-muted); margin-top:2px; }
   .ev-date-cell .d3{ font-size:11px; color:var(--accent-strong); margin-top:3px; font-weight:700; }
   .ev-date-cell .unset{ color:var(--text-faint); font-style:italic; }
+  .vis-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
   .live-tag{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:var(--ok); }
   .live-tag i{ width:6px; height:6px; border-radius:50%; background:var(--ok); animation:pulse 1.6s ease infinite; }
   @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
 
-  .reg-num{ font-weight:700; font-size:14px; }
-  .reg-pct{ font-size:11.5px; font-weight:700; margin-top:2px; }
-  .reg-pct.ok{ color:var(--ok); } .reg-pct.warn{ color:var(--warn); } .reg-pct.crit{ color:var(--crit); }
-  .reg-bar{ height:4px; border-radius:100px; background:var(--surface-3); margin-top:6px; width:96px; overflow:hidden; }
-  .reg-bar i{ display:block; height:100%; border-radius:100px; }
-  .reg-bar i.ok{ background:var(--ok); } .reg-bar i.warn{ background:var(--warn); } .reg-bar i.crit{ background:var(--crit); }
+  .reg-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
 
-  .vis-num{ font-weight:700; font-size:14px; }
-
-  .pay-amt{ font-weight:700; font-size:14px; }
+  .pay-amt{ font-weight:700; font-size:14.5px; }
   .pay-sub{ font-size:11.5px; color:var(--text-faint); margin-top:2px; }
   .pay-free{ color:var(--text-faint); font-weight:600; }
 
   .row-actions{ text-align:right; position:relative; }
-  .row-actions .icon-btn{ opacity:0; transition:opacity .12s ease, background .12s ease, color .12s ease; margin-left:auto; }
-  .row-actions .icon-btn.force-show, .row-actions .icon-btn:focus-visible{ opacity:1; }
+  .row-action-group{ display:inline-flex; align-items:center; gap:6px; }
+  .row-actions .icon-btn{ transition:transform .12s ease, background .12s ease, color .12s ease, border-color .12s ease; }
   .row-menu{ right:16px; left:auto; top:44px; }
+
+  .qa-btn{ border:1px solid transparent; }
+  .qa-btn:hover{ transform:translateY(-1px); }
+  .qa-edit{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .qa-edit:hover{ background:var(--tag-blue); color:#fff; }
+  .qa-view{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .qa-view:hover{ background:var(--tag-teal); color:#fff; }
+  .qa-report{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .qa-report:hover{ background:var(--tag-violet); color:#fff; }
+
+  /* ---------- QR code modal ---------- */
+  .qr-pick-row{ display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); padding:12px 14px; transition:border-color .12s ease, background .12s ease; }
+  .qr-pick-row:hover{ border-color:var(--accent); background:var(--accent-soft); }
+  .qr-pick-row:hover .qr-pick-ic{ color:var(--accent-strong); }
+  .qr-pick-ic{ width:34px; height:34px; border-radius:9px; background:var(--surface); color:var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:color .12s ease; }
+  .qr-pick-text{ flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .qr-pick-label{ font-weight:700; font-size:13px; color:var(--text); }
+  .qr-pick-hint{ font-size:11.5px; color:var(--text-muted); }
+  .qr-pick-chev{ color:var(--text-faint); transform:rotate(-90deg); flex-shrink:0; }
+  .qr-img-wrap{ display:flex; justify-content:center; padding:6px 0 2px; }
+  .qr-img{ border-radius:12px; border:1px solid var(--border); padding:10px; background:#fff; }
+
+  /* ---------- venue quick-view tooltip ---------- */
+  .venue-pop{ position:fixed; top:0; left:0; width:auto; max-width:260px; min-width:0; padding:9px 12px; display:flex; flex-direction:column; gap:6px; z-index:60; background:var(--text); border:none; border-radius:8px; box-shadow:var(--shadow-md); }
+  .venue-pop-row{ display:flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:var(--bg); line-height:1.3; }
+  .venue-pop-row svg{ color:var(--bg); opacity:.7; flex-shrink:0; }
 
   [data-tooltip]{ position:relative; }
   [data-tooltip]:hover::after, [data-tooltip]:focus-visible::after{
@@ -279,7 +348,10 @@
   .segmented.sm{ padding:2px; flex-shrink:0; }
   .segmented.sm button{ padding:5px 10px; font-size:11px; }
 
-  .seg-insight{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--accent-strong); background:var(--accent-soft); border-radius:8px; padding:8px 10px; margin-bottom:14px; }
+  .seg-select{ padding:6px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--text); }
+  .seg-select-event{ min-width:170px; max-width:260px; }
+  .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .seg-insight{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--accent-strong); background:var(--accent-soft); border-radius:8px; padding:9px 11px; margin-bottom:16px; line-height:1.4; }
   .seg-insight svg{ flex-shrink:0; }
   .seg-list{ display:flex; flex-direction:column; gap:12px; }
   .seg-row{ display:flex; align-items:center; gap:10px; }
@@ -290,36 +362,76 @@
   .seg-name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .seg-val{ font-weight:700; flex-shrink:0; }
   .seg-bar-track{ height:6px; border-radius:100px; background:var(--surface-3); overflow:hidden; }
-  .seg-bar-fill{ height:100%; border-radius:100px; background:linear-gradient(90deg, var(--accent), var(--accent-strong)); }
+  .seg-bar-fill{ height:100%; border-radius:100px; }
+  .seg-chart-row{ display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
+  .seg-donut{ flex-shrink:0; }
+  .seg-legend{ display:flex; flex-direction:column; gap:11px; flex:1; min-width:170px; }
+  .seg-legend-row{ display:flex; align-items:center; gap:9px; font-size:12.5px; }
+  .seg-swatch{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .seg-legend-label{ flex:1; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .seg-legend-val{ font-weight:700; font-family:var(--font-mono); flex-shrink:0; }
+  .seg-legend-pct{ color:var(--text-faint); font-size:11px; width:36px; text-align:right; flex-shrink:0; }
 
-  .activity-list{ display:flex; flex-direction:column; }
-  .activity-row{ display:flex; gap:10px; padding:9px 0; }
-  .activity-row + .activity-row{ border-top:1px dashed var(--border); }
-  .avatar-sm{ width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent-strong); font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-family:var(--font-display); }
-  .activity-main{ flex:1; min-width:0; }
-  .activity-text{ font-size:12.5px; line-height:1.4; }
-  .activity-text .path{ color:var(--text-muted); }
-  .activity-meta-row{ display:flex; align-items:center; gap:7px; margin-top:3px; }
-  .activity-when{ font-size:11px; color:var(--text-faint); }
-  .activity-count{ font-size:10px; font-weight:700; color:var(--accent-strong); background:var(--accent-soft); border-radius:100px; padding:1px 6px; }
+  .metric-list{ display:flex; flex-direction:column; }
+  .metric-row{ display:flex; align-items:center; gap:12px; padding:11px 0; }
+  .metric-row + .metric-row{ border-top:1px dashed var(--border); }
+  .metric-icon{ width:32px; height:32px; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .metric-label{ flex:1; font-size:12.5px; font-weight:600; color:var(--text-muted); min-width:0; }
+  .metric-value{ font-weight:700; font-size:17px; letter-spacing:-0.01em; }
 
-  /* ---------- mobile cards ---------- */
+  /* ---------- view toggle (list / grid) ---------- */
+  .view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
+  .view-toggle button{ width:28px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; color:var(--text-muted); }
+  .view-toggle button:hover{ color:var(--text); }
+  .view-toggle button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); }
+
+  #results-view.view-list .table-wrap{ display:block; }
+  #results-view.view-list .card-list{ display:none; }
+  #results-view.view-grid .table-wrap{ display:none; }
+  #results-view.view-grid .card-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); gap:14px; }
+
+  /* ---------- help / support ---------- */
+  .help-fab{ position:fixed; bottom:22px; left:22px; z-index:80; display:flex; align-items:center; gap:8px; padding:11px 16px; border-radius:100px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--shadow-md); font-size:13px; font-weight:700; color:var(--text); }
+  .help-fab:hover{ border-color:var(--accent); color:var(--accent-strong); }
+  .modal-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:90; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal-card{ background:var(--surface); border-radius:var(--r-lg); max-width:440px; width:100%; box-shadow:var(--shadow-lg); overflow:hidden; }
+  .modal-card-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .modal-card-head h3{ font-size:16px; }
+  .modal-card-head p{ font-size:12px; color:var(--text-muted); margin-top:3px; }
+  .modal-card-body{ padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  .modal-card-foot{ padding:12px 18px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .finput{ width:100%; padding:9px 11px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:13.5px; font-family:var(--font-body); }
+  textarea.finput{ resize:vertical; min-height:90px; line-height:1.5; }
+  .finput:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .flabel{ display:block; font-size:11.5px; font-weight:700; color:var(--text-muted); margin-bottom:5px; }
+  .email-row{ display:flex; align-items:center; gap:8px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:var(--font-mono); font-size:12px; }
+  .email-row button{ margin-left:auto; background:none; border:none; color:var(--text-muted); display:flex; flex-shrink:0; }
+  .email-row button:hover{ color:var(--accent-strong); }
+
+  /* ---------- mobile / grid cards ---------- */
   .card-list{ display:none; flex-direction:column; gap:12px; }
-  .ev-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:14px 16px; display:flex; flex-direction:column; gap:9px; }
-  .ev-card-top{ display:flex; align-items:flex-start; gap:9px; }
-  .ev-card-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12.5px; }
-  .ev-card-grid .k{ color:var(--text-faint); font-size:11px; text-transform:uppercase; letter-spacing:.04em; font-weight:700; }
-  .ev-card-foot{ display:flex; align-items:center; justify-content:space-between; padding-top:8px; border-top:1px solid var(--border); }
+  .ev-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; display:flex; flex-direction:column; gap:12px; transition:box-shadow .15s ease, border-color .15s ease, transform .15s ease; }
+  .ev-card:hover{ border-color:var(--border-strong); box-shadow:var(--shadow-sm); transform:translateY(-1px); }
+  .ev-card-top{ display:flex; align-items:flex-start; gap:10px; }
+  .ev-card-top .ev-name-main{ flex:1; min-width:0; }
+  .ev-card-info{ display:flex; flex-direction:column; gap:10px; padding-top:11px; border-top:1px solid var(--border); }
+  .ev-info-row{ display:flex; align-items:center; gap:16px; }
+  .ev-info-item{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text-muted); flex:1; min-width:0; }
+  .ev-info-item svg{ color:var(--text-faint); flex-shrink:0; }
+  .ev-info-item .v{ color:var(--text); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ev-info-item .v.faint2{ color:var(--text-faint); font-weight:600; font-style:italic; }
+  .ev-card-foot{ display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--text-faint); }
 
   .bottom-sheet-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:70; display:flex; align-items:flex-end; }
   .bottom-sheet{ background:var(--surface); width:100%; border-radius:16px 16px 0 0; max-height:82vh; overflow-y:auto; padding:16px; box-shadow:var(--shadow-lg); }
   .bottom-sheet-handle{ width:36px; height:4px; border-radius:100px; background:var(--border-strong); margin:0 auto 14px; }
 
   @media (max-width:880px){
-    .table-wrap{ display:none; }
-    .card-list{ display:flex; }
+    .table-wrap{ display:none !important; }
+    .card-list{ display:flex !important; flex-direction:column; gap:12px; }
     .toolbar .toolbar-btn.desk-only{ display:none; }
     .search-box{ max-width:none; flex:1; }
+    .view-toggle{ display:none; }
   }
   @media (min-width:881px){ .mobile-only{ display:none !important; } }
 
@@ -332,23 +444,67 @@
   @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
 
-<div class="app">
-  <div class="brand-row">
-    <span class="mark">R</span>
-    <span class="word"><b>Revamp</b> &middot; Events</span>
-  </div>
+<header class="main-nav">
+  <div class="main-nav-inner">
+    <a class="main-nav-brand" href="index.html">
+      <img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">
+    </a>
 
-  <header class="page-header">
-    <div>
-      <h1>Events</h1>
-      <p class="ph-sub">Manage, monitor and track all your events from one place.</p>
+    <div class="main-nav-scroll">
+      <nav class="main-nav-links">
+        <a href="index.html">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+          Dashboard
+        </a>
+        <a href="index.html">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5.5-5.5L5 20"/></svg>
+          Webinars
+        </a>
+        <a href="index.html">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3v18"/><path d="M4 4h13l-3 4.5L17 13H4"/></svg>
+          Marketing Dashboard
+        </a>
+        <a href="Event_Listing.html" class="active">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
+          Events
+        </a>
+        <a href="index.html">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H5a2 2 0 0 0 0 4h2"/><path d="M17 6h2a2 2 0 0 1 0 4h-2"/></svg>
+          Awards
+        </a>
+      </nav>
     </div>
-    <div class="ph-right">
+
+    <div class="main-nav-more popover-wrap">
+      <button class="mp-btn" id="btn-more-products">
+        More Products
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="popover right" id="more-products-menu" hidden></div>
+    </div>
+
+    <div class="main-nav-right">
+      <div class="popover-wrap">
+        <button class="avatar-btn" id="btn-profile" aria-haspopup="true" aria-label="Account">
+          <span class="avatar-circle">AD</span>
+        </button>
+        <div class="popover right" id="profile-menu" hidden></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="app">
+  <div class="section-bar">
+    <div class="section-bar-left">
+      <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
+    </div>
+    <div class="section-bar-right">
       <button class="sync-btn" id="btn-sync" data-tooltip="Refresh event data">
         <svg id="sync-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
         <span id="sync-label">Updated 2 min ago</span>
       </button>
-      <a class="btn btn-primary" href="create-event.html">
+      <a class="btn btn-primary btn-sm" href="create-event.html">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
         Create Event
       </a>
@@ -359,15 +515,13 @@
         <div class="popover right" id="more-menu" hidden></div>
       </div>
     </div>
-  </header>
+  </div>
 
   <div id="error-slot"></div>
 
-  <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
-
   <div id="special-banner"></div>
 
-  <section style="display:flex;flex-direction:column;gap:10px;">
+  <section style="display:flex;flex-direction:column;gap:8px;">
     <div class="toolbar">
       <div class="search-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -401,6 +555,8 @@
 
       <div style="flex:1;"></div>
 
+      <span class="result-line" id="result-line"></span>
+
       <div class="popover-wrap desk-only">
         <button class="toolbar-btn" id="btn-sort">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/></svg>
@@ -408,29 +564,38 @@
         </button>
         <div class="popover right" id="sort-popover" hidden></div>
       </div>
+
+      <div class="view-toggle" id="view-toggle">
+        <button type="button" data-view="list" aria-label="List view">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        </button>
+        <button type="button" data-view="grid" aria-label="Grid view">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        </button>
+      </div>
     </div>
     <div class="chip-row" id="chip-row"></div>
   </section>
 
-  <div class="result-line" id="result-line"></div>
+  <div id="results-view" class="view-list">
+    <div class="table-wrap" id="table-wrap">
+      <table class="ev-table">
+        <thead>
+          <tr>
+            <th>Event name</th>
+            <th class="sortable" data-sort="start">Event date <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="visitors">Visitors <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="registrations">Registrations <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="payment">Payment <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
 
-  <div class="table-wrap" id="table-wrap">
-    <table class="ev-table">
-      <thead>
-        <tr>
-          <th>Event name</th>
-          <th class="sortable" data-sort="start">Event date <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-          <th class="sortable" data-sort="registrations">Registrations <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-          <th class="sortable" data-sort="visitors">Visitors <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-          <th class="sortable" data-sort="payment">Payment <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-          <th style="text-align:right;">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="table-body"></tbody>
-    </table>
+    <div class="card-list" id="card-list"></div>
   </div>
-
-  <div class="card-list" id="card-list"></div>
 
   <div class="pagination" id="pagination"></div>
 
@@ -454,9 +619,20 @@
       <div class="panel-card-head">
         <div>
           <h3>Audience Segmentation</h3>
-          <p class="panel-sub">Where your reach is concentrated, at a glance</p>
+          <p class="panel-sub" id="segment-sub">Top Company for this event</p>
         </div>
-        <div class="segmented sm" id="segment-tabs"></div>
+        <select class="seg-select seg-select-event" id="segment-event-select"></select>
+      </div>
+      <div class="seg-toolbar">
+        <div class="segmented sm" id="segment-dim-tabs"></div>
+        <div class="view-toggle" id="segment-view-toggle">
+          <button type="button" data-segview="list" aria-label="List view">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+          </button>
+          <button type="button" data-segview="chart" aria-label="Chart view">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
+          </button>
+        </div>
       </div>
       <div class="panel-card-body" id="segment-body"></div>
     </div>
@@ -464,15 +640,29 @@
     <div class="card panel-card" id="activity-card">
       <div class="panel-card-head">
         <div>
-          <h3>Latest Activity</h3>
-          <p class="panel-sub">Who changed what, grouped</p>
+          <h3>Latest Activity on this Portal</h3>
+          <p class="panel-sub">Platform-wide activity for the selected period</p>
         </div>
-        <button class="chip-clear" id="activity-viewall">View all</button>
+        <div class="popover-wrap">
+          <button class="btn btn-secondary btn-sm" id="btn-activity-range">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
+            <span id="activity-range-label">Last 30 days</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="popover range-popover" id="activity-range-popover" hidden></div>
+        </div>
       </div>
       <div class="panel-card-body" id="activity-body"></div>
     </div>
   </section>
 </div>
+
+<button class="help-fab" id="btn-help" type="button">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9-.7c.2.9-.2 1.5-1 2.1-.7.5-1.4.9-1.4 2.1"/><path d="M12 17h.01"/></svg>
+  Need help?
+</button>
+
+<div class="popover venue-pop" id="venue-quickview" hidden></div>
 
 <div id="sheet-root"></div>
 <div id="toast-region"></div>
@@ -506,7 +696,24 @@
     ticket:   svg('<path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/>', 15),
     wallet:   svg('<path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M16 12h.01"/><path d="M3 10h18"/>', 15),
     arrowUp:  svg('<path d="M12 19V5M5 12l7-7 7 7"/>', 11),
-    arrowDown:svg('<path d="M12 5v14M19 12l-7 7-7-7"/>', 11)
+    arrowDown:svg('<path d="M12 5v14M19 12l-7 7-7-7"/>', 11),
+    ban:      svg('<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>', 14),
+    mail:     svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', 14),
+    calendarSm: svg('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/>', 14),
+    pin:      svg('<path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/>', 13),
+    newspaper: svg('<path d="M4 4h13a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M4 4v14a2 2 0 0 0 2 2"/><path d="M8 8h7M8 12h7M8 16h4"/>', 14),
+    userPlus: svg('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M18 8v6M15 11h6"/>', 14),
+    userCircle: svg('<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/>', 14),
+    logout:   svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>', 14),
+    photo:    svg('<rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5.5-5.5L5 20"/>', 15),
+    flag:     svg('<path d="M4 3v18"/><path d="M4 4h13l-3 4.5L17 13H4"/>', 15),
+    trophy:   svg('<path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H5a2 2 0 0 0 0 4h2"/><path d="M17 6h2a2 2 0 0 1 0 4h-2"/>', 15),
+    search15: svg('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', 15),
+    chevDown: svg('<path d="M6 9l6 6 6-6"/>', 12),
+    qrcode:   svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/>', 14),
+    globe:    svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/>', 14),
+    agenda:   svg('<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>', 14),
+    mic:      svg('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5M9 22h6"/>', 14)
   };
 
   function toast(msg){
@@ -521,35 +728,39 @@
      DATA
   ========================================================= */
   var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table' };
+  var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber' };
   var PORTALS = { retail:'Retail', auto:'Auto', health:'Health', telecom:'Telecom', bfsi:'BFSI', cio:'CIO', hrworld:'HRWorld', legal:'Legal', manufacturing:'Manufacturing', government:'Government' };
 
   var uidn = 0;
   function nextId(){ uidn++; return 'ev_' + uidn; }
   function mk(o){ o.id = nextId(); return o; }
 
+  var CREATORS = ['Tanishka Bhatia','Arjun Rawat','Sofia Chen','Jonas Meyer','Marcus Osei'];
+
   var EVENTS = [
-    mk({ name:'ET CISO Annual Conclave 2026', venue:'Grand Hyatt, Goa', eventNo:4097, type:'ip', portal:'cio', status:'upcoming', start:'2026-09-10T10:00:00', registrations:2645, regTarget:2924, visitors:2923, payment:{type:'paid', amount:482000, txns:212} }),
-    mk({ name:'RACEx360', venue:'Taj West End, Bengaluru', eventNo:4652, type:'client', portal:'auto', status:'upcoming', start:'2026-09-25T09:30:00', registrations:136, regTarget:113, visitors:113, payment:{type:'free'} }),
-    mk({ name:'Data Protection & Privacy Summit 2026', venue:'Mumbai', eventNo:4138, type:'ip', portal:'legal', status:'upcoming', start:'2026-12-02T09:00:00', registrations:122, regTarget:248, visitors:248, payment:{type:'paid', amount:0, txns:0} }),
-    mk({ name:'ET CISO SecuFest 2027', venue:'Venue to be confirmed', eventNo:4545, type:'ip', portal:'cio', status:'upcoming', start:'2027-03-11T08:00:00', registrations:46, regTarget:89, visitors:89, payment:{type:'free'} }),
-    mk({ name:'Cyber Security Council', venue:'Delhi NCR', eventNo:2595, type:'roundtable', portal:'legal', status:'upcoming', start:null, registrations:5, regTarget:38, visitors:38, payment:{type:'free'} }),
-    mk({ name:'AI-Driven SecOps', venue:'Virtual', eventNo:3354, type:'leadgen', portal:'telecom', status:'upcoming', start:null, registrations:88, regTarget:85, visitors:85, payment:{type:'paid', amount:45000, txns:19} }),
-    mk({ name:'Quest Bant 2025', venue:'Virtual', eventNo:3425, type:'leadgen', portal:'retail', status:'upcoming', start:'2026-10-05T11:00:00', registrations:19, regTarget:90, visitors:63, payment:{type:'free'} }),
-    mk({ name:'SecurityStroke', venue:'ITC Maratha, Mumbai', eventNo:1627, type:'roundtable', portal:'cio', status:'upcoming', start:'2026-10-19T09:00:00', registrations:95, regTarget:96, visitors:96, payment:{type:'free'} }),
+    mk({ name:'ET CISO Annual Conclave 2026', venue:'Grand Hyatt', city:'Goa', eventNo:4097, type:'ip', portal:'cio', status:'upcoming', start:'2026-09-10T10:00:00', registrations:2645, regTarget:2924, visitors:2923, payment:{type:'paid', amount:482000, txns:212}, createdBy:CREATORS[0] }),
+    mk({ name:'RACEx360', venue:'Taj West End', city:'Bengaluru', eventNo:4652, type:'client', portal:'auto', status:'upcoming', start:'2026-09-25T09:30:00', registrations:136, regTarget:113, visitors:113, payment:{type:'free'}, createdBy:CREATORS[1] }),
+    mk({ name:'Data Protection & Privacy Summit 2026', venue:'Venue to be confirmed', city:'Mumbai', eventNo:4138, type:'ip', portal:'legal', status:'upcoming', start:'2026-12-02T09:00:00', registrations:122, regTarget:248, visitors:248, payment:{type:'paid', amount:0, txns:0}, createdBy:CREATORS[2] }),
+    mk({ name:'ET CISO SecuFest 2027', venue:'Venue to be confirmed', city:'—', eventNo:4545, type:'ip', portal:'cio', status:'upcoming', start:'2027-03-11T08:00:00', registrations:46, regTarget:89, visitors:89, payment:{type:'free'}, createdBy:CREATORS[0] }),
+    mk({ name:'Cyber Security Council', venue:'Venue to be confirmed', city:'Delhi NCR', eventNo:2595, type:'roundtable', portal:'legal', status:'upcoming', start:null, registrations:5, regTarget:38, visitors:38, payment:{type:'free'}, createdBy:CREATORS[3] }),
+    mk({ name:'AI-Driven SecOps', venue:'Virtual', city:'Online', eventNo:3354, type:'leadgen', portal:'telecom', status:'upcoming', start:null, registrations:88, regTarget:85, visitors:85, payment:{type:'paid', amount:45000, txns:19}, createdBy:CREATORS[4] }),
+    mk({ name:'Quest Bant 2025', venue:'Virtual', city:'Online', eventNo:3425, type:'leadgen', portal:'retail', status:'upcoming', start:'2026-10-05T11:00:00', registrations:19, regTarget:90, visitors:63, payment:{type:'free'}, createdBy:CREATORS[1] }),
+    mk({ name:'SecurityStroke', venue:'ITC Maratha', city:'Mumbai', eventNo:1627, type:'roundtable', portal:'cio', status:'upcoming', start:'2026-10-19T09:00:00', registrations:95, regTarget:96, visitors:96, payment:{type:'free'}, createdBy:CREATORS[2] }),
+    mk({ name:'Manufacturing 4.0 Summit 2026', venue:'Venue to be confirmed', city:'Chennai', eventNo:4471, type:'ip', portal:'manufacturing', status:'upcoming', start:'2026-12-03T09:00:00', registrations:0, regTarget:300, visitors:0, payment:{type:'free'}, createdBy:CREATORS[4] }),
 
-    mk({ name:'Zscaler Secusphere', venue:'Virtual', eventNo:2304, type:'leadgen', portal:'telecom', status:'active', start:'2026-09-07T09:00:00', registrations:75, regTarget:253, visitors:253, payment:{type:'paid', amount:120000, txns:41} }),
-    mk({ name:'Managing Extensions with Chrome Enterprise', venue:'Virtual', eventNo:3871, type:'editorial', portal:'cio', status:'active', start:'2026-09-07T14:00:00', registrations:21, regTarget:122, visitors:122, payment:{type:'free'} }),
-    mk({ name:'Optimizing Chrome Enterprise Core', venue:'Virtual', eventNo:3872, type:'editorial', portal:'cio', status:'active', start:'2026-09-07T16:00:00', registrations:36, regTarget:93, visitors:93, payment:{type:'free'} }),
+    mk({ name:'Zscaler Secusphere', venue:'Virtual', city:'Online', eventNo:2304, type:'leadgen', portal:'telecom', status:'active', start:'2026-09-07T09:00:00', registrations:75, regTarget:253, visitors:253, payment:{type:'paid', amount:120000, txns:41}, createdBy:CREATORS[3] }),
+    mk({ name:'Managing Extensions with Chrome Enterprise', venue:'Virtual', city:'Online', eventNo:3871, type:'editorial', portal:'cio', status:'active', start:'2026-09-07T14:00:00', registrations:21, regTarget:122, visitors:122, payment:{type:'free'}, createdBy:CREATORS[0] }),
+    mk({ name:'Optimizing Chrome Enterprise Core', venue:'Virtual', city:'Online', eventNo:3872, type:'editorial', portal:'cio', status:'active', start:'2026-09-07T16:00:00', registrations:36, regTarget:93, visitors:93, payment:{type:'free'}, createdBy:CREATORS[0] }),
 
-    mk({ name:'BFSI Fraud & Risk Conclave 2025', venue:'ITC Grand Central, Mumbai', eventNo:3980, type:'ip', portal:'bfsi', status:'completed', start:'2025-11-18T09:00:00', registrations:850, regTarget:800, visitors:1200, payment:{type:'paid', amount:950000, txns:301} }),
-    mk({ name:'Healthcare Innovation Awards 2025', venue:'The Leela, New Delhi', eventNo:4012, type:'ip', portal:'health', status:'completed', start:'2025-08-22T18:00:00', registrations:300, regTarget:280, visitors:400, payment:{type:'paid', amount:620000, txns:150} }),
-    mk({ name:'Legal & Compliance Forum 2025', venue:'Virtual', eventNo:3690, type:'client', portal:'legal', status:'completed', start:'2025-05-14T10:00:00', registrations:60, regTarget:90, visitors:75, payment:{type:'free'} }),
-    mk({ name:'Redefining Cybersecurity', venue:'Taj Lands End, Mumbai', eventNo:2158, type:'roundtable', portal:'cio', status:'completed', start:'2025-03-02T09:00:00', registrations:134, regTarget:998, visitors:0, payment:{type:'free'} }),
+    mk({ name:'BFSI Fraud & Risk Conclave 2025', venue:'ITC Grand Central', city:'Mumbai', eventNo:3980, type:'ip', portal:'bfsi', status:'completed', start:'2025-11-18T09:00:00', registrations:850, regTarget:800, visitors:1200, payment:{type:'paid', amount:950000, txns:301}, createdBy:CREATORS[4] }),
+    mk({ name:'Healthcare Innovation Awards 2025', venue:'The Leela', city:'New Delhi', eventNo:4012, type:'ip', portal:'health', status:'completed', start:'2025-08-22T18:00:00', registrations:300, regTarget:280, visitors:400, payment:{type:'paid', amount:620000, txns:150}, createdBy:CREATORS[2] }),
+    mk({ name:'Legal & Compliance Forum 2025', venue:'Virtual', city:'Online', eventNo:3690, type:'client', portal:'legal', status:'completed', start:'2025-05-14T10:00:00', registrations:60, regTarget:90, visitors:75, payment:{type:'free'}, createdBy:CREATORS[1] }),
+    mk({ name:'Redefining Cybersecurity', venue:'Taj Lands End', city:'Mumbai', eventNo:2158, type:'roundtable', portal:'cio', status:'completed', start:'2025-03-02T09:00:00', registrations:134, regTarget:998, visitors:0, payment:{type:'free'}, createdBy:CREATORS[3] }),
 
-    mk({ name:'Manufacturing 4.0 Summit 2026', venue:'Venue to be confirmed', eventNo:4471, type:'ip', portal:'manufacturing', status:'draft', start:'2026-12-03T00:00:00', registrations:0, regTarget:null, visitors:0, payment:{type:'free'} }),
-    mk({ name:'HRWorld Culture Roundtable 2026', venue:'Zoom Webinar', eventNo:4489, type:'client', portal:'hrworld', status:'draft', start:'2026-11-05T00:00:00', registrations:0, regTarget:null, visitors:0, payment:{type:'free'} }),
+    mk({ name:'HRWorld Culture Roundtable 2026', venue:'Zoom Webinar', city:'Online', eventNo:4489, type:'client', portal:'hrworld', status:'cancelled', start:'2026-11-05T00:00:00', registrations:0, regTarget:null, visitors:0, payment:{type:'free'}, createdBy:CREATORS[2] }),
+    mk({ name:'Telecom 5G Innovation Forum 2027', venue:'Venue to be confirmed', city:'—', eventNo:4590, type:'ip', portal:'telecom', status:'draft', start:null, registrations:0, regTarget:null, visitors:0, payment:{type:'free'}, createdBy:CREATORS[3] }),
 
-    mk({ name:'Legacy Compliance Roundtable 2024', venue:'Virtual', eventNo:1902, type:'roundtable', portal:'legal', status:'deleted', start:'2024-06-10T10:00:00', registrations:12, regTarget:40, visitors:22, payment:{type:'free'} })
+    mk({ name:'Legacy Compliance Roundtable 2024', venue:'Virtual', city:'Online', eventNo:1902, type:'roundtable', portal:'legal', status:'deleted', start:'2024-06-10T10:00:00', registrations:12, regTarget:40, visitors:22, payment:{type:'free'}, createdBy:CREATORS[1] })
   ];
 
   // CRM leads — a distinct engagement signal, deterministically derived so it doesn't just mirror registrations/visitors 1:1
@@ -563,60 +774,70 @@
     active:    { visitors:2870,  registrations:890,  revenue:640000,  dVis:6.1,  dReg:-2.4, dRev:9.8 },
     completed: { visitors:18420, registrations:6210, revenue:8920000, dVis:4.4,  dReg:5.6,  dRev:-3.1 }
   };
-  var RANGE_FACTOR = { '7':0.27, '10':0.36, '30':1 };
+  var RANGE_FACTOR = { today:0.05, '7':0.27, '10':0.36, '30':1 };
   var RANGE_DELTA_SCALE = { '7':0.65, '10':0.82, '30':1, 'custom':1 };
 
-  var SEGMENT_METRICS = { visitors:'Visitors', registrations:'Registrations', crmLeads:'CRM Leads' };
+  var SEGMENT_DIMENSIONS = { company:'Top Company', designation:'Top Designation', source:'Top Source', device:'Mobile vs Desktop' };
+  var SEG_PALETTE = ['#FF0035','#0F9E8E','#D97706','#7C3AED','#2563EB','#65A30D'];
 
-  function minsAgo(m){ return new Date(Date.now() - m*60000).toISOString(); }
-  var ACTIVITY = [
-    { actor:'Tanishka Bhatia', eventName:'ET CISO Annual Conclave 2026', eventNo:4097, path:'Setup → Speakers', ts:minsAgo(2) },
-    { actor:'Tanishka Bhatia', eventName:'ET CISO Annual Conclave 2026', eventNo:4097, path:'Setup → Speakers', ts:minsAgo(3) },
-    { actor:'Tanishka Bhatia', eventName:'ET CISO Annual Conclave 2026', eventNo:4097, path:'Setup → Speakers', ts:minsAgo(4) },
-    { actor:'Tanishka Bhatia', eventName:'ET CISO Annual Conclave 2026', eventNo:4097, path:'Setup → Speakers', ts:minsAgo(6) },
-    { actor:'Arjun Rawat', eventName:'RACEx360', eventNo:4652, path:'Registrations → Form fields', ts:minsAgo(40) },
-    { actor:'Arjun Rawat', eventName:'RACEx360', eventNo:4652, path:'Registrations → Form fields', ts:minsAgo(42) },
-    { actor:'Sofia Chen', eventName:'Data Protection & Privacy Summit 2026', eventNo:4138, path:'Content → Agenda', ts:minsAgo(125) },
-    { actor:'Jonas Meyer', eventName:'Zscaler Secusphere', eventNo:2304, path:'Setup → Venue', ts:minsAgo(1440) },
-    { actor:'Marcus Osei', eventName:'BFSI Fraud & Risk Conclave 2025', eventNo:3980, path:'Reports → Export', ts:minsAgo(2880) }
-  ];
-  function timeAgo(iso){
-    var diff = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    if (diff < 1) return 'just now';
-    if (diff < 60) return diff + 'm ago';
-    var h = Math.round(diff/60);
-    if (h < 24) return h + 'h ago';
-    return Math.round(h/24) + 'd ago';
+  /* ---- per-event attendee audience data, generated for IP events only ---- */
+  var COMPANY_POOL = ['TCS','Infosys','Wipro','HDFC Bank','ICICI Bank','Reliance Industries','Larsen & Toubro','Mahindra Group','Tata Steel','Adani Enterprises','Cognizant','Accenture','Google India','Microsoft India','Amazon India'];
+  var DESIGNATION_POOL = ['CISO','IT Head','VP - Technology','CTO','Security Analyst','Compliance Manager','Director - IT','Chief Risk Officer','Head of Engineering','Product Manager'];
+  var SOURCE_POOL = ['Organic Search','Email Campaign','Social Media','Direct','Referral Partner','Paid Ads'];
+  function generateAudience(seedNum, base){
+    base = Math.max(base, 20);
+    function rand(i){ var x = Math.sin(seedNum*13 + i*7.13) * 10000; return x - Math.floor(x); }
+    function pickWeighted(pool, count){
+      var idxs = pool.map(function(_,i){ return i; });
+      idxs.sort(function(a,b){ return rand(a) - rand(b); });
+      var chosen = idxs.slice(0, count);
+      var weights = [], wsum = 0;
+      chosen.forEach(function(ci,k){ var w = 0.3 + rand(ci+100)*0.7; weights.push(w); wsum += w; });
+      return chosen.map(function(ci,k){ return { label: pool[ci], value: Math.max(1, Math.round(base * (weights[k]/wsum) * 0.55)) }; })
+        .sort(function(a,b){ return b.value - a.value; });
+    }
+    var mobileShare = 0.45 + rand(999)*0.25;
+    var mobile = Math.round(base * mobileShare);
+    var desktop = Math.max(1, base - mobile);
+    return {
+      companies: pickWeighted(COMPANY_POOL, 5),
+      designations: pickWeighted(DESIGNATION_POOL, 5),
+      sources: pickWeighted(SOURCE_POOL, 4),
+      devices: [{ label:'Mobile', value:mobile }, { label:'Desktop', value:desktop }]
+    };
   }
-  function groupActivity(list){
-    var sorted = list.slice().sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
-    var groups = [];
-    sorted.forEach(function(item){
-      var last = groups[groups.length-1];
-      var sameBucket = last && last.actor===item.actor && last.eventNo===item.eventNo && last.path===item.path &&
-        ((new Date(last.latest) - new Date(item.ts)) <= 30*60000);
-      if (sameBucket){ last.count++; }
-      else groups.push({ actor:item.actor, eventName:item.eventName, eventNo:item.eventNo, path:item.path, count:1, latest:item.ts });
-    });
-    return groups;
-  }
-  function initials(name){ return name.split(' ').map(function(p){ return p[0]||''; }).join('').slice(0,2).toUpperCase(); }
+  var EVENT_AUDIENCE = {};
+  var IP_EVENT_IDS = [];
+  EVENTS.forEach(function(e){
+    if (e.type === 'ip' && (e.status==='upcoming' || e.status==='active' || e.status==='completed')){
+      IP_EVENT_IDS.push(e.id);
+      EVENT_AUDIENCE[e.id] = generateAudience(e.eventNo, e.visitors || e.registrations || 40);
+    }
+  });
+
+  /* ---- portal-wide activity metrics (30-day baseline, scaled by the selected range) ---- */
+  var PORTAL_ACTIVITY_BASE = { registrations:5240, visitors:21860, mailersSent:312400, newslettersSent:58200, subscribers:2140 };
 
   /* =========================================================
      STATE
   ========================================================= */
   var state = {
-    tab: 'upcoming',
-    specialView: null,          // null | 'draft' | 'deleted'
+    tab: 'active',
+    specialView: null,          // null | 'cancelled' | 'deleted'
     search: '',
     filters: { types: [], portals: [], payment: [] },
     sort: { field:'start', dir:'asc' },
     page: 1,
     range: { mode:'30', start:null, end:null },
+    activityRange: { mode:'30', start:null, end:null },
     loading: true,
     openPopover: null,
     openRowMenu: null,
-    segmentMetric: 'visitors'
+    venuePopoverFor: null,
+    view: 'list',                    // 'list' | 'grid'
+    segmentEventId: IP_EVENT_IDS[0] || null,
+    segmentDimension: 'company',     // 'company' | 'designation' | 'source' | 'device'
+    segmentView: 'list'              // 'list' | 'chart'
   };
   var PAGE_SIZE = 5;
 
@@ -624,7 +845,7 @@
     var parts = (location.hash||'').replace('#','').split('&').reduce(function(acc,p){
       var kv=p.split('='); if(kv[0]) acc[kv[0]]=decodeURIComponent(kv[1]||''); return acc;
     }, {});
-    if (parts.tab && ['upcoming','active','completed'].indexOf(parts.tab)!==-1) state.tab = parts.tab;
+    if (parts.tab && ['active','upcoming','completed'].indexOf(parts.tab)!==-1) state.tab = parts.tab;
     if (parts.q) state.search = parts.q;
   } catch(e){}
 
@@ -658,9 +879,7 @@
     return Math.round((d.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / 86400000);
   }
 
-  function pctClass(pct){ if (pct >= 80) return 'ok'; if (pct >= 40) return 'warn'; return 'crit'; }
-
-  function statusLabel(s){ return { upcoming:'Upcoming', active:'Active', completed:'Completed', draft:'Draft', deleted:'Deleted' }[s] || s; }
+  function statusLabel(s){ return { upcoming:'Upcoming', active:'Active', completed:'Completed', cancelled:'Cancelled', draft:'Draft', deleted:'Deleted' }[s] || s; }
 
   /* =========================================================
      POPOVER / MENU MANAGEMENT
@@ -669,6 +888,7 @@
     document.querySelectorAll('.popover').forEach(function(p){ p.hidden = true; });
     state.openPopover = null;
     state.openRowMenu = null;
+    state.venuePopoverFor = null;
   }
   function openPopover(id){
     closeAll();
@@ -676,7 +896,7 @@
     if (el){ el.hidden = false; state.openPopover = id; }
   }
   document.addEventListener('click', function(e){
-    if (e.target.closest('.popover-wrap') || e.target.closest('.row-actions')) return;
+    if (e.target.closest('.popover-wrap') || e.target.closest('.row-actions') || e.target.closest('#venue-quickview') || e.target.closest('[data-venue-id]')) return;
     closeAll();
   });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAll(); });
@@ -686,21 +906,48 @@
   ========================================================= */
   function renderMoreMenu(){
     var draftCount = EVENTS.filter(function(e){ return e.status==='draft'; }).length;
+    var cancelledCount = EVENTS.filter(function(e){ return e.status==='cancelled'; }).length;
     var deletedCount = EVENTS.filter(function(e){ return e.status==='deleted'; }).length;
     $('more-menu').innerHTML =
       '<button class="popover-item" data-special="draft">' + IC.file + ' Draft Events <span class="mono faint" style="margin-left:auto;">' + draftCount + '</span></button>' +
-      '<button class="popover-item" data-special="deleted">' + IC.trash2 + ' Deleted Events <span class="mono faint" style="margin-left:auto;">' + deletedCount + '</span></button>' +
-      '<div class="popover-sep"></div>' +
-      '<button class="popover-item" data-stub="Templates opens the template gallery — coming soon.">' + IC.file + ' Templates</button>' +
-      '<button class="popover-item" data-stub="Event Requests workflow isn’t wired up in this preview yet.">' + IC.checkCirc + ' Event Requests</button>';
+      '<button class="popover-item" data-special="cancelled">' + IC.ban + ' Cancelled Events <span class="mono faint" style="margin-left:auto;">' + cancelledCount + '</span></button>' +
+      '<button class="popover-item" data-special="deleted">' + IC.trash2 + ' Deleted Events <span class="mono faint" style="margin-left:auto;">' + deletedCount + '</span></button>';
     $('more-menu').querySelectorAll('[data-special]').forEach(function(b){
       b.addEventListener('click', function(){ state.specialView = b.getAttribute('data-special'); state.page = 1; closeAll(); renderApp(); });
     });
-    $('more-menu').querySelectorAll('[data-stub]').forEach(function(b){
-      b.addEventListener('click', function(){ toast(b.getAttribute('data-stub')); closeAll(); });
-    });
   }
   $('btn-more').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='more-menu') closeAll(); else openPopover('more-menu'); });
+
+  /* =========================================================
+     PROFILE MENU (main nav)
+  ========================================================= */
+  function renderProfileMenu(){
+    $('profile-menu').innerHTML =
+      '<div class="popover-label">admin@etmanufacturing.in</div>' +
+      '<button class="popover-item" data-profile-stub="Your profile isn’t wired up in this preview yet.">' + IC.userCircle + ' Your profile</button>' +
+      '<button class="popover-item" data-profile-stub="Preferences aren’t wired up in this preview yet.">' + IC.settings + ' Preferences</button>' +
+      '<div class="popover-sep"></div>' +
+      '<button class="popover-item danger" data-profile-stub="Sign out isn’t wired up in this preview yet.">' + IC.logout + ' Sign out</button>';
+    $('profile-menu').querySelectorAll('[data-profile-stub]').forEach(function(b){
+      b.addEventListener('click', function(){ toast(b.getAttribute('data-profile-stub')); closeAll(); });
+    });
+  }
+  $('btn-profile').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='profile-menu'){ closeAll(); return; }
+    renderProfileMenu(); openPopover('profile-menu');
+  });
+
+  function renderMoreProductsMenu(){
+    $('more-products-menu').innerHTML =
+      '<a class="popover-item" href="index.html">' + IC.userCircle + ' Event Editions</a>' +
+      '<a class="popover-item" href="index.html">' + IC.search15 + ' Search Users</a>';
+  }
+  $('btn-more-products').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='more-products-menu'){ closeAll(); return; }
+    renderMoreProductsMenu(); openPopover('more-products-menu');
+  });
 
   /* =========================================================
      TABS
@@ -708,7 +955,7 @@
   function renderTabs(){
     var counts = { upcoming:0, active:0, completed:0 };
     EVENTS.forEach(function(e){ if (counts[e.status]!==undefined) counts[e.status]++; });
-    var tabs = [['upcoming','Upcoming'],['active','Active'],['completed','Completed']];
+    var tabs = [['active','Active'],['upcoming','Upcoming'],['completed','Completed']];
     $('status-tabs').innerHTML = tabs.map(function(t){
       var selected = !state.specialView && state.tab === t[0];
       return '<button role="tab" aria-selected="'+selected+'" data-tab="'+t[0]+'">'+t[1]+' <span class="tc">'+counts[t[0]]+'</span></button>';
@@ -736,32 +983,39 @@
   function renderSpecialBanner(){
     var el = $('special-banner');
     if (!state.specialView){ el.innerHTML=''; return; }
-    var label = state.specialView === 'draft' ? 'Draft events' : 'Deleted events';
-    el.innerHTML = '<div class="special-banner fade-in">' + IC.file + '<span>Showing <strong>' + label + '</strong></span>' +
-      '<button id="btn-back-tabs">Back to Upcoming</button></div>';
-    $('btn-back-tabs').addEventListener('click', function(){ state.specialView = null; state.tab='upcoming'; state.page=1; renderApp(); });
+    var labels = { draft:'Draft events', cancelled:'Cancelled events', deleted:'Deleted events' };
+    var icons = { draft:IC.file, cancelled:IC.ban, deleted:IC.trash2 };
+    var label = labels[state.specialView] || state.specialView;
+    var icon = icons[state.specialView] || IC.file;
+    el.innerHTML = '<div class="special-banner fade-in">' + icon + '<span>Showing <strong>' + label + '</strong></span>' +
+      '<button id="btn-back-tabs">Back to Active</button></div>';
+    $('btn-back-tabs').addEventListener('click', function(){ state.specialView = null; state.tab='active'; state.page=1; renderApp(); });
   }
 
   /* =========================================================
      INSIGHTS
   ========================================================= */
-  function rangeDayCount(){
-    if (state.range.mode !== 'custom') return parseInt(state.range.mode, 10);
-    if (!state.range.start || !state.range.end) return 30;
-    var d = (new Date(state.range.end) - new Date(state.range.start)) / 86400000;
+  function computeRangeDayCount(rs){
+    if (rs.mode === 'today') return 1;
+    if (rs.mode !== 'custom') return parseInt(rs.mode, 10);
+    if (!rs.start || !rs.end) return 30;
+    var d = (new Date(rs.end) - new Date(rs.start)) / 86400000;
     return Math.max(1, Math.round(d) + 1);
   }
-  function rangeFactor(){
-    if (state.range.mode !== 'custom') return RANGE_FACTOR[state.range.mode];
-    return Math.min(1.6, Math.max(0.05, rangeDayCount() / 30));
+  function computeRangeFactor(rs){
+    if (rs.mode !== 'custom') return RANGE_FACTOR[rs.mode];
+    return Math.min(1.6, Math.max(0.03, computeRangeDayCount(rs) / 30));
   }
-  function rangeLabelText(){
-    if (state.range.mode === '7') return 'Last 7 days';
-    if (state.range.mode === '10') return 'Last 10 days';
-    if (state.range.mode === '30') return 'Last 30 days';
-    if (state.range.start && state.range.end) return fmtDate(state.range.start) + ' → ' + fmtDate(state.range.end);
+  function computeRangeLabel(rs){
+    if (rs.mode === 'today') return 'Today';
+    if (rs.mode === '7') return 'Last 7 days';
+    if (rs.mode === '10') return 'Last 10 days';
+    if (rs.mode === '30') return 'Last 30 days';
+    if (rs.start && rs.end) return fmtDate(rs.start) + ' → ' + fmtDate(rs.end);
     return 'Custom range';
   }
+  function rangeFactor(){ return computeRangeFactor(state.range); }
+  function rangeLabelText(){ return computeRangeLabel(state.range); }
 
   function renderInsightsTitle(){
     var base = state.specialView ? 'upcoming' : state.tab;
@@ -839,6 +1093,45 @@
     renderRangePopover(); openPopover('range-popover');
   });
 
+  function renderActivityRangePopover(){
+    var opts = [['today','Today'],['7','Last 7 days'],['10','Last 10 days'],['30','Last 30 days'],['custom','Custom range']];
+    var rs = state.activityRange;
+    var body = opts.map(function(o){
+      var on = rs.mode === o[0];
+      return '<button class="radio-row ' + (on?'on':'') + '" data-arange="' + o[0] + '"><span class="dot"><i></i></span>' + o[1] + '</button>';
+    }).join('');
+    if (rs.mode === 'custom'){
+      body += '<div class="custom-fields">' +
+        '<div class="cf"><label>Start date</label><input type="date" id="arange-start" value="' + (rs.start||'') + '"></div>' +
+        '<div class="cf"><label>End date</label><input type="date" id="arange-end" value="' + (rs.end||'') + '"></div>' +
+      '</div>' +
+      '<div class="popover-foot"><button class="btn btn-ghost btn-sm" id="arange-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="arange-apply">Apply</button></div>';
+    }
+    $('activity-range-popover').innerHTML = body;
+    $('activity-range-popover').querySelectorAll('[data-arange]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var mode = b.getAttribute('data-arange');
+        state.activityRange.mode = mode;
+        if (mode !== 'custom'){ closeAll(); renderActivity(); }
+        else { renderActivityRangePopover(); }
+      });
+    });
+    var cancelBtn = $('arange-cancel'), applyBtn = $('arange-apply');
+    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.activityRange.mode='30'; closeAll(); renderActivity(); });
+    if (applyBtn) applyBtn.addEventListener('click', function(){
+      var s = $('arange-start').value, e = $('arange-end').value;
+      if (!s || !e){ toast('Pick both a start and end date.'); return; }
+      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.'); return; }
+      state.activityRange.start = s; state.activityRange.end = e;
+      closeAll(); renderActivity();
+    });
+  }
+  $('btn-activity-range').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='activity-range-popover') { closeAll(); return; }
+    renderActivityRangePopover(); openPopover('activity-range-popover');
+  });
+
   /* =========================================================
      FILTER POPOVERS
   ========================================================= */
@@ -875,7 +1168,7 @@
     });
   }
   function renderSortPopover(){
-    var opts = [['start','Event date'],['registrations','Registrations'],['visitors','Visitors'],['payment','Payment']];
+    var opts = [['start','Event date'],['visitors','Visitors'],['registrations','Registrations'],['payment','Payment']];
     $('sort-popover').innerHTML = '<div class="popover-label">Sort by</div>' + opts.map(function(o){
       return '<div style="display:flex;">' +
         '<button class="popover-item" data-sort-field="'+o[0]+'" data-dir="asc" style="flex:1;">'+ (state.sort.field===o[0]&&state.sort.dir==='asc'?IC.check:'') +' '+o[1]+' (low to high)</button>' +
@@ -953,7 +1246,7 @@
     if (state.filters.portals.length && state.filters.portals.indexOf(e.portal) === -1) return false;
     if (state.filters.payment.length && state.filters.payment.indexOf(e.payment.type) === -1) return false;
     if (state.search){
-      var hay = (e.name + ' ' + e.venue + ' ' + PORTALS[e.portal] + ' ' + EVENT_TYPES[e.type]).toLowerCase();
+      var hay = (e.name + ' ' + e.venue + ' ' + e.city + ' ' + PORTALS[e.portal] + ' ' + EVENT_TYPES[e.type] + ' ' + e.createdBy).toLowerCase();
       if (hay.indexOf(state.search.toLowerCase()) === -1) return false;
     }
     return true;
@@ -975,11 +1268,6 @@
   /* =========================================================
      TABLE / CARD RENDER
   ========================================================= */
-  function regPctInfo(e){
-    if (!e.regTarget) return null;
-    var pct = Math.round((e.registrations / e.regTarget) * 100);
-    return { pct: pct, cls: pctClass(pct) };
-  }
   function dateCellHTML(e){
     if (!e.start) return '<div class="unset">Date not set</div>';
     var out = '<div class="d1">' + fmtDate(e.start) + '</div><div class="d2">' + fmtTime(e.start) + '</div>';
@@ -991,55 +1279,100 @@
     return out;
   }
   function regCellHTML(e){
-    var info = regPctInfo(e);
-    var out = '<span class="reg-num">' + fmtNum(e.registrations) + '</span>';
-    if (info){
-      out += '<div class="reg-pct ' + info.cls + '">' + info.pct + '% of target</div>' +
-             '<div class="reg-bar"><i class="' + info.cls + '" style="width:' + Math.min(100,info.pct) + '%;"></i></div>';
-    }
-    return out;
+    return '<span class="reg-num">' + fmtNum(e.registrations) + '</span>';
   }
   function payCellHTML(e){
     if (e.payment.type === 'free') return '<span class="pay-free">Free</span>';
     return '<span class="pay-amt" data-tooltip="' + (e.payment.txns||0) + ' transactions">' + fmtRupee(e.payment.amount) + '</span><div class="pay-sub">Collected</div>';
   }
   function metaLine(e){
-    return '<span>' + esc(e.venue) + '</span><span class="dotsep">&middot;</span><span class="ev-tag">' + esc(EVENT_TYPES[e.type].replace(' (IP)','')) + '</span><span class="dotsep">&middot;</span><span class="mono faint">#' + e.eventNo + '</span>';
+    return '<span class="mono faint">#' + e.eventNo + '</span>' +
+      '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(EVENT_TYPES[e.type].replace(' (IP)','')) + '</span>';
   }
 
-  function rowActionsHTML(e){
+  function venueQuickviewBodyHTML(e){
+    var venueText = e.venue === 'Virtual'
+      ? (e.city && e.city !== 'Online' ? e.city + ' (Virtual)' : 'Virtual')
+      : ((e.venue || 'Venue to be confirmed') + (e.city ? ', ' + e.city : ''));
+    return '<div class="venue-pop-row">' + IC.pin + '<span>' + esc(venueText) + '</span></div>' +
+      '<div class="venue-pop-row">' + IC.userCircle + '<span>Created by ' + esc(e.createdBy) + '</span></div>';
+  }
+
+  var qvCloseTimer = null;
+  function cancelCloseQV(){ clearTimeout(qvCloseTimer); }
+  function scheduleCloseQV(){ clearTimeout(qvCloseTimer); qvCloseTimer = setTimeout(function(){ if (state.openPopover === 'venue-quickview') closeAll(); }, 220); }
+
+  function openVenueQuickview(anchorEl, id){
+    var e = findEvent(id);
+    var pop = $('venue-quickview');
+    if (!e || !pop) return;
+    if (state.openPopover === 'venue-quickview' && state.venuePopoverFor === id) return;
+    closeAll();
+    pop.innerHTML = venueQuickviewBodyHTML(e);
+    pop.hidden = false;
+    var r = anchorEl.getBoundingClientRect();
+    var popW = 240, popH = pop.offsetHeight || 64;
+    var left = Math.max(12, Math.min(r.left, window.innerWidth - popW - 12));
+    var top = r.bottom + 8;
+    if (top + popH > window.innerHeight - 12) top = Math.max(12, r.top - 8 - popH);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    state.openPopover = 'venue-quickview';
+    state.venuePopoverFor = id;
+  }
+
+  function quickActionIcon(action, icon, label, id, colorClass){
+    return '<button class="icon-btn qa-btn ' + colorClass + '" data-row-action="' + action + '" data-id="' + id + '" data-tooltip="' + label + '" aria-label="' + label + '">' + icon + '</button>';
+  }
+
+  function rowActionsHTML(e, ctx){
+    var menuId = 'rowmenu-' + (ctx||'row') + '-' + e.id;
     var items = [];
     if (e.status === 'draft'){
-      items.push(['edit', IC.edit, 'Continue setup']);
-      items.push(['duplicate', IC.copy, 'Duplicate']);
+      items.push(['duplicate', IC.copy, 'Clone Event']);
       items.push(['sep']);
-      items.push(['delete', IC.trash, 'Delete draft', true]);
+      items.push(['delete-forever', IC.trash, 'Delete event', true]);
+    } else if (e.status === 'cancelled'){
+      items.push(['duplicate', IC.copy, 'Clone Event']);
+      items.push(['copylink', IC.link, 'Copy event link']);
+      items.push(['sep']);
+      items.push(['qr', IC.qrcode, 'QR Codes']);
+      items.push(['sep']);
+      items.push(['restore', IC.restore, 'Restore to Upcoming']);
+      items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
     } else if (e.status === 'deleted'){
       items.push(['restore', IC.restore, 'Restore']);
       items.push(['sep']);
       items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
     } else {
-      items.push(['view', IC.eye, 'View event']);
-      items.push(['edit', IC.edit, 'Edit event']);
       items.push(['setup', IC.settings, 'Event setup']);
       items.push(['sep']);
-      items.push(['registrations', IC.ticket, 'View registrations']);
-      items.push(['visitors', IC.users, 'View visitors']);
-      items.push(['reports', IC.chart, 'Reports']);
-      items.push(['sep']);
-      items.push(['duplicate', IC.copy, 'Duplicate event']);
+      items.push(['duplicate', IC.copy, 'Clone Event']);
       items.push(['copylink', IC.link, 'Copy event link']);
-      if (e.status === 'active') items.push(['complete', IC.checkCirc, 'Mark as completed']);
       items.push(['sep']);
-      items.push(['archive', IC.archive, 'Archive', true]);
+      items.push(['qr', IC.qrcode, 'QR Codes']);
+      items.push(['sep']);
+      if (e.status === 'active') items.push(['complete', IC.checkCirc, 'Mark as completed']);
+      if (e.status === 'active' || e.status === 'upcoming') items.push(['cancel', IC.ban, 'Cancel event']);
+      items.push(['archive', IC.trash, 'Delete event', true]);
     }
     var menuHTML = items.map(function(it){
       if (it[0]==='sep') return '<div class="popover-sep"></div>';
       return '<button class="popover-item' + (it[3]?' danger':'') + '" data-row-action="' + it[0] + '" data-id="' + e.id + '">' + it[1] + ' ' + it[2] + '</button>';
     }).join('');
-    return '<div class="popover-wrap">' +
-      '<button class="icon-btn" data-row-menu-btn="' + e.id + '" aria-label="More actions">' + IC.dots + '</button>' +
-      '<div class="popover row-menu" id="rowmenu-' + e.id + '" hidden>' + menuHTML + '</div>' +
+    var quickIcons = '';
+    if (e.status === 'draft'){
+      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit');
+    } else if (e.status !== 'deleted'){
+      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
+        quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view') +
+        quickActionIcon('reports', IC.chart, 'Report', e.id, 'qa-report');
+    }
+    return '<div class="row-action-group">' + quickIcons +
+      '<div class="popover-wrap">' +
+        '<button class="icon-btn" data-row-menu-btn="' + menuId + '" aria-label="More actions">' + IC.dots + '</button>' +
+        '<div class="popover row-menu" id="' + menuId + '" hidden>' + menuHTML + '</div>' +
+      '</div>' +
     '</div>';
   }
 
@@ -1076,9 +1409,10 @@
           '<button class="btn btn-secondary" id="empty-clear">Clear filters</button></div>';
       } else {
         var bucket = state.specialView || state.tab;
+        var mainBucket = ['active','upcoming','completed'].indexOf(bucket) !== -1;
         emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No ' + statusLabel(bucket).toLowerCase() + ' events</h3>' +
-          '<p>' + (bucket==='upcoming' ? 'Create your first event — it takes about ten minutes.' : 'Nothing here right now.') + '</p>' +
-          (bucket==='upcoming' ? '<a class="btn btn-primary" href="create-event.html">Create Event</a>' : '') + '</div>';
+          '<p>' + (mainBucket ? 'Create your first event — it takes about ten minutes.' : 'Nothing here right now.') + '</p>' +
+          (mainBucket ? '<a class="btn btn-primary" href="create-event.html">Create Event</a>' : '') + '</div>';
       }
       $('table-body').innerHTML = '<tr><td colspan="6">' + emptyHTML + '</td></tr>';
       $('card-list').innerHTML = emptyHTML;
@@ -1088,31 +1422,36 @@
     }
 
     $('table-body').innerHTML = pageList.map(function(e){
-      return '<tr data-row="' + e.id + '" tabindex="0">' +
-        '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '"></span>' +
-          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '">' + esc(e.name) + '</a>' +
+      return '<tr data-row="' + e.id + '" data-status="' + e.status + '" class="st-' + e.status + '" tabindex="0">' +
+        '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '"></span>' +
+          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '">' + esc(e.name) + '</a>' +
           '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div></td>' +
         '<td class="ev-date-cell">' + dateCellHTML(e) + '</td>' +
-        '<td class="reg-cell">' + regCellHTML(e) + '</td>' +
         '<td><span class="vis-num">' + fmtNum(e.visitors) + '</span></td>' +
+        '<td class="reg-cell">' + regCellHTML(e) + '</td>' +
         '<td>' + payCellHTML(e) + '</td>' +
-        '<td class="row-actions">' + rowActionsHTML(e) + '</td>' +
+        '<td class="row-actions">' + rowActionsHTML(e, 'row') + '</td>' +
       '</tr>';
     }).join('');
 
     $('card-list').innerHTML = pageList.map(function(e){
-      var info = regPctInfo(e);
+      var whenText = e.start ? (fmtDate(e.start) + ' · ' + fmtTime(e.start)) : 'Date not set';
       return '<div class="ev-card fade-in">' +
-        '<div class="ev-card-top"><span class="status-dot ' + e.status + '"></span>' +
-          '<div style="flex:1;min-width:0;"><a class="ev-link" href="edit-event.html?event=' + e.id + '" style="font-weight:600;font-size:14.5px;">' + esc(e.name) + '</a>' +
-          '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div>' +
-        '<div class="ev-card-grid">' +
-          '<div><div class="k">Event date</div>' + dateCellHTML(e) + '</div>' +
-          '<div><div class="k">Payment</div>' + payCellHTML(e) + '</div>' +
-          '<div><div class="k">Registrations</div>' + regCellHTML(e) + '</div>' +
-          '<div><div class="k">Visitors</div><span class="vis-num">' + fmtNum(e.visitors) + '</span></div>' +
+        '<div class="ev-card-top"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '" style="margin-top:7px;"></span>' +
+          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '" style="font-weight:700;font-size:14.5px;">' + esc(e.name) + '</a>' +
+          '<div class="ev-meta-line">' + metaLine(e) + '</div></div>' +
+          rowActionsHTML(e, 'card') +
         '</div>' +
-        '<div class="ev-card-foot"><span class="faint" style="font-size:11.5px;">#' + e.eventNo + '</span>' + rowActionsHTML(e) + '</div>' +
+        '<div class="ev-card-info">' +
+          '<div class="ev-info-row">' +
+            '<span class="ev-info-item">' + IC.calendarSm + '<span class="v' + (e.start?'':' faint2') + '">' + esc(whenText) + '</span></span>' +
+            '<span class="ev-info-item">' + IC.users + '<span class="v">' + fmtNum(e.visitors) + ' visitors</span></span>' +
+          '</div>' +
+          '<div class="ev-info-row">' +
+            '<span class="ev-info-item">' + IC.ticket + '<span class="v">' + fmtNum(e.registrations) + ' registrations</span></span>' +
+            '<span class="ev-info-item">' + IC.wallet + '<span class="v' + (e.payment.type==='free'?' faint2':'') + '">' + (e.payment.type==='free' ? 'Free' : fmtRupee(e.payment.amount)) + '</span></span>' +
+          '</div>' +
+        '</div>' +
       '</div>';
     }).join('');
 
@@ -1137,6 +1476,19 @@
     });
   }
 
+  function applyView(){
+    var rv = $('results-view');
+    if (rv) rv.className = 'view-' + state.view;
+    $('view-toggle').querySelectorAll('[data-view]').forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-view') === state.view);
+    });
+  }
+  function wireViewToggle(){
+    $('view-toggle').querySelectorAll('[data-view]').forEach(function(b){
+      b.addEventListener('click', function(){ state.view = b.getAttribute('data-view'); applyView(); });
+    });
+  }
+
   function wireSortHeaders(){
     document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
       th.addEventListener('click', function(){
@@ -1158,11 +1510,22 @@
         if (e.key==='Enter' && !e.target.closest('a, button')) window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
       });
     });
+    document.querySelectorAll('[data-venue-id]').forEach(function(a){
+      function show(){ cancelCloseQV(); openVenueQuickview(a, a.getAttribute('data-venue-id')); }
+      a.addEventListener('mouseenter', show);
+      a.addEventListener('focus', show);
+      a.addEventListener('mouseleave', scheduleCloseQV);
+      a.addEventListener('blur', scheduleCloseQV);
+      a.addEventListener('click', function(e){
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+        e.preventDefault(); e.stopPropagation();
+        show();
+      });
+    });
     document.querySelectorAll('[data-row-menu-btn]').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
-        var id = btn.getAttribute('data-row-menu-btn');
-        var panelId = 'rowmenu-' + id;
+        var panelId = btn.getAttribute('data-row-menu-btn');
         if (state.openPopover === panelId){ closeAll(); btn.classList.remove('force-show'); return; }
         closeAll();
         $(panelId).hidden = false; state.openPopover = panelId;
@@ -1186,27 +1549,99 @@
     switch(action){
       case 'view': case 'edit': case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
-      case 'registrations': case 'visitors': case 'reports':
+      case 'reports':
         toast('Opens the reporting workspace — coming soon.'); break;
       case 'duplicate':
-        var copy = Object.assign({}, e, { id: nextId(), name: e.name + ' (Copy)', status:'draft', registrations:0, visitors:0 });
+        var copy = Object.assign({}, e, { id: nextId(), name: e.name + ' (Copy)', status:'upcoming', registrations:0, visitors:0 });
         EVENTS.splice(EVENTS.indexOf(e)+1, 0, copy);
         toast('Duplicated as "' + copy.name + '"'); renderApp(); break;
       case 'copylink':
-        var slug = e.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
-        var url = 'https://events.economictimes.indiatimes.com/' + slug;
+        var url = eventPublicUrl(e);
         if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied — ' + url); }).catch(function(){ toast(url); }); }
         else toast(url);
         break;
+      case 'qr':
+        openQRModal(id); break;
       case 'complete':
         e.status = 'completed'; toast('"' + e.name + '" marked as completed'); renderApp(); break;
+      case 'cancel':
+        e.status = 'cancelled'; toast('"' + e.name + '" cancelled'); renderApp(); break;
       case 'archive':
-        e.status = 'deleted'; toast('"' + e.name + '" archived'); renderApp(); break;
+        e.status = 'deleted'; toast('"' + e.name + '" deleted — restore it anytime from the Deleted tab'); renderApp(); break;
       case 'restore':
-        e.status = 'draft'; toast('"' + e.name + '" restored to Draft'); renderApp(); break;
-      case 'delete': case 'delete-forever':
-        EVENTS.splice(EVENTS.indexOf(e), 1); toast('"' + e.name + '" deleted'); renderApp(); break;
+        e.status = 'upcoming'; toast('"' + e.name + '" restored to Upcoming'); renderApp(); break;
+      case 'delete-forever':
+        EVENTS.splice(EVENTS.indexOf(e), 1); toast('"' + e.name + '" deleted permanently'); renderApp(); break;
     }
+  }
+
+  function eventSlug(e){
+    return e.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  }
+  function eventPublicUrl(e, section){
+    var base = 'https://events.economictimes.indiatimes.com/' + eventSlug(e);
+    if (section === 'agenda') return base + '/agenda';
+    if (section === 'speakers') return base + '/speakers';
+    return base;
+  }
+
+  var QR_SECTIONS = [
+    { key:'website',  label:'QR Code — Website',  icon:'globe',  hint:'Full event landing page' },
+    { key:'agenda',   label:'QR Code — Agenda',   icon:'agenda', hint:'Jumps straight to the agenda' },
+    { key:'speakers', label:'QR Code — Speakers', icon:'mic',    hint:'Jumps straight to the speaker list' }
+  ];
+
+  function openQRModal(id){
+    var e = findEvent(id);
+    if (!e) return;
+    var root = $('sheet-root');
+
+    function close(){ root.innerHTML=''; }
+
+    function renderPicker(){
+      root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
+        '<div class="modal-card-head"><div><h3>QR Codes</h3><p>' + esc(e.name) + '</p></div>' +
+          '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
+        '<div class="modal-card-body">' +
+          QR_SECTIONS.map(function(s){
+            return '<button type="button" class="qr-pick-row" data-qr-sec="' + s.key + '">' +
+              '<span class="qr-pick-ic">' + IC[s.icon] + '</span>' +
+              '<span class="qr-pick-text"><span class="qr-pick-label">' + s.label + '</span><span class="qr-pick-hint">' + s.hint + '</span></span>' +
+              '<span class="qr-pick-chev">' + IC.chevDown + '</span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+      '</div></div>';
+      $('qr-close').addEventListener('click', close);
+      $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
+      document.querySelectorAll('[data-qr-sec]').forEach(function(btn){
+        btn.addEventListener('click', function(){ renderDetail(btn.getAttribute('data-qr-sec')); });
+      });
+    }
+
+    function renderDetail(key){
+      var sec = QR_SECTIONS.filter(function(s){ return s.key===key; })[0];
+      var url = eventPublicUrl(e, key === 'website' ? null : key);
+      root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
+        '<div class="modal-card-head"><div><h3>' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
+          '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
+        '<div class="modal-card-body">' +
+          '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" alt="' + esc(sec.label) + '" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url) + '"></div>' +
+          '<div class="email-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" type="button">' + IC.copy + '</button></div>' +
+        '</div>' +
+        '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-back">&larr; Back</button><button class="btn btn-primary" id="qr-done" style="margin-left:auto;">Done</button></div>' +
+      '</div></div>';
+      $('qr-close').addEventListener('click', close);
+      $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
+      $('qr-back').addEventListener('click', renderPicker);
+      $('qr-done').addEventListener('click', close);
+      $('qr-copy-link').addEventListener('click', function(){
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url); }); }
+        else toast(url);
+      });
+    }
+
+    renderPicker();
   }
 
   /* =========================================================
@@ -1267,58 +1702,133 @@
   }
 
   /* =========================================================
-     AUDIENCE SEGMENTATION — compact ranked leaderboard, not a paginated table
+     AUDIENCE SEGMENTATION — per IP event: Top Company, Top Designation,
+     Top Source, Mobile vs Desktop. Two presentations: ranked list or donut chart.
   ========================================================= */
-  function renderSegmentTabs(){
-    $('segment-tabs').innerHTML = Object.keys(SEGMENT_METRICS).map(function(k){
-      return '<button type="button" aria-pressed="' + (state.segmentMetric===k) + '" data-seg="' + k + '">' + SEGMENT_METRICS[k] + '</button>';
+  var SEG_DIM_KEY = { company:'companies', designation:'designations', source:'sources', device:'devices' };
+
+  function renderSegmentControls(){
+    var validIds = IP_EVENT_IDS.filter(function(id){ var e = findEvent(id); return e && (e.status==='upcoming'||e.status==='active'||e.status==='completed'); });
+    if (validIds.indexOf(state.segmentEventId) === -1) state.segmentEventId = validIds[0] || null;
+
+    var sel = $('segment-event-select');
+    if (!validIds.length){
+      sel.innerHTML = '<option>No IP events yet</option>';
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      sel.innerHTML = validIds.map(function(id){
+        var e = findEvent(id);
+        return '<option value="' + id + '" ' + (state.segmentEventId===id?'selected':'') + '>' + esc(e.name) + '</option>';
+      }).join('');
+    }
+    sel.onchange = function(){ state.segmentEventId = sel.value; renderSegmentBody(); };
+
+    $('segment-dim-tabs').innerHTML = Object.keys(SEGMENT_DIMENSIONS).map(function(k){
+      return '<button type="button" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEGMENT_DIMENSIONS[k] + '</button>';
     }).join('');
-    $('segment-tabs').querySelectorAll('[data-seg]').forEach(function(b){
-      b.addEventListener('click', function(){ state.segmentMetric = b.getAttribute('data-seg'); renderSegmentTabs(); renderSegmentBody(); });
+    $('segment-dim-tabs').querySelectorAll('[data-dim]').forEach(function(b){
+      b.addEventListener('click', function(){ state.segmentDimension = b.getAttribute('data-dim'); renderSegmentControls(); renderSegmentBody(); });
+    });
+
+    $('segment-view-toggle').querySelectorAll('[data-segview]').forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-segview') === state.segmentView);
+      b.onclick = function(){ state.segmentView = b.getAttribute('data-segview'); renderSegmentControls(); renderSegmentBody(); };
     });
   }
+
+  function renderSegRankedList(entries, max, fmtVal){
+    return '<div class="seg-list">' + entries.map(function(x,i){
+      var pct = Math.max(4, Math.round((x.value/max)*100));
+      return '<div class="seg-row"><span class="seg-rank">' + (i+1) + '</span>' +
+        '<div class="seg-main"><div class="seg-name-row"><span class="seg-name">' + esc(x.label) + '</span><span class="seg-val mono">' + fmtVal(x.value) + '</span></div>' +
+        '<div class="seg-bar-track"><div class="seg-bar-fill" style="width:' + pct + '%;background:' + SEG_PALETTE[i % SEG_PALETTE.length] + ';"></div></div></div></div>';
+    }).join('') + '</div>';
+  }
+  function renderSegDonut(entries, total, size){
+    size = size || 148;
+    var r = size/2 - 11, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
+    var offset = 0;
+    var arcs = entries.map(function(x,i){
+      var frac = total ? x.value/total : 0;
+      var dash = frac*circ;
+      var html = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + SEG_PALETTE[i % SEG_PALETTE.length] + '" stroke-width="18" ' +
+        'stroke-dasharray="' + dash.toFixed(2) + ' ' + (circ-dash).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')">' +
+        '<title>' + esc(x.label) + ' — ' + Math.round(frac*100) + '%</title></circle>';
+      offset += dash;
+      return html;
+    }).join('');
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" class="seg-donut">' + arcs + '</svg>';
+  }
+  function renderSegLegend(entries, total, fmtVal){
+    return '<div class="seg-legend">' + entries.map(function(x,i){
+      var pct = total ? Math.round((x.value/total)*100) : 0;
+      return '<div class="seg-legend-row"><span class="seg-swatch" style="background:' + SEG_PALETTE[i % SEG_PALETTE.length] + ';"></span>' +
+        '<span class="seg-legend-label">' + esc(x.label) + '</span>' +
+        '<span class="seg-legend-val mono">' + fmtVal(x.value) + '</span>' +
+        '<span class="seg-legend-pct">' + pct + '%</span></div>';
+    }).join('') + '</div>';
+  }
+
   function renderSegmentBody(){
     if (state.loading){
-      $('segment-body').innerHTML = Array(5).fill(0).map(function(){ return '<div class="skel skel-line" style="height:16px;margin-bottom:10px;"></div>'; }).join('');
+      $('segment-body').innerHTML = Array(4).fill(0).map(function(){ return '<div class="skel skel-line" style="height:16px;margin-bottom:12px;"></div>'; }).join('');
       return;
     }
-    var metric = state.segmentMetric;
-    var pool = EVENTS.filter(function(e){ return e.status==='upcoming' || e.status==='active' || e.status==='completed'; });
-    var totalAll = pool.reduce(function(s,e){ return s + (e[metric]||0); }, 0);
-    var sorted = pool.slice().sort(function(a,b){ return (b[metric]||0) - (a[metric]||0); });
-    var top = sorted.slice(0,5);
-    if (!top.length || !totalAll){ $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">No data yet.</p>'; return; }
-    var topSum = top.reduce(function(s,e){ return s + (e[metric]||0); }, 0);
-    var share = Math.round((topSum/totalAll)*100);
-    var max = top[0][metric] || 1;
-    var html = '<div class="seg-insight">' + IC.chart + '<span>Top 5 events account for <strong>' + share + '%</strong> of total ' + SEGMENT_METRICS[metric].toLowerCase() + '</span></div>';
-    html += '<div class="seg-list">' + top.map(function(e,i){
-      var val = e[metric] || 0;
-      var pct = Math.max(4, Math.round((val/max)*100));
-      return '<div class="seg-row"><span class="seg-rank">' + (i+1) + '</span>' +
-        '<div class="seg-main"><div class="seg-name-row"><span class="seg-name">' + esc(e.name) + '</span><span class="seg-val mono">' + fmtNum(val) + '</span></div>' +
-        '<div class="seg-bar-track"><div class="seg-bar-fill" style="width:' + pct + '%;"></div></div></div></div>';
-    }).join('') + '</div>';
-    $('segment-body').innerHTML = html;
+    var ev = findEvent(state.segmentEventId);
+    if (!ev){
+      $('segment-sub').textContent = 'No IP events with audience data yet';
+      $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">Audience segmentation is available for Intellectual Property (IP) events once they have registrations.</p>';
+      return;
+    }
+    var dim = state.segmentDimension;
+    var audience = EVENT_AUDIENCE[ev.id] || { companies:[], designations:[], sources:[], devices:[] };
+    var entries = (audience[SEG_DIM_KEY[dim]] || []).slice().sort(function(a,b){ return b.value - a.value; });
+
+    $('segment-sub').textContent = SEGMENT_DIMENSIONS[dim] + ' for ' + ev.name;
+
+    if (!entries.length){ $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">No audience data yet for this event.</p>'; return; }
+
+    var total = entries.reduce(function(s,x){ return s+x.value; }, 0);
+    var top = entries[0];
+    var topShare = total ? Math.round((top.value/total)*100) : 0;
+    var max = top.value || 1;
+
+    var insight = '<div class="seg-insight">' + IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads with <strong>' + topShare + '%</strong> of attendees' +
+      (dim==='device' ? '' : ' at ' + esc(ev.name)) + '.</span></div>';
+
+    var bodyHTML = state.segmentView === 'chart'
+      ? '<div class="seg-chart-row">' + renderSegDonut(entries, total) + renderSegLegend(entries, total, fmtNum) + '</div>'
+      : renderSegRankedList(entries, max, fmtNum);
+
+    $('segment-body').innerHTML = insight + bodyHTML;
   }
 
   /* =========================================================
-     LATEST ACTIVITY — grouped, single-line rows instead of a long verbose feed
+     LATEST ACTIVITY ON THIS PORTAL — platform-wide flow metrics for the
+     selected period (Today / 7 / 10 / 30 days / Custom), not a per-event log.
   ========================================================= */
   function renderActivity(){
+    $('activity-range-label').textContent = computeRangeLabel(state.activityRange);
     if (state.loading){
-      $('activity-body').innerHTML = Array(4).fill(0).map(function(){ return '<div class="skel skel-line" style="height:14px;margin-bottom:14px;"></div>'; }).join('');
+      $('activity-body').innerHTML = Array(5).fill(0).map(function(){ return '<div class="skel skel-line" style="height:14px;margin-bottom:16px;"></div>'; }).join('');
       return;
     }
-    var groups = groupActivity(ACTIVITY).slice(0,5);
-    if (!groups.length){ $('activity-body').innerHTML = '<p class="muted" style="font-size:12.5px;">No recent activity.</p>'; return; }
-    $('activity-body').innerHTML = '<div class="activity-list">' + groups.map(function(g){
-      return '<div class="activity-row"><span class="avatar-sm">' + initials(g.actor) + '</span>' +
-        '<div class="activity-main"><div class="activity-text"><b>' + esc(g.actor) + '</b> updated <b>' + esc(g.eventName) + '</b> <span class="path">· ' + esc(g.path) + '</span></div>' +
-        '<div class="activity-meta-row"><span class="activity-when">' + timeAgo(g.latest) + '</span>' + (g.count>1 ? '<span class="activity-count">×' + g.count + '</span>' : '') + '</div></div></div>';
+    var f = computeRangeFactor(state.activityRange);
+    var metrics = [
+      { key:'registrations',    label:'New registrations',      icon:IC.ticket },
+      { key:'visitors',         label:'Visitors',                icon:IC.users },
+      { key:'mailersSent',      label:'Mailers sent',            icon:IC.mail },
+      { key:'newslettersSent',  label:'Newsletters sent',        icon:IC.newspaper },
+      { key:'subscribers',      label:'New subscribers',         icon:IC.userPlus }
+    ];
+    $('activity-body').innerHTML = '<div class="metric-list">' + metrics.map(function(m){
+      var val = Math.round(PORTAL_ACTIVITY_BASE[m.key] * f);
+      return '<div class="metric-row"><span class="metric-icon">' + m.icon + '</span>' +
+        '<span class="metric-label">' + m.label + '</span>' +
+        '<span class="metric-value mono">' + fmtCompact(val) + '</span></div>';
     }).join('') + '</div>';
   }
-  $('activity-viewall').addEventListener('click', function(){ toast('The full activity log isn’t wired up in this preview yet.'); });
 
   /* =========================================================
      APP RENDER
@@ -1331,14 +1841,55 @@
     renderKPIs();
     renderToolbarButtons();
     renderResults();
-    renderSegmentTabs();
+    renderSegmentControls();
     renderSegmentBody();
     renderActivity();
   }
 
+  /* =========================================================
+     NEED HELP — opens the visitor's mail client addressed to Customer Care.
+     No backend here, so this is a mailto: link, not an actual send.
+  ========================================================= */
+  var HELP_EMAIL = 'customercare@economictimesb2b.com';
+  function openHelpModal(){
+    var root = $('sheet-root');
+    root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
+      '<div class="modal-card-head"><div><h3>Need help?</h3><p>Send your query about this dashboard or an event, straight to our team.</p></div>' +
+        '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
+      '<div class="modal-card-body">' +
+        '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" type="button">' + IC.copy + '</button></div>' +
+        '<div><label class="flabel">Subject</label><input class="finput" id="help-subject" value="Support request — Events dashboard"></div>' +
+        '<div><label class="flabel">Your query</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with — an event, registrations, payments, anything…"></textarea></div>' +
+      '</div>' +
+      '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Cancel</button><button class="btn btn-primary" id="help-send" style="margin-left:auto;">' + IC.mail + ' Send via email</button></div>' +
+    '</div></div>';
+    function close(){ root.innerHTML=''; }
+    $('help-close').addEventListener('click', close);
+    $('help-cancel').addEventListener('click', close);
+    $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
+    $('help-copy-email').addEventListener('click', function(){
+      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(HELP_EMAIL).then(function(){ toast('Email address copied'); }).catch(function(){ toast(HELP_EMAIL); }); }
+      else toast(HELP_EMAIL);
+    });
+    $('help-send').addEventListener('click', function(){
+      var subject = $('help-subject').value.trim() || 'Support request — Events dashboard';
+      var message = $('help-message').value.trim();
+      if (!message){ toast('Add a quick note so our team knows what you need.'); return; }
+      var mailto = 'mailto:' + HELP_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message);
+      window.location.href = mailto;
+      toast('Opening your email app…');
+      close();
+    });
+  }
+  $('btn-help').addEventListener('click', openHelpModal);
+  $('venue-quickview').addEventListener('mouseenter', cancelCloseQV);
+  $('venue-quickview').addEventListener('mouseleave', scheduleCloseQV);
+
   function init(){
     try {
       wireSortHeaders();
+      wireViewToggle();
+      applyView();
       state.loading = true;
       renderApp();
       setTimeout(function(){
