@@ -515,6 +515,55 @@
   .asc-card h4{ font-size:13.5px; }
   .asc-card p{ font-size:12px; color: var(--text-muted); line-height:1.45; }
 
+  .predefined-modal{ max-width: 760px; text-align:left; position:relative; }
+  .predefined-modal .icon-btn{ position:absolute; top:14px; right:14px; }
+  .predefined-modal .modal-body{ align-items:stretch; padding: 26px 26px 24px; }
+  .predefined-modal h3{ font-size:18px; text-align:center; }
+  .predefined-modal .picker-intro{ text-align:center; color:var(--text-muted); font-size:12.5px; margin-top:-4px; }
+  .predefined-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:8px; max-height:62vh; overflow-y:auto; padding:2px; }
+  .predefined-card{
+    display:flex; flex-direction:column; gap:10px; padding:10px; border:1.5px solid var(--border);
+    border-radius:10px; background:var(--surface); color:var(--text); text-align:left;
+    transition:border-color .12s ease, background .12s ease, transform .12s ease, box-shadow .12s ease;
+  }
+  .predefined-card:hover{ border-color:var(--accent); background:var(--accent-soft); transform:translateY(-1px); box-shadow:var(--shadow-sm); }
+  .predefined-preview{ height:92px; border:1px solid var(--border); border-radius:7px; background:var(--bg); padding:10px; overflow:hidden; }
+  .predefined-preview .preview-kicker{ width:22%; height:5px; background:var(--accent); border-radius:2px; margin-bottom:8px; }
+  .predefined-preview .preview-title{ width:68%; height:10px; background:var(--text); border-radius:2px; margin-bottom:12px; }
+  .predefined-preview .preview-row{ display:flex; gap:6px; height:54px; }
+  .predefined-preview .preview-block{ flex:1; border-radius:4px; background:var(--surface-3); }
+  .predefined-preview.cta-preview{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; }
+  .predefined-preview.cta-preview .preview-title{ width:58%; margin:0; }
+  .predefined-preview.cta-preview .preview-copy{ width:72%; height:5px; background:var(--text-faint); border-radius:2px; }
+  .predefined-preview.cta-preview .preview-button{ width:28%; height:13px; border-radius:5px; background:var(--accent); }
+  .predefined-preview.gallery-preview{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; padding:10px; }
+  .predefined-preview.gallery-preview .preview-image{ background:var(--surface-3); border-radius:4px; }
+  .predefined-preview.quote-preview{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
+  .predefined-preview.quote-preview .quote-line{ width:78%; height:7px; background:var(--text); border-radius:2px; }
+  .predefined-preview.quote-preview .quote-name{ width:34%; height:5px; background:var(--text-faint); border-radius:2px; }
+  .predefined-card strong{ font-size:13px; }
+  .predefined-card span{ font-size:11.5px; color:var(--text-muted); }
+  .predefined-list{ display:flex; flex-direction:column; gap:6px; }
+  .predefined-list-row{
+    width:100%; display:flex; align-items:center; gap:9px; padding:10px 8px; border:1px solid var(--border);
+    border-radius:8px; background:var(--surface); color:var(--text); text-align:left;
+  }
+  .predefined-list-row:hover{ border-color:var(--accent); background:var(--accent-soft); }
+  .predefined-list-row > span:nth-child(2){ min-width:0; flex:1; }
+  .predefined-list-row strong{ display:block; font-size:12px; }
+  .predefined-list-row small{ display:block; margin-top:2px; color:var(--text-muted); font-size:10.5px; line-height:1.35; }
+  .predefined-list-icon{ width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:var(--accent-soft); color:var(--accent-strong); font-size:12px; font-weight:800; }
+  .predefined-list-arrow{ color:var(--text-faint); font-size:20px; line-height:1; }
+  .predefined-list-head{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .predefined-list-head strong{ font-size:13px; }
+  .predefined-list-note{ display:block; color:var(--text-muted); font-size:11.5px; margin:0 0 9px 4px; }
+  .variant-modal .modal-body{ padding-top:22px; }
+  .variant-head{ display:flex; align-items:center; gap:8px; }
+  .variant-back{ margin-right:auto; }
+  .variant-head h3{ flex:1; }
+  @media (max-width: 760px){ .predefined-grid{ grid-template-columns:repeat(2, 1fr); } }
+  @media (max-width: 560px){ .predefined-grid{ grid-template-columns:1fr; } }
+
   #toast-region{ position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index: 100; align-items:center; }
   .toast{
     background: var(--text); color: var(--bg); font-size: 13px; font-weight:600; padding: 10px 16px; border-radius: 8px;
@@ -565,6 +614,111 @@
   .s-card .ph{ width:40px; height:40px; border-radius:10px; background:#DCEEE7; margin-bottom:14px; }
   .s-card h3{ font-size:16px; }
   .s-card p{ font-size:13px; color:#6a6a5f; margin-top:8px; line-height:1.6; }
+
+  .s-discussion-points{ padding:56px 48px 62px; background:#FBF7EA; text-align:center; }
+  .s-discussion-points .dp-kicker{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:#4A4034; }
+  .s-discussion-points h2{ margin-top:12px; font-size:38px; line-height:1.12; color:#17130F; }
+  .s-discussion-points .dp-intro{ max-width:66ch; margin:16px auto 26px; color:#675F55; font-size:13px; line-height:1.55; }
+  .dp-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; max-width:980px; margin:0 auto; }
+  .dp-card{ min-height:164px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:18px 12px; border:1px solid #D8D2C6; border-radius:14px; background:#FFFDF8; }
+  .dp-card:first-child{ border-color:#F0A900; }
+  .dp-icon{ width:50px; height:50px; display:flex; align-items:center; justify-content:center; color:#EDA900; font-family:'Fraunces',serif; font-size:38px; line-height:1; }
+  .dp-card h3{ max-width:17ch; font-size:12px; line-height:1.35; color:#17130F; }
+  .stage.device-mobile .s-discussion-points{ padding:34px 22px; }
+  .stage.device-mobile .s-discussion-points h2{ font-size:28px; }
+  .stage.device-mobile .dp-grid{ grid-template-columns:repeat(2,1fr); gap:8px; }
+  .stage.device-mobile .dp-card{ min-height:140px; padding:14px 8px; }
+
+  .s-opportunity-tracks{ padding:52px 48px 56px; background:#fff; text-align:center; }
+  .s-opportunity-tracks .track-kicker{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:#E79A42; letter-spacing:.08em; text-transform:uppercase; }
+  .s-opportunity-tracks h2{ max-width:680px; margin:10px auto 30px; font-size:38px; line-height:1.08; color:#151515; text-transform:uppercase; }
+  .track-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:18px; max-width:1060px; margin:0 auto; }
+  .track-card{ overflow:hidden; border-radius:16px; background:#FAFAFA; box-shadow:0 8px 22px rgba(34,28,20,.08); text-align:center; }
+  .track-card img{ display:block; width:100%; height:136px; object-fit:cover; }
+  .track-card .track-icon{ width:42px; height:42px; display:flex; align-items:center; justify-content:center; margin:-20px auto 8px; position:relative; border:1px solid #F1C38B; border-radius:50%; background:#FFF5E8; color:#ED9940; font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:700; }
+  .track-card h3{ min-height:36px; padding:0 10px; color:#E88F30; font-size:13px; line-height:1.15; text-transform:uppercase; }
+  .track-card p{ min-height:88px; padding:10px 13px 18px; color:#5F5B57; font-size:10.5px; line-height:1.4; }
+  .stage.device-mobile .s-opportunity-tracks{ padding:34px 22px; }
+  .stage.device-mobile .s-opportunity-tracks h2{ font-size:28px; }
+  .stage.device-mobile .track-grid{ grid-template-columns:repeat(2,1fr); gap:10px; }
+  .stage.device-mobile .track-card img{ height:100px; }
+  .stage.device-mobile .track-card h3{ font-size:11px; }
+  .stage.device-mobile .track-card p{ min-height:120px; padding-left:8px; padding-right:8px; font-size:10px; }
+
+  .s-discussion-editorial{ position:relative; display:grid; grid-template-columns:minmax(260px,.85fr) minmax(360px,1.15fr); gap:54px; padding:54px 64px 58px; min-height:620px; overflow:hidden; background:#F1EEE6; }
+  .s-discussion-editorial::before{ content:''; position:absolute; inset:0; background:linear-gradient(90deg,rgba(247,244,237,.98) 0%,rgba(247,244,237,.9) 40%,rgba(247,244,237,.68) 100%),url('https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1600&q=80') center/cover; opacity:.72; }
+  .s-discussion-editorial > *{ position:relative; z-index:1; }
+  .editorial-copy{ align-self:start; padding-top:8px; }
+  .editorial-copy h2{ max-width:8ch; color:#21491F; font-family:var(--font-body); font-size:46px; font-weight:800; line-height:.88; letter-spacing:0; text-transform:uppercase; }
+  .editorial-copy p{ max-width:34ch; margin-top:32px; color:#45433E; font-size:14px; line-height:1.55; }
+  .editorial-top-rule{ width:100%; height:1px; margin-bottom:40px; background:#C8B99E; }
+  .editorial-topics{ display:flex; flex-direction:column; gap:8px; }
+  .editorial-topic{ display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; padding:11px 14px; border:1px solid #C8AD82; background:rgba(250,248,242,.54); color:#234820; }
+  .editorial-topic:first-child{ min-height:86px; align-items:flex-start; }
+  .editorial-topic span{ font-size:13px; font-weight:700; line-height:1.2; text-transform:uppercase; }
+  .editorial-topic small{ display:block; max-width:42ch; margin-top:10px; color:#63715C; font-size:10.5px; font-weight:500; line-height:1.35; text-transform:none; }
+  .editorial-arrow{ flex-shrink:0; color:#5D5544; font-size:28px; font-weight:300; line-height:1; }
+  .stage.device-mobile .s-discussion-editorial{ grid-template-columns:1fr; gap:26px; padding:34px 22px; min-height:0; }
+  .stage.device-mobile .editorial-copy h2{ max-width:12ch; font-size:36px; }
+  .stage.device-mobile .editorial-copy p{ margin-top:20px; }
+  .stage.device-mobile .editorial-topic span{ font-size:11px; }
+
+  .s-automotive-tracks{ padding:36px 0 0; background:#000; }
+  .auto-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:18px; }
+  .auto-card{ position:relative; min-height:280px; overflow:visible; border:1px solid #F21D3B; border-radius:15px; background:#111; }
+  .auto-card::before,.auto-card::after{ content:''; position:absolute; left:24px; right:24px; height:14px; border:1px solid #F21D3B; border-bottom:0; border-radius:10px 10px 0 0; background:#F8F8F8; z-index:0; }
+  .auto-card::before{ top:-16px; }
+  .auto-card::after{ top:-9px; left:12px; right:12px; }
+  .auto-card .auto-image{ position:absolute; inset:0; overflow:hidden; border-radius:14px; background-position:center; background-size:cover; }
+  .auto-card .auto-image::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.66) 0%,rgba(0,0,0,.3) 42%,rgba(0,0,0,.72) 100%); }
+  .auto-card .auto-content{ position:relative; z-index:1; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:31px 17px 20px; text-align:center; }
+  .auto-diamond{ width:10px; height:10px; margin-bottom:18px; border:2px solid #F21D3B; transform:rotate(45deg); color:transparent; }
+  .auto-card h3{ max-width:18ch; margin-top:0; color:#fff; font-size:14px; line-height:1.45; text-transform:uppercase; }
+  .stage.device-mobile .s-automotive-tracks{ padding-top:28px; }
+  .stage.device-mobile .auto-grid{ grid-template-columns:repeat(2,1fr); gap:12px; }
+  .stage.device-mobile .auto-card{ min-height:220px; }
+  .stage.device-mobile .auto-card .auto-content{ min-height:220px; padding:27px 9px 14px; }
+  .stage.device-mobile .auto-card h3{ font-size:11px; }
+
+  .s-marketing-carousel{ padding:72px 0 54px; background:linear-gradient(135deg,#120713,#2B0F2B 58%,#100511); color:#fff; overflow:hidden; }
+  .s-marketing-carousel > h2{ max-width:900px; margin:0 auto 58px; padding:0 24px; color:#DCC29A; font-size:39px; line-height:1.1; text-align:center; }
+  .marketing-viewport{ overflow:hidden; padding:0 1px 10px; }
+  .marketing-track{ display:flex; gap:22px; width:max-content; padding:0 0; transform:translateX(0); transition:transform .3s ease; }
+  .marketing-card{ width:calc((100vw - 88px) / 4); max-width:420px; min-width:260px; min-height:322px; padding:24px 28px 28px; border:1px solid #BCA46F; border-radius:18px; background:linear-gradient(145deg,rgba(8,5,9,.9),rgba(52,15,54,.9)); }
+  .marketing-icon{ width:56px; height:56px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:#fff; color:#171217; font-size:25px; margin-bottom:62px; }
+  .marketing-card h3{ max-width:18ch; color:#fff; font-family:var(--font-body); font-size:23px; font-weight:700; line-height:1.15; text-transform:uppercase; }
+  .marketing-card p{ margin-top:14px; color:#F1EAF2; font-size:14px; line-height:1.5; }
+  .marketing-controls{ display:flex; align-items:center; justify-content:center; gap:18px; margin-top:28px; }
+  .marketing-controls button{ width:34px; height:34px; border:1px solid #BCA46F; border-radius:50%; background:transparent; color:#DCC29A; font-size:20px; }
+  .marketing-controls button:hover{ background:#DCC29A; color:#241024; }
+  .marketing-dot{ width:7px; height:7px; border:0; border-radius:50%; background:#8A6A86; }
+  .marketing-dot.active{ background:#DCC29A; }
+  .stage.device-mobile .s-marketing-carousel{ padding:44px 0 38px; }
+  .stage.device-mobile .s-marketing-carousel > h2{ font-size:28px; margin-bottom:34px; }
+  .stage.device-mobile .marketing-card{ width:calc(100vw - 64px); min-height:270px; padding:20px; }
+  .stage.device-mobile .marketing-card h3{ font-size:18px; }
+  .stage.device-mobile .marketing-card p{ font-size:12px; }
+
+  .s-ai-discussion{ display:grid; grid-template-columns:minmax(300px,.9fr) minmax(390px,1.1fr); gap:72px; padding:62px 76px; background:radial-gradient(circle at 80% 90%,#183508 0,#07120A 44%,#050B09 100%); color:#F5F8F1; }
+  .ai-discussion-left h2{ max-width:7ch; font-family:var(--font-body); font-size:49px; font-weight:800; line-height:.9; text-transform:uppercase; }
+  .ai-discussion-left h2 span{ color:#6BDD00; }
+  .ai-topic-list{ margin-top:76px; }
+  .ai-topic{ display:flex; align-items:center; gap:14px; min-height:82px; border-bottom:1px solid #437D11; color:#F5F8F1; }
+  .ai-topic:first-child{ border-bottom:3px solid #6BDD00; color:#6BDD00; }
+  .ai-topic small{ align-self:flex-start; margin-top:22px; color:#6BDD00; font-family:'IBM Plex Mono',monospace; font-size:11px; }
+  .ai-topic strong{ flex:1; font-size:17px; line-height:1.15; text-transform:uppercase; }
+  .ai-topic .ai-arrow{ width:36px; height:36px; display:flex; align-items:center; justify-content:center; border:1px solid #365E14; border-radius:50%; color:#6BDD00; font-size:22px; }
+  .ai-topic:first-child .ai-arrow{ border-color:#6BDD00; }
+  .ai-discussion-right{ padding-top:50px; }
+  .ai-discussion-right h3{ color:#6BDD00; font-family:var(--font-body); font-size:15px; font-weight:600; line-height:1.45; }
+  .ai-discussion-right > p{ max-width:50ch; margin:82px 0 12px; color:#D7DDD2; font-size:12px; line-height:1.65; }
+  .ai-insights{ display:flex; flex-direction:column; gap:7px; }
+  .ai-insight{ padding:13px 12px; border:1px solid #5A9D16; border-radius:6px; color:#F0F5EC; font-size:11px; line-height:1.35; }
+  .stage.device-mobile .s-ai-discussion{ grid-template-columns:1fr; gap:30px; padding:38px 22px; }
+  .stage.device-mobile .ai-discussion-left h2{ font-size:38px; }
+  .stage.device-mobile .ai-topic-list{ margin-top:38px; }
+  .stage.device-mobile .ai-discussion-right{ padding-top:0; }
+  .stage.device-mobile .ai-discussion-right > p{ margin-top:28px; }
 
   .s-gallery{ padding: 0 40px 54px; }
   .stage.device-mobile .s-gallery{ padding:0 22px 32px; }
@@ -625,9 +779,13 @@
   <div class="ed-body">
     <!-- ============ LEFT ICON RAIL ============ -->
     <nav class="ed-rail" aria-label="Editor tools">
-      <button class="rail-btn active" data-panel="add" title="Add elements">
+      <button class="rail-btn" data-panel="add" title="Add elements">
         <span class="add-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
         Add
+      </button>
+      <button class="rail-btn" data-panel="predefined" title="Predefined sections">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+        Sections
       </button>
       <button class="rail-btn" data-panel="pages" title="Pages">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/></svg>
@@ -653,7 +811,7 @@
     </nav>
 
     <!-- ============ ADD PANEL ============ -->
-    <aside class="side-panel" id="panel-add">
+    <aside class="side-panel" id="panel-add" hidden>
       <div class="side-panel-head"><h3>Add elements</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
       <div class="side-panel-body">
         <div class="panel-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input placeholder="Search elements"></div>
@@ -670,27 +828,15 @@
           </div>
         </div>
 
-        <div>
-          <span class="blk-cat">Sections</span>
-          <div class="blk-grid">
-            <button class="sec-tpl" data-add-section="cards" style="grid-column:span 2;">
-              <span class="thumb"><i style="width:30%;height:34px;"></i><i style="width:30%;height:34px;"></i><i style="width:30%;height:34px;"></i></span>
-              <span class="lbl">3-card grid</span>
-            </button>
-            <button class="sec-tpl" data-add-section="cta" style="grid-column:span 2;">
-              <span class="thumb" style="justify-content:center;"><i style="width:60%;height:12px;"></i></span>
-              <span class="lbl">CTA banner</span>
-            </button>
-            <button class="sec-tpl" data-add-section="gallery" style="grid-column:span 2;">
-              <span class="thumb"><i style="flex:1;height:100%;"></i><i style="flex:1;height:100%;"></i><i style="flex:1;height:100%;"></i><i style="flex:1;height:100%;"></i></span>
-              <span class="lbl">Image gallery</span>
-            </button>
-            <button class="sec-tpl" data-add-section="quote" style="grid-column:span 2;">
-              <span class="thumb" style="justify-content:center;"><i style="width:70%;height:8px;"></i></span>
-              <span class="lbl">Testimonial</span>
-            </button>
-          </div>
-        </div>
+      </div>
+    </aside>
+
+    <!-- ============ PREDEFINED SECTIONS PANEL ============ -->
+    <aside class="side-panel" id="panel-predefined" hidden>
+      <div class="side-panel-head"><h3>Predefined sections</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body">
+        <p class="hint" style="font-size:12px;color:var(--text-faint);">Choose a section, then pick its design.</p>
+        <div id="predefined-section-list"></div>
       </div>
     </aside>
 
@@ -1431,7 +1577,7 @@
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
-  var panels = { add: document.getElementById('panel-add'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+  var panels = { add: document.getElementById('panel-add'), predefined: document.getElementById('panel-predefined'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
   function positionDesignPopover(anchorBtn){
     var panel = panels.design;
     var bodyEl = document.querySelector('.ed-body');
@@ -1452,6 +1598,7 @@
     Object.keys(panels).forEach(function(k){ panels[k].hidden = (k !== name); });
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
     if (name === 'layers') rebuildLayersPanel();
+    if (name === 'predefined') renderPredefinedSectionList();
     if (name === 'design') positionDesignPopover(anchorEl || document.getElementById('gt-settings'));
   }
   railBtns.forEach(function(b){
@@ -1477,6 +1624,51 @@
     railBtns.forEach(function(b){ b.classList.remove('active'); });
   });
   function openAdd(){ openAddSectionChooser(); }
+
+  function openPredefinedSectionPicker(){
+    openPanel('predefined');
+  }
+
+  function renderPredefinedSectionList(){
+    var list = document.getElementById('predefined-section-list');
+    var descriptions = {
+      discussion: 'Topics and questions for the event.', attend: 'Who will get the most value.', why: 'Benefits of joining the event.',
+      overview: 'A clear event summary and highlights.', stats: 'Important event numbers and milestones.', contact: 'A clear way to reach the event team.',
+      faq: 'Answers to common attendee questions.', sponsors: 'Sponsors and event partners.', agenda: 'Sessions, times, and speakers.',
+      glimpses: 'A visual look at the event experience.', speaker: 'Speakers, roles, and biographies.', waits: 'Highlights of what awaits attendees.'
+    };
+    list.innerHTML = '<span class="blk-cat">Predefined sections</span><div class="predefined-list" id="predefined-list"></div>';
+    var rows = list.querySelector('#predefined-list');
+    Object.keys(sectionTemplates).forEach(function(key){
+      if (!descriptions[key]) return;
+      var row = document.createElement('button');
+      row.className = 'predefined-list-row';
+      row.setAttribute('data-predefined-section', key);
+      row.innerHTML = '<span class="predefined-list-icon">+</span><span><strong>' + sectionTemplates[key].name + '</strong><small>' + descriptions[key] + '</small></span><span class="predefined-list-arrow">›</span>';
+      rows.appendChild(row);
+      row.addEventListener('click', function(){ renderSectionVariantList(key); });
+    });
+  }
+
+  function renderSectionVariantList(key){
+    var list = document.getElementById('predefined-section-list');
+    var tpl = sectionTemplates[key];
+    var variants = sectionVariants[key];
+    list.innerHTML = '<div class="predefined-list-head"><button class="btn btn-ghost btn-sm" id="variant-back">Back</button><strong>' + tpl.name + ' designs</strong></div><small class="predefined-list-note">Choose a layout to add.</small><div class="predefined-list" id="variant-grid"></div>';
+    var grid = list.querySelector('#variant-grid');
+    variants.forEach(function(variant, index){
+      var card = document.createElement('button');
+      card.className = 'predefined-list-row';
+      card.setAttribute('data-section-variant', index);
+      card.innerHTML = '<span class="predefined-list-icon">' + (index + 1) + '</span><span><strong>' + variant.name + '</strong><small>' + variant.description + '</small></span><span class="predefined-list-arrow">›</span>';
+      grid.appendChild(card);
+      card.addEventListener('click', function(){
+        insertSectionAtAnchor(buildSectionShell(variant.name, variant.html), variant.name);
+        renderPredefinedSectionList();
+      });
+    });
+    list.querySelector('#variant-back').addEventListener('click', renderPredefinedSectionList);
+  }
 
   /* ---------- add-section source chooser ---------- */
   function openAddSectionChooser(){
@@ -1513,7 +1705,7 @@
         var choice = card.getAttribute('data-choice');
         scrim.remove();
         if (choice === 'predefined'){
-          openPanel('add');
+          openPredefinedSectionPicker();
         } else if (choice === 'reference'){
           var ref = prompt('Paste a link or describe the design you want to clone or reference:');
           if (ref && ref.trim()) insertGeneratedSection('Section from design reference', ref.trim());
@@ -1552,8 +1744,142 @@
       '<div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div>' +
       '</div></div>' },
     quote: {name:'Testimonial', html:
-      '<div class="s-quote"><blockquote data-editable="text">&ldquo;Add a great customer quote here.&rdquo;</blockquote><div class="who" data-editable="text">&mdash; Customer name, title</div></div>' }
+      '<div class="s-quote"><blockquote data-editable="text">&ldquo;Add a great customer quote here.&rdquo;</blockquote><div class="who" data-editable="text">&mdash; Customer name, title</div></div>' },
+    discussion: {name:'Discussion points', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">What we will explore</span><h2 data-editable="text">Discussion points</h2><div class="s-cards"><div class="s-card"><h3 data-editable="text">The big question</h3><p data-editable="text">Add the central question your event will explore.</p></div><div class="s-card"><h3 data-editable="text">Real-world lessons</h3><p data-editable="text">Share the practical challenge or theme.</p></div><div class="s-card"><h3 data-editable="text">Next steps</h3><p data-editable="text">Describe the action attendees can take away.</p></div></div></div>' },
+    attend: {name:'Who Should Attend', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">Made for you</span><h2 data-editable="text">Who should attend</h2><div class="s-cards"><div class="s-card"><h3 data-editable="text">Leaders</h3><p data-editable="text">For decision-makers shaping what comes next.</p></div><div class="s-card"><h3 data-editable="text">Practitioners</h3><p data-editable="text">For people turning ideas into outcomes.</p></div><div class="s-card"><h3 data-editable="text">Curious minds</h3><p data-editable="text">For anyone ready to learn and connect.</p></div></div></div>' },
+    why: {name:'Why Join', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">Make it count</span><h2 data-editable="text">Why join</h2><div class="s-cards"><div class="s-card"><h3 data-editable="text">Learn</h3><p data-editable="text">Get fresh insight from people doing the work.</p></div><div class="s-card"><h3 data-editable="text">Connect</h3><p data-editable="text">Meet peers who share your ambition.</p></div><div class="s-card"><h3 data-editable="text">Grow</h3><p data-editable="text">Leave with ideas you can use immediately.</p></div></div></div>' },
+    overview: {name:'Overview', html:
+      '<div class="s-hero"><div><span class="kicker" data-editable="text">The event</span><h1 data-editable="text">A clear overview of what awaits</h1><p class="lead" data-editable="text">Add a concise introduction that explains the purpose, audience, and energy of your event.</p><div class="btnrow"><span class="s-btn primary" data-editable="button">Explore the event</span></div></div><div class="imgph" data-editable="image">Event image</div></div>' },
+    stats: {name:'Stats', html:
+      '<div class="s-stats"><div class="s-stat"><div class="n" data-editable="text">1,200+</div><div class="l" data-editable="text">Attendees</div></div><div class="s-stat"><div class="n" data-editable="text">40</div><div class="l" data-editable="text">Speakers</div></div><div class="s-stat"><div class="n" data-editable="text">18</div><div class="l" data-editable="text">Sessions</div></div><div class="s-stat"><div class="n" data-editable="text">12</div><div class="l" data-editable="text">Partners</div></div></div>' },
+    contact: {name:'Contact us', html:
+      '<div class="s-cta-band"><h2 data-editable="text">Contact us</h2><p data-editable="text">Have a question about the event? Our team is here to help.</p><div class="btnrow"><span class="s-btn primary" data-editable="button">Get in touch</span></div></div>' },
+    faq: {name:'FAQ', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">Good to know</span><h2 data-editable="text">Frequently asked questions</h2><div class="s-cards"><div class="s-card"><h3 data-editable="text">Where is it?</h3><p data-editable="text">Add the venue, address, or online access details.</p></div><div class="s-card"><h3 data-editable="text">What does it cost?</h3><p data-editable="text">Add ticket, pricing, or registration information.</p></div><div class="s-card"><h3 data-editable="text">What should I bring?</h3><p data-editable="text">Add practical guidance for attendees.</p></div></div></div>' },
+    sponsors: {name:'Sponsors', html:
+      '<div class="s-gallery"><span class="kicker" data-editable="text">With thanks</span><h2 data-editable="text">Our sponsors</h2><div class="s-gal-grid"><div class="gi" data-editable="text">Sponsor logo</div><div class="gi" data-editable="text">Sponsor logo</div><div class="gi" data-editable="text">Sponsor logo</div><div class="gi" data-editable="text">Sponsor logo</div></div></div>' },
+    agenda: {name:'Agenda', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">The schedule</span><h2 data-editable="text">Agenda</h2><div class="s-cards"><div class="s-card"><h3 data-editable="text">09:00 - Welcome</h3><p data-editable="text">Opening remarks and a warm welcome.</p></div><div class="s-card"><h3 data-editable="text">11:00 - Main session</h3><p data-editable="text">Add the session title and speaker details.</p></div><div class="s-card"><h3 data-editable="text">16:00 - Closing</h3><p data-editable="text">Wrap up the day and share what comes next.</p></div></div></div>' },
+    glimpses: {name:'Glimpses', html:
+      '<div class="s-gallery"><span class="kicker" data-editable="text">A look back</span><h2 data-editable="text">Glimpses from the event</h2><div class="s-gal-grid"><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div><div class="gi" data-editable="image"></div></div></div>' },
+    speaker: {name:'Speaker', html:
+      '<div class="s-cards-sec"><span class="kicker" data-editable="text">Meet the voices</span><h2 data-editable="text">Featured speakers</h2><div class="s-cards"><div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Speaker name</h3><p data-editable="text">Role, company, and a short biography.</p></div><div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Speaker name</h3><p data-editable="text">Role, company, and a short biography.</p></div><div class="s-card"><div class="ph" data-editable="image"></div><h3 data-editable="text">Speaker name</h3><p data-editable="text">Role, company, and a short biography.</p></div></div></div>' },
+    waits: {name:'What awaits you', html:
+      '<div class="s-quote"><blockquote data-editable="text">An inspiring day of ideas, people, and possibilities awaits you.</blockquote><div class="who" data-editable="text">Discover the experience</div></div>' }
   };
+
+  var sectionVariants = {};
+  Object.keys(sectionTemplates).forEach(function(key){
+    var tpl = sectionTemplates[key];
+    sectionVariants[key] = [
+      {name: tpl.name + ' - Classic', description:'A balanced layout with clear content blocks.', previewClass:'', html:tpl.html},
+      {name: tpl.name + ' - Split', description:'A spacious two-column layout for stronger visual hierarchy.', previewClass:'cta-preview', html:
+        '<div class="s-hero"><div><span class="kicker" data-editable="text">' + tpl.name + '</span><h1 data-editable="text">' + tpl.name + '</h1><p class="lead" data-editable="text">Add the key message or supporting detail for this section.</p><div class="btnrow"><span class="s-btn primary" data-editable="button">Learn more</span></div></div><div class="imgph" data-editable="image">Add image</div></div>'},
+      {name: tpl.name + ' - Focus', description:'A bold, centered layout for one memorable message.', previewClass:'quote-preview', html:
+        '<div class="s-quote"><blockquote data-editable="text">' + tpl.name + ' that leaves a lasting impression.</blockquote><div class="who" data-editable="text">Add a supporting detail or call to action</div></div>'}
+    ];
+  });
+  sectionVariants.discussion = [];
+  sectionVariants.discussion.push({name:'Key Discussion Points', description:'A 15-card focus-industry grid for discussion themes.', previewClass:'', html:
+    '<div class="s-discussion-points"><div class="dp-kicker" data-editable="text">Focus industries</div><h2 data-editable="text">Key Discussion Points</h2><p class="dp-intro" data-editable="text">From automotive and agriculture to e-commerce, pharma, energy and defence, these sectors are shaping the future of India\'s logistics ecosystem.</p><div class="dp-grid">' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">+</div><h3 data-editable="text">Energy Security in a Clean Energy Era</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">*</div><h3 data-editable="text">Building Stronger and More Reliable Power Systems</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">Y</div><h3 data-editable="text">Growing Renewable Energy Without Compromising Stability</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">=</div><h3 data-editable="text">Green Hydrogen and the Future of Clean Fuels</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">^</div><h3 data-editable="text">Energy Storage for Round-the-Clock Clean Power</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">#</div><h3 data-editable="text">Smart Grids, Digital Technology, and AI in Energy</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">!</div><h3 data-editable="text">Financing the Next Phase of Energy Growth</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">O</div><h3 data-editable="text">Reducing Risks in New Energy Projects</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">&lt;</div><h3 data-editable="text">Securing Critical Minerals and Supply Chains</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">F</div><h3 data-editable="text">The Role of Oil and Gas in the Energy Transition</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">~</div><h3 data-editable="text">Carbon Capture and Reducing Industrial Emissions</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">$</div><h3 data-editable="text">Stronger Public-Private Partnerships in Energy</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">M</div><h3 data-editable="text">Electrification of Transport and Industry</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">?</div><h3 data-editable="text">Developing Future Energy Leaders and Skills</h3></div>' +
+    '<div class="dp-card"><div class="dp-icon" data-editable="text">+</div><h3 data-editable="text">Connecting Energy Systems for Better Efficiency</h3></div>' +
+    '</div></div>'});
+  sectionVariants.discussion.push({name:'Decoding Opportunities', description:'A 10-card image grid for industry opportunity tracks.', previewClass:'gallery-preview', html:
+    '<div class="s-opportunity-tracks"><div class="track-kicker" data-editable="text">Tracks</div><h2 data-editable="text">Decoding Opportunities<br>for Next Decade</h2><div class="track-grid">' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Industry and growth"><div class="track-icon" data-editable="text">01</div><h3 data-editable="text">Capital, Industry &amp; Growth</h3><p data-editable="text">As industries evolve and investments accelerate, new opportunities are emerging across infrastructure, industrial expansion, and logistics.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Healthcare and medical innovation"><div class="track-icon" data-editable="text">02</div><h3 data-editable="text">Health &amp; Medical Infra</h3><p data-editable="text">Healthcare transformation is creating new opportunities across hospitals, diagnostics, digital health, and medical infrastructure.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1516939884455-1445c8652f83?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Mines and petroleum"><div class="track-icon" data-editable="text">03</div><h3 data-editable="text">Mines &amp; Petroleum</h3><p data-editable="text">Mineral reserves, rising energy demand, and responsible exploration are shaping the next phase of industrial growth.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1509390144018-eeaf65052242?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Renewable energy"><div class="track-icon" data-editable="text">04</div><h3 data-editable="text">Energy</h3><p data-editable="text">Renewable capacity, expansion, and clean energy investments are opening new growth destinations.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Urban infrastructure"><div class="track-icon" data-editable="text">05</div><h3 data-editable="text">Urban Infra &amp; Housing</h3><p data-editable="text">Rapid urbanisation is creating opportunities in smart infrastructure, real estate, mobility, housing, and sustainable city development.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Tourism destination"><div class="track-icon" data-editable="text">06</div><h3 data-editable="text">Tourism</h3><p data-editable="text">Tourism continues to be a strong economic pillar, with opportunities across luxury, heritage, experiential, wellness, and destination tourism.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Retail and business"><div class="track-icon" data-editable="text">07</div><h3 data-editable="text">Retail, Brands &amp; Business</h3><p data-editable="text">Consumer markets, urban demand, and experiences are creating new opportunities across retail and business ecosystems.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="AI and digital technology"><div class="track-icon" data-editable="text">08</div><h3 data-editable="text">AI &amp; Digital</h3><p data-editable="text">AI, digital transformation, and emerging technologies are reshaping businesses, industries, and future ecosystems.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1523742813388-7f7e9c7a3a45?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Agriculture and markets"><div class="track-icon" data-editable="text">09</div><h3 data-editable="text">Agriculture, Processing &amp; Markets</h3><p data-editable="text">Agriculture is evolving through value addition, food processing, agri-tech innovation, exports, and stronger market linkages.</p></div>' +
+    '<div class="track-card"><img data-editable="image" src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&amp;fit=crop&amp;w=700&amp;q=80" alt="Education and skills"><div class="track-icon" data-editable="text">10</div><h3 data-editable="text">Education &amp; Skills</h3><p data-editable="text">The future economy will be driven by industry-ready talent, digital learning, innovation-led education, and future-focused skilling.</p></div>' +
+    '</div></div>'});
+  sectionVariants.discussion.push({name:'Key Discussion Points - Editorial', description:'A scenic editorial layout with stacked discussion topics.', previewClass:'quote-preview', html:
+    '<div class="s-discussion-editorial"><div class="editorial-copy"><div class="editorial-top-rule"></div><h2 data-editable="text">Key Discussion Points</h2><p data-editable="text">These topics highlight contemporary milestones, notable achievements, and the immediate and long-term challenges facing the ecosystem.</p></div><div class="editorial-topics">' +
+    '<div class="editorial-topic"><span data-editable="text">The Business-GCC Connect<small data-editable="text">Partnering with academia, startups, and service providers to accelerate innovation.</small></span><b class="editorial-arrow" data-editable="text">↗</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">India: A GCC-as-a-Service Destination</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">Reimagining Rewards</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">Decoding the Modern GCC Operating Model</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">Case Studies in Excellence</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">Innovation as a Culture, Not a Function</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">Governance Models That Scale</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">The Ecosystem Advantage</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">Benchmarking Excellence in GCCs</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">India: A GCC-as-a-Service Destination</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '<div class="editorial-topic"><span data-editable="text">India: A GCC-as-a-Service Destination</span><b class="editorial-arrow" data-editable="text">↘</b></div>' +
+    '</div></div>'});
+  sectionVariants.discussion.push({name:'Automotive Innovation Tracks', description:'A dark automotive grid for mobility and technology topics.', previewClass:'gallery-preview', html:
+    '<div class="s-automotive-tracks"><div class="auto-grid">' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1518441902117-f0a6b9c8f3bb?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">ADAS and Autonomous Driving</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1551830820-330a71b99659?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Infotainment, Display Technology Developments</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1593941707882-a5bba14938c7?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Battery Technology Advancements</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1617886322168-72b886573c7d?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Hydrogen, Ethanol, Ammonia as New Fuels</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1593941707882-a5bba14938c7?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Approaches to Achieve the Net Zero Goal</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1504215680853-026ed2a45def?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Telematics, and New Cutting-Edge Connected Vehicle Solutions</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Advancements in Safety Technologies (Vehicular Safety)</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Advancements in Safety Technologies (Vehicular Safety)</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1551830820-330a71b99659?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Safety and Security of SDVs</h3></div></div>' +
+    '<div class="auto-card"><div class="auto-image" data-editable="image" style="background-image:url(\'https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?auto=format&amp;fit=crop&amp;w=700&amp;q=80\');"></div><div class="auto-content"><div class="auto-diamond">.</div><h3 data-editable="text">Building a Robust R&amp;D Ecosystem</h3></div></div>' +
+    '</div></div>'});
+  sectionVariants.discussion.push({name:'Modern Marketers Carousel', description:'A dark plum carousel for marketing priorities and themes.', previewClass:'quote-preview', html:
+    '<div class="s-marketing-carousel" data-marketing-carousel><h2 data-editable="text">At The Heart Of The Summit Lies<br>The Real Priorities Of Modern Marketers.</h2><div class="marketing-viewport"><div class="marketing-track">' +
+    '<article class="marketing-card"><div class="marketing-icon" data-editable="text">▣</div><h3 data-editable="text">AI-First Marketing &amp; Automation</h3><p data-editable="text">From assistive to agentic AI, powering intelligent campaigns, content, and autonomous decision-making across MarTech stacks.</p></article>' +
+    '<article class="marketing-card"><div class="marketing-icon" data-editable="text">▣</div><h3 data-editable="text">Brand Experience &amp; Community</h3><p data-editable="text">Building meaningful connections through experiences, stories, and communities that keep modern audiences engaged.</p></article>' +
+    '<article class="marketing-card"><div class="marketing-icon" data-editable="text">▣</div><h3 data-editable="text">Data-Led Growth &amp; Personalisation</h3><p data-editable="text">Turning signals into useful insight, sharper decisions, and relevant customer journeys at every touchpoint.</p></article>' +
+    '<article class="marketing-card"><div class="marketing-icon" data-editable="text">▣</div><h3 data-editable="text">Responsible Marketing &amp; Trust</h3><p data-editable="text">Balancing innovation with transparency, privacy, accessibility, and the trust that long-term brands depend on.</p></article>' +
+    '<article class="marketing-card"><div class="marketing-icon" data-editable="text">▣</div><h3 data-editable="text">Creative Systems at Scale</h3><p data-editable="text">Connecting people, process, and technology to produce stronger creative work across markets and channels.</p></article>' +
+    '<article class="marketing-card"><div class="marketing-icon" data-editable="text">▣</div><h3 data-editable="text">The Future of Customer Value</h3><p data-editable="text">Designing value beyond transactions through service, relevance, loyalty, and lasting customer relationships.</p></article>' +
+    '</div></div><div class="marketing-controls"><button type="button" data-marketing-prev aria-label="Previous cards">&#8592;</button><span class="marketing-dot active"></span><span class="marketing-dot"></span><span class="marketing-dot"></span><button type="button" data-marketing-next aria-label="Next cards">&#8594;</button></div></div>'});
+  sectionVariants.discussion.push({name:'AI At Scale', description:'A dark green split layout for AI priorities and insights.', previewClass:'quote-preview', html:
+    '<div class="s-ai-discussion"><div class="ai-discussion-left"><h2><span data-editable="text">Key Discussion</span> <i data-editable="text">Points</i></h2><div class="ai-topic-list">' +
+    '<div class="ai-topic"><small data-editable="text">01</small><strong data-editable="text">Hype to Impact</strong><span class="ai-arrow" data-editable="text">↘</span></div>' +
+    '<div class="ai-topic"><small data-editable="text">02</small><strong data-editable="text">AI for Work &amp; Beyond</strong><span class="ai-arrow" data-editable="text">↗</span></div>' +
+    '<div class="ai-topic"><small data-editable="text">03</small><strong data-editable="text">Mitigating the Next Wave</strong><span class="ai-arrow" data-editable="text">↗</span></div>' +
+    '</div></div><div class="ai-discussion-right"><h3 data-editable="text">Witness How AI Is Actually Working Today - Inside Enterprises, At Scale, Delivering Results.</h3><p data-editable="text">As generative artificial intelligence (GenAI) toddles into greater maturity but for many leaders, the gap between hype and real-world impact remains frustratingly wide. For them the question still remains on how do you ensure your AI investments deliver measurable results - not just flashy prototypes?</p><div class="ai-insights">' +
+    '<div class="ai-insight" data-editable="text">Maximizing ROI with AI: Harnessing Data, Compute and Flexible Adoption Models</div>' +
+    '<div class="ai-insight" data-editable="text">Maximizing ROI with AI: Harnessing Data, Compute and Flexible Adoption Models</div>' +
+    '<div class="ai-insight" data-editable="text">Maximizing ROI with AI: Harnessing Data, Compute and Flexible Adoption Models</div>' +
+    '<div class="ai-insight" data-editable="text">Maximizing ROI with AI: Harnessing Data, Compute and Flexible Adoption Models</div>' +
+    '<div class="ai-insight" data-editable="text">Maximizing ROI with AI: Harnessing Data, Compute and Flexible Adoption Models</div>' +
+    '<div class="ai-insight" data-editable="text">Maximizing ROI with AI: Harnessing Data, Compute and Flexible Adoption Models</div>' +
+    '</div></div></div>'});
+
+  frame.addEventListener('click', function(e){
+    var next = e.target.closest('[data-marketing-next]');
+    var prev = e.target.closest('[data-marketing-prev]');
+    if (!next && !prev) return;
+    var carousel = e.target.closest('[data-marketing-carousel]');
+    var track = carousel.querySelector('.marketing-track');
+    var cards = carousel.querySelectorAll('.marketing-card');
+    var dots = carousel.querySelectorAll('.marketing-dot');
+    var current = Number(carousel.getAttribute('data-slide') || 0);
+    var visible = window.matchMedia('(max-width: 560px)').matches ? 1 : 4;
+    var max = Math.max(0, cards.length - visible);
+    current = next ? Math.min(max, current + 1) : Math.max(0, current - 1);
+    carousel.setAttribute('data-slide', current);
+    track.style.transform = 'translateX(-' + (current * (cards[0].offsetWidth + 22)) + 'px)';
+    dots.forEach(function(dot, index){ dot.classList.toggle('active', index === Math.min(2, Math.floor(current / Math.max(1, Math.ceil(max / 3))))); });
+  });
 
   document.querySelectorAll('[data-add-block]').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -1979,11 +2305,12 @@
     clone.querySelectorAll('.site-section').forEach(function(sec){ sec.classList.remove('sec-active'); });
 
     var headTags = Array.prototype.map.call(document.querySelectorAll('link[rel="stylesheet"], style'), function(n){ return n.outerHTML; }).join('\n');
+    var previewScript = '<script>(function(){document.querySelectorAll("[data-marketing-carousel]").forEach(function(carousel){var track=carousel.querySelector(".marketing-track"),cards=carousel.querySelectorAll(".marketing-card"),dots=carousel.querySelectorAll(".marketing-dot"),current=0;function move(step){var visible=window.matchMedia("(max-width: 560px)").matches?1:4,max=Math.max(0,cards.length-visible);current=Math.max(0,Math.min(max,current+step));track.style.transform="translateX(-"+(current*(cards[0].offsetWidth+22))+"px)";dots.forEach(function(dot,index){dot.classList.toggle("active",index===Math.min(2,Math.floor(current/Math.max(1,Math.ceil(max/3)))))});}carousel.querySelector("[data-marketing-prev]").addEventListener("click",function(){move(-1)});carousel.querySelector("[data-marketing-next]").addEventListener("click",function(){move(1)});window.addEventListener("resize",function(){move(0)});});})();<\\x2Fscript>';
     var doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
       (document.getElementById('btn-site-picker') ? document.getElementById('btn-site-picker').textContent.trim() : 'Preview') +
       ' — Preview</title>' + headTags +
       '<style>body{background:#fff;overflow:auto;} .frame{max-width:100%;margin:0;box-shadow:none;border-radius:0;outline:none;}</style>' +
-      '</head><body>' + clone.outerHTML + '</body></html>';
+      '</head><body>' + clone.outerHTML + previewScript + '</body></html>';
 
     var win = window.open('', '_blank');
     if (!win){ showToast('Allow pop-ups to open the preview in a new tab.'); return; }
