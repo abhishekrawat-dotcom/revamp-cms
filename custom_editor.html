@@ -104,11 +104,7 @@
     background: var(--surface); border-bottom: 1px solid var(--border); z-index: 50; position: relative;
   }
   .brand-mark{ display:flex; align-items:center; gap: 8px; flex-shrink:0; }
-  .brand-mark .mark{
-    width: 25px; height: 25px; border-radius: 7px; background: var(--accent); color: var(--accent-contrast);
-    display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:700; font-size: 12.5px;
-  }
-  .brand-mark .word{ font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .brand-logo-img{ height: 25px; width:auto; display:block; }
   .ed-top .sep{ width:1px; height: 22px; background: var(--border); flex-shrink:0; }
 
   /* ---------- global command toolbar (matches floating text-editor toolbar style) ---------- */
@@ -594,7 +590,7 @@
 <div class="ed">
   <!-- ============ TOP BAR ============ -->
   <header class="ed-top">
-    <div class="brand-mark"><span class="mark">R</span><span class="word">Revamp</span></div>
+    <div class="brand-mark"><img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></div>
     <span class="sep"></span>
     <button class="site-picker" id="btn-site-picker">
       Northwind Studio

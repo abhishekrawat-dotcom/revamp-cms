@@ -151,11 +151,7 @@
     padding: 48px; display: flex; flex-direction: column; justify-content: space-between;
   }
   .brand-mark{ display:flex; align-items:center; gap: 10px; }
-  .brand-mark .mark{
-    width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--accent-contrast);
-    display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:700; font-size: 15px;
-  }
-  .brand-mark .word{ font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: -0.01em; }
+  .brand-logo-img{ height: 32px; width:auto; display:block; }
 
   .login-art .art-copy{ max-width: 380px; }
   .login-art h1{ font-size: 30px; line-height: 1.2; margin-bottom: 14px; color: var(--text); }
@@ -207,12 +203,8 @@
     background: transparent; border: 1px solid transparent; text-align:left;
   }
   .workspace-btn:hover{ background: var(--surface-2); border-color: var(--border); }
-  .workspace-btn .mark{
-    width: 26px; height:26px; border-radius:7px; background: var(--accent); color: var(--accent-contrast);
-    display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:700; font-size:13px; flex-shrink:0;
-  }
+  .workspace-btn .brand-logo-img-sm{ height:22px; width:auto; display:block; flex-shrink:0; }
   .workspace-btn .names{ min-width:0; flex:1; }
-  .workspace-btn .names .l1{ font-weight:700; font-size:13.5px; font-family: var(--font-display); }
   .workspace-btn .names .l2{ font-size:11px; color: var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .workspace-btn svg{ flex-shrink:0; color: var(--text-faint); }
 
@@ -402,8 +394,7 @@
   <section id="view-login">
     <div class="login-art">
       <div class="brand-mark">
-        <span class="mark">R</span>
-        <span class="word">Revamp</span>
+        <img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">
       </div>
 
       <div class="art-illustration" aria-hidden="true">
@@ -483,9 +474,8 @@
     <aside class="sidebar">
       <div style="position:relative;">
         <button class="workspace-btn" id="workspace-btn">
-          <span class="mark">R</span>
+          <img class="brand-logo-img-sm" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">
           <span class="names">
-            <span class="l1">Revamp</span>
             <span class="l2">ET Enterprise AI</span>
           </span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
