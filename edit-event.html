@@ -2,470 +2,7 @@
 <title>Edit Event &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<style>
-  :root{
-    --bg: #FAF7F6;
-    --surface: #FFFFFF;
-    --surface-2: #F3EEED;
-    --surface-3: #E9E2E0;
-    --border: #E0D7D5;
-    --text: #241B1A;
-    --text-muted: #756865;
-    --text-faint: #A0908C;
-
-    --accent: #ED1C24;
-    --accent-strong: #B3151B;
-    --accent-soft: #FBDBDC;
-    --accent-contrast: #FFFFFF;
-
-    --ok: #2F8F5B;
-    --ok-soft: #DFEEE1;
-    --warn: #9C6B14;
-    --warn-soft: #F3E7C8;
-    --info: #2F6FB0;
-    --info-soft: #DCE9F5;
-    --review: #8A5A9E;
-    --review-soft: #EBE0F0;
-
-    --shadow-sm: 0 1px 2px rgba(30,26,10,0.08);
-    --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
-    --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
-
-    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
-    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
-
-    --topbar-h: 60px;
-    --side-w: 244px;
-  }
-
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
-      --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
-      --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
-      --ok: #6FD39B; --ok-soft: #1E3328; --warn: #E0B457; --warn-soft: #362B14;
-      --info: #7FB4E8; --info-soft: #16283A; --review: #C89BDA; --review-soft: #2C1E33;
-    }
-  }
-
-  *{ box-sizing: border-box; }
-  html, body{ margin:0; padding:0; }
-  body{
-    background: var(--bg); color: var(--text); font-family: var(--font-body);
-    font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased;
-  }
-  h1,h2,h3,h4{ margin:0; font-family: var(--font-display); font-weight:600; letter-spacing:-0.015em; }
-  button, input, select, textarea{ font-family: inherit; font-size: inherit; color: inherit; }
-  a{ color: var(--accent-strong); }
-
-  /* ============ TOP BAR ============ */
-  .topbar{
-    position: sticky; top:0; z-index: 40; height: var(--topbar-h);
-    background: var(--surface); border-bottom: 1px solid var(--border);
-    display:flex; align-items:center; gap:14px; padding: 0 16px;
-  }
-  .back-btn{
-    display:inline-flex; align-items:center; gap:7px; background: var(--surface-2);
-    border:1px solid var(--border); border-radius:9px; padding:7px 13px 7px 10px;
-    font-size:13px; font-weight:700; cursor:pointer; text-decoration:none; color: var(--text);
-    white-space:nowrap; transition: background .14s, border-color .14s;
-  }
-  .back-btn:hover{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
-  .ev-title{ min-width:0; flex:1; }
-  .ev-title h1{ font-size:16.5px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .ev-title .meta{
-    font-size:11.5px; color: var(--text-muted); font-family: var(--font-mono);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;
-  }
-  .topbar-acts{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
-
-  .btn{
-    display:inline-flex; align-items:center; justify-content:center; gap:7px;
-    border-radius:9px; padding:8px 15px; font-size:13px; font-weight:700;
-    cursor:pointer; border:1.5px solid transparent; white-space:nowrap;
-    transition: background .14s, border-color .14s, color .14s, transform .1s;
-  }
-  .btn:active{ transform: translateY(1px); }
-  .btn-primary{ background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
-  .btn-primary:hover{ background: var(--accent-strong); border-color: var(--accent-strong); }
-  .btn-secondary{ background: var(--surface); color: var(--text); border-color: var(--border); }
-  .btn-secondary:hover{ border-color: var(--accent); color: var(--accent-strong); }
-  .btn-ghost{ background: transparent; color: var(--text-muted); border-color: transparent; }
-  .btn-ghost:hover{ background: var(--surface-2); color: var(--text); }
-  .btn-sm{ padding:5px 11px; font-size:12px; border-radius:7px; }
-  .btn-icon{ padding:7px; border-radius:8px; }
-  .btn:disabled{ opacity:.45; cursor:not-allowed; }
-
-  /* ============ SHELL ============ */
-  .shell{ display:flex; align-items:flex-start; min-height: calc(100vh - var(--topbar-h)); }
-
-  /* icon rail — six destinations, nothing nested */
-  .rail{
-    width: 92px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border);
-    padding: 12px 8px 30px; position: sticky; top: var(--topbar-h);
-    max-height: calc(100vh - var(--topbar-h)); overflow-y:auto;
-    display:flex; flex-direction:column; gap:3px;
-  }
-  .rail-item{
-    display:flex; flex-direction:column; align-items:center; gap:6px; width:100%;
-    padding: 11px 4px; border-radius:13px; border:0; background:transparent; cursor:pointer;
-    color: var(--text-muted); transition: background .14s, color .14s;
-  }
-  .rail-item:hover{ background: var(--surface-2); color: var(--text); }
-  .rail-item.active{ background: var(--accent-soft); color: var(--accent-strong); }
-  .rail-item .ri{ display:grid; place-items:center; }
-  .rail-item .rl{ font-size:10.5px; font-weight:800; letter-spacing:.005em; line-height:1.2; text-align:center; }
-  .rail-item .rdot{
-    width:5px; height:5px; border-radius:50%; background: var(--accent); margin-top:-3px;
-  }
-
-  @media (max-width: 760px){
-    .shell{ flex-direction:column; }
-    .rail{
-      width:100%; max-height:none; position:static; flex-direction:row; overflow-x:auto;
-      border-right:0; border-bottom:1px solid var(--border); padding:8px 10px; gap:2px;
-    }
-    .rail-item{ width:auto; min-width:74px; flex-shrink:0; }
-  }
-
-  .main{ flex:1; min-width:0; padding: 22px 26px 60px; }
-  @media (max-width: 760px){ .main{ padding: 16px 14px 50px; } }
-
-  /* in-section tabs — the only second level that exists */
-  .subtabs{
-    display:flex; gap:3px; flex-wrap:wrap; margin-bottom:20px;
-    border-bottom:1px solid var(--border); padding-bottom:0;
-  }
-  .subtabs button{
-    border:0; background:transparent; padding:9px 14px; cursor:pointer;
-    font-size:13px; font-weight:700; color: var(--text-muted);
-    border-bottom:2.5px solid transparent; margin-bottom:-1px; white-space:nowrap;
-    transition: color .13s, border-color .13s;
-  }
-  .subtabs button:hover{ color: var(--text); }
-  .subtabs button[aria-pressed="true"]{ color: var(--accent-strong); border-bottom-color: var(--accent); }
-  .subtabs .cnt{
-    font-size:10.5px; font-family: var(--font-mono); opacity:.7; margin-left:5px;
-  }
-  /* a tab that leaves the console — reads as an action, not a destination */
-  .subtabs .tab-link{
-    display:inline-flex; align-items:center; gap:7px; padding:9px 14px;
-    font-size:13px; font-weight:700; color: var(--accent-strong); text-decoration:none;
-    border-bottom:2.5px solid transparent; margin-bottom:-1px; white-space:nowrap;
-  }
-  .subtabs .tab-link:hover{ border-bottom-color: var(--accent); }
-
-  /* ============ VIEW HEADER ============ */
-  .vhead{ margin-bottom: 18px; }
-  .crumb{
-    font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em;
-    color: var(--text-faint); margin-bottom:5px;
-  }
-  .vhead h2{ font-size:24px; }
-  .vhead .sub{ font-size:13px; color: var(--text-muted); margin-top:3px; }
-  .vhead-row{ display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; }
-  .vhead-row .grow{ flex:1; min-width:200px; }
-
-  /* ============ CARDS / PANELS ============ */
-  .panel{
-    background: var(--surface); border:1px solid var(--border); border-radius:13px;
-    overflow:hidden; margin-bottom:18px;
-  }
-  .panel-head{
-    display:flex; align-items:center; gap:12px; padding:13px 16px;
-    border-bottom:1px solid var(--border); flex-wrap:wrap;
-  }
-  .panel-head h3{ font-size:15px; flex:1; min-width:120px; }
-  .panel-head .sub{ font-size:12px; color: var(--text-muted); font-weight:500; font-family: var(--font-body); }
-  .panel-body{ padding:16px; }
-  .panel-body.tight{ padding:0; }
-
-  .eyebrow{
-    font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.06em;
-    color: var(--text-faint);
-  }
-
-  /* ============ STAT TILES ============ */
-  .stat-grid{ display:grid; grid-template-columns: repeat(6, 1fr); gap:12px; margin-bottom:18px; }
-  @media (max-width:1400px){ .stat-grid{ grid-template-columns: repeat(4,1fr); } }
-  @media (max-width:900px){ .stat-grid{ grid-template-columns: repeat(2,1fr); } }
-  @media (max-width:520px){ .stat-grid{ grid-template-columns: 1fr; } }
-  .stat{
-    background: var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:13px 14px; display:flex; flex-direction:column; gap:3px; position:relative;
-    transition: border-color .14s, transform .14s, box-shadow .14s;
-  }
-  .stat.clickable{ cursor:pointer; }
-  .stat.clickable:hover{ border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
-  .stat .st-top{ display:flex; align-items:center; gap:8px; }
-  .stat .st-ico{
-    width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
-    background: var(--accent-soft); color: var(--accent-strong); flex-shrink:0;
-  }
-  .stat .st-lb{ font-size:11.5px; font-weight:700; color: var(--text-muted); line-height:1.3; }
-  .stat .st-v{ font-size:23px; font-weight:800; letter-spacing:-0.02em; font-family: var(--font-display); }
-  .stat .st-d{ font-size:11px; font-weight:700; display:flex; align-items:center; gap:4px; }
-  .stat .st-d.up{ color: var(--ok); }
-  .stat .st-d.down{ color: var(--accent-strong); }
-  .stat .st-d.flat{ color: var(--text-faint); }
-
-  /* ============ FUNNEL ============ */
-  .funnel{ display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 0; }
-  .fstage{
-    width:100%; color:#fff; text-align:center; padding:14px 10px;
-    display:flex; flex-direction:column; gap:1px; position:relative;
-  }
-  .fstage b{ font-size:14.5px; font-weight:800; letter-spacing:.01em; }
-  .fstage span{ font-size:18px; font-weight:800; font-family: var(--font-display); }
-  .fstage .pct{
-    position:absolute; right:12px; top:50%; transform:translateY(-50%);
-    font-size:11px; font-weight:700; opacity:.9; font-family: var(--font-mono);
-  }
-
-  /* ============ ACTIVITY FEED ============ */
-  .feed{ display:flex; flex-direction:column; max-height:420px; overflow-y:auto; }
-  .feed-item{ display:flex; gap:11px; padding:11px 16px; border-bottom:1px solid var(--border); }
-  .feed-item:last-child{ border-bottom:0; }
-  .feed-dot{
-    width:9px; height:9px; border-radius:50%; background: var(--accent);
-    margin-top:6px; flex-shrink:0;
-  }
-  .feed-body{ min-width:0; flex:1; }
-  .feed-when{ font-size:11px; color: var(--text-faint); font-family: var(--font-mono); }
-  .feed-what{ font-size:12.5px; font-weight:700; margin-top:2px; }
-  .feed-what .sep{ color: var(--text-faint); margin:0 4px; font-weight:500; }
-  .feed-who{ font-size:11.5px; color: var(--text-muted); margin-top:1px; }
-
-  /* ============ TABLES ============ */
-  .tbl-wrap{ overflow-x:auto; }
-  table.tbl{ width:100%; border-collapse: collapse; font-size:13px; }
-  table.tbl th{
-    text-align:left; padding:10px 13px; background: var(--surface-2);
-    font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.055em;
-    color: var(--text-muted); white-space:nowrap; border-bottom:1px solid var(--border);
-    position:sticky; top:0; z-index:2;
-  }
-  table.tbl th.sortable{ cursor:pointer; user-select:none; }
-  table.tbl th.sortable:hover{ color: var(--accent-strong); }
-  table.tbl th .arr{ opacity:.35; margin-left:3px; }
-  table.tbl th.sorted .arr{ opacity:1; color: var(--accent); }
-  table.tbl td{ padding:11px 13px; border-bottom:1px solid var(--border); vertical-align:middle; }
-  table.tbl tbody tr:hover{ background: var(--surface-2); }
-  table.tbl tbody tr:last-child td{ border-bottom:0; }
-  .td-strong{ font-weight:700; }
-  .num{ font-family: var(--font-mono); font-size:12.5px; }
-
-  .avat{
-    width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
-    font-size:11px; font-weight:800; color:#fff; flex-shrink:0; letter-spacing:.02em;
-  }
-  .person{ display:flex; align-items:center; gap:9px; min-width:0; }
-  .person .pn{ min-width:0; }
-  .person .pn b{ font-size:13px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .person .pn span{ font-size:11px; color: var(--text-muted); }
-
-  /* ============ BADGES / PILLS ============ */
-  .badge{
-    display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px;
-    font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap;
-  }
-  .b-ok{ background: var(--ok-soft); color: var(--ok); }
-  .b-warn{ background: var(--warn-soft); color: var(--warn); }
-  .b-info{ background: var(--info-soft); color: var(--info); }
-  .b-accent{ background: var(--accent-soft); color: var(--accent-strong); }
-  .b-mute{ background: var(--surface-3); color: var(--text-muted); }
-  .b-review{ background: var(--review-soft); color: var(--review); }
-
-  /* ============ TOOLBAR ============ */
-  .toolbar{
-    display:flex; align-items:center; gap:9px; padding:11px 14px;
-    border-bottom:1px solid var(--border); flex-wrap:wrap; background: var(--surface);
-  }
-  .search{
-    display:flex; align-items:center; gap:8px; background: var(--surface-2);
-    border:1px solid var(--border); border-radius:9px; padding:0 11px; flex:1; min-width:180px; max-width:380px;
-  }
-  .search input{ border:0; background:transparent; outline:none; padding:8px 0; width:100%; font-size:13px; }
-  .search svg{ color: var(--text-faint); flex-shrink:0; }
-
-  .inp{
-    width:100%; background: var(--surface); border:1px solid var(--border); border-radius:8px;
-    padding:0 11px; height:38px; outline:none; font-size:13.5px; transition: border-color .14s, box-shadow .14s;
-  }
-  select.inp{ cursor:pointer; }
-  textarea.inp{ height:auto; padding:9px 11px; resize:vertical; min-height:76px; line-height:1.55; }
-  .inp:focus{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .inp::placeholder{ color: var(--text-faint); }
-
-  .field{ display:flex; flex-direction:column; min-width:0; }
-  .field > label, .field > .flabel{
-    font-size:12.5px; font-weight:700; margin-bottom:6px; display:flex;
-    align-items:center; min-height:19px; gap:7px;
-  }
-  .field .hint{ font-size:11.5px; color: var(--text-muted); margin:6px 0 0; }
-  .frow{ display:grid; grid-template-columns: repeat(12,1fr); gap:14px 16px; align-items:start; }
-  .c3{ grid-column: span 3; } .c4{ grid-column: span 4; } .c5{ grid-column: span 5; }
-  .c6{ grid-column: span 6; } .c8{ grid-column: span 8; } .c12{ grid-column: span 12; }
-  @media (max-width:1080px){ .c3,.c4,.c5{ grid-column: span 6; } .c8{ grid-column: span 12; } }
-  @media (max-width:680px){ .frow > *{ grid-column: span 12; } }
-
-  .pill-req{ background: var(--accent-soft); color: var(--accent-strong); font-size:9.5px; font-weight:800;
-    text-transform:uppercase; letter-spacing:.05em; padding:2px 6px; border-radius:4px; }
-  .pill-opt{ background: var(--surface-2); color: var(--text-faint); font-size:9.5px; font-weight:800;
-    text-transform:uppercase; letter-spacing:.05em; padding:2px 6px; border-radius:4px; }
-
-  /* ============ TOGGLE ============ */
-  .tgl{
-    display:inline-flex; align-items:center; gap:8px; background:transparent; border:0;
-    cursor:pointer; padding:0; font-size:12.5px; font-weight:600; color: var(--text-muted);
-  }
-  .tgl .track{
-    width:34px; height:19px; border-radius:999px; background: var(--surface-3);
-    position:relative; transition: background .16s; flex-shrink:0;
-  }
-  .tgl .track i{
-    position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
-    background: var(--surface); box-shadow: var(--shadow-sm); transition: transform .16s;
-  }
-  .tgl[aria-pressed="true"] .track{ background: var(--accent); }
-  .tgl[aria-pressed="true"] .track i{ transform: translateX(15px); }
-  .tgl[aria-pressed="true"]{ color: var(--accent-strong); }
-
-  /* ============ TABS ============ */
-  .tabs{ display:flex; gap:3px; background: var(--surface-2); border:1px solid var(--border);
-    border-radius:10px; padding:3px; flex-wrap:wrap; }
-  .tabs button{
-    border:0; background:transparent; padding:7px 15px; border-radius:7px;
-    font-size:12.5px; font-weight:700; color: var(--text-muted); cursor:pointer;
-  }
-  .tabs button:hover{ color: var(--text); }
-  .tabs button[aria-pressed="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
-
-  /* ============ PROGRESS ============ */
-  .prog{ height:7px; border-radius:999px; background: var(--surface-3); overflow:hidden; }
-  .prog i{ display:block; height:100%; background: var(--accent); border-radius:999px; transition: width .4s ease; }
-  .prog.ok i{ background: var(--ok); }
-
-  .check-list{ display:flex; flex-direction:column; gap:2px; }
-  .check-row{
-    display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:9px;
-    cursor:pointer; border:1px solid transparent; background:transparent; text-align:left; width:100%;
-  }
-  .check-row:hover{ background: var(--surface-2); border-color: var(--border); }
-  .check-row .cb{
-    width:19px; height:19px; border-radius:6px; border:1.5px solid var(--border);
-    display:grid; place-items:center; flex-shrink:0; color: transparent; background: var(--surface);
-  }
-  .check-row.done .cb{ background: var(--ok); border-color: var(--ok); color:#fff; }
-  .check-row .ct{ flex:1; min-width:0; font-size:13px; font-weight:600; }
-  .check-row.done .ct{ color: var(--text-muted); text-decoration: line-through; }
-
-  /* ============ SECTION LIST (page sections) ============ */
-  .sec-row{
-    display:flex; align-items:center; gap:12px; padding:11px 14px; border-bottom:1px solid var(--border);
-  }
-  .sec-row:last-child{ border-bottom:0; }
-  .sec-row .grip{ color: var(--text-faint); cursor:grab; flex-shrink:0; }
-  .sec-row .sn{ flex:1; min-width:0; }
-  .sec-row .sn b{ font-size:13.5px; display:block; }
-  .sec-row .sn span{ font-size:11.5px; color: var(--text-muted); }
-  .sec-row.off{ opacity:.5; }
-
-  /* ============ EMPTY / CTA ============ */
-  .empty{
-    text-align:center; padding:44px 20px; display:flex; flex-direction:column;
-    align-items:center; gap:9px;
-  }
-  .empty .ico{
-    width:52px; height:52px; border-radius:14px; display:grid; place-items:center;
-    background: var(--surface-2); color: var(--text-faint); margin-bottom:2px;
-  }
-  .empty h4{ font-size:16px; }
-  .empty p{ font-size:13px; color: var(--text-muted); margin:0; max-width:420px; }
-
-  .callout{
-    display:flex; gap:11px; padding:13px 15px; border-radius:11px;
-    background: var(--accent-soft); color: var(--accent-strong); align-items:flex-start;
-  }
-  .callout svg{ flex-shrink:0; margin-top:2px; }
-  .callout strong{ display:block; font-size:13px; margin-bottom:2px; }
-  .callout span{ font-size:12.5px; line-height:1.55; }
-  .callout.info{ background: var(--info-soft); color: var(--info); }
-
-  /* ============ PAGINATION ============ */
-  .pager{
-    display:flex; align-items:center; gap:9px; padding:11px 14px; flex-wrap:wrap;
-    border-top:1px solid var(--border);
-  }
-  .pager .cnt{ font-size:12px; color: var(--text-muted); flex:1; min-width:140px; }
-  .pg-btn{
-    min-width:31px; height:31px; padding:0 8px; border-radius:7px; border:1px solid var(--border);
-    background: var(--surface); font-size:12.5px; font-weight:700; cursor:pointer;
-  }
-  .pg-btn:hover:not(:disabled){ border-color: var(--accent); color: var(--accent-strong); }
-  .pg-btn[aria-current="true"]{ background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
-  .pg-btn:disabled{ opacity:.4; cursor:not-allowed; }
-
-  /* ============ BULK BAR ============ */
-  .bulk{
-    display:flex; align-items:center; gap:10px; padding:9px 14px;
-    background: var(--accent-soft); border-bottom:1px solid var(--accent); flex-wrap:wrap;
-  }
-  .bulk b{ font-size:12.5px; color: var(--accent-strong); }
-
-  /* ============ TOAST ============ */
-  .toast-host{ position:fixed; right:18px; bottom:18px; z-index:99; display:flex; flex-direction:column; gap:9px; }
-  .toast{
-    background: var(--text); color: var(--bg); padding:11px 15px; border-radius:10px;
-    font-size:13px; font-weight:600; box-shadow: var(--shadow-lg); max-width:340px;
-    animation: tin .22s ease; display:flex; align-items:center; gap:9px;
-  }
-  @keyframes tin{ from{ opacity:0; transform: translateY(10px);} to{ opacity:1; transform:none; } }
-
-  /* ============ MODAL ============ */
-  .modal-bg{
-    position:fixed; inset:0; background: rgba(20,14,13,.55); z-index:80;
-    display:grid; place-items:center; padding:20px; animation: tin .15s ease;
-  }
-  .modal{
-    background: var(--surface); border-radius:15px; box-shadow: var(--shadow-lg);
-    width:min(620px, 100%); max-height:86vh; display:flex; flex-direction:column; overflow:hidden;
-  }
-  .modal-head{ display:flex; align-items:center; gap:12px; padding:15px 18px; border-bottom:1px solid var(--border); }
-  .modal-head h3{ flex:1; font-size:16px; }
-  .modal-body{ padding:18px; overflow-y:auto; }
-  .modal-foot{ display:flex; gap:9px; justify-content:flex-end; padding:13px 18px; border-top:1px solid var(--border); }
-
-  /* ============ MEDIA GRID ============ */
-  .media-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:12px; }
-  .media-card{
-    border:1px solid var(--border); border-radius:11px; overflow:hidden; background: var(--surface-2);
-    cursor:pointer; transition: border-color .14s, transform .14s;
-  }
-  .media-card:hover{ border-color: var(--accent); transform: translateY(-2px); }
-  .media-thumb{ height:96px; display:grid; place-items:center; color: var(--text-faint); background: var(--surface-3); }
-  .media-meta{ padding:8px 10px; background: var(--surface); }
-  .media-meta b{ font-size:12px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .media-meta span{ font-size:10.5px; color: var(--text-faint); font-family: var(--font-mono); }
-
-  .kv{ display:flex; flex-direction:column; gap:9px; }
-  .kv-row{ display:flex; align-items:baseline; gap:12px; font-size:13px; }
-  .kv-row .k{ color: var(--text-muted); min-width:150px; flex-shrink:0; font-weight:600; }
-  .kv-row .v{ font-weight:700; min-width:0; }
-
-  .split{ display:grid; grid-template-columns: 1.55fr 1fr; gap:18px; align-items:start; }
-  @media (max-width:1100px){ .split{ grid-template-columns: 1fr; } }
-
-  .bar-list{ display:flex; flex-direction:column; gap:11px; }
-  .bar-item .bl{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
-  .bar-item .bl b{ font-weight:700; }
-  .bar-item .bl span{ color: var(--text-muted); font-family: var(--font-mono); font-size:12px; }
-  .bar-track{ height:8px; border-radius:999px; background: var(--surface-3); overflow:hidden; }
-  .bar-track i{ display:block; height:100%; border-radius:999px; }
-
-  .sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
-</style>
+<link rel="stylesheet" href="edit-event.css">
 
 <header class="topbar">
   <a class="back-btn" href="Event_Listing.html">
@@ -493,168 +30,30 @@
 <div class="toast-host" id="toast-host"></div>
 <div id="modal-host"></div>
 
+<script src="edit-event-core.js"></script>
 <script src="edit-event-dashboard.js"></script>
+<script src="edit-event-marketing.js"></script>
 
 <script>
 (function(){
   'use strict';
 
-  function $(id){ return document.getElementById(id); }
-  function esc(s){
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
-      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
-    });
-  }
-  function svg(inner, size){
-    return '<svg width="' + (size||16) + '" height="' + (size||16) + '" viewBox="0 0 24 24" fill="none" ' +
-      'stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
-  }
-
-  /* ============================================================
-     ICONS
-     ============================================================ */
-  var IC = {
-    grid:     '<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>',
-    sliders:  '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>',
-    megaphone:'<path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18.5 5a9 9 0 0 1 0 14"/>',
-    brush:    '<path d="M12 2l7 7-9 9H3v-7z"/><path d="M15 5l4 4"/>',
-    users:    '<circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 8.5a3 3 0 0 1 0 6"/><path d="M18.5 20a5.6 5.6 0 0 0-3-4.4"/>',
-    mail:     '<rect x="2.5" y="4.5" width="19" height="15" rx="2.2"/><path d="M3 7l9 6 9-6"/>',
-    headset:  '<path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2.5" y="13" width="4.5" height="6" rx="1.7"/><rect x="17" y="13" width="4.5" height="6" rx="1.7"/><path d="M20 19v.7a2.6 2.6 0 0 1-2.6 2.6H13"/>',
-    bell:     '<path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.2 7.5-2.2 7.5h16.4S18 14.5 18 8.5z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
-    chart:    '<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15.5 3.5A9 9 0 0 1 20.5 8.5H15.5z"/>',
-    card:     '<rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/>',
-    gear:     '<circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2v.18a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.93-1.15l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3.5 13.6h-.18a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.57 6.67L4.5 6.6a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08A1.7 1.7 0 0 0 10.4 2.6v-.18a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.87 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.55 1.02h.18a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.55 1.02z"/>',
-    image:    '<rect x="3" y="4.5" width="18" height="15" rx="2.3"/><circle cx="8.7" cy="10" r="1.8"/><path d="M3 16.5l5-4.3 3.8 3.3 2.9-2.4L21 18"/>',
-    search:   '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>',
-    clock:    '<circle cx="12" cy="12" r="9"/><path d="M12 7.2V12l3.2 2"/>',
-    shield:   '<path d="M12 2.7l7.5 3v5.5c0 4.6-3.1 8.5-7.5 10.1-4.4-1.6-7.5-5.5-7.5-10.1V5.7z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
-    caret:    '<path d="M9 18l6-6-6-6"/>',
-    check:    '<path d="M20 6L9 17l-5-5"/>',
-    plus:     '<path d="M12 5v14M5 12h14"/>',
-    edit:     '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
-    trash:    '<path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 14.2a1.8 1.8 0 0 1-1.8 1.8H7.8A1.8 1.8 0 0 1 6 20.2L5 6"/>',
-    eye:      '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/>',
-    down:     '<path d="M12 5v13M6 13l6 6 6-6"/>',
-    ext:      '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 13.5V19a1.6 1.6 0 0 1-1.6 1.6H5A1.6 1.6 0 0 1 3.4 19V7.6A1.6 1.6 0 0 1 5 6h5.5"/>',
-    info:     '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
-    grip:     '<circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/>',
-    up:       '<path d="M12 19V6M6 11l6-6 6 6"/>',
-    send:     '<path d="M21 3L10.5 13.5"/><path d="M21 3l-6.8 18-3.7-8.5L2 9.1z"/>',
-    money:    '<circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M14.8 9.3A2.7 2.7 0 0 0 12 8c-1.6 0-2.6.8-2.6 2s1 1.9 2.6 2 2.6.8 2.6 2-1 2-2.6 2a2.7 2.7 0 0 1-2.8-1.3"/>',
-    wa:       '<path d="M20.5 11.6a8.4 8.4 0 0 1-12.2 7.5L3.5 20.5l1.5-4.6a8.4 8.4 0 1 1 15.5-4.3z"/><path d="M8.8 9.2c.3-.7.6-.7.9-.7h.7c.2 0 .5 0 .7.6l.8 2c.1.3 0 .5-.1.7l-.4.5c-.1.2-.3.4-.1.7a6 6 0 0 0 2.8 2.4c.3.2.5 0 .7-.1l.6-.7c.2-.2.4-.2.6-.1l1.9 1c.3.1.4.3.4.5a2 2 0 0 1-1.9 1.9 8 8 0 0 1-6-3.4c-1.1-1.6-1.7-3.1-1.6-4.2a2 2 0 0 1 .5-1.1z"/>',
-    sms:      '<rect x="3" y="4.5" width="18" height="13" rx="2.4"/><path d="M8 21l3.5-3.5"/><path d="M7.5 9h9M7.5 13h5"/>',
-    open:     '<rect x="2.5" y="4.5" width="19" height="15" rx="2.2"/><path d="M3 7l9 6 9-6"/><path d="M17 3l4 3-4 3"/>',
-    click:    '<path d="M9 4.5v6M4.5 9h6"/><path d="M12.5 12.5L21 21"/><path d="M11 11l3 10 2.2-4.8L21 14z"/>',
-    ban:      '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
-    layers:   '<path d="M12 2.5l9.5 5-9.5 5-9.5-5z"/><path d="M2.5 12.5l9.5 5 9.5-5"/><path d="M2.5 17l9.5 5 9.5-5"/>',
-    link:     '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
-    globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>',
-    lock:     '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
-    star:     '<path d="M12 3.2l2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.8-5.4 2.8 1-6-4.4-4.3 6.1-.9z"/>',
-    help:     '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2A2.6 2.6 0 0 1 14.4 10c0 1.7-2.4 2.2-2.4 3.8"/><path d="M12 17.2h.01"/>',
-    ticket:   '<path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a2.2 2.2 0 0 0 0 4.4v1.3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.3a2.2 2.2 0 0 0 0-4.4z"/><path d="M14 6.5v11"/>'
-  };
-
-  /* ============================================================
-     EVENT DATA  (mirrors the Event_Listing model)
-     ============================================================ */
-  var PORTALS = {
-    cio:'ETCIO', bfsi:'ETBFSI', legal:'ETLegalWorld', auto:'ETAuto', telecom:'ETTelecom',
-    retail:'ETRetail', health:'ETHealthWorld', hrworld:'ETHRWorld', manufacturing:'ETManufacturing',
-    gov:'ETGovernment', brandequity:'ETBrandEquity'
-  };
-  var TYPES = {
-    ip:'IP Event', client:'Client Event', editorial:'Editorial',
-    leadgen:'Lead-Gen Microsite', roundtable:'Round Table', awards:'Awards'
-  };
-
-  var EVENTS = [
-    { id:1,  name:'MarTech+ Summit 2026', venue:'Sahara Star, Mumbai', eventNo:4060, type:'ip', portal:'brandequity', status:'active',  start:'2026-09-24T08:00:00', end:'2026-09-24T23:59:00', registrations:912, regTarget:1200, visitors:8743, visits:6670, payment:{ type:'paid', amount:387000, txns:15 } },
-    { id:2,  name:'ET CISO Annual Conclave 2026', venue:'Grand Hyatt, Goa', eventNo:4097, type:'ip', portal:'cio', status:'upcoming', start:'2026-09-10T10:00:00', end:'2026-09-11T18:00:00', registrations:2645, regTarget:2924, visitors:12923, visits:9800, payment:{ type:'paid', amount:482000, txns:212 } },
-    { id:3,  name:'RACEx360', venue:'Taj West End, Bengaluru', eventNo:4652, type:'client', portal:'auto', status:'upcoming', start:'2026-09-25T09:30:00', end:null, registrations:136, regTarget:113, visitors:1130, visits:860, payment:{ type:'free' } },
-    { id:4,  name:'Data Protection & Privacy Summit 2026', venue:'Mumbai', eventNo:4138, type:'ip', portal:'legal', status:'upcoming', start:'2026-12-02T09:00:00', end:null, registrations:122, regTarget:248, visitors:2480, visits:1900, payment:{ type:'paid', amount:0, txns:0 } },
-    { id:5,  name:'Healthcare Innovation Awards 2026', venue:'The Leela, New Delhi', eventNo:4012, type:'awards', portal:'health', status:'active', start:'2026-11-22T18:00:00', end:null, registrations:300, regTarget:280, visitors:4000, visits:3100, payment:{ type:'paid', amount:620000, txns:150 } },
-    { id:6,  name:'AI-Driven SecOps', venue:'Virtual', eventNo:3354, type:'leadgen', portal:'telecom', status:'active', start:null, end:null, registrations:88, regTarget:85, visitors:850, visits:610, payment:{ type:'paid', amount:45000, txns:19 } },
-    { id:7,  name:'Manufacturing 4.0 Summit 2026', venue:'Venue to be confirmed', eventNo:4471, type:'ip', portal:'manufacturing', status:'draft', start:'2026-12-03T00:00:00', end:null, registrations:0, regTarget:null, visitors:0, visits:0, payment:{ type:'free' } },
-    { id:8,  name:'BFSI Fraud & Risk Conclave 2025', venue:'ITC Grand Central, Mumbai', eventNo:3980, type:'ip', portal:'bfsi', status:'completed', start:'2025-11-18T09:00:00', end:'2025-11-19T18:00:00', registrations:850, regTarget:800, visitors:12000, visits:9400, payment:{ type:'paid', amount:950000, txns:301 } }
-  ];
-
-  /* deterministic pseudo-random so every reload shows the same numbers */
-  function rnd(seed){ var x = Math.sin(seed) * 10000; return x - Math.floor(x); }
-
-  EVENTS.forEach(function(e, i){
-    var s = e.eventNo;
-    e.mailers    = Math.round(e.visitors * (1.8 + rnd(s) * 1.2));
-    e.opens      = Math.round(e.mailers * (0.11 + rnd(s + 1) * 0.06));
-    e.clicks     = Math.round(e.opens * (0.4 + rnd(s + 2) * 0.25));
-    e.unsub      = Math.round(e.mailers * (0.014 + rnd(s + 3) * 0.006));
-    e.dials      = Math.round(e.registrations * (0.4 + rnd(s + 4) * 0.5));
-    e.leads      = Math.round(e.registrations * (0.5 + rnd(s + 5) * 0.7));
-    e.whatsapp   = Math.round(e.visitors * (0.4 + rnd(s + 6) * 0.3));
-    e.sms        = Math.round(e.visitors * (0.2 + rnd(s + 7) * 0.3));
-    e.attendees  = e.status === 'completed' ? Math.round(e.registrations * 0.62) : 0;
-    e.shortlist  = Math.round(e.registrations * (0.12 + rnd(s + 8) * 0.1));
-    e.wishlist   = Math.round(e.registrations * (0.07 + rnd(s + 9) * 0.08));
-  });
-
-  function eventById(id){
-    for (var i = 0; i < EVENTS.length; i++) if (String(EVENTS[i].id) === String(id)) return EVENTS[i];
-    return null;
-  }
+  /* Everything shared lives in edit-event-core.js so the section files can
+     use it too. The shell just borrows the names it needs. */
+  var C = window.RevampCore;
+  var $ = C.$, esc = C.esc, svg = C.svg, IC = C.IC, AV = C.AV;
+  var comma = C.comma, compact = C.compact, money = C.money;
+  var fmtDate = C.fmtDate, fmtDT = C.fmtDT;
+  var statTile = C.statTile, panel = C.panel, panelFlush = C.panelFlush, emptyState = C.emptyState;
+  var toast = C.toast, PORTALS = C.PORTALS, TYPES = C.TYPES;
 
   var qs = new URLSearchParams(location.search);
-  var EV = eventById(qs.get('event')) || EVENTS[0];
+  var EV = C.eventById(qs.get('event')) || C.EVENTS[0];
+  var PEOPLE = C.makePeople(EV);
 
   /* ============================================================
      FORMATTERS
      ============================================================ */
-  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  function compact(n){
-    if (n == null) return '—';
-    if (n >= 10000000) return (n / 10000000).toFixed(2).replace(/\.00$/,'') + ' Cr';
-    if (n >= 100000)   return (n / 100000).toFixed(2).replace(/\.00$/,'') + ' Lacs';
-    if (n >= 1000)     return (n / 1000).toFixed(2).replace(/\.00$/,'') + ' K';
-    return String(n);
-  }
-  function comma(n){
-    if (n == null) return '—';
-    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  }
-  function fmtDT(iso){
-    if (!iso) return 'Date to be announced';
-    var d = new Date(iso);
-    if (isNaN(d)) return 'Date to be announced';
-    var hh = d.getHours(), mm = d.getMinutes();
-    var ap = hh >= 12 ? 'PM' : 'AM', h12 = hh % 12 || 12;
-    return MON[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() +
-           ' (' + (h12 < 10 ? '0' : '') + h12 + ':' + (mm < 10 ? '0' : '') + mm + ' ' + ap + ')';
-  }
-  function fmtDate(iso){
-    if (!iso) return '—';
-    var d = new Date(iso);
-    if (isNaN(d)) return '—';
-    return d.getDate() + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear();
-  }
-  function money(n){
-    if (n == null) return '—';
-    return '₹ ' + comma(n);
-  }
-
-  function toast(msg){
-    var host = $('toast-host');
-    var el = document.createElement('div');
-    el.className = 'toast';
-    el.innerHTML = svg(IC.check, 15) + '<span>' + esc(msg) + '</span>';
-    host.appendChild(el);
-    setTimeout(function(){
-      el.style.transition = 'opacity .25s, transform .25s';
-      el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
-      setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 260);
-    }, 2600);
-  }
-
   /* ============================================================
      PERSISTED PROTOTYPE STATE
      ============================================================ */
@@ -812,79 +211,9 @@
       '</div></div>';
   }
 
-  function statTile(ico, label, value, delta, viewLink){
-    var d = '';
-    if (delta){
-      var cls = delta.dir === 'up' ? 'up' : (delta.dir === 'down' ? 'down' : 'flat');
-      var arrow = delta.dir === 'up' ? IC.up : (delta.dir === 'down' ? IC.down : '');
-      d = '<span class="st-d ' + cls + '">' + (arrow ? svg(arrow, 12) : '') + esc(delta.text) + '</span>';
-    }
-    return '<' + (viewLink ? 'button type="button" data-goto="' + viewLink + '"' : 'div') +
-        ' class="stat' + (viewLink ? ' clickable' : '') + '">' +
-        '<span class="st-top"><span class="st-ico">' + svg(ico, 15) + '</span>' +
-        '<span class="st-lb">' + esc(label) + '</span></span>' +
-        '<span class="st-v">' + esc(value) + '</span>' + d +
-      '</' + (viewLink ? 'button' : 'div') + '>';
-  }
-
-  function panel(title, sub, body, right){
-    return '<div class="panel">' +
-        '<div class="panel-head"><h3>' + esc(title) + '</h3>' +
-          (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') +
-          (right || '') + '</div>' +
-        '<div class="panel-body">' + body + '</div>' +
-      '</div>';
-  }
-  function panelFlush(title, sub, body, right){
-    return '<div class="panel">' +
-        '<div class="panel-head"><h3>' + esc(title) + '</h3>' +
-          (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') +
-          (right || '') + '</div>' + body +
-      '</div>';
-  }
-
-  function emptyState(ico, title, msg, cta){
-    return '<div class="empty"><span class="ico">' + svg(ico, 24) + '</span>' +
-      '<h4>' + esc(title) + '</h4><p>' + esc(msg) + '</p>' + (cta || '') + '</div>';
-  }
-
   /* ============================================================
      FAKE PEOPLE  (deterministic)
      ============================================================ */
-  var FIRST = ['Irin','Nishant','Varun','Tanuj','Saakshi','Gunjan','Rhea','Amit','Priya','Karan','Meera','Rohit','Ananya','Vikram','Sneha','Arjun','Divya','Kabir','Neha','Siddharth','Tara','Manish','Ishita','Rahul','Pooja','Aditya','Kavya','Nikhil','Riya','Sameer'];
-  var LAST  = ['Patel','Neeraj','Narula','Pant','Jain','Makhijani','Kapoor','Sharma','Verma','Singh','Iyer','Nair','Bose','Chopra','Reddy','Gupta','Menon','Rao','Desai','Bhatt','Sethi','Malhotra','Joshi','Kulkarni','Shah','Agarwal','Pillai','Banerjee','Mehta','Khanna'];
-  var DESIG = ['Head - IT','Co-Founder','Manager - Growth','Director','Manager - Corporate Communications','VP Engineering','CTO','CIO','Head of Marketing','Product Lead','AVP - Digital','Senior Manager','Chief Data Officer','Head - Security','GM Operations'];
-  var COMP  = ['Ammann India','Lumetrics','DareAISearch','Holy River Hotel Pvt Ltd','Bharti Airtel','Livguard Energy','Tata Capital','HDFC Bank','Infosys','Wipro','Reliance Jio','Mahindra Group','Godrej','ICICI Lombard','Zomato','Swiggy','Paytm','Flipkart','Adani Ports','L&T Infotech'];
-  var CITY  = ['New Delhi','Noida','Mumbai','Gurgaon / Gurugram','Pune','Chennai','Bangalore / Bengaluru','Hyderabad','Ahmedabad','Kolkata','Jaipur','Rishikesh'];
-  var SRC   = ['PlatformListing','Others','Email Campaign','WhatsApp','Organic Search','LinkedIn','Referral'];
-  var AV    = ['#ED1C24','#2F6FB0','#2F8F5B','#8A5A9E','#9C6B14','#B3151B','#3E7C7C','#A2457A'];
-
-  var PEOPLE = (function(){
-    var out = [], n = Math.max(EV.registrations, 12);
-    n = Math.min(n, 400);
-    for (var i = 0; i < n; i++){
-      var s = EV.eventNo + i * 13;
-      var f = FIRST[Math.floor(rnd(s) * FIRST.length)];
-      var l = LAST[Math.floor(rnd(s + 1) * LAST.length)];
-      var day = 1 + Math.floor(rnd(s + 7) * 28);
-      out.push({
-        id: i + 1,
-        name: f + ' ' + l,
-        initials: f[0] + l[0],
-        colour: AV[Math.floor(rnd(s + 2) * AV.length)],
-        desig: DESIG[Math.floor(rnd(s + 3) * DESIG.length)],
-        comp:  COMP[Math.floor(rnd(s + 4) * COMP.length)],
-        city:  CITY[Math.floor(rnd(s + 5) * CITY.length)],
-        src:   SRC[Math.floor(rnd(s + 6) * SRC.length)],
-        email: (f + '.' + l).toLowerCase() + '@' + COMP[Math.floor(rnd(s + 4) * COMP.length)].split(' ')[0].toLowerCase() + '.com',
-        when:  '2026-0' + (1 + Math.floor(rnd(s + 8) * 8)) + '-' + (day < 10 ? '0' : '') + day,
-        paid:  rnd(s + 9) > 0.84,
-        attended: rnd(s + 10) > 0.42
-      });
-    }
-    return out;
-  })();
-
   /* ============================================================
      VIEW : DASHBOARD
      ============================================================ */
@@ -1356,174 +685,7 @@
   /* ============================================================
      VIEW : EMAIL / CRM / REMINDERS / POSTS
      ============================================================ */
-  function viewEmail(){
-    var camps = [
-      ['Save the date','Sent','2026-07-14', EV.mailers, Math.round(EV.opens * 0.4), Math.round(EV.clicks * 0.35)],
-      ['Speaker announcement','Sent','2026-08-02', Math.round(EV.mailers * 0.7), Math.round(EV.opens * 0.35), Math.round(EV.clicks * 0.4)],
-      ['Agenda live','Sent','2026-08-21', Math.round(EV.mailers * 0.5), Math.round(EV.opens * 0.25), Math.round(EV.clicks * 0.25)],
-      ['Final reminder','Scheduled','2026-09-22', 0, 0, 0]
-    ];
-    var rows = camps.map(function(c){
-      var open = c[3] ? Math.round(c[4] / c[3] * 100) : 0;
-      return '<tr><td class="td-strong">' + esc(c[0]) + '</td>' +
-        '<td>' + (c[1] === 'Sent' ? '<span class="badge b-ok">Sent</span>' : '<span class="badge b-warn">Scheduled</span>') + '</td>' +
-        '<td class="num">' + fmtDate(c[2]) + '</td>' +
-        '<td class="num">' + comma(c[3]) + '</td>' +
-        '<td class="num">' + comma(c[4]) + (c[3] ? ' <span style="color:var(--text-faint)">(' + open + '%)</span>' : '') + '</td>' +
-        '<td class="num">' + comma(c[5]) + '</td>' +
-        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Campaign opened">' + svg(IC.edit, 14) + '</button></td></tr>';
-    }).join('');
 
-    return vhead('Email Marketing', 'Campaigns sent to the target list for this event.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Campaign builder opened">' + svg(IC.plus, 13) + ' New campaign</button>') +
-      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' +
-        statTile(IC.send, 'Mailers sent', compact(EV.mailers), null, null) +
-        statTile(IC.open, 'Opens', compact(EV.opens), { dir:'up', text: Math.round(EV.opens / EV.mailers * 100) + '% open rate' }, null) +
-        statTile(IC.click,'Clicks', compact(EV.clicks), { dir:'up', text: Math.round(EV.clicks / Math.max(EV.opens,1) * 100) + '% CTR' }, null) +
-        statTile(IC.ban,  'Unsubscribes', comma(EV.unsub), { dir:'down', text:'0.4% of sends' }, null) +
-      '</div>' +
-      panelFlush('Campaigns', camps.length + ' total',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Campaign</th><th>Status</th><th>Date</th><th>Sent</th><th>Opens</th><th>Clicks</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
-
-  function viewCRM(){
-    var leads = PEOPLE.slice(0, 18);
-    var stages = ['New','Contacted','Interested','Registered','Not reachable'];
-    var rows = leads.map(function(p, i){
-      var st = stages[i % stages.length];
-      var cls = st === 'Registered' ? 'b-ok' : st === 'Interested' ? 'b-info' : st === 'Not reachable' ? 'b-mute' : 'b-warn';
-      return '<tr><td><span class="person"><span class="avat" style="background:' + p.colour + '">' + esc(p.initials) + '</span>' +
-        '<span class="pn"><b>' + esc(p.name) + '</b><span>' + esc(p.desig) + '</span></span></span></td>' +
-        '<td>' + esc(p.comp) + '</td>' +
-        '<td><span class="badge ' + cls + '">' + esc(st) + '</span></td>' +
-        '<td class="num">' + (1 + (i % 5)) + ' calls</td>' +
-        '<td class="num">' + fmtDate(p.when) + '</td>' +
-        '<td style="text-align:right;white-space:nowrap">' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Dialler opened">' + svg(IC.headset, 14) + '</button>' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Note added">' + svg(IC.edit, 14) + '</button>' +
-        '</td></tr>';
-    }).join('');
-
-    return vhead('CRM', 'Call pipeline for this event. ' + comma(EV.leads) + ' leads, ' + comma(EV.dials) + ' dials logged.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Leads imported">' + svg(IC.plus, 13) + ' Import leads</button>') +
-      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' +
-        statTile(IC.users,   'Total leads', comma(EV.leads), null, null) +
-        statTile(IC.headset, 'Dials logged', comma(EV.dials), null, null) +
-        statTile(IC.check,   'Converted', comma(Math.round(EV.leads * 0.31)), { dir:'up', text:'31% conversion' }, null) +
-        statTile(IC.clock,   'Pending follow-up', comma(Math.round(EV.leads * 0.22)), null, null) +
-      '</div>' +
-      panelFlush('Lead pipeline', 'Most recent first',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Lead</th><th>Company</th><th>Stage</th><th>Activity</th><th>Added</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
-
-  function wireReminders(){
-    document.querySelectorAll('[data-rem]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var on = b.getAttribute('aria-pressed') === 'true';
-        b.setAttribute('aria-pressed', String(!on));
-        b.lastChild.textContent = !on ? 'On' : 'Off';
-        b.closest('.sec-row').classList.toggle('off', on);
-        toast('Reminder rule ' + (!on ? 'enabled' : 'paused'));
-      });
-    });
-  }
-
-  function viewSetNav(){
-    if (!S.nav) S.nav = DEFAULT_NAV_ITEMS.map(function(n){ return { t:n.t, on:n.on }; });
-    var onMap = {}; S.nav.forEach(function(n){ onMap[n.t] = n.on; });
-
-    var rows = DEFAULT_NAV_ITEMS.map(function(n, i){
-      var on = !!onMap[n.t];
-      return '<tr' + (on ? '' : ' style="opacity:.55"') + '>' +
-        '<td class="num" style="width:44px">' + (i + 1) + '</td>' +
-        '<td class="td-strong">' + esc(n.t) + '</td>' +
-        '<td class="num" style="color:var(--text-muted)">' + esc(n.a) + '</td>' +
-        '<td>' + (on ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Hidden</span>') + '</td>' +
-        '<td style="text-align:right;white-space:nowrap">' +
-          '<button class="tgl" type="button" data-navitem="' + esc(n.t) + '" aria-pressed="' + on + '">' +
-            '<span class="track"><i></i></span></button>' +
-        '</td></tr>';
-    }).join('');
-
-    return vhead('Site navigation', 'The menu that appears across the top of the microsite. Each item scrolls to a section anchor.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Menu item added">' + svg(IC.plus, 13) + ' Add menu item</button>') +
-      '<div class="callout info">' + svg(IC.info, 17) +
-        '<span><strong>Hidden items keep their content</strong>' +
-        'Switching an item off only removes it from the menu bar. The section itself is controlled in Event Setup › Page sections.</span></div>' +
-      '<div style="height:16px"></div>' +
-      panelFlush('Menu items', DEFAULT_NAV_ITEMS.length + ' items',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>S.No.</th><th>Menu title</th><th>Target</th><th>Status</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
-
-  function wireSetNav(){
-    document.querySelectorAll('[data-navitem]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var t = b.getAttribute('data-navitem');
-        S.nav.forEach(function(n){ if (n.t === t) n.on = !n.on; });
-        save(); render();
-      });
-    });
-  }
-
-  function viewSetForm(){
-    var fields = [
-      ['Full name','Text','Required', true],
-      ['Work email','Email','Required', true],
-      ['Mobile number','Phone','Required', true],
-      ['Company','Text','Required', true],
-      ['Designation','Text','Required', true],
-      ['City','Dropdown','Optional', true],
-      ['Industry','Dropdown','Optional', true],
-      ['How did you hear about us?','Dropdown','Optional', false],
-      ['Dietary preference','Radio','Optional', false]
-    ];
-    var rows = fields.map(function(f){
-      return '<div class="sec-row' + (f[3] ? '' : ' off') + '">' +
-        '<span class="grip">' + svg(IC.grip, 16) + '</span>' +
-        '<span class="sn"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></span>' +
-        '<span class="badge ' + (f[2] === 'Required' ? 'b-accent' : 'b-mute') + '">' + esc(f[2]) + '</span>' +
-        '<button class="tgl" type="button" data-rem="f' + esc(f[0]) + '" aria-pressed="' + f[3] + '">' +
-          '<span class="track"><i></i></span>' + (f[3] ? 'On' : 'Off') + '</button>' +
-      '</div>';
-    }).join('');
-
-    return vhead('Registration form', 'What a visitor fills in to register. Fewer fields convert better — 7 is the sweet spot.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Field added">' + svg(IC.plus, 13) + ' Add field</button>') +
-      panelFlush('Form fields', '7 of 9 enabled', '<div>' + rows + '</div>') +
-      panel('Behaviour', '',
-        '<div class="frow">' +
-          '<div class="field c4"><label>After submitting</label><select class="inp"><option>Show thank-you message</option><option>Redirect to payment</option><option>Redirect to a URL</option></select></div>' +
-          '<div class="field c4"><label>Confirmation email</label><select class="inp"><option>Send immediately</option><option>Do not send</option></select></div>' +
-          '<div class="field c4"><label>Duplicate handling</label><select class="inp"><option>Block duplicate emails</option><option>Allow duplicates</option></select></div>' +
-        '</div>');
-  }
-
-  function viewSetAdv(){
-    var opts = [
-      ['Require approval before registration counts','Every entry goes to a moderation queue first.', false],
-      ['Close registrations automatically at capacity','Stops accepting entries once the target is hit.', true],
-      ['Show a live registration counter on the site','Social proof on the hero block.', false],
-      ['Collect GST details at payment','Adds GSTIN and billing address to checkout.', true],
-      ['Allow calendar download (.ics)','Adds an "Add to calendar" button after registering.', true],
-      ['Index this microsite in search engines','Turn off for private or client-only events.', true]
-    ];
-    var rows = opts.map(function(o, i){
-      return '<div class="sec-row' + (o[2] ? '' : ' off') + '">' +
-        '<span class="sn"><b>' + esc(o[0]) + '</b><span>' + esc(o[1]) + '</span></span>' +
-        '<button class="tgl" type="button" data-rem="a' + i + '" aria-pressed="' + o[2] + '">' +
-          '<span class="track"><i></i></span>' + (o[2] ? 'On' : 'Off') + '</button>' +
-      '</div>';
-    }).join('');
-
-    return vhead('Advanced settings', 'Behaviour switches that change how the event runs, not how it looks.') +
-      panelFlush('Registration & privacy', '', '<div>' + rows + '</div>');
-  }
 
   /* ============================================================
      VIEW : MEDIA / SEO / HISTORY
@@ -1688,99 +850,8 @@
   /* ============================================================
      MARKETING : banners, messaging, social
      ============================================================ */
-  function viewBanners(){
-    var banners = [
-      ['Homepage takeover','1440 × 400','Live','ETBrandEquity homepage', 42800],
-      ['Sidebar rectangle','300 × 250','Live','Run of network', 128400],
-      ['Newsletter strip','600 × 120','Scheduled','Daily newsletter', 0],
-      ['Article inline','728 × 90','Paused','Category pages', 18200]
-    ];
-    var rows = banners.map(function(b){
-      var cls = b[2] === 'Live' ? 'b-ok' : b[2] === 'Paused' ? 'b-mute' : 'b-warn';
-      return '<tr><td class="td-strong">' + esc(b[0]) + '</td>' +
-        '<td class="num">' + esc(b[1]) + '</td>' +
-        '<td><span class="badge ' + cls + '">' + esc(b[2]) + '</span></td>' +
-        '<td style="color:var(--text-muted)">' + esc(b[3]) + '</td>' +
-        '<td class="num">' + (b[4] ? comma(b[4]) : '—') + '</td>' +
-        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Banner opened">' + svg(IC.edit, 14) + '</button></td></tr>';
-    }).join('');
 
-    return vhead('Promotion banners', 'Paid and house placements driving traffic to this microsite.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Banner builder opened">' + svg(IC.plus, 13) + ' New banner</button>') +
-      '<div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">' +
-        statTile(IC.eye,   'Impressions', compact(189400), { dir:'up', text:'+9.2% this week' }, null) +
-        statTile(IC.click, 'Clicks', compact(4120), { dir:'up', text:'2.2% CTR' }, null) +
-        statTile(IC.users, 'Registrations from banners', comma(Math.round(EV.registrations * 0.18)), null, null) +
-      '</div>' +
-      panelFlush('Placements', banners.length + ' total',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Placement</th><th>Size</th><th>Status</th><th>Runs on</th><th>Impressions</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
 
-  function viewMessaging(){
-    var rules = [
-      ['7 days before','WhatsApp','All registrations', true],
-      ['1 day before','WhatsApp + SMS','All registrations', true],
-      ['2 hours before','SMS','Confirmed attendees', true],
-      ['Post-event thank you','WhatsApp','Attendees', false],
-      ['Feedback survey','WhatsApp','Attendees', false]
-    ];
-    var rows = rules.map(function(r, i){
-      return '<div class="sec-row' + (r[3] ? '' : ' off') + '">' +
-        '<span class="nav-ico" style="color:var(--accent);display:grid;place-items:center">' + svg(IC.wa, 16) + '</span>' +
-        '<span class="sn"><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + ' · ' + esc(r[2]) + '</span></span>' +
-        '<button class="tgl" type="button" data-rem="m' + i + '" aria-pressed="' + r[3] + '">' +
-          '<span class="track"><i></i></span>' + (r[3] ? 'On' : 'Off') + '</button>' +
-      '</div>';
-    }).join('');
-
-    return vhead('WhatsApp & SMS', 'Reminders and broadcasts on the channels people actually open.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Broadcast composer opened">' + svg(IC.send, 13) + ' Send broadcast</button>') +
-      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' +
-        statTile(IC.wa,   'WhatsApp sent', compact(EV.whatsapp), { dir:'up', text:'94% delivered' }, null) +
-        statTile(IC.sms,  'SMS sent', compact(EV.sms), null, null) +
-        statTile(IC.click,'Link clicks', compact(Math.round(EV.whatsapp * 0.14)), { dir:'up', text:'14% CTR' }, null) +
-        statTile(IC.bell, 'Active rules', '3 of 5', null, null) +
-      '</div>' +
-      panelFlush('Automated reminders', 'Timed against the event start', '<div>' + rows + '</div>');
-  }
-
-  function viewSocialShare(){
-    var posts = [
-      ['Speaker reveal','LinkedIn','Published','2026-08-02', 4820, 186],
-      ['Agenda is live','LinkedIn + X','Published','2026-08-21', 3110, 94],
-      ['Why you should attend','LinkedIn','Draft','', 0, 0],
-      ['Last 50 seats','X','Scheduled','2026-09-18', 0, 0]
-    ];
-    var rows = posts.map(function(x){
-      var cls = x[2] === 'Published' ? 'b-ok' : x[2] === 'Draft' ? 'b-mute' : 'b-warn';
-      return '<tr><td class="td-strong">' + esc(x[0]) + '</td>' +
-        '<td>' + esc(x[1]) + '</td>' +
-        '<td><span class="badge ' + cls + '">' + esc(x[2]) + '</span></td>' +
-        '<td class="num">' + (x[3] ? fmtDate(x[3]) : '—') + '</td>' +
-        '<td class="num">' + (x[4] ? comma(x[4]) : '—') + '</td>' +
-        '<td class="num">' + (x[5] ? comma(x[5]) : '—') + '</td>' +
-        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Post opened">' + svg(IC.edit, 14) + '</button></td></tr>';
-    }).join('');
-
-    return vhead('Social sharing', 'Posts promoting this event, and what the share card looks like when someone posts the link.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Post composer opened">' + svg(IC.plus, 13) + ' New post</button>') +
-      panelFlush('Posts', posts.length + ' total',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Post</th><th>Channel</th><th>Status</th><th>Date</th><th>Impressions</th><th>Engagements</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>') +
-      panel('Share card preview', 'How the link unfurls on LinkedIn, X and WhatsApp',
-        '<div style="max-width:460px;border:1px solid var(--border);border-radius:11px;overflow:hidden">' +
-          '<div style="height:120px;background:var(--accent);display:grid;place-items:center;color:#fff;font-family:var(--font-display);font-size:17px;font-weight:700;text-align:center;padding:14px">' +
-            esc(EV.name) + '</div>' +
-          '<div style="padding:11px 13px;background:var(--surface-2)">' +
-            '<div style="font-size:10.5px;color:var(--text-faint);font-family:var(--font-mono);text-transform:uppercase">etoneworld.com</div>' +
-            '<div style="font-size:13.5px;font-weight:700;margin-top:2px">' + esc(EV.name) + '</div>' +
-            '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + esc(fmtDate(EV.start)) + ' · ' + esc(EV.venue) + '</div>' +
-          '</div>' +
-        '</div>');
-  }
 
   /* ============================================================
      SETTINGS : social links, visibility
@@ -1892,21 +963,147 @@
   /* ============================================================
      ROUTER
      ============================================================ */
+  /* ---------- settings views (shell-local) ---------- */
+
+  /* generic on/off pills used by the settings lists */
+  function wireReminders(){
+    document.querySelectorAll('[data-rem]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var on = b.getAttribute('aria-pressed') === 'true';
+        b.setAttribute('aria-pressed', String(!on));
+        b.lastChild.textContent = !on ? 'On' : 'Off';
+        var row = b.closest('.sec-row');
+        if (row) row.classList.toggle('off', on);
+        toast('Setting ' + (!on ? 'enabled' : 'turned off'));
+      });
+    });
+  }
+
+  var DEFAULT_NAV_ITEMS = [
+    { t:'Overview',              on:true },
+    { t:'What to Expect',        on:true },
+    { t:'Key Discussion Points', on:true },
+    { t:'Speakers',              on:true },
+    { t:'Who Should Attend',     on:true },
+    { t:'Focus Areas',           on:true },
+    { t:'Testimonial',           on:false },
+    { t:'Survey',                on:false },
+    { t:'Contact Us',            on:true }
+  ];
+  DEFAULT_NAV_ITEMS.forEach(function(n){
+    n.a = '#' + n.t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  });
+
+  function viewSetNav(){
+    if (!S.nav) S.nav = DEFAULT_NAV_ITEMS.map(function(n){ return { t:n.t, on:n.on }; });
+    var onMap = {}; S.nav.forEach(function(n){ onMap[n.t] = n.on; });
+
+    var rows = DEFAULT_NAV_ITEMS.map(function(n, i){
+      var on = !!onMap[n.t];
+      return '<tr' + (on ? '' : ' style="opacity:.55"') + '>' +
+        '<td class="num" style="width:44px">' + (i + 1) + '</td>' +
+        '<td class="td-strong">' + esc(n.t) + '</td>' +
+        '<td class="num" style="color:var(--text-muted)">' + esc(n.a) + '</td>' +
+        '<td>' + (on ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Hidden</span>') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<button class="tgl" type="button" data-navitem="' + esc(n.t) + '" aria-pressed="' + on + '">' +
+            '<span class="track"><i></i></span></button>' +
+        '</td></tr>';
+    }).join('');
+
+    return vhead('Site navigation', 'The menu that appears across the top of the microsite. Each item scrolls to a section anchor.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Menu item added">' + svg(IC.plus, 13) + ' Add menu item</button>') +
+      '<div class="callout info">' + svg(IC.info, 17) +
+        '<span><strong>Hidden items keep their content</strong>' +
+        'Switching an item off only removes it from the menu bar. The section itself is controlled in Event Setup › Page sections.</span></div>' +
+      '<div style="height:16px"></div>' +
+      panelFlush('Menu items', DEFAULT_NAV_ITEMS.length + ' items',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>S.No.</th><th>Menu title</th><th>Target</th><th>Status</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
+  }
+
+  function wireSetNav(){
+    document.querySelectorAll('[data-navitem]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var t = b.getAttribute('data-navitem');
+        S.nav.forEach(function(n){ if (n.t === t) n.on = !n.on; });
+        save(); render();
+      });
+    });
+  }
+
+  function viewSetForm(){
+    var fields = [
+      ['Full name','Text','Required', true],
+      ['Work email','Email','Required', true],
+      ['Mobile number','Phone','Required', true],
+      ['Company','Text','Required', true],
+      ['Designation','Text','Required', true],
+      ['City','Dropdown','Optional', true],
+      ['Industry','Dropdown','Optional', true],
+      ['How did you hear about us?','Dropdown','Optional', false],
+      ['Dietary preference','Radio','Optional', false]
+    ];
+    var rows = fields.map(function(f){
+      return '<div class="sec-row' + (f[3] ? '' : ' off') + '">' +
+        '<span class="grip">' + svg(IC.grip, 16) + '</span>' +
+        '<span class="sn"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></span>' +
+        '<span class="badge ' + (f[2] === 'Required' ? 'b-accent' : 'b-mute') + '">' + esc(f[2]) + '</span>' +
+        '<button class="tgl" type="button" data-rem="f' + esc(f[0]) + '" aria-pressed="' + f[3] + '">' +
+          '<span class="track"><i></i></span>' + (f[3] ? 'On' : 'Off') + '</button>' +
+      '</div>';
+    }).join('');
+
+    return vhead('Registration form', 'What a visitor fills in to register. Fewer fields convert better — 7 is the sweet spot.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Field added">' + svg(IC.plus, 13) + ' Add field</button>') +
+      panelFlush('Form fields', '7 of 9 enabled', '<div>' + rows + '</div>') +
+      panel('Behaviour', '',
+        '<div class="frow">' +
+          '<div class="field c4"><label>After submitting</label><select class="inp"><option>Show thank-you message</option><option>Redirect to payment</option><option>Redirect to a URL</option></select></div>' +
+          '<div class="field c4"><label>Confirmation email</label><select class="inp"><option>Send immediately</option><option>Do not send</option></select></div>' +
+          '<div class="field c4"><label>Duplicate handling</label><select class="inp"><option>Block duplicate emails</option><option>Allow duplicates</option></select></div>' +
+        '</div>');
+  }
+
+  function viewSetAdv(){
+    var opts = [
+      ['Require approval before registration counts','Every entry goes to a moderation queue first.', false],
+      ['Close registrations automatically at capacity','Stops accepting entries once the target is hit.', true],
+      ['Show a live registration counter on the site','Social proof on the hero block.', false],
+      ['Collect GST details at payment','Adds GSTIN and billing address to checkout.', true],
+      ['Allow calendar download (.ics)','Adds an "Add to calendar" button after registering.', true],
+      ['Index this microsite in search engines','Turn off for private or client-only events.', true]
+    ];
+    var rows = opts.map(function(o, i){
+      return '<div class="sec-row' + (o[2] ? '' : ' off') + '">' +
+        '<span class="sn"><b>' + esc(o[0]) + '</b><span>' + esc(o[1]) + '</span></span>' +
+        '<button class="tgl" type="button" data-rem="a' + i + '" aria-pressed="' + o[2] + '">' +
+          '<span class="track"><i></i></span>' + (o[2] ? 'On' : 'Off') + '</button>' +
+      '</div>';
+    }).join('');
+
+    return vhead('Advanced settings', 'Behaviour switches that change how the event runs, not how it looks.') +
+      panelFlush('Registration & privacy', '', '<div>' + rows + '</div>');
+  }
+
   /* ------------------------------------------------------------------
      Everything the dashboard file is allowed to touch. Keeping it to an
      explicit bundle means edit-event-dashboard.js can be edited on its own
      without guessing what is in scope here.
      ------------------------------------------------------------------ */
   var DASH = window.EditEventDashboard || { view: function(){ return ''; }, wire: function(){} };
-  var CTX = {
-    EV: EV, S: S, IC: IC,
-    svg: svg, esc: esc, comma: comma, compact: compact, money: money,
-    statTile: statTile, panel: panel, panelFlush: panelFlush, vhead: vhead,
-    $: $, toast: toast,
-    go: function(r){ return go(r); },
+  var MKT  = window.EditEventMarketing || { view: function(){ return ''; }, wire: function(){}, TABS: [] };
+
+  /* Built by core, so the console and the standalone workbenches hand each
+     section file exactly the same object. */
+  var CTX = C.makeCtx({
+    EV: EV, S: S, PEOPLE: PEOPLE,
+    vhead:  function(t, sub, right){ return vhead(t, sub, right); },
+    go:     function(r){ return go(r); },
     render: function(){ return render(); },
-    save: function(){ return save(); }
-  };
+    save:   function(){ return save(); }
+  });
 
   var VIEWS = {
     'dashboard':            function(){ return DASH.view(CTX); },
@@ -1930,11 +1127,12 @@
     'audience/payments':    viewPayments,
     'audience/insights':    viewAudience,
 
-    'marketing/banners':    viewBanners,
-    'marketing/email':      viewEmail,
-    'marketing/messaging':  viewMessaging,
-    'marketing/social':     viewSocialShare,
-    'marketing/leads':      viewLeads,
+
+    'marketing/banners':    function(){ return MKT.view('banners', CTX); },
+    'marketing/email':      function(){ return MKT.view('email', CTX); },
+    'marketing/messaging':  function(){ return MKT.view('messaging', CTX); },
+    'marketing/social':     function(){ return MKT.view('social', CTX); },
+    'marketing/leads':      function(){ return MKT.view('leads', CTX); },
 
     'settings/form':        viewSetForm,
     'settings/seo':         viewSEO,
@@ -1971,7 +1169,8 @@
     if (r === 'design/nav') wireSetNav();
     if (r === 'design/theme') wireTheme();
     if (r === 'settings/visibility') wireVisibility();
-    if (['marketing/messaging','settings/form','settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
+    if (cur.sec === 'marketing') MKT.wire(cur.tab, CTX);
+    if (['settings/form','settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
     if (['audience/reg','audience/attendees','audience/shortlist'].indexOf(r) >= 0) wirePeople();
 
     var p2 = $('btn-preview-2');
