@@ -1090,7 +1090,7 @@
     $('table-body').innerHTML = pageList.map(function(e){
       return '<tr data-row="' + e.id + '" tabindex="0">' +
         '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '"></span>' +
-          '<div class="ev-name-main"><a class="ev-link" href="custom_editor.html?event=' + e.id + '">' + esc(e.name) + '</a>' +
+          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '">' + esc(e.name) + '</a>' +
           '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div></td>' +
         '<td class="ev-date-cell">' + dateCellHTML(e) + '</td>' +
         '<td class="reg-cell">' + regCellHTML(e) + '</td>' +
@@ -1104,7 +1104,7 @@
       var info = regPctInfo(e);
       return '<div class="ev-card fade-in">' +
         '<div class="ev-card-top"><span class="status-dot ' + e.status + '"></span>' +
-          '<div style="flex:1;min-width:0;"><a class="ev-link" href="custom_editor.html?event=' + e.id + '" style="font-weight:600;font-size:14.5px;">' + esc(e.name) + '</a>' +
+          '<div style="flex:1;min-width:0;"><a class="ev-link" href="edit-event.html?event=' + e.id + '" style="font-weight:600;font-size:14.5px;">' + esc(e.name) + '</a>' +
           '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div>' +
         '<div class="ev-card-grid">' +
           '<div><div class="k">Event date</div>' + dateCellHTML(e) + '</div>' +
@@ -1152,10 +1152,10 @@
     document.querySelectorAll('[data-row]').forEach(function(tr){
       tr.addEventListener('click', function(e){
         if (e.target.closest('a, button, .popover')) return;
-        window.location.href = 'custom_editor.html?event=' + tr.getAttribute('data-row');
+        window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
       });
       tr.addEventListener('keydown', function(e){
-        if (e.key==='Enter' && !e.target.closest('a, button')) window.location.href = 'custom_editor.html?event=' + tr.getAttribute('data-row');
+        if (e.key==='Enter' && !e.target.closest('a, button')) window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
       });
     });
     document.querySelectorAll('[data-row-menu-btn]').forEach(function(btn){
@@ -1185,7 +1185,7 @@
     if (!e) return;
     switch(action){
       case 'view': case 'edit': case 'setup':
-        window.location.href = 'custom_editor.html?event=' + id; break;
+        window.location.href = 'edit-event.html?event=' + id; break;
       case 'registrations': case 'visitors': case 'reports':
         toast('Opens the reporting workspace — coming soon.'); break;
       case 'duplicate':
