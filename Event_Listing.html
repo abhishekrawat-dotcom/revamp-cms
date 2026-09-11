@@ -122,15 +122,16 @@
   .main-nav-brand{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
   .brand-logo-img{ height:28px; width:auto; display:block; }
 
-  .main-nav-scroll{ flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; }
+  .main-nav-scroll{ flex:0 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; display:flex; align-items:center; gap:2px; }
   .main-nav-scroll::-webkit-scrollbar{ display:none; }
-  .main-nav-links{ display:flex; align-items:center; gap:2px; }
+  .main-nav-links{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
   .main-nav-links a, .mp-btn{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); white-space:nowrap; background:none; border:none; font-family:var(--font-body); cursor:pointer; flex-shrink:0; }
   .main-nav-links a svg, .mp-btn svg{ flex-shrink:0; opacity:.75; }
   .main-nav-links a:hover, .mp-btn:hover{ background:var(--surface-2); color:var(--text); }
   .main-nav-links a.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; }
   .main-nav-links a.active svg{ opacity:1; }
   .main-nav-more{ flex-shrink:0; }
+  .main-nav-portals{ flex-shrink:0; }
 
   .main-nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
   .avatar-btn{ width:34px; height:34px; border-radius:50%; border:none; background:none; padding:0; display:flex; align-items:center; justify-content:center; }
@@ -255,6 +256,13 @@
   .status-dot.cancelled{ background:var(--warn); }
   .status-dot.draft{ background:var(--draft); }
   .status-dot.deleted{ background:var(--crit); }
+  .status-pill{ display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:800; letter-spacing:.03em; padding:4px 10px; border-radius:100px; flex-shrink:0; white-space:nowrap; }
+  .status-pill-upcoming{ color:var(--accent-strong); background:var(--accent-soft); }
+  .status-pill-active{ color:var(--ok); background:var(--ok-soft); }
+  .status-pill-completed{ color:var(--text-muted); background:var(--surface-3); }
+  .status-pill-cancelled{ color:var(--warn); background:var(--warn-soft); }
+  .status-pill-draft{ color:var(--draft); background:var(--draft-soft); }
+  .status-pill-deleted{ color:var(--crit); background:var(--crit-soft); }
   .ev-name-main{ min-width:0; }
   .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:inline; cursor:pointer; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
@@ -343,17 +351,34 @@
   @media (max-width:900px){ .lower-grid{ grid-template-columns:1fr; } }
   .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-xs); }
   .panel-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--border); }
+  .panel-card-head-title{ display:flex; align-items:flex-start; gap:12px; }
+  .panel-icon-avatar{ width:38px; height:38px; border-radius:10px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .panel-card-head h3{ font-size:15.5px; }
   .panel-sub{ font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .panel-card-head-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .panel-card-body{ padding:14px 18px 18px; min-height:60px; }
+  .segmented{ display:flex; align-items:center; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; }
   .segmented.sm{ padding:2px; flex-shrink:0; }
-  .segmented.sm button{ padding:5px 10px; font-size:11px; }
+  .segmented.sm button{ display:flex; align-items:center; gap:5px; padding:6px 11px; font-size:11.5px; font-weight:600; color:var(--text-muted); background:none; border:none; border-radius:7px; white-space:nowrap; }
+  .segmented.sm button:hover{ color:var(--text); }
+  .segmented.sm button svg{ flex-shrink:0; opacity:.8; }
+  .segmented.sm button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); font-weight:700; }
+  .segmented.sm button[aria-pressed="true"] svg{ opacity:1; }
 
   .seg-select{ padding:6px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--text); }
   .seg-select-event{ min-width:170px; max-width:260px; }
   .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .seg-insight{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--accent-strong); background:var(--accent-soft); border-radius:8px; padding:9px 11px; margin-bottom:16px; line-height:1.4; }
+  .seg-view-toggle{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .seg-view-btn{ display:flex; align-items:center; gap:6px; padding:7px 13px; border-radius:8px; border:1px solid var(--border-strong); background:var(--surface); font-size:12px; font-weight:700; color:var(--text-muted); }
+  .seg-view-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .seg-view-btn[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); }
+  .seg-insight{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--accent-strong); background:var(--accent-soft); border-radius:9px; padding:11px 13px; margin-bottom:16px; line-height:1.4; }
   .seg-insight svg{ flex-shrink:0; }
+  .seg-stats-row{ display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .seg-stat-tile{ flex:1; min-width:150px; display:flex; align-items:center; gap:11px; padding:12px 14px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); }
+  .seg-stat-icon{ width:34px; height:34px; border-radius:9px; background:var(--surface); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-xs); }
+  .seg-stat-label{ font-size:11.5px; font-weight:600; color:var(--text-muted); }
+  .seg-stat-value{ font-size:19px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
   .seg-list{ display:flex; flex-direction:column; gap:12px; }
   .seg-row{ display:flex; align-items:center; gap:10px; }
   .seg-rank{ width:18px; height:18px; border-radius:5px; background:var(--surface-2); color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -372,6 +397,21 @@
   .seg-legend-label{ flex:1; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .seg-legend-val{ font-weight:700; font-family:var(--font-mono); flex-shrink:0; }
   .seg-legend-pct{ color:var(--text-faint); font-size:11px; width:36px; text-align:right; flex-shrink:0; }
+
+  /* ---------- segmentation table (list view) ---------- */
+  .seg-table-wrap{ overflow-x:auto; }
+  table.seg-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px; }
+  .seg-table th{ text-align:left; padding:8px 10px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .seg-table td{ padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
+  .seg-table tbody tr:last-child td{ border-bottom:none; }
+  .seg-rank-cell{ width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; font-weight:700; }
+  .seg-name-cell{ display:flex; align-items:center; gap:9px; font-weight:600; }
+  .seg-avatar{ width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; font-family:var(--font-display); flex-shrink:0; }
+  .seg-spark{ display:block; }
+  .intent-badge{ display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:4px 10px; border-radius:100px; white-space:nowrap; }
+  .intent-high{ color:var(--ok); background:var(--ok-soft); }
+  .intent-medium{ color:var(--warn); background:var(--warn-soft); }
+  .intent-low{ color:var(--text-faint); background:var(--surface-3); }
 
   .metric-list{ display:flex; flex-direction:column; }
   .metric-row{ display:flex; align-items:center; gap:12px; padding:11px 0; }
@@ -452,28 +492,7 @@
     </a>
 
     <div class="main-nav-scroll">
-      <nav class="main-nav-links">
-        <a href="index.html">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
-          Dashboard
-        </a>
-        <a href="index.html">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5.5-5.5L5 20"/></svg>
-          Webinars
-        </a>
-        <a href="index.html">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3v18"/><path d="M4 4h13l-3 4.5L17 13H4"/></svg>
-          Marketing Dashboard
-        </a>
-        <a href="Event_Listing.html" class="active">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
-          Events
-        </a>
-        <a href="index.html">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H5a2 2 0 0 0 0 4h2"/><path d="M17 6h2a2 2 0 0 1 0 4h-2"/></svg>
-          Awards
-        </a>
-      </nav>
+      <nav class="main-nav-links" id="main-nav-links"></nav>
     </div>
 
     <div class="main-nav-more popover-wrap">
@@ -482,6 +501,16 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="popover right" id="more-products-menu" hidden></div>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div class="main-nav-portals popover-wrap">
+      <button class="mp-btn" id="btn-portals-nav">
+        Portals
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="popover right wide" id="portals-nav-menu" hidden></div>
     </div>
 
     <div class="main-nav-right">
@@ -496,27 +525,7 @@
 </header>
 
 <div class="app">
-  <div class="section-bar">
-    <div class="section-bar-left">
-      <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
-    </div>
-    <div class="section-bar-right">
-      <button class="sync-btn" id="btn-sync" data-tooltip="Refresh event data">
-        <svg id="sync-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
-        <span id="sync-label">Updated 2 min ago</span>
-      </button>
-      <div class="popover-wrap">
-        <button class="icon-btn" id="btn-more" aria-haspopup="true" aria-label="More">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
-        </button>
-        <div class="popover right" id="more-menu" hidden></div>
-      </div>
-    </div>
-  </div>
-
   <div id="error-slot"></div>
-
-  <div id="special-banner"></div>
 
   <section style="display:flex;flex-direction:column;gap:8px;">
     <div class="toolbar">
@@ -538,14 +547,6 @@
           <button class="toolbar-btn" id="btn-portal">Portal <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg></button>
           <div class="popover" id="portal-popover" hidden></div>
         </div>
-        <div class="popover-wrap desk-only">
-          <button class="toolbar-btn" id="btn-filters">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
-            Filters
-          </button>
-          <div class="popover" id="filters-popover" hidden></div>
-        </div>
-
         <button class="toolbar-btn mobile-only" id="btn-mobile-filters">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
           Filters
@@ -555,23 +556,15 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/></svg>
           QR Codes
         </button>
-
-        <a class="btn btn-primary btn-sm" href="create-event.html">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-          Create Event
-        </a>
       </div>
 
       <div class="toolbar-right-group">
         <span class="result-line" id="result-line"></span>
 
-        <div class="popover-wrap desk-only">
-          <button class="toolbar-btn" id="btn-sort">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/></svg>
-            Sort
-          </button>
-          <div class="popover right" id="sort-popover" hidden></div>
-        </div>
+        <a class="btn btn-primary btn-sm" href="create-event.html">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          Create Event
+        </a>
 
         <div class="view-toggle" id="view-toggle">
         <button type="button" data-view="list" aria-label="List view">
@@ -585,6 +578,26 @@
     </div>
     <div class="chip-row" id="chip-row"></div>
   </section>
+
+  <div class="section-bar">
+    <div class="section-bar-left">
+      <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
+    </div>
+    <div class="section-bar-right">
+      <button class="sync-btn" id="btn-sync" data-tooltip="Refresh event data">
+        <svg id="sync-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        <span id="sync-label">Updated 2 min ago</span>
+      </button>
+      <div class="popover-wrap">
+        <button class="icon-btn" id="btn-more" aria-haspopup="true" aria-label="More">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+        </button>
+        <div class="popover right" id="more-menu" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="special-banner"></div>
 
   <div id="results-view" class="view-list">
     <div class="table-wrap" id="table-wrap">
@@ -626,20 +639,28 @@
   <section class="lower-grid">
     <div class="card panel-card" id="segment-card">
       <div class="panel-card-head">
-        <div>
-          <h3>Audience Segmentation</h3>
-          <p class="panel-sub" id="segment-sub">Top Company for this event</p>
+        <div class="panel-card-head-title">
+          <span class="panel-icon-avatar" id="segment-icon-avatar"></span>
+          <div>
+            <h3>Audience Segmentation</h3>
+            <p class="panel-sub" id="segment-sub">Top Company for this event</p>
+          </div>
         </div>
-        <select class="seg-select seg-select-event" id="segment-event-select"></select>
+        <div class="panel-card-head-right">
+          <select class="seg-select seg-select-event" id="segment-event-select"></select>
+          <span class="status-pill" id="segment-status-pill"></span>
+        </div>
       </div>
       <div class="seg-toolbar">
         <div class="segmented sm" id="segment-dim-tabs"></div>
-        <div class="view-toggle" id="segment-view-toggle">
-          <button type="button" data-segview="list" aria-label="List view">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <div class="seg-view-toggle" id="segment-view-toggle">
+          <button type="button" class="seg-view-btn" data-segview="list">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            List View
           </button>
-          <button type="button" data-segview="chart" aria-label="Chart view">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
+          <button type="button" class="seg-view-btn" data-segview="chart">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
+            Chart View
           </button>
         </div>
       </div>
@@ -723,7 +744,12 @@
     qrcode:   svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/>', 14),
     globe:    svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/>', 14),
     agenda:   svg('<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>', 14),
-    mic:      svg('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5M9 22h6"/>', 14)
+    mic:      svg('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5M9 22h6"/>', 14),
+    briefcase: svg('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><path d="M2 13h20"/>', 15),
+    layers:   svg('<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', 15),
+    building: svg('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1"/>', 14),
+    share:    svg('<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>', 14),
+    monitor:  svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>', 14)
   };
 
   function toast(msg){
@@ -797,23 +823,28 @@
   function generateAudience(seedNum, base){
     base = Math.max(base, 20);
     function rand(i){ var x = Math.sin(seedNum*13 + i*7.13) * 10000; return x - Math.floor(x); }
+    function makeTrend(seedOffset){
+      var pts = [];
+      for (var d=0; d<7; d++){ pts.push(0.35 + rand(seedOffset + d*3.7) * 0.85); }
+      return pts;
+    }
     function pickWeighted(pool, count){
       var idxs = pool.map(function(_,i){ return i; });
       idxs.sort(function(a,b){ return rand(a) - rand(b); });
       var chosen = idxs.slice(0, count);
       var weights = [], wsum = 0;
       chosen.forEach(function(ci,k){ var w = 0.3 + rand(ci+100)*0.7; weights.push(w); wsum += w; });
-      return chosen.map(function(ci,k){ return { label: pool[ci], value: Math.max(1, Math.round(base * (weights[k]/wsum) * 0.55)) }; })
+      return chosen.map(function(ci,k){ return { label: pool[ci], value: Math.max(1, Math.round(base * (weights[k]/wsum) * 0.55)), trend: makeTrend(ci*17 + 5) }; })
         .sort(function(a,b){ return b.value - a.value; });
     }
     var mobileShare = 0.45 + rand(999)*0.25;
     var mobile = Math.round(base * mobileShare);
     var desktop = Math.max(1, base - mobile);
     return {
-      companies: pickWeighted(COMPANY_POOL, 5),
-      designations: pickWeighted(DESIGNATION_POOL, 5),
-      sources: pickWeighted(SOURCE_POOL, 4),
-      devices: [{ label:'Mobile', value:mobile }, { label:'Desktop', value:desktop }]
+      companies: pickWeighted(COMPANY_POOL, 8),
+      designations: pickWeighted(DESIGNATION_POOL, 8),
+      sources: pickWeighted(SOURCE_POOL, 5),
+      devices: [{ label:'Mobile', value:mobile, trend:makeTrend(201) }, { label:'Desktop', value:desktop, trend:makeTrend(211) }]
     };
   }
   var EVENT_AUDIENCE = {};
@@ -983,15 +1014,51 @@
     renderProfileMenu(); openPopover('profile-menu');
   });
 
+  /* =========================================================
+     TOP NAV — links, More Products, Portals (access-gated)
+  ========================================================= */
+  var USER_ACCESS = ['awards','crm','events','webinars','marketing','payments','edition'];
+  var NAV_LINKS = [
+    { key:'awards',   label:'Awards',   href:'index.html', icon:IC.trophy },
+    { key:'crm',      label:'CRM',      href:'index.html', icon:IC.briefcase },
+    { key:'events',   label:'Events',   href:'Event_Listing.html', icon:IC.calendarSm, active:true },
+    { key:'webinars', label:'Webinars', href:'index.html', icon:IC.photo }
+  ];
+  var MORE_PRODUCTS_LINKS = [
+    { key:'payments',  label:'Payments', href:'index.html', icon:IC.wallet },
+    { key:'edition',   label:'Event Edition', href:'index.html', icon:IC.layers },
+    { key:'marketing', label:'Marketing Dashboard', href:'index.html', icon:IC.flag }
+  ];
+
+  function hasAccess(key){ return USER_ACCESS.indexOf(key) !== -1; }
+
+  function renderMainNavLinks(){
+    $('main-nav-links').innerHTML = NAV_LINKS.filter(function(l){ return hasAccess(l.key); }).map(function(l){
+      return '<a href="' + l.href + '"' + (l.active ? ' class="active"' : '') + '>' + l.icon + ' ' + l.label + '</a>';
+    }).join('');
+  }
+  renderMainNavLinks();
+
   function renderMoreProductsMenu(){
-    $('more-products-menu').innerHTML =
-      '<a class="popover-item" href="index.html">' + IC.userCircle + ' Event Editions</a>' +
-      '<a class="popover-item" href="index.html">' + IC.search15 + ' Search Users</a>';
+    $('more-products-menu').innerHTML = MORE_PRODUCTS_LINKS.filter(function(l){ return hasAccess(l.key); }).map(function(l){
+      return '<a class="popover-item" href="' + l.href + '">' + l.icon + ' ' + l.label + '</a>';
+    }).join('') || '<div class="popover-label">No other products available</div>';
   }
   $('btn-more-products').addEventListener('click', function(e){
     e.stopPropagation();
     if (state.openPopover==='more-products-menu'){ closeAll(); return; }
     renderMoreProductsMenu(); openPopover('more-products-menu');
+  });
+
+  function renderPortalsNavMenu(){
+    $('portals-nav-menu').innerHTML = '<div class="popover-label">Switch portal</div>' + Object.keys(PORTALS).map(function(k){
+      return '<a class="popover-item" href="index.html">' + IC.globe + ' ' + PORTALS[k] + '</a>';
+    }).join('');
+  }
+  $('btn-portals-nav').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='portals-nav-menu'){ closeAll(); return; }
+    renderPortalsNavMenu(); openPopover('portals-nav-menu');
   });
 
   /* =========================================================
@@ -1190,7 +1257,7 @@
       return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
     }).join('');
     $('type-popover').querySelectorAll('[data-type]').forEach(function(b){
-      b.addEventListener('click', function(){ toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
+      b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
     });
   }
   function renderPortalPopover(){
@@ -1199,50 +1266,19 @@
       return '<button class="check-row ' + (on?'on':'') + '" data-portal="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + PORTALS[k] + '</button>';
     }).join('');
     $('portal-popover').querySelectorAll('[data-portal]').forEach(function(b){
-      b.addEventListener('click', function(){ toggleInArray(state.filters.portals, b.getAttribute('data-portal')); state.page=1; renderPortalPopover(); renderResults(); renderToolbarButtons(); });
-    });
-  }
-  function renderFiltersPopover(){
-    var opts = [['paid','Paid events'],['free','Free events']];
-    $('filters-popover').innerHTML = '<div class="popover-label">Payment</div>' + opts.map(function(o){
-      var on = state.filters.payment.indexOf(o[0]) !== -1;
-      return '<button class="check-row ' + (on?'on':'') + '" data-pay="' + o[0] + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + o[1] + '</button>';
-    }).join('');
-    $('filters-popover').querySelectorAll('[data-pay]').forEach(function(b){
-      b.addEventListener('click', function(){ toggleInArray(state.filters.payment, b.getAttribute('data-pay')); state.page=1; renderFiltersPopover(); renderResults(); renderToolbarButtons(); });
-    });
-  }
-  function renderSortPopover(){
-    var opts = [['start','Event date'],['visitors','Visitors'],['registrations','Registrations'],['payment','Payment']];
-    $('sort-popover').innerHTML = '<div class="popover-label">Sort by</div>' + opts.map(function(o){
-      return '<div style="display:flex;">' +
-        '<button class="popover-item" data-sort-field="'+o[0]+'" data-dir="asc" style="flex:1;">'+ (state.sort.field===o[0]&&state.sort.dir==='asc'?IC.check:'') +' '+o[1]+' (low to high)</button>' +
-      '</div>' +
-      '<div style="display:flex;">' +
-        '<button class="popover-item" data-sort-field="'+o[0]+'" data-dir="desc" style="flex:1;">'+ (state.sort.field===o[0]&&state.sort.dir==='desc'?IC.check:'') +' '+o[1]+' (high to low)</button>' +
-      '</div>';
-    }).join('<div class="popover-sep"></div>');
-    $('sort-popover').querySelectorAll('[data-sort-field]').forEach(function(b){
-      b.addEventListener('click', function(){
-        state.sort.field = b.getAttribute('data-sort-field'); state.sort.dir = b.getAttribute('data-dir');
-        closeAll(); renderResults();
-      });
+      b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.portals, b.getAttribute('data-portal')); state.page=1; renderPortalPopover(); renderResults(); renderToolbarButtons(); });
     });
   }
   $('btn-type').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='type-popover'){closeAll();return;} renderTypePopover(); openPopover('type-popover'); });
   $('btn-portal').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='portal-popover'){closeAll();return;} renderPortalPopover(); openPopover('portal-popover'); });
-  $('btn-filters').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='filters-popover'){closeAll();return;} renderFiltersPopover(); openPopover('filters-popover'); });
   $('btn-qr-toolbar').addEventListener('click', function(){ openQRModal(); });
-  $('btn-sort').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='sort-popover'){closeAll();return;} renderSortPopover(); openPopover('sort-popover'); });
 
   function renderToolbarButtons(){
-    var tCount = state.filters.types.length, pCount = state.filters.portals.length, fCount = state.filters.payment.length;
+    var tCount = state.filters.types.length, pCount = state.filters.portals.length;
     $('btn-type').className = 'toolbar-btn' + (tCount?' active-filter':'');
     $('btn-type').innerHTML = 'Event Type' + (tCount ? ' <span class="badge-count">'+tCount+'</span>' : '') + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
     $('btn-portal').className = 'toolbar-btn' + (pCount?' active-filter':'');
     $('btn-portal').innerHTML = 'Portal' + (pCount ? ' <span class="badge-count">'+pCount+'</span>' : '') + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
-    $('btn-filters').className = 'toolbar-btn' + (fCount?' active-filter':'');
-    $('btn-filters').innerHTML = (fCount ? '<span class="badge-count">'+fCount+'</span> ' : '') + svg('<path d="M4 5h16M7 12h10M10 19h4"/>',13) + ' Filters';
   }
 
   function renderChips(){
@@ -1332,7 +1368,7 @@
     return '<span class="pay-amt" data-tooltip="' + (e.payment.txns||0) + ' transactions">' + fmtRupee(e.payment.amount) + '</span><div class="pay-sub">Collected</div>';
   }
   function metaLine(e){
-    return '<span class="ev-id-chip mono">Event ID #' + e.eventNo + '</span>' +
+    return '<span class="ev-id-chip mono">Event ID ' + e.eventNo + '</span>' +
       '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(EVENT_TYPES[e.type].replace(' (IP)','')) + '</span>';
   }
 
@@ -1771,6 +1807,8 @@
      Top Source, Mobile vs Desktop. Two presentations: ranked list or donut chart.
   ========================================================= */
   var SEG_DIM_KEY = { company:'companies', designation:'designations', source:'sources', device:'devices' };
+  var SEG_DIM_ICONS = { company:IC.building, designation:IC.userCircle, source:IC.share, device:IC.monitor };
+  var SEG_NAME_COL_LABEL = { company:'Company', designation:'Designation', source:'Source', device:'Device' };
 
   function renderSegmentControls(){
     var validIds = IP_EVENT_IDS.filter(function(id){ var e = findEvent(id); return e && (e.status==='upcoming'||e.status==='active'||e.status==='completed'); });
@@ -1787,10 +1825,21 @@
         return '<option value="' + id + '" ' + (state.segmentEventId===id?'selected':'') + '>' + esc(e.name) + '</option>';
       }).join('');
     }
-    sel.onchange = function(){ state.segmentEventId = sel.value; renderSegmentBody(); };
+    sel.onchange = function(){ state.segmentEventId = sel.value; renderSegmentControls(); renderSegmentBody(); };
+
+    var curEv = findEvent(state.segmentEventId);
+    $('segment-icon-avatar').innerHTML = IC.users;
+    var pill = $('segment-status-pill');
+    if (curEv){
+      pill.hidden = false;
+      pill.className = 'status-pill status-pill-' + curEv.status;
+      pill.textContent = statusLabel(curEv.status) + ' Event';
+    } else {
+      pill.hidden = true;
+    }
 
     $('segment-dim-tabs').innerHTML = Object.keys(SEGMENT_DIMENSIONS).map(function(k){
-      return '<button type="button" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEGMENT_DIMENSIONS[k] + '</button>';
+      return '<button type="button" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEG_DIM_ICONS[k] + ' ' + SEGMENT_DIMENSIONS[k] + '</button>';
     }).join('');
     $('segment-dim-tabs').querySelectorAll('[data-dim]').forEach(function(b){
       b.addEventListener('click', function(){ state.segmentDimension = b.getAttribute('data-dim'); renderSegmentControls(); renderSegmentBody(); });
@@ -1802,13 +1851,52 @@
     });
   }
 
-  function renderSegRankedList(entries, max, fmtVal){
-    return '<div class="seg-list">' + entries.map(function(x,i){
-      var pct = Math.max(4, Math.round((x.value/max)*100));
-      return '<div class="seg-row"><span class="seg-rank">' + (i+1) + '</span>' +
-        '<div class="seg-main"><div class="seg-name-row"><span class="seg-name">' + esc(x.label) + '</span><span class="seg-val mono">' + fmtVal(x.value) + '</span></div>' +
-        '<div class="seg-bar-track"><div class="seg-bar-fill" style="width:' + pct + '%;background:' + SEG_PALETTE[i % SEG_PALETTE.length] + ';"></div></div></div></div>';
-    }).join('') + '</div>';
+  function renderSparkline(trend, color){
+    var w = 64, h = 22, pad = 2;
+    var max = Math.max.apply(null, trend), min = Math.min.apply(null, trend);
+    var range = (max - min) || 1;
+    var pts = trend.map(function(v,i){
+      var x = pad + (i/(trend.length-1)) * (w - 2*pad);
+      var y = h - pad - ((v-min)/range) * (h - 2*pad);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" class="seg-spark"><polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function renderIntentBadge(shareFrac){
+    var level = shareFrac >= 0.22 ? 'high' : shareFrac >= 0.12 ? 'medium' : 'low';
+    var glyph = level === 'high' ? '&uarr;' : level === 'medium' ? '&ndash;' : '&darr;';
+    var label = level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low';
+    return '<span class="intent-badge intent-' + level + '">' + glyph + ' ' + label + '</span>';
+  }
+
+  function renderSegStats(entries, total){
+    var topN = entries.slice(0, Math.min(5, entries.length)).reduce(function(s,x){ return s + x.value; }, 0);
+    var topPct = total ? Math.round((topN/total)*100) : 0;
+    return '<div class="seg-stats-row">' +
+      '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.users + '</span>' +
+        '<div><div class="seg-stat-label">Total Registrations</div><div class="seg-stat-value mono">' + fmtNum(total) + '</div></div></div>' +
+      '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.chart + '</span>' +
+        '<div><div class="seg-stat-label">Top ' + Math.min(5, entries.length) + ' Share</div><div class="seg-stat-value mono">' + topPct + '%</div></div></div>' +
+    '</div>';
+  }
+
+  function renderSegTable(entries, total, fmtVal, dim){
+    var nameLabel = SEG_NAME_COL_LABEL[dim] || 'Name';
+    var rows = entries.map(function(x,i){
+      var pct = total ? Math.round((x.value/total)*100) : 0;
+      var color = SEG_PALETTE[i % SEG_PALETTE.length];
+      return '<tr>' +
+        '<td><span class="seg-rank-cell" style="background:' + color + '22;color:' + color + ';">' + (i+1) + '</span></td>' +
+        '<td><div class="seg-name-cell"><span class="seg-avatar" style="background:' + color + '22;color:' + color + ';">' + esc(x.label.charAt(0)) + '</span><span>' + esc(x.label) + '</span></div></td>' +
+        '<td class="mono">' + fmtVal(x.value) + '</td>' +
+        '<td class="mono">' + pct + '%</td>' +
+        '<td>' + renderSparkline(x.trend, color) + '</td>' +
+        '<td>' + renderIntentBadge(total ? x.value/total : 0) + '</td>' +
+      '</tr>';
+    }).join('');
+    return '<div class="seg-table-wrap"><table class="seg-table"><thead><tr>' +
+      '<th></th><th>' + nameLabel + '</th><th>Registered</th><th>Share</th><th>Trend (7d)</th><th>Attendance Intent</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
   function renderSegDonut(entries, total, size){
     size = size || 148;
@@ -1857,14 +1945,12 @@
     var total = entries.reduce(function(s,x){ return s+x.value; }, 0);
     var top = entries[0];
     var topShare = total ? Math.round((top.value/total)*100) : 0;
-    var max = top.value || 1;
 
-    var insight = '<div class="seg-insight">' + IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads with <strong>' + topShare + '%</strong> of attendees' +
-      (dim==='device' ? '' : ' at ' + esc(ev.name)) + '.</span></div>';
+    var insight = '<div class="seg-insight">' + IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads registrations with <strong>' + topShare + '%</strong> of total registrations.</span></div>';
 
-    var bodyHTML = state.segmentView === 'chart'
+    var bodyHTML = renderSegStats(entries, total) + (state.segmentView === 'chart'
       ? '<div class="seg-chart-row">' + renderSegDonut(entries, total) + renderSegLegend(entries, total, fmtNum) + '</div>'
-      : renderSegRankedList(entries, max, fmtNum);
+      : renderSegTable(entries.slice(0, 5), total, fmtNum, dim));
 
     $('segment-body').innerHTML = insight + bodyHTML;
   }
