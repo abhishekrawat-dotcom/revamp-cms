@@ -111,27 +111,47 @@
   .brand-mark .word{ font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
   .ed-top .sep{ width:1px; height: 22px; background: var(--border); flex-shrink:0; }
 
-  /* ---------- global command toolbar ---------- */
+  /* ---------- global command toolbar (matches floating text-editor toolbar style) ---------- */
   .global-toolbar{
-    height: 44px; flex-shrink:0; display:flex; align-items:center; justify-content:center; gap:2px;
-    background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; z-index: 45; position:relative;
+    height: 64px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    /* background: var(--bg); border-bottom: 1px solid var(--border); */
+    padding: 8px 24px; z-index: 45; position:relative;
   }
+  .gt-pill{
+    display:flex; align-items:center; gap:2px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:100%; max-width:1180px; flex-shrink:0;
+  }
+  .gt-more-menu{ width: 224px; }
+  .gt-more-menu button{ display:flex; align-items:center; gap:9px; }
+  .gt-more-menu button[disabled]{ opacity:.4; pointer-events:none; }
+  .gt-more-row{ display:flex; flex-direction:column; gap:5px; padding: 7px 10px 5px; }
+  .gt-more-row label{
+    font-size:11px; font-weight:700; color: var(--text-faint); text-transform:uppercase; letter-spacing:.03em;
+  }
+  .gt-more-row select{
+    width:100%; border:1px solid var(--border); border-radius:7px; background: var(--surface); font: inherit;
+    font-size:12.5px; font-weight:600; color: var(--text); padding:7px 8px;
+  }
+  .gt-more-row select:hover{ background: var(--surface-2); }
   .gt-btn{
-    display:flex; align-items:center; gap:6px; padding:7px 11px; border-radius:7px; border:none; background:none;
+    display:flex; align-items:center; gap:6px; height:32px; padding:0 10px; border-radius:8px; border:none; background:none;
     color: var(--text); font: inherit; font-size:13px; font-weight:600; white-space:nowrap; flex-shrink:0;
   }
   .gt-btn:hover{ background: var(--surface-2); }
-  .gt-btn.icon-only{ padding:7px; color: var(--text-muted); }
+  .gt-btn.icon-only{ width:32px; padding:0; color: var(--text-muted); }
   .gt-btn.icon-only:hover{ color: var(--text); }
-  .gt-btn.ai{ color: var(--review); }
-  .gt-btn.ai:hover{ background: var(--review-soft); }
+  .gt-btn.ai{
+    width:32px; padding:0; border-radius:50%; color: var(--review); background: var(--review-soft); flex-shrink:0;
+  }
+  .gt-btn.ai:hover{ filter: brightness(0.96); }
   .gt-circle{ width:15px; height:15px; border-radius:50%; border:1.5px solid var(--border); background: var(--surface); flex-shrink:0; }
-  .gt-sep{ width:1px; height:20px; background: var(--border); margin: 0 6px; flex-shrink:0; }
+  .gt-sep{ width:1px; height:22px; background: var(--border); margin: 0 6px; flex-shrink:0; }
   .gt-select{
-    border:1px solid var(--border); border-radius:7px; background: var(--surface); font: inherit; font-size:12.5px;
-    font-weight:600; color: var(--text); padding:6px 8px; flex-shrink:0; max-width:132px; margin-right:4px;
+    border:none; border-radius:8px; background: none; font: inherit; font-size:13px;
+    font-weight:600; color: var(--text); height:32px; padding:0 6px 0 8px; flex-shrink:0; max-width:132px; margin-right:2px;
   }
   .gt-select:hover{ background: var(--surface-2); }
+  .gt-select[disabled]{ opacity:.35; pointer-events:none; }
   .gt-section-label{
     font-size:11.5px; font-weight:700; color: var(--text-faint); text-transform:uppercase; letter-spacing:.03em;
     padding: 4px 8px; flex-shrink:0;
@@ -414,30 +434,40 @@
   }
   .add-sec-btn:hover{ border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-  /* ---------- floating element toolbar (Wix-style) ---------- */
+  /* ---------- floating element toolbar (text-editor style) ---------- */
   #sel-toolbar{
     position:absolute; z-index:20; display:none; align-items:center; gap:2px;
-    background: var(--surface); border:1px solid var(--border); border-radius: 9px; padding: 5px;
+    background: var(--surface); border:1px solid var(--border); border-radius: 13px; padding: 4px;
     box-shadow: var(--shadow-lg); white-space:nowrap; color: var(--text);
   }
   #sel-toolbar.show{ display:flex; }
-  #sel-toolbar .tb-group{ display:flex; align-items:center; gap:1px; padding: 0 5px; }
-  #sel-toolbar .tb-sep{ width:1px; height:20px; background: var(--border); margin: 0 3px; flex-shrink:0; }
+  #sel-toolbar .tb-group{ display:flex; align-items:center; gap:1px; padding: 0 3px; }
+  #sel-toolbar .tb-sep{ width:1px; height:22px; background: var(--border); margin: 0 4px; flex-shrink:0; }
   #sel-toolbar button{
-    height:28px; min-width:28px; padding:0 6px; border-radius:6px; border:none; background:none; color: var(--text-muted);
-    display:flex; align-items:center; justify-content:center; gap:5px; font-size:12.5px; font-weight:600;
+    height:32px; min-width:32px; padding:0 8px; border-radius:8px; border:none; background:none; color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center; gap:5px; font-size:13px; font-weight:600;
   }
+  #sel-toolbar button.icon-only{ padding:0; width:32px; }
   #sel-toolbar button:hover{ background: var(--surface-2); color: var(--text); }
   #sel-toolbar button.on{ background: var(--accent-soft); color: var(--accent-strong); }
   #sel-toolbar button.danger:hover{ background: var(--crit-soft); color: var(--crit); }
-  #sel-toolbar .ai-btn{ color: var(--review); font-weight:700; }
-  #sel-toolbar .ai-btn:hover{ background: var(--review-soft); }
+  #sel-toolbar .ai-btn{
+    width:32px; height:32px; padding:0; border-radius:50%; color: var(--review); background: var(--review-soft); flex-shrink:0;
+  }
+  #sel-toolbar .ai-btn:hover{ filter: brightness(0.96); }
   #sel-toolbar select{
-    height:28px; border:none; background:none; color: var(--text); font-size:12.5px; font-weight:600;
-    padding: 0 4px; border-radius:6px; max-width:104px;
+    height:32px; border:none; background:none; color: var(--text); font-size:13px; font-weight:600;
+    padding: 0 4px 0 8px; border-radius:8px; max-width:118px;
   }
   #sel-toolbar select:hover{ background: var(--surface-2); }
-  #sel-toolbar .swatch-dot{ width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border); background:#1c1c1c; }
+  .clr-btn{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    width:32px; height:32px; padding: 5px 0 6px; font-size:14px; font-weight:800; line-height:1;
+    border:none; background:none; color: var(--text); border-radius:8px; flex-shrink:0;
+  }
+  .clr-btn:hover{ background: var(--surface-2); }
+  .clr-btn .clr-bar{ width:14px; height:3px; border-radius:1px; background:#1c1c1c; flex-shrink:0; }
+  .clr-btn[disabled]{ opacity:.35; pointer-events:none; }
 
   /* ---------- Ask Aria fab + popover ---------- */
   .aria-fab{
@@ -752,12 +782,45 @@
 
       <!-- ============ GLOBAL COMMAND TOOLBAR ============ -->
       <div class="global-toolbar" id="global-toolbar">
+       <div class="gt-pill">
         <button class="gt-btn ai" id="gt-ask-aria" title="Ask Aria">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>
-          Ask Aria
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>
         </button>
         <div class="gt-sep"></div>
         <span class="gt-section-label" id="gt-section-label">No section selected</span>
+        <div class="gt-sep"></div>
+        <select class="gt-select" id="gt-font-size" title="Paragraph style" disabled>
+          <option value="">Paragraph</option>
+          <option value="12px">Small text</option>
+          <option value="28px">Heading</option>
+          <option value="42px">Large heading</option>
+        </select>
+        <div class="gt-sep"></div>
+        <button class="gt-btn icon-only" id="gt-bold" title="Bold" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 4h7a3.5 3.5 0 0 1 0 7H6zM6 11h8a3.5 3.5 0 0 1 0 7H6z"/></svg>
+        </button>
+        <button class="gt-btn icon-only" id="gt-italic" title="Italic" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 4h6M6 20h6M13 4l-4 16"/></svg>
+        </button>
+        <button class="gt-btn icon-only" id="gt-underline" title="Underline" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M4 21h16"/></svg>
+        </button>
+        <div class="gt-sep"></div>
+        <button class="gt-btn icon-only" id="gt-link" title="Link" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
+        </button>
+        <button class="clr-btn" id="gt-color" title="Text color" disabled>A<span class="clr-bar"></span></button>
+        <div class="gt-sep"></div>
+        <button class="gt-btn icon-only" id="gt-align-left" title="Align left" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+        </button>
+        <button class="gt-btn icon-only" id="gt-align-center" title="Align center" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg>
+        </button>
+        <button class="gt-btn icon-only" id="gt-align-right" title="Align right" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg>
+        </button>
+        <div class="gt-sep"></div>
         <button class="gt-btn" id="gt-change-layout" title="Change Layout">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
           Change Layout
@@ -768,29 +831,47 @@
           Replace Background
         </button>
         <div class="gt-sep"></div>
-        <button class="gt-btn icon-only" id="gt-sec-duplicate" title="Duplicate section">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+        <button class="gt-btn icon-only" id="gt-more" title="More options">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
         </button>
-        <button class="gt-btn icon-only" id="gt-sec-hide" title="Hide section">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+       </div>
+      </div>
+
+      <div class="lyr-menu gt-more-menu" id="gt-more-menu" hidden>
+        <button id="gt-sec-duplicate" title="Duplicate section">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          Duplicate section
         </button>
-        <button class="gt-btn icon-only danger" id="gt-sec-delete" title="Delete section">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg>
+        <button id="gt-sec-hide" title="Hide section">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          Hide section
         </button>
-        <div class="gt-sep"></div>
-        <button class="gt-btn icon-only" id="gt-settings" title="Site theme color">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <button id="gt-sec-delete" class="danger" title="Delete section">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg>
+          Delete section
         </button>
-        <select class="gt-select" id="theme-font" title="Heading font">
-          <option value="'Fraunces', serif">Fraunces (serif)</option>
-          <option value="'Manrope', sans-serif">Manrope (sans)</option>
-          <option value="'IBM Plex Mono', monospace">IBM Plex Mono</option>
-        </select>
-        <select class="gt-select" id="theme-radius" title="Corner roundness">
-          <option value="2px">Sharp corners</option>
-          <option value="10px" selected>Soft corners</option>
-          <option value="100px">Pill corners</option>
-        </select>
+        <div class="lyr-menu-sep"></div>
+        <button id="gt-settings" title="Site theme color">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Theme &amp; style&hellip;
+        </button>
+        <div class="lyr-menu-sep"></div>
+        <div class="gt-more-row">
+          <label for="theme-font">Heading font</label>
+          <select id="theme-font" title="Heading font">
+            <option value="'Fraunces', serif">Fraunces (serif)</option>
+            <option value="'Manrope', sans-serif">Manrope (sans)</option>
+            <option value="'IBM Plex Mono', monospace">IBM Plex Mono</option>
+          </select>
+        </div>
+        <div class="gt-more-row">
+          <label for="theme-radius">Corner roundness</label>
+          <select id="theme-radius" title="Corner roundness">
+            <option value="2px">Sharp corners</option>
+            <option value="10px" selected>Soft corners</option>
+            <option value="100px">Pill corners</option>
+          </select>
+        </div>
       </div>
 
       <div class="stage" id="stage">
@@ -1048,6 +1129,7 @@
     selectedEl = null;
     selToolbar.classList.remove('show');
     document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
+    syncFormatControls();
   }
 
   function exitEditIfNeeded(el){
@@ -1075,50 +1157,43 @@
     }
     buildToolbar(el);
     positionToolbar(el);
+    syncFormatControls();
   }
 
   function buildToolbar(el){
     var type = el.getAttribute('data-editable');
     var html = '';
-    html += '<div class="tb-group"><button class="ai-btn" data-action="ask-aria">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/></svg>Ask Aria</button>' +
-      '<button data-action="site-settings" title="Site design settings (color, font, corners)">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
+    html += '<div class="tb-group"><button class="ai-btn icon-only" data-action="ask-aria" title="Ask Aria">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>' +
       '</button></div>';
     html += '<div class="tb-sep"></div>';
 
     if (type === 'text' || type === 'button'){
-      html += '<div class="tb-group"><button data-action="edit-text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>Edit Text</button></div>';
-      html += '<div class="tb-sep"></div>';
-      html += '<div class="tb-group"><select data-action="font-family" title="Font">' +
-        '<option value="">Font</option>' +
-        '<option value="\'Fraunces\', serif">Fraunces</option>' +
-        '<option value="\'Manrope\', sans-serif">Manrope</option>' +
-        '<option value="\'IBM Plex Mono\', monospace">Plex Mono</option>' +
-        '</select></div>';
-      html += '<div class="tb-group"><select data-action="font-size" title="Size">' +
-        '<option value="">Size</option>' +
-        '<option value="12px">12</option><option value="14px">14</option><option value="16px">16</option>' +
-        '<option value="20px">20</option><option value="28px">28</option><option value="42px">42</option>' +
+      html += '<div class="tb-group"><select data-action="font-size" title="Paragraph style">' +
+        '<option value="">Paragraph</option>' +
+        '<option value="12px">Small text</option>' +
+        '<option value="28px">Heading</option>' +
+        '<option value="42px">Large heading</option>' +
         '</select></div>';
       html += '<div class="tb-sep"></div>';
       html += '<div class="tb-group">' +
-        '<button data-action="link" title="Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button>' +
-        '<button data-action="color" title="Text color"><span class="swatch-dot"></span></button>' +
+        '<button class="icon-only" data-action="bold" title="Bold"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 4h7a3.5 3.5 0 0 1 0 7H6zM6 11h8a3.5 3.5 0 0 1 0 7H6z"/></svg></button>' +
+        '<button class="icon-only" data-action="italic" title="Italic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 4h6M6 20h6M13 4l-4 16"/></svg></button>' +
+        '<button class="icon-only" data-action="underline" title="Underline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M4 21h16"/></svg></button>' +
         '</div>';
       html += '<div class="tb-sep"></div>';
       html += '<div class="tb-group">' +
-        '<button data-action="bold" title="Bold"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 4h7a3.5 3.5 0 0 1 0 7H6zM6 11h8a3.5 3.5 0 0 1 0 7H6z"/></svg></button>' +
-        '<button data-action="italic" title="Italic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 4h6M6 20h6M13 4l-4 16"/></svg></button>' +
-        '<button data-action="underline" title="Underline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M4 21h16"/></svg></button>' +
-        '<button data-action="strike" title="Strikethrough"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M8 6c0-1.5 1.8-2.7 4-2.7s4 1.2 4 2.7M8 18c0 1.5 1.8 2.7 4 2.7s4-1.2 4-2.7"/></svg></button>' +
+        '<button class="icon-only" data-action="link" title="Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button>' +
+        '<button class="clr-btn" data-action="color" title="Text color">A<span class="clr-bar"></span></button>' +
         '</div>';
       html += '<div class="tb-sep"></div>';
       html += '<div class="tb-group">' +
-        '<button data-action="align-left" title="Align left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>' +
-        '<button data-action="align-center" title="Align center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>' +
-        '<button data-action="align-right" title="Align right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>' +
+        '<button class="icon-only" data-action="align-left" title="Align left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>' +
+        '<button class="icon-only" data-action="align-center" title="Align center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>' +
+        '<button class="icon-only" data-action="align-right" title="Align right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>' +
         '</div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="edit-text" title="Edit text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button></div>';
     }
 
     if (type === 'button'){
@@ -1133,9 +1208,9 @@
 
     html += '<div class="tb-sep"></div>';
     html += '<div class="tb-group">' +
-      '<button data-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
-      '<button data-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
-      '<button data-action="deselect" title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '<button class="icon-only" data-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+      '<button class="icon-only danger" data-action="delete" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
+      '<button class="icon-only" data-action="deselect" title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
       '</div>';
 
     selToolbar.innerHTML = html;
@@ -1167,6 +1242,45 @@
     sel.addRange(range);
   }
 
+  /* ---------- shared text-format actions (used by floating toolbar + global toolbar) ---------- */
+  function applyFormatAction(action){
+    switch(action){
+      case 'bold': document.execCommand('bold'); markSaving(); break;
+      case 'italic': document.execCommand('italic'); markSaving(); break;
+      case 'underline': document.execCommand('underline'); markSaving(); break;
+      case 'align-left': selectedEl.style.textAlign = 'left'; markSaving(); break;
+      case 'align-center': selectedEl.style.textAlign = 'center'; markSaving(); break;
+      case 'align-right': selectedEl.style.textAlign = 'right'; markSaving(); break;
+      case 'link':
+        var url = prompt('Link URL', selectedEl.getAttribute('data-href') || 'https://');
+        if (url){ selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); markSaving(); }
+        break;
+      case 'color':
+        var col = prompt('Text color (hex)', '#0F6F5C');
+        if (col){ selectedEl.style.color = col; markSaving(); }
+        break;
+    }
+  }
+
+  function isFormattableSelection(){
+    if (!selectedEl) return false;
+    var type = selectedEl.getAttribute('data-editable');
+    return type === 'text' || type === 'button';
+  }
+
+  function requireFormattableSelection(){
+    if (isFormattableSelection()) return true;
+    showToast('Select a text or button element first');
+    return false;
+  }
+
+  function syncFormatControls(){
+    var enabled = isFormattableSelection();
+    ['gt-font-size', 'gt-bold', 'gt-italic', 'gt-underline', 'gt-link', 'gt-color', 'gt-align-left', 'gt-align-center', 'gt-align-right'].forEach(function(id){
+      document.getElementById(id).disabled = !enabled;
+    });
+  }
+
   /* ---------- toolbar action handling ---------- */
   selToolbar.addEventListener('mousedown', function(e){
     if (e.target.closest('select')) return;
@@ -1178,20 +1292,10 @@
     var action = btn.getAttribute('data-action');
     switch(action){
       case 'edit-text': enterEdit(selectedEl); break;
-      case 'bold': document.execCommand('bold'); markSaving(); break;
-      case 'italic': document.execCommand('italic'); markSaving(); break;
-      case 'underline': document.execCommand('underline'); markSaving(); break;
-      case 'strike': document.execCommand('strikeThrough'); markSaving(); break;
-      case 'align-left': selectedEl.style.textAlign = 'left'; markSaving(); break;
-      case 'align-center': selectedEl.style.textAlign = 'center'; markSaving(); break;
-      case 'align-right': selectedEl.style.textAlign = 'right'; markSaving(); break;
-      case 'link':
-        var url = prompt('Link URL', selectedEl.getAttribute('data-href') || 'https://');
-        if (url){ selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); markSaving(); }
-        break;
-      case 'color':
-        var col = prompt('Text color (hex)', '#0F6F5C');
-        if (col){ selectedEl.style.color = col; markSaving(); }
+      case 'bold': case 'italic': case 'underline':
+      case 'align-left': case 'align-center': case 'align-right':
+      case 'link': case 'color':
+        applyFormatAction(action);
         break;
       case 'button-style':
         selectedEl.classList.toggle('primary');
@@ -1231,7 +1335,6 @@
   selToolbar.addEventListener('change', function(e){
     if (!selectedEl) return;
     var t = e.target;
-    if (t.getAttribute('data-action') === 'font-family' && t.value){ selectedEl.style.fontFamily = t.value; markSaving(); }
     if (t.getAttribute('data-action') === 'font-size' && t.value){ selectedEl.style.fontSize = t.value; markSaving(); }
   });
 
@@ -1936,14 +2039,110 @@
     if (!activeSectionEl) return;
     showToast('Layout options for "' + (activeSectionEl.getAttribute('data-sec-name') || 'this section') + '" arrive with a future update.');
   });
+  function getSectionContentEl(sec){
+    for (var i = 0; i < sec.children.length; i++){
+      var c = sec.children[i];
+      if (!c.classList.contains('sec-name-tag') && !c.classList.contains('sec-toolbar') && !c.classList.contains('sec-add-below')) return c;
+    }
+    return sec;
+  }
   document.getElementById('gt-replace-bg').addEventListener('click', function(){
     if (!activeSectionEl) return;
-    showToast('Background swap for "' + (activeSectionEl.getAttribute('data-sec-name') || 'this section') + '" arrives with a future update.');
+    var target = getSectionContentEl(activeSectionEl);
+    var current = target.style.backgroundColor || '#ffffff';
+    var col = prompt('Background color for the whole site (hex, or "none" to clear)', current);
+    if (col === null) return;
+    col = col.trim();
+    var clearing = col.toLowerCase() === 'none' || col === '';
+    frame.querySelectorAll('.site-section').forEach(function(sec){
+      var el = getSectionContentEl(sec);
+      if (clearing){
+        el.style.backgroundColor = '';
+        el.style.backgroundImage = '';
+      } else {
+        el.style.backgroundColor = col;
+        el.style.backgroundImage = 'none';
+      }
+    });
+    showToast(clearing ? 'Background cleared site-wide' : 'Background updated site-wide');
+    pushHistory(); markSaving();
   });
   document.getElementById('gt-sec-duplicate').addEventListener('click', function(){ handleSectionAction('duplicate', activeSectionEl); });
   document.getElementById('gt-sec-hide').addEventListener('click', function(){ handleSectionAction('hide', activeSectionEl); });
   document.getElementById('gt-sec-delete').addEventListener('click', function(){ handleSectionAction('delete', activeSectionEl); });
   document.getElementById('gt-settings').addEventListener('click', function(){ openPanel('design', document.getElementById('gt-settings')); });
+
+  /* ---------- global toolbar: "More options" overflow menu ---------- */
+  var gtMoreMenu = document.getElementById('gt-more-menu');
+  var gtMoreBtn = document.getElementById('gt-more');
+  function closeGtMoreMenu(){ gtMoreMenu.hidden = true; }
+  gtMoreBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    if (!gtMoreMenu.hidden){ closeGtMoreMenu(); return; }
+    positionFloating(gtMoreMenu, gtMoreBtn);
+  });
+  document.addEventListener('mousedown', function(e){
+    if (gtMoreMenu.hidden) return;
+    if (gtMoreMenu.contains(e.target) || e.target === gtMoreBtn || gtMoreBtn.contains(e.target)) return;
+    closeGtMoreMenu();
+  });
+  gtMoreMenu.addEventListener('click', function(e){
+    if (e.target.closest('button')) closeGtMoreMenu();
+  });
+
+  /* ---------- global toolbar: heading/paragraph edits apply site-wide ---------- */
+  function isHeadingEl(el){ return /^H[1-4]$/.test(el.tagName); }
+  function isParagraphEl(el){ return el.tagName === 'P' || el.tagName === 'BLOCKQUOTE'; }
+
+  function gtColorAction(){
+    if (isHeadingEl(selectedEl)){
+      var headings = frame.querySelectorAll('h1,h2,h3,h4');
+      var col = prompt('Color for all headings (hex)', selectedEl.style.color || '#0F6F5C');
+      if (!col) return;
+      headings.forEach(function(h){ h.style.color = col; });
+      showToast('Heading color updated site-wide');
+      pushHistory(); markSaving();
+    } else if (isParagraphEl(selectedEl)){
+      var paras = frame.querySelectorAll('p, blockquote');
+      var col2 = prompt('Color for all paragraph text (hex)', selectedEl.style.color || '#0F6F5C');
+      if (!col2) return;
+      paras.forEach(function(p){ p.style.color = col2; });
+      showToast('Paragraph color updated site-wide');
+      pushHistory(); markSaving();
+    } else {
+      applyFormatAction('color');
+    }
+  }
+
+  function gtFontSizeAction(value){
+    if (!value) return;
+    if (isHeadingEl(selectedEl)){
+      frame.querySelectorAll('h1,h2,h3,h4').forEach(function(h){ h.style.fontSize = value; });
+      showToast('Heading size updated site-wide');
+    } else if (isParagraphEl(selectedEl)){
+      frame.querySelectorAll('p, blockquote').forEach(function(p){ p.style.fontSize = value; });
+      showToast('Paragraph size updated site-wide');
+    } else {
+      selectedEl.style.fontSize = value;
+    }
+    pushHistory(); markSaving();
+  }
+
+  var gtFormatBtnIds = ['gt-bold', 'gt-italic', 'gt-underline', 'gt-link', 'gt-color', 'gt-align-left', 'gt-align-center', 'gt-align-right'];
+  document.getElementById('global-toolbar').addEventListener('mousedown', function(e){
+    if (e.target.closest('#' + gtFormatBtnIds.join(', #'))) e.preventDefault();
+  });
+  gtFormatBtnIds.forEach(function(id){
+    document.getElementById(id).addEventListener('click', function(){
+      if (!requireFormattableSelection()) return;
+      if (id === 'gt-color'){ gtColorAction(); return; }
+      applyFormatAction(id.replace('gt-', ''));
+    });
+  });
+  document.getElementById('gt-font-size').addEventListener('change', function(e){
+    if (!requireFormattableSelection()){ e.target.value = ''; return; }
+    gtFontSizeAction(e.target.value);
+  });
 
   /* ---------- Ask Aria ---------- */
   var ariaFab = document.getElementById('aria-fab');
@@ -1977,5 +2176,6 @@
   });
   rebuildLayersPanel();
   syncSectionToolbar();
+  syncFormatControls();
 })();
 </script>
