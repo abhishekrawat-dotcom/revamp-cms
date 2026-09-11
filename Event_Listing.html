@@ -251,14 +251,6 @@
   .status-dot.cancelled{ background:var(--warn); }
   .status-dot.draft{ background:var(--draft); }
   .status-dot.deleted{ background:var(--crit); }
-  .status-pill{ display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; padding:4px 9px 4px 8px; border-radius:100px; flex-shrink:0; white-space:nowrap; margin-top:1px; }
-  .status-pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
-  .status-pill-upcoming{ color:var(--accent-strong); background:var(--accent-soft); }
-  .status-pill-active{ color:var(--ok); background:var(--ok-soft); }
-  .status-pill-completed{ color:var(--text-muted); background:var(--surface-3); }
-  .status-pill-cancelled{ color:var(--warn); background:var(--warn-soft); }
-  .status-pill-draft{ color:var(--draft); background:var(--draft-soft); }
-  .status-pill-deleted{ color:var(--crit); background:var(--crit-soft); }
   .ev-name-main{ min-width:0; }
   .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:inline; cursor:pointer; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
@@ -313,15 +305,10 @@
   .qr-img-wrap{ display:flex; justify-content:center; padding:6px 0 2px; }
   .qr-img{ border-radius:12px; border:1px solid var(--border); padding:10px; background:#fff; }
 
-  /* ---------- venue quick-view popover ---------- */
-  .venue-pop{ position:fixed; top:0; left:0; width:240px; min-width:0; padding:12px; display:flex; flex-direction:column; gap:10px; z-index:60; }
-  .venue-pop-head{ display:flex; gap:9px; align-items:flex-start; }
-  .venue-pop-head svg{ color:var(--accent-strong); flex-shrink:0; margin-top:1px; }
-  .venue-pop-title{ font-weight:700; font-size:13px; color:var(--text); line-height:1.3; }
-  .venue-pop-city{ font-size:11.5px; color:var(--text-muted); margin-top:2px; }
-  .venue-pop-row{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text-muted); }
-  .venue-pop-row svg{ color:var(--text-faint); flex-shrink:0; }
-  .venue-pop-cta{ width:100%; justify-content:center; margin-top:2px; }
+  /* ---------- venue quick-view tooltip ---------- */
+  .venue-pop{ position:fixed; top:0; left:0; width:auto; max-width:260px; min-width:0; padding:9px 12px; display:flex; flex-direction:column; gap:6px; z-index:60; background:var(--text); border:none; border-radius:8px; box-shadow:var(--shadow-md); }
+  .venue-pop-row{ display:flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:var(--bg); line-height:1.3; }
+  .venue-pop-row svg{ color:var(--bg); opacity:.7; flex-shrink:0; }
 
   [data-tooltip]{ position:relative; }
   [data-tooltip]:hover::after, [data-tooltip]:focus-visible::after{
@@ -1304,15 +1291,11 @@
   }
 
   function venueQuickviewBodyHTML(e){
-    var whenText = e.start ? (fmtDate(e.start) + ' · ' + fmtTime(e.start)) : 'Date not set';
-    return '<div class="venue-pop-head">' + IC.pin +
-        '<div><div class="venue-pop-title">' + esc(e.venue || 'Venue to be confirmed') + '</div>' +
-        '<div class="venue-pop-city">' + esc(e.city || '—') + '</div></div>' +
-      '</div>' +
-      '<div class="venue-pop-row">' + IC.calendarSm + '<span>' + esc(whenText) + '</span></div>' +
-      '<div class="venue-pop-row">' + IC.userCircle + '<span>Created by ' + esc(e.createdBy) + '</span></div>' +
-      '<div class="venue-pop-row"><span class="status-pill status-pill-' + e.status + '">' + statusLabel(e.status) + '</span></div>' +
-      '<a class="btn btn-secondary btn-sm venue-pop-cta" href="custom_editor.html?event=' + e.id + '">Open event editor &rarr;</a>';
+    var venueText = e.venue === 'Virtual'
+      ? (e.city && e.city !== 'Online' ? e.city + ' (Virtual)' : 'Virtual')
+      : ((e.venue || 'Venue to be confirmed') + (e.city ? ', ' + e.city : ''));
+    return '<div class="venue-pop-row">' + IC.pin + '<span>' + esc(venueText) + '</span></div>' +
+      '<div class="venue-pop-row">' + IC.userCircle + '<span>Created by ' + esc(e.createdBy) + '</span></div>';
   }
 
   var qvCloseTimer = null;
@@ -1328,7 +1311,7 @@
     pop.innerHTML = venueQuickviewBodyHTML(e);
     pop.hidden = false;
     var r = anchorEl.getBoundingClientRect();
-    var popW = 240, popH = pop.offsetHeight || 190;
+    var popW = 240, popH = pop.offsetHeight || 64;
     var left = Math.max(12, Math.min(r.left, window.innerWidth - popW - 12));
     var top = r.bottom + 8;
     if (top + popH > window.innerHeight - 12) top = Math.max(12, r.top - 8 - popH);
@@ -1363,9 +1346,6 @@
       items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
     } else {
       items.push(['setup', IC.settings, 'Event setup']);
-      items.push(['sep']);
-      items.push(['registrations', IC.ticket, 'View registrations']);
-      items.push(['visitors', IC.users, 'View visitors']);
       items.push(['sep']);
       items.push(['duplicate', IC.copy, 'Clone Event']);
       items.push(['copylink', IC.link, 'Copy event link']);
@@ -1569,7 +1549,7 @@
     switch(action){
       case 'view': case 'edit': case 'setup':
         window.location.href = 'custom_editor.html?event=' + id; break;
-      case 'registrations': case 'visitors': case 'reports':
+      case 'reports':
         toast('Opens the reporting workspace — coming soon.'); break;
       case 'duplicate':
         var copy = Object.assign({}, e, { id: nextId(), name: e.name + ' (Copy)', status:'upcoming', registrations:0, visitors:0 });
