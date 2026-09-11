@@ -256,13 +256,6 @@
   .status-dot.cancelled{ background:var(--warn); }
   .status-dot.draft{ background:var(--draft); }
   .status-dot.deleted{ background:var(--crit); }
-  .status-pill{ display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:800; letter-spacing:.03em; padding:4px 10px; border-radius:100px; flex-shrink:0; white-space:nowrap; }
-  .status-pill-upcoming{ color:var(--accent-strong); background:var(--accent-soft); }
-  .status-pill-active{ color:var(--ok); background:var(--ok-soft); }
-  .status-pill-completed{ color:var(--text-muted); background:var(--surface-3); }
-  .status-pill-cancelled{ color:var(--warn); background:var(--warn-soft); }
-  .status-pill-draft{ color:var(--draft); background:var(--draft-soft); }
-  .status-pill-deleted{ color:var(--crit); background:var(--crit-soft); }
   .ev-name-main{ min-width:0; }
   .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:inline; cursor:pointer; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
@@ -347,16 +340,15 @@
   .pagination button[disabled]{ opacity:.4; pointer-events:none; }
 
   /* ---------- lower dashboard: segmentation + activity ---------- */
-  .lower-grid{ display:grid; grid-template-columns:1.6fr 1fr; gap:16px; align-items:start; }
-  @media (max-width:900px){ .lower-grid{ grid-template-columns:1fr; } }
+  .lower-grid{ display:flex; flex-direction:column; gap:16px; }
   .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-xs); }
-  .panel-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--border); }
-  .panel-card-head-title{ display:flex; align-items:flex-start; gap:12px; }
-  .panel-icon-avatar{ width:38px; height:38px; border-radius:10px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-  .panel-card-head h3{ font-size:15.5px; }
-  .panel-sub{ font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .panel-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--border); }
+  .panel-card-head-title{ display:flex; align-items:center; gap:11px; }
+  .panel-icon-avatar{ width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .panel-card-head h3{ font-size:15px; }
+  .panel-sub{ font-size:11.5px; color:var(--text-muted); margin-top:1px; }
   .panel-card-head-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-  .panel-card-body{ padding:14px 18px 18px; min-height:60px; }
+  .panel-card-body{ padding:13px 18px 16px; min-height:60px; }
   .segmented{ display:flex; align-items:center; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; }
   .segmented.sm{ padding:2px; flex-shrink:0; }
   .segmented.sm button{ display:flex; align-items:center; gap:5px; padding:6px 11px; font-size:11.5px; font-weight:600; color:var(--text-muted); background:none; border:none; border-radius:7px; white-space:nowrap; }
@@ -364,21 +356,25 @@
   .segmented.sm button svg{ flex-shrink:0; opacity:.8; }
   .segmented.sm button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); font-weight:700; }
   .segmented.sm button[aria-pressed="true"] svg{ opacity:1; }
+  .segmented.sm button.dim-blue[aria-pressed="true"]{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .segmented.sm button.dim-teal[aria-pressed="true"]{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .segmented.sm button.dim-violet[aria-pressed="true"]{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .segmented.sm button.dim-cyan[aria-pressed="true"]{ background:var(--tag-cyan-soft); color:var(--tag-cyan); }
 
   .seg-select{ padding:6px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--text); }
   .seg-select-event{ min-width:170px; max-width:260px; }
-  .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .seg-view-toggle{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
-  .seg-view-btn{ display:flex; align-items:center; gap:6px; padding:7px 13px; border-radius:8px; border:1px solid var(--border-strong); background:var(--surface); font-size:12px; font-weight:700; color:var(--text-muted); }
-  .seg-view-btn:hover{ background:var(--surface-2); color:var(--text); }
-  .seg-view-btn[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); }
-  .seg-insight{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--accent-strong); background:var(--accent-soft); border-radius:9px; padding:11px 13px; margin-bottom:16px; line-height:1.4; }
+  .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .seg-view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
+  .seg-view-btn{ width:28px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--text-muted); }
+  .seg-view-btn:hover{ color:var(--text); }
+  .seg-view-btn[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); }
+  .seg-top-row{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:stretch; }
+  .seg-insight{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--accent-strong); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.35; flex:2; min-width:230px; }
   .seg-insight svg{ flex-shrink:0; }
-  .seg-stats-row{ display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
-  .seg-stat-tile{ flex:1; min-width:150px; display:flex; align-items:center; gap:11px; padding:12px 14px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); }
-  .seg-stat-icon{ width:34px; height:34px; border-radius:9px; background:var(--surface); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-xs); }
-  .seg-stat-label{ font-size:11.5px; font-weight:600; color:var(--text-muted); }
-  .seg-stat-value{ font-size:19px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
+  .seg-stat-tile{ flex:1; min-width:150px; display:flex; align-items:center; gap:10px; padding:10px 13px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); }
+  .seg-stat-icon{ width:32px; height:32px; border-radius:9px; background:var(--surface); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-xs); }
+  .seg-stat-label{ font-size:11px; font-weight:600; color:var(--text-muted); }
+  .seg-stat-value{ font-size:18px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
   .seg-list{ display:flex; flex-direction:column; gap:12px; }
   .seg-row{ display:flex; align-items:center; gap:10px; }
   .seg-rank{ width:18px; height:18px; border-radius:5px; background:var(--surface-2); color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -389,10 +385,14 @@
   .seg-val{ font-weight:700; flex-shrink:0; }
   .seg-bar-track{ height:6px; border-radius:100px; background:var(--surface-3); overflow:hidden; }
   .seg-bar-fill{ height:100%; border-radius:100px; }
-  .seg-chart-row{ display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
+  .seg-chart-row{ display:flex; align-items:center; gap:30px; flex-wrap:wrap; padding:6px 0; }
   .seg-donut{ flex-shrink:0; }
-  .seg-legend{ display:flex; flex-direction:column; gap:11px; flex:1; min-width:170px; }
-  .seg-legend-row{ display:flex; align-items:center; gap:9px; font-size:12.5px; }
+  .seg-donut-wrap{ position:relative; display:inline-flex; flex-shrink:0; }
+  .seg-donut-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; padding:0 22px; }
+  .seg-donut-center-pct{ font-size:23px; font-weight:800; letter-spacing:-.02em; color:var(--text); }
+  .seg-donut-center-label{ font-size:10.5px; font-weight:700; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+  .seg-legend{ display:flex; flex-direction:column; gap:10px; flex:1; min-width:190px; }
+  .seg-legend-row{ display:flex; align-items:center; gap:9px; font-size:12.5px; padding:2px 0; }
   .seg-swatch{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
   .seg-legend-label{ flex:1; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .seg-legend-val{ font-weight:700; font-family:var(--font-mono); flex-shrink:0; }
@@ -413,12 +413,49 @@
   .intent-medium{ color:var(--warn); background:var(--warn-soft); }
   .intent-low{ color:var(--text-faint); background:var(--surface-3); }
 
-  .metric-list{ display:flex; flex-direction:column; }
-  .metric-row{ display:flex; align-items:center; gap:12px; padding:11px 0; }
-  .metric-row + .metric-row{ border-top:1px dashed var(--border); }
-  .metric-icon{ width:32px; height:32px; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-  .metric-label{ flex:1; font-size:12.5px; font-weight:600; color:var(--text-muted); min-width:0; }
-  .metric-value{ font-weight:700; font-size:17px; letter-spacing:-0.01em; }
+  /* ---------- activity accordion ---------- */
+  .activity-accordion{ display:flex; flex-direction:column; }
+  .activity-item + .activity-item{ border-top:1px solid var(--border); }
+  .activity-row{ width:100%; display:flex; align-items:center; gap:13px; padding:12px 6px; background:none; border:none; text-align:left; cursor:pointer; border-radius:10px; transition:background .15s ease; font-family:var(--font-body); }
+  .activity-row:hover{ background:var(--surface-2); }
+  .activity-row[aria-expanded="true"]{ background:var(--surface-2); }
+  .activity-row-icon{ width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .activity-row-main{ flex:1; min-width:0; }
+  .activity-row-label{ font-size:13.5px; font-weight:700; color:var(--text); }
+  .activity-row-desc{ font-size:11.5px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .activity-row-total{ font-size:17px; font-weight:700; letter-spacing:-.01em; flex-shrink:0; font-family:var(--font-mono); }
+  .activity-row-chevron{ color:var(--text-faint); flex-shrink:0; display:flex; transition:transform .2s ease; }
+  .activity-row[aria-expanded="true"] .activity-row-chevron{ transform:rotate(180deg); color:var(--text); }
+
+  .act-blue .activity-row-icon{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .act-teal .activity-row-icon{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .act-amber .activity-row-icon{ background:var(--tag-amber-soft); color:var(--tag-amber); }
+  .act-violet .activity-row-icon{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .act-rose .activity-row-icon{ background:var(--tag-rose-soft); color:var(--tag-rose); }
+
+  .activity-panel{ padding:2px 6px 14px; }
+  .activity-panel-inner{ background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); padding:14px 16px; }
+
+  .act-table-wrap{ overflow-x:auto; }
+  table.act-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px; }
+  .act-table th{ text-align:left; padding:7px 10px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .act-table td{ padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
+  .act-table tbody tr:last-child td{ border-bottom:none; }
+  .act-table tbody tr:hover{ background:var(--surface); }
+  .act-event-name{ font-weight:600; color:var(--text); }
+  .act-view-btn{ display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:var(--accent-strong); background:var(--accent-soft); border:none; border-radius:100px; padding:5px 11px; }
+  .act-view-btn:hover{ background:var(--accent); color:#fff; }
+
+  .act-kpi-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .act-kpi-tile{ flex:1; min-width:120px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:12px 14px; }
+  .act-kpi-label{ font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--text-faint); }
+  .act-kpi-value{ font-size:19px; font-weight:700; margin-top:4px; letter-spacing:-.01em; }
+  .act-kpi-tile.highlight{ background:var(--accent-soft); border-color:transparent; }
+  .act-kpi-tile.highlight .act-kpi-value{ color:var(--accent-strong); }
+  .act-kpi-tile.highlight .act-kpi-label{ color:var(--accent-strong); opacity:.85; }
+  .act-trend{ display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; margin-top:5px; }
+  .act-trend.up{ color:var(--ok); } .act-trend.down{ color:var(--crit); }
+  .act-empty{ font-size:12.5px; color:var(--text-muted); padding:6px 2px; }
 
   /* ---------- view toggle (list / grid) ---------- */
   .view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
@@ -648,21 +685,18 @@
         </div>
         <div class="panel-card-head-right">
           <select class="seg-select seg-select-event" id="segment-event-select"></select>
-          <span class="status-pill" id="segment-status-pill"></span>
+          <div class="seg-view-toggle" id="segment-view-toggle">
+            <button type="button" class="seg-view-btn" data-segview="list" data-tooltip="List view">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            </button>
+            <button type="button" class="seg-view-btn" data-segview="chart" data-tooltip="Chart view">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
+            </button>
+          </div>
         </div>
       </div>
       <div class="seg-toolbar">
         <div class="segmented sm" id="segment-dim-tabs"></div>
-        <div class="seg-view-toggle" id="segment-view-toggle">
-          <button type="button" class="seg-view-btn" data-segview="list">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            List View
-          </button>
-          <button type="button" class="seg-view-btn" data-segview="chart">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
-            Chart View
-          </button>
-        </div>
       </div>
       <div class="panel-card-body" id="segment-body"></div>
     </div>
@@ -856,6 +890,19 @@
     }
   });
 
+  /* ---- per-IP-event activity breakdown (deterministic mock, mirrors portal totals) ---- */
+  var IP_ACTIVITY = {};
+  IP_EVENT_IDS.forEach(function(id){
+    var e = findEvent(id);
+    function r(i){ var x = Math.sin(e.eventNo * 17.3 + i * 5.11) * 10000; return x - Math.floor(x); }
+    IP_ACTIVITY[id] = {
+      mailersSent: Math.round((e.registrations || e.visitors || 10) * (1.3 + r(1) * 2.1)),
+      lastRegDays: Math.floor(r(2) * 12),
+      lastVisitDays: Math.floor(r(3) * 8),
+      lastMailerDays: Math.floor(r(4) * 18)
+    };
+  });
+
   /* ---- portal-wide activity metrics (30-day baseline, scaled by the selected range) ---- */
   var PORTAL_ACTIVITY_BASE = { registrations:5240, visitors:21860, mailersSent:312400, newslettersSent:58200, subscribers:2140 };
 
@@ -871,6 +918,7 @@
     page: 1,
     range: { mode:'30', start:null, end:null },
     activityRange: { mode:'30', start:null, end:null },
+    activityOpenKey: null,
     loading: true,
     openPopover: null,
     openRowMenu: null,
@@ -914,6 +962,11 @@
   function fmtTime(iso){
     var d = new Date(iso);
     return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  }
+  function fmtRelativeDays(n){
+    if (n <= 0) return 'Today';
+    if (n === 1) return 'Yesterday';
+    return n + ' days ago';
   }
   function daysUntil(iso){
     var d = new Date(iso), now = new Date();
@@ -1808,6 +1861,7 @@
   ========================================================= */
   var SEG_DIM_KEY = { company:'companies', designation:'designations', source:'sources', device:'devices' };
   var SEG_DIM_ICONS = { company:IC.building, designation:IC.userCircle, source:IC.share, device:IC.monitor };
+  var SEG_DIM_COLOR_CLASS = { company:'dim-blue', designation:'dim-teal', source:'dim-violet', device:'dim-cyan' };
   var SEG_NAME_COL_LABEL = { company:'Company', designation:'Designation', source:'Source', device:'Device' };
 
   function renderSegmentControls(){
@@ -1827,19 +1881,10 @@
     }
     sel.onchange = function(){ state.segmentEventId = sel.value; renderSegmentControls(); renderSegmentBody(); };
 
-    var curEv = findEvent(state.segmentEventId);
     $('segment-icon-avatar').innerHTML = IC.users;
-    var pill = $('segment-status-pill');
-    if (curEv){
-      pill.hidden = false;
-      pill.className = 'status-pill status-pill-' + curEv.status;
-      pill.textContent = statusLabel(curEv.status) + ' Event';
-    } else {
-      pill.hidden = true;
-    }
 
     $('segment-dim-tabs').innerHTML = Object.keys(SEGMENT_DIMENSIONS).map(function(k){
-      return '<button type="button" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEG_DIM_ICONS[k] + ' ' + SEGMENT_DIMENSIONS[k] + '</button>';
+      return '<button type="button" class="' + SEG_DIM_COLOR_CLASS[k] + '" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEG_DIM_ICONS[k] + ' ' + SEGMENT_DIMENSIONS[k] + '</button>';
     }).join('');
     $('segment-dim-tabs').querySelectorAll('[data-dim]').forEach(function(b){
       b.addEventListener('click', function(){ state.segmentDimension = b.getAttribute('data-dim'); renderSegmentControls(); renderSegmentBody(); });
@@ -1869,10 +1914,11 @@
     return '<span class="intent-badge intent-' + level + '">' + glyph + ' ' + label + '</span>';
   }
 
-  function renderSegStats(entries, total){
+  function renderSegTopRow(insightHTML, entries, total){
     var topN = entries.slice(0, Math.min(5, entries.length)).reduce(function(s,x){ return s + x.value; }, 0);
     var topPct = total ? Math.round((topN/total)*100) : 0;
-    return '<div class="seg-stats-row">' +
+    return '<div class="seg-top-row">' +
+      '<div class="seg-insight">' + insightHTML + '</div>' +
       '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.users + '</span>' +
         '<div><div class="seg-stat-label">Total Registrations</div><div class="seg-stat-value mono">' + fmtNum(total) + '</div></div></div>' +
       '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.chart + '</span>' +
@@ -1898,29 +1944,56 @@
       '<th></th><th>' + nameLabel + '</th><th>Registered</th><th>Share</th><th>Trend (7d)</th><th>Attendance Intent</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
-  function renderSegDonut(entries, total, size){
-    size = size || 148;
-    var r = size/2 - 11, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
+  var SEG_OTHERS_COLOR = '#C7C3B8';
+  function buildSegSlices(entries){
+    var top = entries.slice(0, 5).map(function(x,i){ return { label:x.label, value:x.value, color:SEG_PALETTE[i % SEG_PALETTE.length] }; });
+    var othersValue = entries.slice(5).reduce(function(s,x){ return s + x.value; }, 0);
+    if (othersValue > 0) top.push({ label:'Others', value:othersValue, color:SEG_OTHERS_COLOR });
+    return top;
+  }
+  function renderSegDonut(slices, total, size){
+    size = size || 176;
+    var r = size/2 - 12, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
     var offset = 0;
-    var arcs = entries.map(function(x,i){
-      var frac = total ? x.value/total : 0;
-      var dash = frac*circ;
-      var html = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + SEG_PALETTE[i % SEG_PALETTE.length] + '" stroke-width="18" ' +
+    var arcs = slices.map(function(s){
+      var frac = total ? s.value/total : 0;
+      var dash = Math.max(0, frac*circ - 3);
+      var html = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s.color + '" stroke-width="16" stroke-linecap="round" ' +
         'stroke-dasharray="' + dash.toFixed(2) + ' ' + (circ-dash).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')">' +
-        '<title>' + esc(x.label) + ' — ' + Math.round(frac*100) + '%</title></circle>';
-      offset += dash;
+        '<title>' + esc(s.label) + ' — ' + Math.round(frac*100) + '%</title></circle>';
+      offset += frac*circ;
       return html;
     }).join('');
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" class="seg-donut">' + arcs + '</svg>';
   }
-  function renderSegLegend(entries, total, fmtVal){
-    return '<div class="seg-legend">' + entries.map(function(x,i){
-      var pct = total ? Math.round((x.value/total)*100) : 0;
-      return '<div class="seg-legend-row"><span class="seg-swatch" style="background:' + SEG_PALETTE[i % SEG_PALETTE.length] + ';"></span>' +
-        '<span class="seg-legend-label">' + esc(x.label) + '</span>' +
-        '<span class="seg-legend-val mono">' + fmtVal(x.value) + '</span>' +
+  function renderSegLegend(slices, total, fmtVal){
+    return '<div class="seg-legend">' + slices.map(function(s){
+      var pct = total ? Math.round((s.value/total)*100) : 0;
+      return '<div class="seg-legend-row"><span class="seg-swatch" style="background:' + s.color + ';"></span>' +
+        '<span class="seg-legend-label">' + esc(s.label) + '</span>' +
+        '<span class="seg-legend-val mono">' + fmtVal(s.value) + '</span>' +
         '<span class="seg-legend-pct">' + pct + '%</span></div>';
     }).join('') + '</div>';
+  }
+  function renderSegChartView(entries, total, fmtVal){
+    var slices = buildSegSlices(entries);
+    var hasOthers = entries.length > 5;
+    var centerPct, centerLabel;
+    if (hasOthers){
+      var topN = entries.slice(0, 5).reduce(function(s,x){ return s + x.value; }, 0);
+      centerPct = total ? Math.round((topN/total)*100) : 0;
+      centerLabel = 'Top 5 Share';
+    } else {
+      var top = entries[0];
+      centerPct = total ? Math.round((top.value/total)*100) : 0;
+      centerLabel = top.label;
+    }
+    return '<div class="seg-chart-row">' +
+      '<div class="seg-donut-wrap">' + renderSegDonut(slices, total) +
+        '<div class="seg-donut-center"><div class="seg-donut-center-pct">' + centerPct + '%</div><div class="seg-donut-center-label">' + esc(centerLabel) + '</div></div>' +
+      '</div>' +
+      renderSegLegend(slices, total, fmtVal) +
+    '</div>';
   }
 
   function renderSegmentBody(){
@@ -1946,19 +2019,83 @@
     var top = entries[0];
     var topShare = total ? Math.round((top.value/total)*100) : 0;
 
-    var insight = '<div class="seg-insight">' + IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads registrations with <strong>' + topShare + '%</strong> of total registrations.</span></div>';
+    var insightHTML = IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads registrations with <strong>' + topShare + '%</strong> of total registrations.</span>';
 
-    var bodyHTML = renderSegStats(entries, total) + (state.segmentView === 'chart'
-      ? '<div class="seg-chart-row">' + renderSegDonut(entries, total) + renderSegLegend(entries, total, fmtNum) + '</div>'
+    var bodyHTML = renderSegTopRow(insightHTML, entries, total) + (state.segmentView === 'chart'
+      ? renderSegChartView(entries, total, fmtNum)
       : renderSegTable(entries.slice(0, 5), total, fmtNum, dim));
 
-    $('segment-body').innerHTML = insight + bodyHTML;
+    $('segment-body').innerHTML = bodyHTML;
   }
 
   /* =========================================================
      LATEST ACTIVITY ON THIS PORTAL — platform-wide flow metrics for the
      selected period (Today / 7 / 10 / 30 days / Custom), not a per-event log.
   ========================================================= */
+  var ACTIVITY_METRICS = [
+    { key:'registrations',   label:'New Registrations', desc:'Registrations recorded across live and upcoming IP events', icon:IC.ticket,    color:'act-blue',   kind:'events', metricCol:'Registrations', dateCol:'Last Registration' },
+    { key:'visitors',        label:'Visitors',          desc:'Visitors who viewed an IP event microsite',                 icon:IC.users,     color:'act-teal',   kind:'events', metricCol:'Visitors',      dateCol:'Last Visit' },
+    { key:'mailersSent',     label:'Mailers Sent',      desc:'Promotional mailers dispatched for IP events',              icon:IC.mail,      color:'act-amber',  kind:'events', metricCol:'Mailers Sent',  dateCol:'Last Mailer Sent' },
+    { key:'newslettersSent', label:'Newsletters Sent',  desc:'Newsletter performance across the portal',                  icon:IC.newspaper, color:'act-violet', kind:'newsletter' },
+    { key:'subscribers',     label:'New Subscribers',   desc:'Subscriber growth across the portal',                       icon:IC.userPlus,  color:'act-rose',   kind:'subscribers' }
+  ];
+
+  function activityEventRows(key, f){
+    var rows = IP_EVENT_IDS.map(function(id){
+      var e = findEvent(id);
+      var act = IP_ACTIVITY[id];
+      var value, lastDays;
+      if (key === 'registrations'){ value = Math.round((e.registrations||0) * f); lastDays = act.lastRegDays; }
+      else if (key === 'visitors'){ value = Math.round((e.visitors||0) * f); lastDays = act.lastVisitDays; }
+      else { value = Math.round((act.mailersSent||0) * f); lastDays = act.lastMailerDays; }
+      return { id:id, name:e.name, value:value, lastDays:lastDays };
+    }).filter(function(r){ return r.value > 0; }).sort(function(a,b){ return b.value - a.value; });
+    return rows.slice(0, 6);
+  }
+
+  function renderActivityEventsTable(m, f){
+    var rows = activityEventRows(m.key, f);
+    if (!rows.length) return '<p class="act-empty">No IP events with activity in this period.</p>';
+    return '<div class="act-table-wrap"><table class="act-table"><thead><tr>' +
+      '<th>Event Name</th><th>' + m.metricCol + '</th><th>' + m.dateCol + '</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(function(r){
+      return '<tr>' +
+        '<td class="act-event-name">' + esc(r.name) + '</td>' +
+        '<td class="mono">' + fmtNum(r.value) + '</td>' +
+        '<td>' + fmtRelativeDays(r.lastDays) + '</td>' +
+        '<td><a class="act-view-btn" href="custom_editor.html?event=' + r.id + '">View &rarr;</a></td>' +
+      '</tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+
+  function renderNewsletterPanel(f){
+    var sent = Math.round(PORTAL_ACTIVITY_BASE.newslettersSent * f);
+    var opened = Math.round(sent * 0.42);
+    var clicked = Math.round(sent * 0.11);
+    var openRate = sent ? Math.round((opened/sent)*100) : 0;
+    return '<div class="act-kpi-row">' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Sent</div><div class="act-kpi-value mono">' + fmtCompact(sent) + '</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Opened</div><div class="act-kpi-value mono">' + fmtCompact(opened) + '</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Clicked</div><div class="act-kpi-value mono">' + fmtCompact(clicked) + '</div></div>' +
+      '<div class="act-kpi-tile highlight"><div class="act-kpi-label">Gross Open Rate</div><div class="act-kpi-value mono">' + openRate + '%</div></div>' +
+    '</div>';
+  }
+
+  function renderSubscriberPanel(f){
+    var subs = Math.round(PORTAL_ACTIVITY_BASE.subscribers * f);
+    var unsub = Math.round(subs * 0.09);
+    var recent = Math.round(subs * 0.35);
+    var seed = Math.sin(subs * 3.7) * 10000; seed -= Math.floor(seed);
+    var trendUp = seed > 0.35;
+    var trendPct = Math.round(seed * 18) + 2;
+    return '<div class="act-kpi-row">' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Subscribers</div><div class="act-kpi-value mono">' + fmtCompact(subs) + '</div>' +
+        '<div class="act-trend ' + (trendUp?'up':'down') + '">' + (trendUp?IC.arrowUp:IC.arrowDown) + ' ' + trendPct + '% vs previous period</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Unsubscribers</div><div class="act-kpi-value mono">' + fmtCompact(unsub) + '</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Recent Subscribers</div><div class="act-kpi-value mono">' + fmtCompact(recent) + '</div></div>' +
+    '</div>';
+  }
+
   function renderActivity(){
     $('activity-range-label').textContent = computeRangeLabel(state.activityRange);
     if (state.loading){
@@ -1966,19 +2103,30 @@
       return;
     }
     var f = computeRangeFactor(state.activityRange);
-    var metrics = [
-      { key:'registrations',    label:'New registrations',      icon:IC.ticket },
-      { key:'visitors',         label:'Visitors',                icon:IC.users },
-      { key:'mailersSent',      label:'Mailers sent',            icon:IC.mail },
-      { key:'newslettersSent',  label:'Newsletters sent',        icon:IC.newspaper },
-      { key:'subscribers',      label:'New subscribers',         icon:IC.userPlus }
-    ];
-    $('activity-body').innerHTML = '<div class="metric-list">' + metrics.map(function(m){
-      var val = Math.round(PORTAL_ACTIVITY_BASE[m.key] * f);
-      return '<div class="metric-row"><span class="metric-icon">' + m.icon + '</span>' +
-        '<span class="metric-label">' + m.label + '</span>' +
-        '<span class="metric-value mono">' + fmtCompact(val) + '</span></div>';
+    $('activity-body').innerHTML = '<div class="activity-accordion">' + ACTIVITY_METRICS.map(function(m){
+      var total = Math.round(PORTAL_ACTIVITY_BASE[m.key] * f);
+      var isOpen = state.activityOpenKey === m.key;
+      var panelHTML = m.kind === 'events' ? renderActivityEventsTable(m, f)
+        : m.kind === 'newsletter' ? renderNewsletterPanel(f)
+        : renderSubscriberPanel(f);
+      return '<div class="activity-item ' + m.color + '">' +
+        '<button type="button" class="activity-row" data-act-key="' + m.key + '" aria-expanded="' + isOpen + '">' +
+          '<span class="activity-row-icon">' + m.icon + '</span>' +
+          '<span class="activity-row-main"><div class="activity-row-label">' + m.label + '</div><div class="activity-row-desc">' + m.desc + '</div></span>' +
+          '<span class="activity-row-total mono">' + fmtCompact(total) + '</span>' +
+          '<span class="activity-row-chevron">' + IC.chevDown + '</span>' +
+        '</button>' +
+        (isOpen ? '<div class="activity-panel fade-in"><div class="activity-panel-inner">' + panelHTML + '</div></div>' : '') +
+      '</div>';
     }).join('') + '</div>';
+
+    $('activity-body').querySelectorAll('[data-act-key]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-act-key');
+        state.activityOpenKey = (state.activityOpenKey === key) ? null : key;
+        renderActivity();
+      });
+    });
   }
 
   /* =========================================================
