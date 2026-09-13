@@ -1,0 +1,1278 @@
+<!-- ET Oneworld - Revamp CMS : per-event admin console ("Edit event") -->
+<title>Edit Event &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="edit-event.css">
+
+<header class="topbar">
+  <a class="back-btn" href="Event_Listing.html">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    Back to events
+  </a>
+  <span class="ev-title">
+    <h1 id="ev-name">&nbsp;</h1>
+    <span class="meta" id="ev-meta"></span>
+  </span>
+  <span class="topbar-acts">
+    <button class="btn btn-secondary" type="button" id="btn-preview">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+      Preview
+    </button>
+    <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
+  </span>
+</header>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Sections"></nav>
+  <main class="main"><div id="view"></div></main>
+</div>
+
+<div class="toast-host" id="toast-host"></div>
+<div id="modal-host"></div>
+
+<script src="edit-event-core.js"></script>
+<script src="edit-event-dashboard.js"></script>
+<script src="edit-event-marketing.js"></script>
+
+<script>
+(function(){
+  'use strict';
+
+  /* Everything shared lives in edit-event-core.js so the section files can
+     use it too. The shell just borrows the names it needs. */
+  var C = window.RevampCore;
+  var $ = C.$, esc = C.esc, svg = C.svg, IC = C.IC, AV = C.AV;
+  var comma = C.comma, compact = C.compact, money = C.money;
+  var fmtDate = C.fmtDate, fmtDT = C.fmtDT;
+  var statTile = C.statTile, panel = C.panel, panelFlush = C.panelFlush, emptyState = C.emptyState;
+  var toast = C.toast, PORTALS = C.PORTALS, TYPES = C.TYPES;
+
+  var qs = new URLSearchParams(location.search);
+  var EV = C.eventById(qs.get('event')) || C.EVENTS[0];
+  var PEOPLE = C.makePeople(EV);
+
+  /* ============================================================
+     FORMATTERS
+     ============================================================ */
+  /* ============================================================
+     PERSISTED PROTOTYPE STATE
+     ============================================================ */
+  var KEY = 'revamp-edit-event-' + EV.id;
+  var S = {
+    sections: null, nav: null, checklist: null, published: false, theme: 'ET Red'
+  };
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) { var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) S[k] = p[k]; }
+  } catch(e){}
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+  /* ============================================================
+     NAVIGATION MODEL
+     ============================================================ */
+  var SECTIONS = [
+    { id:'dashboard', label:'Dashboard', icon:IC.chart, tabs:[] },
+
+    { id:'content', label:'Content', icon:IC.layers, tabs:[
+        { id:'basics',   label:'Basics' },
+        { id:'speakers', label:'Speakers' },
+        { id:'agenda',   label:'Agenda' },
+        { id:'sponsors', label:'Sponsors' },
+        { id:'gallery',  label:'Gallery' },
+        { id:'faq',      label:'FAQ' },
+        { id:'contact',  label:'Contact' }
+    ]},
+
+    { id:'design', label:'Design', icon:IC.brush, tabs:[
+        { id:'editor',   label:'Site editor', link:'custom_editor.html?event=' + EV.id },
+        { id:'sections', label:'Page sections' },
+        { id:'nav',      label:'Navigation' },
+        { id:'theme',    label:'Theme' },
+        { id:'media',    label:'Media' }
+    ]},
+
+    { id:'audience', label:'Audience', icon:IC.users, tabs:[
+        { id:'reg',       label:'Registrations' },
+        { id:'attendees', label:'Attendees' },
+        { id:'shortlist', label:'Shortlisted' },
+        { id:'payments',  label:'Payments' },
+        { id:'insights',  label:'Insights' }
+    ]},
+
+    { id:'marketing', label:'Marketing', icon:IC.megaphone, tabs:[
+        { id:'banners',   label:'Banners' },
+        { id:'email',     label:'Email' },
+        { id:'messaging', label:'WhatsApp & SMS' },
+        { id:'social',    label:'Social' },
+        { id:'leads',     label:'CRM & Leads' }
+    ]},
+
+    { id:'settings', label:'Settings', icon:IC.gear, tabs:[
+        { id:'form',       label:'Registration form' },
+        { id:'seo',        label:'URL & SEO' },
+        { id:'links',      label:'Social links' },
+        { id:'visibility', label:'Visibility' },
+        { id:'advanced',   label:'Advanced' },
+        { id:'history',    label:'History' }
+    ]}
+  ];
+
+  var cur = { sec:'dashboard', tab:null };
+
+  function secById(id){
+    for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].id === id) return SECTIONS[i];
+    return null;
+  }
+  function routeId(){ return cur.tab ? cur.sec + '/' + cur.tab : cur.sec; }
+
+  /* counts shown on the tabs, worked out at render time */
+  function tabCount(sec, tab){
+    if (sec === 'audience'){
+      if (tab === 'reg')       return EV.registrations;
+      if (tab === 'attendees') return PEOPLE.filter(function(p){ return p.attended; }).length;
+      if (tab === 'shortlist') return EV.shortlist;
+    }
+    if (sec === 'content'){
+      if (tab === 'speakers') return SPEAKERS.length;
+      if (tab === 'agenda')   return 7;
+      if (tab === 'sponsors') return 10;
+      if (tab === 'faq')      return FAQS.length;
+    }
+    return null;
+  }
+
+  function renderRail(){
+    $('rail').innerHTML = SECTIONS.map(function(s){
+      return '<button class="rail-item' + (cur.sec === s.id ? ' active' : '') + '" type="button" ' +
+          'data-sec="' + s.id + '" aria-current="' + (cur.sec === s.id) + '">' +
+          '<span class="ri">' + svg(s.icon, 21) + '</span>' +
+          '<span class="rl">' + esc(s.label) + '</span>' +
+        '</button>';
+    }).join('');
+    $('rail').querySelectorAll('[data-sec]').forEach(function(b){
+      b.addEventListener('click', function(){ go(b.getAttribute('data-sec')); });
+    });
+  }
+
+  function tabsHTML(){
+    var s = secById(cur.sec);
+    if (!s || !s.tabs.length) return '';
+    return '<div class="subtabs">' + s.tabs.map(function(t){
+      var n = tabCount(s.id, t.id);
+      var inner = esc(t.label) + (n != null ? '<span class="cnt">' + comma(n) + '</span>' : '');
+      /* a link tab leaves the console entirely — render it as a real anchor
+         so middle-click and "open in new tab" behave the way people expect */
+      if (t.link){
+        return '<a class="tab-link" href="' + esc(t.link) + '">' +
+          svg(IC.ext, 13) + inner + '</a>';
+      }
+      return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '">' +
+        inner + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /* accepts "section" or "section/tab" */
+  function go(route){
+    var parts = String(route).split('/');
+    var s = secById(parts[0]);
+    if (!s) s = SECTIONS[0];
+    cur.sec = s.id;
+    var real = s.tabs.filter(function(t){ return !t.link; });
+    var asked = parts[1] && real.filter(function(t){ return t.id === parts[1]; }).length ? parts[1] : null;
+    /* #design/editor means "take me to the editor", not "render a landing page" */
+    var linked = parts[1] && s.tabs.filter(function(t){ return t.id === parts[1] && t.link; })[0];
+    if (linked){ location.href = linked.link; return; }
+    cur.tab = real.length ? (asked || real[0].id) : null;
+    var r = routeId();
+    if (location.hash.slice(1) !== r) location.hash = r;
+    renderRail();
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* ============================================================
+     SHARED VIEW HELPERS
+     ============================================================ */
+  function vhead(title, sub, right){
+    var s = secById(cur.sec) || { label:'', tabs:[] };
+    var t = '';
+    if (cur.tab){
+      var m = s.tabs.filter(function(x){ return x.id === cur.tab; })[0];
+      if (m) t = m.label;
+    }
+    var crumb = (t && t !== s.label) ? s.label + ' › ' + t : s.label;
+    return '<div class="vhead"><div class="vhead-row">' +
+        '<div class="grow">' +
+          '<div class="crumb">' + esc(crumb) + '</div>' +
+          '<h2>' + esc(title) + '</h2>' +
+          (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') +
+        '</div>' +
+        (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
+      '</div></div>';
+  }
+
+  /* ============================================================
+     FAKE PEOPLE  (deterministic)
+     ============================================================ */
+  /* ============================================================
+     VIEW : DASHBOARD
+     ============================================================ */
+  /* ============================================================
+     VIEW : BASIC DETAILS
+     ============================================================ */
+  function viewBasics(){
+    var e = EV;
+    var body =
+      '<div class="frow">' +
+        '<div class="field c4"><label>Event name</label><input class="inp" value="' + esc(e.name) + '"></div>' +
+        '<div class="field c3"><label>Event number</label><input class="inp" value="' + e.eventNo + '" readonly style="color:var(--text-muted)"></div>' +
+        '<div class="field c5"><label>Microsite URL</label>' +
+          '<div style="display:flex"><span style="display:flex;align-items:center;padding:0 11px;border:1px solid var(--border);border-right:0;border-radius:8px 0 0 8px;background:var(--surface-2);color:var(--text-faint);font-family:var(--font-mono);font-size:12px;white-space:nowrap">etoneworld.com/</span>' +
+          '<input class="inp" style="border-radius:0 8px 8px 0" value="' + esc(e.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')) + '"></div></div>' +
+
+        '<div class="field c3"><label>Category</label><select class="inp">' +
+          Object.keys(TYPES).map(function(k){
+            return '<option' + (k === e.type ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div class="field c3"><label>Portal</label><select class="inp">' +
+          Object.keys(PORTALS).map(function(k){
+            return '<option' + (k === e.portal ? ' selected' : '') + '>' + esc(PORTALS[k]) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div class="field c3"><label>Status</label><select class="inp">' +
+          ['draft','upcoming','active','completed'].map(function(k){
+            return '<option' + (k === e.status ? ' selected' : '') + '>' + k + '</option>';
+          }).join('') + '</select></div>' +
+        '<div class="field c3"><label>Event type</label><select class="inp"><option>On-ground</option><option>Virtual</option><option>Hybrid</option></select></div>' +
+
+        '<div class="field c4"><label>Starts</label><input class="inp" type="datetime-local" value="' + (e.start ? e.start.slice(0,16) : '') + '"></div>' +
+        '<div class="field c4"><label>Ends <span class="pill-opt">Optional</span></label><input class="inp" type="datetime-local" value="' + (e.end ? e.end.slice(0,16) : '') + '"></div>' +
+        '<div class="field c4"><label>Venue &amp; city</label><input class="inp" value="' + esc(e.venue) + '"></div>' +
+
+        '<div class="field c6"><label>Short description</label><textarea class="inp" placeholder="One or two lines used in listings, search results and social cards.">India’s decision-makers gather to set the agenda for the year ahead.</textarea></div>' +
+        '<div class="field c6"><label>Registration target</label><input class="inp" type="number" value="' + (e.regTarget || '') + '">' +
+          '<p class="hint">Drives the progress bar on the dashboard and the listing screen.</p></div>' +
+      '</div>';
+
+    return vhead('Basic details', 'The core record for this event. Everything else on this console inherits from here.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Basic details">Save changes</button>') +
+      panel('Identity & schedule', '', body) +
+      panel('Danger zone', '',
+        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:220px"><b style="font-size:13.5px;display:block">Archive this event</b>' +
+          '<span style="font-size:12.5px;color:var(--text-muted)">The microsite goes offline and the event moves out of active listings. Data is kept.</span></div>' +
+          '<button class="btn btn-secondary btn-sm" type="button" data-save="Archive requested">Archive event</button>' +
+        '</div>');
+  }
+
+  /* ============================================================
+     VIEW : PAGE SECTIONS
+     ============================================================ */
+  var DEFAULT_SECTIONS = [
+    { id:'hero',        name:'Hero banner',            note:'Title, date, venue and the primary CTA', on:true },
+    { id:'stats',       name:'Key numbers',            note:'Delegates, speakers, sessions, sponsors', on:true },
+    { id:'about',       name:'About the event',        note:'The long-form pitch', on:true },
+    { id:'speakers',    name:'Speakers',               note:'Grid of speaker cards', on:true },
+    { id:'agenda',      name:'Agenda',                 note:'Day-wise session breakdown', on:true },
+    { id:'partners',    name:'Partners & sponsors',    note:'Logo wall by tier', on:true },
+    { id:'why',         name:'Why attend',             note:'Benefit tiles', on:true },
+    { id:'who',         name:'Who should attend',      note:'Audience profile', on:true },
+    { id:'glimpses',    name:'Glimpses',               note:'Photo gallery from past editions', on:true },
+    { id:'testimonial', name:'Testimonials',           note:'Quotes from past delegates', on:false },
+    { id:'awards',      name:'Award categories',       note:'Only for awards programmes', on:false },
+    { id:'nominate',    name:'Nomination form',        note:'Entry capture for awards', on:false },
+    { id:'venue',       name:'Venue & travel',         note:'Map, hotel and directions', on:true },
+    { id:'faq',         name:'FAQ',                    note:'Accordion of common questions', on:false },
+    { id:'contact',     name:'Contact us',             note:'Team contacts and enquiry form', on:true },
+    { id:'footer',      name:'Footer',                 note:'Legal, social and portal links', on:true }
+  ];
+
+  function viewSections(){
+    if (!S.sections) S.sections = DEFAULT_SECTIONS.map(function(s){ return { id:s.id, on:s.on }; });
+    var map = {}; S.sections.forEach(function(s){ map[s.id] = s.on; });
+    var onN = DEFAULT_SECTIONS.filter(function(s){ return map[s.id]; }).length;
+
+    var rows = DEFAULT_SECTIONS.map(function(s, i){
+      var on = !!map[s.id];
+      return '<div class="sec-row' + (on ? '' : ' off') + '">' +
+          '<span class="grip">' + svg(IC.grip, 16) + '</span>' +
+          '<span class="num" style="color:var(--text-faint);min-width:22px">' + (i + 1) + '</span>' +
+          '<span class="sn"><b>' + esc(s.name) + '</b><span>' + esc(s.note) + '</span></span>' +
+          '<button class="tgl" type="button" data-sec="' + s.id + '" aria-pressed="' + on + '">' +
+            '<span class="track"><i></i></span>' + (on ? 'Included' : 'Hidden') + '</button>' +
+        '</div>';
+    }).join('');
+
+    return vhead('Page sections', 'Turn blocks on or off and drag to reorder. This is exactly what renders on the live microsite.',
+        '<a class="btn btn-secondary btn-sm" href="custom_editor.html?event=' + EV.id + '">' + svg(IC.brush, 13) + ' Open site editor</a>') +
+      '<div class="callout info">' + svg(IC.info, 17) +
+        '<span><strong>' + onN + ' of ' + DEFAULT_SECTIONS.length + ' sections are live</strong>' +
+        'These are the canonical blocks Ops uses today. Turning one off hides it everywhere — nav, anchors and the page itself — without deleting its content.</span></div>' +
+      '<div style="height:16px"></div>' +
+      panelFlush('Section stack', 'Top to bottom, as the visitor sees it', '<div>' + rows + '</div>');
+  }
+
+  function wireSections(){
+    document.querySelectorAll('[data-sec]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-sec');
+        S.sections.forEach(function(s){ if (s.id === id) s.on = !s.on; });
+        save(); render();
+      });
+    });
+  }
+
+  /* ============================================================
+     VIEW : SPEAKERS / AGENDA / SPONSORS
+     ============================================================ */
+  var SPEAKERS = [
+    ['Rajesh Uppal','CIO & Executive Director','Maruti Suzuki'],
+    ['Sunita Handa','Chief General Manager','State Bank of India'],
+    ['Vishal Salvi','Chief Information Security Officer','Infosys'],
+    ['Dr. Pavan Duggal','Cyber Law Expert','Supreme Court of India'],
+    ['Aparna Kuppuswamy','Chief Risk Officer','Axis Bank'],
+    ['Sameer Ratolikar','EVP & CISO','HDFC Bank']
+  ];
+
+  var FAQS = [
+    ['Who should attend this event?', 'Senior decision-makers across technology, risk and operations. Most delegates are director level and above.'],
+    ['Is there a delegate fee?', EV.payment.type === 'paid' ? 'Yes. Passes start at ₹25,000 plus taxes. Group rates are available for teams of four or more.' : 'No. This event is free to attend, but seats are confirmed on approval.'],
+    ['Can I send a colleague in my place?', 'Yes, up to 48 hours before the event. Write to the event desk with both names and we will reissue the pass.'],
+    ['Will sessions be recorded?', 'Keynotes are recorded and shared with delegates afterwards. Closed-door roundtables are never recorded.'],
+    ['Do you provide travel or accommodation?', 'Travel and stay are not included. We hold a delegate rate at the venue hotel — the event desk can share the booking code.'],
+    ['How do I become a partner?', 'Use the Become a partner button on the microsite, or contact the partnerships team directly.']
+  ];
+
+  function viewSpeakers(){
+    var cards = SPEAKERS.map(function(s, i){
+      var col = AV[i % AV.length];
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">' +
+          '<span class="avat" style="background:' + col + ';width:38px;height:38px;font-size:13px">' +
+            esc(s[0].split(' ')[0][0] + s[0].split(' ')[1][0]) + '</span>' +
+          '<span style="flex:1;min-width:0"><b style="font-size:13.5px;display:block">' + esc(s[0]) + '</b>' +
+          '<span style="font-size:12px;color:var(--text-muted)">' + esc(s[1]) + ' · ' + esc(s[2]) + '</span></span>' +
+          '<span class="badge b-ok">Confirmed</span>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-save="Speaker opened">' + svg(IC.edit, 15) + '</button>' +
+        '</div>';
+    }).join('');
+
+    return vhead('Speakers', SPEAKERS.length + ' speakers confirmed. They render in the Speakers block in this order.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Speaker form opened">' + svg(IC.plus, 13) + ' Add speaker</button>') +
+      panelFlush('Confirmed line-up', 'Drag to reorder on the live page', '<div>' + cards + '</div>');
+  }
+
+  function viewAgenda(){
+    var slots = [
+      ['09:00','09:30','Registration & networking breakfast',''],
+      ['09:30','09:45','Welcome address','Editor, ET Oneworld'],
+      ['09:45','10:30','Keynote: The year ahead','Rajesh Uppal'],
+      ['10:30','11:15','Panel: Building resilient systems','4 panellists'],
+      ['11:15','11:45','Networking break',''],
+      ['11:45','12:30','Fireside chat','Vishal Salvi'],
+      ['12:30','13:30','Lunch','']
+    ];
+    var rows = slots.map(function(s){
+      return '<tr><td class="num">' + s[0] + ' – ' + s[1] + '</td>' +
+        '<td class="td-strong">' + esc(s[2]) + '</td>' +
+        '<td style="color:var(--text-muted)">' + esc(s[3] || '—') + '</td>' +
+        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Session opened">' + svg(IC.edit, 14) + '</button></td></tr>';
+    }).join('');
+
+    return vhead('Agenda', 'Day 1 of 1. Sessions publish to the Agenda block in start-time order.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Session form opened">' + svg(IC.plus, 13) + ' Add session</button>') +
+      '<div class="callout">' + svg(IC.info, 17) +
+        '<span><strong>The agenda block is currently hidden</strong>' +
+        'You have sessions here, but the Agenda section is switched off in Page sections, so visitors cannot see them yet.</span></div>' +
+      '<div style="height:16px"></div>' +
+      panelFlush('Day 1 · ' + fmtDate(EV.start), slots.length + ' sessions',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Session</th><th>Speaker</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>');
+  }
+
+  function viewSponsors(){
+    var tiers = [
+      ['Presenting partner', ['Tata Capital']],
+      ['Powered by',         ['HDFC Bank','Infosys']],
+      ['Gold partners',      ['Wipro','Mahindra Group','Godrej']],
+      ['Associate partners', ['Zomato','Paytm','Adani Ports','L&T Infotech']]
+    ];
+    var body = tiers.map(function(t){
+      return '<div style="margin-bottom:18px">' +
+        '<div class="eyebrow" style="margin-bottom:9px">' + esc(t[0]) + ' · ' + t[1].length + '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        t[1].map(function(n){
+          return '<span style="display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:700">' +
+            svg(IC.image, 14) + esc(n) + '</span>';
+        }).join('') +
+        '<button class="btn btn-secondary btn-sm" type="button" data-save="Partner slot opened">' + svg(IC.plus, 12) + ' Add</button>' +
+        '</div></div>';
+    }).join('');
+
+    return vhead('Sponsors & partners', 'Logos render as a tiered wall in the Partners block.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Tier created">' + svg(IC.plus, 13) + ' Add tier</button>') +
+      panel('Logo wall', '10 partners across 4 tiers', body);
+  }
+
+  /* ============================================================
+     VIEW : DESIGN
+     ============================================================ */
+  function viewTheme(){
+    var themes = [
+      ['ET Red', '#ED1C24', 'The house style. Safe default for IP events.'],
+      ['Deep Teal', '#0F6F5C', 'Calmer, used for BFSI and legal properties.'],
+      ['Midnight', '#243B6B', 'High-contrast dark hero for awards nights.'],
+      ['Sand', '#B5843C', 'Warm palette for roundtables and closed-door formats.']
+    ];
+    var cards = themes.map(function(t){
+      var on = S.theme === t[0];
+      return '<button class="stat clickable' + (on ? '' : '') + '" type="button" data-theme="' + esc(t[0]) + '" ' +
+          'style="text-align:left;align-items:stretch' + (on ? ';border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)' : '') + '">' +
+          '<span style="display:flex;gap:6px;margin-bottom:8px">' +
+            '<span style="width:26px;height:26px;border-radius:7px;background:' + t[1] + '"></span>' +
+            '<span style="width:26px;height:26px;border-radius:7px;background:var(--surface-2);border:1px solid var(--border)"></span>' +
+            '<span style="width:26px;height:26px;border-radius:7px;background:var(--text);opacity:.85"></span>' +
+          '</span>' +
+          '<span class="st-lb" style="font-size:13px;color:var(--text)"><b>' + esc(t[0]) + '</b></span>' +
+          '<span style="font-size:11.5px;color:var(--text-muted);line-height:1.45">' + esc(t[2]) + '</span>' +
+          (on ? '<span class="badge b-accent" style="margin-top:8px;align-self:flex-start">In use</span>' : '') +
+        '</button>';
+    }).join('');
+
+    return vhead('Theme & branding', 'Applies to every block on this microsite. Per-element overrides still win in the editor.') +
+      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' + cards + '</div>' +
+      panel('Logo & favicon', '',
+        '<div class="frow">' +
+          '<div class="field c6"><label>Event logo</label>' +
+            '<div style="border:1.5px dashed var(--border);border-radius:11px;padding:20px;text-align:center;color:var(--text-muted)">' +
+            svg(IC.image, 22) + '<div style="font-size:12.5px;font-weight:700;margin-top:5px">Upload PNG or SVG</div>' +
+            '<div style="font-size:11px;color:var(--text-faint)">Minimum 300×300, 1:1 square</div></div></div>' +
+          '<div class="field c6"><label>Favicon</label>' +
+            '<div style="border:1.5px dashed var(--border);border-radius:11px;padding:20px;text-align:center;color:var(--text-muted)">' +
+            svg(IC.image, 22) + '<div style="font-size:12.5px;font-weight:700;margin-top:5px">Upload 32×32 ICO or PNG</div>' +
+            '<div style="font-size:11px;color:var(--text-faint)">Shown in the browser tab</div></div></div>' +
+        '</div>');
+  }
+
+  function wireTheme(){
+    document.querySelectorAll('[data-theme]').forEach(function(b){
+      b.addEventListener('click', function(){
+        S.theme = b.getAttribute('data-theme'); save(); render();
+        toast(S.theme + ' applied to this microsite');
+      });
+    });
+  }
+
+  /* ============================================================
+     VIEW : PEOPLE TABLES  (registrations / attendees / shortlist / visitors)
+     ============================================================ */
+  var tState = { q:'', page:1, per:25, sort:'name', dir:1, sel:{} };
+
+  function peopleFor(kind){
+    if (kind === 'attendees') return PEOPLE.filter(function(p){ return p.attended; });
+    if (kind === 'shortlist') return PEOPLE.slice(0, EV.shortlist);
+    if (kind === 'visitors')  return PEOPLE;
+    return PEOPLE;
+  }
+
+  function viewPeople(kind){
+    var titleMap = {
+      reg:       ['Registrations', 'Everyone who filled the registration form for this event.'],
+      attendees: ['Attendees', 'Registrations that were actually checked in on the day.'],
+      shortlist: ['Shortlisted users', 'People your team flagged for follow-up or VIP handling.'],
+      visitors:  ['Unique visitors', 'Distinct people who opened the microsite, registered or not.']
+    };
+    var t = titleMap[kind] || titleMap.reg;
+    var all = peopleFor(kind);
+
+    var q = tState.q.toLowerCase();
+    var rows = all.filter(function(p){
+      if (!q) return true;
+      return (p.name + ' ' + p.email + ' ' + p.comp + ' ' + p.desig + ' ' + p.city).toLowerCase().indexOf(q) >= 0;
+    });
+    rows.sort(function(a, b){
+      var A = a[tState.sort], B = b[tState.sort];
+      return (A > B ? 1 : A < B ? -1 : 0) * tState.dir;
+    });
+
+    var total = rows.length;
+    var pages = Math.max(1, Math.ceil(total / tState.per));
+    if (tState.page > pages) tState.page = pages;
+    var from = (tState.page - 1) * tState.per;
+    var page = rows.slice(from, from + tState.per);
+    var selN = Object.keys(tState.sel).filter(function(k){ return tState.sel[k]; }).length;
+
+    function th(key, label){
+      var on = tState.sort === key;
+      return '<th class="sortable' + (on ? ' sorted' : '') + '" data-sort="' + key + '">' + esc(label) +
+        '<span class="arr">' + (on ? (tState.dir > 0 ? '↑' : '↓') : '↕') + '</span></th>';
+    }
+
+    var body = page.map(function(p){
+      return '<tr>' +
+        '<td style="width:34px"><input type="checkbox" data-sel="' + p.id + '"' + (tState.sel[p.id] ? ' checked' : '') + '></td>' +
+        '<td><span class="person"><span class="avat" style="background:' + p.colour + '">' + esc(p.initials) + '</span>' +
+          '<span class="pn"><b>' + esc(p.name) + '</b><span>' + esc(p.email) + '</span></span></span></td>' +
+        '<td>' + esc(p.desig) + '</td>' +
+        '<td>' + esc(p.comp) + '</td>' +
+        '<td>' + esc(p.city) + '</td>' +
+        '<td><span class="badge b-mute">' + esc(p.src) + '</span></td>' +
+        '<td class="num">' + fmtDate(p.when) + '</td>' +
+        (kind === 'reg' ? '<td>' + (p.paid ? '<span class="badge b-ok">Paid</span>' : '<span class="badge b-mute">Free</span>') + '</td>' : '') +
+        '</tr>';
+    }).join('');
+
+    if (!page.length){
+      body = '<tr><td colspan="9">' + emptyState(IC.search, 'Nothing matches that search',
+        'Try a different name, company or city — or clear the search to see all ' + comma(all.length) + ' records.') + '</td></tr>';
+    }
+
+    var pagerBtns = '';
+    var show = [];
+    for (var i = 1; i <= pages; i++){
+      if (i === 1 || i === pages || Math.abs(i - tState.page) <= 1) show.push(i);
+      else if (show[show.length - 1] !== '…') show.push('…');
+    }
+    pagerBtns = show.map(function(n){
+      if (n === '…') return '<span style="color:var(--text-faint);padding:0 3px">…</span>';
+      return '<button class="pg-btn" type="button" data-page="' + n + '"' +
+        (n === tState.page ? ' aria-current="true"' : '') + '>' + n + '</button>';
+    }).join('');
+
+    var tabs = '<div class="tabs">' +
+      [['reg','Registrations',EV.registrations],['attendees','Attendees',PEOPLE.filter(function(p){return p.attended;}).length],
+       ['shortlist','Shortlisted',EV.shortlist],['visitors','Unique visitors',PEOPLE.length]].map(function(x){
+        return '<button type="button" data-goto="' + x[0] + '" aria-pressed="' + (kind === x[0]) + '">' +
+          esc(x[1]) + ' (' + comma(x[2]) + ')</button>';
+      }).join('') + '</div>';
+
+    var toolbar =
+      '<div class="toolbar">' +
+        '<span class="search">' + svg(IC.search, 15) +
+          '<input id="tbl-q" placeholder="Search name, email, company, designation…" value="' + esc(tState.q) + '"></span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-save="Filters panel opened">Filters</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-save="Report queued">' + svg(IC.down, 13) + ' Export</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-save="Column picker opened">Columns</button>' +
+      '</div>';
+
+    var bulk = selN
+      ? '<div class="bulk"><b>' + selN + ' selected</b>' +
+          '<button class="btn btn-secondary btn-sm" type="button" data-save="Mailer queued for ' + selN + '">' + svg(IC.mail, 13) + ' Email</button>' +
+          '<button class="btn btn-secondary btn-sm" type="button" data-save="WhatsApp queued for ' + selN + '">' + svg(IC.wa, 13) + ' WhatsApp</button>' +
+          '<button class="btn btn-secondary btn-sm" type="button" data-save="Shortlisted ' + selN + '">Shortlist</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="clear-sel">Clear</button>' +
+        '</div>'
+      : '';
+
+    return vhead(t[0], t[1]) +
+      '<div style="margin-bottom:16px">' + tabs + '</div>' +
+      '<div class="panel">' + toolbar + bulk +
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th style="width:34px"><input type="checkbox" id="sel-all"></th>' +
+          th('name','Name') + th('desig','Designation') + th('comp','Company') +
+          th('city','Location') + th('src','Source') + th('when','Registered') +
+          (kind === 'reg' ? th('paid','Payment') : '') +
+        '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+        '<div class="pager"><span class="cnt">Showing ' + (total ? from + 1 : 0) + ' to ' +
+          Math.min(from + tState.per, total) + ' of ' + comma(total) + ' entries</span>' +
+          '<button class="pg-btn" type="button" data-page="' + (tState.page - 1) + '"' + (tState.page <= 1 ? ' disabled' : '') + '>‹</button>' +
+          pagerBtns +
+          '<button class="pg-btn" type="button" data-page="' + (tState.page + 1) + '"' + (tState.page >= pages ? ' disabled' : '') + '>›</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function wirePeople(){
+    var q = $('tbl-q');
+    if (q){
+      q.oninput = function(){ tState.q = q.value; tState.page = 1; render();
+        var n = $('tbl-q'); if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } };
+    }
+    document.querySelectorAll('[data-sort]').forEach(function(th){
+      th.addEventListener('click', function(){
+        var k = th.getAttribute('data-sort');
+        if (tState.sort === k) tState.dir = -tState.dir; else { tState.sort = k; tState.dir = 1; }
+        render();
+      });
+    });
+    document.querySelectorAll('[data-page]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var n = parseInt(b.getAttribute('data-page'), 10);
+        if (!isNaN(n) && n > 0){ tState.page = n; render(); }
+      });
+    });
+    document.querySelectorAll('[data-sel]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        tState.sel[cb.getAttribute('data-sel')] = cb.checked; render();
+      });
+    });
+    var all = $('sel-all');
+    if (all) all.onchange = function(){
+      document.querySelectorAll('[data-sel]').forEach(function(cb){
+        tState.sel[cb.getAttribute('data-sel')] = all.checked;
+      });
+      render();
+    };
+    var clr = $('clear-sel');
+    if (clr) clr.onclick = function(){ tState.sel = {}; render(); };
+  }
+
+  /* ============================================================
+     VIEW : PAYMENT
+     ============================================================ */
+  function viewPayPages(){
+    var pages = [
+      [6060,'MarTech Summit 2026','martech_summit_2026_9sep_1','$ 868', false],
+      [5812,'MAD Pass','mad_pass_price_3aug_1','₹ 35,000', true],
+      [5470,'MarTech Summit 2026','martech_summit_2026','₹ 25,000', true]
+    ];
+    var rows = pages.map(function(p){
+      return '<tr><td class="num">' + p[0] + '</td>' +
+        '<td class="td-strong">' + esc(p[1]) + '</td>' +
+        '<td class="num" style="color:var(--text-muted)">' + esc(p[2]) + '</td>' +
+        '<td class="num td-strong">' + esc(p[3]) + '</td>' +
+        '<td>' + (p[4] ? '<span class="badge b-ok">Landing</span>' : '<span class="badge b-mute">Off</span>') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-save="Preview opened">' + svg(IC.eye, 14) + '</button>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-save="Payment page opened">' + svg(IC.edit, 14) + '</button>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-save="Duplicated">' + svg(IC.plus, 14) + '</button>' +
+        '</td></tr>';
+    }).join('');
+
+    return vhead('Payment pages', 'Each page is a priced ticket type. The one marked Landing is what the microsite CTA points at.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Payment page builder opened">' + svg(IC.plus, 13) + ' Create payment page</button>') +
+      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' +
+        statTile(IC.money,  'Collected', EV.payment.type === 'paid' ? money(EV.payment.amount) : 'Free', null, null) +
+        statTile(IC.ticket, 'Transactions', comma(EV.payment.txns || 0), null, 'pay-txn') +
+        statTile(IC.check,  'Paid registrations', comma(PEOPLE.filter(function(p){ return p.paid; }).length), null, null) +
+        statTile(IC.card,   'Active pages', '3', null, null) +
+      '</div>' +
+      panelFlush('Standard payment pages', '3 pages',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>ID</th><th>Payment page name</th><th>Code</th><th>Price</th><th>Landing</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
+  }
+
+  /* ============================================================
+     VIEW : AUDIENCE
+     ============================================================ */
+  function viewAudience(){
+    function tally(key){
+      var m = {};
+      PEOPLE.forEach(function(p){ m[p[key]] = (m[p[key]] || 0) + 1; });
+      return Object.keys(m).map(function(k){ return { k:k, n:m[k] }; })
+        .sort(function(a,b){ return b.n - a.n; });
+    }
+    function barList(rows, colour){
+      var max = rows.length ? rows[0].n : 1;
+      return '<div class="bar-list">' + rows.slice(0, 9).map(function(r){
+        return '<div class="bar-item"><div class="bl"><b>' + esc(r.k) + '</b><span>' + comma(r.n) + '</span></div>' +
+          '<div class="bar-track"><i style="width:' + Math.round(r.n / max * 100) + '%;background:' + colour + '"></i></div></div>';
+      }).join('') + '</div>';
+    }
+
+    return vhead('Target Audience', 'Who is actually registering, broken down three ways. Built from ' + comma(PEOPLE.length) + ' records.') +
+      '<div class="split">' +
+        '<div>' +
+          panel('By location', 'Top cities', barList(tally('city'), 'var(--accent)')) +
+          panel('By company', 'Top organisations', barList(tally('comp'), 'var(--info)')) +
+        '</div>' +
+        '<div>' +
+          panel('By designation', 'Seniority mix', barList(tally('desig'), 'var(--review)')) +
+          panel('By source', 'Where they came from', barList(tally('src'), 'var(--ok)')) +
+        '</div>' +
+      '</div>';
+  }
+
+  /* ============================================================
+     VIEW : EMAIL / CRM / REMINDERS / POSTS
+     ============================================================ */
+
+
+  /* ============================================================
+     VIEW : MEDIA / SEO / HISTORY
+     ============================================================ */
+  function viewMedia(){
+    var files = [
+      ['hero-banner.jpg','JPG','1.8 MB'], ['logo-primary.svg','SVG','24 KB'],
+      ['speaker-uppal.jpg','JPG','420 KB'], ['speaker-handa.jpg','JPG','388 KB'],
+      ['partner-wall.png','PNG','760 KB'], ['glimpse-01.jpg','JPG','1.2 MB'],
+      ['glimpse-02.jpg','JPG','1.1 MB'], ['brochure-2026.pdf','PDF','3.4 MB'],
+      ['agenda-day1.pdf','PDF','210 KB'], ['social-card.png','PNG','540 KB']
+    ];
+    var cards = files.map(function(f){
+      return '<div class="media-card" data-save="' + esc(f[0]) + ' opened">' +
+        '<div class="media-thumb">' + svg(f[1] === 'PDF' ? IC.card : IC.image, 26) + '</div>' +
+        '<div class="media-meta"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + ' · ' + esc(f[2]) + '</span></div>' +
+      '</div>';
+    }).join('');
+
+    return vhead('Media Center', files.length + ' assets attached to this event. Everything the editor and mailers pull from.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Upload dialog opened">' + svg(IC.plus, 13) + ' Upload</button>') +
+      panel('Assets', '9.9 MB of 500 MB used', '<div class="media-grid">' + cards + '</div>');
+  }
+
+  function viewSEO(){
+    var slug = EV.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    return vhead('SEO', 'How this microsite appears in search results and when shared on social.') +
+      '<div class="split">' +
+        '<div>' +
+          panel('Search listing', '',
+            '<div class="frow">' +
+              '<div class="field c12"><label>Page title <span class="pill-req">Required</span></label>' +
+                '<input class="inp" value="' + esc(EV.name) + ' | ET Oneworld"></div>' +
+              '<div class="field c12"><label>Meta description</label>' +
+                '<textarea class="inp">Join India’s leading voices at ' + esc(EV.name) + '. ' + esc(fmtDate(EV.start)) + ', ' + esc(EV.venue) + '. Register now.</textarea>' +
+                '<p class="hint">Aim for 150–160 characters. Google truncates beyond that.</p></div>' +
+              '<div class="field c12"><label>Canonical URL</label>' +
+                '<input class="inp" value="https://etoneworld.com/' + esc(slug) + '"></div>' +
+            '</div>') +
+          panel('Social share card', '',
+            '<div class="frow">' +
+              '<div class="field c6"><label>OG title</label><input class="inp" value="' + esc(EV.name) + '"></div>' +
+              '<div class="field c6"><label>OG image</label><input class="inp" value="social-card.png"></div>' +
+            '</div>') +
+        '</div>' +
+        '<div>' +
+          panel('Search preview', 'How Google is likely to render it',
+            '<div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--surface-2)">' +
+              '<div style="font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:3px">etoneworld.com › ' + esc(slug) + '</div>' +
+              '<div style="font-size:16px;color:#1a0dab;font-weight:600;line-height:1.3;margin-bottom:3px">' + esc(EV.name) + ' | ET Oneworld</div>' +
+              '<div style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Join India’s leading voices at ' + esc(EV.name) + '. ' + esc(fmtDate(EV.start)) + ', ' + esc(EV.venue) + '. Register now.</div>' +
+            '</div>') +
+          panel('Health checks', '',
+            '<div class="check-list">' +
+              [['Title set', true], ['Meta description set', true], ['OG image present', true],
+               ['Canonical URL set', true], ['Sitemap submitted', false], ['Structured data (Event schema)', false]].map(function(c){
+                return '<div class="check-row' + (c[1] ? ' done' : '') + '" style="cursor:default">' +
+                  '<span class="cb">' + svg(IC.check, 12) + '</span>' +
+                  '<span class="ct">' + esc(c[0]) + '</span></div>';
+              }).join('') +
+            '</div>') +
+        '</div>' +
+      '</div>';
+  }
+
+  function viewHistory(){
+    var hist = [
+      ['2026-09-10 13:31','Abhishek Rawat','Setup','Custom section cloning enabled'],
+      ['2026-09-09 15:49','Vishakha Singh','Event Setup','Sponsor group "Gold partners" created'],
+      ['2026-09-09 15:48','Vishakha Singh','Design','Hero banner image replaced'],
+      ['2026-09-08 18:12','Ayush Vishwakarma','Payment','MAD Pass price changed 30,000 → 35,000'],
+      ['2026-09-08 11:02','Ayush Vishwakarma','Email Marketing','Campaign "Final reminder" scheduled'],
+      ['2026-09-07 16:40','Abhishek Rawat','Settings','Registration form: "Industry" field added'],
+      ['2026-09-05 10:20','Vishakha Singh','Setup','Agenda day 1 imported from spreadsheet'],
+      ['2026-09-02 09:15','System','Publish','Microsite published to production'],
+      ['2026-08-28 17:05','Ayush Vishwakarma','Basic details','Registration target set to ' + (EV.regTarget || '—')]
+    ];
+    var rows = hist.map(function(h){
+      return '<tr><td class="num" style="white-space:nowrap">' + esc(h[0]) + '</td>' +
+        '<td class="td-strong">' + esc(h[1]) + '</td>' +
+        '<td><span class="badge b-mute">' + esc(h[2]) + '</span></td>' +
+        '<td>' + esc(h[3]) + '</td></tr>';
+    }).join('');
+
+    return vhead('Event History', 'Every change made to this event, newest first. Useful when something looks wrong and nobody owns up.',
+        '<button class="btn btn-secondary btn-sm" type="button" data-save="Audit log exported">' + svg(IC.down, 13) + ' Export log</button>') +
+      panelFlush('Audit trail', hist.length + ' entries',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>When</th><th>Who</th><th>Area</th><th>What changed</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
+  }
+
+
+  /* ============================================================
+     CONTENT : gallery, FAQ, contact
+     ============================================================ */
+  function viewGallery(){
+    var shots = ['Opening keynote','Panel: the year ahead','Networking lounge','Award handover',
+                 'Delegate check-in','Roundtable session','Partner booths','Closing address'];
+    var cards = shots.map(function(t, i){
+      return '<div class="media-card" data-save="' + esc(t) + ' opened">' +
+          '<div class="media-thumb" style="background:linear-gradient(135deg,' + AV[i % AV.length] + '22,' + AV[(i+3) % AV.length] + '33)">' +
+            svg(IC.image, 24) + '</div>' +
+          '<div class="media-meta"><b>' + esc(t) + '</b><span>JPG · 1.2 MB</span></div>' +
+        '</div>';
+    }).join('');
+
+    return vhead('Gallery', 'Photos from past editions. They render in the Glimpses block and carry into mailers.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Upload dialog opened">' + svg(IC.plus, 13) + ' Upload photos</button>') +
+      '<div class="callout info">' + svg(IC.info, 17) +
+        '<span><strong>Glimpses sell the next edition</strong>' +
+        'Events with eight or more photos convert noticeably better than those without. Landscape shots at 1600px wide work best.</span></div>' +
+      '<div style="height:16px"></div>' +
+      panel('Photos', shots.length + ' images', '<div class="media-grid">' + cards + '</div>');
+  }
+
+  function viewFAQ(){
+    var rows = FAQS.map(function(f, i){
+      return '<div class="sec-row" style="align-items:flex-start">' +
+          '<span class="grip" style="margin-top:2px">' + svg(IC.grip, 16) + '</span>' +
+          '<span class="sn"><b>' + esc(f[0]) + '</b>' +
+          '<span style="display:block;margin-top:3px;line-height:1.55">' + esc(f[1]) + '</span></span>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-save="Question opened">' + svg(IC.edit, 15) + '</button>' +
+        '</div>';
+    }).join('');
+
+    return vhead('FAQ', 'Answers shown in the FAQ accordion. Good answers here cut enquiry email volume sharply.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Question added">' + svg(IC.plus, 13) + ' Add question</button>') +
+      panelFlush('Questions', FAQS.length + ' published', '<div>' + rows + '</div>');
+  }
+
+  function viewContact(){
+    var team = [
+      ['Delegate enquiries','Priya Sharma','delegates@etoneworld.com','+91 98200 11223'],
+      ['Partnerships','Karan Mehta','partners@etoneworld.com','+91 98200 44556'],
+      ['Speaking opportunities','Ananya Rao','speakers@etoneworld.com','+91 98200 77889'],
+      ['Press & media','Rohit Nair','press@etoneworld.com','+91 98200 99001']
+    ];
+    var rows = team.map(function(t){
+      return '<tr><td class="td-strong">' + esc(t[0]) + '</td>' +
+        '<td>' + esc(t[1]) + '</td>' +
+        '<td><a href="#">' + esc(t[2]) + '</a></td>' +
+        '<td class="num">' + esc(t[3]) + '</td>' +
+        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Contact opened">' + svg(IC.edit, 14) + '</button></td></tr>';
+    }).join('');
+
+    return vhead('Contact', 'Who visitors reach, and where the enquiry form lands.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Contact added">' + svg(IC.plus, 13) + ' Add contact</button>') +
+      panelFlush('Contact desks', team.length + ' listed',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Purpose</th><th>Owner</th><th>Email</th><th>Phone</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>') +
+      panel('Enquiry form', 'Shown under the contact block',
+        '<div class="frow">' +
+          '<div class="field c6"><label>Send submissions to</label><input class="inp" value="delegates@etoneworld.com"></div>' +
+          '<div class="field c6"><label>Auto-reply</label><select class="inp"><option>Send a thank-you email</option><option>Do not reply</option></select></div>' +
+          '<div class="field c12"><label>Address shown on the site</label>' +
+            '<input class="inp" value="The Times of India Building, Dr DN Road, Mumbai 400001"></div>' +
+        '</div>');
+  }
+
+  /* ============================================================
+     MARKETING : banners, messaging, social
+     ============================================================ */
+
+
+
+  /* ============================================================
+     SETTINGS : social links, visibility
+     ============================================================ */
+  function viewSocialLinks(){
+    var links = [
+      ['LinkedIn','https://linkedin.com/company/et-oneworld', true],
+      ['X (Twitter)','https://x.com/ETOneworld', true],
+      ['Instagram','https://instagram.com/etoneworld', true],
+      ['YouTube','https://youtube.com/@etoneworld', true],
+      ['Facebook','', false],
+      ['WhatsApp channel','', false]
+    ];
+    var rows = links.map(function(l, i){
+      return '<div class="frow" style="align-items:end;margin-bottom:12px">' +
+          '<div class="field c3"><label>' + esc(l[0]) + '</label>' +
+            '<button class="tgl" type="button" data-rem="s' + i + '" aria-pressed="' + l[2] + '">' +
+            '<span class="track"><i></i></span>' + (l[2] ? 'Shown' : 'Hidden') + '</button></div>' +
+          '<div class="field c8"><label>URL</label>' +
+            '<input class="inp" value="' + esc(l[1]) + '" placeholder="Paste the profile URL"></div>' +
+        '</div>';
+    }).join('');
+
+    return vhead('Social links', 'The icon row in the microsite footer. Empty links are hidden automatically.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Social links saved">Save changes</button>') +
+      panel('Icons in the footer', '4 of 6 shown', rows);
+  }
+
+  function viewVisibility(){
+    var live = !!S.published;
+    return vhead('Visibility', 'Who can reach this microsite right now.') +
+      '<div class="panel"><div class="panel-body">' +
+        '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">' +
+          '<span style="width:46px;height:46px;border-radius:13px;display:grid;place-items:center;background:' +
+            (live ? 'var(--ok-soft);color:var(--ok)' : 'var(--surface-2);color:var(--text-faint)') + '">' +
+            svg(live ? IC.globe : IC.lock, 22) + '</span>' +
+          '<div style="flex:1;min-width:200px">' +
+            '<b style="font-size:15px;display:block">' + (live ? 'Live and public' : 'Private draft') + '</b>' +
+            '<span style="font-size:12.5px;color:var(--text-muted)">' +
+              (live ? 'Anyone with the link can open it, and search engines may index it.'
+                    : 'Only signed-in team members can open it. Nothing is indexed.') + '</span>' +
+          '</div>' +
+          '<button class="btn ' + (live ? 'btn-secondary' : 'btn-primary') + '" type="button" id="btn-vis">' +
+            (live ? 'Make private' : 'Make it live') + '</button>' +
+        '</div>' +
+      '</div></div>' +
+      panel('Access rules', '',
+        '<div class="frow">' +
+          '<div class="field c6"><label>Who can view</label><select class="inp">' +
+            '<option' + (live ? ' selected' : '') + '>Anyone with the link</option>' +
+            '<option' + (live ? '' : ' selected') + '>Team members only</option>' +
+            '<option>Password protected</option>' +
+            '<option>Invited email addresses only</option>' +
+          '</select></div>' +
+          '<div class="field c6"><label>Search engine indexing</label><select class="inp">' +
+            '<option>Allow indexing</option><option>Block indexing (noindex)</option></select></div>' +
+          '<div class="field c6"><label>Take offline automatically</label><select class="inp">' +
+            '<option>Never</option><option>7 days after the event</option><option>30 days after the event</option></select></div>' +
+          '<div class="field c6"><label>Registration cut-off</label><select class="inp">' +
+            '<option>When the event starts</option><option>24 hours before</option><option>When capacity is reached</option></select></div>' +
+        '</div>');
+  }
+
+  function wireVisibility(){
+    var b = $('btn-vis');
+    if (!b) return;
+    b.onclick = function(){
+      S.published = !S.published; save(); render();
+      toast(S.published ? 'This microsite is now live' : 'Switched to private draft');
+    };
+  }
+
+  /* ============================================================
+     COMBINED : payments (pages + transactions on one screen)
+     ============================================================ */
+  function viewPayments(){
+    if (EV.payment.type !== 'paid'){
+      return vhead('Payments', 'Ticketing and transactions for this event.') +
+        '<div class="panel">' + emptyState(IC.money, 'This is a free event',
+          'No payment pages exist and nothing has been charged. Add a paid pass if you want to start taking money.',
+          '<button class="btn btn-primary btn-sm" type="button" data-save="Payment page builder opened" style="margin-top:6px">Add a paid pass</button>') + '</div>';
+    }
+    return viewPayPages() + viewTxnPanel();
+  }
+
+  function viewTxnPanel(){
+    var paid = PEOPLE.filter(function(p){ return p.paid; }).slice(0, 25);
+    var rows = paid.map(function(p, i){
+      var amt = 25000 + (i % 3) * 10000;
+      return '<tr><td class="num">TXN' + (480000 + p.id) + '</td>' +
+        '<td><span class="person"><span class="avat" style="background:' + p.colour + '">' + esc(p.initials) + '</span>' +
+        '<span class="pn"><b>' + esc(p.name) + '</b><span>' + esc(p.comp) + '</span></span></span></td>' +
+        '<td class="num td-strong">' + money(amt) + '</td>' +
+        '<td>' + (i % 7 === 0 ? '<span class="badge b-warn">Pending</span>' : '<span class="badge b-ok">Success</span>') + '</td>' +
+        '<td class="num">' + fmtDate(p.when) + '</td>' +
+        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Receipt opened">' + svg(IC.eye, 14) + '</button></td></tr>';
+    }).join('');
+    return panelFlush('Recent transactions', comma(paid.length) + ' shown',
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>Transaction</th><th>Payer</th><th>Amount</th><th>Status</th><th>Date</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>');
+  }
+
+  /* ============================================================
+     COMBINED : CRM + leads on one screen
+     ============================================================ */
+  function viewLeads(){ return viewCRM(); }
+
+  /* ============================================================
+     ROUTER
+     ============================================================ */
+  /* ---------- settings views (shell-local) ---------- */
+
+  /* generic on/off pills used by the settings lists */
+  function wireReminders(){
+    document.querySelectorAll('[data-rem]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var on = b.getAttribute('aria-pressed') === 'true';
+        b.setAttribute('aria-pressed', String(!on));
+        b.lastChild.textContent = !on ? 'On' : 'Off';
+        var row = b.closest('.sec-row');
+        if (row) row.classList.toggle('off', on);
+        toast('Setting ' + (!on ? 'enabled' : 'turned off'));
+      });
+    });
+  }
+
+  var DEFAULT_NAV_ITEMS = [
+    { t:'Overview',              on:true },
+    { t:'What to Expect',        on:true },
+    { t:'Key Discussion Points', on:true },
+    { t:'Speakers',              on:true },
+    { t:'Who Should Attend',     on:true },
+    { t:'Focus Areas',           on:true },
+    { t:'Testimonial',           on:false },
+    { t:'Survey',                on:false },
+    { t:'Contact Us',            on:true }
+  ];
+  DEFAULT_NAV_ITEMS.forEach(function(n){
+    n.a = '#' + n.t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  });
+
+  function viewSetNav(){
+    if (!S.nav) S.nav = DEFAULT_NAV_ITEMS.map(function(n){ return { t:n.t, on:n.on }; });
+    var onMap = {}; S.nav.forEach(function(n){ onMap[n.t] = n.on; });
+
+    var rows = DEFAULT_NAV_ITEMS.map(function(n, i){
+      var on = !!onMap[n.t];
+      return '<tr' + (on ? '' : ' style="opacity:.55"') + '>' +
+        '<td class="num" style="width:44px">' + (i + 1) + '</td>' +
+        '<td class="td-strong">' + esc(n.t) + '</td>' +
+        '<td class="num" style="color:var(--text-muted)">' + esc(n.a) + '</td>' +
+        '<td>' + (on ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Hidden</span>') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<button class="tgl" type="button" data-navitem="' + esc(n.t) + '" aria-pressed="' + on + '">' +
+            '<span class="track"><i></i></span></button>' +
+        '</td></tr>';
+    }).join('');
+
+    return vhead('Site navigation', 'The menu that appears across the top of the microsite. Each item scrolls to a section anchor.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Menu item added">' + svg(IC.plus, 13) + ' Add menu item</button>') +
+      '<div class="callout info">' + svg(IC.info, 17) +
+        '<span><strong>Hidden items keep their content</strong>' +
+        'Switching an item off only removes it from the menu bar. The section itself is controlled in Event Setup › Page sections.</span></div>' +
+      '<div style="height:16px"></div>' +
+      panelFlush('Menu items', DEFAULT_NAV_ITEMS.length + ' items',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>S.No.</th><th>Menu title</th><th>Target</th><th>Status</th><th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
+  }
+
+  function wireSetNav(){
+    document.querySelectorAll('[data-navitem]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var t = b.getAttribute('data-navitem');
+        S.nav.forEach(function(n){ if (n.t === t) n.on = !n.on; });
+        save(); render();
+      });
+    });
+  }
+
+  function viewSetForm(){
+    var fields = [
+      ['Full name','Text','Required', true],
+      ['Work email','Email','Required', true],
+      ['Mobile number','Phone','Required', true],
+      ['Company','Text','Required', true],
+      ['Designation','Text','Required', true],
+      ['City','Dropdown','Optional', true],
+      ['Industry','Dropdown','Optional', true],
+      ['How did you hear about us?','Dropdown','Optional', false],
+      ['Dietary preference','Radio','Optional', false]
+    ];
+    var rows = fields.map(function(f){
+      return '<div class="sec-row' + (f[3] ? '' : ' off') + '">' +
+        '<span class="grip">' + svg(IC.grip, 16) + '</span>' +
+        '<span class="sn"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></span>' +
+        '<span class="badge ' + (f[2] === 'Required' ? 'b-accent' : 'b-mute') + '">' + esc(f[2]) + '</span>' +
+        '<button class="tgl" type="button" data-rem="f' + esc(f[0]) + '" aria-pressed="' + f[3] + '">' +
+          '<span class="track"><i></i></span>' + (f[3] ? 'On' : 'Off') + '</button>' +
+      '</div>';
+    }).join('');
+
+    return vhead('Registration form', 'What a visitor fills in to register. Fewer fields convert better — 7 is the sweet spot.',
+        '<button class="btn btn-primary btn-sm" type="button" data-save="Field added">' + svg(IC.plus, 13) + ' Add field</button>') +
+      panelFlush('Form fields', '7 of 9 enabled', '<div>' + rows + '</div>') +
+      panel('Behaviour', '',
+        '<div class="frow">' +
+          '<div class="field c4"><label>After submitting</label><select class="inp"><option>Show thank-you message</option><option>Redirect to payment</option><option>Redirect to a URL</option></select></div>' +
+          '<div class="field c4"><label>Confirmation email</label><select class="inp"><option>Send immediately</option><option>Do not send</option></select></div>' +
+          '<div class="field c4"><label>Duplicate handling</label><select class="inp"><option>Block duplicate emails</option><option>Allow duplicates</option></select></div>' +
+        '</div>');
+  }
+
+  function viewSetAdv(){
+    var opts = [
+      ['Require approval before registration counts','Every entry goes to a moderation queue first.', false],
+      ['Close registrations automatically at capacity','Stops accepting entries once the target is hit.', true],
+      ['Show a live registration counter on the site','Social proof on the hero block.', false],
+      ['Collect GST details at payment','Adds GSTIN and billing address to checkout.', true],
+      ['Allow calendar download (.ics)','Adds an "Add to calendar" button after registering.', true],
+      ['Index this microsite in search engines','Turn off for private or client-only events.', true]
+    ];
+    var rows = opts.map(function(o, i){
+      return '<div class="sec-row' + (o[2] ? '' : ' off') + '">' +
+        '<span class="sn"><b>' + esc(o[0]) + '</b><span>' + esc(o[1]) + '</span></span>' +
+        '<button class="tgl" type="button" data-rem="a' + i + '" aria-pressed="' + o[2] + '">' +
+          '<span class="track"><i></i></span>' + (o[2] ? 'On' : 'Off') + '</button>' +
+      '</div>';
+    }).join('');
+
+    return vhead('Advanced settings', 'Behaviour switches that change how the event runs, not how it looks.') +
+      panelFlush('Registration & privacy', '', '<div>' + rows + '</div>');
+  }
+
+  /* ------------------------------------------------------------------
+     Everything the dashboard file is allowed to touch. Keeping it to an
+     explicit bundle means edit-event-dashboard.js can be edited on its own
+     without guessing what is in scope here.
+     ------------------------------------------------------------------ */
+  var DASH = window.EditEventDashboard || { view: function(){ return ''; }, wire: function(){} };
+  var MKT  = window.EditEventMarketing || { view: function(){ return ''; }, wire: function(){}, TABS: [] };
+
+  /* Built by core, so the console and the standalone workbenches hand each
+     section file exactly the same object. */
+  var CTX = C.makeCtx({
+    EV: EV, S: S, PEOPLE: PEOPLE,
+    vhead:  function(t, sub, right){ return vhead(t, sub, right); },
+    go:     function(r){ return go(r); },
+    render: function(){ return render(); },
+    save:   function(){ return save(); }
+  });
+
+  var VIEWS = {
+    'dashboard':            function(){ return DASH.view(CTX); },
+
+    'content/basics':       viewBasics,
+    'content/speakers':     viewSpeakers,
+    'content/agenda':       viewAgenda,
+    'content/sponsors':     viewSponsors,
+    'content/gallery':      viewGallery,
+    'content/faq':          viewFAQ,
+    'content/contact':      viewContact,
+
+    'design/sections':      viewSections,
+    'design/nav':           viewSetNav,
+    'design/theme':         viewTheme,
+    'design/media':         viewMedia,
+
+    'audience/reg':         function(){ return viewPeople('reg'); },
+    'audience/attendees':   function(){ return viewPeople('attendees'); },
+    'audience/shortlist':   function(){ return viewPeople('shortlist'); },
+    'audience/payments':    viewPayments,
+    'audience/insights':    viewAudience,
+
+
+    'marketing/banners':    function(){ return MKT.view('banners', CTX); },
+    'marketing/email':      function(){ return MKT.view('email', CTX); },
+    'marketing/messaging':  function(){ return MKT.view('messaging', CTX); },
+    'marketing/social':     function(){ return MKT.view('social', CTX); },
+    'marketing/leads':      function(){ return MKT.view('leads', CTX); },
+
+    'settings/form':        viewSetForm,
+    'settings/seo':         viewSEO,
+    'settings/links':       viewSocialLinks,
+    'settings/visibility':  viewVisibility,
+    'settings/advanced':    viewSetAdv,
+    'settings/history':     viewHistory
+  };
+
+  function render(){
+    var r = routeId();
+    var fn = VIEWS[r] || VIEWS.dashboard;
+    $('view').innerHTML = tabsHTML() + fn();
+
+    /* tabs */
+    document.querySelectorAll('[data-tab]').forEach(function(b){
+      b.addEventListener('click', function(){ go(cur.sec + '/' + b.getAttribute('data-tab')); });
+    });
+
+    /* generic wiring available on every view */
+    document.querySelectorAll('[data-goto]').forEach(function(b){
+      b.addEventListener('click', function(){ go(b.getAttribute('data-goto')); });
+    });
+    document.querySelectorAll('[data-save]').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        toast(b.getAttribute('data-save'));
+      });
+    });
+
+    /* per-view wiring */
+    if (r === 'dashboard') DASH.wire(CTX);
+    if (r === 'design/sections') wireSections();
+    if (r === 'design/nav') wireSetNav();
+    if (r === 'design/theme') wireTheme();
+    if (r === 'settings/visibility') wireVisibility();
+    if (cur.sec === 'marketing') MKT.wire(cur.tab, CTX);
+    if (['settings/form','settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
+    if (['audience/reg','audience/attendees','audience/shortlist'].indexOf(r) >= 0) wirePeople();
+
+    var p2 = $('btn-preview-2');
+    if (p2) p2.onclick = openPreview;
+  }
+
+  /* ============================================================
+     PREVIEW + PUBLISH
+     ============================================================ */
+  function openPreview(){
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="mbg"><div class="modal" style="width:min(1000px,100%)">' +
+        '<div class="modal-head">' +
+          '<h3>Preview — ' + esc(EV.name) + '</h3>' +
+          '<div class="tabs" id="pv-tabs">' +
+            '<button type="button" data-pv="desktop" aria-pressed="true">Desktop</button>' +
+            '<button type="button" data-pv="mobile" aria-pressed="false">Mobile</button>' +
+          '</div>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="mclose">' +
+            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
+        '</div>' +
+        '<div class="modal-body" style="background:var(--surface-2)">' +
+          '<div id="pv-frame" style="margin:0 auto;max-width:100%;transition:max-width .2s">' +
+            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">' +
+              '<div style="background:var(--accent);color:#fff;padding:28px 22px;text-align:center">' +
+                '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.85">' +
+                  esc(PORTALS[EV.portal] || '') + ' presents</div>' +
+                '<div style="font-family:var(--font-display);font-size:26px;font-weight:700;margin:6px 0 4px">' + esc(EV.name) + '</div>' +
+                '<div style="font-size:12.5px;opacity:.9">' + esc(fmtDT(EV.start)) + ' · ' + esc(EV.venue) + '</div>' +
+                '<div style="margin-top:14px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap">' +
+                  '<span style="background:#fff;color:var(--accent-strong);padding:8px 18px;border-radius:8px;font-size:12.5px;font-weight:800">Register now</span>' +
+                  '<span style="border:1.5px solid #fff;padding:8px 18px;border-radius:8px;font-size:12.5px;font-weight:800">Become a partner</span>' +
+                '</div>' +
+              '</div>' +
+              '<div style="padding:18px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;border-bottom:1px solid var(--border)">' +
+                [['Delegates', comma(EV.registrations)], ['Speakers', String(SPEAKERS.length)], ['Sessions','7'], ['Partners','10']].map(function(s){
+                  return '<div><div style="font-family:var(--font-display);font-size:19px;font-weight:700">' + esc(s[1]) + '</div>' +
+                    '<div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700">' + esc(s[0]) + '</div></div>';
+                }).join('') +
+              '</div>' +
+              '<div style="padding:20px">' +
+                '<div class="eyebrow" style="margin-bottom:7px">About the event</div>' +
+                '<p style="font-size:13px;color:var(--text-muted);margin:0 0 16px;line-height:1.6">India’s decision-makers gather to set the agenda for the year ahead. Two days of keynotes, closed-door roundtables and the conversations that do not happen anywhere else.</p>' +
+                '<div class="eyebrow" style="margin-bottom:9px">Speakers</div>' +
+                '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' +
+                  SPEAKERS.slice(0,3).map(function(s, i){
+                    return '<div style="border:1px solid var(--border);border-radius:10px;padding:11px;text-align:center">' +
+                      '<div class="avat" style="background:' + AV[i] + ';width:40px;height:40px;margin:0 auto 7px;font-size:14px">' +
+                        esc(s[0].split(' ')[0][0] + s[0].split(' ')[1][0]) + '</div>' +
+                      '<div style="font-size:12.5px;font-weight:700">' + esc(s[0]) + '</div>' +
+                      '<div style="font-size:10.5px;color:var(--text-muted)">' + esc(s[2]) + '</div></div>';
+                  }).join('') +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-foot">' +
+          '<span style="flex:1;font-size:12px;color:var(--text-muted);align-self:center">This is a rendering of the current draft. Publish to make it live.</span>' +
+          '<a class="btn btn-secondary" href="custom_editor.html?event=' + EV.id + '">' + svg(IC.brush, 14) + ' Edit in editor</a>' +
+          '<button class="btn btn-primary" type="button" id="pv-publish">Publish</button>' +
+        '</div>' +
+      '</div></div>';
+
+    function close(){ host.innerHTML = ''; }
+    $('mclose').onclick = close;
+    $('mbg').addEventListener('click', function(e){ if (e.target.id === 'mbg') close(); });
+    $('pv-publish').onclick = function(){ close(); doPublish(); };
+    host.querySelectorAll('[data-pv]').forEach(function(b){
+      b.addEventListener('click', function(){
+        host.querySelectorAll('[data-pv]').forEach(function(x){ x.setAttribute('aria-pressed','false'); });
+        b.setAttribute('aria-pressed','true');
+        $('pv-frame').style.maxWidth = b.getAttribute('data-pv') === 'mobile' ? '380px' : '100%';
+      });
+    });
+  }
+
+  function doPublish(){
+    S.published = true; save();
+    toast('Published. The microsite is live at etoneworld.com');
+  }
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  function boot(){
+    $('ev-name').textContent = EV.name + ' | ' + (PORTALS[EV.portal] || '');
+    $('ev-meta').textContent = fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (TYPES[EV.type] || EV.type);
+    document.title = 'Edit — ' + EV.name + ' — Revamp CMS';
+
+    $('btn-preview').onclick = openPreview;
+    $('btn-publish').onclick = doPublish;
+
+    window.addEventListener('hashchange', function(){
+      var h = location.hash.slice(1);
+      if (h && h !== routeId()) go(h);
+    });
+
+    go(location.hash.slice(1) || 'dashboard');
+  }
+
+  boot();
+})();
+</script>
