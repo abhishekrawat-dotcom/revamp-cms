@@ -120,12 +120,13 @@
   }
 
   @media (max-width: 760px){
-    .shell{ flex-direction:column; }
+    .shell{ display:flex; flex-direction:row; }
     .rail{
-      width:100%; max-height:none; position:static; flex-direction:row; overflow-x:auto;
-      border-right:0; border-bottom:1px solid var(--border); padding:8px 10px; gap:2px;
+      width:92px; max-height:calc(100vh - var(--topbar-h)); position:sticky; top:var(--topbar-h);
+      flex-direction:column; overflow-y:auto; border-right:1px solid var(--border);
+      border-bottom:0; padding:12px 8px 30px; gap:3px;
     }
-    .rail-item{ width:auto; min-width:74px; flex-shrink:0; }
+    .rail-item{ width:100%; min-width:0; flex-shrink:0; }
   }
 
   .main{ flex:1; min-width:0; padding: 22px 26px 60px; }
