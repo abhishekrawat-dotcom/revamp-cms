@@ -33,6 +33,7 @@
 <script src="edit-event-core.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="edit-event-marketing.js"></script>
+<script src="sidebar.js"></script>
 
 <script>
 (function(){
@@ -117,7 +118,7 @@
     ]}
   ];
 
-  var cur = { sec:'dashboard', tab:null };
+  var cur = { sec:'content', tab:'basics' };
 
   function secById(id){
     for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].id === id) return SECTIONS[i];
@@ -142,15 +143,9 @@
   }
 
   function renderRail(){
-    $('rail').innerHTML = SECTIONS.map(function(s){
-      return '<button class="rail-item' + (cur.sec === s.id ? ' active' : '') + '" type="button" ' +
-          'data-sec="' + s.id + '" aria-current="' + (cur.sec === s.id) + '">' +
-          '<span class="ri">' + svg(s.icon, 21) + '</span>' +
-          '<span class="rl">' + esc(s.label) + '</span>' +
-        '</button>';
-    }).join('');
-    $('rail').querySelectorAll('[data-sec]').forEach(function(b){
-      b.addEventListener('click', function(){ go(b.getAttribute('data-sec')); });
+    renderEventRail('rail', {
+      activeSection: cur.sec,
+      eventId: EV.id
     });
   }
 
@@ -174,6 +169,18 @@
   /* accepts "section" or "section/tab" */
   function go(route){
     var parts = String(route).split('/');
+    if (parts[0] === 'audience' && parts[1] === 'reg') {
+      location.href = 'audience-registrations.html?event=' + encodeURIComponent(EV.id);
+      return;
+    }
+    if (parts[0] === 'marketing') {
+      location.href = 'marketing.html?event=' + encodeURIComponent(EV.id) + (parts[1] ? '&tab=' + encodeURIComponent(parts[1]) : '');
+      return;
+    }
+    if (parts[0] === 'settings') {
+      location.href = 'settings.html?event=' + encodeURIComponent(EV.id) + (parts[1] ? '&tab=' + encodeURIComponent(parts[1]) : '');
+      return;
+    }
     var s = secById(parts[0]);
     if (!s) s = SECTIONS[0];
     cur.sec = s.id;
@@ -1121,7 +1128,6 @@
     'design/theme':         viewTheme,
     'design/media':         viewMedia,
 
-    'audience/reg':         function(){ return viewPeople('reg'); },
     'audience/attendees':   function(){ return viewPeople('attendees'); },
     'audience/shortlist':   function(){ return viewPeople('shortlist'); },
     'audience/payments':    viewPayments,
@@ -1171,7 +1177,7 @@
     if (r === 'settings/visibility') wireVisibility();
     if (cur.sec === 'marketing') MKT.wire(cur.tab, CTX);
     if (['settings/form','settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
-    if (['audience/reg','audience/attendees','audience/shortlist'].indexOf(r) >= 0) wirePeople();
+    if (['audience/attendees','audience/shortlist'].indexOf(r) >= 0) wirePeople();
 
     var p2 = $('btn-preview-2');
     if (p2) p2.onclick = openPreview;
@@ -1270,7 +1276,7 @@
       if (h && h !== routeId()) go(h);
     });
 
-    go(location.hash.slice(1) || 'dashboard');
+    go(location.hash.slice(1) || 'content/basics');
   }
 
   boot();
