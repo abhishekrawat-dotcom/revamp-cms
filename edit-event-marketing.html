@@ -51,6 +51,7 @@
     if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
     if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(wbEvent); return; }
     if (section === 'design') { location.href = 'custom_editor.html?event=' + encodeURIComponent(wbEvent); return; }
+    if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(wbEvent) + '#audience/payments'; return; }
     if (section === 'marketing') return;
     if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(wbEvent); return; }
     location.href = 'edit-event.html?event=' + encodeURIComponent(wbEvent) + '#' + section;

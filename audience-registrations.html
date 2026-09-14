@@ -77,6 +77,7 @@
   function goSection(section){
     if(section==='dashboard'){location.href='dashboard.html';return;}
     if(section==='design'){location.href='custom_editor.html?event='+encodeURIComponent(select.value);return;}
+    if(section==='payment'){location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#audience/payments';return;}
     if(section==='audience'){return;}
     location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#'+section;
   }

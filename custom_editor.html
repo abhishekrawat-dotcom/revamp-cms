@@ -1209,6 +1209,7 @@
       activeSection: 'design',
       onSection: function(section){
         if (section === 'design') return;
+        if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#audience/payments'; return; }
         if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
         if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(editorEventId); return; }
         if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(editorEventId); return; }
