@@ -49,6 +49,7 @@
     if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
     if (section === 'audience') { location.href = 'audience-registrations.html?event=' + (location.search.replace('?event=','') || '1'); return; }
     if (section === 'design') { location.href = 'custom_editor.html?event=' + (location.search.replace('?event=','') || '1'); return; }
+    if (section === 'payment') { location.href = 'edit-event.html?event=' + (location.search.replace('?event=','') || '1') + '#audience/payments'; return; }
     if (section === 'marketing') { location.href = 'marketing.html?event=' + (location.search.replace('?event=','') || '1'); return; }
     if (section === 'settings') { location.href = 'settings.html?event=' + (location.search.replace('?event=','') || '1'); return; }
     location.href = 'edit-event.html#' + section;

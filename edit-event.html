@@ -144,7 +144,7 @@
 
   function renderRail(){
     renderEventRail('rail', {
-      activeSection: cur.sec,
+      activeSection: cur.sec === 'audience' && cur.tab === 'payments' ? 'payment' : cur.sec,
       eventId: EV.id
     });
   }
@@ -175,6 +175,10 @@
     }
     if (parts[0] === 'marketing') {
       location.href = 'marketing.html?event=' + encodeURIComponent(EV.id) + (parts[1] ? '&tab=' + encodeURIComponent(parts[1]) : '');
+      return;
+    }
+    if (parts[0] === 'payment') {
+      location.href = 'edit-event.html?event=' + encodeURIComponent(EV.id) + '#audience/payments';
       return;
     }
     if (parts[0] === 'settings') {

@@ -130,6 +130,10 @@
           location.href = 'custom_editor.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id);
           return;
         }
+        if (section === 'payment') {
+          location.href = 'edit-event.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id) + '#audience/payments';
+          return;
+        }
         location.href = 'edit-event.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id) + '#' + section;
       }
     });
