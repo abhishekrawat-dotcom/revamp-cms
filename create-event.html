@@ -199,6 +199,35 @@
   .tpl-thumb .b.pill{ height: 13px; width: 42%; border-radius: 7px; background: var(--accent-soft); }
   .tpl-thumb .b.form{ height: 30px; background: var(--surface); border: 1px dashed var(--border); }
 
+  /* Basic-detail choices use the taller, icon-led cards from the new picker. */
+  #cat-picker .step-head h1{ font-size: clamp(30px, 3vw, 44px); letter-spacing: -0.025em; }
+  #cat-picker .step-head .desc{ max-width: 68ch; }
+  #cat-grid .category-card{
+    min-height: 330px; padding: 30px 26px 24px; overflow: visible; color: var(--text);
+    gap: 24px; justify-content: flex-start;
+  }
+  .category-card-top{ display:flex; align-items:center; justify-content:space-between; gap: 12px; min-height: 56px; }
+  .category-icon{
+    width: 56px; height: 56px; border-radius: 15px; display:grid; place-items:center;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .category-card:first-child .category-icon{ color: var(--accent-contrast); background: var(--accent); border-color: var(--accent); }
+  .category-badge{
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border)); border-radius: 999px;
+    padding: 4px 11px; color: var(--accent-strong); background: var(--surface);
+    font-size: 10.5px; line-height: 1.2; font-weight: 800; letter-spacing: .055em; text-transform: uppercase;
+  }
+  #cat-grid .category-card .tpl-info{ padding: 0; gap: 10px; }
+  #cat-grid .category-card .tpl-info h4{ font-size: 21px; line-height: 1.25; }
+  #cat-grid .category-card .tpl-info .s{ font-size: 13.5px; line-height: 1.65; }
+  #cat-grid .category-card .tpl-info .n{
+    margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border);
+    color: var(--accent-strong); font-family: var(--font-body); font-weight: 700;
+  }
+  @media (max-width: 620px){
+    #cat-grid .category-card{ min-height: 270px; }
+  }
+
   /* compact header row: title + category chip + one-line context */
   .b-head{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .b-head .ttl{ font-size: 19px; font-weight: 700; letter-spacing: -0.012em; }
@@ -739,15 +768,15 @@
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
           <span class="eyebrow">Step 2 of 6 &middot; Basic details</span>
-          <h1>What kind of event is this?</h1>
-          <p class="desc">Pick a category to begin. Each one opens a different Basic details form &mdash; the date fields, the required fields and the extra panels all change to match how that kind of event actually runs.</p>
+          <h1>What type of microsite are you creating?</h1>
+          <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
         </div>
 
         <div class="tpl-grid four" id="cat-grid"></div>
 
         <div class="callout">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <span><strong>The category is a switch, not a label</strong>An IP summit can be planned to a quarter, an awards programme runs a nomination window, and a leadgen page usually has no date at all. Pick the closest match &mdash; you can change it on the next screen.</span>
+          <span><strong>Your choice tailors the setup</strong>We will show the dates, event fields, nomination options, or design-import flow that matches your selection. You can change it on the next screen.</span>
         </div>
       </div>
 
@@ -778,7 +807,7 @@
                 <input class="inp" id="f-name" type="text" placeholder="e.g. MarTech+ Summit 2026" autocomplete="off">
               </div>
               <div class="field c3" id="client-wrap" hidden>
-                <div class="flabel-row"><label for="f-client">Client / Sponsor</label><span class="pill-req">Required</span></div>
+                <div class="flabel-row"><label for="f-client">Client / Sponsor</label><span class="pill-req" id="client-requirement">Required</span></div>
                 <input class="inp" id="f-client" type="text" placeholder="e.g. Tata Capital" autocomplete="off">
               </div>
               <div class="field c5" id="slug-cell">
@@ -983,49 +1012,51 @@
     IP:      '<path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8z"/>',
     Client:  '<rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V5.5a2 2 0 012-2h3a2 2 0 012 2v2"/><path d="M3 12.5h18"/>',
     Awards:  '<path d="M7 4h10v4.5a5 5 0 01-10 0z"/><path d="M7 6H4.4a2.6 2.6 0 002.8 3M17 6h2.6a2.6 2.6 0 01-2.8 3"/><path d="M12 13.5V16M8.5 20h7"/>',
-    Leadgen: '<path d="M3.5 5h17l-6.6 7.6V20l-3.8-1.9v-5.5z"/>'
+    Leadgen: '<circle cx="8" cy="6" r="3"/><circle cx="16" cy="6" r="3"/><circle cx="8" cy="18" r="3"/><path d="M13 15h6M16 12v6"/>'
   };
 
   var CATS = {
     IP: {
-      label: 'IP Event',
-      blurb: 'An ET-owned property — summit, conclave or roundtable we run ourselves.',
-      meta: 'Full section stack',
+      label: 'IP & Residential Event',
+      blurb: 'Build owned conferences, summits, conclaves, and residential experiences.',
+      meta: 'Owned event experiences',
+      badge: 'Most popular',
       dateTitle: 'Event schedule',
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'exact',
       venue: true, payment: true, nomination: false, campaign: false, client: false,
-      hint: 'IP: our own property, so the full section stack is offered by default. Lock an exact date, or keep it to a month or quarter while the edition is still being planned.'
+      hint: 'IP and residential events include the full section stack. Use an exact date, month, or quarter while the edition is being planned.'
     },
     Client: {
-      label: 'Client Event',
-      blurb: 'Run for a paying client or sponsor. Partner logos and contact blocks are pre-included.',
-      meta: 'Needs client name',
+      label: 'Custom Events',
+      blurb: 'Create client events, lead generation campaigns, roundtables, and virtual events.',
+      meta: 'Flexible event formats',
       dateTitle: 'Event schedule',
-      dateModes: ['exact','month','tbd'],
+      dateModes: ['none','exact','month','tbd'],
       defaultDateMode: 'exact',
-      venue: true, payment: true, nomination: false, campaign: false, client: true,
-      hint: 'Client: the sponsor name drives the “Presented by” lockup. Client dates are usually contracted, so an exact date is expected — but a month works while the contract is still moving.'
+      venue: true, payment: true, nomination: false, campaign: false, client: 'optional',
+      hint: 'Custom events cover client activations, lead generation, roundtables, and virtual formats. Add a client or sponsor only when relevant.'
     },
     Awards: {
       label: 'Awards',
-      blurb: 'A nomination-led programme. Entries, jury, shortlist, then a ceremony night.',
-      meta: 'Nomination window',
+      blurb: 'Run nominations, jury reviews, shortlists, and award ceremonies.',
+      meta: 'Nomination journey',
       dateTitle: 'Awards ceremony',
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'month',
       venue: true, payment: true, nomination: true, campaign: false, client: false,
-      hint: 'Awards: the nomination window is what the microsite actually sells early on — the ceremony date can stay undecided while entries are open.'
+      hint: 'Awards microsites support the nomination window, jury milestones, shortlist, and ceremony date.'
     },
     Leadgen: {
-      label: 'Leadgen',
-      blurb: 'A short one-screen capture page. Often evergreen, with no event date at all.',
-      meta: 'Date optional',
-      dateTitle: 'Event date',
+      label: 'Convert Figma / Lovable Design',
+      blurb: 'Turn Figma or Lovable designs into editable, publish-ready microsites.',
+      meta: 'Import your design',
+      badge: 'AI converter',
+      dateTitle: 'Launch schedule',
       dateModes: ['none','exact','month','tbd'],
       defaultDateMode: 'none',
-      venue: false, payment: false, nomination: false, campaign: true, client: false,
-      hint: 'Leadgen: most of these are evergreen campaigns with no date to show. Add one only if this page is tied to a specific event.'
+      venue: false, payment: false, nomination: false, campaign: false, client: false, designPath: true,
+      hint: 'Import a Figma or Lovable link and convert its sections into an editable microsite.'
     }
   };
 
@@ -1276,7 +1307,7 @@
     if (S.step === 1){
       if (!S.catPicked){
         next.hidden = true;
-        note.textContent = 'Choose an event category to open the Basic details form.';
+        note.textContent = 'Choose a microsite type to open the Basic details form.';
       } else {
         var issue = basicsIssue(S.basics);
         next.disabled = !!issue;
@@ -1441,7 +1472,7 @@
     if (!b.name.trim())    return 'Event name is needed to continue.';
     if (!b.slug.trim())    return 'A URL slug is needed to continue.';
     if (!slugFree(b.slug)) return 'That slug is taken — pick another to continue.';
-    if (C.client && !b.client.trim()) return 'Client / sponsor name is needed for a client event.';
+    if (C.client === 'required' && !b.client.trim()) return 'Client / sponsor name is needed for a client event.';
     if (!dateComplete(b)){
       if (b.dateMode === 'month')   return 'Pick the month, or switch the date to “To be announced”.';
       if (b.dateMode === 'quarter') return 'Pick the quarter and year, or switch the date to “To be announced”.';
@@ -1471,6 +1502,8 @@
     $('venue-cell').hidden    = !(C.venue && !virtual);
     $('platform-wrap').hidden = !(C.venue && virtual);
     $('client-wrap').hidden   = !C.client;
+    $('client-requirement').className = C.client === 'required' ? 'pill-req' : 'pill-opt';
+    $('client-requirement').textContent = C.client === 'required' ? 'Required' : 'Optional';
     /* identity packs onto one row; the client field borrows columns when shown */
     $('vertical-cell').className = 'field c3';
     $('name-cell').className     = 'field ' + (C.client ? 'c3' : 'c4');
@@ -1633,26 +1666,13 @@
   }
 
   /* ---------- phase 1 : the category picker screen ---------- */
-  function catThumb(k){
-    if (k === 'IP') return '<span class="b hero"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
-      '<span class="b row"></span><span class="b row half"></span>';
-    if (k === 'Client') return '<span class="b hero"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span></span>' +
-      '<span class="b row"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span></span>';
-    if (k === 'Awards') return '<span class="b hero"></span><span class="b pill"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
-      '<span class="b row half"></span>';
-    return '<span class="b hero"></span><span class="b row"></span><span class="b form"></span>';
-  }
-
   function renderCatPicker(){
     var b = S.basics, cg = $('cat-grid');
     cg.innerHTML = Object.keys(CATS).map(function(k){
       var C = CATS[k];
-      return '<button class="tpl-card" type="button" aria-pressed="' + (S.catPicked && k === b.category) + '" data-cat="' + k + '">' +
-          '<span class="tpl-thumb">' + catThumb(k) + '</span>' +
+      return '<button class="tpl-card category-card" type="button" aria-pressed="' + (S.catPicked && k === b.category) + '" data-cat="' + k + '">' +
+          '<span class="category-card-top"><span class="category-icon">' + svg(CAT_ICON[k], 25) + '</span>' +
+            (C.badge ? '<span class="category-badge">' + esc(C.badge) + '</span>' : '') + '</span>' +
           '<span class="tpl-info"><h4>' + esc(C.label) + '</h4>' +
             '<span class="s">' + esc(C.blurb) + '</span>' +
             '<span class="n">' + esc(C.meta) + '</span></span>' +
@@ -1669,6 +1689,7 @@
     /* carry the date over only if the new category understands that mode */
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
     if (!C.payment) b.payment = 'Free';
+    if (C.designPath) S.path = 'B';
     S.catPicked = true;
     save(); initStep1(); renderFoot();
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
