@@ -1,0 +1,194 @@
+<!-- ET Oneworld - Revamp CMS : standalone dashboard page -->
+<title>Dashboard &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="edit-event.css">
+<style>
+  body {
+    margin: 0;
+    background: var(--surface-2);
+    color: var(--text);
+    font-family: var(--font-sans);
+  }
+  .dash-shell {
+    min-height: 100vh;
+    background: var(--bg);
+    display: flex;
+  }
+  .dash-main-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .dash-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .dash-topbar .crumb {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 800;
+  }
+  .dash-topbar .sp { flex: 1; }
+  .dash-topbar .picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .dash-topbar select {
+    min-width: 240px;
+  }
+  .dash-main {
+    max-width: 1460px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 22px 24px 60px;
+  }
+  @media (max-width: 760px) {
+    .dash-main { padding: 18px 14px 48px; }
+    .dash-topbar { padding: 12px 14px; }
+  }
+</style>
+
+<header class="topbar">
+  <a class="back-btn" href="Event_Listing.html">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    Back to events
+  </a>
+  <span class="ev-title">
+    <h1 id="dash-event-name">&nbsp;</h1>
+    <span class="meta" id="dash-event-meta"></span>
+  </span>
+  <span class="topbar-acts">
+    <button class="btn btn-secondary" type="button" id="dash-preview">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+      Preview
+    </button>
+    <button class="btn btn-primary" type="button" id="dash-publish">Publish</button>
+  </span>
+</header>
+
+<div class="dash-shell">
+  <nav class="rail" id="rail" aria-label="Sections">
+  </nav>
+
+  <div class="dash-main-wrap">
+    <main class="dash-main">
+      <div id="view"></div>
+    </main>
+  </div>
+</div>
+
+<div class="toast-host" id="toast-host"></div>
+<select id="dash-event" hidden aria-hidden="true"></select>
+
+<script src="edit-event-core.js"></script>
+<script src="edit-event-dashboard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+(function(){
+  'use strict';
+  var C = window.RevampCore;
+  var DASH = window.EditEventDashboard;
+  var sel = document.getElementById('dash-event');
+
+  function renderRail(){
+    renderEventRail('rail', {
+      activeSection: 'dashboard',
+      onSection: function(section){
+        if (section === 'dashboard') {
+          location.href = 'dashboard.html';
+          return;
+        }
+        if (section === 'audience') {
+          location.href = 'audience-registrations.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id);
+          return;
+        }
+        if (section === 'marketing') {
+          location.href = 'marketing.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id);
+          return;
+        }
+        if (section === 'settings') {
+          location.href = 'settings.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id);
+          return;
+        }
+        if (section === 'design') {
+          location.href = 'custom_editor.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id);
+          return;
+        }
+        if (section === 'payment') {
+          location.href = 'edit-event.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id) + '#audience/payments';
+          return;
+        }
+        location.href = 'edit-event.html?event=' + encodeURIComponent(sel.value || C.EVENTS[0].id) + '#' + section;
+      }
+    });
+  }
+
+  function updateEventHeader(ev){
+    document.getElementById('dash-event-name').textContent = ev.name + ' | ' + (C.PORTALS[ev.portal] || '');
+    document.getElementById('dash-event-meta').textContent = C.fmtDT(ev.start) + '  |  ' + ev.eventNo + '  |  ' + (C.TYPES[ev.type] || ev.type);
+  }
+
+  sel.innerHTML = C.EVENTS.map(function(e){
+    return '<option value="' + e.id + '">' + C.esc(e.name) + '</option>';
+  }).join('');
+  renderRail();
+
+  function draw(){
+    var EV = C.eventById(sel.value) || C.EVENTS[0];
+    updateEventHeader(EV);
+    var KEY = 'revamp-edit-event-' + EV.id;
+    var S = C.loadState(KEY);
+
+    var ctx = C.makeCtx({
+      EV: EV,
+      S: S,
+      PEOPLE: C.makePeople(EV),
+      vhead: function(t, sub, right){
+        return '<div class="vhead"><div class="vhead-row"><div class="grow">' +
+          '<div class="crumb">Dashboard</div><h2>' + C.esc(t) + '</h2>' +
+          (sub ? '<div class="sub">' + C.esc(sub) + '</div>' : '') +
+          '</div>' +
+          (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
+          '</div></div>';
+      },
+      go: function(r){
+        location.href = 'edit-event.html#' + r;
+      },
+      render: draw,
+      save: function(){ C.saveState(KEY, S); }
+    });
+
+    document.getElementById('view').innerHTML = DASH.view(ctx);
+    DASH.wire(ctx);
+
+    document.querySelectorAll('[data-goto]').forEach(function(b){
+      b.addEventListener('click', function(){ ctx.go(b.getAttribute('data-goto')); });
+    });
+
+    document.querySelectorAll('[data-save]').forEach(function(b){
+      b.addEventListener('click', function(e){ e.stopPropagation(); C.toast(b.getAttribute('data-save')); });
+    });
+  }
+
+  sel.onchange = draw;
+  document.getElementById('dash-preview').onclick = function(){ C.toast('Preview opened'); };
+  document.getElementById('dash-publish').onclick = function(){ C.toast('Published. The microsite is live at etoneworld.com'); };
+  draw();
+})();
+</script>

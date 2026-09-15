@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registrations - Revamp CMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="edit-event.css">
+  <style>
+    body{background:var(--bg);overflow-x:hidden}
+    .registrations-page{display:flex;min-height:calc(100vh - var(--topbar-h))}
+    .registrations-main{flex:1;min-width:0;padding:0 28px 60px}
+    .event-picker{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px;color:var(--text-muted)}
+    .event-picker select{min-width:210px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}
+    .audience-tabs{display:flex;gap:28px;border-bottom:1px solid var(--border);margin:0 0 31px;white-space:nowrap;overflow-x:auto}
+    .audience-tabs button{position:relative;border:0;background:none;padding:20px 0 14px;color:var(--text-muted);font-size:15px;font-weight:700;cursor:pointer}
+    .audience-tabs button[aria-selected="true"]{color:var(--accent-strong)}
+    .audience-tabs button[aria-selected="true"]:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--accent);border-radius:3px}
+    .audience-tabs small{font-family:var(--font-mono);font-size:12px;color:var(--text-faint);margin-left:4px}
+    .crumb{font-size:12px;color:var(--text-faint);font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+    .page-heading{margin:13px 0 26px}
+    .page-heading h2{font-size:32px;line-height:1.1;margin-bottom:8px}
+    .page-heading p{font-size:16px;color:var(--text-muted)}
+    .subtabs{display:flex;align-items:center;gap:5px;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;margin-bottom:22px;overflow-x:auto}
+    .subtabs button{border:0;background:transparent;border-radius:9px;padding:11px 20px;color:var(--text-muted);font-size:14px;font-weight:700;white-space:nowrap;cursor:pointer}
+    .subtabs button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow-sm)}
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-sm);overflow:hidden}
+    .toolbar{display:flex;align-items:center;gap:12px;padding:15px 19px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+    .search{display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:9px 12px;min-width:280px;flex:1;color:var(--text-faint)}
+    .search input{border:0;outline:0;background:transparent;min-width:0;width:100%;font-size:14px;color:var(--text)}
+    .bulk{display:flex;align-items:center;gap:9px;padding:11px 19px;background:var(--accent-soft);border-bottom:1px solid var(--border);flex-wrap:wrap}
+    .bulk b{margin-right:auto;color:var(--accent-strong);font-size:13px}
+    .tbl-wrap{overflow-x:auto}
+    .tbl{width:100%;border-collapse:collapse;min-width:920px;font-size:14px}
+    .tbl th{background:var(--surface-2);color:var(--text-muted);padding:13px 15px;text-align:left;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap}
+    .tbl th.sortable{cursor:pointer}.tbl th.sortable:hover{color:var(--text)}.tbl th.sorted{color:var(--accent-strong)}
+    .arr{margin-left:5px;color:var(--text-faint)}
+    .tbl td{padding:15px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+    .tbl tr:last-child td{border-bottom:0}.tbl tbody tr:hover{background:var(--surface-2)}
+    .person{display:flex;align-items:center;gap:10px}.avat{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800;flex-shrink:0}
+    .pn{display:flex;flex-direction:column;gap:2px}.pn b{font-size:14px}.pn span{font-size:12px;color:var(--text-muted)}
+    .num{font-family:var(--font-mono)}
+    .badge{display:inline-flex;align-items:center;border-radius:100px;padding:5px 10px;font-size:11px;font-weight:800;letter-spacing:.03em}.b-mute{background:var(--surface-2);color:var(--text-muted)}.b-ok{background:var(--ok-soft);color:var(--ok)}
+    .pager{display:flex;align-items:center;justify-content:flex-end;gap:5px;padding:14px 19px;color:var(--text-muted);font-size:12px;flex-wrap:wrap}.pager .cnt{margin-right:auto}.pg-btn{min-width:30px;height:30px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text-muted);cursor:pointer}.pg-btn:hover,.pg-btn[aria-current="true"]{background:var(--accent);border-color:var(--accent);color:#fff}.pg-btn:disabled{opacity:.4;pointer-events:none}
+    @media(max-width:760px){.registrations-main{padding:0 14px 40px}.topbar{height:auto;min-height:60px;flex-wrap:wrap;padding:10px 14px}.event-picker{width:100%;margin-left:0}.event-picker select{flex:1}.audience-tabs{gap:20px}.page-heading h2{font-size:27px}.search{min-width:0;flex-basis:100%}}
+  </style>
+</head>
+<body>
+<header class="topbar">
+  <a class="back-btn" href="Event_Listing.html"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>Back to events</a>
+  <span class="ev-title"><h1 id="event-name">&nbsp;</h1><span class="meta" id="event-meta"></span></span>
+  <label class="event-picker" for="event-select">Event <select id="event-select"></select></label>
+</header>
+<div class="registrations-page">
+  <nav class="rail" id="rail" aria-label="Sections"></nav>
+  <main class="registrations-main" id="page"></main>
+</div>
+<div class="toast-host" id="toast-host"></div>
+<script src="edit-event-core.js"></script>
+<script src="sidebar.js"></script>
+<script>
+(function(){
+  'use strict';
+  var C=window.RevampCore, select=document.getElementById('event-select'), page=document.getElementById('page');
+  var query=new URLSearchParams(location.search), state={q:'',page:1,per:25,sort:'name',dir:1,sel:{}};
+  select.innerHTML=C.EVENTS.map(function(e){return '<option value="'+e.id+'">'+C.esc(e.name)+'</option>';}).join('');
+  select.value=query.get('event') || C.EVENTS[0].id;
+
+  function current(){return C.eventById(select.value)||C.EVENTS[0];}
+  function people(ev){return C.makePeople(ev);}
+  function notify(text){C.toast(text);}
+  function updateHeader(ev){
+    document.getElementById('event-name').textContent=ev.name+' | '+(C.PORTALS[ev.portal]||'');
+    document.getElementById('event-meta').textContent=C.fmtDT(ev.start)+'  |  '+ev.eventNo+'  |  '+(C.TYPES[ev.type]||ev.type);
+  }
+  function goSection(section){
+    if(section==='dashboard'){location.href='dashboard.html';return;}
+    if(section==='design'){location.href='custom_editor.html?event='+encodeURIComponent(select.value);return;}
+    if(section==='payment'){location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#audience/payments';return;}
+    if(section==='audience'){return;}
+    location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#'+section;
+  }
+  function renderRail(){renderEventRail('rail',{activeSection:'audience',onSection:goSection});}
+  function renderTabs(ev,all){
+    return '<div class="audience-tabs">'+[['reg','Registrations',ev.registrations],['attendees','Attendees',all.filter(function(p){return p.attended;}).length],['shortlist','Shortlisted',ev.shortlist],['payments','Payments',null],['insights','Insights',null]].map(function(x){
+      var href=x[0]==='reg'?'audience-registrations.html?event='+ev.id:'edit-event.html?event='+ev.id+'#audience/'+x[0];
+      return '<button type="button" data-tab-link="'+C.esc(href)+'" aria-selected="'+(x[0]==='reg')+'">'+x[1]+(x[2]!==null?' <small>'+C.comma(x[2])+'</small>':'')+'</button>';
+    }).join('')+'</div>';
+  }
+  function renderSubtabs(ev,all){
+    return '<div class="subtabs">'+[['reg','Registrations',ev.registrations],['attendees','Attendees',all.filter(function(p){return p.attended;}).length],['shortlist','Shortlisted',ev.shortlist],['visitors','Unique visitors',all.length]].map(function(x){return '<button type="button" data-tab-link="'+(x[0]==='reg'?'audience-registrations.html?event='+ev.id:'edit-event.html?event='+ev.id+'#audience/'+x[0])+'" aria-selected="'+(x[0]==='reg')+'">'+x[1]+' ('+C.comma(x[2])+')</button>';}).join('')+'</div>';
+  }
+  function render(){
+    var ev=current(), all=people(ev), q=state.q.toLowerCase(); updateHeader(ev); renderRail();
+    var rows=all.filter(function(p){return !q||(p.name+' '+p.email+' '+p.comp+' '+p.desig+' '+p.city).toLowerCase().indexOf(q)>=0;});
+    rows.sort(function(a,b){var A=a[state.sort],B=b[state.sort];return (A>B?1:A<B?-1:0)*state.dir;});
+    var total=rows.length,pages=Math.max(1,Math.ceil(total/state.per)); if(state.page>pages)state.page=pages;
+    var from=(state.page-1)*state.per, visible=rows.slice(from,from+state.per), selected=Object.keys(state.sel).filter(function(k){return state.sel[k];}).length;
+    function th(key,label){var on=state.sort===key;return '<th class="sortable '+(on?'sorted':'')+'" data-sort="'+key+'">'+label+' <span class="arr">'+(on?(state.dir>0?'↑':'↓'):'↕')+'</span></th>';}
+    var body=visible.map(function(p){return '<tr><td><input type="checkbox" data-sel="'+p.id+'" '+(state.sel[p.id]?'checked':'')+'></td><td><span class="person"><span class="avat" style="background:'+p.colour+'">'+C.esc(p.initials)+'</span><span class="pn"><b>'+C.esc(p.name)+'</b><span>'+C.esc(p.email)+'</span></span></span></td><td>'+C.esc(p.desig)+'</td><td>'+C.esc(p.comp)+'</td><td>'+C.esc(p.city)+'</td><td><span class="badge b-mute">'+C.esc(p.src)+'</span></td><td class="num">'+C.fmtDate(p.when)+'</td><td>'+(p.paid?'<span class="badge b-ok">Paid</span>':'<span class="badge b-mute">Free</span>')+'</td></tr>';}).join('');
+    if(!body)body='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">Nothing matches that search. Try a different name, company or city.</td></tr>';
+    var numbers=[];for(var i=1;i<=pages;i++){if(i===1||i===pages||Math.abs(i-state.page)<=1)numbers.push(i);else if(numbers[numbers.length-1]!=='...')numbers.push('...');}
+    var pager=numbers.map(function(n){return n==='...' ? '<span>...</span>':'<button class="pg-btn" data-page="'+n+'" aria-current="'+(n===state.page)+'">'+n+'</button>';}).join('');
+    page.innerHTML=renderTabs(ev,all)+'<div class="crumb">Audience › Registrations</div><div class="page-heading"><h2>Registrations</h2><p>Everyone who filled the registration form for this event.</p></div>'+renderSubtabs(ev,all)+'<section class="panel"><div class="toolbar"><span class="search"><span>⌕</span><input id="search" placeholder="Search name, email, company, designation..." value="'+C.esc(state.q)+'"></span><button class="btn btn-secondary btn-sm" data-action="filters">Filters</button><button class="btn btn-secondary btn-sm" data-action="export">↓ &nbsp;Export</button><button class="btn btn-secondary btn-sm" data-action="columns">Columns</button></div>'+(selected?'<div class="bulk"><b>'+selected+' selected</b><button class="btn btn-secondary btn-sm" data-action="email">Email</button><button class="btn btn-secondary btn-sm" data-action="whatsapp">WhatsApp</button><button class="btn btn-secondary btn-sm" data-action="shortlist">Shortlist</button><button class="btn btn-ghost btn-sm" data-action="clear">Clear</button></div>':'')+'<div class="tbl-wrap"><table class="tbl"><thead><tr><th><input type="checkbox" id="select-all"></th>'+th('name','Name')+th('desig','Designation')+th('comp','Company')+th('city','Location')+th('src','Source')+th('when','Registered')+th('paid','Payment')+'</tr></thead><tbody>'+body+'</tbody></table></div><div class="pager"><span class="cnt">Showing '+(total?from+1:0)+' to '+Math.min(from+state.per,total)+' of '+C.comma(total)+' entries</span><button class="pg-btn" data-page="'+(state.page-1)+'" '+(state.page<=1?'disabled':'')+'>‹</button>'+pager+'<button class="pg-btn" data-page="'+(state.page+1)+'" '+(state.page>=pages?'disabled':'')+'>›</button></div></section>';
+    wire(ev);
+  }
+  function wire(ev){
+    var search=document.getElementById('search'); if(search){search.oninput=function(){state.q=search.value;state.page=1;render();var next=document.getElementById('search');next.focus();next.setSelectionRange(next.value.length,next.value.length);};}
+    document.querySelectorAll('[data-sort]').forEach(function(el){el.onclick=function(){var key=el.getAttribute('data-sort');if(state.sort===key)state.dir=-state.dir;else{state.sort=key;state.dir=1;}render();};});
+    document.querySelectorAll('[data-page]').forEach(function(el){el.onclick=function(){var n=Number(el.getAttribute('data-page'));if(n>0){state.page=n;render();}};});
+    document.querySelectorAll('[data-sel]').forEach(function(el){el.onchange=function(){state.sel[el.getAttribute('data-sel')]=el.checked;render();};});
+    var all=document.getElementById('select-all');if(all)all.onchange=function(){document.querySelectorAll('[data-sel]').forEach(function(el){state.sel[el.getAttribute('data-sel')]=all.checked;});render();};
+    document.querySelectorAll('[data-tab-link]').forEach(function(el){el.onclick=function(){location.href=el.getAttribute('data-tab-link');};});
+    document.querySelectorAll('[data-action]').forEach(function(el){el.onclick=function(){var action=el.getAttribute('data-action');if(action==='clear'){state.sel={};render();return;}notify(action.charAt(0).toUpperCase()+action.slice(1)+' action opened');};});
+  }
+  select.onchange=function(){state={q:'',page:1,per:25,sort:'name',dir:1,sel:{}};history.replaceState(null,'','audience-registrations.html?event='+select.value);render();};
+  render();
+})();
+</script>
+</body>
+</html>

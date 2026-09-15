@@ -161,6 +161,9 @@
   .step-wrap.wide{ max-width: 1140px; }
   .step-head h1{ font-size: 26px; letter-spacing: -0.01em; }
   .step-head .desc{ color: var(--text-muted); font-size: 14px; margin-top: 7px; max-width: 62ch; }
+  .step-head-row{ display:flex; align-items:flex-start; justify-content:space-between; gap: 20px; flex-wrap: wrap; }
+  .step-head-row .step-head-text{ flex: 1; min-width: 280px; }
+  .step-head-row .btn{ flex-shrink: 0; }
 
   .panel{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
   .panel-head{
@@ -171,7 +174,7 @@
   .panel-body{ padding: 18px; display:flex; flex-direction:column; gap: 18px; }
 
   /* ---------- fields ---------- */
-  .field label, .field .flabel{ display:block; font-size: 12.5px; font-weight: 700; margin-bottom: 6px; color: var(--text-muted); }
+  .field label, .field .flabel{ display:block; font-size: 13px; font-weight: 800; margin-bottom: 6px; color: var(--text); letter-spacing: .01em; }
   .field .hint{ font-size: 11.5px; color: var(--text-faint); margin-top: 6px; }
   .field-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 640px){ .field-grid{ grid-template-columns: 1fr; } }
@@ -192,12 +195,43 @@
   .segmented button:hover{ color: var(--text); }
   .segmented button[aria-pressed="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 700; }
 
-  /* four-up template-style grid (event category picker) */
-  .tpl-grid.four{ grid-template-columns: repeat(4, 1fr); }
-  @media (max-width: 1180px){ .tpl-grid.four{ grid-template-columns: repeat(2,1fr); } }
-  @media (max-width: 620px){ .tpl-grid.four{ grid-template-columns: 1fr; } }
+  /* three-up event type grid */
+  .tpl-grid.event-types{ grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 900px){ .tpl-grid.event-types{ grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 620px){ .tpl-grid.event-types{ grid-template-columns: 1fr; } }
   .tpl-thumb .b.pill{ height: 13px; width: 42%; border-radius: 7px; background: var(--accent-soft); }
   .tpl-thumb .b.form{ height: 30px; background: var(--surface); border: 1px dashed var(--border); }
+
+  /* Basic-detail choices use the taller, icon-led cards from the new picker. */
+  #cat-picker{ padding-inline: clamp(32px, 4vw, 56px); }
+  #cat-picker .step-head h1{ font-size: clamp(30px, 3vw, 44px); letter-spacing: -0.025em; }
+  #cat-picker .step-head .desc{ max-width: 68ch; }
+  #cat-grid .category-card{
+    min-height: 245px; padding: 20px 20px 18px; overflow: visible; color: var(--text);
+    gap: 14px; justify-content: flex-start;
+  }
+  .category-card-top{ display:flex; align-items:center; justify-content:space-between; gap: 12px; min-height: 44px; }
+  .category-icon{
+    width: 44px; height: 44px; border-radius: 12px; display:grid; place-items:center;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .category-card:first-child .category-icon{ color: var(--accent-contrast); background: var(--accent); border-color: var(--accent); }
+  .category-badge{
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border)); border-radius: 999px;
+    padding: 4px 11px; color: var(--accent-strong); background: var(--surface);
+    font-size: 10.5px; line-height: 1.2; font-weight: 800; letter-spacing: .055em; text-transform: uppercase;
+  }
+  #cat-grid .category-card .tpl-info{ padding: 0; gap: 10px; flex: 1; width: 100%; }
+  #cat-grid .category-card .tpl-info h4{ font-size: 21px; line-height: 1.25; }
+  #cat-grid .category-card .tpl-info .s{ font-size: 13.5px; line-height: 1.65; }
+  #cat-grid .category-card .tpl-info .n{
+    margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border);
+    color: var(--accent-strong); font-family: var(--font-body); font-weight: 700;
+  }
+  @media (max-width: 620px){
+    #cat-picker{ padding-inline: 0; }
+    #cat-grid .category-card{ min-height: 225px; }
+  }
 
   /* compact header row: title + category chip + one-line context */
   .b-head{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -223,7 +257,11 @@
   .grp{ padding: 16px 0; border-top: 1px solid var(--border); }
   .grp:first-child{ border-top: 0; }
   .grp-h{ display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
-  .grp-h h4{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); white-space: nowrap; }
+  .grp-h h4{
+    display:flex; align-items:center; gap: 8px; font-size: 12.5px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text); white-space: nowrap;
+  }
+  .grp-h h4::before{ content:''; width: 4px; height: 14px; border-radius: 2px; background: var(--accent); flex-shrink: 0; }
   .grp-h .ln{ flex: 1; height: 1px; background: var(--border); }
   .grp-tag{
     font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
@@ -232,9 +270,10 @@
 
   /* 12-column field grid — packs tight, no dead columns */
   .frow{ display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px 16px; align-items: start; }
+  .c1{ grid-column: span 1; } .c2{ grid-column: span 2; }
   .c3{ grid-column: span 3; } .c4{ grid-column: span 4; } .c5{ grid-column: span 5; }
-  .c6{ grid-column: span 6; } .c8{ grid-column: span 8; } .c12{ grid-column: span 12; }
-  @media (max-width: 1080px){ .c3, .c4, .c5{ grid-column: span 6; } .c8{ grid-column: span 12; } }
+  .c6{ grid-column: span 6; } .c7{ grid-column: span 7; } .c8{ grid-column: span 8; } .c10{ grid-column: span 10; } .c12{ grid-column: span 12; }
+  @media (max-width: 1080px){ .c3, .c4, .c5{ grid-column: span 6; } .c7, .c8, .c10{ grid-column: span 12; } }
   @media (max-width: 680px){ .frow > *{ grid-column: span 12; } }
 
   .slug-meta{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -257,6 +296,38 @@
   .sheet .dropzone{ padding: 11px 12px; gap: 3px; }
   .sheet .dropzone .ico{ margin-bottom: 0; }
   .sheet .dropzone .s{ font-size: 10.5px; }
+  /* logo uploader, styled to match the URL-slug row: one bordered pill, thumbnail + label */
+  .logo-row{
+    display:flex; align-items:stretch; height: 40px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface); overflow: hidden; cursor: pointer;
+    transition: border-color .12s ease;
+  }
+  .logo-row:hover{ border-color: var(--accent); }
+  .logo-row-icon{
+    flex-shrink: 0; width: 40px; display:flex; align-items:center; justify-content:center;
+    background: var(--surface-2); color: var(--text-faint); border-right: 1px solid var(--border);
+  }
+  .logo-tile-img{ width: 100%; height: 100%; object-fit: contain; display: block; padding: 6px; }
+  .logo-row-cta{
+    flex: 1; min-width: 0; display:flex; align-items:center; text-align: left;
+    background: none; border: none; padding: 0 12px; cursor: pointer;
+    font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--accent-strong);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .logo-tile-remove{
+    flex-shrink: 0; width: 34px; border: none; border-left: 1px solid var(--border); padding: 0;
+    background: transparent; color: var(--text-faint); display:flex; align-items:center; justify-content:center;
+    cursor: pointer; transition: background .12s ease, color .12s ease;
+  }
+  .logo-tile-remove:hover{ background: var(--crit-soft); color: var(--crit); }
+  .logo-meta{
+    margin-top: 7px; font-size: 12px; color: var(--text-faint); font-weight: 600;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .logo-meta.ok{ color: var(--ok); }
+  @media (max-width: 1080px){
+    #identity-row > .field, #sched-body .field{ grid-column: span 6 !important; }
+  }
 
   /* awards stage cell (horizontal, replaces the tall timeline) */
   .stage{ background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
@@ -301,13 +372,12 @@
   .dt-preview.tbd{ background: var(--accent-soft); border-color: var(--accent); border-style: solid; }
   .dt-preview.tbd .lb{ color: var(--accent-strong); }
 
-  /* requirement pills */
-  .pill-req, .pill-opt{
+  /* required marker (plain asterisk) + optional pill */
+  .pill-req{ font-size: 15px; font-weight: 800; color: var(--accent); line-height: 1; flex-shrink: 0; }
+  .pill-opt{
     font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-    padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+    padding: 2px 6px; border-radius: 4px; flex-shrink: 0; background: var(--surface-2); color: var(--text-faint);
   }
-  .pill-req{ background: var(--accent-soft); color: var(--accent-strong); }
-  .pill-opt{ background: var(--surface-2); color: var(--text-faint); }
 
 
   .slug-row{ display:flex; align-items:stretch; }
@@ -411,11 +481,30 @@
   @media (max-width: 900px){ .tpl-grid{ grid-template-columns: repeat(2,1fr); } }
   @media (max-width: 620px){ .tpl-grid{ grid-template-columns: 1fr; } }
   .tpl-card{
+    position: relative;
     background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden;
     text-align:left; display:flex; flex-direction:column; transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
   }
   .tpl-card:hover{ border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
   .tpl-card[aria-pressed="true"]{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  /* ---- template cards: small preview image + name + Preview / Use Template ---- */
+  .tpl-card-min{ padding: 0; display:flex; flex-direction:column; }
+  .tpl-card-min[data-selected="true"]{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .tpl-thumb-mini{
+    position:relative; height: 90px; overflow:hidden; background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .tpl-thumb-mini img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position: top; display:block; }
+  .tpl-type-chip{
+    position:absolute; top:8px; right:8px; z-index:2; background: rgba(255,255,255,.94); color: var(--text);
+    font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .tpl-thumb-full{ display:block; width:100%; border-radius: 10px; border: 1px solid var(--border); }
+  .tpl-card-min-body{ padding: 16px 18px 18px; display:flex; flex-direction:column; align-items:flex-start; gap: 14px; }
+  .tpl-card-min-name{ font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--text); }
+  .tpl-actions{ display:flex; gap:8px; width:100%; }
+  .tpl-actions .btn{ flex:1; }
   .tpl-thumb{ height: 118px; background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 10px; display:flex; flex-direction:column; gap: 5px; }
   .tpl-thumb .b{ background: var(--surface-3); border-radius: 3px; }
   .tpl-thumb .b.hero{ height: 34px; background: var(--accent-soft); }
@@ -738,16 +827,16 @@
       <!-- ===== PHASE 1 : pick the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
-          <span class="eyebrow">Step 2 of 6 &middot; Basic details</span>
-          <h1>What kind of event is this?</h1>
-          <p class="desc">Pick a category to begin. Each one opens a different Basic details form &mdash; the date fields, the required fields and the extra panels all change to match how that kind of event actually runs.</p>
+          <span class="eyebrow">Step 2 of 6 &middot; Event type</span>
+          <h1>What type of microsite are you creating?</h1>
+          <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
         </div>
 
-        <div class="tpl-grid four" id="cat-grid"></div>
+        <div class="tpl-grid event-types" id="cat-grid"></div>
 
         <div class="callout">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <span><strong>The category is a switch, not a label</strong>An IP summit can be planned to a quarter, an awards programme runs a nomination window, and a leadgen page usually has no date at all. Pick the closest match &mdash; you can change it on the next screen.</span>
+          <span><strong>Your choice tailors the setup</strong>We will show the dates, event fields, and nomination options that match your selection. You can change it on the next screen.</span>
         </div>
       </div>
 
@@ -767,67 +856,45 @@
         <div class="sheet">
 
           <div class="grp">
-            <div class="grp-h"><h4>Identity</h4><span class="ln"></span></div>
-            <div class="frow">
-              <div class="field c3" id="vertical-cell">
-                <label for="f-vertical">Vertical / Portal</label>
-                <select class="inp" id="f-vertical"></select>
-              </div>
+            <div class="grp-h"><h4>Event information</h4><span class="ln"></span></div>
+            <div class="frow" id="identity-row">
               <div class="field c4" id="name-cell">
-                <div class="flabel-row"><label for="f-name">Event / Microsite name</label><span class="pill-req">Required</span></div>
+                <div class="flabel-row"><label for="f-name">Event / Microsite name</label><span class="pill-req">*</span></div>
                 <input class="inp" id="f-name" type="text" placeholder="e.g. MarTech+ Summit 2026" autocomplete="off">
               </div>
               <div class="field c3" id="client-wrap" hidden>
-                <div class="flabel-row"><label for="f-client">Client / Sponsor</label><span class="pill-req">Required</span></div>
+                <div class="flabel-row"><label for="f-client">Client / Sponsor</label><span class="pill-req" id="client-requirement">*</span></div>
                 <input class="inp" id="f-client" type="text" placeholder="e.g. Tata Capital" autocomplete="off">
               </div>
-              <div class="field c5" id="slug-cell">
-                <div class="flabel-row"><span class="flabel">URL slug</span><span class="pill-req">Required</span></div>
+              <div class="field c4" id="slug-cell">
+                <div class="flabel-row"><span class="flabel">URL slug</span><span class="pill-req">*</span></div>
                 <div class="slug-row">
                   <span class="slug-prefix">etoneworld.com/</span>
                   <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
                 </div>
                 <div class="slug-meta"><div id="slug-status"></div><div id="slug-ai"></div></div>
               </div>
+              <div class="field c4 logo-field" id="logo-cell">
+                <div class="flabel-row"><span class="flabel">Event logo</span><span class="pill-req">*</span></div>
+                <div class="logo-row" id="logo-tile" title="Upload a PNG or SVG event logo">
+                  <span class="logo-row-icon">
+                    <img class="logo-tile-img" id="logo-preview-img" alt="" hidden>
+                    <svg class="logo-tile-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M7.5 8.5L12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
+                  </span>
+                  <button class="logo-row-cta" id="logo-drop" type="button">Upload logo</button>
+                  <button class="logo-tile-remove" id="logo-remove" type="button" title="Remove logo" hidden>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                  </button>
+                </div>
+                <div class="logo-meta" id="logo-hint">PNG or SVG &middot; 571&times;340 &middot; max 5&nbsp;MB</div>
+                <input id="f-logo" type="file" accept="image/png,image/svg+xml,.svg" hidden>
+              </div>
             </div>
           </div>
 
           <div class="grp">
             <div class="grp-h"><h4 id="sched-title">Event schedule</h4><span class="ln"></span><span class="grp-tag" id="sched-eyebrow"></span></div>
-            <div class="frow" id="sched-body"></div>
-          </div>
-
-          <div class="grp" id="format-panel">
-            <div class="grp-h"><h4>Format, venue &amp; brand</h4><span class="ln"></span></div>
-            <div class="frow">
-              <div class="field c3">
-                <label for="f-type">Event type</label>
-                <select class="inp" id="f-type"></select>
-              </div>
-              <div class="field c4" id="venue-cell">
-                <div class="flabel-row"><label for="f-venue">Venue &amp; city</label><span class="pill-opt">Optional</span></div>
-                <input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Mumbai">
-              </div>
-              <div class="field c4" id="platform-wrap" hidden>
-                <label for="f-platform">Streaming platform</label>
-                <input class="inp" id="f-platform" type="text" placeholder="e.g. ET Oneworld Live Studio">
-              </div>
-              <div class="field c2">
-                <label for="f-payment" id="lbl-payment">Payment</label>
-                <select class="inp" id="f-payment"></select>
-              </div>
-              <div class="field c3">
-                <span class="flabel">Event logo</span>
-                <button class="dropzone" id="logo-drop" type="button">
-                  <span class="ico">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.9"/><path d="M3 17l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
-                  </span>
-                  <span class="t">Upload event logo</span>
-                  <span class="s">PNG or SVG &middot; 300&times;300 &middot; 1:1</span>
-                </button>
-              </div>
-            </div>
-            <p class="hint" id="payment-hint" style="margin-top:10px"></p>
+            <div id="sched-body"></div>
           </div>
 
           <div class="grp" id="cat-panel" hidden>
@@ -839,35 +906,25 @@
       </div>
     </section>
 
-    <!-- ---------- STEP 2 : CHOOSE PATH ---------- -->
-    <section class="step-wrap" id="step-2" hidden>
-      <div class="step-head">
-        <span class="eyebrow">Step 3 of 6 &middot; Choose path</span>
-        <h1>How do you want to build it?</h1>
-        <p class="desc">Two routes, same destination &mdash; an assembled first preview. Pick whichever matches what you already have in hand.</p>
+    <!-- ---------- STEP 2 : CHOOSE TEMPLATE ---------- -->
+    <section class="step-wrap wide" id="step-2" hidden>
+      <div class="step-head step-head-row">
+        <div class="step-head-text">
+          <span class="eyebrow">Step 3 of 6 &middot; Choose Template</span>
+          <h1>Pick a template to start from</h1>
+          <p class="desc">Our best-performing layouts for IP and residential events, ready to fill with your content. Already have a design? Convert it instead.</p>
+        </div>
+        <button class="btn btn-ai" id="btn-convert-design" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+          Convert Figma / Lovable Design
+        </button>
       </div>
 
-      <div class="path-grid" id="path-grid"></div>
-
-      <div class="panel">
-        <div class="panel-head"><h3>Side by side</h3></div>
-        <table class="cmp">
-          <thead>
-            <tr><th></th><th>Path A &mdash; Clone template</th><th>Path B &mdash; Own design</th></tr>
-          </thead>
-          <tbody>
-            <tr><td class="k">Best for</td><td>Standard events, fastest route</td><td>Teams who already designed their site</td></tr>
-            <tr><td class="k">You provide</td><td>Just content</td><td>A design source + light review</td></tr>
-            <tr><td class="k">Input</td><td>Template picker</td><td>Figma / Lovable / builder URL / PSD</td></tr>
-            <tr><td class="k">AI role</td><td>Reshape content to fit each section</td><td>Detect sections, screenshot them, extract content</td></tr>
-            <tr><td class="k">Next screen</td><td>Section&#8209;by&#8209;section fill</td><td>Detected&#8209;section review</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <div class="tpl-grid" id="tpl-gallery"></div>
 
       <div class="callout plain">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
-        <span><strong>Not a one&#8209;way door</strong>You can switch paths later without losing your basic details, and mix template sections into an uploaded design once you are past this screen.</span>
+        <span><strong>Not a one&#8209;way door</strong>You can switch templates, or convert a design instead, later without losing your basic details.</span>
       </div>
     </section>
 
@@ -959,15 +1016,32 @@
      TEMPLATES
   ========================================================= */
   var TEMPLATES = [
-    { id:'summit', name:'Summit & Conference', sub:'The workhorse. Agenda-led, speaker-heavy.',
-      sections:['nav','hero','stats','partners','about','marquee','awaits','verticals','priorities','speakers','whyjoin','attend','insights','glimpses','contact','footer'] },
-    { id:'awards', name:'Awards Night', sub:'Nomination-first, jury and categories up top.',
+    { id:'tech500', name:'TECH500', tag:'IP event', cat:'IP', img:'template-previews/tech500-mini.jpg', imgFull:'template-previews/tech500-full.jpg',
+      sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.',
+      sections:['nav','hero','stats','priorities','about','whyjoin','attend','contact','footer'] },
+    { id:'making-ai-work', name:'Making AI Work', tag:'IP event', cat:'IP', img:'template-previews/making-ai-work-mini.jpg', imgFull:'template-previews/making-ai-work-full.jpg',
+      sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.',
+      sections:['nav','hero','partners','speakers','priorities','awaits','contact','footer'] },
+    { id:'workplace-2035', name:'Workplace 2035', tag:'IP event', cat:'IP', img:'template-previews/workplace-2035-mini.jpg', imgFull:'template-previews/workplace-2035-full.jpg',
+      sub:'The future of the intelligent enterprise — stats, partners, speakers and a two-track agenda.',
+      sections:['nav','hero','stats','partners','about','priorities','speakers','contact','footer'] },
+    { id:'surge', name:'SURGE', tag:'Residential event', cat:'IP', img:'template-previews/surge-mini.jpg', imgFull:'template-previews/surge-full.jpg',
+      sub:'India\u2019s largest residential GCC summit — experience zones, speakers and past-edition glimpses.',
+      sections:['nav','hero','partners','about','stats','awaits','speakers','glimpses','contact','footer'] },
+    { id:'annual-education-summit', name:'Annual Education Summit', tag:'Residential event', cat:'IP', img:'template-previews/annual-education-summit-mini.jpg', imgFull:'template-previews/annual-education-summit-full.jpg',
+      sub:'India\u2019s largest education summit & expo — tracks, speaker clubs and glimpses.',
+      sections:['nav','hero','stats','about','awaits','speakers','whyjoin','glimpses','attend','contact','footer'] },
+    { id:'nbfc-leaders-retreat', name:'NBFC Leaders\u2019 Retreat', tag:'Residential event', cat:'IP', img:'template-previews/nbfc-leaders-retreat-mini.jpg', imgFull:'template-previews/nbfc-leaders-retreat-full.jpg',
+      sub:'A resort-based leadership retreat — focus areas, glimpses and speaker snippets.',
+      sections:['nav','hero','stats','partners','speakers','verticals','priorities','glimpses','insights','contact','footer'] },
+    { id:'awards', name:'Awards Night', tag:'Awards', cat:'Awards',
+      sub:'Nomination-first, jury and categories up top.',
       sections:['nav','hero','stats','about','awaits','priorities','speakers','whyjoin','insights','glimpses','partners','contact','footer'] },
-    { id:'leadgen', name:'Leadgen / Roundtable', sub:'Short, one screen, form does the work.',
+    { id:'leadgen', name:'Leadgen / Roundtable', tag:'Client event', cat:'Client',
+      sub:'Short, one screen, form does the work.',
       sections:['nav','hero','about','priorities','speakers','attend','whyjoin','contact','footer'] }
   ];
 
-  var VERTICALS = ['ETGovernment','ET Brand Equity','ET CIO','ET HRWorld','ET BFSI','ET Retail','ET HealthWorld','ET Auto','ET Telecom','ET Legal World','ET Manufacturing','ET Travel World'];
   var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
 
   /* =========================================================
@@ -982,50 +1056,40 @@
   var CAT_ICON = {
     IP:      '<path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8z"/>',
     Client:  '<rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M8.5 7.5V5.5a2 2 0 012-2h3a2 2 0 012 2v2"/><path d="M3 12.5h18"/>',
-    Awards:  '<path d="M7 4h10v4.5a5 5 0 01-10 0z"/><path d="M7 6H4.4a2.6 2.6 0 002.8 3M17 6h2.6a2.6 2.6 0 01-2.8 3"/><path d="M12 13.5V16M8.5 20h7"/>',
-    Leadgen: '<path d="M3.5 5h17l-6.6 7.6V20l-3.8-1.9v-5.5z"/>'
+    Awards:  '<path d="M7 4h10v4.5a5 5 0 01-10 0z"/><path d="M7 6H4.4a2.6 2.6 0 002.8 3M17 6h2.6a2.6 2.6 0 01-2.8 3"/><path d="M12 13.5V16M8.5 20h7"/>'
   };
 
   var CATS = {
     IP: {
-      label: 'IP Event',
-      blurb: 'An ET-owned property — summit, conclave or roundtable we run ourselves.',
-      meta: 'Full section stack',
+      label: 'IP & Residential Event',
+      blurb: 'Build owned conferences, summits, conclaves, and residential experiences.',
+      meta: 'Owned event experiences',
+      badge: 'Most popular',
       dateTitle: 'Event schedule',
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'exact',
       venue: true, payment: true, nomination: false, campaign: false, client: false,
-      hint: 'IP: our own property, so the full section stack is offered by default. Lock an exact date, or keep it to a month or quarter while the edition is still being planned.'
+      hint: 'IP and residential events include the full section stack. Use an exact date, month, or quarter while the edition is being planned.'
     },
     Client: {
-      label: 'Client Event',
-      blurb: 'Run for a paying client or sponsor. Partner logos and contact blocks are pre-included.',
-      meta: 'Needs client name',
+      label: 'Custom Events',
+      blurb: 'Create client events, lead generation campaigns, roundtables, and virtual events.',
+      meta: 'Flexible event formats',
       dateTitle: 'Event schedule',
-      dateModes: ['exact','month','tbd'],
+      dateModes: ['none','exact','month','tbd'],
       defaultDateMode: 'exact',
-      venue: true, payment: true, nomination: false, campaign: false, client: true,
-      hint: 'Client: the sponsor name drives the “Presented by” lockup. Client dates are usually contracted, so an exact date is expected — but a month works while the contract is still moving.'
+      venue: true, payment: true, nomination: false, campaign: false, client: 'optional',
+      hint: 'Custom events cover client activations, lead generation, roundtables, and virtual formats. Add a client or sponsor only when relevant.'
     },
     Awards: {
       label: 'Awards',
-      blurb: 'A nomination-led programme. Entries, jury, shortlist, then a ceremony night.',
-      meta: 'Nomination window',
+      blurb: 'Run nominations, jury reviews, shortlists, and award ceremonies.',
+      meta: 'Nomination journey',
       dateTitle: 'Awards ceremony',
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'month',
       venue: true, payment: true, nomination: true, campaign: false, client: false,
-      hint: 'Awards: the nomination window is what the microsite actually sells early on — the ceremony date can stay undecided while entries are open.'
-    },
-    Leadgen: {
-      label: 'Leadgen',
-      blurb: 'A short one-screen capture page. Often evergreen, with no event date at all.',
-      meta: 'Date optional',
-      dateTitle: 'Event date',
-      dateModes: ['none','exact','month','tbd'],
-      defaultDateMode: 'none',
-      venue: false, payment: false, nomination: false, campaign: true, client: false,
-      hint: 'Leadgen: most of these are evergreen campaigns with no date to show. Add one only if this page is tied to a specific event.'
+      hint: 'Awards microsites support the nomination window, jury milestones, shortlist, and ceremony date.'
     }
   };
 
@@ -1111,13 +1175,14 @@
   /* =========================================================
      STATE
   ========================================================= */
-  var STEPS = ['Create event','Basic details','Choose path','Build content','AI assemble','First preview'];
+  var STEPS = ['Create event','Event type','Choose Template','Build content','AI assemble','First preview'];
   var STORE_KEY = 'revamp.createEvent.draft.v1';
+  var logoPreviewUrl = '';   // in-memory object URL for the uploaded logo — not persisted across reloads
 
   var S = {
     step: 1,
     basics: {
-      category: 'IP', vertical: VERTICALS[0], name: '', client: '', type: 'On-ground',
+      category: 'IP', name: '', client: '',
 
       /* --- flexible event date (B2B events are often booked before a date is fixed) --- */
       dateMode: 'exact',        // exact | month | quarter | tbd | none
@@ -1126,7 +1191,7 @@
       quarter: 'Q1', year: '',  // dateMode 'quarter'
       dateNote: '',             // public copy shown while the date is undecided
 
-      venue: '', city: '', platform: '',
+      venue: '', city: '',
 
       /* --- awards: nomination lifecycle, each stage independently deferrable --- */
       nomOpen: '', nomOpenTbd: false,
@@ -1136,7 +1201,7 @@
       /* --- leadgen: campaign window instead of an event date --- */
       campaignStart: '', campaignEnd: '', evergreen: true,
 
-      payment: 'Paid', slug: '', slugTouched: false, logo: false
+      payment: 'Paid', slug: '', slugTouched: false, logo: false, logoName: ''
     },
     catPicked: false,           // step 1 phase: false = category picker, true = the form
     path: null,                 // 'A' | 'B'
@@ -1276,7 +1341,7 @@
     if (S.step === 1){
       if (!S.catPicked){
         next.hidden = true;
-        note.textContent = 'Choose an event category to open the Basic details form.';
+        note.textContent = 'Choose a microsite type to open the event details form.';
       } else {
         var issue = basicsIssue(S.basics);
         next.disabled = !!issue;
@@ -1420,7 +1485,6 @@
   /* Location line for previews — categories with no venue print nothing. */
   function locLabel(b, fallback){
     if (!CATS[b.category].venue) return '';
-    if (b.type === 'Virtual') return b.platform || (fallback ? 'Online' : '');
     var v = [b.venue, b.city].filter(Boolean).join(', ');
     return v || (fallback ? 'Venue TBC' : '');
   }
@@ -1433,7 +1497,7 @@
     if (m === 'none' || m === 'tbd') return true;
     if (m === 'month')   return !!b.month;
     if (m === 'quarter') return !!b.year;
-    return !!b.start;
+    return !!b.start && !!b.end;
   }
 
   function basicsIssue(b){
@@ -1441,11 +1505,12 @@
     if (!b.name.trim())    return 'Event name is needed to continue.';
     if (!b.slug.trim())    return 'A URL slug is needed to continue.';
     if (!slugFree(b.slug)) return 'That slug is taken — pick another to continue.';
-    if (C.client && !b.client.trim()) return 'Client / sponsor name is needed for a client event.';
+    if (!b.logo)           return 'An event logo is needed to continue.';
+    if (C.client === 'required' && !b.client.trim()) return 'Client / sponsor name is needed for a client event.';
     if (!dateComplete(b)){
       if (b.dateMode === 'month')   return 'Pick the month, or switch the date to “To be announced”.';
       if (b.dateMode === 'quarter') return 'Pick the quarter and year, or switch the date to “To be announced”.';
-      return 'A start date is needed — or switch the date to “To be announced”.';
+      return 'A start and end date are needed — or switch the date to “To be announced”.';
     }
     if (C.nomination && !b.nomCloseTbd && !b.nomClose)
       return 'Set the nomination close date, or mark it “Decide later”.';
@@ -1466,20 +1531,16 @@
   }
 
   function applySmartDefaults(){
-    var b = S.basics, C = CATS[b.category], virtual = (b.type === 'Virtual');
+    var b = S.basics, C = CATS[b.category];
 
-    $('venue-cell').hidden    = !(C.venue && !virtual);
-    $('platform-wrap').hidden = !(C.venue && virtual);
     $('client-wrap').hidden   = !C.client;
-    /* identity packs onto one row; the client field borrows columns when shown */
-    $('vertical-cell').className = 'field c3';
+    $('client-requirement').className = C.client === 'required' ? 'pill-req' : 'pill-opt';
+    $('client-requirement').textContent = C.client === 'required' ? '*' : 'Optional';
+    /* The first row contains identity and logo only. */
     $('name-cell').className     = 'field ' + (C.client ? 'c3' : 'c4');
-    $('slug-cell').className     = 'field ' + (C.client ? 'c3' : 'c5');
-
-    $('lbl-payment').textContent = C.nomination ? 'Entry fee' : 'Payment';
-    $('payment-hint').innerHTML  = C.nomination
-      ? 'Awards commonly charge per entry. Free keeps nominations open to everyone.'
-      : 'IRF: &ldquo;Payment Type (Free/Paid)&rdquo;. Paid events price in <span class="mono">&#8377;</span> INR.';
+    $('client-wrap').className   = 'field c3';
+    $('slug-cell').className     = 'field ' + (C.client ? 'c3' : 'c4');
+    $('logo-cell').className     = 'field ' + (C.client ? 'c3' : 'c4') + ' logo-field';
 
     $('cat-bar-ico').innerHTML     = svg(CAT_ICON[b.category], 19);
     $('cat-bar-name').textContent  = C.label;
@@ -1491,37 +1552,60 @@
   /* ---------- schedule block: reshapes per date mode ---------- */
   function renderSchedule(){
     var b = S.basics, C = CATS[b.category], host = $('sched-body'), h = '';
+    /* two-field date modes (exact, quarter) leave less room for venue than the one-field modes */
+    var twoUp = (b.dateMode === 'exact' || b.dateMode === 'quarter');
+    var venueSpan = C.venue ? (twoUp ? 'c4' : 'c5') : (twoUp ? 'c6' : 'c7');
+    var paymentSpan = C.venue ? 'c2' : (twoUp ? 'c6' : 'c7');
 
-    h += '<div class="field c4">' +
-           '<label for="f-datemode">Date precision</label>' +
+    h += '<div class="field c2">' +
+           '<label for="f-datemode">Date Format</label>' +
            '<select class="inp" id="f-datemode"></select>' +
          '</div>';
 
     if (b.dateMode === 'exact'){
-      h += '<div class="field c4"><div class="flabel-row"><label for="f-start">Starts</label><span class="pill-req">Required</span></div>' +
+      h += '<div class="field c2"><div class="flabel-row"><label for="f-start">Starts</label><span class="pill-req">*</span></div>' +
              '<input class="inp" id="f-start" type="datetime-local" value="' + esc(b.start) + '"></div>' +
-           '<div class="field c4"><div class="flabel-row"><label for="f-end">Ends</label><span class="pill-opt">Optional</span></div>' +
+           '<div class="field c2"><div class="flabel-row"><label for="f-end">Ends</label><span class="pill-req">*</span></div>' +
              '<input class="inp" id="f-end" type="datetime-local" value="' + esc(b.end) + '"></div>';
     }
     else if (b.dateMode === 'month'){
-      h += '<div class="field c8"><div class="flabel-row"><label for="f-month">Month</label><span class="pill-req">Required</span></div>' +
+      h += '<div class="field c3"><div class="flabel-row"><label for="f-month">Month</label><span class="pill-req">*</span></div>' +
              '<input class="inp" id="f-month" type="month" value="' + esc(b.month) + '"></div>';
     }
     else if (b.dateMode === 'quarter'){
-      h += '<div class="field c4"><label for="f-quarter">Quarter</label><select class="inp" id="f-quarter"></select></div>' +
-           '<div class="field c4"><div class="flabel-row"><label for="f-year">Year</label><span class="pill-req">Required</span></div>' +
+      h += '<div class="field c2"><label for="f-quarter">Quarter</label><select class="inp" id="f-quarter"></select></div>' +
+           '<div class="field c2"><div class="flabel-row"><label for="f-year">Year</label><span class="pill-req">*</span></div>' +
              '<input class="inp" id="f-year" type="number" min="2024" max="2035" placeholder="2026" value="' + esc(b.year) + '"></div>';
     }
     else if (b.dateMode === 'tbd'){
-      h += '<div class="field c8"><label for="f-datenote">What the site shows meanwhile</label>' +
+      h += '<div class="field c3"><label for="f-datenote">What the site shows meanwhile</label>' +
              '<input class="inp" id="f-datenote" type="text" placeholder="Date to be announced" value="' + esc(b.dateNote) + '"></div>';
     }
     else if (b.dateMode === 'none'){
-      h += '<div class="field c8"><label>&nbsp;</label>' +
-             '<p class="hint" style="margin:0;line-height:34px">No date block will be rendered on the microsite.</p></div>';
+      h += '<div class="field c3"><label>&nbsp;</label>' +
+             '<p class="hint" style="margin:0;line-height:34px;font-size:11.5px">No date block will be rendered.</p></div>';
     }
 
-    host.innerHTML = h;
+    if (C.venue){
+      h += '<div class="field ' + venueSpan + '" id="venue-cell">' +
+             '<div class="flabel-row"><label for="f-venue">Venue &amp; city</label><span class="pill-opt">Optional</span></div>' +
+             '<input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Mumbai" value="' + esc(b.venue) + '"></div>';
+    }
+    h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
+           '<label for="f-payment" id="lbl-payment">' + (C.nomination ? 'Entry fee' : 'Payment') + '</label>' +
+           '<select class="inp" id="f-payment"></select></div>';
+
+    host.innerHTML = '<div class="frow">' + h + '</div>';
+
+    selectFrom($('f-payment'), [{v:'Free',t:'Non-paid'},{v:'Paid',t:'Paid'}], b.payment, function(v){
+      b.payment = v; save();
+    });
+
+    var venueEl = $('f-venue');
+    if (venueEl){
+      venueEl.oninput = function(){ b.venue = venueEl.value; renderFoot(); save(); };
+      venueEl.onchange = venueEl.oninput;
+    }
 
     selectFrom($('f-datemode'), C.dateModes.map(function(m){ return { v: m, t: DATE_MODE_LABEL[m] }; }), b.dateMode, function(v){
       b.dateMode = v; save(); initStep1(); renderFoot();
@@ -1567,7 +1651,7 @@
         return '<div class="field c4"><div class="stage ' + (isTbd ? 'tbd' : (val ? 'set' : '')) + '">' +
             '<div class="flabel-row">' +
               '<label for="f-' + s.k + '">' + s.label + '</label>' +
-              '<span class="' + (s.req ? 'pill-req' : 'pill-opt') + '">' + (s.req ? 'Required' : 'Optional') + '</span>' +
+              '<span class="' + (s.req ? 'pill-req' : 'pill-opt') + '">' + (s.req ? '*' : 'Optional') + '</span>' +
             '</div>' +
             (isTbd
               ? '<div class="dt-preview tbd"><span class="lb">Shows as</span><span>To be announced</span></div>'
@@ -1633,26 +1717,13 @@
   }
 
   /* ---------- phase 1 : the category picker screen ---------- */
-  function catThumb(k){
-    if (k === 'IP') return '<span class="b hero"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
-      '<span class="b row"></span><span class="b row half"></span>';
-    if (k === 'Client') return '<span class="b hero"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span></span>' +
-      '<span class="b row"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span></span>';
-    if (k === 'Awards') return '<span class="b hero"></span><span class="b pill"></span>' +
-      '<span class="cols"><span class="b"></span><span class="b"></span><span class="b"></span></span>' +
-      '<span class="b row half"></span>';
-    return '<span class="b hero"></span><span class="b row"></span><span class="b form"></span>';
-  }
-
   function renderCatPicker(){
     var b = S.basics, cg = $('cat-grid');
     cg.innerHTML = Object.keys(CATS).map(function(k){
       var C = CATS[k];
-      return '<button class="tpl-card" type="button" aria-pressed="' + (S.catPicked && k === b.category) + '" data-cat="' + k + '">' +
-          '<span class="tpl-thumb">' + catThumb(k) + '</span>' +
+      return '<button class="tpl-card category-card" type="button" aria-pressed="' + (S.catPicked && k === b.category) + '" data-cat="' + k + '">' +
+          '<span class="category-card-top"><span class="category-icon">' + svg(CAT_ICON[k], 25) + '</span>' +
+            (C.badge ? '<span class="category-badge">' + esc(C.badge) + '</span>' : '') + '</span>' +
           '<span class="tpl-info"><h4>' + esc(C.label) + '</h4>' +
             '<span class="s">' + esc(C.blurb) + '</span>' +
             '<span class="n">' + esc(C.meta) + '</span></span>' +
@@ -1689,20 +1760,6 @@
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
     };
 
-    selectFrom($('f-type'), ['On-ground','Virtual','Hybrid'], b.type, function(v){
-      b.type = v; applySmartDefaults(); save();
-    });
-    selectFrom($('f-payment'), ['Free','Paid'], b.payment, function(v){
-      b.payment = v; save();
-    });
-
-    var vsel = $('f-vertical');
-    if (!vsel.options.length){
-      vsel.innerHTML = VERTICALS.map(function(v){ return '<option>' + esc(v) + '</option>'; }).join('');
-    }
-    vsel.value = b.vertical;
-    vsel.onchange = function(){ b.vertical = vsel.value; save(); };
-
     var nameEl = $('f-name');
     nameEl.value = b.name;
     nameEl.oninput = function(){
@@ -1735,24 +1792,60 @@
       save();
     };
 
-    [['f-venue','venue'],['f-platform','platform']].forEach(function(pair){
-      var el = $(pair[0]);
-      if (!el) return;
-      el.value = b[pair[1]] || '';
-      el.oninput = function(){ b[pair[1]] = el.value; renderFoot(); save(); };
-      el.onchange = el.oninput;
-    });
+    var logoTile = $('logo-tile'), previewImg = $('logo-preview-img'), removeBtn = $('logo-remove'),
+        logoCta = $('logo-drop'), logoHint = $('logo-hint'), logoInput = $('f-logo');
 
-    var drop = $('logo-drop');
-    drop.classList.toggle('filled', !!b.logo);
-    if (b.logo){
-      drop.innerHTML = '<span class="ico" style="color:var(--accent-strong)">' + IC.check14 + '</span>' +
-        '<span class="t">event-logo.png &middot; 512&times;512</span>' +
-        '<span class="s">Click to replace</span>';
+    if (b.logo && logoPreviewUrl){
+      previewImg.src = logoPreviewUrl;
+      previewImg.hidden = false;
+      removeBtn.hidden = false;
+      logoCta.textContent = b.logoName || 'Replace logo';
+      logoHint.className = 'logo-meta ok';
+      logoHint.innerHTML = IC.check + ' Logo uploaded &middot; click to replace';
+    } else if (b.logo){
+      previewImg.hidden = true;
+      removeBtn.hidden = false;
+      logoCta.textContent = b.logoName || 'Replace logo';
+      logoHint.className = 'logo-meta ok';
+      logoHint.innerHTML = IC.check + ' Uploaded &middot; click to re-select';
+    } else {
+      previewImg.hidden = true;
+      removeBtn.hidden = true;
+      logoCta.textContent = 'Upload logo';
+      logoHint.className = 'logo-meta';
+      logoHint.textContent = 'PNG or SVG · 571×340 · max 5 MB';
     }
-    drop.onclick = function(){
-      b.logo = !b.logo; save(); initStep1();
-      toast(b.logo ? 'Logo attached (mocked upload)' : 'Logo removed');
+
+    var openLogoPicker = function(){ logoInput.click(); };
+    logoTile.onclick = openLogoPicker;
+    removeBtn.onclick = function(e){
+      e.stopPropagation();
+      if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
+      b.logo = false; b.logoName = '';
+      logoInput.value = '';
+      save(); initStep1();
+      toast('Logo removed');
+    };
+    logoInput.onchange = function(){
+      var file = logoInput.files && logoInput.files[0];
+      if (!file) return;
+      var validType = file.type === 'image/png' || file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+      if (!validType){
+        logoInput.value = '';
+        toast('Choose a PNG or SVG logo file');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024){
+        logoInput.value = '';
+        toast('Logo must be 5 MB or smaller');
+        return;
+      }
+      if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} }
+      logoPreviewUrl = URL.createObjectURL(file);
+      b.logo = true;
+      b.logoName = file.name;
+      save(); initStep1();
+      toast('Logo uploaded: ' + file.name);
     };
 
     applySmartDefaults();
@@ -1765,50 +1858,84 @@
   /* =========================================================
      STEP 2 - CHOOSE PATH
   ========================================================= */
-  function renderStep2(){
-    var cards = [
-      { key:'A', ico:IC.tpl, h:'Use our template',
-        lead:'Start from one of our proven microsite templates. Pick sections, fill content, we handle the rest.',
-        meta:[['Best for','Standard events, fastest route'],['You provide','Just content'],['AI does','Reshapes your copy to fit each section']] },
-      { key:'B', ico:IC.upload, h:'Upload my own design',
-        lead:'Already designed it? Point us at the file. We read the design, find the sections and pull the content out.',
-        meta:[['Best for','Teams who already designed their site'],['You provide','Figma / Lovable / builder URL / PSD'],['AI does','Detects sections, screenshots and extracts them']] }
-    ];
-    $('path-grid').innerHTML = cards.map(function(c){
-      var on = S.path === c.key;
-      return '<button class="path-card" type="button" aria-pressed="' + on + '" data-path="' + c.key + '">' +
-        (on ? '<span class="tick">' + IC.check + '</span>' : '') +
-        '<span class="ico">' + c.ico + '</span>' +
-        '<span><span class="eyebrow">Path ' + c.key + '</span><h3 style="margin-top:4px">' + c.h + '</h3></span>' +
-        '<p class="lead">' + c.lead + '</p>' +
-        '<span class="path-meta">' + c.meta.map(function(m){
-          return '<span class="r"><span class="k">' + m[0] + '</span><span class="v">' + m[1] + '</span></span>';
-        }).join('') + '</span>' +
-      '</button>';
-    }).join('');
+  /* templates relevant to the currently chosen event category (IP & Residential, Awards, Client) */
+  function templatesForCategory(){
+    return TEMPLATES.filter(function(t){ return t.cat === S.basics.category; });
+  }
 
-    $('path-grid').querySelectorAll('[data-path]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var next = b.getAttribute('data-path');
-        if (S.path && S.path !== next && S.sections.length){
-          confirmSwitch(next);
-          return;
-        }
-        S.path = next;
+  /* selects a template — used by the card's Use Template button and the preview modal alike */
+  function selectTemplate(tplId){
+    if (S.path === 'A' && S.template === tplId) return;
+    var run = function(){
+      if (S.sections.length){
+        confirmSwitch('A', function(){ applyTemplate(tplId); });
+      } else {
+        S.path = 'A';
+        applyTemplate(tplId);
         renderStep2();
         renderFoot();
-        save();
-      });
+      }
+    };
+    /* deferred so a confirm-switch modal opened from inside another modal's onConfirm (preview, convert) is not wiped by that modal's own close() */
+    if (S.sections.length) setTimeout(run, 0); else run();
+  }
+
+  function openTemplatePreview(tplId){
+    var t = null;
+    TEMPLATES.forEach(function(x){ if (x.id === tplId) t = x; });
+    if (!t) return;
+    var names = t.sections.map(function(id){ var l = libBy(id); return l ? l.name : id; });
+    openModal({
+      title: t.name,
+      sub: t.tag,
+      body:
+        (t.imgFull ? '<img class="tpl-thumb-full" src="' + esc(t.imgFull) + '" alt="' + esc(t.name) + ' full preview">' : '') +
+        '<p class="hint" style="margin-top:14px">' + esc(t.sub) + '</p>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' +
+          names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
+        '</div>',
+      confirm: 'Use this template',
+      onConfirm: function(){ selectTemplate(tplId); }
     });
   }
 
-  function confirmSwitch(next){
+  function renderStep2(){
+    var gallery = $('tpl-gallery');
+    gallery.innerHTML = templatesForCategory().map(function(t){
+      var on = S.path === 'A' && S.template === t.id;
+      return '<div class="tpl-card tpl-card-min" data-selected="' + on + '">' +
+        '<span class="tpl-thumb-mini">' +
+          (t.img ? '<img src="' + esc(t.img) + '" alt="' + esc(t.name) + ' preview">' : '') +
+          '<span class="tpl-type-chip">' + esc(t.tag) + '</span>' +
+        '</span>' +
+        '<span class="tpl-card-min-body">' +
+          '<span class="tpl-card-min-name">' + esc(t.name) + '</span>' +
+          '<span class="tpl-actions">' +
+            '<button class="btn btn-secondary" type="button" data-preview="' + t.id + '">Preview</button>' +
+            '<button class="btn btn-primary" type="button" data-usetpl="' + t.id + '">Use Template</button>' +
+          '</span>' +
+        '</span>' +
+      '</div>';
+    }).join('');
+
+    gallery.querySelectorAll('[data-usetpl]').forEach(function(b){
+      b.addEventListener('click', function(){ selectTemplate(b.getAttribute('data-usetpl')); });
+    });
+    gallery.querySelectorAll('[data-preview]').forEach(function(b){
+      b.addEventListener('click', function(){ openTemplatePreview(b.getAttribute('data-preview')); });
+    });
+
+    var convertBtn = $('btn-convert-design');
+    if (convertBtn) convertBtn.onclick = openConvertModal;
+  }
+
+  function confirmSwitch(next, after){
     openModal({
-      title: 'Switch to Path ' + next + '?',
-      sub: 'Your basic details are kept. The content you have filled on the current path is cleared.',
+      title: next === 'A' ? 'Switch to a template?' : 'Switch to your own design?',
+      sub: 'Your basic details are kept. The content you have filled so far is cleared.',
       body: '<div class="callout amber">' + IC.warn +
             '<span><strong>What you keep</strong>Event name, dates, venue, slug, logo and payment type all carry over. Only section content resets.</span></div>',
-      confirm: 'Switch path',
+      confirm: 'Switch',
       onConfirm: function(){
         S.path = next;
         S.sections = [];
@@ -1817,11 +1944,44 @@
         S.detectPhase = 'input';
         S.detectDecisions = {};
         S.assembled = false;
+        if (after) after();
         renderStep2();
         renderFoot();
         save();
-        toast('Switched to Path ' + next);
+        toast('Switched — ready to continue');
       }
+    });
+  }
+
+  /* ---------- convert-a-design shortcut (top-right of Choose Template) ---------- */
+  function openConvertModal(){
+    openModal({
+      title: 'Convert a Figma or Lovable design',
+      sub: 'Paste a shared link and we’ll read the design, split it into sections and pull the content out automatically.',
+      body: '<div class="field"><label for="convert-url">Design URL</label>' +
+        '<input class="inp mono" id="convert-url" type="text" placeholder="https://figma.com/file/… or https://yourproject.lovable.app" spellcheck="false" autocomplete="off"></div>' +
+        '<p class="hint">Works with shared Figma file/frame links (link sharing on) and published Lovable project URLs. You still get a quick Keep / Edit / Remove review before anything is final.</p>',
+      confirm: 'Convert',
+      onConfirm: function(){
+        var el = $('convert-url');
+        var val = (el && el.value || '').trim();
+        if (!val) return;
+        var kind = /lovable\.(app|dev)/i.test(val) ? 'lovable' : 'figma';
+        var start = function(){
+          S.sourceKind = kind;
+          S.sourceValue = val;
+          S.detectPhase = 'processing';
+          save();
+          goStep(3);
+        };
+        if (S.sections.length) setTimeout(function(){ confirmSwitch('B', start); }, 0);
+        else { S.path = 'B'; start(); }
+      }
+    });
+    var input = $('convert-url'), ok = $('modal-ok');
+    if (ok) ok.disabled = true;
+    if (input) input.addEventListener('input', function(){
+      if (ok) ok.disabled = !input.value.trim();
     });
   }
 
@@ -1864,7 +2024,7 @@
         '<p class="desc">Each one is a stack of our pre-built sections. You can include or exclude any section afterwards, and add custom ones.</p>' +
       '</div>' +
       '<div class="tpl-grid">' +
-        TEMPLATES.map(function(t){
+        templatesForCategory().map(function(t){
           return '<button class="tpl-card" type="button" aria-pressed="false" data-tpl="' + t.id + '">' +
             '<span class="tpl-thumb">' + tplThumb(t.id) + '</span>' +
             '<span class="tpl-info"><h4>' + esc(t.name) + '</h4>' +
@@ -2482,8 +2642,8 @@
     rich: function(){
       var b = S.basics;
       return (b.name || 'This event') + ' brings together the people who actually own the number — ' +
-        'marketing, growth and technology leaders from across ' + b.vertical + ' — for ' +
-        (b.type === 'Virtual' ? 'a focused online day' : 'a working day' + (b.city ? ' in ' + b.city : '')) + '. ' +
+        'marketing, growth and technology leaders from across the industry — for a working day' +
+        (b.venue ? ' at ' + b.venue : '') + '. ' +
         'The agenda is built backwards from the questions practitioners ask in private: what is working, what quietly is not, ' +
         'and what is worth funding next quarter. Expect short sessions, sharp moderation and a room small enough that you meet the people you came to meet.';
     },
@@ -2990,7 +3150,7 @@
     var b = S.basics;
     switch(s.libId){
       case 'nav':
-        return '<div class="prev-nav"><span class="lg">' + esc(b.vertical) + '</span>' +
+        return '<div class="prev-nav"><span class="lg">ET Oneworld</span>' +
           '<span class="lks">' + S.sections.filter(function(x){ return x.include && x.shape !== 'auto'; })
             .slice(0,5).map(function(x){ return esc(x.name.split(' ')[0]); }).join('</span><span>') + '</span>' +
           '<span class="cta">' + esc((S.sections.filter(function(x){ return x.libId==='hero'; })[0]||{data:{}}).data.cta1 || 'Register') + '</span></div>';
@@ -3147,13 +3307,11 @@
     var b = S.basics;
     var C = CATS[b.category];
     var rows = [
-      ['Category', C.label],
-      ['Vertical', b.vertical],
-      ['Type', b.type]
+      ['Category', C.label]
     ];
     if (C.client) rows.push(['Client', b.client || '—']);
     rows.push([C.dateTitle, eventDateLabel(b) || 'Not shown']);
-    if (C.venue) rows.push([b.type === 'Virtual' ? 'Platform' : 'Venue', locLabel(b, false) || '—']);
+    if (C.venue) rows.push(['Venue', locLabel(b, false) || '—']);
     if (C.nomination){
       rows.push(['Nominations open',  b.nomOpenTbd   ? 'To be announced' : (fmtDate(b.nomOpen)   || '—')]);
       rows.push(['Nominations close', b.nomCloseTbd  ? 'To be announced' : (fmtDate(b.nomClose)  || '—')]);
@@ -3163,7 +3321,7 @@
       rows.push(['Campaign', b.evergreen ? 'Evergreen — always on'
         : ([fmtD(b.campaignStart), fmtD(b.campaignEnd)].filter(Boolean).join(' – ') || '—')]);
     }
-    rows.push([C.nomination ? 'Entry fee' : 'Payment', b.payment]);
+    rows.push([C.nomination ? 'Entry fee' : 'Payment', b.payment === 'Free' ? 'Non-paid' : b.payment]);
     rows.push(['Path', S.path === 'A'
       ? 'Template — ' + ((TEMPLATES.filter(function(t){ return t.id === S.template; })[0] || {}).name || '—')
       : 'Own design']);
