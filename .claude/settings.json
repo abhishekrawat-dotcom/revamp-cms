@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill //F //IM chrome.exe //T)",
+      "Bash(mkdir -p scratch_check)",
+      "Bash(node -e ' *)",
+      "Bash(rm -rf scratch_check)"
+    ]
+  }
+}
