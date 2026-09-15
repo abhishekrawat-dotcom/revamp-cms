@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transactions - Payment Prototype</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .search-wrap { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 8px; flex: 1; max-width: 300px; }
+    .search-input { border: none; outline: none; width: 100%; font-size: 14px; padding: 0; }
+    .search-input:focus { box-shadow: none; }
+  </style>
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <div class="main-wrapper">
+    <div id="header-container"></div>
+    <div class="main-content">
+      <div class="fade-in">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:24px; font-weight:700;">Transactions</div>
+          <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">All transactions — online, offline & docs</div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-wrap">
+            <i class="ti ti-search" style="color:var(--c-secondary)"></i>
+            <input type="text" class="search-input" id="tx-search" placeholder="Search ID or page..." oninput="renderTransactions()">
+          </div>
+          <div id="status-filters">
+            <button class="chip active" onclick="setTxFilter('All')">All</button>
+            <button class="chip" onclick="setTxFilter('Success')">Success</button>
+            <button class="chip" onclick="setTxFilter('Failed')">Failed</button>
+            <button class="chip" onclick="setTxFilter('Incomplete')">Incomplete</button>
+          </div>
+        </div>
+
+        <div class="table-container" id="tx-table-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script>
+    let currentFilter = 'All';
+
+    document.addEventListener("DOMContentLoaded", () => {
+      renderHeader("Transactions");
+      renderTransactions();
+    });
+
+    function setTxFilter(status) {
+      currentFilter = status;
+      const buttons = document.querySelectorAll('#status-filters .chip');
+      buttons.forEach(btn => {
+        if (btn.innerText === status) btn.classList.add('active');
+        else btn.classList.remove('active');
+      });
+      renderTransactions();
+    }
+
+    function renderTransactions() {
+      const txs = window.appData.transactions;
+      const searchStr = document.getElementById('tx-search').value.toLowerCase();
+      const container = document.getElementById('tx-table-container');
+      
+      let filtered = txs;
+      
+      if (currentFilter !== 'All') {
+        filtered = filtered.filter(t => t.status === currentFilter);
+      }
+
+      if (searchStr) {
+        filtered = filtered.filter(t => t.id.toLowerCase().includes(searchStr) || t.page.toLowerCase().includes(searchStr));
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-receipt" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No transactions match this filter</div>
+          </div>
+        `;
+        return;
+      }
+
+      const getPillClass = (status) => {
+        const map = { Success:"pill-success", Failed:"pill-danger", Incomplete:"pill-warning" };
+        return map[status] || "pill-neutral";
+      };
+
+      let html = `
+        <table>
+          <thead>
+            <tr><th>Txn ID</th><th>Page</th><th>Mode</th><th>Status</th><th>Merchant</th><th>Amount</th><th>Invoice</th><th>Date</th></tr>
+          </thead>
+          <tbody>
+            ${filtered.map(t => `
+              <tr>
+                <td class="mono">${t.id}</td>
+                <td style="font-weight:600">${t.page}</td>
+                <td style="color:var(--c-secondary)">${t.mode}</td>
+                <td>
+                  <span class="spill ${getPillClass(t.status)}">
+                    <span class="pill-dot"></span>${t.status}
+                  </span>
+                </td>
+                <td style="color:var(--c-secondary)">${t.merchant}</td>
+                <td style="font-weight:600; color:var(--brand-color)">${window.utils.fmtCurrency(t.amount)}</td>
+                <td>
+                  ${t.invoiceGenerated ? 
+                    `<span class="spill pill-success"><span class="pill-dot"></span>Generated</span>` : 
+                    `<span style="color:var(--c-muted)">&mdash;</span>`}
+                </td>
+                <td style="color:var(--c-secondary)">${window.utils.fmtDate(t.date)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

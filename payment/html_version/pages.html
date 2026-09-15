@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Pages - Payment Prototype</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Additional styles for dynamic form elements */
+    .btn-link { background: none; border: none; color: var(--brand-color); font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
+    .btn-link:hover { text-decoration: underline; }
+    .form-error { color: var(--danger); font-size: 13px; display: flex; align-items: center; gap: 6px; margin-top: 16px; font-weight: 500; }
+    
+    .code-display-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+    .code-display { flex: 1; padding: 10px 12px; background: #F3F4F6; border: 1px dashed var(--c-secondary); border-radius: 8px; font-family: monospace; font-size: 16px; font-weight: 700; color: var(--c-primary); letter-spacing: 1px; }
+    .btn-regen { background: #fff; border: 1px solid var(--border-color); color: var(--c-secondary); width: 42px; height: 42px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: 0.2s; }
+    .btn-regen:hover { color: var(--c-primary); background: var(--bg-main); }
+    .field-hint { font-size: 11px; color: var(--c-muted); margin-top: 4px; }
+    
+    .seg { display: flex; background: var(--bg-main); padding: 4px; border-radius: 10px; border: 1px solid var(--border-color); }
+    .seg-btn { flex: 1; background: transparent; border: none; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--c-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; }
+    .seg-btn.active { background: #fff; color: var(--c-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-weight: 600; }
+    
+    .checkline { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--c-primary); }
+    .checkline input { width: auto; margin: 0; }
+    
+    .fsec-title { font-size: 15px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <div class="main-wrapper">
+    <div id="header-container"></div>
+    <div class="main-content">
+      <div class="fade-in">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+          <div>
+            <div style="font-size:24px; font-weight:700;" id="page-title">Payment Pages</div>
+            <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Live payment pages and coupon management</div>
+          </div>
+          <button class="btn-primary" onclick="openAddPageModal()">
+            <i class="ti ti-plus"></i> Create Page
+          </button>
+        </div>
+
+        <div id="event-context-banner"></div>
+        <div class="table-container" id="pages-table-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Page Modal -->
+  <div class="drawer-backdrop" id="add-page-modal" style="display: none;" onclick="closeAddPageModal()">
+    <div class="drawer extra-wide" style="width:700px; right:0; position:absolute; height:100%; background:white; display:flex; flex-direction:column; box-shadow:-5px 0 25px rgba(0,0,0,0.1); animation:slideInRight 0.3s forwards;" onclick="event.stopPropagation()">
+      <div class="drawer-header" style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h3 class="drawer-title" style="font-size: 18px; font-weight: 700;">Add Payment Page</h3>
+          <p class="drawer-subtitle" style="font-size: 14px; color: var(--c-secondary); margin-top: 4px;">Configure a new payment page for your event or plan</p>
+        </div>
+        <button class="btn-icon" onclick="closeAddPageModal()"><i class="ti ti-x"></i></button>
+      </div>
+      
+      <div class="drawer-body" style="padding: 24px; overflow-y: auto; flex: 1;">
+        <div class="form-col">
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Basic Information</span></div>
+            <label class="field">
+              <span class="field-label">Related event</span>
+              <select id="page-event" onchange="updateEventContext(this.value)"></select>
+            </label>
+            <label class="field" style="margin-top:8px;">
+              <span class="field-label">Payment page name <span class="req">*</span></span>
+              <input type="text" id="page-name" placeholder="e.g. VIP Pass - TechSummit 2026">
+            </label>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Pricing & Payment</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Currency</span>
+                <select id="page-currency"><option value="INR">INR</option><option value="USD">USD</option><option value="AED">AED</option></select>
+              </label>
+              <label class="field">
+                <span class="field-label">Amount <span class="req">*</span></span>
+                <input type="number" id="page-amount" placeholder="12000">
+              </label>
+            </div>
+            <div class="two-col" style="margin-top: 16px;">
+              <label class="field">
+                <span class="field-label">Payment gateway</span>
+                <select id="page-gateway" onchange="updateMerchants()"></select>
+              </label>
+              <label class="field">
+                <span class="field-label">Merchant account</span>
+                <select id="page-merchant"></select>
+              </label>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Location</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Country</span>
+                <select id="page-country" onchange="updateStates()"></select>
+              </label>
+              <label class="field">
+                <span class="field-label">State / Region</span>
+                <select id="page-state"></select>
+              </label>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Validity & Fulfillment</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Sale start</span>
+                <input type="datetime-local" id="page-sale-start">
+              </label>
+              <label class="field">
+                <span class="field-label">Sale end</span>
+                <input type="datetime-local" id="page-sale-end">
+              </label>
+            </div>
+            <div class="two-col" style="margin-top: 16px;">
+              <label class="field">
+                <span class="field-label">Max quantity <span class="req">*</span></span>
+                <input type="number" id="page-max-qty" value="100">
+              </label>
+              <label class="field">
+                <span class="field-label">Date of delivery</span>
+                <input type="date" id="page-delivery">
+              </label>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Redirect & Invoicing</span></div>
+            <label class="field">
+              <span class="field-label">After-payment redirect URL <span class="req">*</span></span>
+              <input type="text" id="page-redirect" placeholder="https://yourevent.com/thank-you">
+            </label>
+            <label class="field" style="margin-top:8px;">
+              <span class="field-label">Invoice description</span>
+              <input type="text" id="page-invoice-desc" placeholder="Line item text on invoice">
+            </label>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="fsec-title">Additional Information</span>
+              <span style="font-size:11px;color:var(--c-muted)">Key-value pairs</span>
+            </div>
+            <div id="extra-fields-container"></div>
+            <button class="btn-link" onclick="addExtraFieldRow()"><i class="ti ti-plus"></i> Add another field</button>
+          </div>
+          
+          <div id="page-error" class="form-error" style="display:none;"></div>
+        </div>
+      </div>
+      
+      <div class="drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); background: #F9FAFB; display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="btn-ghost" onclick="closeAddPageModal()">Cancel</button>
+        <button class="btn-primary" onclick="savePage()">Add payment page</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Coupon Modal -->
+  <div class="drawer-backdrop" id="add-coupon-modal" style="display: none;" onclick="closeAddCouponModal()">
+    <div class="drawer extra-wide" style="width:700px; right:0; position:absolute; height:100%; background:white; display:flex; flex-direction:column; box-shadow:-5px 0 25px rgba(0,0,0,0.1); animation:slideInRight 0.3s forwards;" onclick="event.stopPropagation()">
+      <div class="drawer-header" style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h3 class="drawer-title" style="font-size: 18px; font-weight: 700;">Create Coupon</h3>
+          <p class="drawer-subtitle" id="coupon-modal-subtitle" style="font-size: 14px; color: var(--c-secondary); margin-top: 4px;"></p>
+        </div>
+        <button class="btn-icon" onclick="closeAddCouponModal()"><i class="ti ti-x"></i></button>
+      </div>
+      
+      <div class="drawer-body" style="padding: 24px; overflow-y: auto; flex: 1;">
+        <div class="form-col">
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Coupon Details</span></div>
+            <label class="field">
+              <span class="field-label">Label <span class="req">*</span></span>
+              <input type="text" id="coupon-label" placeholder="e.g. Early bird">
+            </label>
+            <label class="field" style="margin-top:8px;">
+              <span class="field-label">Generated coupon code</span>
+              <div class="code-display-row">
+                <div class="code-display" id="coupon-code"></div>
+                <button class="btn-regen" onclick="regenerateCouponCode()"><i class="ti ti-refresh"></i></button>
+              </div>
+              <span class="field-hint">Auto-generated — users enter this at checkout</span>
+            </label>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Type</span></div>
+            <div class="seg">
+              <button class="seg-btn active" id="btn-type-auto" onclick="setCouponType('auto')"><i class="ti ti-bolt"></i> Auto-applied</button>
+              <button class="seg-btn" id="btn-type-code" onclick="setCouponType('code')"><i class="ti ti-tag"></i> Code-based</button>
+            </div>
+            <p class="field-hint" id="coupon-type-hint" style="margin-top:6px;">Applied automatically — no code entry needed.</p>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Discount</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Type</span>
+                <select id="coupon-discount-type" onchange="updateDiscountLabel()">
+                  <option value="percent">Percentage (%)</option>
+                  <option value="flat">Flat amount (₹)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label" id="discount-val-label">Percentage (max 30%) <span class="req">*</span></span>
+                <input type="number" id="coupon-discount" placeholder="15" oninput="checkDiscountWarning()">
+              </label>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Validity</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Start date & time</span>
+                <input type="datetime-local" id="coupon-start">
+              </label>
+              <label class="field">
+                <span class="field-label">End date & time <span class="req">*</span></span>
+                <input type="datetime-local" id="coupon-end">
+              </label>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Usage Limits</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Max total redemptions</span>
+                <input type="number" id="coupon-max-uses" placeholder="Unlimited">
+              </label>
+              <label class="field">
+                <span class="field-label">Max per user</span>
+                <input type="number" id="coupon-max-user" value="1">
+              </label>
+            </div>
+            <label class="checkline" style="margin-top:8px;">
+              <input type="checkbox" id="coupon-stack">
+              <span>Allow stacking with other active coupons on this page</span>
+            </label>
+          </div>
+          
+          <div id="coupon-warning" style="display:none; align-items:center; gap:8px; padding:10px 13px; background:#FEF3C7; color:#92400E; border-radius:8px; font-size:13px; margin-top:8px;">
+            <i class="ti ti-alert-triangle"></i> Discounts above 30% will be sent to Finance for approval.
+          </div>
+          
+          <div id="coupon-error" class="form-error" style="display:none;"></div>
+        </div>
+      </div>
+      
+      <div class="drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); background: #F9FAFB; display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="btn-ghost" onclick="closeAddCouponModal()">Cancel</button>
+        <button class="btn-primary" id="btn-save-coupon" onclick="saveCoupon()">Create coupon</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+  </style>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script>
+    let selectedEvent = window.appData.selectedEvent;
+    
+    // Create Page State
+    let extraFields = [{key: "", value: ""}];
+    
+    // Create Coupon State
+    let activeCouponPage = null;
+    let currentCouponType = "auto";
+    let allCouponCodes = [];
+
+    document.addEventListener("DOMContentLoaded", () => {
+      renderHeader("Payment Pages");
+      if (selectedEvent) {
+        document.getElementById('event-context-banner').innerHTML = `
+          <div style="background:var(--brand-light); color:var(--brand-color); padding:12px 16px; border-radius:8px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px; font-weight:600;">
+              <i class="ti ti-filter"></i> Filtering pages for: ${selectedEvent.name}
+            </div>
+            <button class="btn-secondary btn-sm" onclick="clearEventFilter()">Clear Filter</button>
+          </div>
+        `;
+      }
+      
+      populatePageDropdowns();
+      renderPages();
+    });
+
+    function clearEventFilter() {
+      selectedEvent = null;
+      window.saveData('selectedEvent', null);
+      document.getElementById('event-context-banner').innerHTML = '';
+      renderPages();
+    }
+
+    function renderPages() {
+      let pages = window.appData.pages;
+      if (selectedEvent) {
+        pages = pages.filter(p => p.eventId === selectedEvent.id);
+      }
+      
+      // Update all coupon codes for generation check
+      allCouponCodes = window.appData.pages.flatMap(p => p.coupons.map(c => c.code));
+
+      const container = document.getElementById('pages-table-container');
+      
+      if (pages.length === 0) {
+        container.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-layout-grid" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No payment pages found.</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr><th>Page Name</th><th>Code</th><th>Price</th><th>Gateway</th><th>Coupons</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            ${pages.map(p => `
+              <tr>
+                <td style="font-weight:600">${p.name}</td>
+                <td class="mono">${p.code}</td>
+                <td style="font-weight:600; color:var(--brand-color)">${window.utils.fmtCurrency(p.price, p.currency)}</td>
+                <td>${p.gateway}</td>
+                <td>
+                  ${p.coupons.length > 0 ? 
+                    '<div style="display:flex; flex-direction:column; gap:4px;">' +
+                      p.coupons.map(c => 
+                        '<span class="spill pill-success" style="font-size:11px; max-width:max-content; white-space:nowrap;">' +
+                          '<i class="ti ti-ticket"></i> ' + c.code + ' (' + c.discount + (c.discountType === 'percent' ? '%' : '₹') + ')' +
+                        '</span>'
+                      ).join('') +
+                    '</div>' 
+                    : '<span style="color:var(--c-muted)">—</span>'
+                  }
+                </td>
+                <td>
+                  <button class="btn-secondary btn-sm" onclick="openAddCouponModal('${p.id}')"><i class="ti ti-ticket"></i> + Coupon</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+    
+    /* ─────────────────────────────────────────────
+       CREATE PAGE LOGIC
+    ───────────────────────────────────────────── */
+    function populatePageDropdowns() {
+      const eventSel = document.getElementById('page-event');
+      eventSel.innerHTML = window.utils.EVENTS_DATA
+        .filter(window.utils.isPaymentActive)
+        .map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+        
+      if (selectedEvent) eventSel.value = selectedEvent.id;
+      
+      const gatewaySel = document.getElementById('page-gateway');
+      gatewaySel.innerHTML = Object.keys(window.utils.GATEWAY_MERCHANTS).map(g => `<option value="${g}">${g}</option>`).join('');
+      updateMerchants();
+      
+      const countrySel = document.getElementById('page-country');
+      countrySel.innerHTML = window.utils.COUNTRIES.map(c => `<option value="${c}">${c}</option>`).join('');
+      updateStates();
+    }
+    
+    function updateMerchants() {
+      const gateway = document.getElementById('page-gateway').value;
+      const merchantSel = document.getElementById('page-merchant');
+      merchantSel.innerHTML = window.utils.GATEWAY_MERCHANTS[gateway].map(m => `<option value="${m}">${m}</option>`).join('');
+    }
+    
+    function updateStates() {
+      const country = document.getElementById('page-country').value;
+      const stateSel = document.getElementById('page-state');
+      const states = window.utils.LOCATION_OPTIONS[country] || [];
+      stateSel.innerHTML = `<option value="">— Select state —</option>` + states.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+
+    function openAddPageModal() {
+      document.getElementById('page-name').value = '';
+      document.getElementById('page-amount').value = '';
+      document.getElementById('page-redirect').value = '';
+      document.getElementById('page-invoice-desc').value = '';
+      document.getElementById('page-max-qty').value = '100';
+      document.getElementById('page-sale-start').value = window.utils.nowDT();
+      document.getElementById('page-sale-end').value = window.utils.addDaysDT(30);
+      document.getElementById('page-delivery').value = '';
+      
+      extraFields = [{key: "", value: ""}];
+      renderExtraFields();
+      
+      document.getElementById('page-error').style.display = 'none';
+      document.getElementById('add-page-modal').style.display = 'flex';
+    }
+
+    function closeAddPageModal() {
+      document.getElementById('add-page-modal').style.display = 'none';
+    }
+    
+    function renderExtraFields() {
+      const container = document.getElementById('extra-fields-container');
+      container.innerHTML = extraFields.map((f, i) => `
+        <div class="two-col" style="margin-bottom:8px;">
+          <input style="padding:8px 10px; border-radius:8px; border:1px solid var(--border-color); font-size:13px;" placeholder="Field name" value="${f.key}" onchange="updateExtraField(${i}, 'key', this.value)">
+          <div style="display:flex; gap:6px;">
+            <input style="flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--border-color); font-size:13px;" placeholder="Value" value="${f.value}" onchange="updateExtraField(${i}, 'value', this.value)">
+            <button class="btn-icon" onclick="removeExtraField(${i})"><i class="ti ti-x"></i></button>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    window.updateExtraField = function(i, field, val) {
+      extraFields[i][field] = val;
+    }
+    
+    window.addExtraFieldRow = function() {
+      extraFields.push({key: "", value: ""});
+      renderExtraFields();
+    }
+    
+    window.removeExtraField = function(i) {
+      extraFields.splice(i, 1);
+      renderExtraFields();
+    }
+    
+    function showError(modal, msg) {
+      const err = document.getElementById(modal + '-error');
+      err.innerHTML = `<i class="ti ti-alert-circle"></i> ${msg}`;
+      err.style.display = 'flex';
+    }
+
+    function savePage() {
+      const name = document.getElementById('page-name').value.trim();
+      const amount = document.getElementById('page-amount').value;
+      const redirectUrl = document.getElementById('page-redirect').value.trim();
+      const saleStart = document.getElementById('page-sale-start').value;
+      const saleEnd = document.getElementById('page-sale-end').value;
+      const maxQty = document.getElementById('page-max-qty').value;
+
+      if (!name) return showError('page', "Payment page name is required");
+      if (!amount || Number(amount) <= 0) return showError('page', "Enter a valid amount");
+      if (!redirectUrl) return showError('page', "After-payment redirect URL is required");
+      if (new Date(saleEnd) < new Date(saleStart)) return showError('page', "Sale end must be after sale start");
+      if (!maxQty || Number(maxQty) <= 0) return showError('page', "Max quantity must be at least 1");
+      
+      document.getElementById('page-error').style.display = 'none';
+
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+      const newPage = {
+        id: `PG-${Math.floor(Math.random() * 900 + 100)}`,
+        eventId: document.getElementById('page-event').value,
+        name,
+        code: slug.toUpperCase().slice(0, 10) || "PAGE",
+        price: Number(amount),
+        currency: document.getElementById('page-currency').value,
+        country: document.getElementById('page-country').value,
+        state: document.getElementById('page-state').value,
+        gateway: document.getElementById('page-gateway').value,
+        merchant: document.getElementById('page-merchant').value,
+        redirectUrl,
+        saleStart,
+        saleEnd,
+        maxQty: Number(maxQty),
+        deliveryDate: document.getElementById('page-delivery').value,
+        invoiceDesc: document.getElementById('page-invoice-desc').value,
+        extraFields: extraFields.filter(f => f.key.trim()),
+        landing: `/${slug || "payment-page"}`,
+        coupons: []
+      };
+
+      const newPages = [...window.appData.pages, newPage];
+      window.saveData('pages', newPages);
+      
+      closeAddPageModal();
+      renderPages();
+    }
+    
+    /* ─────────────────────────────────────────────
+       CREATE COUPON LOGIC
+    ───────────────────────────────────────────── */
+    function openAddCouponModal(pageId) {
+      activeCouponPage = window.appData.pages.find(p => p.id === pageId);
+      document.getElementById('coupon-modal-subtitle').innerText = `Discount coupon for ${activeCouponPage.name}`;
+      
+      document.getElementById('coupon-label').value = '';
+      regenerateCouponCode();
+      setCouponType('auto');
+      document.getElementById('coupon-discount-type').value = 'percent';
+      document.getElementById('coupon-discount').value = '';
+      document.getElementById('coupon-start').value = window.utils.nowDT();
+      document.getElementById('coupon-end').value = window.utils.addDaysDT(14);
+      document.getElementById('coupon-max-uses').value = '';
+      document.getElementById('coupon-max-user').value = '1';
+      document.getElementById('coupon-stack').checked = false;
+      
+      updateDiscountLabel();
+      checkDiscountWarning();
+      
+      document.getElementById('coupon-error').style.display = 'none';
+      document.getElementById('add-coupon-modal').style.display = 'flex';
+    }
+    
+    function closeAddCouponModal() {
+      document.getElementById('add-coupon-modal').style.display = 'none';
+      activeCouponPage = null;
+    }
+    
+    function regenerateCouponCode() {
+      const code = window.utils.generateCouponCode(allCouponCodes);
+      document.getElementById('coupon-code').innerText = code;
+    }
+    
+    function setCouponType(type) {
+      currentCouponType = type;
+      document.getElementById('btn-type-auto').className = `seg-btn ${type === 'auto' ? 'active' : ''}`;
+      document.getElementById('btn-type-code').className = `seg-btn ${type === 'code' ? 'active' : ''}`;
+      document.getElementById('coupon-type-hint').innerText = type === 'auto' ? "Applied automatically — no code entry needed." : "Users must enter the generated code at checkout.";
+    }
+    
+    function updateDiscountLabel() {
+      const type = document.getElementById('coupon-discount-type').value;
+      const label = document.getElementById('discount-val-label');
+      const input = document.getElementById('coupon-discount');
+      
+      if (type === 'percent') {
+        label.innerHTML = 'Percentage (max 30%) <span class="req">*</span>';
+        input.placeholder = '15';
+      } else {
+        label.innerHTML = 'Amount (₹) <span class="req">*</span>';
+        input.placeholder = '500';
+      }
+      checkDiscountWarning();
+    }
+    
+    function checkDiscountWarning() {
+      const type = document.getElementById('coupon-discount-type').value;
+      const val = Number(document.getElementById('coupon-discount').value);
+      const warn = document.getElementById('coupon-warning');
+      const btn = document.getElementById('btn-save-coupon');
+      
+      if (type === 'percent' && val > 30) {
+        warn.style.display = 'flex';
+        btn.innerText = 'Request Approval';
+      } else {
+        warn.style.display = 'none';
+        btn.innerText = 'Create coupon';
+      }
+    }
+    
+    function saveCoupon() {
+      const label = document.getElementById('coupon-label').value.trim();
+      const discount = document.getElementById('coupon-discount').value;
+      const discountType = document.getElementById('coupon-discount-type').value;
+      const end = document.getElementById('coupon-end').value;
+      const start = document.getElementById('coupon-start').value;
+      
+      if (!label) return showError('coupon', "Give this coupon a label");
+      if (!discount || Number(discount) <= 0) return showError('coupon', "Enter a discount value");
+      if (!end) return showError('coupon', "An end date/time is required");
+      if (new Date(end) < new Date(start)) return showError('coupon', "End date/time must be after start");
+      
+      document.getElementById('coupon-error').style.display = 'none';
+      
+      let status = "Active";
+      if (discountType === "percent" && Number(discount) > 30) {
+        status = "Draft - Awaiting Approval";
+      }
+      
+      const newCoupon = {
+        id: `C-${Math.floor(Math.random() * 900 + 100)}`,
+        code: document.getElementById('coupon-code').innerText,
+        type: currentCouponType,
+        discount: Number(discount),
+        discountType,
+        start,
+        end,
+        maxUses: Number(document.getElementById('coupon-max-uses').value) || 0,
+        used: 0,
+        maxPerUser: Number(document.getElementById('coupon-max-user').value) || 1,
+        stack: document.getElementById('coupon-stack').checked,
+        label,
+        status
+      };
+      
+      // Update appData
+      const pages = window.appData.pages;
+      const pageIndex = pages.findIndex(p => p.id === activeCouponPage.id);
+      if (pageIndex !== -1) {
+        pages[pageIndex].coupons.push(newCoupon);
+        window.saveData('pages', pages);
+      }
+      
+      closeAddCouponModal();
+      renderPages();
+    }
+  </script>
+</body>
+</html>

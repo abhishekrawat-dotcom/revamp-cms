@@ -1134,7 +1134,7 @@
 
     'audience/attendees':   function(){ return viewPeople('attendees'); },
     'audience/shortlist':   function(){ return viewPeople('shortlist'); },
-    'audience/payments':    viewPayments,
+    'audience/payments':    function() { location.href = 'payment/html_version/index.html?event=' + encodeURIComponent(EV.id); return '<div style="padding:100px;text-align:center;color:#666;">Redirecting to Payment Dashboard...</div>'; },
     'audience/insights':    viewAudience,
 
 

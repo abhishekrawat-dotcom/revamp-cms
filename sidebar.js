@@ -105,7 +105,7 @@
         if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
         if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(eventId); return; }
         if (section === 'design') { location.href = 'custom_editor.html?event=' + encodeURIComponent(eventId); return; }
-        if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(eventId) + '#audience/payments'; return; }
+        if (section === 'payment') { location.href = 'payment/html_version/index.html?event=' + encodeURIComponent(eventId); return; }
         if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(eventId); return; }
         if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(eventId); return; }
         location.href = 'edit-event.html?event=' + encodeURIComponent(eventId) + '#' + section;

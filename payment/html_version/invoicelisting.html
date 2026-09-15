@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Listing - Payment Prototype</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <div class="main-wrapper">
+    <div id="header-container"></div>
+    <div class="main-content">
+      <div class="fade-in">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:24px; font-weight:700;">Invoice Listing</div>
+          <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Proforma invoices and billing records organised by salesperson</div>
+        </div>
+
+        <div class="table-container" id="listing-table-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      renderHeader("Invoice Listing");
+      renderInvoiceListing();
+    });
+
+    function renderInvoiceListing() {
+      const listing = window.appData.invoiceListing;
+      const container = document.getElementById('listing-table-container');
+      
+      if (listing.length === 0) {
+        container.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-list-details" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No invoice listings found.</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr><th>PI Number</th><th>Product</th><th>User</th><th>Salesperson</th><th>GST</th><th>Amount</th><th>Qty</th><th>Location</th></tr>
+          </thead>
+          <tbody>
+            ${listing.map(i => `
+              <tr>
+                <td class="mono">${i.piNumber}</td>
+                <td class="mono" style="font-weight:600">${i.productCode}</td>
+                <td>
+                  <div style="font-weight:600">${i.user}</div>
+                  <div style="font-size:12px; color:var(--c-secondary)">${i.email}</div>
+                </td>
+                <td style="color:var(--c-secondary)">${i.salesperson}</td>
+                <td class="mono">${i.gst}</td>
+                <td style="font-weight:600; color:var(--brand-color)">${window.utils.fmtCurrency(i.amount, i.currency)}</td>
+                <td style="color:var(--c-secondary)">${i.qty}</td>
+                <td style="color:var(--c-secondary)">${i.location}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
