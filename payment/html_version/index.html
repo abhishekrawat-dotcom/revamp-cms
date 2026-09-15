@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Event — Payment</title>
+  <meta name="description" content="ET Events Payment Management — Inside-Event View">
+  <!-- Tabler Icons (CMS relies heavily on SVGs, but we'll use Tabler for our modals for now to match our logic) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Topbar rendered by JS -->
+  <header class="topbar" id="header-container"></header>
+  
+  <div class="shell">
+    <!-- Sidebar rendered by JS -->
+    <nav class="rail" id="sidebar-container" aria-label="Sections"></nav>
+    
+    <!-- Main content rendered by JS -->
+    <main class="main" id="app-content">
+      <!-- Screen content rendered here -->
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+  <!-- ═══════════════════════════════════════════
+       CREATE COUPON MODAL (Drawer)
+  ═══════════════════════════════════════════ -->
+  <div class="drawer-backdrop" id="add-coupon-modal" style="display:none;" onclick="closeAddCouponModal()">
+    <div class="drawer extra-wide" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <div>
+          <h3 class="drawer-title">Create Coupon</h3>
+          <p class="drawer-subtitle" id="coupon-modal-subtitle"></p>
+        </div>
+        <button class="btn-icon" onclick="closeAddCouponModal()"><i class="ti ti-x"></i></button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="form-col">
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Coupon Details</span></div>
+            <label class="field">
+              <span class="field-label">Label <span class="req">*</span></span>
+              <input type="text" id="coupon-label" placeholder="e.g. Early bird">
+            </label>
+            <label class="field" style="margin-top:8px;">
+              <span class="field-label">Generated coupon code</span>
+              <div class="code-display-row">
+                <div class="code-display" id="coupon-code"></div>
+                <button class="btn-regen" onclick="regenerateCouponCode()"><i class="ti ti-refresh"></i></button>
+              </div>
+              <span class="field-hint">Auto-generated — users enter this at checkout</span>
+            </label>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Type</span></div>
+            <div class="seg">
+              <button class="seg-btn active" id="btn-type-auto" onclick="setCouponType('auto')"><i class="ti ti-bolt"></i> Auto-applied</button>
+              <button class="seg-btn" id="btn-type-code" onclick="setCouponType('code')"><i class="ti ti-tag"></i> Code-based</button>
+            </div>
+            <p class="field-hint" id="coupon-type-hint" style="margin-top:6px;">Applied automatically — no code entry needed.</p>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Discount</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Type</span>
+                <select id="coupon-discount-type" onchange="updateDiscountLabel()">
+                  <option value="percent">Percentage (%)</option>
+                  <option value="flat">Flat amount (₹)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label" id="discount-val-label">Percentage (max 30%) <span class="req">*</span></span>
+                <input type="number" id="coupon-discount" placeholder="15" oninput="checkDiscountWarning()">
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Validity</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Validity Start</span>
+                <input type="datetime-local" id="coupon-start">
+              </label>
+              <label class="field">
+                <span class="field-label">Validity End <span class="req">*</span></span>
+                <input type="datetime-local" id="coupon-end">
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Usage Limits</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Max total redemptions</span>
+                <input type="number" id="coupon-max-uses" placeholder="Unlimited">
+              </label>
+              <label class="field">
+                <span class="field-label">Max per user</span>
+                <input type="number" id="coupon-max-user" value="1">
+              </label>
+            </div>
+          </div>
+
+          <div id="coupon-warning" class="coupon-warning-box" style="display:none;">
+            <i class="ti ti-alert-triangle"></i> Discounts above 30% will be sent to Finance for approval.
+          </div>
+
+          <div id="coupon-error" class="form-error" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="drawer-footer">
+        <button class="btn btn-secondary" onclick="closeAddCouponModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-coupon" onclick="saveCoupon()">Create coupon</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       EMBED CODE MODAL
+  ═══════════════════════════════════════════ -->
+  <div class="modal-backdrop" id="embed-modal" style="display:none;" onclick="closeEmbedModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Embed Code</div>
+          <div class="modal-subtitle" id="embed-page-name"></div>
+        </div>
+        <button class="btn-icon" onclick="closeEmbedModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="embed-code-block">
+          <pre id="embed-code-content" class="embed-pre"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeEmbedModal()">Close</button>
+        <button class="btn-primary" id="copy-embed-btn" onclick="copyEmbedCode()"><i class="ti ti-copy"></i> Copy Code</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       ADD COUPON MODAL (Drawer)
+  ═══════════════════════════════════════════ -->
+  <div class="drawer-backdrop" id="add-coupon-modal" style="display:none;" onclick="closeAddCouponModal()">
+    <div class="drawer" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <div>
+          <h3 class="drawer-title">Create Coupon</h3>
+          <p class="drawer-subtitle" id="coupon-modal-subtitle">Discount coupon for Payment Page</p>
+        </div>
+        <button class="btn-icon" onclick="closeAddCouponModal()"><i class="ti ti-x"></i></button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="form-col">
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Coupon Details</span></div>
+            <label class="field">
+              <span class="field-label">Label <span class="req">*</span></span>
+              <input type="text" id="coupon-label" placeholder="e.g. Early bird">
+            </label>
+            <label class="field" style="margin-top:8px;">
+              <span class="field-label">Generated coupon code</span>
+              <div class="code-display-row">
+                <div class="code-display" id="coupon-code">AUTO_APPLIED</div>
+                <button class="btn-regen" onclick="regenerateCouponCode()"><i class="ti ti-refresh"></i></button>
+              </div>
+              <span class="field-hint" id="coupon-type-hint">Applied automatically — no code entry needed.</span>
+            </label>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Type</span></div>
+            <div class="seg">
+              <button class="seg-btn active" id="btn-type-auto" onclick="setCouponType('auto')"><i class="ti ti-bolt"></i> Auto-applied</button>
+              <button class="seg-btn" id="btn-type-code" onclick="setCouponType('code')"><i class="ti ti-tag"></i> Code-based</button>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Discount</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Type</span>
+                <select id="coupon-discount-type" onchange="updateDiscountLabel()">
+                  <option value="percent">Percentage (%)</option>
+                  <option value="flat">Flat amount (₹)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label" id="discount-val-label">Percentage (max 30%) <span class="req">*</span></span>
+                <input type="number" id="coupon-discount" placeholder="15" oninput="checkDiscountWarning()">
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Usage Limits</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Max total redemptions</span>
+                <input type="number" id="coupon-max-uses" placeholder="Unlimited">
+              </label>
+              <label class="field">
+                <span class="field-label">Max per user</span>
+                <input type="number" id="coupon-max-per-user" value="1">
+              </label>
+            </div>
+          </div>
+
+          <div id="coupon-warning" style="display:none;align-items:center;gap:8px;padding:10px 13px;background:#FEF3C7;color:#92400E;border-radius:8px;font-size:13px;margin-top:8px;">
+            <i class="ti ti-alert-triangle"></i> Discounts above 30% will be sent to Finance for approval.
+          </div>
+
+          <div id="coupon-error" class="form-error" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="drawer-footer">
+        <button class="btn btn-secondary" onclick="closeAddCouponModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveCoupon()">Create coupon</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       EMBED CODE MODAL
+  ═══════════════════════════════════════════ -->
+  <div class="modal-backdrop" id="embed-modal" style="display:none;" onclick="closeEmbedModal()">
+    <div class="modal wide" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Embed Code</h3>
+          <p class="modal-subtitle" id="embed-page-name">For: VIP Pass</p>
+        </div>
+        <button class="btn-icon" onclick="closeEmbedModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px 0;line-height:1.6">
+          Drop on your site or embed in an <code>&lt;iframe&gt;</code>. Discounts and coupons are pre-compiled.
+        </p>
+        <textarea id="embed-code-content" readonly style="width:100%;height:280px;font-family:var(--font-mono);font-size:11.5px;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0D1117;color:#4FC8A8;box-sizing:border-box;resize:vertical;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="copy-embed-btn" onclick="copyEmbedCode()"><i class="ti ti-copy"></i> Copy</button>
+        <button class="btn-primary"><i class="ti ti-download"></i> Download .html</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script src="index.js"></script>
+</body>
+</html>

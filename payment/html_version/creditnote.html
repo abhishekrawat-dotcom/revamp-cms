@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credit Notes - Payment Prototype</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .approve-row { display: flex; gap: 8px; }
+    .btn-ghost { background: transparent; border: 1px solid transparent; color: var(--c-secondary); cursor: pointer; transition: all 0.2s; padding: 6px 12px; border-radius: 8px; font-weight: 500; font-size: 13px; }
+    .btn-ghost:hover { background: var(--bg-main); color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <div class="main-wrapper">
+    <div id="header-container"></div>
+    <div class="main-content">
+      <div class="fade-in">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:24px; font-weight:700;">Credit Notes</div>
+          <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Manage refund requests through the two-level approval workflow</div>
+        </div>
+
+        <div class="toolbar" id="status-filters">
+          <button class="chip active" onclick="setCreditTab('Pending')">Pending</button>
+          <button class="chip" onclick="setCreditTab('Approved')">Approved</button>
+          <button class="chip" onclick="setCreditTab('Rejected')">Rejected</button>
+        </div>
+
+        <div class="table-container" id="credit-table-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script>
+    let currentTab = 'Pending';
+
+    document.addEventListener("DOMContentLoaded", () => {
+      renderHeader("Credit Note");
+      renderCreditNotes();
+    });
+
+    function setCreditTab(status) {
+      currentTab = status;
+      const buttons = document.querySelectorAll('#status-filters .chip');
+      buttons.forEach(btn => {
+        if (btn.innerText === status) btn.classList.add('active');
+        else btn.classList.remove('active');
+      });
+      renderCreditNotes();
+    }
+
+    function changeCreditStatus(id, newStatus) {
+      const credit = window.appData.credit;
+      const item = credit.find(c => c.id === id);
+      if (item) {
+        item.status = newStatus;
+        window.saveData('credit', credit);
+        renderCreditNotes();
+      }
+    }
+
+    function renderCreditNotes() {
+      const creditNotes = window.appData.credit.filter(c => c.status === currentTab);
+      const container = document.getElementById('credit-table-container');
+      
+      if (creditNotes.length === 0) {
+        container.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-receipt-refund" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No ${currentTab.toLowerCase()} credit notes.</div>
+          </div>
+        `;
+        return;
+      }
+
+      const getPillClass = (status) => {
+        const map = { Approved:"pill-success", Rejected:"pill-danger", Pending:"pill-warning" };
+        return map[status] || "pill-neutral";
+      };
+
+      let html = `
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Company</th><th>Amount</th><th>Reason</th><th>L1</th><th>L2</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${creditNotes.map(c => `
+              <tr>
+                <td class="mono">${c.id}</td>
+                <td style="font-weight:600">${c.company}</td>
+                <td style="font-weight:600; color:var(--brand-color)">${window.utils.fmtCurrency(c.amount)}</td>
+                <td style="color:var(--c-secondary); max-width:200px; white-space:normal;">${c.reason}</td>
+                <td style="color:var(--c-muted); font-size:12px;">${c.l1}</td>
+                <td style="color:var(--c-muted); font-size:12px;">${c.l2}</td>
+                <td>
+                  <span class="spill ${getPillClass(c.status)}">
+                    <span class="pill-dot"></span>${c.status}
+                  </span>
+                </td>
+                <td>
+                  ${c.status === 'Pending' ? `
+                    <div class="approve-row">
+                      <button class="btn-secondary btn-sm" onclick="changeCreditStatus('${c.id}', 'Approved')">Approve</button>
+                      <button class="btn-ghost btn-sm" onclick="changeCreditStatus('${c.id}', 'Rejected')">Reject</button>
+                    </div>
+                  ` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
