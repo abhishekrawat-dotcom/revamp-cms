@@ -29,7 +29,7 @@
   <span class="sp"></span>
   <label style="font-size:12px;color:var(--text-muted)" for="wb-ev">Event</label>
   <select class="inp" id="wb-ev" style="width:auto"></select>
-  <a class="btn btn-secondary btn-sm" href="edit-event.html#marketing/banners">Open in console</a>
+  <a class="btn btn-secondary btn-sm" href="edit-event.html#marketing/studio">Open in console</a>
 </div>
 
 <div class="wb-shell"><nav class="rail" id="global-rail" aria-label="Sections"><!-- shared rail --></nav><main class="wb-main">
@@ -56,7 +56,7 @@
     if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(wbEvent); return; }
     location.href = 'edit-event.html?event=' + encodeURIComponent(wbEvent) + '#' + section;
   }});
-  var tab = (location.hash.slice(1) || 'banners');
+  var tab = (location.hash.slice(1) || 'studio');
 
   var sel = document.getElementById('wb-ev');
   sel.innerHTML = C.EVENTS.map(function(e){

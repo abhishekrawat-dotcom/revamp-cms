@@ -100,12 +100,12 @@
         { id:'insights',  label:'Insights' }
     ]},
 
-    { id:'marketing', label:'Marketing', icon:IC.megaphone, tabs:[
-        { id:'banners',   label:'Banners' },
-        { id:'email',     label:'Email' },
-        { id:'messaging', label:'WhatsApp & SMS' },
-        { id:'social',    label:'Social' },
-        { id:'leads',     label:'CRM & Leads' }
+    { id:'marketing', label:'Promotions', icon:IC.megaphone, tabs:[
+        { id:'studio',    label:'Studio' },
+        { id:'audiences', label:'Audiences' },
+        { id:'campaigns', label:'Campaigns' },
+        { id:'pipeline',  label:'Data pipeline' },
+        { id:'crm',       label:'CRM' }
     ]},
 
     { id:'settings', label:'Settings', icon:IC.gear, tabs:[
@@ -1138,11 +1138,11 @@
     'audience/insights':    viewAudience,
 
 
-    'marketing/banners':    function(){ return MKT.view('banners', CTX); },
-    'marketing/email':      function(){ return MKT.view('email', CTX); },
-    'marketing/messaging':  function(){ return MKT.view('messaging', CTX); },
-    'marketing/social':     function(){ return MKT.view('social', CTX); },
-    'marketing/leads':      function(){ return MKT.view('leads', CTX); },
+    'marketing/studio':     function(){ return MKT.view('studio', CTX); },
+    'marketing/audiences':  function(){ return MKT.view('audiences', CTX); },
+    'marketing/campaigns':  function(){ return MKT.view('campaigns', CTX); },
+    'marketing/pipeline':   function(){ return MKT.view('pipeline', CTX); },
+    'marketing/crm':        function(){ return MKT.view('crm', CTX); },
 
     'settings/form':        viewSetForm,
     'settings/seo':         viewSEO,
