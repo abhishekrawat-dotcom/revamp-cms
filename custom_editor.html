@@ -1,7 +1,7 @@
 <!-- Revamp CMS - Site Editor prototype (Wix-Editor-style click-to-edit builder) -->
 <title>Site Editor &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <style>
   :root{
@@ -77,6 +77,7 @@
   input,select,textarea{ font-family: var(--font-body); font-size: 13.5px; color: var(--text); }
   ::selection{ background: var(--accent-soft); }
   :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  #global-toolbar :focus-visible, #sel-toolbar :focus-visible, .button-settings-pop :focus-visible{ outline: none; }
   [hidden]{ display: none !important; }
   .mono{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
@@ -101,15 +102,6 @@
   .ed-workspace{ flex:1; min-height:0; display:flex; }
   .ed-workspace > .rail{ flex:0 0 92px; height:auto; min-height:0; max-height:none; position:relative; top:auto; }
 
-  /* ---------- top bar ---------- */
-  .ed-top{
-    height: 54px; flex-shrink:0; display:flex; align-items:center; gap: 12px; padding: 0 14px;
-    background: var(--surface); border-bottom: 1px solid var(--border); z-index: 50; position: relative;
-  }
-  .brand-mark{ display:flex; align-items:center; gap: 8px; flex-shrink:0; }
-  .brand-logo-img{ height: 25px; width:auto; display:block; }
-  .ed-top .sep{ width:1px; height: 22px; background: var(--border); flex-shrink:0; }
-
   /* ---------- global command toolbar (matches floating text-editor toolbar style) ---------- */
   .global-toolbar{
     height: 64px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
@@ -117,13 +109,11 @@
     padding: 8px 24px; z-index: 45; position:relative;
   }
   .gt-pill{
-    display:flex; align-items:center; gap:2px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:100%; max-width:1180px; flex-shrink:0;
+    display:flex; align-items:center; gap:4px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:auto; max-width:100%; flex-shrink:0;
   }
-  .gt-more-menu{ width: 224px; }
   .gt-more-menu button{ display:flex; align-items:center; gap:9px; }
-  .gt-more-menu button[disabled]{ opacity:.4; pointer-events:none; }
-  .gt-more-row{ display:flex; flex-direction:column; gap:5px; padding: 7px 10px 5px; }
+  .gt-more-row{ display:flex; flex-direction:column; gap:5px; }
   .gt-more-row label{
     font-size:11px; font-weight:700; color: var(--text-faint); text-transform:uppercase; letter-spacing:.03em;
   }
@@ -139,44 +129,15 @@
   .gt-btn:hover{ background: var(--surface-2); }
   .gt-btn.icon-only{ width:32px; padding:0; color: var(--text-muted); }
   .gt-btn.icon-only:hover{ color: var(--text); }
-  .gt-btn.ai{
-    width:32px; padding:0; border-radius:50%; color: var(--review); background: var(--review-soft); flex-shrink:0;
-  }
-  .gt-btn.ai:hover{ filter: brightness(0.96); }
-  .gt-circle{ width:15px; height:15px; border-radius:50%; border:1.5px solid var(--border); background: var(--surface); flex-shrink:0; }
   .gt-sep{ width:1px; height:22px; background: var(--border); margin: 0 6px; flex-shrink:0; }
   .gt-select{
     border:none; border-radius:8px; background: none; font: inherit; font-size:13px;
-    font-weight:600; color: var(--text); height:32px; padding:0 6px 0 8px; flex-shrink:0; max-width:132px; margin-right:2px;
+    font-weight:600; color: var(--text); height:32px; padding:0 6px 0 8px; flex-shrink:0; width:130px; margin-right:2px;
   }
   .gt-select:hover{ background: var(--surface-2); }
   .gt-select[disabled]{ opacity:.35; pointer-events:none; }
-  .gt-section-label{
-    font-size:11.5px; font-weight:700; color: var(--text-faint); text-transform:uppercase; letter-spacing:.03em;
-    padding: 4px 8px; flex-shrink:0;
-  }
   .gt-btn.danger.icon-only:hover{ background: var(--crit-soft); color: var(--crit); }
   .gt-btn[disabled]{ opacity:.35; pointer-events:none; }
-
-  .site-picker{
-    display:flex; align-items:center; gap:7px; padding: 6px 10px; border-radius: 7px; border: 1px solid transparent;
-    background: transparent; font-size: 13px; font-weight: 700; color: var(--text); flex-shrink:0;
-  }
-  .site-picker:hover{ background: var(--surface-2); }
-  .site-picker svg{ color: var(--text-faint); }
-
-  .zoom-picker{
-    display:flex; align-items:center; gap:6px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border);
-    background: var(--surface); font-size: 12.5px; font-weight: 700; color: var(--text-muted); flex-shrink:0;
-  }
-  .zoom-picker:hover{ background: var(--surface-2); }
-  .zoom-picker select{ border:none; background:none; font: inherit; color: inherit; font-weight:700; -webkit-appearance:none; appearance:none; padding-right:2px; }
-
-  .top-spacer{ flex:1; }
-  .save-state{ display:flex; align-items:center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-faint); flex-shrink:0; }
-  .save-state .d{ width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex-shrink:0; }
-  .save-state.saving .d{ background: var(--warn); animation: pulse 1s ease infinite; }
-  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.3; } }
 
   .icon-btn{
     width: 32px; height: 32px; border-radius: 7px; border: 1px solid transparent; background: transparent;
@@ -185,22 +146,18 @@
   .icon-btn:hover{ background: var(--surface-2); color: var(--text); }
   .icon-btn[disabled]{ opacity:.35; pointer-events:none; }
 
-  /* ---------- left icon rail ---------- */
+  /* ---------- editor tools rail ---------- */
   .ed-body{ flex:1; min-height:0; display:flex; position:relative; }
   .ed-rail{
-    width: 62px; flex-shrink:0; background: var(--surface); border-right: 1px solid var(--border);
-    display:flex; flex-direction:column; align-items:center; padding: 10px 0; gap: 3px; z-index: 40;
+    height: 38px; flex-shrink:0; background: var(--surface); border-bottom: 1px solid var(--border);
+    display:flex; flex-direction:row; align-items:stretch; padding: 0 14px; gap: 4px; z-index: 40;
   }
   .rail-btn{
-    width: 48px; height: 52px; border-radius: 10px; border:none; background:transparent; color: var(--text-muted);
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 4px; font-size: 10px; font-weight:700;
+    width:auto; height: 100%; padding: 0 12px; border-radius: 0; border:none; border-bottom: 2.5px solid transparent; background:transparent; color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center; font-size: 12.5px; font-weight:700; white-space:nowrap;
   }
-  .rail-btn:hover{ background: var(--surface-2); color: var(--text); }
-  .rail-btn.active{ background: var(--accent-soft); color: var(--accent-strong); }
-  .rail-btn .add-ico{
-    width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-contrast);
-    display:flex; align-items:center; justify-content:center;
-  }
+  .rail-btn:hover{ color: var(--text); border-bottom-color: var(--border); }
+  .rail-btn.active{ color: var(--accent-strong); border-bottom-color: var(--accent); }
   .rail-gap{ flex:1; }
 
   /* ---------- slide-out side panels ---------- */
@@ -362,23 +319,9 @@
 
   /* ---------- canvas ---------- */
   .ed-main{ flex:1; min-width:0; display:flex; flex-direction:column; background: var(--surface-2); }
-  .canvas-bar{
-    height: 46px; flex-shrink:0; display:flex; align-items:center; gap:10px; padding: 0 16px;
-    background: var(--surface); border-bottom: 1px solid var(--border);
-  }
-  .page-drop{
-    display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; padding:6px 9px; border-radius:7px;
-    background:none; border:1px solid transparent; color: var(--text);
-  }
-  .page-drop:hover{ background: var(--surface-2); }
-  .page-drop svg{ color: var(--text-faint); }
-  .site-url{ font-size:12px; color: var(--text-faint); }
-  .site-url a{ color: var(--accent-strong); font-weight:700; }
-  .canvas-bar .top-spacer{ flex:1; }
-  .device-toggle{ display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
+  .device-toggle{ position:absolute; right:40px; top:120%; transform:translateY(-50%); display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
   .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
   .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
-  .preview-badge{ display:flex; align-items:center; gap:8px; }
 
   .stage{ flex:1; overflow:auto; padding: 34px 24px 90px; display:flex; justify-content:center; }
   .frame{
@@ -459,6 +402,13 @@
     padding: 0 4px 0 8px; border-radius:8px; max-width:118px;
   }
   #sel-toolbar select:hover{ background: var(--surface-2); }
+  #sel-toolbar input.tb-num{
+    height:32px; width:50px; border:none; background:none; color: var(--text); font-size:13px; font-weight:600;
+    text-align:center; border-radius:8px; padding:0;
+  }
+  #sel-toolbar input.tb-num:hover{ background: var(--surface-2); }
+  #sel-toolbar input.tb-num:focus{ outline:2px solid var(--accent-soft); outline-offset:-1px; }
+  #sel-toolbar .toolbar-label{ font-size:13px; font-weight:600; color:var(--text); padding:0 7px; }
   .clr-btn{
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
     width:32px; height:32px; padding: 5px 0 6px; font-size:14px; font-weight:800; line-height:1;
@@ -467,6 +417,8 @@
   .clr-btn:hover{ background: var(--surface-2); }
   .clr-btn .clr-bar{ width:14px; height:3px; border-radius:1px; background:#1c1c1c; flex-shrink:0; }
   .clr-btn[disabled]{ opacity:.35; pointer-events:none; }
+  .clr-glyph{ display:flex; flex-direction:column; align-items:center; gap:2px; font-size:14px; font-weight:800; line-height:1; flex-shrink:0; }
+  .clr-glyph .clr-bar{ width:14px; height:3px; border-radius:1px; background:#1c1c1c; flex-shrink:0; }
 
   /* ---------- Ask Aria fab + popover ---------- */
   .aria-fab{
@@ -487,6 +439,43 @@
   .aria-chip:hover{ background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-soft); }
   .aria-input-row{ display:flex; gap:6px; }
   .aria-input-row input{ flex:1; border:1px solid var(--border); border-radius:8px; padding:8px 10px; background: var(--bg); font-size:12.5px; }
+  .button-settings-pop{ position:fixed; z-index:80; width:270px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-lg); padding:14px; }
+  .button-settings-pop h4{ font-size:14px; margin-bottom:12px; }
+  .button-settings-pop .field + .field, .button-settings-pop .field-row + .field, .button-settings-pop .field + .field-row, .button-settings-pop .field-row + .field-row{ margin-top:10px; }
+  .button-settings-pop label{ display:block; font-size:11px; font-weight:800; color:var(--text-muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:.04em; }
+  .button-settings-pop input,.button-settings-pop select,.button-settings-pop textarea{ width:100%; border:1px solid var(--border); border-radius:7px; padding:7px 8px; background:var(--surface); font-family:inherit; font-size:12.5px; resize:vertical; }
+  .button-settings-pop h4{ display:flex; align-items:center; }
+  .button-settings-pop .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .button-settings-pop .field-row .field{ min-width:0; }
+  .button-settings-pop .field-row .field + .field{ margin-top:0; }
+  .button-settings-pop input[type="range"]{ padding:0; accent-color:var(--accent); }
+  .align-btn-row{ display:flex; gap:6px; }
+  .align-btn-row button{ flex:1; display:flex; align-items:center; justify-content:center; height:34px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text-muted); cursor:pointer; padding:0; }
+  .align-btn-row button:hover{ background:var(--surface-2); color:var(--text); }
+  .align-btn-row button.on{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent-soft); }
+  .color-palette{ display:flex; flex-wrap:wrap; gap:8px; }
+  .color-palette .swatch{ width:26px; height:26px; border-radius:50%; border:1px solid var(--border); padding:0; box-sizing:border-box; cursor:pointer; transition:transform .1s ease; }
+  .color-palette .swatch:hover{ transform:scale(1.1); }
+  .color-palette .swatch.on{ box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  .color-palette .swatch-native-input{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; padding:0; border:0; }
+  .range-value{ float:right; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); text-transform:none; letter-spacing:0; }
+  .button-settings-pop .pop-actions{ display:flex; justify-content:flex-en d; gap:7px; margin-top:13px; }
+  [data-editable="button"][data-hover="lift"]:hover{ transform:translateY(-2px); box-shadow:var(--shadow-sm); }
+  [data-editable="button"][data-hover="darken"]:hover{ filter:brightness(.86); }
+  [data-editable="button"][data-hover="outline"]:hover{ background:transparent !important; color:inherit !important; outline:2px solid currentColor; }
+  [data-editable="button"][data-animation="fade"], [data-editable="text"][data-animation="fade"]{ animation:buttonFade .45s ease both; }
+  [data-editable="button"][data-animation="rise"], [data-editable="text"][data-animation="rise"]{ animation:buttonRise .45s ease both; }
+  [data-editable="button"][data-animation="pulse"], [data-editable="text"][data-animation="pulse"]{ animation:buttonPulse 1.8s ease-in-out infinite; }
+  @keyframes buttonFade{ from{opacity:0} to{opacity:1} }
+  @keyframes buttonRise{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+  @keyframes buttonPulse{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.025)} }
+  .site-section + .site-section{ margin-top: var(--section-gap, 0px); }
+  #frame[data-section-divider="line"] .site-section + .site-section{ border-top: 1px solid var(--border); }
+  #frame[data-section-divider="dashed"] .site-section + .site-section{ border-top: 1px dashed var(--border); }
+  #frame[data-section-divider="thick"] .site-section + .site-section{ border-top: 4px solid var(--accent); }
+  #frame[data-section-animation="fade"] .site-section{ animation: buttonFade .6s ease both; }
+  #frame[data-section-animation="rise"] .site-section{ animation: buttonRise .6s ease both; }
+  #frame[data-section-animation="pulse"] .site-section{ animation: buttonPulse 2.2s ease-in-out infinite; }
 
   /* ---------- publish modal ---------- */
   .scrim{ position: fixed; inset: 0; background: rgba(30,26,10,.5); z-index: 90; display:flex; align-items:center; justify-content:center; padding: 22px; }
@@ -746,75 +735,27 @@
 
 <div class="ed">
   <!-- ============ TOP BAR ============ -->
-  <header class="ed-top">
-    <div class="brand-mark"><img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></div>
-    <span class="sep"></span>
-    <button class="site-picker" id="btn-site-picker">
-      Northwind Studio
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
-    </button>
-    <span class="sep"></span>
-    <button class="icon-btn" id="btn-undo" title="Undo" aria-label="Undo">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-2"/></svg>
-    </button>
-    <button class="icon-btn" id="btn-redo" title="Redo" aria-label="Redo">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h2"/></svg>
-    </button>
-
-    <div class="top-spacer"></div>
-
-    <label class="zoom-picker">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <select id="zoom-select">
-        <option value="0.6">Fit (60%)</option>
-        <option value="0.75">75%</option>
-        <option value="0.85" selected>Fit (85%)</option>
-        <option value="1">100%</option>
-      </select>
-    </label>
-
-    <span class="save-state" id="save-state"><span class="d"></span><span id="save-state-txt">All changes saved</span></span>
-
-    <button class="btn btn-secondary btn-sm" id="btn-preview">Preview</button>
-    <button class="btn btn-primary" id="btn-publish">Publish</button>
+  <header class="topbar">
+    <a class="back-btn" href="Event_Listing.html">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      Back to events
+    </a>
+    <span class="ev-title">
+      <h1 id="ed-event-name">&nbsp;</h1>
+      <span class="meta" id="ed-event-meta"></span>
+    </span>
+    <span class="topbar-acts">
+      <button class="btn btn-secondary" type="button" id="btn-preview">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+        Preview
+      </button>
+      <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
+    </span>
   </header>
 
   <div class="ed-workspace">
     <nav class="rail" id="global-rail" aria-label="Sections"></nav>
     <div class="ed-body">
-    <!-- ============ LEFT ICON RAIL ============ -->
-    <nav class="ed-rail" aria-label="Editor tools">
-      <button class="rail-btn" data-panel="add" title="Add elements">
-        <span class="add-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
-        Add
-      </button>
-      <button class="rail-btn" data-panel="predefined" title="Predefined sections">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
-        Sections
-      </button>
-      <button class="rail-btn" data-panel="pages" title="Pages">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/></svg>
-        Pages
-      </button>
-      <button class="rail-btn" data-panel="layers" title="Layers">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
-        Layers
-      </button>
-      <button class="rail-btn" data-panel="design" title="Design">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="12" r="2.5"/><circle cx="13.5" cy="17.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/></svg>
-        Design
-      </button>
-      <div class="rail-gap"></div>
-      <button class="rail-btn" id="btn-media" title="Media">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
-        Media
-      </button>
-      <button class="rail-btn" id="btn-apps" title="Apps">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
-        Apps
-      </button>
-    </nav>
-
     <!-- ============ ADD PANEL ============ -->
     <aside class="side-panel" id="panel-add" hidden>
       <div class="side-panel-head"><h3>Add elements</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
@@ -908,98 +849,6 @@
           </div>
           <span class="hint">Applies to buttons, links and accents across the site.</span>
         </div>
-      </div>
-    </aside>
-
-    <!-- ============ CANVAS ============ -->
-    <main class="ed-main">
-      <div class="canvas-bar">
-        <button class="page-drop" id="page-drop-label">Page: Home <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
-        <span class="site-url">northwindstudio.revamp-sites.com</span>
-        <div class="top-spacer"></div>
-        <span class="preview-badge" id="preview-badge" hidden><span class="pill" style="background:var(--warn-soft);color:var(--warn);padding:3px 10px;border-radius:100px;font-size:11.5px;font-weight:700;">Preview mode</span></span>
-        <div class="device-toggle" role="group" aria-label="Device preview">
-          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
-          <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
-        </div>
-      </div>
-
-      <!-- ============ GLOBAL COMMAND TOOLBAR ============ -->
-      <div class="global-toolbar" id="global-toolbar">
-       <div class="gt-pill">
-        <button class="gt-btn ai" id="gt-ask-aria" title="Ask Aria">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>
-        </button>
-        <div class="gt-sep"></div>
-        <span class="gt-section-label" id="gt-section-label">No section selected</span>
-        <div class="gt-sep"></div>
-        <select class="gt-select" id="gt-font-size" title="Paragraph style" disabled>
-          <option value="">Paragraph</option>
-          <option value="12px">Small text</option>
-          <option value="28px">Heading</option>
-          <option value="42px">Large heading</option>
-        </select>
-        <div class="gt-sep"></div>
-        <button class="gt-btn icon-only" id="gt-bold" title="Bold" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 4h7a3.5 3.5 0 0 1 0 7H6zM6 11h8a3.5 3.5 0 0 1 0 7H6z"/></svg>
-        </button>
-        <button class="gt-btn icon-only" id="gt-italic" title="Italic" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 4h6M6 20h6M13 4l-4 16"/></svg>
-        </button>
-        <button class="gt-btn icon-only" id="gt-underline" title="Underline" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M4 21h16"/></svg>
-        </button>
-        <div class="gt-sep"></div>
-        <button class="gt-btn icon-only" id="gt-link" title="Link" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
-        </button>
-        <button class="clr-btn" id="gt-color" title="Text color" disabled>A<span class="clr-bar"></span></button>
-        <div class="gt-sep"></div>
-        <button class="gt-btn icon-only" id="gt-align-left" title="Align left" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
-        </button>
-        <button class="gt-btn icon-only" id="gt-align-center" title="Align center" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg>
-        </button>
-        <button class="gt-btn icon-only" id="gt-align-right" title="Align right" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg>
-        </button>
-        <div class="gt-sep"></div>
-        <button class="gt-btn" id="gt-change-layout" title="Change Layout">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
-          Change Layout
-        </button>
-        <div class="gt-sep"></div>
-        <button class="gt-btn" id="gt-replace-bg" title="Replace Background">
-          <span class="gt-circle"></span>
-          Replace Background
-        </button>
-        <div class="gt-sep"></div>
-        <button class="gt-btn icon-only" id="gt-more" title="More options">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
-        </button>
-       </div>
-      </div>
-
-      <div class="lyr-menu gt-more-menu" id="gt-more-menu" hidden>
-        <button id="gt-sec-duplicate" title="Duplicate section">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-          Duplicate section
-        </button>
-        <button id="gt-sec-hide" title="Hide section">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-          Hide section
-        </button>
-        <button id="gt-sec-delete" class="danger" title="Delete section">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg>
-          Delete section
-        </button>
-        <div class="lyr-menu-sep"></div>
-        <button id="gt-settings" title="Site theme color">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          Theme &amp; style&hellip;
-        </button>
-        <div class="lyr-menu-sep"></div>
         <div class="gt-more-row">
           <label for="theme-font">Heading font</label>
           <select id="theme-font" title="Heading font">
@@ -1016,6 +865,156 @@
             <option value="100px">Pill corners</option>
           </select>
         </div>
+      </div>
+    </aside>
+
+    <!-- ============ CANVAS ============ -->
+    <main class="ed-main">
+      <!-- ============ EDITOR TOOLS RAIL ============ -->
+      <nav class="ed-rail" aria-label="Editor tools">
+        <button class="rail-btn" data-panel="add" title="Add elements">Add</button>
+        <button class="rail-btn" data-panel="predefined" title="Predefined sections">Sections</button>
+        <button class="rail-btn" data-panel="pages" title="Pages">Pages</button>
+        <button class="rail-btn" data-panel="layers" title="Layers">Layers</button>
+        <button class="rail-btn" data-panel="design" title="Design">Design</button>
+        <div class="rail-gap"></div>
+        <button class="rail-btn" id="btn-media" title="Media">Media</button>
+        <button class="rail-btn" id="btn-apps" title="Apps">Apps</button>
+      </nav>
+
+      <!-- ============ GLOBAL COMMAND TOOLBAR ============ -->
+      <div class="global-toolbar" id="global-toolbar">
+       <div class="gt-pill">
+        <select class="gt-select" id="gt-scope" title="Content area">
+          <option value="body">Body</option>
+          <option value="heading">Heading</option>
+          <option value="navigation">Navigation</option>
+          <option value="date-venue">Date and Venue</option>
+        </select>
+        <div class="gt-sep"></div>
+        <button class="gt-btn" id="gt-body-bg-color" title="Body background color" data-scopes="body">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/></svg>
+          Background Color
+        </button>
+        <button class="gt-btn" id="gt-body-text-color" title="Body text color" data-scopes="body">
+          <span class="clr-glyph">A<span class="clr-bar"></span></span>
+          Text Color
+        </button>
+        <button class="gt-btn" id="gt-body-theme-color" title="Default theme color" data-scopes="body">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21a9 9 0 1 1 0-18c4.5 0 8 3 8 6.5 0 2.2-1.8 3.5-3.6 3.5h-1.7c-1 0-1.7.9-1.4 1.8.4 1 .1 2.2-1.3 2.2Z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8" r="1.2" fill="currentColor" stroke="none"/></svg>
+          Theme Color
+        </button>
+        <button class="gt-btn" id="gt-body-bg-image" title="Body background image" data-scopes="body">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>
+          Background Image
+        </button>
+        <button class="gt-btn" id="gt-body-font-family" title="Body font family" data-scopes="body">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M12 6v14"/></svg>
+          Font Family
+        </button>
+        <button class="gt-btn" id="gt-body-font-size" title="Body font size" data-scopes="body">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="1" y="12" font-size="9" font-weight="700">A</text><text x="10" y="18" font-size="15" font-weight="700">A</text></svg>
+          Font Size
+        </button>
+        <button class="gt-btn" id="gt-body-font-weight" title="Body font weight" data-scopes="body">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18h16" stroke-width="3.6"/></svg>
+          Font Weight
+        </button>
+        <button class="gt-btn icon-only" id="gt-body-more" title="More background &amp; section options" data-scopes="body">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+        </button>
+        <button class="gt-btn" id="gt-heading-font-family" title="Heading font family" data-scopes="heading">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M12 6v14"/></svg>
+          Heading Font Family
+        </button>
+        <button class="gt-btn" id="gt-heading-font-size" title="Heading font size" data-scopes="heading">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="1" y="12" font-size="9" font-weight="700">A</text><text x="10" y="18" font-size="15" font-weight="700">A</text></svg>
+          Font Size
+        </button>
+        <button class="gt-btn" id="gt-heading-font-weight" title="Heading font weight" data-scopes="heading">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18h16" stroke-width="3.6"/></svg>
+          Font Weight
+        </button>
+        <button class="gt-btn" id="gt-heading-color" title="Heading color" data-scopes="heading">
+          <span class="clr-glyph">A<span class="clr-bar"></span></span>
+          Heading Color
+        </button>
+        <button class="gt-btn" id="gt-heading-text-case" title="Heading font type" data-scopes="heading">
+          <svg width="17" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="0" y="17" font-size="15" font-weight="700">Aa</text></svg>
+          Font Type
+        </button>
+        <button class="gt-btn" id="gt-heading-layout" title="Heading layout" data-scopes="heading">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="8" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/></svg>
+          Heading Layout
+        </button>
+        <button class="gt-btn" id="gt-nav-bg-color" title="Navigation background color" data-scopes="navigation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/></svg>
+          Background Color
+        </button>
+        <button class="gt-btn" id="gt-nav-text-color" title="Navigation text color" data-scopes="navigation">
+          <span class="clr-glyph">A<span class="clr-bar"></span></span>
+          Text Color
+        </button>
+        <button class="gt-btn" id="gt-nav-alignment" title="Navigation alignment" data-scopes="navigation">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
+          Alignment
+        </button>
+        <button class="gt-btn" id="gt-nav-font-size" title="Navigation font size" data-scopes="navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="1" y="12" font-size="9" font-weight="700">A</text><text x="10" y="18" font-size="15" font-weight="700">A</text></svg>
+          Font Size
+        </button>
+        <button class="gt-btn" id="gt-nav-appearance" title="Navigation appearance" data-scopes="navigation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none"/></svg>
+          Appearance
+        </button>
+        <button class="gt-btn" id="gt-nav-add-menu-item" title="Add menu item" data-scopes="navigation">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add Menu Item
+        </button>
+        <button class="gt-btn" id="gt-date-venue-font-family" title="Date &amp; venue font family" disabled data-scopes="date-venue">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M12 6v14"/></svg>
+          Font Family
+        </button>
+        <button class="gt-btn" id="gt-date-venue-font-size" title="Date &amp; venue font size" disabled data-scopes="date-venue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="1" y="12" font-size="9" font-weight="700">A</text><text x="10" y="18" font-size="15" font-weight="700">A</text></svg>
+          Font Size
+        </button>
+        <button class="gt-btn" id="gt-date-venue-font-weight" title="Date &amp; venue font weight" disabled data-scopes="date-venue">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18h16" stroke-width="3.6"/></svg>
+          Font Weight
+        </button>
+        <button class="gt-btn" id="gt-date-venue-font-color" title="Date &amp; venue font color" disabled data-scopes="date-venue">
+          <span class="clr-glyph">A<span class="clr-bar"></span></span>
+          Font Color
+        </button>
+        <button class="gt-btn" id="gt-date-venue-format" title="Date format" disabled data-scopes="date-venue">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+          Format
+        </button>
+       </div>
+       <div class="device-toggle" role="group" aria-label="Device preview">
+        <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+        <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
+       </div>
+      </div>
+
+      <div class="lyr-menu gt-more-menu" id="gt-body-more-menu" hidden>
+        <button id="gt-body-bg-opacity" title="Background opacity">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.5c3.5 4.4 7 8.6 7 12.3a7 7 0 0 1-14 0c0-3.7 3.5-7.9 7-12.3Z"/><path d="M8.5 14.5A3.5 3.5 0 0 0 12 18"/></svg>
+          Opacity
+        </button>
+        <button id="gt-body-section-spacing" title="Spacing between sections">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="5" rx="1"/><rect x="4" y="16" width="16" height="5" rx="1"/><path d="M12 10v4"/><path d="m9.5 11 2.5-2 2.5 2M9.5 13l2.5 2 2.5-2"/></svg>
+          Spacing
+        </button>
+        <button id="gt-body-section-divider" title="Section divider">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="6" rx="1"/><path d="M3 15h18"/><rect x="3" y="18" width="18" height="3" rx="1"/></svg>
+          Divider
+        </button>
+        <button id="gt-body-animation" title="Section animation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2.2 4.5L19 9.7l-4.8 2.2L12 17l-2.2-5.1L5 9.7l4.8-2.2Z"/><path d="m19 15 .9 1.9L22 18l-2.1 1.1L19 21l-.9-1.9L16 18l2.1-1.1Z"/></svg>
+          Animation
+        </button>
       </div>
 
       <div class="stage" id="stage">
@@ -1180,11 +1179,11 @@
 </div>
 
 <!-- ============ ASK ARIA ============ -->
-<button class="aria-fab" id="aria-fab" title="Ask Aria" aria-label="Ask Aria">
+<button class="aria-fab" id="aria-fab" title="ET AI" aria-label="ET AI">
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/><path d="M12 3v3"/></svg>
 </button>
 <div class="aria-pop" id="aria-pop" hidden>
-  <div class="aria-pop-head"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/><path d="M12 3v3"/></svg><strong>Ask Aria</strong></div>
+  <div class="aria-pop-head"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="4"/><path d="M9 11v.01M15 11v.01"/><path d="M9 15c.7.7 1.9.7 2.6 0"/><path d="M12 3v3"/></svg><strong>ET AI</strong></div>
   <div class="aria-pop-body">
     <p>Describe what you want to change and Aria will draft it. (Prototype &mdash; replies are simulated.)</p>
     <div class="aria-chip-row">
@@ -1193,18 +1192,38 @@
       <button class="aria-chip" data-aria-prompt="Add a pricing section">Add pricing</button>
     </div>
     <div class="aria-input-row">
-      <input type="text" id="aria-input" placeholder="Ask Aria to write, design, or fix anything&hellip;">
+      <input type="text" id="aria-input" placeholder="Ask ET AI to write, design, or fix anything&hellip;">
       <button class="btn btn-primary btn-sm" id="aria-send">Send</button>
     </div>
   </div>
 </div>
+<div class="button-settings-pop" id="style-pop" hidden>
+  <h4 id="style-pop-title">Settings</h4>
+  <div id="style-pop-body"></div>
+  <div class="pop-actions"><button class="btn btn-primary btn-sm" type="button" id="style-pop-done">Done</button></div>
+</div>
+<div class="button-settings-pop" id="image-ai-pop" hidden>
+  <h4><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:5px;"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>Generate image with AI</h4>
+  <div class="field"><label for="ai-image-prompt">Describe the image</label><textarea id="ai-image-prompt" rows="3" placeholder="e.g. a modern minimalist office space with plants and natural light"></textarea></div>
+  <div class="pop-actions"><button class="btn btn-ghost btn-sm" type="button" id="image-ai-cancel">Cancel</button><button class="btn btn-primary btn-sm" type="button" id="image-ai-generate">Generate</button></div>
+</div>
+<div class="button-settings-pop" id="gt-style-pop" hidden>
+  <h4 id="gt-style-pop-title">Body</h4>
+  <div id="gt-style-pop-body"></div>
+  <div class="pop-actions"><button class="btn btn-primary btn-sm" type="button" id="gt-style-pop-done">Done</button></div>
+</div>
 
 <div id="toast-region"></div>
 
+<script src="edit-event-core.js"></script>
 <script src="sidebar.js"></script>
 <script>
 (function(){
+    var C = window.RevampCore;
     var editorEventId = new URLSearchParams(location.search).get('event') || '1';
+    var EV = C.eventById(editorEventId) || C.EVENTS[0];
+    document.getElementById('ed-event-name').textContent = EV.name + ' | ' + (C.PORTALS[EV.portal] || '');
+    document.getElementById('ed-event-meta').textContent = C.fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (C.TYPES[EV.type] || EV.type);
     renderEventRail('global-rail', {
       activeSection: 'design',
       onSection: function(section){
@@ -1221,8 +1240,13 @@
   var stage = document.getElementById('stage');
   var frame = document.getElementById('frame');
   var selToolbar = document.getElementById('sel-toolbar');
+  var stylePop = document.getElementById('style-pop');
+  var stylePopTitle = document.getElementById('style-pop-title');
+  var stylePopBody = document.getElementById('style-pop-body');
+  var imageAiPop = document.getElementById('image-ai-pop');
+  var imageAiPrompt = document.getElementById('ai-image-prompt');
   var previewMode = false;
-  var currentZoom = 0.85;
+  var currentZoom = 1;
   var selectedEl = null;
   var activeSectionEl = null;
 
@@ -1237,57 +1261,19 @@
     setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 200); }, 2600);
   }
 
-  /* ---------- save state ---------- */
-  var saveStateEl = document.getElementById('save-state');
-  var saveStateTxt = document.getElementById('save-state-txt');
-  var saveTimer = null;
-  function markSaving(){
-    saveStateEl.classList.add('saving');
-    saveStateTxt.textContent = 'Saving…';
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(function(){
-      saveStateEl.classList.remove('saving');
-      saveStateTxt.textContent = 'All changes saved';
-    }, 700);
-  }
+  /* ---------- save state (no-op: save-state indicator removed from topbar) ---------- */
+  function markSaving(){}
 
-  /* ---------- history (undo / redo) ---------- */
-  var history = [frame.innerHTML];
-  var histIndex = 0;
-  var restoring = false;
-  function pushHistory(){
-    if (restoring) return;
-    history = history.slice(0, histIndex + 1);
-    history.push(frame.innerHTML);
-    histIndex = history.length - 1;
-    updateUndoRedoBtns();
-  }
-  function restoreHistory(idx){
-    restoring = true;
-    deselect();
-    frame.innerHTML = history[idx];
-    histIndex = idx;
-    restoring = false;
-    updateUndoRedoBtns();
-    rebuildLayersPanel();
-  }
-  function updateUndoRedoBtns(){
-    document.getElementById('btn-undo').disabled = histIndex <= 0;
-    document.getElementById('btn-redo').disabled = histIndex >= history.length - 1;
-  }
-  document.getElementById('btn-undo').addEventListener('click', function(){
-    if (histIndex > 0) { restoreHistory(histIndex - 1); showToast('Undid last change'); }
-  });
-  document.getElementById('btn-redo').addEventListener('click', function(){
-    if (histIndex < history.length - 1) { restoreHistory(histIndex + 1); showToast('Redid change'); }
-  });
-  updateUndoRedoBtns();
+  /* ---------- history (no-op: undo/redo removed from topbar) ---------- */
+  function pushHistory(){}
 
   /* ---------- selection ---------- */
   function deselect(){
     if (selectedEl){ selectedEl.classList.remove('ed-selected'); exitEditIfNeeded(selectedEl); }
     selectedEl = null;
     selToolbar.classList.remove('show');
+    stylePop.hidden = true;
+    imageAiPop.hidden = true;
     document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
     syncFormatControls();
   }
@@ -1295,6 +1281,7 @@
   function exitEditIfNeeded(el){
     if (el.getAttribute('contenteditable') === 'true'){
       el.removeAttribute('contenteditable');
+      el.removeAttribute('data-text-original');
       pushHistory();
     }
   }
@@ -1323,47 +1310,84 @@
   function buildToolbar(el){
     var type = el.getAttribute('data-editable');
     var html = '';
-    html += '<div class="tb-group"><button class="ai-btn icon-only" data-action="ask-aria" title="Ask Aria">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>' +
-      '</button></div>';
-    html += '<div class="tb-sep"></div>';
+    if (type !== 'button' && type !== 'text'){
+      html += '<div class="tb-group"><button class="ai-btn icon-only" data-action="ask-aria" title="ET AI">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.3 1 5.6 2.1 6.9 1.3 1.1 3.6 1.8 6.9 2.1-3.3.3-5.6 1-6.9 2.1-1.1 1.3-1.8 3.6-2.1 6.9-.3-3.3-1-5.6-2.1-6.9C8.6 11.9 6.3 11.2 3 10.9 6.3 10.6 8.6 9.9 9.9 8.9 11 7.6 11.7 5.3 12 2z"/></svg>' +
+        '</button></div>';
+      html += '<div class="tb-sep"></div>';
+    }
 
-    if (type === 'text' || type === 'button'){
-      html += '<div class="tb-group"><select data-action="font-size" title="Paragraph style">' +
-        '<option value="">Paragraph</option>' +
-        '<option value="12px">Small text</option>' +
-        '<option value="28px">Heading</option>' +
-        '<option value="42px">Large heading</option>' +
+    if (type === 'button'){
+      html += '<div class="tb-group"><button class="icon-only" data-action="edit-button-text" title="Edit text">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="link" title="Link">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="layout" title="Layout">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="8" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="settings" title="Settings">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H4a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V4a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.2a1.7 1.7 0 0 0 1.5 1H20a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="fill" title="Fill color">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="typography" title="Typography">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M12 6v14"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="border" title="Border">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="corners" title="Corners">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20v-9a7 7 0 0 1 7-7h9"/><circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="animations" title="Animations">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button></div>';
+    } else if (type === 'text'){
+      var curFont = (el.style.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim();
+      if (!curFont) curFont = 'Noticia Text';
+      var curSize = parseInt(el.style.fontSize, 10);
+      if (isNaN(curSize)) curSize = parseInt(getComputedStyle(el).fontSize, 10) || 14;
+
+      html += '<div class="tb-group"><button class="icon-only" data-action="edit-text" title="Edit text">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><select data-action="font-family" title="Font family">' +
+        TEXT_FONTS.map(function(f){ return '<option value="' + f + '"' + (f === curFont ? ' selected' : '') + '>' + f + '</option>'; }).join('') +
         '</select></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><input type="number" class="tb-num" data-action="font-size-num" title="Font size" min="8" max="120" step="1" value="' + curSize + '"></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="link" title="Link">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="text-color" title="Text color">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" fill="currentColor" stroke="none"/></svg></button></div>';
       html += '<div class="tb-sep"></div>';
       html += '<div class="tb-group">' +
         '<button class="icon-only" data-action="bold" title="Bold"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 4h7a3.5 3.5 0 0 1 0 7H6zM6 11h8a3.5 3.5 0 0 1 0 7H6z"/></svg></button>' +
         '<button class="icon-only" data-action="italic" title="Italic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 4h6M6 20h6M13 4l-4 16"/></svg></button>' +
         '<button class="icon-only" data-action="underline" title="Underline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v7a6 6 0 0 0 12 0V4"/><path d="M4 21h16"/></svg></button>' +
+        '<button class="icon-only" data-action="strikethrough" title="Strikethrough"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16"/><path d="M16 6.5c-.8-1.2-2.2-1.8-4-1.8-2.5 0-4.5 1.2-4.5 3 0 1.4 1 2.1 2.7 2.6"/><path d="M8 17.5c.8 1.2 2.2 1.8 4 1.8 2.5 0 4.6-1.2 4.6-3.1 0-1.1-.6-1.8-1.8-2.3"/></svg></button>' +
         '</div>';
       html += '<div class="tb-sep"></div>';
-      html += '<div class="tb-group">' +
-        '<button class="icon-only" data-action="link" title="Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button>' +
-        '<button class="clr-btn" data-action="color" title="Text color">A<span class="clr-bar"></span></button>' +
-        '</div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="align" title="Alignment">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button></div>';
       html += '<div class="tb-sep"></div>';
-      html += '<div class="tb-group">' +
-        '<button class="icon-only" data-action="align-left" title="Align left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>' +
-        '<button class="icon-only" data-action="align-center" title="Align center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>' +
-        '<button class="icon-only" data-action="align-right" title="Align right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>' +
-        '</div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="text-effects" title="Text effects">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h9M7.5 5v9"/><circle cx="17.5" cy="16" r="2.6"/><path d="M17.5 12v1M17.5 19v1M13.9 16h1M20.1 16h1M15 13.5l.7.7M19.3 17.8l.7.7M15 18.5l.7-.7M19.3 14.2l.7-.7"/></svg></button></div>';
       html += '<div class="tb-sep"></div>';
-      html += '<div class="tb-group"><button class="icon-only" data-action="edit-text" title="Edit text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button></div>';
-    }
-
-    if (type === 'button'){
-      html += '<div class="tb-sep"></div>';
-      html += '<div class="tb-group"><button data-action="button-style" title="Toggle style"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="4"/></svg>Style</button></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="animations" title="Animations">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 2.2 4.5L19 9.7l-4.8 2.2L12 17l-2.2-5.1L5 9.7l4.8-2.2Z"/><path d="m19 15 .9 1.9L22 18l-2.1 1.1L19 21l-.9-1.9L16 18l2.1-1.1Z"/></svg></button></div>';
     }
 
     if (type === 'image'){
       html += '<div class="tb-group"><button data-action="replace-image" title="Replace"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg>Replace image</button>' +
         '<button data-action="alt-text" title="Alt text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h8"/></svg>Alt text</button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="link" title="Link">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button></div>';
     }
 
     html += '<div class="tb-sep"></div>';
@@ -1391,6 +1415,346 @@
     selToolbar.style.left = left + 'px';
   }
 
+  function applyTextCase(el, mode){
+    var original = el.getAttribute('data-text-original') || el.textContent;
+    el.setAttribute('data-text-case', mode);
+    switch(mode){
+      case 'uppercase': el.textContent = original.toUpperCase(); break;
+      case 'lowercase': el.textContent = original.toLowerCase(); break;
+      case 'capitalize':
+        el.textContent = original.replace(/\S+/g, function(w){ return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); });
+        break;
+      case 'sentence':
+        el.textContent = original.toLowerCase().replace(/(^\s*\w|[.!?]\s+\w)/g, function(c){ return c.toUpperCase(); });
+        break;
+      default: el.textContent = original;
+    }
+  }
+
+  function hexOfColor(str, fallback){
+    if (!str) return fallback;
+    if (/^#/.test(str)) return str;
+    var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (m) return '#' + [1, 2, 3].map(function(i){ return ('0' + parseInt(m[i], 10).toString(16)).slice(-2); }).join('');
+    return fallback;
+  }
+
+  var DATE_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var DATE_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function pad2(n){ return (n < 10 ? '0' : '') + n; }
+  function formatDateByPattern(d, pattern){
+    var day = d.getDate(), month = d.getMonth(), year = d.getFullYear(), weekday = d.getDay();
+    switch(pattern){
+      case 'long': return DATE_MONTHS[month] + ' ' + day + ', ' + year;
+      case 'medium': return DATE_MONTHS[month].slice(0, 3) + ' ' + day + ', ' + year;
+      case 'short-dmy': return pad2(day) + '/' + pad2(month + 1) + '/' + year;
+      case 'short-mdy': return pad2(month + 1) + '/' + pad2(day) + '/' + year;
+      case 'weekday-long': return DATE_WEEKDAYS[weekday] + ', ' + DATE_MONTHS[month] + ' ' + day;
+      default: return d.toDateString();
+    }
+  }
+
+  var TEXT_FONTS = ['Noticia Text', 'Fraunces', 'Manrope', 'Playfair Display', 'Poppins', 'Lora'];
+  var TEXT_FONT_FALLBACK = { 'Noticia Text': 'serif', 'Fraunces': 'serif', 'Manrope': 'sans-serif', 'Playfair Display': 'serif', 'Poppins': 'sans-serif', 'Lora': 'serif' };
+  var COLOR_SWATCHES = ['#111827', '#ffffff', '#6b7280', '#ef4444', '#f97316', '#eab308', '#22c55e', '#0f6f5c', '#3b82f6', '#8b5cf6', '#ec4899'];
+  var COLOR_CUSTOM_GRADIENT = 'conic-gradient(from 180deg, #ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ef4444)';
+
+  function colorPaletteField(id, label){
+    var swatches = COLOR_SWATCHES.map(function(c){
+      return '<button type="button" class="swatch" data-color="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+    }).join('');
+    return '<div class="field"><label>' + label + '</label><div class="color-palette" id="' + id + '-palette">' +
+      swatches +
+      '<button type="button" class="swatch swatch-custom" data-role="custom" title="Custom color"></button>' +
+      '<input type="color" id="' + id + '" class="swatch-native-input" tabindex="-1">' +
+      '</div></div>';
+  }
+
+  function wireColorPalette(id, initial, applyFn){
+    var container = document.getElementById(id + '-palette');
+    var nativeInput = document.getElementById(id);
+    var customSwatch = container.querySelector('.swatch-custom');
+    nativeInput.value = initial;
+
+    function setActive(hex){
+      var matched = false;
+      container.querySelectorAll('.swatch[data-color]').forEach(function(sw){
+        var isMatch = sw.getAttribute('data-color').toLowerCase() === hex.toLowerCase();
+        sw.classList.toggle('on', isMatch);
+        if (isMatch) matched = true;
+      });
+      customSwatch.classList.toggle('on', !matched);
+      customSwatch.style.background = matched ? COLOR_CUSTOM_GRADIENT : hex;
+    }
+    setActive(initial);
+
+    container.addEventListener('click', function(e){
+      var btn = e.target.closest('.swatch');
+      if (!btn) return;
+      if (btn.dataset.role === 'custom'){ nativeInput.click(); return; }
+      var hex = btn.getAttribute('data-color');
+      nativeInput.value = hex;
+      setActive(hex);
+      applyFn(hex);
+    });
+    nativeInput.addEventListener('input', function(){
+      setActive(this.value);
+      applyFn(this.value);
+    });
+  }
+
+  function openStylePop(kind, anchorBtn){
+    if (!selectedEl) return;
+    var elType = selectedEl.getAttribute('data-editable');
+    if (elType !== 'button' && elType !== 'text') return;
+    var body = '';
+    var title = '';
+    switch(kind){
+      case 'edit-button-text':
+        title = 'Edit text';
+        body += '<div class="field"><label for="sp-button-text">Button text</label><input id="sp-button-text" type="text"></div>';
+        break;
+      case 'layout':
+        title = 'Layout';
+        var align = selectedEl.getAttribute('data-layout') || 'left';
+        body += '<div class="field"><label for="sp-layout-align">Alignment</label><select id="sp-layout-align">' +
+          '<option value="left"' + (align === 'left' ? ' selected' : '') + '>Left</option>' +
+          '<option value="center"' + (align === 'center' ? ' selected' : '') + '>Center</option>' +
+          '<option value="right"' + (align === 'right' ? ' selected' : '') + '>Right</option>' +
+          '<option value="full"' + (align === 'full' ? ' selected' : '') + '>Full width</option>' +
+          '</select></div>';
+        break;
+      case 'settings':
+        title = 'Settings';
+        body += '<div class="field"><label for="sp-hover">Hover effect</label><select id="sp-hover">' +
+          '<option value="lift">Lift</option><option value="darken">Darken</option><option value="outline">Outline</option><option value="none">None</option>' +
+          '</select></div>';
+        body += '<div class="field"><label for="sp-aria">Accessible label</label><input id="sp-aria" placeholder="Describe this button"></div>';
+        break;
+      case 'fill':
+        title = 'Fill color';
+        body += colorPaletteField('sp-fill', 'Background color');
+        body += colorPaletteField('sp-text-color', 'Text color');
+        break;
+      case 'typography':
+        title = 'Typography';
+        body += '<div class="field-row">' +
+          '<div class="field"><label for="sp-font-size">Font size</label><select id="sp-font-size">' +
+            ['12px','14px','16px','18px','20px','24px','28px','32px'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="field"><label for="sp-font-weight">Font weight</label><select id="sp-font-weight">' +
+            ['100','200','300','400','500','600','700','800','900'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>' +
+          '</div>';
+        body += '<div class="field-row">' +
+          '<div class="field"><label for="sp-letter-spacing">Letter spacing</label><select id="sp-letter-spacing">' +
+            ['-1px','0px','1px','2px','3px','4px'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="field"><label for="sp-text-case">Text case</label><select id="sp-text-case">' +
+            '<option value="none">None</option>' +
+            '<option value="uppercase">UPPERCASE</option>' +
+            '<option value="lowercase">lowercase</option>' +
+            '<option value="capitalize">Capitalize Each Word</option>' +
+            '<option value="sentence">Sentence case</option>' +
+          '</select></div>' +
+          '</div>';
+        break;
+      case 'border':
+        title = 'Border';
+        body += '<div class="field"><label for="sp-border-style">Style</label><select id="sp-border-style">' +
+          '<option value="none">None</option><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>' +
+          '</select></div>';
+        body += '<div class="field"><label for="sp-border-width">Width <span class="range-value" id="sp-border-width-value">0px</span></label><input id="sp-border-width" type="range" min="0" max="8" step="1" value="0"></div>';
+        body += '<div class="field"><label for="sp-border-color">Color</label><input id="sp-border-color" type="color"></div>';
+        break;
+      case 'corners':
+        title = 'Corners';
+        body += '<div class="field"><label for="sp-radius">Corner radius <span class="range-value" id="sp-radius-value">0px</span></label><input id="sp-radius" type="range" min="0" max="100" step="1" value="0"></div>';
+        break;
+      case 'animations':
+        title = 'Animations';
+        body += '<div class="field"><label for="sp-animation">Animation</label><select id="sp-animation">' +
+          '<option value="none">None</option><option value="fade">Fade in</option><option value="rise">Rise on load</option><option value="pulse">Pulse</option>' +
+          '</select></div>';
+        break;
+      case 'text-color':
+        title = 'Text color';
+        body += colorPaletteField('sp-text-only-color', 'Text color');
+        break;
+      case 'align':
+        title = 'Alignment';
+        body += '<div class="field"><div class="align-btn-row">' +
+          '<button type="button" class="icon-only" data-align="left" title="Left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>' +
+          '<button type="button" class="icon-only" data-align="center" title="Center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M5.5 18h13"/></svg></button>' +
+          '<button type="button" class="icon-only" data-align="right" title="Right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M7 18h13"/></svg></button>' +
+          '<button type="button" class="icon-only" data-align="justify" title="Justify"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>' +
+          '</div></div>';
+        break;
+      case 'text-effects':
+        title = 'Text effects';
+        body += '<div class="field-row">' +
+          '<div class="field"><label for="sp-line-height">Line height</label><select id="sp-line-height">' +
+            ['1', '1.2', '1.4', '1.6', '1.8', '2'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="field"><label for="sp-letter-spacing2">Letter spacing</label><select id="sp-letter-spacing2">' +
+            ['-1px', '0px', '1px', '2px', '3px', '4px'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>' +
+          '</div>';
+        body += '<div class="field"><label for="sp-shadow">Shadow</label><select id="sp-shadow">' +
+          '<option value="none">None</option><option value="soft">Soft</option><option value="strong">Strong</option>' +
+          '</select></div>';
+        break;
+      default: return;
+    }
+
+    stylePopTitle.textContent = title;
+    stylePopBody.innerHTML = body;
+
+    var cs = getComputedStyle(selectedEl);
+    switch(kind){
+      case 'edit-button-text':
+        var textInput = document.getElementById('sp-button-text');
+        textInput.value = selectedEl.textContent;
+        textInput.addEventListener('input', function(){
+          selectedEl.textContent = this.value;
+          selectedEl.removeAttribute('data-text-original');
+          selectedEl.removeAttribute('data-text-case');
+          markSaving();
+        });
+        textInput.addEventListener('keydown', function(e){
+          if (e.key === 'Enter'){ e.preventDefault(); stylePop.hidden = true; pushHistory(); }
+        });
+        break;
+      case 'layout':
+        document.getElementById('sp-layout-align').addEventListener('change', function(){
+          var val = this.value;
+          selectedEl.setAttribute('data-layout', val);
+          selectedEl.style.width = '';
+          selectedEl.style.marginLeft = '';
+          selectedEl.style.marginRight = '';
+          if (val === 'left'){ selectedEl.style.display = 'inline-block'; }
+          else if (val === 'center'){ selectedEl.style.display = 'block'; selectedEl.style.marginLeft = 'auto'; selectedEl.style.marginRight = 'auto'; }
+          else if (val === 'right'){ selectedEl.style.display = 'block'; selectedEl.style.marginLeft = 'auto'; }
+          else if (val === 'full'){ selectedEl.style.display = 'block'; selectedEl.style.width = '100%'; }
+          markSaving();
+        });
+        break;
+      case 'settings':
+        document.getElementById('sp-hover').value = selectedEl.getAttribute('data-hover') || 'lift';
+        document.getElementById('sp-aria').value = selectedEl.getAttribute('aria-label') || '';
+        document.getElementById('sp-hover').addEventListener('change', function(){ selectedEl.setAttribute('data-hover', this.value); markSaving(); });
+        document.getElementById('sp-aria').addEventListener('input', function(){
+          if (this.value.trim()) selectedEl.setAttribute('aria-label', this.value.trim()); else selectedEl.removeAttribute('aria-label');
+          markSaving();
+        });
+        break;
+      case 'fill':
+        wireColorPalette('sp-fill', hexOfColor(selectedEl.style.backgroundColor || cs.backgroundColor, '#0f6f5c'), function(hex){
+          selectedEl.style.backgroundColor = hex; markSaving();
+        });
+        wireColorPalette('sp-text-color', hexOfColor(selectedEl.style.color || cs.color, '#ffffff'), function(hex){
+          selectedEl.style.color = hex; markSaving();
+        });
+        break;
+      case 'typography':
+        if (!selectedEl.hasAttribute('data-text-original')) selectedEl.setAttribute('data-text-original', selectedEl.textContent);
+        document.getElementById('sp-font-size').value = selectedEl.style.fontSize || '16px';
+        document.getElementById('sp-font-weight').value = selectedEl.style.fontWeight || '400';
+        document.getElementById('sp-letter-spacing').value = selectedEl.style.letterSpacing && selectedEl.style.letterSpacing !== 'normal' ? selectedEl.style.letterSpacing : '0px';
+        document.getElementById('sp-text-case').value = selectedEl.getAttribute('data-text-case') || 'none';
+        ['sp-font-size', 'sp-font-weight', 'sp-letter-spacing', 'sp-text-case'].forEach(function(id){
+          document.getElementById(id).addEventListener('change', function(){
+            if (id === 'sp-font-size') selectedEl.style.fontSize = this.value;
+            if (id === 'sp-font-weight') selectedEl.style.fontWeight = this.value;
+            if (id === 'sp-letter-spacing') selectedEl.style.letterSpacing = this.value;
+            if (id === 'sp-text-case') applyTextCase(selectedEl, this.value);
+            markSaving();
+          });
+        });
+        break;
+      case 'border':
+        var bw = parseInt(selectedEl.style.borderWidth || cs.borderWidth, 10) || 0;
+        document.getElementById('sp-border-style').value = selectedEl.style.borderStyle || 'none';
+        document.getElementById('sp-border-width').value = bw;
+        document.getElementById('sp-border-width-value').textContent = bw + 'px';
+        document.getElementById('sp-border-color').value = hexOfColor(selectedEl.style.borderColor || cs.borderColor, '#0f6f5c');
+        document.getElementById('sp-border-style').addEventListener('change', function(){ selectedEl.style.borderStyle = this.value; markSaving(); });
+        document.getElementById('sp-border-width').addEventListener('input', function(){
+          document.getElementById('sp-border-width-value').textContent = this.value + 'px';
+          selectedEl.style.borderWidth = this.value + 'px';
+          if (parseInt(this.value, 10) > 0 && (!selectedEl.style.borderStyle || selectedEl.style.borderStyle === 'none')) selectedEl.style.borderStyle = 'solid';
+          markSaving();
+        });
+        document.getElementById('sp-border-color').addEventListener('input', function(){ selectedEl.style.borderColor = this.value; markSaving(); });
+        break;
+      case 'corners':
+        var radius = parseInt(selectedEl.getAttribute('data-radius') || '', 10);
+        if (isNaN(radius)) radius = parseInt(cs.borderRadius, 10) || 0;
+        document.getElementById('sp-radius').value = radius;
+        document.getElementById('sp-radius-value').textContent = radius + 'px';
+        document.getElementById('sp-radius').addEventListener('input', function(){
+          document.getElementById('sp-radius-value').textContent = this.value + 'px';
+          selectedEl.style.borderRadius = this.value + 'px';
+          selectedEl.setAttribute('data-radius', this.value);
+          markSaving();
+        });
+        break;
+      case 'animations':
+        document.getElementById('sp-animation').value = selectedEl.getAttribute('data-animation') || 'none';
+        document.getElementById('sp-animation').addEventListener('change', function(){
+          selectedEl.setAttribute('data-animation', this.value);
+          markSaving();
+        });
+        break;
+      case 'text-color':
+        wireColorPalette('sp-text-only-color', hexOfColor(selectedEl.style.color || cs.color, '#111827'), function(hex){
+          selectedEl.style.color = hex; markSaving();
+        });
+        break;
+      case 'align':
+        stylePopBody.querySelectorAll('[data-align]').forEach(function(btn){
+          if (btn.getAttribute('data-align') === (selectedEl.style.textAlign || 'left')) btn.classList.add('on');
+          btn.addEventListener('click', function(){
+            selectedEl.style.textAlign = this.getAttribute('data-align');
+            markSaving();
+            stylePop.hidden = true;
+          });
+        });
+        break;
+      case 'text-effects':
+        document.getElementById('sp-line-height').value = selectedEl.style.lineHeight || '1.4';
+        document.getElementById('sp-letter-spacing2').value = selectedEl.style.letterSpacing && selectedEl.style.letterSpacing !== 'normal' ? selectedEl.style.letterSpacing : '0px';
+        document.getElementById('sp-shadow').value = selectedEl.getAttribute('data-shadow') || 'none';
+        document.getElementById('sp-line-height').addEventListener('change', function(){ selectedEl.style.lineHeight = this.value; markSaving(); });
+        document.getElementById('sp-letter-spacing2').addEventListener('change', function(){ selectedEl.style.letterSpacing = this.value; markSaving(); });
+        document.getElementById('sp-shadow').addEventListener('change', function(){
+          selectedEl.setAttribute('data-shadow', this.value);
+          if (this.value === 'soft') selectedEl.style.textShadow = '0 1px 3px rgba(0,0,0,.25)';
+          else if (this.value === 'strong') selectedEl.style.textShadow = '0 3px 8px rgba(0,0,0,.5)';
+          else selectedEl.style.textShadow = '';
+          markSaving();
+        });
+        break;
+    }
+
+    stylePop.dataset.kind = kind;
+    var rect = (anchorBtn || selectedEl).getBoundingClientRect();
+    stylePop.hidden = false;
+    stylePop.style.left = Math.min(window.innerWidth - 286, Math.max(12, rect.left)) + 'px';
+    stylePop.style.top = Math.min(window.innerHeight - 260, rect.bottom + 12) + 'px';
+    if (kind === 'edit-button-text'){ textInput.focus(); textInput.select(); }
+  }
+
+  function openImageAiPop(anchorBtn){
+    if (!selectedEl || selectedEl.getAttribute('data-editable') !== 'image') return;
+    imageAiPrompt.value = selectedEl.getAttribute('data-ai-prompt') || '';
+    var rect = (anchorBtn || selectedEl).getBoundingClientRect();
+    imageAiPop.hidden = false;
+    imageAiPop.style.left = Math.min(window.innerWidth - 316, Math.max(12, rect.left)) + 'px';
+    imageAiPop.style.top = Math.min(window.innerHeight - 220, rect.bottom + 12) + 'px';
+    imageAiPrompt.focus();
+  }
+
   function enterEdit(el){
     selectElement(el);
     el.setAttribute('contenteditable', 'true');
@@ -1408,16 +1772,13 @@
       case 'bold': document.execCommand('bold'); markSaving(); break;
       case 'italic': document.execCommand('italic'); markSaving(); break;
       case 'underline': document.execCommand('underline'); markSaving(); break;
+      case 'strikethrough': document.execCommand('strikeThrough'); markSaving(); break;
       case 'align-left': selectedEl.style.textAlign = 'left'; markSaving(); break;
       case 'align-center': selectedEl.style.textAlign = 'center'; markSaving(); break;
       case 'align-right': selectedEl.style.textAlign = 'right'; markSaving(); break;
       case 'link':
         var url = prompt('Link URL', selectedEl.getAttribute('data-href') || 'https://');
         if (url){ selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); markSaving(); }
-        break;
-      case 'color':
-        var col = prompt('Text color (hex)', '#0F6F5C');
-        if (col){ selectedEl.style.color = col; markSaving(); }
         break;
     }
   }
@@ -1436,14 +1797,14 @@
 
   function syncFormatControls(){
     var enabled = isFormattableSelection();
-    ['gt-font-size', 'gt-bold', 'gt-italic', 'gt-underline', 'gt-link', 'gt-color', 'gt-align-left', 'gt-align-center', 'gt-align-right'].forEach(function(id){
+    ['gt-date-venue-font-family', 'gt-date-venue-font-size', 'gt-date-venue-font-weight', 'gt-date-venue-font-color', 'gt-date-venue-format'].forEach(function(id){
       document.getElementById(id).disabled = !enabled;
     });
   }
 
   /* ---------- toolbar action handling ---------- */
   selToolbar.addEventListener('mousedown', function(e){
-    if (e.target.closest('select')) return;
+    if (e.target.closest('select, input')) return;
     e.preventDefault();
   });
   selToolbar.addEventListener('click', function(e){
@@ -1452,15 +1813,18 @@
     var action = btn.getAttribute('data-action');
     switch(action){
       case 'edit-text': enterEdit(selectedEl); break;
-      case 'bold': case 'italic': case 'underline':
+      case 'bold': case 'italic': case 'underline': case 'strikethrough':
       case 'align-left': case 'align-center': case 'align-right':
-      case 'link': case 'color':
+      case 'link':
         applyFormatAction(action);
         break;
-      case 'button-style':
-        selectedEl.classList.toggle('primary');
-        selectedEl.classList.toggle('secondary');
-        markSaving();
+      case 'explore-designs':
+        showToast('Button design options opened');
+        openPanel('design', btn);
+        break;
+      case 'edit-button-text': case 'layout': case 'settings': case 'fill': case 'typography':
+      case 'border': case 'corners': case 'animations': case 'text-color': case 'align': case 'text-effects':
+        openStylePop(action, btn);
         break;
       case 'replace-image':
         showToast('Media library opens here — image swapped (prototype).');
@@ -1487,7 +1851,10 @@
         showToast('Element deleted');
         break;
       case 'deselect': deselect(); break;
-      case 'ask-aria': openAria('Rewrite this: “' + selectedEl.textContent.trim().slice(0,60) + '…”'); break;
+      case 'ask-aria':
+        if (selectedEl.getAttribute('data-editable') === 'image') openImageAiPop(btn);
+        else openAria('Rewrite this: “' + selectedEl.textContent.trim().slice(0,60) + '…”');
+        break;
       case 'site-settings': openPanel('design', btn); break;
     }
     if (action !== 'edit-text') e.stopPropagation();
@@ -1495,7 +1862,39 @@
   selToolbar.addEventListener('change', function(e){
     if (!selectedEl) return;
     var t = e.target;
-    if (t.getAttribute('data-action') === 'font-size' && t.value){ selectedEl.style.fontSize = t.value; markSaving(); }
+    if (t.getAttribute('data-action') === 'font-family' && t.value){
+      selectedEl.style.fontFamily = "'" + t.value + "', " + (TEXT_FONT_FALLBACK[t.value] || 'sans-serif');
+      markSaving();
+    }
+  });
+  selToolbar.addEventListener('input', function(e){
+    if (!selectedEl) return;
+    var t = e.target;
+    if (t.getAttribute('data-action') === 'font-size-num' && t.value){ selectedEl.style.fontSize = t.value + 'px'; markSaving(); }
+  });
+  document.getElementById('style-pop-done').addEventListener('click', function(){
+    stylePop.hidden = true;
+    if (stylePop.dataset.kind === 'edit-button-text') pushHistory();
+  });
+  document.addEventListener('mousedown', function(e){
+    if (stylePop.hidden || stylePop.contains(e.target) || e.target.closest('#sel-toolbar [data-action]')) return;
+    stylePop.hidden = true;
+  });
+  document.getElementById('image-ai-cancel').addEventListener('click', function(){ imageAiPop.hidden = true; });
+  document.getElementById('image-ai-generate').addEventListener('click', function(){
+    if (!selectedEl) return;
+    var prompt = imageAiPrompt.value.trim();
+    if (!prompt){ imageAiPrompt.focus(); showToast('Describe what you want to generate first'); return; }
+    imageAiPop.hidden = true;
+    showToast('Generating image with AI… (prototype)');
+    selectedEl.setAttribute('data-ai-prompt', prompt);
+    selectedEl.style.filter = selectedEl.style.filter ? '' : 'hue-rotate(45deg)';
+    pushHistory();
+    markSaving();
+  });
+  document.addEventListener('mousedown', function(e){
+    if (imageAiPop.hidden || imageAiPop.contains(e.target) || e.target.closest('#sel-toolbar [data-action="ask-aria"]')) return;
+    imageAiPop.hidden = true;
   });
 
   /* ---------- canvas click delegation ---------- */
@@ -1547,8 +1946,6 @@
       showToast('Element deleted');
       e.preventDefault();
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey){ document.getElementById('btn-undo').click(); e.preventDefault(); }
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))){ document.getElementById('btn-redo').click(); e.preventDefault(); }
   });
 
   /* ---------- section actions ---------- */
@@ -1576,22 +1973,7 @@
   }
 
   /* ---------- global toolbar: current-section actions ---------- */
-  function syncSectionToolbar(){
-    var label = document.getElementById('gt-section-label');
-    var hasSection = !!activeSectionEl;
-    label.textContent = hasSection ? (activeSectionEl.getAttribute('data-sec-name') || 'Section') : 'No section selected';
-    ['gt-change-layout', 'gt-replace-bg', 'gt-sec-duplicate', 'gt-sec-hide', 'gt-sec-delete'].forEach(function(id){
-      document.getElementById(id).disabled = !hasSection;
-    });
-    var hideBtn = document.getElementById('gt-sec-hide');
-    if (hasSection){
-      var isHidden = activeSectionEl.classList.contains('is-hidden-sec');
-      hideBtn.title = isHidden ? 'Show section' : 'Hide section';
-      hideBtn.innerHTML = isHidden
-        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.5 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a13.6 13.6 0 0 1-3 3.6M6.3 6.9C3.9 8.6 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 3.4-.6"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
-    }
-  }
+  function syncSectionToolbar(){}
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
@@ -1617,7 +1999,7 @@
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
     if (name === 'layers') rebuildLayersPanel();
     if (name === 'predefined') renderPredefinedSectionList();
-    if (name === 'design') positionDesignPopover(anchorEl || document.getElementById('gt-settings'));
+    if (name === 'design') positionDesignPopover(anchorEl || document.querySelector('[data-panel="design"]'));
   }
   railBtns.forEach(function(b){
     b.addEventListener('click', function(){
@@ -1637,7 +2019,7 @@
   document.addEventListener('mousedown', function(e){
     var panel = panels.design;
     if (panel.hidden) return;
-    if (panel.contains(e.target) || e.target.closest('[data-panel="design"], #gt-settings, #btn-site-settings-top, [data-action="site-settings"]')) return;
+    if (panel.contains(e.target) || e.target.closest('[data-panel="design"], #gt-body-theme-color, #btn-site-settings-top, [data-action="site-settings"]')) return;
     panel.hidden = true;
     railBtns.forEach(function(b){ b.classList.remove('active'); });
   });
@@ -1963,7 +2345,6 @@
       document.querySelectorAll('.pg-row').forEach(function(r){ r.classList.remove('active'); });
       row.classList.add('active');
       var name = row.getAttribute('data-page');
-      document.getElementById('page-drop-label').firstChild.textContent = 'Page: ' + name + ' ';
       if (name !== 'Home'){ showToast('"' + name + '" page opens once more templates ship — showing Home.'); }
     });
   });
@@ -2287,14 +2668,6 @@
     markSaving();
   });
 
-  /* ---------- zoom ---------- */
-  document.getElementById('zoom-select').addEventListener('change', function(){
-    currentZoom = parseFloat(this.value);
-    frame.style.transform = 'scale(' + currentZoom + ')';
-    if (selectedEl) positionToolbar(selectedEl);
-  });
-  frame.style.transform = 'scale(' + currentZoom + ')';
-
   /* ---------- device toggle ---------- */
   document.querySelectorAll('.device-toggle button').forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -2308,7 +2681,6 @@
 
   /* ---------- preview in new tab ---------- */
   var btnPreview = document.getElementById('btn-preview');
-  var previewBadge = document.getElementById('preview-badge');
   function openPreviewInNewTab(){
     var clone = frame.cloneNode(true);
     clone.removeAttribute('id');
@@ -2325,7 +2697,7 @@
     var headTags = Array.prototype.map.call(document.querySelectorAll('link[rel="stylesheet"], style'), function(n){ return n.outerHTML; }).join('\n');
     var previewScript = '<script>(function(){document.querySelectorAll("[data-marketing-carousel]").forEach(function(carousel){var track=carousel.querySelector(".marketing-track"),cards=carousel.querySelectorAll(".marketing-card"),dots=carousel.querySelectorAll(".marketing-dot"),current=0;function move(step){var visible=window.matchMedia("(max-width: 560px)").matches?1:4,max=Math.max(0,cards.length-visible);current=Math.max(0,Math.min(max,current+step));track.style.transform="translateX(-"+(current*(cards[0].offsetWidth+22))+"px)";dots.forEach(function(dot,index){dot.classList.toggle("active",index===Math.min(2,Math.floor(current/Math.max(1,Math.ceil(max/3)))))});}carousel.querySelector("[data-marketing-prev]").addEventListener("click",function(){move(-1)});carousel.querySelector("[data-marketing-next]").addEventListener("click",function(){move(1)});window.addEventListener("resize",function(){move(0)});});})();<\\x2Fscript>';
     var doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
-      (document.getElementById('btn-site-picker') ? document.getElementById('btn-site-picker').textContent.trim() : 'Preview') +
+      EV.name +
       ' — Preview</title>' + headTags +
       '<style>body{background:#fff;overflow:auto;} .frame{max-width:100%;margin:0;box-shadow:none;border-radius:0;outline:none;}</style>' +
       '</head><body>' + clone.outerHTML + previewScript + '</body></html>';
@@ -2364,122 +2736,478 @@
     }, 700);
   });
 
-  document.getElementById('btn-site-picker').addEventListener('click', function(){
-    showToast('Site switching arrives with the Settings module.');
-  });
-  document.getElementById('page-drop-label').addEventListener('click', function(){
-    openPanel('pages');
+  /* ---------- global toolbar: Date & Venue tools (apply to the selected element) ---------- */
+  var gtDateVenueBtnIds = ['gt-date-venue-font-family', 'gt-date-venue-font-size', 'gt-date-venue-font-weight', 'gt-date-venue-font-color', 'gt-date-venue-format'];
+  document.getElementById('global-toolbar').addEventListener('mousedown', function(e){
+    if (e.target.closest('#' + gtDateVenueBtnIds.join(', #'))) e.preventDefault();
   });
 
-  /* ---------- global command toolbar ---------- */
-  document.getElementById('gt-ask-aria').addEventListener('click', function(){ openAria(); });
-  document.getElementById('gt-change-layout').addEventListener('click', function(){
-    if (!activeSectionEl) return;
-    showToast('Layout options for "' + (activeSectionEl.getAttribute('data-sec-name') || 'this section') + '" arrive with a future update.');
-  });
-  function getSectionContentEl(sec){
-    for (var i = 0; i < sec.children.length; i++){
-      var c = sec.children[i];
-      if (!c.classList.contains('sec-name-tag') && !c.classList.contains('sec-toolbar') && !c.classList.contains('sec-add-below')) return c;
-    }
-    return sec;
-  }
-  document.getElementById('gt-replace-bg').addEventListener('click', function(){
-    if (!activeSectionEl) return;
-    var target = getSectionContentEl(activeSectionEl);
-    var current = target.style.backgroundColor || '#ffffff';
-    var col = prompt('Background color for the whole site (hex, or "none" to clear)', current);
-    if (col === null) return;
-    col = col.trim();
-    var clearing = col.toLowerCase() === 'none' || col === '';
-    frame.querySelectorAll('.site-section').forEach(function(sec){
-      var el = getSectionContentEl(sec);
-      if (clearing){
-        el.style.backgroundColor = '';
-        el.style.backgroundImage = '';
-      } else {
-        el.style.backgroundColor = col;
-        el.style.backgroundImage = 'none';
-      }
+  /* ---------- global toolbar: content-area scope ---------- */
+  var gtScope = 'body';
+  function applyGtScope(scope){
+    gtScope = scope;
+    document.querySelectorAll('#global-toolbar [data-scopes]').forEach(function(el){
+      var scopes = el.getAttribute('data-scopes').split(' ');
+      el.style.display = scopes.indexOf(scope) === -1 ? 'none' : '';
     });
-    showToast(clearing ? 'Background cleared site-wide' : 'Background updated site-wide');
-    pushHistory(); markSaving();
+  }
+  document.getElementById('gt-scope').addEventListener('change', function(e){
+    applyGtScope(e.target.value);
   });
-  document.getElementById('gt-sec-duplicate').addEventListener('click', function(){ handleSectionAction('duplicate', activeSectionEl); });
-  document.getElementById('gt-sec-hide').addEventListener('click', function(){ handleSectionAction('hide', activeSectionEl); });
-  document.getElementById('gt-sec-delete').addEventListener('click', function(){ handleSectionAction('delete', activeSectionEl); });
-  document.getElementById('gt-settings').addEventListener('click', function(){ openPanel('design', document.getElementById('gt-settings')); });
+  applyGtScope(gtScope);
 
-  /* ---------- global toolbar: "More options" overflow menu ---------- */
-  var gtMoreMenu = document.getElementById('gt-more-menu');
-  var gtMoreBtn = document.getElementById('gt-more');
-  function closeGtMoreMenu(){ gtMoreMenu.hidden = true; }
-  gtMoreBtn.addEventListener('click', function(e){
+  /* ---------- global toolbar: Body tools ---------- */
+  var gtStylePop = document.getElementById('gt-style-pop');
+  var gtStylePopTitle = document.getElementById('gt-style-pop-title');
+  var gtStylePopBody = document.getElementById('gt-style-pop-body');
+
+  function applyBodyBgOverlay(){
+    var url = frame.getAttribute('data-bg-image-url') || '';
+    if (!url){ frame.style.backgroundImage = ''; frame.style.backgroundSize = ''; frame.style.backgroundPosition = ''; return; }
+    var opacity = parseInt(frame.getAttribute('data-bg-opacity') || '100', 10) / 100;
+    var alpha = 1 - opacity;
+    frame.style.backgroundImage = 'linear-gradient(rgba(255,255,255,' + alpha + '), rgba(255,255,255,' + alpha + ')), url("' + url + '")';
+    frame.style.backgroundSize = 'cover';
+    frame.style.backgroundPosition = 'center';
+  }
+
+  function openGtStylePop(kind, anchorBtn){
+    if (kind.indexOf('date-venue-') === 0 && !requireFormattableSelection()) return;
+    var body = '';
+    var title = '';
+    switch(kind){
+      case 'body-bg-color':
+        title = 'Body background color';
+        body = colorPaletteField('gtsp-bg-color', 'Background color');
+        break;
+      case 'body-text-color':
+        title = 'Body text color';
+        body = colorPaletteField('gtsp-text-color', 'Text color');
+        break;
+      case 'body-theme-color':
+        openPanel('design', anchorBtn);
+        return;
+      case 'body-bg-image':
+        title = 'Body background image';
+        body = '<div class="field"><label for="gtsp-bg-image">Image URL</label><input id="gtsp-bg-image" type="text" placeholder="https://images.unsplash.com/..."></div>' +
+          '<div class="pop-actions" style="justify-content:flex-start;margin-top:8px;padding:0;"><button type="button" class="btn btn-ghost btn-sm" id="gtsp-bg-image-clear">Remove image</button></div>';
+        break;
+      case 'body-font-family':
+        title = 'Body font family';
+        body = '<div class="field"><label for="gtsp-font-family">Font family</label><select id="gtsp-font-family">' +
+          TEXT_FONTS.map(function(f){ return '<option value="' + f + '">' + f + '</option>'; }).join('') +
+          '</select></div>';
+        break;
+      case 'heading-font-family':
+        title = 'Heading font family';
+        body = '<div class="field"><label for="gtsp-heading-font-family">Font family</label><select id="gtsp-heading-font-family">' +
+          TEXT_FONTS.map(function(f){ return '<option value="' + f + '">' + f + '</option>'; }).join('') +
+          '</select></div>';
+        break;
+      case 'heading-font-size':
+        title = 'Heading font size';
+        body = '<div class="field"><label for="gtsp-heading-font-size">Font size (px)</label><input id="gtsp-heading-font-size" type="number" min="14" max="72" step="1" value="32"></div>';
+        break;
+      case 'heading-font-weight':
+        title = 'Heading font weight';
+        body = '<div class="field"><label for="gtsp-heading-font-weight">Font weight</label><select id="gtsp-heading-font-weight">' +
+          ['400', '500', '600', '700', '800', '900'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>';
+        break;
+      case 'heading-color':
+        title = 'Heading color';
+        body = colorPaletteField('gtsp-heading-color', 'Heading color');
+        break;
+      case 'heading-text-case':
+        title = 'Heading font type';
+        body = '<div class="field"><label for="gtsp-heading-text-case">Text case</label><select id="gtsp-heading-text-case">' +
+          '<option value="none">None</option><option value="capitalize">Capital</option><option value="sentence">Sentence case</option>' +
+          '</select></div>';
+        break;
+      case 'heading-layout':
+        title = 'Heading layout';
+        body = '<div class="field"><label for="gtsp-heading-layout">Alignment</label><select id="gtsp-heading-layout">' +
+          '<option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>' +
+          '</select></div>';
+        break;
+      case 'nav-bg-color':
+        title = 'Navigation background color';
+        body = colorPaletteField('gtsp-nav-bg-color', 'Background color');
+        break;
+      case 'nav-text-color':
+        title = 'Navigation text color';
+        body = colorPaletteField('gtsp-nav-text-color', 'Text color');
+        break;
+      case 'nav-alignment':
+        title = 'Navigation alignment';
+        body = '<div class="field"><label for="gtsp-nav-alignment">Alignment</label><select id="gtsp-nav-alignment">' +
+          '<option value="between">Space between</option><option value="flex-start">Left</option><option value="center">Center</option><option value="flex-end">Right</option>' +
+          '</select></div>';
+        break;
+      case 'nav-font-size':
+        title = 'Navigation font size';
+        body = '<div class="field"><label for="gtsp-nav-font-size">Font size (px)</label><input id="gtsp-nav-font-size" type="number" min="10" max="24" step="1" value="14"></div>';
+        break;
+      case 'nav-appearance':
+        title = 'Navigation appearance';
+        body = '<div class="field"><label for="gtsp-nav-appearance">Appearance</label><select id="gtsp-nav-appearance">' +
+          '<option value="light">Light</option><option value="dark">Dark</option><option value="auto">Auto</option>' +
+          '</select></div>';
+        break;
+      case 'date-venue-font-family':
+        title = 'Font family';
+        body = '<div class="field"><label for="gtsp-dv-font-family">Font family</label><select id="gtsp-dv-font-family">' +
+          TEXT_FONTS.map(function(f){ return '<option value="' + f + '">' + f + '</option>'; }).join('') +
+          '</select></div>';
+        break;
+      case 'date-venue-font-size':
+        title = 'Font size';
+        body = '<div class="field"><label for="gtsp-dv-font-size">Font size (px)</label><input id="gtsp-dv-font-size" type="number" min="10" max="48" step="1" value="16"></div>';
+        break;
+      case 'date-venue-font-weight':
+        title = 'Font weight';
+        body = '<div class="field"><label for="gtsp-dv-font-weight">Font weight</label><select id="gtsp-dv-font-weight">' +
+          ['300', '400', '500', '600', '700'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>';
+        break;
+      case 'date-venue-font-color':
+        title = 'Font color';
+        body = colorPaletteField('gtsp-dv-font-color', 'Font color');
+        break;
+      case 'date-venue-format':
+        title = 'Date format';
+        body = '<div class="field"><label for="gtsp-dv-format">Format</label><select id="gtsp-dv-format">' +
+          '<option value="long">January 15, 2026</option>' +
+          '<option value="medium">Jan 15, 2026</option>' +
+          '<option value="short-dmy">15/01/2026</option>' +
+          '<option value="short-mdy">01/15/2026</option>' +
+          '<option value="weekday-long">Thursday, January 15</option>' +
+          '</select></div>';
+        break;
+      case 'body-font-size':
+        title = 'Body font size';
+        body = '<div class="field"><label for="gtsp-body-font-size">Font size (px)</label><input id="gtsp-body-font-size" type="number" min="10" max="32" step="1" value="16"></div>';
+        break;
+      case 'body-font-weight':
+        title = 'Body font weight';
+        body = '<div class="field"><label for="gtsp-body-font-weight">Font weight</label><select id="gtsp-body-font-weight">' +
+          ['300', '400', '500', '600', '700'].map(function(v){ return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+          '</select></div>';
+        break;
+      case 'body-bg-opacity':
+        title = 'Background opacity';
+        body = '<div class="field"><label for="gtsp-opacity">Opacity <span class="range-value" id="gtsp-opacity-value">100%</span></label><input id="gtsp-opacity" type="range" min="0" max="100" step="1" value="100"></div>';
+        break;
+      case 'body-section-spacing':
+        title = 'Spacing between sections';
+        body = '<div class="field"><label for="gtsp-section-gap">Gap <span class="range-value" id="gtsp-section-gap-value">0px</span></label><input id="gtsp-section-gap" type="range" min="0" max="120" step="4" value="0"></div>';
+        break;
+      case 'body-section-divider':
+        title = 'Section divider';
+        body = '<div class="field"><label for="gtsp-divider">Divider style</label><select id="gtsp-divider">' +
+          '<option value="none">None</option><option value="line">Solid line</option><option value="dashed">Dashed line</option><option value="thick">Thick line</option>' +
+          '</select></div>';
+        break;
+      case 'body-animation':
+        title = 'Section animation';
+        body = '<div class="field"><label for="gtsp-section-animation">Animation</label><select id="gtsp-section-animation">' +
+          '<option value="none">None</option><option value="fade">Fade in</option><option value="rise">Rise on load</option><option value="pulse">Pulse</option>' +
+          '</select></div>';
+        break;
+      default: return;
+    }
+
+    gtStylePopTitle.textContent = title;
+    gtStylePopBody.innerHTML = body;
+
+    switch(kind){
+      case 'body-bg-color':
+        wireColorPalette('gtsp-bg-color', hexOfColor(frame.style.backgroundColor || getComputedStyle(frame).backgroundColor, '#ffffff'), function(hex){
+          frame.style.backgroundColor = hex; markSaving(); showToast('Body background color updated');
+        });
+        break;
+      case 'body-text-color':
+        wireColorPalette('gtsp-text-color', hexOfColor(frame.style.color || getComputedStyle(frame).color, '#1c1c1c'), function(hex){
+          frame.style.color = hex; markSaving(); showToast('Body text color updated');
+        });
+        break;
+      case 'body-bg-image':
+        document.getElementById('gtsp-bg-image').value = frame.getAttribute('data-bg-image-url') || '';
+        document.getElementById('gtsp-bg-image').addEventListener('change', function(){
+          frame.setAttribute('data-bg-image-url', this.value.trim());
+          applyBodyBgOverlay();
+          markSaving();
+          showToast(this.value.trim() ? 'Body background image updated' : 'Body background image removed');
+        });
+        document.getElementById('gtsp-bg-image-clear').addEventListener('click', function(){
+          document.getElementById('gtsp-bg-image').value = '';
+          frame.removeAttribute('data-bg-image-url');
+          applyBodyBgOverlay();
+          markSaving();
+          showToast('Body background image removed');
+        });
+        break;
+      case 'body-font-family':
+        var curBodyFont = (frame.style.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim() || 'Manrope';
+        document.getElementById('gtsp-font-family').value = TEXT_FONTS.indexOf(curBodyFont) !== -1 ? curBodyFont : TEXT_FONTS[0];
+        document.getElementById('gtsp-font-family').addEventListener('change', function(){
+          frame.style.fontFamily = "'" + this.value + "', " + (TEXT_FONT_FALLBACK[this.value] || 'sans-serif');
+          markSaving();
+        });
+        break;
+      case 'heading-font-family':
+        var headings = frame.querySelectorAll('h1,h2,h3,h4');
+        var curHeadingFont = (headings.length ? headings[0].style.fontFamily : '').split(',')[0].replace(/['"]/g, '').trim() || 'Fraunces';
+        document.getElementById('gtsp-heading-font-family').value = TEXT_FONTS.indexOf(curHeadingFont) !== -1 ? curHeadingFont : TEXT_FONTS[0];
+        document.getElementById('gtsp-heading-font-family').addEventListener('change', function(){
+          var fam = "'" + this.value + "', " + (TEXT_FONT_FALLBACK[this.value] || 'sans-serif');
+          headings.forEach(function(h){ h.style.fontFamily = fam; });
+          markSaving();
+          showToast('Heading font updated site-wide');
+        });
+        break;
+      case 'heading-font-size':
+        var headings = frame.querySelectorAll('h1,h2,h3,h4');
+        var curHeadingSize = parseInt(headings.length ? headings[0].style.fontSize : '', 10) || parseInt(headings.length ? getComputedStyle(headings[0]).fontSize : '', 10) || 32;
+        document.getElementById('gtsp-heading-font-size').value = curHeadingSize;
+        document.getElementById('gtsp-heading-font-size').addEventListener('input', function(){
+          if (!this.value) return;
+          var val = this.value;
+          headings.forEach(function(h){ h.style.fontSize = val + 'px'; });
+          markSaving();
+        });
+        break;
+      case 'heading-font-weight':
+        var headings = frame.querySelectorAll('h1,h2,h3,h4');
+        document.getElementById('gtsp-heading-font-weight').value = (headings.length && headings[0].style.fontWeight) || '600';
+        document.getElementById('gtsp-heading-font-weight').addEventListener('change', function(){
+          var val = this.value;
+          headings.forEach(function(h){ h.style.fontWeight = val; });
+          markSaving();
+        });
+        break;
+      case 'heading-color':
+        var headings = frame.querySelectorAll('h1,h2,h3,h4');
+        wireColorPalette('gtsp-heading-color', hexOfColor(headings.length ? (headings[0].style.color || getComputedStyle(headings[0]).color) : '', '#111827'), function(hex){
+          headings.forEach(function(h){ h.style.color = hex; });
+          markSaving();
+          showToast('Heading color updated site-wide');
+        });
+        break;
+      case 'heading-text-case':
+        var headings = frame.querySelectorAll('h1,h2,h3,h4');
+        document.getElementById('gtsp-heading-text-case').value = (headings.length && headings[0].getAttribute('data-text-case')) || 'none';
+        document.getElementById('gtsp-heading-text-case').addEventListener('change', function(){
+          var val = this.value;
+          headings.forEach(function(h){ applyTextCase(h, val); });
+          markSaving();
+          showToast('Heading text case updated site-wide');
+        });
+        break;
+      case 'heading-layout':
+        var headings = frame.querySelectorAll('h1,h2,h3,h4');
+        document.getElementById('gtsp-heading-layout').value = (headings.length && headings[0].style.textAlign) || 'left';
+        document.getElementById('gtsp-heading-layout').addEventListener('change', function(){
+          var val = this.value;
+          headings.forEach(function(h){ h.style.textAlign = val; });
+          markSaving();
+        });
+        break;
+      case 'nav-bg-color':
+        var navEl = frame.querySelector('.s-nav');
+        wireColorPalette('gtsp-nav-bg-color', hexOfColor(navEl.style.backgroundColor || getComputedStyle(navEl).backgroundColor, '#ffffff'), function(hex){
+          navEl.style.backgroundColor = hex; markSaving();
+        });
+        break;
+      case 'nav-text-color':
+        var navLogo = frame.querySelector('.s-nav .logo');
+        var navLinks = frame.querySelector('.s-nav .links');
+        wireColorPalette('gtsp-nav-text-color', hexOfColor(navLinks.style.color || getComputedStyle(navLinks).color, '#4a4a42'), function(hex){
+          navLogo.style.color = hex;
+          navLinks.style.color = hex;
+          markSaving();
+        });
+        break;
+      case 'nav-alignment':
+        var navFlex = frame.querySelector('.s-nav');
+        var navSpacer = frame.querySelector('.s-nav .sp');
+        document.getElementById('gtsp-nav-alignment').value = navFlex.style.justifyContent || 'between';
+        document.getElementById('gtsp-nav-alignment').addEventListener('change', function(){
+          if (this.value === 'between'){
+            navFlex.style.justifyContent = '';
+            navSpacer.style.flex = '1';
+          } else {
+            navFlex.style.justifyContent = this.value;
+            navSpacer.style.flex = '0';
+          }
+          markSaving();
+        });
+        break;
+      case 'nav-font-size':
+        var navLinksSize = frame.querySelector('.s-nav .links');
+        var curNavSize = parseInt(navLinksSize.style.fontSize, 10) || parseInt(getComputedStyle(navLinksSize).fontSize, 10) || 14;
+        document.getElementById('gtsp-nav-font-size').value = curNavSize;
+        document.getElementById('gtsp-nav-font-size').addEventListener('input', function(){
+          if (this.value) { navLinksSize.style.fontSize = this.value + 'px'; markSaving(); }
+        });
+        break;
+      case 'nav-appearance':
+        var navApp = frame.querySelector('.s-nav');
+        var navAppLogo = frame.querySelector('.s-nav .logo');
+        var navAppLinks = frame.querySelector('.s-nav .links');
+        document.getElementById('gtsp-nav-appearance').value = navApp.getAttribute('data-appearance') || 'auto';
+        document.getElementById('gtsp-nav-appearance').addEventListener('change', function(){
+          navApp.setAttribute('data-appearance', this.value);
+          if (this.value === 'light'){
+            navApp.style.backgroundColor = '#ffffff';
+            navAppLogo.style.color = '#1c1c1c';
+            navAppLinks.style.color = '#4a4a42';
+          } else if (this.value === 'dark'){
+            navApp.style.backgroundColor = '#111827';
+            navAppLogo.style.color = '#ffffff';
+            navAppLinks.style.color = '#d1d5db';
+          } else {
+            navApp.style.backgroundColor = '';
+            navAppLogo.style.color = '';
+            navAppLinks.style.color = '';
+          }
+          markSaving();
+          showToast('Navigation appearance updated');
+        });
+        break;
+      case 'date-venue-font-family':
+        var curDvFont = (selectedEl.style.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim();
+        document.getElementById('gtsp-dv-font-family').value = TEXT_FONTS.indexOf(curDvFont) !== -1 ? curDvFont : TEXT_FONTS[0];
+        document.getElementById('gtsp-dv-font-family').addEventListener('change', function(){
+          selectedEl.style.fontFamily = "'" + this.value + "', " + (TEXT_FONT_FALLBACK[this.value] || 'sans-serif');
+          markSaving();
+        });
+        break;
+      case 'date-venue-font-size':
+        var curDvSize = parseInt(selectedEl.style.fontSize, 10) || parseInt(getComputedStyle(selectedEl).fontSize, 10) || 16;
+        document.getElementById('gtsp-dv-font-size').value = curDvSize;
+        document.getElementById('gtsp-dv-font-size').addEventListener('input', function(){
+          if (this.value) { selectedEl.style.fontSize = this.value + 'px'; markSaving(); }
+        });
+        break;
+      case 'date-venue-font-weight':
+        document.getElementById('gtsp-dv-font-weight').value = selectedEl.style.fontWeight || '400';
+        document.getElementById('gtsp-dv-font-weight').addEventListener('change', function(){
+          selectedEl.style.fontWeight = this.value;
+          markSaving();
+        });
+        break;
+      case 'date-venue-font-color':
+        wireColorPalette('gtsp-dv-font-color', hexOfColor(selectedEl.style.color || getComputedStyle(selectedEl).color, '#111827'), function(hex){
+          selectedEl.style.color = hex; markSaving();
+        });
+        break;
+      case 'date-venue-format':
+        document.getElementById('gtsp-dv-format').value = selectedEl.getAttribute('data-date-format') || 'long';
+        document.getElementById('gtsp-dv-format').addEventListener('change', function(){
+          selectedEl.setAttribute('data-date-format', this.value);
+          selectedEl.textContent = formatDateByPattern(new Date(), this.value);
+          markSaving();
+          showToast('Date format updated');
+        });
+        break;
+      case 'body-font-size':
+        var curBodySize = parseInt(frame.style.fontSize, 10) || parseInt(getComputedStyle(frame).fontSize, 10) || 16;
+        document.getElementById('gtsp-body-font-size').value = curBodySize;
+        document.getElementById('gtsp-body-font-size').addEventListener('input', function(){
+          if (this.value) { frame.style.fontSize = this.value + 'px'; markSaving(); }
+        });
+        break;
+      case 'body-font-weight':
+        document.getElementById('gtsp-body-font-weight').value = frame.style.fontWeight || '400';
+        document.getElementById('gtsp-body-font-weight').addEventListener('change', function(){
+          frame.style.fontWeight = this.value;
+          markSaving();
+        });
+        break;
+      case 'body-bg-opacity':
+        var op = parseInt(frame.getAttribute('data-bg-opacity') || '100', 10);
+        document.getElementById('gtsp-opacity').value = op;
+        document.getElementById('gtsp-opacity-value').textContent = op + '%';
+        document.getElementById('gtsp-opacity').addEventListener('input', function(){
+          document.getElementById('gtsp-opacity-value').textContent = this.value + '%';
+          frame.setAttribute('data-bg-opacity', this.value);
+          applyBodyBgOverlay();
+          markSaving();
+        });
+        break;
+      case 'body-section-spacing':
+        var gap = parseInt(frame.style.getPropertyValue('--section-gap'), 10) || 0;
+        document.getElementById('gtsp-section-gap').value = gap;
+        document.getElementById('gtsp-section-gap-value').textContent = gap + 'px';
+        document.getElementById('gtsp-section-gap').addEventListener('input', function(){
+          document.getElementById('gtsp-section-gap-value').textContent = this.value + 'px';
+          frame.style.setProperty('--section-gap', this.value + 'px');
+          markSaving();
+        });
+        break;
+      case 'body-section-divider':
+        document.getElementById('gtsp-divider').value = frame.getAttribute('data-section-divider') || 'none';
+        document.getElementById('gtsp-divider').addEventListener('change', function(){
+          frame.setAttribute('data-section-divider', this.value);
+          markSaving();
+        });
+        break;
+      case 'body-animation':
+        document.getElementById('gtsp-section-animation').value = frame.getAttribute('data-section-animation') || 'none';
+        document.getElementById('gtsp-section-animation').addEventListener('change', function(){
+          frame.setAttribute('data-section-animation', this.value);
+          markSaving();
+        });
+        break;
+    }
+
+    var rect = anchorBtn.getBoundingClientRect();
+    gtStylePop.hidden = false;
+    gtStylePop.style.left = Math.min(window.innerWidth - 286, Math.max(12, rect.left)) + 'px';
+    gtStylePop.style.top = (rect.bottom + 10) + 'px';
+  }
+
+  var gtScopeToolIds = { 'gt-body-bg-color': 'body-bg-color', 'gt-body-text-color': 'body-text-color', 'gt-body-theme-color': 'body-theme-color', 'gt-body-bg-image': 'body-bg-image', 'gt-body-font-family': 'body-font-family', 'gt-body-font-size': 'body-font-size', 'gt-body-font-weight': 'body-font-weight', 'gt-body-bg-opacity': 'body-bg-opacity', 'gt-body-section-spacing': 'body-section-spacing', 'gt-body-section-divider': 'body-section-divider', 'gt-body-animation': 'body-animation', 'gt-heading-font-family': 'heading-font-family', 'gt-heading-font-size': 'heading-font-size', 'gt-heading-font-weight': 'heading-font-weight', 'gt-heading-color': 'heading-color', 'gt-heading-text-case': 'heading-text-case', 'gt-heading-layout': 'heading-layout', 'gt-nav-bg-color': 'nav-bg-color', 'gt-nav-text-color': 'nav-text-color', 'gt-nav-alignment': 'nav-alignment', 'gt-nav-font-size': 'nav-font-size', 'gt-nav-appearance': 'nav-appearance', 'gt-date-venue-font-family': 'date-venue-font-family', 'gt-date-venue-font-size': 'date-venue-font-size', 'gt-date-venue-font-weight': 'date-venue-font-weight', 'gt-date-venue-font-color': 'date-venue-font-color', 'gt-date-venue-format': 'date-venue-format' };
+  Object.keys(gtScopeToolIds).forEach(function(id){
+    document.getElementById(id).addEventListener('click', function(){
+      openGtStylePop(gtScopeToolIds[id], this);
+    });
+  });
+  document.getElementById('gt-style-pop-done').addEventListener('click', function(){ gtStylePop.hidden = true; });
+  document.addEventListener('mousedown', function(e){
+    if (gtStylePop.hidden || gtStylePop.contains(e.target) || e.target.closest('#' + Object.keys(gtScopeToolIds).join(', #'))) return;
+    gtStylePop.hidden = true;
+  });
+
+  document.getElementById('gt-nav-add-menu-item').addEventListener('click', function(){
+    var links = frame.querySelector('.s-nav .links');
+    var newLink = document.createElement('span');
+    newLink.setAttribute('data-editable', 'text');
+    newLink.textContent = 'New Link';
+    links.appendChild(newLink);
+    pushHistory();
+    markSaving();
+    showToast('Menu item added');
+    selectElement(newLink);
+  });
+
+  /* ---------- global toolbar: Body "more" overflow menu ---------- */
+  var gtBodyMoreMenu = document.getElementById('gt-body-more-menu');
+  var gtBodyMoreBtn = document.getElementById('gt-body-more');
+  function closeGtBodyMoreMenu(){ gtBodyMoreMenu.hidden = true; }
+  gtBodyMoreBtn.addEventListener('click', function(e){
     e.stopPropagation();
-    if (!gtMoreMenu.hidden){ closeGtMoreMenu(); return; }
-    positionFloating(gtMoreMenu, gtMoreBtn);
+    if (!gtBodyMoreMenu.hidden){ closeGtBodyMoreMenu(); return; }
+    positionFloating(gtBodyMoreMenu, gtBodyMoreBtn);
   });
   document.addEventListener('mousedown', function(e){
-    if (gtMoreMenu.hidden) return;
-    if (gtMoreMenu.contains(e.target) || e.target === gtMoreBtn || gtMoreBtn.contains(e.target)) return;
-    closeGtMoreMenu();
+    if (gtBodyMoreMenu.hidden) return;
+    if (gtBodyMoreMenu.contains(e.target) || e.target === gtBodyMoreBtn || gtBodyMoreBtn.contains(e.target)) return;
+    closeGtBodyMoreMenu();
   });
-  gtMoreMenu.addEventListener('click', function(e){
-    if (e.target.closest('button')) closeGtMoreMenu();
-  });
-
-  /* ---------- global toolbar: heading/paragraph edits apply site-wide ---------- */
-  function isHeadingEl(el){ return /^H[1-4]$/.test(el.tagName); }
-  function isParagraphEl(el){ return el.tagName === 'P' || el.tagName === 'BLOCKQUOTE'; }
-
-  function gtColorAction(){
-    if (isHeadingEl(selectedEl)){
-      var headings = frame.querySelectorAll('h1,h2,h3,h4');
-      var col = prompt('Color for all headings (hex)', selectedEl.style.color || '#0F6F5C');
-      if (!col) return;
-      headings.forEach(function(h){ h.style.color = col; });
-      showToast('Heading color updated site-wide');
-      pushHistory(); markSaving();
-    } else if (isParagraphEl(selectedEl)){
-      var paras = frame.querySelectorAll('p, blockquote');
-      var col2 = prompt('Color for all paragraph text (hex)', selectedEl.style.color || '#0F6F5C');
-      if (!col2) return;
-      paras.forEach(function(p){ p.style.color = col2; });
-      showToast('Paragraph color updated site-wide');
-      pushHistory(); markSaving();
-    } else {
-      applyFormatAction('color');
-    }
-  }
-
-  function gtFontSizeAction(value){
-    if (!value) return;
-    if (isHeadingEl(selectedEl)){
-      frame.querySelectorAll('h1,h2,h3,h4').forEach(function(h){ h.style.fontSize = value; });
-      showToast('Heading size updated site-wide');
-    } else if (isParagraphEl(selectedEl)){
-      frame.querySelectorAll('p, blockquote').forEach(function(p){ p.style.fontSize = value; });
-      showToast('Paragraph size updated site-wide');
-    } else {
-      selectedEl.style.fontSize = value;
-    }
-    pushHistory(); markSaving();
-  }
-
-  var gtFormatBtnIds = ['gt-bold', 'gt-italic', 'gt-underline', 'gt-link', 'gt-color', 'gt-align-left', 'gt-align-center', 'gt-align-right'];
-  document.getElementById('global-toolbar').addEventListener('mousedown', function(e){
-    if (e.target.closest('#' + gtFormatBtnIds.join(', #'))) e.preventDefault();
-  });
-  gtFormatBtnIds.forEach(function(id){
-    document.getElementById(id).addEventListener('click', function(){
-      if (!requireFormattableSelection()) return;
-      if (id === 'gt-color'){ gtColorAction(); return; }
-      applyFormatAction(id.replace('gt-', ''));
-    });
-  });
-  document.getElementById('gt-font-size').addEventListener('change', function(e){
-    if (!requireFormattableSelection()){ e.target.value = ''; return; }
-    gtFontSizeAction(e.target.value);
+  gtBodyMoreMenu.addEventListener('click', function(e){
+    if (e.target.closest('button')) closeGtBodyMoreMenu();
   });
 
   /* ---------- Ask Aria ---------- */
