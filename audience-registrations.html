@@ -33,6 +33,52 @@
     .bar-track i{ display:block; height:100%; border-radius:100px; }
     .pay-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:18px; }
 
+    /* insights */
+    .ins-sec{ margin-bottom:26px; }
+    .ins-h{ display:flex; align-items:baseline; gap:11px; margin-bottom:12px; flex-wrap:wrap; }
+    .ins-h h3{ font-size:17px; }
+    .ins-h span{ font-size:12.5px; color:var(--text-muted); }
+    .ins-h .sp{ flex:1; }
+
+    .kpi-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; }
+    .kpi{ background:var(--surface); border:1px solid var(--border); border-radius:13px; padding:14px 16px; min-width:0; }
+    .kpi .kl{ font-size:11.5px; font-weight:700; color:var(--text-muted); display:flex; align-items:center; gap:7px; }
+    .kpi .kv{ font-size:26px; font-weight:800; font-family:var(--font-display); letter-spacing:-.02em; margin:3px 0 1px; }
+    .kpi .ks{ font-size:11.5px; color:var(--text-faint); }
+    .kpi .ki{ width:24px; height:24px; border-radius:7px; display:grid; place-items:center; }
+
+    /* campaign rows */
+    .camp{ border-bottom:1px solid var(--border); padding:14px 16px; }
+    .camp:last-child{ border-bottom:0; }
+    .camp-top{ display:flex; align-items:center; gap:11px; flex-wrap:wrap; margin-bottom:9px; }
+    .camp-ico{ width:30px; height:30px; border-radius:9px; display:grid; place-items:center; flex-shrink:0; }
+    .camp-t{ flex:1; min-width:160px; }
+    .camp-t b{ font-size:13.5px; display:block; }
+    .camp-t span{ font-size:11.5px; color:var(--text-muted); }
+    .camp-n{ font-family:var(--font-mono); font-size:13px; font-weight:700; }
+    .camp-bars{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px 16px; }
+    .cb .cbl{ display:flex; justify-content:space-between; font-size:11.5px; margin-bottom:4px; }
+    .cb .cbl b{ font-weight:700; }
+    .cb .cbl span{ color:var(--text-faint); font-family:var(--font-mono); }
+    .cb .cbt{ height:6px; border-radius:100px; background:var(--surface-3); overflow:hidden; }
+    .cb .cbt i{ display:block; height:100%; border-radius:100px; }
+
+    /* month chart */
+    .months{ display:flex; align-items:flex-end; gap:7px; height:120px; padding-top:8px; }
+    .mo{ flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:6px; min-width:0; }
+    .mo .mb{ width:100%; background:var(--accent); border-radius:5px 5px 0 0; min-height:3px; transition:height .3s; }
+    .mo .ml{ font-size:10px; color:var(--text-faint); font-family:var(--font-mono); white-space:nowrap; }
+    .mo .mv{ font-size:11px; font-weight:700; }
+
+    /* activity timeline */
+    .act{ display:flex; gap:12px; padding:11px 16px; border-bottom:1px solid var(--border); }
+    .act:last-child{ border-bottom:0; }
+    .act-i{ width:28px; height:28px; border-radius:9px; display:grid; place-items:center; flex-shrink:0; }
+    .act-b{ flex:1; min-width:0; }
+    .act-b b{ font-size:13px; font-weight:600; display:block; }
+    .act-b span{ font-size:11.5px; color:var(--text-faint); font-family:var(--font-mono); }
+    .act-n{ font-family:var(--font-mono); font-size:12px; color:var(--text-muted); flex-shrink:0; }
+
     /* ---- segment chips: the quick filters across the top ---- */
     .segs{ display:grid; grid-template-columns:repeat(auto-fit,minmax(124px,1fr)); gap:9px; padding:2px 2px 14px; }
     .seg{
@@ -300,6 +346,8 @@
     eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/>',
     eyeoff:'<path d="M4 4l16 16"/><path d="M9.9 5.3A9.6 9.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1"/><path d="M6.2 7.2A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4-.86"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
+    trash:'<path d="M3 6h18"/><path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/><path d="M19 6l-1 14.2a1.8 1.8 0 0 1-1.8 1.8H7.8A1.8 1.8 0 0 1 6 20.2L5 6"/>',
+    list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4"/><circle cx="3.5" cy="12" r="1.4"/><circle cx="3.5" cy="18" r="1.4"/>',
     save:'<path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 3v6h7V3M8 21v-6h8v6"/>',
     dupe:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>',
     note:'<path d="M4 4.5h16v10l-5 5H4z"/><path d="M20 14.5h-5v5"/>',
@@ -321,6 +369,10 @@
      (disposable domains or obvious filler) - the last two are what wastes
      a mailer budget.
      ====================================================================== */
+  /* How the registration arrived. Ops genuinely filter on this - a walk-in
+     and a partner referral are not the same lead. */
+  var FORM_TYPES = ['Standard form','Express (2 field)','VIP invite','Partner referral','On-site walk-in'];
+
   var FREE_MAIL = ['gmail.com','yahoo.com','yahoo.in','outlook.com','hotmail.com','rediffmail.com'];
   var JUNK_MAIL = ['mailinator.com','yopmail.com','tempmail.io','guerrillamail.com','10minutemail.com'];
   var FILLER    = ['test@test.com','asdf@asdf.com','a@a.com','abc@abc.com','qwerty@qwerty.com'];
@@ -350,19 +402,60 @@
   var STATUS_ORDER = ['pending','confirmed','regretted','waitlist'];
 
   /* ======================================================================
-     BUCKETS
+     LISTS
      ====================================================================== */
-  var BUCKETS = [
-    { id:'hot',      label:'Hot lead',         colour:'#ED1C24' },
+  /* Lists are named, user-created groups. Shortlisting someone always puts
+     them on one, so "the shortlist" is never a single anonymous pile - it is
+     whichever list you chose, and you can mail exactly that list later. */
+  var SEED_LISTS = [
+    { id:'hot',      label:'Hot leads',        colour:'#ED1C24' },
     { id:'followup', label:'Follow up',        colour:'#E89B0C' },
     { id:'vip',      label:'VIP / Speaker',    colour:'#7C4DBE' },
-    { id:'sponsor',  label:'Sponsor prospect', colour:'#12A870' },
-    { id:'nurture',  label:'Nurture',          colour:'#2F6FB0' },
-    { id:'dnc',      label:'Do not contact',   colour:'#857F6A' }
+    { id:'sponsor',  label:'Sponsor prospects',colour:'#12A870' },
+    { id:'dnc',      label:'Do not contact',   colour:'#857F6A', locked:true }
   ];
+  var LIST_COLOURS = ['#ED1C24','#E89B0C','#7C4DBE','#12A870','#2F6FB0','#A2457A','#3E7C7C','#B3151B'];
+
+  function lists(){ return D.lists && D.lists.length ? D.lists : SEED_LISTS; }
   function bucketById(id){
-    for (var i=0;i<BUCKETS.length;i++) if (BUCKETS[i].id===id) return BUCKETS[i];
+    var L = lists();
+    for (var i=0;i<L.length;i++) if (L[i].id===id) return L[i];
     return null;
+  }
+  function createList(name){
+    if (!D.lists || !D.lists.length) D.lists = SEED_LISTS.slice();
+    var clean = String(name || '').trim().slice(0, 40);
+    if (!clean) return null;
+    var exists = D.lists.filter(function(l){ return l.label.toLowerCase() === clean.toLowerCase(); })[0];
+    if (exists) return exists;
+    var l = {
+      id: 'L' + Date.now().toString(36) + Math.floor(Math.random()*900+100).toString(36),
+      label: clean,
+      colour: LIST_COLOURS[D.lists.length % LIST_COLOURS.length]
+    };
+    D.lists.push(l); saveStore();
+    logAct('list', 'Created the list "' + l.label + '"', 0);
+    return l;
+  }
+  function deleteList(id){
+    var l = bucketById(id);
+    if (!l || l.locked) return;
+    if (!D.lists || !D.lists.length) D.lists = SEED_LISTS.slice();
+    logAct('list', 'Deleted the list "' + l.label + '"', 0);
+    D.lists = D.lists.filter(function(x){ return x.id !== id; });
+    Object.keys(D.buckets).forEach(function(pid){
+      D.buckets[pid] = (D.buckets[pid] || []).filter(function(x){ return x !== id; });
+      if (!D.buckets[pid].length) delete D.buckets[pid];
+    });
+    saveStore();
+  }
+  function addToList(people2, listId){
+    people2.forEach(function(p){
+      var cur = D.buckets[p.id] || [];
+      if (cur.indexOf(listId) < 0) cur.push(listId);
+      D.buckets[p.id] = cur;
+    });
+    saveStore();
   }
 
   /* ======================================================================
@@ -383,14 +476,15 @@
     return {
       q:'', page:1, per:25, sort:'name', dir:1, sel:{},
       tab:'reg', view:'list', seg:'all', reveal:{}, revealAll:false, vmenu:false,
-      f:{ desig:[], comp:[], city:[], src:[], quality:[], bucket:[], status:[], pay:'', shortlist:false, attended:false, dupe:false },
+      f:{ desig:[], comp:[], city:[], src:[], quality:[], bucket:[], status:[], form:[],
+          pay:'', from:'', to:'', engaged:'', shortlist:false, attended:false, dupe:false, verified:false },
       cols: JSON.parse(JSON.stringify(DEF_COLS))
     };
   }
 
   function storeKey(){ return 'revamp-reg-report-' + select.value; }
   function loadStore(){
-    var d = { buckets:{}, shortlist:{}, junk:{}, comms:[], notes:{}, views:[], status:{} };
+    var d = { buckets:{}, shortlist:{}, junk:{}, comms:[], notes:{}, views:[], status:{}, lists:[], activity:[] };
     try {
       var raw = localStorage.getItem(storeKey());
       if (raw){ var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) d[k] = p[k]; }
@@ -438,6 +532,7 @@
         email: email, quality: quality,
         phone: '+91 9' + String(Math.floor(C.rnd(s+28) * 900000000 + 100000000)).slice(0,9),
         opens: opens, clicks: clicks,
+        formType: FORM_TYPES[Math.floor(C.rnd(s+33) * FORM_TYPES.length)],
         amount: p.paid ? [25000, 35000, 45000][Math.floor(C.rnd(s+29)*3)] : 0,
         verified: C.rnd(s+30) > 0.22
       };
@@ -500,6 +595,33 @@
   function showEmail(p){ return revealed(p) ? p.email : maskEmail(p.email); }
   function showPhone(p){ return revealed(p) ? p.phone : maskPhone(p.phone); }
 
+  /* ======================================================================
+     ACTIVITY LOG
+     Every consequential thing done on this screen gets written down. A
+     report nobody can audit is a report nobody trusts - and six weeks later
+     "who regretted these 150 people?" is a real question.
+     ====================================================================== */
+  function logAct(kind, text, n){
+    if (!D.activity) D.activity = [];
+    D.activity.unshift({ when: new Date().toISOString(), kind: kind, text: text, n: n || 0 });
+    if (D.activity.length > 200) D.activity.length = 200;
+    saveStore();
+  }
+
+  function timeAgo(iso){
+    var then = new Date(iso).getTime(), now = Date.now();
+    var sec = Math.max(0, Math.round((now - then) / 1000));
+    if (sec < 60) return 'just now';
+    var min = Math.round(sec / 60);
+    if (min < 60) return min + (min === 1 ? ' minute ago' : ' minutes ago');
+    var hr = Math.round(min / 60);
+    if (hr < 24) return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+    var day = Math.round(hr / 24);
+    if (day === 1) return 'yesterday';
+    if (day < 30) return day + ' days ago';
+    return fmtDate(iso.slice(0, 10));
+  }
+
   function copyText(text, label){
     try {
       if (navigator.clipboard && navigator.clipboard.writeText){
@@ -545,6 +667,13 @@
       if (!hit) return false;
     }
     if (f.status.length && f.status.indexOf(p.status) < 0) return false;
+    if (f.form.length && f.form.indexOf(p.formType) < 0) return false;
+    if (f.from && p.when < f.from) return false;
+    if (f.to   && p.when > f.to) return false;
+    if (f.engaged === 'opened'  && !p.opens) return false;
+    if (f.engaged === 'clicked' && !p.clicks) return false;
+    if (f.engaged === 'cold'    && p.opens) return false;
+    if (f.verified && !p.verified) return false;
     if (f.dupe && !p.dupe) return false;
     if (f.pay === 'paid'   && !p.paid) return false;
     if (f.pay === 'unpaid' &&  p.paid) return false;
@@ -650,6 +779,10 @@
     f.quality.forEach(function(v){ add('quality','Email',QUALITY[v].label); });
     f.bucket.forEach(function(v){ var b=bucketById(v); add('bucket','Bucket', b?b.label:v); });
     f.status.forEach(function(v){ add('status','Status', STATUS[v].label); });
+    f.form.forEach(function(v){ add('form','Form', v); });
+    if (f.from || f.to) add('when','Registered', (f.from ? fmtDate(f.from) : 'any') + ' to ' + (f.to ? fmtDate(f.to) : 'any'));
+    if (f.engaged) add('engaged','Engagement', f.engaged === 'opened' ? 'Opened a mailer' : f.engaged === 'clicked' ? 'Clicked a link' : 'Never opened');
+    if (f.verified) add('verified','Only','Verified contacts');
     if (f.dupe) add('dupe','Only','Possible duplicates');
     if (f.pay) add('pay','Payment', f.pay==='paid'?'Paid':'Unpaid');
     if (f.shortlist) add('shortlist','Only','Shortlisted');
@@ -888,62 +1021,291 @@
 
   /* ======================================================================
      INSIGHTS TAB
+
+     Three questions, in the order people actually ask them:
+       1. What shape is this list in, and what have we done about it?
+       2. What did we send, and did it land?
+       3. Who are these people?
+     Then the audit trail underneath, so any number can be traced back.
      ====================================================================== */
-  function insightsHTML(){
-    var all = people();
 
-    function tally(key){
-      var m = {};
-      all.forEach(function(p){ m[p[key]] = (m[p[key]] || 0) + 1; });
-      return Object.keys(m).map(function(k){ return { k:k, n:m[k] }; })
-        .sort(function(a,b){ return b.n - a.n; });
+  /* deterministic delivery figures per send, so the report never reshuffles */
+  function commStats(c, i){
+    var seed = (c.count || 1) + i * 31;
+    var delivered = Math.round(c.count * (0.955 + C.rnd(seed) * 0.04));
+    var opened = c.channel === 'email'
+      ? Math.round(delivered * (0.28 + C.rnd(seed + 1) * 0.2))
+      : Math.round(delivered * (0.74 + C.rnd(seed + 1) * 0.16));
+    var clicked = Math.round(opened * (0.16 + C.rnd(seed + 2) * 0.22));
+    return { delivered: delivered, opened: opened, clicked: clicked, bounced: c.count - delivered };
+  }
+
+  function insSection(title, note, inner, right){
+    return '<div class="ins-sec"><div class="ins-h"><h3>' + esc(title) + '</h3>' +
+      (note ? '<span>' + esc(note) + '</span>' : '') +
+      '<span class="sp"></span>' + (right || '') + '</div>' + inner + '</div>';
+  }
+  function kpi(ico, tone, label, value, sub){
+    return '<div class="kpi"><div class="kl">' +
+      '<span class="ki" style="background:'+tone+'1F;color:'+tone+'">'+svg(ico,13)+'</span>' + esc(label) + '</div>' +
+      '<div class="kv">' + value + '</div>' +
+      '<div class="ks">' + esc(sub) + '</div></div>';
+  }
+  function bars(rows, colour, max){
+    var top = rows.length ? rows[0].n : 1;
+    return rows.slice(0, max || 8).map(function(r){
+      return '<div class="bar-item"><div class="bl"><b>'+esc(r.k)+'</b><span>'+comma(r.n)+'</span></div>' +
+        '<div class="bar-track"><i style="width:'+Math.round(r.n/top*100)+'%;background:'+colour+'"></i></div></div>';
+    }).join('');
+  }
+  function tally(list, key){
+    var m = {};
+    list.forEach(function(p){ m[p[key]] = (m[p[key]] || 0) + 1; });
+    return Object.keys(m).map(function(k){ return { k:k, n:m[k] }; })
+      .sort(function(a,b){ return b.n - a.n; });
+  }
+
+  /* ---------------------------------------------------------------- 1. state of play */
+  function insHealth(all){
+    var q = { official:0, personal:0, junk:0 };
+    all.forEach(function(p){ q[p.quality]++; });
+    var reach = all.length - q.junk;
+
+    var st = { pending:0, confirmed:0, regretted:0, waitlist:0 };
+    all.forEach(function(p){ st[p.status]++; });
+    var decided = all.length - st.pending;
+
+    var contacted = {};
+    D.comms.forEach(function(c){ (c.ids||[]).forEach(function(i){ contacted[i] = true; }); });
+    var reached = Object.keys(contacted).length;
+
+    var listed = all.filter(function(p){ return p.buckets.length; }).length;
+
+    var tiles = '<div class="kpi-row">' +
+      kpi(I.users, 'var(--info)', 'Registrations', comma(all.length),
+          comma(all.filter(function(p){ return p.paid; }).length) + ' paid, ' +
+          comma(all.filter(function(p){ return p.attended; }).length) + ' attended') +
+      kpi(I.shield, 'var(--ok)', 'Reachable', comma(reach),
+          Math.round(reach / Math.max(all.length,1) * 100) + '% of the list, ' + comma(q.junk) + ' would bounce') +
+      kpi(I.badge2, decided === all.length ? 'var(--ok)' : 'var(--warn)', 'Decisions made', comma(decided),
+          comma(st.pending) + ' still pending') +
+      kpi(I.send, 'var(--accent)', 'People contacted', comma(reached),
+          comma(all.length - reached) + ' never messaged') +
+    '</div>';
+
+    var statusBars = STATUS_ORDER.map(function(k){
+      var n = st[k], pct = Math.round(n / Math.max(all.length,1) * 100);
+      return '<div class="bar-item"><div class="bl"><b>'+STATUS[k].label+'</b>' +
+        '<span>'+comma(n)+' &middot; '+pct+'%</span></div>' +
+        '<div class="bar-track"><i style="width:'+pct+'%;background:'+STATUS[k].colour+'"></i></div></div>';
+    }).join('');
+
+    var listRows = lists().map(function(l){
+      return { k:l.label, n: all.filter(function(p){ return p.buckets.indexOf(l.id) >= 0; }).length, c:l.colour };
+    }).sort(function(a,b){ return b.n - a.n; });
+    var listTop = listRows.length ? Math.max(listRows[0].n, 1) : 1;
+    var listBars = listRows.map(function(r){
+      return '<div class="bar-item"><div class="bl"><b>'+esc(r.k)+'</b><span>'+comma(r.n)+'</span></div>' +
+        '<div class="bar-track"><i style="width:'+Math.round(r.n/listTop*100)+'%;background:'+r.c+'"></i></div></div>';
+    }).join('') || '<p style="font-size:12.5px;color:var(--text-muted);margin:0">No lists built yet.</p>';
+
+    return insSection('Where this event stands', 'Every figure below covers the whole event, not the current filter',
+      tiles +
+      '<div class="ins-grid" style="margin-top:14px">' +
+        '<div class="ins-card"><h3>Decisions</h3><div class="cap">Who is in, who is out, who is still waiting</div>' + statusBars +
+          (st.pending ? '<button class="btn btn-secondary btn-sm" type="button" data-drill2="pending" style="margin-top:4px">Open the '+comma(st.pending)+' pending</button>' : '') +
+        '</div>' +
+        '<div class="ins-card"><h3>Lists</h3><div class="cap">'+comma(listed)+' people sit on at least one list</div>' + listBars + '</div>' +
+      '</div>');
+  }
+
+  /* ---------------------------------------------------------------- 2. what we sent */
+  function insComms(all){
+    if (!D.comms.length){
+      return insSection('Communication', 'Nothing sent from this screen yet',
+        '<section class="panel"><div class="empty"><span class="ico">'+svg(I.send,24)+'</span>' +
+        '<h4>No messages sent yet</h4>' +
+        '<p>Once you send a confirmation, regret or reminder from this report, every send lands here with its delivery and engagement figures.</p>' +
+        '<button class="btn btn-primary btn-sm" type="button" data-act="compose" style="margin-top:6px">Send the first one</button>' +
+        '</div></section>');
     }
-    function bars(rows, colour, max9){
-      var top = rows.length ? rows[0].n : 1;
-      return rows.slice(0, max9 || 8).map(function(r){
-        return '<div class="bar-item"><div class="bl"><b>'+esc(r.k)+'</b><span>'+comma(r.n)+'</span></div>' +
-          '<div class="bar-track"><i style="width:'+Math.round(r.n/top*100)+'%;background:'+colour+'"></i></div></div>';
-      }).join('');
-    }
-    function card(title, cap, inner, drill){
-      return '<div class="ins-card"><h3>'+esc(title)+'</h3><div class="cap">'+esc(cap)+'</div>'+inner+
-        (drill ? '<button class="btn btn-secondary btn-sm" type="button" data-drill="'+drill+'" style="margin-top:4px">Open as list</button>' : '')+
+
+    var totals = { sent:0, delivered:0, opened:0, clicked:0, email:0, wa:0 };
+    var contacted = {};
+    D.comms.forEach(function(c, i){
+      var st = commStats(c, i);
+      totals.sent += c.count; totals.delivered += st.delivered;
+      totals.opened += st.opened; totals.clicked += st.clicked;
+      if (c.channel === 'email') totals.email += c.count; else totals.wa += c.count;
+      (c.ids||[]).forEach(function(id){ contacted[id] = true; });
+    });
+    var never = all.length - Object.keys(contacted).length;
+    var openRate = totals.delivered ? Math.round(totals.opened / totals.delivered * 100) : 0;
+
+    var tiles = '<div class="kpi-row" style="margin-bottom:14px">' +
+      kpi(I.send, 'var(--accent)', 'Messages sent', comma(totals.sent),
+          comma(D.comms.length) + ' send' + (D.comms.length===1?'':'s') + ' from this report') +
+      kpi(I.mail, 'var(--info)', 'By email', comma(totals.email),
+          comma(totals.wa) + ' by WhatsApp') +
+      kpi(I.eye, 'var(--ok)', 'Open rate', openRate + '%',
+          comma(totals.opened) + ' opened, ' + comma(totals.clicked) + ' clicked') +
+      kpi(I.warn, never ? 'var(--warn)' : 'var(--ok)', 'Never contacted', comma(never),
+          never ? 'registrations have heard nothing' : 'everyone has heard from you') +
+    '</div>';
+
+    var rows = D.comms.slice(0, 12).map(function(c, i){
+      var st = commStats(c, i);
+      var t = msgType(c.type || 'update');
+      function bar(label, n, base, colour){
+        var pct = base ? Math.round(n / base * 100) : 0;
+        return '<div class="cb"><div class="cbl"><b>'+label+'</b><span>'+comma(n)+' &middot; '+pct+'%</span></div>' +
+          '<div class="cbt"><i style="width:'+pct+'%;background:'+colour+'"></i></div></div>';
+      }
+      return '<div class="camp">' +
+        '<div class="camp-top">' +
+          '<span class="camp-ico" style="background:'+t.tone+'1F;color:'+t.tone+'">' +
+            svg(c.channel === 'email' ? I.mail : I.wa, 15) + '</span>' +
+          '<span class="camp-t"><b>'+esc(c.subject || t.label)+'</b>' +
+            '<span>'+esc(t.label)+' &middot; '+(c.channel === 'email' ? 'Email' : 'WhatsApp')+' &middot; '+timeAgo(c.when)+'</span></span>' +
+          '<span class="camp-n">'+comma(c.count)+' sent</span>' +
+        '</div>' +
+        '<div class="camp-bars">' +
+          bar('Delivered', st.delivered, c.count, 'var(--ok)') +
+          bar(c.channel === 'email' ? 'Opened' : 'Read', st.opened, st.delivered, 'var(--info)') +
+          bar('Clicked', st.clicked, st.delivered, 'var(--accent)') +
+          (st.bounced ? bar('Bounced', st.bounced, c.count, 'var(--warn)') : '') +
+        '</div>' +
       '</div>';
-    }
+    }).join('');
 
+    var byType = {};
+    D.comms.forEach(function(c){
+      var k = msgType(c.type || 'update').label;
+      byType[k] = (byType[k] || 0) + c.count;
+    });
+    var typeRows = Object.keys(byType).map(function(k){ return { k:k, n:byType[k] }; })
+      .sort(function(a,b){ return b.n - a.n; });
+
+    return insSection('Communication', comma(D.comms.length) + ' sends from this report',
+      tiles +
+      '<div class="ins-grid">' +
+        '<div class="ins-card" style="padding:0;grid-column:1 / -1">' +
+          '<div style="padding:14px 16px 0"><h3>Every send</h3>' +
+          '<div class="cap">Newest first &middot; delivery and engagement per send</div></div>' + rows +
+        '</div>' +
+      '</div>' +
+      '<div class="ins-grid" style="margin-top:16px">' +
+        '<div class="ins-card"><h3>By message type</h3><div class="cap">What you have actually been telling people</div>' +
+          bars(typeRows, 'var(--review)') + '</div>' +
+        '<div class="ins-card"><h3>Channel split</h3><div class="cap">Where the volume went</div>' +
+          bars([{k:'Email',n:totals.email},{k:'WhatsApp',n:totals.wa}].filter(function(x){ return x.n; }), 'var(--info)') +
+          '<p class="hint" style="margin-top:10px">WhatsApp read rates run far above email open rates &mdash; worth remembering when a message actually matters.</p>' +
+        '</div>' +
+      '</div>');
+  }
+
+  /* ---------------------------------------------------------------- 3. who they are */
+  function insAudience(all){
     var q = { official:0, personal:0, junk:0 };
     all.forEach(function(p){ q[p.quality]++; });
     var qBars = Object.keys(QUALITY).map(function(k){
       var pct = all.length ? Math.round(q[k]/all.length*100) : 0;
       var col = k==='official' ? 'var(--ok)' : k==='personal' ? 'var(--warn)' : 'var(--accent)';
-      return '<div class="bar-item"><div class="bl"><b>'+QUALITY[k].label+'</b><span>'+comma(q[k])+' · '+pct+'%</span></div>' +
+      return '<div class="bar-item"><div class="bl"><b>'+QUALITY[k].label+'</b><span>'+comma(q[k])+' &middot; '+pct+'%</span></div>' +
         '<div class="bar-track"><i style="width:'+pct+'%;background:'+col+'"></i></div></div>';
     }).join('');
 
-    var reach = all.length - q.junk;
-    var health = '<div class="callout' + (q.junk/Math.max(all.length,1) > 0.05 ? '' : ' info') + '" style="margin-bottom:18px">' +
-      svg(q.junk/Math.max(all.length,1) > 0.05 ? I.warn : I.shield, 17) +
-      '<span><strong>' + comma(reach) + ' of ' + comma(all.length) + ' are reachable</strong>' +
-      comma(q.junk) + ' junk address' + (q.junk===1?'':'es') + ' would bounce, and ' + comma(q.personal) +
-      ' are personal webmail — fine for reach, weaker for corporate intent.</span></div>';
-
     var paid = all.filter(function(p){ return p.paid; }).length;
     var att  = all.filter(function(p){ return p.attended; }).length;
-    var funnel = '<div class="bar-item"><div class="bl"><b>Registered</b><span>'+comma(all.length)+'</span></div>' +
-        '<div class="bar-track"><i style="width:100%;background:var(--info)"></i></div></div>' +
-      '<div class="bar-item"><div class="bl"><b>Paid</b><span>'+comma(paid)+' · '+Math.round(paid/Math.max(all.length,1)*100)+'%</span></div>' +
-        '<div class="bar-track"><i style="width:'+Math.round(paid/Math.max(all.length,1)*100)+'%;background:var(--ok)"></i></div></div>' +
-      '<div class="bar-item"><div class="bl"><b>Attended</b><span>'+comma(att)+' · '+Math.round(att/Math.max(all.length,1)*100)+'%</span></div>' +
-        '<div class="bar-track"><i style="width:'+Math.round(att/Math.max(all.length,1)*100)+'%;background:var(--accent)"></i></div></div>';
+    function fbar(label, n, colour){
+      var pct = Math.round(n / Math.max(all.length,1) * 100);
+      return '<div class="bar-item"><div class="bl"><b>'+label+'</b><span>'+comma(n)+' &middot; '+pct+'%</span></div>' +
+        '<div class="bar-track"><i style="width:'+pct+'%;background:'+colour+'"></i></div></div>';
+    }
+    var funnel = fbar('Registered', all.length, 'var(--info)') +
+                 fbar('Paid', paid, 'var(--ok)') +
+                 fbar('Attended', att, 'var(--accent)');
 
-    return health + '<div class="ins-grid">' +
-      card('Email quality', 'What the list is actually worth', qBars) +
-      card('Registration funnel', 'Registered to paid to through the door', funnel) +
-      card('Top companies', 'Where registrations come from', bars(tally('comp'), 'var(--info)'), 'company') +
-      card('Top designations', 'Seniority mix', bars(tally('desig'), 'var(--review)'), 'designation') +
-      card('Locations', 'Cities to plan travel and venues around', bars(tally('city'), 'var(--ok)')) +
-      card('Acquisition source', 'Which channel earned the registration', bars(tally('src'), 'var(--warn)')) +
-    '</div>';
+    /* registrations by month */
+    var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var byMonth = {};
+    all.forEach(function(p){
+      var k = p.when.slice(0, 7);
+      byMonth[k] = (byMonth[k] || 0) + 1;
+    });
+    var keys = Object.keys(byMonth).sort();
+    var peak = keys.reduce(function(m,k){ return Math.max(m, byMonth[k]); }, 1);
+    var chart = keys.length
+      ? '<div class="months">' + keys.map(function(k){
+          var n = byMonth[k], h = Math.round(n / peak * 100);
+          return '<div class="mo" title="'+comma(n)+' registrations">' +
+            '<span class="mv">'+comma(n)+'</span>' +
+            '<span class="mb" style="height:'+h+'%"></span>' +
+            '<span class="ml">'+MON[Number(k.slice(5,7))-1]+'</span></div>';
+        }).join('') + '</div>'
+      : '<p style="font-size:12.5px;color:var(--text-muted)">No dates to chart.</p>';
+
+    return insSection('Who registered', 'Built from all ' + comma(all.length) + ' records',
+      '<div class="ins-grid">' +
+        '<div class="ins-card" style="grid-column:1 / -1"><h3>Registrations over time</h3>' +
+          '<div class="cap">When the list actually filled up &mdash; peak month was ' +
+          (keys.length ? MON[Number(keys.reduce(function(a,k){ return byMonth[k] > byMonth[a] ? k : a; }, keys[0]).slice(5,7))-1] : 'n/a') +
+          '</div>' + chart + '</div>' +
+        '<div class="ins-card"><h3>Email quality</h3><div class="cap">What the list is actually worth</div>' + qBars + '</div>' +
+        '<div class="ins-card"><h3>Registration funnel</h3><div class="cap">Registered to paid to through the door</div>' + funnel + '</div>' +
+        '<div class="ins-card"><h3>Top companies</h3><div class="cap">Where registrations come from</div>' +
+          bars(tally(all,'comp'), 'var(--info)') +
+          '<button class="btn btn-secondary btn-sm" type="button" data-drill="company" style="margin-top:4px">Open as list</button></div>' +
+        '<div class="ins-card"><h3>Top designations</h3><div class="cap">Seniority mix</div>' +
+          bars(tally(all,'desig'), 'var(--review)') +
+          '<button class="btn btn-secondary btn-sm" type="button" data-drill="designation" style="margin-top:4px">Open as list</button></div>' +
+        '<div class="ins-card"><h3>Locations</h3><div class="cap">Cities to plan travel and venues around</div>' +
+          bars(tally(all,'city'), 'var(--ok)') + '</div>' +
+        '<div class="ins-card"><h3>Acquisition source</h3><div class="cap">Which channel earned the registration</div>' +
+          bars(tally(all,'src'), 'var(--warn)') + '</div>' +
+        '<div class="ins-card"><h3>Registration form</h3><div class="cap">How they signed up</div>' +
+          bars(tally(all,'formType'), 'var(--accent)') + '</div>' +
+      '</div>');
+  }
+
+  /* ---------------------------------------------------------------- 4. audit trail */
+  var ACT_META = {
+    send:      { ico:'send',  tone:'var(--accent)' },
+    shortlist: { ico:'star',  tone:'var(--review)' },
+    list:      { ico:'tag',   tone:'var(--info)' },
+    status:    { ico:'badge2',tone:'var(--ok)' },
+    junk:      { ico:'ban',   tone:'var(--warn)' },
+    export:    { ico:'down',  tone:'var(--text-muted)' },
+    view:      { ico:'save',  tone:'var(--review)' }
+  };
+
+  function insActivity(){
+    var acts = D.activity || [];
+    if (!acts.length){
+      return insSection('Activity', 'Nothing done on this report yet',
+        '<section class="panel"><div class="empty"><span class="ico">'+svg(I.clock,24)+'</span>' +
+        '<h4>No activity recorded</h4>' +
+        '<p>Shortlisting, list changes, status decisions, junk marking, exports and sends are all written down here as you work.</p>' +
+        '</div></section>');
+    }
+    var rows = acts.slice(0, 25).map(function(a){
+      var m = ACT_META[a.kind] || ACT_META.view;
+      return '<div class="act">' +
+        '<span class="act-i" style="background:'+m.tone+'1F;color:'+m.tone+'">'+svg(I[m.ico],14)+'</span>' +
+        '<span class="act-b"><b>'+esc(a.text)+'</b><span>'+timeAgo(a.when)+'</span></span>' +
+        (a.n ? '<span class="act-n">'+comma(a.n)+'</span>' : '') +
+      '</div>';
+    }).join('');
+
+    return insSection('Activity', comma(acts.length) + ' recorded action' + (acts.length===1?'':'s'),
+      '<section class="panel">' + rows +
+      (acts.length > 25 ? '<div style="padding:11px 16px;font-size:12px;color:var(--text-faint)">Showing the 25 most recent.</div>' : '') +
+      '</section>');
+  }
+
+  function insightsHTML(){
+    var all = people();
+    return insHealth(all) + insComms(all) + insAudience(all) + insActivity();
   }
 
   /* ======================================================================
@@ -1012,6 +1374,12 @@
     wire();
   }
 
+  function pageRows(){
+    var rows = filtered();
+    var from = (T.page - 1) * T.per;
+    return rows.slice(from, from + T.per);
+  }
+
   function bulkHTML(n){
     var sel = selectedPeople();
     var off = sel.filter(function(p){ return p.quality==='official'; }).length;
@@ -1028,7 +1396,19 @@
       '<button class="btn btn-secondary btn-sm" type="button" data-act="exportsel">'+svg(I.down,13)+' Export</button>' +
       '<span class="sp"></span>' +
       '<button class="btn btn-ghost btn-sm" type="button" data-act="clearsel">Clear</button>' +
-    '</div>';
+    '</div>' +
+    (function(){
+      /* offer the whole result set only once the visible page is fully ticked */
+      var total = filtered().length;
+      var pageIds = pageRows().map(function(p){ return p.id; });
+      var allPage = pageIds.length && pageIds.every(function(id){ return T.sel[id]; });
+      if (!allPage || n >= total) return '';
+      return '<div class="bulk" style="background:var(--surface-2);border-bottom-color:var(--border)">' +
+        '<span style="font-size:12.5px;color:var(--text-muted)">All ' + comma(pageIds.length) +
+        ' on this page are selected.</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="sel-all-matching">Select all ' +
+        comma(total) + ' matching</button></div>';
+    })();
   }
 
   /* ======================================================================
@@ -1053,6 +1433,11 @@
     each('[data-drill]', function(el){ el.onclick = function(){
       T.tab = 'reg'; T.view = el.getAttribute('data-drill'); render();
     }; });
+    each('[data-drill2]', function(el){ el.onclick = function(){
+      T.tab = 'reg'; T.view = 'list'; T.seg = 'all'; T.page = 1;
+      T.f = freshState().f; T.f.status = [el.getAttribute('data-drill2')];
+      render();
+    }; });
     each('[data-seg]',  function(el){ el.onclick = function(){
       var id = el.getAttribute('data-seg');
       T.seg = (T.seg === id && id !== 'all') ? 'all' : id;
@@ -1073,10 +1458,26 @@
       el.onclick = function(e){ e.stopPropagation(); };
       el.onchange = function(){ T.sel[el.getAttribute('data-sel')] = el.checked; render(); };
     });
-    var all = $('sel-all');
-    if (all) all.onchange = function(){
-      each('[data-sel]', function(el){ T.sel[el.getAttribute('data-sel')] = all.checked; });
+    /* The header box acts on the page you can see. Selecting every match is
+       a separate, explicit step - silently selecting 400 rows because someone
+       ticked a box that looks like it covers 25 is how accidents happen. */
+    var box = $('sel-all');
+    if (box){
+      var pageIds = pageRows().map(function(p){ return p.id; });
+      var on = pageIds.filter(function(id){ return T.sel[id]; }).length;
+      box.checked = pageIds.length > 0 && on === pageIds.length;
+      box.indeterminate = on > 0 && on < pageIds.length;
+      box.onchange = function(){
+        var want = box.checked;
+        pageIds.forEach(function(id){ if (want) T.sel[id] = true; else delete T.sel[id]; });
+        render();
+      };
+    }
+    var selAllBtn = $('sel-all-matching');
+    if (selAllBtn) selAllBtn.onclick = function(){
+      filtered().forEach(function(p){ T.sel[p.id] = true; });
       render();
+      C.toast('All ' + comma(filtered().length) + ' matching selected');
     };
 
     each('[data-open]', function(el){
@@ -1106,6 +1507,14 @@
           T.f.status = T.f.status.filter(function(v){ return STATUS[v].label !== val; });
         } else if (kind === 'dupe'){
           T.f.dupe = false;
+        } else if (kind === 'when'){
+          T.f.from = ''; T.f.to = '';
+        } else if (kind === 'engaged'){
+          T.f.engaged = '';
+        } else if (kind === 'verified'){
+          T.f.verified = false;
+        } else if (kind === 'form'){
+          T.f.form = T.f.form.filter(function(v){ return v !== val; });
         } else if (kind === 'bucket'){
           T.f.bucket = T.f.bucket.filter(function(v){ var b=bucketById(v); return (b?b.label:v) !== val; });
         } else {
@@ -1201,6 +1610,7 @@
         sel.forEach(function(p){
           if (k === 'pending') delete D.status[p.id]; else D.status[p.id] = k;
         });
+        logAct('status', comma(sel.length) + ' marked ' + STATUS[k].label + ' (no message sent)', sel.length);
         saveStore(); closeLayer(); render();
         C.toast(comma(sel.length) + ' marked ' + STATUS[k].label);
       };
@@ -1216,6 +1626,7 @@
       f: JSON.parse(JSON.stringify(T.f)),
       seg: T.seg, q: T.q, tab: T.tab
     });
+    logAct('view', 'Saved the view "' + name.slice(0,48) + '"', 0);
     saveStore(); T.vmenu = false; render();
     C.toast('View saved');
   }
@@ -1228,14 +1639,63 @@
     C.toast('Showing "' + v.name + '"');
   }
 
+  /* Shortlisting asks which list, so the group has a name from the start.
+     Un-shortlisting is offered only when everyone picked is already on one. */
   function bulkShortlist(){
-    var ids = selectedIds();
-    if (!ids.length) return;
-    /* if everything selected is already shortlisted, treat it as un-shortlist */
-    var allOn = ids.every(function(id){ return D.shortlist[id]; });
-    ids.forEach(function(id){ if (allOn) delete D.shortlist[id]; else D.shortlist[id] = true; });
-    saveStore(); render();
-    C.toast(allOn ? ids.length+' removed from shortlist' : ids.length+' shortlisted');
+    var sel = selectedPeople();
+    if (!sel.length){ C.toast('Select some people first'); return; }
+    var allOn = sel.every(function(p){ return p.shortlist; });
+
+    modal('Shortlist ' + comma(sel.length) + ' ' + (sel.length===1?'person':'people'),
+      '<p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">' +
+        'Put them on a named list so you can mail exactly this group later.</p>' +
+
+      '<div class="field" style="margin-bottom:16px">' +
+        '<label for="sl-new">Create a new list</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input class="inp" id="sl-new" placeholder="e.g. Day 1 VIP table" maxlength="40">' +
+          '<button class="btn btn-primary" type="button" id="sl-create" style="flex-shrink:0">Create &amp; add</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<h4 style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text-faint);margin:0 0 8px">Or use an existing list</h4>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+      lists().map(function(l){
+        var n = sel.filter(function(p){ return p.buckets.indexOf(l.id) >= 0; }).length;
+        return '<button class="cbucket" type="button" data-sl="'+l.id+'">' +
+          '<span style="width:11px;height:11px;border-radius:50%;background:'+l.colour+'"></span>' +
+          '<span style="flex:1;text-align:left;font-weight:700;font-size:13.5px">'+esc(l.label)+'</span>' +
+          (n ? '<span class="badge b-mute">'+n+' already</span>' : '') +
+        '</button>';
+      }).join('') + '</div>',
+
+      (allOn ? '<button class="btn btn-ghost" type="button" id="sl-un">Remove from shortlist</button>' : '') +
+      '<button class="btn btn-secondary" type="button" id="sl-plain">Shortlist without a list</button>', 500);
+
+    function doShortlist(listId){
+      sel.forEach(function(p){ D.shortlist[p.id] = true; });
+      if (listId) addToList(sel, listId);
+      logAct('shortlist', comma(sel.length) + ' shortlisted' +
+        (listId ? ' to ' + bucketById(listId).label : ' (no list)'), sel.length);
+      saveStore(); closeLayer(); render();
+      C.toast(comma(sel.length) + ' shortlisted' + (listId ? ' to ' + bucketById(listId).label : ''));
+    }
+
+    each('[data-sl]', function(el){ el.onclick = function(){ doShortlist(el.getAttribute('data-sl')); }; });
+    var nameEl = $('sl-new');
+    $('sl-create').onclick = function(){
+      var l = createList(nameEl.value);
+      if (!l){ C.toast('Give the list a name first'); nameEl.focus(); return; }
+      doShortlist(l.id);
+    };
+    nameEl.onkeydown = function(e){ if (e.key === 'Enter') $('sl-create').onclick(); };
+    $('sl-plain').onclick = function(){ doShortlist(null); };
+    if ($('sl-un')) $('sl-un').onclick = function(){
+      sel.forEach(function(p){ delete D.shortlist[p.id]; });
+      logAct('shortlist', comma(sel.length) + ' removed from the shortlist', sel.length);
+      saveStore(); closeLayer(); render();
+      C.toast(comma(sel.length) + ' removed from shortlist');
+    };
   }
 
   function bulkJunk(){
@@ -1243,6 +1703,7 @@
     if (!ids.length) return;
     var allOn = ids.every(function(id){ return D.junk[id]; });
     ids.forEach(function(id){ if (allOn) delete D.junk[id]; else D.junk[id] = true; });
+    logAct('junk', comma(ids.length) + (allOn ? ' unmarked as junk' : ' marked as junk'), ids.length);
     CACHE = {}; saveStore(); render();
     C.toast(allOn ? ids.length+' unmarked' : ids.length+' marked as junk — excluded from sends');
   }
@@ -1271,6 +1732,7 @@
     a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 800);
+    logAct('export', comma(list.length) + ' rows exported to CSV', list.length);
     C.toast('Exported ' + comma(list.length) + ' rows to ' + name);
   }
 
@@ -1349,7 +1811,7 @@
     var bCounts = {};
     all.forEach(function(p){ p.buckets.forEach(function(b){ bCounts[b] = (bCounts[b]||0)+1; }); });
     var bFacet = '<div class="facet"><h4>Bucket</h4><div class="facet-list">' +
-      BUCKETS.map(function(b){
+      lists().map(function(b){
         var on = T.f.bucket.indexOf(b.id) >= 0;
         return '<label class="fopt"><input type="checkbox" data-f="bucket" value="'+b.id+'"'+(on?' checked':'')+'>' +
           '<span class="fl"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+b.colour+';margin-right:6px"></span>' +
@@ -1367,6 +1829,38 @@
           '<span class="fc">'+comma(sCounts[k]||0)+'</span></label>';
       }).join('') + '</div></div>';
 
+    /* registration window - two dates plus the presets people actually use */
+    var dates = all.map(function(p){ return p.when; }).sort();
+    var earliest = dates[0] || '', latest = dates[dates.length-1] || '';
+    var dFacet = '<div class="facet"><h4>Registered between</h4>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px">' +
+        '<input class="inp" type="date" id="f-from" value="'+esc(T.f.from)+'" min="'+esc(earliest)+'" max="'+esc(latest)+'">' +
+        '<input class="inp" type="date" id="f-to" value="'+esc(T.f.to)+'" min="'+esc(earliest)+'" max="'+esc(latest)+'">' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-dpreset="all">All time</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-dpreset="first">First half</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-dpreset="last">Most recent 30</button>' +
+      '</div></div>';
+
+    var fCounts = {};
+    all.forEach(function(p){ fCounts[p.formType] = (fCounts[p.formType]||0) + 1; });
+    var fFacet = '<div class="facet"><h4>Registration form</h4><div class="facet-list">' +
+      FORM_TYPES.map(function(k){
+        var on = T.f.form.indexOf(k) >= 0;
+        return '<label class="fopt"><input type="checkbox" data-f="form" value="'+esc(k)+'"'+(on?' checked':'')+'>' +
+          '<span class="fl">'+esc(k)+'</span><span class="fc">'+comma(fCounts[k]||0)+'</span></label>';
+      }).join('') + '</div></div>';
+
+    var eFacet = '<div class="facet"><h4>Mailer engagement</h4><div class="facet-list">' +
+      [['','Any engagement',all.length],
+       ['opened','Opened at least one',all.filter(function(p){return p.opens;}).length],
+       ['clicked','Clicked a link',all.filter(function(p){return p.clicks;}).length],
+       ['cold','Never opened',all.filter(function(p){return !p.opens;}).length]].map(function(x){
+        return '<label class="fopt"><input type="radio" name="eng" data-eng="'+x[0]+'"'+(T.f.engaged===x[0]?' checked':'')+'>' +
+          '<span class="fl">'+esc(x[1])+'</span><span class="fc">'+comma(x[2])+'</span></label>';
+      }).join('') + '</div></div>';
+
     var other = '<div class="facet"><h4>Other</h4><div class="facet-list">' +
       '<label class="fopt"><input type="radio" name="pay" data-pay="" '+(!T.f.pay?'checked':'')+'><span class="fl">Any payment status</span></label>' +
       '<label class="fopt"><input type="radio" name="pay" data-pay="paid" '+(T.f.pay==='paid'?'checked':'')+'><span class="fl">Paid only</span><span class="fc">'+comma(all.filter(function(p){return p.paid;}).length)+'</span></label>' +
@@ -1375,13 +1869,15 @@
       '<label class="fopt"><input type="checkbox" data-flag="attended" '+(T.f.attended?'checked':'')+'><span class="fl">Attended only</span></label>' +
       '<label class="fopt"><input type="checkbox" data-flag="dupe" '+(T.f.dupe?'checked':'')+'><span class="fl">Possible duplicates only</span>' +
       '<span class="fc">'+comma(all.filter(function(p){return p.dupe;}).length)+'</span></label>' +
+      '<label class="fopt"><input type="checkbox" data-flag="verified" '+(T.f.verified?'checked':'')+'><span class="fl">Verified contacts only</span>' +
+      '<span class="fc">'+comma(all.filter(function(p){return p.verified;}).length)+'</span></label>' +
       '</div></div>';
 
     modal('Filters',
       '<div class="facets">' +
         facet('desig','Designation') + facet('comp','Company') +
         facet('city','Location') + facet('src','Source') +
-        qFacet + bFacet + sFacet + other +
+        qFacet + bFacet + sFacet + fFacet + dFacet + eFacet + other +
       '</div>',
       '<button class="btn btn-ghost" type="button" id="f-clear">Clear all</button>' +
       '<button class="btn btn-primary" type="button" id="f-apply">Show results</button>', 740);
@@ -1410,6 +1906,21 @@
       };
     });
     each('[data-pay]', function(el){ el.onchange = function(){ T.f.pay = el.getAttribute('data-pay'); }; });
+    each('[data-eng]', function(el){ el.onchange = function(){ T.f.engaged = el.getAttribute('data-eng'); }; });
+    var fr = $('f-from'), to = $('f-to');
+    if (fr) fr.onchange = function(){ T.f.from = fr.value; };
+    if (to) to.onchange = function(){ T.f.to = to.value; };
+    each('[data-dpreset]', function(el){
+      el.onclick = function(){
+        var kind = el.getAttribute('data-dpreset');
+        var ds = people().map(function(p){ return p.when; }).sort();
+        if (kind === 'all'){ T.f.from = ''; T.f.to = ''; }
+        if (kind === 'first'){ T.f.from = ds[0]; T.f.to = ds[Math.floor(ds.length/2)]; }
+        if (kind === 'last'){ T.f.from = ds[Math.max(0, ds.length-30)]; T.f.to = ds[ds.length-1]; }
+        if (fr) fr.value = T.f.from;
+        if (to) to.value = T.f.to;
+      };
+    });
     each('[data-flag]', function(el){ el.onchange = function(){ T.f[el.getAttribute('data-flag')] = el.checked; }; });
     $('f-clear').onclick = function(){ T.f = freshState().f; closeLayer(); T.page = 1; render(); };
     $('f-apply').onclick = function(){ closeLayer(); T.page = 1; render(); C.toast(comma(filtered().length)+' match'); };
@@ -1438,20 +1949,47 @@
   function openBucket(){
     var sel = selectedPeople();
     if (!sel.length){ C.toast('Select some people first'); return; }
-    modal('Add ' + sel.length + ' to a bucket',
+    modal('Add ' + comma(sel.length) + ' to a list',
       '<p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">' +
-        'Buckets are how you split a list into things you will actually do. A person can sit in more than one.</p>' +
+        'Lists are how you split registrations into things you will actually do. Someone can sit on more than one.</p>' +
+      '<div class="field" style="margin-bottom:16px"><label for="bk-new">Create a new list</label>' +
+        '<div style="display:flex;gap:8px">' +
+        '<input class="inp" id="bk-new" placeholder="e.g. Roundtable invitees" maxlength="40">' +
+        '<button class="btn btn-primary" type="button" id="bk-create" style="flex-shrink:0">Create &amp; add</button>' +
+        '</div></div>' +
       '<div style="display:flex;flex-direction:column;gap:8px">' +
-      BUCKETS.map(function(b){
+      lists().map(function(b){
         var inAll = sel.every(function(p){ return p.buckets.indexOf(b.id) >= 0; });
+        var total = people().filter(function(p){ return p.buckets.indexOf(b.id) >= 0; }).length;
         return '<button class="cbucket" type="button" data-bk="'+b.id+'" aria-pressed="'+inAll+'">' +
           '<span style="width:11px;height:11px;border-radius:50%;background:'+b.colour+'"></span>' +
-          '<span style="flex:1;text-align:left;font-weight:700;font-size:13.5px">'+esc(b.label)+'</span>' +
-          (inAll ? '<span class="badge b-accent">In bucket</span>' : '') +
+          '<span style="flex:1;text-align:left;font-weight:700;font-size:13.5px">'+esc(b.label)+
+            '<span style="display:block;font-weight:600;font-size:11px;color:var(--text-muted)">'+comma(total)+' on this list</span></span>' +
+          (inAll ? '<span class="badge b-accent">Added</span>' : '') +
+          (b.locked ? '' : '<span class="vx" data-delist="'+b.id+'" title="Delete list">'+svg(I.trash,13)+'</span>') +
         '</button>';
       }).join('') + '</div>',
       '<button class="btn btn-secondary" type="button" id="bk-clear">Remove from all</button>' +
       '<button class="btn btn-primary" type="button" id="bk-done">Done</button>', 460);
+
+    var nEl = $('bk-new');
+    if (nEl){
+      $('bk-create').onclick = function(){
+        var l = createList(nEl.value);
+        if (!l){ C.toast('Give the list a name first'); nEl.focus(); return; }
+        addToList(sel, l.id); render(); openBucket();
+        C.toast('Added to ' + l.label);
+      };
+      nEl.onkeydown = function(e){ if (e.key === 'Enter') $('bk-create').onclick(); };
+    }
+    each('[data-delist]', function(el){
+      el.onclick = function(e){
+        e.stopPropagation();
+        deleteList(el.getAttribute('data-delist'));
+        render(); openBucket();
+        C.toast('List deleted');
+      };
+    });
 
     each('[data-bk]', function(el){
       el.onclick = function(){
@@ -1463,6 +2001,7 @@
           else if (list.indexOf(id) < 0) list.push(id);
           D.buckets[p.id] = list;
         });
+        logAct('list', comma(sel.length) + (inAll ? ' removed from ' : ' added to ') + bucketById(id).label, sel.length);
         saveStore(); render();
         C.toast((inAll ? 'Removed from ' : 'Added to ') + bucketById(id).label);
         openBucket();
@@ -1528,7 +2067,7 @@
   function freshComp(){
     return {
       step: 1, type: 'confirm', channel: 'email', subject: '', body: '', touched: false,
-      aud: { source: null, status: 'pending', view: 0, skipJunk: true, skipSent: true }
+      aud: { source: null, status: 'pending', view: 0, list: 'hot', skipJunk: true, skipSent: true }
     };
   }
 
@@ -1546,6 +2085,7 @@
     if (a.source === 'selected') return selectedPeople();
     if (a.source === 'all')      return people();
     if (a.source === 'status')   return people().filter(function(p){ return p.status === a.status; });
+    if (a.source === 'list')     return people().filter(function(p){ return p.buckets.indexOf(a.list) >= 0; });
     if (a.source === 'view'){
       var v = D.views[a.view];
       if (!v) return filtered();
@@ -1659,6 +2199,17 @@
         }).join('') + '</div>'
       : '';
 
+    var listPick = comp.aud.source === 'list'
+      ? '<div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap">' +
+        lists().map(function(l){
+          var n = all.filter(function(p){ return p.buckets.indexOf(l.id) >= 0; }).length;
+          return '<button class="bkt" type="button" data-audlist="'+l.id+'" style="cursor:pointer;border:1px solid '+
+            (comp.aud.list===l.id?l.colour:'var(--border)')+';background:'+
+            (comp.aud.list===l.id?l.colour+'1F':'transparent')+';color:'+
+            (comp.aud.list===l.id?l.colour:'var(--text-muted)')+'">'+esc(l.label)+' '+comma(n)+'</button>';
+        }).join('') + '</div>'
+      : '';
+
     var viewPick = comp.aud.source === 'view' && D.views.length
       ? '<div style="margin-top:9px"><select class="inp" id="c-view">' +
         D.views.map(function(v,i){ return '<option value="'+i+'"'+(comp.aud.view===i?' selected':'')+'>'+esc(v.name)+'</option>'; }).join('') +
@@ -1672,6 +2223,8 @@
             : 'Current tab, segment, search and filters', filtered().length) +
       opt('status','By decision status','Pick pending, confirmed, regretted or waitlisted',
             all.filter(function(p){ return p.status===comp.aud.status; }).length, statusPick) +
+      opt('list','A named list','Everyone you put on one list',
+            all.filter(function(p){ return p.buckets.indexOf(comp.aud.list) >= 0; }).length, listPick) +
       (D.views.length ? opt('view','A saved view','Reuse a filter set you saved earlier',
             (function(){ var keep=comp.aud.source; comp.aud.source='view'; var n=audienceBase().length; comp.aud.source=keep; return n; })(),
             viewPick) : '') +
@@ -1753,6 +2306,9 @@
     each('[data-audstatus]', function(el){
       el.onclick = function(e){ e.stopPropagation(); comp.aud.status = el.getAttribute('data-audstatus'); drawComposer(); };
     });
+    each('[data-audlist]', function(el){
+      el.onclick = function(e){ e.stopPropagation(); comp.aud.list = el.getAttribute('data-audlist'); drawComposer(); };
+    });
     each('[data-skip]', function(el){
       el.onchange = function(){ comp.aud[el.getAttribute('data-skip')] = el.checked; drawComposer(); };
     });
@@ -1819,6 +2375,9 @@
 
     if (t.sets) A.list.forEach(function(p){ D.status[p.id] = t.sets; });
 
+    logAct('send', t.label + ' sent by ' + (comp.channel === 'email' ? 'email' : 'WhatsApp') +
+      ' to ' + comma(A.list.length) +
+      (t.sets ? ', marked ' + STATUS[t.sets].label : ''), A.list.length);
     saveStore();
     comp = freshComp();
     closeLayer();
@@ -1876,7 +2435,7 @@
 
           '<div class="dsec"><h4>Buckets</h4>' +
             '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-            BUCKETS.map(function(b){
+            lists().map(function(b){
               var on = p.buckets.indexOf(b.id) >= 0;
               return '<button class="bkt" type="button" data-pbk="'+b.id+'" style="cursor:pointer;border:1px solid '+
                 (on ? b.colour : 'var(--border)')+';background:'+(on ? b.colour+'1F' : 'transparent')+
