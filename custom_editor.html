@@ -319,7 +319,7 @@
 
   /* ---------- canvas ---------- */
   .ed-main{ flex:1; min-width:0; display:flex; flex-direction:column; background: var(--surface-2); }
-  .device-toggle{ position:absolute; right:40px; top:120%; transform:translateY(-50%); display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
+  .device-toggle{ align-self:center; margin-left:10px; display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
   .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
   .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
 
@@ -330,23 +330,11 @@
     outline: 1px solid var(--border);
   }
   .stage.device-mobile .frame{ max-width: 380px; }
+  #stage.stage .frame{ width: calc(100% - 80px); }
 
   /* selection + hover affordances on canvas content */
   .site-section{ position:relative; }
-  .site-section:hover > .sec-toolbar{ opacity:1; pointer-events:auto; }
-  .site-section.sec-active > .sec-toolbar{ opacity:1; pointer-events:auto; }
   .site-section.sec-active{ outline: 2px solid var(--accent); outline-offset: -2px; z-index: 5; }
-  .sec-toolbar{
-    position:absolute; top:8px; right:8px; z-index:8; display:flex; align-items:center; gap:2px;
-    background: var(--surface); border:1px solid var(--border); border-radius:8px; padding:3px;
-    box-shadow: var(--shadow-md); opacity:0; pointer-events:none; transition: opacity .12s ease;
-  }
-  .sec-toolbar button{
-    width:26px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-muted);
-    display:flex; align-items:center; justify-content:center;
-  }
-  .sec-toolbar button:hover{ background: var(--surface-2); color: var(--text); }
-  .sec-toolbar button.danger:hover{ background: var(--crit-soft); color: var(--crit); }
   .sec-name-tag{
     position:absolute; top:8px; left:8px; z-index:8; font-size:10.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
     background: var(--accent); color:#fff; padding:3px 8px; border-radius:5px; opacity:0; transition:opacity .12s ease; pointer-events:none;
@@ -361,13 +349,35 @@
   .sec-add-below:hover{ transform:translate(-50%, 50%) scale(1.1); }
   .site-section:hover .sec-add-below, .site-section.sec-active .sec-add-below{ opacity:1; pointer-events:auto; }
 
+  .sec-side-toolbar{
+    position:absolute; z-index:8; display:flex; flex-direction:column; gap:2px;
+    background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:3px;
+    box-shadow: var(--shadow-md);
+  }
+  .sec-side-toolbar .sec-tool-icon{
+    width:26px; height:26px; border-radius:6px; color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .sec-side-toolbar .sec-tool-menu{
+    display:flex; flex-direction:column; gap:2px; margin-top:4px; padding-top:4px; border-top:1px solid var(--border);
+  }
+  .sec-side-toolbar .sec-tool-menu button{
+    width:26px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .sec-side-toolbar .sec-tool-menu button:hover{ background: var(--surface-2); color: var(--text); }
+  .sec-side-toolbar .sec-tool-menu button.danger{ color: var(--crit); }
+  .sec-side-toolbar .sec-tool-menu button.danger:hover{ background: var(--crit-soft); }
+  .sec-side-toolbar .sec-tool-menu-sep{ height:1px; background: var(--border); margin: 3px 2px; }
+  .preview-mode .sec-side-toolbar{ display:none !important; }
+
   [data-editable]{ position:relative; cursor: pointer; border-radius: 2px; }
   [data-editable]:hover{ outline: 1.5px dashed #8aa; outline-offset: 2px; }
   [data-editable].ed-selected{ outline: 2px solid var(--accent) !important; outline-offset: 2px; }
   [data-editable][contenteditable="true"]{ cursor:text; outline: 2px solid var(--accent-strong) !important; outline-offset: 2px; }
   .preview-mode [data-editable]:hover{ outline:none; }
   .preview-mode [data-editable]{ cursor:default; }
-  .preview-mode .sec-toolbar, .preview-mode .sec-name-tag, .preview-mode .add-sec-row, .preview-mode #sel-toolbar{ display:none !important; }
+  .preview-mode .sec-name-tag, .preview-mode .add-sec-row, .preview-mode #sel-toolbar{ display:none !important; }
 
   .add-sec-row{ display:flex; align-items:center; justify-content:center; padding: 18px 0; }
   .add-sec-btn{
@@ -880,6 +890,10 @@
         <div class="rail-gap"></div>
         <button class="rail-btn" id="btn-media" title="Media">Media</button>
         <button class="rail-btn" id="btn-apps" title="Apps">Apps</button>
+        <div class="device-toggle" role="group" aria-label="Device preview">
+         <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+         <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
+        </div>
       </nav>
 
       <!-- ============ GLOBAL COMMAND TOOLBAR ============ -->
@@ -992,10 +1006,6 @@
           Format
         </button>
        </div>
-       <div class="device-toggle" role="group" aria-label="Device preview">
-        <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
-        <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
-       </div>
       </div>
 
       <div class="lyr-menu gt-more-menu" id="gt-body-more-menu" hidden>
@@ -1020,15 +1030,24 @@
       <div class="stage" id="stage">
         <div class="frame" id="frame">
           <div id="sel-toolbar"></div>
+          <div class="sec-side-toolbar" id="sec-side-toolbar" hidden>
+            <div class="sec-tool-icon" title="Change layout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></div>
+            <div class="sec-tool-menu">
+              <button data-menu-action="add-above" title="Add section above"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg></button>
+              <button data-menu-action="add-below" title="Add section below"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg></button>
+              <div class="sec-tool-menu-sep"></div>
+              <button data-menu-action="rename" title="Rename"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 2 4 4-13 13H5v-4Z"/></svg></button>
+              <button data-menu-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              <button data-menu-action="hide" title="Hide section"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button data-menu-action="schedule" title="Schedule&hellip;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
+              <div class="sec-tool-menu-sep"></div>
+              <button data-menu-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
+            </div>
+          </div>
 
           <!-- ===== NAV ===== -->
           <section class="site-section" data-sec-name="Navigation">
             <span class="sec-name-tag">Navigation</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <nav class="s-nav">
               <span class="logo" data-editable="text">Northwind Studio</span>
               <div class="links">
@@ -1045,11 +1064,6 @@
           <!-- ===== HERO ===== -->
           <section class="site-section" data-sec-name="Hero">
             <span class="sec-name-tag">Hero</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-hero">
               <div>
                 <h1 data-editable="text">Studio-grade design, without the studio price tag.</h1>
@@ -1068,11 +1082,6 @@
           <!-- ===== STATS ===== -->
           <section class="site-section" data-sec-name="Stats">
             <span class="sec-name-tag">Stats</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-stats">
               <div class="s-stat"><div class="n" data-editable="text">120+</div><div class="l" data-editable="text">Projects shipped</div></div>
               <div class="s-stat"><div class="n" data-editable="text">98%</div><div class="l" data-editable="text">Client retention</div></div>
@@ -1084,11 +1093,6 @@
           <!-- ===== CARDS ===== -->
           <section class="site-section" data-sec-name="Services">
             <span class="sec-name-tag">Services</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-cards-sec">
               <span class="kicker" data-editable="text">What we do</span>
               <h2 data-editable="text">Three ways we help brands grow</h2>
@@ -1103,11 +1107,6 @@
           <!-- ===== GALLERY ===== -->
           <section class="site-section" data-sec-name="Gallery">
             <span class="sec-name-tag">Gallery</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-gallery">
               <div class="s-gal-grid">
                 <div class="gi" data-editable="image"></div>
@@ -1121,11 +1120,6 @@
           <!-- ===== QUOTE ===== -->
           <section class="site-section" data-sec-name="Testimonial">
             <span class="sec-name-tag">Testimonial</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-quote">
               <blockquote data-editable="text">&ldquo;Northwind took our half-finished brand and turned it into something our whole team is proud to ship.&rdquo;</blockquote>
               <div class="who" data-editable="text">&mdash; Priya Nair, Head of Marketing at Fieldnote</div>
@@ -1135,11 +1129,6 @@
           <!-- ===== CTA BAND ===== -->
           <section class="site-section" data-sec-name="Call to action">
             <span class="sec-name-tag">Call to action</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-cta-band">
               <h2 data-editable="text">Ready to start your project?</h2>
               <p data-editable="text">Tell us about your brand and we&rsquo;ll get back within one business day.</p>
@@ -1152,11 +1141,6 @@
           <!-- ===== FOOTER ===== -->
           <section class="site-section" data-sec-name="Footer">
             <span class="sec-name-tag">Footer</span>
-            <div class="sec-toolbar">
-              <button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
-              <button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
-              <button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>
-            </div>
             <div class="s-foot">
               <span class="logo" data-editable="text">Northwind Studio</span>
               <span data-editable="text">&copy; 2026 Northwind Studio. All rights reserved.</span>
@@ -1212,7 +1196,6 @@
   <div id="gt-style-pop-body"></div>
   <div class="pop-actions"><button class="btn btn-primary btn-sm" type="button" id="gt-style-pop-done">Done</button></div>
 </div>
-
 <div id="toast-region"></div>
 
 <script src="edit-event-core.js"></script>
@@ -1245,10 +1228,26 @@
   var stylePopBody = document.getElementById('style-pop-body');
   var imageAiPop = document.getElementById('image-ai-pop');
   var imageAiPrompt = document.getElementById('ai-image-prompt');
+  var secToolbarEl = document.getElementById('sec-side-toolbar');
   var previewMode = false;
   var currentZoom = 1;
   var selectedEl = null;
   var activeSectionEl = null;
+
+  /* ---------- section side toolbar (global, right of the frame) ---------- */
+  function positionSecToolbar(sec){
+    var frameRect = frame.getBoundingClientRect();
+    var secRect = sec.getBoundingClientRect();
+    var top = (secRect.top - frameRect.top) + secRect.height / 2 - secToolbarEl.offsetHeight / 2;
+    top = Math.max(8, Math.min(top, frameRect.height - secToolbarEl.offsetHeight - 8));
+    secToolbarEl.style.top = top + 'px';
+    secToolbarEl.style.left = (frameRect.width + 10) + 'px';
+  }
+  function showSecToolbar(sec){
+    secToolbarEl.hidden = false;
+    positionSecToolbar(sec);
+  }
+  function hideSecToolbar(){ secToolbarEl.hidden = true; }
 
   /* ---------- toast ---------- */
   function showToast(msg){
@@ -1275,7 +1274,18 @@
     stylePop.hidden = true;
     imageAiPop.hidden = true;
     document.querySelectorAll('.site-section.sec-active').forEach(function(s){ s.classList.remove('sec-active'); });
+    hideSecToolbar();
     syncFormatControls();
+  }
+
+  function selectSectionOnly(sec){
+    deselect();
+    sec.classList.add('sec-active');
+    activeSectionEl = sec;
+    syncSectionToolbar();
+    rebuildLayersPanel();
+    var currentRow = lyrList.querySelector('.lyr-row.current');
+    if (currentRow) currentRow.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
 
   function exitEditIfNeeded(el){
@@ -1901,6 +1911,12 @@
   stage.addEventListener('click', function(e){
     if (previewMode) return;
     if (e.target.closest('#sel-toolbar')) return;
+    var inlineMenuBtn = e.target.closest('.sec-tool-menu [data-menu-action]');
+    if (inlineMenuBtn && activeSectionEl){
+      runSectionMenuAction(inlineMenuBtn.getAttribute('data-menu-action'), activeSectionEl, inlineMenuBtn);
+      e.stopPropagation();
+      return;
+    }
     var secBtn = e.target.closest('[data-sec-action]');
     if (secBtn){
       handleSectionAction(secBtn.getAttribute('data-sec-action'), secBtn.closest('.site-section'));
@@ -1919,7 +1935,11 @@
     }
     var editable = e.target.closest('[data-editable]');
     if (editable){ selectElement(editable); e.stopPropagation(); }
-    else { deselect(); }
+    else {
+      var clickedSec = e.target.closest('.site-section');
+      if (clickedSec) selectSectionOnly(clickedSec);
+      else deselect();
+    }
   });
   stage.addEventListener('dblclick', function(e){
     if (previewMode) return;
@@ -1973,7 +1993,10 @@
   }
 
   /* ---------- global toolbar: current-section actions ---------- */
-  function syncSectionToolbar(){}
+  function syncSectionToolbar(){
+    if (activeSectionEl && !activeSectionEl.classList.contains('is-hidden-sec')) showSecToolbar(activeSectionEl);
+    else hideSecToolbar();
+  }
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
@@ -2301,12 +2324,7 @@
     var sec = document.createElement('section');
     sec.className = 'site-section';
     sec.setAttribute('data-sec-name', name);
-    sec.innerHTML = '<span class="sec-name-tag">' + name + '</span>' +
-      '<div class="sec-toolbar">' +
-      '<button data-sec-action="duplicate" title="Duplicate"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
-      '<button data-sec-action="hide" title="Hide"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
-      '<button data-sec-action="delete" class="danger" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7"/></svg></button>' +
-      '</div>' + bodyHtml + addSectionBelowMarkup();
+    sec.innerHTML = '<span class="sec-name-tag">' + name + '</span>' + bodyHtml + addSectionBelowMarkup();
     return sec;
   }
 
@@ -2385,12 +2403,7 @@
     if (lyrCtxMenu.contains(e.target) || e.target.closest('.lyr-menu-btn')) return;
     closeLyrMenu();
   });
-  lyrCtxMenu.addEventListener('click', function(e){
-    var btn = e.target.closest('[data-menu-action]');
-    if (!btn || !lyrCtxSec) return;
-    var action = btn.getAttribute('data-menu-action');
-    var sec = lyrCtxSec;
-    var anchorBtn = lyrCtxBtn;
+  function runSectionMenuAction(action, sec, anchorBtn){
     if (action === 'rename'){
       var current = sec.getAttribute('data-sec-name') || 'Section';
       var name = prompt('Section name', current);
@@ -2399,18 +2412,22 @@
         pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
         showToast('Section renamed');
       }
-      closeLyrMenu();
     } else if (action === 'add-above' || action === 'add-below'){
-      if (action === 'add-above' && isNavSection(sec)){ notifyNavPinned(); closeLyrMenu(); return; }
+      if (action === 'add-above' && isNavSection(sec)){ notifyNavPinned(); return; }
       addSectionAnchor = { sec: sec, position: action === 'add-above' ? 'above' : 'below' };
-      closeLyrMenu();
       openAddSectionChooser();
     } else if (action === 'schedule'){
       openSchedulePopover(sec, anchorBtn);
     } else {
       handleSectionAction(action, sec);
-      closeLyrMenu();
     }
+  }
+  lyrCtxMenu.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-menu-action]');
+    if (!btn || !lyrCtxSec) return;
+    var action = btn.getAttribute('data-menu-action');
+    runSectionMenuAction(action, lyrCtxSec, lyrCtxBtn);
+    if (action !== 'schedule') closeLyrMenu();
   });
 
   /* ---------- section scheduling ---------- */
@@ -2481,7 +2498,7 @@
     if (isNavSection(secs[targetIdx])){ notifyNavPinned(); return; }
     if (dir < 0) sec.parentNode.insertBefore(sec, secs[targetIdx]);
     else sec.parentNode.insertBefore(secs[targetIdx], sec);
-    pushHistory(); markSaving(); rebuildLayersPanel();
+    pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
     showToast('Reordered sections');
   }
 
@@ -2676,6 +2693,7 @@
       var device = btn.getAttribute('data-device');
       stage.classList.toggle('device-mobile', device === 'mobile');
       if (selectedEl) setTimeout(function(){ positionToolbar(selectedEl); }, 50);
+      if (activeSectionEl) setTimeout(function(){ positionSecToolbar(activeSectionEl); }, 50);
     });
   });
 
@@ -2685,7 +2703,7 @@
     var clone = frame.cloneNode(true);
     clone.removeAttribute('id');
     clone.removeAttribute('style');
-    clone.querySelectorAll('#sel-toolbar, .sec-toolbar, .sec-name-tag, .sec-add-below, .add-sec-row').forEach(function(n){ n.remove(); });
+    clone.querySelectorAll('#sel-toolbar, .sec-side-toolbar, .sec-name-tag, .sec-add-below, .add-sec-row').forEach(function(n){ n.remove(); });
     clone.querySelectorAll('.site-section.is-hidden-sec').forEach(function(n){ n.remove(); });
     clone.querySelectorAll('[data-editable]').forEach(function(el){
       el.removeAttribute('data-editable');
