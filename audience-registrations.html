@@ -212,6 +212,28 @@
       background:var(--surface-2); border:1px solid var(--border); font-size:12.5px; line-height:1.55;
     }
     .willdo b{ display:block; font-size:13px; margin-bottom:2px; }
+    /* the recipient count must stay on screen while the options scroll */
+    .willdo.sticky-sum{
+      position:sticky; bottom:-18px; margin-top:16px; z-index:2;
+      background:var(--surface); border-color:var(--accent); box-shadow:var(--shadow-md);
+    }
+    .aud-opt.hollow{ opacity:.62; }
+    .aud-opt.hollow .ao-n{ color:var(--text-faint); }
+    .aud-opt.hollow[aria-pressed="true"]{ opacity:1; }
+
+    /* schedule */
+    .when-row{ display:flex; gap:3px; background:var(--surface-2); border:1px solid var(--border);
+      border-radius:10px; padding:3px; margin-bottom:12px; }
+    .when-row button{ flex:1; border:0; background:transparent; border-radius:8px; padding:9px 10px;
+      font-size:12.5px; font-weight:700; color:var(--text-muted); cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:7px; }
+    .when-row button[aria-pressed="true"]{ background:var(--surface); color:var(--text); box-shadow:var(--shadow-sm); }
+    .when-when{ display:flex; gap:10px; flex-wrap:wrap; }
+    .when-when .field{ flex:1; min-width:140px; }
+    .when-presets{ display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+    .when-presets button{ border:1px solid var(--border); background:var(--surface); border-radius:7px;
+      padding:5px 10px; font-size:11.5px; font-weight:700; color:var(--text-muted); cursor:pointer; }
+    .when-presets button:hover{ border-color:var(--accent); color:var(--accent-strong); }
     .kbd{ font-family:var(--font-mono); font-size:10.5px; background:var(--surface-3); border-radius:4px; padding:1px 5px; }
     .num{ font-family:var(--font-mono); font-size:12.5px; }
 
@@ -1133,12 +1155,16 @@
     var totals = { sent:0, delivered:0, opened:0, clicked:0, email:0, wa:0 };
     var contacted = {};
     D.comms.forEach(function(c, i){
+      /* a scheduled send has not happened yet - it must not inflate the
+         delivery figures or count anyone as contacted */
+      if (c.status === 'scheduled') return;
       var st = commStats(c, i);
       totals.sent += c.count; totals.delivered += st.delivered;
       totals.opened += st.opened; totals.clicked += st.clicked;
       if (c.channel === 'email') totals.email += c.count; else totals.wa += c.count;
       (c.ids||[]).forEach(function(id){ contacted[id] = true; });
     });
+    var queued = D.comms.filter(function(c){ return c.status === 'scheduled'; });
     var never = all.length - Object.keys(contacted).length;
     var openRate = totals.delivered ? Math.round(totals.opened / totals.delivered * 100) : 0;
 
@@ -1153,7 +1179,27 @@
           never ? 'registrations have heard nothing' : 'everyone has heard from you') +
     '</div>';
 
-    var rows = D.comms.slice(0, 12).map(function(c, i){
+    var queueRows = queued.map(function(c){
+      var idx = D.comms.indexOf(c);
+      var t = msgType(c.type || 'update');
+      return '<div class="camp">' +
+        '<div class="camp-top">' +
+          '<span class="camp-ico" style="background:var(--warn)1F;color:var(--warn)">'+svg(I.clock,15)+'</span>' +
+          '<span class="camp-t"><b>'+esc(c.subject || t.label)+'</b>' +
+            '<span>'+esc(t.label)+' &middot; '+(c.channel==='email'?'Email':'WhatsApp')+
+            ' &middot; goes out '+esc(whenLabelFrom(c.sendAt))+'</span></span>' +
+          '<span class="camp-n">'+comma(c.count)+'</span>' +
+          '<button class="btn btn-secondary btn-sm" type="button" data-release="'+idx+'">Send now</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-cancelsched="'+idx+'">Cancel</button>' +
+        '</div>' +
+        '<p class="hint" style="margin:0">' +
+          (t.sets
+            ? 'Nobody is marked ' + STATUS[t.sets].label + ' until this actually goes out.'
+            : 'Waiting in the queue.') + '</p>' +
+      '</div>';
+    }).join('');
+
+    var rows = D.comms.filter(function(c){ return c.status !== 'scheduled'; }).slice(0, 12).map(function(c, i){
       var st = commStats(c, i);
       var t = msgType(c.type || 'update');
       function bar(label, n, base, colour){
@@ -1186,8 +1232,15 @@
     var typeRows = Object.keys(byType).map(function(k){ return { k:k, n:byType[k] }; })
       .sort(function(a,b){ return b.n - a.n; });
 
-    return insSection('Communication', comma(D.comms.length) + ' sends from this report',
+    return insSection('Communication',
+      comma(D.comms.length - queued.length) + ' sent' + (queued.length ? ', ' + comma(queued.length) + ' scheduled' : ''),
       tiles +
+      (queued.length
+        ? '<section class="panel" style="margin-bottom:16px">' +
+            '<div class="panel-head"><h3>Scheduled</h3>' +
+            '<span class="sub">'+comma(queued.length)+' waiting to go out</span></div>' + queueRows +
+          '</section>'
+        : '') +
       '<div class="ins-grid">' +
         '<div class="ins-card" style="padding:0;grid-column:1 / -1">' +
           '<div style="padding:14px 16px 0"><h3>Every send</h3>' +
@@ -1525,6 +1578,12 @@
     });
 
     each('[data-act]', function(el){ el.onclick = function(e){ e.stopPropagation(); act(el.getAttribute('data-act')); }; });
+    each('[data-release]', function(el){
+      el.onclick = function(e){ e.stopPropagation(); releaseScheduled(Number(el.getAttribute('data-release'))); };
+    });
+    each('[data-cancelsched]', function(el){
+      el.onclick = function(e){ e.stopPropagation(); cancelScheduled(Number(el.getAttribute('data-cancelsched'))); };
+    });
 
     /* click an address or number to reveal just that person */
     each('[data-reveal]', function(el){
@@ -2067,8 +2126,30 @@
   function freshComp(){
     return {
       step: 1, type: 'confirm', channel: 'email', subject: '', body: '', touched: false,
+      when: { mode:'now', date:'', time:'10:00' },
       aud: { source: null, status: 'pending', view: 0, list: 'hot', skipJunk: true, skipSent: true }
     };
+  }
+
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+  function scheduledAt(){
+    if (comp.when.mode !== 'later' || !comp.when.date) return null;
+    var t = comp.when.time || '10:00';
+    var when = new Date(comp.when.date + 'T' + t + ':00');
+    return isNaN(when.getTime()) ? null : when.getTime();
+  }
+  function isPast(){
+    var at = scheduledAt();
+    return at != null && at <= Date.now();
+  }
+  function whenLabel(){
+    var at = scheduledAt();
+    if (at == null) return 'immediately';
+    var d = new Date(at);
+    var hh = d.getHours(), mm = d.getMinutes();
+    var ap = hh >= 12 ? 'pm' : 'am', h12 = hh % 12 || 12;
+    return fmtDate(comp.when.date) + ' at ' + h12 + (mm ? ':' + (mm<10?'0':'') + mm : '') + ap;
   }
 
   function alreadySent(id, type){
@@ -2098,17 +2179,42 @@
     return filtered();
   }
 
-  /* and after them, with a count of everyone dropped and why */
+  /* and after them, with a count of everyone dropped and why.
+
+     Two safety nets, because a Send button that cannot be pressed is a dead
+     end rather than a safeguard:
+       - an empty source falls back to the whole registration list, which is
+         the collective of everyone - registered, shortlisted, confirmed and
+         bucketed alike;
+       - if the skip rules empty it out, the softest guard (already-sent) is
+         relaxed rather than leaving you with nobody.
+     Both are announced in the summary, never done silently. */
   function audience(){
-    var base = audienceBase();
+    var base = audienceBase(), fellBack = false, relaxed = false;
+
+    if (!base.length){
+      base = people();
+      fellBack = true;
+    }
+
     var skip = { junk:0, dnc:0, sent:0 };
-    var list = base.filter(function(p){
-      if (p.buckets.indexOf('dnc') >= 0){ skip.dnc++; return false; }
-      if (comp.aud.skipJunk && p.quality === 'junk'){ skip.junk++; return false; }
-      if (comp.aud.skipSent && alreadySent(p.id, comp.type)){ skip.sent++; return false; }
-      return true;
-    });
-    return { list:list, skip:skip, base:base.length };
+    function apply(useSent){
+      skip = { junk:0, dnc:0, sent:0 };
+      return base.filter(function(p){
+        if (p.buckets.indexOf('dnc') >= 0){ skip.dnc++; return false; }
+        if (comp.aud.skipJunk && p.quality === 'junk'){ skip.junk++; return false; }
+        if (useSent && comp.aud.skipSent && alreadySent(p.id, comp.type)){ skip.sent++; return false; }
+        return true;
+      });
+    }
+
+    var list = apply(true);
+    if (!list.length && base.length){
+      list = apply(false);
+      relaxed = list.length > 0;
+    }
+
+    return { list:list, skip:skip, base:base.length, fellBack:fellBack, relaxed:relaxed };
   }
 
   function mergeFor(p){
@@ -2140,7 +2246,14 @@
     if (!comp) comp = freshComp();
     /* default the audience to whatever the person is looking at */
     if (comp.aud.source === null){
-      comp.aud.source = selectedIds().length ? 'selected' : 'filtered';
+      comp.aud.source = selectedIds().length ? 'selected' : (filtered().length ? 'filtered' : 'all');
+    }
+    /* land the list picker on a list that has members, not an empty seed */
+    if (!comp.aud.list || !people().filter(function(p){ return p.buckets.indexOf(comp.aud.list) >= 0; }).length){
+      var populated = lists().filter(function(l){
+        return people().filter(function(p){ return p.buckets.indexOf(l.id) >= 0; }).length;
+      })[0];
+      if (populated) comp.aud.list = populated.id;
     }
     if (!comp.body) loadTemplate();
     drawComposer();
@@ -2163,13 +2276,13 @@
     var foot;
     if (comp.step === 1){
       foot = '<button class="btn btn-ghost" type="button" id="c-cancel">Cancel</button>' +
-        '<button class="btn btn-primary" type="button" id="c-next"'+(A.list.length?'':' disabled')+'>' +
+        '<button class="btn btn-primary" type="button" id="c-next">' +
         'Continue with '+comma(A.list.length)+'</button>';
     } else {
       foot = '<button class="btn btn-ghost" type="button" id="c-back">Back</button>' +
         '<button class="btn btn-secondary" type="button" id="c-test">Send test to me</button>' +
-        '<button class="btn btn-primary" type="button" id="c-send"'+(A.list.length?'':' disabled')+'>' +
-        svg(I.send,14)+' Send to '+comma(A.list.length)+'</button>';
+        '<button class="btn btn-primary" type="button" id="c-send">' +
+        svg(I.send,14)+' '+(comp.when.mode === 'later' ? 'Schedule for ' : 'Send to ')+comma(A.list.length)+'</button>';
     }
 
     modal('Send communication', stepsBar() + bodyHTML, foot, 660);
@@ -2181,9 +2294,10 @@
     var all = people();
 
     function opt(id, title, sub, n, extra){
-      return '<button class="aud-opt" type="button" data-aud="'+id+'" aria-pressed="'+(comp.aud.source===id)+'">' +
+      return '<button class="aud-opt'+(n?'':' hollow')+'" type="button" data-aud="'+id+'" aria-pressed="'+(comp.aud.source===id)+'">' +
         '<span class="ao-r"></span>' +
-        '<span class="ao-t"><b>'+esc(title)+'</b><span>'+esc(sub)+'</span>'+(extra||'')+'</span>' +
+        '<span class="ao-t"><b>'+esc(title)+'</b>' +
+          '<span>'+esc(n ? sub : 'Nothing here yet - picking this sends to everyone instead')+'</span>'+(extra||'')+'</span>' +
         '<span class="ao-n">'+comma(n)+'</span>' +
       '</button>';
     }
@@ -2245,16 +2359,24 @@
       '<div class="skipline locked"><input type="checkbox" checked disabled>' +
         'Do-not-contact bucket <span style="color:var(--text-faint)">(always)</span><span class="sc">'+comma(dncAvail)+'</span></div>' +
 
-      '<div class="willdo" style="margin-top:16px">'+svg(I.users,17)+
+      '<div class="willdo sticky-sum">'+svg(I.users,17)+
         '<span><b>'+comma(A.list.length)+' will receive this</b>' +
-        'From '+comma(A.base)+' in the audience' +
+        (A.fellBack
+          ? 'That source is empty, so this is falling back to all ' + comma(A.base) + ' registrations &mdash; ' +
+            'everyone on the event, whatever their status or list. '
+          : 'From '+comma(A.base)+' in the audience') +
         (A.skip.junk||A.skip.sent||A.skip.dnc
-          ? ' &mdash; leaving out ' + [
+          ? (A.fellBack ? 'Leaving out ' : ' &mdash; leaving out ') + [
               A.skip.junk ? comma(A.skip.junk)+' junk' : '',
               A.skip.sent ? comma(A.skip.sent)+' already sent' : '',
               A.skip.dnc  ? comma(A.skip.dnc)+' do-not-contact' : ''
             ].filter(Boolean).join(', ')
-          : ' &mdash; nobody is being left out') + '.</span></div>';
+          : (A.fellBack ? 'Nobody is being left out' : ' &mdash; nobody is being left out')) + '.' +
+        (A.relaxed
+          ? '<br><b style="color:var(--warn)">Everyone here has already had this message.</b> ' +
+            'The already-sent guard was relaxed so you can still send &mdash; untick it above if that was not the intent.'
+          : '') +
+        '</span></div>';
   }
 
   function stepTwo(A){
@@ -2289,8 +2411,40 @@
       '</div>' +
       '<div class="field" style="margin-bottom:14px"><label>Preview'+(sample?' &mdash; as '+esc(sample.name):'')+'</label>' +
         '<div class="preview" id="c-prev">'+esc(sample ? applyMerge(comp.body, sample) : comp.body)+'</div></div>' +
+      '<div class="field" style="margin-bottom:14px"><label>When should this go out?</label>' +
+        '<div class="when-row">' +
+          '<button type="button" data-when="now" aria-pressed="'+(comp.when.mode==='now')+'">' +
+            svg(I.send,14)+' Send now</button>' +
+          '<button type="button" data-when="later" aria-pressed="'+(comp.when.mode==='later')+'">' +
+            svg(I.clock,14)+' Schedule</button>' +
+        '</div>' +
+        (comp.when.mode === 'later'
+          ? '<div class="when-when">' +
+              '<div class="field"><label for="w-date">Date</label>' +
+                '<input class="inp" id="w-date" type="date" value="'+esc(comp.when.date)+'" min="'+todayISO()+'"></div>' +
+              '<div class="field"><label for="w-time">Time</label>' +
+                '<input class="inp" id="w-time" type="time" value="'+esc(comp.when.time)+'"></div>' +
+            '</div>' +
+            '<div class="when-presets">' +
+              '<button type="button" data-wpre="tomorrow">Tomorrow 10:00</button>' +
+              '<button type="button" data-wpre="week">In a week</button>' +
+              '<button type="button" data-wpre="eve">Evening before the event</button>' +
+            '</div>' +
+            (comp.when.date
+              ? '<p class="hint">Goes out '+esc(whenLabel())+'. '+
+                (comp.channel==='whatsapp'
+                  ? 'WhatsApp sends outside 9am&ndash;9pm are held until morning.'
+                  : 'You can cancel it from the Insights tab any time before then.')+'</p>'
+              : '<p class="hint" style="color:var(--warn)">Pick a date, or it will go out immediately.</p>') +
+            (comp.when.date && isPast()
+              ? '<p class="hint" style="color:var(--accent-strong)">That time has already passed &mdash; it will send immediately.</p>'
+              : '')
+          : '') +
+      '</div>' +
+
       '<div class="willdo">'+svg(t.sets?I.badge2:I.send,17)+
-        '<span><b>'+comma(A.list.length)+' '+(comp.channel==='email'?'emails':'WhatsApp messages')+'</b>' +
+        '<span><b>'+comma(A.list.length)+' '+(comp.channel==='email'?'emails':'WhatsApp messages')+
+          (comp.when.mode==='later' && comp.when.date && !isPast() ? ', scheduled' : '')+'</b>' +
         (t.sets
           ? 'Sending this also marks all '+comma(A.list.length)+' as <strong>'+STATUS[t.sets].label+'</strong>, so the list matches what they were told.'
           : 'This does not change anyone&rsquo;s decision status.') + '</span></div>';
@@ -2356,16 +2510,50 @@
       };
     });
 
+    each('[data-when]', function(el){
+      el.onclick = function(){
+        comp.when.mode = el.getAttribute('data-when');
+        if (comp.when.mode === 'later' && !comp.when.date){
+          var d = new Date(Date.now() + 86400000);
+          comp.when.date = d.toISOString().slice(0,10);
+        }
+        drawComposer();
+      };
+    });
+    var wd = $('w-date'), wt = $('w-time');
+    if (wd) wd.onchange = function(){ comp.when.date = wd.value; drawComposer(); };
+    if (wt) wt.onchange = function(){ comp.when.time = wt.value; drawComposer(); };
+    each('[data-wpre]', function(el){
+      el.onclick = function(){
+        var k = el.getAttribute('data-wpre'), d;
+        if (k === 'tomorrow'){ d = new Date(Date.now() + 86400000); comp.when.time = '10:00'; }
+        if (k === 'week'){ d = new Date(Date.now() + 7*86400000); comp.when.time = '10:00'; }
+        if (k === 'eve'){
+          var ev = current();
+          d = ev.start ? new Date(new Date(ev.start).getTime() - 86400000) : new Date(Date.now() + 86400000);
+          comp.when.time = '18:00';
+        }
+        comp.when.date = d.toISOString().slice(0,10);
+        drawComposer();
+      };
+    });
+
     $('c-test').onclick = function(){ C.toast('Test ' + comp.channel + ' sent to you'); };
     $('c-send').onclick = function(){ sendNow(); };
   }
 
   function sendNow(){
     var A = audience(), t = msgType(comp.type);
-    if (!A.list.length) return;
+    if (!A.list.length){ C.toast('Nobody to send to'); return; }
+
+    var at = scheduledAt();
+    var later = at != null && at > Date.now();
+    var chan = comp.channel === 'email' ? 'email' : 'WhatsApp';
 
     D.comms.unshift({
       when: new Date().toISOString(),
+      sendAt: later ? at : null,
+      status: later ? 'scheduled' : 'sent',
       channel: comp.channel,
       type: comp.type,
       subject: comp.channel === 'email' ? comp.subject : comp.body.slice(0,48),
@@ -2373,17 +2561,49 @@
       ids: A.list.map(function(p){ return p.id; })
     });
 
-    if (t.sets) A.list.forEach(function(p){ D.status[p.id] = t.sets; });
+    /* a scheduled message has not been read by anyone yet, so it must not
+       move anyone's decision status until it actually goes out */
+    if (t.sets && !later) A.list.forEach(function(p){ D.status[p.id] = t.sets; });
 
-    logAct('send', t.label + ' sent by ' + (comp.channel === 'email' ? 'email' : 'WhatsApp') +
-      ' to ' + comma(A.list.length) +
-      (t.sets ? ', marked ' + STATUS[t.sets].label : ''), A.list.length);
+    logAct('send', t.label + (later ? ' scheduled by ' : ' sent by ') + chan +
+      ' to ' + comma(A.list.length) + (later ? ' for ' + whenLabel() : '') +
+      (t.sets && !later ? ', marked ' + STATUS[t.sets].label : ''), A.list.length);
     saveStore();
+    var n = A.list.length;
     comp = freshComp();
     closeLayer();
     render();
-    C.toast(comma(A.list.length) + ' ' + (comp.channel === 'email' ? 'emails' : 'messages') + ' queued' +
-      (t.sets ? ' &middot; marked ' + STATUS[t.sets].label : ''));
+    C.toast(later
+      ? comma(n) + ' ' + chan + ' messages scheduled for ' + whenLabelFrom(at)
+      : comma(n) + ' ' + chan + ' messages queued' + (t.sets ? ' - marked ' + STATUS[t.sets].label : ''));
+  }
+
+  function whenLabelFrom(at){
+    var d = new Date(at);
+    var hh = d.getHours(), mm = d.getMinutes();
+    var ap = hh >= 12 ? 'pm' : 'am', h12 = hh % 12 || 12;
+    return fmtDate(d.toISOString().slice(0,10)) + ' at ' + h12 + (mm ? ':' + (mm<10?'0':'') + mm : '') + ap;
+  }
+
+  /* a scheduled send goes out for real, applying whatever it was going to do */
+  function releaseScheduled(idx){
+    var c = D.comms[idx];
+    if (!c || c.status !== 'scheduled') return;
+    c.status = 'sent'; c.when = new Date().toISOString(); c.sendAt = null;
+    var t = msgType(c.type || 'update');
+    if (t.sets) (c.ids||[]).forEach(function(id){ D.status[id] = t.sets; });
+    logAct('send', t.label + ' released early to ' + comma(c.count), c.count);
+    saveStore(); render();
+    C.toast(comma(c.count) + ' messages queued');
+  }
+  function cancelScheduled(idx){
+    var c = D.comms[idx];
+    if (!c || c.status !== 'scheduled') return;
+    D.comms.splice(idx, 1);
+    logAct('send', 'Cancelled a scheduled ' + (c.channel==='email'?'email':'WhatsApp') +
+      ' to ' + comma(c.count), c.count);
+    saveStore(); render();
+    C.toast('Scheduled send cancelled');
   }
 
   /* ---------------------------------------------------------------- person drawer */
