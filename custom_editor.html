@@ -355,9 +355,10 @@
     box-shadow: var(--shadow-md);
   }
   .sec-side-toolbar .sec-tool-icon{
-    width:26px; height:26px; border-radius:6px; color: var(--text-muted);
+    width:26px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-muted);
     display:flex; align-items:center; justify-content:center;
   }
+  .sec-side-toolbar .sec-tool-icon:hover{ background: var(--surface-2); color: var(--text); }
   .sec-side-toolbar .sec-tool-menu{
     display:flex; flex-direction:column; gap:2px; margin-top:4px; padding-top:4px; border-top:1px solid var(--border);
   }
@@ -470,6 +471,11 @@
   .color-palette .swatch-native-input{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; padding:0; border:0; }
   .range-value{ float:right; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); text-transform:none; letter-spacing:0; }
   .button-settings-pop .pop-actions{ display:flex; justify-content:flex-en d; gap:7px; margin-top:13px; }
+  .layout-items-list{ display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; }
+  .layout-item-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
+  .layout-item-label{ font-size:12.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .layout-item-remove{ width:20px; height:20px; border-radius:5px; border:none; background:none; color:var(--text-muted); flex-shrink:0; font-size:15px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .layout-item-remove:hover{ background:var(--crit-soft); color:var(--crit); }
   [data-editable="button"][data-hover="lift"]:hover{ transform:translateY(-2px); box-shadow:var(--shadow-sm); }
   [data-editable="button"][data-hover="darken"]:hover{ filter:brightness(.86); }
   [data-editable="button"][data-hover="outline"]:hover{ background:transparent !important; color:inherit !important; outline:2px solid currentColor; }
@@ -1031,7 +1037,7 @@
         <div class="frame" id="frame">
           <div id="sel-toolbar"></div>
           <div class="sec-side-toolbar" id="sec-side-toolbar" hidden>
-            <div class="sec-tool-icon" title="Change layout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></div>
+            <button class="sec-tool-icon" data-menu-action="change-layout" title="Change layout"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></button>
             <div class="sec-tool-menu">
               <button data-menu-action="add-above" title="Add section above"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 15l7-7 7 7"/></svg></button>
               <button data-menu-action="add-below" title="Add section below"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 9l7 7 7-7"/></svg></button>
@@ -1195,6 +1201,11 @@
   <h4 id="gt-style-pop-title">Body</h4>
   <div id="gt-style-pop-body"></div>
   <div class="pop-actions"><button class="btn btn-primary btn-sm" type="button" id="gt-style-pop-done">Done</button></div>
+</div>
+<div class="button-settings-pop" id="layout-items-pop" hidden>
+  <h4>Layout items</h4>
+  <div id="layout-items-list" class="layout-items-list"></div>
+  <div class="pop-actions"><button class="btn btn-secondary btn-sm" type="button" id="layout-item-add">+ Add item</button></div>
 </div>
 <div id="toast-region"></div>
 
@@ -1911,7 +1922,7 @@
   stage.addEventListener('click', function(e){
     if (previewMode) return;
     if (e.target.closest('#sel-toolbar')) return;
-    var inlineMenuBtn = e.target.closest('.sec-tool-menu [data-menu-action]');
+    var inlineMenuBtn = e.target.closest('.sec-side-toolbar [data-menu-action]');
     if (inlineMenuBtn && activeSectionEl){
       runSectionMenuAction(inlineMenuBtn.getAttribute('data-menu-action'), activeSectionEl, inlineMenuBtn);
       e.stopPropagation();
@@ -2418,6 +2429,8 @@
       openAddSectionChooser();
     } else if (action === 'schedule'){
       openSchedulePopover(sec, anchorBtn);
+    } else if (action === 'change-layout'){
+      openLayoutItemsPop(sec, anchorBtn);
     } else {
       handleSectionAction(action, sec);
     }
@@ -2428,6 +2441,78 @@
     var action = btn.getAttribute('data-menu-action');
     runSectionMenuAction(action, lyrCtxSec, lyrCtxBtn);
     if (action !== 'schedule') closeLyrMenu();
+  });
+
+  /* ---------- section layout items (repeating cards) ---------- */
+  var layoutItemsPop = document.getElementById('layout-items-pop');
+  var layoutItemsList = document.getElementById('layout-items-list');
+  var layoutItemAddBtn = document.getElementById('layout-item-add');
+  var layoutPopSec = null;
+  var layoutPopConfig = null;
+  var layoutSectionConfigs = {
+    'Stats': {
+      container: '.s-stats',
+      item: '.s-stat',
+      preview: function(item){
+        var n = item.querySelector('.n');
+        var l = item.querySelector('.l');
+        return (n ? n.textContent.trim() : '') + ' — ' + (l ? l.textContent.trim() : '');
+      }
+    }
+  };
+  function closeLayoutItemsPop(){ layoutItemsPop.hidden = true; layoutPopSec = null; layoutPopConfig = null; }
+  function renderLayoutItemsPop(){
+    var container = layoutPopSec.querySelector(layoutPopConfig.container);
+    var items = container ? Array.prototype.slice.call(container.children).filter(function(n){ return n.matches(layoutPopConfig.item); }) : [];
+    layoutItemsList.innerHTML = '';
+    items.forEach(function(item){
+      var row = document.createElement('div');
+      row.className = 'layout-item-row';
+      var label = document.createElement('span');
+      label.className = 'layout-item-label';
+      label.textContent = layoutPopConfig.preview(item);
+      var remove = document.createElement('button');
+      remove.className = 'layout-item-remove';
+      remove.title = 'Remove';
+      remove.textContent = '×';
+      remove.addEventListener('click', function(){
+        if (items.length <= 1){ showToast('Keep at least one item'); return; }
+        if (selectedEl && item.contains(selectedEl)) deselect();
+        item.remove();
+        pushHistory(); markSaving();
+        renderLayoutItemsPop();
+      });
+      row.appendChild(label);
+      row.appendChild(remove);
+      layoutItemsList.appendChild(row);
+    });
+  }
+  function openLayoutItemsPop(sec, anchorBtn){
+    var config = layoutSectionConfigs[sec.getAttribute('data-sec-name')];
+    if (!config){ showToast("Layout options aren't available for this section yet"); return; }
+    layoutPopSec = sec;
+    layoutPopConfig = config;
+    renderLayoutItemsPop();
+    positionFloating(layoutItemsPop, anchorBtn);
+  }
+  layoutItemAddBtn.addEventListener('click', function(){
+    if (!layoutPopSec || !layoutPopConfig) return;
+    var container = layoutPopSec.querySelector(layoutPopConfig.container);
+    var items = container ? Array.prototype.slice.call(container.children).filter(function(n){ return n.matches(layoutPopConfig.item); }) : [];
+    var last = items[items.length - 1];
+    if (!last) return;
+    var clone = last.cloneNode(true);
+    clone.classList.remove('ed-selected');
+    clone.querySelectorAll('.ed-selected').forEach(function(n){ n.classList.remove('ed-selected'); });
+    last.after(clone);
+    pushHistory(); markSaving();
+    renderLayoutItemsPop();
+    showToast('Item added');
+  });
+  document.addEventListener('mousedown', function(e){
+    if (layoutItemsPop.hidden) return;
+    if (layoutItemsPop.contains(e.target) || e.target.closest('[data-menu-action="change-layout"]')) return;
+    closeLayoutItemsPop();
   });
 
   /* ---------- section scheduling ---------- */
