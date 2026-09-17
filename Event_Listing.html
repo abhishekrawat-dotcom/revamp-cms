@@ -544,7 +544,7 @@
 
     <div class="main-nav-portals popover-wrap">
       <button class="mp-btn" id="btn-portals-nav">
-        Portals
+        Brandequity
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="popover right wide" id="portals-nav-menu" hidden></div>
@@ -799,7 +799,8 @@
   ========================================================= */
   var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table' };
   var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber' };
-  var PORTALS = { retail:'Retail', auto:'Auto', health:'Health', telecom:'Telecom', bfsi:'BFSI', cio:'CIO', hrworld:'HRWorld', legal:'Legal', manufacturing:'Manufacturing', government:'Government' };
+  var PORTALS = { brandequity:'Brandequity', retail:'Retail', auto:'Auto', health:'Health', telecom:'Telecom', bfsi:'BFSI', cio:'CIO', hrworld:'HRWorld', legal:'Legal', manufacturing:'Manufacturing', government:'Government' };
+  var CURRENT_PORTAL = 'brandequity';   // the portal this account is signed into — shown in the top-nav switcher
 
   var uidn = 0;
   function nextId(){ uidn++; return 'ev_' + uidn; }
@@ -1103,9 +1104,13 @@
     renderMoreProductsMenu(); openPopover('more-products-menu');
   });
 
+  function renderPortalsNavBtn(){
+    $('btn-portals-nav').innerHTML = esc(PORTALS[CURRENT_PORTAL]) +
+      ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>';
+  }
   function renderPortalsNavMenu(){
     $('portals-nav-menu').innerHTML = '<div class="popover-label">Switch portal</div>' + Object.keys(PORTALS).map(function(k){
-      return '<a class="popover-item" href="index.html">' + IC.globe + ' ' + PORTALS[k] + '</a>';
+      return '<a class="popover-item' + (k===CURRENT_PORTAL?' on':'') + '" href="index.html">' + IC.globe + ' ' + PORTALS[k] + (k===CURRENT_PORTAL ? ' <span class="ev-tag ev-tag-blue" style="margin-left:auto;">Current</span>' : '') + '</a>';
     }).join('');
   }
   $('btn-portals-nav').addEventListener('click', function(e){
@@ -1330,8 +1335,9 @@
     var tCount = state.filters.types.length, pCount = state.filters.portals.length;
     $('btn-type').className = 'toolbar-btn' + (tCount?' active-filter':'');
     $('btn-type').innerHTML = 'Event Type' + (tCount ? ' <span class="badge-count">'+tCount+'</span>' : '') + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
+    var portalLabel = pCount ? (esc(PORTALS[state.filters.portals[0]]) + (pCount>1 ? ' +'+(pCount-1) : '')) : 'Portal';
     $('btn-portal').className = 'toolbar-btn' + (pCount?' active-filter':'');
-    $('btn-portal').innerHTML = 'Portal' + (pCount ? ' <span class="badge-count">'+pCount+'</span>' : '') + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
+    $('btn-portal').innerHTML = portalLabel + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
   }
 
   function renderChips(){
@@ -1421,7 +1427,7 @@
     return '<span class="pay-amt" data-tooltip="' + (e.payment.txns||0) + ' transactions">' + fmtRupee(e.payment.amount) + '</span><div class="pay-sub">Collected</div>';
   }
   function metaLine(e){
-    return '<span class="ev-id-chip mono">Event ID ' + e.eventNo + '</span>' +
+    return '<span class="ev-id-chip mono">Event ID: ' + e.eventNo + '</span>' +
       '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(EVENT_TYPES[e.type].replace(' (IP)','')) + '</span>';
   }
 
@@ -1482,10 +1488,10 @@
       items.push(['sep']);
       items.push(['duplicate', IC.copy, 'Clone Event']);
       items.push(['copylink', IC.link, 'Copy event link']);
-      items.push(['sep']);
-      if (e.status === 'active') items.push(['complete', IC.checkCirc, 'Mark as completed']);
-      if (e.status === 'active' || e.status === 'upcoming') items.push(['cancel', IC.ban, 'Cancel event']);
-      items.push(['archive', IC.trash, 'Delete event', true]);
+      if (e.status === 'active'){
+        items.push(['sep']);
+        items.push(['complete', IC.checkCirc, 'Mark as completed']);
+      }
     }
     var menuHTML = items.map(function(it){
       if (it[0]==='sep') return '<div class="popover-sep"></div>';
@@ -1678,10 +1684,12 @@
     var e = findEvent(id);
     if (!e) return;
     switch(action){
-      case 'view': case 'edit': case 'setup':
+      case 'edit': case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
+      case 'view':
+        window.open(eventPublicUrl(e), '_blank'); break;
       case 'reports':
-        toast('Opens the reporting workspace — coming soon.'); break;
+        window.location.href = 'audience-registrations.html?event=' + id; break;
       case 'duplicate':
         var copy = Object.assign({}, e, { id: nextId(), name: e.name + ' (Copy)', status:'upcoming', registrations:0, visitors:0 });
         EVENTS.splice(EVENTS.indexOf(e)+1, 0, copy);
@@ -1771,15 +1779,24 @@
       });
     }
 
+    function urlWithAg(base, ag){
+      ag = (ag || '').trim();
+      if (!ag) return base;
+      return base + (base.indexOf('?') === -1 ? '?' : '&') + 'ag=' + encodeURIComponent(ag);
+    }
+
     function renderDetail(e, key){
       var sec = QR_SECTIONS.filter(function(s){ return s.key===key; })[0];
-      var url = eventPublicUrl(e, key === 'website' ? null : key);
+      var baseUrl = eventPublicUrl(e, key === 'website' ? null : key);
+      var url = baseUrl;
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
         '<div class="modal-card-head"><div><h3>' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
-          '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" alt="' + esc(sec.label) + '" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url) + '"></div>' +
-          '<div class="email-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" type="button">' + IC.copy + '</button></div>' +
+          '<div><label class="flabel" for="qr-ag-code">AG Code <span style="font-weight:400;color:var(--text-muted);">(optional — tag the link to track where a scan came from)</span></label>' +
+            '<input class="finput" id="qr-ag-code" type="text" placeholder="e.g. mailer" spellcheck="false" autocomplete="off"></div>' +
+          '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" id="qr-img" alt="' + esc(sec.label) + '" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url) + '"></div>' +
+          '<div class="email-row"><span id="qr-link-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" type="button">' + IC.copy + '</button></div>' +
         '</div>' +
         '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-back">&larr; Back</button><button class="btn btn-primary" id="qr-done" style="margin-left:auto;">Done</button></div>' +
       '</div></div>';
@@ -1787,6 +1804,11 @@
       $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
       $('qr-back').addEventListener('click', function(){ renderPicker(e); });
       $('qr-done').addEventListener('click', close);
+      $('qr-ag-code').addEventListener('input', function(){
+        url = urlWithAg(baseUrl, this.value);
+        $('qr-link-text').textContent = url;
+        $('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
+      });
       $('qr-copy-link').addEventListener('click', function(){
         if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url); }); }
         else toast(url);
@@ -2133,6 +2155,7 @@
      APP RENDER
   ========================================================= */
   function renderApp(){
+    renderPortalsNavBtn();
     renderMoreMenu();
     renderTabs();
     renderSpecialBanner();

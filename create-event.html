@@ -477,9 +477,15 @@
   .cmp td{ color: var(--text-muted); }
 
   /* ============ TEMPLATE PICKER ============ */
-  .tpl-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tpl-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 1200px){ .tpl-grid{ grid-template-columns: repeat(3,1fr); } }
   @media (max-width: 900px){ .tpl-grid{ grid-template-columns: repeat(2,1fr); } }
   @media (max-width: 620px){ .tpl-grid{ grid-template-columns: 1fr; } }
+  /* the live Choose-Template gallery uses flex so an incomplete last row centers instead of hugging the left edge */
+  #tpl-gallery{ display:flex; flex-wrap:wrap; justify-content:center; gap:16px; }
+  #tpl-gallery > .tpl-card-min{ flex: 0 1 calc((100% - 32px) / 3); min-width: 0; }
+  @media (max-width: 900px){ #tpl-gallery > .tpl-card-min{ flex-basis: calc((100% - 16px) / 2); } }
+  @media (max-width: 620px){ #tpl-gallery > .tpl-card-min{ flex-basis: 100%; } }
   .tpl-card{
     position: relative;
     background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden;
@@ -491,10 +497,10 @@
   .tpl-card-min{ padding: 0; display:flex; flex-direction:column; }
   .tpl-card-min[data-selected="true"]{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .tpl-thumb-mini{
-    position:relative; height: 90px; overflow:hidden; background: var(--surface-2);
+    position:relative; aspect-ratio: 640 / 218; min-height: 150px; height:auto; overflow:hidden; background: var(--surface-2);
     border-bottom: 1px solid var(--border);
   }
-  .tpl-thumb-mini img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position: top; display:block; }
+  .tpl-thumb-mini img{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; object-position: center; display:block; }
   .tpl-type-chip{
     position:absolute; top:8px; right:8px; z-index:2; background: rgba(255,255,255,.94); color: var(--text);
     font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
@@ -503,8 +509,8 @@
   .tpl-thumb-full{ display:block; width:100%; border-radius: 10px; border: 1px solid var(--border); }
   .tpl-card-min-body{ padding: 16px 18px 18px; display:flex; flex-direction:column; align-items:flex-start; gap: 14px; }
   .tpl-card-min-name{ font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--text); }
-  .tpl-actions{ display:flex; gap:8px; width:100%; }
-  .tpl-actions .btn{ flex:1; }
+  .tpl-actions{ display:flex; justify-content:center; gap:8px; width:100%; }
+  .tpl-card-min{ cursor:pointer; }
   .tpl-thumb{ height: 118px; background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 10px; display:flex; flex-direction:column; gap: 5px; }
   .tpl-thumb .b{ background: var(--surface-3); border-radius: 3px; }
   .tpl-thumb .b.hero{ height: 34px; background: var(--accent-soft); }
@@ -518,6 +524,16 @@
   .tpl-info .n{ font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); margin-top: 2px; }
 
   /* ============ STEP 3A - SECTION WORKSPACE ============ */
+  .toggle-panel{
+    display:flex; align-items:center; flex-wrap:wrap; gap: 6px 16px; padding: 12px 16px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--surface); margin-bottom: 16px;
+  }
+  .toggle-panel .tp-label{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing:.05em; color: var(--text-faint); margin-right: 2px; }
+  .toggle-panel .switch{ padding: 4px 8px; border-radius: 8px; }
+  .toggle-panel .switch:hover{ background: var(--surface-2); }
+  .toggle-panel-actions{ margin-left:auto; }
+  @media (max-width: 620px){ .toggle-panel-actions{ margin-left:0; width:100%; } }
+
   .build-grid{ display:grid; grid-template-columns: 268px minmax(0,1fr); gap: 18px; align-items:start; }
   @media (max-width: 940px){ .build-grid{ grid-template-columns: 1fr; } }
 
@@ -827,7 +843,7 @@
       <!-- ===== PHASE 1 : pick the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
-          <span class="eyebrow">Step 2 of 6 &middot; Event type</span>
+          <span class="eyebrow">Step 1 of 5 &middot; Select Event Type</span>
           <h1>What type of microsite are you creating?</h1>
           <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
         </div>
@@ -859,15 +875,15 @@
             <div class="grp-h"><h4>Event information</h4><span class="ln"></span></div>
             <div class="frow" id="identity-row">
               <div class="field c4" id="name-cell">
-                <div class="flabel-row"><label for="f-name">Event / Microsite name</label><span class="pill-req">*</span></div>
+                <div class="flabel-row"><label for="f-name">Event / Microsite name <span class="pill-req">*</span></label></div>
                 <input class="inp" id="f-name" type="text" placeholder="e.g. MarTech+ Summit 2026" autocomplete="off">
               </div>
               <div class="field c3" id="client-wrap" hidden>
-                <div class="flabel-row"><label for="f-client">Client / Sponsor</label><span class="pill-req" id="client-requirement">*</span></div>
+                <div class="flabel-row"><label for="f-client">Client / Sponsor <span class="pill-req" id="client-requirement">*</span></label></div>
                 <input class="inp" id="f-client" type="text" placeholder="e.g. Tata Capital" autocomplete="off">
               </div>
               <div class="field c4" id="slug-cell">
-                <div class="flabel-row"><span class="flabel">URL slug</span><span class="pill-req">*</span></div>
+                <div class="flabel-row"><span class="flabel">URL slug <span class="pill-req">*</span></span></div>
                 <div class="slug-row">
                   <span class="slug-prefix">etoneworld.com/</span>
                   <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
@@ -875,7 +891,7 @@
                 <div class="slug-meta"><div id="slug-status"></div><div id="slug-ai"></div></div>
               </div>
               <div class="field c4 logo-field" id="logo-cell">
-                <div class="flabel-row"><span class="flabel">Event logo</span><span class="pill-req">*</span></div>
+                <div class="flabel-row"><span class="flabel">Event logo <span class="pill-req">*</span></span></div>
                 <div class="logo-row" id="logo-tile" title="Upload a PNG or SVG event logo">
                   <span class="logo-row-icon">
                     <img class="logo-tile-img" id="logo-preview-img" alt="" hidden>
@@ -910,14 +926,19 @@
     <section class="step-wrap wide" id="step-2" hidden>
       <div class="step-head step-head-row">
         <div class="step-head-text">
-          <span class="eyebrow">Step 3 of 6 &middot; Choose Template</span>
+          <span class="eyebrow">Step 2 of 5 &middot; Choose Template</span>
           <h1>Pick a template to start from</h1>
-          <p class="desc">Our best-performing layouts for IP and residential events, ready to fill with your content. Already have a design? Convert it instead.</p>
         </div>
-        <button class="btn btn-ai" id="btn-convert-design" type="button">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-          Convert Figma / Lovable Design
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="btn-clone-design" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
+            Clone Design From Previous Edition
+          </button>
+          <button class="btn btn-ai" id="btn-convert-design" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+            Convert Figma / Lovable Design
+          </button>
+        </div>
       </div>
 
       <div class="tpl-grid" id="tpl-gallery"></div>
@@ -996,17 +1017,18 @@
     { id:'nav',       name:'Top nav',                shape:'auto',    helper:'Menu links are derived from the sections you include — nothing to fill in here.' },
     { id:'hero',      name:'Hero / Top banner',      shape:'hero',    helper:'The first thing a delegate sees. Logo, title, tagline, date, venue and your primary CTAs.' },
     { id:'stats',     name:'Stats strip',            shape:'stats',   helper:'Day / Sessions / Speakers / Minutes / Brands — the numbers that prove scale.' },
-    { id:'partners',  name:'Partner logos',          shape:'logos',   helper:'Sponsor and partner logos, grouped by tier.' },
-    { id:'about',     name:'About the event',        shape:'rich',    limit:900, helper:'The overview paragraph with a Read More. Keep it to the point — AI can trim it for you.' },
+    { id:'partners',  name:'Partner logos',          shape:'logos',   toggle:true, helper:'Sponsor and partner logos, grouped by tier.' },
+    { id:'about',     name:'Overview',               shape:'rich',    limit:900, core:true, helper:'The overview paragraph with a Read More. Keep it to the point — AI can trim it for you.' },
     { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.' },
     { id:'awaits',    name:'What awaits',            shape:'cards',   helper:'Conference / Awards / Studios mini blocks. Icon, title and a line of copy each.' },
     { id:'verticals', name:'Industry verticals band', shape:'heading', helper:'A full-width heading that breaks the page and names the industries in play.' },
-    { id:'priorities',name:'Key priorities',         shape:'columns', helper:'Three themed columns — the discussion points that guide conversations at your event.' },
-    { id:'speakers',  name:'Speakers',               shape:'people',  helper:'Speaker cards with photo, name, role and company. An All Speakers link is added automatically.' },
+    { id:'priorities',name:'Key Discussion Points',  shape:'columns', core:true, helper:'Three themed columns — the discussion points that guide conversations at your event.' },
+    { id:'speakers',  name:'Speakers',               shape:'people',  toggle:true, helper:'Speaker cards with photo, name, role and company. An All Speakers link is added automatically.' },
+    { id:'agenda',    name:'Agenda',                 shape:'agenda',  toggle:true, helper:'Pulled in from a previous edition — turn this on, then bring in a past edition to load its schedule. There is no manual agenda entry.' },
     { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.' },
-    { id:'attend',    name:'Who should attend',      shape:'chips',   helper:'Role chips. Type a role and press Enter — these also power delegate targeting later.' },
+    { id:'attend',    name:'Who should attend',      shape:'chips',   core:true, helper:'Role chips. Type a role and press Enter — these also power delegate targeting later.' },
     { id:'insights',  name:'Key insights / Testimonials', shape:'quotes', helper:'Quotes from past attendees with their name, role and company.' },
-    { id:'glimpses',  name:'Previous glimpses',      shape:'gallery', helper:'Photo gallery from the last edition. Six to twelve images works best.' },
+    { id:'glimpses',  name:'Previous glimpses',      shape:'gallery', toggle:true, helper:'Photo gallery from the last edition. Six to twelve images works best.' },
     { id:'contact',   name:'Contact us',             shape:'contacts',helper:'Speaking, delegate and partnership contacts — who a visitor should write to.' },
     { id:'footer',    name:'Footer + WhatsApp',      shape:'auto',    helper:'Footer links are generated. The floating WhatsApp chat is a simple on/off.' }
   ];
@@ -1040,6 +1062,130 @@
     { id:'leadgen', name:'Leadgen / Roundtable', tag:'Client event', cat:'Client',
       sub:'Short, one screen, form does the work.',
       sections:['nav','hero','about','priorities','speakers','attend','whyjoin','contact','footer'] }
+  ];
+
+  /* completed events on this portal, offered as a design to clone instead of picking a fresh template.
+     `content` is what Build Content can pull in automatically — keyed by LIBRARY id. */
+  var PAST_EDITIONS = [
+    { id:'pe-tech500', name:'TECH500 2025', cat:'IP', templateId:'tech500', content:{
+        about:{ body:'TECH500 2025 brought together 500 enterprise technology decision-makers for a single day of sessions on AI adoption, cloud economics and the CIO agenda for the year ahead.' },
+        priorities:{ items:[
+          {t:'AI in production', d:'Where generative and agentic AI is actually shipping inside the enterprise, not just piloting.'},
+          {t:'Cloud cost discipline', d:'FinOps practices that survived the 2025 renegotiation cycle.'},
+          {t:'The CIO mandate', d:'How the CIO role expanded to own security, data and now AI governance.'}
+        ]},
+        attend:{ items:['CIO','CTO','VP Engineering','Head of Cloud','Enterprise Architect','CISO'] },
+        speakers:{ items:[
+          {n:'Rajeev Malhotra', r:'CIO', c:'Leading NBFC'},
+          {n:'Sunita Rao', r:'VP Engineering', c:'Global SaaS major'},
+          {n:'Arjun Vora', r:'Head of Cloud', c:'Retail conglomerate'},
+          {n:'Neha Kapoor', r:'CISO', c:'Insurance leader'}
+        ]},
+        partners:{ tiers:[
+          {t:'Presenting partner', logos:[{n:'CloudNova'}]},
+          {t:'Gold partners', logos:[{n:'DataForge'},{n:'SecureStack'}]}
+        ]},
+        glimpses:{ count:12 },
+        agenda:{ items:[
+          {t:'09:30 AM', ti:'Opening keynote — the 2026 CIO agenda', sp:'Rajeev Malhotra'},
+          {t:'10:30 AM', ti:'Panel: AI workloads that actually shipped', sp:'Sunita Rao, Arjun Vora'},
+          {t:'12:00 PM', ti:'Fireside: FinOps after the renegotiation cycle', sp:'Neha Kapoor'},
+          {t:'02:00 PM', ti:'Breakout tracks', sp:'All speakers'},
+          {t:'04:30 PM', ti:'Closing roundtable', sp:'Rajeev Malhotra'}
+        ]}
+    }},
+    { id:'pe-mai', name:'Making AI Work 2025', cat:'IP', templateId:'making-ai-work', content:{
+        about:{ body:'Making AI Work 2025 was a leadership summit on turning generative AI pilots into production systems, with partner showcases and a full speaker grid of enterprise AI leaders.' },
+        priorities:{ items:[
+          {t:'From pilot to production', d:'What actually changes when an LLM pilot has to survive a compliance review.'},
+          {t:'The build vs buy debate', d:'Where enterprises are standardising on platforms versus building in-house.'},
+          {t:'Governing agentic systems', d:'Early patterns for auditing and guardrailing autonomous agents.'}
+        ]},
+        attend:{ items:['Chief AI Officer','Head of Data Science','VP Product','Head of Innovation','CTO'] },
+        speakers:{ items:[
+          {n:'Ishaan Verma', r:'Chief AI Officer', c:'BFSI major'},
+          {n:'Priya Deshmukh', r:'Head of Data Science', c:'Consumer tech'},
+          {n:'Karan Bhatia', r:'VP Product', c:'SaaS unicorn'}
+        ]},
+        partners:{ tiers:[
+          {t:'Presenting partner', logos:[{n:'NeuralWorks'}]},
+          {t:'Associate partners', logos:[{n:'ModelOps'},{n:'InferAI'}]}
+        ]},
+        glimpses:{ count:8 },
+        agenda:{ items:[
+          {t:'10:00 AM', ti:'Keynote: The year AI left the sandbox', sp:'Ishaan Verma'},
+          {t:'11:15 AM', ti:'Panel: Build vs buy in 2025', sp:'Priya Deshmukh, Karan Bhatia'},
+          {t:'01:30 PM', ti:'Case study: Governing an agentic workflow', sp:'Ishaan Verma'},
+          {t:'03:00 PM', ti:'Partner showcase', sp:'NeuralWorks, ModelOps'}
+        ]}
+    }},
+    { id:'pe-workplace', name:'Workplace 2035 — 2025 edition', cat:'IP', templateId:'workplace-2035', content:{
+        about:{ body:'The Workplace 2035 — 2025 edition looked at the intelligent enterprise: how AI, hybrid work and a new employee contract are reshaping how large organisations operate.' },
+        priorities:{ items:[
+          {t:'The hybrid equilibrium', d:'What large employers have settled on after three years of experimentation.'},
+          {t:'AI as a co-worker', d:'How copilots are changing role design, not just productivity.'},
+          {t:'Skilling at scale', d:'Reskilling programmes that moved the needle across a whole workforce.'}
+        ]},
+        attend:{ items:['CHRO','Head of People','VP Operations','Head of L&D','CIO'] },
+        speakers:{ items:[
+          {n:'Meenal Joshi', r:'CHRO', c:'IT services major'},
+          {n:'Tarun Sethi', r:'Head of Operations', c:'Manufacturing group'},
+          {n:'Divya Pillai', r:'Head of L&D', c:'BFSI major'}
+        ]},
+        partners:{ tiers:[
+          {t:'Gold partners', logos:[{n:'WorkForge'},{n:'PeopleGrid'}]}
+        ]},
+        glimpses:{ count:10 },
+        agenda:{ items:[
+          {t:'09:45 AM', ti:'Opening: The intelligent enterprise in 2025', sp:'Meenal Joshi'},
+          {t:'11:00 AM', ti:'Track A — People', sp:'Divya Pillai'},
+          {t:'11:00 AM', ti:'Track B — Operations', sp:'Tarun Sethi'},
+          {t:'02:30 PM', ti:'Closing panel', sp:'All speakers'}
+        ]}
+    }},
+    { id:'pe-awards', name:'ET Awards Night 2025', cat:'Awards', templateId:'awards', content:{
+        about:{ body:'ET Awards Night 2025 recognised the campaigns, teams and leaders who moved a real business number this year, judged by an independent jury.' },
+        priorities:{ items:[
+          {t:'What the jury rewarded', d:'The shift toward measurable outcomes over creative spectacle.'},
+          {t:'Categories that grew', d:'Where entries doubled year over year.'},
+          {t:'The shortlist bar', d:'How the shortlisting threshold was set and held.'}
+        ]},
+        attend:{ items:['CMO','Marketing Director','Agency Founder','Brand Head'] },
+        speakers:{ items:[
+          {n:'Rohan Kapoor', r:'Jury Chair', c:'Independent'},
+          {n:'Simran Kaur', r:'CMO', c:'D2C brand'}
+        ]},
+        partners:{ tiers:[
+          {t:'Presenting partner', logos:[{n:'BrandLift'}]}
+        ]},
+        glimpses:{ count:14 },
+        agenda:{ items:[
+          {t:'07:00 PM', ti:'Red carpet & networking', sp:''},
+          {t:'08:00 PM', ti:'Jury address', sp:'Rohan Kapoor'},
+          {t:'08:30 PM', ti:'Awards ceremony', sp:'All winners'},
+          {t:'10:00 PM', ti:'After-party', sp:''}
+        ]}
+    }},
+    { id:'pe-leadgen', name:'Leadgen Roundtable — Q4 2025', cat:'Client', templateId:'leadgen', content:{
+        about:{ body:'The Q4 2025 roundtable brought together a closed room of marketing leaders for a single working session on retention economics.' },
+        priorities:{ items:[
+          {t:'Retention over acquisition', d:'Why the room shifted budget toward existing customers this quarter.'},
+          {t:'First-party data reality', d:'What is actually feasible without a clean-room partnership.'}
+        ]},
+        attend:{ items:['Head of Growth','CRM Lead','Marketing Director'] },
+        speakers:{ items:[
+          {n:'Aditi Nair', r:'Head of Growth', c:'D2C brand'}
+        ]},
+        partners:{ tiers:[
+          {t:'Host partner', logos:[{n:'RetainIQ'}]}
+        ]},
+        glimpses:{ count:6 },
+        agenda:{ items:[
+          {t:'03:00 PM', ti:'Welcome & framing', sp:'Aditi Nair'},
+          {t:'03:20 PM', ti:'Roundtable discussion', sp:'All attendees'},
+          {t:'04:30 PM', ti:'Close & next steps', sp:'Aditi Nair'}
+        ]}
+    }}
   ];
 
   var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
@@ -1138,6 +1284,7 @@
           {q:'Sharp room. Almost no sales pitching from stage.', n:'', r:'Head of Growth', c:'D2C brand'}
         ] };
       case 'gallery': return { count:8 };
+      case 'agenda': return { items:[] };
       case 'contacts': return { blocks:[
           { t:'Speaking opportunities', n:'', e:'', p:'' },
           { t:'Delegate registration', n:'', e:'', p:'' },
@@ -1175,7 +1322,7 @@
   /* =========================================================
      STATE
   ========================================================= */
-  var STEPS = ['Create event','Event type','Choose Template','Build content','AI assemble','First preview'];
+  var STEPS = ['Select Event Type','Choose Template','Build content','AI assemble','First preview'];
   var STORE_KEY = 'revamp.createEvent.draft.v1';
   var logoPreviewUrl = '';   // in-memory object URL for the uploaded logo — not persisted across reloads
 
@@ -1206,6 +1353,7 @@
     catPicked: false,           // step 1 phase: false = category picker, true = the form
     path: null,                 // 'A' | 'B'
     template: null,             // template id
+    templatePick: null,         // card highlighted in the gallery, chosen but not yet confirmed
     sourceKind: 'figma',
     sourceValue: '',
     detectPhase: 'input',       // input | processing | review
@@ -1290,19 +1438,19 @@
     var html = '';
     for (var i = 0; i < STEPS.length; i++){
       var n = i + 1;
-      var stage = S.step + 1;
+      var stage = S.step;
       var state = n < stage ? 'done' : (n === stage ? 'current' : 'todo');
-      if (i > 0) html += '<span class="rail-line' + (n <= S.step ? ' filled' : '') + '"></span>';
+      if (i > 0) html += '<span class="rail-line' + (n < S.step ? ' filled' : '') + '"></span>';
       html += '<button class="rail-step" data-state="' + state + '" data-goto="' + n + '"' +
               (state === 'todo' ? ' disabled' : '') + '>' +
               '<span class="num">' + (state === 'done' ? IC.check : n) + '</span>' +
-              '<span class="lbl">' + STEPS[i] + '</span></button>';
+              (STEPS[i] ? '<span class="lbl">' + STEPS[i] + '</span>' : '') + '</button>';
     }
     rail.innerHTML = html;
     rail.querySelectorAll('[data-goto]').forEach(function(b){
       b.addEventListener('click', function(){
         var n = parseInt(b.getAttribute('data-goto'), 10);
-        if (n > 1 && n < S.step + 1) goStep(n - 1);
+        if (n < S.step) goStep(n);
       });
     });
   }
@@ -1350,9 +1498,9 @@
       }
     }
     else if (S.step === 2){
-      next.disabled = !S.path;
+      next.disabled = !(S.path === 'B' || S.templatePick);
       next.innerHTML = (S.path === 'B' ? 'Continue with my design ' : 'Continue with a template ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
-      if (!S.path) note.textContent = 'Pick a path to continue — you can change it later.';
+      if (!S.path && !S.templatePick) note.textContent = 'Pick a template to continue — you can change it later.';
     }
     else if (S.step === 3){
       if (S.path === 'A' && !S.template){
@@ -1563,18 +1711,18 @@
          '</div>';
 
     if (b.dateMode === 'exact'){
-      h += '<div class="field c2"><div class="flabel-row"><label for="f-start">Starts</label><span class="pill-req">*</span></div>' +
+      h += '<div class="field c2"><div class="flabel-row"><label for="f-start">Starts <span class="pill-req">*</span></label></div>' +
              '<input class="inp" id="f-start" type="datetime-local" value="' + esc(b.start) + '"></div>' +
-           '<div class="field c2"><div class="flabel-row"><label for="f-end">Ends</label><span class="pill-req">*</span></div>' +
+           '<div class="field c2"><div class="flabel-row"><label for="f-end">Ends <span class="pill-req">*</span></label></div>' +
              '<input class="inp" id="f-end" type="datetime-local" value="' + esc(b.end) + '"></div>';
     }
     else if (b.dateMode === 'month'){
-      h += '<div class="field c3"><div class="flabel-row"><label for="f-month">Month</label><span class="pill-req">*</span></div>' +
+      h += '<div class="field c3"><div class="flabel-row"><label for="f-month">Month <span class="pill-req">*</span></label></div>' +
              '<input class="inp" id="f-month" type="month" value="' + esc(b.month) + '"></div>';
     }
     else if (b.dateMode === 'quarter'){
       h += '<div class="field c2"><label for="f-quarter">Quarter</label><select class="inp" id="f-quarter"></select></div>' +
-           '<div class="field c2"><div class="flabel-row"><label for="f-year">Year</label><span class="pill-req">*</span></div>' +
+           '<div class="field c2"><div class="flabel-row"><label for="f-year">Year <span class="pill-req">*</span></label></div>' +
              '<input class="inp" id="f-year" type="number" min="2024" max="2035" placeholder="2026" value="' + esc(b.year) + '"></div>';
     }
     else if (b.dateMode === 'tbd'){
@@ -1650,8 +1798,9 @@
         var isTbd = !!b[s.t], val = b[s.k] || '';
         return '<div class="field c4"><div class="stage ' + (isTbd ? 'tbd' : (val ? 'set' : '')) + '">' +
             '<div class="flabel-row">' +
-              '<label for="f-' + s.k + '">' + s.label + '</label>' +
-              '<span class="' + (s.req ? 'pill-req' : 'pill-opt') + '">' + (s.req ? '*' : 'Optional') + '</span>' +
+              (s.req
+                ? '<label for="f-' + s.k + '">' + s.label + ' <span class="pill-req">*</span></label>'
+                : '<label for="f-' + s.k + '">' + s.label + '</label><span class="pill-opt">Optional</span>') +
             '</div>' +
             (isTbd
               ? '<div class="dt-preview tbd"><span class="lb">Shows as</span><span>To be announced</span></div>'
@@ -1863,21 +2012,37 @@
     return TEMPLATES.filter(function(t){ return t.cat === S.basics.category; });
   }
 
-  /* selects a template — used by the card's Use Template button and the preview modal alike */
+  /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point */
   function selectTemplate(tplId){
+    S.templatePick = tplId;
     if (S.path === 'A' && S.template === tplId) return;
-    var run = function(){
-      if (S.sections.length){
-        confirmSwitch('A', function(){ applyTemplate(tplId); });
-      } else {
-        S.path = 'A';
-        applyTemplate(tplId);
-        renderStep2();
-        renderFoot();
-      }
-    };
-    /* deferred so a confirm-switch modal opened from inside another modal's onConfirm (preview, convert) is not wiped by that modal's own close() */
-    if (S.sections.length) setTimeout(run, 0); else run();
+    S.path = 'A';
+    S.sections = [];
+    S.active = null;
+    S.detectPhase = 'input';
+    S.detectDecisions = {};
+    S.assembled = false;
+    applyTemplate(tplId);
+    renderStep2();
+    renderFoot();
+  }
+
+  function confirmUseTemplate(tplId){
+    var t = null;
+    TEMPLATES.forEach(function(x){ if (x.id === tplId) t = x; });
+    if (!t) return;
+    var names = t.sections.map(function(id){ var l = libBy(id); return l ? l.name : id; });
+    openModal({
+      title: 'Are you sure you want to use this template?',
+      sub: t.name + ' — ' + names.length + ' sections will be added to your microsite.',
+      body: '<p class="hint">' + esc(t.sub) + '</p>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' +
+          names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
+        '</div>',
+      confirm: 'Yes',
+      cancelLabel: 'No',
+      onConfirm: function(){ selectTemplate(tplId); goStep(3); }
+    });
   }
 
   function openTemplatePreview(tplId){
@@ -1895,15 +2060,59 @@
           names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
         '</div>',
       confirm: 'Use this template',
-      onConfirm: function(){ selectTemplate(tplId); }
+      onConfirm: function(){ setTimeout(function(){ confirmUseTemplate(tplId); }, 0); }
+    });
+  }
+
+  /* ---------- clone design from a previous (completed) edition on this portal ---------- */
+  function openCloneDesignModal(){
+    var list = PAST_EDITIONS.filter(function(p){ return p.cat === S.basics.category; });
+    openModal({
+      title: 'Clone design from a previous edition',
+      sub: 'Reuse a completed event’s section layout as your starting point.',
+      body: list.length
+        ? '<div class="field"><label for="clone-event-select">Completed event</label>' +
+            '<select class="inp" id="clone-event-select">' +
+              list.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') +
+            '</select></div>'
+        : '<p class="hint">No completed events in this category yet — check back once your first edition wraps.</p>',
+      confirm: 'Continue',
+      onConfirm: function(){
+        if (!list.length) return;
+        var sel = $('clone-event-select');
+        var pe = null;
+        PAST_EDITIONS.forEach(function(x){ if (sel && x.id === sel.value) pe = x; });
+        if (!pe) return;
+        setTimeout(function(){ confirmCloneDesign(pe); }, 0);
+      }
+    });
+    if (!list.length){ var ok = $('modal-ok'); if (ok) ok.disabled = true; }
+  }
+
+  function confirmCloneDesign(pe){
+    var t = null;
+    TEMPLATES.forEach(function(x){ if (x.id === pe.templateId) t = x; });
+    if (!t) return;
+    var names = t.sections.map(function(id){ var l = libBy(id); return l ? l.name : id; });
+    openModal({
+      title: 'Are you sure you want to use this event’s design?',
+      sub: pe.name + ' — ' + names.length + ' sections will be cloned into your microsite.',
+      body: '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' +
+          names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
+        '</div>',
+      confirm: 'Yes',
+      cancelLabel: 'No',
+      onConfirm: function(){ selectTemplate(pe.templateId); goStep(3); },
+      onCancel: function(){ setTimeout(openCloneDesignModal, 0); }
     });
   }
 
   function renderStep2(){
     var gallery = $('tpl-gallery');
+    if (S.templatePick == null && S.path === 'A' && S.template) S.templatePick = S.template;
     gallery.innerHTML = templatesForCategory().map(function(t){
-      var on = S.path === 'A' && S.template === t.id;
-      return '<div class="tpl-card tpl-card-min" data-selected="' + on + '">' +
+      var on = S.templatePick === t.id;
+      return '<div class="tpl-card tpl-card-min" data-selected="' + on + '" data-pick="' + t.id + '">' +
         '<span class="tpl-thumb-mini">' +
           (t.img ? '<img src="' + esc(t.img) + '" alt="' + esc(t.name) + ' preview">' : '') +
           '<span class="tpl-type-chip">' + esc(t.tag) + '</span>' +
@@ -1911,22 +2120,28 @@
         '<span class="tpl-card-min-body">' +
           '<span class="tpl-card-min-name">' + esc(t.name) + '</span>' +
           '<span class="tpl-actions">' +
-            '<button class="btn btn-secondary" type="button" data-preview="' + t.id + '">Preview</button>' +
-            '<button class="btn btn-primary" type="button" data-usetpl="' + t.id + '">Use Template</button>' +
+            '<button class="btn btn-primary" type="button" data-preview="' + t.id + '">Preview</button>' +
           '</span>' +
         '</span>' +
       '</div>';
     }).join('');
 
-    gallery.querySelectorAll('[data-usetpl]').forEach(function(b){
-      b.addEventListener('click', function(){ selectTemplate(b.getAttribute('data-usetpl')); });
+    gallery.querySelectorAll('[data-pick]').forEach(function(card){
+      card.addEventListener('click', function(){
+        S.templatePick = card.getAttribute('data-pick');
+        renderStep2();
+        renderFoot();
+        save();
+      });
     });
     gallery.querySelectorAll('[data-preview]').forEach(function(b){
-      b.addEventListener('click', function(){ openTemplatePreview(b.getAttribute('data-preview')); });
+      b.addEventListener('click', function(e){ e.stopPropagation(); openTemplatePreview(b.getAttribute('data-preview')); });
     });
 
     var convertBtn = $('btn-convert-design');
     if (convertBtn) convertBtn.onclick = openConvertModal;
+    var cloneBtn = $('btn-clone-design');
+    if (cloneBtn) cloneBtn.onclick = openCloneDesignModal;
   }
 
   function confirmSwitch(next, after){
@@ -2019,7 +2234,7 @@
   function renderTemplatePicker(host){
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 4 of 6 &middot; Path A</span>' +
+        '<span class="eyebrow">Step 3 of 5 &middot; Path A</span>' +
         '<h1>Pick a template to start from</h1>' +
         '<p class="desc">Each one is a stack of our pre-built sections. You can include or exclude any section afterwards, and add custom ones.</p>' +
       '</div>' +
@@ -2061,9 +2276,157 @@
       var hero = S.sections.filter(function(s){ return s.libId === 'hero'; })[0];
       if (hero) hero.data.title = S.basics.name;
     }
+    ensureCoreSections();
     save();
     renderStep3();
     toast(tpl.name + ' loaded — ' + tpl.sections.length + ' sections ready');
+  }
+
+  /* =========================================================
+     CORE CONTENT + OPTIONAL TOGGLE BLOCKS
+     Overview, Key Discussion Points and Who should attend always
+     exist once a template is picked. Speakers / Agenda / Sponsors /
+     Glimpses are switched on or off from one toggle bar instead of
+     living or dying by whichever template happened to include them.
+  ========================================================= */
+  var CORE_LIB_IDS = ['about','priorities','attend'];
+  var TOGGLE_BLOCKS = [
+    { libId:'speakers', label:'Speakers' },
+    { libId:'agenda',   label:'Agenda' },
+    { libId:'partners', label:'Sponsors' },
+    { libId:'glimpses', label:'Glimpses' }
+  ];
+
+  function sectionByLib(libId){
+    var found = null;
+    S.sections.forEach(function(s){ if (s.libId === libId) found = s; });
+    return found;
+  }
+
+  function addSectionToRail(libId, source){
+    var l = libBy(libId);
+    var sec = {
+      id: uid(), libId: libId, name: l.name, shape: l.shape, limit: l.limit || null,
+      helper: l.helper, include: true, data: seed(l.shape), done: false, source: source || 'template'
+    };
+    var anchorIdx = -1;
+    S.sections.forEach(function(s, i){
+      if (anchorIdx === -1 && (s.libId === 'contact' || s.libId === 'footer')) anchorIdx = i;
+    });
+    if (anchorIdx === -1) S.sections.push(sec); else S.sections.splice(anchorIdx, 0, sec);
+    return sec;
+  }
+
+  function ensureCoreSections(){
+    var changed = false;
+    CORE_LIB_IDS.forEach(function(libId){
+      if (!sectionByLib(libId)){ addSectionToRail(libId, 'core'); changed = true; }
+    });
+    return changed;
+  }
+
+  function toggleBlock(libId){
+    var l = libBy(libId);
+    var sec = sectionByLib(libId);
+    if (sec){
+      sec.include = !sec.include;
+      if (sec.include) S.active = sec.id;
+    } else {
+      sec = addSectionToRail(libId, 'toggle');
+      S.active = sec.id;
+    }
+    save();
+    renderTogglePanel();
+    renderSecList();
+    renderEditor();
+    renderFoot();
+    toast(l.name + (sec.include ? ' turned on' : ' turned off'));
+  }
+
+  /* ---------- pull content from a previous edition ---------- */
+  function openPullContentModal(){
+    var list = PAST_EDITIONS.filter(function(p){ return p.cat === S.basics.category && p.content; });
+    openModal({
+      title: 'Bring in content from a previous edition',
+      sub: 'Overview, Key Discussion Points and Who should attend fill in automatically. Any toggled-on blocks (Speakers, Agenda, Sponsors, Glimpses) come from the same edition too.',
+      body: list.length
+        ? '<div class="field"><label for="pull-event-select">Completed event</label>' +
+            '<select class="inp" id="pull-event-select">' +
+              list.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') +
+            '</select></div>'
+        : '<p class="hint">No completed events in this category yet — check back once your first edition wraps.</p>',
+      confirm: 'Continue',
+      onConfirm: function(){
+        if (!list.length) return;
+        var sel = $('pull-event-select');
+        var pe = null;
+        PAST_EDITIONS.forEach(function(x){ if (sel && x.id === sel.value) pe = x; });
+        if (!pe) return;
+        setTimeout(function(){ confirmPullContent(pe); }, 0);
+      }
+    });
+    if (!list.length){ var ok = $('modal-ok'); if (ok) ok.disabled = true; }
+  }
+
+  function confirmPullContent(pe){
+    var targets = CORE_LIB_IDS.slice();
+    TOGGLE_BLOCKS.forEach(function(tb){
+      var sec = sectionByLib(tb.libId);
+      if (sec && sec.include) targets.push(tb.libId);
+    });
+    targets = targets.filter(function(libId){ return pe.content && pe.content[libId]; });
+    var names = targets.map(function(libId){ return libBy(libId).name; });
+    openModal({
+      title: 'Overwrite with ' + pe.name + '’s content?',
+      sub: names.length + ' block' + (names.length === 1 ? '' : 's') + ' will be filled in from this edition — existing content in them is replaced.',
+      body: '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' +
+          names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
+        '</div>' +
+        '<p class="hint" style="margin-top:12px">Turn on Speakers, Agenda, Sponsors or Glimpses first if you want this edition’s content for those too.</p>',
+      confirm: 'Yes, overwrite',
+      cancelLabel: 'No',
+      onConfirm: function(){ applyPastEditionContent(pe, targets); },
+      onCancel: function(){ setTimeout(openPullContentModal, 0); }
+    });
+  }
+
+  function applyPastEditionContent(pe, targets){
+    if (!pe.content) return;
+    targets.forEach(function(libId){
+      var content = pe.content[libId];
+      if (!content) return;
+      var sec = sectionByLib(libId);
+      if (!sec) sec = addSectionToRail(libId, 'edition');
+      sec.data = JSON.parse(JSON.stringify(content));
+      sec.include = true;
+      sec.done = true;
+      sec.source = 'edition';
+      sec.editionName = pe.name;
+    });
+    save();
+    renderBuildWorkspace($('step-3'));
+    toast('Content pulled from ' + pe.name);
+  }
+
+  function renderTogglePanel(){
+    var host = $('toggle-panel');
+    if (!host) return;
+    host.innerHTML =
+      '<span class="tp-label">Optional blocks</span>' +
+      TOGGLE_BLOCKS.map(function(tb){
+        var sec = sectionByLib(tb.libId);
+        var on = !!(sec && sec.include);
+        return '<button class="switch" data-tb="' + tb.libId + '" aria-pressed="' + on + '">' +
+          '<span class="track"><i></i></span>' + esc(tb.label) + '</button>';
+      }).join('') +
+      '<span class="toggle-panel-actions">' +
+        '<button class="btn btn-ghost btn-sm" id="btn-pull-edition">' + IC.spark + ' Use a previous edition’s content</button>' +
+      '</span>';
+    host.querySelectorAll('[data-tb]').forEach(function(b){
+      b.addEventListener('click', function(){ toggleBlock(b.getAttribute('data-tb')); });
+    });
+    var pullBtn = $('btn-pull-edition');
+    if (pullBtn) pullBtn.addEventListener('click', openPullContentModal);
   }
 
   /* ---------- section rail + editor ---------- */
@@ -2073,6 +2436,7 @@
   }
 
   function renderBuildWorkspace(host){
+    if (ensureCoreSections()) save();
     var editable = S.sections.filter(function(s){ return s.shape !== 'auto'; });
     var included = editable.filter(function(s){ return s.include; });
     var doneN = included.filter(function(s){ return s.done; }).length;
@@ -2080,10 +2444,11 @@
 
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 4 of 6 &middot; Path ' + S.path + '</span>' +
+        '<span class="eyebrow">Step 3 of 5 &middot; Path ' + S.path + '</span>' +
         '<h1>' + (S.path === 'A' ? 'Fill your sections' : 'Refine your sections') + '</h1>' +
-        '<p class="desc">One section at a time. Paste rough content and let AI shape it to fit, or generate a first draft from your event brief.</p>' +
+        '<p class="desc">Overview, Key Discussion Points and Who should attend are ready below. Switch on Speakers, Agenda, Sponsors or Glimpses if this event needs them, or pull them straight from a previous edition.</p>' +
       '</div>' +
+      '<div class="toggle-panel" id="toggle-panel"></div>' +
       '<div class="build-grid">' +
         '<div class="rail-panel">' +
           '<div class="rail-panel-head">' +
@@ -2099,6 +2464,7 @@
         '<div class="panel" id="editor-panel"></div>' +
       '</div>';
 
+    renderTogglePanel();
     renderSecList();
     renderEditor();
     $('btn-add-custom').addEventListener('click', openCustomSectionModal);
@@ -2146,6 +2512,7 @@
             '<h2>' + esc(s.name) + '</h2>' +
             (s.source === 'custom' ? '<span class="ai-badge">' + IC.spark + ' AI built</span>' : '') +
             (s.source === 'detected' ? '<span class="pill pill-ai"><span class="d"></span>From your design</span>' : '') +
+            (s.source === 'edition' ? '<span class="pill pill-ai"><span class="d"></span>From ' + esc(s.editionName || 'a previous edition') + '</span>' : '') +
           '</div>' +
           '<p class="helper">' + esc(s.helper || '') + '</p>' +
         '</div>' +
@@ -2341,6 +2708,29 @@
         return '<div class="tile-grid">' + tiles +
           '<button class="tile-add" id="g-add">' + IC.plus + '<span>Add photos</span></button></div>' +
           '<p class="hint">' + n + ' images &middot; six to twelve reads best on mobile.</p>';
+
+      case 'agenda':
+        var aItems = d.items || [];
+        if (!aItems.length){
+          return '<div class="callout plain">' + IC.info +
+              '<span><strong>No agenda yet</strong>Agenda content always comes from a previous edition — bring one in and its schedule loads here automatically.</span></div>' +
+            '<button class="btn btn-secondary btn-sm" id="agenda-pull" style="margin-top:2px">' + IC.spark + ' Choose previous edition</button>';
+        }
+        return (s.editionName ? '<div class="callout plain">' + IC.layers + '<span>Pulled from <strong style="display:inline">' + esc(s.editionName) + '</strong></span></div>' : '') +
+          '<div class="rep-list" id="rep-list">' + aItems.map(function(it, i){
+            return '<div class="rep-item">' +
+              '<span class="fields">' +
+                '<span class="fields two">' +
+                  '<input class="inp" data-ag="t" data-i="' + i + '" value="' + esc(it.t) + '" placeholder="Time, e.g. 09:30 AM">' +
+                  '<input class="inp" data-ag="sp" data-i="' + i + '" value="' + esc(it.sp) + '" placeholder="Speaker / track">' +
+                '</span>' +
+                '<input class="inp" data-ag="ti" data-i="' + i + '" value="' + esc(it.ti) + '" placeholder="Session title">' +
+              '</span>' +
+              '<button class="del" data-agdel="' + i + '" title="Remove">' + IC.trash + '</button>' +
+            '</div>';
+          }).join('') + '</div>' +
+          '<button class="btn btn-secondary btn-sm" id="agenda-pull">' + IC.spark + ' Bring in a different edition</button>' +
+          '<p class="hint">Edit or remove a row if it needs a tweak — there is no manual add, agenda always starts from a previous edition.</p>';
 
       case 'contacts':
         return (d.blocks||[]).map(function(b, i){
@@ -2588,6 +2978,24 @@
       });
     }
 
+    /* agenda — rows only ever arrive from a previous edition, never added by hand */
+    if (s.shape === 'agenda'){
+      body.querySelectorAll('[data-ag]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-i');
+          d.items[i][el.getAttribute('data-ag')] = el.value;
+          markDone(s, true);
+        });
+      });
+      body.querySelectorAll('[data-agdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          d.items.splice(+b.getAttribute('data-agdel'), 1);
+          save(); renderEditor();
+        });
+      });
+      on('agenda-pull','click', function(){ openPullContentModal(); });
+    }
+
     /* contacts */
     if (s.shape === 'contacts'){
       body.querySelectorAll('[data-c]').forEach(function(el){
@@ -2813,7 +3221,7 @@
     var cur = SOURCES.filter(function(x){ return x.id === S.sourceKind; })[0] || SOURCES[0];
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 4 of 6 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 3 of 5 &middot; Path B</span>' +
         '<h1>Point us at your design</h1>' +
         '<p class="desc">We read the design, split it into sections, capture a preview of each and pull the content out. You review what we found on the next screen.</p>' +
       '</div>' +
@@ -2877,7 +3285,7 @@
   function renderProcessing(host){
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 6 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 2 of 5 &middot; Path B</span>' +
         '<h1>Analysing your design&hellip;</h1>' +
         '<p class="desc">Reading <span class="mono">' + esc(S.sourceValue) + '</span>. This usually takes under a minute — you can leave this screen and come back, the draft is saved.</p>' +
       '</div>' +
@@ -2939,7 +3347,7 @@
 
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 4 of 6 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 3 of 5 &middot; Path B</span>' +
         '<h1>Here is what we found</h1>' +
         '<p class="desc">' + DETECTED.length + ' sections detected and classified against our canonical library. Keep what is right, edit what needs a nudge, remove what you do not want.</p>' +
       '</div>' +
@@ -3066,6 +3474,7 @@
     var footLib = libBy('footer');
     out.push({ id: uid(), libId:'footer', name: footLib.name, shape:'auto', helper: footLib.helper, include:true, data: seed('auto'), done:true, source:'template' });
     S.sections = out;
+    ensureCoreSections();
     var first = out.filter(function(s){ return s.shape !== 'auto'; })[0];
     S.active = first ? first.id : out[0].id;
     save();
@@ -3103,7 +3512,7 @@
     var included = S.sections.filter(function(s){ return s.include; });
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 5 of 6</span>' +
+        '<span class="eyebrow">Step 4 of 5</span>' +
         '<h1>Putting your site together</h1>' +
         '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. No one is keying this in by hand.</p>' +
       '</div>' +
@@ -3210,6 +3619,11 @@
         var g = '';
         for (var i = 0; i < (d.count || 0); i++) g += '<i></i>';
         return '<div class="prev-sec"><div class="st">Previous glimpses</div><div class="prev-gallery">' + g + '</div></div>';
+      case 'agenda':
+        return '<div class="prev-sec"><div class="st">Agenda</div><div class="prev-cards">' +
+          (d.items||[]).map(function(it){
+            return '<span class="c"><span class="t">' + esc([it.t, it.ti].filter(Boolean).join(' — ') || 'Session') + '</span><span class="d">' + esc(it.sp || '') + '</span></span>';
+          }).join('') + '</div></div>';
       case 'contacts':
         return '<div class="prev-sec"><div class="st">Contact us</div><div class="prev-cards">' +
           (d.blocks||[]).map(function(bk){
@@ -3239,7 +3653,7 @@
           '</div>'
         : '') +
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 6 of 6</span>' +
+        '<span class="eyebrow">Step 5 of 5</span>' +
         '<h1>Your first preview</h1>' +
         '<p class="desc">Click any section in the list to jump back and edit it, or drag to reorder. Everything here is a draft until you publish.</p>' +
       '</div>' +
@@ -3345,7 +3759,7 @@
           '<button class="icon-btn" id="modal-x" style="margin-left:auto" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-body">' + (opts.body || '') + '</div>' +
         '<div class="modal-foot">' +
-          '<button class="btn btn-secondary" id="modal-cancel">Cancel</button>' +
+          '<button class="btn btn-secondary" id="modal-cancel">' + esc(opts.cancelLabel || 'Cancel') + '</button>' +
           '<button class="btn btn-primary" id="modal-ok">' + esc(opts.confirm || 'Confirm') + '</button>' +
         '</div>' +
       '</div></div>';
@@ -3354,7 +3768,10 @@
     function onKey(e){ if (e.key === 'Escape') close(); }
     document.addEventListener('keydown', onKey);
     $('modal-x').addEventListener('click', close);
-    $('modal-cancel').addEventListener('click', close);
+    $('modal-cancel').addEventListener('click', function(){
+      close();
+      if (opts.onCancel) opts.onCancel();
+    });
     $('scrim').addEventListener('click', function(e){ if (e.target === $('scrim')) close(); });
     $('modal-ok').addEventListener('click', function(){
       if (opts.onConfirm) opts.onConfirm();
@@ -3369,7 +3786,11 @@
   ========================================================= */
   function onNext(){
     if (S.step === 1){ goStep(2); return; }
-    if (S.step === 2){ goStep(3); return; }
+    if (S.step === 2){
+      if (S.path !== 'B' && S.templatePick){ confirmUseTemplate(S.templatePick); return; }
+      goStep(3);
+      return;
+    }
     if (S.step === 3){
       if (S.path === 'B' && S.detectPhase === 'review' && !S.sections.length){
         adoptDetected();
