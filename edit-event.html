@@ -135,7 +135,7 @@
     }
     if (sec === 'content'){
       if (tab === 'speakers') return spkAll().length;
-      if (tab === 'agenda')   return 7;
+      if (tab === 'agenda')   return agAll().length;
       if (tab === 'sponsors') return 10;
       if (tab === 'faq')      return FAQS.length;
     }
@@ -1574,32 +1574,794 @@
     ['How do I become a partner?', 'Use the Become a partner button on the microsite, or contact the partnerships team directly.']
   ];
 
+  /* ============================================================
+     VIEW : AGENDA
+
+     Same three levers as the line-up — group, order, weight — so
+     whoever learned one page already knows this one. A group is a
+     day or a stream; a row is a session; the clock runs down the
+     left because that is how anyone reads a day.
+
+     Sessions borrow their speakers from the line-up rather than
+     retyping names, so a speaker renamed once is renamed everywhere.
+     ============================================================ */
+  var SEED_SESSIONS = [
+    ['09:00','09:30','Registration & networking breakfast','networking'],
+    ['09:30','09:45','Welcome address','session'],
+    ['09:45','10:30','Keynote: The year ahead','keynote'],
+    ['10:30','11:15','Panel: Building resilient systems','panel'],
+    ['11:15','11:45','Networking break','break'],
+    ['11:45','12:30','Fireside chat','fireside'],
+    ['12:30','13:30','Lunch','lunch']
+  ];
+
+  /* the kind sets the tone; quiet kinds are the gaps between the programme */
+  var KINDS = [
+    { id:'session',    label:'Session' },
+    { id:'keynote',    label:'Keynote' },
+    { id:'panel',      label:'Panel' },
+    { id:'fireside',   label:'Fireside chat' },
+    { id:'workshop',   label:'Workshop' },
+    { id:'awards',     label:'Awards' },
+    { id:'break',      label:'Break',      quiet:true },
+    { id:'networking', label:'Networking', quiet:true },
+    { id:'lunch',      label:'Lunch',      quiet:true }
+  ];
+  function kMeta(id){
+    for (var i = 0; i < KINDS.length; i++) if (KINDS[i].id === id) return KINDS[i];
+    return KINDS[0];
+  }
+
+  /* ---------------- time helpers ---------------- */
+  function mins(hhmm){
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  }
+  function durText(a, b){
+    var x = mins(a), y = mins(b);
+    if (x == null || y == null || y <= x) return '';
+    var d = y - x;
+    if (d < 60) return d + ' min';
+    var h = Math.floor(d / 60), r = d % 60;
+    return h + (r ? ' hr ' + r + ' min' : (h === 1 ? ' hour' : ' hours'));
+  }
+  function addMins(hhmm, n){
+    var x = mins(hhmm);
+    if (x == null) return '';
+    var t = (x + n) % 1440;
+    return (t / 60 < 10 ? '0' : '') + Math.floor(t / 60) + ':' + (t % 60 < 10 ? '0' : '') + (t % 60);
+  }
+  function fmtDay(iso){
+    if (!iso) return 'Date not set';
+    var d = new Date(iso + 'T00:00:00');
+    return isNaN(d) ? 'Date not set' : fmtDate(iso + 'T00:00:00');
+  }
+
+  /* ---------------- model ---------------- */
+  function agInit(){
+    if (S.agGroups && S.sessions) return;
+    var d = EV.start ? EV.start.slice(0, 10) : '';
+    S.agGroups = [{ id:'d-1', name:'Day 1', date:d }];
+    S.sessions = SEED_SESSIONS.map(function(s){
+      var k = kMeta(s[3]);
+      return {
+        id: uid('ses-'), gid:'d-1', title:s[2], start:s[0], end:s[1],
+        kind:s[3], speakers:[], desc:'', room:'',
+        weight: s[3] === 'keynote' ? 'keynote' : (k.quiet ? 'standard' : 'featured')
+      };
+    });
+    /* the two seeded sessions that name a speaker should point at the real one */
+    var byName = {};
+    spkAll().forEach(function(p){ byName[p.name] = p.id; });
+    S.sessions.forEach(function(s){
+      if (s.title === 'Keynote: The year ahead' && byName['Rajesh Uppal']) s.speakers = [byName['Rajesh Uppal']];
+      if (s.title === 'Fireside chat' && byName['Vishal Salvi']) s.speakers = [byName['Vishal Salvi']];
+    });
+    save();
+  }
+  function agAll(){ agInit(); return S.sessions; }
+  function agGroups(){ agInit(); return S.agGroups; }
+  function agIn(gid){ return agAll().filter(function(s){ return s.gid === gid; }); }
+  function agById(id){
+    var a = agAll();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function agSplice(mine, gid){
+    var out = [], done = false;
+    agAll().forEach(function(s){
+      if (s.gid === gid){ if (!done){ out = out.concat(mine); done = true; } return; }
+      out.push(s);
+    });
+    if (!done) out = out.concat(mine);
+    return out;
+  }
+  function agCommit(){ save(); render(); }
+
+  /* ---------------- the page ---------------- */
   function viewAgenda(){
-    var slots = [
-      ['09:00','09:30','Registration & networking breakfast',''],
-      ['09:30','09:45','Welcome address','Editor, ET Oneworld'],
-      ['09:45','10:30','Keynote: The year ahead','Rajesh Uppal'],
-      ['10:30','11:15','Panel: Building resilient systems','4 panellists'],
-      ['11:15','11:45','Networking break',''],
-      ['11:45','12:30','Fireside chat','Vishal Salvi'],
-      ['12:30','13:30','Lunch','']
-    ];
-    var rows = slots.map(function(s){
-      return '<tr><td class="num">' + s[0] + ' – ' + s[1] + '</td>' +
-        '<td class="td-strong">' + esc(s[2]) + '</td>' +
-        '<td style="color:var(--text-muted)">' + esc(s[3] || '—') + '</td>' +
-        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Session opened">' + svg(IC.edit, 14) + '</button></td></tr>';
+    var groups = agGroups(), all = agAll();
+
+    var body = groups.map(function(g, gi){
+      var list = agIn(g.id);
+      var rows = list.map(function(s, i){
+        var k = kMeta(s.kind);
+        var prev = i > 0 ? list[i - 1] : null;
+        var clash = '';
+        if (prev && mins(prev.end) != null && mins(s.start) != null && mins(s.start) < mins(prev.end)){
+          clash = '<div class="clash">' + svg(IC.info, 13) +
+            '<span>Starts at ' + esc(s.start) + ', but “' + esc(prev.title) +
+            '” runs until ' + esc(prev.end) + '.</span></div>';
+        }
+        var people = s.speakers.map(spkById).filter(Boolean);
+        var faces = people.length
+          ? '<span class="faces">' + people.slice(0, 3).map(function(p){
+              return spkPhotoHTML(p, 'f');
+            }).join('') + (people.length > 3
+              ? '<span class="f more">+' + (people.length - 3) + '</span>' : '') + '</span>'
+          : (k.quiet ? '' : '<span class="faces-none">—</span>');
+
+        return clash +
+          '<div class="ses-row' + (k.quiet ? ' quiet' : '') + '" draggable="true" ' +
+              'data-ses="' + s.id + '" data-gid="' + g.id + '">' +
+            '<span class="spk-grip" title="Drag to reorder">' + svg(IC.grip, 15) + '</span>' +
+            '<span class="ses-time"><b>' + esc(s.start) + ' – ' + esc(s.end || '…') + '</b>' +
+              '<span>' + esc(durText(s.start, s.end) || 'no end time') + '</span></span>' +
+            '<span class="ses-title"><b>' + esc(s.title) + '</b>' +
+              '<span class="sd">' + esc(people.map(function(p){ return p.name; }).join(', ') ||
+                s.desc || (s.room ? s.room : k.label)) + '</span></span>' +
+            faces +
+            '<span class="ses-meta">' +
+              '<span class="kind-pill">' + esc(k.label) + '</span>' +
+              '<button class="wpill w-' + esc(s.weight) + '" type="button" data-agw="' + s.id + '" ' +
+                'title="Click to change how loud this session is on the page">' +
+                esc(wLabel(s.weight)) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-agup="' + s.id + '" title="Move up"' +
+                (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-agdown="' + s.id + '" title="Move down"' +
+                (i === list.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-agedit="' + s.id + '" title="Edit">' +
+                svg(IC.edit, 14) + '</button>' +
+            '</span>' +
+          '</div>';
+      }).join('');
+
+      var span = '';
+      if (list.length){
+        var first = list.slice().sort(function(a, b){ return (mins(a.start) || 0) - (mins(b.start) || 0); })[0];
+        var lastEnd = list.reduce(function(acc, s){
+          var e = mins(s.end);
+          return e != null && e > acc ? e : acc;
+        }, -1);
+        if (lastEnd >= 0) span = first.start + ' – ' +
+          ((lastEnd / 60 < 10 ? '0' : '') + Math.floor(lastEnd / 60) + ':' + (lastEnd % 60 < 10 ? '0' : '') + (lastEnd % 60));
+      }
+
+      return '<div class="grp" data-aggrp="' + g.id + '">' +
+          '<div class="grp-head">' +
+            '<input class="gname" value="' + esc(g.name) + '" data-agname="' + g.id + '" ' +
+              'aria-label="Group name" spellcheck="false">' +
+            '<input class="gdate" type="date" value="' + esc(g.date || '') + '" data-agdate="' + g.id + '" ' +
+              'aria-label="Date this group runs on">' +
+            '<span class="gcount">' + list.length + (list.length === 1 ? ' session' : ' sessions') +
+              (span ? ' · ' + esc(span) : '') + '</span>' +
+            '<span class="grp-acts">' +
+              '<button class="btn btn-ghost btn-sm" type="button" data-agsort="' + g.id + '" ' +
+                'title="Put this group in start-time order">' + svg(IC.clock, 13) + ' Sort by time</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-aggup="' + g.id + '" title="Move group up"' +
+                (gi === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-aggdown="' + g.id + '" title="Move group down"' +
+                (gi === groups.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+              (groups.length > 1 ? '<button class="btn btn-ghost btn-icon" type="button" data-aggdel="' + g.id + '" ' +
+                'title="Delete group">' + svg(IC.trash, 14) + '</button>' : '') +
+            '</span>' +
+          '</div>' +
+          (rows || '<div class="grp-empty">Nothing scheduled here yet. ' +
+            'Add a session, or drag one in from another day.</div>') +
+          '<div class="grp-foot">' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-agadd="' + g.id + '">' +
+              svg(IC.plus, 13) + ' Add to ' + esc(g.name) + '</button>' +
+          '</div>' +
+        '</div>';
     }).join('');
 
-    return vhead('Agenda', 'Day 1 of 1. Sessions publish to the Agenda block in start-time order.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Session form opened">' + svg(IC.plus, 13) + ' Add session</button>') +
-      '<div class="callout">' + svg(IC.info, 17) +
-        '<span><strong>The agenda block is currently hidden</strong>' +
-        'You have sessions here, but the Agenda section is switched off in Page sections, so visitors cannot see them yet.</span></div>' +
-      '<div style="height:16px"></div>' +
-      panelFlush('Day 1 · ' + fmtDate(EV.start), slots.length + ' sessions',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Session</th><th>Speaker</th><th></th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table></div>');
+    /* the block really is hidden sometimes — say so only when it is */
+    var hidden = false;
+    if (S.sections){
+      S.sections.forEach(function(s){ if (s.id === 'agenda' && !s.on) hidden = true; });
+    }
+    var warn = (hidden && all.length)
+      ? '<div class="callout" style="margin-bottom:18px">' + svg(IC.info, 17) +
+          '<span><strong>The agenda block is switched off</strong>' +
+          'These sessions are saved, but the Agenda section is off in <b>Design &rsaquo; Page sections</b>, ' +
+          'so nobody can see them yet.</span>' +
+          '<button class="btn btn-secondary btn-sm" type="button" data-goto="design/sections" ' +
+            'style="align-self:center;flex-shrink:0">Turn it on</button></div>'
+      : '';
+
+    var sub = all.length + (all.length === 1 ? ' session' : ' sessions') +
+      ' across ' + groups.length + (groups.length === 1 ? ' day' : ' days') + '. ' +
+      'Groups, order and weight are exactly what the live page renders.';
+
+    return vhead('Agenda', sub,
+        '<button class="btn btn-secondary btn-sm" type="button" id="ag-addgroup">' +
+          svg(IC.plus, 13) + ' Add day</button>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="ag-add">' +
+          svg(IC.plus, 13) + ' Add sessions</button>') +
+
+      '<div class="ag">' +
+        '<div class="ag-main">' + warn + body +
+          '<div class="callout info">' + svg(IC.info, 17) +
+            '<span><strong>Speakers come from the line-up</strong>' +
+            'Pick them from the list you already built on the Speakers tab rather than typing names again — ' +
+            'rename someone there and every session follows. Use <b>Sort by time</b> if the order drifts, ' +
+            'and watch for the amber line that appears when two sessions overlap.</span></div>' +
+        '</div>' +
+        '<aside class="spk-side">' +
+          '<div class="pvc">' +
+            '<div class="pvc-head"><span class="eyebrow">Live preview</span>' +
+              '<span class="ctr">' + all.length + ' on page</span></div>' +
+            '<div class="agv">' + agPreview() + '</div>' +
+            '<div class="pvc-foot">The Agenda block as it renders on the microsite.</div>' +
+          '</div>' +
+          '<div class="pvc">' +
+            '<div class="pvc-head"><span class="eyebrow">Day at a glance</span></div>' +
+            agGlance() +
+          '</div>' +
+        '</aside>' +
+      '</div>';
+  }
+
+  function agPreview(){
+    if (!agAll().length) return '<div class="agv-empty">No sessions yet. The block is hidden on the live page.</div>';
+    return agGroups().map(function(g){
+      var list = agIn(g.id);
+      if (!list.length) return '';
+      return '<div class="agv-d"><div class="agv-h">' + esc(g.name) +
+          (g.date ? ' · ' + esc(fmtDay(g.date)) : '') + '</div>' +
+        list.map(function(s){
+          var k = kMeta(s.kind);
+          var who = s.speakers.map(spkById).filter(Boolean)
+            .map(function(p){ return p.name; }).join(', ');
+          return '<div class="agv-s ' + (WCLASS[s.weight] || 'w-f') + (k.quiet ? ' quiet' : '') + '">' +
+            '<span class="t">' + esc(s.start) + '</span>' +
+            '<span class="b"><b>' + esc(s.title) + '</b>' +
+            (who || s.desc ? '<span>' + esc(who || s.desc) + '</span>' : '') + '</span>' +
+          '</div>';
+        }).join('') + '</div>';
+    }).join('') || '<div class="agv-empty">Every day is empty.</div>';
+  }
+
+  function agGlance(){
+    var all = agAll();
+    var prog = 0, quiet = 0, unnamed = 0, minutes = 0;
+    all.forEach(function(s){
+      var k = kMeta(s.kind);
+      if (k.quiet) quiet++; else prog++;
+      if (!k.quiet && !s.speakers.length) unnamed++;
+      var a = mins(s.start), b = mins(s.end);
+      if (a != null && b != null && b > a) minutes += b - a;
+    });
+    var rows = [
+      ['Programme sessions', prog, prog > 0],
+      ['Breaks and meals', quiet, true],
+      ['Sessions with no speaker', unnamed, unnamed === 0],
+      ['Scheduled time', (minutes >= 60 ? Math.floor(minutes / 60) + 'h ' : '') + (minutes % 60) + 'm', minutes > 0]
+    ];
+    return rows.map(function(r){
+      return '<div class="rdy-item' + (r[2] ? ' on' : '') + '">' +
+          '<span class="tick">' + svg(r[2] ? IC.check : IC.info, 11) + '</span>' +
+          '<span class="lb">' + esc(r[0]) + '</span>' +
+          '<span class="num">' + esc(String(r[1])) + '</span></div>';
+    }).join('');
+  }
+
+  /* ---------------- page wiring ---------------- */
+  function wireAgenda(){
+    var add = $('ag-add');
+    if (add) add.onclick = function(){ agDialog(null, agGroups()[0].id); };
+
+    var addg = $('ag-addgroup');
+    if (addg) addg.onclick = function(){
+      var gs = agGroups();
+      var last = gs[gs.length - 1];
+      var d = '';
+      if (last && last.date){
+        var nd = new Date(last.date + 'T00:00:00');
+        nd.setDate(nd.getDate() + 1);
+        d = nd.getFullYear() + '-' + ('0' + (nd.getMonth() + 1)).slice(-2) + '-' + ('0' + nd.getDate()).slice(-2);
+      }
+      S.agGroups.push({ id: uid('d-'), name: 'Day ' + (gs.length + 1), date: d });
+      agCommit();
+      toast('Day ' + gs.length + ' added');
+    };
+
+    document.querySelectorAll('[data-agadd]').forEach(function(b){
+      b.onclick = function(){ agDialog(null, b.getAttribute('data-agadd')); };
+    });
+    document.querySelectorAll('[data-agedit]').forEach(function(b){
+      b.onclick = function(){ agDialog(b.getAttribute('data-agedit')); };
+    });
+
+    document.querySelectorAll('[data-agname]').forEach(function(inp){
+      var id = inp.getAttribute('data-agname');
+      inp.onchange = function(){
+        var v = inp.value.trim() || 'Untitled day';
+        agGroups().forEach(function(g){ if (g.id === id) g.name = v; });
+        save();
+      };
+      inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
+    });
+    document.querySelectorAll('[data-agdate]').forEach(function(inp){
+      var id = inp.getAttribute('data-agdate');
+      inp.onchange = function(){
+        agGroups().forEach(function(g){ if (g.id === id) g.date = inp.value; });
+        agCommit();
+      };
+    });
+
+    document.querySelectorAll('[data-agw]').forEach(function(b){
+      b.onclick = function(){
+        var s = agById(b.getAttribute('data-agw'));
+        if (!s) return;
+        var i = 0;
+        WEIGHTS.forEach(function(w, n){ if (w.id === s.weight) i = n; });
+        s.weight = WEIGHTS[(i + 1) % WEIGHTS.length].id;
+        agCommit();
+        toast('“' + s.title + '” is now ' + wLabel(s.weight).toLowerCase());
+      };
+    });
+
+    document.querySelectorAll('[data-agup]').forEach(function(b){
+      b.onclick = function(){ agMove(b.getAttribute('data-agup'), -1); };
+    });
+    document.querySelectorAll('[data-agdown]').forEach(function(b){
+      b.onclick = function(){ agMove(b.getAttribute('data-agdown'), 1); };
+    });
+    document.querySelectorAll('[data-aggup]').forEach(function(b){
+      b.onclick = function(){ agGrpMove(b.getAttribute('data-aggup'), -1); };
+    });
+    document.querySelectorAll('[data-aggdown]').forEach(function(b){
+      b.onclick = function(){ agGrpMove(b.getAttribute('data-aggdown'), 1); };
+    });
+
+    document.querySelectorAll('[data-agsort]').forEach(function(b){
+      b.onclick = function(){
+        var gid = b.getAttribute('data-agsort');
+        var mine = agIn(gid).slice().sort(function(a, c){
+          return (mins(a.start) == null ? 9999 : mins(a.start)) - (mins(c.start) == null ? 9999 : mins(c.start));
+        });
+        S.sessions = agSplice(mine, gid);
+        agCommit();
+        toast('Put in start-time order');
+      };
+    });
+
+    document.querySelectorAll('[data-aggdel]').forEach(function(b){
+      b.onclick = function(){
+        var gid = b.getAttribute('data-aggdel');
+        var g = agGroups().filter(function(x){ return x.id === gid; })[0];
+        var n = agIn(gid).length;
+        var keep = agGroups().filter(function(x){ return x.id !== gid; })[0];
+        confirmDialog('Delete ' + (g ? g.name : 'this day') + '?',
+          n ? n + (n === 1 ? ' session moves' : ' sessions move') + ' to ' + keep.name + '. Nothing is deleted.'
+            : 'The day is empty, so nothing else changes.',
+          'Delete day', function(){
+            agAll().forEach(function(s){ if (s.gid === gid) s.gid = keep.id; });
+            S.agGroups = agGroups().filter(function(x){ return x.id !== gid; });
+            agCommit();
+            toast('Day deleted');
+          });
+      };
+    });
+
+    agDragDrop();
+  }
+
+  function agMove(id, dir){
+    var s = agById(id);
+    if (!s) return;
+    var mine = agIn(s.gid);
+    var i = mine.map(function(x){ return x.id; }).indexOf(id);
+    var j = i + dir;
+    if (j < 0 || j >= mine.length) return;
+    mine.splice(j, 0, mine.splice(i, 1)[0]);
+    S.sessions = agSplice(mine, s.gid);
+    agCommit();
+  }
+  function agGrpMove(gid, dir){
+    var gs = agGroups();
+    var i = gs.map(function(g){ return g.id; }).indexOf(gid);
+    var j = i + dir;
+    if (j < 0 || j >= gs.length) return;
+    gs.splice(j, 0, gs.splice(i, 1)[0]);
+    agCommit();
+  }
+
+  function agDragDrop(){
+    var dragId = null;
+    document.querySelectorAll('.ses-row').forEach(function(row){
+      row.addEventListener('dragstart', function(e){
+        dragId = row.getAttribute('data-ses');
+        row.classList.add('drag');
+        try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+      });
+      row.addEventListener('dragend', function(){
+        dragId = null;
+        document.querySelectorAll('.ses-row').forEach(function(r){
+          r.classList.remove('drag', 'over-top', 'over-bot');
+        });
+      });
+      row.addEventListener('dragover', function(e){
+        if (!dragId || row.getAttribute('data-ses') === dragId) return;
+        e.preventDefault();
+        var r = row.getBoundingClientRect();
+        var after = (e.clientY - r.top) > r.height / 2;
+        row.classList.toggle('over-bot', after);
+        row.classList.toggle('over-top', !after);
+      });
+      row.addEventListener('dragleave', function(){ row.classList.remove('over-top', 'over-bot'); });
+      row.addEventListener('drop', function(e){
+        if (!dragId || row.getAttribute('data-ses') === dragId) return;
+        e.preventDefault();
+        var r = row.getBoundingClientRect();
+        var after = (e.clientY - r.top) > r.height / 2;
+        var p = agById(dragId), t = agById(row.getAttribute('data-ses'));
+        if (!p || !t) return;
+        p.gid = t.gid;
+        var list = agAll().slice();
+        list.splice(list.indexOf(p), 1);
+        list.splice(list.indexOf(t) + (after ? 1 : 0), 0, p);
+        S.sessions = list;
+        agCommit();
+      });
+    });
+
+    document.querySelectorAll('[data-aggrp]').forEach(function(g){
+      g.addEventListener('dragover', function(e){ if (dragId) e.preventDefault(); });
+      g.addEventListener('drop', function(e){
+        if (!dragId) return;
+        if (e.target.closest && e.target.closest('.ses-row')) return;
+        e.preventDefault();
+        var s = agById(dragId);
+        if (!s) return;
+        s.gid = g.getAttribute('data-aggrp');
+        agCommit();
+      });
+    });
+  }
+
+  /* ============================================================
+     THE SESSION DIALOG
+
+     Same queue as the speaker dialog. Adding another session starts
+     it where the last one ended, because that is almost always the
+     answer and nobody should type a clock twice.
+     ============================================================ */
+  function agDialog(editId, defaultGid){
+    var editing = !!editId;
+    var gid = defaultGid || agGroups()[0].id;
+
+    function blank(prev){
+      var start = prev && prev.end ? prev.end : '09:00';
+      return {
+        id: uid('ses-'), gid: prev ? prev.gid : gid, title:'', start: start,
+        end: addMins(start, 45), kind:'session', speakers:[], desc:'', room:'', weight:'featured'
+      };
+    }
+
+    var Q, qi = 0;
+    if (editing){
+      var src = agById(editId);
+      if (!src) return;
+      Q = [JSON.parse(JSON.stringify(src))];
+    } else {
+      var last = agIn(gid).slice(-1)[0];
+      Q = [blank(last ? { end:last.end, gid:gid } : null)];
+    }
+
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="abg"><div class="modal wide">' +
+        '<div class="modal-head">' +
+          '<h3>' + (editing ? 'Edit session' : 'Add sessions') + '</h3>' +
+          '<span class="sub" style="font-size:12px;color:var(--text-muted)">' +
+            (editing ? 'Changes apply when you save.'
+                     : 'Each one you add starts where the last ended — change it if that is wrong.') + '</span>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="aclose" aria-label="Close">' +
+            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
+        '</div>' +
+        '<div class="sp-wrap">' +
+          (editing ? '' :
+            '<div class="sp-queue">' +
+              '<div class="qh">Adding <span id="aq-n"></span></div>' +
+              '<div class="qlist" id="aq-list"></div>' +
+              '<div class="qfoot"><button class="btn btn-secondary btn-sm" type="button" id="aq-add" ' +
+                'style="width:100%">' + svg(IC.plus, 13) + ' Add another</button></div>' +
+            '</div>') +
+          '<div class="sp-form" id="ag-form"></div>' +
+        '</div>' +
+        '<div class="modal-foot">' +
+          '<span id="ag-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+          '<button class="btn btn-secondary" type="button" id="acancel">Cancel</button>' +
+          (editing ? '<button class="btn btn-secondary" type="button" id="adel">Remove session</button>' : '') +
+          '<button class="btn btn-primary" type="button" id="asave"></button>' +
+        '</div>' +
+      '</div></div>';
+
+    var close = function(){ host.innerHTML = ''; };
+    $('aclose').onclick = close;
+    $('acancel').onclick = close;
+    $('abg').onclick = function(e){ if (e.target.id === 'abg') close(); };
+    document.addEventListener('keydown', function esc3(e){
+      if (!document.getElementById('abg')) { document.removeEventListener('keydown', esc3); return; }
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc3); }
+    });
+
+    if (editing) $('adel').onclick = function(){
+      var s = agById(editId);
+      close();
+      confirmDialog('Remove “' + (s ? s.title : 'this session') + '”?',
+        'It comes off the agenda and off the live page. This cannot be undone from here.',
+        'Remove', function(){
+          S.sessions = agAll().filter(function(x){ return x.id !== editId; });
+          agCommit();
+          toast('Session removed');
+        });
+    };
+
+    function paintQueue(){
+      if (editing) return;
+      $('aq-n').textContent = Q.length + (Q.length === 1 ? ' session' : ' sessions');
+      $('aq-list').innerHTML = Q.map(function(e, i){
+        return '<button class="qi" type="button" data-q="' + i + '" aria-current="' + (i === qi) + '">' +
+            '<span class="qph" style="font-family:var(--font-mono);font-size:9.5px">' + esc(e.start) + '</span>' +
+            '<span class="qn">' + (e.title ? esc(e.title) : '<em>Session ' + (i + 1) + '</em>') + '</span>' +
+            (Q.length > 1 ? '<span class="qx" data-qx="' + i + '" role="button" aria-label="Remove">' +
+              svg('<path d="M18 6L6 18M6 6l12 12"/>', 13) + '</span>' : '') +
+          '</button>';
+      }).join('');
+      $('aq-list').querySelectorAll('[data-q]').forEach(function(b){
+        b.onclick = function(e){
+          if (e.target.closest('[data-qx]')) return;
+          readForm(); qi = +b.getAttribute('data-q'); paintForm(); paintQueue();
+        };
+      });
+      $('aq-list').querySelectorAll('[data-qx]').forEach(function(x){
+        x.onclick = function(e){
+          e.stopPropagation();
+          var i = +x.getAttribute('data-qx');
+          readForm();
+          Q.splice(i, 1);
+          if (qi >= Q.length) qi = Q.length - 1;
+          paintForm(); paintQueue(); paintSave();
+        };
+      });
+    }
+    function paintSave(){
+      $('asave').textContent = editing ? 'Save changes'
+        : (Q.length === 1 ? 'Add session' : 'Add all ' + Q.length + ' sessions');
+    }
+
+    var search = '';
+
+    function paintForm(){
+      var e = Q[qi];
+      $('ag-form').innerHTML =
+        '<div class="frow">' +
+          '<div class="field c12"><div class="flabel-row">' +
+            '<label for="ag-title">Session title <span class="pill-req">Required</span></label></div>' +
+            '<input class="inp" id="ag-title" value="' + esc(e.title) + '" ' +
+              'placeholder="e.g. Keynote: The year ahead"></div>' +
+
+          '<div class="field c4"><div class="flabel-row">' +
+            '<label for="ag-start">Starts <span class="pill-req">Required</span></label></div>' +
+            '<input class="inp" id="ag-start" type="time" value="' + esc(e.start) + '"></div>' +
+
+          '<div class="field c4"><label for="ag-end">Ends</label>' +
+            '<input class="inp" id="ag-end" type="time" value="' + esc(e.end || '') + '"></div>' +
+
+          '<div class="field c4"><label class="flabel">Runs for</label>' +
+            '<div class="readout" id="ag-dur" style="height:38px"></div></div>' +
+
+          '<div class="field c4"><label for="ag-kind">Kind</label>' +
+            '<select class="inp" id="ag-kind">' + KINDS.map(function(k){
+              return '<option value="' + k.id + '"' + (k.id === e.kind ? ' selected' : '') + '>' +
+                esc(k.label) + '</option>';
+            }).join('') + '</select>' +
+            '<p class="hint">Breaks and meals render quietly on the page.</p></div>' +
+
+          '<div class="field c4"><label for="ag-gid">Day</label>' +
+            '<select class="inp" id="ag-gid">' + agGroups().map(function(g){
+              return '<option value="' + esc(g.id) + '"' + (g.id === e.gid ? ' selected' : '') + '>' +
+                esc(g.name) + (g.date ? ' — ' + esc(fmtDay(g.date)) : '') + '</option>';
+            }).join('') + '</select></div>' +
+
+          '<div class="field c4"><label for="ag-weight">Weight</label>' +
+            '<select class="inp" id="ag-weight">' + WEIGHTS.map(function(w){
+              return '<option value="' + w.id + '"' + (w.id === e.weight ? ' selected' : '') + '>' +
+                esc(w.label) + '</option>';
+            }).join('') + '</select>' +
+            '<p class="hint" id="ag-wnote"></p></div>' +
+
+          '<div class="field c12"><div class="flabel-row"><label class="flabel">On stage</label>' +
+            '<span class="hint" id="ag-spkn" style="margin:0"></span></div>' +
+            '<div class="picker">' +
+              '<div class="picker-search">' + svg(IC.search, 14) +
+                '<input id="ag-spksearch" placeholder="Search the line-up…" value="' + esc(search) + '">' +
+              '</div>' +
+              '<div class="picker-list" id="ag-spklist"></div>' +
+            '</div>' +
+            '<p class="hint">Straight from the Speakers tab — rename someone there and every session follows.</p>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="acc" data-open="' + (e.desc || e.room ? 'true' : 'false') + '" id="ag-acc">' +
+          '<button class="acc-head" type="button" id="ag-acch">' + svg(IC.caret, 14) +
+            'Description and room' +
+            '<span class="ah-sub">Both optional — leave them out if you do not have them</span></button>' +
+          '<div class="acc-body"><div class="frow">' +
+            '<div class="field c12"><label for="ag-desc">Short description</label>' +
+              '<textarea class="inp" id="ag-desc" style="min-height:66px" ' +
+                'placeholder="A line about what this session covers.">' + esc(e.desc || '') + '</textarea></div>' +
+            '<div class="field c6"><label for="ag-room">Room or stage</label>' +
+              '<input class="inp" id="ag-room" value="' + esc(e.room || '') + '" ' +
+                'placeholder="e.g. Main hall"></div>' +
+          '</div></div>' +
+        '</div>';
+
+      paintPicker();
+      wireForm();
+    }
+
+    function paintPicker(){
+      var e = Q[qi];
+      var q = search.toLowerCase();
+      var list = spkAll().filter(function(p){
+        if (!q) return true;
+        return (p.name + ' ' + p.desig + ' ' + p.comp).toLowerCase().indexOf(q) >= 0;
+      });
+      /* chosen people float to the top, so a long line-up stays usable */
+      list.sort(function(a, b){
+        return (e.speakers.indexOf(b.id) >= 0 ? 1 : 0) - (e.speakers.indexOf(a.id) >= 0 ? 1 : 0);
+      });
+
+      var host2 = $('ag-spklist');
+      if (!spkAll().length){
+        host2.innerHTML = '<div class="picker-empty">No speakers in the line-up yet. ' +
+          'Add them on the Speakers tab and they will appear here.</div>';
+      } else if (!list.length){
+        host2.innerHTML = '<div class="picker-empty">Nobody matches “' + esc(search) + '”.</div>';
+      } else {
+        host2.innerHTML = list.map(function(p){
+          var on = e.speakers.indexOf(p.id) >= 0;
+          return '<button class="pchip" type="button" data-pick="' + p.id + '" aria-pressed="' + on + '">' +
+              spkPhotoHTML(p, 'pf') +
+              '<span class="pn">' + esc(p.name) +
+                (p.comp ? ' <span class="pt">· ' + esc(p.comp) + '</span>' : '') + '</span>' +
+            '</button>';
+        }).join('');
+        host2.querySelectorAll('[data-pick]').forEach(function(b){
+          b.onclick = function(){
+            var id = b.getAttribute('data-pick');
+            var at = e.speakers.indexOf(id);
+            if (at >= 0) e.speakers.splice(at, 1); else e.speakers.push(id);
+            paintPicker();
+          };
+        });
+      }
+      $('ag-spkn').textContent = e.speakers.length
+        ? e.speakers.length + (e.speakers.length === 1 ? ' chosen' : ' chosen')
+        : 'Nobody chosen yet';
+    }
+
+    function paintDur(){
+      var a = $('ag-start').value, b = $('ag-end').value;
+      var d = durText(a, b);
+      var box = $('ag-dur');
+      if (d){
+        box.className = 'readout';
+        box.innerHTML = svg(IC.clock, 13) + '<b>' + esc(d) + '</b>';
+      } else if (b && mins(b) != null && mins(a) != null && mins(b) <= mins(a)){
+        box.className = 'readout bad';
+        box.innerHTML = svg(IC.info, 13) + '<span>Ends before it starts</span>';
+      } else {
+        box.className = 'readout';
+        box.innerHTML = svg(IC.clock, 13) + '<span>Add an end time</span>';
+      }
+    }
+
+    function wnote(){
+      var v = $('ag-weight').value, n = '';
+      WEIGHTS.forEach(function(w){ if (w.id === v) n = w.note; });
+      $('ag-wnote').textContent = n;
+    }
+
+    function wireForm(){
+      paintDur(); wnote();
+      $('ag-weight').onchange = wnote;
+      $('ag-start').oninput = function(){ paintDur(); readForm(); paintQueue(); };
+      $('ag-end').oninput = paintDur;
+      $('ag-title').addEventListener('input', function(){ readForm(); paintQueue(); });
+
+      /* choosing a quiet kind drops it down the order of importance */
+      $('ag-kind').onchange = function(){
+        if (kMeta(this.value).quiet && $('ag-weight').value !== 'standard'){
+          $('ag-weight').value = 'standard';
+          wnote();
+        }
+      };
+
+      $('ag-acch').onclick = function(){
+        var a = $('ag-acc');
+        a.setAttribute('data-open', a.getAttribute('data-open') === 'true' ? 'false' : 'true');
+      };
+
+      var s = $('ag-spksearch');
+      s.oninput = function(){ search = s.value; paintPicker(); };
+    }
+
+    function readForm(){
+      if (!$('ag-title')) return;
+      var e = Q[qi];
+      e.title = $('ag-title').value.trim();
+      e.start = $('ag-start').value;
+      e.end = $('ag-end').value;
+      e.kind = $('ag-kind').value;
+      e.gid = $('ag-gid').value;
+      e.weight = $('ag-weight').value;
+      e.desc = $('ag-desc').value.trim();
+      e.room = $('ag-room').value.trim();
+    }
+
+    $('aq-add') && ($('aq-add').onclick = function(){
+      readForm();
+      Q.push(blank(Q[qi]));
+      qi = Q.length - 1;
+      search = '';
+      paintForm(); paintQueue(); paintSave();
+    });
+
+    $('asave').onclick = function(){
+      readForm();
+      var bad = [], clash = [];
+      Q.forEach(function(e, i){
+        if (!e.title) bad.push(i + 1);
+        else if (e.end && mins(e.end) != null && mins(e.start) != null && mins(e.end) <= mins(e.start)) clash.push(i + 1);
+      });
+      if (bad.length){
+        $('ag-err').textContent = Q.length === 1 ? 'A title is needed before this can be saved.'
+          : (bad.length === 1 ? 'Session ' + bad[0] + ' still needs a title.'
+                              : 'Sessions ' + bad.join(', ') + ' still need a title.');
+        if (!editing){ qi = bad[0] - 1; paintForm(); paintQueue(); }
+        return;
+      }
+      if (clash.length){
+        $('ag-err').textContent = Q.length === 1 ? 'The end time is before the start time.'
+          : 'Session ' + clash.join(', ') + ' ends before it starts.';
+        if (!editing){ qi = clash[0] - 1; paintForm(); paintQueue(); }
+        return;
+      }
+      var clean = Q.map(function(e){
+        return {
+          id: e.id, gid: e.gid, title: e.title, start: e.start, end: e.end,
+          kind: e.kind, speakers: e.speakers.slice(), desc: e.desc, room: e.room, weight: e.weight
+        };
+      });
+      if (editing){
+        S.sessions = agAll().map(function(s){ return s.id === editId ? clean[0] : s; });
+      } else {
+        S.sessions = agAll().concat(clean);
+      }
+      close();
+      agCommit();
+      toast(editing ? 'Session updated'
+        : (clean.length === 1 ? '“' + clean[0].title + '” added' : clean.length + ' sessions added'));
+    };
+
+    paintQueue();
+    paintForm();
+    paintSave();
   }
 
   function viewSponsors(){
@@ -2380,6 +3142,7 @@
     if (r === 'dashboard') DASH.wire(CTX);
     if (r === 'content/basics') wireBasics();
     if (r === 'content/speakers') wireSpeakers();
+    if (r === 'content/agenda') wireAgenda();
     if (r === 'design/sections') wireSections();
     if (r === 'design/nav') wireSetNav();
     if (r === 'design/theme') wireTheme();
