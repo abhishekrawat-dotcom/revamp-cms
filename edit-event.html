@@ -136,7 +136,7 @@
     if (sec === 'content'){
       if (tab === 'speakers') return spkAll().length;
       if (tab === 'agenda')   return agAll().length;
-      if (tab === 'sponsors') return 10;
+      if (tab === 'sponsors') return ptAll().length;
       if (tab === 'faq')      return FAQS.length;
     }
     return null;
@@ -2364,28 +2364,693 @@
     paintSave();
   }
 
+  /* ============================================================
+     VIEW : SPONSORS & PARTNERS
+
+     Third page built on the same three levers — group, order,
+     weight — so there is nothing new to learn. A tier is the group,
+     a partner is the row, and weight is the only thing that decides
+     how large a logo appears on the wall.
+     ============================================================ */
+  var SEED_TIERS = [
+    ['Presenting partner', ['Tata Capital'],                                  'keynote'],
+    ['Powered by',         ['HDFC Bank','Infosys'],                           'headline'],
+    ['Gold partners',      ['Wipro','Mahindra Group','Godrej'],               'featured'],
+    ['Associate partners', ['Zomato','Paytm','Adani Ports','L&T Infotech'],   'standard']
+  ];
+
+  /* ---------------- model ---------------- */
+  function ptInit(){
+    if (S.spTiers && S.partners) return;
+    S.spTiers = [];
+    S.partners = [];
+    SEED_TIERS.forEach(function(t, i){
+      var tid = 'tier-' + (i + 1);
+      S.spTiers.push({ id: tid, name: t[0], weight: t[2] });
+      t[1].forEach(function(n){
+        S.partners.push({
+          id: uid('p-'), tid: tid, name: n, url: '', logo: null, weight: t[2],
+          status:'confirmed', email:'', phone:'', contact:'', note:''
+        });
+      });
+    });
+    save();
+  }
+  function ptAll(){ ptInit(); return S.partners; }
+  function ptTiers(){ ptInit(); return S.spTiers; }
+  function ptIn(tid){ return ptAll().filter(function(p){ return p.tid === tid; }); }
+  function ptById(id){
+    var a = ptAll();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function ptSplice(mine, tid){
+    var out = [], done = false;
+    ptAll().forEach(function(p){
+      if (p.tid === tid){ if (!done){ out = out.concat(mine); done = true; } return; }
+      out.push(p);
+    });
+    if (!done) out = out.concat(mine);
+    return out;
+  }
+  function ptCommit(){ save(); render(); }
+
+  /* a link people paste in every shape imaginable; store one that works */
+  function tidyUrl(v){
+    var s = String(v || '').trim();
+    if (!s) return '';
+    s = s.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    return s;
+  }
+  function fullUrl(v){ return v ? 'https://' + v : ''; }
+
+  function ptLogoHTML(p, cls){
+    if (p.logo) return '<span class="' + cls + '"><img src="' + p.logo + '" alt=""></span>';
+    return '<span class="' + cls + '"><span class="none">' + svg(IC.image, 18) + '</span></span>';
+  }
+
+  /* ---------------- the page ---------------- */
   function viewSponsors(){
-    var tiers = [
-      ['Presenting partner', ['Tata Capital']],
-      ['Powered by',         ['HDFC Bank','Infosys']],
-      ['Gold partners',      ['Wipro','Mahindra Group','Godrej']],
-      ['Associate partners', ['Zomato','Paytm','Adani Ports','L&T Infotech']]
-    ];
-    var body = tiers.map(function(t){
-      return '<div style="margin-bottom:18px">' +
-        '<div class="eyebrow" style="margin-bottom:9px">' + esc(t[0]) + ' · ' + t[1].length + '</div>' +
-        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-        t[1].map(function(n){
-          return '<span style="display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:700">' +
-            svg(IC.image, 14) + esc(n) + '</span>';
-        }).join('') +
-        '<button class="btn btn-secondary btn-sm" type="button" data-save="Partner slot opened">' + svg(IC.plus, 12) + ' Add</button>' +
-        '</div></div>';
+    var tiers = ptTiers(), all = ptAll();
+    var noLogo = all.filter(function(p){ return !p.logo; }).length;
+
+    var body = tiers.map(function(t, ti){
+      var list = ptIn(t.id);
+      var rows = list.map(function(p, i){
+        var st = stMeta(p.status);
+        return '<div class="pt-row" draggable="true" data-pt="' + p.id + '" data-tid="' + t.id + '">' +
+            '<span class="spk-grip" title="Drag to reorder">' + svg(IC.grip, 15) + '</span>' +
+            ptLogoHTML(p, 'pt-logo') +
+            '<span class="pt-id"><b>' + esc(p.name) + '</b>' +
+              (p.url ? '<a href="' + esc(fullUrl(p.url)) + '" target="_blank" rel="noopener">' +
+                  esc(p.url) + '</a>'
+                     : '<span class="u">No website yet</span>') + '</span>' +
+            (!p.logo ? '<span class="pt-warn" title="No logo — this slot will show the name instead">' +
+              svg(IC.info, 15) + '</span>' : '') +
+            '<span class="pt-meta">' +
+              '<button class="wpill w-' + esc(p.weight) + '" type="button" data-ptw="' + p.id + '" ' +
+                'title="Click to change how large this logo appears">' + esc(wLabel(p.weight)) + '</button>' +
+              '<span class="badge ' + st.cls + '">' + esc(st.label) + '</span>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-ptup="' + p.id + '" title="Move up"' +
+                (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-ptdown="' + p.id + '" title="Move down"' +
+                (i === list.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-ptedit="' + p.id + '" title="Edit">' +
+                svg(IC.edit, 14) + '</button>' +
+            '</span>' +
+          '</div>';
+      }).join('');
+
+      return '<div class="grp" data-pttier="' + t.id + '">' +
+          '<div class="grp-head">' +
+            '<input class="gname" value="' + esc(t.name) + '" data-ptname="' + t.id + '" ' +
+              'aria-label="Tier name" spellcheck="false">' +
+            '<span class="gcount">' + list.length + (list.length === 1 ? ' partner' : ' partners') + '</span>' +
+            '<span class="grp-acts">' +
+              '<button class="btn btn-ghost btn-sm" type="button" data-ptsize="' + t.id + '" ' +
+                'title="Give every logo in this tier the same size">' + svg(IC.sliders, 13) +
+                ' Match sizes</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-pttup="' + t.id + '" title="Move tier up"' +
+                (ti === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-pttdown="' + t.id + '" title="Move tier down"' +
+                (ti === tiers.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+              (tiers.length > 1 ? '<button class="btn btn-ghost btn-icon" type="button" data-pttdel="' + t.id + '" ' +
+                'title="Delete tier">' + svg(IC.trash, 14) + '</button>' : '') +
+            '</span>' +
+          '</div>' +
+          (rows || '<div class="grp-empty">No partners in this tier yet. ' +
+            'Add one, or drag a partner in from another tier.</div>') +
+          '<div class="grp-foot">' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-ptadd="' + t.id + '">' +
+              svg(IC.plus, 13) + ' Add to ' + esc(t.name) + '</button>' +
+          '</div>' +
+        '</div>';
     }).join('');
 
-    return vhead('Sponsors & partners', 'Logos render as a tiered wall in the Partners block.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Tier created">' + svg(IC.plus, 13) + ' Add tier</button>') +
-      panel('Logo wall', '10 partners across 4 tiers', body);
+    var sub = all.length + (all.length === 1 ? ' partner' : ' partners') +
+      ' across ' + tiers.length + (tiers.length === 1 ? ' tier' : ' tiers') + '. ' +
+      'Tiers, order and weight are exactly what the logo wall renders.';
+
+    var warn = noLogo
+      ? '<div class="callout" style="margin-bottom:18px">' + svg(IC.info, 17) +
+          '<span><strong>' + noLogo + (noLogo === 1 ? ' partner has' : ' partners have') + ' no logo yet</strong>' +
+          'Their slot on the wall falls back to the company name in plain text. ' +
+          'Open the row and drop a logo in to fix it.</span></div>'
+      : '';
+
+    return vhead('Sponsors & partners', sub,
+        '<button class="btn btn-secondary btn-sm" type="button" id="pt-addtier">' +
+          svg(IC.plus, 13) + ' Add tier</button>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="pt-add">' +
+          svg(IC.plus, 13) + ' Add partners</button>') +
+
+      '<div class="sp2">' +
+        '<div class="sp2-main">' + warn + body +
+          '<div class="callout info">' + svg(IC.info, 17) +
+            '<span><strong>Weight is what sizes a logo</strong>' +
+            'A tier is a heading on the wall; the <b>weight</b> on each row decides how much space that logo ' +
+            'gets, so a presenting partner can be large even if the tier is small. <b>Match sizes</b> gives ' +
+            'every logo in a tier the same weight in one click. Everything saves as you go.</span></div>' +
+        '</div>' +
+        '<aside class="spk-side">' +
+          '<div class="pvc">' +
+            '<div class="pvc-head"><span class="eyebrow">Live preview</span>' +
+              '<span class="ctr">' + all.length + ' on wall</span></div>' +
+            '<div class="ptv">' + ptPreview() + '</div>' +
+            '<div class="pvc-foot">The Partners block as it renders on the microsite.</div>' +
+          '</div>' +
+          '<div class="pvc">' +
+            '<div class="pvc-head"><span class="eyebrow">Ready for the wall</span>' +
+              '<span class="ctr">' + (all.length - noLogo) + ' / ' + all.length + '</span></div>' +
+            '<div class="rdy-bar"><i style="width:' +
+              (all.length ? Math.round((all.length - noLogo) / all.length * 100) : 0) + '%"></i></div>' +
+            [['Logo uploaded', all.length - noLogo, noLogo === 0],
+             ['Website linked', all.filter(function(p){ return !!p.url; }).length,
+               all.filter(function(p){ return !p.url; }).length === 0],
+             ['Contact on file', all.filter(function(p){ return p.email || p.phone; }).length, true]
+            ].map(function(r){
+              return '<div class="rdy-item' + (r[2] ? ' on' : '') + '">' +
+                  '<span class="tick">' + svg(r[2] ? IC.check : IC.info, 11) + '</span>' +
+                  '<span class="lb">' + esc(r[0]) + '</span>' +
+                  '<span class="num">' + r[1] + ' / ' + all.length + '</span></div>';
+            }).join('') +
+          '</div>' +
+        '</aside>' +
+      '</div>';
+  }
+
+  function ptPreview(){
+    if (!ptAll().length) return '<div class="ptv-empty">No partners yet. The block is hidden on the live page.</div>';
+    return ptTiers().map(function(t){
+      var list = ptIn(t.id);
+      if (!list.length) return '';
+      return '<div class="ptv-t"><div class="ptv-h">' + esc(t.name) + '</div>' +
+        '<div class="ptv-wall">' + list.map(function(p){
+          return '<div class="ptv-l ' + (WCLASS[p.weight] || 'w-f') + '">' +
+            (p.logo ? '<img src="' + p.logo + '" alt="">' : '<span>' + esc(p.name) + '</span>') +
+          '</div>';
+        }).join('') + '</div></div>';
+    }).join('') || '<div class="ptv-empty">Every tier is empty.</div>';
+  }
+
+  /* ---------------- page wiring ---------------- */
+  function wireSponsors(){
+    var add = $('pt-add');
+    if (add) add.onclick = function(){ ptDialog(null, ptTiers()[0].id); };
+
+    var addt = $('pt-addtier');
+    if (addt) addt.onclick = function(){
+      S.spTiers.push({ id: uid('tier-'), name: 'New tier', weight:'standard' });
+      ptCommit();
+      toast('Tier added — give it a name');
+      var n = document.querySelectorAll('.gname');
+      if (n.length){ n[n.length - 1].focus(); n[n.length - 1].select(); }
+    };
+
+    document.querySelectorAll('[data-ptadd]').forEach(function(b){
+      b.onclick = function(){ ptDialog(null, b.getAttribute('data-ptadd')); };
+    });
+    document.querySelectorAll('[data-ptedit]').forEach(function(b){
+      b.onclick = function(){ ptDialog(b.getAttribute('data-ptedit')); };
+    });
+
+    document.querySelectorAll('[data-ptname]').forEach(function(inp){
+      var id = inp.getAttribute('data-ptname');
+      inp.onchange = function(){
+        var v = inp.value.trim() || 'Untitled tier';
+        ptTiers().forEach(function(t){ if (t.id === id) t.name = v; });
+        save();
+      };
+      inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
+    });
+
+    document.querySelectorAll('[data-ptw]').forEach(function(b){
+      b.onclick = function(){
+        var p = ptById(b.getAttribute('data-ptw'));
+        if (!p) return;
+        var i = 0;
+        WEIGHTS.forEach(function(w, n){ if (w.id === p.weight) i = n; });
+        p.weight = WEIGHTS[(i + 1) % WEIGHTS.length].id;
+        ptCommit();
+        toast(p.name + ' is now ' + wLabel(p.weight).toLowerCase() + ' size');
+      };
+    });
+
+    document.querySelectorAll('[data-ptup]').forEach(function(b){
+      b.onclick = function(){ ptMove(b.getAttribute('data-ptup'), -1); };
+    });
+    document.querySelectorAll('[data-ptdown]').forEach(function(b){
+      b.onclick = function(){ ptMove(b.getAttribute('data-ptdown'), 1); };
+    });
+    document.querySelectorAll('[data-pttup]').forEach(function(b){
+      b.onclick = function(){ ptTierMove(b.getAttribute('data-pttup'), -1); };
+    });
+    document.querySelectorAll('[data-pttdown]').forEach(function(b){
+      b.onclick = function(){ ptTierMove(b.getAttribute('data-pttdown'), 1); };
+    });
+
+    /* one click to make a tier look like a tier */
+    document.querySelectorAll('[data-ptsize]').forEach(function(b){
+      b.onclick = function(){
+        var tid = b.getAttribute('data-ptsize');
+        var t = ptTiers().filter(function(x){ return x.id === tid; })[0];
+        var list = ptIn(tid);
+        if (!list.length){ toast('Nothing in this tier yet'); return; }
+        /* the commonest weight in the tier wins, so one stray row is the one that moves */
+        var tally = {};
+        list.forEach(function(p){ tally[p.weight] = (tally[p.weight] || 0) + 1; });
+        var best = list[0].weight, n = 0;
+        Object.keys(tally).forEach(function(k){ if (tally[k] > n){ n = tally[k]; best = k; } });
+        list.forEach(function(p){ p.weight = best; });
+        if (t) t.weight = best;
+        ptCommit();
+        toast('Every logo in ' + (t ? t.name : 'this tier') + ' is now ' + wLabel(best).toLowerCase());
+      };
+    });
+
+    document.querySelectorAll('[data-pttdel]').forEach(function(b){
+      b.onclick = function(){
+        var tid = b.getAttribute('data-pttdel');
+        var t = ptTiers().filter(function(x){ return x.id === tid; })[0];
+        var n = ptIn(tid).length;
+        var keep = ptTiers().filter(function(x){ return x.id !== tid; })[0];
+        confirmDialog('Delete ' + (t ? t.name : 'this tier') + '?',
+          n ? n + (n === 1 ? ' partner moves' : ' partners move') + ' to ' + keep.name + '. Nobody is deleted.'
+            : 'The tier is empty, so nothing else changes.',
+          'Delete tier', function(){
+            ptAll().forEach(function(p){ if (p.tid === tid) p.tid = keep.id; });
+            S.spTiers = ptTiers().filter(function(x){ return x.id !== tid; });
+            ptCommit();
+            toast('Tier deleted');
+          });
+      };
+    });
+
+    ptDragDrop();
+  }
+
+  function ptMove(id, dir){
+    var p = ptById(id);
+    if (!p) return;
+    var mine = ptIn(p.tid);
+    var i = mine.map(function(x){ return x.id; }).indexOf(id);
+    var j = i + dir;
+    if (j < 0 || j >= mine.length) return;
+    mine.splice(j, 0, mine.splice(i, 1)[0]);
+    S.partners = ptSplice(mine, p.tid);
+    ptCommit();
+  }
+  function ptTierMove(tid, dir){
+    var ts = ptTiers();
+    var i = ts.map(function(t){ return t.id; }).indexOf(tid);
+    var j = i + dir;
+    if (j < 0 || j >= ts.length) return;
+    ts.splice(j, 0, ts.splice(i, 1)[0]);
+    ptCommit();
+  }
+
+  function ptDragDrop(){
+    var dragId = null;
+    document.querySelectorAll('.pt-row').forEach(function(row){
+      row.addEventListener('dragstart', function(e){
+        dragId = row.getAttribute('data-pt');
+        row.classList.add('drag');
+        try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+      });
+      row.addEventListener('dragend', function(){
+        dragId = null;
+        document.querySelectorAll('.pt-row').forEach(function(r){
+          r.classList.remove('drag', 'over-top', 'over-bot');
+        });
+      });
+      row.addEventListener('dragover', function(e){
+        if (!dragId || row.getAttribute('data-pt') === dragId) return;
+        e.preventDefault();
+        var r = row.getBoundingClientRect();
+        var after = (e.clientY - r.top) > r.height / 2;
+        row.classList.toggle('over-bot', after);
+        row.classList.toggle('over-top', !after);
+      });
+      row.addEventListener('dragleave', function(){ row.classList.remove('over-top', 'over-bot'); });
+      row.addEventListener('drop', function(e){
+        if (!dragId || row.getAttribute('data-pt') === dragId) return;
+        e.preventDefault();
+        var r = row.getBoundingClientRect();
+        var after = (e.clientY - r.top) > r.height / 2;
+        var p = ptById(dragId), t = ptById(row.getAttribute('data-pt'));
+        if (!p || !t) return;
+        p.tid = t.tid;
+        var list = ptAll().slice();
+        list.splice(list.indexOf(p), 1);
+        list.splice(list.indexOf(t) + (after ? 1 : 0), 0, p);
+        S.partners = list;
+        ptCommit();
+      });
+    });
+
+    document.querySelectorAll('[data-pttier]').forEach(function(g){
+      g.addEventListener('dragover', function(e){ if (dragId) e.preventDefault(); });
+      g.addEventListener('drop', function(e){
+        if (!dragId) return;
+        if (e.target.closest && e.target.closest('.pt-row')) return;
+        e.preventDefault();
+        var p = ptById(dragId);
+        if (!p) return;
+        p.tid = g.getAttribute('data-pttier');
+        ptCommit();
+      });
+    });
+  }
+
+  /* ============================================================
+     THE PARTNER DIALOG
+
+     Same queue as the other two. A new row inherits the tier's
+     weight, so a whole tier can go in without touching the setting.
+     ============================================================ */
+  function ptDialog(editId, defaultTid){
+    var editing = !!editId;
+    var tid = defaultTid || ptTiers()[0].id;
+
+    function tierWeight(id){
+      var t = ptTiers().filter(function(x){ return x.id === id; })[0];
+      return (t && t.weight) || 'featured';
+    }
+    function blank(fromTid){
+      var t = fromTid || tid;
+      return {
+        id: uid('p-'), tid: t, name:'', url:'', logo:null, weight: tierWeight(t),
+        status:'confirmed', email:'', phone:'', contact:'', note:''
+      };
+    }
+
+    var Q, qi = 0;
+    if (editing){
+      var src = ptById(editId);
+      if (!src) return;
+      Q = [JSON.parse(JSON.stringify(src))];
+    } else {
+      Q = [blank(tid)];
+    }
+
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="pbg"><div class="modal wide">' +
+        '<div class="modal-head">' +
+          '<h3>' + (editing ? 'Edit partner' : 'Add partners') + '</h3>' +
+          '<span class="sub" style="font-size:12px;color:var(--text-muted)">' +
+            (editing ? 'Changes apply when you save.'
+                     : 'Add a whole tier in one pass, then save the set together.') + '</span>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="pclose" aria-label="Close">' +
+            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
+        '</div>' +
+        '<div class="sp-wrap">' +
+          (editing ? '' :
+            '<div class="sp-queue">' +
+              '<div class="qh">Adding <span id="pq-n"></span></div>' +
+              '<div class="qlist" id="pq-list"></div>' +
+              '<div class="qfoot"><button class="btn btn-secondary btn-sm" type="button" id="pq-add" ' +
+                'style="width:100%">' + svg(IC.plus, 13) + ' Add another</button></div>' +
+            '</div>') +
+          '<div class="sp-form" id="pt-form"></div>' +
+        '</div>' +
+        '<div class="modal-foot">' +
+          '<span id="pt-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+          '<button class="btn btn-secondary" type="button" id="pcancel">Cancel</button>' +
+          (editing ? '<button class="btn btn-secondary" type="button" id="pdel">Remove partner</button>' : '') +
+          '<button class="btn btn-primary" type="button" id="psave"></button>' +
+        '</div>' +
+      '</div></div>';
+
+    var close = function(){ host.innerHTML = ''; };
+    $('pclose').onclick = close;
+    $('pcancel').onclick = close;
+    $('pbg').onclick = function(e){ if (e.target.id === 'pbg') close(); };
+    document.addEventListener('keydown', function esc4(e){
+      if (!document.getElementById('pbg')) { document.removeEventListener('keydown', esc4); return; }
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc4); }
+    });
+
+    if (editing) $('pdel').onclick = function(){
+      var p = ptById(editId);
+      close();
+      confirmDialog('Remove ' + (p ? p.name : 'this partner') + '?',
+        'They come off the wall and off the live page. This cannot be undone from here.',
+        'Remove', function(){
+          S.partners = ptAll().filter(function(x){ return x.id !== editId; });
+          ptCommit();
+          toast('Partner removed');
+        });
+    };
+
+    function paintQueue(){
+      if (editing) return;
+      $('pq-n').textContent = Q.length + (Q.length === 1 ? ' partner' : ' partners');
+      $('pq-list').innerHTML = Q.map(function(e, i){
+        var ph = e.logo
+          ? '<span class="qph" style="background:#fff;padding:3px"><img src="' + e.logo +
+            '" alt="" style="object-fit:contain"></span>'
+          : '<span class="qph">' + svg(IC.image, 13) + '</span>';
+        return '<button class="qi" type="button" data-q="' + i + '" aria-current="' + (i === qi) + '">' +
+            ph + '<span class="qn">' + (e.name ? esc(e.name) : '<em>Partner ' + (i + 1) + '</em>') + '</span>' +
+            (Q.length > 1 ? '<span class="qx" data-qx="' + i + '" role="button" aria-label="Remove">' +
+              svg('<path d="M18 6L6 18M6 6l12 12"/>', 13) + '</span>' : '') +
+          '</button>';
+      }).join('');
+      $('pq-list').querySelectorAll('[data-q]').forEach(function(b){
+        b.onclick = function(e){
+          if (e.target.closest('[data-qx]')) return;
+          readForm(); qi = +b.getAttribute('data-q'); paintForm(); paintQueue();
+        };
+      });
+      $('pq-list').querySelectorAll('[data-qx]').forEach(function(x){
+        x.onclick = function(e){
+          e.stopPropagation();
+          var i = +x.getAttribute('data-qx');
+          readForm();
+          Q.splice(i, 1);
+          if (qi >= Q.length) qi = Q.length - 1;
+          paintForm(); paintQueue(); paintSave();
+        };
+      });
+    }
+    function paintSave(){
+      $('psave').textContent = editing ? 'Save changes'
+        : (Q.length === 1 ? 'Add partner' : 'Add all ' + Q.length + ' partners');
+    }
+
+    function paintForm(){
+      var e = Q[qi];
+      $('pt-form').innerHTML =
+        '<div class="lg-grid">' +
+          '<div id="pt-lgbox"></div>' +
+          '<div class="ph-help">' +
+            '<b>Logo</b>Drop the file in and it sits on white, exactly as it will on the wall. ' +
+            'Any shape works — logos are never cropped. A transparent PNG or an SVG looks best; ' +
+            'without one, the slot falls back to the company name in plain text.' +
+            '<div class="frow" style="margin-top:14px">' +
+              '<div class="field c12"><div class="flabel-row">' +
+                '<label for="pt-name">Company name <span class="pill-req">Required</span></label></div>' +
+                '<input class="inp" id="pt-name" value="' + esc(e.name) + '" placeholder="e.g. Tata Capital"></div>' +
+              '<div class="field c12"><label for="pt-url">Website</label>' +
+                '<div class="inp-grp"><span class="pre">https://</span>' +
+                  '<input class="inp" id="pt-url" value="' + esc(e.url) + '" ' +
+                    'placeholder="tatacapital.com" spellcheck="false"></div>' +
+                '<p class="hint">The logo links here on the live page.</p></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="frow" style="margin-top:18px">' +
+          '<div class="field c4"><label for="pt-tid">Tier</label>' +
+            '<div class="inp-grp">' +
+              '<select class="inp" id="pt-tid">' + ptTiers().map(function(t){
+                return '<option value="' + esc(t.id) + '"' + (t.id === e.tid ? ' selected' : '') + '>' +
+                  esc(t.name) + '</option>';
+              }).join('') + '</select>' +
+              '<button class="gbtn" type="button" id="pt-newt">' + svg(IC.plus, 12) + ' New</button>' +
+            '</div>' +
+            '<p class="hint">Becomes a heading on the wall.</p></div>' +
+
+          '<div class="field c4"><label for="pt-weight">Logo size</label>' +
+            '<select class="inp" id="pt-weight">' + WEIGHTS.map(function(w){
+              return '<option value="' + w.id + '"' + (w.id === e.weight ? ' selected' : '') + '>' +
+                esc(w.label) + '</option>';
+            }).join('') + '</select>' +
+            '<p class="hint" id="pt-wnote"></p></div>' +
+
+          '<div class="field c4"><label for="pt-status">Status</label>' +
+            '<select class="inp" id="pt-status">' + STATUSES.map(function(s){
+              return '<option value="' + s.id + '"' + (s.id === e.status ? ' selected' : '') + '>' +
+                esc(s.label) + '</option>';
+            }).join('') + '</select>' +
+            '<p class="hint">Only confirmed partners show on the wall.</p></div>' +
+        '</div>' +
+
+        '<div class="acc" data-open="' + (e.email || e.phone || e.contact || e.note ? 'true' : 'false') + '" id="pt-acc">' +
+          '<button class="acc-head" type="button" id="pt-acch">' + svg(IC.caret, 14) +
+            'Contact and notes' +
+            '<span class="ah-sub">Who to call about this partner — all optional</span></button>' +
+          '<div class="acc-body"><div class="frow">' +
+            '<div class="field c6"><label for="pt-contact">Contact person</label>' +
+              '<input class="inp" id="pt-contact" value="' + esc(e.contact || '') + '" ' +
+                'placeholder="e.g. Priya Nair"></div>' +
+            '<div class="field c6"><label for="pt-email">Email</label>' +
+              '<input class="inp" id="pt-email" value="' + esc(e.email || '') + '" ' +
+                'placeholder="name@company.com"></div>' +
+            '<div class="field c6"><label for="pt-phone">Mobile</label>' +
+              '<input class="inp" id="pt-phone" value="' + esc(e.phone || '') + '" ' +
+                'placeholder="+91 98200 00000"></div>' +
+            '<div class="field c12"><label for="pt-note">Internal note</label>' +
+              '<textarea class="inp" id="pt-note" style="min-height:62px" ' +
+                'placeholder="Deliverables, deadlines, anything the team should know.">' +
+                esc(e.note || '') + '</textarea>' +
+              '<p class="hint">Never shown on the live page.</p></div>' +
+          '</div></div>' +
+        '</div>';
+
+      paintLogo();
+      wireForm();
+    }
+
+    function wnote(){
+      var v = $('pt-weight').value, n = '';
+      WEIGHTS.forEach(function(w){ if (w.id === v) n = w.note; });
+      $('pt-wnote').textContent = n.replace('card', 'logo').replace('Card', 'Logo');
+    }
+
+    function wireForm(){
+      wnote();
+      $('pt-weight').onchange = wnote;
+
+      $('pt-acch').onclick = function(){
+        var a = $('pt-acc');
+        a.setAttribute('data-open', a.getAttribute('data-open') === 'true' ? 'false' : 'true');
+      };
+
+      $('pt-newt').onclick = function(){
+        readForm();
+        var t = { id: uid('tier-'), name: 'New tier', weight:'standard' };
+        S.spTiers.push(t);
+        save();
+        Q[qi].tid = t.id;
+        paintForm();
+        toast('Tier added — rename it on the page');
+      };
+
+      /* a pasted link arrives in every shape; keep the stored one clean */
+      $('pt-url').onchange = function(){ this.value = tidyUrl(this.value); };
+
+      $('pt-name').addEventListener('input', function(){ readForm(); paintQueue(); });
+
+      /* the tier sets the size for a row that has not been touched */
+      $('pt-tid').onchange = function(){
+        var e = Q[qi];
+        if (!e.weightTouched) {
+          $('pt-weight').value = tierWeight(this.value);
+          wnote();
+        }
+      };
+      $('pt-weight').addEventListener('change', function(){ Q[qi].weightTouched = true; });
+    }
+
+    function pickFile(cb){
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = function(){ if (inp.files && inp.files[0]) cb(inp.files[0]); };
+      inp.click();
+    }
+
+    function loadLogo(file){
+      readImage(file, function(img, err){
+        if (err){ toast(err); return; }
+        Q[qi].logo = shrinkLogo(img, 480, 240);
+        paintLogo();
+        paintQueue();
+      });
+    }
+
+    function paintLogo(){
+      var e = Q[qi], box = $('pt-lgbox');
+      if (!e.logo){
+        box.innerHTML =
+          '<div class="lg-drop" id="pt-drop" tabindex="0" role="button">' + svg(IC.image, 24) +
+            '<b>Add the logo</b><span>Drop a file here, or click to choose</span></div>';
+        var d = $('pt-drop');
+        d.onclick = function(){ pickFile(loadLogo); };
+        d.onkeydown = function(ev){ if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); pickFile(loadLogo); } };
+        d.addEventListener('dragover', function(ev){ ev.preventDefault(); d.classList.add('over'); });
+        d.addEventListener('dragleave', function(){ d.classList.remove('over'); });
+        d.addEventListener('drop', function(ev){
+          ev.preventDefault(); d.classList.remove('over');
+          if (ev.dataTransfer.files && ev.dataTransfer.files[0]) loadLogo(ev.dataTransfer.files[0]);
+        });
+        return;
+      }
+      box.innerHTML =
+        '<div class="lg-have"><img src="' + e.logo + '" alt=""></div>' +
+        '<div class="lg-acts">' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="pt-replace" style="flex:1">Replace</button>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="pt-lgdel" title="Remove">' +
+            svg(IC.trash, 14) + '</button>' +
+        '</div>';
+      $('pt-replace').onclick = function(){ pickFile(loadLogo); };
+      $('pt-lgdel').onclick = function(){ Q[qi].logo = null; paintLogo(); paintQueue(); };
+    }
+
+    function readForm(){
+      if (!$('pt-name')) return;
+      var e = Q[qi];
+      e.name = $('pt-name').value.trim();
+      e.url = tidyUrl($('pt-url').value);
+      e.tid = $('pt-tid').value;
+      e.weight = $('pt-weight').value;
+      e.status = $('pt-status').value;
+      e.contact = $('pt-contact').value.trim();
+      e.email = $('pt-email').value.trim();
+      e.phone = $('pt-phone').value.trim();
+      e.note = $('pt-note').value.trim();
+    }
+
+    $('pq-add') && ($('pq-add').onclick = function(){
+      readForm();
+      Q.push(blank(Q[qi].tid));
+      qi = Q.length - 1;
+      paintForm(); paintQueue(); paintSave();
+    });
+
+    $('psave').onclick = function(){
+      readForm();
+      var bad = [];
+      Q.forEach(function(e, i){ if (!e.name) bad.push(i + 1); });
+      if (bad.length){
+        $('pt-err').textContent = Q.length === 1 ? 'A company name is needed before this can be saved.'
+          : (bad.length === 1 ? 'Partner ' + bad[0] + ' still needs a name.'
+                              : 'Partners ' + bad.join(', ') + ' still need a name.');
+        if (!editing){ qi = bad[0] - 1; paintForm(); paintQueue(); }
+        return;
+      }
+      var clean = Q.map(function(e){
+        return {
+          id: e.id, tid: e.tid, name: e.name, url: e.url, logo: e.logo || null,
+          weight: e.weight, status: e.status, contact: e.contact,
+          email: e.email, phone: e.phone, note: e.note
+        };
+      });
+      if (editing){
+        S.partners = ptAll().map(function(p){ return p.id === editId ? clean[0] : p; });
+      } else {
+        S.partners = ptAll().concat(clean);
+      }
+      close();
+      ptCommit();
+      toast(editing ? 'Partner updated'
+        : (clean.length === 1 ? clean[0].name + ' added' : clean.length + ' partners added'));
+    };
+
+    paintQueue();
+    paintForm();
+    paintSave();
   }
 
   /* ============================================================
@@ -3143,6 +3808,7 @@
     if (r === 'content/basics') wireBasics();
     if (r === 'content/speakers') wireSpeakers();
     if (r === 'content/agenda') wireAgenda();
+    if (r === 'content/sponsors') wireSponsors();
     if (r === 'design/sections') wireSections();
     if (r === 'design/nav') wireSetNav();
     if (r === 'design/theme') wireTheme();

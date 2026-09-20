@@ -1138,3 +1138,87 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .agv-s.w-h .b b{ font-size:11.5px; }
 .agv-s.w-s .b b{ font-size:9.5px; font-weight:600; }
 .agv-empty{ padding:24px 12px; text-align:center; font-size:12px; color: var(--text-muted); }
+
+/* ============================================================
+   SPONSORS — tiers, order, weight. A tier is a group, a row is a
+   partner, and the logo does the talking, so it leads the row and
+   sits on white the way it will on the wall.
+   ============================================================ */
+.sp2{ display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:18px; align-items:start; }
+@media (max-width:1240px){ .sp2{ grid-template-columns: minmax(0,1fr); } }
+.sp2-main{ min-width:0; }
+
+.pt-row{
+  display:flex; align-items:center; gap:12px; padding:10px 13px;
+  border-bottom:1px solid var(--border); background: var(--surface); transition: background .13s;
+}
+.pt-row:last-child{ border-bottom:0; }
+.pt-row:hover{ background: var(--surface-2); }
+.pt-row.drag{ opacity:.4; }
+.pt-row.over-top{ box-shadow: inset 0 2px 0 var(--accent); }
+.pt-row.over-bot{ box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* a logo always sits on white — that is the wall it will land on */
+.pt-logo{
+  width:86px; height:44px; border-radius:9px; flex-shrink:0; overflow:hidden;
+  background:#fff; border:1px solid var(--border); display:grid; place-items:center; padding:5px;
+}
+.pt-logo img{ width:100%; height:100%; object-fit:contain; display:block; min-width:0; min-height:0; }
+.pt-logo .none{ color:#b9b0ae; }
+.pt-id{ flex:1; min-width:0; }
+.pt-id b{ font-size:13.5px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pt-id a, .pt-id span.u{
+  font-size:11.5px; color: var(--text-muted); font-family: var(--font-mono);
+  display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-decoration:none;
+}
+.pt-id a:hover{ color: var(--accent-strong); text-decoration:underline; }
+.pt-meta{ display:flex; align-items:center; gap:7px; flex-shrink:0; }
+.pt-warn{ color: var(--warn); display:inline-grid; place-items:center; flex-shrink:0; }
+@media (max-width:760px){
+  .pt-row{ flex-wrap:wrap; }
+  .pt-id{ flex-basis:calc(100% - 160px); }
+  .pt-meta{ margin-left:98px; }
+}
+
+/* logo upload inside the dialog: no crop, logos are whatever shape they are */
+.lg-grid{ display:grid; grid-template-columns: 232px minmax(0,1fr); gap:16px; align-items:start; }
+@media (max-width:620px){ .lg-grid{ grid-template-columns: minmax(0,1fr); } }
+.lg-drop{
+  width:232px; height:116px; border-radius:12px; border:1.5px dashed var(--border); background:#fff;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  cursor:pointer; text-align:center; padding:10px; color:#8a807e;
+  transition: border-color .14s, background .14s, color .14s;
+}
+.lg-drop:hover, .lg-drop.over{ border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+.lg-drop b{ font-size:12.5px; }
+.lg-drop span{ font-size:11px; }
+.lg-have{
+  width:232px; height:116px; border-radius:12px; border:1px solid var(--border); background:#fff;
+  display:grid; place-items:center; padding:12px; overflow:hidden;
+}
+.lg-have img{ width:100%; height:100%; object-fit:contain; display:block; min-width:0; min-height:0; }
+.lg-acts{ display:flex; gap:7px; margin-top:8px; width:232px; }
+
+/* ---- live preview of the published wall ---- */
+.ptv{ padding:14px; background: var(--surface-2); }
+.ptv-t{ margin-bottom:14px; }
+.ptv-t:last-child{ margin-bottom:0; }
+.ptv-h{
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
+  color: var(--text-faint); margin-bottom:7px; text-align:center;
+}
+.ptv-wall{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+.ptv-l{
+  background:#fff; border:1px solid var(--border); border-radius:7px; display:grid; place-items:center;
+  padding:5px; min-width:0; overflow:hidden; text-align:center;
+}
+.ptv-l img{ width:100%; height:100%; object-fit:contain; display:block; min-width:0; min-height:0; }
+.ptv-l span{ font-size:8.5px; font-weight:700; color:#5c5250; line-height:1.2; overflow-wrap:anywhere; }
+/* weight is the only thing that decides how big a logo gets on the wall */
+.ptv-l.w-k{ width:100%; height:62px; }
+.ptv-l.w-k span{ font-size:12px; }
+.ptv-l.w-h{ width:calc(50% - 3px); height:48px; }
+.ptv-l.w-h span{ font-size:10.5px; }
+.ptv-l.w-f{ width:calc(33.333% - 4px); height:40px; }
+.ptv-l.w-s{ width:calc(25% - 5px); height:32px; }
+.ptv-empty{ padding:24px 12px; text-align:center; font-size:12px; color: var(--text-muted); }
