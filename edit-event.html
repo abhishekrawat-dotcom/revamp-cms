@@ -134,7 +134,7 @@
       if (tab === 'shortlist') return EV.shortlist;
     }
     if (sec === 'content'){
-      if (tab === 'speakers') return SPEAKERS.length;
+      if (tab === 'speakers') return spkAll().length;
       if (tab === 'agenda')   return 7;
       if (tab === 'sponsors') return 10;
       if (tab === 'faq')      return FAQS.length;
@@ -230,49 +230,386 @@
      ============================================================ */
   /* ============================================================
      VIEW : BASIC DETAILS
+
+     Seven fields, one panel, read top to bottom the way someone
+     actually describes an event: what it is called, when and where
+     it happens, then how it reads to a visitor.
+
+     The right rail shows the three surfaces that copy lands on —
+     the listing card, a search result and the social share card —
+     repainted on every keystroke, so the form is never guesswork.
      ============================================================ */
+  var BASICS_DESC = 'India’s decision-makers gather to set the agenda for the year ahead.';
+  var DESC_IDEAL = 160;
+
+  function slugify(s){
+    return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  /* the shared formatters take an ISO-ish string; toISOString() would shift
+     the value into UTC and can move a late-evening event to the next day */
+  function localIso(d){
+    function p2(n){ return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) +
+      "T" + p2(d.getHours()) + ":" + p2(d.getMinutes());
+  }
+
+  /* one numbered step inside the form panel */
+  function fgroup(n, title, sub, rows){
+    return '<div class="fgroup">' +
+        '<div class="fgroup-head"><span class="n">' + n + '</span>' +
+          '<h4>' + esc(title) + '</h4>' +
+          '<span class="gsub">' + esc(sub) + '</span></div>' +
+        '<div class="frow">' + rows + '</div>' +
+      '</div>';
+  }
+
   function viewBasics(){
     var e = EV;
-    var body =
-      '<div class="frow">' +
-        '<div class="field c4"><label>Event name</label><input class="inp" value="' + esc(e.name) + '"></div>' +
-        '<div class="field c3"><label>Event number</label><input class="inp" value="' + e.eventNo + '" readonly style="color:var(--text-muted)"></div>' +
-        '<div class="field c5"><label>Microsite URL</label>' +
-          '<div style="display:flex"><span style="display:flex;align-items:center;padding:0 11px;border:1px solid var(--border);border-right:0;border-radius:8px 0 0 8px;background:var(--surface-2);color:var(--text-faint);font-family:var(--font-mono);font-size:12px;white-space:nowrap">etoneworld.com/</span>' +
-          '<input class="inp" style="border-radius:0 8px 8px 0" value="' + esc(e.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')) + '"></div></div>' +
+    var slug = slugify(e.name);
+    var desc = BASICS_DESC;
 
-        '<div class="field c3"><label>Category</label><select class="inp">' +
-          Object.keys(TYPES).map(function(k){
-            return '<option' + (k === e.type ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
-          }).join('') + '</select></div>' +
-        '<div class="field c3"><label>Portal</label><select class="inp">' +
-          Object.keys(PORTALS).map(function(k){
-            return '<option' + (k === e.portal ? ' selected' : '') + '>' + esc(PORTALS[k]) + '</option>';
-          }).join('') + '</select></div>' +
-        '<div class="field c3"><label>Status</label><select class="inp">' +
-          ['draft','upcoming','active','completed'].map(function(k){
-            return '<option' + (k === e.status ? ' selected' : '') + '>' + k + '</option>';
-          }).join('') + '</select></div>' +
-        '<div class="field c3"><label>Event type</label><select class="inp"><option>On-ground</option><option>Virtual</option><option>Hybrid</option></select></div>' +
+    var identity =
+      '<div class="field c7">' +
+        '<div class="flabel-row"><label for="b-name">Event name <span class="pill-req">Required</span></label></div>' +
+        '<input class="inp" id="b-name" value="' + esc(e.name) + '" placeholder="e.g. MarTech+ Summit 2026">' +
+        '<p class="hint">The headline on the microsite and in every listing.</p></div>' +
 
-        '<div class="field c4"><label>Starts</label><input class="inp" type="datetime-local" value="' + (e.start ? e.start.slice(0,16) : '') + '"></div>' +
-        '<div class="field c4"><label>Ends <span class="pill-opt">Optional</span></label><input class="inp" type="datetime-local" value="' + (e.end ? e.end.slice(0,16) : '') + '"></div>' +
-        '<div class="field c4"><label>Venue &amp; city</label><input class="inp" value="' + esc(e.venue) + '"></div>' +
+      '<div class="field c5"><label for="b-cat">Category</label>' +
+        '<select class="inp" id="b-cat">' + Object.keys(TYPES).map(function(k){
+          return '<option' + (k === e.type ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
+        }).join('') + '</select>' +
+        '<p class="hint">Decides which template and reports this event gets.</p></div>';
 
-        '<div class="field c6"><label>Short description</label><textarea class="inp" placeholder="One or two lines used in listings, search results and social cards.">India’s decision-makers gather to set the agenda for the year ahead.</textarea></div>' +
-        '<div class="field c6"><label>Registration target</label><input class="inp" type="number" value="' + (e.regTarget || '') + '">' +
-          '<p class="hint">Drives the progress bar on the dashboard and the listing screen.</p></div>' +
+    var when =
+      '<div class="field c4">' +
+        '<div class="flabel-row"><label for="b-start">Starts <span class="pill-req">Required</span></label></div>' +
+        '<input class="inp" id="b-start" type="datetime-local" value="' + (e.start ? e.start.slice(0,16) : '') + '"></div>' +
+
+      '<div class="field c4"><div class="flabel-row"><label for="b-end">Ends</label>' +
+          '<span class="pill-opt">Optional</span></div>' +
+        '<input class="inp" id="b-end" type="datetime-local" value="' + (e.end ? e.end.slice(0,16) : '') + '"></div>' +
+
+      '<div class="field c4"><label for="b-venue">Venue &amp; city</label>' +
+        '<div class="inp-ico">' + svg(IC.globe, 15) +
+          '<input class="inp" id="b-venue" value="' + esc(e.venue) + '" placeholder="e.g. Grand Hyatt, Mumbai"></div></div>' +
+
+      '<div class="field c12"><div class="readouts" id="b-when"></div></div>';
+
+    var reads =
+      '<div class="field c12">' +
+        '<div class="flabel-row"><label for="b-desc">Short description</label>' +
+          '<span class="ctr" id="b-count"><span class="meter"><i></i></span><span class="t"></span></span></div>' +
+        '<textarea class="inp" id="b-desc" maxlength="220" style="min-height:88px" ' +
+          'placeholder="One or two lines, used wherever this event is listed.">' + esc(desc) + '</textarea>' +
+        '<p class="hint">Shown in listings, search results and the social share card. ' +
+          'Around ' + DESC_IDEAL + ' characters reads best everywhere.</p></div>' +
+
+      '<div class="field c12"><label for="b-slug">Microsite URL</label>' +
+        '<div class="inp-grp">' +
+          '<span class="pre">etoneworld.com/</span>' +
+          '<input class="inp" id="b-slug" value="' + esc(slug) + '" spellcheck="false">' +
+          '<button class="gbtn" type="button" id="b-copy" title="Copy the full address">' +
+            svg(IC.link, 13) + '<span>Copy</span></button>' +
+        '</div>' +
+        '<p class="hint" id="b-url"></p></div>';
+
+    var form = panel('Event details', 'Name, when and where, and how it reads',
+      fgroup(1, 'Identity', 'What this event is called', identity) +
+      fgroup(2, 'Date & place', 'When it runs and where', when) +
+      fgroup(3, 'How it reads', 'The copy a visitor meets first', reads));
+
+    var side =
+      '<div class="pvc">' +
+        '<div class="pvc-head"><span class="eyebrow">Live preview</span>' +
+          '<span class="seg" id="b-seg">' +
+            '<button type="button" data-pv="list" aria-pressed="true">Listing</button>' +
+            '<button type="button" data-pv="serp" aria-pressed="false">Search</button>' +
+            '<button type="button" data-pv="og" aria-pressed="false">Social</button>' +
+          '</span></div>' +
+        '<div class="pvc-body" id="b-preview"></div>' +
+        '<div class="pvc-foot" id="b-pvnote"></div>' +
+      '</div>' +
+
+      '<div class="pvc">' +
+        '<div class="pvc-head"><span class="eyebrow">Ready to publish</span>' +
+          '<span class="ctr" id="b-rdyn"></span></div>' +
+        '<div class="rdy-bar"><i id="b-rdybar"></i></div>' +
+        '<div id="b-rdy"></div>' +
       '</div>';
 
-    return vhead('Basic details', 'The core record for this event. Everything else on this console inherits from here.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Basic details">Save changes</button>') +
-      panel('Identity & schedule', '', body) +
-      panel('Danger zone', '',
-        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
-          '<div style="flex:1;min-width:220px"><b style="font-size:13.5px;display:block">Archive this event</b>' +
-          '<span style="font-size:12.5px;color:var(--text-muted)">The microsite goes offline and the event moves out of active listings. Data is kept.</span></div>' +
-          '<button class="btn btn-secondary btn-sm" type="button" data-save="Archive requested">Archive event</button>' +
-        '</div>');
+    return vhead('Basic details', 'What identifies this event and what a visitor sees. Everything else on the console inherits from here.',
+        '<button class="btn btn-secondary btn-sm" type="button" id="btn-preview-2">' + svg(IC.eye, 13) + ' Preview site</button>') +
+
+      '<div class="bx">' +
+        '<div class="bx-main">' + form +
+
+          '<div class="callout info" style="margin-bottom:18px">' + svg(IC.info, 17) +
+            '<span><strong>Looking for something that used to be here?</strong>' +
+            'Event number <b>' + e.eventNo + '</b> is issued by the system and sits in the header. ' +
+            'The portal is set once when the event is created. ' +
+            'Publishing and who can see the site are in <b>Settings &rsaquo; Visibility</b>, ' +
+            'and the registration target is on <b>Reporting</b>, where it is used.</span></div>' +
+
+          panel('Danger zone', 'Reversible, but not from here',
+            '<div class="danger-row">' +
+              '<div class="dt"><b>Archive this event</b>' +
+              '<span>The microsite goes offline and the event moves out of active listings. ' +
+              'Registrations, payments and reports are kept.</span></div>' +
+              '<button class="btn btn-danger btn-sm" type="button" data-save="Archive requested">Archive event</button>' +
+            '</div>') +
+        '</div>' +
+        '<aside class="bx-side">' + side + '</aside>' +
+      '</div>' +
+
+      '<div class="savebar" id="b-savebar">' +
+        '<span class="sb-txt">Unsaved changes<span id="b-sbwhat">on this page</span></span>' +
+        '<button class="sb-ghost" type="button" id="b-discard">Discard</button>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="b-save">Save changes</button>' +
+      '</div>';
+  }
+
+  /* ---------- the live parts of the basics form ---------- */
+  function wireBasics(){
+    var f = {
+      name:  $('b-name'),  cat:   $('b-cat'),   start: $('b-start'),
+      end:   $('b-end'),   venue: $('b-venue'), desc:  $('b-desc'), slug: $('b-slug')
+    };
+    if (!f.name) return;
+
+    var KEYS = ['name','cat','start','end','venue','desc','slug'];
+    var initial = {};
+    KEYS.forEach(function(k){ initial[k] = f[k] ? f[k].value : ''; });
+
+    var slugTouched = false;
+    var mode = 'list';
+
+    function v(k){ return f[k] ? f[k].value : ''; }
+    function trimmed(k){ return v(k).trim(); }
+
+    /* ---- date maths, kept honest about half-filled forms ---- */
+    function span(){
+      var a = v('start') ? new Date(v('start')) : null;
+      var b = v('end')   ? new Date(v('end'))   : null;
+      if (a && isNaN(a)) a = null;
+      if (b && isNaN(b)) b = null;
+      return { a:a, b:b };
+    }
+    function dayCount(a, b){
+      var x = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+      var y = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+      return Math.round((y - x) / 86400000) + 1;
+    }
+    function countdown(a){
+      var now = new Date();
+      var days = Math.ceil((a - now) / 86400000);
+      if (days > 1)  return { cls:'', txt:'Opens in <b>' + days + ' days</b>' };
+      if (days === 1) return { cls:'', txt:'Opens <b>tomorrow</b>' };
+      if (days === 0) return { cls:'good', txt:'Happening <b>today</b>' };
+      return { cls:'', txt:'Ran <b>' + Math.abs(days) + ' days</b> ago' };
+    }
+
+    function paintWhen(){
+      var host = $('b-when');
+      if (!host) return;
+      var s = span(), out = [];
+
+      if (!s.a){
+        out.push({ cls:'bad', ico:IC.clock, txt:'No start date yet — the site will read <b>date to be announced</b>' });
+      } else {
+        if (s.b && s.b > s.a){
+          var d = dayCount(s.a, s.b);
+          var hrs = Math.round((s.b - s.a) / 3600000);
+          out.push({ cls:'', ico:IC.clock,
+            txt: d > 1 ? '<b>' + d + ' days</b> · ' + fmtDate(localIso(s.a)) + ' to ' + fmtDate(localIso(s.b))
+                       : 'Single day · <b>' + hrs + ' hours</b>' });
+        } else if (s.b && s.b <= s.a){
+          out.push({ cls:'bad', ico:IC.info, txt:'The end is <b>before the start</b>' });
+        } else {
+          out.push({ cls:'', ico:IC.clock, txt:'Single day · <b>no end time set</b>' });
+        }
+        var c = countdown(s.a);
+        out.push({ cls:c.cls, ico:IC.bell, txt:c.txt });
+      }
+
+      out.push({ cls: trimmed('venue') ? '' : 'bad', ico:IC.globe,
+        txt: trimmed('venue') ? esc(trimmed('venue')) : 'No venue yet' });
+
+      host.innerHTML = out.map(function(r){
+        return '<span class="readout ' + r.cls + '">' + svg(r.ico, 13) + '<span>' + r.txt + '</span></span>';
+      }).join('');
+    }
+
+    /* ---- description counter as a meter, not a number to decode ---- */
+    function paintCount(){
+      var box = $('b-count');
+      if (!box) return;
+      var n = v('desc').length;
+      var pct = Math.min(100, Math.round(n / DESC_IDEAL * 100));
+      box.className = 'ctr' + (n > DESC_IDEAL ? ' over' : (n > DESC_IDEAL * 0.9 ? ' warn' : ''));
+      box.querySelector('i').style.width = pct + '%';
+      box.querySelector('.t').textContent = n + ' / ' + DESC_IDEAL;
+    }
+
+    /* ---- the address line under the slug ---- */
+    function paintUrl(){
+      var url = $('b-url');
+      if (!url) return;
+      var s = trimmed('slug');
+      if (!s){
+        url.innerHTML = '<span style="color:var(--accent-strong)">Add an address or the site cannot go live.</span>';
+      } else if (s !== slugify(s)){
+        url.innerHTML = '<span style="color:var(--warn)">Will be tidied to <b>' + esc(slugify(s)) + '</b> on save.</span>';
+      } else {
+        url.innerHTML = 'Goes live at <b>etoneworld.com/' + esc(s) + '</b>';
+      }
+    }
+
+    /* ---- the three surfaces in the rail ---- */
+    function previewBits(){
+      var s = span();
+      var title = trimmed('name') || 'Untitled event';
+      var d = trimmed('desc') || 'Add a short description and it will appear here.';
+      var venue = trimmed('venue') || 'Venue to be confirmed';
+      var when = s.a ? fmtDT(localIso(s.a)) : 'Date to be announced';
+      var path = slugify(trimmed('slug')) || 'your-event';
+      return { title:title, d:d, venue:venue, when:when, path:path, portal: PORTALS[EV.portal] || 'ET Oneworld' };
+    }
+
+    function paintPreview(){
+      var host = $('b-preview'), note = $('b-pvnote');
+      if (!host) return;
+      var b = previewBits(), html, n;
+
+      if (mode === 'serp'){
+        html = '<div class="mock mock-serp">' +
+            '<div class="u">etoneworld.com &rsaquo; ' + esc(b.path) + '</div>' +
+            '<div class="t">' + esc(b.title) + ' | ' + esc(b.portal) + '</div>' +
+            '<div class="d">' + esc(b.when) + ' · ' + esc(b.venue) + '. ' + esc(b.d) + '</div>' +
+          '</div>';
+        n = 'Google shows roughly the first 155 characters of the description.';
+      } else if (mode === 'og'){
+        html = '<div class="mock mock-og">' +
+            '<div class="img"><span class="mp">' + esc(b.portal) + '</span>' +
+              '<span class="mt">' + esc(b.title) + '</span>' +
+              '<span class="md">' + esc(b.when) + ' · ' + esc(b.venue) + '</span></div>' +
+            '<div class="cap"><span class="dom">etoneworld.com</span>' +
+              '<b>' + esc(b.title) + '</b><span>' + esc(b.d) + '</span></div>' +
+          '</div>';
+        n = 'What a WhatsApp, LinkedIn or X share unfurls into.';
+      } else {
+        html = '<div class="mock">' +
+            '<div class="mock-hero"><span class="mp">' + esc(b.portal) + ' presents</span>' +
+              '<div class="mt">' + esc(b.title) + '</div></div>' +
+            '<div class="mock-meta">' + svg(IC.clock, 12) + '<span>' + esc(b.when) + '</span></div>' +
+            '<div class="mock-meta">' + svg(IC.globe, 12) + '<span>' + esc(b.venue) + '</span></div>' +
+            '<div class="mock-body"><p>' + esc(b.d) + '</p><span class="cta">Register now</span></div>' +
+          '</div>';
+        n = 'The card on the events listing and the top of the microsite.';
+      }
+      host.innerHTML = html;
+      if (note) note.textContent = n;
+    }
+
+    /* ---- what is still missing before this can go out ---- */
+    function paintReady(){
+      var host = $('b-rdy');
+      if (!host) return;
+      var s = span();
+      var items = [
+        ['Event name',        !!trimmed('name')],
+        ['Start date & time', !!s.a && !(s.b && s.b <= s.a)],
+        ['Venue or city',     !!trimmed('venue')],
+        ['Short description', trimmed('desc').length >= 40 && v('desc').length <= DESC_IDEAL],
+        ['Microsite address', !!slugify(trimmed('slug'))]
+      ];
+      var done = items.filter(function(i){ return i[1]; }).length;
+
+      host.innerHTML = items.map(function(i){
+        return '<div class="rdy-item' + (i[1] ? ' on' : '') + '">' +
+            '<span class="tick">' + svg(i[1] ? IC.check : IC.plus, 11) + '</span>' +
+            '<span class="lb">' + esc(i[0]) + '</span></div>';
+      }).join('');
+
+      var bar = $('b-rdybar');
+      if (bar) bar.style.width = Math.round(done / items.length * 100) + '%';
+      var num = $('b-rdyn');
+      if (num) num.textContent = done + ' / ' + items.length;
+    }
+
+    /* ---- the sticky bar, shown only once something actually changed ---- */
+    function paintDirty(){
+      var bar = $('b-savebar');
+      if (!bar) return;
+      var changed = KEYS.filter(function(k){ return f[k] && f[k].value !== initial[k]; });
+      bar.classList.toggle('on', changed.length > 0);
+      var what = $('b-sbwhat');
+      if (what && changed.length){
+        what.textContent = changed.length === 1 ? '1 field edited' : changed.length + ' fields edited';
+      }
+    }
+
+    function paint(){
+      paintWhen(); paintCount(); paintUrl(); paintPreview(); paintReady(); paintDirty();
+    }
+
+    /* typing a name suggests an address, but only while the address is untouched */
+    if (f.slug) f.slug.addEventListener('input', function(){ slugTouched = true; });
+    if (f.name) f.name.addEventListener('input', function(){
+      if (!slugTouched && f.slug) f.slug.value = slugify(f.name.value);
+    });
+
+    KEYS.forEach(function(k){
+      if (!f[k]) return;
+      f[k].addEventListener('input', paint);
+      f[k].addEventListener('change', paint);
+    });
+
+    var seg = $('b-seg');
+    if (seg) seg.querySelectorAll('[data-pv]').forEach(function(b){
+      b.addEventListener('click', function(){
+        mode = b.getAttribute('data-pv');
+        seg.querySelectorAll('[data-pv]').forEach(function(x){
+          x.setAttribute('aria-pressed', String(x === b));
+        });
+        paintPreview();
+      });
+    });
+
+    var copy = $('b-copy');
+    if (copy) copy.addEventListener('click', function(){
+      var full = 'etoneworld.com/' + (slugify(trimmed('slug')) || 'your-event');
+      var done = function(){
+        copy.classList.add('done');
+        copy.querySelector('span').textContent = 'Copied';
+        setTimeout(function(){
+          copy.classList.remove('done');
+          copy.querySelector('span').textContent = 'Copy';
+        }, 1600);
+        toast('Address copied — ' + full);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText('https://' + full).then(done, done);
+      } else { done(); }
+    });
+
+    var save = $('b-save');
+    if (save) save.addEventListener('click', function(){
+      if (f.slug) f.slug.value = slugify(trimmed('slug'));
+      KEYS.forEach(function(k){ if (f[k]) initial[k] = f[k].value; });
+      paint();
+      toast('Basic details saved');
+    });
+
+    var discard = $('b-discard');
+    if (discard) discard.addEventListener('click', function(){
+      KEYS.forEach(function(k){ if (f[k]) f[k].value = initial[k]; });
+      slugTouched = false;
+      paint();
+      toast('Changes discarded');
+    });
+
+    paint();
   }
 
   /* ============================================================
@@ -333,9 +670,16 @@
   }
 
   /* ============================================================
-     VIEW : SPEAKERS / AGENDA / SPONSORS
+     VIEW : SPEAKERS
+
+     The line-up is groups of people, in an order, each carrying a
+     weight that decides how much room they get on the live page.
+     Everything on the page edits one of those four things.
+
+     Photos are always square: the crop happens in the dialog, so a
+     badly shaped upload can never reach the site.
      ============================================================ */
-  var SPEAKERS = [
+  var SEED_SPEAKERS = [
     ['Rajesh Uppal','CIO & Executive Director','Maruti Suzuki'],
     ['Sunita Handa','Chief General Manager','State Bank of India'],
     ['Vishal Salvi','Chief Information Security Officer','Infosys'],
@@ -343,6 +687,883 @@
     ['Aparna Kuppuswamy','Chief Risk Officer','Axis Bank'],
     ['Sameer Ratolikar','EVP & CISO','HDFC Bank']
   ];
+
+  /* weight is a rank with a visible consequence, not an opaque number */
+  var WEIGHTS = [
+    { id:'keynote',  label:'Keynote',  note:'Full-width card at the top of the block' },
+    { id:'headline', label:'Headline', note:'Half-width card with the photo beside the name' },
+    { id:'featured', label:'Featured', note:'Standard card in the grid' },
+    { id:'standard', label:'Standard', note:'Compact card, three to a row' }
+  ];
+  var WCLASS = { keynote:'w-k', headline:'w-h', featured:'w-f', standard:'w-s' };
+  var STATUSES = [
+    { id:'confirmed', label:'Confirmed', cls:'b-ok' },
+    { id:'invited',   label:'Invited',   cls:'b-warn' },
+    { id:'tentative', label:'Tentative', cls:'b-mute' }
+  ];
+
+  function wLabel(id){
+    for (var i = 0; i < WEIGHTS.length; i++) if (WEIGHTS[i].id === id) return WEIGHTS[i].label;
+    return 'Featured';
+  }
+  function stMeta(id){
+    for (var i = 0; i < STATUSES.length; i++) if (STATUSES[i].id === id) return STATUSES[i];
+    return STATUSES[0];
+  }
+  var HONORIFICS = /^(dr|mr|mrs|ms|miss|prof|professor|sir|shri|smt|adv|capt|col|gen|rev)\.?$/i;
+  function initials(name){
+    var p = String(name || '').trim().split(/\s+/).filter(Boolean)
+      .filter(function(w){ return !HONORIFICS.test(w); });
+    if (!p.length) return '?';
+    var a = p[0][0], b = p.length > 1 ? p[p.length - 1][0] : '';
+    return (a + b).toUpperCase();
+  }
+  function uid(p){ return p + Math.random().toString(36).slice(2, 9); }
+
+  /* ---------------- model ---------------- */
+  function spkInit(){
+    if (S.spkGroups && S.speakers) return;
+    S.spkGroups = [{ id:'g-main', name:'Keynote speakers' }];
+    S.speakers = SEED_SPEAKERS.map(function(s, i){
+      return {
+        id: uid('s-'), gid:'g-main', name:s[0], desig:s[1], comp:s[2],
+        photo:null, logo:null, colour: AV[i % AV.length],
+        weight: i === 0 ? 'keynote' : (i < 3 ? 'headline' : 'featured'),
+        status:'confirmed', email:'', phone:'', li:'', bio:''
+      };
+    });
+    save();
+  }
+  function spkAll(){ spkInit(); return S.speakers; }
+  function spkGroups(){ spkInit(); return S.spkGroups; }
+  function spkIn(gid){ return spkAll().filter(function(p){ return p.gid === gid; }); }
+  function spkById(id){
+    var a = spkAll();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function spkCommit(){ save(); render(); }
+
+  /* ---------------- photo helpers ---------------- */
+  /* Everything that leaves the dialog is already square and already
+     small — the console never hands a 6 MB camera file to the page. */
+  function cropToSquare(img, tx, ty, zoom, view, out){
+    var cover = Math.max(view / img.naturalWidth, view / img.naturalHeight);
+    var s = cover * zoom;
+    var cv = document.createElement('canvas');
+    cv.width = out; cv.height = out;
+    var cx = cv.getContext('2d');
+    cx.fillStyle = '#fff'; cx.fillRect(0, 0, out, out);
+    cx.drawImage(img, (-tx) / s, (-ty) / s, view / s, view / s, 0, 0, out, out);
+    return cv.toDataURL('image/jpeg', 0.86);
+  }
+  function shrinkLogo(img, maxW, maxH){
+    var r = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    var cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(img.naturalWidth * r));
+    cv.height = Math.max(1, Math.round(img.naturalHeight * r));
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/png');
+  }
+  function readImage(file, cb){
+    if (!file || !/^image\//.test(file.type)){ cb(null, 'That file is not an image.'); return; }
+    if (file.size > 12 * 1024 * 1024){ cb(null, 'That image is over 12 MB. Try a smaller one.'); return; }
+    var fr = new FileReader();
+    fr.onload = function(){
+      var im = new Image();
+      im.onload = function(){ cb(im, null); };
+      im.onerror = function(){ cb(null, 'That image could not be read.'); };
+      im.src = fr.result;
+    };
+    fr.onerror = function(){ cb(null, 'That file could not be read.'); };
+    fr.readAsDataURL(file);
+  }
+
+  /* ---------------- LinkedIn lookup ----------------
+     The prototype has no backend, so the profile is derived from the
+     URL rather than retrieved. The shape of the interaction — paste,
+     wait, review, correct — is what is being tested here. */
+  var LI_TITLES = ['Chief Information Officer','Chief Marketing Officer','Head of Digital',
+    'Chief Technology Officer','VP — Growth','Chief Data Officer','Head of Brand',
+    'Director — Customer Experience','Chief Information Security Officer'];
+  var LI_COMPANIES = ['Tata Digital','Reliance Retail','HDFC Bank','Infosys','Asian Paints',
+    'Flipkart','Marico','Godrej Group','ICICI Lombard','Zomato'];
+
+  function liLookup(url, cb){
+    var m = String(url || '').match(/linkedin\.com\/in\/([^\/?#\s]+)/i);
+    if (!m){ cb(null, 'That does not look like a LinkedIn profile link. It should contain linkedin.com/in/'); return; }
+    var slug = decodeURIComponent(m[1]);
+    setTimeout(function(){
+      var words = slug.replace(/[-_](?=[a-z0-9]*\d)[a-z0-9]{4,}$/i, '').split(/[-_]/).filter(Boolean);
+      var name = words.map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+      var h = 0;
+      for (var i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
+      cb({
+        name: name || 'New speaker',
+        desig: LI_TITLES[h % LI_TITLES.length],
+        comp: LI_COMPANIES[(h >>> 4) % LI_COMPANIES.length],
+        li: url
+      }, null);
+    }, 850);
+  }
+
+  /* ---------------- the page ---------------- */
+  function spkPhotoHTML(p, cls){
+    if (p.photo) return '<span class="' + cls + '"><img src="' + p.photo + '" alt=""></span>';
+    return '<span class="' + cls + '" style="background:' + (p.colour || AV[0]) + '">' + esc(initials(p.name)) + '</span>';
+  }
+
+  function viewSpeakers(){
+    var groups = spkGroups(), all = spkAll();
+
+    var body = groups.map(function(g, gi){
+      var people = spkIn(g.id);
+      var rows = people.map(function(p, i){
+        var st = stMeta(p.status);
+        return '<div class="spk-row" draggable="true" data-sid="' + p.id + '" data-gid="' + g.id + '">' +
+            '<span class="spk-grip" title="Drag to reorder">' + svg(IC.grip, 15) + '</span>' +
+            spkPhotoHTML(p, 'spk-ph') +
+            '<span class="spk-id"><b>' + esc(p.name) + '</b>' +
+              '<span>' + esc(p.desig || 'Designation not set') +
+              (p.comp ? ' · ' + esc(p.comp) : '') + '</span></span>' +
+            (p.logo ? '<img class="spk-logo" src="' + p.logo + '" alt="">' : '') +
+            '<span class="spk-meta">' +
+              '<button class="wpill w-' + esc(p.weight) + '" type="button" data-weight="' + p.id + '" ' +
+                'title="Click to change how much room this speaker gets">' + esc(wLabel(p.weight)) + '</button>' +
+              '<span class="badge ' + st.cls + '">' + esc(st.label) + '</span>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-up="' + p.id + '" title="Move up"' +
+                (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-down="' + p.id + '" title="Move down"' +
+                (i === people.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-edit="' + p.id + '" title="Edit">' +
+                svg(IC.edit, 14) + '</button>' +
+            '</span>' +
+          '</div>';
+      }).join('');
+
+      return '<div class="grp" data-grp="' + g.id + '">' +
+          '<div class="grp-head">' +
+            '<input class="gname" value="' + esc(g.name) + '" data-gname="' + g.id + '" ' +
+              'aria-label="Group name" spellcheck="false">' +
+            '<span class="gcount">' + people.length + (people.length === 1 ? ' speaker' : ' speakers') + '</span>' +
+            '<span class="grp-acts">' +
+              '<button class="btn btn-ghost btn-sm" type="button" data-gsort="' + g.id + '" ' +
+                'title="Order this group by weight">' + svg(IC.sliders, 13) + ' Sort by weight</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-gup="' + g.id + '" title="Move group up"' +
+                (gi === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" data-gdown="' + g.id + '" title="Move group down"' +
+                (gi === groups.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+              (groups.length > 1 ? '<button class="btn btn-ghost btn-icon" type="button" data-gdel="' + g.id + '" ' +
+                'title="Delete group">' + svg(IC.trash, 14) + '</button>' : '') +
+            '</span>' +
+          '</div>' +
+          (rows || '<div class="grp-empty">No one in this group yet. ' +
+            'Add someone, or drag a speaker in from another group.</div>') +
+          '<div class="grp-foot">' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-gadd="' + g.id + '">' +
+              svg(IC.plus, 13) + ' Add to ' + esc(g.name) + '</button>' +
+          '</div>' +
+        '</div>';
+    }).join('');
+
+    var counts = {};
+    all.forEach(function(p){ counts[p.status] = (counts[p.status] || 0) + 1; });
+    var sub = all.length + (all.length === 1 ? ' speaker' : ' speakers') +
+      ' in ' + groups.length + (groups.length === 1 ? ' group' : ' groups') + '. ' +
+      'Groups, order and weight are exactly what the live page renders.';
+
+    return vhead('Speakers', sub,
+        '<button class="btn btn-secondary btn-sm" type="button" id="spk-addgroup">' +
+          svg(IC.plus, 13) + ' Add group</button>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' +
+          svg(IC.plus, 13) + ' Add speakers</button>') +
+
+      '<div class="spk">' +
+        '<div class="spk-main">' + body +
+          '<div class="callout info">' + svg(IC.info, 17) +
+            '<span><strong>Three things decide the line-up</strong>' +
+            'The <b>group</b> a speaker sits in becomes a heading on the page. The <b>order</b> inside a group is the ' +
+            'order they appear — drag a row, or use the arrows. The <b>weight</b> decides how much room each one gets. ' +
+            'Everything saves as you go.</span></div>' +
+        '</div>' +
+        '<aside class="spk-side">' +
+          '<div class="pvc">' +
+            '<div class="pvc-head"><span class="eyebrow">Live preview</span>' +
+              '<span class="ctr">' + all.length + ' on page</span></div>' +
+            '<div class="spv">' + spkPreview() + '</div>' +
+            '<div class="pvc-foot">The Speakers block as it renders on the microsite.</div>' +
+          '</div>' +
+          '<div class="pvc">' +
+            '<div class="pvc-head"><span class="eyebrow">Line-up status</span></div>' +
+            STATUSES.map(function(s){
+              var n = counts[s.id] || 0;
+              return '<div class="rdy-item' + (n ? ' on' : '') + '">' +
+                  '<span class="badge ' + s.cls + '">' + esc(s.label) + '</span>' +
+                  '<span class="lb"></span>' +
+                  '<span class="num">' + n + '</span></div>';
+            }).join('') +
+          '</div>' +
+        '</aside>' +
+      '</div>';
+  }
+
+  function spkPreview(){
+    var groups = spkGroups();
+    if (!spkAll().length) return '<div class="spv-empty">No speakers yet. The block is hidden on the live page.</div>';
+    return groups.map(function(g){
+      var people = spkIn(g.id);
+      if (!people.length) return '';
+      return '<div class="spv-g"><div class="spv-h">' + esc(g.name) + '</div>' +
+        '<div class="spv-grid">' + people.map(function(p){
+          return '<div class="spv-c ' + (WCLASS[p.weight] || 'w-f') + '">' +
+            spkPhotoHTML(p, 'p') +
+            '<span><b>' + esc(p.name) + '</b>' +
+            '<span>' + esc(p.desig || '') + (p.comp ? ' · ' + esc(p.comp) : '') + '</span></span>' +
+          '</div>';
+        }).join('') + '</div></div>';
+    }).join('') || '<div class="spv-empty">Every group is empty.</div>';
+  }
+
+  /* ---------------- page wiring ---------------- */
+  function wireSpeakers(){
+    var add = $('spk-add');
+    if (add) add.onclick = function(){ spkDialog(null, spkGroups()[0].id); };
+
+    var addg = $('spk-addgroup');
+    if (addg) addg.onclick = function(){
+      S.spkGroups.push({ id: uid('g-'), name: 'New group' });
+      spkCommit();
+      toast('Group added — give it a name');
+      var last = document.querySelectorAll('.gname');
+      if (last.length){ last[last.length - 1].focus(); last[last.length - 1].select(); }
+    };
+
+    document.querySelectorAll('[data-gadd]').forEach(function(b){
+      b.onclick = function(){ spkDialog(null, b.getAttribute('data-gadd')); };
+    });
+    document.querySelectorAll('[data-edit]').forEach(function(b){
+      b.onclick = function(){ spkDialog(b.getAttribute('data-edit')); };
+    });
+
+    /* rename a group by typing in its title — no dialog for one field */
+    document.querySelectorAll('[data-gname]').forEach(function(inp){
+      var id = inp.getAttribute('data-gname');
+      inp.onchange = function(){
+        var v = inp.value.trim() || 'Untitled group';
+        spkGroups().forEach(function(g){ if (g.id === id) g.name = v; });
+        save();
+      };
+      inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
+    });
+
+    /* weight cycles through the four ranks on click */
+    document.querySelectorAll('[data-weight]').forEach(function(b){
+      b.onclick = function(){
+        var p = spkById(b.getAttribute('data-weight'));
+        if (!p) return;
+        var i = 0;
+        WEIGHTS.forEach(function(w, n){ if (w.id === p.weight) i = n; });
+        p.weight = WEIGHTS[(i + 1) % WEIGHTS.length].id;
+        spkCommit();
+        toast(p.name + ' is now ' + wLabel(p.weight).toLowerCase());
+      };
+    });
+
+    document.querySelectorAll('[data-up]').forEach(function(b){
+      b.onclick = function(){ spkMove(b.getAttribute('data-up'), -1); };
+    });
+    document.querySelectorAll('[data-down]').forEach(function(b){
+      b.onclick = function(){ spkMove(b.getAttribute('data-down'), 1); };
+    });
+
+    document.querySelectorAll('[data-gup]').forEach(function(b){
+      b.onclick = function(){ grpMove(b.getAttribute('data-gup'), -1); };
+    });
+    document.querySelectorAll('[data-gdown]').forEach(function(b){
+      b.onclick = function(){ grpMove(b.getAttribute('data-gdown'), 1); };
+    });
+    document.querySelectorAll('[data-gsort]').forEach(function(b){
+      b.onclick = function(){
+        var gid = b.getAttribute('data-gsort');
+        var rank = {}; WEIGHTS.forEach(function(w, i){ rank[w.id] = i; });
+        var rest = spkAll().filter(function(p){ return p.gid !== gid; });
+        var mine = spkIn(gid).slice().sort(function(a, c){
+          return (rank[a.weight] || 9) - (rank[c.weight] || 9);
+        });
+        S.speakers = spkSplice(rest, mine, gid);
+        spkCommit();
+        toast('Ordered by weight');
+      };
+    });
+    document.querySelectorAll('[data-gdel]').forEach(function(b){
+      b.onclick = function(){
+        var gid = b.getAttribute('data-gdel');
+        var g = spkGroups().filter(function(x){ return x.id === gid; })[0];
+        var n = spkIn(gid).length;
+        var keep = spkGroups().filter(function(x){ return x.id !== gid; })[0];
+        confirmDialog('Delete ' + (g ? g.name : 'this group') + '?',
+          n ? n + (n === 1 ? ' speaker moves' : ' speakers move') + ' to ' + keep.name + '. Nobody is deleted.'
+            : 'The group is empty, so nothing else changes.',
+          'Delete group', function(){
+            spkAll().forEach(function(p){ if (p.gid === gid) p.gid = keep.id; });
+            S.spkGroups = spkGroups().filter(function(x){ return x.id !== gid; });
+            spkCommit();
+            toast('Group deleted');
+          });
+      };
+    });
+
+    spkDragDrop();
+  }
+
+  /* put a group's people back in the flat list at that group's position */
+  function spkSplice(rest, mine, gid){
+    var out = [], done = false;
+    spkAll().forEach(function(p){
+      if (p.gid === gid){ if (!done){ out = out.concat(mine); done = true; } return; }
+      out.push(p);
+    });
+    if (!done) out = out.concat(mine);
+    return out;
+  }
+
+  function spkMove(id, dir){
+    var p = spkById(id);
+    if (!p) return;
+    var mine = spkIn(p.gid);
+    var i = mine.map(function(x){ return x.id; }).indexOf(id);
+    var j = i + dir;
+    if (j < 0 || j >= mine.length) return;
+    mine.splice(j, 0, mine.splice(i, 1)[0]);
+    S.speakers = spkSplice(spkAll().filter(function(x){ return x.gid !== p.gid; }), mine, p.gid);
+    spkCommit();
+  }
+
+  function grpMove(gid, dir){
+    var gs = spkGroups();
+    var i = gs.map(function(g){ return g.id; }).indexOf(gid);
+    var j = i + dir;
+    if (j < 0 || j >= gs.length) return;
+    gs.splice(j, 0, gs.splice(i, 1)[0]);
+    spkCommit();
+  }
+
+  /* drag a row anywhere — including into another group */
+  function spkDragDrop(){
+    var dragId = null;
+    document.querySelectorAll('.spk-row').forEach(function(row){
+      row.addEventListener('dragstart', function(e){
+        dragId = row.getAttribute('data-sid');
+        row.classList.add('drag');
+        try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+      });
+      row.addEventListener('dragend', function(){
+        dragId = null;
+        document.querySelectorAll('.spk-row').forEach(function(r){
+          r.classList.remove('drag', 'over-top', 'over-bot');
+        });
+      });
+      row.addEventListener('dragover', function(e){
+        if (!dragId || row.getAttribute('data-sid') === dragId) return;
+        e.preventDefault();
+        var r = row.getBoundingClientRect();
+        var after = (e.clientY - r.top) > r.height / 2;
+        row.classList.toggle('over-bot', after);
+        row.classList.toggle('over-top', !after);
+      });
+      row.addEventListener('dragleave', function(){ row.classList.remove('over-top', 'over-bot'); });
+      row.addEventListener('drop', function(e){
+        if (!dragId || row.getAttribute('data-sid') === dragId) return;
+        e.preventDefault();
+        var r = row.getBoundingClientRect();
+        var after = (e.clientY - r.top) > r.height / 2;
+        spkDropAt(dragId, row.getAttribute('data-sid'), after);
+      });
+    });
+
+    /* dropping on an empty group moves the speaker into it */
+    document.querySelectorAll('.grp').forEach(function(g){
+      g.addEventListener('dragover', function(e){ if (dragId) e.preventDefault(); });
+      g.addEventListener('drop', function(e){
+        if (!dragId) return;
+        if (e.target.closest && e.target.closest('.spk-row')) return;
+        e.preventDefault();
+        var p = spkById(dragId);
+        if (!p) return;
+        p.gid = g.getAttribute('data-grp');
+        spkCommit();
+      });
+    });
+  }
+
+  function spkDropAt(id, targetId, after){
+    var p = spkById(id), t = spkById(targetId);
+    if (!p || !t) return;
+    p.gid = t.gid;
+    var list = spkAll().slice();
+    list.splice(list.indexOf(p), 1);
+    var at = list.indexOf(t) + (after ? 1 : 0);
+    list.splice(at, 0, p);
+    S.speakers = list;
+    spkCommit();
+  }
+
+  /* ---------------- a small confirm, so nothing destructive is one click ---------------- */
+  function confirmDialog(title, msg, okLabel, onOk){
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="cbg"><div class="modal" style="width:min(420px,100%)">' +
+        '<div class="modal-head"><h3>' + esc(title) + '</h3></div>' +
+        '<div class="modal-body"><p style="margin:0;font-size:13px;color:var(--text-muted)">' + esc(msg) + '</p></div>' +
+        '<div class="modal-foot">' +
+          '<button class="btn btn-secondary" type="button" id="cno">Cancel</button>' +
+          '<button class="btn btn-primary" type="button" id="cyes">' + esc(okLabel) + '</button>' +
+        '</div></div></div>';
+    var close = function(){ host.innerHTML = ''; };
+    $('cno').onclick = close;
+    $('cbg').onclick = function(e){ if (e.target.id === 'cbg') close(); };
+    $('cyes').onclick = function(){ close(); onOk(); };
+  }
+
+  /* ============================================================
+     THE ADD / EDIT DIALOG
+
+     One dialog does both jobs. In add mode it holds a queue, so a
+     whole panel goes in on one save instead of six round trips.
+     ============================================================ */
+  function spkDialog(editId, defaultGid){
+    var editing = !!editId;
+    var gid = defaultGid || spkGroups()[0].id;
+
+    function blank(){
+      return {
+        id: uid('s-'), gid: gid, name:'', desig:'', comp:'', photo:null, logo:null,
+        colour: AV[Math.floor(Math.random() * AV.length)],
+        weight:'featured', status:'confirmed', email:'', phone:'', li:'', bio:'',
+        img:null, tx:0, ty:0, zoom:1
+      };
+    }
+
+    var Q, qi = 0;
+    if (editing){
+      var src = spkById(editId);
+      if (!src) return;
+      Q = [JSON.parse(JSON.stringify(src))];
+      Q[0].img = null; Q[0].tx = 0; Q[0].ty = 0; Q[0].zoom = 1;
+    } else {
+      Q = [blank()];
+    }
+
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="sbg"><div class="modal wide">' +
+        '<div class="modal-head">' +
+          '<h3>' + (editing ? 'Edit speaker' : 'Add speakers') + '</h3>' +
+          '<span class="sub" style="font-size:12px;color:var(--text-muted)">' +
+            (editing ? 'Changes apply when you save.'
+                     : 'Add as many as you like, then save the whole set in one go.') + '</span>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="sclose" aria-label="Close">' +
+            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
+        '</div>' +
+        '<div class="sp-wrap">' +
+          (editing ? '' :
+            '<div class="sp-queue">' +
+              '<div class="qh">Adding <span id="q-n"></span></div>' +
+              '<div class="qlist" id="q-list"></div>' +
+              '<div class="qfoot"><button class="btn btn-secondary btn-sm" type="button" id="q-add" ' +
+                'style="width:100%">' + svg(IC.plus, 13) + ' Add another</button></div>' +
+            '</div>') +
+          '<div class="sp-form" id="sp-form"></div>' +
+        '</div>' +
+        '<div class="modal-foot">' +
+          '<span id="sp-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+          '<button class="btn btn-secondary" type="button" id="scancel">Cancel</button>' +
+          (editing ? '<button class="btn btn-secondary" type="button" id="sdel">Remove speaker</button>' : '') +
+          '<button class="btn btn-primary" type="button" id="ssave"></button>' +
+        '</div>' +
+      '</div></div>';
+
+    var close = function(){ host.innerHTML = ''; };
+    $('sclose').onclick = close;
+    $('scancel').onclick = close;
+    $('sbg').onclick = function(e){ if (e.target.id === 'sbg') close(); };
+    document.addEventListener('keydown', function esc2(e){
+      if (!document.getElementById('sbg')) { document.removeEventListener('keydown', esc2); return; }
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc2); }
+    });
+
+    if (editing) $('sdel').onclick = function(){
+      close();
+      confirmDialog('Remove ' + (spkById(editId) || {}).name + '?',
+        'They come off the line-up and off the live page. This cannot be undone from here.',
+        'Remove', function(){
+          S.speakers = spkAll().filter(function(p){ return p.id !== editId; });
+          spkCommit();
+          toast('Speaker removed');
+        });
+    };
+
+    /* ---- queue ---- */
+    function paintQueue(){
+      if (editing) return;
+      $('q-n').textContent = Q.length + (Q.length === 1 ? ' speaker' : ' speakers');
+      $('q-list').innerHTML = Q.map(function(e, i){
+        var ph = e.photo ? '<span class="qph"><img src="' + e.photo + '" alt=""></span>'
+                         : '<span class="qph" style="background:' + e.colour + ';color:#fff">' +
+                           esc(e.name ? initials(e.name) : '') + '</span>';
+        return '<button class="qi" type="button" data-q="' + i + '" aria-current="' + (i === qi) + '">' +
+            ph + '<span class="qn">' + (e.name ? esc(e.name) : '<em>Speaker ' + (i + 1) + '</em>') + '</span>' +
+            (Q.length > 1 ? '<span class="qx" data-qx="' + i + '" role="button" aria-label="Remove">' +
+              svg('<path d="M18 6L6 18M6 6l12 12"/>', 13) + '</span>' : '') +
+          '</button>';
+      }).join('');
+
+      $('q-list').querySelectorAll('[data-q]').forEach(function(b){
+        b.onclick = function(e){
+          if (e.target.closest('[data-qx]')) return;
+          readForm(); qi = +b.getAttribute('data-q'); paintForm(); paintQueue();
+        };
+      });
+      $('q-list').querySelectorAll('[data-qx]').forEach(function(x){
+        x.onclick = function(e){
+          e.stopPropagation();
+          var i = +x.getAttribute('data-qx');
+          readForm();
+          Q.splice(i, 1);
+          if (qi >= Q.length) qi = Q.length - 1;
+          paintForm(); paintQueue(); paintSave();
+        };
+      });
+    }
+    function paintSave(){
+      $('ssave').textContent = editing ? 'Save changes'
+        : (Q.length === 1 ? 'Add speaker' : 'Add all ' + Q.length + ' speakers');
+    }
+
+    /* ---- form ---- */
+    function field(id, label, val, ph, req){
+      return '<div class="field c6"><div class="flabel-row"><label for="' + id + '">' + label +
+        (req ? ' <span class="pill-req">Required</span>' : '') + '</label></div>' +
+        '<input class="inp" id="' + id + '" value="' + esc(val || '') + '" placeholder="' + esc(ph) + '"></div>';
+    }
+
+    function paintForm(){
+      var e = Q[qi];
+      $('sp-form').innerHTML =
+        '<div class="li-bar">' + svg(IC.link, 17) +
+          '<span class="lt"><b>Start from a LinkedIn profile</b>' +
+          '<span>Paste the link and the name, role and company fill themselves in.</span></span>' +
+          '<input class="inp" id="sp-li" value="' + esc(e.li || '') + '" ' +
+            'placeholder="linkedin.com/in/username" spellcheck="false">' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="sp-fetch">Fetch details</button>' +
+        '</div>' +
+        '<p class="li-note" id="sp-linote"></p>' +
+
+        '<div class="ph-grid">' +
+          '<div id="sp-phbox"></div>' +
+          '<div class="ph-help">' +
+            '<b>Photo</b>Speaker photos are always square on the live page. Drop any picture in and ' +
+            'move it inside the frame until the face sits where you want it — what you see in the ' +
+            'frame is exactly what gets published.' +
+            '<div class="logo-box">' +
+              '<span class="lprev" id="sp-lprev">' +
+                (e.logo ? '<img src="' + e.logo + '" alt="">' : svg(IC.image, 16)) + '</span>' +
+              '<span class="lt">Company logo <span style="color:var(--text-faint)">— optional, any shape</span></span>' +
+              '<button class="btn btn-secondary btn-sm" type="button" id="sp-logobtn">' +
+                (e.logo ? 'Replace' : 'Upload') + '</button>' +
+              (e.logo ? '<button class="btn btn-ghost btn-icon" type="button" id="sp-logodel" ' +
+                'title="Remove logo">' + svg(IC.trash, 14) + '</button>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="frow" style="margin-top:18px">' +
+          field('sp-name', 'Full name', e.name, 'e.g. Rajesh Uppal', true) +
+          field('sp-desig', 'Designation', e.desig, 'e.g. Chief Information Officer', true) +
+          field('sp-comp', 'Company', e.comp, 'e.g. Maruti Suzuki', true) +
+
+          '<div class="field c6"><label for="sp-gid">Group</label>' +
+            '<div class="inp-grp">' +
+              '<select class="inp" id="sp-gid">' + spkGroups().map(function(g){
+                return '<option value="' + esc(g.id) + '"' + (g.id === e.gid ? ' selected' : '') + '>' +
+                  esc(g.name) + '</option>';
+              }).join('') + '</select>' +
+              '<button class="gbtn" type="button" id="sp-newg">' + svg(IC.plus, 12) + ' New</button>' +
+            '</div>' +
+            '<p class="hint">Becomes a heading on the live page.</p></div>' +
+
+          '<div class="field c6"><label for="sp-weight">Weight</label>' +
+            '<select class="inp" id="sp-weight">' + WEIGHTS.map(function(w){
+              return '<option value="' + w.id + '"' + (w.id === e.weight ? ' selected' : '') + '>' +
+                esc(w.label) + '</option>';
+            }).join('') + '</select>' +
+            '<p class="hint" id="sp-wnote"></p></div>' +
+
+          '<div class="field c6"><label for="sp-status">Status</label>' +
+            '<select class="inp" id="sp-status">' + STATUSES.map(function(s){
+              return '<option value="' + s.id + '"' + (s.id === e.status ? ' selected' : '') + '>' +
+                esc(s.label) + '</option>';
+            }).join('') + '</select>' +
+            '<p class="hint">Only confirmed speakers show on the public page.</p></div>' +
+        '</div>' +
+
+        '<div class="acc" data-open="' + (e.email || e.phone || e.bio ? 'true' : 'false') + '" id="sp-acc">' +
+          '<button class="acc-head" type="button" id="sp-acch">' + svg(IC.caret, 14) +
+            'Additional information' +
+            '<span class="ah-sub">Email, mobile and a short bio — all optional</span></button>' +
+          '<div class="acc-body"><div class="frow">' +
+            field('sp-email', 'Email', e.email, 'name@company.com') +
+            field('sp-phone', 'Mobile', e.phone, '+91 98200 00000') +
+            '<div class="field c12"><label for="sp-bio">Short bio</label>' +
+              '<textarea class="inp" id="sp-bio" style="min-height:70px" ' +
+                'placeholder="A line or two for the speaker card.">' + esc(e.bio || '') + '</textarea></div>' +
+          '</div></div>' +
+        '</div>';
+
+      paintPhoto();
+      wireForm();
+    }
+
+    function wnote(){
+      var v = $('sp-weight').value, n = '';
+      WEIGHTS.forEach(function(w){ if (w.id === v) n = w.note; });
+      $('sp-wnote').textContent = n;
+    }
+
+    function wireForm(){
+      wnote();
+      $('sp-weight').onchange = wnote;
+
+      $('sp-acch').onclick = function(){
+        var a = $('sp-acc');
+        a.setAttribute('data-open', a.getAttribute('data-open') === 'true' ? 'false' : 'true');
+      };
+
+      $('sp-newg').onclick = function(){
+        readForm();
+        var g = { id: uid('g-'), name: 'New group' };
+        S.spkGroups.push(g);
+        save();
+        Q[qi].gid = g.id;
+        paintForm();
+        toast('Group added — rename it on the page');
+      };
+
+      $('sp-fetch').onclick = function(){
+        var btn = this, url = $('sp-li').value.trim();
+        var note = $('sp-linote');
+        if (!url){ note.innerHTML = '<span style="color:var(--accent-strong)">Paste a LinkedIn profile link first.</span>'; return; }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spin"></span> Fetching';
+        note.innerHTML = '';
+        liLookup(url, function(data, err){
+          btn.disabled = false;
+          btn.textContent = 'Fetch details';
+          if (err){ note.innerHTML = '<span style="color:var(--accent-strong)">' + esc(err) + '</span>'; return; }
+          $('sp-name').value = data.name;
+          $('sp-desig').value = data.desig;
+          $('sp-comp').value = data.comp;
+          note.innerHTML = svg(IC.check, 12) + ' Filled in from the profile — check it reads the way you want.';
+          note.style.color = 'var(--ok)';
+          readForm(); paintQueue();
+        });
+      };
+
+      ['sp-name','sp-desig','sp-comp'].forEach(function(id){
+        $(id).addEventListener('input', function(){ readForm(); paintQueue(); });
+      });
+
+      $('sp-logobtn').onclick = function(){ pickFile(function(file){
+        readImage(file, function(img, err){
+          if (err){ toast(err); return; }
+          Q[qi].logo = shrinkLogo(img, 240, 120);
+          paintForm();
+        });
+      }); };
+      var ld = $('sp-logodel');
+      if (ld) ld.onclick = function(){ Q[qi].logo = null; paintForm(); };
+    }
+
+    function pickFile(cb){
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = function(){ if (inp.files && inp.files[0]) cb(inp.files[0]); };
+      inp.click();
+    }
+
+    /* ---- the square cropper ---- */
+    var VIEW = 176, OUT = 320;
+
+    function paintPhoto(){
+      var e = Q[qi], box = $('sp-phbox');
+      if (!e.img && !e.photo){
+        box.innerHTML =
+          '<div class="drop" id="sp-drop" tabindex="0" role="button">' +
+            svg(IC.image, 26) +
+            '<b>Add a photo</b><span>Drop a file here, or click to choose</span>' +
+          '</div>';
+        wireDrop();
+        return;
+      }
+      if (!e.img){
+        /* an already-saved photo: show it, offer to replace or start again */
+        box.innerHTML =
+          '<div class="crop"><div class="crop-view"><img src="' + e.photo + '" ' +
+            'style="width:' + VIEW + 'px;height:' + VIEW + 'px"></div>' +
+            '<div class="crop-acts">' +
+              '<button class="btn btn-secondary btn-sm" type="button" id="sp-replace" style="flex:1">Replace photo</button>' +
+              '<button class="btn btn-ghost btn-icon" type="button" id="sp-phdel" title="Remove">' +
+                svg(IC.trash, 14) + '</button>' +
+            '</div></div>';
+        $('sp-replace').onclick = function(){ pickFile(loadPhoto); };
+        $('sp-phdel').onclick = function(){ e.photo = null; paintPhoto(); paintQueue(); };
+        return;
+      }
+      box.innerHTML =
+        '<div class="crop">' +
+          '<div class="crop-view" id="sp-cv"><img id="sp-cimg" src="' + e.img + '" alt=""></div>' +
+          '<div class="crop-zoom">' + svg(IC.search, 13) +
+            '<input type="range" id="sp-zoom" min="1" max="3" step="0.01" value="' + e.zoom + '">' +
+          '</div>' +
+          '<div class="crop-acts">' +
+            '<button class="btn btn-secondary btn-sm" type="button" id="sp-replace" style="flex:1">Replace</button>' +
+            '<button class="btn btn-ghost btn-icon" type="button" id="sp-phdel" title="Remove">' +
+              svg(IC.trash, 14) + '</button>' +
+          '</div>' +
+        '</div>';
+
+      var img = $('sp-cimg'), view = $('sp-cv');
+      var nat = { w: e.natW, h: e.natH };
+
+      function apply(){
+        var cover = Math.max(VIEW / nat.w, VIEW / nat.h);
+        var s = cover * e.zoom;
+        var w = nat.w * s, h = nat.h * s;
+        e.tx = Math.min(0, Math.max(VIEW - w, e.tx));
+        e.ty = Math.min(0, Math.max(VIEW - h, e.ty));
+        img.style.width = w + 'px';
+        img.style.height = h + 'px';
+        img.style.left = e.tx + 'px';
+        img.style.top = e.ty + 'px';
+      }
+      function commitCrop(){
+        var probe = new Image();
+        probe.onload = function(){
+          e.photo = cropToSquare(probe, e.tx, e.ty, e.zoom, VIEW, OUT);
+          paintQueue();
+        };
+        probe.src = e.img;
+      }
+      apply();
+
+      var down = null;
+      view.addEventListener('pointerdown', function(ev){
+        down = { x: ev.clientX, y: ev.clientY, tx: e.tx, ty: e.ty };
+        view.setPointerCapture(ev.pointerId);
+      });
+      view.addEventListener('pointermove', function(ev){
+        if (!down) return;
+        e.tx = down.tx + (ev.clientX - down.x);
+        e.ty = down.ty + (ev.clientY - down.y);
+        apply();
+      });
+      view.addEventListener('pointerup', function(){ if (down){ down = null; commitCrop(); } });
+      view.addEventListener('pointercancel', function(){ down = null; });
+
+      $('sp-zoom').addEventListener('input', function(){ e.zoom = +this.value; apply(); });
+      $('sp-zoom').addEventListener('change', commitCrop);
+
+      $('sp-replace').onclick = function(){ pickFile(loadPhoto); };
+      $('sp-phdel').onclick = function(){
+        e.img = null; e.photo = null; e.zoom = 1; e.tx = 0; e.ty = 0;
+        paintPhoto(); paintQueue();
+      };
+      commitCrop();
+    }
+
+    function loadPhoto(file){
+      readImage(file, function(img, err){
+        if (err){ toast(err); return; }
+        var e = Q[qi];
+        e.img = img.src; e.natW = img.naturalWidth; e.natH = img.naturalHeight;
+        e.zoom = 1;
+        /* centre the image in the frame to begin with */
+        var cover = Math.max(VIEW / e.natW, VIEW / e.natH);
+        e.tx = (VIEW - e.natW * cover) / 2;
+        e.ty = (VIEW - e.natH * cover) / 2;
+        paintPhoto();
+      });
+    }
+
+    function wireDrop(){
+      var d = $('sp-drop');
+      if (!d) return;
+      d.onclick = function(){ pickFile(loadPhoto); };
+      d.onkeydown = function(ev){ if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); pickFile(loadPhoto); } };
+      d.addEventListener('dragover', function(ev){ ev.preventDefault(); d.classList.add('over'); });
+      d.addEventListener('dragleave', function(){ d.classList.remove('over'); });
+      d.addEventListener('drop', function(ev){
+        ev.preventDefault(); d.classList.remove('over');
+        if (ev.dataTransfer.files && ev.dataTransfer.files[0]) loadPhoto(ev.dataTransfer.files[0]);
+      });
+    }
+
+    /* ---- read the form back into the queue entry ---- */
+    function readForm(){
+      if (!$('sp-name')) return;
+      var e = Q[qi];
+      e.name = $('sp-name').value.trim();
+      e.desig = $('sp-desig').value.trim();
+      e.comp = $('sp-comp').value.trim();
+      e.gid = $('sp-gid').value;
+      e.weight = $('sp-weight').value;
+      e.status = $('sp-status').value;
+      e.li = $('sp-li').value.trim();
+      e.email = $('sp-email').value.trim();
+      e.phone = $('sp-phone').value.trim();
+      e.bio = $('sp-bio').value.trim();
+    }
+
+    $('q-add') && ($('q-add').onclick = function(){
+      readForm();
+      Q.push(blank());
+      qi = Q.length - 1;
+      paintForm(); paintQueue(); paintSave();
+    });
+
+    $('ssave').onclick = function(){
+      readForm();
+      var bad = [];
+      Q.forEach(function(e, i){ if (!e.name) bad.push(i + 1); });
+      if (bad.length){
+        $('sp-err').textContent = Q.length === 1 ? 'A name is needed before this can be saved.'
+          : (bad.length === 1 ? 'Speaker ' + bad[0] + ' still needs a name.'
+                              : 'Speakers ' + bad.join(', ') + ' still need a name.');
+        if (!editing){ qi = bad[0] - 1; paintForm(); paintQueue(); }
+        return;
+      }
+      var clean = Q.map(function(e){
+        return {
+          id: e.id, gid: e.gid, name: e.name, desig: e.desig, comp: e.comp,
+          photo: e.photo || null, logo: e.logo || null, colour: e.colour || AV[0],
+          weight: e.weight, status: e.status, email: e.email, phone: e.phone, li: e.li, bio: e.bio
+        };
+      });
+      if (editing){
+        S.speakers = spkAll().map(function(p){ return p.id === editId ? clean[0] : p; });
+      } else {
+        S.speakers = spkAll().concat(clean);
+      }
+      close();
+      spkCommit();
+      toast(editing ? 'Speaker updated'
+        : (clean.length === 1 ? clean[0].name + ' added' : clean.length + ' speakers added'));
+    };
+
+    paintQueue();
+    paintForm();
+    paintSave();
+  }
 
   var FAQS = [
     ['Who should attend this event?', 'Senior decision-makers across technology, risk and operations. Most delegates are director level and above.'],
@@ -352,24 +1573,6 @@
     ['Do you provide travel or accommodation?', 'Travel and stay are not included. We hold a delegate rate at the venue hotel — the event desk can share the booking code.'],
     ['How do I become a partner?', 'Use the Become a partner button on the microsite, or contact the partnerships team directly.']
   ];
-
-  function viewSpeakers(){
-    var cards = SPEAKERS.map(function(s, i){
-      var col = AV[i % AV.length];
-      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)">' +
-          '<span class="avat" style="background:' + col + ';width:38px;height:38px;font-size:13px">' +
-            esc(s[0].split(' ')[0][0] + s[0].split(' ')[1][0]) + '</span>' +
-          '<span style="flex:1;min-width:0"><b style="font-size:13.5px;display:block">' + esc(s[0]) + '</b>' +
-          '<span style="font-size:12px;color:var(--text-muted)">' + esc(s[1]) + ' · ' + esc(s[2]) + '</span></span>' +
-          '<span class="badge b-ok">Confirmed</span>' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Speaker opened">' + svg(IC.edit, 15) + '</button>' +
-        '</div>';
-    }).join('');
-
-    return vhead('Speakers', SPEAKERS.length + ' speakers confirmed. They render in the Speakers block in this order.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Speaker form opened">' + svg(IC.plus, 13) + ' Add speaker</button>') +
-      panelFlush('Confirmed line-up', 'Drag to reorder on the live page', '<div>' + cards + '</div>');
-  }
 
   function viewAgenda(){
     var slots = [
@@ -1175,6 +2378,8 @@
 
     /* per-view wiring */
     if (r === 'dashboard') DASH.wire(CTX);
+    if (r === 'content/basics') wireBasics();
+    if (r === 'content/speakers') wireSpeakers();
     if (r === 'design/sections') wireSections();
     if (r === 'design/nav') wireSetNav();
     if (r === 'design/theme') wireTheme();
@@ -1217,7 +2422,7 @@
                 '</div>' +
               '</div>' +
               '<div style="padding:18px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;border-bottom:1px solid var(--border)">' +
-                [['Delegates', comma(EV.registrations)], ['Speakers', String(SPEAKERS.length)], ['Sessions','7'], ['Partners','10']].map(function(s){
+                [['Delegates', comma(EV.registrations)], ['Speakers', String(spkAll().length)], ['Sessions','7'], ['Partners','10']].map(function(s){
                   return '<div><div style="font-family:var(--font-display);font-size:19px;font-weight:700">' + esc(s[1]) + '</div>' +
                     '<div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700">' + esc(s[0]) + '</div></div>';
                 }).join('') +
@@ -1227,12 +2432,16 @@
                 '<p style="font-size:13px;color:var(--text-muted);margin:0 0 16px;line-height:1.6">India’s decision-makers gather to set the agenda for the year ahead. Two days of keynotes, closed-door roundtables and the conversations that do not happen anywhere else.</p>' +
                 '<div class="eyebrow" style="margin-bottom:9px">Speakers</div>' +
                 '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' +
-                  SPEAKERS.slice(0,3).map(function(s, i){
+                  spkAll().slice(0,3).map(function(p, i){
+                    var face = p.photo
+                      ? '<div style="width:40px;height:40px;border-radius:50%;margin:0 auto 7px;overflow:hidden">' +
+                          '<img src="' + p.photo + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block"></div>'
+                      : '<div class="avat" style="background:' + (p.colour || AV[i]) + ';width:40px;height:40px;margin:0 auto 7px;font-size:14px">' +
+                          esc(initials(p.name)) + '</div>';
                     return '<div style="border:1px solid var(--border);border-radius:10px;padding:11px;text-align:center">' +
-                      '<div class="avat" style="background:' + AV[i] + ';width:40px;height:40px;margin:0 auto 7px;font-size:14px">' +
-                        esc(s[0].split(' ')[0][0] + s[0].split(' ')[1][0]) + '</div>' +
-                      '<div style="font-size:12.5px;font-weight:700">' + esc(s[0]) + '</div>' +
-                      '<div style="font-size:10.5px;color:var(--text-muted)">' + esc(s[2]) + '</div></div>';
+                      face +
+                      '<div style="font-size:12.5px;font-weight:700">' + esc(p.name) + '</div>' +
+                      '<div style="font-size:10.5px;color:var(--text-muted)">' + esc(p.comp) + '</div></div>';
                   }).join('') +
                 '</div>' +
               '</div>' +
