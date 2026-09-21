@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Import Figma Design &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Palette mirrors the rest of Revamp CMS so this module feels native. */
+  :root{
+    --bg:#FAF7F6; --surface:#FFFFFF; --surface-2:#F3EEED; --surface-3:#E9E2E0;
+    --border:#E0D7D5; --text:#241B1A; --text-muted:#756865; --text-faint:#A0908C;
+    --accent:#ED1C24; --accent-strong:#B3151B; --accent-soft:#FBDBDC; --accent-contrast:#FFFFFF;
+    --ok:#2F8F5B; --crit:#A23B36;
+    --shadow-sm:0 1px 2px rgba(30,26,10,.08);
+    --shadow-md:0 12px 28px -10px rgba(30,26,10,.28);
+    --font-display:'Fraunces', Georgia, serif;
+    --font-body:'Manrope', 'Segoe UI', system-ui, sans-serif;
+    --font-mono:'IBM Plex Mono', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
+      --border:#3F3532; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+      --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
+      --ok:#4FAE7A; --crit:#E08078;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+      --shadow-md:0 14px 32px -12px rgba(0,0,0,.6);
+    }
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--font-body); font-size:14px;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column;
+  }
+  h1{ font-family:var(--font-display); font-size:20px; font-weight:600; margin:0; }
+  button{ font-family:var(--font-body); cursor:pointer; }
+  input{ font-family:var(--font-body); font-size:13.5px; color:var(--text); }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+
+  /* ---------- header + controls ---------- */
+  header{
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+    padding:18px 22px 14px; border-bottom:1px solid var(--border); background:var(--surface);
+  }
+  header p{ margin:0; font-size:12.5px; color:var(--text-muted); }
+  header .spacer{ flex:1; }
+  .back-link{
+    display:inline-flex; align-items:center; gap:6px; align-self:center;
+    font-size:12.5px; font-weight:600; color:var(--text-muted); text-decoration:none;
+    padding:7px 12px; border:1px solid var(--border); border-radius:8px;
+  }
+  .back-link:hover{ background:var(--surface-2); color:var(--text); }
+
+  .controls{
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    padding:14px 22px 0;
+  }
+  .field{ display:flex; flex-direction:column; gap:5px; flex:1; min-width:220px; }
+  .field label{ font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-faint); }
+  .field input{
+    padding:9px 12px; border:1px solid var(--border); border-radius:8px;
+    background:var(--surface); width:100%;
+  }
+  .field input:hover{ border-color:var(--text-faint); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:7px; line-height:1;
+    padding:11px 20px; border-radius:8px; border:1px solid transparent; white-space:nowrap;
+    font-size:13px; font-weight:700; align-self:flex-end;
+    background:var(--accent); color:var(--accent-contrast);
+    transition:background .12s ease, opacity .12s ease;
+  }
+  .btn:hover:not(:disabled){ background:var(--accent-strong); }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn-ghost{
+    background:transparent; color:var(--text-muted); border-color:var(--border);
+    padding:6px 11px; font-size:12px; font-weight:600; align-self:center;
+  }
+  .btn-ghost:hover:not(:disabled){ background:var(--surface-2); color:var(--text); }
+
+  .hint{ padding:9px 22px 0; font-size:12px; color:var(--text-muted); }
+  .hint code{ font-family:var(--font-mono); font-size:11.5px; background:var(--surface-2); padding:1px 5px; border-radius:4px; }
+
+  .status{ padding:10px 22px 14px; font-size:12.5px; min-height:34px; color:var(--text-muted); }
+  .status.is-error{ color:var(--crit); font-weight:600; }
+  .status.is-ok{ color:var(--ok); font-weight:600; }
+
+  /* ---------- split panes ---------- */
+  .panes{
+    flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:14px;
+    padding:0 22px 22px;
+  }
+  .pane{
+    min-height:0; display:flex; flex-direction:column;
+    border:1px solid var(--border); border-radius:12px; background:var(--surface);
+    box-shadow:var(--shadow-sm); overflow:hidden;
+  }
+  .pane-head{
+    display:flex; align-items:center; gap:6px; padding:8px 10px;
+    border-bottom:1px solid var(--border); background:var(--surface-2);
+  }
+  .pane-title{ font-size:12px; font-weight:700; color:var(--text-muted); padding:0 6px; }
+  .pane-head .spacer{ flex:1; }
+
+  .tab{
+    display:inline-flex; align-items:center; justify-content:center; line-height:1;
+    padding:7px 13px; border-radius:7px; border:1px solid transparent; background:none;
+    font-size:12.5px; font-weight:600; color:var(--text-muted);
+    transition:background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .tab:hover{ background:var(--surface-3); color:var(--text); }
+  .tab.active{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent); }
+
+  .pane-body{ flex:1; min-height:0; overflow:auto; }
+  .pane-body pre{
+    margin:0; padding:14px; font-family:var(--font-mono); font-size:11.5px; line-height:1.6;
+    white-space:pre; color:var(--text);
+  }
+  .empty{
+    height:100%; display:flex; align-items:center; justify-content:center; padding:24px;
+    text-align:center; font-size:12.5px; color:var(--text-faint);
+  }
+  #preview{ width:100%; height:100%; border:0; background:#fff; display:block; }
+
+  /* ---------- builder loader, shown while the design is being built ---------- */
+  .loader{
+    height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:22px; padding:24px; text-align:center;
+  }
+  .builder{ width:150px; height:126px; }
+
+  .builder .ground{ fill:var(--surface-3); }
+  .builder .brick{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5; }
+  .builder .handle{ fill:var(--text-faint); }
+  .builder .head{ fill:var(--accent); }
+  .builder .sparks line{ stroke:var(--accent); stroke-width:2.5; stroke-linecap:round; }
+
+  /* Pivot is the grip end of the handle, so the head swings down onto the wall. */
+  .builder .hammer{
+    transform-box:view-box; transform-origin:120px 42px;
+    animation:hammer-swing 1.1s ease-in-out infinite;
+  }
+  .builder .bricks{
+    transform-box:view-box; transform-origin:center;
+    animation:brick-tap 1.1s ease-in-out infinite;
+  }
+  .builder .sparks{
+    transform-box:view-box; transform-origin:64px 60px;
+    animation:spark-flash 1.1s ease-in-out infinite;
+  }
+
+  /* The head sits left of the pivot and SVG's y axis points down, so a POSITIVE
+     (clockwise) angle raises it and a negative one drives it into the wall. */
+  @keyframes hammer-swing{
+    0%           { transform:rotate(18deg); }   /* raised */
+    35%          { transform:rotate(-12deg); }  /* contact */
+    45%          { transform:rotate(-5deg); }   /* small rebound */
+    70%, 100%    { transform:rotate(18deg); }
+  }
+  @keyframes brick-tap{
+    0%, 30%      { transform:translateY(0); }
+    37%          { transform:translateY(1.5px); }
+    50%, 100%    { transform:translateY(0); }
+  }
+  @keyframes spark-flash{
+    0%, 31%      { opacity:0; transform:scale(.5); }
+    38%          { opacity:1; transform:scale(1); }
+    52%, 100%    { opacity:0; transform:scale(1.3); }
+  }
+
+  .loader-label{ font-size:12.5px; font-weight:700; color:var(--text-muted); }
+  .loader-sub{ margin-top:4px; font-size:11.5px; color:var(--text-faint); }
+
+  .progress{
+    width:220px; height:6px; margin:14px auto 0;
+    border-radius:99px; background:var(--surface-3); overflow:hidden;
+  }
+  .progress-fill{
+    display:block; height:100%; width:0%;
+    border-radius:99px; background:var(--accent);
+    transition:width .3s ease;
+  }
+  /* Before there is anything countable, sweep instead of sitting at zero. */
+  .progress.indeterminate .progress-fill{
+    width:38%; animation:progress-sweep 1.3s ease-in-out infinite;
+  }
+  @keyframes progress-sweep{
+    0%  { transform:translateX(-110%); }
+    100%{ transform:translateX(300%); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .builder .hammer, .builder .bricks, .builder .sparks{ animation-duration:4s; }
+  }
+
+  /* Full-page preview: lift the pane out of the grid to cover the whole window. */
+  .pane.is-fullpage{
+    position:fixed; inset:0; z-index:50;
+    border:0; border-radius:0; box-shadow:none;
+  }
+
+  @media (max-width: 880px){
+    .panes{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Import Figma design</h1>
+  <p>Convert a Figma frame into absolutely-positioned HTML.</p>
+  <span class="spacer"></span>
+  <a class="back-link" href="../create-event.html">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+    Back to Create event
+  </a>
+</header>
+
+<div class="controls">
+  <div class="field">
+    <label for="file-url">Figma file URL or key</label>
+    <input id="file-url" type="text" placeholder="https://www.figma.com/design/AbC123.../My-File" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="token">Personal access token</label>
+    <input id="token" type="password" placeholder="figd_..." autocomplete="off">
+  </div>
+  <button class="btn" id="generate">Generate</button>
+</div>
+
+<p class="hint">
+  Get a token from Figma &rarr; <code>Settings</code> &rarr; <code>Security</code> &rarr; <code>Personal access tokens</code>.
+  It is sent straight to Figma&rsquo;s API and never stored.
+</p>
+
+<p class="status" id="status" role="status" aria-live="polite"></p>
+
+<main class="panes">
+  <!-- Left: generated code / parsed node outline -->
+  <section class="pane">
+    <div class="pane-head">
+      <button class="tab active" id="tab-html" data-view="html">HTML</button>
+      <button class="tab" id="tab-tree" data-view="tree">Node Tree</button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" id="download" disabled>Download .html</button>
+    </div>
+    <div class="pane-body" id="code-body">
+      <div class="empty">Paste a file URL and a token, then hit Generate.</div>
+    </div>
+  </section>
+
+  <!-- Right: live preview of the generated document -->
+  <section class="pane" id="preview-pane">
+    <div class="pane-head">
+      <span class="pane-title">Live preview</span>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" id="fullpage" disabled>Full page</button>
+    </div>
+    <div class="pane-body" id="preview-body">
+      <div class="empty">The converted design renders here.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ============================================================
+     Helpers
+     ============================================================ */
+
+  /** Figma geometry is fractional; snap to whole pixels for readable output. */
+  function px(n){ return Math.round(n || 0); }
+
+  /** Escape a string for safe use as HTML text content / attribute value. */
+  function esc(value){
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+
+  /**
+   * Figma colors are 0–1 RGBA. `opacity` is the paint's own opacity, which
+   * multiplies with the color's alpha.
+   */
+  function rgba(color, opacity){
+    if (!color) return null;
+    var r = Math.round((color.r || 0) * 255);
+    var g = Math.round((color.g || 0) * 255);
+    var b = Math.round((color.b || 0) * 255);
+    var a = (color.a == null ? 1 : color.a) * (opacity == null ? 1 : opacity);
+    if (a >= 1) return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+    return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + Number(a.toFixed(3)) + ')';
+  }
+
+  /** First visible SOLID paint in a fills/strokes array, as a css color (or null). */
+  function solidFill(paints){
+    if (!Array.isArray(paints)) return null;
+    for (var i = 0; i < paints.length; i++){
+      var p = paints[i];
+      if (p && p.type === 'SOLID' && p.visible !== false) return rgba(p.color, p.opacity);
+    }
+    return null;
+  }
+
+  /* ============================================================
+     Figma API
+     ============================================================ */
+
+  /**
+   * Pull the file key out of a pasted URL. Figma uses both /file/ and /design/.
+   * Anything that doesn't look like a URL is treated as a raw key.
+   */
+  function extractFileKey(input){
+    var match = String(input || '').match(/(?:file|design)\/([a-zA-Z0-9]+)/);
+    return match ? match[1] : String(input || '').trim();
+  }
+
+  function delay(ms){
+    return new Promise(function(resolve){ setTimeout(resolve, ms); });
+  }
+
+  var MAX_RETRIES = 4;
+
+  /**
+   * GET a Figma endpoint, retrying on 429 (rate limited) and 5xx.
+   *
+   * Retry-After is only readable cross-origin when the server sends
+   * Access-Control-Expose-Headers, which Figma does not — so in the browser
+   * this almost always falls back to exponential backoff (1s, 2s, 4s, 8s).
+   * The header is still honoured when it is visible, e.g. behind a proxy.
+   *
+   * TODO: Figma's API sends permissive CORS headers today, but if a browser
+   * blocks this (e.g. stricter policies, or serving from file://), route it
+   * through a small server-side proxy that forwards the X-Figma-Token header.
+   */
+  function figmaGet(url, token, onWait, attempt){
+    attempt = attempt || 0;
+    return fetch(url, { headers: { 'X-Figma-Token': token } }).then(function(res){
+      var retryable = res.status === 429 || res.status >= 500;
+      if (retryable && attempt < MAX_RETRIES){
+        var header = parseFloat(res.headers.get('Retry-After'));
+        var waitMs = isFinite(header) ? header * 1000 : Math.pow(2, attempt) * 1000;
+        if (onWait) onWait(waitMs, res.status, attempt + 1);
+        return delay(waitMs).then(function(){
+          return figmaGet(url, token, onWait, attempt + 1);
+        });
+      }
+      if (res.status === 429){
+        throw new Error('Figma rate limit (429) — too many image requests. Wait a minute and try again.');
+      }
+      if (!res.ok) throw new Error('Figma API ' + res.status + ' ' + res.statusText);
+      return res.json();
+    });
+  }
+
+  function fetchFigmaFile(key, token, onWait){
+    return figmaGet('https://api.figma.com/v1/files/' + encodeURIComponent(key), token, onWait);
+  }
+
+  /* ------------------------------------------------------------
+     Images
+
+     Two different endpoints, because they cost very different amounts:
+
+     - Photo fills only carry an opaque imageRef in the file JSON. The whole
+       ref -> url table comes back from ONE cheap call to /v1/files/{key}/images.
+     - Vector shapes have no CSS equivalent, so Figma has to actually render
+       them via /v1/images/{key}?ids=... That endpoint is rate limited (429),
+       so it is batched, paced, and retried.
+     ------------------------------------------------------------ */
+
+  /** Shapes with no CSS equivalent — rendered to a bitmap instead. */
+  var VECTOR_TYPES = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'REGULAR_POLYGON', 'POLYGON'];
+
+  /** Bigger batches mean fewer requests, which is what the rate limit counts. */
+  var IMAGE_BATCH = 100;
+  var BATCH_PAUSE_MS = 350;
+
+  function isVectorNode(node){ return VECTOR_TYPES.indexOf(node.type) !== -1; }
+
+  /** The node's first visible IMAGE paint (carries imageRef + scaleMode), or null. */
+  function imageFillPaint(node){
+    if (!Array.isArray(node.fills)) return null;
+    for (var i = 0; i < node.fills.length; i++){
+      var fill = node.fills[i];
+      if (fill && fill.type === 'IMAGE' && fill.visible !== false && fill.imageRef) return fill;
+    }
+    return null;
+  }
+
+  /** Ids of vector nodes that Figma must render for us. */
+  function collectVectorIds(node, ids){
+    if (!node || node.visible === false) return ids;
+    if (node.absoluteBoundingBox && isVectorNode(node)){
+      ids.push(node.id);
+      // A rasterized vector already contains its children; don't walk into it.
+      return ids;
+    }
+    (node.children || []).forEach(function(child){ collectVectorIds(child, ids); });
+    return ids;
+  }
+
+  /** True if anything in the tree uses a photo fill. */
+  function usesImageFills(node){
+    if (!node || node.visible === false) return false;
+    if (imageFillPaint(node)) return true;
+    return (node.children || []).some(usesImageFills);
+  }
+
+  /** imageRef -> url for every image fill in the file. One request, no render cost. */
+  function fetchImageFillUrls(key, token, onWait){
+    return figmaGet('https://api.figma.com/v1/files/' + encodeURIComponent(key) + '/images', token, onWait)
+      .then(function(data){ return (data.meta && data.meta.images) || {}; });
+  }
+
+  /**
+   * Render vector nodes to bitmaps, in paced batches.
+   * Whatever succeeded is always returned, even if a later batch fails — a rate
+   * limit near the end shouldn't throw away the images we already have.
+   */
+  function fetchVectorImages(key, token, ids, onProgress, onWait){
+    if (!ids.length) return Promise.resolve({ urls:{}, error:null });
+
+    var batches = [];
+    for (var i = 0; i < ids.length; i += IMAGE_BATCH) batches.push(ids.slice(i, i + IMAGE_BATCH));
+
+    var urls = {};
+    var failure = null;
+
+    return batches.reduce(function(chain, batch, index){
+      return chain.then(function(){
+        if (failure) return; // stop hammering an endpoint that is already refusing us
+
+        // scale=2 keeps bitmaps crisp on retina screens.
+        // TODO: vectors would be sharper requested as format=svg in a second pass.
+        var endpoint = 'https://api.figma.com/v1/images/' + encodeURIComponent(key) +
+                       '?ids=' + encodeURIComponent(batch.join(',')) + '&format=png&scale=2';
+
+        return figmaGet(endpoint, token, onWait).then(function(data){
+          if (data.err) throw new Error('Figma images API: ' + data.err);
+          Object.keys(data.images || {}).forEach(function(id){
+            if (data.images[id]) urls[id] = data.images[id];
+          });
+          // Report after the batch lands, so the bar reflects finished work.
+          if (onProgress) onProgress(Math.min((index + 1) * IMAGE_BATCH, ids.length), ids.length);
+          // Breathe between batches so we don't trip the limiter in the first place.
+          if (index < batches.length - 1) return delay(BATCH_PAUSE_MS);
+        }).catch(function(error){
+          failure = error;
+        });
+      });
+    }, Promise.resolve()).then(function(){
+      return { urls: urls, error: failure };
+    });
+  }
+
+  /* ============================================================
+     Conversion: Figma node tree -> absolutely-positioned HTML
+     ============================================================ */
+
+  /**
+   * Render root = first FRAME/COMPONENT with geometry on the first page.
+   * Falls back to the page itself so we always have something to draw.
+   */
+  function pickRenderRoot(figmaDocument){
+    var page = (figmaDocument.children || [])[0];
+    if (!page) return null;
+    var children = page.children || [];
+    for (var i = 0; i < children.length; i++){
+      var node = children[i];
+      if ((node.type === 'FRAME' || node.type === 'COMPONENT') && node.absoluteBoundingBox) return node;
+    }
+    return page;
+  }
+
+  /** Build the inline style declarations for one node. */
+  function nodeStyles(node, box, origin, imageUrl){
+    var styles = [
+      'position:absolute',
+      'left:' + px(box.x - origin.x) + 'px',
+      'top:' + px(box.y - origin.y) + 'px',
+      'width:' + px(box.width) + 'px',
+      'height:' + px(box.height) + 'px'
+    ];
+
+    var isText = node.type === 'TEXT';
+
+    // Background — text nodes use their fill as a text color instead.
+    if (!isText){
+      var background = solidFill(node.fills);
+      if (background) styles.push('background:' + background);
+    }
+
+    // Bitmap sits on top of any solid fill. esc() keeps "&" in the signed url
+    // from being read as an entity inside the style attribute.
+    if (imageUrl && !isText){
+      styles.push("background-image:url('" + esc(imageUrl) + "')");
+      styles.push('background-position:center');
+
+      if (isVectorNode(node)){
+        // contain, so icons are never cropped.
+        styles.push('background-size:contain');
+        styles.push('background-repeat:no-repeat');
+      } else {
+        // Map Figma's scaleMode onto the CSS equivalent.
+        var mode = (imageFillPaint(node) || {}).scaleMode;
+        if (mode === 'TILE'){
+          styles.push('background-repeat:repeat');
+        } else {
+          styles.push('background-size:' + (mode === 'FIT' ? 'contain' : 'cover'));
+          styles.push('background-repeat:no-repeat');
+        }
+      }
+    }
+
+    // Corner radius: per-corner array wins over the uniform value.
+    if (Array.isArray(node.rectangleCornerRadii)){
+      var radii = node.rectangleCornerRadii;
+      if (radii.some(function(r){ return r; })){
+        styles.push('border-radius:' + radii.map(function(r){ return px(r) + 'px'; }).join(' '));
+      }
+    } else if (node.cornerRadius){
+      styles.push('border-radius:' + px(node.cornerRadius) + 'px');
+    }
+
+    // Stroke -> border. box-sizing:border-box in the export keeps sizes honest.
+    var stroke = solidFill(node.strokes);
+    if (stroke && node.strokeWeight) styles.push('border:' + px(node.strokeWeight) + 'px solid ' + stroke);
+
+    if (node.opacity != null && node.opacity !== 1) styles.push('opacity:' + Number(node.opacity.toFixed(3)));
+
+    // First visible drop shadow.
+    var effects = node.effects || [];
+    for (var i = 0; i < effects.length; i++){
+      var fx = effects[i];
+      if (fx && fx.type === 'DROP_SHADOW' && fx.visible !== false){
+        var offset = fx.offset || { x:0, y:0 };
+        styles.push('box-shadow:' + px(offset.x) + 'px ' + px(offset.y) + 'px ' +
+                    px(fx.radius) + 'px ' + px(fx.spread || 0) + 'px ' + rgba(fx.color, 1));
+        break;
+      }
+    }
+
+    if (isText) styles = styles.concat(textStyles(node));
+    return styles;
+  }
+
+  /** Typography for TEXT nodes, from node.style. */
+  function textStyles(node){
+    var s = node.style || {};
+    var styles = [];
+
+    var color = solidFill(node.fills);
+    if (color) styles.push('color:' + color);
+
+    if (s.fontSize) styles.push('font-size:' + s.fontSize + 'px');
+    if (s.fontFamily){
+      // Strip quotes/backslashes so the family name can't break out of style="".
+      styles.push("font-family:'" + String(s.fontFamily).replace(/['"\\]/g, '') + "', sans-serif");
+    }
+    if (s.fontWeight) styles.push('font-weight:' + s.fontWeight);
+    if (s.lineHeightPx) styles.push('line-height:' + px(s.lineHeightPx) + 'px');
+    if (s.letterSpacing) styles.push('letter-spacing:' + Number(s.letterSpacing.toFixed(2)) + 'px');
+
+    var horizontal = {
+      LEFT:'left', CENTER:'center', RIGHT:'right', JUSTIFIED:'justify'
+    }[s.textAlignHorizontal] || 'left';
+    styles.push('text-align:' + horizontal);
+
+    // Flex handles vertical placement; justify-content places single lines
+    // horizontally (text-align alone only aligns wrapped lines within the box).
+    var vertical = { TOP:'flex-start', CENTER:'center', BOTTOM:'flex-end' }[s.textAlignVertical] || 'flex-start';
+    styles.push('display:flex');
+    styles.push('align-items:' + vertical);
+    styles.push('justify-content:' + ({ left:'flex-start', center:'center', right:'flex-end', justify:'flex-start' }[horizontal]));
+    styles.push('white-space:pre-wrap');
+
+    return styles;
+  }
+
+  /**
+   * Recursively render a node and its children.
+   * `origin` is the parent's top-left: Figma coordinates are absolute, but each
+   * emitted div is positioned inside its parent div, so offsets must be local.
+   * (For top-level nodes the parent *is* the root frame.)
+   */
+  function renderNode(node, origin, ctx, depth){
+    if (!node || node.visible === false) return '';
+
+    var box = node.absoluteBoundingBox;
+    var children = node.children || [];
+
+    // No geometry of its own (e.g. a group wrapper): keep walking so its
+    // children still land on the canvas.
+    if (!box){
+      return children.map(function(child){ return renderNode(child, origin, ctx, depth); }).join('');
+    }
+
+    ctx.count++;
+
+    // A rendered vector wins; otherwise resolve the fill's imageRef.
+    var fillPaint = imageFillPaint(node);
+    var imageUrl = ctx.vectorImages[node.id] ||
+                   (fillPaint ? ctx.fillImages[fillPaint.imageRef] : null);
+    if (imageUrl) ctx.imageCount++;
+
+    var indent = new Array(depth + 1).join('  ');
+    var styles = nodeStyles(node, box, origin, imageUrl).join(';');
+    var open = '\n' + indent + '<div data-name="' + esc(node.name) + '" style="' + styles + '">';
+
+    // TEXT content stays inline: these divs use white-space:pre-wrap, so any
+    // indentation added around the characters would show up in the render.
+    if (node.type === 'TEXT') return open + esc(node.characters) + '</div>';
+
+    // A rasterized vector already includes everything inside it.
+    if (isVectorNode(node) && imageUrl) return open + '</div>';
+
+    if (!children.length) return open + '</div>';
+
+    // Children nest inside this div, measured from this node's top-left.
+    var inner = children.map(function(child){ return renderNode(child, box, ctx, depth + 1); }).join('');
+    return open + inner + '\n' + indent + '</div>';
+  }
+
+  /** Wrap the rendered nodes in a standalone HTML document. */
+  function buildHtmlDocument(root, images){
+    var box = root.absoluteBoundingBox || { x:0, y:0, width:0, height:0 };
+    var ctx = {
+      count: 0,
+      imageCount: 0,
+      vectorImages: (images && images.vectors) || {},
+      fillImages: (images && images.fills) || {}
+    };
+    var body = (root.children || []).map(function(child){ return renderNode(child, box, ctx, 1); }).join('');
+
+    var background = solidFill(root.fills) ||
+      (root.backgroundColor ? rgba(root.backgroundColor, 1) : '#FFFFFF');
+
+    var html = [
+      '<!DOCTYPE html>',
+      '<html lang="en">',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<title>' + esc(root.name) + ' &mdash; Figma export</title>',
+      '<style>',
+      '  *{ box-sizing:border-box; }',
+      '  body{ margin:0; padding:24px; background:#F1F1F1; }',
+      '  /* margin:auto centers the canvas when it fits, and keeps it fully',
+      '     scrollable (not clipped or squashed) when it is wider than the viewport. */',
+      '  .canvas{',
+      '    position:relative; overflow:hidden; margin:0 auto;',
+      '    width:' + px(box.width) + 'px; height:' + px(box.height) + 'px;',
+      '    background:' + background + ';',
+      '  }',
+      '</style>',
+      '</head>',
+      '<body>',
+      '<div class="canvas">' + body, // body lines already carry their own indentation
+      '</div>',
+      '</body>',
+      '</html>'
+    ].join('\n');
+
+    return { html: html, nodeCount: ctx.count, imageCount: ctx.imageCount };
+  }
+
+  /** Plain-text outline of the parsed tree, for the Node Tree tab. */
+  function buildOutline(node, depth){
+    if (!node) return '';
+    var indent = new Array((depth || 0) + 1).join('  ');
+    var box = node.absoluteBoundingBox;
+    var size = box ? '  ' + px(box.width) + '\u00D7' + px(box.height) : '';
+    var hidden = node.visible === false ? '  (hidden)' : '';
+    var line = indent + node.type + '  ' + node.name + size + hidden + '\n';
+    return (node.children || []).reduce(function(acc, child){
+      return acc + buildOutline(child, (depth || 0) + 1);
+    }, line);
+  }
+
+  /* ============================================================
+     UI wiring
+     ============================================================ */
+
+  var urlInput    = document.getElementById('file-url');
+  var tokenInput  = document.getElementById('token');
+  var generateBtn = document.getElementById('generate');
+  var downloadBtn = document.getElementById('download');
+  var fullPageBtn = document.getElementById('fullpage');
+  var previewPane = document.getElementById('preview-pane');
+  var statusEl    = document.getElementById('status');
+  var codeBody    = document.getElementById('code-body');
+  var previewBody = document.getElementById('preview-body');
+  var tabs        = [document.getElementById('tab-html'), document.getElementById('tab-tree')];
+
+  var state = { html:'', outline:'', view:'html' };
+
+  function setStatus(message, kind){
+    statusEl.textContent = message;
+    statusEl.className = 'status' + (kind ? ' is-' + kind : '');
+    // Mirror progress into the loader so it reads as one running commentary.
+    var loaderLabel = document.getElementById('loader-label');
+    if (loaderLabel) loaderLabel.textContent = message;
+  }
+
+  /** Builder-at-work placeholder, shown until the converted design replaces it. */
+  function showLoader(message){
+    previewBody.innerHTML =
+      '<div class="loader">' +
+        '<svg class="builder" viewBox="0 0 150 126" role="img" aria-label="Building the design">' +
+          '<g class="bricks">' +
+            '<rect class="brick" x="50" y="70"  width="50" height="13" rx="2"/>' +
+            '<rect class="brick" x="42" y="85"  width="66" height="13" rx="2"/>' +
+            '<rect class="brick" x="34" y="100" width="82" height="13" rx="2"/>' +
+          '</g>' +
+          '<g class="sparks">' +
+            '<line x1="56" y1="64" x2="50" y2="58"/>' +
+            '<line x1="64" y1="62" x2="64" y2="54"/>' +
+            '<line x1="72" y1="64" x2="78" y2="58"/>' +
+          '</g>' +
+          '<g class="hammer">' +
+            '<rect class="handle" x="74" y="38.5" width="46" height="7" rx="3.5"/>' +
+            '<rect class="head"   x="52" y="26"   width="24" height="32" rx="4"/>' +
+          '</g>' +
+          '<rect class="ground" x="24" y="117" width="102" height="5" rx="2.5"/>' +
+        '</svg>' +
+        '<div>' +
+          '<div class="loader-label" id="loader-label"></div>' +
+          '<div class="progress indeterminate" id="progress"><span class="progress-fill" id="progress-fill"></span></div>' +
+          '<div class="loader-sub" id="loader-eta">Building the preview …</div>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('loader-label').textContent = message || 'Working …';
+  }
+
+  /**
+   * Drive the loader's progress bar.
+   * `fraction` null means "no countable work yet" — the bar sweeps instead.
+   */
+  function setProgress(fraction, note){
+    var bar = document.getElementById('progress');
+    var fill = document.getElementById('progress-fill');
+    var eta = document.getElementById('loader-eta');
+    if (!bar || !fill) return;
+
+    if (fraction == null){
+      bar.classList.add('indeterminate');
+      fill.style.width = '';
+    } else {
+      bar.classList.remove('indeterminate');
+      // The last step snaps: the loader is torn down immediately afterwards, so
+      // a 300ms ease would never finish and the bar would vanish part-filled.
+      fill.style.transition = fraction >= 1 ? 'none' : '';
+      fill.style.width = Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
+    }
+    if (eta && note != null) eta.textContent = note;
+  }
+
+  /** "~12s remaining" from throughput so far, once there's enough to extrapolate. */
+  function remainingLabel(startedAt, done, total){
+    if (!done) return 'Estimating time …';
+    var perItem = (Date.now() - startedAt) / done;
+    var seconds = Math.ceil((perItem * (total - done)) / 1000);
+    if (seconds <= 0) return 'Almost done …';
+    if (seconds < 60) return '~' + seconds + 's remaining';
+    return '~' + Math.ceil(seconds / 60) + 'm remaining';
+  }
+
+  function renderCodePane(){
+    if (!state.html){
+      codeBody.innerHTML = '<div class="empty">Paste a file URL and a token, then hit Generate.</div>';
+      return;
+    }
+    var text = state.view === 'html' ? state.html : state.outline;
+    codeBody.innerHTML = '<pre></pre>';
+    codeBody.firstChild.textContent = text;
+    codeBody.scrollTop = 0;
+  }
+
+  function renderPreview(){
+    previewBody.innerHTML = '';
+    var frame = document.createElement('iframe');
+    frame.id = 'preview';
+    // Static markup only — no scripts run inside the preview.
+    frame.setAttribute('sandbox', 'allow-same-origin');
+    frame.srcdoc = state.html;
+    previewBody.appendChild(frame);
+  }
+
+  tabs.forEach(function(tab){
+    tab.addEventListener('click', function(){
+      state.view = tab.getAttribute('data-view');
+      tabs.forEach(function(t){ t.classList.toggle('active', t === tab); });
+      renderCodePane();
+    });
+  });
+
+  /** Expand the preview pane to cover the whole window (Esc to come back). */
+  function setFullPage(on){
+    previewPane.classList.toggle('is-fullpage', on);
+    fullPageBtn.textContent = on ? 'Exit full page' : 'Full page';
+  }
+
+  fullPageBtn.addEventListener('click', function(){
+    setFullPage(!previewPane.classList.contains('is-fullpage'));
+  });
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') setFullPage(false);
+  });
+
+  downloadBtn.addEventListener('click', function(){
+    if (!state.html) return;
+    var blob = new Blob([state.html], { type:'text/html' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = 'figma-export.html';
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+
+  function generate(){
+    var key = extractFileKey(urlInput.value);
+    var token = tokenInput.value.trim();
+
+    if (!key){ setStatus('Enter a Figma file URL or key.', 'error'); return; }
+    if (!token){ setStatus('Enter a personal access token.', 'error'); return; }
+
+    generateBtn.disabled = true;
+    showLoader('Fetching file ' + key + ' \u2026');
+    setStatus('Fetching file ' + key + ' \u2026');
+
+    var root, file, imageWarning = '';
+
+    // Shown whenever a call is being retried after a rate limit.
+    function onWait(waitMs, status, attempt){
+      setStatus((status === 429 ? 'Rate limited by Figma' : 'Figma error ' + status) +
+                ' \u2014 retrying in ' + Math.ceil(waitMs / 1000) + 's (attempt ' + attempt + '/' + MAX_RETRIES + ') \u2026');
+    }
+
+    // Rough stage weights so the bar moves through the whole run, not just images.
+    var STAGE_FILE = 0.15, STAGE_FILLS = 0.25, STAGE_VECTORS = 0.95;
+
+    fetchFigmaFile(key, token, onWait).then(function(loaded){
+      file = loaded;
+      root = pickRenderRoot(file.document);
+      if (!root) throw new Error('No pages found in this file.');
+
+      var vectorIds = collectVectorIds(root, []);
+      var needsFills = usesImageFills(root);
+      setProgress(STAGE_FILE, 'Reading the design \u2026');
+      if (!vectorIds.length && !needsFills) return { vectors:{}, fills:{} };
+
+      // Cheap call first: the whole imageRef -> url table in one request.
+      var fillsPromise = needsFills
+        ? fetchImageFillUrls(key, token, onWait).catch(function(error){
+            imageWarning = ' (photo fills unavailable: ' + (error.message || error) + ')';
+            return {};
+          })
+        : Promise.resolve({});
+
+      return fillsPromise.then(function(fills){
+        setProgress(STAGE_FILLS, vectorIds.length ? 'Estimating time \u2026' : 'Almost done \u2026');
+        if (!vectorIds.length) return { vectors:{}, fills:fills };
+
+        var vectorsStartedAt = Date.now();
+        setStatus('Rendering ' + vectorIds.length + ' vector' + (vectorIds.length === 1 ? '' : 's') + ' \u2026');
+        return fetchVectorImages(key, token, vectorIds, function(done, total){
+          setStatus('Rendering vectors \u2026 ' + done + '/' + total);
+          setProgress(STAGE_FILLS + (STAGE_VECTORS - STAGE_FILLS) * (done / total),
+                      remainingLabel(vectorsStartedAt, done, total));
+        }, onWait).then(function(result){
+          if (result.error){
+            // Keep whatever rendered; just say what is missing.
+            var got = Object.keys(result.urls).length;
+            imageWarning += ' (' + got + '/' + vectorIds.length + ' vectors rendered \u2014 ' +
+                            (result.error.message || result.error) + ')';
+          }
+          return { vectors: result.urls, fills: fills };
+        });
+      });
+    }).then(function(images){
+      setProgress(1, 'Writing the HTML …');
+      // Yield one frame so the full bar actually paints before the synchronous
+      // build takes over the main thread.
+      return delay(16).then(function(){ return images; });
+    }).then(function(images){
+      var built = buildHtmlDocument(root, images);
+      state.html = built.html;
+      state.outline = buildOutline(root, 0);
+
+      renderCodePane();
+      renderPreview();
+      downloadBtn.disabled = false;
+      fullPageBtn.disabled = false;
+
+      setStatus('Converted "' + root.name + '" \u2014 ' + built.nodeCount + ' nodes, ' +
+                built.imageCount + ' images, from ' + (file.name || 'file') + '.' + imageWarning,
+                imageWarning ? 'error' : 'ok');
+    }).catch(function(error){
+      // Replace the loader, otherwise it keeps hammering away on a failed run.
+      previewBody.innerHTML = '<div class="empty">Nothing to preview — the conversion failed.</div>';
+      setStatus(error.message || String(error), 'error');
+    }).then(function(){
+      generateBtn.disabled = false;
+    });
+  }
+
+  generateBtn.addEventListener('click', generate);
+  [urlInput, tokenInput].forEach(function(input){
+    input.addEventListener('keydown', function(e){ if (e.key === 'Enter') generate(); });
+  });
+
+  /* ============================================================
+     Known limitations
+     ------------------------------------------------------------
+     NOTE: Image fills and vector shapes are rendered by Figma (GET /v1/images)
+           and referenced by url. Those urls are temporary — a downloaded export
+           will lose its images once they expire.
+     TODO: Inline the bitmaps as base64 data: uris so a downloaded export is
+           self-contained (needs the image bytes to be fetchable cross-origin).
+     TODO: No gradient fills, blend modes, or masks — only the first SOLID paint
+           is used, everything else is ignored.
+     TODO: Auto Layout is not inferred back into flexbox; output is fixed
+           absolute positioning and will not reflow responsively.
+     TODO: Exported markup references Figma font families by name; they only
+           render correctly where those fonts are actually available.
+     TODO: The Figma API may need a CORS proxy in production (see fetchFigmaFile).
+     ============================================================ */
+})();
+</script>
+
+</body>
+</html>

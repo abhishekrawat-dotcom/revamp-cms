@@ -945,7 +945,7 @@
 
       <div class="callout plain">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
-        <span><strong>Not a one&#8209;way door</strong>You can switch templates, or convert a design instead, later without losing your basic details.</span>
+        <span><strong>Not a one&#8209;way door</strong>You can switch templates, or <a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">paste a Figma or Lovable URL instead</a>, later without losing your basic details.</span>
       </div>
     </section>
 
@@ -2138,8 +2138,17 @@
       b.addEventListener('click', function(e){ e.stopPropagation(); openTemplatePreview(b.getAttribute('data-preview')); });
     });
 
+    // Opens the standalone Figma converter. Wizard state is saved first so it
+    // restores from localStorage when the user comes back.
     var convertBtn = $('btn-convert-design');
-    if (convertBtn) convertBtn.onclick = openConvertModal;
+    if (convertBtn) convertBtn.onclick = function(){
+      save();
+      location.href = 'import-figma-design/index.html';
+    };
+    // Keeps the URL-paste flow (and with it Lovable + the step 3 detect path)
+    // reachable now that the button above navigates away.
+    var convertUrlLink = $('link-convert-url');
+    if (convertUrlLink) convertUrlLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
     var cloneBtn = $('btn-clone-design');
     if (cloneBtn) cloneBtn.onclick = openCloneDesignModal;
   }
