@@ -149,9 +149,11 @@
     });
   }
 
-  function tabsHTML(){
+  function tabsHTML(acts){
     var s = secById(cur.sec);
-    if (!s || !s.tabs.length) return '';
+    var right = acts ? '<span class="tab-acts">' + acts + '</span>' : '';
+    /* a section with no tabs still needs somewhere to put its buttons */
+    if (!s || !s.tabs.length) return right ? '<div class="subtabs acts-only">' + right + '</div>' : '';
     return '<div class="subtabs">' + s.tabs.map(function(t){
       var n = tabCount(s.id, t.id);
       var inner = esc(t.label) + (n != null ? '<span class="cnt">' + comma(n) + '</span>' : '');
@@ -161,9 +163,9 @@
         return '<a class="tab-link" href="' + esc(t.link) + '">' +
           svg(IC.ext, 13) + inner + '</a>';
       }
-      return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '">' +
-        inner + '</button>';
-    }).join('') + '</div>';
+      return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '"' +
+        (cur.tab === t.id ? ' aria-current="page"' : '') + '>' + inner + '</button>';
+    }).join('') + right + '</div>';
   }
 
   /* accepts "section" or "section/tab" */
@@ -204,22 +206,15 @@
   /* ============================================================
      SHARED VIEW HELPERS
      ============================================================ */
+  /* The rail names the section and the tab bar names the page, so a
+     breadcrumb and a heading saying the same thing again cost a hundred
+     pixels for nothing. vhead now keeps only the title (for screen
+     readers and the browser tab) and hands its buttons to the tab row,
+     which renders them on the right of the tabs. */
+  var vheadActions = '';
   function vhead(title, sub, right){
-    var s = secById(cur.sec) || { label:'', tabs:[] };
-    var t = '';
-    if (cur.tab){
-      var m = s.tabs.filter(function(x){ return x.id === cur.tab; })[0];
-      if (m) t = m.label;
-    }
-    var crumb = (t && t !== s.label) ? s.label + ' › ' + t : s.label;
-    return '<div class="vhead"><div class="vhead-row">' +
-        '<div class="grow">' +
-          '<div class="crumb">' + esc(crumb) + '</div>' +
-          '<h2>' + esc(title) + '</h2>' +
-          (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') +
-        '</div>' +
-        (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
-      '</div></div>';
+    vheadActions = right || '';
+    return '<h2 class="sr-only">' + esc(title) + (sub ? '. ' + esc(sub) : '') + '</h2>';
   }
 
   /* ============================================================
@@ -3785,7 +3780,10 @@
   function render(){
     var r = routeId();
     var fn = VIEWS[r] || VIEWS.dashboard;
-    $('view').innerHTML = tabsHTML() + fn();
+    /* fn() first: vhead() runs inside it and sets the actions the tabs carry */
+    vheadActions = '';
+    var body = fn();
+    $('view').innerHTML = tabsHTML(vheadActions) + body;
 
     /* tabs */
     document.querySelectorAll('[data-tab]').forEach(function(b){

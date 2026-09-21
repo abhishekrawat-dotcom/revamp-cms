@@ -163,12 +163,10 @@
       S: S,
       PEOPLE: C.makePeople(EV),
       vhead: function(t, sub, right){
-        return '<div class="vhead"><div class="vhead-row"><div class="grow">' +
-          '<div class="crumb">Dashboard</div><h2>' + C.esc(t) + '</h2>' +
-          (sub ? '<div class="sub">' + C.esc(sub) + '</div>' : '') +
-          '</div>' +
-          (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
-          '</div></div>';
+        /* the rail already names the section; a heading repeating it costs
+           a hundred pixels for nothing. Keep it for screen readers only. */
+        return '<h2 class="sr-only">' + C.esc(t) + (sub ? '. ' + C.esc(sub) : '') + '</h2>' +
+          (right ? '<div class="page-acts">' + right + '</div>' : '');
       },
       go: function(r){
         location.href = 'edit-event.html#' + r;

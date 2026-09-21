@@ -76,12 +76,8 @@
     var ctx = C.makeCtx({
       EV: EV, S: S, PEOPLE: C.makePeople(EV),
       vhead: function(t, sub, right){
-        var lbl = (MKT.TABS.filter(function(x){ return x.id === tab; })[0] || {}).label || '';
-        return '<div class="vhead"><div class="vhead-row"><div class="grow">' +
-          '<div class="crumb">Marketing &rsaquo; ' + C.esc(lbl) + '</div><h2>' + C.esc(t) + '</h2>' +
-          (sub ? '<div class="sub">' + C.esc(sub) + '</div>' : '') + '</div>' +
-          (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
-          '</div></div>';
+        return '<h2 class="sr-only">' + C.esc(t) + (sub ? '. ' + C.esc(sub) : '') + '</h2>' +
+          (right ? '<div class="page-acts">' + right + '</div>' : '');
       },
       go: function(r){ C.toast('Would navigate to: ' + r); },
       render: draw,
