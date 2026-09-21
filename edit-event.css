@@ -30,8 +30,8 @@
     --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
     --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
 
-    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
 
     --topbar-h: 60px;

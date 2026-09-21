@@ -1,7 +1,8 @@
 <!-- ET Oneworld - Self-Serve Microsite Builder : "Create Event" first-run flow -->
+<meta charset="utf-8">
 <title>Create Event &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
   :root{
     --bg: #FAF7F6;
@@ -33,8 +34,8 @@
     --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
     --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
 
-    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
   }
 
@@ -861,7 +862,7 @@
       <!-- ===== PHASE 1 : pick the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
-          <span class="eyebrow">Step 1 of 5 &middot; Select Event Type</span>
+          <span class="eyebrow">Step 1 of 4 &middot; Select Event Type</span>
           <h1>What type of microsite are you creating?</h1>
           <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
         </div>
@@ -944,7 +945,7 @@
     <section class="step-wrap wide" id="step-2" hidden>
       <div class="step-head step-head-row">
         <div class="step-head-text">
-          <span class="eyebrow">Step 2 of 5 &middot; Choose Template</span>
+          <span class="eyebrow">Step 2 of 4 &middot; Choose Template</span>
           <h1>Pick a template to start from</h1>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -970,11 +971,8 @@
     <!-- ---------- STEP 3 : BUILD CONTENT ---------- -->
     <section class="step-wrap wide" id="step-3" hidden></section>
 
-    <!-- ---------- STEP 4 : AI ASSEMBLE ---------- -->
+    <!-- ---------- STEP 4 : AI ASSEMBLE -> hands off to custom_editor.html ---------- -->
     <section class="step-wrap" id="step-4" hidden></section>
-
-    <!-- ---------- STEP 5 : FIRST PREVIEW ---------- -->
-    <section class="step-wrap wide" id="step-5" hidden></section>
   </main>
 
   <!-- ============ FOOTER ACTIONS ============ -->
@@ -1089,6 +1087,99 @@
       sub:'Short, one screen, form does the work.',
       sections:['nav','hero','about','priorities','speakers','attend','whyjoin','contact','footer'] }
   ];
+
+  /* =========================================================
+     TEMPLATE DESIGN THEMES
+     Each template's real on-site look, condensed to the CSS tokens
+     custom_editor.html's site-content styles read (see its
+     "SITE CONTENT STYLES" block — keep the token names in sync).
+     `heroStyle` picks the hero markup editorSectionHtml() emits:
+     'banner' = full-bleed centred hero (how every IP/Residential/
+     Awards template actually opens); 'split' = the two-column
+     hero (how Leadgen's "short, one screen" template opens, and
+     the fallback for a "bring your own design" path with no
+     template to theme).
+  ========================================================= */
+  var DEFAULT_THEME = {
+    heroStyle:'split', accent:'#0F6F5C', accentSoft:'#DCEEE7',
+    heroBg:'linear-gradient(180deg,#FBF9F3,#fff)', heroText:'#1c1c1c', heroMuted:'#6a6a5f',
+    bandBg:'#F5F2EA', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+    quoteBg:'#0A5445', quoteText:'#fff',
+    footBg:'#221F17', footText:'#b5b0a0', footLogo:'#fff',
+    displayFont:"'Fraunces', Georgia, serif", displayWeight:600, displayCase:'none', displayTracking:'normal'
+  };
+  var TEMPLATE_THEMES = {
+    tech500: {
+      heroStyle:'banner', accent:'#ED1C24', accentSoft:'#FBDBDC',
+      heroBg:'linear-gradient(150deg,#141414 0%,#2b1013 55%,#3f0f14 100%)', heroText:'#fff', heroMuted:'rgba(255,255,255,.78)',
+      bandBg:'#F7F1F1', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+      quoteBg:'#141414', quoteText:'#fff',
+      footBg:'#121212', footText:'#b8adad', footLogo:'#fff',
+      displayFont:"'Poppins', sans-serif", displayWeight:800, displayCase:'uppercase', displayTracking:'-0.01em'
+    },
+    'making-ai-work': {
+      heroStyle:'banner', accent:'#3B82F6', accentSoft:'#DCE8FE',
+      heroBg:'linear-gradient(160deg,#050912 0%,#0B1730 55%,#132345 100%)', heroText:'#fff', heroMuted:'rgba(226,232,255,.75)',
+      bandBg:'#F1F4FC', bandText:'#1c1c1c', bandMuted:'#5b6579',
+      quoteBg:'#0B1730', quoteText:'#fff',
+      footBg:'#080D18', footText:'#a9b4d0', footLogo:'#fff',
+      displayFont:"'Fraunces', Georgia, serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    'workplace-2035': {
+      heroStyle:'banner', accent:'#ED1C24', accentSoft:'#FBDBDC',
+      heroBg:'linear-gradient(160deg,#0B0B0B 0%,#1c1c1c 55%,#2a0d0f 100%)', heroText:'#fff', heroMuted:'rgba(255,255,255,.75)',
+      bandBg:'#F5F2EE', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+      quoteBg:'#111111', quoteText:'#fff',
+      footBg:'#0d0d0d', footText:'#ada7a7', footLogo:'#fff',
+      displayFont:"'Fraunces', Georgia, serif", displayWeight:700, displayCase:'uppercase', displayTracking:'-0.01em'
+    },
+    surge: {
+      heroStyle:'banner', accent:'#0F8B6C', accentSoft:'#DCF3EC',
+      heroBg:'linear-gradient(160deg,#EAF2EE 0%,#CFE6DD 55%,#AFD4C6 100%)', heroText:'#122A22', heroMuted:'#3F5850',
+      bandBg:'#F3EFE6', bandText:'#1c1c1c', bandMuted:'#5c5346',
+      quoteBg:'#0F5C46', quoteText:'#fff',
+      footBg:'#0B3A2C', footText:'#bfe0d2', footLogo:'#fff',
+      displayFont:"'Fraunces', Georgia, serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    'annual-education-summit': {
+      heroStyle:'banner', accent:'#E53935', accentSoft:'#FBDBDA',
+      heroBg:'linear-gradient(150deg,#0B1130 0%,#1B234D 55%,#2A1C4D 100%)', heroText:'#fff', heroMuted:'rgba(224,224,255,.75)',
+      bandBg:'#F4F1FA', bandText:'#1c1c1c', bandMuted:'#5c5870',
+      quoteBg:'#151A3D', quoteText:'#fff',
+      footBg:'#0A0E24', footText:'#a8aee0', footLogo:'#fff',
+      displayFont:"'Fraunces', Georgia, serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    'nbfc-leaders-retreat': {
+      heroStyle:'banner', accent:'#0E9E6B', accentSoft:'#D8F3E8',
+      heroBg:'linear-gradient(160deg,#DCEBF7 0%,#BFDCEF 55%,#9CC6E3 100%)', heroText:'#0B2B3D', heroMuted:'#345466',
+      bandBg:'#F2F7F5', bandText:'#1c1c1c', bandMuted:'#4f6a63',
+      quoteBg:'#0B3B4F', quoteText:'#fff',
+      footBg:'#0A2A38', footText:'#b9d6e3', footLogo:'#fff',
+      displayFont:"'Fraunces', Georgia, serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    awards: {
+      heroStyle:'banner', accent:'#D4A017', accentSoft:'#F6E7C4',
+      heroBg:'linear-gradient(150deg,#151015 0%,#241A12 55%,#3A2712 100%)', heroText:'#fff', heroMuted:'rgba(255,247,224,.75)',
+      bandBg:'#F7F3EA', bandText:'#1c1c1c', bandMuted:'#6a6152',
+      quoteBg:'#1B140D', quoteText:'#fff',
+      footBg:'#120D08', footText:'#cbb98f', footLogo:'#fff',
+      displayFont:"'Playfair Display', serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    leadgen: {
+      heroStyle:'split', accent:'#4338CA', accentSoft:'#E3E1FB',
+      heroBg:'linear-gradient(180deg,#F7F6FE,#fff)', heroText:'#1c1c1c', heroMuted:'#5c5870',
+      bandBg:'#F1F0FB', bandText:'#1c1c1c', bandMuted:'#5c5870',
+      quoteBg:'#241C5B', quoteText:'#fff',
+      footBg:'#1c1740', footText:'#b8b3dd', footLogo:'#fff',
+      displayFont:"'Fraunces', Georgia, serif", displayWeight:600, displayCase:'none', displayTracking:'normal'
+    }
+  };
+  /* the theme for whatever is currently picked — DEFAULT_THEME (no override) for
+     a "bring your own design" path, since there is no template to theme it from */
+  function currentTheme(){
+    if (S.path !== 'A' || !S.template) return DEFAULT_THEME;
+    return TEMPLATE_THEMES[S.template] || DEFAULT_THEME;
+  }
 
   /* completed events on this portal, offered as a design to clone instead of picking a fresh template.
      `content` is what Build Content can pull in automatically — keyed by LIBRARY id. */
@@ -1348,7 +1439,7 @@
   /* =========================================================
      STATE
   ========================================================= */
-  var STEPS = ['Select Event Type','Choose Template','Build content','AI assemble','First preview'];
+  var STEPS = ['Select Event Type','Choose Template','Build content','AI assemble'];
   var STORE_KEY = 'revamp.createEvent.draft.v1';
   var logoPreviewUrl = '';   // in-memory object URL for the uploaded logo — not persisted across reloads
 
@@ -1388,9 +1479,7 @@
     sections: [],               // [{id, libId, name, shape, include, data, done, source, customBrief, layout}]
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content" — required before Speakers/Agenda/Sponsors/Glimpses can be switched on
-    device: 'desktop',
-    assembled: false,
-    celebrated: false
+    assembled: false            // step 4 finished and the draft was handed to the site editor
   };
 
   var $ = function(id){ return document.getElementById(id); };
@@ -1488,15 +1577,19 @@
   ========================================================= */
   function goStep(n){
     S.step = n;
-    for (var i = 1; i <= 5; i++){
+    for (var i = 1; i <= STEPS.length; i++){
       var el = $('step-' + i);
       if (el) el.hidden = (i !== n);
     }
     var cur = $('step-' + n);
     if (cur){ cur.classList.remove('fade-in'); void cur.offsetWidth; cur.classList.add('fade-in'); }
+    /* the gallery is category-scoped (templatesForCategory()) but was only ever
+       rendered once at init and after picking a template — re-render on every
+       entry so a category chosen after that first render isn't left showing
+       the wrong templates */
+    if (n === 2) renderStep2();
     if (n === 3) renderStep3();
     if (n === 4) renderStep4();
-    if (n === 5) renderStep5();
     renderRail();
     renderFoot();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1546,19 +1639,13 @@
         next.innerHTML = 'Assemble my site ' + IC.spark;
         var inc = S.sections.filter(function(s){ return s.include && s.shape !== 'auto'; });
         var doneN = inc.filter(function(s){ return s.done; }).length;
-        note.textContent = doneN + ' of ' + inc.length + ' sections filled — you can assemble now and refine after the preview.';
+        note.textContent = doneN + ' of ' + inc.length + ' sections filled — you can assemble now and refine in the site editor.';
       }
     }
     else if (S.step === 4){
       back.hidden = true;
       next.hidden = true;
       note.textContent = '';
-    }
-    else if (S.step === 5){
-      alt.hidden = false;
-      alt.textContent = 'Save draft';
-      next.innerHTML = 'Continue to publish ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
-      note.textContent = 'Publishing, payments and CRM come after this flow.';
     }
   }
 
@@ -2312,7 +2399,7 @@
   function renderTemplatePicker(host){
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 5 &middot; Path A</span>' +
+        '<span class="eyebrow">Step 3 of 4 &middot; Path A</span>' +
         '<h1>Pick a template to start from</h1>' +
         '<p class="desc">Each one is a stack of our pre-built sections. You can include or exclude any section afterwards, and add custom ones.</p>' +
       '</div>' +
@@ -2554,7 +2641,7 @@
 
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 5 &middot; Path ' + S.path + '</span>' +
+        '<span class="eyebrow">Step 3 of 4 &middot; Path ' + S.path + '</span>' +
         '<h1>Build Your Website Content</h1>' +
       '</div>' +
       '<div class="toggle-panel" id="toggle-panel"></div>' +
@@ -3330,7 +3417,7 @@
     var cur = SOURCES.filter(function(x){ return x.id === S.sourceKind; })[0] || SOURCES[0];
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 5 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 3 of 4 &middot; Path B</span>' +
         '<h1>Point us at your design</h1>' +
         '<p class="desc">We read the design, split it into sections, capture a preview of each and pull the content out. You review what we found on the next screen.</p>' +
       '</div>' +
@@ -3394,7 +3481,7 @@
   function renderProcessing(host){
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 2 of 5 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 3 of 4 &middot; Path B</span>' +
         '<h1>Analysing your design&hellip;</h1>' +
         '<p class="desc">Reading <span class="mono">' + esc(S.sourceValue) + '</span>. This usually takes under a minute — you can leave this screen and come back, the draft is saved.</p>' +
       '</div>' +
@@ -3456,7 +3543,7 @@
 
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 5 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 3 of 4 &middot; Path B</span>' +
         '<h1>Here is what we found</h1>' +
         '<p class="desc">' + DETECTED.length + ' sections detected and classified against our canonical library. Keep what is right, edit what needs a nudge, remove what you do not want.</p>' +
       '</div>' +
@@ -3607,13 +3694,262 @@
   }
 
   /* =========================================================
+     EDITOR HANDOFF
+     Step 3 collects the content; the real editing surface is
+     custom_editor.html. "Assemble my site" turns every included
+     section into the same markup the editor renders, drops it in
+     localStorage and opens the editor on it — so the template the
+     user picked opens already filled with what they typed, instead
+     of the editor's demo site.
+     The markup vocabulary here (s-nav / s-hero / s-cards-sec /
+     s-stats / s-gallery / s-quote / s-cta-band / s-foot, plus
+     data-editable) is custom_editor.html's own — keep them in sync.
+  ========================================================= */
+  var HANDOFF_KEY = 'revamp.editor.handoff.v1';
+
+  /* What the section is called on the site — the template's own on-site heading where it
+     defines one, otherwise a public-facing name rather than the CMS library label
+     ("Footer + WhatsApp" is a builder label; the site calls that section "Footer"). */
+  var SITE_SECTION_NAMES = {
+    nav:'Navigation', hero:'Hero', stats:'Stats', partners:'Our partners', about:'Overview',
+    marquee:'Marquee', awaits:'What awaits you', verticals:'Industries in the room',
+    priorities:'Key Discussion Points', speakers:'Speakers', agenda:'Agenda',
+    whyjoin:'Why join us', attend:'Who should attend', insights:'Key insights',
+    glimpses:'Previous glimpses', contact:'Contact us', footer:'Footer'
+  };
+  function sectionLabel(s){
+    var t = TEMPLATES.filter(function(x){ return x.id === S.template; })[0];
+    if (t && t.sectionNames && t.sectionNames[s.libId]) return t.sectionNames[s.libId];
+    return SITE_SECTION_NAMES[s.libId] || s.name;
+  }
+
+  function etext(tag, cls, val){
+    return '<' + tag + (cls ? ' class="' + cls + '"' : '') + ' data-editable="text">' + esc(val) + '</' + tag + '>';
+  }
+  function ebtn(cls, val){
+    return '<span class="s-btn ' + cls + '" data-editable="button">' + esc(val) + '</span>';
+  }
+  function edCardsBlock(kicker, heading, items, withPhoto){
+    return '<div class="s-cards-sec">' +
+      (kicker ? etext('span', 'kicker', kicker) : '') +
+      etext('h2', '', heading) +
+      '<div class="s-cards">' + items.map(function(it){
+        return '<div class="s-card">' +
+          (withPhoto ? '<div class="ph" data-editable="image"></div>' : '') +
+          etext('h3', '', it.t || 'Untitled') +
+          etext('p', '', it.d || '') +
+        '</div>';
+      }).join('') + '</div></div>';
+  }
+  function edParagraph(text){
+    return '<p data-editable="text" style="margin-top:16px;max-width:70ch;font-size:14.5px;line-height:1.7;color:#6a6a5f">' +
+      esc(text) + '</p>';
+  }
+
+  /* the generated menu — short public-facing labels, not the CMS section names.
+     Sections with no place in a menu (hero, stats strip, marquee) are left out. */
+  var NAV_LABELS = {
+    about:'About', priorities:'Discussion points', awaits:'What awaits', whyjoin:'Why join',
+    attend:'Who attends', speakers:'Speakers', agenda:'Agenda', partners:'Partners',
+    glimpses:'Glimpses', insights:'Insights', verticals:'Industries', contact:'Contact us'
+  };
+  var NAV_SKIP = { hero:true, stats:true, marquee:true };
+  function edNavLinks(){
+    return S.sections.filter(function(s){
+      return s.include && s.shape !== 'auto' && !NAV_SKIP[s.libId];
+    }).slice(0, 6).map(function(s){ return NAV_LABELS[s.libId] || sectionLabel(s); });
+  }
+
+  /* one Step 3 section -> the editor's section body markup ('' = nothing to render) */
+  function editorSectionHtml(s){
+    var d = s.data || {};
+    var b = S.basics;
+    var label = sectionLabel(s);
+
+    if (s.libId === 'nav'){
+      var heroSec = S.sections.filter(function(x){ return x.libId === 'hero'; })[0];
+      var navCta = (heroSec && heroSec.data && heroSec.data.cta1) || 'Register now';
+      return '<nav class="s-nav">' +
+        etext('span', 'logo', b.name || 'Your event') +
+        '<div class="links">' + edNavLinks().map(function(n){ return etext('span', '', n); }).join('') + '</div>' +
+        '<div class="sp"></div>' +
+        '<span class="cta" data-editable="button">' + esc(navCta) + '</span>' +
+      '</nav>';
+    }
+    if (s.libId === 'footer'){
+      return '<div class="s-foot">' +
+        etext('span', 'logo', b.name || 'Your event') +
+        etext('span', '', '© ' + new Date().getFullYear() + ' ET Oneworld. All rights reserved.') +
+        etext('span', '', 'etoneworld.com/' + (b.slug || 'your-event')) +
+        (d.whatsapp !== false ? etext('span', '', 'WhatsApp chat: on') : '') +
+      '</div>';
+    }
+
+    switch (s.shape){
+      case 'hero':
+        var meta = [eventDateLabel(b), locLabel(b, true)].filter(Boolean).join('  ·  ');
+        var theme = currentTheme();
+        /* the hero copy carries its own type/colour inline rather than a shared class —
+           edit-event.css has an unrelated global .lead that boxes it inside the canvas,
+           and the colour has to follow the template's theme, not one fixed value */
+        if (theme.heroStyle === 'banner'){
+          /* the full-bleed centred hero every IP / Residential / Awards template opens with */
+          var tplTag = (TEMPLATES.filter(function(t){ return t.id === S.template; })[0] || {}).tag;
+          return '<div class="s-hero-banner">' +
+            (tplTag ? '<span class="eyebrow" data-editable="text">' + esc(tplTag) + '</span>' : '') +
+            etext('h1', '', d.title || b.name || 'Your event name') +
+            (d.tagline ? '<p class="tagline" data-editable="text">' + esc(d.tagline) + '</p>' : '') +
+            (meta ? '<p class="meta" data-editable="text">' + esc(meta) + '</p>' : '') +
+            '<div class="btnrow">' + ebtn('primary', d.cta1 || 'Register now') +
+              (d.cta2 ? ebtn('secondary', d.cta2) : '') + '</div>' +
+          '</div>';
+        }
+        return '<div class="s-hero"><div>' +
+          etext('h1', '', d.title || b.name || 'Your event name') +
+          (d.tagline ? '<p data-editable="text" style="font-size:15px;color:' + theme.heroMuted + ';margin-top:14px;max-width:44ch;line-height:1.6">' + esc(d.tagline) + '</p>' : '') +
+          (meta ? '<p data-editable="text" style="font-size:14px;font-weight:700;color:' + theme.accent + ';margin-top:10px">' + esc(meta) + '</p>' : '') +
+          '<div class="btnrow">' + ebtn('primary', d.cta1 || 'Register now') +
+            (d.cta2 ? ebtn('secondary', d.cta2) : '') + '</div>' +
+        '</div><div class="imgph" data-editable="image">Event banner</div></div>';
+
+      case 'stats':
+        return '<div class="s-stats">' + (d.items || []).map(function(it){
+          return '<div class="s-stat">' + etext('div', 'n', it.v) + etext('div', 'l', it.k) + '</div>';
+        }).join('') + '</div>';
+
+      case 'logos':
+        return '<div class="s-gallery" style="padding-top:44px">' +
+          etext('span', 'kicker', 'With thanks') + etext('h2', '', label) +
+          (d.tiers || []).map(function(t){
+            return '<div style="margin-top:22px">' +
+              '<div data-editable="text" style="font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a8a7c;margin-bottom:10px">' + esc(t.t) + '</div>' +
+              '<div style="display:flex;flex-wrap:wrap;gap:10px">' + (t.logos || []).map(function(l){
+                return '<span data-editable="text" style="min-width:132px;text-align:center;border:1px solid #eee9dd;border-radius:10px;padding:16px 18px;font-size:13px;font-weight:700;background:linear-gradient(160deg,#ECE7DA,#DCEEE7)">' + esc(l.n || 'Partner') + '</span>';
+              }).join('') + '</div></div>';
+          }).join('') + '</div>';
+
+      case 'rich':
+        return '<div class="s-cards-sec">' +
+          etext('span', 'kicker', 'About the event') + etext('h2', '', label) +
+          edParagraph(d.body || 'Open this section in the editor to write the overview.') +
+        '</div>';
+
+      case 'line':
+        return '<div style="padding:14px 40px;background:#0F6F5C;text-align:center">' +
+          '<span data-editable="text" style="color:#fff;font-weight:800;letter-spacing:.1em;font-size:13px">' +
+          esc(d.text || '#event') + '</span></div>';
+
+      case 'cards':
+      case 'columns':
+        return edCardsBlock(s.libId === 'priorities' ? 'What we will explore' : 'The experience', label, d.items || [], false);
+
+      case 'benefits':
+        return '<div class="s-cards-sec">' +
+          etext('span', 'kicker', 'Make it count') + etext('h2', '', label) +
+          (d.body ? edParagraph(d.body) : '') +
+          '<div class="s-cards">' + (d.items || []).map(function(it){
+            return '<div class="s-card">' + etext('h3', '', it.t || 'Benefit') + etext('p', '', it.d || '') + '</div>';
+          }).join('') + '</div></div>';
+
+      case 'heading':
+        return '<div class="s-cta-band">' + etext('h2', '', d.text || label) + '</div>';
+
+      case 'people':
+        return edCardsBlock('Meet the voices', label, (d.items || []).map(function(p){
+          return { t: p.n || 'Speaker to be announced', d: [p.r, p.c].filter(Boolean).join(', ') };
+        }), true);
+
+      case 'agenda':
+        var ag = (d.items || []).map(function(it){
+          return { t: [it.t, it.ti].filter(Boolean).join(' — ') || 'Session', d: it.sp || '' };
+        });
+        if (!ag.length) ag = [{ t: 'Agenda to come', d: 'Bring in a previous edition, or add sessions here in the editor.' }];
+        return edCardsBlock('The schedule', label, ag, false);
+
+      case 'chips':
+        return '<div class="s-cards-sec">' +
+          etext('span', 'kicker', 'Made for you') + etext('h2', '', label) +
+          '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:22px">' + (d.items || []).map(function(c){
+            return '<span data-editable="text" style="border:1px solid #eee9dd;border-radius:100px;padding:9px 16px;font-size:13px;font-weight:600">' + esc(c) + '</span>';
+          }).join('') + '</div></div>';
+
+      case 'quotes':
+        return '<div class="s-quote">' + (d.items || []).map(function(q, i){
+          return '<div' + (i ? ' style="margin-top:30px"' : '') + '>' +
+            '<blockquote data-editable="text">“' + esc(q.q || '') + '”</blockquote>' +
+            etext('div', 'who', '— ' + [q.n, q.r, q.c].filter(Boolean).join(', ')) + '</div>';
+        }).join('') + '</div>';
+
+      case 'gallery':
+        var tiles = '';
+        for (var gi = 0; gi < (d.count || 8); gi++) tiles += '<div class="gi" data-editable="image"></div>';
+        return '<div class="s-gallery" style="padding-top:44px">' +
+          etext('span', 'kicker', 'A look back') + etext('h2', '', label) +
+          '<div class="s-gal-grid" style="margin-top:22px">' + tiles + '</div></div>';
+
+      case 'contacts':
+        return edCardsBlock('Talk to us', label, (d.blocks || []).map(function(bk){
+          return { t: bk.t || 'Contact', d: [bk.n, bk.e, bk.p].filter(Boolean).join(' · ') || 'Details pending' };
+        }), false);
+
+      case 'custom':
+        return '<div class="s-cards-sec">' +
+          etext('h2', '', d.title || label) + edParagraph(d.body || '') + '</div>';
+
+      default:
+        return '';
+    }
+  }
+
+  /* everything the editor needs to open on this draft */
+  function buildEditorPayload(){
+    var b = S.basics;
+    var tpl = TEMPLATES.filter(function(t){ return t.id === S.template; })[0];
+    var sections = [];
+    S.sections.forEach(function(s){
+      if (!s.include) return;
+      var html = editorSectionHtml(s);
+      if (!html) return;
+      sections.push({ name: sectionLabel(s), libId: s.libId, html: html });
+    });
+    return {
+      v: 1,
+      createdAt: Date.now(),
+      event: {
+        name: b.name || 'Untitled event',
+        slug: b.slug || 'your-event',
+        category: (CATS[b.category] || {}).label || b.category,
+        dateLabel: eventDateLabel(b),
+        location: locLabel(b, false),
+        payment: b.payment
+      },
+      template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom') },
+      theme: currentTheme(),
+      sections: sections
+    };
+  }
+
+  /* hands the draft to custom_editor.html and opens it */
+  function openInEditor(){
+    var payload = buildEditorPayload();
+    try {
+      localStorage.setItem(HANDOFF_KEY, JSON.stringify(payload));
+    } catch(e){
+      toast('Could not hand the draft over — your browser blocked storage.');
+      return false;
+    }
+    window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug);
+    return true;
+  }
+
+  /* =========================================================
      STEP 4 - AI ASSEMBLE
   ========================================================= */
   var ASSEMBLE_PHASES = [
     { t:'Reshaping content to fit sections', ms:1300 },
     { t:'Mapping to pre-built components',   ms:1500 },
     { t:'Building the menu from sections',   ms:1000 },
-    { t:'Assembling your preview',           ms:1400 }
+    { t:'Opening your site in the editor',   ms:1400 }
   ];
 
   function renderStep4(){
@@ -3621,9 +3957,9 @@
     var included = S.sections.filter(function(s){ return s.include; });
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 4 of 5</span>' +
+        '<span class="eyebrow">Step 4 of 4</span>' +
         '<h1>Putting your site together</h1>' +
-        '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. No one is keying this in by hand.</p>' +
+        '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. The site editor opens next, already loaded with your content.</p>' +
       '</div>' +
       '<div class="panel"><div class="proc-wrap">' +
         '<span class="proc-orb">' + IC.loader + '</span>' +
@@ -3642,7 +3978,10 @@
       if (i >= ASSEMBLE_PHASES.length){
         S.assembled = true;
         save();
-        goStep(5);
+        /* the wizard ends here — the site editor takes over, loaded with this draft */
+        if (!openInEditor()){
+          goStep(3);   // storage blocked; keep the content editable rather than stranding the user
+        }
         return;
       }
       var row = rows[i];
@@ -3658,202 +3997,6 @@
       }, ASSEMBLE_PHASES[i].ms);
     }
     setTimeout(run, 300);
-  }
-
-  /* =========================================================
-     STEP 5 - FIRST PREVIEW
-  ========================================================= */
-  function previewSection(s){
-    var d = s.data || {};
-    var b = S.basics;
-    switch(s.libId){
-      case 'nav':
-        return '<div class="prev-nav"><span class="lg">ET Oneworld</span>' +
-          '<span class="lks">' + S.sections.filter(function(x){ return x.include && x.shape !== 'auto'; })
-            .slice(0,5).map(function(x){ return esc(x.name.split(' ')[0]); }).join('</span><span>') + '</span>' +
-          '<span class="cta">' + esc((S.sections.filter(function(x){ return x.libId==='hero'; })[0]||{data:{}}).data.cta1 || 'Register') + '</span></div>';
-      case 'footer':
-        return '<div class="prev-foot"><span>&copy; ' + new Date().getFullYear() + ' ET Oneworld</span><span>Privacy</span><span>Terms</span><span>Contact</span>' +
-          (d.whatsapp !== false ? '<span style="margin-left:auto;color:#4FAE7A">WhatsApp chat on</span>' : '') + '</div>';
-    }
-    switch(s.shape){
-      case 'hero':
-        return '<div class="prev-hero">' +
-          '<h3>' + esc(d.title || b.name || 'Your event name') + '</h3>' +
-          '<div class="tag">' + esc(d.tagline || '') + '</div>' +
-          '<div class="meta">' + esc([eventDateLabel(b), locLabel(b, true)].filter(Boolean).join('  ·  ')) + '</div>' +
-          '<div class="btns"><span>' + esc(d.cta1 || 'Register') + '</span><span>' + esc(d.cta2 || 'Brochure') + '</span></div></div>';
-      case 'stats':
-        return '<div class="prev-sec prev-stats">' + (d.items||[]).map(function(it){
-          return '<span class="s"><span class="n">' + esc(it.v) + '</span><span class="l">' + esc(it.k) + '</span></span>';
-        }).join('') + '</div>';
-      case 'logos':
-        var total = 0;
-        (d.tiers||[]).forEach(function(t){ total += t.logos.length; });
-        return '<div class="prev-sec"><div class="st">Our partners</div><div class="prev-logos">' +
-          new Array(total + 1).join('x').split('').map(function(){ return '<i></i>'; }).join('') + '</div></div>';
-      case 'rich':
-        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div><div class="sb">' +
-          esc((d.body || 'Content pending — open this section to fill it.').slice(0, 340)) + '</div></div>';
-      case 'benefits':
-        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div><div class="sb" style="margin-bottom:9px">' +
-          esc((d.body || '').slice(0, 220)) + '</div><div class="prev-cards">' + (d.items||[]).map(function(it){
-            return '<span class="c"><span class="t">' + esc(it.t) + '</span><span class="d">' + esc(it.d) + '</span></span>';
-          }).join('') + '</div></div>';
-      case 'line':
-        return '<div class="prev-marquee">' + esc(d.text || '#event') + ' &nbsp;&middot;&nbsp; ' + esc(d.text || '#event') + ' &nbsp;&middot;&nbsp; ' + esc(d.text || '#event') + '</div>';
-      case 'heading':
-        return '<div class="prev-band">' + esc(d.text || s.name) + '</div>';
-      case 'cards':
-      case 'columns':
-        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div><div class="prev-cards">' +
-          (d.items||[]).map(function(it){
-            return '<span class="c"><span class="t">' + esc(it.t || 'Untitled') + '</span><span class="d">' + esc(it.d || '') + '</span></span>';
-          }).join('') + '</div></div>';
-      case 'people':
-        return '<div class="prev-sec"><div class="st">Speakers</div><div class="prev-people">' +
-          (d.items||[]).map(function(p){
-            return '<span class="p"><i></i><span class="n">' + esc(p.n || 'Name TBC') + '</span><span class="r">' + esc(p.r || '') + '</span></span>';
-          }).join('') + '</div></div>';
-      case 'chips':
-        return '<div class="prev-sec"><div class="st">Who should attend</div><div class="prev-chips">' +
-          (d.items||[]).map(function(c){ return '<span>' + esc(c) + '</span>'; }).join('') + '</div></div>';
-      case 'quotes':
-        return '<div class="prev-sec"><div class="st">' + esc(s.name) + '</div>' +
-          (d.items||[]).map(function(q){
-            return '<div class="prev-quote" style="margin-bottom:9px"><div class="q">&ldquo;' + esc(q.q || '') + '&rdquo;</div>' +
-              '<div class="a">' + esc([q.n, q.r, q.c].filter(Boolean).join(' · ')) + '</div></div>';
-          }).join('') + '</div>';
-      case 'gallery':
-        var g = '';
-        for (var i = 0; i < (d.count || 0); i++) g += '<i></i>';
-        return '<div class="prev-sec"><div class="st">Previous glimpses</div><div class="prev-gallery">' + g + '</div></div>';
-      case 'agenda':
-        return '<div class="prev-sec"><div class="st">Agenda</div><div class="prev-cards">' +
-          (d.items||[]).map(function(it){
-            return '<span class="c"><span class="t">' + esc([it.t, it.ti].filter(Boolean).join(' — ') || 'Session') + '</span><span class="d">' + esc(it.sp || '') + '</span></span>';
-          }).join('') + '</div></div>';
-      case 'contacts':
-        return '<div class="prev-sec"><div class="st">Contact us</div><div class="prev-cards">' +
-          (d.blocks||[]).map(function(bk){
-            return '<span class="c"><span class="t">' + esc(bk.t) + '</span><span class="d">' +
-              esc([bk.n, bk.e, bk.p].filter(Boolean).join(' · ') || 'Details pending') + '</span></span>';
-          }).join('') + '</div></div>';
-      case 'custom':
-        return '<div class="prev-sec"><div class="st">' + esc(d.title || s.name) + '</div><div class="sb">' +
-          esc((d.body || '').slice(0, 300)) + '</div></div>';
-      default:
-        return '';
-    }
-  }
-
-  function renderStep5(){
-    var host = $('step-5');
-    var included = S.sections.filter(function(s){ return s.include; });
-    var showCelebration = !S.celebrated;
-
-    host.innerHTML =
-      (showCelebration
-        ? '<div class="success-banner" id="celebrate">' +
-            '<span class="ic">' + IC.party + '</span>' +
-            '<span class="tx"><strong>Your microsite is assembled.</strong>' +
-            '<span>No sheet, no Ops handover, no developer — ' + included.length + ' sections built from what you filled in.</span></span>' +
-            '<button class="btn btn-ghost btn-sm" id="dismiss-cel">Dismiss</button>' +
-          '</div>'
-        : '') +
-      '<div class="step-head">' +
-        '<span class="eyebrow">Step 5 of 5</span>' +
-        '<h1>Your first preview</h1>' +
-        '<p class="desc">Click any section in the list to jump back and edit it, or drag to reorder. Everything here is a draft until you publish.</p>' +
-      '</div>' +
-      '<div class="prev-grid">' +
-        '<div>' +
-          '<div class="device-bar">' +
-            '<div class="segmented" id="seg-device">' +
-              '<button type="button" data-dev="desktop" aria-pressed="' + (S.device === 'desktop') + '">' + IC.desktop + ' Desktop</button>' +
-              '<button type="button" data-dev="mobile" aria-pressed="' + (S.device === 'mobile') + '">' + IC.mobile + ' Mobile</button>' +
-            '</div>' +
-            '<span class="mono faint" style="font-size:12px">etoneworld.com/' + esc(S.basics.slug || 'your-event') + '</span>' +
-          '</div>' +
-          '<div class="frame ' + S.device + '" id="frame">' +
-            '<div class="screen"><div class="site" id="site">' +
-              (included.length ? included.map(previewSection).join('') : '<div class="prev-empty">No sections included yet.</div>') +
-            '</div></div>' +
-          '</div>' +
-        '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:14px">' +
-          '<div class="panel">' +
-            '<div class="panel-head"><h3>Sections</h3><span class="eyebrow">' + included.length + ' live</span></div>' +
-            '<div class="ord-list" id="ord-list">' + S.sections.map(function(s, i){
-              return '<div class="ord-row' + (s.include ? '' : ' excluded') + '" draggable="true" data-oi="' + i + '">' +
-                '<span class="grip">' + IC.grip + '</span>' +
-                '<button class="nm" data-jump="' + s.id + '">' + esc(s.name) + '</button>' +
-                (s.shape === 'auto' ? '<span class="src">Auto</span>'
-                  : s.source === 'custom' ? '<span class="src" style="color:var(--review)">AI</span>'
-                  : s.source === 'detected' ? '<span class="src">Design</span>' : '') +
-                (s.include ? '' : '<span class="src" style="color:var(--crit)">Off</span>') +
-              '</div>';
-            }).join('') + '</div>' +
-          '</div>' +
-          '<div class="panel"><div class="panel-body" style="gap:11px">' +
-            '<span class="eyebrow">Event summary</span>' +
-            summaryRows() +
-          '</div></div>' +
-        '</div>' +
-      '</div>';
-
-    host.querySelectorAll('[data-dev]').forEach(function(b){
-      b.addEventListener('click', function(){
-        S.device = b.getAttribute('data-dev');
-        save(); renderStep5();
-      });
-    });
-    host.querySelectorAll('[data-jump]').forEach(function(b){
-      b.addEventListener('click', function(){
-        S.active = b.getAttribute('data-jump');
-        save();
-        goStep(3);
-        toast('Editing “' + b.textContent + '” — assemble again when you are done');
-      });
-    });
-    wireDrag($('ord-list'), 'data-oi', S.sections, function(){ save(); renderStep5(); });
-
-    var dis = $('dismiss-cel');
-    if (dis) dis.addEventListener('click', function(){
-      S.celebrated = true; save();
-      var el = $('celebrate');
-      if (el) el.remove();
-    });
-  }
-
-  function summaryRows(){
-    var b = S.basics;
-    var C = CATS[b.category];
-    var rows = [
-      ['Category', C.label]
-    ];
-    if (C.client) rows.push(['Client', b.client || '—']);
-    rows.push([C.dateTitle, eventDateLabel(b) || 'Not shown']);
-    if (C.venue) rows.push(['Venue', locLabel(b, false) || '—']);
-    if (C.nomination){
-      rows.push(['Nominations open',  b.nomOpenTbd   ? 'To be announced' : (fmtDate(b.nomOpen)   || '—')]);
-      rows.push(['Nominations close', b.nomCloseTbd  ? 'To be announced' : (fmtDate(b.nomClose)  || '—')]);
-      rows.push(['Shortlist',         b.shortlistTbd ? 'To be announced' : (fmtDate(b.shortlist) || '—')]);
-    }
-    if (C.campaign){
-      rows.push(['Campaign', b.evergreen ? 'Evergreen — always on'
-        : ([fmtD(b.campaignStart), fmtD(b.campaignEnd)].filter(Boolean).join(' – ') || '—')]);
-    }
-    rows.push([C.nomination ? 'Entry fee' : 'Payment', b.payment === 'Free' ? 'Non-paid' : b.payment]);
-    rows.push(['Path', S.path === 'A'
-      ? 'Template — ' + ((TEMPLATES.filter(function(t){ return t.id === S.template; })[0] || {}).name || '—')
-      : 'Own design']);
-    rows.push(['Slug', '/' + (b.slug || '—')]);
-    return rows.map(function(r){
-      return '<div style="display:flex;gap:10px;font-size:12.5px">' +
-        '<span class="faint" style="width:112px;flex-shrink:0;font-weight:700">' + esc(r[0]) + '</span>' +
-        '<span class="muted" style="min-width:0;word-break:break-word">' + esc(r[1]) + '</span></div>';
-    }).join('');
   }
 
   /* =========================================================
@@ -3911,16 +4054,6 @@
       goStep(4);
       return;
     }
-    if (S.step === 5){
-      openModal({
-        title: 'Send to publish?',
-        sub: 'Publishing, payments, CRM and email sit outside this flow — this hands your draft to the publish queue.',
-        body: '<div class="callout">' + IC.check14 +
-              '<span><strong>Draft is complete</strong>Every IRF field has a value and all included sections are mapped to components. Ops can review before it goes live.</span></div>',
-        confirm: 'Hand off to publish',
-        onConfirm: function(){ toast('Draft handed to the publish queue'); }
-      });
-    }
   }
 
   function onBack(){
@@ -3947,10 +4080,6 @@
       goStep(2);
       toast('Pick a different path — your basic details are kept');
       return;
-    }
-    if (S.step === 5){
-      save();
-      toast('Draft saved. You can come back to it from the dashboard.');
     }
   }
 
@@ -3982,7 +4111,8 @@
 
     if (had && S.step > 1){
       if (S.detectPhase === 'processing') S.detectPhase = 'input';
-      if (S.step === 4) S.step = S.assembled ? 5 : 3;
+      /* step 4 is a transient hand-off to the site editor — a restored draft resumes at Build content */
+      if (S.step >= 4) S.step = 3;
       goStep(S.step);
     } else {
       S.step = 1;

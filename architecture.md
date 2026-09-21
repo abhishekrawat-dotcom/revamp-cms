@@ -84,6 +84,8 @@ There is no diffing or virtual DOM — `render()` regenerates HTML strings and r
 
 `create-event.html` is architecturally a small SPA embedded in one file: a `STEPS` array, a state object `S` with `S.step`, and a `goStep(n)` transition function that shows/hides `<section id="step-N">` blocks and lazily renders the next step. It autosaves to `localStorage['revamp.createEvent.draft.v1']` on a ~520ms debounce, entirely independent of `RevampCore`. Full flow and state fields are documented in [Design.md](Design.md#create-event-wizard--state-machine-create-eventhtml).
 
+The wizard does not own a preview surface. Its last step serialises the draft into editor-ready section markup, writes it to `localStorage['revamp.editor.handoff.v1']`, and navigates to `custom_editor.html?from=create`, which replaces its demo site with that payload. This is the one place two pages exchange more than an `?event=<id>` — a one-way, one-shot hand-off keyed by a URL param, with the storage key as the contract. Details in [Design.md](Design.md#editor-hand-off-create-event--custom-editor).
+
 ## External integration points
 
 - **Figma REST API** — called directly from `import-figma-design/index.html` using a user-supplied file URL + personal access token; runs entirely client-side, no proxy/backend.

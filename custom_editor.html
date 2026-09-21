@@ -1,7 +1,7 @@
 <!-- Revamp CMS - Site Editor prototype (Wix-Editor-style click-to-edit builder) -->
 <title>Site Editor &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <style>
   :root{
@@ -34,8 +34,8 @@
     --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
     --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
 
-    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
   }
 
@@ -583,46 +583,122 @@
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
 
-  /* ============ DEMO SITE CONTENT STYLES (scoped, mimics a published site) ============ */
+  /* ============ SITE CONTENT STYLES (scoped, mimics a published site) ============
+
+     Every colour, font and radius below reads from a --site-* token declared on
+     #frame. The defaults are this editor's own demo look; a site handed over from
+     create-event.html overrides them on #frame.style with its template's theme, so
+     the same section markup renders in that template's design language.
+     Add a token here and in create-event.html's TEMPLATE_THEMES together.
+  */
+  .frame{
+    /* type */
+    --site-body-font: 'Manrope', sans-serif;
+    --site-display-font: 'Fraunces', Georgia, serif;
+    --site-display-weight: 600;
+    --site-display-case: none;
+    --site-display-tracking: normal;
+    --site-mono-font: 'IBM Plex Mono', monospace;
+    /* surfaces + text */
+    --site-text: #1c1c1c;
+    --site-text-muted: #6a6a5f;
+    --site-text-faint: #8a8a7c;
+    --site-surface: #fff;
+    --site-border: #eee9dd;
+    --site-radius: 12px;
+    --site-radius-sm: 10px;
+    /* accent */
+    --site-accent: #0F6F5C;
+    --site-accent-contrast: #fff;
+    --site-accent-soft: #DCEEE7;
+    --site-btn-radius: 100px;
+    /* nav */
+    --site-nav-bg: transparent;
+    --site-nav-text: #4a4a42;
+    --site-nav-border: #eee9dd;
+    /* hero */
+    --site-hero-bg: linear-gradient(180deg,#FBF9F3,#fff);
+    --site-hero-text: #1c1c1c;
+    --site-hero-muted: #6a6a5f;
+    --site-hero-size: 42px;
+    --site-image-bg: linear-gradient(135deg,#DCEEE7,#EBE0F0);
+    --site-image-text: #0A5445;
+    --site-tile-bg: linear-gradient(160deg,#ECE7DA,#DCEEE7);
+    /* alternating band (stats strip, CTA band) */
+    --site-band-bg: #F5F2EA;
+    --site-band-text: #1c1c1c;
+    --site-band-muted: #6a6a5f;
+    /* pull quote + footer */
+    --site-quote-bg: #0A5445;
+    --site-quote-text: #fff;
+    --site-foot-bg: #221F17;
+    --site-foot-text: #b5b0a0;
+    --site-foot-logo: #fff;
+  }
   .site *{ box-sizing:border-box; }
-  .site{ font-family: 'Manrope', sans-serif; color:#1c1c1c; }
-  .site h1,.site h2,.site h3{ font-family:'Fraunces', serif; font-weight:600; margin:0; }
+  .site{ font-family: var(--site-body-font); color: var(--site-text); }
+  .site h1,.site h2,.site h3{ font-family: var(--site-display-font); font-weight: var(--site-display-weight); margin:0; }
   .site p{ margin:0; }
-  .s-nav{ display:flex; align-items:center; gap:26px; padding: 18px 40px; border-bottom:1px solid #eee9dd; }
-  .s-nav .logo{ font-family:'Fraunces',serif; font-weight:700; font-size:19px; letter-spacing:-0.01em; }
-  .s-nav .links{ display:flex; gap:22px; margin-left:16px; font-size:13.5px; font-weight:600; color:#4a4a42; }
+  /* the site canvas owns its own type and colour, whatever the CMS chrome uses */
+  #frame .site-section{ font-family: var(--site-body-font); color: var(--site-text); }
+  #frame .site-section h1, #frame .site-section h2, #frame .site-section h3, #frame .site-section blockquote{
+    font-family: var(--site-display-font);
+  }
+  /* weight/case/tracking only shift for a themed (handed-over) site — the demo site
+     keeps the heading weights it inherits from the CMS stylesheet */
+  #frame[data-site-theme] .site-section h1, #frame[data-site-theme] .site-section h2,
+  #frame[data-site-theme] .site-section h3, #frame[data-site-theme] .site-section blockquote{
+    font-weight: var(--site-display-weight);
+    text-transform: var(--site-display-case);
+    letter-spacing: var(--site-display-tracking);
+  }
+  .s-nav{ display:flex; align-items:center; gap:26px; padding: 18px 40px; background: var(--site-nav-bg); border-bottom:1px solid var(--site-nav-border); }
+  .s-nav .logo{ font-family: var(--site-display-font); font-weight:700; font-size:19px; letter-spacing:-0.01em; }
+  .s-nav .links{ display:flex; gap:22px; margin-left:16px; font-size:13.5px; font-weight:600; color: var(--site-nav-text); }
   .s-nav .sp{ flex:1; }
-  .s-nav .cta{ background:#0F6F5C; color:#fff; font-size:13px; font-weight:700; padding:9px 18px; border-radius:100px; }
+  .s-nav .cta{ background: var(--site-accent); color: var(--site-accent-contrast); font-size:13px; font-weight:700; padding:9px 18px; border-radius: var(--site-btn-radius); }
   .stage.device-mobile .s-nav .links{ display:none; }
 
-  .s-hero{ display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:30px; padding: 54px 40px; background: linear-gradient(180deg,#FBF9F3,#fff); }
+  .s-hero{ display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:30px; padding: 54px 40px; background: var(--site-hero-bg); color: var(--site-hero-text); }
   .stage.device-mobile .s-hero{ grid-template-columns:1fr; padding:30px 22px; }
-  .s-hero h1{ font-size:42px; line-height:1.14; letter-spacing:-0.01em; }
+  .s-hero h1{ font-size: var(--site-hero-size); line-height:1.14; letter-spacing:-0.01em; }
   .stage.device-mobile .s-hero h1{ font-size:28px; }
-  .s-hero .lead{ font-size:15px; color:#6a6a5f; margin-top:14px; max-width:44ch; line-height:1.6; }
+  .s-hero .lead{ font-size:15px; color: var(--site-hero-muted); margin-top:14px; max-width:44ch; line-height:1.6; }
   .s-hero .btnrow{ display:flex; gap:10px; margin-top:22px; }
-  .s-btn{ display:inline-flex; align-items:center; padding:11px 20px; border-radius:100px; font-size:13.5px; font-weight:700; }
-  .s-btn.primary{ background:#0F6F5C; color:#fff; }
-  .s-btn.secondary{ background:transparent; color:#0F6F5C; border:1.5px solid #0F6F5C; }
-  .s-hero .imgph{ height:280px; border-radius:16px; background: linear-gradient(135deg,#DCEEE7,#EBE0F0); display:flex; align-items:center; justify-content:center; color:#0A5445; }
+  .s-btn{ display:inline-flex; align-items:center; padding:11px 20px; border-radius: var(--site-btn-radius); font-size:13.5px; font-weight:700; }
+  .s-btn.primary{ background: var(--site-accent); color: var(--site-accent-contrast); }
+  .s-btn.secondary{ background:transparent; color: var(--site-accent); border:1.5px solid var(--site-accent); }
+  .s-hero .imgph{ height:280px; border-radius:16px; background: var(--site-image-bg); display:flex; align-items:center; justify-content:center; color: var(--site-image-text); }
   .stage.device-mobile .s-hero .imgph{ height:180px; }
 
-  .s-stats{ display:flex; gap:14px; padding: 30px 40px; background:#F5F2EA; flex-wrap:wrap; }
+  /* full-bleed centred hero — the treatment most ET event sites lead with */
+  .s-hero-banner{ padding: 76px 40px 64px; text-align:center; background: var(--site-hero-bg); background-size:cover; background-position:center; color: var(--site-hero-text); }
+  .stage.device-mobile .s-hero-banner{ padding:40px 22px 34px; }
+  .s-hero-banner .eyebrow{ display:block; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; opacity:.72; }
+  .s-hero-banner h1{ font-size: clamp(30px, 4vw, 52px); line-height:1.08; max-width:24ch; margin:14px auto 0; }
+  .stage.device-mobile .s-hero-banner h1{ font-size:30px; }
+  .s-hero-banner .tagline{ margin:16px auto 0; max-width:54ch; font-size:15px; line-height:1.6; color: var(--site-hero-muted); }
+  .s-hero-banner .meta{ margin-top:20px; font-size:12.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  .s-hero-banner .btnrow{ display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin-top:26px; }
+  /* an outline button on a dark banner follows the banner's own text colour */
+  .s-hero-banner .s-btn.secondary{ color: var(--site-hero-text); border-color: currentColor; }
+
+  .s-stats{ display:flex; gap:14px; padding: 30px 40px; background: var(--site-band-bg); color: var(--site-band-text); flex-wrap:wrap; }
   .stage.device-mobile .s-stats{ padding:20px 22px; }
-  .s-stat{ flex:1; min-width:130px; background:#fff; border-radius:10px; border:1px solid #eee9dd; padding:18px; text-align:center; }
-  .s-stat .n{ font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; color:#0F6F5C; }
-  .s-stat .l{ font-size:11.5px; color:#8a8a7c; text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+  .s-stat{ flex:1; min-width:130px; background: var(--site-surface); border-radius: var(--site-radius-sm); border:1px solid var(--site-border); padding:18px; text-align:center; color: var(--site-text); }
+  .s-stat .n{ font-family: var(--site-mono-font); font-size:26px; font-weight:600; color: var(--site-accent); }
+  .s-stat .l{ font-size:11.5px; color: var(--site-text-faint); text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
 
   .s-cards-sec{ padding: 54px 40px; }
   .stage.device-mobile .s-cards-sec{ padding:32px 22px; }
-  .s-cards-sec .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#0F6F5C; }
+  .s-cards-sec .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color: var(--site-accent); }
   .s-cards-sec h2{ font-size:28px; margin-top:8px; max-width:32ch; }
   .s-cards{ display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:26px; }
   .stage.device-mobile .s-cards{ grid-template-columns:1fr; }
-  .s-card{ border:1px solid #eee9dd; border-radius:12px; padding:20px; }
-  .s-card .ph{ width:40px; height:40px; border-radius:10px; background:#DCEEE7; margin-bottom:14px; }
+  .s-card{ border:1px solid var(--site-border); border-radius: var(--site-radius); padding:20px; }
+  .s-card .ph{ width:40px; height:40px; border-radius:10px; background: var(--site-accent-soft); margin-bottom:14px; }
   .s-card h3{ font-size:16px; }
-  .s-card p{ font-size:13px; color:#6a6a5f; margin-top:8px; line-height:1.6; }
+  .s-card p{ font-size:13px; color: var(--site-text-muted); margin-top:8px; line-height:1.6; }
 
   .s-discussion-points{ padding:56px 48px 62px; background:#FBF7EA; text-align:center; }
   .s-discussion-points .dp-kicker{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:#4A4034; }
@@ -731,23 +807,25 @@
 
   .s-gallery{ padding: 0 40px 54px; }
   .stage.device-mobile .s-gallery{ padding:0 22px 32px; }
+  .s-gallery .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color: var(--site-accent); }
+  .s-gallery h2{ font-size:28px; margin-top:8px; }
   .s-gal-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:10px; }
   .stage.device-mobile .s-gal-grid{ grid-template-columns: repeat(2,1fr); }
-  .s-gal-grid .gi{ padding-top:100%; border-radius:10px; background: linear-gradient(160deg,#ECE7DA,#DCEEE7); position:relative; }
+  .s-gal-grid .gi{ padding-top:100%; border-radius: var(--site-radius-sm); background: var(--site-tile-bg); position:relative; }
 
-  .s-quote{ padding: 54px 40px; background:#0A5445; color:#fff; text-align:center; }
+  .s-quote{ padding: 54px 40px; background: var(--site-quote-bg); color: var(--site-quote-text); text-align:center; }
   .stage.device-mobile .s-quote{ padding:34px 22px; }
-  .s-quote blockquote{ font-family:'Fraunces',serif; font-size:24px; line-height:1.4; max-width:56ch; margin:0 auto; }
+  .s-quote blockquote{ font-family: var(--site-display-font); font-size:24px; line-height:1.4; max-width:56ch; margin:0 auto; }
   .stage.device-mobile .s-quote blockquote{ font-size:18px; }
   .s-quote .who{ margin-top:16px; font-size:13px; opacity:.8; font-weight:600; }
 
-  .s-cta-band{ padding: 44px 40px; text-align:center; background:#F5F2EA; }
+  .s-cta-band{ padding: 44px 40px; text-align:center; background: var(--site-band-bg); color: var(--site-band-text); }
   .s-cta-band h2{ font-size:24px; }
-  .s-cta-band p{ margin-top:8px; color:#6a6a5f; font-size:13.5px; }
+  .s-cta-band p{ margin-top:8px; color: var(--site-band-muted); font-size:13.5px; }
   .s-cta-band .btnrow{ display:flex; justify-content:center; gap:10px; margin-top:18px; }
 
-  .s-foot{ padding: 30px 40px; background:#221F17; color:#b5b0a0; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
-  .s-foot .logo{ font-family:'Fraunces',serif; font-weight:700; color:#fff; font-size:15px; }
+  .s-foot{ padding: 30px 40px; background: var(--site-foot-bg); color: var(--site-foot-text); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
+  .s-foot .logo{ font-family: var(--site-display-font); font-weight:700; color: var(--site-foot-logo); font-size:15px; }
 </style>
 
 <div class="ed">
@@ -1234,6 +1312,11 @@
   var imageAiPrompt = document.getElementById('ai-image-prompt');
   var secToolbarEl = document.getElementById('sec-side-toolbar');
   var previewMode = false;
+  var createDraft = null;          // draft handed over from create-event.html, if that is how we got here
+  function escHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
   var currentZoom = 1;
   var selectedEl = null;
   var activeSectionEl = null;
@@ -2431,7 +2514,7 @@
     var sec = document.createElement('section');
     sec.className = 'site-section';
     sec.setAttribute('data-sec-name', name);
-    sec.innerHTML = '<span class="sec-name-tag">' + name + '</span>' + bodyHtml + addSectionBelowMarkup();
+    sec.innerHTML = '<span class="sec-name-tag">' + escHtml(name) + '</span>' + bodyHtml + addSectionBelowMarkup();
     return sec;
   }
 
@@ -2924,14 +3007,18 @@
   document.getElementById('btn-publish').addEventListener('click', function(){
     showToast('Publishing…');
     setTimeout(function(){
+      /* a site handed over from Create Event publishes under its own name and slug */
+      var pubEv = (createDraft && createDraft.event) || null;
+      var pubName = pubEv ? pubEv.name : 'Northwind Studio';
+      var pubUrl = pubEv ? ('etoneworld.com/' + pubEv.slug) : 'northwindstudio.revamp-sites.com';
       var scrim = document.createElement('div');
       scrim.className = 'scrim';
       scrim.innerHTML =
         '<div class="modal"><div class="modal-body">' +
         '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
         '<h3>Your site is live</h3>' +
-        '<p>Northwind Studio has been published with your latest changes.</p>' +
-        '<span class="url">northwindstudio.revamp-sites.com</span>' +
+        '<p>' + escHtml(pubName) + ' has been published with your latest changes.</p>' +
+        '<span class="url">' + escHtml(pubUrl) + '</span>' +
         '</div><div class="modal-foot">' +
         '<button class="btn btn-secondary" id="publish-close">Keep editing</button>' +
         '<button class="btn btn-primary" id="publish-view">View site</button>' +
@@ -3444,6 +3531,69 @@
   function addSectionBelowMarkup(){
     return '<button class="sec-add-below" title="Add section below"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>';
   }
+
+  /* ---------- draft handed over from the Create Event wizard ----------
+     create-event.html step 4 ("Assemble my site") writes the template's
+     sections, already filled with what the user typed in step 3, to
+     localStorage and opens this editor with ?from=create. When that is
+     what brought us here, the demo site is replaced by their site. */
+  var HANDOFF_KEY = 'revamp.editor.handoff.v1';
+
+  /* maps create-event.html's theme object (see its TEMPLATE_THEMES) onto the
+     --site-* custom properties the site-content CSS above reads. Keep the key
+     list here in sync with both TEMPLATE_THEMES' fields and the --site-* tokens. */
+  var SITE_THEME_VARS = {
+    accent:'--site-accent', accentSoft:'--site-accent-soft',
+    heroBg:'--site-hero-bg', heroText:'--site-hero-text', heroMuted:'--site-hero-muted',
+    bandBg:'--site-band-bg', bandText:'--site-band-text', bandMuted:'--site-band-muted',
+    quoteBg:'--site-quote-bg', quoteText:'--site-quote-text',
+    footBg:'--site-foot-bg', footText:'--site-foot-text', footLogo:'--site-foot-logo',
+    displayFont:'--site-display-font', displayWeight:'--site-display-weight',
+    displayCase:'--site-display-case', displayTracking:'--site-display-tracking'
+  };
+  function applySiteTheme(theme, templateId){
+    if (!theme){ frame.removeAttribute('data-site-theme'); return; }
+    Object.keys(SITE_THEME_VARS).forEach(function(key){
+      if (theme[key] != null) frame.style.setProperty(SITE_THEME_VARS[key], theme[key]);
+    });
+    /* also derive the image/tile placeholder tints from the accent, so they
+       aren't left in the demo's green even when everything else is themed */
+    if (theme.accentSoft){
+      frame.style.setProperty('--site-image-bg', 'linear-gradient(135deg,' + theme.accentSoft + ',' + theme.accentSoft + ')');
+      frame.style.setProperty('--site-tile-bg', theme.accentSoft);
+    }
+    frame.setAttribute('data-site-theme', templateId || 'custom');
+  }
+
+  function applyCreateHandoff(){
+    if (new URLSearchParams(location.search).get('from') !== 'create') return false;
+    var draft = null;
+    try { draft = JSON.parse(localStorage.getItem(HANDOFF_KEY) || 'null'); } catch(e){ draft = null; }
+    if (!draft || !draft.sections || !draft.sections.length) return false;
+    createDraft = draft;
+
+    applySiteTheme(draft.theme, (draft.template && draft.template.id) || 'custom');
+
+    frame.querySelectorAll('.site-section').forEach(function(sec){ sec.remove(); });
+    var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
+    draft.sections.forEach(function(s){
+      frame.insertBefore(buildSectionShell(s.name || 'Section', s.html || ''), addRow);
+    });
+
+    var ev = draft.event || {};
+    var tpl = draft.template || {};
+    var nameEl = document.getElementById('ed-event-name');
+    var metaEl = document.getElementById('ed-event-meta');
+    if (nameEl) nameEl.textContent = (ev.name || 'Untitled event') + ' | etoneworld.com/' + (ev.slug || '');
+    if (metaEl) metaEl.textContent = [ev.dateLabel, ev.location, tpl.name, 'Draft'].filter(Boolean).join('  |  ');
+    document.title = (ev.name || 'Untitled event') + ' — Site Editor';
+    setTimeout(function(){
+      showToast('Opened ' + (tpl.name ? '"' + tpl.name + '"' : 'your template') + ' with the content you filled in');
+    }, 400);
+    return true;
+  }
+  applyCreateHandoff();
+
   frame.querySelectorAll('.site-section').forEach(function(sec){
     if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
   });
