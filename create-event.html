@@ -525,14 +525,18 @@
 
   /* ============ STEP 3A - SECTION WORKSPACE ============ */
   .toggle-panel{
-    display:flex; align-items:center; flex-wrap:wrap; gap: 6px 16px; padding: 12px 16px;
-    border: 1px solid var(--border); border-radius: 12px; background: var(--surface); margin-bottom: 16px;
+    display:flex; flex-direction:column; gap: 12px; padding: 16px 18px;
+    border: 1px solid var(--accent); border-radius: 14px; background: var(--accent-soft); margin-bottom: 18px;
   }
-  .toggle-panel .tp-label{ font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing:.05em; color: var(--text-faint); margin-right: 2px; }
-  .toggle-panel .switch{ padding: 4px 8px; border-radius: 8px; }
+  .toggle-panel-top{ display:flex; align-items:center; flex-wrap:wrap; gap: 10px 16px; }
+  .toggle-panel-row{ display:flex; align-items:center; flex-wrap:wrap; gap: 6px 16px; }
+  .toggle-panel .switch{ padding: 4px 8px; border-radius: 8px; background: var(--surface); }
   .toggle-panel .switch:hover{ background: var(--surface-2); }
-  .toggle-panel-actions{ margin-left:auto; }
-  @media (max-width: 620px){ .toggle-panel-actions{ margin-left:0; width:100%; } }
+  .toggle-panel .switch.locked{ opacity: .5; }
+  .tp-status{ display:inline-flex; align-items:center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--accent-strong); }
+  .tp-status.locked{ color: var(--text-muted); }
+  .tp-status svg{ flex-shrink:0; }
+  @media (max-width: 620px){ .toggle-panel-top{ flex-direction:column; align-items:flex-start; } }
 
   .build-grid{ display:grid; grid-template-columns: 268px minmax(0,1fr); gap: 18px; align-items:start; }
   @media (max-width: 940px){ .build-grid{ grid-template-columns: 1fr; } }
@@ -798,6 +802,20 @@
   .modal-head .s{ font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
   .modal-body{ padding: 19px; display:flex; flex-direction:column; gap: 15px; overflow-y:auto; }
   .modal-foot{ padding: 13px 19px; border-top: 1px solid var(--border); display:flex; gap: 9px; justify-content:flex-end; }
+  .modal-wide{ max-width: 920px; }
+
+  /* template preview modal: image in a col-8-ish lane, toggles in a col-4-ish lane beside it */
+  .tpl-preview-grid{ display:grid; grid-template-columns: minmax(0,2fr) minmax(220px,1fr); gap: 18px; align-items:start; }
+  @media (max-width: 720px){ .tpl-preview-grid{ grid-template-columns: 1fr; } }
+  .tpl-preview-side{ display:flex; flex-direction:column; gap: 8px; min-height: 0; }
+  .tpl-preview-list{ display:flex; flex-direction:column; gap: 8px; max-height: min(60vh, 480px); overflow-y: auto; padding-right: 2px; }
+  .tpl-preview-row{
+    display:flex; align-items:center; justify-content:space-between; gap: 10px;
+    padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface);
+  }
+  .tpl-preview-row.off{ opacity: .55; }
+  .tpl-preview-row .nm{ font-size: 12.5px; font-weight: 700; }
+  .tpl-preview-row .switch{ padding: 3px 6px; }
 
   #toast-region{ position: fixed; bottom: 22px; right: 22px; display:flex; flex-direction:column; gap:8px; z-index: 100; }
   .toast{
@@ -1049,7 +1067,15 @@
       sections:['nav','hero','stats','partners','about','priorities','speakers','contact','footer'] },
     { id:'surge', name:'SURGE', tag:'Residential event', cat:'IP', img:'template-previews/surge-mini.jpg', imgFull:'template-previews/surge-full.jpg',
       sub:'India\u2019s largest residential GCC summit — experience zones, speakers and past-edition glimpses.',
-      sections:['nav','hero','partners','about','stats','awaits','speakers','glimpses','contact','footer'] },
+      sections:['nav','hero','partners','about','stats','awaits','priorities','speakers','glimpses','contact','footer'],
+      /* labels matched to this template's own on-site headings, from the shared SURGE design */
+      sectionNames:{
+        about:'Overview',
+        awaits:'What Awaits You at the ET GCC Surge?',
+        priorities:'Key Discussion Points',
+        speakers:'Speakers & Delegates',
+        glimpses:'Snippets From a Previous Edition'
+      } },
     { id:'annual-education-summit', name:'Annual Education Summit', tag:'Residential event', cat:'IP', img:'template-previews/annual-education-summit-mini.jpg', imgFull:'template-previews/annual-education-summit-full.jpg',
       sub:'India\u2019s largest education summit & expo — tracks, speaker clubs and glimpses.',
       sections:['nav','hero','stats','about','awaits','speakers','whyjoin','glimpses','attend','contact','footer'] },
@@ -1354,12 +1380,14 @@
     path: null,                 // 'A' | 'B'
     template: null,             // template id
     templatePick: null,         // card highlighted in the gallery, chosen but not yet confirmed
+    templateExcluded: {},       // libId -> true for sections turned off in the template Preview modal (never cloned in)
     sourceKind: 'figma',
     sourceValue: '',
     detectPhase: 'input',       // input | processing | review
     detectDecisions: {},        // id -> keep | removed
     sections: [],               // [{id, libId, name, shape, include, data, done, source, customBrief, layout}]
     active: null,               // active section id
+    pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content" — required before Speakers/Agenda/Sponsors/Glimpses can be switched on
     device: 'desktop',
     assembled: false,
     celebrated: false
@@ -2012,17 +2040,18 @@
     return TEMPLATES.filter(function(t){ return t.cat === S.basics.category; });
   }
 
-  /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point */
-  function selectTemplate(tplId){
+  /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point.
+     `skip` (libId -> true) carries over section choices made in the Preview modal's toggles. */
+  function selectTemplate(tplId, skip){
     S.templatePick = tplId;
-    if (S.path === 'A' && S.template === tplId) return;
+    if (S.path === 'A' && S.template === tplId && !skip) return;
     S.path = 'A';
     S.sections = [];
     S.active = null;
     S.detectPhase = 'input';
     S.detectDecisions = {};
     S.assembled = false;
-    applyTemplate(tplId);
+    applyTemplate(tplId, skip);
     renderStep2();
     renderFoot();
   }
@@ -2045,23 +2074,63 @@
     });
   }
 
+  /* Preview modal — a plain checklist of this template's real sections, each with an on/off switch.
+     All switches default on. Anything switched off here is never cloned into the microsite.
+     Where the template defines sectionNames, the row uses that template's own on-site heading
+     instead of the generic library name. */
   function openTemplatePreview(tplId){
     var t = null;
     TEMPLATES.forEach(function(x){ if (x.id === tplId) t = x; });
     if (!t) return;
-    var names = t.sections.map(function(id){ var l = libBy(id); return l ? l.name : id; });
+    var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
+    var skip = {};   // libId -> true means the user switched this section off
+
+    function previewBody(){
+      return '<div class="tpl-preview-grid">' +
+        '<div class="tpl-preview-media">' +
+          (t.imgFull ? '<img class="tpl-thumb-full" src="' + esc(t.imgFull) + '" alt="' + esc(t.name) + ' full preview">' : '') +
+        '</div>' +
+        '<div class="tpl-preview-side">' +
+          '<p class="hint" style="margin:0 0 2px">' + esc(t.sub) + '</p>' +
+          '<div class="tpl-preview-list" id="tpl-preview-list">' +
+            toggleIds.map(function(id){
+              var l = libBy(id);
+              var label = (t.sectionNames && t.sectionNames[id]) || l.name;
+              var on = !skip[id];
+              return '<div class="tpl-preview-row' + (on ? '' : ' off') + '">' +
+                '<span class="nm">' + esc(label) + '</span>' +
+                '<button class="switch" data-pv-toggle="' + id + '" aria-pressed="' + on + '">' +
+                  '<span class="track"><i></i></span>' + (on ? 'Included' : 'Excluded') +
+                '</button>' +
+              '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function wireToggles(){
+      var body = document.querySelector('.modal-body');
+      if (!body) return;
+      body.querySelectorAll('[data-pv-toggle]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var id = b.getAttribute('data-pv-toggle');
+          skip[id] = !skip[id];
+          body.innerHTML = previewBody();
+          wireToggles();
+        });
+      });
+    }
+
     openModal({
       title: t.name,
       sub: t.tag,
-      body:
-        (t.imgFull ? '<img class="tpl-thumb-full" src="' + esc(t.imgFull) + '" alt="' + esc(t.name) + ' full preview">' : '') +
-        '<p class="hint" style="margin-top:14px">' + esc(t.sub) + '</p>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' +
-          names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
-        '</div>',
+      wide: true,
+      body: previewBody(),
       confirm: 'Use this template',
-      onConfirm: function(){ setTimeout(function(){ confirmUseTemplate(tplId); }, 0); }
+      onConfirm: function(){ setTimeout(function(){ selectTemplate(tplId, skip); goStep(3); }, 0); }
     });
+    wireToggles();
   }
 
   /* ---------- clone design from a previous (completed) edition on this portal ---------- */
@@ -2258,12 +2327,15 @@
     });
   }
 
-  function applyTemplate(tplId){
+  function applyTemplate(tplId, skip){
     var tpl = null;
     TEMPLATES.forEach(function(t){ if (t.id === tplId) tpl = t; });
     if (!tpl) return;
     S.template = tplId;
-    S.sections = tpl.sections.map(function(libId){
+    S.templateExcluded = skip || {};
+    S.sections = tpl.sections.filter(function(libId){
+      return !S.templateExcluded[libId];
+    }).map(function(libId){
       var l = libBy(libId);
       return {
         id: uid(), libId: libId, name: l.name, shape: l.shape, limit: l.limit || null,
@@ -2271,7 +2343,7 @@
       };
     });
     var first = S.sections.filter(function(s){ return s.shape !== 'auto'; })[0];
-    S.active = first ? first.id : S.sections[0].id;
+    S.active = first ? first.id : (S.sections[0] ? S.sections[0].id : null);
     if (S.basics.name){
       var hero = S.sections.filter(function(s){ return s.libId === 'hero'; })[0];
       if (hero) hero.data.title = S.basics.name;
@@ -2279,7 +2351,7 @@
     ensureCoreSections();
     save();
     renderStep3();
-    toast(tpl.name + ' loaded — ' + tpl.sections.length + ' sections ready');
+    toast(tpl.name + ' loaded — ' + S.sections.length + ' section' + (S.sections.length === 1 ? '' : 's') + ' ready');
   }
 
   /* =========================================================
@@ -2319,7 +2391,9 @@
 
   function ensureCoreSections(){
     var changed = false;
+    var excluded = S.templateExcluded || {};
     CORE_LIB_IDS.forEach(function(libId){
+      if (excluded[libId]) return;   // deliberately turned off in the template Preview modal — leave it out
       if (!sectionByLib(libId)){ addSectionToRail(libId, 'core'); changed = true; }
     });
     return changed;
@@ -2328,6 +2402,12 @@
   function toggleBlock(libId){
     var l = libBy(libId);
     var sec = sectionByLib(libId);
+    var turningOn = !(sec && sec.include);
+    if (turningOn && !S.pulledEdition){
+      toast('Select a previous edition first to unlock ' + l.name);
+      openPullContentModal();
+      return;
+    }
     if (sec){
       sec.include = !sec.include;
       if (sec.include) S.active = sec.id;
@@ -2335,6 +2415,7 @@
       sec = addSectionToRail(libId, 'toggle');
       S.active = sec.id;
     }
+    if (turningOn) applyEditionContentToBlock(sec, libId);
     save();
     renderTogglePanel();
     renderSecList();
@@ -2403,25 +2484,45 @@
       sec.source = 'edition';
       sec.editionName = pe.name;
     });
+    S.pulledEdition = { id: pe.id, name: pe.name };
     save();
     renderBuildWorkspace($('step-3'));
     toast('Content pulled from ' + pe.name);
   }
 
+  /* fills one optional block from the already-selected past edition, used when a block is
+     switched on after the edition pull (see toggleBlock) */
+  function applyEditionContentToBlock(sec, libId){
+    if (!S.pulledEdition) return;
+    var pe = null;
+    PAST_EDITIONS.forEach(function(p){ if (p.id === S.pulledEdition.id) pe = p; });
+    var content = pe && pe.content && pe.content[libId];
+    if (!content) return;
+    sec.data = JSON.parse(JSON.stringify(content));
+    sec.done = true;
+    sec.source = 'edition';
+    sec.editionName = pe.name;
+  }
+
   function renderTogglePanel(){
     var host = $('toggle-panel');
     if (!host) return;
+    var locked = !S.pulledEdition;
     host.innerHTML =
-      '<span class="tp-label">Optional blocks</span>' +
-      TOGGLE_BLOCKS.map(function(tb){
-        var sec = sectionByLib(tb.libId);
-        var on = !!(sec && sec.include);
-        return '<button class="switch" data-tb="' + tb.libId + '" aria-pressed="' + on + '">' +
-          '<span class="track"><i></i></span>' + esc(tb.label) + '</button>';
-      }).join('') +
-      '<span class="toggle-panel-actions">' +
-        '<button class="btn btn-ghost btn-sm" id="btn-pull-edition">' + IC.spark + ' Use a previous edition’s content</button>' +
-      '</span>';
+      '<div class="toggle-panel-top">' +
+        '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-pull-edition">' + IC.spark + ' Use a previous edition’s content</button>' +
+        (locked
+          ? '<span class="tp-status locked">' + IC.lock + ' Select a previous edition first to unlock Speakers, Agenda, Sponsors and Glimpses</span>'
+          : '<span class="tp-status">' + IC.check + ' Pulling optional blocks from ' + esc(S.pulledEdition.name) + '</span>') +
+      '</div>' +
+      '<div class="toggle-panel-row">' +
+        TOGGLE_BLOCKS.map(function(tb){
+          var sec = sectionByLib(tb.libId);
+          var on = !!(sec && sec.include);
+          return '<button class="switch' + (locked && !on ? ' locked' : '') + '" data-tb="' + tb.libId + '" aria-pressed="' + on + '">' +
+            '<span class="track"><i></i></span>' + esc(tb.label) + '</button>';
+        }).join('') +
+      '</div>';
     host.querySelectorAll('[data-tb]').forEach(function(b){
       b.addEventListener('click', function(){ toggleBlock(b.getAttribute('data-tb')); });
     });
@@ -2445,8 +2546,7 @@
     host.innerHTML =
       '<div class="step-head">' +
         '<span class="eyebrow">Step 3 of 5 &middot; Path ' + S.path + '</span>' +
-        '<h1>' + (S.path === 'A' ? 'Fill your sections' : 'Refine your sections') + '</h1>' +
-        '<p class="desc">Overview, Key Discussion Points and Who should attend are ready below. Switch on Speakers, Agenda, Sponsors or Glimpses if this event needs them, or pull them straight from a previous edition.</p>' +
+        '<h1>Build Your Website Content</h1>' +
       '</div>' +
       '<div class="toggle-panel" id="toggle-panel"></div>' +
       '<div class="build-grid">' +
@@ -3753,7 +3853,7 @@
   function openModal(opts){
     var root = $('modal-root');
     root.innerHTML =
-      '<div class="scrim" id="scrim"><div class="modal" role="dialog" aria-modal="true">' +
+      '<div class="scrim" id="scrim"><div class="modal' + (opts.wide ? ' modal-wide' : '') + '" role="dialog" aria-modal="true">' +
         '<div class="modal-head"><div><h3>' + esc(opts.title) + '</h3>' +
           (opts.sub ? '<p class="s">' + esc(opts.sub) + '</p>' : '') + '</div>' +
           '<button class="icon-btn" id="modal-x" style="margin-left:auto" aria-label="Close">' + IC.x + '</button></div>' +
