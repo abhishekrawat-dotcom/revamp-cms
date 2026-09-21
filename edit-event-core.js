@@ -74,7 +74,10 @@ window.RevampCore = (function(){
     lock:     '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
     star:     '<path d="M12 3.2l2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.8-5.4 2.8 1-6-4.4-4.3 6.1-.9z"/>',
     help:     '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2A2.6 2.6 0 0 1 14.4 10c0 1.7-2.4 2.2-2.4 3.8"/><path d="M12 17.2h.01"/>',
-    ticket:   '<path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a2.2 2.2 0 0 0 0 4.4v1.3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.3a2.2 2.2 0 0 0 0-4.4z"/><path d="M14 6.5v11"/>'
+    ticket:   '<path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a2.2 2.2 0 0 0 0 4.4v1.3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.3a2.2 2.2 0 0 0 0-4.4z"/><path d="M14 6.5v11"/>',
+    bldg:     '<rect x="4" y="3" width="16" height="18" rx="1.8"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>',
+    badge2:   '<path d="M12 2.7l2.4 1.7 2.9-.2 1 2.7 2.4 1.6-.9 2.8.9 2.8-2.4 1.6-1 2.7-2.9-.2L12 21.3 9.6 19.6l-2.9.2-1-2.7-2.4-1.6.9-2.8-.9-2.8L5.7 6.9l1-2.7 2.9.2z"/><path d="M9.4 12l1.9 1.9 3.6-3.8"/>',
+    warn:     '<path d="M12 3.5l9 15.5H3z"/><path d="M12 10v3.5M12 16.5h.01"/>'
   };
 
   var PORTALS = {
@@ -282,7 +285,7 @@ window.RevampCore = (function(){
       PEOPLE: opts.PEOPLE || [],
       IC: IC, AV: AV, PORTALS: PORTALS, TYPES: TYPES,
       $: $, esc: esc, svg: svg,
-      comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT,
+      comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, rnd: rnd,
       statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
       toast: toast,
       vhead:  opts.vhead  || function(t, sub, right){
