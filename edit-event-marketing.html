@@ -5,6 +5,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="motion.css">
 <style>
   .wb-bar{
     position: sticky; top:0; z-index:30; display:flex; align-items:center; gap:12px;
@@ -40,22 +41,16 @@
 
 <script src="edit-event-core.js"></script>
 <script src="edit-event-marketing.js"></script>
-<script src="sidebar.js"></script>
+<script src="app-shell.js"></script>
 <script>
 (function(){
   'use strict';
   var C = window.RevampCore;
   var MKT = window.EditEventMarketing;
   var wbEvent = new URLSearchParams(location.search).get('event') || '1';
-  renderEventRail('global-rail', { activeSection:'marketing', onSection:function(section){
-    if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
-    if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(wbEvent); return; }
-    if (section === 'design') { location.href = 'custom_editor.html?event=' + encodeURIComponent(wbEvent); return; }
-    if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(wbEvent) + '#audience/payments'; return; }
-    if (section === 'marketing') return;
-    if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(wbEvent); return; }
-    location.href = 'edit-event.html?event=' + encodeURIComponent(wbEvent) + '#' + section;
-  }});
+  /* the workbench keeps its own bar, but the rail is the shared one so it
+     cannot drift from what the console shows */
+  window.RevampShell.mount({ section: 'marketing', eventId: wbEvent, rail: 'global-rail' });
   var tab = (location.hash.slice(1) || 'studio');
 
   var sel = document.getElementById('wb-ev');

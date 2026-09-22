@@ -58,6 +58,35 @@
   button, input, select, textarea{ font-family: inherit; font-size: inherit; color: inherit; }
   a{ color: var(--accent-strong); }
 
+
+  /* ============ CROSS-PAGE TRANSITIONS ============
+     Switching section is a real document navigation, so by default the browser
+     tears down one page and paints the next from blank - the flash between
+     them. Opting into cross-document view transitions makes it cross-fade
+     instead, and giving the top bar and the rail a name keeps them on screen,
+     morphing in place, while only the section content changes underneath.
+
+     Chrome 126+ only. Browsers without cross-document view transitions ignore
+     the at-rule and navigate the way they did before - nothing else changes,
+     so there is no fallback to maintain. */
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce){
+    @view-transition { navigation: none; }
+  }
+
+  /* the base layer under the transition: white by default, which is the flash
+     people actually see on a slow paint */
+  html{ background: var(--bg); }
+
+  .topbar{ view-transition-name: cms-topbar; }
+  .rail{ view-transition-name: cms-rail; }
+
+  /* short enough to read as "the page kept up", long enough to not be a blink */
+  ::view-transition-old(root),
+  ::view-transition-new(root){ animation-duration: .18s; }
+  ::view-transition-group(cms-topbar),
+  ::view-transition-group(cms-rail){ animation-duration: .18s; }
+
   /* ============ TOP BAR ============ */
   .topbar{
     position: sticky; top:0; z-index: 40; height: var(--topbar-h);

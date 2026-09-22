@@ -1,0 +1,218 @@
+/* ET Oneworld - Revamp CMS : MOTION
+   ---------------------------------------------------------------------------
+   Every moving part of the console lives here, linked from each page *after*
+   its stylesheet so these rules win. One file means a curve or a duration is
+   changed in one place, the same way app-shell.js owns the chrome.
+
+   Two curves do all the work:
+     --ease-out     a long decelerating curve for anything arriving on screen.
+                    Fast at the start, settles slowly - reads as "already on
+                    its way" rather than "starting now".
+     --ease-spring  a short overshoot for anything the user pressed. Only on
+                    things under the cursor, never on content.
+
+   Nothing here animates layout (width/height/top/left) - only transform and
+   opacity, which the compositor can run without a re-layout. That is what
+   keeps a 400-row registrations table from stuttering while it animates.
+
+   The whole file switches itself off under prefers-reduced-motion at the
+   bottom. Anything added here must survive that.
+   ------------------------------------------------------------------------- */
+
+:root{
+  --ease-out:    cubic-bezier(.16, 1, .3, 1);
+  --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
+  --dur-1: 120ms;   /* a hover, a press - has to feel instant */
+  --dur-2: 200ms;   /* a state change you are meant to notice */
+  --dur-3: 420ms;   /* something arriving on screen */
+  --stagger: 34ms;  /* gap between two items in a cascade */
+}
+
+/* ============ CONTENT ENTRANCE ============
+   app-shell.js puts data-enter on the page's content root while it is still
+   empty, and takes it off a second later. Everything the page renders into it
+   on that first pass cascades in; every re-render after that (a tab, a filter,
+   a sort, a keystroke in the search box) is instant, which is the whole point
+   of the one-second window - a table that re-animated on every keystroke would
+   be unusable. */
+@keyframes rvp-rise{
+  from{ opacity: 0; transform: translateY(12px); }
+  to  { opacity: 1; transform: none; }
+}
+
+[data-enter] > *,
+[data-enter] > .stat-grid > *,
+[data-enter] > .stats-grid > *{
+  animation: rvp-rise var(--dur-3) var(--ease-out) both;
+}
+/* a grid of tiles cascades tile by tile, so the grid itself stays put */
+[data-enter] > .stat-grid,
+[data-enter] > .stats-grid{ animation: none; }
+
+[data-enter] > *:nth-child(1),
+[data-enter] > .stat-grid > *:nth-child(1),
+[data-enter] > .stats-grid > *:nth-child(1){ animation-delay: 0ms; }
+[data-enter] > *:nth-child(2),
+[data-enter] > .stat-grid > *:nth-child(2),
+[data-enter] > .stats-grid > *:nth-child(2){ animation-delay: calc(var(--stagger) * 1); }
+[data-enter] > *:nth-child(3),
+[data-enter] > .stat-grid > *:nth-child(3),
+[data-enter] > .stats-grid > *:nth-child(3){ animation-delay: calc(var(--stagger) * 2); }
+[data-enter] > *:nth-child(4),
+[data-enter] > .stat-grid > *:nth-child(4),
+[data-enter] > .stats-grid > *:nth-child(4){ animation-delay: calc(var(--stagger) * 3); }
+[data-enter] > *:nth-child(5),
+[data-enter] > .stat-grid > *:nth-child(5),
+[data-enter] > .stats-grid > *:nth-child(5){ animation-delay: calc(var(--stagger) * 4); }
+[data-enter] > *:nth-child(6),
+[data-enter] > .stat-grid > *:nth-child(6),
+[data-enter] > .stats-grid > *:nth-child(6){ animation-delay: calc(var(--stagger) * 5); }
+[data-enter] > *:nth-child(7),
+[data-enter] > .stat-grid > *:nth-child(7),
+[data-enter] > .stats-grid > *:nth-child(7){ animation-delay: calc(var(--stagger) * 6); }
+/* everything past the seventh lands together - a cascade that keeps counting
+   turns into a queue the user is waiting on */
+[data-enter] > *:nth-child(n+8),
+[data-enter] > .stat-grid > *:nth-child(n+8),
+[data-enter] > .stats-grid > *:nth-child(n+8){ animation-delay: calc(var(--stagger) * 7); }
+
+/* a progress bar that arrives already full has nothing to say. Scale, not
+   width, so the inline width the page wrote is left alone. */
+@keyframes rvp-grow{ from{ transform: scaleX(0); } to{ transform: none; } }
+.prog i,
+.bar-track i,
+.pg-progress-fill{ transform-origin: left center; }
+[data-enter] .prog i,
+[data-enter] .bar-track i,
+[data-enter] .pg-progress-fill{ animation: rvp-grow 760ms var(--ease-out) both; }
+
+/* ============ PRESSABLE THINGS ============ */
+.btn,
+.btn-icon,
+.icon-btn{
+  transition: background var(--dur-1) var(--ease-out),
+              border-color var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out),
+              box-shadow var(--dur-2) var(--ease-out),
+              transform var(--dur-1) var(--ease-spring);
+}
+.btn:hover,
+.btn-icon:hover,
+.icon-btn:hover{ transform: translateY(-1px); }
+/* the press has to beat the hover back down, so it gets its own short duration */
+.btn:active,
+.btn-icon:active,
+.icon-btn:active{ transform: translateY(0) scale(.97); transition-duration: 60ms; }
+.btn:disabled:hover{ transform: none; }
+.btn-primary:hover{ box-shadow: 0 8px 18px -8px var(--accent); }
+
+/* ============ THE RAIL ============
+   The icon lifts, the label does not - moving both makes the item look like it
+   is sliding out of the rail. */
+.rail-item{
+  transition: background var(--dur-2) var(--ease-out),
+              color var(--dur-2) var(--ease-out);
+}
+.rail-item .ri{ transition: transform var(--dur-2) var(--ease-spring); }
+.rail-item:hover .ri{ transform: translateY(-2px) scale(1.06); }
+.rail-item.active .ri{ transform: scale(1.05); }
+.rail-sub{ transition: opacity var(--dur-2) var(--ease-out),
+                       transform var(--dur-2) var(--ease-out); }
+
+/* ============ CARDS ============
+   Only things that actually do something lift. A tile that rises under the
+   cursor and then does nothing when clicked is a lie. */
+.stat,
+.media-card,
+.page-card,
+.camp,
+[data-goto]{
+  transition: transform var(--dur-2) var(--ease-out),
+              box-shadow var(--dur-2) var(--ease-out),
+              border-color var(--dur-2) var(--ease-out);
+}
+.stat.clickable:hover,
+.media-card:hover,
+.page-card:hover,
+[data-goto]:hover{ transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat.clickable:active,
+[data-goto]:active{ transform: translateY(0); transition-duration: 60ms; }
+
+/* ============ ROWS ============ */
+table.tbl tbody tr,
+.settings-row,
+.check-row,
+.rail-sub-item,
+.ev-menu-item{ transition: background var(--dur-1) var(--ease-out),
+                           color var(--dur-1) var(--ease-out); }
+.settings-row:hover{ background: var(--surface-2); }
+
+/* ============ TABS ============
+   The underline grows out of the middle of the tab you picked instead of
+   blinking into place. */
+.subtabs > button,
+.marketing-tabs button,
+.settings-tabs button,
+.detail-tab,
+.seg-btn{ transition: color var(--dur-2) var(--ease-out),
+                      background var(--dur-2) var(--ease-out); }
+@keyframes rvp-underline{
+  from{ transform: scaleX(.25); opacity: 0; }
+  to  { transform: none; opacity: 1; }
+}
+.marketing-tabs button[aria-selected="true"]:after,
+.settings-tabs button[aria-selected="true"]:after{
+  transform-origin: center;
+  animation: rvp-underline var(--dur-2) var(--ease-out) both;
+}
+
+/* ============ OVERLAYS ============ */
+@keyframes rvp-fade{ from{ opacity: 0; } to{ opacity: 1; } }
+@keyframes rvp-pop{
+  from{ opacity: 0; transform: translateY(10px) scale(.97); }
+  to  { opacity: 1; transform: none; }
+}
+@keyframes rvp-slide-in{
+  from{ opacity: 0; transform: translateX(28px); }
+  to  { opacity: 1; transform: none; }
+}
+
+.modal-bg,
+.drawer-bg,
+.drawer-backdrop,
+.scrim{
+  animation: rvp-fade var(--dur-2) var(--ease-out) both;
+  backdrop-filter: blur(3px);
+}
+.modal{ animation: rvp-pop var(--dur-3) var(--ease-spring) both; }
+.drawer{ animation: rvp-slide-in var(--dur-3) var(--ease-out) both; }
+
+/* ============ TOASTS ============ */
+@keyframes rvp-toast{
+  from{ opacity: 0; transform: translateY(16px) scale(.96); }
+  to  { opacity: 1; transform: none; }
+}
+.toast{ animation: rvp-toast var(--dur-3) var(--ease-spring) both; }
+
+/* ============ FOCUS ============
+   Keyboard users get the same ring everywhere, and it grows rather than snaps. */
+:focus-visible{
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  transition: outline-offset var(--dur-1) var(--ease-out);
+}
+
+/* ============ REDUCED MOTION ============
+   Not "less motion" - none. Someone who has asked the OS for this may be
+   asking because motion makes them ill. Durations go to almost-zero rather
+   than zero so animationend still fires and nothing waits forever on it. */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration: .001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

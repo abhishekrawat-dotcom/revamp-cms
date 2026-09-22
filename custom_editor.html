@@ -3,6 +3,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="motion.css">
 <style>
   :root{
     --bg: #FAF7F6;
@@ -830,23 +831,8 @@
 
 <div class="ed">
   <!-- ============ TOP BAR ============ -->
-  <header class="topbar">
-    <a class="back-btn" href="Event_Listing.html">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-      Back to events
-    </a>
-    <span class="ev-title">
-      <h1 id="ed-event-name">&nbsp;</h1>
-      <span class="meta" id="ed-event-meta"></span>
-    </span>
-    <span class="topbar-acts">
-      <button class="btn btn-secondary" type="button" id="btn-preview">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
-        Preview
-      </button>
-      <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
-    </span>
-  </header>
+  <!-- top bar and rail are rendered by app-shell.js - same markup on every section -->
+  <header class="topbar" id="topbar"></header>
 
   <div class="ed-workspace">
     <nav class="rail" id="global-rail" aria-label="Sections"></nav>
@@ -1281,25 +1267,20 @@
 <div id="toast-region"></div>
 
 <script src="edit-event-core.js"></script>
-<script src="sidebar.js"></script>
+<script src="app-shell.js"></script>
 <script>
 (function(){
     var C = window.RevampCore;
     var editorEventId = new URLSearchParams(location.search).get('event') || '1';
     var EV = C.eventById(editorEventId) || C.EVENTS[0];
-    document.getElementById('ed-event-name').textContent = EV.name + ' | ' + (C.PORTALS[EV.portal] || '');
-    document.getElementById('ed-event-meta').textContent = C.fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (C.TYPES[EV.type] || EV.type);
-    renderEventRail('global-rail', {
-      activeSection: 'design',
-      onSection: function(section){
-        if (section === 'design') return;
-        if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#audience/payments'; return; }
-        if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
-        if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(editorEventId); return; }
-        if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(editorEventId); return; }
-        if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(editorEventId); return; }
-        location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#' + section;
-      }
+    /* same top bar and rail as every other section - the editor only says
+       which item is lit and keeps its own Preview/Publish handlers */
+    window.RevampShell.mount({
+      section: 'design',
+      eventId: EV.id,
+      rail: 'global-rail',
+      wireActions: false,
+      onSection: function(section){ if (section === 'design') return false; }
     });
 
   var stage = document.getElementById('stage');
@@ -3582,8 +3563,8 @@
 
     var ev = draft.event || {};
     var tpl = draft.template || {};
-    var nameEl = document.getElementById('ed-event-name');
-    var metaEl = document.getElementById('ed-event-meta');
+    var nameEl = document.getElementById('shell-event-name');
+    var metaEl = document.getElementById('shell-event-meta');
     if (nameEl) nameEl.textContent = (ev.name || 'Untitled event') + ' | etoneworld.com/' + (ev.slug || '');
     if (metaEl) metaEl.textContent = [ev.dateLabel, ev.location, tpl.name, 'Draft'].filter(Boolean).join('  |  ');
     document.title = (ev.name || 'Untitled event') + ' — Site Editor';

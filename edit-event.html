@@ -1,26 +1,13 @@
 <!-- ET Oneworld - Revamp CMS : per-event admin console ("Edit event") -->
+<meta charset="utf-8">
 <title>Edit Event &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="motion.css">
 
-<header class="topbar">
-  <a class="back-btn" href="Event_Listing.html">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-    Back to events
-  </a>
-  <span class="ev-title">
-    <h1 id="ev-name">&nbsp;</h1>
-    <span class="meta" id="ev-meta"></span>
-  </span>
-  <span class="topbar-acts">
-    <button class="btn btn-secondary" type="button" id="btn-preview">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
-      Preview
-    </button>
-    <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
-  </span>
-</header>
+<!-- top bar and rail are rendered by app-shell.js - same markup on every section -->
+<header class="topbar" id="topbar"></header>
 
 <div class="shell">
   <nav class="rail" id="rail" aria-label="Sections"></nav>
@@ -33,7 +20,7 @@
 <script src="edit-event-core.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="edit-event-marketing.js"></script>
-<script src="sidebar.js"></script>
+<script src="app-shell.js"></script>
 
 <script>
 (function(){
@@ -143,9 +130,16 @@
   }
 
   function renderRail(){
-    renderEventRail('rail', {
-      activeSection: cur.sec === 'audience' && cur.tab === 'payments' ? 'payment' : cur.sec,
-      eventId: EV.id
+    /* one shell, one rail: the only thing this page decides is which item is lit */
+    window.RevampShell.mount({
+      section: cur.sec === 'audience' && cur.tab === 'payments' ? 'payment' : cur.sec,
+      eventId: EV.id,
+      onPreview: openPreview,
+      onPublish: doPublish,
+      onSection: function(section){
+        /* Content lives here, so switching to it is a route change, not a load */
+        if (section === 'content'){ go('content'); return false; }
+      }
     });
   }
 
@@ -3904,12 +3898,7 @@
      BOOT
      ============================================================ */
   function boot(){
-    $('ev-name').textContent = EV.name + ' | ' + (PORTALS[EV.portal] || '');
-    $('ev-meta').textContent = fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (TYPES[EV.type] || EV.type);
     document.title = 'Edit — ' + EV.name + ' — Revamp CMS';
-
-    $('btn-preview').onclick = openPreview;
-    $('btn-publish').onclick = doPublish;
 
     window.addEventListener('hashchange', function(){
       var h = location.hash.slice(1);
