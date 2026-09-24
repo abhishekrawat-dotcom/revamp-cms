@@ -1000,6 +1000,7 @@
 
 <div id="modal-root"></div>
 <div id="toast-region" aria-live="polite"></div>
+<script src="editor-store.js"></script>
 <script>
 (function(){
   'use strict';
@@ -1063,6 +1064,7 @@
   var TEMPLATES = [
     { id:'tech500', name:'TECH500', tag:'IP event', cat:'IP', img:'template-previews/tech500-mini.jpg', imgFull:'template-previews/tech500-full.jpg',
       sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.',
+      site:'tech500',   // opens in the site editor as the real ET site (templates/tech500), filled with this content
       sections:['nav','hero','stats','priorities','about','whyjoin','attend','contact','footer'] },
     { id:'making-ai-work', name:'Making AI Work', tag:'IP event', cat:'IP', img:'template-previews/making-ai-work-mini.jpg', imgFull:'template-previews/making-ai-work-full.jpg',
       sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.',
@@ -1448,7 +1450,40 @@
   ========================================================= */
   var STEPS = ['Select Event Type','Choose Template','Build content','AI assemble'];
   var STORE_KEY = 'revamp.createEvent.draft.v1';
-  var logoPreviewUrl = '';   // in-memory object URL for the uploaded logo — not persisted across reloads
+  var logoPreviewUrl = '';   // what the step-1 logo tile shows: an object URL right after upload, the stored copy after a reload
+  /* The logo itself is kept in IndexedDB (editor-store.js), not in the localStorage draft: it can be megabytes. The site
+     editor reads it from there when it opens the draft and puts it on the site. Big PNGs are scaled to fit 1200×720. */
+  var LOGO_KEY = 'create:logo';
+  var logoSaving = null;      // the store write under way, so the hand-off can wait for it
+  function logoDataUrl(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = function(){ reject(reader.error); };
+      reader.onload = function(){
+        var url = reader.result;
+        if (file.type !== 'image/png' || file.size <= 400 * 1024) return resolve(url);
+        var img = new Image();
+        img.onerror = function(){ resolve(url); };
+        img.onload = function(){
+          var scale = Math.min(1, 1200 / img.naturalWidth, 720 / img.naturalHeight);
+          if (scale >= 1) return resolve(url);
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * scale);
+          c.height = Math.round(img.naturalHeight * scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/png'));
+        };
+        img.src = url;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function storeLogo(file){
+    logoSaving = logoDataUrl(file).then(function(dataUrl){
+      return RevampStore.put(LOGO_KEY, { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
+    }).catch(function(err){ console.warn('[create] could not keep the logo for the site editor:', err); });
+    return logoSaving;
+  }
 
   var S = {
     step: 1,
@@ -2093,6 +2128,7 @@
       e.stopPropagation();
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
+      RevampStore.remove(LOGO_KEY).catch(function(){});
       logoInput.value = '';
       save(); initStep1();
       toast('Logo removed');
@@ -2115,6 +2151,7 @@
       logoPreviewUrl = URL.createObjectURL(file);
       b.logo = true;
       b.logoName = file.name;
+      storeLogo(file);
       save(); initStep1();
       toast('Logo uploaded: ' + file.name);
     };
@@ -3917,7 +3954,8 @@
       if (!s.include) return;
       var html = editorSectionHtml(s);
       if (!html) return;
-      sections.push({ name: sectionLabel(s), libId: s.libId, html: html });
+      /* data: the step-3 fields themselves — a real template (tpl.site) is filled from these, not from html */
+      sections.push({ name: sectionLabel(s), libId: s.libId, html: html, data: s.data ? JSON.parse(JSON.stringify(s.data)) : null });
     });
     return {
       v: 1,
@@ -3928,9 +3966,14 @@
         category: (CATS[b.category] || {}).label || b.category,
         dateLabel: eventDateLabel(b),
         location: locLabel(b, false),
-        payment: b.payment
+        payment: b.payment,
+        date: { mode: b.dateMode, start: b.start, end: b.end, month: b.month, quarter: b.quarter, year: b.year, note: b.dateNote },
+        hasVenue: !!(CATS[b.category] || {}).venue,
+        logo: b.logo ? (b.logoName || 'logo') : ''      // the file itself is in IndexedDB under LOGO_KEY
       },
-      template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom') },
+      template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom'), site: (tpl && tpl.site) || null },
+      /* the template's sections the user switched off — hidden on a real template, not deleted */
+      excluded: tpl ? tpl.sections.filter(function(id){ return !S.sections.some(function(s){ return s.libId === id && s.include; }); }) : [],
       theme: currentTheme(),
       sections: sections
     };
@@ -3945,7 +3988,10 @@
       toast('Could not hand the draft over — your browser blocked storage.');
       return false;
     }
-    window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug);
+    var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
+      (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
+    if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
+    else window.location.href = url;
     return true;
   }
 
@@ -4096,6 +4142,13 @@
   function init(){
     var had = restore();
     initStep1();
+    if (S.basics.logo && !logoPreviewUrl){
+      RevampStore.get(LOGO_KEY).then(function(rec){
+        if (!rec || rec.name !== S.basics.logoName || logoPreviewUrl) return;
+        logoPreviewUrl = rec.dataUrl;
+        if (S.step === 1) initStep1();
+      }, function(){});
+    }
     renderStep2();
     $('btn-next').addEventListener('click', onNext);
     $('btn-back').addEventListener('click', onBack);

@@ -1,0 +1,14 @@
+#banner .bnr-bg-video{position:absolute;inset:0;z-index:1;overflow:hidden}
+#banner .bnr-bg-video video{width:100%;max-width:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;will-change:opacity}
+#banner .bnr-bg-video video.loaded{opacity:1}
+#banner .overlay-lyr{position:absolute;inset:0;z-index:1;background:rgba(255,255,255,.8)}
+@media(max-width:767px){#banner .bnr-bg-video video,#banner .overlay-lyr{display:none}}
+
+#banner{overflow:hidden;position:relative}
+#banner .cntnd-bx{position:relative;z-index:3}
+#banner .banner-bg-image{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0}
+#banner .cntnd .lcn .icn-box{display:flex;gap:10px;justify-content:center;align-items:center}
+#banner .cntnd .lcn .bi{color:var(--theme-color)}
+#banner .cntnd .lcn{font-variant-numeric:lining-nums proportional-nums;font-style:normal;line-height:24px;position:relative;display:flex;align-items:center;gap:35px;justify-content:center}
+#banner .cntnd .lcn img.cal-ico{margin-top:-5px;margin-right:10px;vertical-align:middle}
+@media(max-width:767px){#banner .cntnd-bx{margin-top:30px}#banner .cntnd .lcn{flex-direction:column;gap:6px;font-size:16px}}

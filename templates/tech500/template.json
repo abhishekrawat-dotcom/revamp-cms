@@ -1,0 +1,130 @@
+{
+  "id": "tech500",
+  "name": "TECH500",
+  "title": "Tech500 Summit - Technology Summit and Conference | CIO Tech Conferences | ET CIO",
+  "source": "https://cio.economictimes.indiatimes.com/tech-500-summit",
+
+  "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
+  "fonts": [
+    "https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800&display=swap",
+    "https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@100;200;300;400;500;600;700;800&display=swap"
+  ],
+  "theme": "theme.css",
+  "design": {
+    "notes": "What the editor's theme controls act on. headingFontVar = the variable most headings read (the event theme sets --heading-font-family-v2 = Fraunces; --heading-font-family = Playfair is only for a few labels). headings/buttons/cards = selectors for the heading, corner-radius controls. swatches = theme colours offered besides the template's own.",
+    "headingFontVar": "--heading-font-family-v2",
+    "headings": ".page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2, .page_hdng5 h1, .page_hdng5 h2",
+    "buttons": "a.book-btn, .agenda-cta, .strategic-influence-btn",
+    "cards": ".why-now-card, .agenda-card, .summit-spotlight-card, .power-chain-insight, .contacts .contact-box-wrapper .contact-box",
+    "swatches": ["#0F6F5C", "#1F4FD8", "#8A5A9E", "#9C6B14", "#191B1F"]
+  },
+  "editorFonts": {
+    "Fraunces": "\"Fraunces\", serif",
+    "Playfair Display": "Playfair Display, Arial, sans-serif",
+    "Inter": "Inter, Arial, sans-serif"
+  },
+
+  "body": {
+    "id": "cio",
+    "class": "microsite product_microsite heading-style-3 color_black web_view_ et_cio single-header",
+    "classNotes": "single-header is added at runtime by ET's header script on the live page; it sets #banner padding-top to 160px (≥768px) to clear ET's header. Revisit when the shared header design arrives.",
+    "style": {
+      "--default-color": "rgb(25 27 31)",
+      "--bg-color": "rgba(255, 255, 255, 1)",
+      "--bg-spacing": "70px 0",
+      "--para-font-size": "16px",
+      "--theme-color": "rgba(216, 21, 30, 1)",
+      "--primary-font-size": "48px",
+      "--secondary-font-size": "16px",
+      "--body-color": "rgba(0, 0, 0, 1)",
+      "font-size": "16px",
+      "--nav-text-color": "rgba(255, 255, 255, 1)",
+      "--nav-bg-color": "rgba(0, 0, 0, 1)",
+      "--body-font-family": "Inter, Arial, sans-serif",
+      "--heading-font-family": "Playfair Display, Arial, sans-serif",
+      "--heading-color": "rgba(13, 13, 15, 1)"
+    }
+  },
+
+  "content": {
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so; template sections with no entry (industries, FAQ, about ETCIO) keep their sample content. The banner shows the event's own logo where the live site shows the TECH500 one; the overview heading's inline TECH500 wordmark becomes the event name (an event logo is banner-shaped, 571×340, not a wordmark).",
+    "map": [
+      { "from": "hero", "section": "banner", "fill": [
+        { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+        { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },
+        { "text": "h1.hidden, .cntnd > h3.hidden", "value": "{hero.title|event.name}" },
+        { "text": ".cntnd > p.hidden", "value": "{hero.tagline}" },
+        { "text": ".icn-box:has(.bi-calendar3)", "value": "{event.date}", "empty": "remove" },
+        { "text": ".icn-box:has(.bi-geo-alt)", "value": "{event.location}", "empty": "remove" },
+        { "text": ".btn-wrapper .book-btn:not(.btn-outline)", "value": "{hero.cta1}", "empty": "keep" },
+        { "text": ".btn-wrapper .book-btn.btn-outline", "value": "{hero.cta2}", "empty": "remove" }
+      ] },
+      { "from": "event", "section": "strategic-influence", "fill": [
+        { "drop": ".strategic-influence-divider", "unless": "{event.date}" },
+        { "drop": ".strategic-influence-divider", "unless": "{event.location}" },
+        { "text": ".strategic-influence-meta > span:first-child", "value": "{event.date:day}", "empty": "remove" },
+        { "text": ".strategic-influence-meta > span:last-child", "value": "{event.location}", "empty": "remove" }
+      ] },
+      { "from": "about", "section": "overview", "fill": [
+        { "text": "h2 > span", "value": "About {event.name}" },
+        { "replace": "h2 > img.tech-ico", "value": "{event.name}" },
+        { "paragraphs": ".text-style .col-md-7 > div > p", "value": "{about.body}" }
+      ] },
+      { "from": "priorities", "section": "why-now", "fill": [
+        { "list": ".why-now-card", "items": "priorities.items", "require": "{t}{d}", "fill": [
+          { "text": ".why-now-card__number", "value": "{##}" },
+          { "text": "h4", "value": "{t}" },
+          { "text": "p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "stats", "section": "summit-spotlight", "fill": [
+        { "list": ".summit-spotlight-card", "items": "stats.items", "require": "{v}{k}", "fill": [
+          { "text": ".summit-spotlight-number", "value": "{v}" },
+          { "text": ".summit-spotlight-label", "value": "{k}" },
+          { "text": ".summit-spotlight-meta", "value": "" }
+        ] }
+      ] },
+      { "from": "whyjoin", "section": "why-attend", "fill": [
+        { "paragraphs": ".col-md-5 .page_hdng4 > p", "value": "{whyjoin.body}" },
+        { "list": ".agenda-card", "items": "whyjoin.items", "require": "{t}{d}", "fill": [
+          { "text": ".agenda-label", "value": "" },
+          { "text": ".agenda-number", "value": "{##}" },
+          { "text": ".agenda-card-title", "value": "{t}" },
+          { "text": ".agenda-card-copy", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "attend", "section": "power-chain", "fill": [
+        { "list": ".power-chain-item", "items": "attend.items", "require": "{.}", "fill": [
+          { "text": ".power-chain-role", "value": "{.}" },
+          { "text": ".power-chain-domain", "value": "" }
+        ] }
+      ] },
+      { "from": "contact", "section": "contact-us", "fill": [
+        { "list": ".flex-width-auto > .col-md-6", "items": "contact.blocks", "require": "{n}{e}{p}", "fill": [
+          { "text": ".line-1", "value": "{t}" },
+          { "text": ".name", "value": "{n}", "empty": "remove" },
+          { "text": "a.email", "value": "{e}", "empty": "remove:span.email" },
+          { "attr": "a.email", "name": "href", "value": "mailto:{e}" },
+          { "text": "a.phone", "value": "{p}", "empty": "remove:span.phone" },
+          { "attr": "a.phone", "name": "href", "value": "tel:{p}" }
+        ] }
+      ] }
+    ]
+  },
+
+  "sectionsNotes": "repeat =the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. toggle = items that open on click (an accordion): item, the class that opens it, and the element whose aria-expanded follows; the editor opens one when something inside it is clicked, so its hidden part can be edited.",
+  "sections": [
+    { "id": "banner",              "name": "Banner",                         "etId": null,     "script": true },
+    { "id": "why-now",             "name": "Why now",                        "etId": "288831", "repeat": { "item": ".why-now-card", "label": "h4" } },
+    { "id": "overview",            "name": "What is Tech500",                "etId": "288840" },
+    { "id": "power-chain",         "name": "The Power Chain",                "etId": "288827", "repeat": { "item": ".power-chain-insight", "label": ".power-chain-insight-text" } },
+    { "id": "summit-spotlight",    "name": "Summit spotlight",               "etId": "288850", "repeat": { "item": ".summit-spotlight-card", "label": ".summit-spotlight-label" } },
+    { "id": "why-attend",          "name": "Be in the room",                 "etId": "288830", "repeat": { "item": ".agenda-card", "label": ".agenda-card-title" } },
+    { "id": "industries",          "name": "Industries in the room",         "etId": "288832", "repeat": { "item": ".industry-card", "label": ".industry-name" } },
+    { "id": "strategic-influence", "name": "Beyond sponsorship",             "etId": "288858", "repeat": { "item": ".strategic-influence-btn", "label": ".strategic-influence-btn" } },
+    { "id": "faq",                 "name": "Frequently asked questions",     "etId": "288835", "script": true, "repeat": { "item": ".faq-item", "label": ".faq-question-text" },
+      "toggle": { "item": ".faq-item", "open": "active", "expanded": ".faq-question" } },
+    { "id": "contact-us",          "name": "Contact us",                     "etId": null,     "repeat": { "item": ".flex-width-auto > .col-md-6", "label": ".line-1" } },
+    { "id": "about-us",            "name": "About ETCIO",                    "etId": null }
+  ]
+}

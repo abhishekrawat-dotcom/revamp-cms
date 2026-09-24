@@ -1,0 +1,41 @@
+#overview {
+  background: url(https://img.etb2bimg.com/files/cp/9c693042f22abf653f9d.jpg) no-repeat top center;
+  background-size: cover;
+  padding: 130px 0px;
+      margin-top: 0px;
+}
+#overview .btn-wrapper {
+  margin-top: 20px;
+}
+#overview .btn-wrapper a.book-btn {
+  color: #fff;
+}
+#overview .btn-wrapper a.book-btn:hover {
+  color: var(--theme-color);
+}
+#overview .page_hdng4 h2 {
+  font-size: 60px;
+}
+#overview .text-style p {
+  text-align: left;
+}
+#overview .text-style p.text-clr {
+  color: #4B4D50;
+}
+@media screen and (max-width: 767px) {
+  #overview {
+    padding: 70px 0px;
+  }
+  #overview .page_hdng4 h2 {
+    font-size: 36px;
+  }
+  #overview .text-style p {
+    text-align: center;
+  }
+  #overview .page_hdng4 h2 img {
+    display: block;
+    max-width: 50%;
+    float: none;
+    margin: 5px auto 0px;
+  }
+}

@@ -1,0 +1,16 @@
+/* Loaded into a template's iframe only while custom_editor.html has it open (see editor-canvas.js) — never part of a
+   saved or exported page. Everything is scoped to html[data-rv-editing]. Only outlines and cursors: no position,
+   size or spacing changes, so the canvas lays out exactly like the live site. */
+
+/* Show every scroll-reveal block at once and still (et-animate.css holds them at opacity 0 until they scroll in). */
+html[data-rv-editing] .animated{ opacity:1 !important; animation:none !important; }
+
+html[data-rv-editing] [data-editable]{ cursor:pointer; }
+html[data-rv-editing] [data-editable]:hover{ outline:1.5px dashed #8aa; outline-offset:2px; }
+html[data-rv-editing] [data-editable].ed-selected{ outline:2px solid #ED1C24 !important; outline-offset:2px; }
+html[data-rv-editing] [data-editable][contenteditable="true"]{ cursor:text; outline:2px solid #B3151B !important; outline-offset:2px; }
+
+html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; outline-offset:-2px; }
+
+/* Shared header/footer can't be edited per template. */
+html[data-rv-editing] [data-rv-locked]{ cursor:not-allowed; }
