@@ -79,6 +79,28 @@ library id (`hero`, `about`, `priorities`, `stats`, `whyjoin`, `attend`, `contac
 place, logo); the `fill` rules set text, attributes, paragraphs and card lists. The rule reference is at the top of
 `editor-fill.js`.
 
+**One content model for every template.** Create Event doesn't know any template's design. Every section it has
+(except the hero, nav/footer and one-line bands) carries the same **section text**:
+
+- `subheading`, `heading`, `body`;
+- `points[]`;
+- `media { kind: image|video, url, side }`;
+- `cta { label, url }`.
+
+Every card list (discussion points, benefits, what-awaits blocks) uses the same **item**: `t` (heading), `d`
+(paragraph) and `points[]`. A template maps only what its design has, with one `intro` entry per section listing its
+slots:
+
+```json
+{ "from": "about", "section": "overview",
+  "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".col-md-7 p",
+             "points": ".col-md-7 > div", "media": { "sel": ".row", "wrap": "col-md-5" },
+             "cta": { "label": "a.btn > span", "link": "a.btn" } } }
+```
+
+Anything a design has no slot for simply isn't shown by that template; the demo site shows all of it. `fill` runs
+before `intro`, so a template can set a default (e.g. "About {event.name}") that the user's text replaces.
+
 - Card lists grow or shrink to match the data. Extra cards are copies of the template's own cards, cycling through
   them, so icons vary.
 - Anything the draft doesn't provide keeps the template's sample content, including a list the user left empty.
@@ -113,5 +135,6 @@ the default pixel for pixel after such a change.
    Point those at the theme so the theme colour control reaches them — `var(--theme-color, #D8151E)` and
    `color-mix(in srgb, var(--theme-color, #D8151E) 10%, transparent)`; for SVG fills, a CSS rule on
    `[fill="#D8151E" i]`. With the fallback the default look is unchanged — check it pixel for pixel.
-6. Write `template.json → content.map` for the sections Create Event can fill (see above), and give the gallery entry
-   in `create-event.html` its `site` id.
+6. Write `template.json → content.map` for the sections Create Event can fill (see above): an `intro` with the slots
+   each section's design has, plus `list` rules for its cards. Then give the gallery entry in `create-event.html` its
+   `site` id.

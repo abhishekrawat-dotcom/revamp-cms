@@ -8,14 +8,27 @@
    RevampFill.apply(canvas, ctx) -> { filled, hidden, skipped }      section names, for the editor to report
 
    What goes where is data, in template.json → content.map — one entry per template section that takes content:
-     { "from": "<library id | event>", "section": "<template section id>", "fill": [ rules ] }
+     { "from": "<library id | event>", "section": "<template section id>", "intro": { slots }, "fill": [ rules ] }
+
+   Every Create Event section carries the same section text (create-event.html → SECTION TEXT):
+     subheading · heading · body · points[] · media { kind: image|video, url, side } · cta { label, url }
+   "intro" says where this template's design puts each one — only the slots the design has:
+     { "subheading": sel, "heading": sel | { "sel": sel, "skip": sel }, "body": sel (its <p>s),
+       "points": sel (a list is added inside), "media": { "sel": sel, "wrap": "<classes>" }, "cta": sel | { "label": sel, "link": sel } }
+   It runs after "fill", so fill can set a template's defaults (e.g. "About {event.name}") that the text replaces
+   when the user wrote one. Anything a design has no slot for isn't shown by that template.
    A section whose library id the user switched off is hidden (not deleted, so it can be shown again); one the draft
    doesn't have at all keeps the template's own sample content, as does any list the user left empty.
 
    Rules (selectors are relative to the section, or to the card inside a list):
-     { "text": sel, "value": tpl, "empty": "keep" | "remove" | "remove:<closest sel>" }
+     { "text": sel, "value": tpl, "empty": "keep" | "remove" | "remove:<closest sel>", "skip": sel }
          sets the element's text; icons and other elements without text inside it stay. With an empty value the
          text is cleared, unless "empty" says to keep the template's text or remove the element (or an ancestor).
+         "skip": child elements that keep their own text (a heading's <span> kicker, when the heading changes)
+     { "bullets": sel, "items": path }     a <ul> of the item texts appended inside sel (nothing when the list is empty)
+     { "video": sel, "value": tpl, "side": tpl, "wrap": "<classes>" }
+         a YouTube / Vimeo / video-file link as a 16:9 player in a new <div class=wrap> at the end of sel (the start
+         when side is "left") — e.g. the empty column of a two-column row
      { "attr": sel, "name": attr, "value": tpl, "empty": "keep" }
      { "replace": sel, "value": tpl, "empty": "keep" }      the element itself becomes that text (e.g. a logo image in a heading)
      { "paragraphs": sel, "value": tpl }       one paragraph per line of the value: the matched <p>s are reused,
@@ -80,7 +93,17 @@
     var names = {};
     (draft.sections || []).forEach(function (s) {
       if (!s.libId || content[s.libId] || !s.data) return;
-      content[s.libId] = s.data;
+      var d = s.data;
+      // drafts from before the universal section text: Overview's video is media now
+      if (s.libId === 'contact' && d.blocks) {
+        // a category holds people[] (older drafts: one person per category); people with no details, and categories
+        // left with nobody, aren't on the site
+        d.blocks = d.blocks.map(function (b) { return b.people ? b : { t: b.t, people: [{ n: b.n, e: b.e, p: b.p }] }; })
+          .map(function (b) { return { t: b.t, people: b.people.filter(function (p) { return [p.n, p.e, p.p].some(function (x) { return String(x || '').trim(); }); }) }; })
+          .filter(function (b) { return b.people.length; });
+      }
+      if (d.video && !d.media) d.media = { kind: 'video', url: d.video.url || '', side: d.video.side || 'right' };
+      content[s.libId] = d;
       names[s.libId] = s.name || s.libId;
     });
     return { content: content, names: names, excluded: draft.excluded || [] };
@@ -119,9 +142,9 @@
   }
   /* the element's words become value; icons (<i>, <svg>, <img>, empty spans) stay where they are, and the first run of
      text keeps its surrounding spaces, so "<i class='bi-calendar3'></i> 27th November" stays spaced the same */
-  function setText(el, value) {
+  function setText(el, value, skip) {
     var doc = el.ownerDocument;
-    var runs = Array.prototype.filter.call(el.childNodes, hasText);
+    var runs = Array.prototype.filter.call(el.childNodes, function (n) { return hasText(n) && !(skip && n.nodeType === 1 && n.matches(skip)); });
     if (!runs.length) { el.appendChild(doc.createTextNode(value)); return; }
     var first = runs[0];
     if (first.nodeType === 3) {
@@ -136,8 +159,11 @@
 
   function run(rules, root, content, item) {
     (rules || []).forEach(function (r) {
-      if (r.list) return fillList(r, root, content);
+      if (r.list) return fillList(r, root, content, item);
       if (r.paragraphs) return fillParagraphs(r, root, content, item);
+      if (r.bullets) return fillBullets(r, root, content, item);
+      if (r.video) return fillVideo(r, root, content);
+      if (r.media) return fillMedia(r, root, content);
       if (r.drop) { if (!resolve(r.unless, content, item)) all(root, r.drop).forEach(function (el) { el.remove(); }); return; }
       var v = resolve(r.value, content, item);
       if (r.replace) {
@@ -156,10 +182,83 @@
             ((up && el.closest(up)) || el).remove();
             return;
           }
-          setText(el, v);
+          setText(el, v, r.skip);
         });
       }
     });
+  }
+
+  /* a video link → what to embed */
+  function videoInfo(url) {
+    url = String(url || '').trim();
+    var m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i.exec(url);
+    if (m) return { kind: 'youtube', id: m[1], embed: 'https://www.youtube.com/embed/' + m[1], thumb: 'https://img.youtube.com/vi/' + m[1] + '/hqdefault.jpg' };
+    m = /vimeo\.com\/(?:video\/)?(\d+)/i.exec(url);
+    if (m) return { kind: 'vimeo', id: m[1], embed: 'https://player.vimeo.com/video/' + m[1] };
+    if (/^https?:\/\/\S+\.(mp4|webm|ogg|mov)(\?\S*)?$/i.test(url)) return { kind: 'file', embed: url };
+    return null;
+  }
+
+  function fillBullets(r, root, content, item) {
+    var items = lookup(r.items, content, item);
+    items = Array.isArray(items) ? items.map(function (x) { return String(x || '').trim(); }).filter(Boolean) : [];
+    if (!items.length) return;
+    all(root, r.bullets).forEach(function (host) {
+      var doc = host.ownerDocument, ul = doc.createElement('ul');
+      ul.className = 'rv-bullets';
+      ul.setAttribute('style', 'list-style:disc;padding-left:1.25em;margin:14px 0 0;display:flex;flex-direction:column;gap:6px;font-size:var(--para-font-size,16px);line-height:1.55');
+      items.forEach(function (t) { var li = doc.createElement('li'); li.textContent = t; ul.appendChild(li); });
+      host.appendChild(ul);
+    });
+  }
+
+  function fillVideo(r, root, content) {
+    var v = videoInfo(resolve(r.value, content));
+    if (!v) return;
+    var left = (r.sideValue || resolve(r.side, content)) === 'left';
+    all(root, r.video).forEach(function (host) {
+      var doc = host.ownerDocument, box = doc.createElement('div');
+      box.className = (r.wrap || '') + ' rv-video';
+      var frame = '<div style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000">' +
+        (v.kind === 'file'
+          ? '<video src="' + v.embed.replace(/"/g, '&quot;') + '" controls playsinline preload="metadata" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>'
+          : '<iframe src="' + v.embed + '" title="Video" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>') +
+        '</div>';
+      box.innerHTML = frame;
+      if (left) host.insertBefore(box, host.firstChild); else host.appendChild(box);
+    });
+  }
+
+  /* the section's image or video, in a new <div class=wrap> beside the text (see fillVideo) */
+  function fillMedia(r, root, content) {
+    var m = lookup(r.media, content);
+    if (!m || !String(m.url || '').trim()) return;
+    if (m.kind !== 'image') return fillVideo({ video: r.sel, value: m.url, sideValue: m.side || 'right', wrap: r.wrap }, root, content);
+    all(root, r.sel).forEach(function (host) {
+      var doc = host.ownerDocument, box = doc.createElement('div'), img = doc.createElement('img');
+      box.className = (r.wrap || '') + ' rv-media';
+      img.src = m.url; img.alt = '';
+      img.setAttribute('style', 'display:block;width:100%;height:auto;border-radius:12px');
+      box.appendChild(img);
+      if (m.side === 'left') host.insertBefore(box, host.firstChild); else host.appendChild(box);
+    });
+  }
+
+  /* intro slots → rules (see the header) */
+  function introRules(from, slots) {
+    var r = [], o = function (x) { return typeof x === 'string' ? { sel: x } : x; };
+    ['subheading', 'heading'].forEach(function (k) {
+      if (slots[k]) { var a = o(slots[k]); r.push({ text: a.sel, skip: a.skip, value: '{' + from + '.' + k + '}', empty: 'keep' }); }
+    });
+    if (slots.body) r.push({ paragraphs: o(slots.body).sel, value: '{' + from + '.body}' });
+    if (slots.points) r.push({ bullets: o(slots.points).sel, items: from + '.points' });
+    if (slots.media) { var m = o(slots.media); r.push({ media: from + '.media', sel: m.sel, wrap: m.wrap }); }
+    if (slots.cta) {
+      var c = o(slots.cta);
+      r.push({ text: c.label || c.sel, value: '{' + from + '.cta.label}', empty: 'keep' });
+      r.push({ attr: c.link || c.sel, name: 'href', value: '{' + from + '.cta.url}', empty: 'keep' });
+    }
+    return r;
   }
 
   function fillParagraphs(r, root, content, item) {
@@ -176,8 +275,8 @@
     ps.slice(parts.length).forEach(function (p) { p.remove(); });
   }
 
-  function fillList(r, root, content) {
-    var items = lookup(r.items, content);
+  function fillList(r, root, content, item) {
+    var items = lookup(r.items, content, item);       // inside a card: that card's own list (e.g. a contact category's people)
     if (!Array.isArray(items)) return;
     if (r.require) items = items.filter(function (it, i) { return resolve(r.require, content, { data: it, index: i }) !== ''; });
     var found = all(root, r.list);
@@ -213,7 +312,7 @@
         return;
       }
       if (!(m.from in ctx.content)) return;
-      run(m.fill, sec, ctx.content, null);
+      run((m.fill || []).concat(m.intro ? introRules(m.from, m.intro) : []), sec, ctx.content, null);
       canvas.retag(sec);
       if (m.from !== 'event' && report.filled.indexOf(name) === -1) report.filled.push(name);
     });
@@ -221,5 +320,5 @@
     return report;
   }
 
-  window.RevampFill = { fromHandoff: fromHandoff, apply: apply, formatDate: formatDate };
+  window.RevampFill = { fromHandoff: fromHandoff, apply: apply, formatDate: formatDate, videoInfo: videoInfo };
 })();

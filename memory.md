@@ -208,4 +208,24 @@ Current implementation is a **static HTML/CSS/vanilla-JS prototype** — no fram
   - Verified: a new CDP icon test passes 9/9 (select, popover, file upload through the real file input, the box unchanged at 38×38, URL, `<img>` via the same popover, undo, reload). All suites green (32, 21, 22, 34, 23, FAQ 8). The step-2 suite's replace-image check now uses the popover instead of the old prompt.
   - Spotted, not fixed: `.button-settings-pop .pop-actions{ justify-content:flex-en d }` in custom_editor.html is a typo (the value is invalid, so popover buttons sit left instead of right).
 
+- **2026-09-25**: **Create Event step 3 has a universal content model.** The user's ask: "do not judge these fields only on TECH500 … make it universal so it can fit any design template." Earlier the same day, step 3 got several UI passes:
+  - the previous-edition panel moved into a header button with a popup;
+  - the section editor header was compacted, its description moved behind an ⓘ tooltip;
+  - Key Discussion Points got a sub heading plus per-point heading, paragraph and pointers;
+  - Overview got composable blocks.
+  - **The model** (create-event.html → "SECTION TEXT"):
+    - Every section except hero, nav/footer, marquee, band heading and custom carries the same optional section text: `subheading, heading, body, points[], media{kind image|video, url, side}, cta{label,url}`.
+    - These are added with chips and removed with ×. `INTRO_PINNED` keeps one block always shown: about → body, priorities → subheading, whyjoin → body.
+    - `introHTML`/`bindIntro` are shared by all sections, and `normIntro` migrates the old `d.video`.
+  - **Item cards:** every card list (priorities `columns`, whyjoin `benefits`, awaits `cards`) uses one card via `itemsHTML`: `t, d, points[]`.
+  - **Demo site:** `edHead`/`edSection`/`edCards` render the section text (media beside it, on the chosen side) for every section type.
+  - **Templates:** `editor-fill.js → intro` slots per map entry: `{subheading, heading|{sel,skip}, body, points, media{sel,wrap}, cta|{label,link}}`, run after `fill`. There's a new `media` rule (image or video), `bullets` with item scope, and `fromHandoff` maps the old `video` to `media`.
+  - **TECH500's map:** overview, why-now, summit-spotlight, why-attend (plus button), power-chain and contact-us use `intro`. The KP sub heading now lands in the Why-now kicker (`.why-now-kicker strong`), no longer in the h2.
+  - Verified with CDP:
+    - the new universal test passes 5/5 (every section offers all six blocks, the hero doesn't, Why join us item cards have pointers, TECH500 slots in four sections, the demo site shows speakers' sub heading/heading/image and whyjoin's button/bullets);
+    - Overview 7/7, KP 6/6, KP polish 4/4, header popup 5/5 and hand-off 23/23 all pass.
+    - The ⓘ-tooltip test's "onTop" check fails only because the tooltip is `pointer-events:none` (it shows correctly in the screenshot).
+  - Also fixed: `.kv-card .del` (stat cards' remove button) had no styles, so it rendered as a bare grey button.
+  - Open: image upload for the section media (URL only for now; a file would need IndexedDB like the logo).
+
 <!-- Append new entries above this line as work continues: date, what changed, what was decided, what's still open. -->

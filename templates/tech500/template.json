@@ -47,7 +47,7 @@
   },
 
   "content": {
-    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so; template sections with no entry (industries, FAQ, about ETCIO) keep their sample content. The banner shows the event's own logo where the live site shows the TECH500 one; the overview heading's inline TECH500 wordmark becomes the event name (an event logo is banner-shaped, 571×340, not a wordmark).",
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). intro = where this design puts the section text every Create Event section carries (sub heading, heading, paragraph, pointers, image/video, button) — only the slots TECH500's design has; the rest isn't shown here. from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so; template sections with no entry (industries, FAQ, about ETCIO) keep their sample content. The banner shows the event's own logo where the live site shows the TECH500 one; the overview heading's inline TECH500 wordmark becomes the event name (an event logo is banner-shaped, 571×340, not a wordmark).",
     "map": [
       { "from": "hero", "section": "banner", "fill": [
         { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
@@ -65,27 +65,35 @@
         { "text": ".strategic-influence-meta > span:first-child", "value": "{event.date:day}", "empty": "remove" },
         { "text": ".strategic-influence-meta > span:last-child", "value": "{event.location}", "empty": "remove" }
       ] },
-      { "from": "about", "section": "overview", "fill": [
+      { "from": "about", "section": "overview",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".text-style .col-md-7 > div > p",
+                   "points": ".text-style .col-md-7 > div:has(> p)", "media": { "sel": ".text-style.row", "wrap": "col-md-5" } },
+        "fill": [
         { "text": "h2 > span", "value": "About {event.name}" },
-        { "replace": "h2 > img.tech-ico", "value": "{event.name}" },
-        { "paragraphs": ".text-style .col-md-7 > div > p", "value": "{about.body}" }
+        { "replace": "h2 > img.tech-ico", "value": "{event.name}" }
       ] },
-      { "from": "priorities", "section": "why-now", "fill": [
+      { "from": "priorities", "section": "why-now",
+        "intro": { "subheading": ".why-now-kicker strong", "heading": ".why-now-main .page_hdng4 h2", "body": ".why-now-insight > p" },
+        "fill": [
         { "list": ".why-now-card", "items": "priorities.items", "require": "{t}{d}", "fill": [
           { "text": ".why-now-card__number", "value": "{##}" },
           { "text": "h4", "value": "{t}" },
           { "text": "p", "value": "{d}" }
         ] }
       ] },
-      { "from": "stats", "section": "summit-spotlight", "fill": [
+      { "from": "stats", "section": "summit-spotlight",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" } },
+        "fill": [
         { "list": ".summit-spotlight-card", "items": "stats.items", "require": "{v}{k}", "fill": [
           { "text": ".summit-spotlight-number", "value": "{v}" },
           { "text": ".summit-spotlight-label", "value": "{k}" },
           { "text": ".summit-spotlight-meta", "value": "" }
         ] }
       ] },
-      { "from": "whyjoin", "section": "why-attend", "fill": [
-        { "paragraphs": ".col-md-5 .page_hdng4 > p", "value": "{whyjoin.body}" },
+      { "from": "whyjoin", "section": "why-attend",
+        "intro": { "subheading": ".col-md-7 .page_hdng4 h2 > span", "heading": { "sel": ".col-md-7 .page_hdng4 h2", "skip": "span" }, "body": ".col-md-5 .page_hdng4 > p",
+                   "cta": { "label": "a.agenda-cta > span:first-child", "link": "a.agenda-cta" } },
+        "fill": [
         { "list": ".agenda-card", "items": "whyjoin.items", "require": "{t}{d}", "fill": [
           { "text": ".agenda-label", "value": "" },
           { "text": ".agenda-number", "value": "{##}" },
@@ -93,20 +101,26 @@
           { "text": ".agenda-card-copy", "value": "{d}" }
         ] }
       ] },
-      { "from": "attend", "section": "power-chain", "fill": [
-        { "list": ".power-chain-item", "items": "attend.items", "require": "{.}", "fill": [
-          { "text": ".power-chain-role", "value": "{.}" },
-          { "text": ".power-chain-domain", "value": "" }
+      { "from": "attend", "section": "power-chain",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".page_hdng4 > p" },
+        "fill": [
+        { "list": ".power-chain-item", "items": "attend.items", "require": "{t|.}", "fill": [
+          { "text": ".power-chain-role", "value": "{t|.}" },
+          { "text": ".power-chain-domain", "value": "{d}" }
         ] }
       ] },
-      { "from": "contact", "section": "contact-us", "fill": [
-        { "list": ".flex-width-auto > .col-md-6", "items": "contact.blocks", "require": "{n}{e}{p}", "fill": [
+      { "from": "contact", "section": "contact-us",
+        "intro": { "heading": ".page_hdng4 h2" },
+        "fill": [
+        { "list": ".flex-width-auto > .col-md-6", "items": "contact.blocks", "fill": [
           { "text": ".line-1", "value": "{t}" },
-          { "text": ".name", "value": "{n}", "empty": "remove" },
-          { "text": "a.email", "value": "{e}", "empty": "remove:span.email" },
-          { "attr": "a.email", "name": "href", "value": "mailto:{e}" },
-          { "text": "a.phone", "value": "{p}", "empty": "remove:span.phone" },
-          { "attr": "a.phone", "name": "href", "value": "tel:{p}" }
+          { "list": ".contact-box", "items": "people", "fill": [
+            { "text": ".name", "value": "{n}", "empty": "remove" },
+            { "text": "a.email", "value": "{e}", "empty": "remove:span.email" },
+            { "attr": "a.email", "name": "href", "value": "mailto:{e}" },
+            { "text": "a.phone", "value": "{p}", "empty": "remove:span.phone" },
+            { "attr": "a.phone", "name": "href", "value": "tel:{p}" }
+          ] }
         ] }
       ] }
     ]
