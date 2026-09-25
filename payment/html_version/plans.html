@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Plans - Payment Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <div class="main-wrapper">
+    <div id="header-container"></div>
+    <div class="main-content">
+      <div class="fade-in">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+          <div>
+            <div style="font-size:24px; font-weight:700;">Payment Plans</div>
+            <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Manage pricing configs and event templates</div>
+          </div>
+          <button class="btn-primary" onclick="openAddPlanModal()">
+            <i class="ti ti-plus"></i> Add Plan
+          </button>
+        </div>
+
+        <div class="table-container" id="plans-table-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Plan Modal -->
+  <div class="modal-backdrop" id="add-plan-modal" style="display: none;" onclick="closeAddPlanModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Add Payment Plan</h3>
+          <p class="modal-subtitle">Create a new pricing tier</p>
+        </div>
+        <button class="btn-icon" onclick="closeAddPlanModal()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body form-col">
+        <label class="field">
+          <span class="field-label">Plan Title <span class="req">*</span></span>
+          <input type="text" id="plan-title" placeholder="e.g. VIP Pass">
+        </label>
+        <div class="two-col">
+          <label class="field">
+            <span class="field-label">Amount <span class="req">*</span></span>
+            <input type="number" id="plan-amount" placeholder="e.g. 5000">
+          </label>
+          <label class="field">
+            <span class="field-label">Vertical</span>
+            <select id="plan-vertical">
+              <option value="B2B">B2B</option>
+              <option value="CFO">CFO</option>
+              <option value="Auto">Auto</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeAddPlanModal()">Cancel</button>
+        <button class="btn-primary" onclick="savePlan()">Save Plan</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      renderHeader("Payment Plans");
+      renderPlans();
+    });
+
+    function renderPlans() {
+      const plans = window.appData.plans;
+      const container = document.getElementById('plans-table-container');
+      
+      if (plans.length === 0) {
+        container.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-credit-card" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No payment plans found.</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr><th>Plan ID</th><th>Title</th><th>Vertical</th><th>Amount</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            ${plans.map(p => `
+              <tr>
+                <td class="mono">${p.id}</td>
+                <td style="font-weight:600">${p.title}</td>
+                <td><span class="spill pill-neutral"><span class="pill-dot"></span>${p.vertical}</span></td>
+                <td style="font-weight:600; color:var(--brand-color)">${window.utils.fmtCurrency(p.amount)}</td>
+                <td>
+                  <span class="spill ${p.status === 'Published' ? 'pill-success' : 'pill-neutral'}">
+                    <span class="pill-dot"></span>${p.status}
+                  </span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+
+    function openAddPlanModal() {
+      document.getElementById('plan-title').value = '';
+      document.getElementById('plan-amount').value = '';
+      document.getElementById('add-plan-modal').style.display = 'flex';
+    }
+
+    function closeAddPlanModal() {
+      document.getElementById('add-plan-modal').style.display = 'none';
+    }
+
+    function savePlan() {
+      const title = document.getElementById('plan-title').value.trim();
+      const amount = parseFloat(document.getElementById('plan-amount').value);
+      const vertical = document.getElementById('plan-vertical').value;
+
+      if (!title || !amount) {
+        alert("Please fill all required fields.");
+        return;
+      }
+
+      const newPlan = {
+        id: `PL-${Math.floor(Math.random() * 900 + 100)}`,
+        title,
+        amount,
+        status: "Draft",
+        planType: "General",
+        vertical,
+        eventId: "EVT-CUSTOM",
+        template: "Minimal"
+      };
+
+      const newPlans = [...window.appData.plans, newPlan];
+      window.saveData('plans', newPlans);
+      
+      closeAddPlanModal();
+      renderPlans();
+    }
+  </script>
+</body>
+</html>

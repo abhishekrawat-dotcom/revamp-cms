@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Center - Payment Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .doc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .doc-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .doc-card-icon { width: 40px; height: 40px; border-radius: 8px; background: var(--bg-main); color: var(--c-secondary); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .doc-card-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .doc-card-meta { font-size: 12px; color: var(--c-secondary); }
+  </style>
+</head>
+<body>
+  <div id="sidebar-container"></div>
+  <div class="main-wrapper">
+    <div id="header-container"></div>
+    <div class="main-content">
+      <div class="fade-in">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:24px; font-weight:700;">Download Center</div>
+          <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">GST reports, bank recon files & bundles</div>
+        </div>
+
+        <div id="download-cards-container" class="doc-cards"></div>
+        <div class="table-container" id="download-table-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="sidebar.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      renderHeader("Download Center");
+      renderDownloads();
+    });
+
+    function renderDownloads() {
+      const docs = window.utils.downloadDocs;
+      const cardsContainer = document.getElementById('download-cards-container');
+      const tableContainer = document.getElementById('download-table-container');
+      
+      if (docs.length === 0) {
+        cardsContainer.innerHTML = '';
+        tableContainer.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-download" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No documents available.</div>
+          </div>
+        `;
+        return;
+      }
+
+      cardsContainer.innerHTML = docs.map((d, idx) => `
+        <div class="doc-card" key="${idx}">
+          <div style="display:flex; align-items:flex-start; gap:12px;">
+            <div class="doc-card-icon">
+              <i class="ti ${d.type === 'GST' ? 'ti-file-certificate' : 'ti-building-bank'}"></i>
+            </div>
+            <div style="flex:1">
+              <div class="doc-card-name">${d.name}</div>
+              <div class="doc-card-meta">${window.utils.fmtDate(d.date)} &middot; ${d.size}</div>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="spill pill-neutral"><span class="pill-dot"></span>${d.type}</span>
+            <button class="btn-primary btn-sm" onclick="alert('Downloading ${d.name}')"><i class="ti ti-download"></i> Download</button>
+          </div>
+        </div>
+      `).join('');
+
+      tableContainer.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Document</th><th>Type</th><th>Date</th><th>Size</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${docs.map((d, idx) => `
+              <tr>
+                <td style="font-weight:600">${d.name}</td>
+                <td><span class="spill pill-neutral"><span class="pill-dot"></span>${d.type}</span></td>
+                <td style="color:var(--c-secondary)">${window.utils.fmtDate(d.date)}</td>
+                <td style="color:var(--c-muted); font-size:12px;">${d.size}</td>
+                <td><button class="btn-secondary btn-sm" onclick="alert('Downloading ${d.name}')"><i class="ti ti-download"></i> Download</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+  </script>
+</body>
+</html>
