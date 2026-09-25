@@ -228,4 +228,12 @@ Current implementation is a **static HTML/CSS/vanilla-JS prototype** — no fram
   - Also fixed: `.kv-card .del` (stat cards' remove button) had no styles, so it rendered as a bare grey button.
   - Open: image upload for the section media (URL only for now; a file would need IndexedDB like the logo).
 
+- **2026-09-25**: **Deployed on Vercel** at https://revamp-cms-nine.vercel.app/ (GitHub integration, production = `main`, no build step). `.vercelignore` keeps `.claude/`, `tools/`, the `.docx` and the root docs (`memory.md`, `PRD.md`, `Design.md`, `architecture.md`) off the site — verified 404; all pages and every `templates/tech500/` file serve 200.
+- **2026-09-25**: **Create Event loader uses the ET B2B logo in 3D.** The processing screens (step 3 "Analysing your design…", step 4 "Putting your site together") replace the spinning arc (`IC.loader`, removed) with `ET_LOADER`:
+  - the red ET tile from the logo is a CSS 3D block (front/back faces plus four red edges, `preserve-3d`), turning with a pause every half-turn, with a ground shadow that narrows edge-on;
+  - the wordmark ("The Economic Times / Business Verticals") sits beneath as an `<img>`, inverted in dark mode (it's grey-only, so `filter: invert(.9)` is safe).
+  - Files: `assets/et-b2b-logo.svg` (the supplied logo, untouched) and `assets/et-b2b-wordmark.svg` (the same file minus the tile's two paths, `viewBox="42 9.5 238 36"`). The tile's white ET path in `ET_TILE` is copied from the logo file.
+  - Reduced motion: the page-wide rule stops the animation; the block rests tilted at its start angle.
+  - Verified with headless-Chrome frame captures (paused at 6 points) in light and dark; the inline script passes `node --check`.
+
 <!-- Append new entries above this line as work continues: date, what changed, what was decided, what's still open. -->
