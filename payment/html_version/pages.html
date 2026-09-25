@@ -36,11 +36,11 @@
   <div class="shell">
     <nav class="rail" id="sidebar-container" aria-label="Sections"></nav>
     <div class="main main-content">
-      <div class="fade-in">
+      <div class="fade-in" id="pages-view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
           <div>
-            <div style="font-size:24px; font-weight:700;" id="page-title">Payment Pages</div>
-            <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Live payment pages and coupon management</div>
+            <div style="font-size:24px; font-weight:700;">Payment Pages</div>
+            <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Live payment pages for your event</div>
           </div>
           <button class="btn-primary" onclick="openAddPageModal()">
             <i class="ti ti-plus"></i> Create Page
@@ -49,6 +49,20 @@
 
         <div id="event-context-banner"></div>
         <div class="table-container" id="pages-table-container"></div>
+      </div>
+
+      <div class="fade-in" id="coupons-view" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+          <div>
+            <div style="font-size:24px; font-weight:700;">Coupons</div>
+            <div style="color:var(--c-secondary); font-size:14px; margin-top:4px;">Manage promotional codes for your payment pages</div>
+          </div>
+          <button class="btn-primary" onclick="openAddCouponModal()">
+            <i class="ti ti-ticket"></i> Create Coupon
+          </button>
+        </div>
+
+        <div class="table-container" id="coupons-table-container"></div>
       </div>
     </div>
   </div>
@@ -173,18 +187,28 @@
   </div>
 
   <!-- Create Coupon Modal -->
-  <div class="drawer-backdrop" id="add-coupon-modal" style="display: none;" onclick="closeAddCouponModal()">
-    <div class="drawer extra-wide" style="width:700px; right:0; position:absolute; height:100%; background:white; display:flex; flex-direction:column; box-shadow:-5px 0 25px rgba(0,0,0,0.1); animation:slideInRight 0.3s forwards;" onclick="event.stopPropagation()">
-      <div class="drawer-header" style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start;">
+  <div class="modal-backdrop" id="add-coupon-modal" style="display: none;" onclick="closeAddCouponModal()">
+    <div class="modal" style="width: 500px;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h3 class="drawer-title" style="font-size: 18px; font-weight: 700;">Create Coupon</h3>
-          <p class="drawer-subtitle" id="coupon-modal-subtitle" style="font-size: 14px; color: var(--c-secondary); margin-top: 4px;"></p>
+          <h3 class="modal-title" style="font-size: 18px; font-weight: 700;">Create Coupon</h3>
+          <p class="modal-subtitle" style="font-size: 14px; color: var(--c-secondary); margin-top: 4px;">Set up a promotional code for your pages</p>
         </div>
         <button class="btn-icon" onclick="closeAddCouponModal()"><i class="ti ti-x"></i></button>
       </div>
       
-      <div class="drawer-body" style="padding: 24px; overflow-y: auto; flex: 1;">
+      <div class="modal-body" style="padding: 24px; overflow-y: auto; flex: 1;">
         <div class="form-col">
+          
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Applicability</span></div>
+            <label class="field">
+              <span class="field-label">Apply this coupon to:</span>
+              <div id="coupon-pages-checkboxes" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                <!-- Filled dynamically -->
+              </div>
+            </label>
+          </div>
           <div class="form-section">
             <div class="form-section-header"><span class="fsec-title">Coupon Details</span></div>
             <label class="field">
@@ -235,7 +259,7 @@
                 <input type="datetime-local" id="coupon-start">
               </label>
               <label class="field">
-                <span class="field-label">End date & time <span class="req">*</span></span>
+                <span class="field-label">Run this offer till <span class="req">*</span></span>
                 <input type="datetime-local" id="coupon-end">
               </label>
             </div>
@@ -245,14 +269,19 @@
             <div class="form-section-header"><span class="fsec-title">Usage Limits</span></div>
             <div class="two-col">
               <label class="field">
+                <span class="field-label">Minimum tickets required</span>
+                <input type="number" id="coupon-min-qty" placeholder="e.g. 2">
+                <span class="field-hint">Coupon applies if order has at least X tickets.</span>
+              </label>
+              <label class="field">
                 <span class="field-label">Max total redemptions</span>
                 <input type="number" id="coupon-max-uses" placeholder="Unlimited">
               </label>
-              <label class="field">
-                <span class="field-label">Max per user</span>
-                <input type="number" id="coupon-max-user" value="1">
-              </label>
             </div>
+            <label class="field" style="margin-top: 12px;">
+              <span class="field-label">Max per user</span>
+              <input type="number" id="coupon-max-user" value="1">
+            </label>
             <label class="checkline" style="margin-top:8px;">
               <input type="checkbox" id="coupon-stack">
               <span>Allow stacking with other active coupons on this page</span>
@@ -267,9 +296,9 @@
         </div>
       </div>
       
-      <div class="drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); background: #F9FAFB; display: flex; justify-content: flex-end; gap: 12px;">
+      <div class="modal-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); background: #F9FAFB; display: flex; justify-content: flex-end; gap: 12px;">
         <button class="btn-ghost" onclick="closeAddCouponModal()">Cancel</button>
-        <button class="btn-primary" id="btn-save-coupon" onclick="saveCoupon()">Create coupon</button>
+        <button class="btn-primary" id="btn-save-coupon" onclick="saveCoupon()">Activate Coupon</button>
       </div>
     </div>
   </div>
@@ -307,8 +336,28 @@
       }
       
       populatePageDropdowns();
-      renderPages();
+      
+      // Initialize screen
+      if (typeof activeScreen !== 'undefined') {
+        renderScreen();
+      } else {
+        renderPages();
+      }
     });
+
+    window.renderScreen = function() {
+      if (typeof activeScreen === 'undefined') return;
+      
+      if (activeScreen === 'pages') {
+        document.getElementById('pages-view').style.display = 'block';
+        document.getElementById('coupons-view').style.display = 'none';
+        renderPages();
+      } else if (activeScreen === 'coupons') {
+        document.getElementById('pages-view').style.display = 'none';
+        document.getElementById('coupons-view').style.display = 'block';
+        renderCoupons();
+      }
+    }
 
     function clearEventFilter() {
       selectedEvent = null;
@@ -351,7 +400,7 @@
                 <td style="font-weight:600; color:var(--brand-color)">${window.utils.fmtCurrency(p.price, p.currency)}</td>
                 <td>${p.gateway}</td>
                 <td>
-                  ${p.coupons.length > 0 ? 
+                  ${p.coupons && p.coupons.length > 0 ? 
                     '<div style="display:flex; flex-direction:column; gap:4px;">' +
                       p.coupons.map(c => 
                         '<span class="spill pill-success" style="font-size:11px; max-width:max-content; white-space:nowrap;">' +
@@ -363,7 +412,67 @@
                   }
                 </td>
                 <td>
-                  <button class="btn-secondary btn-sm" onclick="openAddCouponModal('${p.id}')"><i class="ti ti-ticket"></i> + Coupon</button>
+                  <button class="btn-secondary btn-sm" onclick="alert('Edit page logic here')"><i class="ti ti-edit"></i> Edit</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      container.innerHTML = html;
+    }
+
+    function renderCoupons() {
+      let pages = window.appData.pages;
+      if (selectedEvent) {
+        pages = pages.filter(p => p.eventId === selectedEvent.id);
+      }
+      
+      const container = document.getElementById('coupons-table-container');
+      
+      // Collect all coupons across selected pages, mapping them back to their pages
+      let allCouponsMap = {};
+      pages.forEach(p => {
+        if (p.coupons) {
+          p.coupons.forEach(c => {
+            if (!allCouponsMap[c.code]) {
+              allCouponsMap[c.code] = { ...c, linkedPages: [] };
+            }
+            allCouponsMap[c.code].linkedPages.push(p.name);
+          });
+        }
+      });
+      
+      const uniqueCoupons = Object.values(allCouponsMap);
+
+      if (uniqueCoupons.length === 0) {
+        container.innerHTML = `
+          <div style="padding:40px; text-align:center; color:var(--c-secondary);">
+            <i class="ti ti-ticket" style="font-size:32px; margin-bottom:12px;"></i>
+            <div>No coupons found. Create one to get started.</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr><th>Status</th><th>Coupon Code</th><th>Discount</th><th>Applies To</th><th>Redemptions</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            ${uniqueCoupons.map(c => `
+              <tr>
+                <td><span style="color:var(--success)">●</span> Active</td>
+                <td style="font-weight:600; font-family:monospace; color:var(--c-primary); font-size:14px;">${c.code}</td>
+                <td style="font-weight:600;">${c.discount}${c.discountType === 'percent' ? '%' : '₹'}</td>
+                <td style="font-size:12px; color:var(--c-secondary)">${c.linkedPages.join(', ')}</td>
+                <td>${c.used} / ${c.maxUses || '∞'}</td>
+                <td>
+                  <div style="display:flex; gap:8px;">
+                    <button class="btn-icon" aria-label="Edit" onclick="alert('Edit coupon')"><i class="ti ti-edit"></i></button>
+                    <button class="btn-icon" aria-label="Delete" onclick="alert('Delete coupon')"><i class="ti ti-trash"></i></button>
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -510,10 +619,24 @@
     /* ─────────────────────────────────────────────
        CREATE COUPON LOGIC
     ───────────────────────────────────────────── */
-    function openAddCouponModal(pageId) {
-      activeCouponPage = window.appData.pages.find(p => p.id === pageId);
-      document.getElementById('coupon-modal-subtitle').innerText = `Discount coupon for ${activeCouponPage.name}`;
+    function openAddCouponModal() {
+      let pages = window.appData.pages;
+      if (selectedEvent) {
+        pages = pages.filter(p => p.eventId === selectedEvent.id);
+      }
       
+      const pagesCheckboxes = document.getElementById('coupon-pages-checkboxes');
+      if (pages.length === 0) {
+        pagesCheckboxes.innerHTML = `<span class="field-hint">No pages found. Please create a payment page first.</span>`;
+      } else {
+        pagesCheckboxes.innerHTML = pages.map(p => `
+          <label class="checkline" style="margin-top:4px;">
+            <input type="checkbox" name="coupon-pages" value="${p.id}" checked>
+            <span>${p.name}</span>
+          </label>
+        `).join('');
+      }
+
       document.getElementById('coupon-label').value = '';
       regenerateCouponCode();
       setCouponType('auto');
@@ -614,16 +737,29 @@
         status
       };
       
-      // Update appData
-      const pages = window.appData.pages;
-      const pageIndex = pages.findIndex(p => p.id === activeCouponPage.id);
-      if (pageIndex !== -1) {
-        pages[pageIndex].coupons.push(newCoupon);
-        window.saveData('pages', pages);
+      // Get selected pages
+      const selectedPagesIds = Array.from(document.querySelectorAll('input[name="coupon-pages"]:checked')).map(cb => cb.value);
+      if (selectedPagesIds.length === 0) {
+        return showError('coupon', "Please select at least one payment page");
       }
+
+      // Update appData for all selected pages
+      const pages = window.appData.pages;
+      selectedPagesIds.forEach(pageId => {
+        const pageIndex = pages.findIndex(p => p.id === pageId);
+        if (pageIndex !== -1) {
+          pages[pageIndex].coupons = pages[pageIndex].coupons || [];
+          pages[pageIndex].coupons.push({...newCoupon});
+        }
+      });
+      window.saveData('pages', pages);
       
       closeAddCouponModal();
-      renderPages();
+      if (typeof renderScreen === 'function') {
+        renderScreen();
+      } else {
+        renderPages();
+      }
     }
   </script>
 </body>

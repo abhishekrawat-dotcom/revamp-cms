@@ -63,10 +63,48 @@ const initialPlans = [
 ];
 
 const initialPages = [
-  { id: "PG-01", planId: "PL-101", name: "Event General", code: "TS26GEN", price: 12000, currency: "INR", landing: "/Event-2026", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main", country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59", maxQty: 500, eventId: "1", liveOnSite: true, template: "Minimal", coupons: [{ id: "C-1", code: "CPN-ERL01A", type: "auto", discount: 15, discountType: "percent", start: "2026-06-01T00:00", end: "2026-06-30T23:59", maxUses: 500, used: 312, maxPerUser: 1, stack: false, label: "Early bird", showDesc: true, descText: "15% Early Bird Off applied automatically" }] },
-  { id: "PG-02", planId: "PL-102", name: "Event VIP",     code: "TS26VIP", price: 28000, currency: "INR", landing: "/Event-2026-vip", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main", country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59", maxQty: 50,  eventId: "1", liveOnSite: true,  template: "Bold",    coupons: [] },
-  { id: "PG-03", planId: "PL-103", name: "B2B Roundtable",code: "B2BRT26", price: 5000,  currency: "INR", landing: "/roundtable-2026",  gateway: "Razorpay", merchant: "Razorpay — Events Sub-account", country: "India", state: "Delhi", saleStart: "2026-08-01T09:00", saleEnd: "2026-09-15T23:59", maxQty: 100, eventId: "EVT-B2B-02", liveOnSite: false, template: "Minimal", coupons: [{ id: "C-2", code: "CPN-PRTN5K", type: "code", discount: 500, discountType: "flat", start: "2026-08-01T00:00", end: "2026-09-15T23:59", maxUses: 100, used: 41, maxPerUser: 1, stack: false, label: "Partner500" }] },
+  {
+    id: "PG-01", planId: "PL-101", name: "Event General", code: "TS26GEN", price: 12000, currency: "INR",
+    landing: "/Event-2026", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main",
+    country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59",
+    maxQty: 500, eventId: "1", liveOnSite: true, template: "Minimal",
+    coupons: [
+      {
+        id: "C-1", code: "CPN-ERL01A", type: "auto", discount: 15, discountType: "percent",
+        start: "2026-06-01T00:00", end: "2026-09-30T23:59", maxUses: 500, used: 312,
+        maxPerUser: 1, stack: false, label: "Early Bird", active: true,
+        showDesc: true, descText: "15% Early Bird Off applied automatically"
+      },
+      {
+        id: "C-3", code: "CPN-SPK26X", type: "code", discount: 20, discountType: "percent",
+        start: "2026-07-15T00:00", end: "2026-09-30T23:59", maxUses: 200, used: 87,
+        maxPerUser: 2, minQty: 2, stack: false, label: "Speaker Promo", active: true,
+        showDesc: false, descText: ""
+      }
+    ]
+  },
+  {
+    id: "PG-02", planId: "PL-102", name: "Event VIP", code: "TS26VIP", price: 28000, currency: "INR",
+    landing: "/Event-2026-vip", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main",
+    country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59",
+    maxQty: 50, eventId: "1", liveOnSite: true, template: "Bold",
+    coupons: []
+  },
+  {
+    id: "PG-03", planId: "PL-103", name: "B2B Roundtable", code: "B2BRT26", price: 5000, currency: "INR",
+    landing: "/roundtable-2026", gateway: "Razorpay", merchant: "Razorpay — Events Sub-account",
+    country: "India", state: "Delhi", saleStart: "2026-08-01T09:00", saleEnd: "2026-09-15T23:59",
+    maxQty: 100, eventId: "EVT-B2B-02", liveOnSite: false, template: "Minimal",
+    coupons: [
+      {
+        id: "C-2", code: "CPN-PRTN5K", type: "code", discount: 500, discountType: "flat",
+        start: "2026-08-01T00:00", end: "2026-09-15T23:59", maxUses: 100, used: 67,
+        maxPerUser: 1, stack: false, label: "Partner500", active: true
+      }
+    ]
+  },
 ];
+
 
 const initialTx = [
   { id: "TXN-9001", page: "Event General", pageCode: "TS26GEN", buyer: "Ananya Sharma", email: "ananya.s@techfirm.in",    mode: "Online", status: "Success",    merchant: "Razorpay",      amount: 10200, date: "2026-08-28", eventId: "1" },
@@ -75,6 +113,17 @@ const initialTx = [
   { id: "TXN-9004", page: "Event General", pageCode: "TS26GEN", buyer: "Priya Menon",   email: "priya.m@startups.io",  mode: "Online", status: "Success",    merchant: "Razorpay",      amount: 12000, date: "2026-08-30", eventId: "1" },
   { id: "TXN-9005", page: "Event VIP",     pageCode: "TS26VIP", buyer: "Rahul Gupta",   email: "rahul.g@enterprise.co",mode: "Online", status: "Success",    merchant: "Stripe",        amount: 28000, date: "2026-08-30", eventId: "1" },
 ];
+
+// Dynamically generate mock transactions so page seats/revenue matches coupon 'used' counts
+for (let i = 0; i < 311; i++) {
+  initialTx.push({ id: "TXN-E" + i, page: "Event General", pageCode: "TS26GEN", buyer: "Demo User " + i, email: "user"+i+"@demo.com", mode: "Online", status: "Success", merchant: "Razorpay", amount: 10200, date: "2026-08-28", eventId: "1" });
+}
+for (let i = 0; i < 87; i++) {
+  initialTx.push({ id: "TXN-S" + i, page: "Event General", pageCode: "TS26GEN", buyer: "Demo Speaker " + i, email: "spk"+i+"@demo.com", mode: "Online", status: "Success", merchant: "Razorpay", amount: 9600, date: "2026-08-29", eventId: "1" });
+}
+for (let i = 0; i < 67; i++) {
+  initialTx.push({ id: "TXN-R" + i, page: "B2B Roundtable", pageCode: "B2BRT26", buyer: "Demo Partner " + i, email: "ptn"+i+"@demo.com", mode: "Online", status: "Success", merchant: "Razorpay", amount: 4500, date: "2026-08-10", eventId: "EVT-B2B-02" });
+}
 
 const initialInvoices = [
   { id: "INV-501", txId: "TXN-9001", name: "Ananya Sharma", email: "ananya.s@techfirm.in",    amount: 10200, date: "2026-08-28" },
@@ -173,7 +222,16 @@ const GATEWAY_MERCHANTS = {
 
 
 // Persistence Logic (LocalStorage)
+const DATA_VERSION = "v2.5"; // bump this to reset all demo data
+
 function getPersistedData(key, defaultData) {
+  const storedVersion = localStorage.getItem('__dataVersion');
+  if (storedVersion !== DATA_VERSION) {
+    // Version mismatch — wipe all stored data and reload seed
+    ['plans','pages','transactions','invoices','invoiceListing','offline','credit','selectedVertical','selectedEvent'].forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('__dataVersion', DATA_VERSION);
+    return defaultData;
+  }
   const data = localStorage.getItem(key);
   return data ? JSON.parse(data) : defaultData;
 }
