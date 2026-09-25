@@ -25,31 +25,53 @@
   </div>
 
   <!-- ═══════════════════════════════════════════
-       CREATE COUPON DRAWER (single declaration)
+       CREATE COUPON MODAL (single declaration)
   ═══════════════════════════════════════════ -->
-  <div class="drawer-backdrop" id="add-coupon-modal" style="display:none;" onclick="if(event.target===this) closeAddCouponModal()">
-    <div class="drawer extra-wide" onclick="event.stopPropagation()">
-      <div class="drawer-header">
+  <div class="modal-backdrop" id="add-coupon-modal" style="display:none;" onclick="if(event.target===this) closeAddCouponModal()">
+    <div class="modal" style="width: 500px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
         <div>
-          <h3 class="drawer-title">Create Coupon</h3>
-          <p class="drawer-subtitle" id="coupon-modal-subtitle">Discount coupon for Payment Page</p>
+          <h3 class="modal-title">Create Coupon</h3>
+          <p class="modal-subtitle" id="coupon-modal-subtitle">Discount coupon for Payment Page</p>
         </div>
         <button class="btn-icon" onclick="closeAddCouponModal()" aria-label="Close"><i class="ti ti-x"></i></button>
       </div>
 
-      <div class="drawer-body">
+      <div class="modal-body">
         <div class="form-col">
 
           <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Applicability</span></div>
+            <label class="field">
+              <span class="field-label">Apply this coupon to:</span>
+              <div id="coupon-pages-checkboxes" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                <!-- Filled dynamically -->
+              </div>
+            </label>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Quick Templates</span></div>
+            <div class="subtabs" id="coupon-templates" style="margin-bottom:0; border-bottom:none;">
+              <button class="active" onclick="applyCouponTemplate('earlybird', this)">Early Bird</button>
+              <button onclick="applyCouponTemplate('bogo', this)">Buy 1 Get 1</button>
+              <button onclick="applyCouponTemplate('buy2get1', this)">Buy 2 Get 1</button>
+              <button onclick="applyCouponTemplate('custom', this)">Custom</button>
+            </div>
+          </div>
+
+          <div class="form-section" style="margin-top: 16px;">
             <div class="form-section-header"><span class="fsec-title">Coupon Details</span></div>
             <label class="field">
               <span class="field-label">Label <span class="req">*</span></span>
               <input type="text" id="coupon-label" placeholder="e.g. Early Bird">
             </label>
             <label class="field" style="margin-top:8px;">
-              <span class="field-label">Generated coupon code</span>
+              <span class="field-label">Coupon Code / Tracking Name</span>
               <div class="code-display-row">
-                <div class="code-display" id="coupon-code">AUTO_APPLIED</div>
+                <select id="coupon-code" style="background:transparent; border:none; outline:none; font-family:var(--font-mono); font-size:14px; font-weight:700; letter-spacing:1.5px; color:var(--text); width:100%; cursor:pointer;">
+                  <option value="AUTO_APPLIED">AUTO_APPLIED</option>
+                </select>
                 <button class="btn-regen" onclick="regenerateCouponCode()" title="Regenerate code"><i class="ti ti-refresh"></i></button>
               </div>
               <span class="field-hint" id="coupon-type-hint">Applied automatically — no code entry needed.</span>
@@ -101,7 +123,7 @@
                 <input type="datetime-local" id="coupon-start">
               </label>
               <label class="field">
-                <span class="field-label">Validity End <span class="req">*</span></span>
+                <span class="field-label">Run this offer till <span class="req">*</span></span>
                 <input type="datetime-local" id="coupon-end">
               </label>
             </div>
@@ -111,14 +133,19 @@
             <div class="form-section-header"><span class="fsec-title">Usage Limits</span></div>
             <div class="two-col">
               <label class="field">
+                <span class="field-label">Minimum tickets required</span>
+                <input type="number" id="coupon-min-qty" placeholder="e.g. 2">
+                <span class="field-hint">Coupon applies if order has at least X tickets.</span>
+              </label>
+              <label class="field">
                 <span class="field-label">Max total redemptions</span>
                 <input type="number" id="coupon-max-uses" placeholder="Unlimited">
               </label>
-              <label class="field">
-                <span class="field-label">Max per user</span>
-                <input type="number" id="coupon-max-user" value="1">
-              </label>
             </div>
+            <label class="field" style="margin-top: 12px;">
+              <span class="field-label">Max per user</span>
+              <input type="number" id="coupon-max-user" value="1">
+            </label>
           </div>
 
           <div id="coupon-warning" class="callout warn-box" style="display:none;">
@@ -130,9 +157,9 @@
         </div>
       </div>
 
-      <div class="drawer-footer">
+      <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAddCouponModal()">Cancel</button>
-        <button class="btn btn-primary" id="btn-save-coupon" onclick="saveCoupon()">Create Coupon</button>
+        <button class="btn btn-primary" id="btn-save-coupon" onclick="saveCoupon()">Activate Coupon</button>
       </div>
     </div>
   </div>

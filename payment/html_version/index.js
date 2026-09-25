@@ -63,15 +63,217 @@ function renderScreen() {
   const content = document.getElementById("app-content");
   if (!content) return;
 
+  const isPaymentModule = ['pages', 'coupons', 'details'].includes(activeScreen);
+  let html = '';
+
+  if (isPaymentModule) {
+    html += `
+      <div class="fade-in" style="margin-bottom: 24px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; margin-top:4px; gap:12px; flex-wrap:wrap;">
+          <div>
+            <h2 style="font-size:24px;margin:2px 0 4px;">Payment Workspace</h2>
+            <div style="font-size:14px;color:var(--text-muted);">Manage payment pages, promotional coupons, and view reports.</div>
+          </div>
+        </div>
+        <div class="subtabs" style="margin-bottom: 0; border-bottom: 1px solid var(--border);">
+          <button class="${activeScreen === 'pages' ? 'active' : ''}" onclick="setScreen('pages')">Payment Pages</button>
+          <button class="${activeScreen === 'coupons' ? 'active' : ''}" onclick="setScreen('coupons')">Coupons</button>
+          <button class="${activeScreen === 'details' ? 'active' : ''}" onclick="setScreen('details')">Reports</button>
+        </div>
+      </div>
+    `;
+  }
+
   if (activeScreen === "details") {
-    content.innerHTML = renderPaymentDetails();
+    content.innerHTML = html + renderPaymentDetails();
     postRenderDetails();
   } else if (activeScreen === "pages") {
-    content.innerHTML = renderPaymentPages();
+    content.innerHTML = html + renderPaymentPages();
     renderPagesTable();
+  } else if (activeScreen === "coupons") {
+    content.innerHTML = html + renderCouponsScreen();
   } else if (activeScreen === "create-page") {
     content.innerHTML = renderCreatePageScreen();
   }
+}
+
+function renderCouponsScreen() {
+  const pages = window.appData.pages.filter(p => p.eventId === EVENT.id);
+  
+  let allCouponsMap = {};
+  pages.forEach(p => {
+    if (p.coupons) {
+      p.coupons.forEach(c => {
+        if (!allCouponsMap[c.code]) {
+          allCouponsMap[c.code] = { 
+            ...c, 
+            linkedPages: [], 
+            totalUsed: 0, 
+            totalGrossSales: 0, 
+            totalDiscountGiven: 0,
+            currency: p.currency || 'INR',
+            pageIds: []
+          };
+        }
+        allCouponsMap[c.code].linkedPages.push(p.name);
+        allCouponsMap[c.code].pageIds.push(p.id);
+        
+        const price = p.price || 0;
+        const used = c.used || 0;
+        const grossSales = price * used;
+        let discountGiven = 0;
+        if (c.discountType === "percent") {
+          discountGiven = price * (c.discount / 100) * used;
+        } else {
+          discountGiven = c.discount * used;
+        }
+        
+        allCouponsMap[c.code].totalUsed += used;
+        allCouponsMap[c.code].totalGrossSales += grossSales;
+        allCouponsMap[c.code].totalDiscountGiven += discountGiven;
+      });
+    }
+  });
+  
+  const uniqueCoupons = Object.values(allCouponsMap);
+
+  let html = `<div class="fade-in">
+    <div style="display:flex; justify-content:flex-end; align-items:center; margin-bottom:24px;">
+      <button class="btn btn-primary" onclick="openAddCouponModal()">
+        <i class="ti ti-ticket" style="margin-right:6px"></i> Create Coupon
+      </button>
+    </div>`;
+
+  if (uniqueCoupons.length === 0) {
+    html += `
+      <div class="empty-state">
+        <div class="empty-icon"><i class="ti ti-ticket"></i></div>
+        <h3>No coupons found</h3>
+        <p>Create your first discount coupon for this event.</p>
+        <button class="btn btn-primary" onclick="openAddCouponModal()" style="margin-top:16px"><i class="ti ti-plus"></i> Add Coupon</button>
+      </div>
+    `;
+  } else {
+    html += `<div style="display:flex; flex-direction:column; gap:20px;">
+      ${uniqueCoupons.map(c => {
+        const isExp = c.end ? new Date(c.end) < new Date() : false;
+        const isActive = !isExp && c.active !== false;
+        const disc = c.discountType === "percent" ? c.discount + "%" : window.utils.fmtCurrency(c.discount, c.currency);
+
+        const used = c.totalUsed;
+        const grossSales = c.totalGrossSales;
+        const discountGiven = c.totalDiscountGiven;
+        const effectiveDiscountPct = grossSales > 0 ? ((discountGiven / grossSales) * 100).toFixed(1) + "%" : "—";
+        const hasData = used > 0;
+
+        return `
+          <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--shadow-sm);">
+            
+            <div style="display:flex; align-items:stretch;">
+              <!-- Accent sidebar -->
+              <div style="width:4px; background:${isActive ? 'var(--accent)' : 'var(--text-faint)'}; flex-shrink:0;"></div>
+
+              <!-- Discount badge -->
+              <div style="padding:20px 24px; display:flex; align-items:center; border-right:1px solid var(--border); flex-shrink:0; background:${isActive ? 'transparent' : 'var(--surface-2)'};">
+                <div style="text-align:center;">
+                  <div style="background:${isActive ? 'var(--accent-soft)' : 'var(--surface-3)'}; color:${isActive ? 'var(--accent-strong)' : 'var(--text-muted)'}; font-size:24px; font-weight:800; padding:12px 18px; border-radius:8px; line-height:1; min-width:80px;">${disc}</div>
+                  <div style="margin-top:6px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-faint); font-weight:700;">${c.discountType === 'percent' ? 'percent off' : 'flat off'}</div>
+                </div>
+              </div>
+
+              <!-- Content area -->
+              <div style="flex:1; padding:20px 24px; min-width:0;">
+
+                <!-- Row 1: Label + code + badges + actions -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px;">
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span style="font-size:16px; font-weight:700; color:var(--text); white-space:nowrap;">${c.label}</span>
+                    ${c.type === 'code' && c.code
+                      ? `<span style="font-family:var(--font-mono); font-size:12px; font-weight:600; background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:3px 10px; letter-spacing:1.5px; line-height:1.2; ${isExp ? 'text-decoration:line-through; opacity:0.5;' : ''}">${c.code}</span>`
+                      : ''}
+                    ${c.type === 'auto'
+                      ? `<span style="font-size:11px; background:var(--info-soft); color:var(--info); padding:4px 10px; border-radius:6px; font-weight:600; line-height:1.2;">⚡ Auto-applied</span>`
+                      : `<span style="font-size:11px; background:var(--surface-2); color:var(--text-muted); padding:4px 10px; border-radius:6px; font-weight:600; border:1px solid var(--border); line-height:1.2;">Code-based</span>`}
+                    <span style="font-size:11px; background:${isActive ? 'var(--ok-soft)' : 'var(--surface-3)'}; color:${isActive ? 'var(--ok)' : 'var(--text-faint)'}; padding:4px 10px; border-radius:6px; font-weight:600; line-height:1.2;">${isActive ? '● Active' : (isExp ? '● Expired' : '● Paused')}</span>
+                    ${c.minQty > 0 ? `<span style="font-size:11px; background:var(--warn-soft); color:var(--warn); padding:4px 10px; border-radius:6px; font-weight:600; line-height:1.2;">Min. ${c.minQty} tickets</span>` : ''}
+                  </div>
+                  
+                  <!-- Action buttons top-right -->
+                  <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                    <button title="Copy Promo Link" onclick="copyPromoLink('${c.pageIds[0]}', '${c.code || ''}')"
+                      style="height:32px; padding:0 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface); cursor:pointer; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:var(--text-muted);"
+                      onmouseover="this.style.background='var(--surface-2)'; this.style.borderColor='var(--text-muted)';"
+                      onmouseout="this.style.background='var(--surface)'; this.style.borderColor='var(--border)';">
+                      <i class="ti ti-link" style="font-size:14px;"></i> Share
+                    </button>
+                    ${!isExp ? `
+                    <button title="${c.active !== false ? 'Deactivate coupon' : 'Activate coupon'}" onclick="alert('Toggle coupon across all applied pages logic here')"
+                      style="height:32px; padding:0 12px; border:1px solid ${c.active !== false ? 'var(--warn)' : 'var(--ok)'}; border-radius:6px; background:${c.active !== false ? 'var(--warn-soft)' : 'var(--ok-soft)'}; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:${c.active !== false ? 'var(--warn)' : 'var(--ok)'};"
+                      onmouseover="this.style.opacity='0.8';"
+                      onmouseout="this.style.opacity='1';">
+                      <i class="ti ti-${c.active !== false ? 'player-pause' : 'player-play'}" style="font-size:14px;"></i>
+                      ${c.active !== false ? 'Deactivate' : 'Activate'}
+                    </button>` : `
+                    <span style="height:32px; padding:0 12px; border:1px solid var(--border); border-radius:6px; background:var(--surface-3); display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:var(--text-faint);">Expired</span>`}
+                  </div>
+                </div>
+
+                <!-- Row 3: Dates + usage + progress -->
+                <div style="display:flex; align-items:center; gap:20px; font-size:12.5px; color:var(--text-muted); margin-bottom:12px;">
+                  <span><i class="ti ti-calendar" style="font-size:14px; position:relative; top:2px; margin-right:4px;"></i>${c.start ? window.utils.fmtDate(c.start) : '—'} → ${c.end ? window.utils.fmtDate(c.end) : 'No end'}</span>
+                  <span style="color:var(--surface-3);">|</span>
+                  <span><span style="font-weight:600; color:var(--text);">${used}</span> / ${c.maxUses ? c.maxUses : '∞'} redemptions</span>
+                  ${c.maxUses > 0 ? `
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <div style="width:100px; height:6px; background:var(--surface-3); border-radius:3px; overflow:hidden;">
+                        <div style="width:${Math.min(100, Math.round(used / c.maxUses * 100))}%; height:100%; background:${used / c.maxUses > 0.8 ? 'var(--accent)' : 'var(--ok)'}; border-radius:3px;"></div>
+                      </div>
+                      <span style="font-size:11px; color:var(--text-faint); font-weight:600;">${Math.min(100, Math.round(used / c.maxUses * 100))}%</span>
+                    </div>` : ''}
+                </div>
+                
+                <!-- Applies to pages label -->
+                <div style="font-size:12.5px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+                  <i class="ti ti-layers-linked" style="font-size:14px;"></i>
+                  <span>Applies to: <span style="font-weight:600; color:var(--text);">${c.linkedPages.join(', ')}</span></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Analytics strip -->
+            <div style="border-top:1px solid var(--border); background:${hasData ? 'var(--surface-2)' : '#FAFAFA'}; display:grid; grid-template-columns:repeat(4,1fr);">
+              ${hasData ? `
+                <div style="padding:14px 24px; border-right:1px solid var(--border);">
+                  <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-faint); margin-bottom:6px;">Gross Sales</div>
+                  <div style="font-size:18px; font-weight:800; color:var(--ok);">${window.utils.fmtCurrency(grossSales, c.currency)}</div>
+                </div>
+                <div style="padding:14px 24px; border-right:1px solid var(--border);">
+                  <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-faint); margin-bottom:6px;">Orders Delivered</div>
+                  <div style="font-size:18px; font-weight:800; color:var(--text);">${used}</div>
+                </div>
+                <div style="padding:14px 24px; border-right:1px solid var(--border);">
+                  <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-faint); margin-bottom:6px;">Discount Given</div>
+                  <div style="font-size:18px; font-weight:800; color:var(--accent);">${window.utils.fmtCurrency(discountGiven, c.currency)}</div>
+                </div>
+                <div style="padding:14px 24px;">
+                  <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-faint); margin-bottom:6px;">Effective Discount</div>
+                  <div style="font-size:18px; font-weight:800; color:var(--text);">${effectiveDiscountPct}</div>
+                </div>
+              ` : `
+                <div colspan="4" style="grid-column:1/-1; padding:16px 24px; display:flex; align-items:center; gap:8px; color:var(--text-faint);">
+                  <i class="ti ti-chart-bar" style="font-size:16px;"></i>
+                  <span style="font-size:13px; font-weight:500;">Analytics will appear once this coupon is redeemed for the first time.</span>
+                </div>
+              `}
+            </div>
+            
+          </div>
+        `;
+      }).join('')}
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 /* ═════════════════════════════════════════════════
@@ -79,15 +281,15 @@ function renderScreen() {
 ═════════════════════════════════════════════════ */
 function renderPaymentMetrics() {
   const eventPages = window.appData.pages.filter(p => p.eventId === EVENT.id);
-  const eventTx    = window.appData.transactions.filter(t => t.eventId === EVENT.id);
-  const successTx  = eventTx.filter(t => t.status === "Success");
-  const failedTx   = eventTx.filter(t => t.status === "Failed");
+  const eventTx = window.appData.transactions.filter(t => t.eventId === EVENT.id);
+  const successTx = eventTx.filter(t => t.status === "Success");
+  const failedTx = eventTx.filter(t => t.status === "Failed");
   const incompleteTx = eventTx.filter(t => t.status === "Incomplete");
-  const totalRev   = successTx.reduce((s, t) => s + t.amount, 0);
-  const livePg     = eventPages.filter(p => p.liveOnSite !== false).length;
+  const totalRev = successTx.reduce((s, t) => s + t.amount, 0);
+  const livePg = eventPages.filter(p => p.liveOnSite !== false).length;
   const offlinePending = window.appData.offline.filter(o => o.status === "Pending");
-  const pendingAmt = incompleteTx.reduce((s,t) => s + t.amount, 0) +
-                     offlinePending.reduce((s,o) => s + o.amount, 0);
+  const pendingAmt = incompleteTx.reduce((s, t) => s + t.amount, 0) +
+    offlinePending.reduce((s, o) => s + o.amount, 0);
 
   return `
     <div class="hud-bar" style="margin-bottom:20px">
@@ -140,11 +342,11 @@ function renderPaymentMetrics() {
 function renderPaymentDetails() {
   const eventTx = window.appData.transactions.filter(t => t.eventId === EVENT.id);
   const DETAIL_TABS = [
-    { id: "transactions",    label: "Transactions",     count: eventTx.length },
-    { id: "tax-invoice",     label: "Tax Invoices",     count: window.appData.invoices.length },
-    { id: "invoice-listing", label: "Invoice Listing",  count: window.appData.invoiceListing.length },
-    { id: "credit-notes",    label: "Credit Notes",     count: window.appData.credit.length },
-    { id: "offline",         label: "Offline Payments", count: window.appData.offline.length },
+    { id: "transactions", label: "Transactions", count: eventTx.length },
+    { id: "tax-invoice", label: "Tax Invoices", count: window.appData.invoices.length },
+    { id: "invoice-listing", label: "Invoice Listing", count: window.appData.invoiceListing.length },
+    { id: "credit-notes", label: "Credit Notes", count: window.appData.credit.length },
+    { id: "offline", label: "Offline Payments", count: window.appData.offline.length },
   ];
 
   return `
@@ -182,11 +384,11 @@ function renderDetailsTabContent() {
   const container = document.getElementById("detail-tab-content");
   if (!container) return;
   switch (activeDetailsTab) {
-    case "transactions":    container.innerHTML = renderTransactionsTable(); break;
-    case "tax-invoice":     container.innerHTML = renderTaxInvoiceTable(); break;
+    case "transactions": container.innerHTML = renderTransactionsTable(); break;
+    case "tax-invoice": container.innerHTML = renderTaxInvoiceTable(); break;
     case "invoice-listing": container.innerHTML = renderInvoiceListingTable(); break;
-    case "credit-notes":    container.innerHTML = renderCreditNotesTable(); break;
-    case "offline":         container.innerHTML = renderOfflineTable(); break;
+    case "credit-notes": container.innerHTML = renderCreditNotesTable(); break;
+    case "offline": container.innerHTML = renderOfflineTable(); break;
   }
 }
 
@@ -201,12 +403,12 @@ function renderTransactionsTable() {
         <input type="text" class="search-input" id="tx-search" placeholder="Search buyer, ID or page..." value="${txSearch}" oninput="updateTxSearch(this.value)">
       </div>
       <div class="chip-group" id="tx-filters">
-        ${["All","Success","Failed","Incomplete"].map(s => `
+        ${["All", "Success", "Failed", "Incomplete"].map(s => `
           <button class="chip ${txFilter === s ? 'active' : ''}" onclick="setTxFilter('${s}')">${s}</button>
         `).join('')}
       </div>
       <div class="chip-group" id="tx-date-filters" style="margin-left:auto">
-        ${[["all","All time"],["today","Today"],["week","This week"],["month","This month"]].map(([v,l]) => `
+        ${[["all", "All time"], ["today", "Today"], ["week", "This week"], ["month", "This month"]].map(([v, l]) => `
           <button class="chip ${txDateFilter === v ? 'active' : ''}" onclick="setTxDateFilter('${v}')">${l}</button>
         `).join('')}
       </div>
@@ -292,10 +494,10 @@ function renderTxInner() {
     </table>
   `;
 }
-window.setTxFilter = function(f) { txFilter = f; renderTransactionsTable(); }
-window.setTxDateFilter = function(f) { txDateFilter = f; renderTxInner(); }
-window.updateTxSearch = function(val) { txSearch = val; renderTxInner(); }
-window.toggleTxMenu = function(id) {
+window.setTxFilter = function (f) { txFilter = f; renderTransactionsTable(); }
+window.setTxDateFilter = function (f) { txDateFilter = f; renderTxInner(); }
+window.updateTxSearch = function (val) { txSearch = val; renderTxInner(); }
+window.toggleTxMenu = function (id) {
   document.querySelectorAll('.tx-action-menu').forEach(m => { if (m.id !== `tx-menu-${id}`) m.style.display = 'none'; });
   const m = document.getElementById(`tx-menu-${id}`);
   if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
@@ -305,24 +507,24 @@ document.addEventListener('click', e => {
     document.querySelectorAll('.tx-action-menu').forEach(m => m.style.display = 'none');
   }
 });
-window.txAction = function(action, txId) {
+window.txAction = function (action, txId) {
   document.querySelectorAll('.tx-action-menu').forEach(m => m.style.display = 'none');
-  if (action === 'resend')     showToast(`Receipt resent for ${txId}.`, 'ok');
-  if (action === 'invoice')    showToast(`Opening invoice for ${txId}...`, 'ok');
+  if (action === 'resend') showToast(`Receipt resent for ${txId}.`, 'ok');
+  if (action === 'invoice') showToast(`Opening invoice for ${txId}...`, 'ok');
   if (action === 'creditnote') showToast(`Credit note initiated for ${txId}.`, 'warn');
 }
-window.exportTxCSV = function() {
+window.exportTxCSV = function () {
   let txs = window.appData.transactions.filter(t => t.eventId === EVENT.id);
   if (txFilter !== "All") txs = txs.filter(t => t.status === txFilter);
   txs = txs.filter(t => txDateMatches(t.date));
-  const headers = ['Txn ID','Buyer','Email','Page','Mode','Status','Merchant','Amount','Date'];
+  const headers = ['Txn ID', 'Buyer', 'Email', 'Page', 'Mode', 'Status', 'Merchant', 'Amount', 'Date'];
   const rows = txs.map(t => [
-    t.id, t.buyer||'', t.email||'', t.page, t.mode, t.status, t.merchant, t.amount, t.date
+    t.id, t.buyer || '', t.email || '', t.page, t.mode, t.status, t.merchant, t.amount, t.date
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `transactions_${EVENT.id}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `transactions_${EVENT.id}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click(); URL.revokeObjectURL(a.href);
   showToast('CSV exported.', 'ok');
 }
@@ -387,14 +589,14 @@ function renderCreditNotesTable() {
   setTimeout(() => renderCreditInner(), 0);
   return `
     <div class="subtabs" style="padding:16px 16px 0 16px;">
-      ${["Pending","Approved","Rejected"].map(s => `
+      ${["Pending", "Approved", "Rejected"].map(s => `
         <button class="detail-tab ${creditTab === s ? 'active' : ''}" onclick="setCreditTab('${s}')">${s}</button>
       `).join('')}
     </div>
     <div id="credit-table-inner"></div>
   `;
 }
-window.setCreditTab = function(t) { creditTab = t; renderCreditInner(); }
+window.setCreditTab = function (t) { creditTab = t; renderCreditInner(); }
 
 function renderCreditInner() {
   const notes = window.appData.credit.filter(c => c.status === creditTab);
@@ -436,11 +638,11 @@ function renderCreditInner() {
     </table>
   `;
 }
-window.changeCreditStatus = function(id, st) {
+window.changeCreditStatus = function (id, st) {
   const note = window.appData.credit.find(c => c.id === id);
   if (note) { note.status = st; window.saveData(); renderCreditInner(); showToast(`Credit note ${st.toLowerCase()}.`, st === 'Approved' ? 'ok' : 'warn'); }
 }
-window.markRefundIssued = function(id) {
+window.markRefundIssued = function (id) {
   const note = window.appData.credit.find(c => c.id === id);
   if (note) { note.refundIssued = true; window.saveData(); renderCreditInner(); showToast('Refund marked as issued.', 'ok'); }
 }
@@ -450,14 +652,14 @@ function renderOfflineTable() {
   setTimeout(() => renderOfflineInner(), 0);
   return `
     <div class="subtabs" style="padding:16px 16px 0 16px;">
-      ${["Pending","Verified","Rejected"].map(s => `
+      ${["Pending", "Verified", "Rejected"].map(s => `
         <button class="detail-tab ${offlineTab === s ? 'active' : ''}" onclick="setOfflineTab('${s}')">${s}</button>
       `).join('')}
     </div>
     <div id="offline-table-inner"></div>
   `;
 }
-window.setOfflineTab = function(t) { offlineTab = t; renderOfflineInner(); }
+window.setOfflineTab = function (t) { offlineTab = t; renderOfflineInner(); }
 
 function renderOfflineInner() {
   const payments = window.appData.offline.filter(o => o.status === offlineTab);
@@ -489,7 +691,7 @@ function renderOfflineInner() {
     </table>
   `;
 }
-window.changeOfflineStatus = function(id, st) {
+window.changeOfflineStatus = function (id, st) {
   const pay = window.appData.offline.find(o => o.id === id);
   if (pay) { pay.status = st; window.saveData(); renderOfflineInner(); showToast("Payment verified.", "ok"); }
 }
@@ -516,12 +718,7 @@ function renderPaymentPages() {
     <div class="fade-in">
       ${renderPaymentMetrics()}
 
-      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; margin-top:4px; gap:12px; flex-wrap:wrap;">
-        <div>
-          <div class="crumb">Payment Module</div>
-          <h2 style="font-size:21px;margin:2px 0 4px;">Payment Pages</h2>
-          <div style="font-size:13px;color:var(--text-muted);">Configure and manage checkout pages for this event.</div>
-        </div>
+      <div style="display:flex; justify-content:flex-end; margin-bottom:14px; margin-top:4px;">
         <button class="btn btn-primary" onclick="openCreatePage()">
           <i class="ti ti-plus"></i> Create New Page
         </button>
@@ -561,7 +758,6 @@ function renderPagesTable() {
           <th>Seats</th>
           <th>Revenue</th>
           <th>Registration Ends</th>
-          <th>Coupons</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -582,16 +778,16 @@ function renderPageRow(p) {
   const soldTx = window.appData.transactions.filter(
     t => t.eventId === EVENT.id && (t.page === p.name || t.pageCode === p.code) && t.status === 'Success'
   );
-  const sold   = soldTx.length;
+  const sold = soldTx.length;
   const maxQty = p.maxQty || 0;
-  const pct    = maxQty > 0 ? Math.min(100, Math.round(sold / maxQty * 100)) : 0;
+  const pct = maxQty > 0 ? Math.min(100, Math.round(sold / maxQty * 100)) : 0;
   const pageRev = soldTx.reduce((s, t) => s + t.amount, 0);
 
   // Days until sale closes
   let closeLabel = '—';
   if (p.saleEnd) {
     const daysLeft = Math.ceil((new Date(p.saleEnd) - new Date()) / 86400000);
-    if (daysLeft < 0)  closeLabel = `<span style="color:var(--accent-strong);font-size:11.5px">Closed</span>`;
+    if (daysLeft < 0) closeLabel = `<span style="color:var(--accent-strong);font-size:11.5px">Closed</span>`;
     else if (daysLeft === 0) closeLabel = `<span style="color:var(--warn);font-size:11.5px">Closes today</span>`;
     else closeLabel = `<span style="font-size:11.5px">${daysLeft}d left</span>`;
   }
@@ -616,14 +812,6 @@ function renderPageRow(p) {
       </td>
       <td>${closeLabel}</td>
       <td>
-        ${cCount === 0
-          ? `<span style="color:var(--text-faint);font-size:12px;">None</span>`
-          : `<button style="background:none;border:none;cursor:pointer;color:var(--accent);font-weight:600;font-size:13px;display:flex;align-items:center;gap:4px;padding:0" onclick="toggleExpand('${p.id}')">
-               ${cCount} Coupon${cCount !== 1 ? "s" : ""}
-               <i class="ti ti-chevron-${expandedPages[p.id] ? 'up' : 'down'}"></i>
-             </button>`}
-      </td>
-      <td>
         <div style="display:flex;align-items:center;gap:8px">
           <button
             onclick="toggleLive('${p.id}',this)"
@@ -643,68 +831,10 @@ function renderPageRow(p) {
         </div>
       </td>
     </tr>
-    ${expandedPages[p.id] && cCount > 0 ? renderCouponSubTable(p) : ''}
   `;
 }
 
-function renderCouponSubTable(p) {
-  return `
-    <tr style="background:var(--surface-2)">
-      <td colspan="8" style="padding:12px 20px">
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-          <table style="margin:0">
-            <thead>
-              <tr>
-                <th style="font-size:10.5px;padding:8px 14px">Code</th>
-                <th style="font-size:10.5px;padding:8px 14px">Label</th>
-                <th style="font-size:10.5px;padding:8px 14px">Discount</th>
-                <th style="font-size:10.5px;padding:8px 14px">Validity</th>
-                <th style="font-size:10.5px;padding:8px 14px;text-align:right">Uses</th>
-                <th style="font-size:10.5px;padding:8px 14px"></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${p.coupons.map(c => {
-                const isExp = c.end ? new Date(c.end) < new Date() : false;
-                const disc = c.discountType === "percent" ? c.discount + "%" : window.utils.fmtCurrency(c.discount, p.currency);
-                return `
-                  <tr>
-                    <td style="padding:8px 14px">
-                      ${c.type === 'code' && c.code
-                        ? `<span class="coupon-chip ${isExp ? 'expired' : ''}">${c.code}</span>`
-                        : `<span style="font-size:11px;color:var(--text-muted);font-style:italic">Auto-applied</span>`}
-                    </td>
-                    <td style="padding:8px 14px;font-size:12px;color:var(--text-muted)">${c.label}</td>
-                    <td style="padding:8px 14px;font-size:12px;font-weight:600">
-                      ${disc}
-                      ${c.type === 'auto' ? '<span style="margin-left:6px;font-size:10px;background:var(--info-soft);color:var(--info);padding:2px 6px;border-radius:4px">Auto</span>' : ''}
-                    </td>
-                    <td style="padding:8px 14px;font-size:11px;color:var(--text-muted)">
-                      ${c.start ? window.utils.fmtDate(c.start) : '—'} → ${c.end ? window.utils.fmtDate(c.end) : '—'}
-                    </td>
-                    <td style="padding:8px 14px;font-size:12px;text-align:right">
-                      ${c.used || 0} / ${c.maxUses ? c.maxUses : 'Unlimited'}
-                    </td>
-                    <td style="padding:8px 14px">
-                      <button class="btn-icon btn-sm" title="Remove coupon" onclick="removeCoupon('${p.id}','${c.id}')" style="border:none;color:var(--text-faint)"><i class="ti ti-x"></i></button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </td>
-    </tr>
-  `;
-}
-
-window.toggleExpand = function(id) {
-  expandedPages[id] = !expandedPages[id];
-  renderPagesTable();
-}
-
-window.removeCoupon = function(pageId, couponId) {
+window.removeCoupon = function (pageId, couponId) {
   const page = window.appData.pages.find(p => p.id === pageId);
   if (page) {
     page.coupons = page.coupons.filter(c => c.id !== couponId);
@@ -714,7 +844,18 @@ window.removeCoupon = function(pageId, couponId) {
   }
 }
 
-window.toggleLive = function(id, btn) {
+window.toggleCoupon = function (pageId, couponId) {
+  const page = window.appData.pages.find(p => p.id === pageId);
+  if (!page) return;
+  const coupon = page.coupons.find(c => c.id === couponId);
+  if (!coupon) return;
+  coupon.active = coupon.active === false ? true : false;
+  window.saveData();
+  renderPagesTable();
+  showToast(coupon.active ? `Coupon "${coupon.label}" activated.` : `Coupon "${coupon.label}" deactivated.`, coupon.active ? "ok" : "warn");
+}
+
+window.toggleLive = function (id, btn) {
   const p = window.appData.pages.find(x => x.id === id);
   if (!p) return;
   p.liveOnSite = !p.liveOnSite;
@@ -734,7 +875,7 @@ window.toggleLive = function(id, btn) {
   showToast(isLive ? `"${p.name}" is now Live.` : `"${p.name}" set to Draft.`, isLive ? "ok" : "warn");
 }
 
-window.openCreatePage = function() {
+window.openCreatePage = function () {
   editingPageId = null;
   setScreen('create-page');
 }
@@ -749,10 +890,10 @@ function renderCreatePageScreen() {
     const d = new Date(EVENT.date);
     d.setHours(23, 59, 59);
     endIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  } catch(e) {}
+  } catch (e) { }
 
   const isEditing = !!editingPageId;
-  const title   = isEditing ? "Edit Payment Page" : "Create Payment Page";
+  const title = isEditing ? "Edit Payment Page" : "Create Payment Page";
   const btnText = isEditing ? "Save Changes" : "Create Page";
 
   setTimeout(() => {
@@ -910,23 +1051,23 @@ function renderCreatePageScreen() {
   `;
 }
 
-window.updateLivePreview = function() {
-  const name      = document.getElementById("page-name")?.value      || "";
-  const amt       = parseInt(document.getElementById("page-amount")?.value || "0");
-  const curr      = document.getElementById("page-currency")?.value  || "INR";
-  const desc      = document.getElementById("page-desc")?.value      || "";
+window.updateLivePreview = function () {
+  const name = document.getElementById("page-name")?.value || "";
+  const amt = parseInt(document.getElementById("page-amount")?.value || "0");
+  const curr = document.getElementById("page-currency")?.value || "INR";
+  const desc = document.getElementById("page-desc")?.value || "";
   const priceNote = document.getElementById("page-price-note")?.value || "";
-  const btnNote   = document.getElementById("page-button-note")?.value || "";
+  const btnNote = document.getElementById("page-button-note")?.value || "";
 
-  const pName      = document.getElementById("preview-page-name");
-  const pPrice     = document.getElementById("preview-price");
-  const pGst       = document.getElementById("preview-gst");
-  const pTax       = document.getElementById("preview-tax");
+  const pName = document.getElementById("preview-page-name");
+  const pPrice = document.getElementById("preview-price");
+  const pGst = document.getElementById("preview-gst");
+  const pTax = document.getElementById("preview-tax");
   const pPriceNote = document.getElementById("preview-price-note");
-  const pBtnNote   = document.getElementById("preview-button-note");
-  const pDescCont  = document.getElementById("preview-page-desc-container");
+  const pBtnNote = document.getElementById("preview-button-note");
+  const pDescCont = document.getElementById("preview-page-desc-container");
 
-  if (pName)  pName.textContent  = name || "Page Name";
+  if (pName) pName.textContent = name || "Page Name";
 
   // Check for auto coupons
   let showCoup = false;
@@ -997,7 +1138,7 @@ window.updateLivePreview = function() {
       const points = desc.split('\n').filter(pt => pt.trim());
       pDescCont.innerHTML = points.length > 0
         ? '<ul style="margin:6px 0 0 0;padding-left:18px;font-size:12px;color:rgba(255,255,255,0.6);line-height:1.7">' +
-          points.map(pt => `<li>${pt.trim()}</li>`).join('') + '</ul>'
+        points.map(pt => `<li>${pt.trim()}</li>`).join('') + '</ul>'
         : '';
     } else {
       pDescCont.innerHTML = '';
@@ -1005,7 +1146,7 @@ window.updateLivePreview = function() {
   }
 }
 
-window.editPage = function(id) {
+window.editPage = function (id) {
   editingPageId = id;
   setScreen('create-page');
 }
@@ -1020,7 +1161,7 @@ function populatePageDropdowns() {
   checkSaleEndWarning();
 }
 
-window.updateMerchants = function() {
+window.updateMerchants = function () {
   const gSel = document.getElementById("page-gateway");
   const mSel = document.getElementById("page-merchant");
   if (!gSel || !mSel) return;
@@ -1028,15 +1169,15 @@ window.updateMerchants = function() {
   mSel.innerHTML = merchants.map(m => `<option value="${m}">${m}</option>`).join('');
 }
 
-window.checkSaleEndWarning = function() {
+window.checkSaleEndWarning = function () {
   const endEl = document.getElementById("page-sale-end");
-  const warn  = document.getElementById("sale-end-warning");
+  const warn = document.getElementById("sale-end-warning");
   if (!endEl || !warn) return;
   const past = endEl.value && new Date(endEl.value) < new Date();
   warn.style.display = past ? 'flex' : 'none';
 }
 
-window.updateStates = function() {
+window.updateStates = function () {
   const c = document.getElementById("page-country");
   if (!c) return;
   const list = window.appData.countries[c.value] || [];
@@ -1044,13 +1185,13 @@ window.updateStates = function() {
   if (sSel) sSel.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
 }
 
-window.savePage = function() {
-  const name      = document.getElementById("page-name")?.value?.trim();
-  const desc      = document.getElementById("page-desc")?.value      || "";
+window.savePage = function () {
+  const name = document.getElementById("page-name")?.value?.trim();
+  const desc = document.getElementById("page-desc")?.value || "";
   const priceNote = document.getElementById("page-price-note")?.value || "";
-  const btnNote   = document.getElementById("page-button-note")?.value || "";
-  const amt       = document.getElementById("page-amount")?.value;
-  const err       = document.getElementById("page-error");
+  const btnNote = document.getElementById("page-button-note")?.value || "";
+  const amt = document.getElementById("page-amount")?.value;
+  const err = document.getElementById("page-error");
 
   if (!name) {
     err.style.display = "flex";
@@ -1067,12 +1208,12 @@ window.savePage = function() {
   if (editingPageId) {
     const existing = window.appData.pages.find(x => x.id === editingPageId);
     if (existing) {
-      existing.name        = name;
+      existing.name = name;
       existing.description = desc;
-      existing.priceNote   = priceNote;
-      existing.buttonNote  = btnNote;
-      existing.price       = parseInt(amt);
-      existing.currency    = document.getElementById("page-currency")?.value || "INR";
+      existing.priceNote = priceNote;
+      existing.buttonNote = btnNote;
+      existing.price = parseInt(amt);
+      existing.currency = document.getElementById("page-currency")?.value || "INR";
     }
     window.saveData();
     editingPageId = null;
@@ -1081,24 +1222,24 @@ window.savePage = function() {
   } else {
     const newId = "page_" + Math.random().toString(36).substr(2, 6);
     window.appData.pages.push({
-      id:          newId,
-      eventId:     EVENT.id,
+      id: newId,
+      eventId: EVENT.id,
       name,
       description: desc,
       priceNote,
-      buttonNote:  btnNote,
-      code:        "PG" + Math.floor(1000 + Math.random() * 9000),
-      currency:    document.getElementById("page-currency")?.value  || "INR",
-      price:       parseInt(amt),
-      gateway:     "Stripe",
-      merchant:    "Global Payments Ltd",
-      country:     document.getElementById("page-country")?.value   || "",
-      state:       document.getElementById("page-state")?.value     || "",
-      saleStart:   document.getElementById("page-sale-start")?.value || "",
-      saleEnd:     document.getElementById("page-sale-end")?.value  || "",
-      maxQty:      parseInt(document.getElementById("page-max-qty")?.value || "100"),
-      liveOnSite:  true,
-      coupons:     []
+      buttonNote: btnNote,
+      code: "PG" + Math.floor(1000 + Math.random() * 9000),
+      currency: document.getElementById("page-currency")?.value || "INR",
+      price: parseInt(amt),
+      gateway: "Stripe",
+      merchant: "Global Payments Ltd",
+      country: document.getElementById("page-country")?.value || "",
+      state: document.getElementById("page-state")?.value || "",
+      saleStart: document.getElementById("page-sale-start")?.value || "",
+      saleEnd: document.getElementById("page-sale-end")?.value || "",
+      maxQty: parseInt(document.getElementById("page-max-qty")?.value || "100"),
+      liveOnSite: true,
+      coupons: []
     });
     window.saveData();
     editingPageId = null;
@@ -1110,16 +1251,16 @@ window.savePage = function() {
 /* ═════════════════════════════════════════════════
    PAGE PREVIEW MODAL
 ═════════════════════════════════════════════════ */
-window.previewPage = function(pageId) {
+window.previewPage = function (pageId) {
   const p = window.appData.pages.find(x => x.id === pageId);
   if (!p) return;
-  
+
   document.getElementById("pm-page-name").textContent = p.name || "Page Name";
-  
+
   let showCoup = false;
   let coupTxt = "";
   let finalAmt = p.price || 0;
-  
+
   if (p.coupons) {
     const autoCoup = p.coupons.find(c => c.type === 'auto' && c.showDesc !== false);
     if (autoCoup && autoCoup.descText) {
@@ -1171,11 +1312,11 @@ window.previewPage = function(pageId) {
 /* ═════════════════════════════════════════════════
    COUPON MODAL
 ═════════════════════════════════════════════════ */
-window.updateCouponDesc = function() {
+window.updateCouponDesc = function () {
   const dType = document.getElementById("coupon-discount-type")?.value;
-  const dVal  = document.getElementById("coupon-discount")?.value;
+  const dVal = document.getElementById("coupon-discount")?.value;
   const descEl = document.getElementById("coupon-desc-text");
-  
+
   if (!descEl) return;
 
   if (!dVal || isNaN(dVal) || Number(dVal) <= 0) {
@@ -1192,22 +1333,38 @@ window.updateCouponDesc = function() {
   descEl.value = text;
 }
 
-window.openAddCouponModal = function(pageId) {
-  activeCouponPage = pageId;
-  const p = window.appData.pages.find(x => x.id === pageId);
+window.openAddCouponModal = function (pageId) {
+  activeCouponPage = null; // No longer tied to single page
   const subtitle = document.getElementById("coupon-modal-subtitle");
-  if (subtitle) subtitle.textContent = "For: " + (p ? p.name : "");
+  if (subtitle) subtitle.textContent = "Set up a promotional code for your pages";
+
+  let pages = window.appData.pages.filter(p => p.eventId === EVENT.id);
+  const pagesCheckboxes = document.getElementById('coupon-pages-checkboxes');
+  if (pagesCheckboxes) {
+    if (pages.length === 0) {
+      pagesCheckboxes.innerHTML = `<span class="field-hint">No pages found. Please create a payment page first.</span>`;
+    } else {
+      pagesCheckboxes.innerHTML = pages.map(p => `
+        <label class="checkline" style="margin-top:4px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" name="coupon-pages" value="${p.id}" ${(!pageId || p.id === pageId) ? 'checked' : ''}>
+          <span style="font-size: 13px; color: var(--text);">${p.name}</span>
+        </label>
+      `).join('');
+    }
+  }
 
   allCouponCodes = window.appData.pages.flatMap(x =>
     (x.coupons || []).filter(c => c.type === 'code').map(c => c.code)
   );
 
-  const lbl  = document.getElementById("coupon-label");
+  const lbl = document.getElementById("coupon-label");
   const disc = document.getElementById("coupon-discount");
   const warn = document.getElementById("coupon-warning");
   const cErr = document.getElementById("coupon-error");
-  if (lbl)  lbl.value  = "";
+  const minQty = document.getElementById("coupon-min-qty");
+  if (lbl) lbl.value = "";
   if (disc) disc.value = "";
+  if (minQty) minQty.value = "";
   if (warn) warn.style.display = "none";
   if (cErr) cErr.style.display = "none";
 
@@ -1217,7 +1374,7 @@ window.openAddCouponModal = function(pageId) {
     const d = new Date(EVENT.date);
     d.setHours(23, 59, 59);
     endIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  } catch(e) {}
+  } catch (e) { }
   const cs = document.getElementById("coupon-start");
   const ce = document.getElementById("coupon-end");
   if (cs) cs.value = startIso;
@@ -1226,12 +1383,15 @@ window.openAddCouponModal = function(pageId) {
   const dType = document.getElementById("coupon-discount-type");
   if (dType) dType.value = "percent";
   window.updateDiscountLabel();
-  setCouponType('auto');
+  
+  // Apply Early Bird template by default
+  const earlyBirdBtn = document.querySelector('#coupon-templates button');
+  if(earlyBirdBtn) window.applyCouponTemplate('earlybird', earlyBirdBtn);
 
   document.getElementById("add-coupon-modal").style.display = "flex";
 }
 
-window.closeAddCouponModal = function() {
+window.closeAddCouponModal = function () {
   document.getElementById("add-coupon-modal").style.display = "none";
 }
 
@@ -1240,31 +1400,104 @@ function setCouponType(type) {
   document.getElementById("btn-type-auto").classList.toggle("active", type === "auto");
   document.getElementById("btn-type-code").classList.toggle("active", type === "code");
 
-  const codeRow = document.getElementById("coupon-code").parentElement;
-  codeRow.style.opacity       = type === "code" ? "1" : "0.4";
-  codeRow.style.pointerEvents = type === "code" ? "auto" : "none";
-
   const hint = document.getElementById("coupon-type-hint");
   if (type === "code") {
-    regenerateCouponCode();
     if (hint) hint.textContent = "Users must enter this code at checkout to claim the discount.";
   } else {
-    document.getElementById("coupon-code").textContent = "AUTO_APPLIED";
-    if (hint) hint.textContent = "Applied automatically — no code entry needed.";
+    if (hint) hint.textContent = "Applied automatically — no code entry needed (Tracking code used for reporting).";
   }
 }
 window.setCouponType = setCouponType;
 
-window.regenerateCouponCode = function() {
-  if (currentCouponType !== 'code') return;
+window.applyCouponTemplate = function(templateId, btnEl) {
+  if (btnEl) {
+    document.querySelectorAll('#coupon-templates button').forEach(b => b.classList.remove('active'));
+    btnEl.classList.add('active');
+  }
+
+  const label = document.getElementById("coupon-label");
+  const disc = document.getElementById("coupon-discount");
+  const discType = document.getElementById("coupon-discount-type");
+  const minQty = document.getElementById("coupon-min-qty");
+  const maxUser = document.getElementById("coupon-max-user");
+  const maxUses = document.getElementById("coupon-max-uses");
+  const codeSelect = document.getElementById("coupon-code");
+
+  let codes = [];
+  
+  if (templateId === 'earlybird') {
+    if(label) label.value = "Early Bird";
+    if(discType) discType.value = "percent";
+    if(disc) disc.value = "15";
+    if(minQty) minQty.value = "";
+    if(maxUser) maxUser.value = "1";
+    if(maxUses) maxUses.value = "";
+    codes = ["FLOCK25", "FIRSTWING", "DAWNRUN10", "EARLYB26"];
+    setCouponType('auto');
+  } else if (templateId === 'bogo') {
+    if(label) label.value = "Buy 1 Get 1";
+    if(discType) discType.value = "percent";
+    if(disc) disc.value = "50";
+    if(minQty) minQty.value = "2";
+    if(maxUser) maxUser.value = "1";
+    if(maxUses) maxUses.value = "";
+    codes = ["TWINSTACK", "PAIRUP25", "DUOGRID", "TWOFONE"];
+    setCouponType('auto');
+  } else if (templateId === 'buy2get1') {
+    if(label) label.value = "Buy 2 Get 1";
+    if(discType) discType.value = "percent";
+    if(disc) disc.value = "33.33";
+    if(minQty) minQty.value = "3";
+    if(maxUser) maxUser.value = "1";
+    if(maxUses) maxUses.value = "";
+    codes = ["TRIOGATE", "TRIPLESTACK", "THIRDFREE", "TRIOLOCK25", "TWOPLUS", "THIRDWAVE", "ODDLOT3"];
+    setCouponType('auto');
+  } else {
+    // Custom
+    if(label) label.value = "";
+    if(discType) discType.value = "percent";
+    if(disc) disc.value = "";
+    if(minQty) minQty.value = "";
+    if(maxUser) maxUser.value = "1";
+    if(maxUses) maxUses.value = "";
+    codes = [];
+  }
+  window.updateDiscountLabel();
+  window.updateCouponDesc();
+
+  // Populate code dropdown
+  if (codeSelect) {
+    codeSelect.innerHTML = '';
+    if (codes.length > 0) {
+      codes.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        codeSelect.appendChild(opt);
+      });
+    } else {
+      window.regenerateCouponCode();
+    }
+  }
+}
+window.setCouponType = setCouponType;
+
+window.regenerateCouponCode = function () {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = '';
   for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-  document.getElementById("coupon-code").textContent = code;
+  const sel = document.getElementById("coupon-code");
+  if (sel) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = code;
+    sel.appendChild(opt);
+    sel.value = code;
+  }
 }
 
-window.updateDiscountLabel = function() {
-  const type  = document.getElementById("coupon-discount-type")?.value;
+window.updateDiscountLabel = function () {
+  const type = document.getElementById("coupon-discount-type")?.value;
   const label = document.getElementById("discount-val-label");
   const input = document.getElementById("coupon-discount");
   if (!type || !label) return;
@@ -1275,28 +1508,30 @@ window.updateDiscountLabel = function() {
   checkDiscountWarning();
 }
 
-window.checkDiscountWarning = function() {
+window.checkDiscountWarning = function () {
   const type = document.getElementById("coupon-discount-type")?.value;
-  const val  = parseInt(document.getElementById("coupon-discount")?.value || "0");
+  const val = parseInt(document.getElementById("coupon-discount")?.value || "0");
   const warn = document.getElementById("coupon-warning");
-  const btn  = document.getElementById("btn-save-coupon");
+  const btn = document.getElementById("btn-save-coupon");
   const show = type === 'percent' && val > 30;
   if (warn) warn.style.display = show ? "flex" : "none";
-  if (btn)  btn.textContent    = show ? "Request Approval" : "Create Coupon";
+  if (btn) btn.textContent = show ? "Request Approval" : "Activate Coupon";
 }
 function checkDiscountWarning() { window.checkDiscountWarning(); }
 
-window.saveCoupon = function() {
-  const label   = document.getElementById("coupon-label")?.value?.trim();
-  const disc    = document.getElementById("coupon-discount")?.value;
-  const type    = document.getElementById("coupon-discount-type")?.value;
-  const end     = document.getElementById("coupon-end")?.value;
-  const start   = document.getElementById("coupon-start")?.value;
+window.saveCoupon = function () {
+  const label = document.getElementById("coupon-label")?.value?.trim();
+  const disc = document.getElementById("coupon-discount")?.value;
+  const type = document.getElementById("coupon-discount-type")?.value;
+  const code = document.getElementById("coupon-code")?.value || "";
+  const end = document.getElementById("coupon-end")?.value;
+  const start = document.getElementById("coupon-start")?.value;
   const maxUses = document.getElementById("coupon-max-uses")?.value;
   const maxUser = document.getElementById("coupon-max-user")?.value;
+  const minQty = document.getElementById("coupon-min-qty")?.value;
   const showDesc = document.getElementById("coupon-show-desc")?.checked;
   const descText = document.getElementById("coupon-desc-text")?.value || "";
-  const err     = document.getElementById("coupon-error");
+  const err = document.getElementById("coupon-error");
 
   if (!label) {
     if (err) { err.style.display = "flex"; err.innerHTML = `<i class="ti ti-alert-circle"></i> Give this coupon a label.`; }
@@ -1308,42 +1543,62 @@ window.saveCoupon = function() {
   }
   if (err) err.style.display = "none";
 
-  const p = window.appData.pages.find(x => x.id === activeCouponPage);
-  if (p) {
-    if (currentCouponType === 'auto') {
-      p.coupons = (p.coupons || []).filter(c => c.type !== 'auto');
-    }
-    p.coupons = p.coupons || [];
-    p.coupons.push({
-      id:           "coup_" + Math.random().toString(36).substr(2, 6),
-      type:         currentCouponType,
-      label,
-      code:         currentCouponType === 'code' ? document.getElementById("coupon-code")?.textContent : null,
-      discountType: type,
-      discount:     parseInt(disc),
-      start,
-      end,
-      maxUses:      maxUses ? parseInt(maxUses) : 0,
-      maxPerUser:   maxUser ? parseInt(maxUser) : 1,
-      showDesc:     showDesc,
-      descText:     descText,
-      used:         0,
-      active:       true
-    });
-    window.saveData();
-    renderScreen();
-    showToast(`Coupon "${label}" created.`, "ok");
+  const selectedPagesIds = Array.from(document.querySelectorAll('input[name="coupon-pages"]:checked')).map(cb => cb.value);
+  if (selectedPagesIds.length === 0) {
+    if (err) { err.style.display = "flex"; err.innerHTML = `<i class="ti ti-alert-circle"></i> Select at least one payment page.`; }
+    return;
   }
+
+  selectedPagesIds.forEach(pageId => {
+    const p = window.appData.pages.find(x => x.id === pageId);
+    if (p) {
+      if (currentCouponType === 'auto') {
+        p.coupons = (p.coupons || []).filter(c => c.type !== 'auto');
+      }
+      p.coupons = p.coupons || [];
+      p.coupons.push({
+        id: "coup_" + Math.random().toString(36).substr(2, 6),
+        type: currentCouponType,
+        label,
+        code,
+        discountType: type,
+        discount: parseInt(disc),
+        start,
+        end,
+        maxUses: maxUses ? parseInt(maxUses) : 0,
+        maxPerUser: maxUser ? parseInt(maxUser) : 1,
+        minQty: minQty ? parseInt(minQty) : 0,
+        showDesc: showDesc,
+        descText: descText,
+        used: 0,
+        active: true
+      });
+    }
+  });
+
+  window.saveData();
+  renderScreen();
+  showToast(`Coupon "${label}" created.`, "ok");
   window.closeAddCouponModal();
 }
 
 /* Embed code removed — use copyPageUrl instead */
 
-window.copyPageUrl = function(pageId) {
+window.copyPageUrl = function (pageId) {
   const p = window.appData.pages.find(x => x.id === pageId);
   if (!p) return;
   const url = `https://pay.etevents.com/${p.code}`;
   navigator.clipboard.writeText(url).then(() => showToast("Page URL copied.", "ok"));
+}
+
+window.copyPromoLink = function (pageId, couponCode) {
+  const p = window.appData.pages.find(x => x.id === pageId);
+  if (!p) return;
+  let url = `https://pay.etevents.com/${p.code}`;
+  if (couponCode) {
+    url += `?coupon=${couponCode}`;
+  }
+  navigator.clipboard.writeText(url).then(() => showToast("Promo link copied.", "ok"));
 }
 
 /* ═════════════════════════════════════════════════
