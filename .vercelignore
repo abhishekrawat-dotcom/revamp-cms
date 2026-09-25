@@ -1,0 +1,8 @@
+# Internal docs and tooling — not part of the served site
+.claude/
+tools/
+*.docx
+/memory.md
+/PRD.md
+/Design.md
+/architecture.md

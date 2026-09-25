@@ -139,13 +139,19 @@ window.EditEventMarketing = (function(){
         paid: rnd(s+15) > 0.86
       });
     }
-    out.forEach(function(p){
-      /* a single number to sort the pool by: engagement + loyalty + seniority */
-      p.score = Math.min(100, Math.round(
-        (p.opens * 4) + (p.clicks * 6) + (p.editions * 9) +
+    /* A single number to sort the pool by: engagement + loyalty + seniority.
+       Clamping the raw total at 100 piled everyone worth calling onto the
+       same value, which made the hot/warm/cold split meaningless. Normalise
+       against the best score in the pool instead, so the spread is real. */
+    var raw = out.map(function(p){
+      return (p.opens * 4) + (p.clicks * 6) + (p.editions * 9) +
         (p.seniority === 'CXO' ? 18 : p.seniority === 'VP / Head' ? 12 : 6) +
-        (p.sub === 'active' ? 14 : p.sub === 'passive' ? 6 : 0)
-      ));
+        (p.sub === 'active' ? 14 : p.sub === 'passive' ? 6 : 0) +
+        (p.registered ? 8 : 0) + (p.paid ? 10 : 0);
+    });
+    var top = Math.max.apply(null, raw) || 1;
+    out.forEach(function(p, i){
+      p.score = Math.max(1, Math.min(100, Math.round(raw[i] / top * 100)));
     });
     POOL[EV.id] = out;
     return applyStore(EV, out);
@@ -189,7 +195,7 @@ window.EditEventMarketing = (function(){
   var D = null, KEY = '';
   function loadStore(EV){
     KEY = 'revamp-promo-' + EV.id;
-    D = { templates:[], banners:[], posts:[], batches:[], campaigns:[], crm:{}, seeded:false };
+    D = { templates:[], banners:[], posts:[], batches:[], campaigns:[], crm:{}, crmAdded:[], seeded:false };
     try {
       var raw = localStorage.getItem(KEY);
       if (raw){ var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) D[k] = p[k]; }
@@ -256,7 +262,9 @@ window.EditEventMarketing = (function(){
   var U = {
     studio:'mailers',
     audQ:'', audPage:1,
-    crmView:'board', crmQ:'', crmStage:'all', crmOwner:'all', crmPage:1,
+    crmView:'table', crmQ:'', crmStage:'all', crmOwner:'all', crmLevel:'all',
+    crmQuick:'all', crmPage:1, crmSel:{}, crmSort:{ k:'score', dir:-1 },
+    pipeQ:'', pipeEd:[], pipeLevel:'all', pipeSub:'all', pipePage:1,
     builder:null
   };
 
@@ -595,89 +603,218 @@ window.EditEventMarketing = (function(){
 
   /* ======================================================================
      MODULE 4 : DATA PIPELINE
+
+     Every edition this event has ever run, and the one pool of people
+     behind them. The desk comes here to answer one question - who is
+     worth mailing next - so the page ends in cuts that can be pushed
+     straight into the CRM.
      ====================================================================== */
+  /* Which editions a given person actually attended. p.editions is only a
+     count, so spread it deterministically across the past editions: without
+     this, picking an older edition can never widen the set, because its
+     attendees are always a subset of the more recent one's. */
+  var EDSET = {};
+  function edSet(p, total){
+    var key = p.id + ':' + total;
+    if (EDSET[key]) return EDSET[key];
+    var set = {};
+    if (p.registered) set[0] = 1;
+    var want = Math.min(p.editions, total - 1), got = 0, i;
+    for (i = 1; i < total && got < want; i++){
+      if (rnd(p.id * 7 + i * 13) > 0.38){ set[i] = 1; got++; }
+    }
+    for (i = 1; i < total && got < want; i++){ if (!set[i]){ set[i] = 1; got++; } }
+    EDSET[key] = set;
+    return set;
+  }
+  function edMatch(p, picked, total){
+    if (!picked.length) return true;
+    var set = edSet(p, total);
+    for (var i = 0; i < picked.length; i++) if (set[picked[i]]) return true;
+    return false;
+  }
+
+  function pipeFiltered(EV){
+    var q = U.pipeQ.toLowerCase();
+    var total = editions(EV).length;
+    return prospects(EV).filter(function(p){
+      if (!edMatch(p, U.pipeEd, total)) return false;
+      if (U.pipeLevel !== 'all' && levelOf(p) !== U.pipeLevel) return false;
+      if (U.pipeSub !== 'all' && p.sub !== U.pipeSub) return false;
+      if (q && (p.name + ' ' + p.comp + ' ' + p.desig + ' ' + p.email).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+
   function pipelineHTML(ctx){
     var EV = ctx.EV, eds = editions(EV), all = prospects(EV);
-    var cur = eds[0], past = eds.slice(1);
+    var cur = eds[0];
+    var F = pipeFiltered(EV);
 
     var totRegs = eds.reduce(function(n,e){ return n + e.regs; }, 0);
-    var totVis  = eds.reduce(function(n,e){ return n + e.visitors; }, 0);
     var totRev  = eds.reduce(function(n,e){ return n + e.revenue; }, 0);
     var loyal   = all.filter(function(p){ return p.editions >= 2; }).length;
+    var reach   = all.filter(function(p){ return p.sub !== 'unsubscribed'; }).length;
 
     var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
-      kpi(I.users,'var(--info)','Registrations, all editions', comma(totRegs),
-          comma(cur.regs)+' this edition') +
-      kpi(I.eye,'var(--ok)','Site visitors, all editions', compact(totVis),
-          compact(cur.visitors)+' this edition') +
-      kpi(I.money,'var(--review)','Revenue, all editions', compact(totRev),
-          comma(eds.reduce(function(n,e){ return n + e.paid; },0))+' paid delegates') +
+      kpi(I.layers,'var(--info)','People on record', comma(all.length),
+          comma(reach) + ' still reachable') +
+      kpi(I.users,'var(--ok)','Registrations, all editions', comma(totRegs),
+          comma(cur.regs) + ' this edition') +
       kpi(I.star,'var(--accent)','Repeat attendees', comma(loyal),
           'been to 2+ editions - your warmest list') +
+      kpi(I.money,'var(--review)','Revenue, all editions', compact(totRev),
+          comma(eds.reduce(function(n,e){ return n + e.paid; },0)) + ' paid delegates') +
     '</div>';
 
-    var edRows = eds.map(function(e){
-      var conv = e.visitors ? (e.regs/e.visitors*100) : 0;
-      return '<tr>' +
-        '<td><b>'+esc(String(e.year))+'</b>'+(e.current?' <span class="badge b-accent">This edition</span>':'')+'</td>' +
-        '<td style="color:var(--text-muted)">'+esc(e.label)+'</td>' +
-        '<td class="num">'+comma(e.regs)+'</td>' +
-        '<td class="num">'+compact(e.visitors)+'</td>' +
-        '<td class="num">'+conv.toFixed(1)+'%</td>' +
-        '<td class="num">'+comma(e.paid)+'</td>' +
-        '<td class="num">'+(e.revenue?compact(e.revenue):'-')+'</td>' +
-        '<td class="num">'+comma(e.attended)+'</td>' +
-        '<td>'+esc(e.channel)+'</td>' +
-      '</tr>';
-    }).join('');
+    /* editions double as the filter: click one to cut the pool to it */
+    var edCards = '<div class="ed-grid">' + eds.map(function(e, i){
+      var on = U.pipeEd.indexOf(i) >= 0;
+      var conv = e.visitors ? (e.regs / e.visitors * 100) : 0;
+      var inPool = all.filter(function(p){ return edSet(p, eds.length)[i]; }).length;
+      return '<button class="ed-card" type="button" data-ed="' + i + '" aria-pressed="' + on + '">' +
+          '<span class="yr">E' + (eds.length - i) + ' &middot; ' + e.year +
+            (e.current ? ' &middot; this edition' : '') + '</span>' +
+          '<b>' + esc(e.label) + '</b>' +
+          '<span class="st"><span>Regs <i>' + comma(e.regs) + '</i></span>' +
+          '<span>Conv <i>' + conv.toFixed(1) + '%</i></span>' +
+          '<span>In pool <i>' + comma(inPool) + '</i></span></span>' +
+        '</button>';
+    }).join('') + '</div>' +
+    (U.pipeEd.length
+      ? '<div style="margin-top:11px;display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+          '<span class="hint" style="margin:0">Showing people from ' + U.pipeEd.length +
+            (U.pipeEd.length === 1 ? ' edition' : ' editions') + '.</span>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="pipe-edclear">Clear edition filter</button></div>'
+      : '');
 
-    /* which channel earned registrations, across editions */
-    var chanRows = tally(all.filter(function(p){ return p.registered; }), 'src');
-    var indRows  = tally(all, 'industry');
-    var subRows  = SUB_STATE.map(function(s){
-      return { k:s.label, n: all.filter(function(p){ return p.sub===s.id; }).length, c:s.colour };
-    });
+    /* pool to paid, as a funnel - the shape tells you where it leaks */
+    var steps = [
+      ['On record',   all.length,                                                    'var(--text-faint)'],
+      ['Reachable',   reach,                                                          'var(--info)'],
+      ['Engaged',     all.filter(function(p){ return p.sub === 'active'; }).length,   'var(--review)'],
+      ['Registered',  all.filter(function(p){ return p.registered; }).length,         'var(--ok)'],
+      ['Paid',        all.filter(function(p){ return p.paid; }).length,               'var(--accent)']
+    ];
+    var top = steps[0][1] || 1;
+    var funnel = '<div class="funnel">' + steps.map(function(s, i){
+      var pct = s[1] / top * 100;
+      var drop = i ? (steps[i-1][1] ? Math.round(s[1] / steps[i-1][1] * 100) : 0) : 100;
+      return '<div class="fstep"><span class="fl">' + esc(s[0]) + '</span>' +
+        '<span class="ft"><i style="width:' + Math.max(pct, 1.5) + '%;background:' + s[2] + '"></i></span>' +
+        '<span class="fn">' + comma(s[1]) + ' <em>' + drop + '%</em></span></div>';
+    }).join('') + '</div>';
 
-    /* the prospect cuts worth pulling into a batch */
+    var lvlCounts = { hot:0, warm:0, cold:0 };
+    all.forEach(function(p){ lvlCounts[levelOf(p)]++; });
+
+    /* the cuts worth pulling, each one a click from a batch or the CRM */
     var recipes = [
-      { id:'loyal',    label:'Repeat attendees',  note:'Been to 2 or more past editions',
+      { id:'loyal',      label:'Repeat attendees',        note:'Been to 2 or more past editions',
         n: all.filter(function(p){ return p.editions>=2 && p.sub!=='unsubscribed'; }).length },
-      { id:'warmnotreg',label:'Warm but not registered', note:'Active subscribers who have not signed up yet',
+      { id:'warmnotreg', label:'Warm but not registered', note:'Active subscribers who have not signed up yet',
         n: all.filter(function(p){ return p.sub==='active' && !p.registered; }).length },
-      { id:'cxo',      label:'CXO tier',          note:'Chief-level across every industry',
+      { id:'cxo',        label:'CXO tier',                note:'Chief-level across every industry',
         n: all.filter(function(p){ return p.seniority==='CXO' && p.sub!=='unsubscribed'; }).length },
-      { id:'lapsed',   label:'Lapsed attendees',  note:'Came before, gone quiet since',
+      { id:'lapsed',     label:'Lapsed attendees',        note:'Came before, gone quiet since',
         n: all.filter(function(p){ return p.editions>=1 && p.sub==='dormant'; }).length }
     ];
     var recipeCards = '<div class="pgrid">' + recipes.map(function(r){
-      return '<div class="pcard" style="cursor:pointer" data-recipe="'+r.id+'">' +
-        '<div class="pcard-h"><span class="mrow-i" style="background:var(--accent)1F;color:var(--accent)">'+svg(I.layers,15)+'</span>' +
-        '<span style="flex:1"><b style="font-size:13.5px;display:block">'+esc(r.label)+'</b>' +
-        '<span style="font-size:11.5px;color:var(--text-muted)">'+esc(r.note)+'</span></span>' +
-        '<span class="num" style="font-weight:800;font-size:15px">'+comma(r.n)+'</span></div>' +
+      return '<div class="pcard">' +
+        '<div class="pcard-h"><span class="mrow-i" style="background:var(--accent)1F;color:var(--accent)">' +
+          svg(I.layers,15) + '</span>' +
+        '<span style="flex:1"><b style="font-size:13.5px;display:block">' + esc(r.label) + '</b>' +
+        '<span style="font-size:11.5px;color:var(--text-muted)">' + esc(r.note) + '</span></span>' +
+        '<span class="num" style="font-weight:800;font-size:15px">' + comma(r.n) + '</span></div>' +
         '<div class="pcard-f"><span style="flex:1"></span>' +
-        '<span class="btn btn-secondary btn-sm">Save as a batch</span></div></div>';
+        '<button class="btn btn-ghost btn-sm" type="button" data-recipe="' + r.id + '">Save as a batch</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-tocrm="' + r.id + '">' +
+          svg(I.headset,12) + ' Send to CRM</button></div></div>';
     }).join('') + '</div>';
 
+    /* the pool itself, searchable, because sooner or later you want one person */
+    var toolbar = '<div class="toolbar">' +
+      '<span class="search">' + svg(I.search,15) +
+        '<input id="pipe-q" placeholder="Search the pool by name, company, role or email…" value="' +
+        esc(U.pipeQ) + '"></span>' +
+      '<select class="inp" id="pipe-level" style="width:auto">' +
+        '<option value="all"' + (U.pipeLevel==='all'?' selected':'') + '>Every level</option>' +
+        LEVELS.map(function(l){
+          return '<option value="'+l.id+'"'+(U.pipeLevel===l.id?' selected':'')+'>'+l.label+
+            ' ('+comma(lvlCounts[l.id])+')</option>';
+        }).join('') + '</select>' +
+      '<select class="inp" id="pipe-sub" style="width:auto">' +
+        '<option value="all"' + (U.pipeSub==='all'?' selected':'') + '>Every subscriber state</option>' +
+        SUB_STATE.map(function(s){
+          return '<option value="'+s.id+'"'+(U.pipeSub===s.id?' selected':'')+'>'+s.label+'</option>';
+        }).join('') + '</select>' +
+      '<span style="flex:1"></span>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="pipe-export">' +
+        svg(I.down,13) + ' Export CSV</button>' +
+    '</div>';
+
+    var per = 25, pages = Math.max(1, Math.ceil(F.length / per));
+    if (U.pipePage > pages) U.pipePage = pages;
+    var slice = F.slice((U.pipePage-1)*per, U.pipePage*per);
+    var poolRows = slice.map(function(p){
+      var lv = levelMeta(levelOf(p));
+      var st = subState(p.sub);
+      return '<tr data-pipe="' + p.id + '">' +
+        '<td><span class="person"><span class="avat" style="background:'+p.colour+'">'+esc(p.initials)+'</span>' +
+          '<span class="pn"><b>'+esc(p.name)+'</b><span class="em">'+esc(p.desig)+'</span></span></span></td>' +
+        '<td>'+esc(p.comp)+'</td>' +
+        '<td>'+esc(p.industry)+'</td>' +
+        '<td><span class="lvl lvl-'+lv.id+'">'+lv.label+'</span></td>' +
+        '<td class="num">'+p.score+'</td>' +
+        '<td class="num">'+p.editions+'</td>' +
+        '<td><span class="badge" style="background:'+st.colour+'1F;color:'+st.colour+'">'+st.label+'</span></td>' +
+      '</tr>';
+    }).join('');
+
+    var poolTable = F.length
+      ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>Person</th><th>Company</th><th>Industry</th><th>Level</th>' +
+          '<th>Score</th><th>Editions</th><th>Subscriber</th>' +
+        '</tr></thead><tbody>' + poolRows + '</tbody></table></div>' + pager(U.pipePage, pages, F.length, 'pipe')
+      : empty(I.search, 'Nobody matches', 'Loosen the search, the level or the edition filter.');
+
     return tiles +
-      panel('Edition by edition', eds.length + ' editions on record',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Year</th><th>Edition</th><th>Registrations</th><th>Visitors</th><th>Visitor&rarr;reg</th>' +
-        '<th>Paid</th><th>Revenue</th><th>Attended</th><th>Best channel</th>' +
-        '</tr></thead><tbody>'+edRows+'</tbody></table></div>') +
-      panel('Ready-made cuts', 'The four slices worth mailing, already counted', recipeCards) +
-      '<div class="ins-grid">' +
+      panel('Editions on record', eds.length + ' editions - click one to cut the pool to it', edCards) +
+      '<div class="ins-grid" style="margin-bottom:18px">' +
+        '<div class="ins-card"><h3>Pool to paid</h3>' +
+          '<div class="cap">Where the base narrows, across every edition</div>' + funnel + '</div>' +
         '<div class="ins-card"><h3>Where registrations came from</h3>' +
-          '<div class="cap">Acquisition source across the pool</div>'+bars(chanRows,'var(--info)')+'</div>' +
-        '<div class="ins-card"><h3>Industry mix</h3>' +
-          '<div class="cap">What the addressable base looks like</div>'+bars(indRows,'var(--review)')+'</div>' +
-        '<div class="ins-card"><h3>Subscriber health</h3>' +
-          '<div class="cap">How much of the pool is still reachable</div>'+bars(subRows,'var(--ok)',4)+'</div>' +
-      '</div>';
+          '<div class="cap">Acquisition source across the pool</div>' +
+          bars(tally(all.filter(function(p){ return p.registered; }), 'src'), 'var(--info)') + '</div>' +
+      '</div>' +
+      panel('Ready-made cuts', 'Already counted - save one as a batch, or work it in the CRM', recipeCards) +
+      panelFlushLocal('The pool', comma(F.length) + ' of ' + comma(all.length) + ' shown',
+        toolbar + poolTable);
+  }
+
+  /* panel() pads its body; the pool table wants to run edge to edge */
+  function panelFlushLocal(title, sub, body){
+    return '<div class="panel"><div class="panel-head"><h3>' + esc(title) + '</h3>' +
+      '<span class="sub">' + esc(sub) + '</span></div>' + body + '</div>';
+  }
+
+  function pager(page, pages, total, kind){
+    return '<div class="pgr">' +
+      '<span class="sp">' + comma(total) + (total === 1 ? ' row' : ' rows') + '</span>' +
+      '<button type="button" data-pg="' + kind + ':1"' + (page<=1?' disabled':'') + '>First</button>' +
+      '<button type="button" data-pg="' + kind + ':' + (page-1) + '"' + (page<=1?' disabled':'') + '>Prev</button>' +
+      '<span class="pnum">' + page + ' / ' + pages + '</span>' +
+      '<button type="button" data-pg="' + kind + ':' + (page+1) + '"' + (page>=pages?' disabled':'') + '>Next</button>' +
+      '<button type="button" data-pg="' + kind + ':' + pages + '"' + (page>=pages?' disabled':'') + '>Last</button>' +
+    '</div>';
   }
 
   /* ======================================================================
      MODULE 5 : CRM
+
+     A desk works a list: narrow it, select rows, act on the set. The
+     quick views are the cuts a desk opens every morning; everything
+     else - bulk actions, import, the drawer - hangs off a selection.
      ====================================================================== */
   var STAGES = [
     { id:'new',        label:'New',        colour:'#857F6A' },
@@ -692,21 +829,45 @@ window.EditEventMarketing = (function(){
     return STAGES[0];
   }
 
-  /* leads are the top of the prospect pool, given a stage and an owner */
+  /* one word for how hot a lead is, because a score out of 100 is not a word */
+  var LEVELS = [
+    { id:'hot',  label:'Hot',  note:'Score 70+ - call these first' },
+    { id:'warm', label:'Warm', note:'Score 40-69 - worth a nudge' },
+    { id:'cold', label:'Cold', note:'Under 40 - mail, do not call' }
+  ];
+  function levelMeta(id){
+    for (var i=0;i<LEVELS.length;i++) if (LEVELS[i].id===id) return LEVELS[i];
+    return LEVELS[2];
+  }
+  function levelOf(p){
+    var saved = D && D.crm && D.crm[p.id] && D.crm[p.id].level;
+    if (saved) return saved;
+    return p.score >= 70 ? 'hot' : p.score >= 40 ? 'warm' : 'cold';
+  }
+
+  /* Leads are the top of the pool, plus anyone a desk has actually touched -
+     pushed in from the pipeline, added by hand or imported. Without that
+     second set, "Send to CRM" wrote a record nobody could see. */
   function leads(EV){
     var all = prospects(EV);
     var top = all.slice().sort(function(a,b){ return b.score - a.score; }).slice(0, 120);
-    return top.map(function(p, i){
+    var seen = {};
+    top.forEach(function(p){ seen[p.id] = 1; });
+    var worked = all.filter(function(p){ return !seen[p.id] && D.crm[p.id]; });
+    var extra = (D.crmAdded || []).filter(function(p){ return !seen[p.id]; });
+    return top.concat(worked).concat(extra).map(function(p, i){
       var saved = D.crm[p.id];
       var s = EV.eventNo + i * 17;
       var stage = saved ? saved.stage
-        : (p.paid ? 'won' : p.registered ? 'registered'
+        : (p.manual ? 'new'
+          : p.paid ? 'won' : p.registered ? 'registered'
           : rnd(s) > 0.72 ? 'interested' : rnd(s) > 0.42 ? 'contacted' : 'new');
       return {
         id: p.id, p: p,
         stage: stage,
-        owner: saved && saved.owner ? saved.owner : OWNERS[Math.floor(rnd(s+1) * OWNERS.length)],
-        calls: saved && saved.calls != null ? saved.calls : Math.floor(rnd(s+2) * 6),
+        level: levelOf(p),
+        owner: saved && saved.owner ? saved.owner : (p.manual ? OWNERS[0] : OWNERS[Math.floor(rnd(s+1) * OWNERS.length)]),
+        calls: saved && saved.calls != null ? saved.calls : (p.manual ? 0 : Math.floor(rnd(s+2) * 6)),
         notes: (saved && saved.notes) || [],
         next: saved && saved.next ? saved.next : '',
         touched: saved && saved.touched ? saved.touched : 0
@@ -714,95 +875,180 @@ window.EditEventMarketing = (function(){
     });
   }
   function saveLead(l){
-    D.crm[l.id] = { stage:l.stage, owner:l.owner, calls:l.calls, notes:l.notes, next:l.next, touched:Date.now() };
+    D.crm[l.id] = { stage:l.stage, owner:l.owner, calls:l.calls, notes:l.notes,
+                    next:l.next, level:l.level, touched:Date.now() };
     save();
+  }
+
+  /* the cuts a desk opens every morning */
+  function quickViews(L){
+    var today = new Date(); today.setHours(23,59,59,999);
+    return [
+      { id:'all',    label:'All leads',      fn: function(){ return true; } },
+      { id:'hot',    label:'Hot',            fn: function(l){ return l.level === 'hot' && l.stage !== 'won' && l.stage !== 'lost'; } },
+      { id:'due',    label:'Follow-up due',  fn: function(l){ return l.next && new Date(l.next) <= today; } },
+      { id:'untouched', label:'Never contacted', fn: function(l){ return l.stage === 'new' && !l.calls; } },
+      { id:'open',   label:'Open',           fn: function(l){ return l.stage !== 'won' && l.stage !== 'lost'; } },
+      { id:'won',    label:'Won',            fn: function(l){ return l.stage === 'won'; } }
+    ].map(function(v){ v.n = L.filter(v.fn).length; return v; });
   }
 
   function crmFiltered(EV){
     var q = U.crmQ.toLowerCase();
-    return leads(EV).filter(function(l){
+    var L = leads(EV);
+    var view = quickViews(L).filter(function(v){ return v.id === U.crmQuick; })[0];
+    var out = L.filter(function(l){
+      if (view && !view.fn(l)) return false;
       if (U.crmStage !== 'all' && l.stage !== U.crmStage) return false;
       if (U.crmOwner !== 'all' && l.owner !== U.crmOwner) return false;
-      if (q && (l.p.name+' '+l.p.comp+' '+l.p.desig).toLowerCase().indexOf(q) < 0) return false;
+      if (U.crmLevel !== 'all' && l.level !== U.crmLevel) return false;
+      if (q && (l.p.name+' '+l.p.comp+' '+l.p.desig+' '+(l.p.email||'')).toLowerCase().indexOf(q) < 0) return false;
       return true;
     });
+    var k = U.crmSort.k, dir = U.crmSort.dir;
+    return out.sort(function(a, b){
+      var av, bv;
+      if (k === 'name' || k === 'comp'){ av = a.p[k].toLowerCase(); bv = b.p[k].toLowerCase(); }
+      else if (k === 'score'){ av = a.p.score; bv = b.p.score; }
+      else if (k === 'next'){ av = a.next || '9999'; bv = b.next || '9999'; }
+      else { av = a[k]; bv = b[k]; }
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+  }
+
+  function selectedIds(){
+    return Object.keys(U.crmSel).filter(function(k){ return U.crmSel[k]; });
   }
 
   function crmHTML(ctx){
     var EV = ctx.EV, L = leads(EV), F = crmFiltered(EV);
     var counts = {};
     STAGES.forEach(function(s){ counts[s.id] = L.filter(function(l){ return l.stage===s.id; }).length; });
+    var lvlCounts = { hot:0, warm:0, cold:0 };
+    L.forEach(function(l){ lvlCounts[l.level]++; });
     var won = counts.won, open = L.length - counts.won - counts.lost;
+    var today = new Date(); today.setHours(23,59,59,999);
+    var due = L.filter(function(l){ return l.next && new Date(l.next) <= today; }).length;
 
     var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
       kpi(I.headset,'var(--info)','Leads in play', comma(open), comma(L.length)+' in the pipeline') +
+      kpi(I.star,'var(--accent)','Hot right now', comma(lvlCounts.hot), 'score 70 or above') +
       kpi(I.check,'var(--ok)','Won', comma(won),
           (L.length ? Math.round(won/L.length*100) : 0)+'% conversion') +
-      kpi(I.phone,'var(--review)','Calls logged', comma(L.reduce(function(n,l){ return n+l.calls; },0)), 'across all owners') +
-      kpi(I.clock,'var(--warn)','Follow-ups due', comma(L.filter(function(l){ return l.next; }).length), 'have a date set') +
+      kpi(I.clock, due ? 'var(--accent)' : 'var(--warn)','Follow-ups due', comma(due),
+          due ? 'overdue or due today' : 'nothing overdue') +
     '</div>';
+
+    var views = '<div class="qviews">' + quickViews(L).map(function(v){
+      return '<button class="qview" type="button" data-qview="' + v.id + '" aria-pressed="' +
+        (U.crmQuick === v.id) + '">' + esc(v.label) + '<span class="n">' + comma(v.n) + '</span></button>';
+    }).join('') + '</div>';
 
     var toolbar = '<div class="toolbar">' +
       '<span class="search">'+svg(I.search,15)+
-        '<input id="crm-q" placeholder="Search a lead, company or role…" value="'+esc(U.crmQ)+'"></span>' +
+        '<input id="crm-q" placeholder="Search a lead, company, role or email…" value="'+esc(U.crmQ)+'"></span>' +
       '<select class="inp" id="crm-stage" style="width:auto">' +
         '<option value="all"'+(U.crmStage==='all'?' selected':'')+'>Every stage</option>' +
         STAGES.map(function(s){
           return '<option value="'+s.id+'"'+(U.crmStage===s.id?' selected':'')+'>'+s.label+' ('+counts[s.id]+')</option>';
+        }).join('') + '</select>' +
+      '<select class="inp" id="crm-level" style="width:auto">' +
+        '<option value="all"'+(U.crmLevel==='all'?' selected':'')+'>Every level</option>' +
+        LEVELS.map(function(l){
+          return '<option value="'+l.id+'"'+(U.crmLevel===l.id?' selected':'')+'>'+l.label+' ('+lvlCounts[l.id]+')</option>';
         }).join('') + '</select>' +
       '<select class="inp" id="crm-owner" style="width:auto">' +
         '<option value="all"'+(U.crmOwner==='all'?' selected':'')+'>Every owner</option>' +
         OWNERS.map(function(o){
           return '<option value="'+esc(o)+'"'+(U.crmOwner===o?' selected':'')+'>'+esc(o)+'</option>';
         }).join('') + '</select>' +
+      '<span style="flex:1"></span>' +
       '<span class="vswitch">' +
         '<button type="button" data-crmview="board" aria-pressed="'+(U.crmView==='board')+'">Board</button>' +
         '<button type="button" data-crmview="table" aria-pressed="'+(U.crmView==='table')+'">Table</button>' +
       '</span></div>';
 
+    var sel = selectedIds();
+    var bulk = sel.length ? '<div class="bulkbar">' +
+        '<span class="bn">' + sel.length + (sel.length === 1 ? ' lead selected' : ' leads selected') + '</span>' +
+        '<button class="bbtn" type="button" data-bulk="email">' + svg(I.mail,13) + ' Email</button>' +
+        '<button class="bbtn" type="button" data-bulk="whatsapp">' + svg(I.wa,13) + ' WhatsApp</button>' +
+        '<button class="bbtn" type="button" data-bulk="assign">' + svg(I.users,13) + ' Assign</button>' +
+        '<button class="bbtn" type="button" data-bulk="stage">' + svg(I.flow,13) + ' Move stage</button>' +
+        '<button class="bbtn" type="button" data-bulk="level">' + svg(I.star,13) + ' Set level</button>' +
+        '<button class="bbtn" type="button" data-bulk="export">' + svg(I.down,13) + ' Export</button>' +
+        '<span class="sp"></span>' +
+        '<button class="bclear" type="button" id="crm-clearsel">Clear</button>' +
+      '</div>' : '';
+
     var body = U.crmView === 'board' ? crmBoard(F) : crmTable(F);
 
-    return tiles + panel('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown', toolbar + body);
+    return tiles +
+      panelFlushLocal('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown',
+        views + toolbar + bulk + body);
   }
 
   function crmBoard(F){
     return '<div class="board">' + STAGES.map(function(s){
       var items = F.filter(function(l){ return l.stage===s.id; });
-      return '<div class="bcol">' +
+      return '<div class="bcol" data-stagecol="'+s.id+'">' +
         '<div class="bcol-h"><span class="bdot" style="background:'+s.colour+'"></span>' +
           '<b>'+s.label+'</b><span class="num">'+comma(items.length)+'</span></div>' +
-        '<div class="bcol-b">' + (items.length ? items.slice(0, 20).map(function(l){
-          return '<div class="lead" data-lead="'+l.id+'">' +
+        '<div class="bcol-b">' + (items.length ? items.slice(0, 25).map(function(l){
+          var lv = levelMeta(l.level);
+          return '<div class="lead" draggable="true" data-lead="'+l.id+'">' +
             '<div class="lead-t"><span class="avat" style="background:'+l.p.colour+';width:26px;height:26px;font-size:10px">'+
               esc(l.p.initials)+'</span><b>'+esc(l.p.name)+'</b></div>' +
             '<div class="lead-s">'+esc(l.p.desig)+'</div>' +
             '<div class="lead-s" style="color:var(--text-faint)">'+esc(l.p.comp)+'</div>' +
-            '<div class="lead-f"><span>'+esc(l.owner.split(' ')[0])+'</span>' +
-              '<span class="num">'+l.calls+' calls</span></div>' +
+            '<div class="lead-f"><span class="lvl lvl-'+lv.id+'">'+lv.label+'</span>' +
+              '<span class="num">'+esc(l.owner.split(' ')[0])+'</span></div>' +
           '</div>';
         }).join('') : '<div class="bcol-e">Nothing here</div>') + '</div>' +
       '</div>';
     }).join('') + '</div>';
   }
 
+  function sortTh(k, label, cls){
+    var on = U.crmSort.k === k;
+    return '<th class="srt' + (on ? ' on' : '') + (cls ? ' ' + cls : '') + '" data-sort="' + k + '">' +
+      esc(label) + '<span class="ar">' + (on ? (U.crmSort.dir === 1 ? '▲' : '▼') : '▲▼') + '</span></th>';
+  }
+
   function crmTable(F){
-    if (!F.length) return empty(I.search,'No leads match','Loosen the search, stage or owner filter.');
-    var rows = F.slice(0, 60).map(function(l){
-      var s = stageById(l.stage);
-      return '<tr data-lead="'+l.id+'">' +
-        '<td><span class="person"><span class="avat" style="background:'+l.p.colour+'">'+esc(l.p.initials)+'</span>' +
+    if (!F.length) return empty(I.search,'No leads match','Loosen the search, or pick a different view.');
+    var per = 25, pages = Math.max(1, Math.ceil(F.length / per));
+    if (U.crmPage > pages) U.crmPage = pages;
+    var slice = F.slice((U.crmPage-1)*per, U.crmPage*per);
+    var allOn = slice.length > 0 && slice.every(function(l){ return U.crmSel[l.id]; });
+
+    var rows = slice.map(function(l){
+      var s = stageById(l.stage), lv = levelMeta(l.level);
+      var on = !!U.crmSel[l.id];
+      var overdue = l.next && new Date(l.next) < new Date();
+      return '<tr data-row="'+l.id+'"'+(on?' class="sel"':'')+'>' +
+        '<td class="pick"><input type="checkbox" data-pick="'+l.id+'"'+(on?' checked':'')+'></td>' +
+        '<td data-lead="'+l.id+'" style="cursor:pointer"><span class="person">' +
+          '<span class="avat" style="background:'+l.p.colour+'">'+esc(l.p.initials)+'</span>' +
           '<span class="pn"><b>'+esc(l.p.name)+'</b><span class="em">'+esc(l.p.desig)+'</span></span></span></td>' +
         '<td>'+esc(l.p.comp)+'</td>' +
+        '<td><span class="lvl lvl-'+lv.id+'">'+lv.label+'</span></td>' +
         '<td><span class="badge" style="background:'+s.colour+'1F;color:'+s.colour+'">'+s.label+'</span></td>' +
         '<td>'+esc(l.owner)+'</td>' +
         '<td class="num">'+l.calls+'</td>' +
         '<td class="num"><b>'+l.p.score+'</b></td>' +
-        '<td class="nw">'+(l.next ? fmtDate(l.next) : '<span style="color:var(--text-faint)">-</span>')+'</td>' +
+        '<td class="nw">'+(l.next
+          ? '<span style="color:'+(overdue?'var(--accent-strong)':'inherit')+'">'+fmtDate(l.next)+'</span>'
+          : '<span style="color:var(--text-faint)">-</span>')+'</td>' +
       '</tr>';
     }).join('');
+
     return '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Lead</th><th>Company</th><th>Stage</th><th>Owner</th><th>Calls</th><th>Score</th><th>Follow-up</th>' +
-      '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+      '<th class="pick"><input type="checkbox" id="crm-all"'+(allOn?' checked':'')+'></th>' +
+      sortTh('name','Lead') + sortTh('comp','Company') + sortTh('level','Level') +
+      sortTh('stage','Stage') + sortTh('owner','Owner') + sortTh('calls','Calls') +
+      sortTh('score','Score') + sortTh('next','Follow-up') +
+      '</tr></thead><tbody>'+rows+'</tbody></table></div>' + pager(U.crmPage, pages, F.length, 'crm');
   }
 
   /* ======================================================================
@@ -1140,6 +1386,507 @@ window.EditEventMarketing = (function(){
   }
 
   /* ---------------------------------------------------------------- lead drawer */
+  /* ======================================================================
+     CRM : ADDING LEADS
+
+     Two ways in, because a desk has two: one at a time from a phone
+     call, or a thousand at once from a list somebody sent over.
+     ====================================================================== */
+  function nextManualId(){
+    var max = 100000;
+    (D.crmAdded || []).forEach(function(p){ if (p.id >= max) max = p.id + 1; });
+    return max;
+  }
+  function makeManual(f){
+    var parts = String(f.name || '').trim().split(/\s+/);
+    var ini = ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length-1][0] : '')).toUpperCase();
+    var id = nextManualId();
+    return {
+      id: id, manual: true,
+      name: f.name, initials: ini,
+      colour: AV[id % AV.length],
+      email: f.email || '', phone: f.phone || '',
+      desig: f.desig || '', seniority: f.seniority || 'Manager',
+      comp: f.comp || '', city: f.city || '', industry: f.industry || INDUSTRIES[0],
+      sub: 'active', opens: 0, clicks: 0, src: f.src || 'Added by hand',
+      editions: 0, registered: false, paid: false,
+      score: f.score != null ? f.score : 50
+    };
+  }
+
+  function addLeadDialog(ctx){
+    var Q = [{ name:'', desig:'', comp:'', email:'', phone:'', city:'', industry:INDUSTRIES[0],
+               seniority:'Manager', owner:OWNERS[0], level:'warm', stage:'new' }];
+    var qi = 0;
+
+    function blank(){
+      var prev = Q[qi] || {};
+      return { name:'', desig:'', comp:prev.comp || '', email:'', phone:'', city:prev.city || '',
+               industry:prev.industry || INDUSTRIES[0], seniority:'Manager',
+               owner:prev.owner || OWNERS[0], level:'warm', stage:'new' };
+    }
+
+    modal('Add leads',
+      '<div class="sp-wrap" style="border:1px solid var(--border);border-radius:11px;overflow:hidden">' +
+        '<div class="sp-queue">' +
+          '<div class="qh">Adding <span id="al-n"></span></div>' +
+          '<div class="qlist" id="al-list"></div>' +
+          '<div class="qfoot"><button class="btn btn-secondary btn-sm" type="button" id="al-add" ' +
+            'style="width:100%">' + svg(I.plus,13) + ' Add another</button></div>' +
+        '</div>' +
+        '<div class="sp-form" id="al-form"></div>' +
+      '</div>',
+      '<span id="al-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+      '<button class="btn btn-ghost" type="button" id="al-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="al-save"></button>', 940);
+
+    function readForm(){
+      if (!$('al-name')) return;
+      var e = Q[qi];
+      ['name','desig','comp','email','phone','city'].forEach(function(k){ e[k] = $('al-'+k).value.trim(); });
+      e.industry = $('al-industry').value;
+      e.seniority = $('al-seniority').value;
+      e.owner = $('al-owner').value;
+      e.level = $('al-level').value;
+      e.stage = $('al-stage').value;
+    }
+    function paintQueue(){
+      $('al-n').textContent = Q.length + (Q.length === 1 ? ' lead' : ' leads');
+      $('al-list').innerHTML = Q.map(function(e, i){
+        var ini = e.name ? e.name.trim().split(/\s+/).map(function(w){ return w[0]; }).slice(0,2).join('').toUpperCase() : '';
+        return '<button class="qi" type="button" data-q="'+i+'" aria-current="'+(i===qi)+'">' +
+          '<span class="qph" style="background:'+AV[i % AV.length]+';color:#fff">'+esc(ini)+'</span>' +
+          '<span class="qn">' + (e.name ? esc(e.name) : '<em>Lead '+(i+1)+'</em>') + '</span>' +
+          (Q.length > 1 ? '<span class="qx" data-qx="'+i+'">'+svg(I.x,13)+'</span>' : '') + '</button>';
+      }).join('');
+      each('#al-list [data-q]', function(b){
+        b.onclick = function(ev){
+          if (ev.target.closest('[data-qx]')) return;
+          readForm(); qi = +b.getAttribute('data-q'); paintForm(); paintQueue();
+        };
+      });
+      each('#al-list [data-qx]', function(x){
+        x.onclick = function(ev){
+          ev.stopPropagation();
+          readForm();
+          Q.splice(+x.getAttribute('data-qx'), 1);
+          if (qi >= Q.length) qi = Q.length - 1;
+          paintForm(); paintQueue(); paintSave();
+        };
+      });
+    }
+    function paintSave(){
+      $('al-save').textContent = Q.length === 1 ? 'Add lead' : 'Add all ' + Q.length + ' leads';
+    }
+    function fld(k, label, ph, req){
+      var e = Q[qi];
+      return '<div class="field c6"><div class="flabel-row"><label for="al-'+k+'">'+label+
+        (req ? ' <span class="pill-req">Required</span>' : '') + '</label></div>' +
+        '<input class="inp" id="al-'+k+'" value="'+esc(e[k]||'')+'" placeholder="'+esc(ph)+'"></div>';
+    }
+    function sel(k, label, opts, hint){
+      var e = Q[qi];
+      return '<div class="field c6"><label for="al-'+k+'">'+label+'</label>' +
+        '<select class="inp" id="al-'+k+'">' + opts.map(function(o){
+          var v = o.id || o, t = o.label || o;
+          return '<option value="'+esc(v)+'"'+(e[k]===v?' selected':'')+'>'+esc(t)+'</option>';
+        }).join('') + '</select>' + (hint ? '<p class="hint">'+hint+'</p>' : '') + '</div>';
+    }
+    function paintForm(){
+      $('al-form').innerHTML = '<div class="frow">' +
+        fld('name','Full name','e.g. Ishita Verma', true) +
+        fld('comp','Company','e.g. Wipro', true) +
+        fld('desig','Designation','e.g. Head - Customer Experience') +
+        fld('email','Email','name@company.com') +
+        fld('phone','Mobile','+91 98200 00000') +
+        fld('city','City','e.g. Mumbai') +
+        sel('industry','Industry', INDUSTRIES) +
+        sel('seniority','Seniority', SENIORITY) +
+        sel('owner','Assign to', OWNERS, 'Who works this lead.') +
+        sel('level','Level', LEVELS, levelMeta(Q[qi].level).note) +
+        sel('stage','Starting stage', STAGES) +
+      '</div>';
+      $('al-name').addEventListener('input', function(){ readForm(); paintQueue(); });
+      $('al-level').onchange = function(){
+        readForm();
+        var h = $('al-level').parentNode.querySelector('.hint');
+        if (h) h.textContent = levelMeta(this.value).note;
+      };
+    }
+
+    $('al-add').onclick = function(){
+      readForm(); Q.push(blank()); qi = Q.length - 1;
+      paintForm(); paintQueue(); paintSave();
+    };
+    $('al-cancel').onclick = closeModal;
+    $('al-save').onclick = function(){
+      readForm();
+      var bad = [];
+      Q.forEach(function(e, i){ if (!e.name || !e.comp) bad.push(i + 1); });
+      if (bad.length){
+        $('al-err').textContent = Q.length === 1
+          ? 'A name and a company are needed.'
+          : (bad.length === 1 ? 'Lead ' + bad[0] + ' needs a name and a company.'
+                              : 'Leads ' + bad.join(', ') + ' need a name and a company.');
+        qi = bad[0] - 1; paintForm(); paintQueue();
+        return;
+      }
+      D.crmAdded = D.crmAdded || [];
+      Q.forEach(function(e){
+        var p = makeManual(e);
+        D.crmAdded.push(p);
+        D.crm[p.id] = { stage:e.stage, owner:e.owner, calls:0, notes:[], next:'',
+                        level:e.level, touched:Date.now() };
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(Q.length === 1 ? Q[0].name + ' added to the CRM' : Q.length + ' leads added to the CRM');
+    };
+
+    paintQueue(); paintForm(); paintSave();
+  }
+
+  /* ---------------------------------------------------------------- CSV import */
+  function parseCSV(text){
+    var rows = [], row = [], cell = '', q = false;
+    text = String(text).replace(/\r\n?/g, '\n');
+    for (var i = 0; i < text.length; i++){
+      var c = text[i];
+      if (q){
+        if (c === '"'){ if (text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+        else cell += c;
+      } else if (c === '"') q = true;
+      else if (c === ',' || c === '\t'){ row.push(cell); cell = ''; }
+      else if (c === '\n'){ row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += c;
+    }
+    if (cell.length || row.length){ row.push(cell); rows.push(row); }
+    return rows.filter(function(r){ return r.some(function(c){ return String(c).trim(); }); });
+  }
+
+  var IMP_FIELDS = [
+    { id:'name',  label:'Full name',   req:true,  hints:['name','full name','lead','contact','person'] },
+    { id:'comp',  label:'Company',     req:true,  hints:['company','organisation','organization','account','firm'] },
+    { id:'desig', label:'Designation', req:false, hints:['designation','title','role','job'] },
+    { id:'email', label:'Email',       req:false, hints:['email','e-mail','mail'] },
+    { id:'phone', label:'Mobile',      req:false, hints:['phone','mobile','contact number','number'] },
+    { id:'city',  label:'City',        req:false, hints:['city','location','town'] }
+  ];
+
+  function guessColumn(header, f){
+    for (var i = 0; i < header.length; i++){
+      var h = String(header[i]).toLowerCase().trim();
+      for (var j = 0; j < f.hints.length; j++) if (h === f.hints[j]) return i;
+    }
+    for (var i2 = 0; i2 < header.length; i2++){
+      var h2 = String(header[i2]).toLowerCase().trim();
+      for (var j2 = 0; j2 < f.hints.length; j2++) if (h2.indexOf(f.hints[j2]) >= 0) return i2;
+    }
+    return -1;
+  }
+
+  function importDialog(ctx){
+    var rows = null, header = [], map = {}, owner = OWNERS[0], level = 'warm';
+
+    modal('Upload leads',
+      '<div id="imp-step1">' +
+        '<div class="imp-drop" id="imp-drop" tabindex="0" role="button">' + svg(I.layers, 26) +
+          '<b>Drop a CSV here</b><span>or click to choose a file. Tab-separated works too.</span></div>' +
+        '<p class="hint" style="margin:12px 0 6px">Or paste rows straight from a spreadsheet:</p>' +
+        '<textarea class="inp" id="imp-paste" style="min-height:96px;font-family:var(--font-mono);font-size:12px" ' +
+          'placeholder="Name,Company,Designation,Email,Mobile,City"></textarea>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="imp-read" style="margin-top:10px">' +
+          'Read these rows</button>' +
+      '</div><div id="imp-step2" hidden></div>',
+      '<span id="imp-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+      '<button class="btn btn-ghost" type="button" id="imp-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="imp-go" disabled>Import</button>', 860);
+
+    function cleanRows(){
+      var body = rows.slice(1);
+      var out = [], seen = {}, dupes = 0, blanks = 0;
+      body.forEach(function(r){
+        var rec = {};
+        IMP_FIELDS.forEach(function(f){
+          var idx = map[f.id];
+          rec[f.id] = idx >= 0 && r[idx] != null ? String(r[idx]).trim() : '';
+        });
+        if (!rec.name || !rec.comp){ blanks++; return; }
+        var key = (rec.email || rec.name + '|' + rec.comp).toLowerCase();
+        if (seen[key]){ dupes++; return; }
+        seen[key] = 1;
+        out.push(rec);
+      });
+      return { ok: out, dupes: dupes, blanks: blanks };
+    }
+
+    function paintStep2(){
+      header = rows[0].map(function(h){ return String(h).trim(); });
+      IMP_FIELDS.forEach(function(f){ if (map[f.id] == null) map[f.id] = guessColumn(header, f); });
+      var res = cleanRows();
+
+      $('imp-step1').hidden = true;
+      $('imp-step2').hidden = false;
+      $('imp-step2').innerHTML =
+        '<p class="hint" style="margin:0 0 12px">Found <b>' + comma(rows.length - 1) + '</b> rows. ' +
+          'Check each column landed in the right place — the first row is treated as the header.</p>' +
+        '<div class="imp-map">' + IMP_FIELDS.map(function(f){
+          return '<div class="field"><label for="imp-' + f.id + '">' + f.label +
+            (f.req ? ' <span class="pill-req">Required</span>' : '') + '</label>' +
+            '<select class="inp" id="imp-' + f.id + '">' +
+              '<option value="-1"' + (map[f.id] < 0 ? ' selected' : '') + '>— not in this file —</option>' +
+              header.map(function(h, i){
+                return '<option value="' + i + '"' + (map[f.id] === i ? ' selected' : '') + '>' +
+                  esc(h || ('Column ' + (i+1))) + '</option>';
+              }).join('') + '</select></div>';
+        }).join('') + '</div>' +
+
+        '<div class="imp-stat">' +
+          '<span class="readout good">' + svg(I.check,13) + '<b>' + comma(res.ok.length) + '</b> ready</span>' +
+          (res.dupes ? '<span class="readout">' + svg(I.info,13) + '<b>' + comma(res.dupes) + '</b> duplicates skipped</span>' : '') +
+          (res.blanks ? '<span class="readout bad">' + svg(I.info,13) + '<b>' + comma(res.blanks) + '</b> missing a name or company</span>' : '') +
+        '</div>' +
+
+        '<div class="imp-prev"><table><thead><tr>' +
+          IMP_FIELDS.map(function(f){ return '<th>' + esc(f.label) + '</th>'; }).join('') +
+        '</tr></thead><tbody>' +
+          res.ok.slice(0, 8).map(function(r){
+            return '<tr>' + IMP_FIELDS.map(function(f){
+              return '<td' + (f.req && !r[f.id] ? ' class="bad"' : '') + '>' +
+                esc(r[f.id] || '—') + '</td>';
+            }).join('') + '</tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+
+        '<div class="frow" style="margin-top:14px">' +
+          '<div class="field c6"><label for="imp-owner">Assign every lead to</label>' +
+            '<select class="inp" id="imp-owner">' + OWNERS.map(function(o){
+              return '<option' + (owner === o ? ' selected' : '') + '>' + esc(o) + '</option>';
+            }).join('') + '</select></div>' +
+          '<div class="field c6"><label for="imp-level">Start them at</label>' +
+            '<select class="inp" id="imp-level">' + LEVELS.map(function(l){
+              return '<option value="' + l.id + '"' + (level === l.id ? ' selected' : '') + '>' +
+                l.label + '</option>';
+            }).join('') + '</select></div>' +
+        '</div>' +
+        '<button class="btn btn-ghost btn-sm" type="button" id="imp-back">Choose a different file</button>';
+
+      IMP_FIELDS.forEach(function(f){
+        $('imp-' + f.id).onchange = function(){ map[f.id] = +this.value; paintStep2(); };
+      });
+      $('imp-owner').onchange = function(){ owner = this.value; };
+      $('imp-level').onchange = function(){ level = this.value; };
+      $('imp-back').onclick = function(){
+        rows = null; map = {};
+        $('imp-step2').hidden = true; $('imp-step1').hidden = false;
+        $('imp-go').disabled = true;
+      };
+      $('imp-go').disabled = res.ok.length === 0;
+      $('imp-go').textContent = res.ok.length
+        ? 'Import ' + comma(res.ok.length) + (res.ok.length === 1 ? ' lead' : ' leads')
+        : 'Nothing to import';
+    }
+
+    function take(text){
+      var parsed = parseCSV(text);
+      if (parsed.length < 2){
+        $('imp-err').textContent = 'That needs a header row and at least one row of data.';
+        return;
+      }
+      $('imp-err').textContent = '';
+      rows = parsed; map = {};
+      paintStep2();
+    }
+
+    var drop = $('imp-drop');
+    function pick(){
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.csv,.tsv,.txt,text/csv,text/plain';
+      inp.onchange = function(){
+        var f = inp.files && inp.files[0];
+        if (!f) return;
+        var fr = new FileReader();
+        fr.onload = function(){ take(fr.result); };
+        fr.onerror = function(){ $('imp-err').textContent = 'That file could not be read.'; };
+        fr.readAsText(f);
+      };
+      inp.click();
+    }
+    drop.onclick = pick;
+    drop.onkeydown = function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); } };
+    drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function(){ drop.classList.remove('over'); });
+    drop.addEventListener('drop', function(e){
+      e.preventDefault(); drop.classList.remove('over');
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function(){ take(fr.result); };
+      fr.readAsText(f);
+    });
+    $('imp-read').onclick = function(){
+      var v = $('imp-paste').value.trim();
+      if (!v){ $('imp-err').textContent = 'Paste some rows first.'; return; }
+      take(v);
+    };
+    $('imp-cancel').onclick = closeModal;
+    $('imp-go').onclick = function(){
+      var res = cleanRows();
+      if (!res.ok.length) return;
+      D.crmAdded = D.crmAdded || [];
+      res.ok.forEach(function(r){
+        var p = makeManual({ name:r.name, comp:r.comp, desig:r.desig, email:r.email,
+                             phone:r.phone, city:r.city, src:'Uploaded list', score:45 });
+        D.crmAdded.push(p);
+        D.crm[p.id] = { stage:'new', owner:owner, calls:0, notes:[], next:'', level:level, touched:Date.now() };
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(comma(res.ok.length) + ' leads imported and assigned to ' + owner);
+    };
+  }
+
+  /* ---------------------------------------------------------------- bulk actions */
+  function bulkAction(kind, ctx){
+    var ids = selectedIds();
+    if (!ids.length) return;
+    var L = leads(ctx.EV);
+    var picked = L.filter(function(l){ return ids.indexOf(String(l.id)) >= 0; });
+
+    function applyAll(fn, msg){
+      picked.forEach(function(l){ fn(l); saveLead(l); });
+      closeModal(); redraw(); ctx.toast(msg);
+    }
+
+    if (kind === 'export'){
+      exportCSV(picked.map(function(l){
+        return { Name:l.p.name, Company:l.p.comp, Designation:l.p.desig, Email:l.p.email,
+                 Mobile:l.p.phone, Level:levelMeta(l.level).label, Stage:stageById(l.stage).label,
+                 Owner:l.owner, Calls:l.calls, Score:l.p.score, 'Follow-up':l.next || '' };
+      }), 'crm-leads');
+      ctx.toast(picked.length + ' leads exported');
+      return;
+    }
+
+    if (kind === 'email' || kind === 'whatsapp'){
+      var reach = picked.filter(function(l){
+        return kind === 'email' ? (l.p.email && l.p.sub !== 'unsubscribed') : !!l.p.phone;
+      });
+      modal(kind === 'email' ? 'Email these leads' : 'WhatsApp these leads',
+        '<p class="hint" style="margin:0 0 14px">' +
+          '<b>' + reach.length + '</b> of ' + picked.length + ' can be reached on this channel' +
+          (reach.length < picked.length
+            ? ' — the rest are missing ' + (kind === 'email' ? 'an email or have opted out' : 'a mobile number') + '.'
+            : '.') + '</p>' +
+        '<div class="field"><label for="bk-tpl">Template</label>' +
+          '<select class="inp" id="bk-tpl">' + D.templates.filter(function(t){
+            return kind === 'email' ? t.channel === 'email' : t.channel === 'whatsapp';
+          }).map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join('') +
+          '</select><p class="hint">Built in Studio. The merge tags fill per lead.</p></div>',
+        '<button class="btn btn-ghost" type="button" id="bk-cancel">Cancel</button>' +
+        '<button class="btn btn-primary" type="button" id="bk-go">Queue for ' + reach.length + '</button>', 480);
+      $('bk-cancel').onclick = closeModal;
+      $('bk-go').onclick = function(){
+        picked.forEach(function(l){
+          if (l.stage === 'new') l.stage = 'contacted';
+          l.notes.push({ when: Date.now(), text: (kind === 'email' ? 'Emailed' : 'WhatsApp sent') + ' in a bulk send' });
+          saveLead(l);
+        });
+        closeModal(); redraw();
+        ctx.toast(reach.length + (kind === 'email' ? ' emails' : ' messages') + ' queued');
+      };
+      return;
+    }
+
+    if (kind === 'assign'){
+      modal('Assign ' + picked.length + (picked.length === 1 ? ' lead' : ' leads'),
+        '<div class="field"><label for="bk-owner">Owner</label>' +
+          '<select class="inp" id="bk-owner">' + OWNERS.map(function(o){
+            return '<option>'+esc(o)+'</option>'; }).join('') + '</select>' +
+          '<p class="hint">They see these in their own view straight away.</p></div>',
+        '<button class="btn btn-ghost" type="button" id="bk-cancel">Cancel</button>' +
+        '<button class="btn btn-primary" type="button" id="bk-go">Assign</button>', 420);
+      $('bk-cancel').onclick = closeModal;
+      $('bk-go').onclick = function(){
+        var o = $('bk-owner').value;
+        applyAll(function(l){ l.owner = o; }, picked.length + ' leads assigned to ' + o);
+      };
+      return;
+    }
+
+    if (kind === 'stage' || kind === 'level'){
+      var opts = kind === 'stage' ? STAGES : LEVELS;
+      modal(kind === 'stage' ? 'Move ' + picked.length + ' to a stage' : 'Set the level on ' + picked.length,
+        '<div class="field"><label for="bk-val">' + (kind === 'stage' ? 'Stage' : 'Level') + '</label>' +
+          '<select class="inp" id="bk-val">' + opts.map(function(o){
+            return '<option value="'+o.id+'">'+esc(o.label)+'</option>'; }).join('') + '</select>' +
+          (kind === 'level' ? '<p class="hint">Overrides the score-based level until you change it back.</p>' : '') +
+        '</div>',
+        '<button class="btn btn-ghost" type="button" id="bk-cancel">Cancel</button>' +
+        '<button class="btn btn-primary" type="button" id="bk-go">Apply</button>', 420);
+      $('bk-cancel').onclick = closeModal;
+      $('bk-go').onclick = function(){
+        var v = $('bk-val').value;
+        if (kind === 'stage') applyAll(function(l){ l.stage = v; }, picked.length + ' moved to ' + stageById(v).label);
+        else applyAll(function(l){ l.level = v; }, picked.length + ' set to ' + levelMeta(v).label);
+      };
+    }
+  }
+
+  function exportCSV(records, name){
+    if (!records.length) return;
+    var cols = Object.keys(records[0]);
+    var q = function(v){
+      v = v == null ? '' : String(v);
+      return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    };
+    var csv = cols.join(',') + '\n' +
+      records.map(function(r){ return cols.map(function(c){ return q(r[c]); }).join(','); }).join('\n');
+    try {
+      var blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name + '-' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    } catch(e){}
+  }
+
+  /* send a ready-made cut from the pipeline straight into the CRM */
+  function recipeMembers(EV, id){
+    var all = prospects(EV);
+    if (id === 'loyal')      return all.filter(function(p){ return p.editions>=2 && p.sub!=='unsubscribed'; });
+    if (id === 'warmnotreg') return all.filter(function(p){ return p.sub==='active' && !p.registered; });
+    if (id === 'cxo')        return all.filter(function(p){ return p.seniority==='CXO' && p.sub!=='unsubscribed'; });
+    return all.filter(function(p){ return p.editions>=1 && p.sub==='dormant'; });
+  }
+  function pushToCRM(id, ctx){
+    var people = recipeMembers(ctx.EV, id).slice(0, 200);
+    var fresh = people.filter(function(p){ return !D.crm[p.id]; });
+    modal('Send to the CRM',
+      '<p class="hint" style="margin:0 0 14px"><b>' + comma(people.length) + '</b> people in this cut, ' +
+        '<b>' + comma(fresh.length) + '</b> not yet worked by anyone. ' +
+        'They land in the pipeline at <b>New</b> so nobody loses their place.</p>' +
+      '<div class="frow">' +
+        '<div class="field c6"><label for="pc-owner">Assign to</label>' +
+          '<select class="inp" id="pc-owner">' + OWNERS.map(function(o){
+            return '<option>'+esc(o)+'</option>'; }).join('') + '</select></div>' +
+        '<div class="field c6"><label for="pc-level">Level</label>' +
+          '<select class="inp" id="pc-level">' + LEVELS.map(function(l){
+            return '<option value="'+l.id+'"'+(l.id==='warm'?' selected':'')+'>'+l.label+'</option>';
+          }).join('') + '</select></div>' +
+      '</div>',
+      '<button class="btn btn-ghost" type="button" id="pc-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="pc-go">Send ' + comma(fresh.length) + ' to the CRM</button>', 480);
+    $('pc-cancel').onclick = closeModal;
+    $('pc-go').onclick = function(){
+      var o = $('pc-owner').value, lv = $('pc-level').value;
+      fresh.forEach(function(p){
+        D.crm[p.id] = { stage:'new', owner:o, calls:0, notes:[], next:'', level:lv, touched:Date.now() };
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(comma(fresh.length) + ' sent to ' + o + ' in the CRM');
+    };
+  }
+
   function openLead(id, ctx){
     var EV = ctx.EV;
     var l = leads(EV).filter(function(x){ return String(x.id)===String(id); })[0];
@@ -1163,6 +1910,15 @@ window.EditEventMarketing = (function(){
                 (on?x.colour:'var(--border)')+';background:'+(on?x.colour+'1F':'transparent')+';color:'+
                 (on?x.colour:'var(--text-muted)')+'">'+x.label+'</button>';
             }).join('') + '</div></div>' +
+
+          '<div class="dsec"><h4>Level</h4>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' + LEVELS.map(function(x){
+              var on = l.level===x.id;
+              return '<button class="lvl lvl-'+x.id+'" type="button" data-setlevel="'+x.id+'" ' +
+                'style="cursor:pointer;border:1px solid '+(on?'currentColor':'transparent')+';padding:4px 11px">' +
+                x.label+'</button>';
+            }).join('') + '</div>' +
+            '<p class="hint">'+esc(levelMeta(l.level).note)+'</p></div>' +
 
           '<div class="dsec"><h4>Owner</h4>' +
             '<select class="inp" id="ld-owner">' + OWNERS.map(function(o){
@@ -1194,6 +1950,7 @@ window.EditEventMarketing = (function(){
         '<div class="drawer-foot">' +
           '<button class="btn btn-primary btn-sm" type="button" id="ld-call">'+svg(I.phone,13)+' Log a call ('+l.calls+')</button>' +
           '<button class="btn btn-secondary btn-sm" type="button" id="ld-mail">'+svg(I.mail,13)+' Email</button>' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="ld-wa">'+svg(I.wa,13)+' WhatsApp</button>' +
         '</div>' +
       '</aside>';
 
@@ -1226,7 +1983,27 @@ window.EditEventMarketing = (function(){
       saveLead(l); redraw(); openLead(id, ctx);
       ctx.toast('Call logged');
     };
-    $('ld-mail').onclick = function(){ ctx.toast('Opens the composer for ' + l.p.name); };
+    each('[data-setlevel]', function(el){
+      el.onclick = function(){
+        l.level = el.getAttribute('data-setlevel');
+        saveLead(l); redraw(); openLead(id, ctx);
+        ctx.toast(l.p.name + ' is now ' + levelMeta(l.level).label.toLowerCase());
+      };
+    });
+    function logTouch(what){
+      if (l.stage === 'new') l.stage = 'contacted';
+      l.notes.push({ when: Date.now(), text: what });
+      saveLead(l); redraw(); openLead(id, ctx);
+      ctx.toast(what);
+    }
+    $('ld-mail').onclick = function(){
+      if (!l.p.email){ ctx.toast('No email on file for ' + l.p.name); return; }
+      logTouch('Emailed ' + l.p.email);
+    };
+    $('ld-wa').onclick = function(){
+      if (!l.p.phone){ ctx.toast('No mobile on file for ' + l.p.name); return; }
+      logTouch('WhatsApp sent to ' + l.p.phone);
+    };
   }
 
   /* ======================================================================
@@ -1253,8 +2030,15 @@ window.EditEventMarketing = (function(){
     CUR.tab = tab; CUR.ctx = ctx; CUR.EV = ctx.EV;
     loadStore(ctx.EV);
     var h = HEADS[tab] || HEADS.studio;
-    return ctx.vhead(h[0], h[1],
-        tab === 'campaigns' ? '<button class="btn btn-primary btn-sm" type="button" data-newcamp="1">'+svg(I.send,13)+' New campaign</button>' : '') +
+    var acts = '';
+    if (tab === 'campaigns')
+      acts = '<button class="btn btn-primary btn-sm" type="button" data-newcamp="1">'+svg(I.send,13)+' New campaign</button>';
+    if (tab === 'crm')
+      acts = '<button class="btn btn-secondary btn-sm" type="button" id="crm-import">'+svg(I.layers,13)+' Upload leads</button>' +
+             '<button class="btn btn-primary btn-sm" type="button" id="crm-new">'+svg(I.plus,13)+' Add lead</button>';
+    if (tab === 'pipeline')
+      acts = '<button class="btn btn-secondary btn-sm" type="button" id="pipe-exportall">'+svg(I.down,13)+' Export pool</button>';
+    return ctx.vhead(h[0], h[1], acts) +
       '<div id="mkt-root">' + bodyHTML(tab, ctx) + '</div>';
   }
 
@@ -1388,15 +2172,148 @@ window.EditEventMarketing = (function(){
     /* crm */
     each('[data-crmview]', function(el){ el.onclick = function(){ U.crmView = el.getAttribute('data-crmview'); redraw(); }; });
     each('[data-lead]', function(el){ el.onclick = function(){ openLead(el.getAttribute('data-lead'), ctx); }; });
+    each('[data-qview]', function(el){
+      el.onclick = function(){ U.crmQuick = el.getAttribute('data-qview'); U.crmPage = 1; redraw(); };
+    });
     var cq = $('crm-q');
     if (cq) cq.oninput = function(){
-      U.crmQ = cq.value; redraw();
+      U.crmQ = cq.value; U.crmPage = 1; redraw();
       var n = $('crm-q'); if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
     };
     var cs = $('crm-stage');
-    if (cs) cs.onchange = function(){ U.crmStage = cs.value; redraw(); };
+    if (cs) cs.onchange = function(){ U.crmStage = cs.value; U.crmPage = 1; redraw(); };
     var co = $('crm-owner');
-    if (co) co.onchange = function(){ U.crmOwner = co.value; redraw(); };
+    if (co) co.onchange = function(){ U.crmOwner = co.value; U.crmPage = 1; redraw(); };
+    var cl = $('crm-level');
+    if (cl) cl.onchange = function(){ U.crmLevel = cl.value; U.crmPage = 1; redraw(); };
+
+    /* selection */
+    each('[data-pick]', function(el){
+      el.onclick = function(e){
+        e.stopPropagation();
+        var id = el.getAttribute('data-pick');
+        if (el.checked) U.crmSel[id] = true; else delete U.crmSel[id];
+        redraw();
+      };
+    });
+    var ca = $('crm-all');
+    if (ca) ca.onclick = function(){
+      var on = ca.checked;
+      each('[data-pick]', function(el){
+        var id = el.getAttribute('data-pick');
+        if (on) U.crmSel[id] = true; else delete U.crmSel[id];
+      });
+      redraw();
+    };
+    var clr = $('crm-clearsel');
+    if (clr) clr.onclick = function(){ U.crmSel = {}; redraw(); };
+    each('[data-bulk]', function(el){
+      el.onclick = function(){ bulkAction(el.getAttribute('data-bulk'), ctx); };
+    });
+
+    /* sorting */
+    each('[data-sort]', function(el){
+      el.onclick = function(){
+        var k = el.getAttribute('data-sort');
+        if (U.crmSort.k === k) U.crmSort.dir = -U.crmSort.dir;
+        else U.crmSort = { k:k, dir: (k === 'name' || k === 'comp' || k === 'owner') ? 1 : -1 };
+        redraw();
+      };
+    });
+
+    /* paging, shared by the crm table and the pool */
+    each('[data-pg]', function(el){
+      el.onclick = function(){
+        var bits = el.getAttribute('data-pg').split(':');
+        if (bits[0] === 'crm') U.crmPage = Math.max(1, +bits[1]);
+        else U.pipePage = Math.max(1, +bits[1]);
+        redraw();
+      };
+    });
+
+    /* dragging a card between board columns is the fastest way to move a stage */
+    (function(){
+      var dragId = null;
+      each('.lead[draggable]', function(card){
+        card.addEventListener('dragstart', function(e){
+          dragId = card.getAttribute('data-lead');
+          card.classList.add('drag');
+          try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+        });
+        card.addEventListener('dragend', function(){
+          dragId = null;
+          each('.lead', function(c){ c.classList.remove('drag'); });
+          each('.bcol', function(c){ c.classList.remove('over'); });
+        });
+      });
+      each('[data-stagecol]', function(col){
+        col.addEventListener('dragover', function(e){ if (dragId){ e.preventDefault(); col.classList.add('over'); } });
+        col.addEventListener('dragleave', function(){ col.classList.remove('over'); });
+        col.addEventListener('drop', function(e){
+          if (!dragId) return;
+          e.preventDefault();
+          col.classList.remove('over');
+          var stage = col.getAttribute('data-stagecol');
+          var l = leads(ctx.EV).filter(function(x){ return String(x.id) === String(dragId); })[0];
+          if (!l || l.stage === stage) return;
+          l.stage = stage;
+          saveLead(l); redraw();
+          ctx.toast(l.p.name + ' moved to ' + stageById(stage).label);
+        });
+      });
+    })();
+
+    var cn = $('crm-new');
+    if (cn) cn.onclick = function(){ addLeadDialog(ctx); };
+    var ci = $('crm-import');
+    if (ci) ci.onclick = function(){ importDialog(ctx); };
+
+    /* pipeline */
+    each('[data-ed]', function(el){
+      el.onclick = function(){
+        var i = +el.getAttribute('data-ed');
+        var at = U.pipeEd.indexOf(i);
+        if (at >= 0) U.pipeEd.splice(at, 1); else U.pipeEd.push(i);
+        U.pipePage = 1; redraw();
+      };
+    });
+    var pec = $('pipe-edclear');
+    if (pec) pec.onclick = function(){ U.pipeEd = []; U.pipePage = 1; redraw(); };
+    var pq = $('pipe-q');
+    if (pq) pq.oninput = function(){
+      U.pipeQ = pq.value; U.pipePage = 1; redraw();
+      var n = $('pipe-q'); if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+    };
+    var pl = $('pipe-level');
+    if (pl) pl.onchange = function(){ U.pipeLevel = pl.value; U.pipePage = 1; redraw(); };
+    var ps = $('pipe-sub');
+    if (ps) ps.onchange = function(){ U.pipeSub = ps.value; U.pipePage = 1; redraw(); };
+    each('[data-tocrm]', function(el){
+      el.onclick = function(e){ e.stopPropagation(); pushToCRM(el.getAttribute('data-tocrm'), ctx); };
+    });
+    each('[data-pipe]', function(el){
+      el.onclick = function(){ openLead(el.getAttribute('data-pipe'), ctx); };
+    });
+    function poolCSV(list){
+      return list.map(function(p){
+        return { Name:p.name, Company:p.comp, Designation:p.desig, Email:p.email, Mobile:p.phone,
+                 City:p.city, Industry:p.industry, Level:levelMeta(levelOf(p)).label, Score:p.score,
+                 'Past editions':p.editions, Registered:p.registered ? 'Yes' : 'No',
+                 Subscriber:subState(p.sub).label };
+      });
+    }
+    var pex = $('pipe-export');
+    if (pex) pex.onclick = function(){
+      var list = pipeFiltered(ctx.EV);
+      exportCSV(poolCSV(list), 'pipeline-filtered');
+      ctx.toast(comma(list.length) + ' rows exported');
+    };
+    var pea = $('pipe-exportall');
+    if (pea) pea.onclick = function(){
+      var list = prospects(ctx.EV);
+      exportCSV(poolCSV(list), 'pipeline-pool');
+      ctx.toast(comma(list.length) + ' rows exported');
+    };
   }
 
   function wire(tab, ctx){
@@ -1414,7 +2331,10 @@ window.EditEventMarketing = (function(){
       SUB_STATE: SUB_STATE, INDUSTRIES: INDUSTRIES, SENIORITY: SENIORITY,
       matchBatch: matchBatch, batchMembers: batchMembers, emptyFilters: emptyFilters,
       describeBatch: describeBatch, loadStore: loadStore, store: function(){ return D; },
-      state: U, bodyHTML: bodyHTML, merge: merge, saveLead: saveLead, stageById: stageById
+      state: U, bodyHTML: bodyHTML, merge: merge, saveLead: saveLead, stageById: stageById,
+      LEVELS: LEVELS, levelOf: levelOf, parseCSV: parseCSV, guessColumn: guessColumn,
+      IMP_FIELDS: IMP_FIELDS, crmFiltered: crmFiltered, pipeFiltered: pipeFiltered,
+      quickViews: quickViews, makeManual: makeManual
     }
   };
 })();

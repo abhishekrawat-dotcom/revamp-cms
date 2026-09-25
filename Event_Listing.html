@@ -3,6 +3,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
+  /* cross-page transitions: cross-fade into the event console instead of
+     blanking the window between documents. Chrome 126+; anywhere else the
+     at-rule is ignored and navigation behaves as before. */
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce){ @view-transition { navigation: none; } }
+  html{ background: var(--bg); }
   :root{
     --bg: #F7F7F4;
     --surface: #FFFFFF;
@@ -521,6 +527,7 @@
   @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
   @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
+<link rel="stylesheet" href="motion.css">
 
 <header class="main-nav">
   <div class="main-nav-inner">

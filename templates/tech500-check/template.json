@@ -1,0 +1,110 @@
+{
+  "id": "tech500-check",
+  "name": "TECH500",
+  "title": "Tech500 Summit - Technology Summit and Conference | CIO Tech Conferences | ET CIO",
+  "source": "https://cio.economictimes.indiatimes.com/tech-500-summit",
+  "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
+  "fonts": [
+    "https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800&display=swap",
+    "https://fonts.googleapis.com/css2?family=Playfair%20Display:wght@100;200;300;400;500;600;700;800&display=swap"
+  ],
+  "theme": "theme.css",
+  "design": {
+    "notes": "What the editor's theme controls act on (written by tools/import-template.js — check it). headingFontVar = the variable most headings read; headings/buttons/cards = selectors for the heading and corner-radius controls; swatches = theme colours offered besides the template's own.",
+    "headingFontVar": "--heading-font-family-v2",
+    "headings": ".page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2, .page_hdng5 h1, .page_hdng5 h2",
+    "buttons": "a.book-btn, .book-btn, .agenda-cta, .strategic-influence-btn",
+    "cards": ".why-now-card, .power-chain-item, .summit-spotlight-card, .agenda-card, .industry-card, .strategic-influence-btn, .faq-item",
+    "swatches": ["#0F6F5C", "#1F4FD8", "#8A5A9E", "#9C6B14", "#191B1F"]
+  },
+  "editorFonts": {
+    "Fraunces": "\"Fraunces\", serif",
+    "Inter": "Inter, Arial, sans-serif",
+    "Playfair Display": "Playfair Display, Arial, sans-serif"
+  },
+  "body": {
+    "id": "cio",
+    "class": "microsite product_microsite heading-style-3 color_black web_view_ et_cio single-header",
+    "classNotes": "single-header is added at runtime by ET's header script on the live page; it sets #banner padding-top to 160px (≥768px) to clear ET's header. Revisit when the shared header design arrives.",
+    "style": {
+      "--default-color": "rgb(25 27 31)",
+      "--bg-color": "rgba(255, 255, 255, 1)",
+      "--bg-spacing": "70px 0",
+      "--para-font-size": "16px",
+      "--theme-color": "rgba(216, 21, 30, 1)",
+      "--primary-font-size": "48px",
+      "--secondary-font-size": "16px",
+      "--body-color": "rgba(0, 0, 0, 1)",
+      "font-size": "16px",
+      "--nav-text-color": "rgba(255, 255, 255, 1)",
+      "--nav-bg-color": "rgba(0, 0, 0, 1)",
+      "--body-font-family": "Inter, Arial, sans-serif",
+      "--heading-font-family": "Playfair Display, Arial, sans-serif",
+      "--heading-color": "rgba(13, 13, 15, 1)"
+    }
+  },
+  "content": {
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). The importer maps ET's platform widgets; custom sections are mapped by hand — see import-report.md.",
+    "map": [
+      { "from": "hero", "section": "banner", "use": "et-banner" },
+      { "from": "contact", "section": "contact-us", "use": "et-contact" }
+    ]
+  },
+  "sectionsNotes": "widget = one of ET's platform widgets in templates/_shared/widgets. repeat = the section's repeating cards for Layout items (item, label) and fit = the grid's columns as designed. rootId / etId = the section's id on the live page and in ET's export.",
+  "sections": [
+    { "id": "banner", "name": "Banner", "rootId": "banner", "etId": null, "widget": "et-banner" },
+    {
+      "id": "why-now",
+      "name": "Technology has stopped supporting the business",
+      "rootId": "whyNowSection",
+      "etId": "288831",
+      "repeat": { "item": ".why-now-card", "label": "h4", "fit": 4 }
+    },
+    { "id": "overview", "name": "What is Tech 500", "rootId": "overview", "etId": "288840" },
+    {
+      "id": "power-chain",
+      "name": "The Power Chain",
+      "rootId": "power-chain",
+      "etId": "288827",
+      "repeat": { "item": ".power-chain-item", "label": ".power-chain-role", "fit": 5 }
+    },
+    {
+      "id": "summit-spotlight",
+      "name": "One days. one power room. the full chain in…",
+      "rootId": "summitSpotlight",
+      "etId": "288850",
+      "repeat": { "item": ".summit-spotlight-card", "label": ".summit-spotlight-label", "fit": 3 }
+    },
+    {
+      "id": "agenda",
+      "name": "Be in the room where India'senterprise…",
+      "rootId": "agendaSection",
+      "etId": "288830",
+      "repeat": { "item": ".agenda-card", "label": ".agenda-card-title", "fit": 3 }
+    },
+    {
+      "id": "industries-in-the-room",
+      "name": "Every sector where technology is rewriting the…",
+      "rootId": "industriesInTheRoom",
+      "etId": "288832",
+      "repeat": { "item": ".industry-card", "label": ".industry-number", "fit": 4 }
+    },
+    {
+      "id": "strategic-influence",
+      "name": "Where the CEO's mandate",
+      "rootId": "strategicInfluence",
+      "etId": "288858",
+      "repeat": { "item": ".strategic-influence-btn", "label": null }
+    },
+    {
+      "id": "faq",
+      "name": "Frequently Asked Questions",
+      "rootId": "frequently-asked-questions",
+      "etId": "288835",
+      "script": true,
+      "repeat": { "item": ".faq-item", "label": ".faq-number" }
+    },
+    { "id": "contact-us", "name": "Contact us", "rootId": "contact-us", "etId": null, "widget": "et-contact" },
+    { "id": "about-us", "name": "About ETCIO", "rootId": "about_us_event", "etId": null }
+  ]
+}
