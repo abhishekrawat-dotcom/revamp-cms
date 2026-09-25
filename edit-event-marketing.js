@@ -264,7 +264,7 @@ window.EditEventMarketing = (function(){
     audQ:'', audPage:1,
     crmView:'table', crmQ:'', crmStage:'all', crmOwner:'all', crmLevel:'all',
     crmQuick:'all', crmPage:1, crmSel:{}, crmSort:{ k:'score', dir:-1 },
-    pipeQ:'', pipeEd:[], pipeLevel:'all', pipeSub:'all', pipePage:1,
+    pipeQ:'', pipeEd:[], pipeLevel:'all', pipeSub:'all', pipePage:1, pipeSel:{},
     builder:null
   };
 
@@ -446,6 +446,10 @@ window.EditEventMarketing = (function(){
     return true;
   }
   function batchMembers(EV, b){
+    /* a batch saved from a selection is a fixed list of people, not a filter */
+    if (b.ids && b.ids.length){
+      return prospects(EV).filter(function(p){ return b.ids.indexOf(p.id) >= 0; });
+    }
     return prospects(EV).filter(function(p){ return matchBatch(p, b.f); });
   }
   function emptyFilters(){
@@ -651,21 +655,10 @@ window.EditEventMarketing = (function(){
     var cur = eds[0];
     var F = pipeFiltered(EV);
 
-    var totRegs = eds.reduce(function(n,e){ return n + e.regs; }, 0);
-    var totRev  = eds.reduce(function(n,e){ return n + e.revenue; }, 0);
-    var loyal   = all.filter(function(p){ return p.editions >= 2; }).length;
-    var reach   = all.filter(function(p){ return p.sub !== 'unsubscribed'; }).length;
+    var reach = all.filter(function(p){ return p.sub !== 'unsubscribed'; }).length;
 
-    var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
-      kpi(I.layers,'var(--info)','People on record', comma(all.length),
-          comma(reach) + ' still reachable') +
-      kpi(I.users,'var(--ok)','Registrations, all editions', comma(totRegs),
-          comma(cur.regs) + ' this edition') +
-      kpi(I.star,'var(--accent)','Repeat attendees', comma(loyal),
-          'been to 2+ editions - your warmest list') +
-      kpi(I.money,'var(--review)','Revenue, all editions', compact(totRev),
-          comma(eds.reduce(function(n,e){ return n + e.paid; },0)) + ' paid delegates') +
-    '</div>';
+    /* The edition cards below carry the same numbers the tiles repeated,
+       so the tiles were a row of chrome above the actual work. */
 
     /* editions double as the filter: click one to cut the pool to it */
     var edCards = '<div class="ed-grid">' + eds.map(function(e, i){
@@ -749,6 +742,10 @@ window.EditEventMarketing = (function(){
           return '<option value="'+s.id+'"'+(U.pipeSub===s.id?' selected':'')+'>'+s.label+'</option>';
         }).join('') + '</select>' +
       '<span style="flex:1"></span>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="pipe-mail">' +
+        svg(I.mail,13) + ' Email this view</button>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="pipe-wa">' +
+        svg(I.wa,13) + ' WhatsApp</button>' +
       '<button class="btn btn-secondary btn-sm" type="button" id="pipe-export">' +
         svg(I.down,13) + ' Export CSV</button>' +
     '</div>';
@@ -756,11 +753,15 @@ window.EditEventMarketing = (function(){
     var per = 25, pages = Math.max(1, Math.ceil(F.length / per));
     if (U.pipePage > pages) U.pipePage = pages;
     var slice = F.slice((U.pipePage-1)*per, U.pipePage*per);
+    var allOn = slice.length > 0 && slice.every(function(p){ return U.pipeSel[p.id]; });
     var poolRows = slice.map(function(p){
       var lv = levelMeta(levelOf(p));
       var st = subState(p.sub);
-      return '<tr data-pipe="' + p.id + '">' +
-        '<td><span class="person"><span class="avat" style="background:'+p.colour+'">'+esc(p.initials)+'</span>' +
+      var on = !!U.pipeSel[p.id];
+      return '<tr' + (on ? ' class="sel"' : '') + '>' +
+        '<td class="pick"><input type="checkbox" data-ppick="'+p.id+'"'+(on?' checked':'')+'></td>' +
+        '<td data-pipe="' + p.id + '" style="cursor:pointer"><span class="person">' +
+          '<span class="avat" style="background:'+p.colour+'">'+esc(p.initials)+'</span>' +
           '<span class="pn"><b>'+esc(p.name)+'</b><span class="em">'+esc(p.desig)+'</span></span></span></td>' +
         '<td>'+esc(p.comp)+'</td>' +
         '<td>'+esc(p.industry)+'</td>' +
@@ -773,13 +774,27 @@ window.EditEventMarketing = (function(){
 
     var poolTable = F.length
       ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th class="pick"><input type="checkbox" id="pipe-all"'+(allOn?' checked':'')+'></th>' +
           '<th>Person</th><th>Company</th><th>Industry</th><th>Level</th>' +
           '<th>Score</th><th>Editions</th><th>Subscriber</th>' +
         '</tr></thead><tbody>' + poolRows + '</tbody></table></div>' + pager(U.pipePage, pages, F.length, 'pipe')
       : empty(I.search, 'Nobody matches', 'Loosen the search, the level or the edition filter.');
 
-    return tiles +
-      panel('Editions on record', eds.length + ' editions - click one to cut the pool to it', edCards) +
+    var psel = Object.keys(U.pipeSel).filter(function(k){ return U.pipeSel[k]; });
+    var pbulk = psel.length ? '<div class="bulkbar">' +
+        '<span class="bn">' + psel.length + (psel.length === 1 ? ' person selected' : ' people selected') + '</span>' +
+        '<button class="bbtn" type="button" data-pbulk="email">' + svg(I.mail,13) + ' Email</button>' +
+        '<button class="bbtn" type="button" data-pbulk="whatsapp">' + svg(I.wa,13) + ' WhatsApp</button>' +
+        '<button class="bbtn" type="button" data-pbulk="crm">' + svg(I.headset,13) + ' Send to CRM</button>' +
+        '<button class="bbtn" type="button" data-pbulk="batch">' + svg(I.layers,13) + ' Save as batch</button>' +
+        '<button class="bbtn" type="button" data-pbulk="export">' + svg(I.down,13) + ' Export</button>' +
+        '<span class="sp"></span>' +
+        '<button class="bclear" type="button" id="pipe-clearsel">Clear</button>' +
+      '</div>' : '';
+
+    return panel('Editions on record',
+        comma(all.length) + ' people on record, ' + comma(reach) + ' reachable \u2014 click an edition to cut the pool to it',
+        edCards) +
       '<div class="ins-grid" style="margin-bottom:18px">' +
         '<div class="ins-card"><h3>Pool to paid</h3>' +
           '<div class="cap">Where the base narrows, across every edition</div>' + funnel + '</div>' +
@@ -789,7 +804,7 @@ window.EditEventMarketing = (function(){
       '</div>' +
       panel('Ready-made cuts', 'Already counted - save one as a batch, or work it in the CRM', recipeCards) +
       panelFlushLocal('The pool', comma(F.length) + ' of ' + comma(all.length) + ' shown',
-        toolbar + poolTable);
+        toolbar + pbulk + poolTable);
   }
 
   /* panel() pads its body; the pool table wants to run edge to edge */
@@ -926,19 +941,8 @@ window.EditEventMarketing = (function(){
     STAGES.forEach(function(s){ counts[s.id] = L.filter(function(l){ return l.stage===s.id; }).length; });
     var lvlCounts = { hot:0, warm:0, cold:0 };
     L.forEach(function(l){ lvlCounts[l.level]++; });
-    var won = counts.won, open = L.length - counts.won - counts.lost;
-    var today = new Date(); today.setHours(23,59,59,999);
-    var due = L.filter(function(l){ return l.next && new Date(l.next) <= today; }).length;
-
-    var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
-      kpi(I.headset,'var(--info)','Leads in play', comma(open), comma(L.length)+' in the pipeline') +
-      kpi(I.star,'var(--accent)','Hot right now', comma(lvlCounts.hot), 'score 70 or above') +
-      kpi(I.check,'var(--ok)','Won', comma(won),
-          (L.length ? Math.round(won/L.length*100) : 0)+'% conversion') +
-      kpi(I.clock, due ? 'var(--accent)' : 'var(--warn)','Follow-ups due', comma(due),
-          due ? 'overdue or due today' : 'nothing overdue') +
-    '</div>';
-
+    /* The quick views already carry every number the tiles repeated, so
+       the tiles were a row of chrome between the desk and its list. */
     var views = '<div class="qviews">' + quickViews(L).map(function(v){
       return '<button class="qview" type="button" data-qview="' + v.id + '" aria-pressed="' +
         (U.crmQuick === v.id) + '">' + esc(v.label) + '<span class="n">' + comma(v.n) + '</span></button>';
@@ -983,8 +987,7 @@ window.EditEventMarketing = (function(){
 
     var body = U.crmView === 'board' ? crmBoard(F) : crmTable(F);
 
-    return tiles +
-      panelFlushLocal('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown',
+    return panelFlushLocal('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown',
         views + toolbar + bulk + body);
   }
 
@@ -1744,6 +1747,216 @@ window.EditEventMarketing = (function(){
     };
   }
 
+  /* ======================================================================
+     THE SEND DIALOG
+
+     One composer for both pages, because "email these people" is the
+     same job whether the list came from the CRM or the pool. Who gets
+     it is the first question, so the audience is chosen first and the
+     reachable count moves as you change it - nobody should press send
+     and find out afterwards that half the list has no email.
+     ====================================================================== */
+  var CATEGORIES = [
+    { id:'level',    label:'Lead level',       opts: function(){ return LEVELS.map(function(l){ return { v:l.id, t:l.label }; }); },
+      test: function(p, v){ return levelOf(p) === v; } },
+    { id:'seniority',label:'Seniority',        opts: function(){ return SENIORITY.map(function(s){ return { v:s, t:s }; }); },
+      test: function(p, v){ return p.seniority === v; } },
+    { id:'industry', label:'Industry',         opts: function(){ return INDUSTRIES.map(function(s){ return { v:s, t:s }; }); },
+      test: function(p, v){ return p.industry === v; } },
+    { id:'sub',      label:'Subscriber state', opts: function(){ return SUB_STATE.map(function(s){ return { v:s.id, t:s.label }; }); },
+      test: function(p, v){ return p.sub === v; } },
+    { id:'city',     label:'City',             opts: function(){ return CITY.map(function(s){ return { v:s, t:s }; }); },
+      test: function(p, v){ return p.city === v; } },
+    { id:'edition',  label:'Past edition',     opts: function(){ return [{v:'1',t:'Attended 1 or more'},{v:'2',t:'Attended 2 or more'},{v:'3',t:'Attended 3 or more'}]; },
+      test: function(p, v){ return p.editions >= +v; } }
+  ];
+  function catById(id){
+    for (var i=0;i<CATEGORIES.length;i++) if (CATEGORIES[i].id===id) return CATEGORIES[i];
+    return CATEGORIES[0];
+  }
+
+  function reachable(list, channel){
+    return list.filter(function(p){
+      return channel === 'email' ? (p.email && p.sub !== 'unsubscribed') : !!p.phone;
+    });
+  }
+
+  /* opts: { channel, selected:[people], viewList:[people], viewLabel } */
+  function sendDialog(ctx, opts){
+    var EV = ctx.EV;
+    var channel = opts.channel;
+    var isMail = channel === 'email';
+    var mode = opts.selected && opts.selected.length ? 'selected' : 'view';
+    var catId = 'level', catVal = LEVELS[0].id, batchId = (D.batches[0] || {}).id || '';
+    var tplId = '';
+    var when = 'now', at = '';
+
+    function audience(){
+      if (mode === 'selected') return opts.selected || [];
+      if (mode === 'view')     return opts.viewList || [];
+      if (mode === 'batch'){
+        var b = D.batches.filter(function(x){ return x.id === batchId; })[0];
+        return b ? batchMembers(EV, b) : [];
+      }
+      var c = catById(catId);
+      return prospects(EV).filter(function(p){ return c.test(p, catVal); });
+    }
+
+    var tpls = D.templates.filter(function(t){ return t.channel === channel; });
+    tplId = (tpls[0] || {}).id || '';
+
+    modal((isMail ? 'Email' : 'WhatsApp') + ' a list',
+      '<div id="sd-body"></div>',
+      '<span id="sd-note" style="flex:1;font-size:12px;color:var(--text-muted);align-self:center"></span>' +
+      '<button class="btn btn-ghost" type="button" id="sd-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="sd-go"></button>', 720);
+
+    function paint(){
+      var list = audience();
+      var ok = reachable(list, channel);
+      var t = tpls.filter(function(x){ return x.id === tplId; })[0];
+      var sample = ok[0] || list[0] || prospects(EV)[0];
+
+      function card(id, title, note, n){
+        return '<button class="qview" type="button" data-sdmode="' + id + '" aria-pressed="' +
+          (mode === id) + '" style="padding:9px 13px;border-radius:10px;text-align:left;' +
+          'display:block;white-space:normal;line-height:1.35">' +
+          '<b style="display:block;font-size:12.5px">' + esc(title) + '</b>' +
+          '<span style="font-size:11px;font-weight:500;opacity:.8">' + esc(note) + '</span>' +
+          (n != null ? '<span class="n" style="display:block;margin-top:3px">' + comma(n) + ' people</span>' : '') +
+          '</button>';
+      }
+
+      $('sd-body').innerHTML =
+        '<div class="field" style="margin-bottom:14px"><label class="flabel">Who gets this</label>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">' +
+            (opts.selected && opts.selected.length
+              ? card('selected', 'The ones you picked', 'Ticked on the list behind this', opts.selected.length) : '') +
+            card('view', 'Everything in this view', opts.viewLabel || 'Whatever the filters currently show',
+                 (opts.viewList || []).length) +
+            card('category', 'A category', 'Cut the whole pool one way') +
+            (D.batches.length ? card('batch', 'A saved batch', 'Built in Audiences') : '') +
+          '</div></div>' +
+
+        (mode === 'category'
+          ? '<div class="frow" style="margin-bottom:14px">' +
+              '<div class="field c6"><label for="sd-cat">Cut by</label>' +
+                '<select class="inp" id="sd-cat">' + CATEGORIES.map(function(c){
+                  return '<option value="'+c.id+'"'+(catId===c.id?' selected':'')+'>'+esc(c.label)+'</option>';
+                }).join('') + '</select></div>' +
+              '<div class="field c6"><label for="sd-catval">Which one</label>' +
+                '<select class="inp" id="sd-catval">' + catById(catId).opts().map(function(o){
+                  return '<option value="'+esc(o.v)+'"'+(catVal===o.v?' selected':'')+'>'+esc(o.t)+'</option>';
+                }).join('') + '</select></div>' +
+            '</div>'
+          : '') +
+
+        (mode === 'batch'
+          ? '<div class="field" style="margin-bottom:14px"><label for="sd-batch">Batch</label>' +
+              '<select class="inp" id="sd-batch">' + D.batches.map(function(b){
+                return '<option value="'+b.id+'"'+(batchId===b.id?' selected':'')+'>'+esc(b.name)+
+                  ' (' + comma(batchMembers(EV, b).length) + ')</option>';
+              }).join('') + '</select></div>'
+          : '') +
+
+        '<div class="imp-stat" style="margin:0 0 14px">' +
+          '<span class="readout good">' + svg(I.check,13) + '<b>' + comma(ok.length) + '</b> can be reached</span>' +
+          (list.length - ok.length
+            ? '<span class="readout bad">' + svg(I.info,13) + '<b>' + comma(list.length - ok.length) + '</b> ' +
+              (isMail ? 'have no email or have opted out' : 'have no mobile number') + '</span>'
+            : '') +
+        '</div>' +
+
+        (tpls.length
+          ? '<div class="field" style="margin-bottom:12px"><label for="sd-tpl">Template</label>' +
+              '<select class="inp" id="sd-tpl">' + tpls.map(function(x){
+                return '<option value="'+x.id+'"'+(tplId===x.id?' selected':'')+'>'+esc(x.name)+'</option>';
+              }).join('') + '</select>' +
+              '<p class="hint">Built in Studio. Merge tags fill per person.</p></div>' +
+            (t ? (isMail && t.subject
+                  ? '<div class="field" style="margin-bottom:8px"><label class="flabel">Subject</label>' +
+                    '<div class="preview" style="min-height:0">' + esc(merge(t.subject, sample, EV)) + '</div></div>'
+                  : '') +
+                 '<div class="field" style="margin-bottom:14px"><label class="flabel">Preview &mdash; as ' +
+                   esc(sample ? sample.name : 'a recipient') + '</label>' +
+                   '<div class="preview">' + esc(merge(t.body, sample, EV)) + '</div></div>'
+               : '')
+          : '<div class="callout" style="margin-bottom:14px">' + svg(I.info,17) +
+            '<span><strong>No ' + (isMail ? 'email' : 'WhatsApp') + ' template yet</strong>' +
+            'Build one in Studio first — that is where the copy and the merge tags live.</span></div>') +
+
+        '<div class="frow">' +
+          '<div class="field c6"><label for="sd-when">Send</label>' +
+            '<select class="inp" id="sd-when">' +
+              '<option value="now"' + (when==='now'?' selected':'') + '>Right now</option>' +
+              '<option value="later"' + (when==='later'?' selected':'') + '>At a time I pick</option>' +
+            '</select></div>' +
+          (when === 'later'
+            ? '<div class="field c6"><label for="sd-at">When</label>' +
+              '<input class="inp" id="sd-at" type="datetime-local" value="'+esc(at)+'"></div>'
+            : '') +
+        '</div>';
+
+      each('[data-sdmode]', function(el){
+        el.onclick = function(){ mode = el.getAttribute('data-sdmode'); paint(); };
+      });
+      if ($('sd-cat')) $('sd-cat').onchange = function(){
+        catId = this.value; catVal = catById(catId).opts()[0].v; paint();
+      };
+      if ($('sd-catval')) $('sd-catval').onchange = function(){ catVal = this.value; paint(); };
+      if ($('sd-batch')) $('sd-batch').onchange = function(){ batchId = this.value; paint(); };
+      if ($('sd-tpl')) $('sd-tpl').onchange = function(){ tplId = this.value; paint(); };
+      $('sd-when').onchange = function(){ when = this.value; paint(); };
+      if ($('sd-at')) $('sd-at').onchange = function(){ at = this.value; };
+
+      $('sd-go').disabled = !ok.length || !tpls.length;
+      $('sd-go').textContent = ok.length
+        ? (when === 'now' ? 'Send to ' + comma(ok.length) : 'Schedule for ' + comma(ok.length))
+        : 'Nobody to send to';
+      $('sd-note').textContent = list.length
+        ? comma(list.length) + ' in this audience'
+        : 'Pick an audience';
+    }
+
+    $('sd-cancel').onclick = closeModal;
+    $('sd-go').onclick = function(){
+      var list = audience(), ok = reachable(list, channel);
+      if (!ok.length) return;
+      var t = tpls.filter(function(x){ return x.id === tplId; })[0];
+      if (when === 'later' && !at){ ctx.toast('Pick a time first'); return; }
+
+      /* a send is a campaign, so it shows up on the Campaigns tab like any other */
+      D.campaigns.unshift({
+        id: uid('c'),
+        name: (t ? t.name : 'Send') + ' — ' + (mode === 'selected' ? 'picked list'
+              : mode === 'view' ? 'current view'
+              : mode === 'batch' ? 'saved batch' : catById(catId).label),
+        channel: channel, templateId: tplId, batchId: mode === 'batch' ? batchId : '',
+        status: when === 'now' ? 'sent' : 'scheduled',
+        when: when === 'now' ? Date.now() : new Date(at).getTime(),
+        sent: when === 'now' ? ok.length : 0,
+        delivered: when === 'now' ? Math.round(ok.length * 0.96) : 0,
+        opened: 0, clicked: 0, regs: 0
+      });
+
+      /* anyone in the CRM who was mailed has been touched */
+      ok.forEach(function(p){
+        var c = D.crm[p.id];
+        if (!c) return;
+        if (c.stage === 'new') c.stage = 'contacted';
+        c.notes = c.notes || [];
+        c.notes.push({ when: Date.now(), text: (isMail ? 'Emailed' : 'WhatsApp sent') + ' - ' + (t ? t.name : 'bulk send') });
+        c.touched = Date.now();
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(when === 'now'
+        ? comma(ok.length) + (isMail ? ' emails sent' : ' messages sent')
+        : comma(ok.length) + ' queued for ' + fmtDate(at));
+    };
+
+    paint();
+  }
+
   /* ---------------------------------------------------------------- bulk actions */
   function bulkAction(kind, ctx){
     var ids = selectedIds();
@@ -1767,32 +1980,12 @@ window.EditEventMarketing = (function(){
     }
 
     if (kind === 'email' || kind === 'whatsapp'){
-      var reach = picked.filter(function(l){
-        return kind === 'email' ? (l.p.email && l.p.sub !== 'unsubscribed') : !!l.p.phone;
+      sendDialog(ctx, {
+        channel: kind,
+        selected: picked.map(function(l){ return l.p; }),
+        viewList: crmFiltered(ctx.EV).map(function(l){ return l.p; }),
+        viewLabel: 'Every lead the CRM filters currently show'
       });
-      modal(kind === 'email' ? 'Email these leads' : 'WhatsApp these leads',
-        '<p class="hint" style="margin:0 0 14px">' +
-          '<b>' + reach.length + '</b> of ' + picked.length + ' can be reached on this channel' +
-          (reach.length < picked.length
-            ? ' — the rest are missing ' + (kind === 'email' ? 'an email or have opted out' : 'a mobile number') + '.'
-            : '.') + '</p>' +
-        '<div class="field"><label for="bk-tpl">Template</label>' +
-          '<select class="inp" id="bk-tpl">' + D.templates.filter(function(t){
-            return kind === 'email' ? t.channel === 'email' : t.channel === 'whatsapp';
-          }).map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join('') +
-          '</select><p class="hint">Built in Studio. The merge tags fill per lead.</p></div>',
-        '<button class="btn btn-ghost" type="button" id="bk-cancel">Cancel</button>' +
-        '<button class="btn btn-primary" type="button" id="bk-go">Queue for ' + reach.length + '</button>', 480);
-      $('bk-cancel').onclick = closeModal;
-      $('bk-go').onclick = function(){
-        picked.forEach(function(l){
-          if (l.stage === 'new') l.stage = 'contacted';
-          l.notes.push({ when: Date.now(), text: (kind === 'email' ? 'Emailed' : 'WhatsApp sent') + ' in a bulk send' });
-          saveLead(l);
-        });
-        closeModal(); redraw();
-        ctx.toast(reach.length + (kind === 'email' ? ' emails' : ' messages') + ' queued');
-      };
       return;
     }
 
@@ -2302,6 +2495,111 @@ window.EditEventMarketing = (function(){
                  Subscriber:subState(p.sub).label };
       });
     }
+
+    /* the pool gets the same selection machinery as the CRM list */
+    each('[data-ppick]', function(el){
+      el.onclick = function(e){
+        e.stopPropagation();
+        var id = el.getAttribute('data-ppick');
+        if (el.checked) U.pipeSel[id] = true; else delete U.pipeSel[id];
+        redraw();
+      };
+    });
+    var pa = $('pipe-all');
+    if (pa) pa.onclick = function(){
+      var on = pa.checked;
+      each('[data-ppick]', function(el){
+        var id = el.getAttribute('data-ppick');
+        if (on) U.pipeSel[id] = true; else delete U.pipeSel[id];
+      });
+      redraw();
+    };
+    var pclr = $('pipe-clearsel');
+    if (pclr) pclr.onclick = function(){ U.pipeSel = {}; redraw(); };
+
+    function pickedPeople(){
+      var ids = Object.keys(U.pipeSel).filter(function(k){ return U.pipeSel[k]; });
+      return prospects(ctx.EV).filter(function(p){ return ids.indexOf(String(p.id)) >= 0; });
+    }
+    each('[data-pbulk]', function(el){
+      el.onclick = function(){
+        var kind = el.getAttribute('data-pbulk');
+        var picked = pickedPeople();
+        if (!picked.length) return;
+
+        if (kind === 'email' || kind === 'whatsapp'){
+          sendDialog(ctx, {
+            channel: kind, selected: picked,
+            viewList: pipeFiltered(ctx.EV),
+            viewLabel: 'Everyone the pool filters currently show'
+          });
+          return;
+        }
+        if (kind === 'export'){
+          exportCSV(poolCSV(picked), 'pipeline-selection');
+          ctx.toast(comma(picked.length) + ' rows exported');
+          return;
+        }
+        if (kind === 'batch'){
+          modal('Save as a batch',
+            '<div class="field"><label for="pb-name">Batch name</label>' +
+              '<input class="inp" id="pb-name" placeholder="e.g. Mumbai CXOs, 2024 edition"></div>' +
+              '<p class="hint" style="margin:10px 0 0">' + comma(picked.length) +
+              ' people, frozen as they are now. Batches live on the Audiences tab.</p>',
+            '<button class="btn btn-ghost" type="button" id="pb-cancel">Cancel</button>' +
+            '<button class="btn btn-primary" type="button" id="pb-go">Save batch</button>', 440);
+          $('pb-cancel').onclick = closeModal;
+          $('pb-go').onclick = function(){
+            var nm = $('pb-name').value.trim();
+            if (!nm){ ctx.toast('Give the batch a name'); return; }
+            var ids = picked.map(function(p){ return p.id; });
+            D.batches.push({ id: uid('g'), name: nm, f: emptyFilters(), ids: ids, created: Date.now() });
+            save(); closeModal(); redraw();
+            ctx.toast('"' + nm + '" saved with ' + comma(ids.length) + ' people');
+          };
+          return;
+        }
+        if (kind === 'crm'){
+          var fresh = picked.filter(function(p){ return !D.crm[p.id]; });
+          modal('Send to the CRM',
+            '<p class="hint" style="margin:0 0 14px"><b>' + comma(picked.length) + '</b> selected, ' +
+              '<b>' + comma(fresh.length) + '</b> not yet worked by anyone.</p>' +
+            '<div class="frow">' +
+              '<div class="field c6"><label for="ps-owner">Assign to</label>' +
+                '<select class="inp" id="ps-owner">' + OWNERS.map(function(o){
+                  return '<option>'+esc(o)+'</option>'; }).join('') + '</select></div>' +
+              '<div class="field c6"><label for="ps-level">Level</label>' +
+                '<select class="inp" id="ps-level">' + LEVELS.map(function(l){
+                  return '<option value="'+l.id+'"'+(l.id==='warm'?' selected':'')+'>'+l.label+'</option>';
+                }).join('') + '</select></div>' +
+            '</div>',
+            '<button class="btn btn-ghost" type="button" id="ps-cancel">Cancel</button>' +
+            '<button class="btn btn-primary" type="button" id="ps-go">Send ' + comma(fresh.length) + '</button>', 470);
+          $('ps-cancel').onclick = closeModal;
+          $('ps-go').onclick = function(){
+            var o = $('ps-owner').value, lv = $('ps-level').value;
+            fresh.forEach(function(p){
+              D.crm[p.id] = { stage:'new', owner:o, calls:0, notes:[], next:'', level:lv, touched:Date.now() };
+            });
+            U.pipeSel = {};
+            save(); closeModal(); redraw();
+            ctx.toast(comma(fresh.length) + ' sent to ' + o + ' in the CRM');
+          };
+        }
+      };
+    });
+
+    var pml = $('pipe-mail');
+    if (pml) pml.onclick = function(){
+      sendDialog(ctx, { channel:'email', selected: pickedPeople(),
+        viewList: pipeFiltered(ctx.EV), viewLabel:'Everyone the pool filters currently show' });
+    };
+    var pwa = $('pipe-wa');
+    if (pwa) pwa.onclick = function(){
+      sendDialog(ctx, { channel:'whatsapp', selected: pickedPeople(),
+        viewList: pipeFiltered(ctx.EV), viewLabel:'Everyone the pool filters currently show' });
+    };
+
     var pex = $('pipe-export');
     if (pex) pex.onclick = function(){
       var list = pipeFiltered(ctx.EV);
