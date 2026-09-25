@@ -6,6 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="motion.css">
 <style>
   .wb-bar{
     position: sticky; top:0; z-index:30; display:flex; align-items:center; gap:12px;
@@ -17,6 +18,7 @@
   }
   .wb-bar b{ font-size:14px; }
   .wb-bar .sp{ flex:1; }
+  .wb-bar select{ max-width:260px; }
   .wb-bar select{ max-width:260px; }
   .wb-main{ padding:22px 26px 60px; max-width:1400px; }
   .wb-shell{ display:flex; min-height:calc(100vh - 54px); }
@@ -39,21 +41,19 @@
 
 <script src="edit-event-core.js"></script>
 <script src="edit-event-dashboard.js"></script>
-<script src="sidebar.js"></script>
+<script src="app-shell.js"></script>
 <script>
 (function(){
   'use strict';
   var C = window.RevampCore;
   var DASH = window.EditEventDashboard;
-  renderEventRail('global-rail', { activeSection:'dashboard', onSection:function(section){
-    if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
-    if (section === 'audience') { location.href = 'audience-registrations.html?event=' + (location.search.replace('?event=','') || '1'); return; }
-    if (section === 'design') { location.href = 'custom_editor.html?event=' + (location.search.replace('?event=','') || '1'); return; }
-    if (section === 'payment') { location.href = 'edit-event.html?event=' + (location.search.replace('?event=','') || '1') + '#audience/payments'; return; }
-    if (section === 'marketing') { location.href = 'marketing.html?event=' + (location.search.replace('?event=','') || '1'); return; }
-    if (section === 'settings') { location.href = 'settings.html?event=' + (location.search.replace('?event=','') || '1'); return; }
-    location.href = 'edit-event.html#' + section;
-  }});
+  /* the workbench keeps its own bar, but the rail is the shared one so it
+     cannot drift from what the console shows */
+  window.RevampShell.mount({
+    section: 'dashboard',
+    eventId: new URLSearchParams(location.search).get('event') || '1',
+    rail: 'global-rail'
+  });
 
   var sel = document.getElementById('wb-ev');
   sel.innerHTML = C.EVENTS.map(function(e){
@@ -68,11 +68,10 @@
     var ctx = C.makeCtx({
       EV: EV, S: S, PEOPLE: C.makePeople(EV),
       vhead: function(t, sub, right){
-        return '<div class="vhead"><div class="vhead-row"><div class="grow">' +
-          '<div class="crumb">Dashboard</div><h2>' + C.esc(t) + '</h2>' +
-          (sub ? '<div class="sub">' + C.esc(sub) + '</div>' : '') + '</div>' +
-          (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
-          '</div></div>';
+        /* the rail already names the section; a heading repeating it costs
+           a hundred pixels for nothing. Keep it for screen readers only. */
+        return '<h2 class="sr-only">' + C.esc(t) + (sub ? '. ' + C.esc(sub) : '') + '</h2>' +
+          (right ? '<div class="page-acts">' + right + '</div>' : '');
       },
       /* in the workbench a navigation just says where it would have gone */
       go: function(r){ C.toast('Would navigate to: ' + r); },

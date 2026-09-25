@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Offline Payments - Payment Prototype</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="../../motion.css">
   <style>
     .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
     .approve-row { display: flex; gap: 8px; }
@@ -16,10 +17,10 @@
   </style>
 </head>
 <body>
-  <div id="sidebar-container"></div>
-  <div class="main-wrapper">
-    <div id="header-container"></div>
-    <div class="main-content">
+  <header class="topbar" id="header-container"></header>
+  <div class="shell">
+    <nav class="rail" id="sidebar-container" aria-label="Sections"></nav>
+    <div class="main main-content">
       <div class="fade-in">
         <div style="margin-bottom:24px;">
           <div style="font-size:24px; font-weight:700;">Offline Payments</div>
@@ -38,12 +39,14 @@
   </div>
 
   <script src="data.js"></script>
+  <script src="../../edit-event-core.js"></script>
+  <script src="../../app-shell.js"></script>
   <script src="sidebar.js"></script>
   <script>
     let currentTab = 'Pending';
 
     document.addEventListener("DOMContentLoaded", () => {
-      renderHeader("Offline Payments");
+      /* the top bar comes from app-shell.js now */
       renderOfflinePayments();
     });
 

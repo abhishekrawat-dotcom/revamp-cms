@@ -1,26 +1,13 @@
 <!-- ET Oneworld - Revamp CMS : per-event admin console ("Edit event") -->
+<meta charset="utf-8">
 <title>Edit Event &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="motion.css">
 
-<header class="topbar">
-  <a class="back-btn" href="Event_Listing.html">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-    Back to events
-  </a>
-  <span class="ev-title">
-    <h1 id="ev-name">&nbsp;</h1>
-    <span class="meta" id="ev-meta"></span>
-  </span>
-  <span class="topbar-acts">
-    <button class="btn btn-secondary" type="button" id="btn-preview">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
-      Preview
-    </button>
-    <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
-  </span>
-</header>
+<!-- top bar and rail are rendered by app-shell.js - same markup on every section -->
+<header class="topbar" id="topbar"></header>
 
 <div class="shell">
   <nav class="rail" id="rail" aria-label="Sections"></nav>
@@ -33,7 +20,7 @@
 <script src="edit-event-core.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="edit-event-marketing.js"></script>
-<script src="sidebar.js"></script>
+<script src="app-shell.js"></script>
 
 <script>
 (function(){
@@ -143,15 +130,24 @@
   }
 
   function renderRail(){
-    renderEventRail('rail', {
-      activeSection: cur.sec === 'audience' && cur.tab === 'payments' ? 'payment' : cur.sec,
-      eventId: EV.id
+    /* one shell, one rail: the only thing this page decides is which item is lit */
+    window.RevampShell.mount({
+      section: cur.sec === 'audience' && cur.tab === 'payments' ? 'payment' : cur.sec,
+      eventId: EV.id,
+      onPreview: openPreview,
+      onPublish: doPublish,
+      onSection: function(section){
+        /* Content lives here, so switching to it is a route change, not a load */
+        if (section === 'content'){ go('content'); return false; }
+      }
     });
   }
 
-  function tabsHTML(){
+  function tabsHTML(acts){
     var s = secById(cur.sec);
-    if (!s || !s.tabs.length) return '';
+    var right = acts ? '<span class="tab-acts">' + acts + '</span>' : '';
+    /* a section with no tabs still needs somewhere to put its buttons */
+    if (!s || !s.tabs.length) return right ? '<div class="subtabs acts-only">' + right + '</div>' : '';
     return '<div class="subtabs">' + s.tabs.map(function(t){
       var n = tabCount(s.id, t.id);
       var inner = esc(t.label) + (n != null ? '<span class="cnt">' + comma(n) + '</span>' : '');
@@ -161,9 +157,9 @@
         return '<a class="tab-link" href="' + esc(t.link) + '">' +
           svg(IC.ext, 13) + inner + '</a>';
       }
-      return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '">' +
-        inner + '</button>';
-    }).join('') + '</div>';
+      return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '"' +
+        (cur.tab === t.id ? ' aria-current="page"' : '') + '>' + inner + '</button>';
+    }).join('') + right + '</div>';
   }
 
   /* accepts "section" or "section/tab" */
@@ -204,22 +200,15 @@
   /* ============================================================
      SHARED VIEW HELPERS
      ============================================================ */
+  /* The rail names the section and the tab bar names the page, so a
+     breadcrumb and a heading saying the same thing again cost a hundred
+     pixels for nothing. vhead now keeps only the title (for screen
+     readers and the browser tab) and hands its buttons to the tab row,
+     which renders them on the right of the tabs. */
+  var vheadActions = '';
   function vhead(title, sub, right){
-    var s = secById(cur.sec) || { label:'', tabs:[] };
-    var t = '';
-    if (cur.tab){
-      var m = s.tabs.filter(function(x){ return x.id === cur.tab; })[0];
-      if (m) t = m.label;
-    }
-    var crumb = (t && t !== s.label) ? s.label + ' › ' + t : s.label;
-    return '<div class="vhead"><div class="vhead-row">' +
-        '<div class="grow">' +
-          '<div class="crumb">' + esc(crumb) + '</div>' +
-          '<h2>' + esc(title) + '</h2>' +
-          (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') +
-        '</div>' +
-        (right ? '<div style="display:flex;gap:9px;flex-wrap:wrap">' + right + '</div>' : '') +
-      '</div></div>';
+    vheadActions = right || '';
+    return '<h2 class="sr-only">' + esc(title) + (sub ? '. ' + esc(sub) : '') + '</h2>';
   }
 
   /* ============================================================
@@ -3785,7 +3774,10 @@
   function render(){
     var r = routeId();
     var fn = VIEWS[r] || VIEWS.dashboard;
-    $('view').innerHTML = tabsHTML() + fn();
+    /* fn() first: vhead() runs inside it and sets the actions the tabs carry */
+    vheadActions = '';
+    var body = fn();
+    $('view').innerHTML = tabsHTML(vheadActions) + body;
 
     /* tabs */
     document.querySelectorAll('[data-tab]').forEach(function(b){
@@ -3906,12 +3898,7 @@
      BOOT
      ============================================================ */
   function boot(){
-    $('ev-name').textContent = EV.name + ' | ' + (PORTALS[EV.portal] || '');
-    $('ev-meta').textContent = fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (TYPES[EV.type] || EV.type);
     document.title = 'Edit — ' + EV.name + ' — Revamp CMS';
-
-    $('btn-preview').onclick = openPreview;
-    $('btn-publish').onclick = doPublish;
 
     window.addEventListener('hashchange', function(){
       var h = location.hash.slice(1);

@@ -1,0 +1,366 @@
+#power-chain .power-chain-content {
+  --power-chain-line: #DCDEE1;
+  --power-chain-muted: rgba(25, 27, 31, 0.62);
+  --power-chain-soft-red: color-mix(in srgb, var(--theme-color, #D8151E) 6%, transparent);
+  --power-chain-shadow: 0 16px 38px rgba(25, 27, 31, 0.08);
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  color: var(--default-color);
+}
+#power-chain .page_hdng4 p {
+  color: rgba(0, 0, 0, 0.75);
+  text-align: center;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24.38px;
+  letter-spacing: -0.48px;
+}
+#power-chain .power-chain-journey {
+  position: relative;
+  padding: 15px 0 66px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--theme-color, #D8151E) 35%, transparent) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+#power-chain .power-chain-journey::-webkit-scrollbar {
+  height: 5px;
+}
+#power-chain .power-chain-journey::-webkit-scrollbar-track {
+  background: transparent;
+}
+#power-chain .power-chain-journey::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-color, #D8151E) 35%, transparent);
+  border-radius: 20px;
+}
+#power-chain .power-chain-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--chain-count, 5), minmax(150px, 1fr));   /* ET: repeat(5, minmax(160px, 1fr)); 880px */
+  min-width: calc(var(--chain-count, 5) * 150px);                           /* seven roles still fit the 1100px row */
+  padding: 0 4px;
+}
+/* one column per role, however many the event lists (Create Event fills the chain from Who should attend,
+   and Layout items can add or remove roles); 5 is the design ET shipped. The journey scrolls sideways when it is long. */
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(1):last-child) { --chain-count: 1; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(2):last-child) { --chain-count: 2; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(3):last-child) { --chain-count: 3; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(4):last-child) { --chain-count: 4; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(5):last-child) { --chain-count: 5; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(6):last-child) { --chain-count: 6; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(7):last-child) { --chain-count: 7; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(8):last-child) { --chain-count: 8; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(9):last-child) { --chain-count: 9; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(10):last-child) { --chain-count: 10; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(11):last-child) { --chain-count: 11; }
+#power-chain .power-chain-track:has(> .power-chain-item:nth-child(12)) { --chain-count: 12; }
+#power-chain .power-chain-track::before {
+  content: "";
+  position: absolute;
+  top: 70px;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: var(--power-chain-line);
+  z-index: 0;
+}
+#power-chain .power-chain-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  text-align: center;
+  scroll-snap-align: center;
+}
+#power-chain .power-chain-item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 64px;
+  right: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--theme-color);
+  box-shadow: 0 0 0 2px rgb(222 221 221);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+#power-chain .power-chain-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 140px;
+  height: 140px;
+  border: 1px solid var(--power-chain-line);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 42%, #ffffff 0%, #ffffff 64%, rgba(230, 230, 230, 0.3) 100%);
+  color: var(--default-color);
+  transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+#power-chain .power-chain-icon svg {
+  width: 62px;
+  height: 62px;
+  overflow: visible;
+  transition: transform 0.35s ease;
+}
+#power-chain .power-chain-icon .pc-accent {
+  color: var(--theme-color);
+}
+#power-chain .power-chain-item:hover .power-chain-icon {
+  transform: translateY(-6px);
+  border-color: color-mix(in srgb, var(--theme-color, #D8151E) 42%, transparent);
+  box-shadow: 0 14px 32px rgba(25, 27, 31, 0.08);
+}
+#power-chain .power-chain-item:hover .power-chain-icon svg {
+  transform: scale(1.055);
+}
+#power-chain .power-chain-item:hover::after {
+  transform: scale(1.17);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 6px color-mix(in srgb, var(--theme-color, #D8151E) 16%, transparent);
+}
+#power-chain .power-chain-role {
+  margin: 14px 0 3px;
+  color: #000;
+  text-align: center;
+  font-family: var(--heading-font-family-v2);
+  font-size: 21.164px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 100%; 
+  letter-spacing: -0.697px;
+  text-transform: uppercase;
+}
+#power-chain .power-chain-domain {
+  margin: 0;
+  color: #494949;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing:1.512px;
+  text-transform: uppercase;
+}
+#power-chain .power-chain-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--power-chain-line);
+  border-bottom: 1px solid var(--power-chain-line);
+}
+#power-chain .power-chain-stat {
+  position: relative;
+  display: flex;
+  min-height: 172px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 18px;
+  text-align: center;
+  overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+#power-chain .power-chain-stat::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 64px;
+  height: 2px;
+  background: var(--theme-color);
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+#power-chain .power-chain-stat:hover {
+  background: var(--power-chain-soft-red);
+}
+#power-chain .power-chain-stat:hover::after {
+  transform: translateX(-50%) scaleX(1);
+}
+#power-chain .power-chain-number {
+  color: var(--theme-color);
+  text-align: center;
+  font-family: var(--heading-font-family-v2);
+  font-size: 72.121px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 70.631px; 
+  letter-spacing: -1.802px;
+  text-transform: uppercase;
+}
+#power-chain .power-chain-stat-label {
+  margin-top: 10px;
+  color: #000;
+  text-align: center;
+  font-family: var(--heading-font-family-v2);
+  font-size: 26px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 32.599px; 
+  letter-spacing: -0.832px;
+  text-transform: uppercase;
+}
+#power-chain .power-chain-insights {
+  display: grid;
+  grid-template-columns: 1.72fr 0.96fr 0.96fr;
+  gap: 28px;
+  padding-top: 34px;
+}
+#power-chain .power-chain-insight {
+  position: relative;
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 12px;
+  padding: 23px 22px;
+  border: 1px solid var(--power-chain-line);
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+}
+#power-chain .power-chain-insight:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--theme-color, #D8151E) 38%, transparent);
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--theme-color, #D8151E) 2.5%, transparent) 100%);
+  box-shadow: var(--power-chain-shadow);
+}
+#power-chain .power-chain-insight-index {
+  padding-top: 4px;
+  color: var(--theme-color, #D8151E);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 13.089px;
+  letter-spacing: 0.873px;
+}
+#power-chain .power-chain-insight-text {
+  margin: 0;
+  color: #08090B;
+  font-family: var(--heading-font-family-v2);
+  font-size: 16.781px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 20.976px; 
+  letter-spacing: -0.336px;
+}
+@media (max-width: 991px) {
+  #power-chain .power-chain-content {
+    max-width: 100%;
+  }
+  #power-chain .power-chain-journey {
+    margin-right: -15px;
+    padding-right: 15px;
+    scroll-snap-type: x mandatory;
+  }
+  #power-chain .power-chain-track {
+    min-width: calc(var(--chain-count, 5) * 172px);
+  }
+  #power-chain .power-chain-insights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #power-chain .power-chain-insight:first-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  #power-chain .power-chain-journey {
+    padding-top: 10px;
+    padding-bottom: 40px;
+  }
+  #power-chain .power-chain-track {
+    grid-template-columns: repeat(var(--chain-count, 5), 168px);
+    min-width: calc(var(--chain-count, 5) * 168px);
+  }
+  #power-chain .power-chain-track::before {
+    top: 63px;
+    left: 84px;
+    right: 84px;
+  }
+  #power-chain .power-chain-item:not(:last-child)::after {
+    top: 57px;
+  }
+  #power-chain .power-chain-icon {
+    width: 126px;
+    height: 126px;
+  }
+  #power-chain .power-chain-icon svg {
+    width: 56px;
+    height: 56px;
+  }
+  #power-chain .power-chain-role {
+    margin-top: 13px;
+    font-size: 20px;
+  }
+  #power-chain .power-chain-stats {
+    grid-template-columns: 1fr;
+  }
+  #power-chain .power-chain-stat {
+    min-height: 138px;
+    border-bottom: 1px solid var(--power-chain-line);
+  }
+  #power-chain .power-chain-stat:last-child {
+    border-bottom: 0;
+  }
+  #power-chain .power-chain-number {
+    font-size: clamp(46px, 10vw, 68px);
+  }
+  #power-chain .power-chain-stat-label {
+    font-size: 18px;
+    line-height: 1em;
+    margin-top: 2px;
+  }
+  #power-chain .power-chain-insights {
+    grid-template-columns: 1fr;
+    gap: 15px;
+    padding-top: 24px;
+  }
+  #power-chain .power-chain-insight:first-child {
+    grid-column: auto;
+  }
+  #power-chain .power-chain-insight {
+    min-height: 0;
+    padding: 21px 19px;
+  }
+}
+@media (max-width: 479px) {
+  #power-chain .power-chain-track {
+    grid-template-columns: repeat(var(--chain-count, 5), 154px);
+    min-width: calc(var(--chain-count, 5) * 154px);
+  }
+  #power-chain .power-chain-track::before {
+    left: 77px;
+    right: 77px;
+  }
+  #power-chain .power-chain-item:not(:last-child)::after {
+    right: -6px;
+  }
+  #power-chain .power-chain-icon {
+    width: 124px;
+    height: 124px;
+  }
+  #power-chain .power-chain-role {
+    font-size: 16px;
+  }
+  #power-chain .power-chain-domain {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #power-chain .power-chain-icon,
+  #power-chain .power-chain-icon svg,
+  #power-chain .power-chain-item::after,
+  #power-chain .power-chain-stat,
+  #power-chain .power-chain-stat::after,
+  #power-chain .power-chain-insight {
+    transition: none;
+  }
+}
+
+/* The role icons carry the event red as fill="#D8151E" on their accent paths — follow the site theme colour
+   instead (a CSS fill beats the attribute), so changing the theme colour in the editor recolours them too. */
+#power-chain .power-chain-icon [fill="#D8151E" i] {
+  fill: var(--theme-color, #D8151E);
+}

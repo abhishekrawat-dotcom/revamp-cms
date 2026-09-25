@@ -4,6 +4,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
+  /* cross-page transitions: cross-fade into the event console instead of
+     blanking the window between documents. Chrome 126+; anywhere else the
+     at-rule is ignored and navigation behaves as before. */
+  @view-transition { navigation: auto; }
+  @media (prefers-reduced-motion: reduce){ @view-transition { navigation: none; } }
+  html{ background: var(--bg); }
   :root{
     --bg: #FAF7F6;
     --surface: #FFFFFF;
@@ -525,19 +531,82 @@
   .tpl-info .n{ font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); margin-top: 2px; }
 
   /* ============ STEP 3A - SECTION WORKSPACE ============ */
-  .toggle-panel{
-    display:flex; flex-direction:column; gap: 12px; padding: 16px 18px;
-    border: 1px solid var(--accent); border-radius: 14px; background: var(--accent-soft); margin-bottom: 18px;
+  /* previous edition + optional blocks: a button beside the progress rail, its choices in a popup */
+  .rail-row{ display:flex; align-items:center; gap: 12px; padding-right: 20px; }
+  .rail-row .rail{ flex: 1; min-width: 0; }
+  .rail-tools{ position: relative; flex-shrink: 0; padding-bottom: 12px; }
+  .rail-tools[hidden]{ display:none; }
+  .rail-tools > .btn{ max-width: 320px; }
+  .rail-tools > .btn .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .edition-pop{
+    position: absolute; right: 0; top: calc(100% + 2px); width: 384px; z-index: 40;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(30,26,10,.06), var(--shadow-lg); overflow: hidden;
+    transform-origin: top right; animation: epIn var(--dur-2, 200ms) var(--ease-out, ease) both;
   }
-  .toggle-panel-top{ display:flex; align-items:center; flex-wrap:wrap; gap: 10px 16px; }
-  .toggle-panel-row{ display:flex; align-items:center; flex-wrap:wrap; gap: 6px 16px; }
-  .toggle-panel .switch{ padding: 4px 8px; border-radius: 8px; background: var(--surface); }
-  .toggle-panel .switch:hover{ background: var(--surface-2); }
-  .toggle-panel .switch.locked{ opacity: .5; }
+  .edition-pop[hidden]{ display:none; }
+  @keyframes epIn{ from{ opacity:0; transform: translateY(-4px) scale(.98); } to{ opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce){ .edition-pop{ animation:none; } }
+  .ep-head{ padding: 16px 18px 14px; }
+  .ep-head h4{ font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+  .ep-head p{ margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
+
+  /* the edition itself: empty (dashed) until one is chosen */
+  .ep-edition{
+    margin: 0 14px; padding: 12px; display:flex; align-items:center; gap: 12px;
+    border: 1px dashed var(--border); border-radius: 12px; background: var(--surface-2);
+  }
+  .ep-edition.chosen{ border-style: solid; background: var(--surface); }
+  .ep-edition .tile{
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    background: var(--surface); color: var(--text-faint); border: 1px solid var(--border);
+  }
+  .ep-edition.chosen .tile{ background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .ep-edition .txt{ flex:1; min-width:0; }
+  .ep-edition .t, .ep-edition .s, .ep-row .ds{ display:block; }
+  .ep-edition .t{ font-size: 13px; font-weight: 700; color: var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ep-edition .s{ font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+  .ep-blocks{ margin-top: 14px; padding: 12px 8px 8px; border-top: 1px solid var(--border); }
+  .ep-blocks-head{ display:flex; align-items:center; justify-content:space-between; padding: 0 10px 6px; }
+  .ep-label{ font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+  .ep-count{ font-size: 11.5px; font-weight: 600; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+  .ep-row{
+    width: 100%; display:grid; grid-template-columns: 32px minmax(0,1fr) auto; align-items:center; gap: 12px;
+    padding: 8px 10px; border: none; border-radius: 10px; background: transparent; text-align: left; cursor: pointer;
+    transition: background .12s ease;
+  }
+  .ep-row:hover{ background: var(--surface-2); }
+  .ep-row:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  .ep-row .ic{
+    width: 32px; height: 32px; border-radius: 9px; display:flex; align-items:center; justify-content:center;
+    background: var(--surface-2); color: var(--text-muted); transition: background .12s ease, color .12s ease;
+  }
+  .ep-row[aria-pressed="true"] .ic{ background: var(--accent-soft); color: var(--accent-strong); }
+  .ep-row .nm{ font-size: 13px; font-weight: 600; color: var(--text); display:flex; align-items:center; gap: 6px; }
+  .ep-row .ds{ font-size: 12px; color: var(--text-muted); margin-top: 1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ep-row .track{
+    width: 34px; height: 20px; border-radius: 100px; background: var(--surface-3); border: 1px solid var(--border);
+    position: relative; transition: background .16s ease, border-color .16s ease;
+  }
+  .ep-row .track i{
+    position:absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.18); transition: transform .16s var(--ease-out, ease);
+  }
+  .ep-row[aria-pressed="true"] .track{ background: var(--accent); border-color: var(--accent); }
+  .ep-row[aria-pressed="true"] .track i{ transform: translateX(14px); }
+  .ep-row.locked{ cursor: not-allowed; }
+  .ep-row.locked .ic, .ep-row.locked .nm, .ep-row.locked .ds, .ep-row.locked .track{ opacity: .5; }
+  .ep-row.locked:hover{ background: transparent; }
+  .ep-row .nm svg{ color: var(--text-faint); }
+
+  .ep-foot{ display:flex; align-items:center; gap: 8px; padding: 10px 18px 12px; font-size: 12px; color: var(--text-muted); background: var(--surface-2); border-top: 1px solid var(--border); }
+  .ep-foot svg{ flex-shrink:0; color: var(--text-faint); }
   .tp-status{ display:inline-flex; align-items:center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--accent-strong); }
   .tp-status.locked{ color: var(--text-muted); }
   .tp-status svg{ flex-shrink:0; }
-  @media (max-width: 620px){ .toggle-panel-top{ flex-direction:column; align-items:flex-start; } }
+  @media (max-width: 620px){ .edition-pop{ width: min(360px, calc(100vw - 40px)); } }
 
   .build-grid{ display:grid; grid-template-columns: 268px minmax(0,1fr); gap: 18px; align-items:start; }
   @media (max-width: 940px){ .build-grid{ grid-template-columns: 1fr; } }
@@ -568,9 +637,22 @@
   .sec-row .auto-tag{ font-size: 9.5px; font-weight: 800; letter-spacing:.05em; text-transform: uppercase; color: var(--text-faint); }
   .rail-panel-foot{ padding: 9px; border-top: 1px solid var(--border); }
 
-  .editor-head{ display:flex; align-items:flex-start; justify-content:space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
-  .editor-head h2{ font-size: 18px; }
-  .editor-head .helper{ font-size: 12.5px; color: var(--text-muted); margin-top: 4px; max-width: 54ch; }
+  /* one slim row: title (its description behind the ⓘ), then the tools */
+  .editor-head{ display:flex; align-items:center; justify-content:space-between; gap: 12px; padding: 10px 14px 10px 18px; border-bottom: 1px solid var(--border); min-height: 52px; }
+  .editor-head .eh-title{ display:flex; align-items:center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .editor-head h2{ font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .eh-info{
+    position: relative; width: 18px; height: 18px; border-radius: 50%; flex-shrink:0; cursor: help;
+    display:inline-flex; align-items:center; justify-content:center; color: var(--text-faint); outline: none;
+  }
+  .eh-info:hover, .eh-info:focus-visible{ color: var(--text-muted); background: var(--surface-2); }
+  .eh-tip{
+    position: absolute; left: -6px; top: calc(100% + 8px); z-index: 20; width: max-content; max-width: 300px;
+    padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--surface);
+    font-size: 12px; font-weight: 500; line-height: 1.45; box-shadow: var(--shadow-md);
+    opacity: 0; transform: translateY(-2px); pointer-events: none; transition: opacity .12s ease, transform .12s ease;
+  }
+  .eh-info:hover .eh-tip, .eh-info:focus-visible .eh-tip{ opacity: 1; transform: none; }
   .editor-head .tools{ display:flex; align-items:center; gap: 8px; flex-shrink:0; }
 
   .switch{ display:inline-flex; align-items:center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text-muted); background:none; border:none; padding: 4px; }
@@ -604,6 +686,130 @@
   .rep-item .del:hover{ background: var(--crit-soft); color: var(--crit); }
   .rep-item.dragging{ opacity: .4; }
   .rep-item.drop-target{ border-color: var(--accent); border-style: dashed; }
+  /* section text (every section): its blocks, then a rule before the section's own fields */
+  .in-wrap{ display:flex; flex-direction:column; gap: 14px; }
+  .in-wrap.in-sep{ padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .in-wrap .ov-add{ padding-top: 0; border-top: none; }
+  .in-wrap .ov-blocks + .ov-add{ padding-top: 12px; border-top: 1px dashed var(--border); }
+  .in-media-top{ display:flex; gap: 8px; align-items:center; }
+  .in-media-top .segmented{ flex-shrink: 0; }
+  .in-media-top .inp{ flex: 1; min-width: 0; }
+  .in-img{ position:absolute; inset:0; width:100%; height:100%; object-fit: cover; }
+  .in-note{ font-size: 11.5px; color: var(--text-faint); }
+  .in-cta{ display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1.3fr); gap: 8px; }
+  @media (max-width: 620px){ .in-cta, .in-media-top{ grid-template-columns: 1fr; flex-direction: column; align-items: stretch; } }
+
+  /* Overview: stacked blocks, optional ones added with chips */
+  .ov-blocks{ display:flex; flex-direction:column; gap: 14px; }
+  .ov-block{ display:flex; flex-direction:column; gap: 6px; animation: ovIn .18s var(--ease-out, ease) both; }
+  @keyframes ovIn{ from{ opacity:0; transform: translateY(-3px); } to{ opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce){ .ov-block{ animation:none; } }
+  .ov-block-head{ display:flex; align-items:center; justify-content:space-between; min-height: 22px; }
+  .ov-block-head .flabel{ margin-bottom: 0; }
+  .ov-x{
+    width: 24px; height: 24px; display:flex; align-items:center; justify-content:center; border: none; border-radius: 6px;
+    background: none; color: var(--text-faint); opacity: .55; transition: opacity .12s ease, background .12s ease, color .12s ease;
+  }
+  .ov-block:hover .ov-x, .ov-block:focus-within .ov-x, .ov-x:focus-visible{ opacity: 1; }
+  .ov-x:hover{ background: var(--crit-soft); color: var(--crit); }
+  .ov-heading{ font-size: 15px; font-weight: 700; }
+  textarea.inp.ov-para{ resize: none; overflow: hidden; min-height: 96px; }
+  .ov-block .char-count{ margin-top: 0; }
+  .ov-points{ margin: 0; }
+
+  .ov-video-row{ display:grid; grid-template-columns: 220px minmax(0,1fr); gap: 14px; align-items:center; margin-top: 4px; }
+  @media (max-width: 720px){ .ov-video-row{ grid-template-columns: 1fr; } }
+  .ov-vprev{ aspect-ratio: 16/9; border-radius: 10px; overflow:hidden; background: var(--surface-2); border: 1px solid var(--border); position: relative; }
+  .ov-vprev iframe, .ov-vprev video{ width: 100%; height: 100%; border: 0; display:block; background:#000; }
+  .ov-vthumb{ position:absolute; inset:0; background-size: cover; background-position: center; display:flex; align-items:center; justify-content:center; }
+  .ov-play{ width: 40px; height: 40px; border-radius: 50%; background: rgba(0,0,0,.62); color: #fff; display:flex; align-items:center; justify-content:center; padding-left: 2px; }
+  .ov-vkind{ position:absolute; left: 8px; bottom: 8px; padding: 2px 7px; border-radius: 5px; background: rgba(0,0,0,.62); color:#fff; font-size: 10.5px; font-weight: 700; }
+  .ov-vempty{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 6px; padding: 10px; text-align:center; color: var(--text-faint); font-size: 11.5px; }
+  .ov-vempty.bad{ color: var(--crit); }
+  .ov-side{ display:flex; flex-direction:column; gap: 7px; }
+  .ov-side-label{ font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+  .ov-add{ display:flex; align-items:center; flex-wrap:wrap; gap: 8px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .ov-add-label{ font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); margin-right: 2px; }
+  .ov-chip{
+    display:inline-flex; align-items:center; gap: 6px; height: 30px; padding: 0 12px 0 10px; border-radius: 100px;
+    border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+    transition: border-color .12s ease, background .12s ease, color .12s ease, transform .12s ease;
+  }
+  .ov-chip:hover{ border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+  .ov-chip:active{ transform: scale(.97); }
+  .ov-chip::before{ content: '+'; font-weight: 700; margin-right: -2px; }
+  .ov-chip svg{ display:none; }
+
+  /* Key Discussion Points */
+  .kp-intro{ display:flex; flex-direction:column; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+  .kp-list-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom: -4px; }
+  .kp-list-head .flabel{ margin-bottom: 0; }
+  .kp-count{ font-size: 11.5px; font-weight: 600; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .kp-list{ display:flex; flex-direction:column; gap: 10px; }
+
+  .kp-card{
+    position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+  .kp-card:hover{ box-shadow: 0 1px 2px rgba(30,26,10,.05), 0 8px 20px -12px rgba(30,26,10,.22); }
+  .kp-card:focus-within{ border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+  .kp-card.dragging{ opacity: .45; }
+  .kp-card.drop-target{ border-color: var(--accent); border-style: dashed; }
+
+  .kp-card-head{ display:flex; align-items:center; gap: 8px; padding: 10px 10px 4px 8px; }
+  .kp-grip{ color: var(--text-faint); cursor: grab; display:flex; padding: 4px 2px; border-radius: 6px; opacity: .45; transition: opacity .15s ease; }
+  .kp-card:hover .kp-grip{ opacity: 1; }
+  .kp-grip:active{ cursor: grabbing; }
+  .kp-num{
+    flex-shrink:0; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 6px; display:flex; align-items:center; justify-content:center;
+    background: var(--accent-soft); color: var(--accent-strong); font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  }
+  /* inline fields: they read as text until pointed at or focused */
+  .kp-title, .kp-desc, .kp-point input{
+    width: 100%; border: 1px solid transparent; background: transparent; color: var(--text); font: inherit; outline: none;
+    border-radius: 7px; transition: background .12s ease, border-color .12s ease;
+  }
+  .kp-title{ flex:1; min-width:0; padding: 6px 8px; font-size: 14.5px; font-weight: 700; letter-spacing: -.01em; }
+  .kp-title:hover, .kp-desc:hover, .kp-point input:hover{ background: var(--surface-2); }
+  .kp-title:focus, .kp-desc:focus, .kp-point input:focus{ background: var(--surface); border-color: var(--border); }
+  .kp-title::placeholder, .kp-desc::placeholder, .kp-point input::placeholder{ color: var(--text-faint); font-weight: 500; }
+  .kp-icon{
+    flex-shrink:0; width: 30px; height: 30px; display:flex; align-items:center; justify-content:center; border: none; border-radius: 7px;
+    background: none; color: var(--text-faint); opacity: 0; transition: opacity .15s ease, background .12s ease, color .12s ease;
+  }
+  .kp-card:hover .kp-icon, .kp-card:focus-within .kp-icon, .kp-icon:focus-visible{ opacity: 1; }
+  .kp-icon.del:hover{ background: var(--crit-soft); color: var(--crit); }
+
+  .kp-card-body{ position: relative; padding: 0 12px 12px 72px; display:flex; flex-direction:column; gap: 6px; }
+  .kp-desc{ display:block; resize: none; overflow: hidden; min-height: 0; padding: 6px 8px; margin-left: -8px; width: calc(100% + 8px);
+    font-size: 13.5px; line-height: 1.55; color: var(--text-muted); }
+  .kp-desc:focus{ color: var(--text); }
+  .kp-len{ position:absolute; right: 14px; top: -2px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); opacity: 0; transition: opacity .15s ease; pointer-events:none; }
+  .kp-card-body:focus-within .kp-len{ opacity: 1; }
+  .kp-len.over{ color: var(--crit); opacity: 1; }
+
+  .kp-points{ list-style: none; margin: 2px 0 0; padding: 0; display:flex; flex-direction:column; gap: 2px; }
+  .kp-point{ display:grid; grid-template-columns: 14px minmax(0,1fr) 26px; align-items:center; gap: 4px; margin-left: -6px; }
+  .kp-point .dot{ width: 5px; height: 5px; border-radius: 50%; background: var(--accent); justify-self:center; }
+  .kp-point input{ padding: 5px 8px; font-size: 13px; }
+  .kp-x{
+    width: 26px; height: 26px; display:flex; align-items:center; justify-content:center; border: none; border-radius: 6px;
+    background: none; color: var(--text-faint); opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
+  }
+  .kp-point:hover .kp-x, .kp-point:focus-within .kp-x, .kp-x:focus-visible{ opacity: 1; }
+  .kp-x:hover{ background: var(--crit-soft); color: var(--crit); }
+
+  .kp-add-row{ display:flex; align-items:center; gap: 10px; margin-left: -8px; }
+  .kp-add{
+    display:inline-flex; align-items:center; gap: 5px; padding: 5px 8px; border: none; border-radius: 7px;
+    background: none; font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+  }
+  .kp-add:hover{ background: var(--accent-soft); color: var(--accent-strong); }
+  .kp-hint{ font-size: 11.5px; color: var(--text-faint); }
+  .kp-hint kbd{ font-family: var(--font-mono); font-size: 10.5px; padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); }
+  @media (max-width: 620px){ .kp-card-body{ padding-left: 14px; } }
+
   .add-row{
     display:flex; align-items:center; justify-content:center; gap: 7px; width: 100%; padding: 10px;
     border: 1.5px dashed var(--border); border-radius: 9px; background: transparent;
@@ -648,10 +854,22 @@
   .kv-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 11px; }
   .kv-card{ border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 11px; display:flex; flex-direction:column; gap: 7px; position:relative; }
   .kv-card .inp{ padding: 7px 9px; }
+  .kv-card{ padding-top: 30px; }
+  .kv-card .del{ position:absolute; top: 6px; right: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-faint); padding: 1px 5px 3px; line-height:1; }
+  .kv-card .del:hover{ color: var(--crit); border-color: var(--crit); }
   .kv-card .inp.num{ font-family: var(--font-mono); font-size: 17px; font-weight: 600; }
   .kv-card.flagged{ border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
   .kv-flag{ display:flex; align-items:flex-start; gap: 6px; font-size: 11px; font-weight: 700; color: var(--warn); line-height:1.4; }
 
+  /* Contact us: people rows inside a category card */
+  .ct-people{ display:flex; flex-direction:column; gap: 6px; padding: 2px 12px 12px 36px; }
+  .ct-row{ display:grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1.4fr) minmax(0,1fr) 26px; gap: 8px; align-items:center; }
+  .ct-labels span{ font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); padding-left: 2px; }
+  .ct-row .inp{ padding: 8px 10px; font-size: 13px; }
+  .ct-row .inp[type="email"]:not(:placeholder-shown):invalid{ border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .ct-row:hover .ct-x, .ct-row:focus-within .ct-x{ opacity: 1; }
+  .ct-people .kp-add-row{ margin-left: -8px; }
+  @media (max-width: 720px){ .ct-row{ grid-template-columns: 1fr 26px; } .ct-row .inp{ grid-column: 1; } .ct-labels{ display:none; } .ct-people{ padding-left: 12px; } }
   .contact-block{ border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 13px; display:flex; flex-direction:column; gap: 9px; }
   .contact-block .t{ font-size: 11.5px; font-weight: 800; letter-spacing:.04em; text-transform: uppercase; color: var(--text-muted); }
   .contact-block .three{ display:grid; grid-template-columns: 1.2fr 1.5fr 1fr; gap: 8px; }
@@ -831,6 +1049,7 @@
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
 </style>
+<link rel="stylesheet" href="motion.css">
 
 <div class="wiz">
   <!-- ============ TOP: brand + progress rail ============ -->
@@ -851,7 +1070,11 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
-    <nav class="rail" id="rail" aria-label="Progress"></nav>
+    <div class="rail-row">
+      <nav class="rail" id="rail" aria-label="Progress"></nav>
+      <!-- step 3: previous edition + optional blocks (renderTogglePanel) -->
+      <div class="rail-tools" id="toggle-panel" hidden></div>
+    </div>
   </header>
 
   <!-- ============ BODY ============ -->
@@ -993,6 +1216,7 @@
 
 <div id="modal-root"></div>
 <div id="toast-region" aria-live="polite"></div>
+<script src="editor-store.js"></script>
 <script>
 (function(){
   'use strict';
@@ -1042,7 +1266,7 @@
     { id:'speakers',  name:'Speakers',               shape:'people',  toggle:true, helper:'Speaker cards with photo, name, role and company. An All Speakers link is added automatically.' },
     { id:'agenda',    name:'Agenda',                 shape:'agenda',  toggle:true, helper:'Pulled in from a previous edition — turn this on, then bring in a past edition to load its schedule. There is no manual agenda entry.' },
     { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.' },
-    { id:'attend',    name:'Who should attend',      shape:'chips',   core:true, helper:'Role chips. Type a role and press Enter — these also power delegate targeting later.' },
+    { id:'attend',    name:'Who should attend',      shape:'chips',   core:true, helper:'The roles this event is for — each with a line on why they should be there. These also power delegate targeting later.' },
     { id:'insights',  name:'Key insights / Testimonials', shape:'quotes', helper:'Quotes from past attendees with their name, role and company.' },
     { id:'glimpses',  name:'Previous glimpses',      shape:'gallery', toggle:true, helper:'Photo gallery from the last edition. Six to twelve images works best.' },
     { id:'contact',   name:'Contact us',             shape:'contacts',helper:'Speaking, delegate and partnership contacts — who a visitor should write to.' },
@@ -1056,6 +1280,7 @@
   var TEMPLATES = [
     { id:'tech500', name:'TECH500', tag:'IP event', cat:'IP', img:'template-previews/tech500-mini.jpg', imgFull:'template-previews/tech500-full.jpg',
       sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.',
+      site:'tech500',   // opens in the site editor as the real ET site (templates/tech500), filled with this content
       sections:['nav','hero','stats','priorities','about','whyjoin','attend','contact','footer'] },
     { id:'making-ai-work', name:'Making AI Work', tag:'IP event', cat:'IP', img:'template-previews/making-ai-work-mini.jpg', imgFull:'template-previews/making-ai-work-full.jpg',
       sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.',
@@ -1395,7 +1620,7 @@
           {t:'Meet the decision makers', d:'Curated room of senior marketing and growth leaders.'},
           {t:'Take home a playbook', d:'Every session ends with something you can run on Monday.'}
         ] };
-      case 'chips': return { items:['CMO','Head of Marketing','Growth Lead','Brand Manager','Media Planner','MarTech Lead','Agency Partner'] };
+      case 'chips': return { items:['CMO','Head of Marketing','Growth Lead','Brand Manager','Media Planner','MarTech Lead','Agency Partner'].map(function(t){ return { t: t, d: '' }; }) };
       case 'quotes': return { items:[
           {q:'The only ET forum where I left with three vendor shortlists and a hire.', n:'', r:'Marketing Director', c:'Retail chain'},
           {q:'Sharp room. Almost no sales pitching from stage.', n:'', r:'Head of Growth', c:'D2C brand'}
@@ -1403,9 +1628,9 @@
       case 'gallery': return { count:8 };
       case 'agenda': return { items:[] };
       case 'contacts': return { blocks:[
-          { t:'Speaking opportunities', n:'', e:'', p:'' },
-          { t:'Delegate registration', n:'', e:'', p:'' },
-          { t:'Partnerships', n:'', e:'', p:'' }
+          { t:'Speaking opportunities', people:[{ n:'', e:'', p:'' }] },
+          { t:'Delegate registration', people:[{ n:'', e:'', p:'' }] },
+          { t:'Partnerships', people:[{ n:'', e:'', p:'' }] }
         ] };
       case 'auto': return { whatsapp:true };
       default: return {};
@@ -1441,7 +1666,40 @@
   ========================================================= */
   var STEPS = ['Select Event Type','Choose Template','Build content','AI assemble'];
   var STORE_KEY = 'revamp.createEvent.draft.v1';
-  var logoPreviewUrl = '';   // in-memory object URL for the uploaded logo — not persisted across reloads
+  var logoPreviewUrl = '';   // what the step-1 logo tile shows: an object URL right after upload, the stored copy after a reload
+  /* The logo itself is kept in IndexedDB (editor-store.js), not in the localStorage draft: it can be megabytes. The site
+     editor reads it from there when it opens the draft and puts it on the site. Big PNGs are scaled to fit 1200×720. */
+  var LOGO_KEY = 'create:logo';
+  var logoSaving = null;      // the store write under way, so the hand-off can wait for it
+  function logoDataUrl(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = function(){ reject(reader.error); };
+      reader.onload = function(){
+        var url = reader.result;
+        if (file.type !== 'image/png' || file.size <= 400 * 1024) return resolve(url);
+        var img = new Image();
+        img.onerror = function(){ resolve(url); };
+        img.onload = function(){
+          var scale = Math.min(1, 1200 / img.naturalWidth, 720 / img.naturalHeight);
+          if (scale >= 1) return resolve(url);
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * scale);
+          c.height = Math.round(img.naturalHeight * scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/png'));
+        };
+        img.src = url;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function storeLogo(file){
+    logoSaving = logoDataUrl(file).then(function(dataUrl){
+      return RevampStore.put(LOGO_KEY, { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
+    }).catch(function(err){ console.warn('[create] could not keep the logo for the site editor:', err); });
+    return logoSaving;
+  }
 
   var S = {
     step: 1,
@@ -1564,6 +1822,7 @@
               (STEPS[i] ? '<span class="lbl">' + STEPS[i] + '</span>' : '') + '</button>';
     }
     rail.innerHTML = html;
+    renderTogglePanel();          // the header's previous-edition button belongs to Build content only
     rail.querySelectorAll('[data-goto]').forEach(function(b){
       b.addEventListener('click', function(){
         var n = parseInt(b.getAttribute('data-goto'), 10);
@@ -2086,6 +2345,7 @@
       e.stopPropagation();
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
+      RevampStore.remove(LOGO_KEY).catch(function(){});
       logoInput.value = '';
       save(); initStep1();
       toast('Logo removed');
@@ -2108,6 +2368,7 @@
       logoPreviewUrl = URL.createObjectURL(file);
       b.logo = true;
       b.logoName = file.name;
+      storeLogo(file);
       save(); initStep1();
       toast('Logo uploaded: ' + file.name);
     };
@@ -2380,6 +2641,7 @@
       else renderDetectReview(host);
     }
     renderFoot();
+    renderTogglePanel();          // step 3 changes screens without a step change (Back to the template picker …)
   }
 
   /* ---------- template picker ---------- */
@@ -2600,31 +2862,73 @@
     sec.editionName = pe.name;
   }
 
+  /* Previous edition + the optional blocks it unlocks (Speakers, Agenda, Sponsors, Glimpses): a button in the header,
+     beside the progress rail, on the Build content screen only; its choices open in a popup under it. */
+  var editionPopOpen = false;
+  var TOGGLE_INFO = {
+    speakers: { d: 'Photo, name, role and company', ic: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2a4.6 4.6 0 0 1 5.5 4.8"/>' },
+    agenda:   { d: 'Sessions, timings and speakers', ic: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h3M8 17h6"/>' },
+    partners: { d: 'Partner logos, grouped by tier', ic: '<circle cx="12" cy="9" r="5"/><path d="M8.5 13.2L7 21l5-2.6 5 2.6-1.5-7.8"/>' },
+    glimpses: { d: 'Photos from the last edition', ic: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.9"/><path d="M3 17l5-4.5 4 3.5 3-2.5 6 5.5"/>' }
+  };
   function renderTogglePanel(){
     var host = $('toggle-panel');
     if (!host) return;
+    var show = S.step === 3 && !!document.querySelector('#step-3 #sec-list');
+    host.hidden = !show;
+    if (!show){ host.innerHTML = ''; editionPopOpen = false; return; }
     var locked = !S.pulledEdition;
+    var onCount = TOGGLE_BLOCKS.filter(function(tb){ var sec = sectionByLib(tb.libId); return sec && sec.include; }).length;
     host.innerHTML =
-      '<div class="toggle-panel-top">' +
-        '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-pull-edition">' + IC.spark + ' Use a previous edition’s content</button>' +
-        (locked
-          ? '<span class="tp-status locked">' + IC.lock + ' Select a previous edition first to unlock Speakers, Agenda, Sponsors and Glimpses</span>'
-          : '<span class="tp-status">' + IC.check + ' Pulling optional blocks from ' + esc(S.pulledEdition.name) + '</span>') +
-      '</div>' +
-      '<div class="toggle-panel-row">' +
-        TOGGLE_BLOCKS.map(function(tb){
-          var sec = sectionByLib(tb.libId);
-          var on = !!(sec && sec.include);
-          return '<button class="switch' + (locked && !on ? ' locked' : '') + '" data-tb="' + tb.libId + '" aria-pressed="' + on + '">' +
-            '<span class="track"><i></i></span>' + esc(tb.label) + '</button>';
-        }).join('') +
+      '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
+        (locked ? IC.spark + '<span class="nm">Use a previous edition’s content</span>'
+                : IC.check + '<span class="nm">' + esc(S.pulledEdition.name) + '</span>') +
+        svg('<path d="M6 9l6 6 6-6"/>', 14) +
+      '</button>' +
+      '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Reuse a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +
+        '<div class="ep-head"><h4>Reuse a previous edition</h4>' +
+          '<p>Bring in speakers, the agenda, sponsors and photos from an event you’ve already run.</p></div>' +
+        '<div class="ep-edition' + (locked ? '' : ' chosen') + '">' +
+          '<span class="tile">' + (locked ? svg('<path d="M3 7h6l2 2h10v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>', 18) : svg('<path d="M20 6L9 17l-5-5"/>', 18)) + '</span>' +
+          '<span class="txt"><span class="t">' + (locked ? 'No edition selected' : esc(S.pulledEdition.name)) + '</span>' +
+            '<span class="s">' + (locked ? 'Unlocks the blocks below' : 'Content pulled into your sections') + '</span></span>' +
+          '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-pull-edition">' + (locked ? 'Choose' : 'Change') + '</button>' +
+        '</div>' +
+        '<div class="ep-blocks">' +
+          '<div class="ep-blocks-head"><span class="ep-label">Optional blocks</span><span class="ep-count">' + onCount + ' of ' + TOGGLE_BLOCKS.length + ' on</span></div>' +
+          TOGGLE_BLOCKS.map(function(tb){
+            var sec = sectionByLib(tb.libId);
+            var on = !!(sec && sec.include), info = TOGGLE_INFO[tb.libId] || { d: '', ic: '' };
+            var dis = locked && !on;
+            return '<button class="ep-row' + (dis ? ' locked' : '') + '" data-tb="' + tb.libId + '" role="switch" aria-pressed="' + on + '" aria-checked="' + on + '"' +
+                (dis ? ' title="Choose a previous edition first"' : '') + '>' +
+              '<span class="ic">' + svg(info.ic, 17) + '</span>' +
+              '<span><span class="nm">' + esc(tb.label) + (dis ? svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>', 12) : '') + '</span>' +
+                '<span class="ds">' + esc(info.d) + '</span></span>' +
+              '<span class="track"><i></i></span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+        (locked ? '<div class="ep-foot">' + svg('<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>', 14) +
+          'Agenda always comes from a previous edition — there’s no manual entry.</div>' : '') +
       '</div>';
+    $('btn-edition-menu').addEventListener('click', function(){ setEditionPop(!editionPopOpen); });
+    $('btn-pull-edition').addEventListener('click', function(){ setEditionPop(false); openPullContentModal(); });
     host.querySelectorAll('[data-tb]').forEach(function(b){
       b.addEventListener('click', function(){ toggleBlock(b.getAttribute('data-tb')); });
     });
-    var pullBtn = $('btn-pull-edition');
-    if (pullBtn) pullBtn.addEventListener('click', openPullContentModal);
   }
+  function setEditionPop(open){
+    editionPopOpen = open;
+    var pop = $('edition-pop'), btn = $('btn-edition-menu');
+    if (pop) pop.hidden = !open;
+    if (btn) btn.setAttribute('aria-expanded', String(open));
+  }
+  document.addEventListener('mousedown', function(e){
+    var host = $('toggle-panel');
+    if (editionPopOpen && host && !host.contains(e.target) && !e.target.closest('#modal-root')) setEditionPop(false);
+  });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && editionPopOpen) setEditionPop(false); });
 
   /* ---------- section rail + editor ---------- */
   function activeSection(){
@@ -2640,11 +2944,6 @@
     var pct = included.length ? Math.round(doneN / included.length * 100) : 0;
 
     host.innerHTML =
-      '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 4 &middot; Path ' + S.path + '</span>' +
-        '<h1>Build Your Website Content</h1>' +
-      '</div>' +
-      '<div class="toggle-panel" id="toggle-panel"></div>' +
       '<div class="build-grid">' +
         '<div class="rail-panel">' +
           '<div class="rail-panel-head">' +
@@ -2701,24 +3000,25 @@
       '<button class="btn btn-ai btn-sm" id="ai-fit">' + IC.spark + ' Fit to section</button>' +
       '<button class="btn btn-secondary btn-sm" id="ai-gen">Generate</button>';
 
+    var helpText = s.helper || (libBy(s.libId) || {}).helper || '';     // older drafts may not carry it
     host.innerHTML =
       '<div class="editor-head">' +
-        '<div>' +
-          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+          '<div class="eh-title">' +
             '<h2>' + esc(s.name) + '</h2>' +
+            (helpText ? '<span class="eh-info" tabindex="0" aria-label="About this section: ' + esc(helpText) + '">' +
+              svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>', 15) +
+              '<span class="eh-tip" role="tooltip">' + esc(helpText) + '</span></span>' : '') +
             (s.source === 'custom' ? '<span class="ai-badge">' + IC.spark + ' AI built</span>' : '') +
             (s.source === 'detected' ? '<span class="pill pill-ai"><span class="d"></span>From your design</span>' : '') +
             (s.source === 'edition' ? '<span class="pill pill-ai"><span class="d"></span>From ' + esc(s.editionName || 'a previous edition') + '</span>' : '') +
           '</div>' +
-          '<p class="helper">' + esc(s.helper || '') + '</p>' +
-        '</div>' +
         '<div class="tools">' + aiTools +
           (s.shape === 'auto' ? '' :
             '<button class="switch" id="inc-toggle" aria-pressed="' + s.include + '" title="Include this section on the site">' +
             '<span class="track"><i></i></span>' + (s.include ? 'Included' : 'Excluded') + '</button>') +
         '</div>' +
       '</div>' +
-      '<div class="editor-body' + (s.include ? '' : ' off') + '" id="editor-body">' + shapeHTML(s) + '</div>';
+      '<div class="editor-body' + (s.include ? '' : ' off') + '" id="editor-body">' + (hasIntro(s) ? introHTML(s) : '') + shapeHTML(s) + '</div>';
 
     var inc = $('inc-toggle');
     if (inc) inc.addEventListener('click', function(){
@@ -2732,6 +3032,7 @@
     if (gen) gen.addEventListener('click', function(){ aiGenerate(s); });
 
     wireShape(s);
+    if (hasIntro(s)) bindIntro(s, $('editor-body'));
   }
 
   function markDone(s, val){
@@ -2748,6 +3049,252 @@
     var txt = document.querySelector('.prog-txt');
     if (bar) bar.style.width = pct + '%';
     if (txt) txt.textContent = doneN + '/' + included.length + ' filled';
+  }
+
+  /* =========================================================
+     SECTION TEXT — one content model for every section and every template
+     Designs differ in which of these a section shows: a short line above the heading, a headline, an intro
+     paragraph, a list, a picture or video beside the text, a button. So every section (bar the hero, nav/footer and
+     one-line bands) collects any of them, the same way, under the same names:
+       d.subheading  d.heading  d.body  d.points[]  d.media { kind: 'image'|'video', url, side: 'left'|'right' }
+       d.cta { label, url }
+     A template's template.json → content.map says where its design puts each one (editor-fill.js → "intro");
+     whatever a design has no place for simply isn't shown there. Blocks are added with a chip and removed with ×;
+     INTRO_PINNED keeps a section's main one always in view.
+  ========================================================= */
+  var INTRO_BLOCKS = [
+    { key: 'subheading', label: 'Sub heading',    icon: '<path d="M4 7h10M4 12h16M4 17h7"/>' },
+    { key: 'heading',    label: 'Heading',        icon: '<path d="M5 5v14M15 5v14M5 12h10M19 10v9"/>' },
+    { key: 'body',       label: 'Paragraph',      icon: '<path d="M4 6h16M4 10h16M4 14h16M4 18h10"/>' },
+    { key: 'points',     label: 'Pointers',       icon: '<circle cx="5" cy="7" r="1.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="5" cy="17" r="1.3"/><path d="M9 7h11M9 12h11M9 17h11"/>' },
+    { key: 'media',      label: 'Image or video', icon: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5l4.5 2.5-4.5 2.5z"/>' },
+    { key: 'cta',        label: 'Button',         icon: '<rect x="3" y="8" width="18" height="8" rx="4"/>' }
+  ];
+  var INTRO_PINNED = { about: ['body'], priorities: ['subheading'], whyjoin: ['subheading'], attend: ['subheading'] };
+  // Key Discussion Points, Why join us, Who should attend: one layout — the pinned sub heading, then item cards; no chips
+  var INTRO_NO_ADD = { priorities: 1, whyjoin: 1, attend: 1 };
+  var INTRO_OFF = { auto: 1, hero: 1, line: 1, heading: 1, custom: 1 };           // shapes that are their own text
+  var INTRO_OFF_LIB = { stats: 1, contact: 1 };                                               // sections that keep only their own fields
+  function hasIntro(s){ return !INTRO_OFF[s.shape] && !INTRO_OFF_LIB[s.libId]; }
+  function introPinned(s, key){ return (INTRO_PINNED[s.libId] || []).indexOf(key) !== -1; }
+  function introHas(s, d, key){ return INTRO_NO_ADD[s.libId] ? introPinned(s, key) : (d[key] != null || introPinned(s, key)); }
+  function introLimit(s){ return s.limit || (s.libId === 'about' ? 900 : 600); }
+  /* drafts written before the model: Overview's video became media */
+  function normIntro(d){
+    if (d.video && !d.media){ d.media = { kind: 'video', url: d.video.url || '', side: d.video.side || 'right' }; }
+    delete d.video;
+    return d;
+  }
+  function mediaPreview(m){
+    if (!m || m.kind !== 'image') return videoPreview(m && m.url);
+    var url = String(m.url || '').trim();
+    if (!url) return '<div class="ov-vempty">' + IC.img + '<span>The preview shows here</span></div>';
+    return '<img class="in-img" src="' + esc(url) + '" alt="" onerror="this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'ov-vempty bad\',textContent:\'That image didn’t load — check the link\'}))">';
+  }
+
+  function introHTML(s){
+    var d = normIntro(s.data || (s.data = {}));
+    var X = function(key, label){
+      return introPinned(s, key) ? '' :
+        '<button class="ov-x" type="button" data-indel="' + key + '" title="Remove ' + label + '" aria-label="Remove ' + label + '">' +
+          svg('<path d="M18 6L6 18M6 6l12 12"/>', 12) + '</button>';
+    };
+    var block = function(key, label, inner, forId){
+      return '<div class="ov-block" data-in="' + key + '"><div class="ov-block-head">' +
+        (forId ? '<label class="flabel" for="' + forId + '">' + label + '</label>' : '<span class="flabel">' + label + '</span>') +
+        X(key, label.toLowerCase()) + '</div>' + inner + '</div>';
+    };
+    var html = '';
+    if (introHas(s, d, 'subheading')) html += block('subheading', 'Sub heading',
+      '<input class="inp" id="e-in-subheading" value="' + esc(d.subheading || '') + '" placeholder="A short line above the heading">', 'e-in-subheading');
+    if (introHas(s, d, 'heading')) html += block('heading', 'Heading',
+      '<input class="inp ov-heading" id="e-in-heading" value="' + esc(d.heading || '') + '" placeholder="The section’s headline">', 'e-in-heading');
+    if (introHas(s, d, 'body')){
+      var lim = introLimit(s), body = d.body || '';
+      html += block('body', 'Paragraph',
+        '<textarea class="inp ov-para" id="e-body" rows="3" placeholder="' + (s.libId === 'about' ? 'Paste your rough copy here — AI will trim and shape it to fit.' : 'A few lines that introduce this section') + '">' + esc(body) + '</textarea>' +
+        '<div class="char-count' + (body.length > lim ? ' over' : '') + '" id="cc">' + body.length + ' / ' + lim + ' characters</div>', 'e-body');
+    }
+    if (introHas(s, d, 'points')){
+      var pts = d.points || [''];
+      html += block('points', 'Pointers',
+        '<ul class="kp-points">' + pts.map(function(p, j){
+          return '<li class="kp-point"><span class="dot" aria-hidden="true"></span>' +
+            '<input data-ipt="' + j + '" value="' + esc(p) + '" placeholder="Pointer" aria-label="Pointer ' + (j + 1) + '">' +
+            '<button class="kp-x" type="button" data-iptdel="' + j + '" title="Remove pointer" aria-label="Remove pointer">' + svg('<path d="M18 6L6 18M6 6l12 12"/>', 12) + '</button></li>';
+        }).join('') + '</ul>' +
+        '<div class="kp-add-row"><button class="kp-add" type="button" id="in-ptadd">' + IC.plus + ' Add pointer</button>' +
+          '<span class="kp-hint"><kbd>Enter</kbd> adds another</span></div>');
+    }
+    if (introHas(s, d, 'media')){
+      var m = d.media || { kind: 'image', url: '', side: 'right' };
+      html += block('media', 'Image or video',
+        '<div class="in-media-top"><div class="segmented" role="group" aria-label="Image or video">' +
+          [['image', 'Image'], ['video', 'Video']].map(function(k){ return '<button type="button" data-inkind="' + k[0] + '" aria-pressed="' + (m.kind === k[0]) + '">' + k[1] + '</button>'; }).join('') +
+        '</div>' +
+        '<input class="inp" id="e-in-media-url" value="' + esc(m.url || '') + '" inputmode="url" placeholder="' + (m.kind === 'video' ? 'A YouTube, Vimeo or .mp4 link' : 'An image link (https://…)') + '"></div>' +
+        '<div class="ov-video-row"><div class="ov-vprev" id="in-mprev">' + mediaPreview(m) + '</div>' +
+          '<div class="ov-side"><span class="ov-side-label">Sits beside the text, on the</span>' +
+            '<div class="segmented" role="group" aria-label="Which side">' +
+              ['left', 'right'].map(function(side){ return '<button type="button" data-inside="' + side + '" aria-pressed="' + ((m.side || 'right') === side) + '">' + (side === 'left' ? 'Left' : 'Right') + '</button>'; }).join('') +
+            '</div><span class="in-note">Shown where the template’s design has room for it.</span></div></div>');
+    }
+    if (introHas(s, d, 'cta')){
+      var c = d.cta || {};
+      html += block('cta', 'Button',
+        '<div class="in-cta"><input class="inp" id="e-in-cta-label" value="' + esc(c.label || '') + '" placeholder="Button text, e.g. Register now" aria-label="Button text">' +
+        '<input class="inp" id="e-in-cta-url" value="' + esc(c.url || '') + '" inputmode="url" placeholder="Link (https://…)" aria-label="Button link"></div>');
+    }
+    var adds = INTRO_NO_ADD[s.libId] ? [] : INTRO_BLOCKS.filter(function(b){ return !introHas(s, d, b.key); });
+    var chips = adds.length
+      ? '<div class="ov-add"><span class="ov-add-label">' + (s.shape === 'rich' ? 'Add' : 'Section text') + '</span>' + adds.map(function(b){
+          return '<button class="ov-chip" type="button" data-inadd="' + b.key + '">' + b.label + '</button>';
+        }).join('') + '</div>'
+      : '';
+    // a section with fields of its own: its text first, a rule, then the rest
+    return '<div class="in-wrap' + (s.shape === 'rich' ? '' : ' in-sep') + '">' + (html ? '<div class="ov-blocks">' + html + '</div>' : '') + chips + '</div>';
+  }
+
+  function bindIntro(s, body){
+    var d = s.data;
+    var focus = function(sel){ var el = document.querySelector('#editor-panel ' + sel); if (el){ el.focus(); if (el.select && el.value) el.select(); } };
+    var grow = function(t){ t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight, 76) + 'px'; };
+    var bindVal = function(id, set){ var el = $(id); if (el) el.addEventListener('input', function(){ set(el.value); markDone(s, true); }); };
+    bindVal('e-in-subheading', function(v){ d.subheading = v; });
+    bindVal('e-in-heading', function(v){ d.heading = v; });
+    var para = $('e-body');
+    if (para){
+      grow(para);
+      para.addEventListener('input', function(){
+        grow(para);
+        d.body = para.value;
+        var cc = $('cc'), lim = introLimit(s);
+        if (cc){ cc.textContent = d.body.length + ' / ' + lim + ' characters'; cc.classList.toggle('over', d.body.length > lim); }
+        markDone(s, s.libId === 'about' ? d.body.trim().length > 20 : true);
+      });
+    }
+    bindVal('e-in-cta-label', function(v){ d.cta = d.cta || {}; d.cta.label = v; });
+    bindVal('e-in-cta-url', function(v){ d.cta = d.cta || {}; d.cta.url = v.trim(); });
+
+    body.querySelectorAll('[data-inadd]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var key = b.getAttribute('data-inadd');
+        if (key === 'points') d.points = [''];
+        else if (key === 'media') d.media = { kind: 'image', url: '', side: 'right' };
+        else if (key === 'cta') d.cta = { label: '', url: '' };
+        else d[key] = '';
+        save(); renderEditor();
+        focus({ points: '[data-ipt="0"]', media: '#e-in-media-url', cta: '#e-in-cta-label', body: '#e-body' }[key] || '#e-in-' + key);
+      });
+    });
+    body.querySelectorAll('[data-indel]').forEach(function(b){
+      b.addEventListener('click', function(){ delete d[b.getAttribute('data-indel')]; save(); renderEditor(); });
+    });
+
+    // pointers
+    body.querySelectorAll('[data-ipt]').forEach(function(el){
+      var j = +el.getAttribute('data-ipt');
+      el.addEventListener('input', function(){ d.points = d.points || ['']; d.points[j] = el.value; markDone(s, true); });
+      el.addEventListener('keydown', function(e){
+        d.points = d.points || [''];
+        if (e.key === 'Enter'){ e.preventDefault(); d.points.splice(j + 1, 0, ''); save(); renderEditor(); focus('[data-ipt="' + (j + 1) + '"]'); }
+        else if (e.key === 'Backspace' && !el.value && d.points.length > 1){
+          e.preventDefault(); d.points.splice(j, 1); save(); renderEditor(); focus('[data-ipt="' + Math.max(0, j - 1) + '"]');
+        }
+      });
+    });
+    body.querySelectorAll('[data-iptdel]').forEach(function(b){
+      b.addEventListener('click', function(){
+        d.points = d.points || [];
+        d.points.splice(+b.getAttribute('data-iptdel'), 1);
+        if (!d.points.length && !introPinned(s, 'points')) delete d.points;      // the last one gone: the block goes too
+        save(); renderEditor();
+      });
+    });
+    var ptAdd = $('in-ptadd');
+    if (ptAdd) ptAdd.addEventListener('click', function(){
+      d.points = (d.points || []).filter(function(x){ return String(x).trim(); });
+      d.points.push('');
+      save(); renderEditor(); focus('[data-ipt="' + (d.points.length - 1) + '"]');
+    });
+
+    // image or video
+    var mediaTimer = null;
+    var murl = $('e-in-media-url');
+    if (murl) murl.addEventListener('input', function(){
+      d.media = d.media || { kind: 'image', url: '', side: 'right' };
+      d.media.url = murl.value.trim();
+      markDone(s, true);
+      clearTimeout(mediaTimer);
+      mediaTimer = setTimeout(function(){ var p = $('in-mprev'); if (p) p.innerHTML = mediaPreview(d.media); }, 250);
+    });
+    body.querySelectorAll('[data-inkind]').forEach(function(b){
+      b.addEventListener('click', function(){
+        d.media = d.media || { kind: 'image', url: '', side: 'right' };
+        if (d.media.kind === b.getAttribute('data-inkind')) return;
+        d.media.kind = b.getAttribute('data-inkind');
+        save(); renderEditor(); focus('#e-in-media-url');
+      });
+    });
+    body.querySelectorAll('[data-inside]').forEach(function(b){
+      b.addEventListener('click', function(){
+        d.media = d.media || { kind: 'image', url: '', side: 'right' };
+        d.media.side = b.getAttribute('data-inside');
+        body.querySelectorAll('[data-inside]').forEach(function(x){ x.setAttribute('aria-pressed', String(x === b)); });
+        save();
+      });
+    });
+  }
+
+  /* ---------- the item card, for every card list (discussion points, benefits, what-awaits blocks) ----------
+     heading, paragraph and pointers per item — the same three fields whatever the template does with them */
+  var ITEM_COPY = {
+    columns:  { list: 'Discussion points', noun: 'point',   add: 'Add a discussion point', t: 'Point heading', d: 'A short paragraph on what will be discussed…' },
+    benefits: { list: 'Benefits',          noun: 'benefit', add: 'Add a benefit',          t: 'Benefit, e.g. Meet the decision makers', d: 'A line or two of detail…' },
+    cards:    { list: 'Blocks',            noun: 'block',   add: 'Add a block',            t: 'Block title', d: 'One or two lines…' },
+    chips:    { list: 'Roles',             noun: 'role',    add: 'Add a role',             t: 'Role, e.g. Chief Marketing Officer', d: 'A short paragraph on why they should be there…' }
+  };
+  /* Contact us: each category holds people[]; a draft from before held one person per category (t, n, e, p) */
+  function normContacts(d){
+    d.blocks = (d.blocks || []).map(function(b){
+      if (b.people) return b;
+      return { t: b.t || '', people: [{ n: b.n || '', e: b.e || '', p: b.p || '' }] };
+    });
+    return d.blocks;
+  }
+  function contactsFilled(d){ return normContacts(d).some(function(b){ return b.people.some(function(p){ return String(p.e || '').trim() || String(p.p || '').trim(); }); }); }
+  /* Who should attend used to hold plain role names: each becomes a card with that heading */
+  function normItems(d){
+    d.items = (d.items || []).map(function(it){ return typeof it === 'string' ? { t: it, d: '' } : it; });
+    return d.items;
+  }
+  function itemsHTML(s){
+    var d = s.data || (s.data = {}), items = normItems(d), c = ITEM_COPY[s.shape];
+    return '<div class="kp-list-head"><span class="flabel">' + c.list + '</span>' +
+        '<span class="kp-count">' + items.length + ' ' + c.noun + (items.length === 1 ? '' : 's') + '</span></div>' +
+      '<div class="kp-list" id="rep-list">' + items.map(function(it, i){
+        var pts = it.points || [], len = (it.d || '').length;
+        return '<div class="kp-card" data-ri="' + i + '">' +
+          '<div class="kp-card-head">' +
+            '<span class="kp-grip" title="Drag to reorder" aria-hidden="true">' + IC.grip + '</span>' +
+            '<span class="kp-num">' + ('0' + (i + 1)).slice(-2) + '</span>' +
+            '<input class="kp-title" data-rep="t" data-i="' + i + '" value="' + esc(it.t) + '" placeholder="' + c.t + '" aria-label="' + c.noun + ' ' + (i + 1) + ' heading">' +
+            '<button class="kp-icon del" type="button" data-repdel="' + i + '" title="Delete ' + c.noun + '" aria-label="Delete ' + c.noun + ' ' + (i + 1) + '">' + IC.trash + '</button>' +
+          '</div>' +
+          '<div class="kp-card-body">' +
+            '<textarea class="kp-desc" data-rep="d" data-i="' + i + '" rows="1" placeholder="' + c.d + '" aria-label="' + c.noun + ' ' + (i + 1) + ' paragraph">' + esc(it.d) + '</textarea>' +
+            '<span class="kp-len' + (len > 140 ? ' over' : '') + '" data-len="' + i + '">' + len + ' / 140</span>' +
+            (pts.length ? '<ul class="kp-points" aria-label="Pointers">' + pts.map(function(p, j){
+              return '<li class="kp-point"><span class="dot" aria-hidden="true"></span>' +
+                '<input data-pt="' + i + '.' + j + '" value="' + esc(p) + '" placeholder="Pointer" aria-label="' + c.noun + ' ' + (i + 1) + ' pointer ' + (j + 1) + '">' +
+                '<button class="kp-x" type="button" data-ptdel="' + i + '.' + j + '" title="Remove pointer" aria-label="Remove pointer">' + svg('<path d="M18 6L6 18M6 6l12 12"/>', 12) + '</button></li>';
+            }).join('') + '</ul>' : '') +
+            '<div class="kp-add-row"><button class="kp-add" type="button" data-ptadd="' + i + '">' + IC.plus + ' Add pointer</button>' +
+              (pts.length ? '<span class="kp-hint"><kbd>Enter</kbd> adds another</span>' : '') + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>' +
+      '<button class="add-row" id="rep-add">' + IC.plus + ' ' + c.add + '</button>';
   }
 
   /* ---------- shape renderers ---------- */
@@ -2809,10 +3356,7 @@
           }).join('');
 
       case 'rich':
-        return '<div class="field"><label for="e-body">Overview</label>' +
-            '<textarea class="inp" id="e-body" rows="7" placeholder="Paste your rough copy here — AI will trim and shape it to fit.">' + esc(d.body) + '</textarea>' +
-            '<div class="char-count' + ((d.body||'').length > (s.limit||900) ? ' over' : '') + '" id="cc">' +
-              (d.body||'').length + ' / ' + (s.limit||900) + ' characters</div></div>';
+        return '';                    // all of it is section text (introHTML)
 
       case 'line':
         return '<div class="field"><label for="e-line">Marquee text</label>' +
@@ -2823,19 +3367,9 @@
         return '<div class="field"><label for="e-head">Band heading</label>' +
             '<input class="inp" id="e-head" value="' + esc(d.text) + '" placeholder="e.g. Industries in the room"></div>';
 
-      case 'cards':
       case 'columns':
-        return '<div class="rep-list" id="rep-list">' + (d.items||[]).map(function(it, i){
-            return '<div class="rep-item" draggable="true" data-ri="' + i + '">' +
-              '<span class="grip">' + IC.grip + '</span>' +
-              '<span class="fields">' +
-                '<input class="inp" data-rep="t" data-i="' + i + '" value="' + esc(it.t) + '" placeholder="Title">' +
-                '<textarea class="inp" data-rep="d" data-i="' + i + '" rows="2" placeholder="One or two lines">' + esc(it.d) + '</textarea>' +
-              '</span>' +
-              '<button class="del" data-repdel="' + i + '" title="Remove">' + IC.trash + '</button>' +
-            '</div>';
-          }).join('') + '</div>' +
-          '<button class="add-row" id="rep-add">' + IC.plus + ' Add ' + (s.shape === 'columns' ? 'a column' : 'a block') + '</button>';
+      case 'cards':
+        return itemsHTML(s);         // the shared item card (heading, paragraph, pointers)
 
       case 'people':
         return '<div class="tile-grid">' + (d.items||[]).map(function(p, i){
@@ -2851,30 +3385,10 @@
           '<div class="callout plain">' + IC.info + '<span>An <strong style="display:inline">All speakers</strong> link is added automatically when you pass eight speakers.</span></div>';
 
       case 'benefits':
-        return '<div class="field"><label for="e-body">The advantage</label>' +
-            '<textarea class="inp" id="e-body" rows="4" placeholder="Why should someone give you a day of their time?">' + esc(d.body) + '</textarea>' +
-            '<div class="char-count' + ((d.body||'').length > (s.limit||600) ? ' over' : '') + '" id="cc">' +
-              (d.body||'').length + ' / ' + (s.limit||600) + ' characters</div></div>' +
-          '<div class="field"><span class="flabel">Benefit cards</span>' +
-          '<div class="rep-list" id="rep-list">' + (d.items||[]).map(function(it, i){
-            return '<div class="rep-item" draggable="true" data-ri="' + i + '">' +
-              '<span class="grip">' + IC.grip + '</span>' +
-              '<span class="fields">' +
-                '<input class="inp" data-rep="t" data-i="' + i + '" value="' + esc(it.t) + '" placeholder="Benefit">' +
-                '<textarea class="inp" data-rep="d" data-i="' + i + '" rows="2" placeholder="A line of detail">' + esc(it.d) + '</textarea>' +
-              '</span>' +
-              '<button class="del" data-repdel="' + i + '" title="Remove">' + IC.trash + '</button>' +
-            '</div>';
-          }).join('') + '</div>' +
-          '<button class="add-row" id="rep-add" style="margin-top:9px">' + IC.plus + ' Add a benefit</button></div>';
+        return itemsHTML(s);         // its paragraph is section text (pinned)
 
       case 'chips':
-        return '<div class="field"><span class="flabel">Roles</span>' +
-            '<div class="chip-wrap" id="chip-wrap">' + (d.items||[]).map(function(c, i){
-              return '<span class="chip">' + esc(c) + '<button data-chipdel="' + i + '" title="Remove">&times;</button></span>';
-            }).join('') +
-            '<input id="chip-input" placeholder="Type a role and press Enter"></div>' +
-            '<p class="hint">' + (d.items||[]).length + ' roles &middot; these also power delegate targeting later.</p></div>';
+        return itemsHTML(s);         // roles as item cards (heading, paragraph, pointers)
 
       case 'quotes':
         return '<div class="rep-list" id="rep-list">' + (d.items||[]).map(function(q, i){
@@ -2928,16 +3442,35 @@
           '<button class="btn btn-secondary btn-sm" id="agenda-pull">' + IC.spark + ' Bring in a different edition</button>' +
           '<p class="hint">Edit or remove a row if it needs a tweak — there is no manual add, agenda always starts from a previous edition.</p>';
 
+      /* Contact us: categories you can rename, add, delete and reorder — each with as many people as it needs */
       case 'contacts':
-        return (d.blocks||[]).map(function(b, i){
-            return '<div class="contact-block">' +
-              '<span class="t">' + esc(b.t) + '</span>' +
-              '<span class="three">' +
-                '<input class="inp" data-c="n" data-i="' + i + '" value="' + esc(b.n) + '" placeholder="Name">' +
-                '<input class="inp" data-c="e" data-i="' + i + '" value="' + esc(b.e) + '" placeholder="Email">' +
-                '<input class="inp" data-c="p" data-i="' + i + '" value="' + esc(b.p) + '" placeholder="Phone">' +
-              '</span></div>';
-          }).join('');
+        var cts = normContacts(d);
+        var ctX = svg('<path d="M18 6L6 18M6 6l12 12"/>', 12);
+        return '<div class="kp-list-head"><span class="flabel">Contact categories</span>' +
+            '<span class="kp-count">' + cts.length + ' categor' + (cts.length === 1 ? 'y' : 'ies') + '</span></div>' +
+          '<div class="kp-list" id="rep-list">' + cts.map(function(b, i){
+            return '<div class="kp-card ct-card" data-ri="' + i + '">' +
+              '<div class="kp-card-head">' +
+                '<span class="kp-grip" title="Drag to reorder" aria-hidden="true">' + IC.grip + '</span>' +
+                '<input class="kp-title" data-ctcat="' + i + '" value="' + esc(b.t) + '" placeholder="Category, e.g. Speaking opportunities" aria-label="Category ' + (i + 1) + ' name">' +
+                '<button class="kp-icon del" type="button" data-ctcatdel="' + i + '" title="Delete category" aria-label="Delete category ' + (i + 1) + '">' + IC.trash + '</button>' +
+              '</div>' +
+              '<div class="ct-people">' +
+                (b.people.length ? '<div class="ct-row ct-labels" aria-hidden="true"><span>Name</span><span>Email</span><span>Phone</span><span></span></div>' : '') +
+                b.people.map(function(p, j){
+                  var key = i + '.' + j;
+                  return '<div class="ct-row">' +
+                    '<input class="inp" data-ct="' + key + '.n" value="' + esc(p.n) + '" placeholder="Full name" aria-label="Name" autocomplete="off">' +
+                    '<input class="inp" type="email" data-ct="' + key + '.e" value="' + esc(p.e) + '" placeholder="name@company.com" aria-label="Email" autocomplete="off">' +
+                    '<input class="inp" type="tel" inputmode="tel" data-ct="' + key + '.p" value="' + esc(p.p) + '" placeholder="+91 98200 00000" aria-label="Phone" autocomplete="off">' +
+                    '<button class="kp-x ct-x" type="button" data-ctdel="' + key + '" title="Remove person" aria-label="Remove person">' + ctX + '</button>' +
+                  '</div>';
+                }).join('') +
+                '<div class="kp-add-row"><button class="kp-add" type="button" data-ctadd="' + i + '">' + IC.plus + ' Add person</button></div>' +
+              '</div>' +
+            '</div>';
+          }).join('') + '</div>' +
+          '<button class="add-row" id="ct-addcat">' + IC.plus + ' Add a category</button>';
 
       case 'custom':
         return '<div class="callout ai">' + IC.spark + '<span><strong>Built from your description</strong>' +
@@ -2990,18 +3523,6 @@
       bindText('e-cta1','cta1'); bindText('e-cta2','cta2');
       on('e-banner','click', function(){ d.banner = !d.banner; save(); renderEditor(); });
       on('e-title','input', function(){ markDone(s, !!String(d.title||'').trim()); });
-    }
-
-    if (s.shape === 'rich' || s.shape === 'benefits'){
-      on('e-body','input', function(){
-        d.body = $('e-body').value;
-        var cc = $('cc'), lim = s.limit || 900;
-        if (cc){
-          cc.textContent = d.body.length + ' / ' + lim + ' characters';
-          cc.classList.toggle('over', d.body.length > lim);
-        }
-        markDone(s, d.body.trim().length > 20);
-      });
     }
 
     if (s.shape === 'line') bindText('e-line','text');
@@ -3071,7 +3592,7 @@
     }
 
     /* repeatable items: cards / columns / benefits */
-    if (s.shape === 'cards' || s.shape === 'columns' || s.shape === 'benefits'){
+    if (s.shape === 'cards' || s.shape === 'columns' || s.shape === 'benefits' || s.shape === 'chips'){
       body.querySelectorAll('[data-rep]').forEach(function(el){
         el.addEventListener('input', function(){
           var i = +el.getAttribute('data-i');
@@ -3090,6 +3611,67 @@
         save(); renderEditor();
       });
       wireDrag($('rep-list'), 'data-ri', d.items, function(){ save(); renderEditor(); });
+    }
+
+    /* item cards (discussion points, benefits, blocks): pointers, growing paragraphs, drag from the grip */
+    if (s.shape === 'columns' || s.shape === 'cards' || s.shape === 'benefits' || s.shape === 'chips'){
+      // after renderEditor() the editor body is a new element: look the pointer up in the page, not in `body`
+      var focusPoint = function(key){ var el = document.querySelector('#editor-panel [data-pt="' + key + '"]'); if (el) el.focus(); };
+      var grow = function(t){ t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+      body.querySelectorAll('.kp-desc').forEach(function(t){
+        grow(t);
+        t.addEventListener('input', function(){
+          grow(t);
+          var c = body.querySelector('[data-len="' + t.getAttribute('data-i') + '"]');
+          if (c){ c.textContent = t.value.length + ' / 140'; c.classList.toggle('over', t.value.length > 140); }
+        });
+      });
+      // a card only drags from its grip, so selecting text in a field doesn't pick the card up
+      body.querySelectorAll('.kp-card').forEach(function(card){
+        var grip = card.querySelector('.kp-grip');
+        var drop = function(){ card.removeAttribute('draggable'); };
+        grip.addEventListener('mousedown', function(){
+          card.setAttribute('draggable', 'true');
+          document.addEventListener('mouseup', drop, { once: true });   // a click on the grip without a drag
+        });
+        card.addEventListener('dragend', drop);
+      });
+      on('rep-add', 'click', function(){                          // runs after the generic add: focus the new heading
+        var t = document.querySelectorAll('#editor-panel .kp-title');
+        if (t.length) t[t.length - 1].focus();
+      });
+      body.querySelectorAll('[data-pt]').forEach(function(el){
+        var p = el.getAttribute('data-pt').split('.'), i = +p[0], j = +p[1];
+        el.addEventListener('input', function(){ d.items[i].points[j] = el.value; markDone(s, true); });
+        el.addEventListener('keydown', function(e){
+          if (e.key === 'Enter'){                                   // the next pointer, straight away
+            e.preventDefault();
+            d.items[i].points.splice(j + 1, 0, '');
+            save(); renderEditor(); focusPoint(i + '.' + (j + 1));
+          } else if (e.key === 'Backspace' && !el.value){            // an empty pointer goes, back to the one before
+            e.preventDefault();
+            d.items[i].points.splice(j, 1);
+            save(); renderEditor();
+            if (j > 0) focusPoint(i + '.' + (j - 1));
+          }
+        });
+      });
+      body.querySelectorAll('[data-ptdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var p = b.getAttribute('data-ptdel').split('.');
+          d.items[+p[0]].points.splice(+p[1], 1);
+          save(); renderEditor();
+        });
+      });
+      body.querySelectorAll('[data-ptadd]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var i = +b.getAttribute('data-ptadd');
+          var it = d.items[i];
+          it.points = (it.points || []).filter(function(x){ return String(x).trim(); });   // no pile of blank ones
+          it.points.push('');
+          save(); renderEditor(); focusPoint(i + '.' + (it.points.length - 1));
+        });
+      });
     }
 
     /* quotes */
@@ -3135,30 +3717,6 @@
       });
     }
 
-    /* chips */
-    if (s.shape === 'chips'){
-      var input = $('chip-input');
-      if (input){
-        input.addEventListener('keydown', function(e){
-          if (e.key === 'Enter' || e.key === ','){
-            e.preventDefault();
-            var v = input.value.trim();
-            if (v){ d.items.push(v); markDone(s, true); save(); renderEditor(); $('chip-input').focus(); }
-          } else if (e.key === 'Backspace' && !input.value && d.items.length){
-            d.items.pop(); save(); renderEditor(); $('chip-input').focus();
-          }
-        });
-        var wrap = $('chip-wrap');
-        if (wrap) wrap.addEventListener('click', function(e){ if (e.target === wrap) input.focus(); });
-      }
-      body.querySelectorAll('[data-chipdel]').forEach(function(b){
-        b.addEventListener('click', function(){
-          d.items.splice(+b.getAttribute('data-chipdel'), 1);
-          save(); renderEditor();
-        });
-      });
-    }
-
     /* gallery */
     if (s.shape === 'gallery'){
       on('g-add','click', function(){
@@ -3192,15 +3750,56 @@
       on('agenda-pull','click', function(){ openPullContentModal(); });
     }
 
-    /* contacts */
+    /* contacts: categories and their people */
     if (s.shape === 'contacts'){
-      body.querySelectorAll('[data-c]').forEach(function(el){
-        el.addEventListener('input', function(){
-          var i = +el.getAttribute('data-i');
-          d.blocks[i][el.getAttribute('data-c')] = el.value;
-          markDone(s, d.blocks.some(function(b){ return String(b.e||'').trim(); }));
+      var ctFocus = function(sel){ var el = document.querySelector('#editor-panel ' + sel); if (el) el.focus(); };
+      normContacts(d);
+      body.querySelectorAll('[data-ct]').forEach(function(el){
+        var k = el.getAttribute('data-ct').split('.');
+        el.addEventListener('input', function(){ d.blocks[+k[0]].people[+k[1]][k[2]] = el.value; markDone(s, contactsFilled(d)); });
+        el.addEventListener('keydown', function(e){               // Enter on a phone: the next person
+          if (e.key === 'Enter' && k[2] === 'p'){
+            e.preventDefault();
+            d.blocks[+k[0]].people.splice(+k[1] + 1, 0, { n: '', e: '', p: '' });
+            save(); renderEditor(); ctFocus('[data-ct="' + k[0] + '.' + (+k[1] + 1) + '.n"]');
+          }
         });
       });
+      body.querySelectorAll('[data-ctcat]').forEach(function(el){
+        el.addEventListener('input', function(){ d.blocks[+el.getAttribute('data-ctcat')].t = el.value; save(); });
+      });
+      body.querySelectorAll('[data-ctadd]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var i = +b.getAttribute('data-ctadd');
+          d.blocks[i].people.push({ n: '', e: '', p: '' });
+          save(); renderEditor(); ctFocus('[data-ct="' + i + '.' + (d.blocks[i].people.length - 1) + '.n"]');
+        });
+      });
+      body.querySelectorAll('[data-ctdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var k = b.getAttribute('data-ctdel').split('.');
+          d.blocks[+k[0]].people.splice(+k[1], 1);
+          markDone(s, contactsFilled(d)); renderEditor();
+        });
+      });
+      body.querySelectorAll('[data-ctcatdel]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var i = +b.getAttribute('data-ctcatdel'), gone = d.blocks[i];
+          d.blocks.splice(i, 1);
+          markDone(s, contactsFilled(d)); renderEditor();
+          toast('Removed ' + (gone.t || 'the category'));
+        });
+      });
+      on('ct-addcat', 'click', function(){
+        d.blocks.push({ t: '', people: [{ n: '', e: '', p: '' }] });
+        save(); renderEditor(); ctFocus('[data-ctcat="' + (d.blocks.length - 1) + '"]');
+      });
+      body.querySelectorAll('.ct-card').forEach(function(card){               // drag from the grip only
+        var grip = card.querySelector('.kp-grip'), drop = function(){ card.removeAttribute('draggable'); };
+        grip.addEventListener('mousedown', function(){ card.setAttribute('draggable', 'true'); document.addEventListener('mouseup', drop, { once: true }); });
+        card.addEventListener('dragend', drop);
+      });
+      wireDrag($('rep-list'), 'data-ri', d.blocks, function(){ save(); renderEditor(); });
     }
   }
 
@@ -3274,20 +3873,24 @@
       }
       else if (s.shape === 'columns' || s.shape === 'cards'){
         d.items = (d.items || []).map(function(it){
-          return {
+          var out = {
             t: (it.t || '').replace(/\.$/, '') || 'Discussion point',
             d: (it.d || '').length > 140 ? it.d.slice(0, 139).replace(/\s+\S*$/, '') + '.' : (it.d || '')
           };
+          // pointers: trimmed, blanks dropped, each kept to one line
+          if (it.points) out.points = it.points.map(function(p){ p = String(p).trim(); return p.length > 90 ? p.slice(0, 89).replace(/\s+\S*$/, '') + '…' : p; }).filter(Boolean);
+          return out;
         });
         if (!d.items.length) d.items = seed(s.shape).items;
       }
       else if (s.shape === 'chips'){
         var seen = {};
-        d.items = (d.items || []).map(function(c){
-          return c.trim().replace(/\b\w/g, function(m){ return m.toUpperCase(); });
-        }).filter(function(c){
-          if (!c || seen[c.toLowerCase()]) return false;
-          seen[c.toLowerCase()] = 1; return true;
+        d.items = normItems(d).map(function(it){
+          return Object.assign({}, it, { t: String(it.t || '').trim().replace(/\b\w/g, function(m){ return m.toUpperCase(); }) });
+        }).filter(function(it){
+          var k = it.t.toLowerCase();
+          if (!k || seen[k]) return false;
+          seen[k] = 1; return true;
         });
       }
       else if (s.shape === 'line'){
@@ -3760,6 +4363,73 @@
     }).slice(0, 6).map(function(s){ return NAV_LABELS[s.libId] || sectionLabel(s); });
   }
 
+  /* ---------- video links (Overview's "video with content") ----------
+     The same reading of a link as editor-fill.js → videoInfo, so what previews here is what the site embeds. */
+  function videoInfo(url){
+    url = String(url || '').trim();
+    var m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/i.exec(url);
+    if (m) return { kind: 'youtube', id: m[1], embed: 'https://www.youtube.com/embed/' + m[1], thumb: 'https://img.youtube.com/vi/' + m[1] + '/hqdefault.jpg' };
+    m = /vimeo\.com\/(?:video\/)?(\d+)/i.exec(url);
+    if (m) return { kind: 'vimeo', id: m[1], embed: 'https://player.vimeo.com/video/' + m[1] };
+    if (/^https?:\/\/\S+\.(mp4|webm|ogg|mov)(\?\S*)?$/i.test(url)) return { kind: 'file', embed: url };
+    return null;
+  }
+  function videoPreview(url){
+    var v = videoInfo(url);
+    var play = '<span class="ov-play">' + svg('<path d="M8 5.5v13l10.5-6.5z"/>', 16) + '</span>';
+    if (!String(url || '').trim()) return '<div class="ov-vempty">' + svg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5l4.5 2.5-4.5 2.5z"/>', 22) + '<span>The preview shows here</span></div>';
+    if (!v) return '<div class="ov-vempty bad">' + IC.warn + '<span>That doesn’t look like a YouTube, Vimeo or video-file link</span></div>';
+    if (v.kind === 'youtube') return '<div class="ov-vthumb" style="background-image:url(' + v.thumb + ')">' + play + '<span class="ov-vkind">YouTube</span></div>';
+    if (v.kind === 'vimeo') return '<iframe src="' + v.embed + '" title="Video preview" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+    return '<video src="' + esc(v.embed) + '" controls preload="metadata"></video>';
+  }
+
+  /* ---------- the section text on the demo site: the same for every section ---------- */
+  function edBullets(pts, small){
+    pts = (pts || []).filter(function(p){ return String(p).trim(); });
+    if (!pts.length) return '';
+    return '<ul style="margin:' + (small ? '10px' : '14px') + ' 0 0;padding-left:' + (small ? '18px' : '20px') + ';display:flex;flex-direction:column;gap:' + (small ? '5px' : '6px') + ';font-size:' + (small ? '13.5px' : '14.5px') + ';line-height:1.55;color:#6a6a5f">' +
+      pts.map(function(p){ return etext('li', '', p); }).join('') + '</ul>';
+  }
+  function edMedia(m){
+    if (!m || !String(m.url || '').trim()) return '';
+    var box = function(inner){ return '<div style="position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#111">' + inner + '</div>'; };
+    if (m.kind === 'image') return box('<img src="' + esc(m.url) + '" alt="" data-editable="image" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">');
+    var v = videoInfo(m.url);
+    if (!v) return '';
+    return box(v.kind === 'file'
+      ? '<video src="' + esc(v.embed) + '" controls playsinline preload="metadata" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>'
+      : '<iframe src="' + v.embed + '" title="Video" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>');
+  }
+  /* kicker (the sub heading, or the section's default line), headline, paragraph, pointers, button */
+  function edHead(d, kicker, label, fallbackBody){
+    return (d.subheading || kicker ? etext('span', 'kicker', d.subheading || kicker) : '') +
+      etext('h2', '', d.heading || label) +
+      (d.body || fallbackBody ? edParagraph(d.body || fallbackBody) : '') +
+      edBullets(d.points) +
+      (d.cta && d.cta.label ? '<div class="btnrow" style="margin-top:18px">' + ebtn('primary', d.cta.label) + '</div>' : '');
+  }
+  /* a section block: its text (with the picture or video beside it, on the chosen side), then the rest */
+  function edSection(d, cls, head, rest, style){
+    var media = edMedia(d.media);
+    var top = media
+      ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:36px;align-items:center">' +
+          (d.media.side === 'left' ? media + '<div>' + head + '</div>' : '<div>' + head + '</div>' + media) + '</div>'
+      : head;
+    return '<div class="' + cls + '"' + (style ? ' style="' + style + '"' : '') + '>' + top + (rest || '') + '</div>';
+  }
+  function edCards(items, withPhoto){
+    return '<div class="s-cards">' + items.map(function(it){
+      return '<div class="s-card">' +
+        (withPhoto ? '<div class="ph" data-editable="image"></div>' : '') +
+        etext('h3', '', it.t || 'Untitled') +
+        (it.d ? etext('p', '', it.d) : '') +
+        edBullets(it.points, true) +
+      '</div>';
+    }).join('') + '</div>';
+  }
+  function edHasText(d){ return !!(d.subheading || d.heading || d.body || (d.points || []).some(function(p){ return String(p).trim(); }) || (d.media && d.media.url) || (d.cta && d.cta.label)); }
+
   /* one Step 3 section -> the editor's section body markup ('' = nothing to render) */
   function editorSectionHtml(s){
     var d = s.data || {};
@@ -3813,84 +4483,77 @@
         '</div><div class="imgph" data-editable="image">Event banner</div></div>';
 
       case 'stats':
-        return '<div class="s-stats">' + (d.items || []).map(function(it){
+        var statStrip = '<div class="s-stats">' + (d.items || []).map(function(it){
           return '<div class="s-stat">' + etext('div', 'n', it.v) + etext('div', 'l', it.k) + '</div>';
         }).join('') + '</div>';
+        // a bare strip unless the section has text of its own
+        return edHasText(d) ? edSection(d, 's-cards-sec', edHead(d, '', label), '') + statStrip : statStrip;
 
       case 'logos':
-        return '<div class="s-gallery" style="padding-top:44px">' +
-          etext('span', 'kicker', 'With thanks') + etext('h2', '', label) +
+        return edSection(d, 's-gallery', edHead(d, 'With thanks', label),
           (d.tiers || []).map(function(t){
             return '<div style="margin-top:22px">' +
               '<div data-editable="text" style="font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a8a7c;margin-bottom:10px">' + esc(t.t) + '</div>' +
               '<div style="display:flex;flex-wrap:wrap;gap:10px">' + (t.logos || []).map(function(l){
                 return '<span data-editable="text" style="min-width:132px;text-align:center;border:1px solid #eee9dd;border-radius:10px;padding:16px 18px;font-size:13px;font-weight:700;background:linear-gradient(160deg,#ECE7DA,#DCEEE7)">' + esc(l.n || 'Partner') + '</span>';
               }).join('') + '</div></div>';
-          }).join('') + '</div>';
+          }).join(''), 'padding-top:44px');
 
       case 'rich':
-        return '<div class="s-cards-sec">' +
-          etext('span', 'kicker', 'About the event') + etext('h2', '', label) +
-          edParagraph(d.body || 'Open this section in the editor to write the overview.') +
-        '</div>';
+        return edSection(normIntro(d), 's-cards-sec', edHead(d, 'About the event', label, 'Open this section in the editor to write the overview.'), '');
 
       case 'line':
         return '<div style="padding:14px 40px;background:#0F6F5C;text-align:center">' +
           '<span data-editable="text" style="color:#fff;font-weight:800;letter-spacing:.1em;font-size:13px">' +
           esc(d.text || '#event') + '</span></div>';
 
-      case 'cards':
       case 'columns':
-        return edCardsBlock(s.libId === 'priorities' ? 'What we will explore' : 'The experience', label, d.items || [], false);
+        return edSection(d, 's-cards-sec', edHead(d, 'What we will explore', label), edCards(d.items || [], false));
+
+      case 'cards':
+        return edSection(d, 's-cards-sec', edHead(d, 'The experience', label), edCards(d.items || [], false));
 
       case 'benefits':
-        return '<div class="s-cards-sec">' +
-          etext('span', 'kicker', 'Make it count') + etext('h2', '', label) +
-          (d.body ? edParagraph(d.body) : '') +
-          '<div class="s-cards">' + (d.items || []).map(function(it){
-            return '<div class="s-card">' + etext('h3', '', it.t || 'Benefit') + etext('p', '', it.d || '') + '</div>';
-          }).join('') + '</div></div>';
+        return edSection(d, 's-cards-sec', edHead(d, 'Make it count', label),
+          edCards((d.items || []).map(function(it){ return { t: it.t || 'Benefit', d: it.d, points: it.points }; }), false));
 
       case 'heading':
         return '<div class="s-cta-band">' + etext('h2', '', d.text || label) + '</div>';
 
       case 'people':
-        return edCardsBlock('Meet the voices', label, (d.items || []).map(function(p){
+        return edSection(d, 's-cards-sec', edHead(d, 'Meet the voices', label), edCards((d.items || []).map(function(p){
           return { t: p.n || 'Speaker to be announced', d: [p.r, p.c].filter(Boolean).join(', ') };
-        }), true);
+        }), true));
 
       case 'agenda':
         var ag = (d.items || []).map(function(it){
           return { t: [it.t, it.ti].filter(Boolean).join(' — ') || 'Session', d: it.sp || '' };
         });
         if (!ag.length) ag = [{ t: 'Agenda to come', d: 'Bring in a previous edition, or add sessions here in the editor.' }];
-        return edCardsBlock('The schedule', label, ag, false);
+        return edSection(d, 's-cards-sec', edHead(d, 'The schedule', label), edCards(ag, false));
 
       case 'chips':
-        return '<div class="s-cards-sec">' +
-          etext('span', 'kicker', 'Made for you') + etext('h2', '', label) +
-          '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:22px">' + (d.items || []).map(function(c){
-            return '<span data-editable="text" style="border:1px solid #eee9dd;border-radius:100px;padding:9px 16px;font-size:13px;font-weight:600">' + esc(c) + '</span>';
-          }).join('') + '</div></div>';
+        return edSection(d, 's-cards-sec', edHead(d, 'Made for you', label), edCards(normItems(d), false));
 
       case 'quotes':
-        return '<div class="s-quote">' + (d.items || []).map(function(q, i){
+        var quotes = '<div class="s-quote">' + (d.items || []).map(function(q, i){
           return '<div' + (i ? ' style="margin-top:30px"' : '') + '>' +
             '<blockquote data-editable="text">“' + esc(q.q || '') + '”</blockquote>' +
             etext('div', 'who', '— ' + [q.n, q.r, q.c].filter(Boolean).join(', ')) + '</div>';
         }).join('') + '</div>';
+        return edHasText(d) ? edSection(d, 's-cards-sec', edHead(d, '', label), '') + quotes : quotes;
 
       case 'gallery':
         var tiles = '';
         for (var gi = 0; gi < (d.count || 8); gi++) tiles += '<div class="gi" data-editable="image"></div>';
-        return '<div class="s-gallery" style="padding-top:44px">' +
-          etext('span', 'kicker', 'A look back') + etext('h2', '', label) +
-          '<div class="s-gal-grid" style="margin-top:22px">' + tiles + '</div></div>';
+        return edSection(d, 's-gallery', edHead(d, 'A look back', label),
+          '<div class="s-gal-grid" style="margin-top:22px">' + tiles + '</div>', 'padding-top:44px');
 
       case 'contacts':
-        return edCardsBlock('Talk to us', label, (d.blocks || []).map(function(bk){
-          return { t: bk.t || 'Contact', d: [bk.n, bk.e, bk.p].filter(Boolean).join(' · ') || 'Details pending' };
-        }), false);
+        return edSection(d, 's-cards-sec', edHead(d, 'Talk to us', label), edCards(normContacts(d).map(function(bk){
+          var lines = bk.people.map(function(p){ return [p.n, p.e, p.p].filter(function(x){ return String(x || '').trim(); }).join(' · '); }).filter(Boolean);
+          return { t: bk.t || 'Contact', d: lines.length ? '' : 'Details pending', points: lines };
+        }), false));
 
       case 'custom':
         return '<div class="s-cards-sec">' +
@@ -3910,7 +4573,8 @@
       if (!s.include) return;
       var html = editorSectionHtml(s);
       if (!html) return;
-      sections.push({ name: sectionLabel(s), libId: s.libId, html: html });
+      /* data: the step-3 fields themselves — a real template (tpl.site) is filled from these, not from html */
+      sections.push({ name: sectionLabel(s), libId: s.libId, html: html, data: s.data ? JSON.parse(JSON.stringify(s.data)) : null });
     });
     return {
       v: 1,
@@ -3921,9 +4585,14 @@
         category: (CATS[b.category] || {}).label || b.category,
         dateLabel: eventDateLabel(b),
         location: locLabel(b, false),
-        payment: b.payment
+        payment: b.payment,
+        date: { mode: b.dateMode, start: b.start, end: b.end, month: b.month, quarter: b.quarter, year: b.year, note: b.dateNote },
+        hasVenue: !!(CATS[b.category] || {}).venue,
+        logo: b.logo ? (b.logoName || 'logo') : ''      // the file itself is in IndexedDB under LOGO_KEY
       },
-      template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom') },
+      template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom'), site: (tpl && tpl.site) || null },
+      /* the template's sections the user switched off — hidden on a real template, not deleted */
+      excluded: tpl ? tpl.sections.filter(function(id){ return !S.sections.some(function(s){ return s.libId === id && s.include; }); }) : [],
       theme: currentTheme(),
       sections: sections
     };
@@ -3938,7 +4607,10 @@
       toast('Could not hand the draft over — your browser blocked storage.');
       return false;
     }
-    window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug);
+    var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
+      (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
+    if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
+    else window.location.href = url;
     return true;
   }
 
@@ -4089,6 +4761,13 @@
   function init(){
     var had = restore();
     initStep1();
+    if (S.basics.logo && !logoPreviewUrl){
+      RevampStore.get(LOGO_KEY).then(function(rec){
+        if (!rec || rec.name !== S.basics.logoName || logoPreviewUrl) return;
+        logoPreviewUrl = rec.dataUrl;
+        if (S.step === 1) initStep1();
+      }, function(){});
+    }
     renderStep2();
     $('btn-next').addEventListener('click', onNext);
     $('btn-back').addEventListener('click', onBack);

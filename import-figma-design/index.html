@@ -90,31 +90,35 @@
   .status.is-error{ color:var(--crit); font-weight:600; }
   .status.is-ok{ color:var(--ok); font-weight:600; }
 
-  /* ---------- split panes ---------- */
-  .panes{
-    flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:14px;
-    padding:0 22px 22px;
+  /* ---------- view switcher ----------
+     One toolbar governs a single full-width view: the live preview (default)
+     or the code (HTML / Node Tree). Nothing is split-screen any more — the
+     preview is the thing being sold, so it gets the whole stage. */
+  .view-tabs{
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    padding:4px 22px 12px;
   }
-  .pane{
-    min-height:0; display:flex; flex-direction:column;
+  .view-tabs .spacer{ flex:1; }
+
+  .vtab{
+    display:inline-flex; align-items:center; justify-content:center; line-height:1;
+    padding:8px 14px; border-radius:8px; border:1px solid transparent; background:none;
+    font-size:13px; font-weight:700; color:var(--text-muted);
+    transition:background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .vtab:hover{ background:var(--surface-2); color:var(--text); }
+  .vtab.active{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent); }
+
+  /* ---------- workspace: one pane visible at a time ---------- */
+  .workspace{ flex:1; min-height:0; display:flex; flex-direction:column; padding:0 22px 22px; }
+  .pane-preview, .pane-code{
+    flex:1; min-height:0; display:flex; flex-direction:column;
     border:1px solid var(--border); border-radius:12px; background:var(--surface);
     box-shadow:var(--shadow-sm); overflow:hidden;
   }
-  .pane-head{
-    display:flex; align-items:center; gap:6px; padding:8px 10px;
-    border-bottom:1px solid var(--border); background:var(--surface-2);
-  }
-  .pane-title{ font-size:12px; font-weight:700; color:var(--text-muted); padding:0 6px; }
-  .pane-head .spacer{ flex:1; }
-
-  .tab{
-    display:inline-flex; align-items:center; justify-content:center; line-height:1;
-    padding:7px 13px; border-radius:7px; border:1px solid transparent; background:none;
-    font-size:12.5px; font-weight:600; color:var(--text-muted);
-    transition:background .12s ease, color .12s ease, border-color .12s ease;
-  }
-  .tab:hover{ background:var(--surface-3); color:var(--text); }
-  .tab.active{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent); }
+  /* the [hidden] attribute's UA rule loses to our own display:flex above
+     unless it's restated here — otherwise the "hidden" pane still renders */
+  .pane-preview[hidden], .pane-code[hidden]{ display:none; }
 
   .pane-body{ flex:1; min-height:0; overflow:auto; }
   .pane-body pre{
@@ -126,6 +130,75 @@
     text-align:center; font-size:12.5px; color:var(--text-faint);
   }
   #preview{ width:100%; height:100%; border:0; background:#fff; display:block; }
+
+  /* ---------- device stage ----------
+     The canvas the mockup sits on — a soft dot grid, the way Figma's own
+     canvas reads, so the frame looks presented rather than just embedded. */
+  .device-stage{
+    flex:1; min-height:0; overflow:auto; position:relative;
+    display:flex; align-items:center; justify-content:center; padding:36px 28px;
+    background:
+      radial-gradient(var(--surface-3) 1px, transparent 1px) 0 0/18px 18px,
+      var(--surface-2);
+  }
+
+  /* ---------- MacBook mockup ----------
+     Hardware chrome is fixed dark/silver regardless of theme — it is supposed
+     to read as an actual machine, not as themed UI. Only the canvas behind it
+     and the "notch" cut-out (which has to match the stage background to look
+     cut rather than pasted on) come from the design tokens. */
+  .macbook{
+    width:100%; max-width:960px; margin:0 auto;
+    display:flex; flex-direction:column; align-items:center;
+    filter:drop-shadow(0 32px 60px rgba(20,14,13,.35));
+  }
+  .macbook-screen{
+    position:relative; width:100%;
+    background:linear-gradient(180deg, #3a3a3c, #1b1b1d);
+    border-radius:16px 16px 6px 6px;
+    padding:14px 14px 30px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+  }
+  .macbook-cam{
+    position:absolute; top:6px; left:50%; transform:translateX(-50%);
+    width:6px; height:6px; border-radius:50%;
+    background:#050505; box-shadow:0 0 0 1.5px rgba(255,255,255,.06);
+  }
+  .macbook-viewport{
+    width:100%; aspect-ratio:16/10; border-radius:3px; overflow:hidden; background:#fff;
+  }
+  .macbook-base{
+    position:relative; width:108%; max-width:1080px; height:14px;
+    background:linear-gradient(180deg, #e2e2e5, #b7b7bb);
+    border-radius:0 0 9px 9px;
+    box-shadow:0 4px 10px -2px rgba(20,14,13,.3);
+  }
+  .macbook-notch{
+    position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+    width:128px; height:7px;
+    background:var(--surface-2); /* cuts the lip out of the base, not painted on */
+    border-radius:7px 7px 0 0;
+  }
+
+  /* "Full page" drops the hardware chrome and lets the render fill the whole
+     window edge-to-edge — the thing you actually want when checking real
+     full-size layout, as opposed to the polished mockup for everything else. */
+  .macbook.is-fullpage{
+    position:fixed; inset:0; z-index:50; width:100%; max-width:none; height:100%;
+    filter:none;
+  }
+  .macbook.is-fullpage .macbook-screen{
+    flex:1; width:100%; height:100%; padding:0; border-radius:0;
+    background:var(--surface); box-shadow:none;
+  }
+  .macbook.is-fullpage .macbook-cam,
+  .macbook.is-fullpage .macbook-base{ display:none; }
+  .macbook.is-fullpage .macbook-viewport{ width:100%; height:100%; aspect-ratio:auto; border-radius:0; }
+
+  @media (max-width:700px){
+    .macbook-base{ display:none; }
+    .macbook-screen{ border-radius:12px; padding:10px 10px 16px; }
+  }
 
   /* ---------- builder loader, shown while the design is being built ---------- */
   .loader{
@@ -198,15 +271,6 @@
     .builder .hammer, .builder .bricks, .builder .sparks{ animation-duration:4s; }
   }
 
-  /* Full-page preview: lift the pane out of the grid to cover the whole window. */
-  .pane.is-fullpage{
-    position:fixed; inset:0; z-index:50;
-    border:0; border-radius:0; box-shadow:none;
-  }
-
-  @media (max-width: 880px){
-    .panes{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; }
-  }
 </style>
 </head>
 <body>
@@ -240,29 +304,30 @@
 
 <p class="status" id="status" role="status" aria-live="polite"></p>
 
-<main class="panes">
-  <!-- Left: generated code / parsed node outline -->
-  <section class="pane">
-    <div class="pane-head">
-      <button class="tab active" id="tab-html" data-view="html">HTML</button>
-      <button class="tab" id="tab-tree" data-view="tree">Node Tree</button>
-      <span class="spacer"></span>
-      <button class="btn btn-ghost" id="download" disabled>Download .html</button>
-    </div>
-    <div class="pane-body" id="code-body">
-      <div class="empty">Paste a file URL and a token, then hit Generate.</div>
+<div class="view-tabs">
+  <button class="vtab active" id="vtab-preview" data-pane="preview">Live preview</button>
+  <button class="vtab" id="vtab-html" data-pane="html">HTML</button>
+  <button class="vtab" id="vtab-tree" data-pane="tree">Node Tree</button>
+  <span class="spacer"></span>
+  <button class="btn btn-ghost" id="download" disabled>Download .html</button>
+  <button class="btn btn-ghost" id="fullpage" disabled>Full page</button>
+</div>
+
+<main class="workspace">
+  <!-- Default view: the converted design, staged in a MacBook mockup instead
+       of a bare iframe — this is what most people opening this page actually
+       want to see, not the markup that produced it. -->
+  <section class="pane-preview" id="pane-preview">
+    <div class="device-stage" id="device-stage">
+      <div class="empty">The converted design renders here.</div>
     </div>
   </section>
 
-  <!-- Right: live preview of the generated document -->
-  <section class="pane" id="preview-pane">
-    <div class="pane-head">
-      <span class="pane-title">Live preview</span>
-      <span class="spacer"></span>
-      <button class="btn btn-ghost" id="fullpage" disabled>Full page</button>
-    </div>
-    <div class="pane-body" id="preview-body">
-      <div class="empty">The converted design renders here.</div>
+  <!-- Code view: generated HTML or the parsed node outline. Reached via the
+       tabs above, not shown by default. -->
+  <section class="pane-code" id="pane-code" hidden>
+    <div class="pane-body" id="code-body">
+      <div class="empty">Paste a file URL and a token, then hit Generate.</div>
     </div>
   </section>
 </main>
@@ -693,13 +758,33 @@
   var generateBtn = document.getElementById('generate');
   var downloadBtn = document.getElementById('download');
   var fullPageBtn = document.getElementById('fullpage');
-  var previewPane = document.getElementById('preview-pane');
   var statusEl    = document.getElementById('status');
   var codeBody    = document.getElementById('code-body');
-  var previewBody = document.getElementById('preview-body');
-  var tabs        = [document.getElementById('tab-html'), document.getElementById('tab-tree')];
+  var deviceStage = document.getElementById('device-stage');
+  var panePreview = document.getElementById('pane-preview');
+  var paneCode    = document.getElementById('pane-code');
+  var vtabs       = [
+    document.getElementById('vtab-preview'),
+    document.getElementById('vtab-html'),
+    document.getElementById('vtab-tree')
+  ];
 
   var state = { html:'', outline:'', view:'html' };
+
+  /** Show exactly one of Preview / HTML / Node Tree. Preview is the default —
+      the code views are one click away, never the first thing on screen. */
+  function showPane(name){
+    vtabs.forEach(function(btn){ btn.classList.toggle('active', btn.getAttribute('data-pane') === name); });
+    panePreview.hidden = name !== 'preview';
+    paneCode.hidden = name === 'preview';
+    if (name !== 'preview'){
+      state.view = name;
+      renderCodePane();
+    }
+  }
+  vtabs.forEach(function(btn){
+    btn.addEventListener('click', function(){ showPane(btn.getAttribute('data-pane')); });
+  });
 
   function setStatus(message, kind){
     statusEl.textContent = message;
@@ -711,7 +796,7 @@
 
   /** Builder-at-work placeholder, shown until the converted design replaces it. */
   function showLoader(message){
-    previewBody.innerHTML =
+    deviceStage.innerHTML =
       '<div class="loader">' +
         '<svg class="builder" viewBox="0 0 150 126" role="img" aria-label="Building the design">' +
           '<g class="bricks">' +
@@ -783,32 +868,119 @@
     codeBody.scrollTop = 0;
   }
 
-  function renderPreview(){
-    previewBody.innerHTML = '';
+  /** Bezel padding baked into .macbook-screen's CSS (padding: 14px 14px 30px) —
+      kept as one constant so the width math below can't drift from the rule. */
+  var MACBOOK_BEZEL = 14;
+
+  /** buildHtmlDocument wraps the canvas in `body{padding:24px}` — sizing the
+      iframe to the canvas alone leaves that margin off the bottom, which
+      trips an internal scrollbar even though the fit math looks exact. */
+  var EXPORT_PADDING = 24;
+
+  /**
+   * Fit the design into the mock screen instead of dropping it in at native
+   * size. A raw iframe reflows to whatever width it's given, which is not
+   * what a device preview should do — a 1440px design in a 900px screen
+   * needs a shrunk *picture* of the full page (like a real laptop showing a
+   * page zoomed to fit), not a cramped, reflowed, scrollbar-ridden one.
+   *
+   * The iframe is sized to the design's real pixel dimensions so it renders
+   * exactly as exported, then scaled down with a CSS transform. The viewport
+   * and the macbook's own width are set to the scaled size, so the bezel
+   * hugs the shrunk page with no leftover gap.
+   */
+  function fitAndRenderFrame(macbookEl, viewportEl, designW, designH){
+    viewportEl.innerHTML = ''; // idempotent: also cleans up after a Full page exit
+
+    // Fit the whole exported page — canvas plus its own body padding — or the
+    // iframe ends up a few pixels short of its content and shows an internal
+    // scrollbar even though the outer box looks exactly sized.
+    var pageW = designW + EXPORT_PADDING * 2, pageH = designH + EXPORT_PADDING * 2;
+
+    var stageRect = deviceStage.getBoundingClientRect();
+    var maxW = Math.max(200, Math.min(900, stageRect.width - 56));
+    var maxH = 560; // a comfortable cap so a very tall page doesn't dwarf the page
+    // Never upscale a small frame past its own pixels — that's just blur.
+    var scale = Math.min(maxW / pageW, maxH / pageH, 1);
+    scale = Math.max(scale, 0.05);
+
+    var w = Math.round(pageW * scale), h = Math.round(pageH * scale);
+    macbookEl.style.width = (w + MACBOOK_BEZEL * 2) + 'px';
+    viewportEl.style.width = w + 'px';
+    viewportEl.style.height = h + 'px';
+
     var frame = document.createElement('iframe');
     frame.id = 'preview';
     // Static markup only — no scripts run inside the preview.
     frame.setAttribute('sandbox', 'allow-same-origin');
+    frame.style.width = pageW + 'px';
+    frame.style.height = pageH + 'px';
+    frame.style.transform = 'scale(' + scale + ')';
+    frame.style.transformOrigin = 'top left';
     frame.srcdoc = state.html;
-    previewBody.appendChild(frame);
+    viewportEl.appendChild(frame);
   }
 
-  tabs.forEach(function(tab){
-    tab.addEventListener('click', function(){
-      state.view = tab.getAttribute('data-view');
-      tabs.forEach(function(t){ t.classList.toggle('active', t === tab); });
-      renderCodePane();
-    });
-  });
+  /** Stage the generated document inside a MacBook mockup — a device frame
+      reads as "this is a real site" the way a bare iframe never quite does,
+      which is the point of a live preview in the first place. */
+  function renderPreview(){
+    deviceStage.innerHTML =
+      '<div class="macbook" id="macbook">' +
+        '<div class="macbook-screen">' +
+          '<span class="macbook-cam"></span>' +
+          '<div class="macbook-viewport" id="macbook-viewport"></div>' +
+        '</div>' +
+        '<div class="macbook-base"><span class="macbook-notch"></span></div>' +
+      '</div>';
+    fitAndRenderFrame(
+      document.getElementById('macbook'),
+      document.getElementById('macbook-viewport'),
+      state.width || 1440,
+      state.height || 900
+    );
+  }
 
-  /** Expand the preview pane to cover the whole window (Esc to come back). */
+  /** Drop the mockup chrome and fill the whole window (Esc to come back).
+      The fitted view sets an explicit pixel width/height inline on the
+      viewport and iframe (so the scale-to-fit math is exact) — an inline
+      style beats any stylesheet rule, so .is-fullpage's width:100% would be
+      silently ignored unless those are cleared here first. */
   function setFullPage(on){
-    previewPane.classList.toggle('is-fullpage', on);
+    var macbook = document.getElementById('macbook');
+    var viewport = document.getElementById('macbook-viewport');
+    if (!macbook || !viewport) return;
+
+    macbook.classList.toggle('is-fullpage', on);
     fullPageBtn.textContent = on ? 'Exit full page' : 'Full page';
+
+    if (on){
+      // The real page at real size, same as opening it directly - this is
+      // for checking true full-size layout, not another mockup size.
+      // macbook's own width is inline too (from the fit below) and would
+      // otherwise keep the fixed-position overlay pinned to its old, narrow
+      // mockup width instead of covering the window.
+      macbook.style.width = '';
+      viewport.innerHTML = '';
+      viewport.style.width = '';
+      viewport.style.height = '';
+      var frame = document.createElement('iframe');
+      frame.id = 'preview';
+      frame.setAttribute('sandbox', 'allow-same-origin');
+      frame.style.width = '100%';
+      frame.style.height = '100%';
+      frame.srcdoc = state.html;
+      viewport.appendChild(frame);
+    } else {
+      // Back to the mockup - refit in case the window was resized meanwhile.
+      fitAndRenderFrame(macbook, viewport, state.width || 1440, state.height || 900);
+    }
   }
 
   fullPageBtn.addEventListener('click', function(){
-    setFullPage(!previewPane.classList.contains('is-fullpage'));
+    showPane('preview');
+    var macbook = document.getElementById('macbook');
+    setFullPage(!(macbook && macbook.classList.contains('is-fullpage')));
   });
 
   document.addEventListener('keydown', function(e){
@@ -834,6 +1006,7 @@
     if (!token){ setStatus('Enter a personal access token.', 'error'); return; }
 
     generateBtn.disabled = true;
+    showPane('preview'); // watch it build, whichever tab you started from
     showLoader('Fetching file ' + key + ' \u2026');
     setStatus('Fetching file ' + key + ' \u2026');
 
@@ -895,6 +1068,11 @@
       var built = buildHtmlDocument(root, images);
       state.html = built.html;
       state.outline = buildOutline(root, 0);
+      // Same rounding buildHtmlDocument used for the exported .canvas box, so
+      // the mockup's scale-to-fit math matches the doc's real pixel size.
+      var rootBox = root.absoluteBoundingBox || { width: 1440, height: 900 };
+      state.width = px(rootBox.width);
+      state.height = px(rootBox.height);
 
       renderCodePane();
       renderPreview();
@@ -906,7 +1084,7 @@
                 imageWarning ? 'error' : 'ok');
     }).catch(function(error){
       // Replace the loader, otherwise it keeps hammering away on a failed run.
-      previewBody.innerHTML = '<div class="empty">Nothing to preview — the conversion failed.</div>';
+      deviceStage.innerHTML = '<div class="empty">Nothing to preview — the conversion failed.</div>';
       setStatus(error.message || String(error), 'error');
     }).then(function(){
       generateBtn.disabled = false;

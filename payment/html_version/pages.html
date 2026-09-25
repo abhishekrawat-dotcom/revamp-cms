@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Payment Pages - Payment Prototype</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="../../motion.css">
   <style>
     /* Additional styles for dynamic form elements */
     .btn-link { background: none; border: none; color: var(--brand-color); font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
@@ -31,10 +32,10 @@
   </style>
 </head>
 <body>
-  <div id="sidebar-container"></div>
-  <div class="main-wrapper">
-    <div id="header-container"></div>
-    <div class="main-content">
+  <header class="topbar" id="header-container"></header>
+  <div class="shell">
+    <nav class="rail" id="sidebar-container" aria-label="Sections"></nav>
+    <div class="main main-content">
       <div class="fade-in">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
           <div>
@@ -278,6 +279,8 @@
   </style>
 
   <script src="data.js"></script>
+  <script src="../../edit-event-core.js"></script>
+  <script src="../../app-shell.js"></script>
   <script src="sidebar.js"></script>
   <script>
     let selectedEvent = window.appData.selectedEvent;
@@ -291,7 +294,7 @@
     let allCouponCodes = [];
 
     document.addEventListener("DOMContentLoaded", () => {
-      renderHeader("Payment Pages");
+      /* the top bar comes from app-shell.js now */
       if (selectedEvent) {
         document.getElementById('event-context-banner').innerHTML = `
           <div style="background:var(--brand-light); color:var(--brand-color); padding:12px 16px; border-radius:8px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center;">

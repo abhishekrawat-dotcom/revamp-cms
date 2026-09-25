@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1, user-scalable=0">
+<title>Template preview</title>
+<!-- Standalone view of one template, exactly as the editor and export will assemble it: preview.html?t=tech500
+     Needs the repo served over http — fetch() is blocked on file://. -->
+<script src="_shared/template-loader.js"></script>
+</head>
+<body>
+<script>
+  var id = new URLSearchParams(location.search).get('t') || 'tech500';
+  RevampTemplates.build(id).then(function (html) {
+    document.open();
+    document.write(html);
+    document.close();
+  }).catch(function (err) {
+    document.body.style.font = '14px/1.5 system-ui, sans-serif';
+    document.body.style.padding = '24px';
+    document.body.textContent = 'Could not load template "' + id + '": ' + err.message +
+      (location.protocol === 'file:' ? ' — open this page over http (e.g. python -m http.server 8080 from the repo root).' : '');
+  });
+</script>
+</body>
+</html>
