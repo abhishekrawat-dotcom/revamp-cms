@@ -1274,3 +1274,117 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 
 /* the standalone workbenches have no tab row to hang actions on */
 .page-acts{ display:flex; justify-content:flex-end; gap:9px; flex-wrap:wrap; margin-bottom:14px; }
+
+/* ============================================================
+   CRM + DATA PIPELINE
+   A desk works a list: narrow it, select rows, act on the set.
+   Everything here serves that loop.
+   ============================================================ */
+
+/* quick views — the four or five cuts a desk opens every morning */
+.qviews{ display:flex; gap:6px; flex-wrap:wrap; padding:11px 14px 0; }
+.qview{
+  display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px;
+  border:1px solid var(--border); background: var(--surface); cursor:pointer;
+  font-size:12px; font-weight:700; color: var(--text-muted); white-space:nowrap;
+  transition: border-color .13s, background .13s, color .13s;
+}
+.qview:hover{ border-color: var(--accent); color: var(--accent-strong); }
+.qview[aria-pressed="true"]{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.qview .n{ font-family: var(--font-mono); font-size:11px; opacity:.75; }
+
+/* the temperature of a lead, at a glance */
+.lvl{
+  display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px;
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap;
+}
+.lvl:before{ content:""; width:5px; height:5px; border-radius:50%; background:currentColor; }
+.lvl-hot{  background: var(--accent-soft); color: var(--accent-strong); }
+.lvl-warm{ background: var(--warn-soft);   color: var(--warn); }
+.lvl-cold{ background: var(--surface-3);   color: var(--text-muted); }
+
+/* selection + the bar that appears once something is selected */
+.tbl th.pick, .tbl td.pick{ width:34px; padding-left:14px; padding-right:0; }
+.tbl input[type=checkbox]{ accent-color: var(--accent); cursor:pointer; width:15px; height:15px; }
+table.tbl tbody tr.sel{ background: var(--accent-soft); }
+table.tbl tbody tr.sel:hover{ background: var(--accent-soft); }
+.bulkbar{
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap; padding:10px 14px;
+  background: var(--text); color: var(--bg); border-radius:11px; margin:0 14px 12px;
+}
+.bulkbar .bn{ font-size:12.5px; font-weight:800; flex-shrink:0; }
+.bulkbar .sp{ flex:1; }
+.bulkbar .bbtn{
+  display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:8px;
+  border:1px solid rgba(127,127,127,.35); background:transparent; color:inherit;
+  font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;
+}
+.bulkbar .bbtn:hover{ background: rgba(127,127,127,.22); }
+.bulkbar .bclear{ background:transparent; border:0; color:inherit; opacity:.7; cursor:pointer; font-size:12px; font-weight:700; }
+.bulkbar .bclear:hover{ opacity:1; }
+
+/* a sortable header says which way it is pointing */
+table.tbl th.srt{ cursor:pointer; user-select:none; }
+table.tbl th.srt:hover{ color: var(--accent-strong); }
+table.tbl th.srt .ar{ opacity:.3; margin-left:4px; font-size:9px; }
+table.tbl th.srt.on .ar{ opacity:1; color: var(--accent); }
+
+/* board columns accept a dropped card */
+.bcol.over{ outline:2px dashed var(--accent); outline-offset:-4px; border-radius:11px; }
+.lead{ cursor:grab; }
+.lead.drag{ opacity:.4; }
+
+/* pager */
+.pgr{ display:flex; align-items:center; gap:9px; padding:11px 14px; border-top:1px solid var(--border); flex-wrap:wrap; }
+.pgr .sp{ flex:1; font-size:12px; color: var(--text-muted); }
+.pgr button{
+  border:1px solid var(--border); background: var(--surface); border-radius:7px; cursor:pointer;
+  padding:5px 10px; font-size:12px; font-weight:700; color: var(--text);
+}
+.pgr button:hover:not(:disabled){ border-color: var(--accent); color: var(--accent-strong); }
+.pgr button:disabled{ opacity:.4; cursor:not-allowed; }
+.pgr .pnum{ font-family: var(--font-mono); font-size:12px; color: var(--text-muted); }
+
+/* ---- importing leads ---- */
+.imp-drop{
+  border:1.5px dashed var(--border); border-radius:12px; background: var(--surface-2);
+  padding:24px 16px; text-align:center; cursor:pointer; color: var(--text-muted);
+  transition: border-color .14s, background .14s, color .14s;
+}
+.imp-drop:hover, .imp-drop.over{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.imp-drop b{ display:block; font-size:13.5px; margin:8px 0 3px; }
+.imp-drop span{ font-size:12px; }
+.imp-map{ display:grid; grid-template-columns: repeat(auto-fit, minmax(210px,1fr)); gap:10px; }
+.imp-map .field{ margin:0; }
+.imp-prev{ max-height:190px; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+.imp-prev table{ width:100%; border-collapse:collapse; font-size:12px; }
+.imp-prev th{
+  text-align:left; padding:7px 10px; background: var(--surface-2); position:sticky; top:0;
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color: var(--text-muted);
+  border-bottom:1px solid var(--border); white-space:nowrap;
+}
+.imp-prev td{ padding:6px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.imp-prev td.bad{ color: var(--accent-strong); }
+.imp-stat{ display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+
+/* ---- data pipeline ---- */
+.ed-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); gap:10px; }
+.ed-card{
+  border:1px solid var(--border); border-radius:12px; padding:12px 13px; background: var(--surface);
+  cursor:pointer; text-align:left; transition: border-color .14s, background .14s, transform .14s;
+}
+.ed-card:hover{ border-color: var(--accent); transform: translateY(-2px); }
+.ed-card[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); }
+.ed-card .yr{ font-family: var(--font-mono); font-size:11px; color: var(--text-faint); }
+.ed-card b{ display:block; font-size:13px; line-height:1.3; margin:2px 0 7px; overflow-wrap:anywhere; }
+.ed-card .st{ display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color: var(--text-muted); }
+.ed-card .st i{ font-style:normal; font-weight:800; color: var(--text); }
+
+/* the funnel from pool to paid, one bar per step */
+.funnel{ display:flex; flex-direction:column; gap:7px; }
+.fstep{ display:flex; align-items:center; gap:11px; width:100%; }
+.fstep .fl{ width:132px; flex-shrink:0; font-size:12.5px; font-weight:600; }
+.fstep .ft{ flex:1; height:22px; border-radius:6px; background: var(--surface-3); overflow:hidden; min-width:0; }
+.fstep .ft i{ display:block; height:100%; border-radius:6px; }
+.fstep .fn{ width:96px; flex-shrink:0; text-align:right; font-family: var(--font-mono); font-size:12px; }
+.fstep .fn em{ font-style:normal; color: var(--text-faint); font-size:11px; }
