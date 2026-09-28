@@ -48,30 +48,6 @@
     }
   }
 
-  /* Manual dark-mode toggle — fires when JS sets data-theme="dark" on <html> */
-  :root[data-theme="dark"]{
-    --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
-    --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
-    --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
-    --ok: #6FD39B; --ok-soft: #1E3328; --warn: #E0B457; --warn-soft: #362B14;
-    --info: #7FB4E8; --info-soft: #16283A; --review: #C89BDA; --review-soft: #2C1E33;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
-    --shadow-md: 0 12px 28px -10px rgba(0,0,0,0.55);
-    --shadow-lg: 0 28px 60px -24px rgba(0,0,0,0.7);
-  }
-
-  /* Ensure light-mode is locked when user explicitly chooses it */
-  :root[data-theme="light"]{
-    --bg: #FAF7F6; --surface: #FFFFFF; --surface-2: #F3EEED; --surface-3: #E9E2E0;
-    --border: #E0D7D5; --text: #241B1A; --text-muted: #756865; --text-faint: #A0908C;
-    --accent: #ED1C24; --accent-strong: #B3151B; --accent-soft: #FBDBDC; --accent-contrast: #FFFFFF;
-    --ok: #2F8F5B; --ok-soft: #DFEEE1; --warn: #9C6B14; --warn-soft: #F3E7C8;
-    --info: #2F6FB0; --info-soft: #DCE9F5; --review: #8A5A9E; --review-soft: #EBE0F0;
-    --shadow-sm: 0 1px 2px rgba(30,26,10,0.08);
-    --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
-    --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
-  }
-
   *{ box-sizing: border-box; }
   html, body{ margin:0; padding:0; }
   body{

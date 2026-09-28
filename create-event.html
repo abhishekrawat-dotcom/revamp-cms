@@ -3,7 +3,6 @@
 <title>Create Event &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
-<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   /* cross-page transitions: cross-fade into the event console instead of
      blanking the window between documents. Chrome 126+; anywhere else the
@@ -960,105 +959,6 @@
   .det-card.removed{ opacity: .45; }
   .det-card.removed .det-shot{ filter: grayscale(1); }
 
-  /* ============ HERO BANNER OPTIONS & IMPORT PSD ============ */
-  .banner-options-header{
-    display:flex; align-items:center; justify-content:space-between; gap: 14px;
-    padding: 14px 16px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border);
-    margin-bottom: 8px; flex-wrap: wrap;
-  }
-  .banner-options-meta{ display:flex; flex-direction:column; gap: 3px; }
-  .banner-options-title{ font-size: 13.5px; font-weight: 800; color: var(--text); }
-  .banner-options-hint{ font-size: 11.5px; color: var(--text-muted); }
-  .banner-mode-segmented{
-    display:inline-flex; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 3px; gap: 3px;
-  }
-  .banner-mode-btn{
-    display:inline-flex; align-items:center; gap: 7px;
-    padding: 7px 15px; border-radius: 6px; border: none; background: transparent;
-    font-size: 12.5px; font-weight: 700; color: var(--text-muted); cursor: pointer;
-    transition: all .14s ease;
-  }
-  .banner-mode-btn:hover{ color: var(--text); background: var(--surface-2); }
-  .banner-mode-btn[aria-pressed="true"]{
-    background: var(--accent); color: var(--accent-contrast); box-shadow: var(--shadow-sm);
-  }
-  .banner-mode-btn svg{ flex-shrink: 0; }
-
-  /* PSD Importer Container in Build Content */
-  .psd-import-wrap{ display:flex; flex-direction:column; gap: 16px; }
-  .psd-fidelity-bar{
-    display:flex; align-items:center; gap: 10px; flex-wrap:wrap; padding: 10px 14px;
-    background: var(--ok-soft); color: var(--ok); border-radius: 8px; font-size: 12px; font-weight: 700;
-  }
-  .psd-fidelity-bar .badge{
-    background: var(--ok); color: #fff; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; text-transform:uppercase; letter-spacing:.04em;
-  }
-  .psd-fidelity-bar .spacer{ flex: 1; }
-
-  /* Responsive PSD Canvas Container: strict aspect ratio, zero distortion, zero cropping */
-  .psd-preview-card{
-    border: 1px solid var(--border); border-radius: 12px; overflow:hidden;
-    background: #0D080A; box-shadow: var(--shadow-sm); position:relative;
-  }
-  .psd-preview-header{
-    display:flex; align-items:center; justify-content:space-between; gap:12px;
-    padding: 10px 16px; background: rgba(255,255,255,0.06); border-bottom: 1px solid rgba(255,255,255,0.1);
-    color: #fff; font-size: 12px;
-  }
-  .psd-preview-title{ font-weight: 700; display:flex; align-items:center; gap: 7px; }
-  .psd-dim-badge{
-    background: rgba(255,255,255,0.15); padding: 2px 8px; border-radius: 999px;
-    font-family: var(--font-mono); font-size: 11px;
-  }
-  .psd-canvas-wrap{
-    position: relative; width: 100%; container-type: inline-size;
-    overflow: hidden; display: block; box-sizing: border-box;
-    aspect-ratio: 1920 / 720;
-  }
-  .psd-layer{
-    position: absolute; box-sizing: border-box; pointer-events: auto;
-  }
-  .psd-layer img{
-    display:block; width:100%; height:100%; object-fit:fill; pointer-events:none;
-  }
-  .psd-layer-text{
-    display:flex; align-items:center; white-space:pre-wrap; word-break:break-word;
-    line-height: 1.22; font-family: var(--font-body);
-  }
-  .psd-layer-cta{
-    display:inline-flex; align-items:center; justify-content:center; text-decoration:none;
-    cursor:pointer; font-weight:700; transition: transform .12s ease, filter .12s ease;
-  }
-  .psd-layer-cta:hover{ filter: brightness(1.1); transform: translateY(-1px); }
-
-  /* PSD Layer Inspector Table */
-  .psd-layers-box{ border: 1px solid var(--border); border-radius: 10px; overflow:hidden; background:var(--surface); }
-  .psd-layers-head{
-    padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border);
-    font-size: 12.5px; font-weight: 700; display:flex; align-items:center; justify-content:space-between;
-  }
-  .psd-layers-table{ width:100%; border-collapse:collapse; font-size: 12px; }
-  .psd-layers-table th{
-    text-align:left; padding: 8px 12px; font-size: 11px; font-weight: 800;
-    text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint);
-    border-bottom: 1px solid var(--border); background: var(--bg);
-  }
-  .psd-layers-table td{
-    padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text);
-  }
-  .psd-layers-table tr:last-child td{ border-bottom: none; }
-  .psd-layers-table tr:hover td{ background: var(--surface-2); }
-  .psd-layer-chip{
-    display:inline-flex; align-items:center; gap:5px; padding: 2px 7px;
-    border-radius: 4px; font-size: 11px; font-weight: 700;
-  }
-  .psd-chip-text{ background: rgba(59,130,246,0.12); color: #2563EB; }
-  .psd-chip-cta{ background: rgba(237,28,36,0.12); color: var(--accent); }
-  .psd-chip-graphic{ background: rgba(16,185,129,0.12); color: #059669; }
-  .psd-chip-effect{ background: rgba(139,92,246,0.12); color: #7C3AED; }
-  .psd-actions-row{ display:flex; gap: 10px; align-items:center; flex-wrap:wrap; margin-top: 4px; }
-
   /* ============ STEP 5 - PREVIEW ============ */
   .prev-grid{ display:grid; grid-template-columns: minmax(0,1fr) 300px; gap: 18px; align-items:start; }
   @media (max-width: 940px){ .prev-grid{ grid-template-columns: 1fr; } }
@@ -1178,164 +1078,6 @@
   @keyframes fadeIn{ from{ opacity:0; transform: translateY(7px); } to{ opacity:1; transform:none; } }
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
-
-  /* ============ IMPORT PSD — BANNER OPTIONS ============ */
-
-  /* --- segmented toggle: Assemble My Site | Import PSD --- */
-  .banner-options-header{
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 14px; padding: 14px 16px;
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 10px; flex-wrap: wrap;
-  }
-  .banner-options-meta{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .banner-options-title{ font-size: 13px; font-weight: 800; color: var(--text); }
-  .banner-options-hint{ font-size: 11.5px; color: var(--text-faint); }
-
-  .banner-mode-segmented{
-    display: inline-flex; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 3px; gap: 3px; flex-shrink: 0;
-  }
-  .banner-mode-btn{
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 13px; border-radius: 6px; border: none;
-    background: transparent; font-size: 13px; font-weight: 600;
-    color: var(--text-muted); transition: background .12s ease, color .12s ease, box-shadow .12s ease;
-    white-space: nowrap;
-  }
-  .banner-mode-btn:hover{ color: var(--text); background: var(--surface-2); }
-  .banner-mode-btn[aria-pressed="true"]{
-    background: var(--accent); color: #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,.18); font-weight: 700;
-  }
-
-  /* --- PSD import wrapper --- */
-  .psd-import-wrap{ display: flex; flex-direction: column; gap: 16px; }
-
-  /* --- fidelity bar at the top --- */
-  .psd-fidelity-bar{
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 10px 14px; border-radius: 8px;
-    background: linear-gradient(90deg, rgba(47,143,91,.10) 0%, rgba(47,143,91,.04) 100%);
-    border: 1px solid rgba(47,143,91,.28);
-    font-size: 12.5px; color: var(--text-muted);
-  }
-  .psd-fidelity-bar .badge{
-    display: inline-flex; align-items: center;
-    padding: 3px 9px; border-radius: 100px;
-    background: var(--ok); color: #fff;
-    font-size: 11px; font-weight: 800; letter-spacing: .04em; flex-shrink: 0;
-  }
-  .psd-fidelity-bar .spacer{ flex: 1; }
-  .psd-fidelity-bar .pill{ display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; }
-  .psd-fidelity-bar .pill .d{
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-  }
-  .psd-fidelity-bar .pill-ok .d{ background: var(--ok); }
-  .psd-fidelity-bar .pill-ok{ color: var(--ok); }
-
-  /* --- live canvas preview card --- */
-  .psd-preview-card{
-    border: 1px solid var(--border); border-radius: 10px;
-    overflow: hidden; background: var(--surface);
-  }
-  .psd-preview-header{
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    flex-wrap: wrap; padding: 11px 15px; border-bottom: 1px solid var(--border);
-    background: var(--surface-2);
-  }
-  .psd-preview-title{
-    display: flex; align-items: center; gap: 7px;
-    font-size: 12.5px; font-weight: 700; color: var(--text);
-  }
-  .psd-dim-badge{
-    font-size: 11px; font-weight: 700;
-    padding: 3px 8px; border-radius: 5px;
-    background: var(--surface-3); color: var(--text-muted);
-    font-family: var(--font-mono);
-  }
-
-  /* --- the actual PSD canvas (s-hero-psd) --- */
-  .s-hero-psd{
-    width: 100%; overflow: hidden;
-    /* aspect-ratio comes from inline style; fallback below */
-  }
-  .psd-canvas-wrap{
-    position: relative; width: 100%; overflow: hidden;
-    /* aspect-ratio set inline from PSD dimensions */
-  }
-
-  /* PSD layers rendered absolutely inside the canvas */
-  .psd-layer{ pointer-events: none; }
-  .psd-layer-text{ line-height: 1.2; overflow: hidden; }
-  .psd-layer-cta{ pointer-events: auto; cursor: pointer; }
-  .psd-layer-img{ overflow: hidden; }
-  .psd-layer-img img{ width: 100%; height: 100%; object-fit: cover; display: block; }
-
-  /* --- upload dropzone re-use (filled state) --- */
-  .dropzone.filled{ border-color: var(--ok) !important; background: var(--ok-soft) !important; }
-
-  /* --- actions row below dropzone --- */
-  .psd-actions-row{
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px;
-  }
-
-  /* --- layers table --- */
-  .psd-layers-box{
-    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-  }
-  .psd-layers-head{
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border);
-    font-size: 12.5px; font-weight: 700; color: var(--text);
-  }
-  .psd-layers-table{
-    width: 100%; border-collapse: collapse; font-size: 12px;
-  }
-  .psd-layers-table th{
-    text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 700;
-    letter-spacing: .04em; text-transform: uppercase;
-    color: var(--text-faint); background: var(--surface);
-    border-bottom: 1px solid var(--border);
-  }
-  .psd-layers-table td{
-    padding: 8px 10px; border-bottom: 1px solid var(--border);
-    vertical-align: middle; color: var(--text-muted); background: var(--surface);
-  }
-  .psd-layers-table tr:last-child td{ border-bottom: none; }
-  .psd-layers-table tr:hover td{ background: var(--surface-2); }
-
-  /* layer type chip */
-  .psd-layer-chip{
-    display: inline-block; padding: 2px 7px; border-radius: 4px;
-    font-size: 10px; font-weight: 800; letter-spacing: .05em;
-  }
-  .psd-chip-cta{   background: var(--accent-soft);   color: var(--accent-strong); }
-  .psd-chip-text{  background: var(--review-soft);   color: var(--review); }
-  .psd-chip-effect{background: var(--warn-soft);     color: var(--warn); }
-  .psd-chip-graphic{ background: var(--surface-3);   color: var(--text-faint); }
-
-  /* drag over state on PSD dropzone */
-  #psd-dropzone.drag{ border-color: var(--accent) !important; background: var(--accent-soft) !important; }
-
-  /* --- Banner Palette Auto-Detection Bar --- */
-  .banner-palette-bar{
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 11px 15px; border-radius: 9px;
-    background: var(--surface-2); border: 1px solid var(--border);
-    margin-top: 12px; flex-wrap: wrap;
-  }
-  .banner-palette-info{ display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--text); }
-  .banner-palette-chips{ display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .palette-chip{
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
-    border: 1px solid var(--border); background: var(--surface); color: var(--text);
-    font-family: var(--font-mono);
-  }
-  .palette-swatch{
-    width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.18); flex-shrink: 0;
-  }
 </style>
 <link rel="stylesheet" href="motion.css">
 
@@ -1352,7 +1094,6 @@
         <span class="sub">Self&#8209;serve microsite builder</span>
       </span>
       <div class="spacer"></div>
-      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <span class="save-state" id="save-state"><span class="d"></span>Draft autosaved</span>
       <button class="btn btn-secondary btn-sm" id="btn-save-exit">Save &amp; exit</button>
       <button class="icon-btn" id="btn-close" title="Close builder" aria-label="Close builder">
@@ -1701,11 +1442,8 @@
   /* the theme for whatever is currently picked — DEFAULT_THEME (no override) for
      a "bring your own design" path, since there is no template to theme it from */
   function currentTheme(){
-    var base = (S.path === 'A' && S.template && TEMPLATE_THEMES[S.template]) ? TEMPLATE_THEMES[S.template] : DEFAULT_THEME;
-    if (S.detectedBannerTheme){
-      return Object.assign({}, base, S.detectedBannerTheme);
-    }
-    return base;
+    if (S.path !== 'A' || !S.template) return DEFAULT_THEME;
+    return TEMPLATE_THEMES[S.template] || DEFAULT_THEME;
   }
 
   /* completed events on this portal, offered as a design to clone instead of picking a fresh template.
@@ -1891,7 +1629,7 @@
   ========================================================= */
   function seed(id){
     switch(id){
-      case 'hero': return { title:'', tagline:'Where marketing technology meets measurable growth', cta1:'Register now', cta2:'Download brochure', banner:false, bannerMode:'assemble', psdBanner:null };
+      case 'hero': return { title:'', tagline:'Where marketing technology meets measurable growth', cta1:'Register now', cta2:'Download brochure', banner:false };
       case 'stats': return { items:[
           {k:'Day', v:'1'}, {k:'Sessions', v:'14'}, {k:'Speakers', v:'32'}, {k:'Minutes', v:'480'}, {k:'Brands', v:'120'}
         ] };
@@ -3265,25 +3003,6 @@
     renderSecList();
     renderEditor();
     $('btn-add-custom').addEventListener('click', openCustomSectionModal);
-
-    var topAsm = $('btn-top-assemble');
-    if (topAsm) topAsm.addEventListener('click', function(){
-      goStep(4);
-    });
-    var topPsd = $('btn-top-import-psd');
-    if (topPsd) topPsd.addEventListener('click', function(){
-      var heroSec = S.sections.filter(function(s){ return s.libId === 'hero'; })[0];
-      if (heroSec){
-        S.active = heroSec.id;
-        if (!heroSec.data) heroSec.data = {};
-        heroSec.data.bannerMode = 'psd';
-        if (!heroSec.data.psdBanner) heroSec.data.psdBanner = getDefaultPsdBanner();
-        save();
-        renderSecList();
-        renderEditor();
-        toast('Switched to Import PSD banner mode');
-      }
-    });
   }
 
   function renderSecList(){
@@ -3632,45 +3351,7 @@
               '</span></div>');
 
       case 'hero':
-        var mode = d.bannerMode || 'assemble';
-        var bannerBar =
-          '<div class="banner-options-header">' +
-            '<div class="banner-options-meta">' +
-              '<span class="banner-options-title">Hero Banner Option</span>' +
-              '<span class="banner-options-hint">Choose how to build the top banner of your microsite</span>' +
-            '</div>' +
-            '<div class="banner-mode-segmented">' +
-              '<button type="button" class="banner-mode-btn" data-banner-opt="assemble" aria-pressed="' + (mode === 'assemble') + '">' +
-                svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>', 14) + ' Assemble My Site' +
-              '</button>' +
-              '<button type="button" class="banner-mode-btn" data-banner-opt="psd" aria-pressed="' + (mode === 'psd') + '">' +
-                svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/>', 14) + ' Import PSD' +
-              '</button>' +
-            '</div>' +
-          '</div>';
-
-        if (mode === 'psd'){
-          if (!d.psdBanner) d.psdBanner = getDefaultPsdBanner();
-          return bannerBar + renderPsdBannerEditor(d.psdBanner);
-        }
-
-        var detectedPaletteHtml = S.detectedBannerTheme ? (
-          '<div class="banner-palette-bar">' +
-            '<div class="banner-palette-info">' +
-              svg('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/>', 14) +
-              '<span>Auto-detected banner color palette</span>' +
-              '<span style="font-size:11px;color:var(--ok);font-weight:700;">&bull; Active for Design</span>' +
-            '</div>' +
-            '<div class="banner-palette-chips">' +
-              '<span class="palette-chip" title="Accent color"><span class="palette-swatch" style="background:' + S.detectedBannerTheme.accent + '"></span>' + S.detectedBannerTheme.accent + '</span>' +
-              '<span class="palette-chip" title="Soft background"><span class="palette-swatch" style="background:' + S.detectedBannerTheme.accentSoft + '"></span>Soft Tint</span>' +
-              '<span class="palette-chip" title="Hero base"><span class="palette-swatch" style="background:' + S.detectedBannerTheme.footBg + '"></span>Hero Base</span>' +
-            '</div>' +
-          '</div>'
-        ) : '';
-
-        return bannerBar +
-          '<div class="field"><label for="e-title">Event title</label>' +
+        return '<div class="field"><label for="e-title">Event title</label>' +
             '<input class="inp" id="e-title" value="' + esc(d.title) + '" placeholder="' + esc(S.basics.name || 'Your event name') + '"></div>' +
           '<div class="field"><label for="e-tag">Tagline</label>' +
             '<input class="inp" id="e-tag" value="' + esc(d.tagline) + '" placeholder="One line on why this event exists"></div>' +
@@ -3681,15 +3362,9 @@
           '<div class="field"><span class="flabel">Banner image</span>' +
             '<button class="dropzone' + (d.banner ? ' filled' : '') + '" id="e-banner" type="button">' +
               '<span class="ico">' + (d.banner ? IC.check14 : IC.img) + '</span>' +
-              '<span class="t">' + (d.bannerName ? esc(d.bannerName) : (d.banner ? 'hero-banner.jpg &middot; 1920&times;720' : 'Upload banner')) + '</span>' +
-              '<span class="s">' + (d.banner ? 'Click to replace &middot; auto-extracts palette' : '1920&times;720 recommended &middot; JPG, PNG or WEBP') + '</span>' +
-            '</button>' +
-            '<input type="file" id="e-banner-file-input" accept="image/png, image/jpeg, image/webp, image/svg+xml" hidden>' +
-            detectedPaletteHtml +
-          '</div>' +
-          '<div class="callout plain">' + IC.info + '<span><strong>Auto-filled from Step 1</strong>' +
-            esc([eventDateLabel(S.basics), locLabel(S.basics, true)].filter(Boolean).join('  ·  ') || 'No date set') +
-            '</span></div>';
+              '<span class="t">' + (d.banner ? 'hero-banner.jpg &middot; 1920&times;720' : 'Upload banner') + '</span>' +
+              '<span class="s">' + (d.banner ? 'Click to replace' : '1920&times;720 recommended &middot; JPG or PNG') + '</span>' +
+            '</button></div>' +
           '<div class="callout plain">' + IC.info + '<span><strong>Auto-filled from Step 1</strong>' +
             esc([eventDateLabel(S.basics), locLabel(S.basics, true)].filter(Boolean).join('  ·  ') || 'No date set') +
             '</span></div>';
@@ -3884,240 +3559,10 @@
     }
 
     if (s.shape === 'hero'){
-      var hostEl = $('editor-panel');
-      if (hostEl){
-        hostEl.querySelectorAll('[data-banner-opt]').forEach(function(b){
-          b.addEventListener('click', function(){
-            var opt = b.getAttribute('data-banner-opt');
-            d.bannerMode = opt;
-            if (opt === 'psd' && !d.psdBanner){
-              d.psdBanner = getDefaultPsdBanner();
-              markDone(s, true);
-            }
-            save();
-            renderEditor();
-            toast(opt === 'psd' ? 'Switched to Import PSD banner mode' : 'Switched to Assemble My Site banner mode');
-          });
-        });
-      }
-
-      /* Render the PSD data onto an offscreen canvas and extract colors
-         from actual pixels — avoids the false-positive of hardcoded CTA
-         colors in the layer metadata mismatching the banner's visual look.
-         `onDone` (optional) is called once the theme is written to S. */
-      function updatePsdPalette(psdObj, onDone){
-        try {
-          if (psdObj && psdObj.compositeCanvas){
-            var theme = extractBannerPaletteFromCanvas(psdObj.compositeCanvas);
-            S.detectedBannerTheme = theme;
-            if (onDone) onDone(theme);
-            return;
-          }
-          if (psdObj && psdObj.compositeImageData){
-            extractBannerPaletteFromImage(psdObj.compositeImageData, function(theme){
-              S.detectedBannerTheme = theme;
-              if (onDone) onDone(theme);
-            });
-            return;
-          }
-
-          var cw = 160, ch = 60;
-          var cv = document.createElement('canvas');
-          cv.width = cw; cv.height = ch;
-          var ctx = cv.getContext('2d');
-          var bw = psdObj && psdObj.width  ? psdObj.width  : 1920;
-          var bh = psdObj && psdObj.height ? psdObj.height : 720;
-
-          /* 1 — fill composite background only if explicitly set */
-          if (psdObj && psdObj.compositeBg){
-            var bgVal = psdObj.compositeBg;
-            var firstHex = bgVal.match(/#[0-9A-Fa-f]{3,6}/);
-            ctx.fillStyle = firstHex ? firstHex[0] : '#12090B';
-            ctx.fillRect(0, 0, cw, ch);
-          } else {
-            ctx.clearRect(0, 0, cw, ch);
-          }
-
-          /* 2 — paint each layer's solid color proportionally */
-          var layers = (psdObj && psdObj.layers) || [];
-          layers.forEach(function(l){
-            if (l.visible === false) return;
-            var x = Math.round((l.left  / bw) * cw);
-            var y = Math.round((l.top   / bh) * ch);
-            var w = Math.round((l.width / bw) * cw);
-            var h = Math.round((l.height/ bh) * ch);
-            if (w < 1 || h < 1) return;
-            var opacity = l.opacity != null ? l.opacity : 1;
-            ctx.globalAlpha = opacity;
-
-            /* CTA button — use its background */
-            if (l.type === 'cta' && l.bg && l.bg !== 'transparent'){
-              ctx.fillStyle = l.bg;
-              ctx.fillRect(x, y, w, h);
-            }
-            /* Text / badge — use text color as a small filled rect */
-            if ((l.type === 'text' || l.type === 'badge') && l.color &&
-                !/^#fff/i.test(l.color) && !/^rgba?\(255,255,255/i.test(l.color)){
-              ctx.fillStyle = l.color;
-              ctx.fillRect(x, y, Math.min(w, 16), Math.min(h, 6));
-            }
-            /* effect / graphic layers that carry a style string — parse first hex */
-            if ((l.type === 'effect' || l.type === 'graphic') && l.style){
-              var m = l.style.match(/#[0-9A-Fa-f]{6}/g);
-              if (m && m.length){
-                var col = m.find(function(c){
-                  var v = parseInt(c.slice(1), 16);
-                  var r=(v>>16)&255, g=(v>>8)&255, b=v&255;
-                  var lum=(0.299*r+0.587*g+0.114*b)/255;
-                  return lum > 0.08 && lum < 0.95;
-                }) || m[0];
-                ctx.fillStyle = col;
-                ctx.fillRect(x, y, w, h);
-              }
-            }
-            ctx.globalAlpha = 1;
-          });
-
-          /* 3 — also draw any real image layers (parsed PSD with imageData) */
-          var imagePromises = [];
-          layers.forEach(function(l){
-            if (l.imageData){
-              var p = new Promise(function(resolve){
-                var img = new Image();
-                img.onload = function(){
-                  var x = Math.round((l.left  / bw) * cw);
-                  var y = Math.round((l.top   / bh) * ch);
-                  var w = Math.round((l.width / bw) * cw);
-                  var h = Math.round((l.height/ bh) * ch);
-                  if (w > 0 && h > 0){
-                    ctx.globalAlpha = l.opacity != null ? l.opacity : 1;
-                    ctx.drawImage(img, x, y, w, h);
-                    ctx.globalAlpha = 1;
-                  }
-                  resolve();
-                };
-                img.onerror = function(){ resolve(); };
-                img.src = l.imageData;
-              });
-              imagePromises.push(p);
-            }
-          });
-
-          function finishExtraction(){
-            var theme = extractBannerPaletteFromCanvas(cv);
-            S.detectedBannerTheme = theme;
-            if (onDone) onDone(theme);
-          }
-
-          if (imagePromises.length){
-            Promise.all(imagePromises).then(finishExtraction).catch(finishExtraction);
-          } else {
-            finishExtraction();
-          }
-        } catch(e){
-          var theme = buildThemeFromPalette('#ED1C24');
-          S.detectedBannerTheme = theme;
-          if (onDone) onDone(theme);
-        }
-      }
-
-      if (d.bannerMode === 'psd'){
-        /* Auto-restore palette if draft was reloaded and theme was lost */
-        if (d.psdBanner && !S.detectedBannerTheme){
-          updatePsdPalette(d.psdBanner);  /* silent — no callback needed, next renderEditor will pick it up */
-        }
-
-        var fileInp = $('psd-file-input');
-        var drop = $('psd-dropzone');
-        var sampleBtn = $('btn-use-sample-psd');
-        var uploadBtn = $('btn-trigger-upload-psd');
-
-
-
-        if (uploadBtn && fileInp){
-          uploadBtn.addEventListener('click', function(e){
-            e.stopPropagation();
-            fileInp.click();
-          });
-        }
-
-        if (sampleBtn){
-          sampleBtn.addEventListener('click', function(e){
-            e.stopPropagation();
-            d.psdBanner = getDefaultPsdBanner();
-            updatePsdPalette(d.psdBanner, function(theme){
-              markDone(s, true);
-              save();
-              renderEditor();
-              toast('\uD83C\uDFA8 Sample PSD loaded — banner palette detected (' + theme.accent + ') · will theme the whole site');
-            });
-          });
-        }
-
-        if (drop && fileInp){
-          drop.addEventListener('click', function(){ fileInp.click(); });
-          drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('drag'); });
-          drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
-          drop.addEventListener('drop', function(e){
-            e.preventDefault();
-            drop.classList.remove('drag');
-            if (e.dataTransfer.files && e.dataTransfer.files.length){
-              handlePsdUpload(e.dataTransfer.files[0]);
-            }
-          });
-          fileInp.addEventListener('change', function(){
-            if (fileInp.files && fileInp.files.length){
-              handlePsdUpload(fileInp.files[0]);
-            }
-          });
-        }
-
-        function handlePsdUpload(file){
-          if (!file) return;
-          toast('Reading PSD file: ' + file.name + '…');
-          readPsdFile(file, function(err, result){
-            if (err || !result){
-              d.psdBanner = createPsdFromFileFallback(file);
-            } else {
-              d.psdBanner = result;
-            }
-            updatePsdPalette(d.psdBanner, function(theme){
-              markDone(s, true);
-              save();
-              renderEditor();
-              toast('\uD83C\uDFA8 Banner imported (' + d.psdBanner.width + '\u00D7' + d.psdBanner.height + ') — palette detected (' + theme.accent + ') · theming whole site');
-            });
-          });
-        }
-      } else {
-        bindText('e-title','title'); bindText('e-tag','tagline');
-        bindText('e-cta1','cta1'); bindText('e-cta2','cta2');
-        var bannerBtn = $('e-banner');
-        var bannerInp = $('e-banner-file-input');
-        if (bannerBtn && bannerInp){
-          bannerBtn.addEventListener('click', function(){ bannerInp.click(); });
-          bannerInp.addEventListener('change', function(){
-            if (bannerInp.files && bannerInp.files.length){
-              var file = bannerInp.files[0];
-              d.banner = true;
-              d.bannerName = file.name;
-              var reader = new FileReader();
-              reader.onload = function(ev){
-                d.bannerImage = ev.target.result;
-                extractBannerPaletteFromImage(d.bannerImage, function(palette){
-                  S.detectedBannerTheme = palette;
-                  markDone(s, true);
-                  save();
-                  renderEditor();
-                  toast('🎨 Banner uploaded & color palette detected (' + palette.accent + ') — will apply to website design');
-                });
-              };
-              reader.readAsDataURL(file);
-            }
-          });
-        }
-        on('e-title','input', function(){ markDone(s, !!String(d.title||'').trim()); });
-      }
+      bindText('e-title','title'); bindText('e-tag','tagline');
+      bindText('e-cta1','cta1'); bindText('e-cta2','cta2');
+      on('e-banner','click', function(){ d.banner = !d.banner; save(); renderEditor(); });
+      on('e-title','input', function(){ markDone(s, !!String(d.title||'').trim()); });
     }
 
     if (s.shape === 'line') bindText('e-line','text');
@@ -5052,9 +4497,6 @@
 
     switch (s.shape){
       case 'hero':
-        if (d.bannerMode === 'psd' && d.psdBanner){
-          return generatePsdBannerHtml(d.psdBanner);
-        }
         var meta = [eventDateLabel(b), locLabel(b, true)].filter(Boolean).join('  ·  ');
         var theme = currentTheme();
         /* the hero copy carries its own type/colour inline rather than a shared class —
@@ -5093,7 +4535,7 @@
             return '<div style="margin-top:22px">' +
               '<div data-editable="text" style="font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a8a7c;margin-bottom:10px">' + esc(t.t) + '</div>' +
               '<div style="display:flex;flex-wrap:wrap;gap:10px">' + (t.logos || []).map(function(l){
-                return '<span data-editable="text" style="min-width:132px;text-align:center;border:1px solid var(--site-border, #eee9dd);border-radius:10px;padding:16px 18px;font-size:13px;font-weight:700;background:var(--site-tile-bg, linear-gradient(160deg,#ECE7DA,#DCEEE7))">' + esc(l.n || 'Partner') + '</span>';
+                return '<span data-editable="text" style="min-width:132px;text-align:center;border:1px solid #eee9dd;border-radius:10px;padding:16px 18px;font-size:13px;font-weight:700;background:linear-gradient(160deg,#ECE7DA,#DCEEE7)">' + esc(l.n || 'Partner') + '</span>';
               }).join('') + '</div></div>';
           }).join(''), 'padding-top:44px');
 
@@ -5101,9 +4543,8 @@
         return edSection(normIntro(d), 's-cards-sec', edHead(d, 'About the event', label, 'Open this section in the editor to write the overview.'), '');
 
       case 'line':
-        var lineTh = currentTheme();
-        return '<div style="padding:14px 40px;background:var(--site-accent, ' + (lineTh.accent || '#0F6F5C') + ');text-align:center">' +
-          '<span data-editable="text" style="color:var(--site-accent-contrast, #fff);font-weight:800;letter-spacing:.1em;font-size:13px">' +
+        return '<div style="padding:14px 40px;background:#0F6F5C;text-align:center">' +
+          '<span data-editable="text" style="color:#fff;font-weight:800;letter-spacing:.1em;font-size:13px">' +
           esc(d.text || '#event') + '</span></div>';
 
       case 'columns':
@@ -5200,31 +4641,11 @@
   /* hands the draft to custom_editor.html and opens it */
   function openInEditor(){
     var payload = buildEditorPayload();
-
-    /* If the PSD banner has a composite image, park it in sessionStorage
-       (higher quota than localStorage) so applyCreateHandoff can inject it
-       without the large base64 blob being part of the main JSON payload. */
-    var heroSec = S.sections.filter(function(x){ return x.libId === 'hero'; })[0];
-    var psdBanner = heroSec && heroSec.data && heroSec.data.psdBanner;
-    if (psdBanner && psdBanner.compositeImageData) {
-      try { sessionStorage.setItem('revamp.psd.img.v1', psdBanner.compositeImageData); } catch(e){}
-    }
-
     try {
       localStorage.setItem(HANDOFF_KEY, JSON.stringify(payload));
     } catch(e){
-      /* Payload still too large (e.g. many sections with embedded content).
-         Try stripping compositeImageData references before giving up. */
-      try {
-        var stripped = JSON.parse(JSON.stringify(payload));
-        stripped.sections.forEach(function(s){
-          s.html = s.html.replace(/ data-psd-imgkey="[^"]*"/g, '');
-        });
-        localStorage.setItem(HANDOFF_KEY, JSON.stringify(stripped));
-      } catch(e2){
-        toast('Could not hand the draft over — your browser blocked storage.');
-        return false;
-      }
+      toast('Could not hand the draft over — your browser blocked storage.');
+      return false;
     }
     var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
       (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
