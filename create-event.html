@@ -1287,11 +1287,12 @@
     width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.18); flex-shrink: 0;
   }
 
-  /* --- the hero keeps its own section head: helper line under the title, Import PSD beside Included --- */
-  .editor-head.eh-hero{ align-items:flex-start; gap: 14px; padding: 16px 18px; min-height: 0; }
-  .editor-head.eh-hero h2{ font-size: 18px; font-weight: 600; letter-spacing: normal; }
-  .editor-head.eh-hero .helper{ font-size: 12.5px; color: var(--text-muted); margin-top: 4px; max-width: 54ch; }
-  .editor-head.eh-hero .tools{ justify-content:flex-end; flex-wrap:wrap; }
+  .banner-palette-label{ font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-right: 2px; }
+
+  /* --- preview fitted to the first view (fitPsdPreview): the canvas is centred, letterboxed on the card --- */
+  .psd-preview-card .s-hero-psd{ background: var(--surface-2) !important; }
+  .psd-preview-card .psd-canvas-wrap{ margin: 0 auto; }
+  .psd-preview-header{ padding: 8px 14px; }
 </style>
 <link rel="stylesheet" href="motion.css">
 
@@ -3259,7 +3260,7 @@
       '<button class="btn btn-secondary btn-sm" id="ai-gen">Generate</button>';
 
     /* the hero is built from the fields below, or — with Import PSD pressed — from an imported PSD.
-       One button, on/off: data-banner-opt is the mode a click switches to. The hero keeps its own head. */
+       One button, on/off: data-banner-opt is the mode a click switches to. */
     var bannerMode = s.shape === 'hero' ? ((s.data && s.data.bannerMode) || 'assemble') : null;
     var psdOn = bannerMode === 'psd';
     var bannerToggle = !bannerMode ? '' :
@@ -3269,25 +3270,9 @@
           svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/>', 14) + ' Import PSD' +
         '</button>' +
       '</div>';
-    var heroHeadHtml = !bannerMode ? '' :
-      '<div class="editor-head eh-hero">' +
-        '<div>' +
-          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
-            '<h2>' + esc(s.name) + '</h2>' +
-            (s.source === 'custom' ? '<span class="ai-badge">' + IC.spark + ' AI built</span>' : '') +
-            (s.source === 'detected' ? '<span class="pill pill-ai"><span class="d"></span>From your design</span>' : '') +
-            (s.source === 'edition' ? '<span class="pill pill-ai"><span class="d"></span>From ' + esc(s.editionName || 'a previous edition') + '</span>' : '') +
-          '</div>' +
-          '<p class="helper">' + esc(s.helper || '') + '</p>' +
-        '</div>' +
-        '<div class="tools">' + bannerToggle +
-          '<button class="switch" id="inc-toggle" aria-pressed="' + s.include + '" title="Include this section on the site">' +
-          '<span class="track"><i></i></span>' + (s.include ? 'Included' : 'Excluded') + '</button>' +
-        '</div>' +
-      '</div>';
 
     var helpText = s.helper || (libBy(s.libId) || {}).helper || '';     // older drafts may not carry it
-    host.innerHTML = heroHeadHtml ? heroHeadHtml + '<div class="editor-body' + (s.include ? '' : ' off') + '" id="editor-body">' + shapeHTML(s) + '</div>' :
+    host.innerHTML =
       '<div class="editor-head">' +
           '<div class="eh-title">' +
             '<h2>' + esc(s.name) + '</h2>' +
@@ -3298,7 +3283,7 @@
             (s.source === 'detected' ? '<span class="pill pill-ai"><span class="d"></span>From your design</span>' : '') +
             (s.source === 'edition' ? '<span class="pill pill-ai"><span class="d"></span>From ' + esc(s.editionName || 'a previous edition') + '</span>' : '') +
           '</div>' +
-        '<div class="tools">' + aiTools +
+        '<div class="tools">' + bannerToggle + aiTools +
           (s.shape === 'auto' ? '' :
             '<button class="switch" id="inc-toggle" aria-pressed="' + s.include + '" title="Include this section on the site">' +
             '<span class="track"><i></i></span>' + (s.include ? 'Included' : 'Excluded') + '</button>') +
@@ -3319,7 +3304,25 @@
 
     wireShape(s);
     if (hasIntro(s)) bindIntro(s, $('editor-body'));
+    fitPsdPreview();
   }
+
+  /* An imported PSD banner is previewed whole in the first view: scaled down (keeping its proportions) so its
+     bottom edge clears the sticky footer when the page is at the top, and never wider than the card. */
+  function fitPsdPreview(){
+    var wrap = document.querySelector('#editor-body .psd-preview-card .psd-canvas-wrap');
+    if (!wrap) return;
+    var hero = wrap.closest('.s-hero-psd');
+    var pw = parseFloat(hero.style.getPropertyValue('--psd-w')) || 1920;
+    var ph = parseFloat(hero.style.getPropertyValue('--psd-h')) || 720;
+    var foot = $('wiz-foot');
+    wrap.style.width = '';
+    var top = wrap.getBoundingClientRect().top + window.scrollY;
+    var room = window.innerHeight - (foot ? foot.offsetHeight : 0) - 16 - top;
+    var full = hero.clientWidth;
+    wrap.style.width = Math.max(Math.min(full, 320), Math.min(full, Math.floor(Math.max(room, 0) * pw / ph))) + 'px';
+  }
+  window.addEventListener('resize', fitPsdPreview);
 
   function markDone(s, val){
     var was = s.done;
@@ -4132,9 +4135,10 @@
        sessionStorage without embedding the base64 blob in localStorage. */
     var outerBg = b.compositeBg || 'linear-gradient(135deg, #100609 0%, #1c080d 50%, #0a0405 100%)';
     var imgKeyAttr = b.compositeImageData ? ' data-psd-imgkey="revamp.psd.img.v1"' : '';
-    var imgStyle = (inlineImage && b.compositeImageData)
-      ? 'background-image:url(' + b.compositeImageData + ');background-size:100% 100%;background-repeat:no-repeat;'
-      : '';
+    /* in the preview the banner may be letterboxed (fitPsdPreview), so its own background travels with the canvas */
+    var imgStyle = !inlineImage ? '' :
+      'background:' + outerBg + ';' +
+      (b.compositeImageData ? 'background-image:url(' + b.compositeImageData + ');background-size:100% 100%;background-repeat:no-repeat;' : '');
     return '<div class="s-hero-psd" data-psd-banner="true" style="--psd-w:' + w + ';--psd-h:' + h + ';background:' + outerBg + ';">' +
       '<div class="psd-canvas-wrap"' + imgKeyAttr + ' style="aspect-ratio:' + w + ' / ' + h + ';' + imgStyle + '">' +
         layersHtml +
@@ -4152,29 +4156,21 @@
     var previewHtml = generatePsdBannerHtml(b, true);
     var detectedTheme = S.detectedBannerTheme || buildThemeFromPalette('#ED1C24');
 
+    /* one header row: what it is + its size on the left, the detected brand colours on the right,
+       so the banner itself starts as high as possible (fitPsdPreview sizes it to the first view) */
     return '<div class="psd-import-wrap">' +
-      '<div class="banner-palette-bar">' +
-        '<div class="banner-palette-info">' +
-          svg('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/>', 14) +
-          '<span>Auto-detected banner brand colors</span>' +
-          '<span style="font-size:11px;color:var(--ok);font-weight:700;">&bull; Ready for Design</span>' +
-        '</div>' +
-        '<div class="banner-palette-chips">' +
-          '<span class="palette-chip" title="Primary Accent"><span class="palette-swatch" style="background:' + detectedTheme.accent + '"></span>' + detectedTheme.accent + '</span>' +
-          '<span class="palette-chip" title="Soft Tint"><span class="palette-swatch" style="background:' + detectedTheme.accentSoft + '"></span>Soft Tint</span>' +
-          '<span class="palette-chip" title="Canvas Base"><span class="palette-swatch" style="background:' + detectedTheme.footBg + '"></span>Dark Base</span>' +
-        '</div>' +
-      '</div>' +
-
       '<div class="psd-preview-card">' +
         '<div class="psd-preview-header">' +
           '<div class="psd-preview-title">' +
             svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>', 14) +
             '<span>Live PSD Canvas Preview</span>' +
-          '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;">' +
             '<span class="psd-dim-badge">' + w + ' &times; ' + h + ' px (' + ratio + ':1)</span>' +
-            '<span class="psd-dim-badge" style="color:var(--ok);background:rgba(47,143,91,0.18);">0% Distortion &bull; 0% Crop</span>' +
+          '</div>' +
+          '<div class="banner-palette-chips" title="Auto-detected banner brand colours, applied to the site design">' +
+            '<span class="banner-palette-label">Brand colours</span>' +
+            '<span class="palette-chip" title="Primary Accent"><span class="palette-swatch" style="background:' + detectedTheme.accent + '"></span>' + detectedTheme.accent + '</span>' +
+            '<span class="palette-chip" title="Soft Tint"><span class="palette-swatch" style="background:' + detectedTheme.accentSoft + '"></span>Soft Tint</span>' +
+            '<span class="palette-chip" title="Canvas Base"><span class="palette-swatch" style="background:' + detectedTheme.footBg + '"></span>Dark Base</span>' +
           '</div>' +
         '</div>' +
         previewHtml +
