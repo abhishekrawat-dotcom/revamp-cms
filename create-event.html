@@ -3107,7 +3107,7 @@
 
     var darkTone = bgDarkHex || hslToHex(hue, 0.35, 0.08);
     var darkMid = hslToHex(hue, 0.40, 0.14);
-    var darkDeep = hslToHex(hue, 0.45, 0.05);
+    var darkDeep = bgDarkHex || hslToHex(hue, 0.45, 0.05);   // the banner's own dark, when it has one
 
     var heroBg = 'linear-gradient(150deg, ' + darkDeep + ' 0%, ' + darkTone + ' 55%, ' + darkMid + ' 100%)';
     var bandBg = hslToHex(hue, 0.20, 0.96);
@@ -3137,71 +3137,91 @@
     };
   }
 
+  /* sRGB -> OKLCH [L, C, hue°]. OKLCH chroma tracks how colourful a colour looks; HSL saturation doesn't
+     (it calls a near-black navy 80% saturated, and rates yellow far above an equally vivid red or purple). */
+  var SRGB_LIN = [];
+  for (var li = 0; li < 256; li++){ var lv = li / 255; SRGB_LIN[li] = lv <= 0.04045 ? lv / 12.92 : Math.pow((lv + 0.055) / 1.055, 2.4); }
+  function rgbToOklch(r, g, b){
+    r = SRGB_LIN[r]; g = SRGB_LIN[g]; b = SRGB_LIN[b];
+    var l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    var m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    var s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    var L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+    var A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    var B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    return [L, Math.sqrt(A * A + B * B), (Math.atan2(B, A) * 180 / Math.PI + 360) % 360];
+  }
+
+  /* The accent is the banner's most prominent colour family, weighted by how colourful each pixel is.
+     Backgrounds that are near-black, near-white or grey don't count (they feed the dark base instead), and
+     very light tints fade out, since the accent has to carry white button text. Checked against a folder of
+     ~130 real event banners. */
   function extractBannerPaletteFromCanvas(canvas){
     try {
       var ctx = canvas.getContext('2d');
       var w = canvas.width, h = canvas.height;
       if (!w || !h) return buildThemeFromPalette('#ED1C24');
-      var imgData = ctx.getImageData(0, 0, w, h).data;
-      var bins = {};
-      var totalPixels = 0;
+      var data = ctx.getImageData(0, 0, w, h).data;
 
-      var step = imgData.length > 40000 ? 16 : 4;
-      for (var i = 0; i < imgData.length; i += step){
-        var r = imgData[i], g = imgData[i+1], b = imgData[i+2], a = imgData[i+3];
-        if (a < 128) continue;
-        totalPixels++;
+      var stride = Math.max(1, Math.floor(Math.sqrt((w * h) / 40000)));   // ~40k samples, in whole pixels
+      var HUES = 24, buckets = [], i;
+      for (i = 0; i < HUES; i++) buckets.push({ score: 0, bins: {} });
+      var darks = {}, greys = {}, opaque = 0;
 
-        var qr = Math.min(255, Math.floor(r / 16) * 16 + 8);
-        var qg = Math.min(255, Math.floor(g / 16) * 16 + 8);
-        var qb = Math.min(255, Math.floor(b / 16) * 16 + 8);
-        var key = qr + ',' + qg + ',' + qb;
+      for (var y = 0; y < h; y += stride){
+        for (var x = 0; x < w; x += stride){
+          var p = (y * w + x) * 4;
+          if (data[p + 3] < 128) continue;
+          opaque++;
+          var r = data[p], g = data[p + 1], b = data[p + 2];
+          var key = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
+          var lch = rgbToOklch(r, g, b), L = lch[0], C = lch[1];
 
-        if (!bins[key]){
-          var hsl = rgbToHsl(qr, qg, qb);
-          bins[key] = {
-            r: qr, g: qg, b: qb,
-            h: hsl[0], s: hsl[1], l: hsl[2],
-            count: 0
-          };
+          if (L < 0.3){
+            var dk = darks[key] || (darks[key] = { n: 0, r: 0, g: 0, b: 0 });
+            dk.n++; dk.r += r; dk.g += g; dk.b += b;
+          }
+          if (C < 0.08 || L < 0.3 || L > 0.85){
+            if (L >= 0.2 && L <= 0.9){ greys[key] = greys[key] || { n: 0, r: r, g: g, b: b }; greys[key].n++; }
+            continue;
+          }
+          var wgt = C;
+          if (L > 0.72) wgt *= (0.85 - L) / (0.85 - 0.72);
+          var bk = buckets[Math.floor(lch[2] / 360 * HUES) % HUES];
+          bk.score += wgt;
+          var bin = bk.bins[key] || (bk.bins[key] = { w: 0, r: 0, g: 0, b: 0 });
+          bin.w += wgt; bin.r += r * wgt; bin.g += g * wgt; bin.b += b * wgt;
         }
-        bins[key].count++;
       }
 
-      var binList = Object.keys(bins).map(function(k){ return bins[k]; });
-      if (!binList.length) return buildThemeFromPalette('#ED1C24');
+      /* a hue family rather than one bucket: gradients and anti-aliased edges spread a colour over neighbours */
+      var best = 0, bestIdx = -1;
+      for (i = 0; i < HUES; i++){
+        var sc = buckets[i].score + 0.5 * (buckets[(i + HUES - 1) % HUES].score + buckets[(i + 1) % HUES].score);
+        if (sc > best){ best = sc; bestIdx = i; }
+      }
 
-      var colorfulBins = binList.filter(function(b){
-        return b.s >= 0.15 && b.l >= 0.10 && b.l <= 0.88;
-      });
-
-      var dominantAccent = '#ED1C24';
-      var dominantDarkBase = null;
-
-      if (colorfulBins.length){
-        colorfulBins.forEach(function(b){
-          b.score = b.count * (1 + b.s * 2.5) * (1 - Math.abs(b.l - 0.5) * 0.4);
+      var accent = null;
+      if (bestIdx >= 0){
+        var top = null;
+        Object.keys(buckets[bestIdx].bins).forEach(function(k){
+          var bn = buckets[bestIdx].bins[k];
+          if (!top || bn.w > top.w) top = bn;
         });
-        colorfulBins.sort(function(a, b){ return b.score - a.score; });
-        dominantAccent = rgbToHex(colorfulBins[0].r, colorfulBins[0].g, colorfulBins[0].b);
-      } else {
-        var nonExtreme = binList.filter(function(b){ return b.l >= 0.08 && b.l <= 0.92; });
-        if (nonExtreme.length){
-          nonExtreme.sort(function(a, b){ return b.count - a.count; });
-          dominantAccent = rgbToHex(nonExtreme[0].r, nonExtreme[0].g, nonExtreme[0].b);
-        } else {
-          binList.sort(function(a, b){ return b.count - a.count; });
-          dominantAccent = rgbToHex(binList[0].r, binList[0].g, binList[0].b);
-        }
+        if (top) accent = rgbToHex(top.r / top.w, top.g / top.w, top.b / top.w);
+      }
+      if (!accent){
+        /* a banner with no colour at all: its most common mid tone */
+        var gTop = null;
+        Object.keys(greys).forEach(function(k){ if (!gTop || greys[k].n > gTop.n) gTop = greys[k]; });
+        accent = gTop ? rgbToHex(gTop.r, gTop.g, gTop.b) : '#ED1C24';
       }
 
-      var darkBins = binList.filter(function(b){ return b.l <= 0.22 && b.count > (totalPixels * 0.04); });
-      if (darkBins.length){
-        darkBins.sort(function(a, b){ return b.count - a.count; });
-        dominantDarkBase = rgbToHex(darkBins[0].r, darkBins[0].g, darkBins[0].b);
-      }
+      var dark = null;
+      Object.keys(darks).forEach(function(k){ if (!dark || darks[k].n > dark.n) dark = darks[k]; });
+      var darkBase = (dark && dark.n > opaque * 0.04) ? rgbToHex(dark.r / dark.n, dark.g / dark.n, dark.b / dark.n) : null;
 
-      return buildThemeFromPalette(dominantAccent, dominantDarkBase);
+      return buildThemeFromPalette(accent, darkBase);
     } catch(e){
       return buildThemeFromPalette('#ED1C24');
     }
@@ -3212,10 +3232,12 @@
       var img = new Image();
       img.crossOrigin = 'Anonymous';
       img.onload = function(){
+        /* keep the banner's proportions, and enough pixels that a small accent (a CTA, a badge) still registers */
         var c = document.createElement('canvas');
-        c.width = 120; c.height = 60;
+        var iw = img.naturalWidth || 320, ih = img.naturalHeight || 120;
+        c.width = Math.min(320, iw); c.height = Math.max(1, Math.round(ih * c.width / iw));
         var ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, 120, 60);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
         var theme = extractBannerPaletteFromCanvas(c);
         if (callback) callback(theme);
       };
@@ -3503,7 +3525,7 @@
           callback(null, createPsdFromFileFallback(file));
         }
       } catch(err){
-        callback(null, createPsdFromFileFallback(file));
+        callback(err);   // the file couldn't be parsed (e.g. CMYK) — don't pass the sample banner off as theirs
       }
     };
     reader.onerror = function(){ callback(null, createPsdFromFileFallback(file)); };
@@ -4149,11 +4171,13 @@
           if (!file) return;
           toast('Reading PSD file: ' + file.name + '…');
           readPsdFile(file, function(err, result){
-            if (err || !result){
-              d.psdBanner = createPsdFromFileFallback(file);
-            } else {
-              d.psdBanner = result;
+            if (err){
+              toast(/CMYK/i.test(err.message || '')
+                ? 'This PSD is in CMYK colour mode. Convert it to RGB in Photoshop (Image › Mode › RGB Color), save, and upload again.'
+                : 'Couldn’t read this PSD' + (err.message ? ' (' + err.message + ')' : '') + '. Try re-saving it from Photoshop.');
+              return;
             }
+            d.psdBanner = result || createPsdFromFileFallback(file);
             updatePsdPalette(d.psdBanner, function(theme){
               markDone(s, true);
               save();
