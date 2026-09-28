@@ -572,7 +572,7 @@
   .editor-head{ display:flex; align-items:flex-start; justify-content:space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
   .editor-head h2{ font-size: 18px; }
   .editor-head .helper{ font-size: 12.5px; color: var(--text-muted); margin-top: 4px; max-width: 54ch; }
-  .editor-head .tools{ display:flex; align-items:center; gap: 8px; flex-shrink:0; }
+  .editor-head .tools{ display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap: 8px; flex-shrink:0; }
 
   .switch{ display:inline-flex; align-items:center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text-muted); background:none; border:none; padding: 4px; }
   .switch .track{
@@ -713,14 +713,6 @@
   .det-card.removed .det-shot{ filter: grayscale(1); }
 
   /* ============ HERO BANNER OPTIONS & IMPORT PSD ============ */
-  .banner-options-header{
-    display:flex; align-items:center; justify-content:space-between; gap: 14px;
-    padding: 14px 16px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border);
-    margin-bottom: 8px; flex-wrap: wrap;
-  }
-  .banner-options-meta{ display:flex; flex-direction:column; gap: 3px; }
-  .banner-options-title{ font-size: 13.5px; font-weight: 800; color: var(--text); }
-  .banner-options-hint{ font-size: 11.5px; color: var(--text-muted); }
   .banner-mode-segmented{
     display:inline-flex; background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 3px; gap: 3px;
@@ -934,16 +926,6 @@
   /* ============ IMPORT PSD — BANNER OPTIONS ============ */
 
   /* --- segmented toggle: Assemble My Site | Import PSD --- */
-  .banner-options-header{
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 14px; padding: 14px 16px;
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 10px; flex-wrap: wrap;
-  }
-  .banner-options-meta{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .banner-options-title{ font-size: 13px; font-weight: 800; color: var(--text); }
-  .banner-options-hint{ font-size: 11.5px; color: var(--text-faint); }
-
   .banner-mode-segmented{
     display: inline-flex; background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 3px; gap: 3px; flex-shrink: 0;
@@ -2990,6 +2972,18 @@
     var s = activeSection();
     if (!s){ host.innerHTML = ''; return; }
 
+    /* the hero is built either from the fields below or from an imported PSD */
+    var bannerMode = s.shape === 'hero' ? ((s.data && s.data.bannerMode) || 'assemble') : null;
+    var bannerToggle = !bannerMode ? '' :
+      '<div class="banner-mode-segmented" role="group" aria-label="How to build the top banner">' +
+        '<button type="button" class="banner-mode-btn" data-banner-opt="assemble" aria-pressed="' + (bannerMode === 'assemble') + '">' +
+          svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>', 14) + ' Assemble My Site' +
+        '</button>' +
+        '<button type="button" class="banner-mode-btn" data-banner-opt="psd" aria-pressed="' + (bannerMode === 'psd') + '">' +
+          svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/>', 14) + ' Import PSD' +
+        '</button>' +
+      '</div>';
+
     host.innerHTML =
       '<div class="editor-head">' +
         '<div>' +
@@ -3001,7 +2995,7 @@
           '</div>' +
           '<p class="helper">' + esc(s.helper || '') + '</p>' +
         '</div>' +
-        '<div class="tools">' +
+        '<div class="tools">' + bannerToggle +
           (s.shape === 'auto' ? '' :
             '<button class="switch" id="inc-toggle" aria-pressed="' + s.include + '" title="Include this section on the site">' +
             '<span class="track"><i></i></span>' + (s.include ? 'Included' : 'Excluded') + '</button>') +
@@ -3705,26 +3699,10 @@
               '</span></div>');
 
       case 'hero':
-        var mode = d.bannerMode || 'assemble';
-        var bannerBar =
-          '<div class="banner-options-header">' +
-            '<div class="banner-options-meta">' +
-              '<span class="banner-options-title">Hero Banner Option</span>' +
-              '<span class="banner-options-hint">Choose how to build the top banner of your microsite</span>' +
-            '</div>' +
-            '<div class="banner-mode-segmented">' +
-              '<button type="button" class="banner-mode-btn" data-banner-opt="assemble" aria-pressed="' + (mode === 'assemble') + '">' +
-                svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>', 14) + ' Assemble My Site' +
-              '</button>' +
-              '<button type="button" class="banner-mode-btn" data-banner-opt="psd" aria-pressed="' + (mode === 'psd') + '">' +
-                svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/>', 14) + ' Import PSD' +
-              '</button>' +
-            '</div>' +
-          '</div>';
-
-        if (mode === 'psd'){
+        /* the Assemble / Import PSD toggle lives in the editor head (renderEditor) */
+        if ((d.bannerMode || 'assemble') === 'psd'){
           if (!d.psdBanner) d.psdBanner = getDefaultPsdBanner();
-          return bannerBar + renderPsdBannerEditor(d.psdBanner);
+          return renderPsdBannerEditor(d.psdBanner);
         }
 
         var detectedPaletteHtml = S.detectedBannerTheme ? (
@@ -3742,8 +3720,7 @@
           '</div>'
         ) : '';
 
-        return bannerBar +
-          '<div class="field"><label for="e-title">Event title</label>' +
+        return '<div class="field"><label for="e-title">Event title</label>' +
             '<input class="inp" id="e-title" value="' + esc(d.title) + '" placeholder="' + esc(S.basics.name || 'Your event name') + '"></div>' +
           '<div class="field"><label for="e-tag">Tagline</label>' +
             '<input class="inp" id="e-tag" value="' + esc(d.tagline) + '" placeholder="One line on why this event exists"></div>' +
