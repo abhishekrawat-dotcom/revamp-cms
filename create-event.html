@@ -152,6 +152,7 @@
   .rail-step[data-state="current"] .lbl{ color: var(--accent-strong); font-weight: 700; }
   .rail-line{ height: 1px; width: 18px; background: var(--border); flex-shrink: 0; }
   .rail-line.filled{ background: var(--accent); }
+  .rail-actions{ margin-left: auto; padding-left: 16px; flex-shrink: 0; }
   @media (max-width: 900px){
     .rail-step .lbl{ display:none; }
     .rail-step[data-state="current"] .lbl{ display:block; }
@@ -1779,7 +1780,14 @@
               '<span class="num">' + (state === 'done' ? IC.check : n) + '</span>' +
               (STEPS[i] ? '<span class="lbl">' + STEPS[i] + '</span>' : '') + '</button>';
     }
+    /* Build content: pulling a previous edition's content sits at the rail's end, while the workspace is up */
+    if (S.step === 3 && document.querySelector('#step-3 #toggle-panel')){
+      html += '<span class="rail-actions"><button class="btn ' + (S.pulledEdition ? 'btn-secondary' : 'btn-primary') + ' btn-sm" id="btn-pull-edition">' +
+        IC.spark + ' Use a previous edition’s content</button></span>';
+    }
     rail.innerHTML = html;
+    var pullBtn = $('btn-pull-edition');
+    if (pullBtn) pullBtn.addEventListener('click', openPullContentModal);
     rail.querySelectorAll('[data-goto]').forEach(function(b){
       b.addEventListener('click', function(){
         var n = parseInt(b.getAttribute('data-goto'), 10);
@@ -2595,6 +2603,7 @@
       else if (S.sections.length) renderBuildWorkspace(host);
       else renderDetectReview(host);
     }
+    renderRail();   // drops the rail's edition button when this phase has no workspace
     renderFoot();
   }
 
@@ -2822,7 +2831,6 @@
     var locked = !S.pulledEdition;
     host.innerHTML =
       '<div class="toggle-panel-top">' +
-        '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-pull-edition">' + IC.spark + ' Use a previous edition’s content</button>' +
         (locked
           ? '<span class="tp-status locked">' + IC.lock + ' Select a previous edition first to unlock Speakers, Agenda, Sponsors and Glimpses</span>'
           : '<span class="tp-status">' + IC.check + ' Pulling optional blocks from ' + esc(S.pulledEdition.name) + '</span>') +
@@ -2838,8 +2846,7 @@
     host.querySelectorAll('[data-tb]').forEach(function(b){
       b.addEventListener('click', function(){ toggleBlock(b.getAttribute('data-tb')); });
     });
-    var pullBtn = $('btn-pull-edition');
-    if (pullBtn) pullBtn.addEventListener('click', openPullContentModal);
+    renderRail();   // the "Use a previous edition's content" button lives there
   }
 
   /* ---------- section rail + editor ---------- */
