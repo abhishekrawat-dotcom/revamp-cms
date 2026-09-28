@@ -731,14 +731,6 @@
 
   /* PSD Importer Container in Build Content */
   .psd-import-wrap{ display:flex; flex-direction:column; gap: 16px; }
-  .psd-fidelity-bar{
-    display:flex; align-items:center; gap: 10px; flex-wrap:wrap; padding: 10px 14px;
-    background: var(--ok-soft); color: var(--ok); border-radius: 8px; font-size: 12px; font-weight: 700;
-  }
-  .psd-fidelity-bar .badge{
-    background: var(--ok); color: #fff; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; text-transform:uppercase; letter-spacing:.04em;
-  }
-  .psd-fidelity-bar .spacer{ flex: 1; }
 
   /* Responsive PSD Canvas Container: strict aspect ratio, zero distortion, zero cropping */
   .psd-preview-card{
@@ -925,7 +917,7 @@
 
   /* ============ IMPORT PSD — BANNER OPTIONS ============ */
 
-  /* --- segmented toggle: Assemble My Site | Import PSD --- */
+  /* --- Import PSD on/off toggle (hero section head) --- */
   .banner-mode-segmented{
     display: inline-flex; background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 3px; gap: 3px; flex-shrink: 0;
@@ -945,28 +937,6 @@
 
   /* --- PSD import wrapper --- */
   .psd-import-wrap{ display: flex; flex-direction: column; gap: 16px; }
-
-  /* --- fidelity bar at the top --- */
-  .psd-fidelity-bar{
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 10px 14px; border-radius: 8px;
-    background: linear-gradient(90deg, rgba(47,143,91,.10) 0%, rgba(47,143,91,.04) 100%);
-    border: 1px solid rgba(47,143,91,.28);
-    font-size: 12.5px; color: var(--text-muted);
-  }
-  .psd-fidelity-bar .badge{
-    display: inline-flex; align-items: center;
-    padding: 3px 9px; border-radius: 100px;
-    background: var(--ok); color: #fff;
-    font-size: 11px; font-weight: 800; letter-spacing: .04em; flex-shrink: 0;
-  }
-  .psd-fidelity-bar .spacer{ flex: 1; }
-  .psd-fidelity-bar .pill{ display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; }
-  .psd-fidelity-bar .pill .d{
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-  }
-  .psd-fidelity-bar .pill-ok .d{ background: var(--ok); }
-  .psd-fidelity-bar .pill-ok{ color: var(--ok); }
 
   /* --- live canvas preview card --- */
   .psd-preview-card{
@@ -2972,14 +2942,14 @@
     var s = activeSection();
     if (!s){ host.innerHTML = ''; return; }
 
-    /* the hero is built either from the fields below or from an imported PSD */
+    /* the hero is built from the fields below, or — with Import PSD pressed — from an imported PSD.
+       One button, on/off: data-banner-opt is the mode a click switches to. */
     var bannerMode = s.shape === 'hero' ? ((s.data && s.data.bannerMode) || 'assemble') : null;
+    var psdOn = bannerMode === 'psd';
     var bannerToggle = !bannerMode ? '' :
-      '<div class="banner-mode-segmented" role="group" aria-label="How to build the top banner">' +
-        '<button type="button" class="banner-mode-btn" data-banner-opt="assemble" aria-pressed="' + (bannerMode === 'assemble') + '">' +
-          svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>', 14) + ' Assemble My Site' +
-        '</button>' +
-        '<button type="button" class="banner-mode-btn" data-banner-opt="psd" aria-pressed="' + (bannerMode === 'psd') + '">' +
+      '<div class="banner-mode-segmented">' +
+        '<button type="button" class="banner-mode-btn" data-banner-opt="' + (psdOn ? 'assemble' : 'psd') + '" aria-pressed="' + psdOn + '"' +
+          ' title="' + (psdOn ? 'Stop using the PSD and build the banner from the fields' : 'Build the banner from a PSD file') + '">' +
           svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/>', 14) + ' Import PSD' +
         '</button>' +
       '</div>';
@@ -3599,13 +3569,6 @@
     var detectedTheme = S.detectedBannerTheme || buildThemeFromPalette('#ED1C24');
 
     return '<div class="psd-import-wrap">' +
-      '<div class="psd-fidelity-bar">' +
-        '<span class="badge">Pixel-Accurate PSD</span>' +
-        '<span>Preserving exact canvas dimensions (' + w + ' &times; ' + h + ' px &middot; ' + ratio + ':1), all ' + layers.length + ' layers, typography &amp; layout without distortion or cropping.</span>' +
-        '<span class="spacer"></span>' +
-        '<span class="pill pill-ok"><span class="d"></span>100% Fidelity</span>' +
-      '</div>' +
-
       '<div class="banner-palette-bar">' +
         '<div class="banner-palette-info">' +
           svg('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/>', 14) +
@@ -3960,7 +3923,7 @@
             }
             save();
             renderEditor();
-            toast(opt === 'psd' ? 'Switched to Import PSD banner mode' : 'Switched to Assemble My Site banner mode');
+            toast(opt === 'psd' ? 'Switched to Import PSD banner mode' : 'Import PSD off — the banner is built from the fields');
           });
         });
       }
