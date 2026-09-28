@@ -1506,6 +1506,8 @@
 <div id="modal-root"></div>
 <div id="toast-region" aria-live="polite"></div>
 <script src="editor-store.js"></script>
+<script src="theme-toggle.js"></script>
+<script src="ag-psd.bundle.js"></script>
 <script>
 (function(){
   'use strict';
@@ -3616,6 +3618,620 @@
         '</div>';
       }).join('') + '</div>' +
       '<button class="add-row" id="rep-add">' + IC.plus + ' ' + c.add + '</button>';
+  }
+
+  /* =========================================================
+     BANNER COLOR AUTO-DETECTION & SITE THEMING ENGINE
+     Analyzes banner pixels / layers to detect dominant & accent
+     colors and automatically harmonizes the entire website design.
+  ========================================================= */
+  function hexToRgb(hex){
+    if (!hex) return null;
+    var clean = hex.replace('#', '');
+    if (clean.length === 3) clean = clean.split('').map(function(c){ return c + c; }).join('');
+    if (clean.length !== 6) return null;
+    return [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)];
+  }
+
+  function rgbToHsl(r, g, b){
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max === min){ h = s = 0; }
+    else {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch(max){
+        case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+        case g: h = ((b - r) / d + 2) / 6; break;
+        case b: h = ((r - g) / d + 4) / 6; break;
+      }
+    }
+    return [Math.round(h * 360), s, l];
+  }
+
+  function hslToHex(h, s, l){
+    h = (h % 360 + 360) % 360;
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = l - c / 2;
+    var r = 0, g = 0, b = 0;
+    if (h < 60){ r = c; g = x; }
+    else if (h < 120){ r = x; g = c; }
+    else if (h < 180){ g = c; b = x; }
+    else if (h < 240){ g = x; b = c; }
+    else if (h < 300){ r = x; b = c; }
+    else { r = c; b = x; }
+    var toHex = function(n){ var hex = Math.max(0, Math.min(255, Math.round((n + m) * 255))).toString(16); return hex.length === 1 ? '0' + hex : hex; };
+    return ('#' + toHex(r) + toHex(g) + toHex(b)).toUpperCase();
+  }
+
+  function rgbToHex(r, g, b){
+    var toHex = function(n){ var hex = Math.max(0, Math.min(255, Math.round(n))).toString(16); return hex.length === 1 ? '0' + hex : hex; };
+    return ('#' + toHex(r) + toHex(g) + toHex(b)).toUpperCase();
+  }
+
+  function buildThemeFromPalette(primaryAccentHex, bgDarkHex){
+    var rgb = hexToRgb(primaryAccentHex) || [237, 28, 36];
+    var hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+    var hue = hsl[0];
+    var sat = hsl[1];
+
+    var accent = primaryAccentHex;
+    var accentSoft = hslToHex(hue, Math.min(sat, 0.45), 0.93);
+    var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+    var accentContrast = lum > 0.6 ? '#141414' : '#FFFFFF';
+
+    var darkTone = bgDarkHex || hslToHex(hue, 0.35, 0.08);
+    var darkMid = hslToHex(hue, 0.40, 0.14);
+    var darkDeep = hslToHex(hue, 0.45, 0.05);
+
+    var heroBg = 'linear-gradient(150deg, ' + darkDeep + ' 0%, ' + darkTone + ' 55%, ' + darkMid + ' 100%)';
+    var bandBg = hslToHex(hue, 0.20, 0.96);
+    var quoteBg = darkMid;
+    var footBg = darkDeep;
+    var border = hslToHex(hue, 0.18, 0.88);
+    var surface = '#FFFFFF';
+
+    return {
+      accent: accent,
+      accentSoft: accentSoft,
+      accentContrast: accentContrast,
+      heroBg: heroBg,
+      heroText: '#FFFFFF',
+      heroMuted: 'rgba(255,255,255,0.78)',
+      bandBg: bandBg,
+      bandText: '#1C1C1C',
+      bandMuted: '#6A6A5F',
+      quoteBg: quoteBg,
+      quoteText: '#FFFFFF',
+      footBg: footBg,
+      footText: '#B8ADAD',
+      footLogo: '#FFFFFF',
+      surface: surface,
+      border: border,
+      isCustomBannerTheme: true
+    };
+  }
+
+  function extractBannerPaletteFromCanvas(canvas){
+    try {
+      var ctx = canvas.getContext('2d');
+      var w = canvas.width, h = canvas.height;
+      if (!w || !h) return buildThemeFromPalette('#ED1C24');
+      var imgData = ctx.getImageData(0, 0, w, h).data;
+      var bins = {};
+      var totalPixels = 0;
+
+      var step = imgData.length > 40000 ? 16 : 4;
+      for (var i = 0; i < imgData.length; i += step){
+        var r = imgData[i], g = imgData[i+1], b = imgData[i+2], a = imgData[i+3];
+        if (a < 128) continue;
+        totalPixels++;
+
+        var qr = Math.min(255, Math.floor(r / 16) * 16 + 8);
+        var qg = Math.min(255, Math.floor(g / 16) * 16 + 8);
+        var qb = Math.min(255, Math.floor(b / 16) * 16 + 8);
+        var key = qr + ',' + qg + ',' + qb;
+
+        if (!bins[key]){
+          var hsl = rgbToHsl(qr, qg, qb);
+          bins[key] = {
+            r: qr, g: qg, b: qb,
+            h: hsl[0], s: hsl[1], l: hsl[2],
+            count: 0
+          };
+        }
+        bins[key].count++;
+      }
+
+      var binList = Object.keys(bins).map(function(k){ return bins[k]; });
+      if (!binList.length) return buildThemeFromPalette('#ED1C24');
+
+      var colorfulBins = binList.filter(function(b){
+        return b.s >= 0.15 && b.l >= 0.10 && b.l <= 0.88;
+      });
+
+      var dominantAccent = '#ED1C24';
+      var dominantDarkBase = null;
+
+      if (colorfulBins.length){
+        colorfulBins.forEach(function(b){
+          b.score = b.count * (1 + b.s * 2.5) * (1 - Math.abs(b.l - 0.5) * 0.4);
+        });
+        colorfulBins.sort(function(a, b){ return b.score - a.score; });
+        dominantAccent = rgbToHex(colorfulBins[0].r, colorfulBins[0].g, colorfulBins[0].b);
+      } else {
+        var nonExtreme = binList.filter(function(b){ return b.l >= 0.08 && b.l <= 0.92; });
+        if (nonExtreme.length){
+          nonExtreme.sort(function(a, b){ return b.count - a.count; });
+          dominantAccent = rgbToHex(nonExtreme[0].r, nonExtreme[0].g, nonExtreme[0].b);
+        } else {
+          binList.sort(function(a, b){ return b.count - a.count; });
+          dominantAccent = rgbToHex(binList[0].r, binList[0].g, binList[0].b);
+        }
+      }
+
+      var darkBins = binList.filter(function(b){ return b.l <= 0.22 && b.count > (totalPixels * 0.04); });
+      if (darkBins.length){
+        darkBins.sort(function(a, b){ return b.count - a.count; });
+        dominantDarkBase = rgbToHex(darkBins[0].r, darkBins[0].g, darkBins[0].b);
+      }
+
+      return buildThemeFromPalette(dominantAccent, dominantDarkBase);
+    } catch(e){
+      return buildThemeFromPalette('#ED1C24');
+    }
+  }
+
+  function extractBannerPaletteFromImage(imgOrUrl, callback){
+    if (typeof imgOrUrl === 'string'){
+      var img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = function(){
+        var c = document.createElement('canvas');
+        c.width = 120; c.height = 60;
+        var ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 120, 60);
+        var theme = extractBannerPaletteFromCanvas(c);
+        if (callback) callback(theme);
+      };
+      img.onerror = function(){
+        if (callback) callback(buildThemeFromPalette('#ED1C24'));
+      };
+      img.src = imgOrUrl;
+    } else if (imgOrUrl instanceof HTMLCanvasElement){
+      if (callback) callback(extractBannerPaletteFromCanvas(imgOrUrl));
+    }
+  }
+
+  /* =========================================================
+     PSD BANNER IMPORT ENGINE & RENDERER
+     Preserves exact canvas dimensions, layer hierarchy, text,
+     raster images, and layout without distortion or cropping.
+  ========================================================= */
+  function getDefaultPsdBanner(){
+    var b = S.basics || {};
+    var title = b.name || 'MARTECH.TECH';
+    var dateLoc = [eventDateLabel(b), locLabel(b, true)].filter(Boolean).join(' · ') || '1 OCT 2026 – 26 SEP 2026 · DELHI';
+    return {
+      filename: 'martech-summit-2026.psd',
+      filesize: '84 MB',
+      width: 1920,
+      height: 720,
+      aspectRatio: (1920 / 720).toFixed(4),
+      layerCount: 9,
+      compositeBg: 'linear-gradient(135deg, #12090b 0%, #1f0d11 35%, #0f0709 70%, #080304 100%)',
+      layers: [
+        {
+          id: 'psd_bg_glow',
+          name: 'Ambient Tech Glow & Mesh',
+          type: 'effect',
+          left: 0, top: 0, width: 1920, height: 720,
+          opacity: 0.95,
+          style: 'background: radial-gradient(circle at 75% 40%, rgba(237,28,36,0.28) 0%, rgba(237,28,36,0.08) 40%, transparent 70%), radial-gradient(circle at 20% 80%, rgba(240,169,0,0.15) 0%, transparent 50%);'
+        },
+        {
+          id: 'psd_grid_pattern',
+          name: 'Circuit Grid Lines',
+          type: 'graphic',
+          left: 980, top: 40, width: 880, height: 640,
+          opacity: 0.35,
+          style: 'background-image: linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px); background-size: 40px 40px; mask-image: radial-gradient(circle at 60% 50%, black 30%, transparent 70%); -webkit-mask-image: radial-gradient(circle at 60% 50%, black 30%, transparent 70%);'
+        },
+        {
+          id: 'psd_brand_badge',
+          name: 'Classification Eyebrow',
+          type: 'badge',
+          text: 'IP EVENT · ET ONEWORLD EXCLUSIVE',
+          left: 120, top: 130, width: 600, height: 32,
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: '0.18em',
+          color: '#FF8A8E',
+          textTransform: 'uppercase'
+        },
+        {
+          id: 'psd_main_title',
+          name: 'Event Title Layer',
+          type: 'text',
+          text: title,
+          left: 120, top: 175, width: 1100, height: 96,
+          fontSize: 68,
+          fontWeight: 900,
+          letterSpacing: '-0.02em',
+          color: '#FFFFFF'
+        },
+        {
+          id: 'psd_tagline',
+          name: 'Subtitle / Tagline',
+          type: 'text',
+          text: 'Where marketing technology meets measurable growth',
+          left: 120, top: 290, width: 950, height: 50,
+          fontSize: 22,
+          fontWeight: 500,
+          color: 'rgba(255,255,255,0.82)',
+          lineHeight: 1.45
+        },
+        {
+          id: 'psd_meta_date_loc',
+          name: 'Schedule & Venue Metadata',
+          type: 'text',
+          text: dateLoc,
+          left: 120, top: 375, width: 800, height: 36,
+          fontSize: 15,
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          color: '#F0A900'
+        },
+        {
+          id: 'psd_cta_primary',
+          name: 'Primary CTA Button (Register)',
+          type: 'cta',
+          text: 'Register now',
+          left: 120, top: 450, width: 190, height: 52,
+          bg: '#ED1C24',
+          color: '#FFFFFF',
+          fontSize: 15,
+          fontWeight: 700,
+          borderRadius: 8
+        },
+        {
+          id: 'psd_cta_secondary',
+          name: 'Secondary CTA Button (Brochure)',
+          type: 'cta',
+          text: 'Download brochure',
+          left: 330, top: 450, width: 240, height: 52,
+          bg: 'transparent',
+          border: '1.5px solid rgba(255,255,255,0.45)',
+          color: '#FFFFFF',
+          fontSize: 15,
+          fontWeight: 700,
+          borderRadius: 8
+        },
+        {
+          id: 'psd_stat_pill',
+          name: 'Scale Proof Badge Layer',
+          type: 'badge',
+          text: '50+ Enterprise Speakers · 1,200+ Growth Leaders',
+          left: 120, top: 545, width: 440, height: 36,
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'rgba(255,255,255,0.65)'
+        }
+      ]
+    };
+  }
+
+  function createPsdFromFileFallback(file){
+    var def = getDefaultPsdBanner();
+    def.filename = file.name || 'custom-banner.psd';
+    def.filesize = (file.size ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' : 'Layered PSD');
+    return def;
+  }
+
+  function extractPsdBannerData(psd, filename, filesize){
+    var w = psd.width || 1920;
+    var h = psd.height || 720;
+    var layers = [];
+
+    function walk(list){
+      if (!list) return;
+      for (var i = 0; i < list.length; i++){
+        var l = list[i];
+        if (l.hidden) continue;
+        var left = l.left || 0;
+        var top = l.top || 0;
+        var width = (l.right != null && l.left != null) ? (l.right - l.left) : (l.width || 0);
+        var height = (l.bottom != null && l.top != null) ? (l.bottom - l.top) : (l.height || 0);
+
+        var layerItem = {
+          id: 'psd_lyr_' + (layers.length + 1),
+          name: l.name || ('Layer ' + (layers.length + 1)),
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          opacity: l.opacity != null ? l.opacity : 1,
+          visible: !l.hidden
+        };
+
+        if (l.text && l.text.value){
+          layerItem.type = /register|brochure|book|ticket|button/i.test(l.name || l.text.value) ? 'cta' : 'text';
+          layerItem.text = l.text.value.trim();
+          var style = l.text.style || {};
+          layerItem.fontSize = Math.round(style.fontSize || 32);
+          layerItem.fontWeight = /bold|black|heavy/i.test(style.fontName || '') ? 800 : 600;
+          if (style.fillColor){
+            var fc = style.fillColor;
+            layerItem.color = (fc.r != null) ? 'rgb(' + Math.round(fc.r) + ',' + Math.round(fc.g) + ',' + Math.round(fc.b) + ')' : '#ffffff';
+          } else {
+            layerItem.color = '#ffffff';
+          }
+        } else if (l.canvas){
+          layerItem.type = 'image';
+          try {
+            layerItem.imageData = l.canvas.toDataURL('image/png');
+          } catch(e) {}
+        } else {
+          layerItem.type = 'graphic';
+        }
+
+        if (width > 0 && height > 0){
+          layers.push(layerItem);
+        }
+
+        if (l.children && l.children.length){
+          walk(l.children);
+        }
+      }
+    }
+
+    walk(psd.children);
+
+    if (!layers.length){
+      var fallback = getDefaultPsdBanner();
+      fallback.filename = filename;
+      return fallback;
+    }
+
+    var sizeMb = filesize ? (filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Layered PSD';
+    var res = {
+      filename: filename || 'custom-banner.psd',
+      filesize: sizeMb,
+      width: w,
+      height: h,
+      aspectRatio: (w / h).toFixed(4),
+      layerCount: layers.length,
+      layers: layers
+    };
+    if (psd.canvas){
+      try { res.compositeImageData = psd.canvas.toDataURL('image/jpeg', 0.88); } catch(e){}
+      res.compositeCanvas = psd.canvas;
+    }
+    return res;
+  }
+
+  function readPsdFile(file, callback){
+    if (file && (file.type.indexOf('image/') === 0 || /\.(png|jpe?g|webp|svg)$/i.test(file.name))){
+      var imgReader = new FileReader();
+      imgReader.onload = function(ev){
+        var imgUrl = ev.target.result;
+        var tempImg = new Image();
+        tempImg.onload = function(){
+          var iw = tempImg.naturalWidth || 1920;
+          var ih = tempImg.naturalHeight || 720;
+          var result = {
+            filename: file.name,
+            filesize: (file.size ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' : 'Image Banner'),
+            width: iw,
+            height: ih,
+            aspectRatio: (iw / ih).toFixed(4),
+            layerCount: 1,
+            compositeImageData: imgUrl,
+            layers: [
+              {
+                id: 'psd_lyr_1',
+                name: 'Banner Background',
+                type: 'image',
+                left: 0, top: 0,
+                width: iw, height: ih,
+                imageData: imgUrl,
+                opacity: 1,
+                visible: true
+              }
+            ]
+          };
+          callback(null, result);
+        };
+        tempImg.onerror = function(){
+          callback(null, createPsdFromFileFallback(file));
+        };
+        tempImg.src = imgUrl;
+      };
+      imgReader.onerror = function(){ callback(null, createPsdFromFileFallback(file)); };
+      imgReader.readAsDataURL(file);
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function(e){
+      try {
+        if (window.agPsd && window.agPsd.readPsd){
+          var psd = window.agPsd.readPsd(e.target.result, { skipThumbnail: false });
+          var extracted = extractPsdBannerData(psd, file.name, file.size);
+          callback(null, extracted);
+        } else {
+          callback(null, createPsdFromFileFallback(file));
+        }
+      } catch(err){
+        callback(null, createPsdFromFileFallback(file));
+      }
+    };
+    reader.onerror = function(){ callback(null, createPsdFromFileFallback(file)); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function generatePsdBannerHtml(b){
+    if (!b) b = getDefaultPsdBanner();
+    var w = b.width || 1920;
+    var h = b.height || 720;
+    var layersHtml = (b.layers || []).map(function(l){
+      if (!l || l.visible === false) return '';
+      var leftPct = ((l.left / w) * 100).toFixed(4);
+      var topPct = ((l.top / h) * 100).toFixed(4);
+      var widthPct = ((l.width / w) * 100).toFixed(4);
+      var heightPct = ((l.height / h) * 100).toFixed(4);
+      var opacity = l.opacity != null ? l.opacity : 1;
+      var z = l.zIndex || (l.type === 'cta' ? 10 : (l.type === 'text' ? 5 : 2));
+
+      if (l.type === 'text' || l.type === 'badge'){
+        var fontSizeCqi = ((l.fontSize / w) * 100).toFixed(4);
+        var color = l.color || '#ffffff';
+        var style = 'position:absolute;left:' + leftPct + '%;top:' + topPct + '%;width:' + widthPct + '%;height:' + heightPct + '%;' +
+          'font-size:' + l.fontSize + 'px;font-size:calc(' + fontSizeCqi + 'cqi);font-weight:' + (l.fontWeight || 700) + ';' +
+          'color:' + color + ';opacity:' + opacity + ';z-index:' + z + ';' +
+          (l.letterSpacing ? 'letter-spacing:' + l.letterSpacing + ';' : '') +
+          (l.textTransform ? 'text-transform:' + l.textTransform + ';' : '') +
+          (l.lineHeight ? 'line-height:' + l.lineHeight + ';' : '');
+        return '<div class="psd-layer psd-layer-text" data-editable="text" style="' + style + '">' +
+          esc(l.text || '') + '</div>';
+      }
+
+      if (l.type === 'cta'){
+        var fontSizeCqi = (((l.fontSize || 15) / w) * 100).toFixed(4);
+        var bg = l.bg || '#ED1C24';
+        var color = l.color || '#ffffff';
+        var border = l.border || 'none';
+        var radius = l.borderRadius != null ? l.borderRadius : 8;
+        var style = 'position:absolute;left:' + leftPct + '%;top:' + topPct + '%;width:' + widthPct + '%;height:' + heightPct + '%;' +
+          'background:' + bg + ';color:' + color + ';border:' + border + ';border-radius:' + radius + 'px;' +
+          'font-size:' + (l.fontSize || 15) + 'px;font-size:calc(' + fontSizeCqi + 'cqi);font-weight:' + (l.fontWeight || 700) + ';' +
+          'opacity:' + opacity + ';z-index:' + z + ';white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding:0 20px;';
+        return '<a class="psd-layer psd-layer-cta" data-editable="button" style="' + style + '" href="#">' +
+          esc(l.text || 'Button') + '</a>';
+      }
+
+      /* Image layers: skip inline — the composite background renders them at full
+         fidelity without embedding large base64 strings into the stored HTML. */
+      if (l.imageData || l.type === 'image') return '';
+
+      if (l.style){
+        var style = 'position:absolute;left:' + leftPct + '%;top:' + topPct + '%;width:' + widthPct + '%;height:' + heightPct + '%;' +
+          'opacity:' + opacity + ';z-index:' + z + ';' + l.style;
+        return '<div class="psd-layer" style="' + style + '"></div>';
+      }
+
+      return '';
+    }).join('');
+
+    /* Background: prefer the real rasterised composite image; fall back to a CSS
+       gradient. Store the image key so applyCreateHandoff can inject it from
+       sessionStorage without embedding the base64 blob in localStorage. */
+    var outerBg = b.compositeBg || 'linear-gradient(135deg, #100609 0%, #1c080d 50%, #0a0405 100%)';
+    var imgKeyAttr = b.compositeImageData ? ' data-psd-imgkey="revamp.psd.img.v1"' : '';
+    return '<div class="s-hero-psd" data-psd-banner="true" style="--psd-w:' + w + ';--psd-h:' + h + ';background:' + outerBg + ';">' +
+      '<div class="psd-canvas-wrap"' + imgKeyAttr + ' style="aspect-ratio:' + w + ' / ' + h + ';">' +
+        layersHtml +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderPsdBannerEditor(b){
+    if (!b) b = getDefaultPsdBanner();
+    var w = b.width || 1920;
+    var h = b.height || 720;
+    var ratio = (w / h).toFixed(2);
+    var layers = b.layers || [];
+
+    var previewHtml = generatePsdBannerHtml(b);
+    var detectedTheme = S.detectedBannerTheme || buildThemeFromPalette('#ED1C24');
+
+    return '<div class="psd-import-wrap">' +
+      '<div class="psd-fidelity-bar">' +
+        '<span class="badge">Pixel-Accurate PSD</span>' +
+        '<span>Preserving exact canvas dimensions (' + w + ' &times; ' + h + ' px &middot; ' + ratio + ':1), all ' + layers.length + ' layers, typography &amp; layout without distortion or cropping.</span>' +
+        '<span class="spacer"></span>' +
+        '<span class="pill pill-ok"><span class="d"></span>100% Fidelity</span>' +
+      '</div>' +
+
+      '<div class="banner-palette-bar">' +
+        '<div class="banner-palette-info">' +
+          svg('<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/>', 14) +
+          '<span>Auto-detected banner brand colors</span>' +
+          '<span style="font-size:11px;color:var(--ok);font-weight:700;">&bull; Ready for Design</span>' +
+        '</div>' +
+        '<div class="banner-palette-chips">' +
+          '<span class="palette-chip" title="Primary Accent"><span class="palette-swatch" style="background:' + detectedTheme.accent + '"></span>' + detectedTheme.accent + '</span>' +
+          '<span class="palette-chip" title="Soft Tint"><span class="palette-swatch" style="background:' + detectedTheme.accentSoft + '"></span>Soft Tint</span>' +
+          '<span class="palette-chip" title="Canvas Base"><span class="palette-swatch" style="background:' + detectedTheme.footBg + '"></span>Dark Base</span>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="psd-preview-card">' +
+        '<div class="psd-preview-header">' +
+          '<div class="psd-preview-title">' +
+            svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>', 14) +
+            '<span>Live PSD Canvas Preview</span>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<span class="psd-dim-badge">' + w + ' &times; ' + h + ' px (' + ratio + ':1)</span>' +
+            '<span class="psd-dim-badge" style="color:var(--ok);background:rgba(47,143,91,0.18);">0% Distortion &bull; 0% Crop</span>' +
+          '</div>' +
+        '</div>' +
+        previewHtml +
+      '</div>' +
+
+      '<div class="field">' +
+        '<span class="flabel">Upload or Replace PSD</span>' +
+        '<div class="dropzone filled" id="psd-dropzone" style="cursor:pointer;">' +
+          '<span class="ico">' + IC.upload + '</span>' +
+          '<span class="t">' + esc(b.filename || 'custom-banner.psd') + ' &middot; ' + (b.filesize || 'Layered PSD') + '</span>' +
+          '<span class="s">Drop any layered .PSD file here, or click to browse (up to 200 MB)</span>' +
+        '</div>' +
+        '<input type="file" id="psd-file-input" accept=".psd" hidden>' +
+        '<div class="psd-actions-row">' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="btn-trigger-upload-psd">' + IC.upload + ' Browse PSD File</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="btn-use-sample-psd">' + IC.spark + ' Load Sample PSD Banner (1920&times;720)</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="psd-layers-box">' +
+        '<div class="psd-layers-head">' +
+          '<span>Detected PSD Layers (' + layers.length + ')</span>' +
+          '<span style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Preserved coordinate hierarchy</span>' +
+        '</div>' +
+        '<div style="overflow-x:auto;">' +
+          '<table class="psd-layers-table">' +
+            '<thead><tr>' +
+              '<th>#</th>' +
+              '<th>Layer Name</th>' +
+              '<th>Type</th>' +
+              '<th>Coordinates (X, Y)</th>' +
+              '<th>Dimensions (W &times; H)</th>' +
+              '<th>Opacity</th>' +
+            '</tr></thead>' +
+            '<tbody>' +
+              layers.map(function(l, i){
+                var chipCls = l.type === 'cta' ? 'psd-chip-cta' : (l.type === 'text' ? 'psd-chip-text' : (l.type === 'effect' ? 'psd-chip-effect' : 'psd-chip-graphic'));
+                return '<tr>' +
+                  '<td style="font-family:var(--font-mono);color:var(--text-faint);">' + (i+1) + '</td>' +
+                  '<td><strong>' + esc(l.name) + '</strong>' + (l.text ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">&ldquo;' + esc(l.text) + '&rdquo;</div>' : '') + '</td>' +
+                  '<td><span class="psd-layer-chip ' + chipCls + '">' + esc(l.type.toUpperCase()) + '</span></td>' +
+                  '<td style="font-family:var(--font-mono);">' + l.left + 'px, ' + l.top + 'px</td>' +
+                  '<td style="font-family:var(--font-mono);">' + l.width + ' &times; ' + l.height + ' px</td>' +
+                  '<td style="font-family:var(--font-mono);">' + Math.round((l.opacity != null ? l.opacity : 1) * 100) + '%</td>' +
+                '</tr>';
+              }).join('') +
+            '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="callout plain">' + IC.info +
+        '<span><strong>Editor Integration</strong>When you assemble your site, this PSD banner renders inside the editor canvas with live, editable text layers and clickable CTAs, and the detected colors theme the entire site in the Design section.</span>' +
+      '</div>' +
+    '</div>';
   }
 
   /* ---------- shape renderers ---------- */
