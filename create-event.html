@@ -2861,14 +2861,6 @@
           '<span class="eyebrow">Step 3 of 4 &middot; Path ' + S.path + '</span>' +
           '<h1>Build Your Website Content</h1>' +
         '</div>' +
-        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-          '<button class="btn btn-secondary" id="btn-top-assemble" type="button" title="Assemble my site and open editor">' +
-            'Assemble My Site ' + IC.spark +
-          '</button>' +
-          '<button class="btn btn-ai" id="btn-top-import-psd" type="button" title="Import PSD banner for hero section">' +
-            IC.img + ' Import PSD' +
-          '</button>' +
-        '</div>' +
       '</div>' +
       '<div class="toggle-panel" id="toggle-panel"></div>' +
       '<div class="build-grid">' +
@@ -2890,25 +2882,6 @@
     renderSecList();
     renderEditor();
     $('btn-add-custom').addEventListener('click', openCustomSectionModal);
-
-    var topAsm = $('btn-top-assemble');
-    if (topAsm) topAsm.addEventListener('click', function(){
-      goStep(4);
-    });
-    var topPsd = $('btn-top-import-psd');
-    if (topPsd) topPsd.addEventListener('click', function(){
-      var heroSec = S.sections.filter(function(s){ return s.libId === 'hero'; })[0];
-      if (heroSec){
-        S.active = heroSec.id;
-        if (!heroSec.data) heroSec.data = {};
-        heroSec.data.bannerMode = 'psd';
-        if (!heroSec.data.psdBanner) heroSec.data.psdBanner = getDefaultPsdBanner();
-        save();
-        renderSecList();
-        renderEditor();
-        toast('Switched to Import PSD banner mode');
-      }
-    });
   }
 
   function renderSecList(){
