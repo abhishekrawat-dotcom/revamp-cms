@@ -1,4 +1,8 @@
-/* index.js — Payment Prototype: Inside-Event View (CMS Theme) */
+/* index.js — ET Events Payment Prototype: Inside-Event View
+   revamp-cms/payment/html_version
+   Improvements: toast system, multi-page creation, no delete button,
+   GST-inclusive price preview, improved empty states, inline coupon remove.
+*/
 
 /* ═════════════════════════════════════════════════
    STATE
@@ -9,33 +13,31 @@ let txSearch = "";
 let creditTab = "Pending";
 let offlineTab = "Pending";
 
-let extraFields = [{ key: "", value: "" }];
 let activeCouponPage = null;
 let currentCouponType = "auto";
 let expandedPages = {};
-
-window.toggleInitialCoupon = function(checked) {
-  document.getElementById("initial-coupon-fields").style.display = checked ? "block" : "none";
-}
-
-window.toggleExpand = function(id) {
-  expandedPages[id] = !expandedPages[id];
-  renderPagesTable();
-}
-
-window.removeCoupon = function(pageId, couponId) {
-  if (confirm("Remove this coupon?")) {
-    const page = window.appData.pages.find(p => p.id === pageId);
-    if (page) {
-      page.coupons = page.coupons.filter(c => c.id !== couponId);
-      window.saveData();
-      renderPagesTable();
-    }
-  }
-}
+let editingPageId = null;
 let allCouponCodes = [];
 
 const EVENT = window.CURRENT_EVENT;
+
+/* ═════════════════════════════════════════════════
+   TOAST SYSTEM
+═════════════════════════════════════════════════ */
+function showToast(msg, type = "ok") {
+  const host = document.getElementById("toast-host");
+  if (!host) return;
+  const t = document.createElement("div");
+  t.className = `toast ${type}`;
+  const icons = { ok: "ti-check", warn: "ti-alert-triangle", err: "ti-alert-circle" };
+  t.innerHTML = `<i class="ti ${icons[type] || 'ti-check'}" style="font-size:16px;flex-shrink:0"></i> ${msg}`;
+  host.appendChild(t);
+  setTimeout(() => {
+    t.style.animation = "toast-out .22s ease forwards";
+    setTimeout(() => t.remove(), 230);
+  }, 3000);
+}
+window.showToast = showToast;
 
 /* ═════════════════════════════════════════════════
    SCREEN ROUTER
@@ -44,61 +46,22 @@ function renderHeader() {
   const container = document.getElementById("header-container");
   if (!container) return;
   container.innerHTML = `
-    <a class="back-btn" href="../revamp-cms/edit-event.html?event=${EVENT.id}">
+    <a class="back-btn" href="../edit-event.html?event=${EVENT.id}">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-      Back to events
+      Back to Event
     </a>
     <span class="ev-title">
       <h1>${EVENT.name}</h1>
       <span class="meta">${EVENT.date} &middot; ${EVENT.location} &middot; ${EVENT.vertical}</span>
     </span>
-    <span class="topbar-acts">
-      <button class="btn btn-secondary" type="button">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
-        Preview
-      </button>
-      <button class="btn btn-primary" type="button">Publish</button>
-    </span>
-  `;
-}
 
-function renderPaymentMetrics() {
-  const eventPages = window.appData.pages.filter(p => p.eventId === EVENT.id);
-  const eventTx = window.appData.transactions.filter(t => t.eventId === EVENT.id);
-  const successTx = eventTx.filter(t => t.status === "Success");
-  const totalRevenue = successTx.reduce((s, t) => s + t.amount, 0);
-
-  return `
-      <div class="vhead">
-        <div>
-          <div class="vhead-sub">PAYMENT MODULE</div>
-          <h2 class="vhead-title">Overview & Activity</h2>
-        </div>
-        <div class="vhead-acts">
-          <button class="btn btn-secondary" onclick="window.location.reload()"><i class="ti ti-refresh"></i> Refresh</button>
-        </div>
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat">
-          <div class="eyebrow">Payment Pages</div>
-          <div class="val">${eventPages.length}</div>
-        </div>
-        <div class="stat">
-          <div class="eyebrow">Total Transactions</div>
-          <div class="val">${successTx.length}</div>
-        </div>
-        <div class="stat">
-          <div class="eyebrow">Gross Revenue</div>
-          <div class="val" style="color:var(--ok)">${window.utils.fmtCurrency(totalRevenue)}</div>
-        </div>
-      </div>
   `;
 }
 
 function renderScreen() {
   renderHeader();
   const content = document.getElementById("app-content");
+  if (!content) return;
 
   if (activeScreen === "details") {
     content.innerHTML = renderPaymentDetails();
@@ -112,26 +75,84 @@ function renderScreen() {
 }
 
 /* ═════════════════════════════════════════════════
+   METRICS STRIP
+═════════════════════════════════════════════════ */
+function renderPaymentMetrics() {
+  const eventPages = window.appData.pages.filter(p => p.eventId === EVENT.id);
+  const eventTx    = window.appData.transactions.filter(t => t.eventId === EVENT.id);
+  const successTx  = eventTx.filter(t => t.status === "Success");
+  const failedTx   = eventTx.filter(t => t.status === "Failed");
+  const incompleteTx = eventTx.filter(t => t.status === "Incomplete");
+  const totalRev   = successTx.reduce((s, t) => s + t.amount, 0);
+  const livePg     = eventPages.filter(p => p.liveOnSite !== false).length;
+  const offlinePending = window.appData.offline.filter(o => o.status === "Pending");
+  const pendingAmt = incompleteTx.reduce((s,t) => s + t.amount, 0) +
+                     offlinePending.reduce((s,o) => s + o.amount, 0);
+
+  return `
+    <div class="hud-bar" style="margin-bottom:20px">
+      <button class="hud-seg" onclick="setScreen('pages')" title="Payment Pages">
+        <i class="ti ti-layout-cards hud-icon"></i>
+        <div class="hud-inner">
+          <div class="hud-label">Pages</div>
+          <div class="hud-val">${eventPages.length} <span class="hud-sub">${livePg} live</span></div>
+        </div>
+      </button>
+      <div class="hud-div"></div>
+      <button class="hud-seg" onclick="txFilter='All'; activeDetailsTab='transactions'; setScreen('details');" title="Transactions">
+        <i class="ti ti-arrows-exchange hud-icon"></i>
+        <div class="hud-inner">
+          <div class="hud-label">Transactions</div>
+          <div class="hud-val">${successTx.length} <span class="hud-sub">of ${eventTx.length} total</span></div>
+        </div>
+      </button>
+      <div class="hud-div"></div>
+      <button class="hud-seg" onclick="txFilter='All'; activeDetailsTab='transactions'; setScreen('details');" title="Gross Revenue">
+        <i class="ti ti-currency-rupee hud-icon hud-icon--ok"></i>
+        <div class="hud-inner">
+          <div class="hud-label">Gross Revenue</div>
+          <div class="hud-val hud-val--ok">${window.utils.fmtCurrency(totalRev)}</div>
+        </div>
+      </button>
+      <div class="hud-div"></div>
+      <button class="hud-seg" onclick="activeDetailsTab='offline'; setScreen('details');" title="Pending Amount">
+        <i class="ti ti-clock hud-icon hud-icon--warn"></i>
+        <div class="hud-inner">
+          <div class="hud-label">Pending</div>
+          <div class="hud-val hud-val--warn">${window.utils.fmtCurrency(pendingAmt)} <span class="hud-sub">${incompleteTx.length + offlinePending.length} items</span></div>
+        </div>
+      </button>
+      <div class="hud-div"></div>
+      <button class="hud-seg" onclick="activeDetailsTab='transactions'; setTxFilter('Failed'); setScreen('details');" title="Failed Transactions">
+        <i class="ti ti-alert-circle hud-icon ${failedTx.length > 0 ? 'hud-icon--err' : ''}"></i>
+        <div class="hud-inner">
+          <div class="hud-label">Failed</div>
+          <div class="hud-val ${failedTx.length > 0 ? 'hud-val--err' : ''}">${failedTx.length} <span class="hud-sub">tx</span></div>
+        </div>
+      </button>
+    </div>
+  `;
+}
+
+/* ═════════════════════════════════════════════════
    SCREEN 1: PAYMENT DETAILS
 ═════════════════════════════════════════════════ */
 function renderPaymentDetails() {
   const eventTx = window.appData.transactions.filter(t => t.eventId === EVENT.id);
-
   const DETAIL_TABS = [
-    { id: "transactions", label: "Transactions", count: eventTx.length },
-    { id: "tax-invoice", label: "Tax Invoices", count: window.appData.invoices.length },
-    { id: "invoice-listing", label: "Invoice Listing", count: window.appData.invoiceListing.length },
-    { id: "credit-notes", label: "Credit Notes", count: window.appData.credit.length },
-    { id: "offline", label: "Offline Payments", count: window.appData.offline.length },
+    { id: "transactions",    label: "Transactions",     count: eventTx.length },
+    { id: "tax-invoice",     label: "Tax Invoices",     count: window.appData.invoices.length },
+    { id: "invoice-listing", label: "Invoice Listing",  count: window.appData.invoiceListing.length },
+    { id: "credit-notes",    label: "Credit Notes",     count: window.appData.credit.length },
+    { id: "offline",         label: "Offline Payments", count: window.appData.offline.length },
   ];
 
   return `
     <div class="fade-in">
       ${renderPaymentMetrics()}
-
       <div class="panel">
         <div class="panel-body tight">
-          <div class="subtabs" style="padding: 16px 16px 0 16px;">
+          <div class="subtabs" style="padding:16px 16px 0 16px;">
             ${DETAIL_TABS.map(tab => `
               <button class="detail-tab ${activeDetailsTab === tab.id ? 'active' : ''}" onclick="switchDetailsTab('${tab.id}')">
                 ${tab.label}
@@ -139,7 +160,6 @@ function renderPaymentDetails() {
               </button>
             `).join('')}
           </div>
-          
           <div id="detail-tab-content"></div>
         </div>
       </div>
@@ -147,18 +167,12 @@ function renderPaymentDetails() {
   `;
 }
 
-function postRenderDetails() {
-  renderDetailsTabContent();
-}
+function postRenderDetails() { renderDetailsTabContent(); }
 
 function switchDetailsTab(tabId) {
   activeDetailsTab = tabId;
   document.querySelectorAll('.detail-tab').forEach(btn => {
-    if (btn.getAttribute('onclick').includes(`'${tabId}'`)) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
+    btn.classList.toggle('active', btn.getAttribute('onclick').includes(`'${tabId}'`));
   });
   renderDetailsTabContent();
 }
@@ -167,67 +181,111 @@ window.switchDetailsTab = switchDetailsTab;
 function renderDetailsTabContent() {
   const container = document.getElementById("detail-tab-content");
   if (!container) return;
-
   switch (activeDetailsTab) {
-    case "transactions": container.innerHTML = renderTransactionsTable(); break;
-    case "tax-invoice": container.innerHTML = renderTaxInvoiceTable(); break;
+    case "transactions":    container.innerHTML = renderTransactionsTable(); break;
+    case "tax-invoice":     container.innerHTML = renderTaxInvoiceTable(); break;
     case "invoice-listing": container.innerHTML = renderInvoiceListingTable(); break;
-    case "credit-notes": container.innerHTML = renderCreditNotesTable(); break;
-    case "offline": container.innerHTML = renderOfflineTable(); break;
+    case "credit-notes":    container.innerHTML = renderCreditNotesTable(); break;
+    case "offline":         container.innerHTML = renderOfflineTable(); break;
   }
 }
 
-
 /* ── Transactions ── */
+let txDateFilter = "all";
 function renderTransactionsTable() {
-  const html = `
-    <div class="toolbar" style="padding-top:16px;">
+  setTimeout(() => renderTxInner(), 0);
+  return `
+    <div class="toolbar" style="padding-top:16px;flex-wrap:wrap;gap:8px;">
       <div class="search-wrap">
         <i class="ti ti-search" style="color:var(--text-muted)"></i>
-        <input type="text" class="search-input" id="tx-search" placeholder="Search ID or page..." value="${txSearch}" oninput="updateTxSearch(this.value)">
+        <input type="text" class="search-input" id="tx-search" placeholder="Search buyer, ID or page..." value="${txSearch}" oninput="updateTxSearch(this.value)">
       </div>
       <div class="chip-group" id="tx-filters">
         ${["All","Success","Failed","Incomplete"].map(s => `
           <button class="chip ${txFilter === s ? 'active' : ''}" onclick="setTxFilter('${s}')">${s}</button>
         `).join('')}
       </div>
+      <div class="chip-group" id="tx-date-filters" style="margin-left:auto">
+        ${[["all","All time"],["today","Today"],["week","This week"],["month","This month"]].map(([v,l]) => `
+          <button class="chip ${txDateFilter === v ? 'active' : ''}" onclick="setTxDateFilter('${v}')">${l}</button>
+        `).join('')}
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="exportTxCSV()" style="margin-left:4px">
+        <i class="ti ti-download"></i> Export CSV
+      </button>
     </div>
     <div id="tx-table-inner"></div>
   `;
-  setTimeout(() => renderTxInner(), 0);
-  return html;
+}
+
+function txDateMatches(dateStr) {
+  if (txDateFilter === "all") return true;
+  const d = new Date(dateStr);
+  const now = new Date();
+  if (txDateFilter === "today") {
+    return d.toDateString() === now.toDateString();
+  }
+  if (txDateFilter === "week") {
+    const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+    return d >= weekAgo;
+  }
+  if (txDateFilter === "month") {
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }
+  return true;
 }
 
 function renderTxInner() {
   let txs = window.appData.transactions.filter(t => t.eventId === EVENT.id);
   if (txFilter !== "All") txs = txs.filter(t => t.status === txFilter);
-  if (txSearch) txs = txs.filter(t => t.id.toLowerCase().includes(txSearch.toLowerCase()) || t.page.toLowerCase().includes(txSearch.toLowerCase()));
-
+  txs = txs.filter(t => txDateMatches(t.date));
+  if (txSearch) txs = txs.filter(t =>
+    (t.id || "").toLowerCase().includes(txSearch.toLowerCase()) ||
+    (t.page || "").toLowerCase().includes(txSearch.toLowerCase()) ||
+    (t.buyer || "").toLowerCase().includes(txSearch.toLowerCase()) ||
+    (t.email || "").toLowerCase().includes(txSearch.toLowerCase())
+  );
   const container = document.getElementById("tx-table-inner");
   if (!container) return;
+  const total = window.appData.transactions.filter(t => t.eventId === EVENT.id).length;
+  // update tab count badge dynamically
+  const activeTab = document.querySelector('.detail-tab.active .cnt');
+  if (activeTab) activeTab.textContent = txs.length < total ? `${txs.length} of ${total}` : total;
 
   if (txs.length === 0) {
     container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">No transactions match this filter.</div>`;
     return;
   }
-
-  const getPillClass = (s) => ({ Success: "pill-success", Failed: "pill-danger", Incomplete: "pill-warning" }[s] || "pill-neutral");
-
+  const getPillClass = s => ({ Success: "pill-success", Failed: "pill-danger", Incomplete: "pill-warning" }[s] || "pill-neutral");
   container.innerHTML = `
     <table>
-      <thead>
-        <tr><th>Txn ID</th><th>Page</th><th>Mode</th><th>Status</th><th>Merchant</th><th>Amount</th><th>Date</th></tr>
-      </thead>
+      <thead><tr><th>Txn ID</th><th>Buyer</th><th>Page</th><th>Mode</th><th>Status</th><th>Merchant</th><th>Amount</th><th>Date</th><th></th></tr></thead>
       <tbody>
         ${txs.map(t => `
           <tr>
-            <td class="mono">${t.id}</td>
-            <td style="font-weight:700">${t.page}</td>
+            <td class="mono" style="font-weight:700">${t.id}</td>
+            <td>
+              <div style="font-weight:700">${t.buyer || '—'}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:1px">${t.email || ''}</div>
+            </td>
+            <td style="font-weight:600">${t.page}</td>
             <td style="color:var(--text-muted)">${t.mode}</td>
             <td><span class="spill ${getPillClass(t.status)}"><span class="pill-dot"></span>${t.status}</span></td>
             <td style="color:var(--text-muted)">${t.merchant}</td>
-            <td style="font-weight:700;color:var(--accent)">${window.utils.fmtCurrency(t.amount)}</td>
+            <td style="font-weight:700;color:var(--ok)">${window.utils.fmtCurrency(t.amount)}</td>
             <td class="mono" style="color:var(--text-muted)">${t.date}</td>
+            <td>
+              <div style="position:relative;display:inline-block">
+                <button class="btn btn-secondary btn-sm tx-action-trigger" onclick="toggleTxMenu('${t.id}')" title="Actions">
+                  <i class="ti ti-dots"></i>
+                </button>
+                <div class="tx-action-menu" id="tx-menu-${t.id}" style="display:none">
+                  <button onclick="txAction('resend','${t.id}')"><i class="ti ti-send"></i> Resend Receipt</button>
+                  ${t.status === 'Success' ? `<button onclick="txAction('invoice','${t.id}')"><i class="ti ti-file-invoice"></i> View Invoice</button>` : ''}
+                  <button onclick="txAction('creditnote','${t.id}')"><i class="ti ti-receipt-refund"></i> Initiate Credit Note</button>
+                </div>
+              </div>
+            </td>
           </tr>
         `).join('')}
       </tbody>
@@ -235,95 +293,143 @@ function renderTxInner() {
   `;
 }
 window.setTxFilter = function(f) { txFilter = f; renderTransactionsTable(); }
+window.setTxDateFilter = function(f) { txDateFilter = f; renderTxInner(); }
 window.updateTxSearch = function(val) { txSearch = val; renderTxInner(); }
+window.toggleTxMenu = function(id) {
+  document.querySelectorAll('.tx-action-menu').forEach(m => { if (m.id !== `tx-menu-${id}`) m.style.display = 'none'; });
+  const m = document.getElementById(`tx-menu-${id}`);
+  if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tx-action-trigger') && !e.target.closest('.tx-action-menu')) {
+    document.querySelectorAll('.tx-action-menu').forEach(m => m.style.display = 'none');
+  }
+});
+window.txAction = function(action, txId) {
+  document.querySelectorAll('.tx-action-menu').forEach(m => m.style.display = 'none');
+  if (action === 'resend')     showToast(`Receipt resent for ${txId}.`, 'ok');
+  if (action === 'invoice')    showToast(`Opening invoice for ${txId}...`, 'ok');
+  if (action === 'creditnote') showToast(`Credit note initiated for ${txId}.`, 'warn');
+}
+window.exportTxCSV = function() {
+  let txs = window.appData.transactions.filter(t => t.eventId === EVENT.id);
+  if (txFilter !== "All") txs = txs.filter(t => t.status === txFilter);
+  txs = txs.filter(t => txDateMatches(t.date));
+  const headers = ['Txn ID','Buyer','Email','Page','Mode','Status','Merchant','Amount','Date'];
+  const rows = txs.map(t => [
+    t.id, t.buyer||'', t.email||'', t.page, t.mode, t.status, t.merchant, t.amount, t.date
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `transactions_${EVENT.id}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  showToast('CSV exported.', 'ok');
+}
 
-/* ── Tax Invoice, Invoice Listing, Credit Notes, Offline ── */
+/* ── Tax Invoice ── */
 function renderTaxInvoiceTable() {
-  return `
-    <table>
-      <thead><tr><th>Invoice No</th><th>Txn ID</th><th>Name</th><th>Email</th><th>Amount</th><th>Date</th><th>Action</th></tr></thead>
-      <tbody>
-        ${window.appData.invoices.map(i => `
-          <tr>
-            <td class="mono" style="font-weight:700">${i.id}</td>
-            <td class="mono" style="color:var(--text-muted)">${i.txId}</td>
-            <td style="font-weight:600">${i.name}</td>
-            <td style="color:var(--text-muted)">${i.email}</td>
-            <td style="font-weight:700">${window.utils.fmtCurrency(i.amount)}</td>
-            <td class="mono" style="color:var(--text-muted)">${i.date}</td>
-            <td><button class="btn-link"><i class="ti ti-download"></i> PDF</button></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
+  const invs = window.appData.invoices;
+  if (!invs.length) return emptyState("ti-file-invoice", "No Tax Invoices", "Generated invoices will appear here once payments are processed.");
+  return `<table>
+    <thead><tr><th>Invoice No</th><th>Txn ID</th><th>Buyer</th><th>Email</th><th>Amount</th><th>Date</th><th>Action</th></tr></thead>
+    <tbody>
+      ${invs.map(i => `
+        <tr>
+          <td class="mono" style="font-weight:700">${i.id}</td>
+          <td class="mono" style="color:var(--text-muted)">${i.txId || '—'}</td>
+          <td style="font-weight:600">${i.name || '—'}</td>
+          <td style="color:var(--text-muted)">${i.email || '—'}</td>
+          <td style="font-weight:700">${window.utils.fmtCurrency(i.amount)}</td>
+          <td class="mono" style="color:var(--text-muted)">${i.date || '—'}</td>
+          <td>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn-link" onclick="showToast('Invoice sent to ${i.email || 'buyer'}','ok')"><i class="ti ti-mail"></i> Mail</button>
+            </div>
+          </td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>`;
 }
 
+/* ── Invoice Listing ── */
 function renderInvoiceListingTable() {
-  return `
-    <table>
-      <thead><tr><th>Invoice No</th><th>Company</th><th>Contact</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
-      <tbody>
-        ${window.appData.invoiceListing.map(i => `
-          <tr>
-            <td class="mono" style="font-weight:700">${i.id}</td>
-            <td style="font-weight:600">${i.company}</td>
-            <td style="color:var(--text-muted)">${i.contact}</td>
-            <td style="font-weight:700">${window.utils.fmtCurrency(i.amount)}</td>
-            <td><span class="spill ${i.status === 'Paid' ? 'pill-success' : 'pill-warning'}"><span class="pill-dot"></span>${i.status}</span></td>
-            <td class="mono" style="color:var(--text-muted)">${i.date}</td>
-            <td><button class="btn-link"><i class="ti ti-send"></i> Resend</button></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
+  const listings = window.appData.invoiceListing;
+  if (!listings.length) return emptyState("ti-list", "No Invoice Listings", "Invoice records will appear once created.");
+  return `<table>
+    <thead><tr><th>Invoice No</th><th>Company</th><th>Contact</th><th>Email</th><th>Salesperson</th><th>GST</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
+    <tbody>
+      ${listings.map(i => `
+        <tr>
+          <td class="mono" style="font-weight:700">${i.id}</td>
+          <td style="font-weight:600">${i.company || '—'}</td>
+          <td style="color:var(--text-muted)">${i.contact || '—'}</td>
+          <td style="color:var(--text-muted);font-size:12px">${i.email || '—'}</td>
+          <td style="color:var(--text-muted)">${i.salesperson || '—'}</td>
+          <td class="mono" style="font-size:11.5px;color:var(--text-muted)">${i.gst || '—'}</td>
+          <td style="font-weight:700">${window.utils.fmtCurrency(i.amount)}</td>
+          <td><span class="spill ${i.status === 'Paid' ? 'pill-success' : 'pill-warning'}"><span class="pill-dot"></span>${i.status || '—'}</span></td>
+          <td class="mono" style="color:var(--text-muted)">${i.date || '—'}</td>
+          <td>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn-link" onclick="showToast('Invoice sent to ${i.email || 'client'}','ok')"><i class="ti ti-mail"></i> Mail</button>
+            </div>
+          </td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>`;
 }
 
+/* ── Credit Notes ── */
 function renderCreditNotesTable() {
-  const html = `
-    <div class="subtabs" style="padding: 16px 16px 0 16px;">
-      ${["Pending", "Approved", "Rejected"].map(s => `
+  setTimeout(() => renderCreditInner(), 0);
+  return `
+    <div class="subtabs" style="padding:16px 16px 0 16px;">
+      ${["Pending","Approved","Rejected"].map(s => `
         <button class="detail-tab ${creditTab === s ? 'active' : ''}" onclick="setCreditTab('${s}')">${s}</button>
       `).join('')}
     </div>
     <div id="credit-table-inner"></div>
   `;
-  setTimeout(() => renderCreditInner(), 0);
-  return html;
 }
-window.setCreditTab = function(t) { creditTab = t; renderCreditNotesTable(); }
+window.setCreditTab = function(t) { creditTab = t; renderCreditInner(); }
 
 function renderCreditInner() {
   const notes = window.appData.credit.filter(c => c.status === creditTab);
   const container = document.getElementById("credit-table-inner");
   if (!container) return;
-
-  if (notes.length === 0) {
-    container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">No ${creditTab.toLowerCase()} credit notes.</div>`;
-    return;
-  }
-
+  if (!notes.length) { container.innerHTML = emptyState("ti-file-minus", `No ${creditTab} Credit Notes`, "Credit note requests will appear here."); return; }
   container.innerHTML = `
     <table>
-      <thead><tr><th>Note ID</th><th>Txn ID</th><th>User</th><th>Amount</th><th>Reason</th><th>Date</th>${creditTab === 'Pending' ? '<th>Action</th>' : ''}</tr></thead>
+      <thead><tr><th>Note ID</th><th>Txn ID</th><th>User</th><th>Email</th><th>Amount</th><th>Reason</th><th>Date</th><th>Action</th></tr></thead>
       <tbody>
         ${notes.map(n => `
           <tr>
             <td class="mono" style="font-weight:700">${n.id}</td>
-            <td class="mono" style="color:var(--text-muted)">${n.txId}</td>
-            <td style="font-weight:600">${n.user}</td>
+            <td class="mono" style="color:var(--text-muted)">${n.txId || '—'}</td>
+            <td style="font-weight:600">${n.user || '—'}</td>
+            <td style="color:var(--text-muted);font-size:12px">${n.email || '—'}</td>
             <td style="font-weight:700;color:var(--accent)">${window.utils.fmtCurrency(n.amount)}</td>
-            <td style="color:var(--text-muted)">${n.reason}</td>
-            <td class="mono" style="color:var(--text-muted)">${n.date}</td>
-            ${creditTab === 'Pending' ? `
-              <td>
-                <div style="display:flex;gap:6px">
-                  <button class="btn-sm btn-primary" onclick="changeCreditStatus('${n.id}', 'Approved')">Approve</button>
-                  <button class="btn-sm btn-ghost" onclick="changeCreditStatus('${n.id}', 'Rejected')">Reject</button>
-                </div>
-              </td>
-            ` : ''}
+            <td style="color:var(--text-muted)">${n.reason || '—'}</td>
+            <td class="mono" style="color:var(--text-muted)">${n.date || '—'}</td>
+            <td>
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                <button class="btn-link" onclick="showToast('Credit note sent to ${n.email || 'user'}','ok')" style="margin-right:4px;">
+                  <i class="ti ti-mail"></i> Mail
+                </button>
+                ${creditTab === 'Pending' ? `
+                  <button class="btn btn-sm btn-primary" onclick="changeCreditStatus('${n.id}','Approved')">Approve</button>
+                  <button class="btn btn-sm btn-ghost" onclick="changeCreditStatus('${n.id}','Rejected')">Reject</button>
+                ` : ''}
+                ${creditTab === 'Approved' ? `
+                  <button class="btn btn-sm ${n.refundIssued ? 'btn-secondary' : 'btn-primary'}" onclick="markRefundIssued('${n.id}')" ${n.refundIssued ? 'disabled' : ''}>
+                    <i class="ti ti-${n.refundIssued ? 'check' : 'send'}"></i> ${n.refundIssued ? 'Refund Issued' : 'Mark Refund Issued'}
+                  </button>
+                ` : ''}
+              </div>
+            </td>
           </tr>
         `).join('')}
       </tbody>
@@ -332,52 +438,51 @@ function renderCreditInner() {
 }
 window.changeCreditStatus = function(id, st) {
   const note = window.appData.credit.find(c => c.id === id);
-  if (note) { note.status = st; window.saveData(); renderCreditInner(); }
+  if (note) { note.status = st; window.saveData(); renderCreditInner(); showToast(`Credit note ${st.toLowerCase()}.`, st === 'Approved' ? 'ok' : 'warn'); }
+}
+window.markRefundIssued = function(id) {
+  const note = window.appData.credit.find(c => c.id === id);
+  if (note) { note.refundIssued = true; window.saveData(); renderCreditInner(); showToast('Refund marked as issued.', 'ok'); }
 }
 
+/* ── Offline Payments ── */
 function renderOfflineTable() {
-  const html = `
-    <div class="subtabs" style="padding: 16px 16px 0 16px;">
-      ${["Pending", "Verified"].map(s => `
+  setTimeout(() => renderOfflineInner(), 0);
+  return `
+    <div class="subtabs" style="padding:16px 16px 0 16px;">
+      ${["Pending","Verified","Rejected"].map(s => `
         <button class="detail-tab ${offlineTab === s ? 'active' : ''}" onclick="setOfflineTab('${s}')">${s}</button>
       `).join('')}
     </div>
     <div id="offline-table-inner"></div>
   `;
-  setTimeout(() => renderOfflineInner(), 0);
-  return html;
 }
-window.setOfflineTab = function(t) { offlineTab = t; renderOfflineTable(); }
+window.setOfflineTab = function(t) { offlineTab = t; renderOfflineInner(); }
 
 function renderOfflineInner() {
   const payments = window.appData.offline.filter(o => o.status === offlineTab);
   const container = document.getElementById("offline-table-inner");
   if (!container) return;
-
-  if (payments.length === 0) {
-    container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">No ${offlineTab.toLowerCase()} offline payments.</div>`;
-    return;
-  }
-
+  if (!payments.length) { container.innerHTML = emptyState("ti-bank", "No Offline Payments", `No ${offlineTab.toLowerCase()} offline payments found.`); return; }
   container.innerHTML = `
     <table>
-      <thead><tr><th>Ref ID</th><th>User</th><th>Method</th><th>Bank / Details</th><th>Amount</th><th>Date</th>${offlineTab === 'Pending' ? '<th>Action</th>' : ''}</tr></thead>
+      <thead><tr><th>Ref ID</th><th>Client</th><th>UTR / Ref</th><th>Method</th><th>Bank / Details</th><th>Amount</th><th>Date</th>${offlineTab === 'Rejected' ? '<th>Reason</th>' : ''}<th>Action</th></tr></thead>
       <tbody>
         ${payments.map(o => `
           <tr>
             <td class="mono" style="font-weight:700">${o.id}</td>
-            <td style="font-weight:600">${o.user}</td>
-            <td style="color:var(--text-muted)">${o.method}</td>
-            <td style="color:var(--text-muted)">${o.details}</td>
-            <td style="font-weight:700;color:var(--accent)">${window.utils.fmtCurrency(o.amount)}</td>
+            <td style="font-weight:600">${o.client || o.user || '—'}</td>
+            <td class="mono" style="font-size:11.5px;color:var(--text-muted)">${o.utr || '—'}</td>
+            <td style="color:var(--text-muted)">${o.method || '—'}</td>
+            <td style="color:var(--text-muted);font-size:12px">${o.details || '—'}</td>
+            <td style="font-weight:700;color:var(--ok)">${window.utils.fmtCurrency(o.amount)}</td>
             <td class="mono" style="color:var(--text-muted)">${o.date}</td>
-            ${offlineTab === 'Pending' ? `
-              <td>
-                <div style="display:flex;gap:6px">
-                  <button class="btn-sm btn-primary" onclick="changeOfflineStatus('${o.id}', 'Verified')">Verify</button>
-                </div>
-              </td>
-            ` : ''}
+            ${offlineTab === 'Rejected' ? `<td style="color:var(--warn);font-size:12px">${o.reason || '—'}</td>` : ''}
+            <td>
+              ${offlineTab === 'Pending' ? `<button class="btn btn-sm btn-primary" onclick="changeOfflineStatus('${o.id}','Verified')">Verify</button>` : ''}
+              ${offlineTab === 'Verified' ? `<span style="color:var(--ok);font-size:12px;font-weight:700"><i class="ti ti-check"></i> Verified</span>` : ''}
+              ${offlineTab === 'Rejected' ? `<span style="color:var(--accent-strong);font-size:12px;font-weight:700"><i class="ti ti-x"></i> Rejected</span>` : ''}
+            </td>
           </tr>
         `).join('')}
       </tbody>
@@ -386,7 +491,21 @@ function renderOfflineInner() {
 }
 window.changeOfflineStatus = function(id, st) {
   const pay = window.appData.offline.find(o => o.id === id);
-  if (pay) { pay.status = st; window.saveData(); renderOfflineInner(); }
+  if (pay) { pay.status = st; window.saveData(); renderOfflineInner(); showToast("Payment verified.", "ok"); }
+}
+
+/* ═════════════════════════════════════════════════
+   EMPTY STATE HELPER
+═════════════════════════════════════════════════ */
+function emptyState(icon, title, desc, btnLabel, btnAction) {
+  return `
+    <div class="empty">
+      <div class="ico"><i class="ti ${icon}"></i></div>
+      <h4>${title}</h4>
+      <p>${desc}</p>
+      ${btnLabel ? `<button class="btn btn-primary" style="margin-top:4px" onclick="${btnAction}">${btnLabel}</button>` : ''}
+    </div>
+  `;
 }
 
 /* ═════════════════════════════════════════════════
@@ -396,14 +515,18 @@ function renderPaymentPages() {
   return `
     <div class="fade-in">
       ${renderPaymentMetrics()}
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; margin-top: 32px;">
+
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px; margin-top:4px; gap:12px; flex-wrap:wrap;">
         <div>
-          <div style="font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;">Active Payment Pages</div>
-          <h2 style="font-size: 20px; font-weight: 600; margin: 0; color: var(--text);">Payment Pages</h2>
-          <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Configure and manage individual payment checkout pages for this event.</div>
+          <div class="crumb">Payment Module</div>
+          <h2 style="font-size:21px;margin:2px 0 4px;">Payment Pages</h2>
+          <div style="font-size:13px;color:var(--text-muted);">Configure and manage checkout pages for this event.</div>
         </div>
-        <button class="btn btn-primary" onclick="setScreen('create-page')"><i class="ti ti-plus"></i> Create New Page</button>
+        <button class="btn btn-primary" onclick="openCreatePage()">
+          <i class="ti ti-plus"></i> Create New Page
+        </button>
       </div>
+
       <div class="panel">
         <div class="panel-body tight">
           <div id="pages-table-container"></div>
@@ -419,7 +542,13 @@ function renderPagesTable() {
   if (!container) return;
 
   if (pages.length === 0) {
-    container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">No payment pages found.</div>`;
+    container.innerHTML = emptyState(
+      "ti-credit-card-off",
+      "No Payment Pages Yet",
+      "Create your first checkout page to start accepting payments for this event.",
+      "<i class='ti ti-plus'></i>&nbsp;Create First Page",
+      "openCreatePage()"
+    );
     return;
   }
 
@@ -427,430 +556,799 @@ function renderPagesTable() {
     <table>
       <thead>
         <tr>
-          <th>Page Name & Code</th>
+          <th>Page Name &amp; Code</th>
           <th>Price</th>
+          <th>Seats</th>
+          <th>Revenue</th>
+          <th>Registration Ends</th>
           <th>Coupons</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody>
-        ${pages.map(p => {
-          const cCount = p.coupons.length;
-          return `
-            <tr>
-              <td>
-                <div style="font-weight:700">${p.name}</div>
-                <div class="mono" style="color:var(--text-muted);font-size:11.5px;margin-top:2px;">${p.code}</div>
-              </td>
-              <td>
-                <div style="font-weight:700">${window.utils.fmtCurrency(p.price, p.currency)}</div>
-              </td>
-              <td>
-                ${cCount === 0 ? `<span style="color:var(--text-muted);font-size:12px;">None</span>` : `
-                <div style="cursor: pointer; color: var(--accent); font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 4px;" onclick="toggleExpand('${p.id}')">
-                  ${cCount} Coupon${cCount !== 1 ? "s" : ""}
-                  <i class="ti ti-chevron-${expandedPages[p.id] ? "up" : "down"}"></i>
-                </div>
-                `}
-              </td>
-              <td>
-                <label class="toggle-switch" title="Live on Site">
-                  <input type="checkbox" ${p.liveOnSite !== false ? 'checked' : ''} onchange="toggleLive('${p.id}', this.checked)">
-                  <span class="toggle-slider"></span>
-                </label>
-              </td>
-              <td>
-                <div style="display:flex;gap:6px">
-                  <button class="btn btn-secondary btn-sm" title="Edit" onclick="editPage('${p.id}')"><i class="ti ti-pencil"></i></button>
-                  <button class="btn btn-secondary btn-sm" title="Add Coupon" onclick="openAddCouponModal('${p.id}')"><i class="ti ti-tag"></i></button>
-                  <button class="btn btn-secondary btn-sm" title="Copy URL" onclick="copyPageUrl('${p.id}')"><i class="ti ti-link"></i></button>
-                </div>
-              </td>
-            </tr>
-            ${expandedPages[p.id] ? `
-            <tr style="background: var(--bg-body)">
-              <td colspan="5" style="padding: 16px 24px">
-                <div style="background: #fff; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
-                  <table style="margin: 0; background: transparent;">
-                    <thead style="background: var(--bg-body)">
-                      <tr>
-                        <th style="font-size: 11px; padding: 8px 16px;">Code</th>
-                        <th style="font-size: 11px; padding: 8px 16px;">Label</th>
-                        <th style="font-size: 11px; padding: 8px 16px;">Discount</th>
-                        <th style="font-size: 11px; padding: 8px 16px;">Validity</th>
-                        <th style="font-size: 11px; padding: 8px 16px; text-align: right;">Uses</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${p.coupons.map(c => {
-                        const isExp = new Date(c.end) < new Date();
-                        const disc = c.discountType === "percent" ? c.discount + "%" : window.utils.fmtCurrency(c.discount, p.currency);
-                        return `
-                        <tr>
-                          <td style="padding: 8px 16px;">
-                            ${c.type === 'code' && c.code ? 
-                              `<span class="coupon-chip ${isExp ? 'expired' : ''}">${c.code}</span>` : 
-                              `<span style="font-size: 11px; color: var(--text-muted); font-style: italic;">Auto-applied</span>`
-                            }
-                          </td>
-                          <td style="padding: 8px 16px; font-size: 12px; color: var(--text-muted);">${c.label}</td>
-                          <td style="padding: 8px 16px; font-size: 12px; font-weight: 500;">
-                            ${disc}
-                            ${c.type === 'auto' ? '<span style="margin-left:6px;font-size:10px;background:#E0E7FF;color:#4338CA;padding:2px 6px;border-radius:4px">Auto</span>' : ''}
-                          </td>
-                          <td style="padding: 8px 16px; font-size: 11px; color: var(--text-muted);">
-                            ${window.utils.fmtDate(c.start)} → ${window.utils.fmtDate(c.end)}
-                          </td>
-                          <td style="padding: 8px 16px; font-size: 12px; text-align: right;">
-                            ${c.used} / ${c.maxUses === 0 ? "Unlimited" : c.maxUses}
-                          </td>
-                        </tr>
-                        `;
-                      }).join('')}
-                    </tbody>
-                  </table>
-                </div>
-              </td>
-            </tr>
-            ` : ''}
-          `;
-        }).join('')}
+      <tbody id="pages-tbody">
+        ${pages.map(p => renderPageRow(p)).join('')}
       </tbody>
     </table>
   `;
 }
 
-window.toggleLive = function(id, isLive) {
-  const p = window.appData.pages.find(x => x.id === id);
-  if (p) { p.liveOnSite = isLive; window.saveData(); }
+function renderPageRow(p) {
+  const cCount = p.coupons ? p.coupons.length : 0;
+  const isLive = p.liveOnSite !== false;
+  const gst = Math.round(p.price * 1.18);
+
+  // Seats sold = successful transactions for this page
+  const soldTx = window.appData.transactions.filter(
+    t => t.eventId === EVENT.id && (t.page === p.name || t.pageCode === p.code) && t.status === 'Success'
+  );
+  const sold   = soldTx.length;
+  const maxQty = p.maxQty || 0;
+  const pct    = maxQty > 0 ? Math.min(100, Math.round(sold / maxQty * 100)) : 0;
+  const pageRev = soldTx.reduce((s, t) => s + t.amount, 0);
+
+  // Days until sale closes
+  let closeLabel = '—';
+  if (p.saleEnd) {
+    const daysLeft = Math.ceil((new Date(p.saleEnd) - new Date()) / 86400000);
+    if (daysLeft < 0)  closeLabel = `<span style="color:var(--accent-strong);font-size:11.5px">Closed</span>`;
+    else if (daysLeft === 0) closeLabel = `<span style="color:var(--warn);font-size:11.5px">Closes today</span>`;
+    else closeLabel = `<span style="font-size:11.5px">${daysLeft}d left</span>`;
+  }
+
+  return `
+    <tr id="row-${p.id}">
+      <td>
+        <div style="font-weight:700">${p.name}</div>
+        <div class="mono" style="color:var(--text-muted);font-size:11.5px;margin-top:2px;">${p.code}</div>
+      </td>
+      <td>
+        <div style="font-weight:700">${window.utils.fmtCurrency(p.price, p.currency)}</div>
+      </td>
+      <td>
+        <div style="font-size:12px;font-weight:700">${sold} / ${maxQty || '∞'}</div>
+        ${maxQty > 0 ? `<div class="pg-progress-track"><div class="pg-progress-fill ${pct >= 90 ? 'pg-progress--warn' : ''}" style="width:${pct}%"></div></div>` : ''}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${pct}% achieved</div>
+      </td>
+      <td>
+        <div style="font-weight:700;color:var(--ok)">${window.utils.fmtCurrency(pageRev, p.currency)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${sold} success</div>
+      </td>
+      <td>${closeLabel}</td>
+      <td>
+        ${cCount === 0
+          ? `<span style="color:var(--text-faint);font-size:12px;">None</span>`
+          : `<button style="background:none;border:none;cursor:pointer;color:var(--accent);font-weight:600;font-size:13px;display:flex;align-items:center;gap:4px;padding:0" onclick="toggleExpand('${p.id}')">
+               ${cCount} Coupon${cCount !== 1 ? "s" : ""}
+               <i class="ti ti-chevron-${expandedPages[p.id] ? 'up' : 'down'}"></i>
+             </button>`}
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button
+            onclick="toggleLive('${p.id}',this)"
+            title="${isLive ? 'Live – click to pause' : 'Draft – click to publish'}"
+            style="position:relative;width:36px;height:20px;border-radius:999px;border:none;cursor:pointer;padding:0;flex-shrink:0;background:${isLive ? '#2F8F5B' : '#D1C9C8'};transition:background .2s">
+            <span style="position:absolute;top:2px;${isLive ? 'left:18px' : 'left:2px'};width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.22);transition:left .2s"></span>
+          </button>
+          <span class="live-label" style="font-size:12px;font-weight:700;color:${isLive ? '#2F8F5B' : '#A0908C'}">${isLive ? 'Live' : 'Draft'}</span>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-secondary btn-sm" title="Edit" onclick="editPage('${p.id}')"><i class="ti ti-pencil"></i></button>
+          <button class="btn btn-secondary btn-sm" title="Add Coupon" onclick="openAddCouponModal('${p.id}')"><i class="ti ti-tag"></i></button>
+          <button class="btn btn-secondary btn-sm" title="Copy Page URL" onclick="copyPageUrl('${p.id}')"><i class="ti ti-link"></i></button>
+          <button class="btn btn-secondary btn-sm" title="Preview Page" onclick="previewPage('${p.id}')"><i class="ti ti-eye"></i></button>
+        </div>
+      </td>
+    </tr>
+    ${expandedPages[p.id] && cCount > 0 ? renderCouponSubTable(p) : ''}
+  `;
 }
-window.deletePage = function(id) {
-  if(confirm("Are you sure you want to delete this payment page?")) {
-    window.appData.pages = window.appData.pages.filter(x => x.id !== id);
+
+function renderCouponSubTable(p) {
+  return `
+    <tr style="background:var(--surface-2)">
+      <td colspan="8" style="padding:12px 20px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+          <table style="margin:0">
+            <thead>
+              <tr>
+                <th style="font-size:10.5px;padding:8px 14px">Code</th>
+                <th style="font-size:10.5px;padding:8px 14px">Label</th>
+                <th style="font-size:10.5px;padding:8px 14px">Discount</th>
+                <th style="font-size:10.5px;padding:8px 14px">Validity</th>
+                <th style="font-size:10.5px;padding:8px 14px;text-align:right">Uses</th>
+                <th style="font-size:10.5px;padding:8px 14px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${p.coupons.map(c => {
+                const isExp = c.end ? new Date(c.end) < new Date() : false;
+                const disc = c.discountType === "percent" ? c.discount + "%" : window.utils.fmtCurrency(c.discount, p.currency);
+                return `
+                  <tr>
+                    <td style="padding:8px 14px">
+                      ${c.type === 'code' && c.code
+                        ? `<span class="coupon-chip ${isExp ? 'expired' : ''}">${c.code}</span>`
+                        : `<span style="font-size:11px;color:var(--text-muted);font-style:italic">Auto-applied</span>`}
+                    </td>
+                    <td style="padding:8px 14px;font-size:12px;color:var(--text-muted)">${c.label}</td>
+                    <td style="padding:8px 14px;font-size:12px;font-weight:600">
+                      ${disc}
+                      ${c.type === 'auto' ? '<span style="margin-left:6px;font-size:10px;background:var(--info-soft);color:var(--info);padding:2px 6px;border-radius:4px">Auto</span>' : ''}
+                    </td>
+                    <td style="padding:8px 14px;font-size:11px;color:var(--text-muted)">
+                      ${c.start ? window.utils.fmtDate(c.start) : '—'} → ${c.end ? window.utils.fmtDate(c.end) : '—'}
+                    </td>
+                    <td style="padding:8px 14px;font-size:12px;text-align:right">
+                      ${c.used || 0} / ${c.maxUses ? c.maxUses : 'Unlimited'}
+                    </td>
+                    <td style="padding:8px 14px">
+                      <button class="btn-icon btn-sm" title="Remove coupon" onclick="removeCoupon('${p.id}','${c.id}')" style="border:none;color:var(--text-faint)"><i class="ti ti-x"></i></button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+window.toggleExpand = function(id) {
+  expandedPages[id] = !expandedPages[id];
+  renderPagesTable();
+}
+
+window.removeCoupon = function(pageId, couponId) {
+  const page = window.appData.pages.find(p => p.id === pageId);
+  if (page) {
+    page.coupons = page.coupons.filter(c => c.id !== couponId);
     window.saveData();
     renderPagesTable();
+    showToast("Coupon removed.", "warn");
+  }
+}
+
+window.toggleLive = function(id, btn) {
+  const p = window.appData.pages.find(x => x.id === id);
+  if (!p) return;
+  p.liveOnSite = !p.liveOnSite;
+  const isLive = p.liveOnSite;
+  // Update track background
+  btn.style.background = isLive ? '#2F8F5B' : '#D1C9C8';
+  // Move knob
+  const knob = btn.querySelector('span');
+  if (knob) knob.style.left = isLive ? '18px' : '2px';
+  // Update label
+  const label = btn.parentElement ? btn.parentElement.querySelector('.live-label') : null;
+  if (label) {
+    label.textContent = isLive ? 'Live' : 'Draft';
+    label.style.color = isLive ? '#2F8F5B' : '#A0908C';
+  }
+  window.saveData();
+  showToast(isLive ? `"${p.name}" is now Live.` : `"${p.name}" set to Draft.`, isLive ? "ok" : "warn");
+}
+
+window.openCreatePage = function() {
+  editingPageId = null;
+  setScreen('create-page');
+}
+
+/* ═════════════════════════════════════════════════
+   SCREEN 3: CREATE / EDIT PAGE
+═════════════════════════════════════════════════ */
+function renderCreatePageScreen() {
+  const startIso = window.utils.nowDT();
+  let endIso = startIso;
+  try {
+    const d = new Date(EVENT.date);
+    d.setHours(23, 59, 59);
+    endIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  } catch(e) {}
+
+  const isEditing = !!editingPageId;
+  const title   = isEditing ? "Edit Payment Page" : "Create Payment Page";
+  const btnText = isEditing ? "Save Changes" : "Create Page";
+
+  setTimeout(() => {
+    populatePageDropdowns();
+    if (isEditing) {
+      const p = window.appData.pages.find(x => x.id === editingPageId);
+      if (p) {
+        document.getElementById("page-name").value = p.name || "";
+        const descEl = document.getElementById("page-desc");
+        if (descEl) descEl.value = p.description || "";
+        document.getElementById("page-amount").value = p.price || "";
+        if (p.currency) document.getElementById("page-currency").value = p.currency;
+        const pnEl = document.getElementById("page-price-note");
+        if (pnEl) pnEl.value = p.priceNote || "";
+        const bnEl = document.getElementById("page-button-note");
+        if (bnEl) bnEl.value = p.buttonNote || "";
+      }
+    }
+    window.updateLivePreview();
+  }, 0);
+
+  return `
+    <div class="fade-in create-page-grid">
+
+      <!-- ── LEFT: FORM ── -->
+      <div class="create-page-form" style="min-height:0;">
+        <div style="padding:0 0 24px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <div>
+            <div class="crumb">Payment Pages</div>
+            <h2 style="margin:0;font-size:22px;">${title}</h2>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:3px;">For ${EVENT.name}</div>
+          </div>
+          <button class="btn-icon" onclick="setScreen('pages')" aria-label="Cancel"><i class="ti ti-x"></i></button>
+        </div>
+
+        <div style="padding-right:4px;display:flex;flex-direction:column;gap:24px;flex:1;overflow-y:auto;">
+
+          <!-- Page Identity -->
+          <div class="form-section">
+            <label class="field">
+              <span class="field-label">Payment page name <span class="req">*</span></span>
+              <input type="text" id="page-name" placeholder="e.g. VIP Pass" oninput="window.updateLivePreview()">
+            </label>
+            <label class="field" style="margin-top:16px;">
+              <span class="field-label">Description</span>
+              <textarea id="page-desc" placeholder="Add a description (each line becomes a bullet point)" rows="3" oninput="window.updateLivePreview()"></textarea>
+              <span class="field-hint">Each line will appear as a bullet point on the checkout card.</span>
+            </label>
+          </div>
+
+          <!-- Pricing -->
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Pricing &amp; Currency</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Currency</span>
+                <select id="page-currency" onchange="window.updateLivePreview()">
+                  <option value="INR">INR — ₹</option>
+                  <option value="USD">USD — $</option>
+                  <option value="AED">AED</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">Amount (excl. GST) <span class="req">*</span></span>
+                <input type="number" id="page-amount" placeholder="25000" oninput="window.updateLivePreview()">
+              </label>
+            </div>
+            <label class="field" style="margin-top:16px;">
+              <span class="field-label">Price note</span>
+              <input type="text" id="page-price-note" placeholder="e.g. Per person, excl. GST" oninput="window.updateLivePreview()">
+            </label>
+          </div>
+
+          <!-- Location -->
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Location</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Country</span>
+                <select id="page-country" onchange="updateStates()"></select>
+              </label>
+              <label class="field">
+                <span class="field-label">State / Region</span>
+                <select id="page-state"></select>
+              </label>
+            </div>
+          </div>
+
+          <!-- Validity -->
+          <div class="form-section">
+            <div class="form-section-header"><span class="fsec-title">Validity &amp; Fulfillment</span></div>
+            <div class="two-col">
+              <label class="field">
+                <span class="field-label">Validity Start</span>
+                <input type="datetime-local" id="page-sale-start" value="${startIso}">
+              </label>
+              <label class="field" style="margin-top:16px;">
+              <span class="field-label">Validity End</span>
+              <input type="datetime-local" id="page-sale-end" value="${endIso}" oninput="checkSaleEndWarning()">
+            </label>
+            <div id="sale-end-warning" class="callout warn-box" style="display:none;margin-top:8px">
+              <i class="ti ti-alert-triangle" style="font-size:16px;flex-shrink:0"></i>
+              <span>Sale end date is in the past — this page won't accept new payments.</span>
+            </div>
+              </label>
+            </div>
+            <label class="field" style="margin-top:16px;">
+              <span class="field-label">Max quantity <span class="req">*</span></span>
+              <input type="number" id="page-max-qty" value="100">
+            </label>
+            <label class="field" style="margin-top:16px;">
+              <span class="field-label">Button note</span>
+              <input type="text" id="page-button-note" placeholder="e.g. Secure payment via Stripe" oninput="window.updateLivePreview()">
+            </label>
+          </div>
+
+          <div id="page-error" class="form-error" style="display:none;"></div>
+        </div>
+
+        <div style="padding:24px 4px 0;display:flex;gap:12px;flex-shrink:0;">
+          <button class="btn btn-primary" onclick="savePage()">${btnText}</button>
+          <button class="btn btn-secondary" onclick="setScreen('pages')">Cancel</button>
+        </div>
+      </div>
+
+      <!-- ── RIGHT: LIVE PREVIEW ── -->
+      <div class="create-page-preview">
+        <div class="preview-header">Live Preview</div>
+        <div class="preview-card-wrap">
+          <div class="preview-mockup">
+            <div class="mockup-body" style="padding-bottom:12px;">
+              <div class="mockup-title" id="preview-page-name">Page Name</div>
+              <div class="mockup-price" id="preview-price" style="margin-bottom:4px;">${window.utils.fmtCurrency(0, "INR")}</div>
+              <div id="preview-gst" style="font-size:11px;color:rgba(255,255,255,0.55);text-align:center;margin-bottom:4px;min-height:0"></div>
+              <div id="preview-price-note" style="text-align:center;font-size:11px;color:rgba(255,255,255,0.55);margin-bottom:4px;font-style:italic;min-height:0"></div>
+              <div id="preview-page-desc-container" style="margin-top:8px;"></div>
+              <div class="mockup-divider"></div>
+              <div class="mockup-btn-wrap has-coupon" id="preview-btn-wrap">
+                <div class="mockup-coupon-box" id="preview-coupon-box">
+                  20% Early Bird Off applied automatically
+                </div>
+                <button class="mockup-btn">Reserve My Seat</button>
+              </div>
+              <div id="preview-button-note" style="text-align:center;font-size:11px;color:rgba(255,255,255,0.55);min-height:0"></div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;font-size:12px;color:var(--text-muted);line-height:1.6">
+          <strong style="color:var(--text);display:block;margin-bottom:3px">Preview Note</strong>
+          Live preview of the buyer-facing checkout card. Reflects name, price, description bullets, and notes.
+        </div>
+      </div>
+
+    </div>
+  `;
+}
+
+window.updateLivePreview = function() {
+  const name      = document.getElementById("page-name")?.value      || "";
+  const amt       = parseInt(document.getElementById("page-amount")?.value || "0");
+  const curr      = document.getElementById("page-currency")?.value  || "INR";
+  const desc      = document.getElementById("page-desc")?.value      || "";
+  const priceNote = document.getElementById("page-price-note")?.value || "";
+  const btnNote   = document.getElementById("page-button-note")?.value || "";
+
+  const pName      = document.getElementById("preview-page-name");
+  const pPrice     = document.getElementById("preview-price");
+  const pGst       = document.getElementById("preview-gst");
+  const pTax       = document.getElementById("preview-tax");
+  const pPriceNote = document.getElementById("preview-price-note");
+  const pBtnNote   = document.getElementById("preview-button-note");
+  const pDescCont  = document.getElementById("preview-page-desc-container");
+
+  if (pName)  pName.textContent  = name || "Page Name";
+
+  // Check for auto coupons
+  let showCoup = false;
+  let coupTxt = "";
+  let finalAmt = amt;
+
+  if (editingPageId) {
+    const existing = window.appData.pages.find(x => x.id === editingPageId);
+    if (existing && existing.coupons) {
+      const autoCoup = existing.coupons.find(c => c.type === 'auto' && c.showDesc !== false);
+      if (autoCoup && autoCoup.descText) {
+        showCoup = true;
+        coupTxt = autoCoup.descText;
+        if (autoCoup.discountType === 'percent') {
+          finalAmt = Math.max(0, amt - (amt * (autoCoup.discount / 100)));
+        } else {
+          finalAmt = Math.max(0, amt - autoCoup.discount);
+        }
+      }
+    }
+  }
+
+  if (pPrice) {
+    if (showCoup && amt > 0) {
+      pPrice.innerHTML = `<span style="text-decoration:line-through; font-size:16px; color:var(--text-faint); margin-right:8px">${window.utils.fmtCurrency(amt, curr)}</span>${window.utils.fmtCurrency(finalAmt, curr)}`;
+    } else {
+      pPrice.textContent = window.utils.fmtCurrency(amt || 0, curr);
+    }
+  }
+
+  // GST line — always rendered, empty text collapses naturally
+  if (pGst) {
+    pGst.textContent = '';
+  }
+  if (pTax) {
+    pTax.textContent = finalAmt > 0
+      ? window.utils.fmtCurrency(Math.round(finalAmt * 0.18), curr)
+      : 'Calculated at checkout';
+  }
+
+  // Price note — always rendered, empty collapses
+  if (pPriceNote) {
+    pPriceNote.textContent = priceNote;
+  }
+
+  // Button note — always rendered, empty collapses
+  if (pBtnNote) {
+    pBtnNote.textContent = btnNote;
+  }
+
+  // Coupon box
+  const pBtnWrap = document.getElementById("preview-btn-wrap");
+  const pCouponBox = document.getElementById("preview-coupon-box");
+  if (pBtnWrap && pCouponBox) {
+    if (showCoup && coupTxt.trim()) {
+      pCouponBox.style.display = "block";
+      pCouponBox.textContent = coupTxt;
+      pBtnWrap.classList.add("has-coupon");
+    } else {
+      pCouponBox.style.display = "none";
+      pBtnWrap.classList.remove("has-coupon");
+    }
+  }
+
+  // Description bullets — always rendered, shows/hides list
+  if (pDescCont) {
+    if (desc.trim()) {
+      const points = desc.split('\n').filter(pt => pt.trim());
+      pDescCont.innerHTML = points.length > 0
+        ? '<ul style="margin:6px 0 0 0;padding-left:18px;font-size:12px;color:rgba(255,255,255,0.6);line-height:1.7">' +
+          points.map(pt => `<li>${pt.trim()}</li>`).join('') + '</ul>'
+        : '';
+    } else {
+      pDescCont.innerHTML = '';
+    }
+  }
+}
+
+window.editPage = function(id) {
+  editingPageId = id;
+  setScreen('create-page');
+}
+
+function populatePageDropdowns() {
+  const cSel = document.getElementById("page-country");
+  if (cSel && window.appData.countries) {
+    cSel.innerHTML = Object.keys(window.appData.countries).map(c => `<option value="${c}">${c}</option>`).join('');
+    updateStates();
+  }
+  updateMerchants();
+  checkSaleEndWarning();
+}
+
+window.updateMerchants = function() {
+  const gSel = document.getElementById("page-gateway");
+  const mSel = document.getElementById("page-merchant");
+  if (!gSel || !mSel) return;
+  const merchants = window.appData.gateways[gSel.value] || [];
+  mSel.innerHTML = merchants.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+window.checkSaleEndWarning = function() {
+  const endEl = document.getElementById("page-sale-end");
+  const warn  = document.getElementById("sale-end-warning");
+  if (!endEl || !warn) return;
+  const past = endEl.value && new Date(endEl.value) < new Date();
+  warn.style.display = past ? 'flex' : 'none';
+}
+
+window.updateStates = function() {
+  const c = document.getElementById("page-country");
+  if (!c) return;
+  const list = window.appData.countries[c.value] || [];
+  const sSel = document.getElementById("page-state");
+  if (sSel) sSel.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+window.savePage = function() {
+  const name      = document.getElementById("page-name")?.value?.trim();
+  const desc      = document.getElementById("page-desc")?.value      || "";
+  const priceNote = document.getElementById("page-price-note")?.value || "";
+  const btnNote   = document.getElementById("page-button-note")?.value || "";
+  const amt       = document.getElementById("page-amount")?.value;
+  const err       = document.getElementById("page-error");
+
+  if (!name) {
+    err.style.display = "flex";
+    err.innerHTML = `<i class="ti ti-alert-circle"></i> Payment page name is required.`;
+    return;
+  }
+  if (!amt || Number(amt) <= 0) {
+    err.style.display = "flex";
+    err.innerHTML = `<i class="ti ti-alert-circle"></i> Enter a valid amount.`;
+    return;
+  }
+  err.style.display = "none";
+
+  if (editingPageId) {
+    const existing = window.appData.pages.find(x => x.id === editingPageId);
+    if (existing) {
+      existing.name        = name;
+      existing.description = desc;
+      existing.priceNote   = priceNote;
+      existing.buttonNote  = btnNote;
+      existing.price       = parseInt(amt);
+      existing.currency    = document.getElementById("page-currency")?.value || "INR";
+    }
+    window.saveData();
+    editingPageId = null;
+    setScreen('pages');
+    showToast(`"${name}" updated successfully.`, "ok");
+  } else {
+    const newId = "page_" + Math.random().toString(36).substr(2, 6);
+    window.appData.pages.push({
+      id:          newId,
+      eventId:     EVENT.id,
+      name,
+      description: desc,
+      priceNote,
+      buttonNote:  btnNote,
+      code:        "PG" + Math.floor(1000 + Math.random() * 9000),
+      currency:    document.getElementById("page-currency")?.value  || "INR",
+      price:       parseInt(amt),
+      gateway:     "Stripe",
+      merchant:    "Global Payments Ltd",
+      country:     document.getElementById("page-country")?.value   || "",
+      state:       document.getElementById("page-state")?.value     || "",
+      saleStart:   document.getElementById("page-sale-start")?.value || "",
+      saleEnd:     document.getElementById("page-sale-end")?.value  || "",
+      maxQty:      parseInt(document.getElementById("page-max-qty")?.value || "100"),
+      liveOnSite:  true,
+      coupons:     []
+    });
+    window.saveData();
+    editingPageId = null;
+    setScreen('pages');
+    showToast(`"${name}" created! You can add another page anytime.`, "ok");
   }
 }
 
 /* ═════════════════════════════════════════════════
-   MODAL LOGIC
+   PAGE PREVIEW MODAL
 ═════════════════════════════════════════════════ */
-let editingPageId = null;
-
-window.updateLivePreview = function() {
-  const name = document.getElementById("page-name") ? document.getElementById("page-name").value : "";
-  const amt = document.getElementById("page-amount") ? document.getElementById("page-amount").value : "";
-  const curr = document.getElementById("page-currency") ? document.getElementById("page-currency").value : "INR";
+window.previewPage = function(pageId) {
+  const p = window.appData.pages.find(x => x.id === pageId);
+  if (!p) return;
   
-  const pName = document.getElementById("preview-page-name");
-  const pPrice = document.getElementById("preview-price");
+  document.getElementById("pm-page-name").textContent = p.name || "Page Name";
   
-  if(pName) pName.innerText = name || "e.g. VIP Pass";
-  if(pPrice) pPrice.innerText = window.utils.fmtCurrency(amt ? parseInt(amt) : 12000, curr);
-}
-
-function renderCreatePageScreen() {
-    const startIso = window.utils.nowDT();
-    let endIso = startIso;
-    try {
-        const d = new Date(EVENT.date);
-        d.setHours(23, 59, 59);
-        endIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    } catch(e) {}
-
-    setTimeout(() => {
-        populatePageDropdowns();
-        if (editingPageId) {
-            const p = window.appData.pages.find(x => x.id === editingPageId);
-            if (p) {
-                document.getElementById("page-name").value = p.name || "";
-                document.getElementById("page-amount").value = p.price || "";
-                if(p.currency) document.getElementById("page-currency").value = p.currency;
-            }
-        }
-        window.updateLivePreview();
-    }, 0);
-
-    const title = editingPageId ? "Edit Payment Page" : "Create Payment Page";
-    const btnText = editingPageId ? "Save Changes" : "Create Page";
-
-    return `
-    <div class="fade-in create-page-grid">
-      <div class="create-page-form">
-          <div style="padding: 0 0 24px 0; display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                  <h2 style="margin: 0; font-size: 24px;">${title}</h2>
-                  <div style="font-size: 14px; color: var(--text-muted); margin-top: 4px;">For ${EVENT.name}</div>
-              </div>
-              <button class="btn-icon" onclick="setScreen('pages')"><i class="ti ti-x"></i></button>
-          </div>
-          
-          <div style="padding-right: 16px; display: flex; flex-direction: column; gap: 24px; flex: 1; overflow-y: auto;">
-            <div class="form-section">
-                <label class="field">
-                    <span class="field-label">Payment page name <span class="req">*</span></span>
-                    <input type="text" id="page-name" placeholder="e.g. VIP Pass" oninput="window.updateLivePreview()">
-                </label>
-            </div>
-            
-            <div class="form-section">
-                <div class="form-section-header"><span class="fsec-title">Pricing & Currency</span></div>
-                <div class="two-col">
-                    <label class="field">
-                        <span class="field-label">Currency</span>
-                        <select id="page-currency" onchange="window.updateLivePreview()"><option value="INR">INR</option><option value="USD">USD</option><option value="AED">AED</option></select>
-                    </label>
-                    <label class="field">
-                        <span class="field-label">Amount <span class="req">*</span></span>
-                        <input type="number" id="page-amount" placeholder="12000" oninput="window.updateLivePreview()">
-                    </label>
-                </div>
-            </div>
-            
-            <div class="form-section">
-                <div class="form-section-header"><span class="fsec-title">Location</span></div>
-                <div class="two-col">
-                    <label class="field">
-                        <span class="field-label">Country</span>
-                        <select id="page-country" onchange="updateStates()"></select>
-                    </label>
-                    <label class="field">
-                        <span class="field-label">State / Region</span>
-                        <select id="page-state"></select>
-                    </label>
-                </div>
-            </div>
-            
-            <div class="form-section">
-                <div class="form-section-header"><span class="fsec-title">Validity & Fulfillment</span></div>
-                <div class="two-col">
-                    <label class="field">
-                        <span class="field-label">Validity Start</span>
-                        <input type="datetime-local" id="page-sale-start" value="${startIso}">
-                    </label>
-                    <label class="field">
-                        <span class="field-label">Validity End</span>
-                        <input type="datetime-local" id="page-sale-end" value="${endIso}">
-                    </label>
-                </div>
-                
-                <label class="field" style="margin-top: 16px;">
-                    <span class="field-label">Max quantity <span class="req">*</span></span>
-                    <input type="number" id="page-max-qty" value="100">
-                </label>
-            </div>
-
-            <div id="page-error" class="form-error" style="display:none;"></div>
-          </div>
-          
-          <div style="padding: 24px 16px 0 0; display: flex; justify-content: flex-start; gap: 12px;">
-              <button class="btn btn-primary" onclick="savePage()">${btnText}</button>
-              <button class="btn btn-secondary" onclick="setScreen('pages')">Cancel</button>
-          </div>
-        </div>
-
-        <div class="create-page-preview">
-          <div class="preview-header">Live Preview</div>
-          <div class="preview-card-wrap">
-            <div class="preview-mockup">
-               <div class="mockup-header">
-                 <div class="mockup-logo"></div>
-                 <div class="mockup-event">${EVENT.name}</div>
-               </div>
-               <div class="mockup-body">
-                 <div class="mockup-title" id="preview-page-name">VIP Pass</div>
-                 <div class="mockup-price" id="preview-price">${window.utils.fmtCurrency(12000, "INR")}</div>
-                 <div class="mockup-divider"></div>
-                 <div class="mockup-row"><span>Quantity</span><span>1</span></div>
-                 <div class="mockup-row"><span>Fees & Taxes</span><span>Calculated at checkout</span></div>
-                 <button class="mockup-btn">Continue to Payment</button>
-               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      `;
+  let showCoup = false;
+  let coupTxt = "";
+  let finalAmt = p.price || 0;
+  
+  if (p.coupons) {
+    const autoCoup = p.coupons.find(c => c.type === 'auto' && c.showDesc !== false);
+    if (autoCoup && autoCoup.descText) {
+      showCoup = true;
+      coupTxt = autoCoup.descText;
+      if (autoCoup.discountType === 'percent') {
+        finalAmt = Math.max(0, p.price - (p.price * (autoCoup.discount / 100)));
+      } else {
+        finalAmt = Math.max(0, p.price - autoCoup.discount);
+      }
+    }
   }
 
-window.editPage = function(id) {
-    editingPageId = id;
-    setScreen('create-page');
+  const pPrice = document.getElementById("pm-price");
+  if (showCoup && p.price > 0) {
+    pPrice.innerHTML = `<span style="text-decoration:line-through; font-size:16px; color:var(--text-faint); margin-right:8px">${window.utils.fmtCurrency(p.price, p.currency || 'INR')}</span>${window.utils.fmtCurrency(finalAmt, p.currency || 'INR')}`;
+  } else {
+    pPrice.textContent = window.utils.fmtCurrency(p.price || 0, p.currency || 'INR');
+  }
+
+  const pGst = document.getElementById("pm-gst");
+  pGst.textContent = '';
+
+  document.getElementById("pm-price-note").textContent = p.priceNote || "";
+  document.getElementById("pm-button-note").textContent = p.buttonNote || "";
+
+  const descCont = document.getElementById("pm-desc-container");
+  if (p.description && p.description.trim()) {
+    const points = p.description.split('\n').filter(pt => pt.trim());
+    descCont.innerHTML = points.length > 0 ? '<ul style="margin:6px 0 0 0;padding-left:18px;font-size:12px;color:rgba(255,255,255,0.6);line-height:1.7">' + points.map(pt => `<li>${pt.trim()}</li>`).join('') + '</ul>' : '';
+  } else {
+    descCont.innerHTML = '';
+  }
+
+  const btnWrap = document.getElementById("pm-btn-wrap");
+  const coupBox = document.getElementById("pm-coupon-box");
+  if (showCoup && coupTxt.trim()) {
+    coupBox.style.display = "block";
+    coupBox.textContent = coupTxt;
+    btnWrap.classList.add("has-coupon");
+  } else {
+    coupBox.style.display = "none";
+    btnWrap.classList.remove("has-coupon");
+  }
+
+  document.getElementById("page-preview-modal").style.display = "flex";
 }
 
-function populatePageDropdowns() {
-    const cSel = document.getElementById("page-country");
-    if (cSel && window.appData.countries) {
-        cSel.innerHTML = Object.keys(window.appData.countries).map(c => `<option value="${c}">${c}</option>`).join('');
-        updateStates();
-    }
-}
+/* ═════════════════════════════════════════════════
+   COUPON MODAL
+═════════════════════════════════════════════════ */
+window.updateCouponDesc = function() {
+  const dType = document.getElementById("coupon-discount-type")?.value;
+  const dVal  = document.getElementById("coupon-discount")?.value;
+  const descEl = document.getElementById("coupon-desc-text");
+  
+  if (!descEl) return;
 
-window.updateStates = function() {
-    const c = document.getElementById("page-country");
-    if (!c) return;
-    const list = window.appData.countries[c.value] || [];
-    const sSel = document.getElementById("page-state");
-    if(sSel) {
-        sSel.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
-    }
-}
+  if (!dVal || isNaN(dVal) || Number(dVal) <= 0) {
+    descEl.value = "";
+    return;
+  }
 
-window.savePage = function() {
-    const name = document.getElementById("page-name").value;
-    const amt = document.getElementById("page-amount").value;
-    const err = document.getElementById("page-error");
-  
-    if (!name || !amt) {
-      err.style.display = "flex";
-      err.innerHTML = `<i class="ti ti-alert-circle"></i> Please fill in all required fields.`;
-      return;
-    }
-  
-    if (editingPageId) {
-      const existing = window.appData.pages.find(x => x.id === editingPageId);
-      if (existing) {
-        existing.name = name;
-        existing.price = parseInt(amt);
-        existing.currency = document.getElementById("page-currency").value;
-      }
-    } else {
-      const newId = "page_" + Math.random().toString(36).substr(2, 6);
-      window.appData.pages.push({
-        id: newId,
-        eventId: EVENT.id,
-        name: name,
-        code: "PG" + Math.floor(1000 + Math.random() * 9000),
-        currency: document.getElementById("page-currency").value,
-        price: parseInt(amt),
-        gateway: "Stripe",
-        merchant: "Global Payments Ltd",
-        liveOnSite: true,
-        coupons: []
-      });
-    }
-  
-    window.saveData();
-    editingPageId = null;
-    setScreen('pages');
+  let text = "";
+  if (dType === "percent") {
+    text = `${dVal}% off applied automatically`;
+  } else {
+    text = `₹${dVal} off applied automatically`;
+  }
+  descEl.value = text;
 }
 
 window.openAddCouponModal = function(pageId) {
   activeCouponPage = pageId;
   const p = window.appData.pages.find(x => x.id === pageId);
-  document.getElementById("coupon-modal-subtitle").innerText = "For: " + (p ? p.name : "");
-  document.getElementById("add-coupon-modal").style.display = "flex";
-  
-  allCouponCodes = window.appData.pages.flatMap(x => x.coupons.filter(c => c.type === 'code').map(c => c.code));
-  
-  setCouponType('auto');
-  document.getElementById("coupon-label").value = "";
-  document.getElementById("coupon-discount").value = "";
-  document.getElementById("coupon-warning").style.display = "none";
-  
+  const subtitle = document.getElementById("coupon-modal-subtitle");
+  if (subtitle) subtitle.textContent = "For: " + (p ? p.name : "");
+
+  allCouponCodes = window.appData.pages.flatMap(x =>
+    (x.coupons || []).filter(c => c.type === 'code').map(c => c.code)
+  );
+
+  const lbl  = document.getElementById("coupon-label");
+  const disc = document.getElementById("coupon-discount");
+  const warn = document.getElementById("coupon-warning");
+  const cErr = document.getElementById("coupon-error");
+  if (lbl)  lbl.value  = "";
+  if (disc) disc.value = "";
+  if (warn) warn.style.display = "none";
+  if (cErr) cErr.style.display = "none";
+
   const startIso = window.utils.nowDT();
   let endIso = startIso;
   try {
-      const d = new Date(EVENT.date);
-      d.setHours(23, 59, 59);
-      endIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const d = new Date(EVENT.date);
+    d.setHours(23, 59, 59);
+    endIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   } catch(e) {}
-  
-  document.getElementById("coupon-start").value = startIso;
-  document.getElementById("coupon-end").value = endIso;
+  const cs = document.getElementById("coupon-start");
+  const ce = document.getElementById("coupon-end");
+  if (cs) cs.value = startIso;
+  if (ce) ce.value = endIso;
+
+  const dType = document.getElementById("coupon-discount-type");
+  if (dType) dType.value = "percent";
+  window.updateDiscountLabel();
+  setCouponType('auto');
+
+  document.getElementById("add-coupon-modal").style.display = "flex";
 }
+
 window.closeAddCouponModal = function() {
   document.getElementById("add-coupon-modal").style.display = "none";
 }
-window.setCouponType = function(type) {
+
+function setCouponType(type) {
   currentCouponType = type;
   document.getElementById("btn-type-auto").classList.toggle("active", type === "auto");
   document.getElementById("btn-type-code").classList.toggle("active", type === "code");
-  document.getElementById("coupon-code").parentElement.style.opacity = type === "code" ? "1" : "0.4";
-  document.getElementById("coupon-code").parentElement.style.pointerEvents = type === "code" ? "auto" : "none";
-  
-  if(type === "code") {
+
+  const codeRow = document.getElementById("coupon-code").parentElement;
+  codeRow.style.opacity       = type === "code" ? "1" : "0.4";
+  codeRow.style.pointerEvents = type === "code" ? "auto" : "none";
+
+  const hint = document.getElementById("coupon-type-hint");
+  if (type === "code") {
     regenerateCouponCode();
-    document.getElementById("coupon-type-hint").innerText = "Users must enter this code at checkout to claim the discount.";
+    if (hint) hint.textContent = "Users must enter this code at checkout to claim the discount.";
   } else {
-    document.getElementById("coupon-code").innerText = "AUTO_APPLIED";
-    document.getElementById("coupon-type-hint").innerText = "Applied automatically — no code entry needed.";
+    document.getElementById("coupon-code").textContent = "AUTO_APPLIED";
+    if (hint) hint.textContent = "Applied automatically — no code entry needed.";
   }
 }
+window.setCouponType = setCouponType;
+
 window.regenerateCouponCode = function() {
   if (currentCouponType !== 'code') return;
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = '';
-  for(let i=0; i<8; i++) { code += chars.charAt(Math.floor(Math.random() * chars.length)); }
-  document.getElementById("coupon-code").innerText = code;
+  for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  document.getElementById("coupon-code").textContent = code;
 }
+
 window.updateDiscountLabel = function() {
-  const type = document.getElementById("coupon-discount-type").value;
-  document.getElementById("discount-val-label").innerHTML = type === 'percent' ? 'Percentage (max 30%) <span class="req">*</span>' : 'Flat Amount <span class="req">*</span>';
+  const type  = document.getElementById("coupon-discount-type")?.value;
+  const label = document.getElementById("discount-val-label");
+  const input = document.getElementById("coupon-discount");
+  if (!type || !label) return;
+  label.innerHTML = type === 'percent'
+    ? 'Percentage (max 30%) <span class="req">*</span>'
+    : 'Flat Amount (₹) <span class="req">*</span>';
+  if (input) input.placeholder = type === 'percent' ? '15' : '500';
   checkDiscountWarning();
 }
-window.checkDiscountWarning = function() {
-  const type = document.getElementById("coupon-discount-type").value;
-  const val = parseInt(document.getElementById("coupon-discount").value || "0");
-  document.getElementById("coupon-warning").style.display = (type === 'percent' && val > 30) ? "flex" : "none";
-}
-window.saveCoupon = function() {
-  const label = document.getElementById("coupon-label").value;
-  const disc = document.getElementById("coupon-discount").value;
-  const type = document.getElementById("coupon-discount-type").value;
-  const err = document.getElementById("coupon-error");
 
-  if (!label || !disc) {
-    err.style.display = "flex";
-    err.innerHTML = `<i class="ti ti-alert-circle"></i> Please fill in all required fields.`;
+window.checkDiscountWarning = function() {
+  const type = document.getElementById("coupon-discount-type")?.value;
+  const val  = parseInt(document.getElementById("coupon-discount")?.value || "0");
+  const warn = document.getElementById("coupon-warning");
+  const btn  = document.getElementById("btn-save-coupon");
+  const show = type === 'percent' && val > 30;
+  if (warn) warn.style.display = show ? "flex" : "none";
+  if (btn)  btn.textContent    = show ? "Request Approval" : "Create Coupon";
+}
+function checkDiscountWarning() { window.checkDiscountWarning(); }
+
+window.saveCoupon = function() {
+  const label   = document.getElementById("coupon-label")?.value?.trim();
+  const disc    = document.getElementById("coupon-discount")?.value;
+  const type    = document.getElementById("coupon-discount-type")?.value;
+  const end     = document.getElementById("coupon-end")?.value;
+  const start   = document.getElementById("coupon-start")?.value;
+  const maxUses = document.getElementById("coupon-max-uses")?.value;
+  const maxUser = document.getElementById("coupon-max-user")?.value;
+  const showDesc = document.getElementById("coupon-show-desc")?.checked;
+  const descText = document.getElementById("coupon-desc-text")?.value || "";
+  const err     = document.getElementById("coupon-error");
+
+  if (!label) {
+    if (err) { err.style.display = "flex"; err.innerHTML = `<i class="ti ti-alert-circle"></i> Give this coupon a label.`; }
     return;
   }
+  if (!disc || Number(disc) <= 0) {
+    if (err) { err.style.display = "flex"; err.innerHTML = `<i class="ti ti-alert-circle"></i> Enter a valid discount value.`; }
+    return;
+  }
+  if (err) err.style.display = "none";
 
   const p = window.appData.pages.find(x => x.id === activeCouponPage);
   if (p) {
     if (currentCouponType === 'auto') {
-      p.coupons = p.coupons.filter(c => c.type !== 'auto');
+      p.coupons = (p.coupons || []).filter(c => c.type !== 'auto');
     }
-    
+    p.coupons = p.coupons || [];
     p.coupons.push({
-      id: "coup_" + Math.random().toString(36).substr(2,6),
-      type: currentCouponType,
-      label: label,
-      code: currentCouponType === 'code' ? document.getElementById("coupon-code").innerText : null,
+      id:           "coup_" + Math.random().toString(36).substr(2, 6),
+      type:         currentCouponType,
+      label,
+      code:         currentCouponType === 'code' ? document.getElementById("coupon-code")?.textContent : null,
       discountType: type,
-      discount: parseInt(disc),
-      maxUses: document.getElementById("coupon-max-uses").value || null,
-      active: true
+      discount:     parseInt(disc),
+      start,
+      end,
+      maxUses:      maxUses ? parseInt(maxUses) : 0,
+      maxPerUser:   maxUser ? parseInt(maxUser) : 1,
+      showDesc:     showDesc,
+      descText:     descText,
+      used:         0,
+      active:       true
     });
     window.saveData();
     renderScreen();
+    showToast(`Coupon "${label}" created.`, "ok");
   }
-  closeAddCouponModal();
+  window.closeAddCouponModal();
 }
 
-window.showEmbedCode = function(pageId) {
+/* Embed code removed — use copyPageUrl instead */
+
+window.copyPageUrl = function(pageId) {
   const p = window.appData.pages.find(x => x.id === pageId);
   if (!p) return;
-  
-  const code = `<script src="https://checkout.etevents.com/v1/embed.js"></script>\n<et-checkout-button page-id="${p.code}" theme="light">\n  Buy Tickets\n</et-checkout-button>`;
-  document.getElementById("embed-page-name").innerText = "For: " + p.name;
-  document.getElementById("embed-code-content").innerText = code;
-  document.getElementById("embed-modal").style.display = "flex";
-}
-window.closeEmbedModal = function() {
-  document.getElementById("embed-modal").style.display = "none";
-}
-window.copyEmbedCode = function() {
-  const text = document.getElementById("embed-code-content").innerText;
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = document.getElementById("copy-embed-btn");
-    const orig = btn.innerHTML;
-    btn.innerHTML = `<i class="ti ti-check"></i> Copied`;
-    setTimeout(() => btn.innerHTML = orig, 2000);
-  });
+  const url = `https://pay.etevents.com/${p.code}`;
+  navigator.clipboard.writeText(url).then(() => showToast("Page URL copied.", "ok"));
 }
 
-// Initial render
+/* ═════════════════════════════════════════════════
+   BOOT
+═════════════════════════════════════════════════ */
 document.addEventListener("DOMContentLoaded", () => {
   renderScreen();
 });

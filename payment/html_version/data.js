@@ -63,39 +63,48 @@ const initialPlans = [
 ];
 
 const initialPages = [
-  { id: "PG-01", planId: "PL-101", name: "Event General", code: "TS26GEN", price: 12000, currency: "INR", landing: "/Event-2026", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main", country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59", eventId: "1", coupons: [{ id: "C-1", code: "CPN-ERL01A", type: "auto", discount: 15, discountType: "percent", start: "2026-06-01T00:00", end: "2026-06-30T23:59", maxUses: 500, used: 312, maxPerUser: 1, stack: false, label: "Early bird" }] },
-  { id: "PG-02", planId: "PL-102", name: "Event VIP", code: "TS26VIP", price: 28000, currency: "INR", landing: "/Event-2026-vip", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main", country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59", eventId: "1", coupons: [] },
-  { id: "PG-03", planId: "PL-103", name: "B2B Roundtable", code: "B2BRT26", price: 5000, currency: "INR", landing: "/roundtable-2026", gateway: "Razorpay", merchant: "Razorpay — Events Sub-account", country: "India", state: "Delhi", saleStart: "2026-08-01T09:00", saleEnd: "2026-09-15T23:59", eventId: "EVT-B2B-02", coupons: [{ id: "C-2", code: "CPN-PRTN5K", type: "code", discount: 500, discountType: "flat", start: "2026-08-01T00:00", end: "2026-09-15T23:59", maxUses: 100, used: 41, maxPerUser: 1, stack: false, label: "Partner500" }] },
+  { id: "PG-01", planId: "PL-101", name: "Event General", code: "TS26GEN", price: 12000, currency: "INR", landing: "/Event-2026", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main", country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59", maxQty: 500, eventId: "1", liveOnSite: true, template: "Minimal", coupons: [{ id: "C-1", code: "CPN-ERL01A", type: "auto", discount: 15, discountType: "percent", start: "2026-06-01T00:00", end: "2026-06-30T23:59", maxUses: 500, used: 312, maxPerUser: 1, stack: false, label: "Early bird", showDesc: true, descText: "15% Early Bird Off applied automatically" }] },
+  { id: "PG-02", planId: "PL-102", name: "Event VIP",     code: "TS26VIP", price: 28000, currency: "INR", landing: "/Event-2026-vip", gateway: "Razorpay", merchant: "Razorpay — ET B2B Main", country: "India", state: "Maharashtra", saleStart: "2026-08-31T10:00", saleEnd: "2026-09-30T23:59", maxQty: 50,  eventId: "1", liveOnSite: true,  template: "Bold",    coupons: [] },
+  { id: "PG-03", planId: "PL-103", name: "B2B Roundtable",code: "B2BRT26", price: 5000,  currency: "INR", landing: "/roundtable-2026",  gateway: "Razorpay", merchant: "Razorpay — Events Sub-account", country: "India", state: "Delhi", saleStart: "2026-08-01T09:00", saleEnd: "2026-09-15T23:59", maxQty: 100, eventId: "EVT-B2B-02", liveOnSite: false, template: "Minimal", coupons: [{ id: "C-2", code: "CPN-PRTN5K", type: "code", discount: 500, discountType: "flat", start: "2026-08-01T00:00", end: "2026-09-15T23:59", maxUses: 100, used: 41, maxPerUser: 1, stack: false, label: "Partner500" }] },
 ];
 
 const initialTx = [
-  { id: "TXN-9001", page: "Event General", mode: "Online", status: "Success", portal: "ET B2B", merchant: "Razorpay", productCode: "TS26GEN", invoiceGenerated: true, amount: 10200, date: "2026-08-28", eventId: "1" },
-  { id: "TXN-9002", page: "Event VIP", mode: "Online", status: "Failed", portal: "ET B2B", merchant: "Razorpay", productCode: "TS26VIP", invoiceGenerated: false, amount: 28000, date: "2026-08-29", eventId: "1" },
-  { id: "TXN-9003", page: "B2B Roundtable", mode: "Offline", status: "Incomplete", portal: "ET B2B", merchant: "Bank transfer", productCode: "B2BRT26", invoiceGenerated: false, amount: 4500, date: "2026-08-27", eventId: "EVT-B2B-02" },
-  { id: "TXN-9004", page: "Event General", mode: "Online", status: "Success", portal: "ET B2B", merchant: "Razorpay", productCode: "TS26GEN", invoiceGenerated: true, amount: 12000, date: "2026-08-30", eventId: "1" },
-  { id: "TXN-9005", page: "Event VIP", mode: "Online", status: "Success", portal: "ET B2B", merchant: "Stripe", productCode: "TS26VIP", invoiceGenerated: true, amount: 28000, date: "2026-08-30", eventId: "1" },
+  { id: "TXN-9001", page: "Event General", pageCode: "TS26GEN", buyer: "Ananya Sharma", email: "ananya.s@techfirm.in",    mode: "Online", status: "Success",    merchant: "Razorpay",      amount: 10200, date: "2026-08-28", eventId: "1" },
+  { id: "TXN-9002", page: "Event VIP",     pageCode: "TS26VIP", buyer: "Vikram Nair",   email: "v.nair@mediaworks.com", mode: "Online", status: "Failed",     merchant: "Razorpay",      amount: 28000, date: "2026-08-29", eventId: "1" },
+  { id: "TXN-9003", page: "B2B Roundtable",pageCode: "B2BRT26", buyer: "Suresh Pillai", email: "suresh@brandco.in",     mode: "Offline",status: "Incomplete", merchant: "Bank transfer",  amount: 4500,  date: "2026-08-27", eventId: "EVT-B2B-02" },
+  { id: "TXN-9004", page: "Event General", pageCode: "TS26GEN", buyer: "Priya Menon",   email: "priya.m@startups.io",  mode: "Online", status: "Success",    merchant: "Razorpay",      amount: 12000, date: "2026-08-30", eventId: "1" },
+  { id: "TXN-9005", page: "Event VIP",     pageCode: "TS26VIP", buyer: "Rahul Gupta",   email: "rahul.g@enterprise.co",mode: "Online", status: "Success",    merchant: "Stripe",        amount: 28000, date: "2026-08-30", eventId: "1" },
 ];
 
 const initialInvoices = [
-  { id: "INV-501", txnId: "TXN-9001", invoiceNo: "TI-2026-0501", time: "2026-08-28 14:22", amountDue: 10200, amountPaid: 10200 },
-  { id: "INV-502", txnId: "TXN-9004", invoiceNo: "TI-2026-0502", time: "2026-08-30 09:10", amountDue: 12000, amountPaid: 12000 },
-  { id: "INV-503", txnId: "TXN-9005", invoiceNo: "TI-2026-0503", time: "2026-08-30 11:47", amountDue: 28000, amountPaid: 28000 },
+  { id: "INV-501", txId: "TXN-9001", name: "Ananya Sharma", email: "ananya.s@techfirm.in",    amount: 10200, date: "2026-08-28" },
+  { id: "INV-502", txId: "TXN-9004", name: "Priya Menon",   email: "priya.m@startups.io",     amount: 12000, date: "2026-08-30" },
+  { id: "INV-503", txId: "TXN-9005", name: "Rahul Gupta",   email: "rahul.g@enterprise.co",   amount: 28000, date: "2026-08-30" },
 ];
 
 const initialInvoiceListing = [
-  { id: "PI-01", piNumber: "PI-2026-2201", productCode: "B2BRT26", user: "Neha Kapoor", email: "neha.k@brandco.in", salesperson: "Arjun Mehta", gst: "07ABCDE1234F1Z5", amount: 5000, qty: 1, currency: "INR", location: "Delhi NCR" },
-  { id: "PI-02", piNumber: "PI-2026-2202", productCode: "TS26VIP", user: "Rakesh Iyer", email: "rakesh@mediaworks.com", salesperson: "Priya Sharma", gst: "27FGHIJ5678K1Z2", amount: 28000, qty: 1, currency: "INR", location: "Mumbai" },
+  { id: "PI-01", company: "BrandCo Media",     contact: "Neha Kapoor",  email: "neha.k@brandco.in",     salesperson: "Arjun Mehta",  gst: "07ABCDE1234F1Z5", amount: 5000,  qty: 1, currency: "INR", status: "Unpaid", date: "2026-08-20" },
+  { id: "PI-02", company: "MediaWorks Pvt Ltd",contact: "Rakesh Iyer",  email: "rakesh@mediaworks.com", salesperson: "Priya Sharma", gst: "27FGHIJ5678K1Z2", amount: 28000, qty: 1, currency: "INR", status: "Paid",   date: "2026-08-30" },
 ];
 
 const initialOffline = [
-  { id: "OF-201", txnId: "OF-TXN-201", invoiceNo: "-", client: "BrandCo Media", amount: 45000, utr: "UTR2026081900123", claimedBy: "Ops Team", status: "Pending", date: "2026-08-29" },
-  { id: "OF-202", txnId: "OF-TXN-202", invoiceNo: "TI-2026-0499", client: "Meridian Events", amount: 22000, utr: "UTR2026082700871", claimedBy: "Ops Team", status: "Approved", date: "2026-08-27" },
-  { id: "OF-203", txnId: "OF-TXN-203", invoiceNo: "-", client: "Skyline Corp", amount: 8000, utr: "UTR2026082500456", claimedBy: "Ops Team", status: "Rejected", date: "2026-08-25", reason: "UTR mismatch" },
+  { id: "OF-201", client: "BrandCo Media",   amount: 45000, utr: "UTR2026081900123", user: "Neha Kapoor", method: "NEFT",  details: "HDFC Bank — A/c ending 4412", claimedBy: "Ops Team", status: "Pending",  date: "2026-08-29", reason: "" },
+  { id: "OF-202", client: "Meridian Events", amount: 22000, utr: "UTR2026082700871", user: "Arun Bose",   method: "RTGS",  details: "ICICI Bank — A/c ending 7891",claimedBy: "Ops Team", status: "Verified", date: "2026-08-27", reason: "" },
+  { id: "OF-203", client: "Skyline Corp",    amount: 8000,  utr: "UTR2026082500456", user: "Sunita Rao",  method: "Cheque",details: "SBI — Cheque #002847",          claimedBy: "Ops Team", status: "Rejected", date: "2026-08-25", reason: "UTR mismatch" },
 ];
 
 const initialCredit = [
-  { id: "CN-301", txnId: "TXN-9002", invoiceNo: "-", amount: 28000, company: "MediaWorks Pvt Ltd", reason: "Duplicate payment", status: "Pending", postedBy: "Rohit", l1: "Reporting Manager", l2: "Finance Head" },
-  { id: "CN-302", txnId: "TXN-9001", invoiceNo: "TI-2026-0501", amount: 1800, company: "Event Attendee", reason: "Partial refund — seat downgrade", status: "Approved", postedBy: "Rohit", l1: "Reporting Manager", l2: "Finance Head" },
+  { id: "CN-301", txId: "TXN-9002", amount: 28000, user: "Vikram Nair",   email: "v.nair@mediaworks.com", reason: "Duplicate payment",             status: "Pending",  postedBy: "Rohit", date: "2026-08-29", refundIssued: false },
+  { id: "CN-302", txId: "TXN-9001", amount: 1800,  user: "Ananya Sharma", email: "ananya.s@techfirm.in",  reason: "Partial refund — seat downgrade", status: "Approved", postedBy: "Rohit", date: "2026-08-28", refundIssued: true  },
+];
+
+const CREDIT_REASONS = [
+  "Duplicate payment",
+  "Cancellation request",
+  "Seat downgrade",
+  "Event postponed / cancelled",
+  "Overbilling",
+  "Other",
 ];
 
 const downloadDocs = [
@@ -188,14 +197,17 @@ window.appData = {
   countries: LOCATION_OPTIONS,
 };
 
-window.saveData = function(key, data) {
-  window.appData[key] = data;
-  setPersistedData(key, data);
+window.saveData = function() {
+  ['plans','pages','transactions','invoices','invoiceListing','offline','credit'].forEach(k => {
+    setPersistedData(k, window.appData[k]);
+  });
 };
 
 // Expose utilities and constants
 window.utils = {
   nowDT, addDaysDT, fmtCurrency, fmtDate, fmtDateTime,
   generateCouponCode, isPaymentActive,
-  LOCATION_OPTIONS, COUNTRIES, VERTICALS_DATA, EVENT_TYPE_CONFIG, EVENTS_DATA, EVENT_STATUS_CLASS, MODULES, GATEWAY_MERCHANTS, downloadDocs
+  LOCATION_OPTIONS, COUNTRIES, VERTICALS_DATA, EVENT_TYPE_CONFIG,
+  EVENTS_DATA, EVENT_STATUS_CLASS, MODULES, GATEWAY_MERCHANTS, downloadDocs,
+  CREDIT_REASONS,
 };

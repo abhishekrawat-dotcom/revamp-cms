@@ -1,7 +1,7 @@
 <!-- Revamp CMS - Site Editor prototype (Wix-Editor-style click-to-edit builder) -->
 <title>Site Editor &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <style>
   :root{
@@ -34,8 +34,8 @@
     --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
     --shadow-lg: 0 28px 60px -24px rgba(30,26,10,0.38);
 
-    --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-    --font-body: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
   }
 
@@ -523,54 +523,55 @@
   .asc-card h4{ font-size:13.5px; }
   .asc-card p{ font-size:12px; color: var(--text-muted); line-height:1.45; }
 
-  .predefined-modal{ max-width: 760px; text-align:left; position:relative; }
-  .predefined-modal .icon-btn{ position:absolute; top:14px; right:14px; }
-  .predefined-modal .modal-body{ align-items:stretch; padding: 26px 26px 24px; }
-  .predefined-modal h3{ font-size:18px; text-align:center; }
-  .predefined-modal .picker-intro{ text-align:center; color:var(--text-muted); font-size:12.5px; margin-top:-4px; }
-  .predefined-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:8px; max-height:62vh; overflow-y:auto; padding:2px; }
-  .predefined-card{
-    display:flex; flex-direction:column; gap:10px; padding:10px; border:1.5px solid var(--border);
-    border-radius:10px; background:var(--surface); color:var(--text); text-align:left;
-    transition:border-color .12s ease, background .12s ease, transform .12s ease, box-shadow .12s ease;
+  .variant-modal{ max-width: 980px; text-align:left; position:relative; }
+  .variant-modal .icon-btn{ position:absolute; top:14px; right:14px; }
+  .variant-modal .modal-body{ align-items:stretch; padding: 22px 26px 26px; }
+  .variant-modal h3{ font-size:17px; text-align:center; }
+  .variant-note{ text-align:center; color:var(--text-muted); font-size:12.5px; margin:2px 0 16px; }
+  .variant-tabs{ display:flex; gap:6px; overflow-x:auto; padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid var(--border); scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .variant-tabs::-webkit-scrollbar{ height:5px; }
+  .variant-tabs::-webkit-scrollbar-button{ display:none; width:0; height:0; }
+  .variant-tabs::-webkit-scrollbar-track{ background:transparent; }
+  .variant-tabs::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
+  .variant-tabs::-webkit-scrollbar-thumb:hover{ background:var(--text-faint); }
+  .variant-tab{
+    display:inline-flex; align-items:center; justify-content:center; line-height:1;
+    flex-shrink:0; padding:7px 14px; border-radius:8px; border:1px solid transparent; background:none;
+    color:var(--text-muted); font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer;
+    transition:background .12s ease, color .12s ease, border-color .12s ease;
   }
-  .predefined-card:hover{ border-color:var(--accent); background:var(--accent-soft); transform:translateY(-1px); box-shadow:var(--shadow-sm); }
-  .predefined-preview{ height:92px; border:1px solid var(--border); border-radius:7px; background:var(--bg); padding:10px; overflow:hidden; }
-  .predefined-preview .preview-kicker{ width:22%; height:5px; background:var(--accent); border-radius:2px; margin-bottom:8px; }
-  .predefined-preview .preview-title{ width:68%; height:10px; background:var(--text); border-radius:2px; margin-bottom:12px; }
-  .predefined-preview .preview-row{ display:flex; gap:6px; height:54px; }
-  .predefined-preview .preview-block{ flex:1; border-radius:4px; background:var(--surface-3); }
-  .predefined-preview.cta-preview{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; }
-  .predefined-preview.cta-preview .preview-title{ width:58%; margin:0; }
-  .predefined-preview.cta-preview .preview-copy{ width:72%; height:5px; background:var(--text-faint); border-radius:2px; }
-  .predefined-preview.cta-preview .preview-button{ width:28%; height:13px; border-radius:5px; background:var(--accent); }
-  .predefined-preview.gallery-preview{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; padding:10px; }
-  .predefined-preview.gallery-preview .preview-image{ background:var(--surface-3); border-radius:4px; }
-  .predefined-preview.quote-preview{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
-  .predefined-preview.quote-preview .quote-line{ width:78%; height:7px; background:var(--text); border-radius:2px; }
-  .predefined-preview.quote-preview .quote-name{ width:34%; height:5px; background:var(--text-faint); border-radius:2px; }
-  .predefined-card strong{ font-size:13px; }
-  .predefined-card span{ font-size:11.5px; color:var(--text-muted); }
-  .predefined-list{ display:flex; flex-direction:column; gap:6px; }
-  .predefined-list-row{
-    width:100%; display:flex; align-items:center; gap:9px; padding:10px 8px; border:1px solid var(--border);
-    border-radius:8px; background:var(--surface); color:var(--text); text-align:left;
+  .variant-tab:hover{ background:var(--surface-2); color:var(--text); }
+  .variant-tab.active{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent); }
+  .variant-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; max-height:56vh; overflow-y:auto; padding:3px; }
+  .variant-card{
+    border:1.5px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface);
+    cursor:pointer; text-align:left; display:flex; flex-direction:column; padding:0;
+    transition:border-color .12s ease, box-shadow .12s ease, transform .12s ease;
   }
-  .predefined-list-row:hover{ border-color:var(--accent); background:var(--accent-soft); }
-  .predefined-list-row > span:nth-child(2){ min-width:0; flex:1; }
-  .predefined-list-row strong{ display:block; font-size:12px; }
-  .predefined-list-row small{ display:block; margin-top:2px; color:var(--text-muted); font-size:10.5px; line-height:1.35; }
-  .predefined-list-icon{ width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:var(--accent-soft); color:var(--accent-strong); font-size:12px; font-weight:800; }
-  .predefined-list-arrow{ color:var(--text-faint); font-size:20px; line-height:1; }
-  .predefined-list-head{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
-  .predefined-list-head strong{ font-size:13px; }
-  .predefined-list-note{ display:block; color:var(--text-muted); font-size:11.5px; margin:0 0 9px 4px; }
-  .variant-modal .modal-body{ padding-top:22px; }
-  .variant-head{ display:flex; align-items:center; gap:8px; }
-  .variant-back{ margin-right:auto; }
-  .variant-head h3{ flex:1; }
-  @media (max-width: 760px){ .predefined-grid{ grid-template-columns:repeat(2, 1fr); } }
-  @media (max-width: 560px){ .predefined-grid{ grid-template-columns:1fr; } }
+  .variant-card:hover{ border-color:var(--accent); box-shadow:var(--shadow-md); transform:translateY(-2px); }
+  .variant-thumb{ position:relative; height:190px; overflow:hidden; background:var(--bg); border-bottom:1px solid var(--border); }
+  .variant-thumb-scale{ position:absolute; top:0; left:0; width:1180px; transform-origin: top left; pointer-events:none; }
+  .variant-thumb-scale *{ pointer-events:none !important; }
+  .variant-thumb-expand{
+    position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:7px; border:none;
+    background:rgba(20,16,6,.55); color:#fff; display:flex; align-items:center; justify-content:center;
+    opacity:0; transition:opacity .12s ease; z-index:2; cursor:pointer;
+  }
+  .variant-card:hover .variant-thumb-expand{ opacity:1; }
+  .variant-card-body{ padding:11px 13px 13px; display:flex; flex-direction:column; gap:3px; }
+  .variant-card-body strong{ font-size:13px; }
+  .variant-card-body span{ font-size:11.5px; color:var(--text-muted); line-height:1.4; }
+  .variant-card-use{ margin-top:8px; font-size:11.5px; font-weight:700; color:var(--accent-strong); }
+  @media (max-width: 900px){ .variant-grid{ grid-template-columns:repeat(2, 1fr); } }
+  @media (max-width: 620px){ .variant-grid{ grid-template-columns:1fr; } }
+
+  .variant-lightbox-scrim{ position:fixed; inset:0; background:rgba(20,16,6,.6); z-index:95; display:flex; align-items:center; justify-content:center; padding:26px; }
+  .variant-lightbox{ background:var(--surface); border-radius:14px; box-shadow:var(--shadow-lg); width:100%; max-width:1040px; max-height:88vh; display:flex; flex-direction:column; overflow:hidden; }
+  .variant-lightbox-head{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--border); }
+  .variant-lightbox-head strong{ flex:1; font-size:14px; }
+  .variant-lightbox-body{ overflow:auto; background:var(--bg); flex:1; }
+  .variant-lightbox-body .variant-thumb-scale{ position:static; transform-origin: top left; }
+  .variant-lightbox-foot{ display:flex; justify-content:flex-end; gap:9px; padding:12px 16px; border-top:1px solid var(--border); }
 
   #toast-region{ position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index: 100; align-items:center; }
   .toast{
@@ -582,46 +583,122 @@
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
 
-  /* ============ DEMO SITE CONTENT STYLES (scoped, mimics a published site) ============ */
+  /* ============ SITE CONTENT STYLES (scoped, mimics a published site) ============
+
+     Every colour, font and radius below reads from a --site-* token declared on
+     #frame. The defaults are this editor's own demo look; a site handed over from
+     create-event.html overrides them on #frame.style with its template's theme, so
+     the same section markup renders in that template's design language.
+     Add a token here and in create-event.html's TEMPLATE_THEMES together.
+  */
+  .frame{
+    /* type */
+    --site-body-font: 'Manrope', sans-serif;
+    --site-display-font: 'Fraunces', Georgia, serif;
+    --site-display-weight: 600;
+    --site-display-case: none;
+    --site-display-tracking: normal;
+    --site-mono-font: 'IBM Plex Mono', monospace;
+    /* surfaces + text */
+    --site-text: #1c1c1c;
+    --site-text-muted: #6a6a5f;
+    --site-text-faint: #8a8a7c;
+    --site-surface: #fff;
+    --site-border: #eee9dd;
+    --site-radius: 12px;
+    --site-radius-sm: 10px;
+    /* accent */
+    --site-accent: #0F6F5C;
+    --site-accent-contrast: #fff;
+    --site-accent-soft: #DCEEE7;
+    --site-btn-radius: 100px;
+    /* nav */
+    --site-nav-bg: transparent;
+    --site-nav-text: #4a4a42;
+    --site-nav-border: #eee9dd;
+    /* hero */
+    --site-hero-bg: linear-gradient(180deg,#FBF9F3,#fff);
+    --site-hero-text: #1c1c1c;
+    --site-hero-muted: #6a6a5f;
+    --site-hero-size: 42px;
+    --site-image-bg: linear-gradient(135deg,#DCEEE7,#EBE0F0);
+    --site-image-text: #0A5445;
+    --site-tile-bg: linear-gradient(160deg,#ECE7DA,#DCEEE7);
+    /* alternating band (stats strip, CTA band) */
+    --site-band-bg: #F5F2EA;
+    --site-band-text: #1c1c1c;
+    --site-band-muted: #6a6a5f;
+    /* pull quote + footer */
+    --site-quote-bg: #0A5445;
+    --site-quote-text: #fff;
+    --site-foot-bg: #221F17;
+    --site-foot-text: #b5b0a0;
+    --site-foot-logo: #fff;
+  }
   .site *{ box-sizing:border-box; }
-  .site{ font-family: 'Manrope', sans-serif; color:#1c1c1c; }
-  .site h1,.site h2,.site h3{ font-family:'Fraunces', serif; font-weight:600; margin:0; }
+  .site{ font-family: var(--site-body-font); color: var(--site-text); }
+  .site h1,.site h2,.site h3{ font-family: var(--site-display-font); font-weight: var(--site-display-weight); margin:0; }
   .site p{ margin:0; }
-  .s-nav{ display:flex; align-items:center; gap:26px; padding: 18px 40px; border-bottom:1px solid #eee9dd; }
-  .s-nav .logo{ font-family:'Fraunces',serif; font-weight:700; font-size:19px; letter-spacing:-0.01em; }
-  .s-nav .links{ display:flex; gap:22px; margin-left:16px; font-size:13.5px; font-weight:600; color:#4a4a42; }
+  /* the site canvas owns its own type and colour, whatever the CMS chrome uses */
+  #frame .site-section{ font-family: var(--site-body-font); color: var(--site-text); }
+  #frame .site-section h1, #frame .site-section h2, #frame .site-section h3, #frame .site-section blockquote{
+    font-family: var(--site-display-font);
+  }
+  /* weight/case/tracking only shift for a themed (handed-over) site — the demo site
+     keeps the heading weights it inherits from the CMS stylesheet */
+  #frame[data-site-theme] .site-section h1, #frame[data-site-theme] .site-section h2,
+  #frame[data-site-theme] .site-section h3, #frame[data-site-theme] .site-section blockquote{
+    font-weight: var(--site-display-weight);
+    text-transform: var(--site-display-case);
+    letter-spacing: var(--site-display-tracking);
+  }
+  .s-nav{ display:flex; align-items:center; gap:26px; padding: 18px 40px; background: var(--site-nav-bg); border-bottom:1px solid var(--site-nav-border); }
+  .s-nav .logo{ font-family: var(--site-display-font); font-weight:700; font-size:19px; letter-spacing:-0.01em; }
+  .s-nav .links{ display:flex; gap:22px; margin-left:16px; font-size:13.5px; font-weight:600; color: var(--site-nav-text); }
   .s-nav .sp{ flex:1; }
-  .s-nav .cta{ background:#0F6F5C; color:#fff; font-size:13px; font-weight:700; padding:9px 18px; border-radius:100px; }
+  .s-nav .cta{ background: var(--site-accent); color: var(--site-accent-contrast); font-size:13px; font-weight:700; padding:9px 18px; border-radius: var(--site-btn-radius); }
   .stage.device-mobile .s-nav .links{ display:none; }
 
-  .s-hero{ display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:30px; padding: 54px 40px; background: linear-gradient(180deg,#FBF9F3,#fff); }
+  .s-hero{ display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:30px; padding: 54px 40px; background: var(--site-hero-bg); color: var(--site-hero-text); }
   .stage.device-mobile .s-hero{ grid-template-columns:1fr; padding:30px 22px; }
-  .s-hero h1{ font-size:42px; line-height:1.14; letter-spacing:-0.01em; }
+  .s-hero h1{ font-size: var(--site-hero-size); line-height:1.14; letter-spacing:-0.01em; }
   .stage.device-mobile .s-hero h1{ font-size:28px; }
-  .s-hero .lead{ font-size:15px; color:#6a6a5f; margin-top:14px; max-width:44ch; line-height:1.6; }
+  .s-hero .lead{ font-size:15px; color: var(--site-hero-muted); margin-top:14px; max-width:44ch; line-height:1.6; }
   .s-hero .btnrow{ display:flex; gap:10px; margin-top:22px; }
-  .s-btn{ display:inline-flex; align-items:center; padding:11px 20px; border-radius:100px; font-size:13.5px; font-weight:700; }
-  .s-btn.primary{ background:#0F6F5C; color:#fff; }
-  .s-btn.secondary{ background:transparent; color:#0F6F5C; border:1.5px solid #0F6F5C; }
-  .s-hero .imgph{ height:280px; border-radius:16px; background: linear-gradient(135deg,#DCEEE7,#EBE0F0); display:flex; align-items:center; justify-content:center; color:#0A5445; }
+  .s-btn{ display:inline-flex; align-items:center; padding:11px 20px; border-radius: var(--site-btn-radius); font-size:13.5px; font-weight:700; }
+  .s-btn.primary{ background: var(--site-accent); color: var(--site-accent-contrast); }
+  .s-btn.secondary{ background:transparent; color: var(--site-accent); border:1.5px solid var(--site-accent); }
+  .s-hero .imgph{ height:280px; border-radius:16px; background: var(--site-image-bg); display:flex; align-items:center; justify-content:center; color: var(--site-image-text); }
   .stage.device-mobile .s-hero .imgph{ height:180px; }
 
-  .s-stats{ display:flex; gap:14px; padding: 30px 40px; background:#F5F2EA; flex-wrap:wrap; }
+  /* full-bleed centred hero — the treatment most ET event sites lead with */
+  .s-hero-banner{ padding: 76px 40px 64px; text-align:center; background: var(--site-hero-bg); background-size:cover; background-position:center; color: var(--site-hero-text); }
+  .stage.device-mobile .s-hero-banner{ padding:40px 22px 34px; }
+  .s-hero-banner .eyebrow{ display:block; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; opacity:.72; }
+  .s-hero-banner h1{ font-size: clamp(30px, 4vw, 52px); line-height:1.08; max-width:24ch; margin:14px auto 0; }
+  .stage.device-mobile .s-hero-banner h1{ font-size:30px; }
+  .s-hero-banner .tagline{ margin:16px auto 0; max-width:54ch; font-size:15px; line-height:1.6; color: var(--site-hero-muted); }
+  .s-hero-banner .meta{ margin-top:20px; font-size:12.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  .s-hero-banner .btnrow{ display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin-top:26px; }
+  /* an outline button on a dark banner follows the banner's own text colour */
+  .s-hero-banner .s-btn.secondary{ color: var(--site-hero-text); border-color: currentColor; }
+
+  .s-stats{ display:flex; gap:14px; padding: 30px 40px; background: var(--site-band-bg); color: var(--site-band-text); flex-wrap:wrap; }
   .stage.device-mobile .s-stats{ padding:20px 22px; }
-  .s-stat{ flex:1; min-width:130px; background:#fff; border-radius:10px; border:1px solid #eee9dd; padding:18px; text-align:center; }
-  .s-stat .n{ font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; color:#0F6F5C; }
-  .s-stat .l{ font-size:11.5px; color:#8a8a7c; text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+  .s-stat{ flex:1; min-width:130px; background: var(--site-surface); border-radius: var(--site-radius-sm); border:1px solid var(--site-border); padding:18px; text-align:center; color: var(--site-text); }
+  .s-stat .n{ font-family: var(--site-mono-font); font-size:26px; font-weight:600; color: var(--site-accent); }
+  .s-stat .l{ font-size:11.5px; color: var(--site-text-faint); text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
 
   .s-cards-sec{ padding: 54px 40px; }
   .stage.device-mobile .s-cards-sec{ padding:32px 22px; }
-  .s-cards-sec .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#0F6F5C; }
+  .s-cards-sec .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color: var(--site-accent); }
   .s-cards-sec h2{ font-size:28px; margin-top:8px; max-width:32ch; }
   .s-cards{ display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:26px; }
   .stage.device-mobile .s-cards{ grid-template-columns:1fr; }
-  .s-card{ border:1px solid #eee9dd; border-radius:12px; padding:20px; }
-  .s-card .ph{ width:40px; height:40px; border-radius:10px; background:#DCEEE7; margin-bottom:14px; }
+  .s-card{ border:1px solid var(--site-border); border-radius: var(--site-radius); padding:20px; }
+  .s-card .ph{ width:40px; height:40px; border-radius:10px; background: var(--site-accent-soft); margin-bottom:14px; }
   .s-card h3{ font-size:16px; }
-  .s-card p{ font-size:13px; color:#6a6a5f; margin-top:8px; line-height:1.6; }
+  .s-card p{ font-size:13px; color: var(--site-text-muted); margin-top:8px; line-height:1.6; }
 
   .s-discussion-points{ padding:56px 48px 62px; background:#FBF7EA; text-align:center; }
   .s-discussion-points .dp-kicker{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:#4A4034; }
@@ -730,23 +807,25 @@
 
   .s-gallery{ padding: 0 40px 54px; }
   .stage.device-mobile .s-gallery{ padding:0 22px 32px; }
+  .s-gallery .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color: var(--site-accent); }
+  .s-gallery h2{ font-size:28px; margin-top:8px; }
   .s-gal-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:10px; }
   .stage.device-mobile .s-gal-grid{ grid-template-columns: repeat(2,1fr); }
-  .s-gal-grid .gi{ padding-top:100%; border-radius:10px; background: linear-gradient(160deg,#ECE7DA,#DCEEE7); position:relative; }
+  .s-gal-grid .gi{ padding-top:100%; border-radius: var(--site-radius-sm); background: var(--site-tile-bg); position:relative; }
 
-  .s-quote{ padding: 54px 40px; background:#0A5445; color:#fff; text-align:center; }
+  .s-quote{ padding: 54px 40px; background: var(--site-quote-bg); color: var(--site-quote-text); text-align:center; }
   .stage.device-mobile .s-quote{ padding:34px 22px; }
-  .s-quote blockquote{ font-family:'Fraunces',serif; font-size:24px; line-height:1.4; max-width:56ch; margin:0 auto; }
+  .s-quote blockquote{ font-family: var(--site-display-font); font-size:24px; line-height:1.4; max-width:56ch; margin:0 auto; }
   .stage.device-mobile .s-quote blockquote{ font-size:18px; }
   .s-quote .who{ margin-top:16px; font-size:13px; opacity:.8; font-weight:600; }
 
-  .s-cta-band{ padding: 44px 40px; text-align:center; background:#F5F2EA; }
+  .s-cta-band{ padding: 44px 40px; text-align:center; background: var(--site-band-bg); color: var(--site-band-text); }
   .s-cta-band h2{ font-size:24px; }
-  .s-cta-band p{ margin-top:8px; color:#6a6a5f; font-size:13.5px; }
+  .s-cta-band p{ margin-top:8px; color: var(--site-band-muted); font-size:13.5px; }
   .s-cta-band .btnrow{ display:flex; justify-content:center; gap:10px; margin-top:18px; }
 
-  .s-foot{ padding: 30px 40px; background:#221F17; color:#b5b0a0; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
-  .s-foot .logo{ font-family:'Fraunces',serif; font-weight:700; color:#fff; font-size:15px; }
+  .s-foot{ padding: 30px 40px; background: var(--site-foot-bg); color: var(--site-foot-text); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
+  .s-foot .logo{ font-family: var(--site-display-font); font-weight:700; color: var(--site-foot-logo); font-size:15px; }
 </style>
 
 <div class="ed">
@@ -793,14 +872,6 @@
       </div>
     </aside>
 
-    <!-- ============ PREDEFINED SECTIONS PANEL ============ -->
-    <aside class="side-panel" id="panel-predefined" hidden>
-      <div class="side-panel-head"><h3>Predefined sections</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
-      <div class="side-panel-body">
-        <p class="hint" style="font-size:12px;color:var(--text-faint);">Choose a section, then pick its design.</p>
-        <div id="predefined-section-list"></div>
-      </div>
-    </aside>
 
     <!-- ============ PAGES PANEL ============ -->
     <aside class="side-panel" id="panel-pages" hidden>
@@ -1241,6 +1312,11 @@
   var imageAiPrompt = document.getElementById('ai-image-prompt');
   var secToolbarEl = document.getElementById('sec-side-toolbar');
   var previewMode = false;
+  var createDraft = null;          // draft handed over from create-event.html, if that is how we got here
+  function escHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
   var currentZoom = 1;
   var selectedEl = null;
   var activeSectionEl = null;
@@ -1365,6 +1441,9 @@
       html += '<div class="tb-sep"></div>';
       html += '<div class="tb-group"><button class="icon-only" data-action="animations" title="Animations">' +
         '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button></div>';
+      html += '<div class="tb-sep"></div>';
+      html += '<div class="tb-group"><button class="icon-only" data-action="schedule" title="Schedule&hellip;">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button></div>';
     } else if (type === 'text'){
       var curFont = (el.style.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim();
       if (!curFont) curFont = 'Noticia Text';
@@ -1847,6 +1926,9 @@
       case 'border': case 'corners': case 'animations': case 'text-color': case 'align': case 'text-effects':
         openStylePop(action, btn);
         break;
+      case 'schedule':
+        openSchedulePopover(selectedEl, btn);
+        break;
       case 'replace-image':
         showToast('Media library opens here — image swapped (prototype).');
         selectedEl.style.filter = selectedEl.style.filter ? '' : 'hue-rotate(45deg)';
@@ -2011,7 +2093,7 @@
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
-  var panels = { add: document.getElementById('panel-add'), predefined: document.getElementById('panel-predefined'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+  var panels = { add: document.getElementById('panel-add'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
   function positionDesignPopover(anchorBtn){
     var panel = panels.design;
     var bodyEl = document.querySelector('.ed-body');
@@ -2032,12 +2114,12 @@
     Object.keys(panels).forEach(function(k){ panels[k].hidden = (k !== name); });
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
     if (name === 'layers') rebuildLayersPanel();
-    if (name === 'predefined') renderPredefinedSectionList();
     if (name === 'design') positionDesignPopover(anchorEl || document.querySelector('[data-panel="design"]'));
   }
   railBtns.forEach(function(b){
     b.addEventListener('click', function(){
       var name = b.getAttribute('data-panel');
+      if (name === 'predefined'){ openPredefinedSectionPicker(); return; }
       var isOpen = !panels[name].hidden;
       if (isOpen){ panels[name].hidden = true; b.classList.remove('active'); }
       else openPanel(name, b);
@@ -2060,48 +2142,145 @@
   function openAdd(){ openAddSectionChooser(); }
 
   function openPredefinedSectionPicker(){
-    openPanel('predefined');
+    var firstKey = Object.keys(sectionTemplates).filter(function(k){ return predefinedDescriptions[k]; })[0];
+    openSectionVariantModal(firstKey);
   }
 
-  function renderPredefinedSectionList(){
-    var list = document.getElementById('predefined-section-list');
-    var descriptions = {
-      discussion: 'Topics and questions for the event.', attend: 'Who will get the most value.', why: 'Benefits of joining the event.',
-      overview: 'A clear event summary and highlights.', stats: 'Important event numbers and milestones.', contact: 'A clear way to reach the event team.',
-      faq: 'Answers to common attendee questions.', sponsors: 'Sponsors and event partners.', agenda: 'Sessions, times, and speakers.',
-      glimpses: 'A visual look at the event experience.', speaker: 'Speakers, roles, and biographies.', waits: 'Highlights of what awaits attendees.'
-    };
-    list.innerHTML = '<span class="blk-cat">Predefined sections</span><div class="predefined-list" id="predefined-list"></div>';
-    var rows = list.querySelector('#predefined-list');
-    Object.keys(sectionTemplates).forEach(function(key){
-      if (!descriptions[key]) return;
-      var row = document.createElement('button');
-      row.className = 'predefined-list-row';
-      row.setAttribute('data-predefined-section', key);
-      row.innerHTML = '<span class="predefined-list-icon">+</span><span><strong>' + sectionTemplates[key].name + '</strong><small>' + descriptions[key] + '</small></span><span class="predefined-list-arrow">›</span>';
-      rows.appendChild(row);
-      row.addEventListener('click', function(){ renderSectionVariantList(key); });
+  var predefinedDescriptions = {
+    discussion: 'Topics and questions for the event.', attend: 'Who will get the most value.', why: 'Benefits of joining the event.',
+    overview: 'A clear event summary and highlights.', stats: 'Important event numbers and milestones.', contact: 'A clear way to reach the event team.',
+    faq: 'Answers to common attendee questions.', sponsors: 'Sponsors and event partners.', agenda: 'Sessions, times, and speakers.',
+    glimpses: 'A visual look at the event experience.', speaker: 'Speakers, roles, and biographies.', waits: 'Highlights of what awaits attendees.'
+  };
+
+  function insertVariant(variant){
+    insertSectionAtAnchor(buildSectionShell(variant.name, variant.html), variant.name);
+  }
+
+  /* Renders `html` at its natural (desktop) width inside a fixed-height window, then
+     scales it down to fit `thumb`'s measured width — a true live preview of the design
+     rather than an abstract placeholder. */
+  function mountVariantPreview(thumb, html, mode){
+    var scaleEl = document.createElement('div');
+    scaleEl.className = 'variant-thumb-scale';
+    scaleEl.innerHTML = html;
+    thumb.appendChild(scaleEl);
+    function applyScale(){
+      var thumbW = thumb.clientWidth || thumb.getBoundingClientRect().width;
+      if (!thumbW) return;
+      if (mode === 'contain'){
+        var naturalH = scaleEl.offsetHeight || 1;
+        var thumbH = thumb.clientHeight || thumb.getBoundingClientRect().height;
+        var scale = Math.min(thumbW / 1180, thumbH / naturalH);
+        scaleEl.style.top = '50%';
+        scaleEl.style.left = '50%';
+        scaleEl.style.transformOrigin = 'center center';
+        scaleEl.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
+      } else {
+        scaleEl.style.transform = 'scale(' + (thumbW / 1180) + ')';
+      }
+    }
+    requestAnimationFrame(applyScale);
+    /* Web fonts (Fraunces/Manrope) load async with font-display:swap, so the first
+       measurement can happen against fallback-font metrics — re-measure once the
+       real fonts are in so text-heavy designs (e.g. the editorial layout's tight
+       max-width heading) don't lock in a scale sized for the wrong line-wrap. */
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(applyScale);
+    return scaleEl;
+  }
+
+  function buildVariantCard(variant, scrim){
+    var card = document.createElement('div');
+    card.className = 'variant-card';
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    card.innerHTML =
+      '<span class="variant-thumb"></span>' +
+      '<span class="variant-card-body"><strong>' + variant.name + '</strong><span>' + variant.description + '</span><span class="variant-card-use">Use this design &rarr;</span></span>';
+    mountVariantPreview(card.querySelector('.variant-thumb'), variant.html, 'contain');
+
+    var expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'variant-thumb-expand';
+    expandBtn.title = 'Preview larger';
+    expandBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+    card.querySelector('.variant-thumb').appendChild(expandBtn);
+    expandBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      openVariantLightbox(variant, function(){ insertVariant(variant); scrim.remove(); });
     });
+
+    card.addEventListener('click', function(){ insertVariant(variant); scrim.remove(); });
+    card.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); insertVariant(variant); scrim.remove(); }
+    });
+    return card;
   }
 
-  function renderSectionVariantList(key){
-    var list = document.getElementById('predefined-section-list');
-    var tpl = sectionTemplates[key];
-    var variants = sectionVariants[key];
-    list.innerHTML = '<div class="predefined-list-head"><button class="btn btn-ghost btn-sm" id="variant-back">Back</button><strong>' + tpl.name + ' designs</strong></div><small class="predefined-list-note">Choose a layout to add.</small><div class="predefined-list" id="variant-grid"></div>';
-    var grid = list.querySelector('#variant-grid');
-    variants.forEach(function(variant, index){
-      var card = document.createElement('button');
-      card.className = 'predefined-list-row';
-      card.setAttribute('data-section-variant', index);
-      card.innerHTML = '<span class="predefined-list-icon">' + (index + 1) + '</span><span><strong>' + variant.name + '</strong><small>' + variant.description + '</small></span><span class="predefined-list-arrow">›</span>';
-      grid.appendChild(card);
-      card.addEventListener('click', function(){
-        insertSectionAtAnchor(buildSectionShell(variant.name, variant.html), variant.name);
-        renderPredefinedSectionList();
+  function openSectionVariantModal(initialKey){
+    var categories = Object.keys(sectionTemplates).filter(function(k){ return predefinedDescriptions[k]; });
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML =
+      '<div class="modal variant-modal">' +
+      '<button class="icon-btn" id="variant-modal-close" title="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '<div class="modal-body">' +
+      '<h3>Predefined sections</h3>' +
+      '<p class="variant-note">Choose a section, then pick its design.</p>' +
+      '<div class="variant-tabs" id="variant-tabs"></div>' +
+      '<div class="variant-grid" id="variant-modal-grid"></div>' +
+      '</div></div>';
+    document.body.appendChild(scrim);
+
+    var tabsEl = scrim.querySelector('#variant-tabs');
+    var gridEl = scrim.querySelector('#variant-modal-grid');
+
+    categories.forEach(function(key){
+      var tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'variant-tab';
+      tab.textContent = sectionTemplates[key].name;
+      tab.setAttribute('data-tab-key', key);
+      tabsEl.appendChild(tab);
+      tab.addEventListener('click', function(){ setActiveTab(key); });
+    });
+
+    function setActiveTab(key){
+      tabsEl.querySelectorAll('.variant-tab').forEach(function(t){
+        var active = t.getAttribute('data-tab-key') === key;
+        t.classList.toggle('active', active);
+        if (active) t.scrollIntoView({block:'nearest', inline:'nearest'});
       });
-    });
-    list.querySelector('#variant-back').addEventListener('click', renderPredefinedSectionList);
+      gridEl.innerHTML = '';
+      sectionVariants[key].forEach(function(variant){
+        gridEl.appendChild(buildVariantCard(variant, scrim));
+      });
+    }
+
+    setActiveTab(categories.indexOf(initialKey) !== -1 ? initialKey : categories[0]);
+
+    function close(){ scrim.remove(); }
+    scrim.addEventListener('click', function(e){ if (e.target === scrim) close(); });
+    scrim.querySelector('#variant-modal-close').addEventListener('click', close);
+  }
+
+  function openVariantLightbox(variant, onUse){
+    var scrim = document.createElement('div');
+    scrim.className = 'variant-lightbox-scrim';
+    scrim.innerHTML =
+      '<div class="variant-lightbox">' +
+      '<div class="variant-lightbox-head"><strong>' + variant.name + '</strong><button class="icon-btn" id="variant-lightbox-close" title="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>' +
+      '<div class="variant-lightbox-body" id="variant-lightbox-body"></div>' +
+      '<div class="variant-lightbox-foot"><button class="btn btn-ghost btn-sm" id="variant-lightbox-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="variant-lightbox-use">Use this design</button></div>' +
+      '</div>';
+    document.body.appendChild(scrim);
+    mountVariantPreview(scrim.querySelector('#variant-lightbox-body'), variant.html);
+
+    function close(){ scrim.remove(); }
+    scrim.addEventListener('click', function(e){ if (e.target === scrim) close(); });
+    scrim.querySelector('#variant-lightbox-close').addEventListener('click', close);
+    scrim.querySelector('#variant-lightbox-cancel').addEventListener('click', close);
+    scrim.querySelector('#variant-lightbox-use').addEventListener('click', function(){ close(); onUse(); });
   }
 
   /* ---------- add-section source chooser ---------- */
@@ -2335,7 +2514,7 @@
     var sec = document.createElement('section');
     sec.className = 'site-section';
     sec.setAttribute('data-sec-name', name);
-    sec.innerHTML = '<span class="sec-name-tag">' + name + '</span>' + bodyHtml + addSectionBelowMarkup();
+    sec.innerHTML = '<span class="sec-name-tag">' + escHtml(name) + '</span>' + bodyHtml + addSectionBelowMarkup();
     return sec;
   }
 
@@ -2527,10 +2706,10 @@
     var d = new Date(iso);
     return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
-  function openSchedulePopover(sec, anchorBtn){
-    schedSec = sec;
+  function openSchedulePopover(target, anchorBtn){
+    schedSec = target;
     closeLyrMenu();
-    var existing = sec.getAttribute('data-scheduled-at');
+    var existing = target.getAttribute('data-scheduled-at');
     schedInput.value = existing || toLocalInputValue(new Date(Date.now() + 60 * 60000));
     positionFloating(schedPop, anchorBtn);
     schedInput.focus();
@@ -2538,40 +2717,48 @@
   function closeSchedulePopover(){ schedPop.hidden = true; schedSec = null; }
   document.addEventListener('mousedown', function(e){
     if (schedPop.hidden) return;
-    if (schedPop.contains(e.target) || e.target.closest('[data-menu-action="schedule"]')) return;
+    if (schedPop.contains(e.target) || e.target.closest('[data-menu-action="schedule"]') || e.target.closest('[data-action="schedule"]')) return;
     closeSchedulePopover();
   });
   document.getElementById('lyr-sched-save').addEventListener('click', function(){
     if (!schedSec || !schedInput.value) return;
+    var isSection = schedSec.classList.contains('site-section');
     schedSec.setAttribute('data-scheduled-at', schedInput.value);
     schedSec.classList.add('is-hidden-sec');
     schedSec.style.display = 'none';
-    pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
+    pushHistory(); markSaving();
+    if (isSection){ rebuildLayersPanel(); syncSectionToolbar(); }
     showToast('Scheduled to go live ' + formatSchedule(schedInput.value));
     closeSchedulePopover();
   });
   document.getElementById('lyr-sched-clear').addEventListener('click', function(){
     if (!schedSec) return;
+    var isSection = schedSec.classList.contains('site-section');
     schedSec.removeAttribute('data-scheduled-at');
     schedSec.classList.remove('is-hidden-sec');
     schedSec.style.display = '';
-    pushHistory(); markSaving(); rebuildLayersPanel(); syncSectionToolbar();
+    pushHistory(); markSaving();
+    if (isSection){ rebuildLayersPanel(); syncSectionToolbar(); }
     showToast('Schedule cleared');
     closeSchedulePopover();
   });
   setInterval(function(){
     var due = false;
-    frame.querySelectorAll('.site-section[data-scheduled-at]').forEach(function(sec){
-      if (new Date(sec.getAttribute('data-scheduled-at')) <= new Date()){
-        var name = sec.getAttribute('data-sec-name') || 'Section';
-        sec.removeAttribute('data-scheduled-at');
-        sec.classList.remove('is-hidden-sec');
-        sec.style.display = '';
-        showToast('"' + name + '" section is now live');
+    var sectionDue = false;
+    frame.querySelectorAll('[data-scheduled-at]').forEach(function(el){
+      if (new Date(el.getAttribute('data-scheduled-at')) <= new Date()){
+        var isSection = el.classList.contains('site-section');
+        var name = isSection ? (el.getAttribute('data-sec-name') || 'Section') : ((el.textContent || '').trim() || 'Button');
+        el.removeAttribute('data-scheduled-at');
+        el.classList.remove('is-hidden-sec');
+        el.style.display = '';
+        showToast('"' + name + '" ' + (isSection ? 'section' : 'button') + ' is now live');
         due = true;
+        if (isSection) sectionDue = true;
       }
     });
-    if (due){ markSaving(); rebuildLayersPanel(); syncSectionToolbar(); }
+    if (due) markSaving();
+    if (sectionDue){ rebuildLayersPanel(); syncSectionToolbar(); }
   }, 20000);
 
   function moveSectionBy(sec, dir){
@@ -2789,7 +2976,7 @@
     clone.removeAttribute('id');
     clone.removeAttribute('style');
     clone.querySelectorAll('#sel-toolbar, .sec-side-toolbar, .sec-name-tag, .sec-add-below, .add-sec-row').forEach(function(n){ n.remove(); });
-    clone.querySelectorAll('.site-section.is-hidden-sec').forEach(function(n){ n.remove(); });
+    clone.querySelectorAll('.is-hidden-sec').forEach(function(n){ n.remove(); });
     clone.querySelectorAll('[data-editable]').forEach(function(el){
       el.removeAttribute('data-editable');
       el.removeAttribute('contenteditable');
@@ -2820,14 +3007,18 @@
   document.getElementById('btn-publish').addEventListener('click', function(){
     showToast('Publishing…');
     setTimeout(function(){
+      /* a site handed over from Create Event publishes under its own name and slug */
+      var pubEv = (createDraft && createDraft.event) || null;
+      var pubName = pubEv ? pubEv.name : 'Northwind Studio';
+      var pubUrl = pubEv ? ('etoneworld.com/' + pubEv.slug) : 'northwindstudio.revamp-sites.com';
       var scrim = document.createElement('div');
       scrim.className = 'scrim';
       scrim.innerHTML =
         '<div class="modal"><div class="modal-body">' +
         '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
         '<h3>Your site is live</h3>' +
-        '<p>Northwind Studio has been published with your latest changes.</p>' +
-        '<span class="url">northwindstudio.revamp-sites.com</span>' +
+        '<p>' + escHtml(pubName) + ' has been published with your latest changes.</p>' +
+        '<span class="url">' + escHtml(pubUrl) + '</span>' +
         '</div><div class="modal-foot">' +
         '<button class="btn btn-secondary" id="publish-close">Keep editing</button>' +
         '<button class="btn btn-primary" id="publish-view">View site</button>' +
@@ -3340,6 +3531,69 @@
   function addSectionBelowMarkup(){
     return '<button class="sec-add-below" title="Add section below"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>';
   }
+
+  /* ---------- draft handed over from the Create Event wizard ----------
+     create-event.html step 4 ("Assemble my site") writes the template's
+     sections, already filled with what the user typed in step 3, to
+     localStorage and opens this editor with ?from=create. When that is
+     what brought us here, the demo site is replaced by their site. */
+  var HANDOFF_KEY = 'revamp.editor.handoff.v1';
+
+  /* maps create-event.html's theme object (see its TEMPLATE_THEMES) onto the
+     --site-* custom properties the site-content CSS above reads. Keep the key
+     list here in sync with both TEMPLATE_THEMES' fields and the --site-* tokens. */
+  var SITE_THEME_VARS = {
+    accent:'--site-accent', accentSoft:'--site-accent-soft',
+    heroBg:'--site-hero-bg', heroText:'--site-hero-text', heroMuted:'--site-hero-muted',
+    bandBg:'--site-band-bg', bandText:'--site-band-text', bandMuted:'--site-band-muted',
+    quoteBg:'--site-quote-bg', quoteText:'--site-quote-text',
+    footBg:'--site-foot-bg', footText:'--site-foot-text', footLogo:'--site-foot-logo',
+    displayFont:'--site-display-font', displayWeight:'--site-display-weight',
+    displayCase:'--site-display-case', displayTracking:'--site-display-tracking'
+  };
+  function applySiteTheme(theme, templateId){
+    if (!theme){ frame.removeAttribute('data-site-theme'); return; }
+    Object.keys(SITE_THEME_VARS).forEach(function(key){
+      if (theme[key] != null) frame.style.setProperty(SITE_THEME_VARS[key], theme[key]);
+    });
+    /* also derive the image/tile placeholder tints from the accent, so they
+       aren't left in the demo's green even when everything else is themed */
+    if (theme.accentSoft){
+      frame.style.setProperty('--site-image-bg', 'linear-gradient(135deg,' + theme.accentSoft + ',' + theme.accentSoft + ')');
+      frame.style.setProperty('--site-tile-bg', theme.accentSoft);
+    }
+    frame.setAttribute('data-site-theme', templateId || 'custom');
+  }
+
+  function applyCreateHandoff(){
+    if (new URLSearchParams(location.search).get('from') !== 'create') return false;
+    var draft = null;
+    try { draft = JSON.parse(localStorage.getItem(HANDOFF_KEY) || 'null'); } catch(e){ draft = null; }
+    if (!draft || !draft.sections || !draft.sections.length) return false;
+    createDraft = draft;
+
+    applySiteTheme(draft.theme, (draft.template && draft.template.id) || 'custom');
+
+    frame.querySelectorAll('.site-section').forEach(function(sec){ sec.remove(); });
+    var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
+    draft.sections.forEach(function(s){
+      frame.insertBefore(buildSectionShell(s.name || 'Section', s.html || ''), addRow);
+    });
+
+    var ev = draft.event || {};
+    var tpl = draft.template || {};
+    var nameEl = document.getElementById('ed-event-name');
+    var metaEl = document.getElementById('ed-event-meta');
+    if (nameEl) nameEl.textContent = (ev.name || 'Untitled event') + ' | etoneworld.com/' + (ev.slug || '');
+    if (metaEl) metaEl.textContent = [ev.dateLabel, ev.location, tpl.name, 'Draft'].filter(Boolean).join('  |  ');
+    document.title = (ev.name || 'Untitled event') + ' — Site Editor';
+    setTimeout(function(){
+      showToast('Opened ' + (tpl.name ? '"' + tpl.name + '"' : 'your template') + ' with the content you filled in');
+    }, 400);
+    return true;
+  }
+  applyCreateHandoff();
+
   frame.querySelectorAll('.site-section').forEach(function(sec){
     if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
   });
