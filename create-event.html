@@ -3357,6 +3357,7 @@
     var w = psd.width || 1920;
     var h = psd.height || 720;
     var layers = [];
+    var rasters = [];   // non-text pixel layers, bottom to top — used when the PSD has no composite of its own
 
     function walk(list){
       if (!list) return;
@@ -3392,10 +3393,10 @@
             layerItem.color = '#ffffff';
           }
         } else if (l.canvas){
+          /* pixels go into the composite below, not onto the layer: a PNG per layer
+             would blow the localStorage quota the draft is saved to */
           layerItem.type = 'image';
-          try {
-            layerItem.imageData = l.canvas.toDataURL('image/png');
-          } catch(e) {}
+          rasters.push({ canvas: l.canvas, left: left, top: top, opacity: layerItem.opacity });
         } else {
           layerItem.type = 'graphic';
         }
@@ -3428,9 +3429,23 @@
       layerCount: layers.length,
       layers: layers
     };
-    if (psd.canvas){
-      try { res.compositeImageData = psd.canvas.toDataURL('image/jpeg', 0.88); } catch(e){}
-      res.compositeCanvas = psd.canvas;
+    /* The PSD's own composite exists only when it was saved with "Maximize compatibility";
+       without it, flatten the pixel layers ourselves so the banner isn't blank. */
+    var composite = psd.canvas;
+    if (!composite && rasters.length){
+      composite = document.createElement('canvas');
+      composite.width = w; composite.height = h;
+      var cctx = composite.getContext('2d');
+      rasters.forEach(function(r){
+        cctx.globalAlpha = r.opacity;
+        cctx.drawImage(r.canvas, r.left, r.top);
+      });
+      cctx.globalAlpha = 1;
+    }
+    if (composite){
+      try { res.compositeImageData = composite.toDataURL('image/jpeg', 0.88); } catch(e){}
+      /* non-enumerable: a canvas doesn't survive JSON, and after a reload it would come back as {} */
+      Object.defineProperty(res, 'compositeCanvas', { value: composite, enumerable: false });
     }
     return res;
   }
@@ -3495,7 +3510,9 @@
     reader.readAsArrayBuffer(file);
   }
 
-  function generatePsdBannerHtml(b){
+  /* inlineImage: paint the composite straight onto the canvas (the preview here); left off, the HTML only carries
+     the sessionStorage key and custom_editor.html paints it (keeps the base64 out of the hand-off JSON) */
+  function generatePsdBannerHtml(b, inlineImage){
     if (!b) b = getDefaultPsdBanner();
     var w = b.width || 1920;
     var h = b.height || 720;
@@ -3553,8 +3570,11 @@
        sessionStorage without embedding the base64 blob in localStorage. */
     var outerBg = b.compositeBg || 'linear-gradient(135deg, #100609 0%, #1c080d 50%, #0a0405 100%)';
     var imgKeyAttr = b.compositeImageData ? ' data-psd-imgkey="revamp.psd.img.v1"' : '';
+    var imgStyle = (inlineImage && b.compositeImageData)
+      ? 'background-image:url(' + b.compositeImageData + ');background-size:100% 100%;background-repeat:no-repeat;'
+      : '';
     return '<div class="s-hero-psd" data-psd-banner="true" style="--psd-w:' + w + ';--psd-h:' + h + ';background:' + outerBg + ';">' +
-      '<div class="psd-canvas-wrap"' + imgKeyAttr + ' style="aspect-ratio:' + w + ' / ' + h + ';">' +
+      '<div class="psd-canvas-wrap"' + imgKeyAttr + ' style="aspect-ratio:' + w + ' / ' + h + ';' + imgStyle + '">' +
         layersHtml +
       '</div>' +
     '</div>';
@@ -3567,7 +3587,7 @@
     var ratio = (w / h).toFixed(2);
     var layers = b.layers || [];
 
-    var previewHtml = generatePsdBannerHtml(b);
+    var previewHtml = generatePsdBannerHtml(b, true);
     var detectedTheme = S.detectedBannerTheme || buildThemeFromPalette('#ED1C24');
 
     return '<div class="psd-import-wrap">' +
