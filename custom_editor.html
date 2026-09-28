@@ -1,8 +1,9 @@
-<!-- Revamp CMS - Site Editor prototype (Wix-Editor-style click-to-edit builder) -->
+﻿<!-- Revamp CMS - Site Editor prototype (Wix-Editor-style click-to-edit builder) -->
 <title>Site Editor &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   :root{
     --bg: #FAF7F6;
@@ -171,8 +172,9 @@
 
   /* ---------- design panel as a floating dropdown off its trigger button ---------- */
   .side-panel.panel-popover{
-    position: absolute; width: 280px; max-height: calc(100% - 24px);
+    position: absolute; width: 300px; max-height: min(88vh, 820px);
     border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
+    overflow: hidden; display: flex; flex-direction: column;
   }
   .side-panel.panel-popover::before{
     content:''; position:absolute; left: var(--pop-arrow-left, 20px); top:-7px; width:12px; height:12px;
@@ -180,6 +182,309 @@
     transform: rotate(45deg); border-radius: 2px;
   }
   .side-panel.panel-popover .side-panel-head{ border-radius: 12px 12px 0 0; }
+
+  /* ---------- design-panel toggle switch ---------- */
+  .dp-section-title{
+    font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-faint); margin-bottom:10px; display:block;
+  }
+  .dp-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .dp-row label{ font-size:12.5px; font-weight:600; color:var(--text); }
+  .toggle-sw{ position:relative; display:inline-block; width:36px; height:20px; flex-shrink:0; }
+  .toggle-sw input{ opacity:0; width:0; height:0; position:absolute; }
+  .toggle-sw .track{
+    position:absolute; inset:0; border-radius:20px; background:var(--surface-3);
+    border:1px solid var(--border); transition:background .18s ease, border-color .18s ease;
+    cursor:pointer;
+  }
+  .toggle-sw input:checked + .track{ background:var(--ok); border-color:var(--ok); }
+  .toggle-sw .track::after{
+    content:''; position:absolute; top:2px; left:2px; width:14px; height:14px;
+    border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22);
+    transition:transform .18s ease;
+  }
+  .toggle-sw input:checked + .track::after{ transform:translateX(16px); }
+  .dp-sub{ margin-top:10px; display:flex; flex-direction:column; gap:8px; animation:dp-fade-in .15s ease; }
+  .dp-sub.hidden{ display:none; }
+  @keyframes dp-fade-in{ from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+  .dp-seg{ display:flex; gap:3px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:3px; }
+  .dp-seg-btn{
+    flex:1; padding:6px 10px; border-radius:6px; border:none; background:transparent;
+    font-size:12px; font-weight:600; color:var(--text-muted); cursor:pointer; transition:all .13s;
+  }
+  .dp-seg-btn[aria-pressed="true"]{ background:var(--accent); color:#fff; box-shadow:var(--shadow-sm); }
+  .dp-seg-btn:hover:not([aria-pressed="true"])   { background:var(--surface-2); color:var(--text); }
+  .dp-input{ width:100%; border:1px solid var(--border); border-radius:7px; padding:7px 8px;
+    background:var(--surface); color:var(--text); font:inherit; font-size:12.5px; }
+  .dp-hint{ font-size:11px; color:var(--text-faint); line-height:1.45; }
+  .dp-divider{ height:1px; background:var(--border); margin:4px 0; }
+  .dp-style-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+  .dp-style-btn{
+    padding:7px 4px; border:1px solid var(--border); border-radius:7px;
+    background:var(--surface); color:var(--text-muted); font-size:11.5px; font-weight:600;
+    cursor:pointer; text-align:center; transition:all .14s ease;
+  }
+  .dp-style-btn:hover:not(.on){ background:var(--surface-2); color:var(--text); border-color:var(--border-strong, var(--border)); }
+  .dp-style-btn.on{ background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:var(--shadow-sm); }
+  .dp-step-btn{
+    width:26px; height:26px; border:1px solid var(--border); border-radius:6px;
+    background:var(--surface); color:var(--text); display:inline-flex; align-items:center;
+    justify-content:center; cursor:pointer; flex-shrink:0; transition:all .12s;
+  }
+  .dp-step-btn:hover{ background:var(--surface-2); border-color:var(--accent); color:var(--accent); }
+
+  /* ---------- Countdown timer bar (sticky bottom) ---------- */
+  #site-countdown-bar{
+    --cd-scale: 1;
+    position:fixed; bottom:0; left:0; right:0; z-index:9000;
+    background:linear-gradient(90deg,#141414,#2a1c1e);
+    color:#fff; padding:calc(10px * var(--cd-scale, 1)) calc(28px * var(--cd-scale, 1));
+    display:flex; align-items:center; justify-content:center; gap:calc(22px * var(--cd-scale, 1));
+    font-family:var(--font-body); box-shadow:0 -2px 18px rgba(0,0,0,.38);
+    border-top:2px solid var(--accent, #ED1C24);
+    transition:transform .3s ease;
+  }
+  #site-countdown-bar.hidden{ transform:translateY(100%); pointer-events:none; }
+  .cd-label{ font-size:calc(12px * var(--cd-scale, 1)); font-weight:700; letter-spacing:.06em; text-transform:uppercase; opacity:.72; }
+  .cd-units{ display:flex; align-items:center; gap:calc(10px * var(--cd-scale, 1)); }
+  .cd-unit{ display:flex; flex-direction:column; align-items:center; min-width:calc(46px * var(--cd-scale, 1)); }
+  .cd-num{
+    font-size:calc(26px * var(--cd-scale, 1)); font-weight:800; font-family:var(--font-mono, 'IBM Plex Mono', monospace);
+    line-height:1; background:rgba(255,255,255,.08); padding:calc(4px * var(--cd-scale, 1)) calc(10px * var(--cd-scale, 1)); border-radius:7px;
+  }
+  .cd-tag{ font-size:calc(10px * var(--cd-scale, 1)); font-weight:700; letter-spacing:.08em; text-transform:uppercase; opacity:.62; margin-top:calc(3px * var(--cd-scale, 1)); }
+  .cd-sep{ font-size:calc(22px * var(--cd-scale, 1)); font-weight:700; opacity:.4; margin-bottom:calc(10px * var(--cd-scale, 1)); }
+
+  /* ---------- Countdown inset in hero section (draggable overlay) ---------- */
+  .s-hero-countdown{
+    --cd-scale: 1;
+    /* absolute positioning: placed over the hero section */
+    position:absolute; bottom:36px; left:50%; transform:translateX(-50%);
+    z-index:20;
+    display:flex; align-items:center;
+    cursor:grab; user-select:none;
+    transition:box-shadow .15s ease;
+  }
+  .s-hero-countdown:active{ cursor:grabbing; }
+  .s-hero-countdown.cd-dragging{ transition:none; }
+  .s-hero-countdown .cd-unit{
+    display:flex; flex-direction:column; align-items:center;
+  }
+  .s-hero-countdown .cd-sep{ display:none; }
+
+  /* 1. Style: Capsule (Glass Pill - Default) */
+  .s-hero-countdown.cd-style-capsule{
+    gap:calc(36px * var(--cd-scale, 1));
+    padding:calc(16px * var(--cd-scale, 1)) calc(40px * var(--cd-scale, 1));
+    border:1px solid rgba(255,255,255,0.18);
+    border-radius:9999px;
+    background:rgba(12,14,20,0.76);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    box-shadow:0 calc(12px * var(--cd-scale, 1)) calc(36px * var(--cd-scale, 1)) rgba(0,0,0,0.45);
+  }
+  .s-hero-countdown.cd-style-capsule:active{
+    box-shadow:0 calc(18px * var(--cd-scale, 1)) calc(48px * var(--cd-scale, 1)) rgba(0,0,0,0.6);
+  }
+  .s-hero-countdown.cd-style-capsule .cd-unit{
+    min-width:calc(58px * var(--cd-scale, 1)); gap:calc(2px * var(--cd-scale, 1));
+  }
+  .s-hero-countdown.cd-style-capsule .cd-num{
+    font-size:calc(48px * var(--cd-scale, 1)); font-weight:300; line-height:1;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+    color:#ffffff; background:none; padding:0; letter-spacing:0.03em;
+  }
+  .s-hero-countdown.cd-style-capsule .cd-unit:first-child .cd-tag{ color:#2ed573; font-weight:600; }
+  .s-hero-countdown.cd-style-capsule .cd-tag{
+    font-size:calc(13px * var(--cd-scale, 1)); font-weight:400; letter-spacing:.04em;
+    color:rgba(255,255,255,0.72); text-transform:lowercase; margin-top:calc(4px * var(--cd-scale, 1)); opacity:1;
+  }
+
+  /* 2. Style: Cards (Individual Glass Tiles) */
+  .s-hero-countdown.cd-style-cards{
+    gap:calc(12px * var(--cd-scale, 1));
+    padding:calc(6px * var(--cd-scale, 1));
+    background:transparent; border:none; box-shadow:none; backdrop-filter:none;
+  }
+  .s-hero-countdown.cd-style-cards .cd-unit{
+    min-width:calc(70px * var(--cd-scale, 1));
+    padding:calc(12px * var(--cd-scale, 1)) calc(16px * var(--cd-scale, 1));
+    background:rgba(15,20,30,0.85);
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,0.15);
+    border-radius:calc(14px * var(--cd-scale, 1));
+    box-shadow:0 calc(8px * var(--cd-scale, 1)) calc(24px * var(--cd-scale, 1)) rgba(0,0,0,0.4);
+    gap:calc(2px * var(--cd-scale, 1));
+  }
+  .s-hero-countdown.cd-style-cards:active .cd-unit{
+    box-shadow:0 calc(12px * var(--cd-scale, 1)) calc(32px * var(--cd-scale, 1)) rgba(0,0,0,0.55);
+  }
+  .s-hero-countdown.cd-style-cards .cd-num{
+    font-size:calc(44px * var(--cd-scale, 1)); font-weight:700; line-height:1;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+    color:#ffffff; background:none; padding:0;
+  }
+  .s-hero-countdown.cd-style-cards .cd-tag{
+    font-size:calc(10.5px * var(--cd-scale, 1)); font-weight:700; letter-spacing:.08em;
+    color:var(--accent, #3b82f6); text-transform:uppercase; margin-top:calc(5px * var(--cd-scale, 1));
+  }
+
+  /* 3. Style: Minimal (Clean Floating) */
+  .s-hero-countdown.cd-style-minimal{
+    gap:calc(26px * var(--cd-scale, 1));
+    padding:calc(8px * var(--cd-scale, 1)) calc(16px * var(--cd-scale, 1));
+    background:transparent; border:none; box-shadow:none; backdrop-filter:none;
+  }
+  .s-hero-countdown.cd-style-minimal .cd-unit{
+    min-width:calc(54px * var(--cd-scale, 1)); gap:calc(2px * var(--cd-scale, 1));
+  }
+  .s-hero-countdown.cd-style-minimal .cd-sep{
+    display:block; font-size:calc(36px * var(--cd-scale, 1)); font-weight:300; opacity:.4;
+    color:#ffffff; margin-bottom:calc(18px * var(--cd-scale, 1)); line-height:1;
+  }
+  .s-hero-countdown.cd-style-minimal .cd-num{
+    font-size:calc(52px * var(--cd-scale, 1)); font-weight:300; line-height:1;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+    color:#ffffff; background:none; padding:0;
+    text-shadow:0 3px 18px rgba(0,0,0,0.9), 0 1px 4px rgba(0,0,0,0.8);
+    letter-spacing:0.02em;
+  }
+  .s-hero-countdown.cd-style-minimal .cd-tag{
+    font-size:calc(12.5px * var(--cd-scale, 1)); font-weight:500; letter-spacing:.04em;
+    color:rgba(255,255,255,0.85); text-transform:lowercase; margin-top:calc(4px * var(--cd-scale, 1));
+    text-shadow:0 2px 10px rgba(0,0,0,0.9);
+  }
+  .s-hero-countdown.cd-style-minimal .cd-unit:first-child .cd-tag{ color:#4ade80; }
+
+  /* 4. Style: Flip Clock (Split Mechanical Box) */
+  .s-hero-countdown.cd-style-flip{
+    gap:calc(10px * var(--cd-scale, 1));
+    padding:calc(12px * var(--cd-scale, 1)) calc(18px * var(--cd-scale, 1));
+    background:rgba(8,10,14,0.78);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:calc(18px * var(--cd-scale, 1));
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    box-shadow:0 calc(14px * var(--cd-scale, 1)) calc(40px * var(--cd-scale, 1)) rgba(0,0,0,0.5);
+  }
+  .s-hero-countdown.cd-style-flip .cd-unit{
+    position:relative; overflow:hidden;
+    min-width:calc(64px * var(--cd-scale, 1));
+    padding:calc(10px * var(--cd-scale, 1)) calc(14px * var(--cd-scale, 1));
+    background:linear-gradient(180deg, #252b36 0%, #191d26 49%, #10131a 51%, #090b0f 100%);
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:calc(10px * var(--cd-scale, 1));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.22), 0 calc(6px * var(--cd-scale, 1)) calc(16px * var(--cd-scale, 1)) rgba(0,0,0,0.55);
+    gap:calc(2px * var(--cd-scale, 1));
+  }
+  .s-hero-countdown.cd-style-flip .cd-unit::after{
+    content:''; position:absolute; left:0; right:0; top:48%; height:1px;
+    background:rgba(0,0,0,0.85); box-shadow:0 1px 0 rgba(255,255,255,0.1); pointer-events:none;
+  }
+  .s-hero-countdown.cd-style-flip .cd-num{
+    font-size:calc(42px * var(--cd-scale, 1)); font-weight:800; line-height:1;
+    font-family:var(--font-mono, 'IBM Plex Mono', monospace);
+    color:#f8fafc; letter-spacing:0.04em; background:none; padding:0;
+  }
+  .s-hero-countdown.cd-style-flip .cd-tag{
+    font-size:calc(10px * var(--cd-scale, 1)); font-weight:700; letter-spacing:.1em;
+    color:#94a3b8; text-transform:uppercase; margin-top:calc(6px * var(--cd-scale, 1));
+  }
+
+  /* 5. Style: Neon (Cyber Glow) */
+  .s-hero-countdown.cd-style-neon{
+    gap:calc(32px * var(--cd-scale, 1));
+    padding:calc(16px * var(--cd-scale, 1)) calc(38px * var(--cd-scale, 1));
+    background:rgba(8,10,22,0.86);
+    border:1.5px solid var(--accent, #6366f1);
+    border-radius:calc(22px * var(--cd-scale, 1));
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    box-shadow:0 0 calc(24px * var(--cd-scale, 1)) rgba(99,102,241,0.35), inset 0 0 calc(14px * var(--cd-scale, 1)) rgba(99,102,241,0.15);
+  }
+  .s-hero-countdown.cd-style-neon .cd-unit{
+    min-width:calc(56px * var(--cd-scale, 1)); gap:calc(2px * var(--cd-scale, 1));
+  }
+  .s-hero-countdown.cd-style-neon .cd-num{
+    font-size:calc(46px * var(--cd-scale, 1)); font-weight:700; line-height:1;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+    color:#ffffff; background:none; padding:0;
+    text-shadow:0 0 calc(12px * var(--cd-scale, 1)) var(--accent, #6366f1), 0 0 calc(24px * var(--cd-scale, 1)) var(--accent, #6366f1);
+  }
+  .s-hero-countdown.cd-style-neon .cd-tag{
+    font-size:calc(11px * var(--cd-scale, 1)); font-weight:700; letter-spacing:.1em;
+    color:#c7d2fe; text-transform:uppercase; margin-top:calc(5px * var(--cd-scale, 1));
+    text-shadow:0 0 calc(8px * var(--cd-scale, 1)) rgba(99,102,241,0.6);
+  }
+
+  /* ---------- Video / Canvas hero background ---------- */
+  .site-section.has-hero-media{ overflow:hidden; }
+  .hero-media-layer{
+    position:absolute; inset:0; z-index:0; pointer-events:none;
+    overflow:hidden;
+  }
+  .hero-media-layer video{
+    width:100%; height:100%; object-fit:cover; opacity:.55;
+  }
+  .hero-media-layer canvas{ width:100%; height:100%; }
+  /* keep hero text above the media layer */
+  .has-hero-media .s-hero > *,
+  .has-hero-media .s-hero-banner > *{ position:relative; z-index:1; }
+  .has-hero-media .s-hero,
+  .has-hero-media .s-hero-banner{ position:relative; }
+
+  /* ==========================================================
+     MOTION & SCROLL-DRIVEN MICRO-INTERACTIONS
+     ========================================================== */
+
+  /* 1. Sticky Navigation Header with Frosted Glass */
+  #frame.has-sticky-nav .site-section[data-sec-name="Navigation"],
+  .has-sticky-nav .site-section[data-sec-name="Navigation"]{
+    position: sticky; top: 0; z-index: 85;
+    transition: background .35s ease, backdrop-filter .35s ease, -webkit-backdrop-filter .35s ease, box-shadow .35s ease, border-color .35s ease;
+  }
+  #frame.has-sticky-nav .s-nav,
+  .has-sticky-nav .s-nav{
+    transition: background .35s ease, backdrop-filter .35s ease, -webkit-backdrop-filter .35s ease, box-shadow .35s ease, border-color .35s ease;
+  }
+  #frame.has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled,
+  #frame.has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled .s-nav,
+  .has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled,
+  .has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled .s-nav{
+    background: rgba(255, 255, 255, 0.82) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
+  }
+  #frame[data-site-theme="dark"].has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled,
+  #frame[data-site-theme="dark"].has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled .s-nav,
+  [data-site-theme="dark"].has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled,
+  [data-site-theme="dark"].has-sticky-nav .site-section[data-sec-name="Navigation"].is-scrolled .s-nav{
+    background: rgba(14, 18, 26, 0.84) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    box-shadow: 0 4px 28px rgba(0, 0, 0, 0.45) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  }
+
+  /* 2. Scroll-Triggered Reveals: Staggered Fade & Slide Up (40ms delay per card) */
+  #frame.has-scroll-reveals .reveal-item,
+  .has-scroll-reveals .reveal-item{
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1), transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--reveal-idx, 0) * 40ms);
+    will-change: opacity, transform;
+  }
+  #frame.has-scroll-reveals .reveal-item.is-revealed,
+  .has-scroll-reveals .reveal-item.is-revealed{
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* 3. Interactive Number Counters */
+  .stat-counting{
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+  }
 
   .panel-search{
     display:flex; align-items:center; gap:8px; background: var(--surface-2); border:1px solid var(--border);
@@ -683,6 +988,34 @@
   /* an outline button on a dark banner follows the banner's own text colour */
   .s-hero-banner .s-btn.secondary{ color: var(--site-hero-text); border-color: currentColor; }
 
+  /* ============ PSD HERO BANNER (Pixel-accurate layout & layers) ============ */
+  .s-hero-psd{
+    position: relative; width: 100%; margin: 0 auto;
+    background: #0D080A; overflow: hidden; box-sizing: border-box;
+  }
+  .s-hero-psd .psd-canvas-wrap{
+    position: relative; width: 100%; container-type: inline-size;
+    overflow: hidden; display: block; box-sizing: border-box;
+    aspect-ratio: 1920 / 720;
+  }
+  .s-hero-psd .psd-layer{
+    position: absolute; box-sizing: border-box; pointer-events: auto;
+  }
+  .s-hero-psd .psd-layer img{
+    display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none;
+  }
+  .s-hero-psd .psd-layer-text{
+    display: flex; align-items: center; white-space: pre-wrap; word-break: break-word;
+    line-height: 1.22; font-family: var(--site-display-font, var(--font-body, 'Inter', sans-serif));
+  }
+  .s-hero-psd .psd-layer-cta{
+    display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+    cursor: pointer; font-weight: 700; transition: transform .14s ease, filter .14s ease;
+  }
+  .s-hero-psd .psd-layer-cta:hover{
+    filter: brightness(1.12); transform: translateY(-1px);
+  }
+
   .s-stats{ display:flex; gap:14px; padding: 30px 40px; background: var(--site-band-bg); color: var(--site-band-text); flex-wrap:wrap; }
   .stage.device-mobile .s-stats{ padding:20px 22px; }
   .s-stat{ flex:1; min-width:130px; background: var(--site-surface); border-radius: var(--site-radius-sm); border:1px solid var(--site-border); padding:18px; text-align:center; color: var(--site-text); }
@@ -840,6 +1173,7 @@
       <span class="meta" id="ed-event-meta"></span>
     </span>
     <span class="topbar-acts">
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <button class="btn btn-secondary" type="button" id="btn-preview">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
         Preview
@@ -952,6 +1286,155 @@
             <option value="100px">Pill corners</option>
           </select>
         </div>
+
+        <div class="dp-divider"></div>
+
+        <!-- ====== HERO BACKGROUND ====== -->
+        <div class="field">
+          <span class="dp-section-title">Hero Background</span>
+          <div class="dp-seg" id="hero-bg-seg" role="group" aria-label="Hero background type">
+            <button class="dp-seg-btn" data-hero-bg="static" aria-pressed="true" title="Static / colour gradient">Static</button>
+            <button class="dp-seg-btn" data-hero-bg="video"  aria-pressed="false" title="Looping ambient video">Video</button>
+            <button class="dp-seg-btn" data-hero-bg="particles" aria-pressed="false" title="Canvas particle waves">Particles</button>
+          </div>
+          <div class="dp-sub hidden" id="dp-video-sub">
+            <label class="field" style="gap:5px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted)">Video URL (MP4 or WebM)</span>
+              <input id="hero-video-url" class="dp-input" type="url" placeholder="https://…/ambient.mp4">
+            </label>
+            <span class="dp-hint">
+              Paste a publicly accessible MP4 or WebM URL. The video will loop silently behind the hero.
+            </span>
+            <button class="btn btn-secondary btn-sm" id="hero-video-apply" style="align-self:flex-start">Apply video</button>
+          </div>
+          <div class="dp-sub hidden" id="dp-particles-sub">
+            <div class="dp-row" style="flex-wrap:wrap;gap:6px">
+              <label style="font-size:11px;font-weight:700;color:var(--text-muted)">Particle colour</label>
+              <input id="hero-particle-color" type="color" value="#8ECBFF" style="width:32px;height:26px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:var(--surface)">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="hero-particles-apply" style="align-self:flex-start">Apply particles</button>
+            <button class="btn btn-ghost btn-sm" id="hero-particles-remove" style="align-self:flex-start">Remove</button>
+          </div>
+          <div class="dp-sub" id="dp-static-sub" style="">
+            <button class="btn btn-ghost btn-sm" id="hero-media-clear" style="align-self:flex-start;display:none">&#10005; Clear background media</button>
+          </div>
+        </div>
+
+        <div class="dp-divider"></div>
+
+        <!-- ====== COUNTDOWN TIMER ====== -->
+        <div class="field">
+          <span class="dp-section-title">Countdown Timer</span>
+          <div class="dp-row">
+            <label for="countdown-toggle">Show countdown</label>
+            <label class="toggle-sw">
+              <input type="checkbox" id="countdown-toggle">
+              <span class="track"></span>
+            </label>
+          </div>
+          <div class="dp-sub hidden" id="dp-countdown-sub">
+            <label class="field" style="gap:5px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted)">Deadline</span>
+              <input id="countdown-deadline" class="dp-input" type="datetime-local">
+            </label>
+            <div class="field" style="gap:5px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted)">Placement</span>
+              <div class="dp-seg" id="countdown-placement-seg" role="group" aria-label="Countdown placement">
+                <button class="dp-seg-btn" data-cd-placement="hero"   aria-pressed="true"  title="Inside the hero section">In hero</button>
+                <button class="dp-seg-btn" data-cd-placement="bottom" aria-pressed="false" title="Sticky bar at screen bottom">Bottom bar</button>
+              </div>
+            </div>
+
+            <!-- ====== COUNTDOWN DESIGN STYLE ====== -->
+            <div class="field" style="gap:5px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-muted)">Design Style</span>
+              <div class="dp-style-grid" id="countdown-style-grid" role="group" aria-label="Countdown design style">
+                <button class="dp-style-btn on" data-cd-style="capsule" title="Glass Capsule (Default)">Capsule</button>
+                <button class="dp-style-btn" data-cd-style="cards"   title="Individual Glass Tiles">Cards</button>
+                <button class="dp-style-btn" data-cd-style="minimal" title="Clean Minimalist Floating">Minimal</button>
+                <button class="dp-style-btn" data-cd-style="flip"    title="Split Flip Clock Box">Flip</button>
+                <button class="dp-style-btn" data-cd-style="neon"    title="Illuminated Cyber Glow">Neon</button>
+              </div>
+            </div>
+
+            <!-- ====== COUNTDOWN SIZE CONTROLS ====== -->
+            <div class="field" style="gap:6px">
+              <div class="dp-row">
+                <span style="font-size:11px;font-weight:700;color:var(--text-muted)">Countdown Size</span>
+                <span id="countdown-size-val" style="font-size:11px;font-weight:700;color:var(--accent)">100%</span>
+              </div>
+              <div class="dp-row" style="gap:8px">
+                <button class="dp-step-btn" id="cd-size-dec" type="button" title="Decrease size" aria-label="Decrease size">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/></svg>
+                </button>
+                <input id="countdown-size-slider" type="range" min="60" max="150" step="5" value="100" style="flex:1;accent-color:var(--accent);cursor:pointer;height:4px">
+                <button class="dp-step-btn" id="cd-size-inc" type="button" title="Increase size" aria-label="Increase size">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
+              <div class="dp-seg" id="countdown-size-presets" role="group" aria-label="Size presets" style="margin-top:2px">
+                <button class="dp-seg-btn" data-cd-size="75">Small</button>
+                <button class="dp-seg-btn" data-cd-size="100" aria-pressed="true">Medium</button>
+                <button class="dp-seg-btn" data-cd-size="125">Large</button>
+                <button class="dp-seg-btn" data-cd-size="150">XL</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="dp-divider"></div>
+
+        <!-- ====== MOTION & SCROLL-DRIVEN MICRO-INTERACTIONS ====== -->
+        <div class="field" id="dp-motion-section">
+          <span class="dp-section-title">Motion &amp; Micro-Interactions</span>
+          <div class="dp-row">
+            <label for="motion-master-toggle">Enable motion effects</label>
+            <label class="toggle-sw">
+              <input type="checkbox" id="motion-master-toggle" checked>
+              <span class="track"></span>
+            </label>
+          </div>
+
+          <div class="dp-sub" id="dp-motion-sub">
+            <!-- 1. Scroll-Triggered Reveals -->
+            <div class="dp-row" style="margin-top:2px">
+              <div>
+                <label for="motion-reveals-toggle" style="display:block;font-size:12px;font-weight:600">Scroll Reveals</label>
+                <span class="dp-hint" style="display:block;font-size:10.5px">Fade &amp; slide up cards with 40ms stagger</span>
+              </div>
+              <label class="toggle-sw">
+                <input type="checkbox" id="motion-reveals-toggle" checked>
+                <span class="track"></span>
+              </label>
+            </div>
+
+            <!-- 2. Sticky Navigation Header with Frosted Glass -->
+            <div class="dp-row" style="margin-top:2px">
+              <div>
+                <label for="motion-sticky-nav-toggle" style="display:block;font-size:12px;font-weight:600">Sticky Frosted Nav</label>
+                <span class="dp-hint" style="display:block;font-size:10.5px">Frosted glass blur (12px) past hero</span>
+              </div>
+              <label class="toggle-sw">
+                <input type="checkbox" id="motion-sticky-nav-toggle" checked>
+                <span class="track"></span>
+              </label>
+            </div>
+
+            <!-- 3. Interactive Number Counters -->
+            <div class="dp-row" style="margin-top:2px">
+              <div>
+                <label for="motion-counters-toggle" style="display:block;font-size:12px;font-weight:600">Animated Counters</label>
+                <span class="dp-hint" style="display:block;font-size:10.5px">Smooth ease-out number count-up</span>
+              </div>
+              <label class="toggle-sw">
+                <input type="checkbox" id="motion-counters-toggle" checked>
+                <span class="track"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
       </div>
     </aside>
 
@@ -1278,10 +1761,25 @@
   <div id="layout-items-list" class="layout-items-list"></div>
   <div class="pop-actions"><button class="btn btn-secondary btn-sm" type="button" id="layout-item-add">+ Add item</button></div>
 </div>
+<!-- ====== COUNTDOWN TIMER BAR (sticky bottom, toggled from Design panel) ====== -->
+<div id="site-countdown-bar" class="hidden" aria-label="Event countdown timer" role="timer">
+  <span class="cd-label" id="cd-bar-label">Countdown to event</span>
+  <div class="cd-units">
+    <div class="cd-unit"><span class="cd-num" id="cd-bar-d">00</span><span class="cd-tag">Days</span></div>
+    <span class="cd-sep">:</span>
+    <div class="cd-unit"><span class="cd-num" id="cd-bar-h">00</span><span class="cd-tag">Hrs</span></div>
+    <span class="cd-sep">:</span>
+    <div class="cd-unit"><span class="cd-num" id="cd-bar-m">00</span><span class="cd-tag">Mins</span></div>
+    <span class="cd-sep">:</span>
+    <div class="cd-unit"><span class="cd-num" id="cd-bar-s">00</span><span class="cd-tag">Secs</span></div>
+  </div>
+</div>
 <div id="toast-region"></div>
 
+<script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
 <script src="sidebar.js"></script>
+<script src="ag-psd.bundle.js"></script>
 <script>
 (function(){
     var C = window.RevampCore;
@@ -2106,6 +2604,8 @@
     var top = btnRect.bottom - bodyRect.top + 10;
     panel.style.left = left + 'px';
     panel.style.top = top + 'px';
+    var availHeight = window.innerHeight - (btnRect.bottom + 16);
+    panel.style.maxHeight = Math.max(360, availHeight) + 'px';
     var arrowLeft = (btnRect.left - bodyRect.left) - left + (btnRect.width / 2) - 6;
     arrowLeft = Math.max(12, Math.min(arrowLeft, panelWidth - 24));
     panel.style.setProperty('--pop-arrow-left', arrowLeft + 'px');
@@ -2933,20 +3433,86 @@
     document.addEventListener('pointerup', onUp);
   }
 
+  /* ---------- color helpers ---------- */
+  function hexToRgb(h){
+    if (!h) return null;
+    h = h.replace(/^#/, '');
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var num = parseInt(h, 16);
+    return isNaN(num) ? null : [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
+  function rgbToHsl(r, g, b){
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max === min){ h = s = 0; }
+    else {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch(max){
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return [Math.round(h * 360), s, l];
+  }
+  function hslToHex(h, s, l){
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = l - c / 2;
+    var r = 0, g = 0, b = 0;
+    if (h < 60){ r = c; g = x; }
+    else if (h < 120){ r = x; g = c; }
+    else if (h < 180){ g = c; b = x; }
+    else if (h < 240){ g = x; b = c; }
+    else if (h < 300){ r = x; b = c; }
+    else { r = c; b = x; }
+    var toHex = function(n){ var hex = Math.max(0, Math.min(255, Math.round((n + m) * 255))).toString(16); return hex.length === 1 ? '0' + hex : hex; };
+    return ('#' + toHex(r) + toHex(g) + toHex(b)).toUpperCase();
+  }
+
   /* ---------- design panel ---------- */
-  document.querySelectorAll('#theme-swatches [data-theme-color]').forEach(function(sw){
-    sw.addEventListener('click', function(){
-      document.querySelectorAll('#theme-swatches .swatch').forEach(function(s){ s.classList.remove('on'); });
-      sw.classList.add('on');
-      var color = sw.getAttribute('data-theme-color');
-      document.documentElement.style.setProperty('--accent', color);
-      document.querySelectorAll('.s-btn.primary, .cta').forEach(function(b){ b.style.background = color; });
-      document.querySelectorAll('.s-btn.secondary').forEach(function(b){ b.style.color = color; b.style.borderColor = color; });
-      document.querySelectorAll('.kicker').forEach(function(k){ k.style.color = color; });
-      markSaving();
-      showToast('Theme color updated');
+  function onDesignSwatchClick(sw){
+    var container = document.getElementById('theme-swatches');
+    if (!container) return;
+    container.querySelectorAll('.swatch').forEach(function(s){ s.classList.remove('on'); });
+    sw.classList.add('on');
+    var color = sw.getAttribute('data-theme-color');
+    if (!color) return;
+
+    document.documentElement.style.setProperty('--accent', color);
+    frame.style.setProperty('--site-accent', color);
+
+    var rgb = hexToRgb(color);
+    if (rgb){
+      var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+      var contrast = lum > 0.6 ? '#141414' : '#FFFFFF';
+      frame.style.setProperty('--site-accent-contrast', contrast);
+      var hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+      var soft = hslToHex(hsl[0], Math.min(hsl[1], 0.45), 0.93);
+      var border = hslToHex(hsl[0], 0.18, 0.88);
+      frame.style.setProperty('--site-accent-soft', soft);
+      frame.style.setProperty('--site-image-bg', 'linear-gradient(135deg,' + soft + ',' + soft + ')');
+      frame.style.setProperty('--site-tile-bg', soft);
+      frame.style.setProperty('--site-border', border);
+    }
+
+    document.querySelectorAll('.s-btn.primary, .cta').forEach(function(b){ b.style.background = color; });
+    document.querySelectorAll('.s-btn.secondary').forEach(function(b){ b.style.color = color; b.style.borderColor = color; });
+    document.querySelectorAll('.kicker').forEach(function(k){ k.style.color = color; });
+    markSaving();
+    showToast('Theme color updated');
+  }
+
+  var swatchesWrap = document.getElementById('theme-swatches');
+  if (swatchesWrap){
+    swatchesWrap.addEventListener('click', function(e){
+      var sw = e.target.closest('.swatch');
+      if (sw) onDesignSwatchClick(sw);
     });
-  });
+  }
   document.getElementById('theme-font').addEventListener('change', function(){
     frame.querySelectorAll('h1,h2,h3,.logo').forEach(function(h){ h.style.fontFamily = this.value; }.bind(this));
     markSaving();
@@ -2956,6 +3522,674 @@
     frame.querySelectorAll('.s-card, .imgph, .ph, .gi, .s-stat').forEach(function(b){ b.style.borderRadius = (parseInt(this.value) > 40 ? '18px' : this.value); }.bind(this));
     markSaving();
   });
+
+  /* ==========================================================
+     HERO BACKGROUND — Video / Canvas Particle / Static
+     ========================================================== */
+  (function(){
+    var heroBgSeg      = document.getElementById('hero-bg-seg');
+    var dpVideoSub     = document.getElementById('dp-video-sub');
+    var dpParticlesSub = document.getElementById('dp-particles-sub');
+    var dpStaticSub    = document.getElementById('dp-static-sub');
+    var heroMediaClear = document.getElementById('hero-media-clear');
+    var heroBgMode     = 'static'; // 'static' | 'video' | 'particles'
+    var particleAnimId = null;
+
+    function getHeroSection(){
+      return frame.querySelector('.site-section[data-sec-name="Hero"]') ||
+             frame.querySelector('.site-section');
+    }
+
+    /* ---------- remove any existing media layer ---------- */
+    function clearHeroMedia(){
+      var sec = getHeroSection();
+      if (!sec) return;
+      var old = sec.querySelector('.hero-media-layer');
+      if (old){ old.remove(); }
+      sec.classList.remove('has-hero-media');
+      if (particleAnimId){ cancelAnimationFrame(particleAnimId); particleAnimId = null; }
+      heroMediaClear.style.display = 'none';
+    }
+
+    /* ---------- VIDEO background ---------- */
+    function applyVideoBackground(url){
+      clearHeroMedia();
+      if (!url || !url.trim()){ showToast('Enter a video URL first'); return; }
+      var sec = getHeroSection();
+      if (!sec){ showToast('No hero section found'); return; }
+      var layer = document.createElement('div');
+      layer.className = 'hero-media-layer';
+      var vid = document.createElement('video');
+      vid.src = url.trim();
+      vid.setAttribute('autoplay', '');
+      vid.setAttribute('loop', '');
+      vid.setAttribute('muted', '');
+      vid.setAttribute('playsinline', '');
+      vid.style.opacity = '0.55';
+      vid.addEventListener('error', function(){ showToast('Video failed to load — check the URL and CORS headers'); });
+      layer.appendChild(vid);
+      sec.classList.add('has-hero-media');
+      sec.insertBefore(layer, sec.firstChild);
+      vid.play().catch(function(){});
+      heroMediaClear.style.display = '';
+      markSaving();
+      showToast('Video background applied');
+    }
+
+    /* ---------- PARTICLE WAVE background ---------- */
+    function applyParticles(color){
+      clearHeroMedia();
+      var sec = getHeroSection();
+      if (!sec){ showToast('No hero section found'); return; }
+      var layer = document.createElement('div');
+      layer.className = 'hero-media-layer';
+      var canvas = document.createElement('canvas');
+      canvas.setAttribute('aria-hidden', 'true');
+      layer.appendChild(canvas);
+      sec.classList.add('has-hero-media');
+      sec.insertBefore(layer, sec.firstChild);
+      heroMediaClear.style.display = '';
+
+      var particles = [];
+      var NUM = 90;
+      var ctx = canvas.getContext('2d');
+
+      function resize(){
+        canvas.width  = layer.offsetWidth  || 900;
+        canvas.height = layer.offsetHeight || 420;
+      }
+      resize();
+
+      function hexToRgba(hex, a){
+        var r = parseInt(hex.slice(1,3), 16);
+        var g = parseInt(hex.slice(3,5), 16);
+        var b = parseInt(hex.slice(5,7), 16);
+        return 'rgba('+r+','+g+','+b+','+a+')';
+      }
+
+      for (var i = 0; i < NUM; i++){
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          r: 1 + Math.random() * 2.5,
+          vx: (Math.random() - 0.5) * 0.5,
+          vy: (Math.random() - 0.5) * 0.5,
+          a: 0.15 + Math.random() * 0.55
+        });
+      }
+
+      function drawParticles(){
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // dark overlay
+        ctx.fillStyle = 'rgba(10,6,12,0.42)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // connect nearby particles
+        var clr = color || '#8ECBFF';
+        for (var a = 0; a < particles.length; a++){
+          for (var b2 = a + 1; b2 < particles.length; b2++){
+            var dx = particles[a].x - particles[b2].x;
+            var dy = particles[a].y - particles[b2].y;
+            var dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 110){
+              ctx.strokeStyle = hexToRgba(clr, (1 - dist / 110) * 0.28);
+              ctx.lineWidth = 0.8;
+              ctx.beginPath();
+              ctx.moveTo(particles[a].x, particles[a].y);
+              ctx.lineTo(particles[b2].x, particles[b2].y);
+              ctx.stroke();
+            }
+          }
+        }
+        // draw dots
+        for (var k = 0; k < particles.length; k++){
+          var p = particles[k];
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = hexToRgba(clr, p.a);
+          ctx.fill();
+          p.x += p.vx; p.y += p.vy;
+          if (p.x < 0 || p.x > canvas.width)  p.vx *= -1;
+          if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        }
+        particleAnimId = requestAnimationFrame(drawParticles);
+      }
+      drawParticles();
+
+      window.addEventListener('resize', function(){
+        resize();
+        for (var j = 0; j < particles.length; j++){
+          particles[j].x = Math.min(particles[j].x, canvas.width);
+          particles[j].y = Math.min(particles[j].y, canvas.height);
+        }
+      });
+
+      markSaving();
+      showToast('Particle wave background applied');
+    }
+
+    /* ---------- segmented button switch ---------- */
+    function setHeroBgMode(mode){
+      heroBgMode = mode;
+      heroBgSeg.querySelectorAll('.dp-seg-btn').forEach(function(b){
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-hero-bg') === mode));
+      });
+      dpVideoSub.classList.toggle('hidden',     mode !== 'video');
+      dpParticlesSub.classList.toggle('hidden', mode !== 'particles');
+      dpStaticSub.classList.toggle('hidden',    mode === 'video' || mode === 'particles');
+      if (mode === 'static') clearHeroMedia();
+    }
+
+    heroBgSeg.addEventListener('click', function(e){
+      var btn = e.target.closest('.dp-seg-btn');
+      if (!btn) return;
+      setHeroBgMode(btn.getAttribute('data-hero-bg'));
+    });
+
+    document.getElementById('hero-video-apply').addEventListener('click', function(){
+      var url = document.getElementById('hero-video-url').value.trim();
+      applyVideoBackground(url);
+    });
+    document.getElementById('hero-particles-apply').addEventListener('click', function(){
+      var color = document.getElementById('hero-particle-color').value;
+      applyParticles(color);
+    });
+    document.getElementById('hero-particles-remove').addEventListener('click', function(){
+      clearHeroMedia();
+      showToast('Particle background removed');
+    });
+    heroMediaClear.addEventListener('click', function(){
+      clearHeroMedia();
+      setHeroBgMode('static');
+      showToast('Hero media cleared');
+    });
+  })();
+
+  /* ==========================================================
+     COUNTDOWN TIMER BAR  — Days : Hrs : Mins : Secs
+     ========================================================== */
+  (function(){
+    var toggle       = document.getElementById('countdown-toggle');
+    var subPanel     = document.getElementById('dp-countdown-sub');
+    var deadlineIn   = document.getElementById('countdown-deadline');
+    var placeSeg     = document.getElementById('countdown-placement-seg');
+    var cdBar        = document.getElementById('site-countdown-bar');
+    var cdBarD       = document.getElementById('cd-bar-d');
+    var cdBarH       = document.getElementById('cd-bar-h');
+    var cdBarM       = document.getElementById('cd-bar-m');
+    var cdBarS       = document.getElementById('cd-bar-s');
+
+    var cdEnabled    = false;
+    var cdPlacement  = 'hero';    // 'hero' | 'bottom'
+    var cdStyle      = 'capsule'; // 'capsule' | 'cards' | 'minimal' | 'flip' | 'neon'
+    var cdScalePct   = 100;       // 60 to 150 percent
+    var cdDeadline   = null;      // JS Date
+    var cdIntervalId = null;
+
+    var styleGrid    = document.getElementById('countdown-style-grid');
+    var sizeSlider   = document.getElementById('countdown-size-slider');
+    var sizeVal      = document.getElementById('countdown-size-val');
+    var sizeDec      = document.getElementById('cd-size-dec');
+    var sizeInc      = document.getElementById('cd-size-inc');
+    var sizePresets  = document.getElementById('countdown-size-presets');
+
+    /* ---------- hero-inset countdown markup ---------- */
+    var HERO_CD_CLASS = 's-hero-countdown';
+    function buildHeroCdHtml(){
+      var scale = cdScalePct / 100;
+      /* Injected directly into the .site-section so position:absolute is
+         relative to the section container, not buried in text flow */
+      return '<div class="' + HERO_CD_CLASS + ' cd-style-' + cdStyle + '" id="hero-countdown-inset" data-cd-style="' + cdStyle + '" role="timer" aria-label="Event countdown" title="Drag to reposition" style="--cd-scale:' + scale + '">' +
+        '<div class="cd-unit"><span class="cd-num" id="hcd-d">00</span><span class="cd-tag">days</span></div>' +
+        '<div class="cd-sep">:</div>' +
+        '<div class="cd-unit"><span class="cd-num" id="hcd-h">00</span><span class="cd-tag">hours</span></div>' +
+        '<div class="cd-sep">:</div>' +
+        '<div class="cd-unit"><span class="cd-num" id="hcd-m">00</span><span class="cd-tag">minutes</span></div>' +
+        '<div class="cd-sep">:</div>' +
+        '<div class="cd-unit"><span class="cd-num" id="hcd-s">00</span><span class="cd-tag">seconds</span></div>' +
+      '</div>';
+    }
+
+    function getHeroSection(){
+      return frame.querySelector('.site-section[data-sec-name="Hero"]') ||
+             frame.querySelector('.site-section');
+    }
+
+    function removeHeroInset(){
+      var el = frame.querySelector('#hero-countdown-inset');
+      if (el) el.remove();
+    }
+
+    /* ---------- drag logic for hero countdown ---------- */
+    function makeCountdownDraggable(el, sec){
+      var isDragging = false;
+      var startX, startY;
+
+      el.addEventListener('pointerdown', function(e){
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        isDragging = true;
+        el.classList.add('cd-dragging');
+        try { el.setPointerCapture(e.pointerId); } catch(err){}
+        var rect    = el.getBoundingClientRect();
+        var secRect = sec.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        /* switch to explicit left and top within the hero section */
+        el.style.transform = 'none';
+        el.style.bottom = 'auto';
+        el.style.right  = 'auto';
+        el.style.left   = (rect.left - secRect.left) + 'px';
+        el.style.top    = (rect.top  - secRect.top)  + 'px';
+        e.preventDefault();
+      });
+
+      el.addEventListener('pointermove', function(e){
+        if (!isDragging) return;
+        var secRect = sec.getBoundingClientRect();
+        var elRect  = el.getBoundingClientRect();
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        var curLeft = parseFloat(el.style.left) || 0;
+        var curTop  = parseFloat(el.style.top)  || 0;
+        var newLeft = curLeft + dx;
+        var newTop  = curTop  + dy;
+        /* clamp within hero boundaries */
+        newLeft = Math.max(0, Math.min(newLeft, secRect.width  - elRect.width));
+        newTop  = Math.max(0, Math.min(newTop,  secRect.height - elRect.height));
+        el.style.left = newLeft + 'px';
+        el.style.top  = newTop  + 'px';
+        startX = e.clientX;
+        startY = e.clientY;
+      });
+
+      function stopDrag(e){
+        if (!isDragging) return;
+        isDragging = false;
+        el.classList.remove('cd-dragging');
+        try { if (e && e.pointerId) el.releasePointerCapture(e.pointerId); } catch(err){}
+      }
+      el.addEventListener('pointerup', stopDrag);
+      el.addEventListener('pointercancel', stopDrag);
+    }
+
+    function showHeroInset(){
+      removeHeroInset();
+      var sec = getHeroSection();
+      if (!sec) return;
+      /* ensure section is position:relative so absolute child lands correctly */
+      if (getComputedStyle(sec).position === 'static') sec.style.position = 'relative';
+      /* inject directly into section, not into .s-hero text flow */
+      sec.insertAdjacentHTML('beforeend', buildHeroCdHtml());
+      var el = sec.querySelector('#hero-countdown-inset');
+      if (el) makeCountdownDraggable(el, sec);
+    }
+
+    /* ---------- live appearance update (style & size) ---------- */
+    function updateCountdownAppearance(){
+      var scale = cdScalePct / 100;
+      var inset = frame.querySelector('#hero-countdown-inset');
+      if (inset){
+        inset.className = HERO_CD_CLASS + ' cd-style-' + cdStyle;
+        inset.setAttribute('data-cd-style', cdStyle);
+        inset.style.setProperty('--cd-scale', scale);
+      }
+      if (cdBar){
+        cdBar.style.setProperty('--cd-scale', scale);
+      }
+      if (sizeVal) sizeVal.textContent = cdScalePct + '%';
+      if (sizeSlider && Number(sizeSlider.value) !== cdScalePct) sizeSlider.value = cdScalePct;
+      if (sizePresets){
+        sizePresets.querySelectorAll('.dp-seg-btn').forEach(function(b){
+          b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-cd-size')) === cdScalePct));
+        });
+      }
+      if (styleGrid){
+        styleGrid.querySelectorAll('.dp-style-btn').forEach(function(b){
+          b.classList.toggle('on', b.getAttribute('data-cd-style') === cdStyle);
+        });
+      }
+      markSaving();
+    }
+
+    /* ---------- pad helper ---------- */
+    function pad2(n){ return n < 10 ? '0' + n : String(n); }
+
+    /* ---------- tick ---------- */
+    function tickCountdown(){
+      if (!cdDeadline || !cdEnabled) return;
+      var now  = Date.now();
+      var diff = Math.max(0, cdDeadline.getTime() - now);
+      var totalSecs = Math.floor(diff / 1000);
+      var d = Math.floor(totalSecs / 86400);
+      var h = Math.floor((totalSecs % 86400) / 3600);
+      var m = Math.floor((totalSecs % 3600) / 60);
+      var s = totalSecs % 60;
+
+      if (cdPlacement === 'bottom'){
+        cdBarD.textContent = pad2(d);
+        cdBarH.textContent = pad2(h);
+        cdBarM.textContent = pad2(m);
+        cdBarS.textContent = pad2(s);
+      } else {
+        var hd = frame.querySelector('#hcd-d');
+        var hh = frame.querySelector('#hcd-h');
+        var hm = frame.querySelector('#hcd-m');
+        var hs = frame.querySelector('#hcd-s');
+        if (hd) hd.textContent = pad2(d);
+        if (hh) hh.textContent = pad2(h);
+        if (hm) hm.textContent = pad2(m);
+        if (hs) hs.textContent = pad2(s);
+      }
+    }
+
+    /* ---------- apply / remove countdown ---------- */
+    function applyCountdown(){
+      // stop any previous ticker
+      if (cdIntervalId) clearInterval(cdIntervalId);
+
+      if (!cdEnabled){
+        // OFF — hide bar, remove hero inset
+        cdBar.classList.add('hidden');
+        removeHeroInset();
+        return;
+      }
+
+      // resolve deadline
+      var val = deadlineIn.value;
+      cdDeadline = val ? new Date(val) : new Date(Date.now() + 7 * 24 * 3600 * 1000);
+
+      if (cdPlacement === 'bottom'){
+        removeHeroInset();
+        cdBar.classList.remove('hidden');
+        updateCountdownAppearance();
+      } else {
+        cdBar.classList.add('hidden');
+        showHeroInset();
+        updateCountdownAppearance();
+      }
+
+      tickCountdown();
+      cdIntervalId = setInterval(tickCountdown, 1000);
+      markSaving();
+    }
+
+    /* ---------- toggle switch ---------- */
+    toggle.addEventListener('change', function(){
+      cdEnabled = this.checked;
+      subPanel.classList.toggle('hidden', !cdEnabled);
+      applyCountdown();
+    });
+
+    /* ---------- deadline picker ---------- */
+    deadlineIn.addEventListener('change', function(){
+      if (!cdEnabled) return;
+      applyCountdown();
+    });
+
+    /* ---------- placement segmented switch ---------- */
+    placeSeg.addEventListener('click', function(e){
+      var btn = e.target.closest('.dp-seg-btn');
+      if (!btn) return;
+      var pl = btn.getAttribute('data-cd-placement');
+      cdPlacement = pl;
+      placeSeg.querySelectorAll('.dp-seg-btn').forEach(function(b){
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-cd-placement') === pl));
+      });
+      if (cdEnabled) applyCountdown();
+    });
+
+    /* ---------- style grid picker ---------- */
+    if (styleGrid){
+      styleGrid.addEventListener('click', function(e){
+        var btn = e.target.closest('.dp-style-btn');
+        if (!btn) return;
+        var st = btn.getAttribute('data-cd-style');
+        if (!st) return;
+        cdStyle = st;
+        updateCountdownAppearance();
+      });
+    }
+
+    /* ---------- size slider ---------- */
+    if (sizeSlider){
+      sizeSlider.addEventListener('input', function(){
+        cdScalePct = parseInt(this.value, 10) || 100;
+        updateCountdownAppearance();
+      });
+    }
+
+    /* ---------- size stepper decrease (-) ---------- */
+    if (sizeDec){
+      sizeDec.addEventListener('click', function(){
+        cdScalePct = Math.max(60, cdScalePct - 5);
+        updateCountdownAppearance();
+      });
+    }
+
+    /* ---------- size stepper increase (+) ---------- */
+    if (sizeInc){
+      sizeInc.addEventListener('click', function(){
+        cdScalePct = Math.min(150, cdScalePct + 5);
+        updateCountdownAppearance();
+      });
+    }
+
+    /* ---------- size presets ---------- */
+    if (sizePresets){
+      sizePresets.addEventListener('click', function(e){
+        var btn = e.target.closest('.dp-seg-btn');
+        if (!btn) return;
+        var sz = parseInt(btn.getAttribute('data-cd-size'), 10);
+        if (sz){
+          cdScalePct = sz;
+          updateCountdownAppearance();
+        }
+      });
+    }
+
+    /* pre-fill deadline to 7 days from now */
+    (function(){
+      var d = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+      var pad = function(n){ return String(n).padStart(2, '0'); };
+      deadlineIn.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+        'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    })();
+  })();
+
+  /* ==========================================================
+     MOTION & SCROLL-DRIVEN MICRO-INTERACTIONS
+     ========================================================== */
+  (function(){
+    var masterToggle  = document.getElementById('motion-master-toggle');
+    var motionSub     = document.getElementById('dp-motion-sub');
+    var revealsToggle = document.getElementById('motion-reveals-toggle');
+    var stickyToggle  = document.getElementById('motion-sticky-nav-toggle');
+    var countToggle   = document.getElementById('motion-counters-toggle');
+
+    var motionOn  = true;
+    var revealsOn = true;
+    var stickyOn  = true;
+    var countOn   = true;
+
+    function initRevealItems(){
+      var groupSelectors = [
+        '.s-cards', '.s-stats', '.s-gal-grid', '.marketing-track',
+        '.auto-grid', '.track-grid', '.ai-topic-list', '.s-speakers', '.s-agenda'
+      ];
+      groupSelectors.forEach(function(sel){
+        frame.querySelectorAll(sel).forEach(function(cont){
+          var children = cont.querySelectorAll(':scope > *');
+          children.forEach(function(child, i){
+            child.classList.add('reveal-item');
+            child.style.setProperty('--reveal-idx', i);
+          });
+        });
+      });
+
+      frame.querySelectorAll('.s-card, .s-stat, .gi, .marketing-card, .auto-card, .track-card, .ai-insight, .s-speaker-card, .speaker-card, .agenda-item, .s-agenda-item').forEach(function(el){
+        if (!el.classList.contains('reveal-item')){
+          el.classList.add('reveal-item');
+          el.style.setProperty('--reveal-idx', 0);
+        }
+      });
+    }
+
+    function animateCounter(el, duration){
+      var orig = el.getAttribute('data-orig-stat');
+      if (!orig){
+        orig = el.textContent.trim();
+        el.setAttribute('data-orig-stat', orig);
+      }
+      var m = orig.match(/^([^\d]*)(\d[\d,.]*)(.*)$/);
+      if (!m) return;
+      var prefix = m[1];
+      var rawNum = m[2].replace(/,/g, '');
+      var suffix = m[3];
+      var target = parseFloat(rawNum);
+      if (isNaN(target)) return;
+      var hasComma = m[2].indexOf(',') !== -1;
+      var isFloat = rawNum.indexOf('.') !== -1;
+      var decimals = isFloat ? (rawNum.split('.')[1] || '').length : 0;
+
+      var startTime = null;
+      el.classList.add('stat-counting');
+
+      function step(timestamp){
+        if (!startTime) startTime = timestamp;
+        var progress = Math.min(1, (timestamp - startTime) / duration);
+        var ease = 1 - Math.pow(1 - progress, 3);
+        var current = target * ease;
+        var formatted = isFloat ? current.toFixed(decimals) : Math.round(current);
+        if (hasComma) formatted = Number(formatted).toLocaleString('en-US');
+        el.textContent = prefix + formatted + suffix;
+        if (progress < 1){
+          requestAnimationFrame(step);
+        } else {
+          el.textContent = orig;
+          el.classList.remove('stat-counting');
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    function checkMotionState(){
+      if (!motionOn) return;
+
+      var stageRect = stage.getBoundingClientRect();
+
+      // 1. Sticky Navigation Header with Frosted Glass
+      if (stickyOn){
+        var heroSec = frame.querySelector('.site-section[data-sec-name="Hero"]') || frame.querySelector('.s-hero');
+        var navSec  = frame.querySelector('.site-section[data-sec-name="Navigation"]');
+        if (navSec){
+          var heroBottom = heroSec ? (heroSec.getBoundingClientRect().bottom - stageRect.top) : 80;
+          if (heroBottom <= 80){
+            navSec.classList.add('is-scrolled');
+          } else {
+            navSec.classList.remove('is-scrolled');
+          }
+        }
+      }
+
+      // 2. Scroll-Triggered Reveals (fade & slide up with 40ms stagger)
+      if (revealsOn){
+        var unrevealed = frame.querySelectorAll('.reveal-item:not(.is-revealed)');
+        unrevealed.forEach(function(item){
+          var rect = item.getBoundingClientRect();
+          if (rect.top < stageRect.bottom - 20 && rect.bottom > stageRect.top){
+            item.classList.add('is-revealed');
+          }
+        });
+      }
+
+      // 3. Interactive Number Counters (smooth ease-out curve)
+      if (countOn){
+        var stats = frame.querySelectorAll('.s-stat .n, [data-counter-stat]');
+        stats.forEach(function(item){
+          if (item.getAttribute('data-has-counted') === 'true') return;
+          var rect = item.getBoundingClientRect();
+          if (rect.top < stageRect.bottom - 20 && rect.bottom > stageRect.top){
+            item.setAttribute('data-has-counted', 'true');
+            animateCounter(item, 1600);
+          }
+        });
+      }
+    }
+
+    function applyMotionConfig(){
+      var isReveals  = motionOn && revealsOn;
+      var isSticky   = motionOn && stickyOn;
+      var isCounters = motionOn && countOn;
+
+      frame.classList.toggle('has-scroll-reveals', isReveals);
+      frame.classList.toggle('has-sticky-nav',     isSticky);
+
+      var navSec = frame.querySelector('.site-section[data-sec-name="Navigation"]');
+      if (navSec && !isSticky){
+        navSec.classList.remove('is-scrolled');
+      }
+
+      if (isReveals){
+        initRevealItems();
+      } else {
+        frame.querySelectorAll('.reveal-item').forEach(function(el){
+          el.classList.add('is-revealed');
+        });
+      }
+
+      if (!isCounters){
+        frame.querySelectorAll('.s-stat .n').forEach(function(item){
+          var orig = item.getAttribute('data-orig-stat');
+          if (orig) item.textContent = orig;
+          item.removeAttribute('data-has-counted');
+        });
+      } else {
+        frame.querySelectorAll('.s-stat .n').forEach(function(item){
+          item.removeAttribute('data-has-counted');
+        });
+      }
+
+      checkMotionState();
+      markSaving();
+    }
+
+    stage.addEventListener('scroll', checkMotionState, { passive: true });
+    window.addEventListener('resize', checkMotionState, { passive: true });
+
+    if (masterToggle){
+      masterToggle.addEventListener('change', function(){
+        motionOn = this.checked;
+        if (motionSub) motionSub.classList.toggle('hidden', !motionOn);
+        applyMotionConfig();
+      });
+    }
+
+    if (revealsToggle){
+      revealsToggle.addEventListener('change', function(){
+        revealsOn = this.checked;
+        applyMotionConfig();
+      });
+    }
+
+    if (stickyToggle){
+      stickyToggle.addEventListener('change', function(){
+        stickyOn = this.checked;
+        applyMotionConfig();
+      });
+    }
+
+    if (countToggle){
+      countToggle.addEventListener('change', function(){
+        countOn = this.checked;
+        applyMotionConfig();
+      });
+    }
+
+    window.getMotionConfig = function(){
+      return { motionOn: motionOn, revealsOn: revealsOn, stickyOn: stickyOn, countOn: countOn };
+    };
+
+    applyMotionConfig();
+  })();
 
   /* ---------- device toggle ---------- */
   document.querySelectorAll('.device-toggle button').forEach(function(btn){
@@ -2983,14 +4217,87 @@
       el.classList.remove('ed-selected');
     });
     clone.querySelectorAll('.site-section').forEach(function(sec){ sec.classList.remove('sec-active'); });
+    /* keep hero media classes but mute any canvas animation (it'll restart fresh in new tab) */
+    clone.querySelectorAll('.hero-media-layer canvas').forEach(function(c){ c.getContext && c.getContext('2d') && c.getContext('2d').clearRect(0,0,c.width,c.height); });
+
+    var mCfg = window.getMotionConfig ? window.getMotionConfig() : { motionOn:true, revealsOn:true, stickyOn:true, countOn:true };
+    if (mCfg.motionOn){
+      if (mCfg.stickyOn) clone.classList.add('has-sticky-nav');
+      if (mCfg.revealsOn) clone.classList.add('has-scroll-reveals');
+    }
 
     var headTags = Array.prototype.map.call(document.querySelectorAll('link[rel="stylesheet"], style'), function(n){ return n.outerHTML; }).join('\n');
-    var previewScript = '<script>(function(){document.querySelectorAll("[data-marketing-carousel]").forEach(function(carousel){var track=carousel.querySelector(".marketing-track"),cards=carousel.querySelectorAll(".marketing-card"),dots=carousel.querySelectorAll(".marketing-dot"),current=0;function move(step){var visible=window.matchMedia("(max-width: 560px)").matches?1:4,max=Math.max(0,cards.length-visible);current=Math.max(0,Math.min(max,current+step));track.style.transform="translateX(-"+(current*(cards[0].offsetWidth+22))+"px)";dots.forEach(function(dot,index){dot.classList.toggle("active",index===Math.min(2,Math.floor(current/Math.max(1,Math.ceil(max/3)))))});}carousel.querySelector("[data-marketing-prev]").addEventListener("click",function(){move(-1)});carousel.querySelector("[data-marketing-next]").addEventListener("click",function(){move(1)});window.addEventListener("resize",function(){move(0)});});})();<\\x2Fscript>';
+    var carouselScript = '<script>(function(){document.querySelectorAll("[data-marketing-carousel]").forEach(function(carousel){var track=carousel.querySelector(".marketing-track"),cards=carousel.querySelectorAll(".marketing-card"),dots=carousel.querySelectorAll(".marketing-dot"),current=0;function move(step){var visible=window.matchMedia("(max-width: 560px)").matches?1:4,max=Math.max(0,cards.length-visible);current=Math.max(0,Math.min(max,current+step));track.style.transform="translateX(-"+(current*(cards[0].offsetWidth+22))+"px)";dots.forEach(function(dot,index){dot.classList.toggle("active",index===Math.min(2,Math.floor(current/Math.max(1,Math.ceil(max/3)))))});}carousel.querySelector("[data-marketing-prev]").addEventListener("click",function(){move(-1)});carousel.querySelector("[data-marketing-next]").addEventListener("click",function(){move(1)});window.addEventListener("resize",function(){move(0)});});})();<\\x2Fscript>';
+    var motionPreviewScript = '<script>(function(){' +
+      'var cfg = ' + JSON.stringify(mCfg) + ';' +
+      'if (!cfg.motionOn) return;' +
+      'var fr = document.querySelector(".frame") || document.body;' +
+      'if (cfg.revealsOn){' +
+        'var gSels = [".s-cards", ".s-stats", ".s-gal-grid", ".marketing-track", ".auto-grid", ".track-grid", ".ai-topic-list", ".s-speakers", ".s-agenda"];' +
+        'gSels.forEach(function(s){' +
+          'fr.querySelectorAll(s).forEach(function(c){' +
+            'c.querySelectorAll(":scope > *").forEach(function(ch, i){' +
+              'ch.classList.add("reveal-item"); ch.style.setProperty("--reveal-idx", i);' +
+            '});' +
+          '});' +
+        '});' +
+        'fr.querySelectorAll(".s-card, .s-stat, .gi, .marketing-card, .auto-card, .track-card, .ai-insight, .s-speaker-card, .speaker-card, .agenda-item, .s-agenda-item").forEach(function(el){' +
+          'if (!el.classList.contains("reveal-item")){ el.classList.add("reveal-item"); el.style.setProperty("--reveal-idx", 0); }' +
+        '});' +
+      '}' +
+      'function aCnt(el, dur){' +
+        'var orig = el.getAttribute("data-orig-stat");' +
+        'if (!orig){ orig = el.textContent.trim(); el.setAttribute("data-orig-stat", orig); }' +
+        'var m = orig.match(/^([^\\d]*)(\\d[\\d,.]*)(.*)$/); if (!m) return;' +
+        'var pfx = m[1], raw = m[2].replace(/,/g, ""), sfx = m[3];' +
+        'var tgt = parseFloat(raw); if (isNaN(tgt)) return;' +
+        'var hasC = m[2].indexOf(",") !== -1, isF = raw.indexOf(".") !== -1;' +
+        'var dec = isF ? (raw.split(".")[1] || "").length : 0;' +
+        'var st = null; el.classList.add("stat-counting");' +
+        'function step(ts){' +
+          'if (!st) st = ts; var p = Math.min(1, (ts - st) / dur);' +
+          'var cur = tgt * (1 - Math.pow(1 - p, 3));' +
+          'var fmt = isF ? cur.toFixed(dec) : Math.round(cur);' +
+          'if (hasC) fmt = Number(fmt).toLocaleString("en-US");' +
+          'el.textContent = pfx + fmt + sfx;' +
+          'if (p < 1){ requestAnimationFrame(step); } else { el.textContent = orig; el.classList.remove("stat-counting"); }' +
+        '}' +
+        'requestAnimationFrame(step);' +
+      '}' +
+      'function chk(){' +
+        'var vh = window.innerHeight;' +
+        'if (cfg.stickyOn){' +
+          'var hero = fr.querySelector(".site-section[data-sec-name=\\"Hero\\"]") || fr.querySelector(".s-hero");' +
+          'var nav = fr.querySelector(".site-section[data-sec-name=\\"Navigation\\"]");' +
+          'if (nav){' +
+            'var hb = hero ? hero.getBoundingClientRect().bottom : 80;' +
+            'if (hb <= 80) nav.classList.add("is-scrolled"); else nav.classList.remove("is-scrolled");' +
+          '}' +
+        '}' +
+        'if (cfg.revealsOn){' +
+          'fr.querySelectorAll(".reveal-item:not(.is-revealed)").forEach(function(it){' +
+            'var r = it.getBoundingClientRect();' +
+            'if (r.top < vh - 20 && r.bottom > 0) it.classList.add("is-revealed");' +
+          '});' +
+        '}' +
+        'if (cfg.countOn){' +
+          'fr.querySelectorAll(".s-stat .n, [data-counter-stat]").forEach(function(it){' +
+            'if (it.getAttribute("data-has-counted") === "true") return;' +
+            'var r = it.getBoundingClientRect();' +
+            'if (r.top < vh - 20 && r.bottom > 0){ it.setAttribute("data-has-counted", "true"); aCnt(it, 1600); }' +
+          '});' +
+        '}' +
+      '}' +
+      'window.addEventListener("scroll", chk, { passive: true });' +
+      'window.addEventListener("resize", chk, { passive: true });' +
+      'setTimeout(chk, 50);' +
+    '})();<\\x2Fscript>';
+
     var doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
       EV.name +
       ' — Preview</title>' + headTags +
       '<style>body{background:#fff;overflow:auto;} .frame{max-width:100%;margin:0;box-shadow:none;border-radius:0;outline:none;}</style>' +
-      '</head><body>' + clone.outerHTML + previewScript + '</body></html>';
+      '</head><body>' + clone.outerHTML + carouselScript + motionPreviewScript + '</body></html>';
 
     var win = window.open('', '_blank');
     if (!win){ showToast('Allow pop-ups to open the preview in a new tab.'); return; }
@@ -3543,11 +4850,12 @@
      --site-* custom properties the site-content CSS above reads. Keep the key
      list here in sync with both TEMPLATE_THEMES' fields and the --site-* tokens. */
   var SITE_THEME_VARS = {
-    accent:'--site-accent', accentSoft:'--site-accent-soft',
+    accent:'--site-accent', accentSoft:'--site-accent-soft', accentContrast:'--site-accent-contrast',
     heroBg:'--site-hero-bg', heroText:'--site-hero-text', heroMuted:'--site-hero-muted',
     bandBg:'--site-band-bg', bandText:'--site-band-text', bandMuted:'--site-band-muted',
     quoteBg:'--site-quote-bg', quoteText:'--site-quote-text',
     footBg:'--site-foot-bg', footText:'--site-foot-text', footLogo:'--site-foot-logo',
+    surface:'--site-surface', border:'--site-border',
     displayFont:'--site-display-font', displayWeight:'--site-display-weight',
     displayCase:'--site-display-case', displayTracking:'--site-display-tracking'
   };
@@ -3562,7 +4870,47 @@
       frame.style.setProperty('--site-image-bg', 'linear-gradient(135deg,' + theme.accentSoft + ',' + theme.accentSoft + ')');
       frame.style.setProperty('--site-tile-bg', theme.accentSoft);
     }
+    if (theme.accent){
+      document.documentElement.style.setProperty('--accent', theme.accent);
+    }
     frame.setAttribute('data-site-theme', templateId || 'custom');
+  }
+  window.applySiteTheme = applySiteTheme;
+
+  function syncDesignPanelTheme(theme){
+    if (!theme || !theme.accent) return;
+    var container = document.getElementById('theme-swatches');
+    if (!container) return;
+
+    var color = theme.accent.toUpperCase();
+    var existing = container.querySelector('[data-theme-color="' + color + '"]') ||
+                   container.querySelector('[data-theme-color="' + theme.accent.toLowerCase() + '"]');
+
+    if (!existing){
+      var btn = document.createElement('button');
+      btn.className = 'swatch on';
+      btn.setAttribute('data-theme-color', color);
+      btn.style.background = color;
+      btn.title = 'Banner Palette (' + color + ')';
+      container.insertBefore(btn, container.firstChild);
+      existing = btn;
+    }
+
+    container.querySelectorAll('.swatch').forEach(function(s){ s.classList.remove('on'); });
+    existing.classList.add('on');
+
+    document.documentElement.style.setProperty('--accent', color);
+    if (theme.displayFont){
+      var fontSel = document.getElementById('theme-font');
+      if (fontSel){
+        for (var i = 0; i < fontSel.options.length; i++){
+          if (fontSel.options[i].value === theme.displayFont){
+            fontSel.selectedIndex = i;
+            break;
+          }
+        }
+      }
+    }
   }
 
   function applyCreateHandoff(){
@@ -3574,12 +4922,32 @@
 
     applySiteTheme(draft.theme, (draft.template && draft.template.id) || 'custom');
 
+    /* Carry detected theme into the Design section automatically */
+    if (draft.theme && draft.theme.accent){
+      syncDesignPanelTheme(draft.theme);
+    }
+
     frame.querySelectorAll('.site-section').forEach(function(sec){ sec.remove(); });
     var addRow = document.getElementById('btn-add-section-end').closest('.add-sec-row');
     draft.sections.forEach(function(s){
       frame.insertBefore(buildSectionShell(s.name || 'Section', s.html || ''), addRow);
     });
 
+
+    /* Resolve PSD banner images stored in sessionStorage.
+       generatePsdBannerHtml marks canvas elements with data-psd-imgkey instead
+       of embedding base64 directly so the localStorage payload stays small. */
+    frame.querySelectorAll('[data-psd-imgkey]').forEach(function(el){
+      var key = el.getAttribute('data-psd-imgkey');
+      var imgData = null;
+      try { imgData = sessionStorage.getItem(key); } catch(e){}
+      if (imgData) {
+        el.style.backgroundImage = 'url(' + imgData + ')';
+        el.style.backgroundSize = '100% 100%';
+        el.style.backgroundRepeat = 'no-repeat';
+        el.style.backgroundPosition = 'center';
+      }
+    });
     var ev = draft.event || {};
     var tpl = draft.template || {};
     var nameEl = document.getElementById('ed-event-name');
@@ -3588,7 +4956,11 @@
     if (metaEl) metaEl.textContent = [ev.dateLabel, ev.location, tpl.name, 'Draft'].filter(Boolean).join('  |  ');
     document.title = (ev.name || 'Untitled event') + ' — Site Editor';
     setTimeout(function(){
-      showToast('Opened ' + (tpl.name ? '"' + tpl.name + '"' : 'your template') + ' with the content you filled in');
+      if (draft.theme && draft.theme.isCustomBannerTheme){
+        showToast('🎨 Auto-applied banner color palette (' + draft.theme.accent + ') across all website sections');
+      } else {
+        showToast('Opened ' + (tpl.name ? '"' + tpl.name + '"' : 'your template') + ' with the content you filled in');
+      }
     }, 400);
     return true;
   }

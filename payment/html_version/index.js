@@ -46,7 +46,7 @@ function renderHeader() {
   const container = document.getElementById("header-container");
   if (!container) return;
   container.innerHTML = `
-    <a class="back-btn" href="../edit-event.html?event=${EVENT.id}">
+    <a class="back-btn" href="../../edit-event.html?event=${EVENT.id}">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
       Back to Event
     </a>
@@ -54,8 +54,12 @@ function renderHeader() {
       <h1>${EVENT.name}</h1>
       <span class="meta">${EVENT.date} &middot; ${EVENT.location} &middot; ${EVENT.vertical}</span>
     </span>
-
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;margin-left:auto;"></span>
   `;
+  if (window.RevampTheme && window.RevampTheme.mount) {
+    const t = container.querySelector('[data-theme-toggle-target]');
+    if (t) window.RevampTheme.mount(t);
+  }
 }
 
 function renderScreen() {
