@@ -2,6 +2,7 @@
 <title>Events &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   /* cross-page transitions: cross-fade into the event console instead of
      blanking the window between documents. Chrome 126+; anywhere else the
@@ -558,6 +559,7 @@
     </div>
 
     <div class="main-nav-right">
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <div class="popover-wrap">
         <button class="avatar-btn" id="btn-profile" aria-haspopup="true" aria-label="Account">
           <span class="avatar-circle">AD</span>
@@ -739,6 +741,7 @@
 <div id="sheet-root"></div>
 <div id="toast-region"></div>
 
+<script src="theme-toggle.js"></script>
 <script>
 (function(){
 
