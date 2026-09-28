@@ -2,13 +2,8 @@
 <title>Events &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
-  /* cross-page transitions: cross-fade into the event console instead of
-     blanking the window between documents. Chrome 126+; anywhere else the
-     at-rule is ignored and navigation behaves as before. */
-  @view-transition { navigation: auto; }
-  @media (prefers-reduced-motion: reduce){ @view-transition { navigation: none; } }
-  html{ background: var(--bg); }
   :root{
     --bg: #F7F7F4;
     --surface: #FFFFFF;
@@ -527,7 +522,6 @@
   @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
   @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
-<link rel="stylesheet" href="motion.css">
 
 <header class="main-nav">
   <div class="main-nav-inner">
@@ -558,6 +552,7 @@
     </div>
 
     <div class="main-nav-right">
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <div class="popover-wrap">
         <button class="avatar-btn" id="btn-profile" aria-haspopup="true" aria-label="Account">
           <span class="avatar-circle">AD</span>
@@ -739,6 +734,7 @@
 <div id="sheet-root"></div>
 <div id="toast-region"></div>
 
+<script src="theme-toggle.js"></script>
 <script>
 (function(){
 

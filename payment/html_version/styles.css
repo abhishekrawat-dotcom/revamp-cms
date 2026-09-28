@@ -39,6 +39,38 @@
   --side-w:   92px;
 }
 
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
+    --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
+    --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
+    --ok: #6FD39B; --ok-soft: #1E3328; --warn: #E0B457; --warn-soft: #362B14;
+    --info: #7FB4E8; --info-soft: #16283A; --review: #C89BDA; --review-soft: #2C1E33;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-md: 0 12px 28px -10px rgba(0,0,0,0.55);
+  }
+}
+
+:root[data-theme="dark"]{
+  --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
+  --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
+  --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
+  --ok: #6FD39B; --ok-soft: #1E3328; --warn: #E0B457; --warn-soft: #362B14;
+  --info: #7FB4E8; --info-soft: #16283A; --review: #C89BDA; --review-soft: #2C1E33;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 12px 28px -10px rgba(0,0,0,0.55);
+}
+
+:root[data-theme="light"]{
+  --bg: #FAF7F6; --surface: #FFFFFF; --surface-2: #F3EEED; --surface-3: #E9E2E0;
+  --border: #E0D7D5; --text: #241B1A; --text-muted: #756865; --text-faint: #A0908C;
+  --accent: #ED1C24; --accent-strong: #B3151B; --accent-soft: #FBDBDC; --accent-contrast: #FFFFFF;
+  --ok: #2F8F5B; --ok-soft: #DFEEE1; --warn: #9C6B14; --warn-soft: #F3E7C8;
+  --info: #2F6FB0; --info-soft: #DCE9F5; --review: #8A5A9E; --review-soft: #EBE0F0;
+  --shadow-sm: 0 1px 2px rgba(30,26,10,0.08);
+  --shadow-md: 0 12px 28px -10px rgba(30,26,10,0.28);
+}
+
 /* ═══════════════════════════════════════════
    BASE RESET
 ═══════════════════════════════════════════ */
@@ -56,35 +88,6 @@ a { color: var(--accent-strong); text-decoration: none; }
 /* ═══════════════════════════════════════════
    TOP BAR
 ═══════════════════════════════════════════ */
-
-/* ============ CROSS-PAGE TRANSITIONS ============
-   Switching section is a real document navigation, so by default the browser
-   tears down one page and paints the next from blank - the flash between
-   them. Opting into cross-document view transitions makes it cross-fade
-   instead, and giving the top bar and the rail a name keeps them on screen,
-   morphing in place, while only the section content changes underneath.
-
-   Chrome 126+ only. Browsers without cross-document view transitions ignore
-   the at-rule and navigate the way they did before - nothing else changes,
-   so there is no fallback to maintain. */
-@view-transition { navigation: auto; }
-@media (prefers-reduced-motion: reduce){
-  @view-transition { navigation: none; }
-}
-
-/* the base layer under the transition: white by default, which is the flash
-   people actually see on a slow paint */
-html{ background: var(--bg); }
-
-.topbar{ view-transition-name: cms-topbar; }
-.rail{ view-transition-name: cms-rail; }
-
-/* short enough to read as "the page kept up", long enough to not be a blink */
-::view-transition-old(root),
-::view-transition-new(root){ animation-duration: .18s; }
-::view-transition-group(cms-topbar),
-::view-transition-group(cms-rail){ animation-duration: .18s; }
-
 .topbar {
   position: sticky; top: 0; z-index: 40; height: var(--topbar-h);
   background: var(--surface); border-bottom: 1px solid var(--border);
@@ -146,8 +149,8 @@ html{ background: var(--bg); }
 /* ═══════════════════════════════════════════
    SHELL & RAIL
 ═══════════════════════════════════════════ */
-.shell { display: flex; align-items: flex-start; flex: 1; width: 100%; min-height: calc(100vh - var(--topbar-h)); }
-.main  { flex: 1; min-width: 0; padding: 22px 26px 60px; }
+.shell { display: flex; align-items: flex-start; flex: 1; overflow: hidden; width: 100%; }
+.main  { flex: 1; min-width: 0; padding: 22px 26px 60px; overflow-y: auto; height: calc(100vh - var(--topbar-h)); }
 
 .rail {
   width: var(--side-w); flex-shrink: 0; background: var(--surface);
