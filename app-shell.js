@@ -212,7 +212,6 @@ window.RevampShell = (function(){
       return;
     }
     host.setAttribute('data-shell-topbar', '1');
-
     var title =
       '<span class="ev-title">' +
         '<h1 id="shell-event-name">' + esc(ev.name) + '</h1>' +
