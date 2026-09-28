@@ -2990,10 +2990,6 @@
     var s = activeSection();
     if (!s){ host.innerHTML = ''; return; }
 
-    var aiTools = (s.shape === 'auto') ? '' :
-      '<button class="btn btn-ai btn-sm" id="ai-fit">' + IC.spark + ' Fit to section</button>' +
-      '<button class="btn btn-secondary btn-sm" id="ai-gen">Generate</button>';
-
     host.innerHTML =
       '<div class="editor-head">' +
         '<div>' +
@@ -3005,7 +3001,7 @@
           '</div>' +
           '<p class="helper">' + esc(s.helper || '') + '</p>' +
         '</div>' +
-        '<div class="tools">' + aiTools +
+        '<div class="tools">' +
           (s.shape === 'auto' ? '' :
             '<button class="switch" id="inc-toggle" aria-pressed="' + s.include + '" title="Include this section on the site">' +
             '<span class="track"><i></i></span>' + (s.include ? 'Included' : 'Excluded') + '</button>') +
@@ -3019,10 +3015,6 @@
       save(); renderEditor(); renderSecList(); renderFoot();
       toast(s.name + (s.include ? ' included' : ' excluded from the site'));
     });
-    var fit = $('ai-fit');
-    if (fit) fit.addEventListener('click', function(){ aiFit(s); });
-    var gen = $('ai-gen');
-    if (gen) gen.addEventListener('click', function(){ aiGenerate(s); });
 
     wireShape(s);
   }
@@ -4460,13 +4452,8 @@
   }
 
   /* =========================================================
-     AI MOMENTS - fit-to-section + generate-from-brief
+     STARTER COPY - drafts a section from the event basics
   ========================================================= */
-  function aiBusy(label){
-    var head = document.querySelector('.editor-head .tools');
-    if (head) head.innerHTML = '<span class="ai-chip">' + IC.spark + esc(label) + '</span>';
-  }
-
   var BRIEF_COPY = {
     rich: function(){
       var b = S.basics;
@@ -4485,110 +4472,6 @@
       return 'Drafted from your description. ' + brief;
     }
   };
-
-  function aiFit(s){
-    var d = s.data;
-    aiBusy('Reshaping to fit…');
-    setTimeout(function(){
-      if (s.shape === 'rich' || s.shape === 'benefits'){
-        var lim = s.limit || 900;
-        var src = String(d.body || '').trim();
-        if (!src){ d.body = (BRIEF_COPY[s.shape] || BRIEF_COPY.rich)(); }
-        else if (src.length > lim){ d.body = src.slice(0, lim - 1).replace(/\s+\S*$/, '') + '.'; }
-        else { d.body = src.replace(/\s{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1'); }
-      }
-      else if (s.shape === 'columns' || s.shape === 'cards'){
-        d.items = (d.items || []).map(function(it){
-          return {
-            t: (it.t || '').replace(/\.$/, '') || 'Discussion point',
-            d: (it.d || '').length > 140 ? it.d.slice(0, 139).replace(/\s+\S*$/, '') + '.' : (it.d || '')
-          };
-        });
-        if (!d.items.length) d.items = seed(s.shape).items;
-      }
-      else if (s.shape === 'chips'){
-        var seen = {};
-        d.items = (d.items || []).map(function(c){
-          return c.trim().replace(/\b\w/g, function(m){ return m.toUpperCase(); });
-        }).filter(function(c){
-          if (!c || seen[c.toLowerCase()]) return false;
-          seen[c.toLowerCase()] = 1; return true;
-        });
-      }
-      else if (s.shape === 'line'){
-        var t = String(d.text || S.basics.name || '').trim();
-        if (t.charAt(0) !== '#') t = '#' + slugify(t).replace(/-/g,'').slice(0, 24);
-        d.text = t;
-      }
-      else if (s.shape === 'hero'){
-        if (!d.title) d.title = S.basics.name;
-        if (d.tagline && d.tagline.length > 90) d.tagline = d.tagline.slice(0, 89).replace(/\s+\S*$/, '');
-      }
-      else if (s.shape === 'stats'){
-        d.items = (d.items || []).map(function(it){
-          return { k: it.k.replace(/s$/,'') + (parseInt(it.v,10) === 1 ? '' : 's'), v: String(it.v).replace(/[^0-9]/g,'') || '0' };
-        });
-      }
-      else if (s.shape === 'quotes'){
-        d.items = (d.items || []).map(function(q){
-          var t = String(q.q||'').trim();
-          if (t && !/[.!?"]$/.test(t)) t += '.';
-          return { q: t, n: q.n, r: q.r, c: q.c };
-        });
-      }
-      markDone(s, true);
-      save();
-      renderEditor();
-      toast('AI reshaped “' + s.name + '” to fit the section');
-    }, 900);
-  }
-
-  function aiGenerate(s){
-    var d = s.data;
-    aiBusy('Drafting from your brief…');
-    setTimeout(function(){
-      if (s.shape === 'rich' || s.shape === 'benefits'){
-        d.body = (BRIEF_COPY[s.shape] || BRIEF_COPY.rich)();
-        if (s.shape === 'benefits' && !(d.items||[]).length) d.items = seed('benefits').items;
-      }
-      else if (s.shape === 'hero'){
-        d.title = S.basics.name || 'Your event';
-        d.tagline = seed('hero').tagline;
-        d.cta1 = 'Register now'; d.cta2 = 'Download brochure';
-      }
-      else if (s.shape === 'stats'){ d.items = seed('stats').items; }
-      else if (s.shape === 'cards' || s.shape === 'columns'){ d.items = seed(s.shape).items; }
-      else if (s.shape === 'chips'){ d.items = seed('chips').items; }
-      else if (s.shape === 'quotes'){ d.items = seed('quotes').items; }
-      else if (s.shape === 'line'){ d.text = seed('line').text; }
-      else if (s.shape === 'heading'){ d.text = seed('heading').text; }
-      else if (s.shape === 'people'){
-        d.items = [
-          { n:'Aarti Rawat',   r:'Chief Marketing Officer', c:'Leading FMCG brand' },
-          { n:'Sameer Chen',   r:'VP, Growth',              c:'Consumer internet' },
-          { n:'Devika Menon',  r:'Head of Digital',         c:'BFSI major' },
-          { n:'Rohit Iyer',    r:'Director, MarTech',       c:'Retail chain' }
-        ];
-      }
-      else if (s.shape === 'logos'){ d.tiers = seed('logos').tiers; }
-      else if (s.shape === 'gallery'){ d.count = 8; }
-      else if (s.shape === 'contacts'){
-        d.blocks = [
-          { t:'Speaking opportunities', n:'Priya Sharma', e:'speakers@etoneworld.com', p:'+91 98200 00001' },
-          { t:'Delegate registration',  n:'Kabir Nair',   e:'delegates@etoneworld.com', p:'+91 98200 00002' },
-          { t:'Partnerships',           n:'Meera Joshi',  e:'partners@etoneworld.com',  p:'+91 98200 00003' }
-        ];
-      }
-      else if (s.shape === 'custom'){
-        d.title = d.title || 'Your custom section';
-        d.body = d.body || BRIEF_COPY.custom(s.customBrief || '');
-      }
-      markDone(s, true);
-      save();
-      renderEditor();
-      toast('AI drafted “' + s.name + '” — edit anything you disagree with');
-    }, 1100);
-  }
 
   /* =========================================================
      CUSTOM SECTION - described in plain language, no code
