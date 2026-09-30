@@ -47,12 +47,12 @@
 
 ## Team & Branches
 
-| Branch | Owner | Purpose |
-|--------|-------|---------|
-| `main` | — | Stable, reviewed code — what everyone sees by default |
-| `abhishek` | Abhishek | Feature work merged into `main` via PR |
-| `shruti` | Shruti | Feature work |
-| `rohit` | Rohit | Payment module & prototype work |
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable, reviewed code — what everyone sees by default |
+| `abhishek` | Integration branch — feature branches merge here before going to `main` |
+| `shruti` | Feature work |
+| `rohit` | Payment module & feature work |
 
 ### Branch Workflow
 
@@ -60,7 +60,7 @@
 your-branch  →  PR  →  abhishek  →  PR  →  main
 ```
 
-> **Important:** Always work in `D:\payment\revamp-cms\` (the git repo). Do **not** develop in a separate folder and manually copy files — changes made outside the repo won't be tracked by git.
+> **Important:** Always work inside the cloned repo directory. Do **not** develop in a separate folder and manually copy files — changes made outside the repo won't be tracked by git.
 
 ### Common Git Commands
 
@@ -76,7 +76,7 @@ git add .
 git commit -m "describe your change"
 
 # Push to your branch
-git push origin rohit   # or your branch name
+git push origin <your-branch>
 ```
 
 ---
@@ -281,7 +281,7 @@ A self-contained payments module, independently styled and state-managed. Linked
 - `sidebar.js` — payments-specific nav rail
 - `styles.css` — payments design system (independent of `edit-event.css`)
 
-> 💡 **Dev note:** Always make payment changes inside `payment/html_version/` within this repo. Do not develop in a separate folder and copy files manually — they won't be tracked by git.
+> 💡 **Dev note:** Always make payment changes inside `payment/html_version/` within this repo. Do not develop in a separate location and copy files manually — changes outside the repo are invisible to git.
 
 ---
 
@@ -432,7 +432,7 @@ git push origin <your-branch>
 https://github.com/abhishekrawat-dotcom/revamp-cms/compare/abhishek...<your-branch>
 ```
 
-> ⚠️ **Never work in a copy outside the repo** (e.g. `D:\new reminder\revamp-cms\`). Changes made there are invisible to git and won't be seen by teammates.
+> ⚠️ **Never work in a copy outside the cloned repo.** Changes made in a separate local folder are invisible to git and won't be seen by teammates.
 
 ---
 
