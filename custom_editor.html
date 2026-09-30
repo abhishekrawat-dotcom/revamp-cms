@@ -440,6 +440,9 @@
     position: sticky; top: 0; z-index: 85;
     transition: background .35s ease, backdrop-filter .35s ease, -webkit-backdrop-filter .35s ease, box-shadow .35s ease, border-color .35s ease;
   }
+  /* in the editor the stage scrolls with padding above the page: stick to the stage's visible top edge,
+     not below its padding, or the page shows through a gap above the nav */
+  #frame.has-sticky-nav .site-section[data-sec-name="Navigation"]{ top: calc(-1 * var(--stage-pad-top, 0px)); }
   #frame.has-sticky-nav .s-nav,
   .has-sticky-nav .s-nav{
     transition: background .35s ease, backdrop-filter .35s ease, -webkit-backdrop-filter .35s ease, box-shadow .35s ease, border-color .35s ease;
@@ -628,7 +631,7 @@
   .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
   .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
 
-  .stage{ flex:1; overflow:auto; padding: 34px 24px 90px; display:flex; justify-content:center; }
+  .stage{ --stage-pad-top: 34px; flex:1; overflow:auto; padding: var(--stage-pad-top) 24px 90px; display:flex; justify-content:center; }
   .frame{
     width: 100%; max-width: 1180px; background:#fff; border-radius: 10px; box-shadow: var(--shadow-lg);
     position: relative; transform-origin: top center; color:#1c1c1c; min-height: 10px; align-self:flex-start;
@@ -4078,15 +4081,13 @@
 
       // 1. Sticky Navigation Header with Frosted Glass
       if (stickyOn){
-        var heroSec = frame.querySelector('.site-section[data-sec-name="Hero"]') || frame.querySelector('.s-hero');
         var navSec  = frame.querySelector('.site-section[data-sec-name="Navigation"]');
         if (navSec){
-          var heroBottom = heroSec ? (heroSec.getBoundingClientRect().bottom - stageRect.top) : 80;
-          if (heroBottom <= 80){
-            navSec.classList.add('is-scrolled');
-          } else {
-            navSec.classList.remove('is-scrolled');
-          }
+          /* frosted as soon as the nav is stuck, i.e. the page has started sliding under it: its nav
+             background is transparent by design (it sits on the hero), so waiting for the hero to scroll
+             away left the links printed over the hero text */
+          var stuck = frame.getBoundingClientRect().top < navSec.getBoundingClientRect().top - 1;
+          navSec.classList.toggle('is-scrolled', stuck);
         }
       }
 

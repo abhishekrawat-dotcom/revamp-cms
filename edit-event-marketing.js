@@ -256,7 +256,13 @@ window.EditEventMarketing = (function(){
   var U = {
     studio:'mailers',
     audQ:'', audPage:1,
+<<<<<<< HEAD
     crmView:'board', crmQ:'', crmStage:'all', crmOwner:'all', crmPage:1,
+=======
+    crmView:'table', crmQ:'', crmStage:'all', crmOwner:'all', crmLevel:'all',
+    crmQuick:'all', crmPage:1, crmSel:{}, crmSort:{ k:'score', dir:-1 },
+    pipeQ:'', pipeEd:[], pipeLevel:'all', pipeSub:'all', pipePage:1, pipeSel:{},
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
     builder:null
   };
 
@@ -438,6 +444,10 @@ window.EditEventMarketing = (function(){
     return true;
   }
   function batchMembers(EV, b){
+    /* a batch saved from a selection is a fixed list of people, not a filter */
+    if (b.ids && b.ids.length){
+      return prospects(EV).filter(function(p){ return b.ids.indexOf(p.id) >= 0; });
+    }
     return prospects(EV).filter(function(p){ return matchBatch(p, b.f); });
   }
   function emptyFilters(){
@@ -600,6 +610,7 @@ window.EditEventMarketing = (function(){
     var EV = ctx.EV, eds = editions(EV), all = prospects(EV);
     var cur = eds[0], past = eds.slice(1);
 
+<<<<<<< HEAD
     var totRegs = eds.reduce(function(n,e){ return n + e.regs; }, 0);
     var totVis  = eds.reduce(function(n,e){ return n + e.visitors; }, 0);
     var totRev  = eds.reduce(function(n,e){ return n + e.revenue; }, 0);
@@ -674,6 +685,175 @@ window.EditEventMarketing = (function(){
         '<div class="ins-card"><h3>Subscriber health</h3>' +
           '<div class="cap">How much of the pool is still reachable</div>'+bars(subRows,'var(--ok)',4)+'</div>' +
       '</div>';
+=======
+    var reach = all.filter(function(p){ return p.sub !== 'unsubscribed'; }).length;
+
+    /* The edition cards below carry the same numbers the tiles repeated,
+       so the tiles were a row of chrome above the actual work. */
+
+    /* editions double as the filter: click one to cut the pool to it */
+    var edCards = '<div class="ed-grid">' + eds.map(function(e, i){
+      var on = U.pipeEd.indexOf(i) >= 0;
+      var conv = e.visitors ? (e.regs / e.visitors * 100) : 0;
+      var inPool = all.filter(function(p){ return edSet(p, eds.length)[i]; }).length;
+      return '<button class="ed-card" type="button" data-ed="' + i + '" aria-pressed="' + on + '">' +
+          '<span class="yr">E' + (eds.length - i) + ' &middot; ' + e.year +
+            (e.current ? ' &middot; this edition' : '') + '</span>' +
+          '<b>' + esc(e.label) + '</b>' +
+          '<span class="st"><span>Regs <i>' + comma(e.regs) + '</i></span>' +
+          '<span>Conv <i>' + conv.toFixed(1) + '%</i></span>' +
+          '<span>In pool <i>' + comma(inPool) + '</i></span></span>' +
+        '</button>';
+    }).join('') + '</div>' +
+    (U.pipeEd.length
+      ? '<div style="margin-top:11px;display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+          '<span class="hint" style="margin:0">Showing people from ' + U.pipeEd.length +
+            (U.pipeEd.length === 1 ? ' edition' : ' editions') + '.</span>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="pipe-edclear">Clear edition filter</button></div>'
+      : '');
+
+    /* pool to paid, as a funnel - the shape tells you where it leaks */
+    var steps = [
+      ['On record',   all.length,                                                    'var(--text-faint)'],
+      ['Reachable',   reach,                                                          'var(--info)'],
+      ['Engaged',     all.filter(function(p){ return p.sub === 'active'; }).length,   'var(--review)'],
+      ['Registered',  all.filter(function(p){ return p.registered; }).length,         'var(--ok)'],
+      ['Paid',        all.filter(function(p){ return p.paid; }).length,               'var(--accent)']
+    ];
+    var top = steps[0][1] || 1;
+    var funnel = '<div class="funnel">' + steps.map(function(s, i){
+      var pct = s[1] / top * 100;
+      var drop = i ? (steps[i-1][1] ? Math.round(s[1] / steps[i-1][1] * 100) : 0) : 100;
+      return '<div class="fstep"><span class="fl">' + esc(s[0]) + '</span>' +
+        '<span class="ft"><i style="width:' + Math.max(pct, 1.5) + '%;background:' + s[2] + '"></i></span>' +
+        '<span class="fn">' + comma(s[1]) + ' <em>' + drop + '%</em></span></div>';
+    }).join('') + '</div>';
+
+    var lvlCounts = { hot:0, warm:0, cold:0 };
+    all.forEach(function(p){ lvlCounts[levelOf(p)]++; });
+
+    /* the cuts worth pulling, each one a click from a batch or the CRM */
+    var recipes = [
+      { id:'loyal',      label:'Repeat attendees',        note:'Been to 2 or more past editions',
+        n: all.filter(function(p){ return p.editions>=2 && p.sub!=='unsubscribed'; }).length },
+      { id:'warmnotreg', label:'Warm but not registered', note:'Active subscribers who have not signed up yet',
+        n: all.filter(function(p){ return p.sub==='active' && !p.registered; }).length },
+      { id:'cxo',        label:'CXO tier',                note:'Chief-level across every industry',
+        n: all.filter(function(p){ return p.seniority==='CXO' && p.sub!=='unsubscribed'; }).length },
+      { id:'lapsed',     label:'Lapsed attendees',        note:'Came before, gone quiet since',
+        n: all.filter(function(p){ return p.editions>=1 && p.sub==='dormant'; }).length }
+    ];
+    var recipeCards = '<div class="pgrid">' + recipes.map(function(r){
+      return '<div class="pcard">' +
+        '<div class="pcard-h"><span class="mrow-i" style="background:var(--accent)1F;color:var(--accent)">' +
+          svg(I.layers,15) + '</span>' +
+        '<span style="flex:1"><b style="font-size:13.5px;display:block">' + esc(r.label) + '</b>' +
+        '<span style="font-size:11.5px;color:var(--text-muted)">' + esc(r.note) + '</span></span>' +
+        '<span class="num" style="font-weight:800;font-size:15px">' + comma(r.n) + '</span></div>' +
+        '<div class="pcard-f"><span style="flex:1"></span>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-recipe="' + r.id + '">Save as a batch</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-tocrm="' + r.id + '">' +
+          svg(I.headset,12) + ' Send to CRM</button></div></div>';
+    }).join('') + '</div>';
+
+    /* the pool itself, searchable, because sooner or later you want one person */
+    var toolbar = '<div class="toolbar">' +
+      '<span class="search">' + svg(I.search,15) +
+        '<input id="pipe-q" placeholder="Search the pool by name, company, role or email…" value="' +
+        esc(U.pipeQ) + '"></span>' +
+      '<select class="inp" id="pipe-level" style="width:auto">' +
+        '<option value="all"' + (U.pipeLevel==='all'?' selected':'') + '>Every level</option>' +
+        LEVELS.map(function(l){
+          return '<option value="'+l.id+'"'+(U.pipeLevel===l.id?' selected':'')+'>'+l.label+
+            ' ('+comma(lvlCounts[l.id])+')</option>';
+        }).join('') + '</select>' +
+      '<select class="inp" id="pipe-sub" style="width:auto">' +
+        '<option value="all"' + (U.pipeSub==='all'?' selected':'') + '>Every subscriber state</option>' +
+        SUB_STATE.map(function(s){
+          return '<option value="'+s.id+'"'+(U.pipeSub===s.id?' selected':'')+'>'+s.label+'</option>';
+        }).join('') + '</select>' +
+      '<span style="flex:1"></span>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="pipe-mail">' +
+        svg(I.mail,13) + ' Email this view</button>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="pipe-wa">' +
+        svg(I.wa,13) + ' WhatsApp</button>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="pipe-export">' +
+        svg(I.down,13) + ' Export CSV</button>' +
+    '</div>';
+
+    var per = 25, pages = Math.max(1, Math.ceil(F.length / per));
+    if (U.pipePage > pages) U.pipePage = pages;
+    var slice = F.slice((U.pipePage-1)*per, U.pipePage*per);
+    var allOn = slice.length > 0 && slice.every(function(p){ return U.pipeSel[p.id]; });
+    var poolRows = slice.map(function(p){
+      var lv = levelMeta(levelOf(p));
+      var st = subState(p.sub);
+      var on = !!U.pipeSel[p.id];
+      return '<tr' + (on ? ' class="sel"' : '') + '>' +
+        '<td class="pick"><input type="checkbox" data-ppick="'+p.id+'"'+(on?' checked':'')+'></td>' +
+        '<td data-pipe="' + p.id + '" style="cursor:pointer"><span class="person">' +
+          '<span class="avat" style="background:'+p.colour+'">'+esc(p.initials)+'</span>' +
+          '<span class="pn"><b>'+esc(p.name)+'</b><span class="em">'+esc(p.desig)+'</span></span></span></td>' +
+        '<td>'+esc(p.comp)+'</td>' +
+        '<td>'+esc(p.industry)+'</td>' +
+        '<td><span class="lvl lvl-'+lv.id+'">'+lv.label+'</span></td>' +
+        '<td class="num">'+p.score+'</td>' +
+        '<td class="num">'+p.editions+'</td>' +
+        '<td><span class="badge" style="background:'+st.colour+'1F;color:'+st.colour+'">'+st.label+'</span></td>' +
+      '</tr>';
+    }).join('');
+
+    var poolTable = F.length
+      ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th class="pick"><input type="checkbox" id="pipe-all"'+(allOn?' checked':'')+'></th>' +
+          '<th>Person</th><th>Company</th><th>Industry</th><th>Level</th>' +
+          '<th>Score</th><th>Editions</th><th>Subscriber</th>' +
+        '</tr></thead><tbody>' + poolRows + '</tbody></table></div>' + pager(U.pipePage, pages, F.length, 'pipe')
+      : empty(I.search, 'Nobody matches', 'Loosen the search, the level or the edition filter.');
+
+    var psel = Object.keys(U.pipeSel).filter(function(k){ return U.pipeSel[k]; });
+    var pbulk = psel.length ? '<div class="bulkbar">' +
+        '<span class="bn">' + psel.length + (psel.length === 1 ? ' person selected' : ' people selected') + '</span>' +
+        '<button class="bbtn" type="button" data-pbulk="email">' + svg(I.mail,13) + ' Email</button>' +
+        '<button class="bbtn" type="button" data-pbulk="whatsapp">' + svg(I.wa,13) + ' WhatsApp</button>' +
+        '<button class="bbtn" type="button" data-pbulk="crm">' + svg(I.headset,13) + ' Send to CRM</button>' +
+        '<button class="bbtn" type="button" data-pbulk="batch">' + svg(I.layers,13) + ' Save as batch</button>' +
+        '<button class="bbtn" type="button" data-pbulk="export">' + svg(I.down,13) + ' Export</button>' +
+        '<span class="sp"></span>' +
+        '<button class="bclear" type="button" id="pipe-clearsel">Clear</button>' +
+      '</div>' : '';
+
+    return panel('Editions on record',
+        comma(all.length) + ' people on record, ' + comma(reach) + ' reachable \u2014 click an edition to cut the pool to it',
+        edCards) +
+      '<div class="ins-grid" style="margin-bottom:18px">' +
+        '<div class="ins-card"><h3>Pool to paid</h3>' +
+          '<div class="cap">Where the base narrows, across every edition</div>' + funnel + '</div>' +
+        '<div class="ins-card"><h3>Where registrations came from</h3>' +
+          '<div class="cap">Acquisition source across the pool</div>' +
+          bars(tally(all.filter(function(p){ return p.registered; }), 'src'), 'var(--info)') + '</div>' +
+      '</div>' +
+      panel('Ready-made cuts', 'Already counted - save one as a batch, or work it in the CRM', recipeCards) +
+      panelFlushLocal('The pool', comma(F.length) + ' of ' + comma(all.length) + ' shown',
+        toolbar + pbulk + poolTable);
+  }
+
+  /* panel() pads its body; the pool table wants to run edge to edge */
+  function panelFlushLocal(title, sub, body){
+    return '<div class="panel"><div class="panel-head"><h3>' + esc(title) + '</h3>' +
+      '<span class="sub">' + esc(sub) + '</span></div>' + body + '</div>';
+  }
+
+  function pager(page, pages, total, kind){
+    return '<div class="pgr">' +
+      '<span class="sp">' + comma(total) + (total === 1 ? ' row' : ' rows') + '</span>' +
+      '<button type="button" data-pg="' + kind + ':1"' + (page<=1?' disabled':'') + '>First</button>' +
+      '<button type="button" data-pg="' + kind + ':' + (page-1) + '"' + (page<=1?' disabled':'') + '>Prev</button>' +
+      '<span class="pnum">' + page + ' / ' + pages + '</span>' +
+      '<button type="button" data-pg="' + kind + ':' + (page+1) + '"' + (page>=pages?' disabled':'') + '>Next</button>' +
+      '<button type="button" data-pg="' + kind + ':' + pages + '"' + (page>=pages?' disabled':'') + '>Last</button>' +
+    '</div>';
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   }
 
   /* ======================================================================
@@ -732,6 +912,7 @@ window.EditEventMarketing = (function(){
     var EV = ctx.EV, L = leads(EV), F = crmFiltered(EV);
     var counts = {};
     STAGES.forEach(function(s){ counts[s.id] = L.filter(function(l){ return l.stage===s.id; }).length; });
+<<<<<<< HEAD
     var won = counts.won, open = L.length - counts.won - counts.lost;
 
     var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
@@ -741,6 +922,16 @@ window.EditEventMarketing = (function(){
       kpi(I.phone,'var(--review)','Calls logged', comma(L.reduce(function(n,l){ return n+l.calls; },0)), 'across all owners') +
       kpi(I.clock,'var(--warn)','Follow-ups due', comma(L.filter(function(l){ return l.next; }).length), 'have a date set') +
     '</div>';
+=======
+    var lvlCounts = { hot:0, warm:0, cold:0 };
+    L.forEach(function(l){ lvlCounts[l.level]++; });
+    /* The quick views already carry every number the tiles repeated, so
+       the tiles were a row of chrome between the desk and its list. */
+    var views = '<div class="qviews">' + quickViews(L).map(function(v){
+      return '<button class="qview" type="button" data-qview="' + v.id + '" aria-pressed="' +
+        (U.crmQuick === v.id) + '">' + esc(v.label) + '<span class="n">' + comma(v.n) + '</span></button>';
+    }).join('') + '</div>';
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
 
     var toolbar = '<div class="toolbar">' +
       '<span class="search">'+svg(I.search,15)+
@@ -762,7 +953,12 @@ window.EditEventMarketing = (function(){
 
     var body = U.crmView === 'board' ? crmBoard(F) : crmTable(F);
 
+<<<<<<< HEAD
     return tiles + panel('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown', toolbar + body);
+=======
+    return panelFlushLocal('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown',
+        views + toolbar + bulk + body);
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   }
 
   function crmBoard(F){
@@ -1140,6 +1336,700 @@ window.EditEventMarketing = (function(){
   }
 
   /* ---------------------------------------------------------------- lead drawer */
+<<<<<<< HEAD
+=======
+  /* ======================================================================
+     CRM : ADDING LEADS
+
+     Two ways in, because a desk has two: one at a time from a phone
+     call, or a thousand at once from a list somebody sent over.
+     ====================================================================== */
+  function nextManualId(){
+    var max = 100000;
+    (D.crmAdded || []).forEach(function(p){ if (p.id >= max) max = p.id + 1; });
+    return max;
+  }
+  function makeManual(f){
+    var parts = String(f.name || '').trim().split(/\s+/);
+    var ini = ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length-1][0] : '')).toUpperCase();
+    var id = nextManualId();
+    return {
+      id: id, manual: true,
+      name: f.name, initials: ini,
+      colour: AV[id % AV.length],
+      email: f.email || '', phone: f.phone || '',
+      desig: f.desig || '', seniority: f.seniority || 'Manager',
+      comp: f.comp || '', city: f.city || '', industry: f.industry || INDUSTRIES[0],
+      sub: 'active', opens: 0, clicks: 0, src: f.src || 'Added by hand',
+      editions: 0, registered: false, paid: false,
+      score: f.score != null ? f.score : 50
+    };
+  }
+
+  function addLeadDialog(ctx){
+    var Q = [{ name:'', desig:'', comp:'', email:'', phone:'', city:'', industry:INDUSTRIES[0],
+               seniority:'Manager', owner:OWNERS[0], level:'warm', stage:'new' }];
+    var qi = 0;
+
+    function blank(){
+      var prev = Q[qi] || {};
+      return { name:'', desig:'', comp:prev.comp || '', email:'', phone:'', city:prev.city || '',
+               industry:prev.industry || INDUSTRIES[0], seniority:'Manager',
+               owner:prev.owner || OWNERS[0], level:'warm', stage:'new' };
+    }
+
+    modal('Add leads',
+      '<div class="sp-wrap" style="border:1px solid var(--border);border-radius:11px;overflow:hidden">' +
+        '<div class="sp-queue">' +
+          '<div class="qh">Adding <span id="al-n"></span></div>' +
+          '<div class="qlist" id="al-list"></div>' +
+          '<div class="qfoot"><button class="btn btn-secondary btn-sm" type="button" id="al-add" ' +
+            'style="width:100%">' + svg(I.plus,13) + ' Add another</button></div>' +
+        '</div>' +
+        '<div class="sp-form" id="al-form"></div>' +
+      '</div>',
+      '<span id="al-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+      '<button class="btn btn-ghost" type="button" id="al-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="al-save"></button>', 940);
+
+    function readForm(){
+      if (!$('al-name')) return;
+      var e = Q[qi];
+      ['name','desig','comp','email','phone','city'].forEach(function(k){ e[k] = $('al-'+k).value.trim(); });
+      e.industry = $('al-industry').value;
+      e.seniority = $('al-seniority').value;
+      e.owner = $('al-owner').value;
+      e.level = $('al-level').value;
+      e.stage = $('al-stage').value;
+    }
+    function paintQueue(){
+      $('al-n').textContent = Q.length + (Q.length === 1 ? ' lead' : ' leads');
+      $('al-list').innerHTML = Q.map(function(e, i){
+        var ini = e.name ? e.name.trim().split(/\s+/).map(function(w){ return w[0]; }).slice(0,2).join('').toUpperCase() : '';
+        return '<button class="qi" type="button" data-q="'+i+'" aria-current="'+(i===qi)+'">' +
+          '<span class="qph" style="background:'+AV[i % AV.length]+';color:#fff">'+esc(ini)+'</span>' +
+          '<span class="qn">' + (e.name ? esc(e.name) : '<em>Lead '+(i+1)+'</em>') + '</span>' +
+          (Q.length > 1 ? '<span class="qx" data-qx="'+i+'">'+svg(I.x,13)+'</span>' : '') + '</button>';
+      }).join('');
+      each('#al-list [data-q]', function(b){
+        b.onclick = function(ev){
+          if (ev.target.closest('[data-qx]')) return;
+          readForm(); qi = +b.getAttribute('data-q'); paintForm(); paintQueue();
+        };
+      });
+      each('#al-list [data-qx]', function(x){
+        x.onclick = function(ev){
+          ev.stopPropagation();
+          readForm();
+          Q.splice(+x.getAttribute('data-qx'), 1);
+          if (qi >= Q.length) qi = Q.length - 1;
+          paintForm(); paintQueue(); paintSave();
+        };
+      });
+    }
+    function paintSave(){
+      $('al-save').textContent = Q.length === 1 ? 'Add lead' : 'Add all ' + Q.length + ' leads';
+    }
+    function fld(k, label, ph, req){
+      var e = Q[qi];
+      return '<div class="field c6"><div class="flabel-row"><label for="al-'+k+'">'+label+
+        (req ? ' <span class="pill-req">Required</span>' : '') + '</label></div>' +
+        '<input class="inp" id="al-'+k+'" value="'+esc(e[k]||'')+'" placeholder="'+esc(ph)+'"></div>';
+    }
+    function sel(k, label, opts, hint){
+      var e = Q[qi];
+      return '<div class="field c6"><label for="al-'+k+'">'+label+'</label>' +
+        '<select class="inp" id="al-'+k+'">' + opts.map(function(o){
+          var v = o.id || o, t = o.label || o;
+          return '<option value="'+esc(v)+'"'+(e[k]===v?' selected':'')+'>'+esc(t)+'</option>';
+        }).join('') + '</select>' + (hint ? '<p class="hint">'+hint+'</p>' : '') + '</div>';
+    }
+    function paintForm(){
+      $('al-form').innerHTML = '<div class="frow">' +
+        fld('name','Full name','e.g. Ishita Verma', true) +
+        fld('comp','Company','e.g. Wipro', true) +
+        fld('desig','Designation','e.g. Head - Customer Experience') +
+        fld('email','Email','name@company.com') +
+        fld('phone','Mobile','+91 98200 00000') +
+        fld('city','City','e.g. Mumbai') +
+        sel('industry','Industry', INDUSTRIES) +
+        sel('seniority','Seniority', SENIORITY) +
+        sel('owner','Assign to', OWNERS, 'Who works this lead.') +
+        sel('level','Level', LEVELS, levelMeta(Q[qi].level).note) +
+        sel('stage','Starting stage', STAGES) +
+      '</div>';
+      $('al-name').addEventListener('input', function(){ readForm(); paintQueue(); });
+      $('al-level').onchange = function(){
+        readForm();
+        var h = $('al-level').parentNode.querySelector('.hint');
+        if (h) h.textContent = levelMeta(this.value).note;
+      };
+    }
+
+    $('al-add').onclick = function(){
+      readForm(); Q.push(blank()); qi = Q.length - 1;
+      paintForm(); paintQueue(); paintSave();
+    };
+    $('al-cancel').onclick = closeModal;
+    $('al-save').onclick = function(){
+      readForm();
+      var bad = [];
+      Q.forEach(function(e, i){ if (!e.name || !e.comp) bad.push(i + 1); });
+      if (bad.length){
+        $('al-err').textContent = Q.length === 1
+          ? 'A name and a company are needed.'
+          : (bad.length === 1 ? 'Lead ' + bad[0] + ' needs a name and a company.'
+                              : 'Leads ' + bad.join(', ') + ' need a name and a company.');
+        qi = bad[0] - 1; paintForm(); paintQueue();
+        return;
+      }
+      D.crmAdded = D.crmAdded || [];
+      Q.forEach(function(e){
+        var p = makeManual(e);
+        D.crmAdded.push(p);
+        D.crm[p.id] = { stage:e.stage, owner:e.owner, calls:0, notes:[], next:'',
+                        level:e.level, touched:Date.now() };
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(Q.length === 1 ? Q[0].name + ' added to the CRM' : Q.length + ' leads added to the CRM');
+    };
+
+    paintQueue(); paintForm(); paintSave();
+  }
+
+  /* ---------------------------------------------------------------- CSV import */
+  function parseCSV(text){
+    var rows = [], row = [], cell = '', q = false;
+    text = String(text).replace(/\r\n?/g, '\n');
+    for (var i = 0; i < text.length; i++){
+      var c = text[i];
+      if (q){
+        if (c === '"'){ if (text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+        else cell += c;
+      } else if (c === '"') q = true;
+      else if (c === ',' || c === '\t'){ row.push(cell); cell = ''; }
+      else if (c === '\n'){ row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += c;
+    }
+    if (cell.length || row.length){ row.push(cell); rows.push(row); }
+    return rows.filter(function(r){ return r.some(function(c){ return String(c).trim(); }); });
+  }
+
+  var IMP_FIELDS = [
+    { id:'name',  label:'Full name',   req:true,  hints:['name','full name','lead','contact','person'] },
+    { id:'comp',  label:'Company',     req:true,  hints:['company','organisation','organization','account','firm'] },
+    { id:'desig', label:'Designation', req:false, hints:['designation','title','role','job'] },
+    { id:'email', label:'Email',       req:false, hints:['email','e-mail','mail'] },
+    { id:'phone', label:'Mobile',      req:false, hints:['phone','mobile','contact number','number'] },
+    { id:'city',  label:'City',        req:false, hints:['city','location','town'] }
+  ];
+
+  function guessColumn(header, f){
+    for (var i = 0; i < header.length; i++){
+      var h = String(header[i]).toLowerCase().trim();
+      for (var j = 0; j < f.hints.length; j++) if (h === f.hints[j]) return i;
+    }
+    for (var i2 = 0; i2 < header.length; i2++){
+      var h2 = String(header[i2]).toLowerCase().trim();
+      for (var j2 = 0; j2 < f.hints.length; j2++) if (h2.indexOf(f.hints[j2]) >= 0) return i2;
+    }
+    return -1;
+  }
+
+  function importDialog(ctx){
+    var rows = null, header = [], map = {}, owner = OWNERS[0], level = 'warm';
+
+    modal('Upload leads',
+      '<div id="imp-step1">' +
+        '<div class="imp-drop" id="imp-drop" tabindex="0" role="button">' + svg(I.layers, 26) +
+          '<b>Drop a CSV here</b><span>or click to choose a file. Tab-separated works too.</span></div>' +
+        '<p class="hint" style="margin:12px 0 6px">Or paste rows straight from a spreadsheet:</p>' +
+        '<textarea class="inp" id="imp-paste" style="min-height:96px;font-family:var(--font-mono);font-size:12px" ' +
+          'placeholder="Name,Company,Designation,Email,Mobile,City"></textarea>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="imp-read" style="margin-top:10px">' +
+          'Read these rows</button>' +
+      '</div><div id="imp-step2" hidden></div>',
+      '<span id="imp-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+      '<button class="btn btn-ghost" type="button" id="imp-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="imp-go" disabled>Import</button>', 860);
+
+    function cleanRows(){
+      var body = rows.slice(1);
+      var out = [], seen = {}, dupes = 0, blanks = 0;
+      body.forEach(function(r){
+        var rec = {};
+        IMP_FIELDS.forEach(function(f){
+          var idx = map[f.id];
+          rec[f.id] = idx >= 0 && r[idx] != null ? String(r[idx]).trim() : '';
+        });
+        if (!rec.name || !rec.comp){ blanks++; return; }
+        var key = (rec.email || rec.name + '|' + rec.comp).toLowerCase();
+        if (seen[key]){ dupes++; return; }
+        seen[key] = 1;
+        out.push(rec);
+      });
+      return { ok: out, dupes: dupes, blanks: blanks };
+    }
+
+    function paintStep2(){
+      header = rows[0].map(function(h){ return String(h).trim(); });
+      IMP_FIELDS.forEach(function(f){ if (map[f.id] == null) map[f.id] = guessColumn(header, f); });
+      var res = cleanRows();
+
+      $('imp-step1').hidden = true;
+      $('imp-step2').hidden = false;
+      $('imp-step2').innerHTML =
+        '<p class="hint" style="margin:0 0 12px">Found <b>' + comma(rows.length - 1) + '</b> rows. ' +
+          'Check each column landed in the right place — the first row is treated as the header.</p>' +
+        '<div class="imp-map">' + IMP_FIELDS.map(function(f){
+          return '<div class="field"><label for="imp-' + f.id + '">' + f.label +
+            (f.req ? ' <span class="pill-req">Required</span>' : '') + '</label>' +
+            '<select class="inp" id="imp-' + f.id + '">' +
+              '<option value="-1"' + (map[f.id] < 0 ? ' selected' : '') + '>— not in this file —</option>' +
+              header.map(function(h, i){
+                return '<option value="' + i + '"' + (map[f.id] === i ? ' selected' : '') + '>' +
+                  esc(h || ('Column ' + (i+1))) + '</option>';
+              }).join('') + '</select></div>';
+        }).join('') + '</div>' +
+
+        '<div class="imp-stat">' +
+          '<span class="readout good">' + svg(I.check,13) + '<b>' + comma(res.ok.length) + '</b> ready</span>' +
+          (res.dupes ? '<span class="readout">' + svg(I.info,13) + '<b>' + comma(res.dupes) + '</b> duplicates skipped</span>' : '') +
+          (res.blanks ? '<span class="readout bad">' + svg(I.info,13) + '<b>' + comma(res.blanks) + '</b> missing a name or company</span>' : '') +
+        '</div>' +
+
+        '<div class="imp-prev"><table><thead><tr>' +
+          IMP_FIELDS.map(function(f){ return '<th>' + esc(f.label) + '</th>'; }).join('') +
+        '</tr></thead><tbody>' +
+          res.ok.slice(0, 8).map(function(r){
+            return '<tr>' + IMP_FIELDS.map(function(f){
+              return '<td' + (f.req && !r[f.id] ? ' class="bad"' : '') + '>' +
+                esc(r[f.id] || '—') + '</td>';
+            }).join('') + '</tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+
+        '<div class="frow" style="margin-top:14px">' +
+          '<div class="field c6"><label for="imp-owner">Assign every lead to</label>' +
+            '<select class="inp" id="imp-owner">' + OWNERS.map(function(o){
+              return '<option' + (owner === o ? ' selected' : '') + '>' + esc(o) + '</option>';
+            }).join('') + '</select></div>' +
+          '<div class="field c6"><label for="imp-level">Start them at</label>' +
+            '<select class="inp" id="imp-level">' + LEVELS.map(function(l){
+              return '<option value="' + l.id + '"' + (level === l.id ? ' selected' : '') + '>' +
+                l.label + '</option>';
+            }).join('') + '</select></div>' +
+        '</div>' +
+        '<button class="btn btn-ghost btn-sm" type="button" id="imp-back">Choose a different file</button>';
+
+      IMP_FIELDS.forEach(function(f){
+        $('imp-' + f.id).onchange = function(){ map[f.id] = +this.value; paintStep2(); };
+      });
+      $('imp-owner').onchange = function(){ owner = this.value; };
+      $('imp-level').onchange = function(){ level = this.value; };
+      $('imp-back').onclick = function(){
+        rows = null; map = {};
+        $('imp-step2').hidden = true; $('imp-step1').hidden = false;
+        $('imp-go').disabled = true;
+      };
+      $('imp-go').disabled = res.ok.length === 0;
+      $('imp-go').textContent = res.ok.length
+        ? 'Import ' + comma(res.ok.length) + (res.ok.length === 1 ? ' lead' : ' leads')
+        : 'Nothing to import';
+    }
+
+    function take(text){
+      var parsed = parseCSV(text);
+      if (parsed.length < 2){
+        $('imp-err').textContent = 'That needs a header row and at least one row of data.';
+        return;
+      }
+      $('imp-err').textContent = '';
+      rows = parsed; map = {};
+      paintStep2();
+    }
+
+    var drop = $('imp-drop');
+    function pick(){
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.csv,.tsv,.txt,text/csv,text/plain';
+      inp.onchange = function(){
+        var f = inp.files && inp.files[0];
+        if (!f) return;
+        var fr = new FileReader();
+        fr.onload = function(){ take(fr.result); };
+        fr.onerror = function(){ $('imp-err').textContent = 'That file could not be read.'; };
+        fr.readAsText(f);
+      };
+      inp.click();
+    }
+    drop.onclick = pick;
+    drop.onkeydown = function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); } };
+    drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function(){ drop.classList.remove('over'); });
+    drop.addEventListener('drop', function(e){
+      e.preventDefault(); drop.classList.remove('over');
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function(){ take(fr.result); };
+      fr.readAsText(f);
+    });
+    $('imp-read').onclick = function(){
+      var v = $('imp-paste').value.trim();
+      if (!v){ $('imp-err').textContent = 'Paste some rows first.'; return; }
+      take(v);
+    };
+    $('imp-cancel').onclick = closeModal;
+    $('imp-go').onclick = function(){
+      var res = cleanRows();
+      if (!res.ok.length) return;
+      D.crmAdded = D.crmAdded || [];
+      res.ok.forEach(function(r){
+        var p = makeManual({ name:r.name, comp:r.comp, desig:r.desig, email:r.email,
+                             phone:r.phone, city:r.city, src:'Uploaded list', score:45 });
+        D.crmAdded.push(p);
+        D.crm[p.id] = { stage:'new', owner:owner, calls:0, notes:[], next:'', level:level, touched:Date.now() };
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(comma(res.ok.length) + ' leads imported and assigned to ' + owner);
+    };
+  }
+
+  /* ======================================================================
+     THE SEND DIALOG
+
+     One composer for both pages, because "email these people" is the
+     same job whether the list came from the CRM or the pool. Who gets
+     it is the first question, so the audience is chosen first and the
+     reachable count moves as you change it - nobody should press send
+     and find out afterwards that half the list has no email.
+     ====================================================================== */
+  var CATEGORIES = [
+    { id:'level',    label:'Lead level',       opts: function(){ return LEVELS.map(function(l){ return { v:l.id, t:l.label }; }); },
+      test: function(p, v){ return levelOf(p) === v; } },
+    { id:'seniority',label:'Seniority',        opts: function(){ return SENIORITY.map(function(s){ return { v:s, t:s }; }); },
+      test: function(p, v){ return p.seniority === v; } },
+    { id:'industry', label:'Industry',         opts: function(){ return INDUSTRIES.map(function(s){ return { v:s, t:s }; }); },
+      test: function(p, v){ return p.industry === v; } },
+    { id:'sub',      label:'Subscriber state', opts: function(){ return SUB_STATE.map(function(s){ return { v:s.id, t:s.label }; }); },
+      test: function(p, v){ return p.sub === v; } },
+    { id:'city',     label:'City',             opts: function(){ return CITY.map(function(s){ return { v:s, t:s }; }); },
+      test: function(p, v){ return p.city === v; } },
+    { id:'edition',  label:'Past edition',     opts: function(){ return [{v:'1',t:'Attended 1 or more'},{v:'2',t:'Attended 2 or more'},{v:'3',t:'Attended 3 or more'}]; },
+      test: function(p, v){ return p.editions >= +v; } }
+  ];
+  function catById(id){
+    for (var i=0;i<CATEGORIES.length;i++) if (CATEGORIES[i].id===id) return CATEGORIES[i];
+    return CATEGORIES[0];
+  }
+
+  function reachable(list, channel){
+    return list.filter(function(p){
+      return channel === 'email' ? (p.email && p.sub !== 'unsubscribed') : !!p.phone;
+    });
+  }
+
+  /* opts: { channel, selected:[people], viewList:[people], viewLabel } */
+  function sendDialog(ctx, opts){
+    var EV = ctx.EV;
+    var channel = opts.channel;
+    var isMail = channel === 'email';
+    var mode = opts.selected && opts.selected.length ? 'selected' : 'view';
+    var catId = 'level', catVal = LEVELS[0].id, batchId = (D.batches[0] || {}).id || '';
+    var tplId = '';
+    var when = 'now', at = '';
+
+    function audience(){
+      if (mode === 'selected') return opts.selected || [];
+      if (mode === 'view')     return opts.viewList || [];
+      if (mode === 'batch'){
+        var b = D.batches.filter(function(x){ return x.id === batchId; })[0];
+        return b ? batchMembers(EV, b) : [];
+      }
+      var c = catById(catId);
+      return prospects(EV).filter(function(p){ return c.test(p, catVal); });
+    }
+
+    var tpls = D.templates.filter(function(t){ return t.channel === channel; });
+    tplId = (tpls[0] || {}).id || '';
+
+    modal((isMail ? 'Email' : 'WhatsApp') + ' a list',
+      '<div id="sd-body"></div>',
+      '<span id="sd-note" style="flex:1;font-size:12px;color:var(--text-muted);align-self:center"></span>' +
+      '<button class="btn btn-ghost" type="button" id="sd-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="sd-go"></button>', 720);
+
+    function paint(){
+      var list = audience();
+      var ok = reachable(list, channel);
+      var t = tpls.filter(function(x){ return x.id === tplId; })[0];
+      var sample = ok[0] || list[0] || prospects(EV)[0];
+
+      function card(id, title, note, n){
+        return '<button class="qview" type="button" data-sdmode="' + id + '" aria-pressed="' +
+          (mode === id) + '" style="padding:9px 13px;border-radius:10px;text-align:left;' +
+          'display:block;white-space:normal;line-height:1.35">' +
+          '<b style="display:block;font-size:12.5px">' + esc(title) + '</b>' +
+          '<span style="font-size:11px;font-weight:500;opacity:.8">' + esc(note) + '</span>' +
+          (n != null ? '<span class="n" style="display:block;margin-top:3px">' + comma(n) + ' people</span>' : '') +
+          '</button>';
+      }
+
+      $('sd-body').innerHTML =
+        '<div class="field" style="margin-bottom:14px"><label class="flabel">Who gets this</label>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">' +
+            (opts.selected && opts.selected.length
+              ? card('selected', 'The ones you picked', 'Ticked on the list behind this', opts.selected.length) : '') +
+            card('view', 'Everything in this view', opts.viewLabel || 'Whatever the filters currently show',
+                 (opts.viewList || []).length) +
+            card('category', 'A category', 'Cut the whole pool one way') +
+            (D.batches.length ? card('batch', 'A saved batch', 'Built in Audiences') : '') +
+          '</div></div>' +
+
+        (mode === 'category'
+          ? '<div class="frow" style="margin-bottom:14px">' +
+              '<div class="field c6"><label for="sd-cat">Cut by</label>' +
+                '<select class="inp" id="sd-cat">' + CATEGORIES.map(function(c){
+                  return '<option value="'+c.id+'"'+(catId===c.id?' selected':'')+'>'+esc(c.label)+'</option>';
+                }).join('') + '</select></div>' +
+              '<div class="field c6"><label for="sd-catval">Which one</label>' +
+                '<select class="inp" id="sd-catval">' + catById(catId).opts().map(function(o){
+                  return '<option value="'+esc(o.v)+'"'+(catVal===o.v?' selected':'')+'>'+esc(o.t)+'</option>';
+                }).join('') + '</select></div>' +
+            '</div>'
+          : '') +
+
+        (mode === 'batch'
+          ? '<div class="field" style="margin-bottom:14px"><label for="sd-batch">Batch</label>' +
+              '<select class="inp" id="sd-batch">' + D.batches.map(function(b){
+                return '<option value="'+b.id+'"'+(batchId===b.id?' selected':'')+'>'+esc(b.name)+
+                  ' (' + comma(batchMembers(EV, b).length) + ')</option>';
+              }).join('') + '</select></div>'
+          : '') +
+
+        '<div class="imp-stat" style="margin:0 0 14px">' +
+          '<span class="readout good">' + svg(I.check,13) + '<b>' + comma(ok.length) + '</b> can be reached</span>' +
+          (list.length - ok.length
+            ? '<span class="readout bad">' + svg(I.info,13) + '<b>' + comma(list.length - ok.length) + '</b> ' +
+              (isMail ? 'have no email or have opted out' : 'have no mobile number') + '</span>'
+            : '') +
+        '</div>' +
+
+        (tpls.length
+          ? '<div class="field" style="margin-bottom:12px"><label for="sd-tpl">Template</label>' +
+              '<select class="inp" id="sd-tpl">' + tpls.map(function(x){
+                return '<option value="'+x.id+'"'+(tplId===x.id?' selected':'')+'>'+esc(x.name)+'</option>';
+              }).join('') + '</select>' +
+              '<p class="hint">Built in Studio. Merge tags fill per person.</p></div>' +
+            (t ? (isMail && t.subject
+                  ? '<div class="field" style="margin-bottom:8px"><label class="flabel">Subject</label>' +
+                    '<div class="preview" style="min-height:0">' + esc(merge(t.subject, sample, EV)) + '</div></div>'
+                  : '') +
+                 '<div class="field" style="margin-bottom:14px"><label class="flabel">Preview &mdash; as ' +
+                   esc(sample ? sample.name : 'a recipient') + '</label>' +
+                   '<div class="preview">' + esc(merge(t.body, sample, EV)) + '</div></div>'
+               : '')
+          : '<div class="callout" style="margin-bottom:14px">' + svg(I.info,17) +
+            '<span><strong>No ' + (isMail ? 'email' : 'WhatsApp') + ' template yet</strong>' +
+            'Build one in Studio first — that is where the copy and the merge tags live.</span></div>') +
+
+        '<div class="frow">' +
+          '<div class="field c6"><label for="sd-when">Send</label>' +
+            '<select class="inp" id="sd-when">' +
+              '<option value="now"' + (when==='now'?' selected':'') + '>Right now</option>' +
+              '<option value="later"' + (when==='later'?' selected':'') + '>At a time I pick</option>' +
+            '</select></div>' +
+          (when === 'later'
+            ? '<div class="field c6"><label for="sd-at">When</label>' +
+              '<input class="inp" id="sd-at" type="datetime-local" value="'+esc(at)+'"></div>'
+            : '') +
+        '</div>';
+
+      each('[data-sdmode]', function(el){
+        el.onclick = function(){ mode = el.getAttribute('data-sdmode'); paint(); };
+      });
+      if ($('sd-cat')) $('sd-cat').onchange = function(){
+        catId = this.value; catVal = catById(catId).opts()[0].v; paint();
+      };
+      if ($('sd-catval')) $('sd-catval').onchange = function(){ catVal = this.value; paint(); };
+      if ($('sd-batch')) $('sd-batch').onchange = function(){ batchId = this.value; paint(); };
+      if ($('sd-tpl')) $('sd-tpl').onchange = function(){ tplId = this.value; paint(); };
+      $('sd-when').onchange = function(){ when = this.value; paint(); };
+      if ($('sd-at')) $('sd-at').onchange = function(){ at = this.value; };
+
+      $('sd-go').disabled = !ok.length || !tpls.length;
+      $('sd-go').textContent = ok.length
+        ? (when === 'now' ? 'Send to ' + comma(ok.length) : 'Schedule for ' + comma(ok.length))
+        : 'Nobody to send to';
+      $('sd-note').textContent = list.length
+        ? comma(list.length) + ' in this audience'
+        : 'Pick an audience';
+    }
+
+    $('sd-cancel').onclick = closeModal;
+    $('sd-go').onclick = function(){
+      var list = audience(), ok = reachable(list, channel);
+      if (!ok.length) return;
+      var t = tpls.filter(function(x){ return x.id === tplId; })[0];
+      if (when === 'later' && !at){ ctx.toast('Pick a time first'); return; }
+
+      /* a send is a campaign, so it shows up on the Campaigns tab like any other */
+      D.campaigns.unshift({
+        id: uid('c'),
+        name: (t ? t.name : 'Send') + ' — ' + (mode === 'selected' ? 'picked list'
+              : mode === 'view' ? 'current view'
+              : mode === 'batch' ? 'saved batch' : catById(catId).label),
+        channel: channel, templateId: tplId, batchId: mode === 'batch' ? batchId : '',
+        status: when === 'now' ? 'sent' : 'scheduled',
+        when: when === 'now' ? Date.now() : new Date(at).getTime(),
+        sent: when === 'now' ? ok.length : 0,
+        delivered: when === 'now' ? Math.round(ok.length * 0.96) : 0,
+        opened: 0, clicked: 0, regs: 0
+      });
+
+      /* anyone in the CRM who was mailed has been touched */
+      ok.forEach(function(p){
+        var c = D.crm[p.id];
+        if (!c) return;
+        if (c.stage === 'new') c.stage = 'contacted';
+        c.notes = c.notes || [];
+        c.notes.push({ when: Date.now(), text: (isMail ? 'Emailed' : 'WhatsApp sent') + ' - ' + (t ? t.name : 'bulk send') });
+        c.touched = Date.now();
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(when === 'now'
+        ? comma(ok.length) + (isMail ? ' emails sent' : ' messages sent')
+        : comma(ok.length) + ' queued for ' + fmtDate(at));
+    };
+
+    paint();
+  }
+
+  /* ---------------------------------------------------------------- bulk actions */
+  function bulkAction(kind, ctx){
+    var ids = selectedIds();
+    if (!ids.length) return;
+    var L = leads(ctx.EV);
+    var picked = L.filter(function(l){ return ids.indexOf(String(l.id)) >= 0; });
+
+    function applyAll(fn, msg){
+      picked.forEach(function(l){ fn(l); saveLead(l); });
+      closeModal(); redraw(); ctx.toast(msg);
+    }
+
+    if (kind === 'export'){
+      exportCSV(picked.map(function(l){
+        return { Name:l.p.name, Company:l.p.comp, Designation:l.p.desig, Email:l.p.email,
+                 Mobile:l.p.phone, Level:levelMeta(l.level).label, Stage:stageById(l.stage).label,
+                 Owner:l.owner, Calls:l.calls, Score:l.p.score, 'Follow-up':l.next || '' };
+      }), 'crm-leads');
+      ctx.toast(picked.length + ' leads exported');
+      return;
+    }
+
+    if (kind === 'email' || kind === 'whatsapp'){
+      sendDialog(ctx, {
+        channel: kind,
+        selected: picked.map(function(l){ return l.p; }),
+        viewList: crmFiltered(ctx.EV).map(function(l){ return l.p; }),
+        viewLabel: 'Every lead the CRM filters currently show'
+      });
+      return;
+    }
+
+    if (kind === 'assign'){
+      modal('Assign ' + picked.length + (picked.length === 1 ? ' lead' : ' leads'),
+        '<div class="field"><label for="bk-owner">Owner</label>' +
+          '<select class="inp" id="bk-owner">' + OWNERS.map(function(o){
+            return '<option>'+esc(o)+'</option>'; }).join('') + '</select>' +
+          '<p class="hint">They see these in their own view straight away.</p></div>',
+        '<button class="btn btn-ghost" type="button" id="bk-cancel">Cancel</button>' +
+        '<button class="btn btn-primary" type="button" id="bk-go">Assign</button>', 420);
+      $('bk-cancel').onclick = closeModal;
+      $('bk-go').onclick = function(){
+        var o = $('bk-owner').value;
+        applyAll(function(l){ l.owner = o; }, picked.length + ' leads assigned to ' + o);
+      };
+      return;
+    }
+
+    if (kind === 'stage' || kind === 'level'){
+      var opts = kind === 'stage' ? STAGES : LEVELS;
+      modal(kind === 'stage' ? 'Move ' + picked.length + ' to a stage' : 'Set the level on ' + picked.length,
+        '<div class="field"><label for="bk-val">' + (kind === 'stage' ? 'Stage' : 'Level') + '</label>' +
+          '<select class="inp" id="bk-val">' + opts.map(function(o){
+            return '<option value="'+o.id+'">'+esc(o.label)+'</option>'; }).join('') + '</select>' +
+          (kind === 'level' ? '<p class="hint">Overrides the score-based level until you change it back.</p>' : '') +
+        '</div>',
+        '<button class="btn btn-ghost" type="button" id="bk-cancel">Cancel</button>' +
+        '<button class="btn btn-primary" type="button" id="bk-go">Apply</button>', 420);
+      $('bk-cancel').onclick = closeModal;
+      $('bk-go').onclick = function(){
+        var v = $('bk-val').value;
+        if (kind === 'stage') applyAll(function(l){ l.stage = v; }, picked.length + ' moved to ' + stageById(v).label);
+        else applyAll(function(l){ l.level = v; }, picked.length + ' set to ' + levelMeta(v).label);
+      };
+    }
+  }
+
+  function exportCSV(records, name){
+    if (!records.length) return;
+    var cols = Object.keys(records[0]);
+    var q = function(v){
+      v = v == null ? '' : String(v);
+      return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    };
+    var csv = cols.join(',') + '\n' +
+      records.map(function(r){ return cols.map(function(c){ return q(r[c]); }).join(','); }).join('\n');
+    try {
+      var blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name + '-' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    } catch(e){}
+  }
+
+  /* send a ready-made cut from the pipeline straight into the CRM */
+  function recipeMembers(EV, id){
+    var all = prospects(EV);
+    if (id === 'loyal')      return all.filter(function(p){ return p.editions>=2 && p.sub!=='unsubscribed'; });
+    if (id === 'warmnotreg') return all.filter(function(p){ return p.sub==='active' && !p.registered; });
+    if (id === 'cxo')        return all.filter(function(p){ return p.seniority==='CXO' && p.sub!=='unsubscribed'; });
+    return all.filter(function(p){ return p.editions>=1 && p.sub==='dormant'; });
+  }
+  function pushToCRM(id, ctx){
+    var people = recipeMembers(ctx.EV, id).slice(0, 200);
+    var fresh = people.filter(function(p){ return !D.crm[p.id]; });
+    modal('Send to the CRM',
+      '<p class="hint" style="margin:0 0 14px"><b>' + comma(people.length) + '</b> people in this cut, ' +
+        '<b>' + comma(fresh.length) + '</b> not yet worked by anyone. ' +
+        'They land in the pipeline at <b>New</b> so nobody loses their place.</p>' +
+      '<div class="frow">' +
+        '<div class="field c6"><label for="pc-owner">Assign to</label>' +
+          '<select class="inp" id="pc-owner">' + OWNERS.map(function(o){
+            return '<option>'+esc(o)+'</option>'; }).join('') + '</select></div>' +
+        '<div class="field c6"><label for="pc-level">Level</label>' +
+          '<select class="inp" id="pc-level">' + LEVELS.map(function(l){
+            return '<option value="'+l.id+'"'+(l.id==='warm'?' selected':'')+'>'+l.label+'</option>';
+          }).join('') + '</select></div>' +
+      '</div>',
+      '<button class="btn btn-ghost" type="button" id="pc-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" id="pc-go">Send ' + comma(fresh.length) + ' to the CRM</button>', 480);
+    $('pc-cancel').onclick = closeModal;
+    $('pc-go').onclick = function(){
+      var o = $('pc-owner').value, lv = $('pc-level').value;
+      fresh.forEach(function(p){
+        D.crm[p.id] = { stage:'new', owner:o, calls:0, notes:[], next:'', level:lv, touched:Date.now() };
+      });
+      save(); closeModal(); redraw();
+      ctx.toast(comma(fresh.length) + ' sent to ' + o + ' in the CRM');
+    };
+  }
+
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   function openLead(id, ctx){
     var EV = ctx.EV;
     var l = leads(EV).filter(function(x){ return String(x.id)===String(id); })[0];
@@ -1396,7 +2286,246 @@ window.EditEventMarketing = (function(){
     var cs = $('crm-stage');
     if (cs) cs.onchange = function(){ U.crmStage = cs.value; redraw(); };
     var co = $('crm-owner');
+<<<<<<< HEAD
     if (co) co.onchange = function(){ U.crmOwner = co.value; redraw(); };
+=======
+    if (co) co.onchange = function(){ U.crmOwner = co.value; U.crmPage = 1; redraw(); };
+    var cl = $('crm-level');
+    if (cl) cl.onchange = function(){ U.crmLevel = cl.value; U.crmPage = 1; redraw(); };
+
+    /* selection */
+    each('[data-pick]', function(el){
+      el.onclick = function(e){
+        e.stopPropagation();
+        var id = el.getAttribute('data-pick');
+        if (el.checked) U.crmSel[id] = true; else delete U.crmSel[id];
+        redraw();
+      };
+    });
+    var ca = $('crm-all');
+    if (ca) ca.onclick = function(){
+      var on = ca.checked;
+      each('[data-pick]', function(el){
+        var id = el.getAttribute('data-pick');
+        if (on) U.crmSel[id] = true; else delete U.crmSel[id];
+      });
+      redraw();
+    };
+    var clr = $('crm-clearsel');
+    if (clr) clr.onclick = function(){ U.crmSel = {}; redraw(); };
+    each('[data-bulk]', function(el){
+      el.onclick = function(){ bulkAction(el.getAttribute('data-bulk'), ctx); };
+    });
+
+    /* sorting */
+    each('[data-sort]', function(el){
+      el.onclick = function(){
+        var k = el.getAttribute('data-sort');
+        if (U.crmSort.k === k) U.crmSort.dir = -U.crmSort.dir;
+        else U.crmSort = { k:k, dir: (k === 'name' || k === 'comp' || k === 'owner') ? 1 : -1 };
+        redraw();
+      };
+    });
+
+    /* paging, shared by the crm table and the pool */
+    each('[data-pg]', function(el){
+      el.onclick = function(){
+        var bits = el.getAttribute('data-pg').split(':');
+        if (bits[0] === 'crm') U.crmPage = Math.max(1, +bits[1]);
+        else U.pipePage = Math.max(1, +bits[1]);
+        redraw();
+      };
+    });
+
+    /* dragging a card between board columns is the fastest way to move a stage */
+    (function(){
+      var dragId = null;
+      each('.lead[draggable]', function(card){
+        card.addEventListener('dragstart', function(e){
+          dragId = card.getAttribute('data-lead');
+          card.classList.add('drag');
+          try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+        });
+        card.addEventListener('dragend', function(){
+          dragId = null;
+          each('.lead', function(c){ c.classList.remove('drag'); });
+          each('.bcol', function(c){ c.classList.remove('over'); });
+        });
+      });
+      each('[data-stagecol]', function(col){
+        col.addEventListener('dragover', function(e){ if (dragId){ e.preventDefault(); col.classList.add('over'); } });
+        col.addEventListener('dragleave', function(){ col.classList.remove('over'); });
+        col.addEventListener('drop', function(e){
+          if (!dragId) return;
+          e.preventDefault();
+          col.classList.remove('over');
+          var stage = col.getAttribute('data-stagecol');
+          var l = leads(ctx.EV).filter(function(x){ return String(x.id) === String(dragId); })[0];
+          if (!l || l.stage === stage) return;
+          l.stage = stage;
+          saveLead(l); redraw();
+          ctx.toast(l.p.name + ' moved to ' + stageById(stage).label);
+        });
+      });
+    })();
+
+    var cn = $('crm-new');
+    if (cn) cn.onclick = function(){ addLeadDialog(ctx); };
+    var ci = $('crm-import');
+    if (ci) ci.onclick = function(){ importDialog(ctx); };
+
+    /* pipeline */
+    each('[data-ed]', function(el){
+      el.onclick = function(){
+        var i = +el.getAttribute('data-ed');
+        var at = U.pipeEd.indexOf(i);
+        if (at >= 0) U.pipeEd.splice(at, 1); else U.pipeEd.push(i);
+        U.pipePage = 1; redraw();
+      };
+    });
+    var pec = $('pipe-edclear');
+    if (pec) pec.onclick = function(){ U.pipeEd = []; U.pipePage = 1; redraw(); };
+    var pq = $('pipe-q');
+    if (pq) pq.oninput = function(){
+      U.pipeQ = pq.value; U.pipePage = 1; redraw();
+      var n = $('pipe-q'); if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+    };
+    var pl = $('pipe-level');
+    if (pl) pl.onchange = function(){ U.pipeLevel = pl.value; U.pipePage = 1; redraw(); };
+    var ps = $('pipe-sub');
+    if (ps) ps.onchange = function(){ U.pipeSub = ps.value; U.pipePage = 1; redraw(); };
+    each('[data-tocrm]', function(el){
+      el.onclick = function(e){ e.stopPropagation(); pushToCRM(el.getAttribute('data-tocrm'), ctx); };
+    });
+    each('[data-pipe]', function(el){
+      el.onclick = function(){ openLead(el.getAttribute('data-pipe'), ctx); };
+    });
+    function poolCSV(list){
+      return list.map(function(p){
+        return { Name:p.name, Company:p.comp, Designation:p.desig, Email:p.email, Mobile:p.phone,
+                 City:p.city, Industry:p.industry, Level:levelMeta(levelOf(p)).label, Score:p.score,
+                 'Past editions':p.editions, Registered:p.registered ? 'Yes' : 'No',
+                 Subscriber:subState(p.sub).label };
+      });
+    }
+
+    /* the pool gets the same selection machinery as the CRM list */
+    each('[data-ppick]', function(el){
+      el.onclick = function(e){
+        e.stopPropagation();
+        var id = el.getAttribute('data-ppick');
+        if (el.checked) U.pipeSel[id] = true; else delete U.pipeSel[id];
+        redraw();
+      };
+    });
+    var pa = $('pipe-all');
+    if (pa) pa.onclick = function(){
+      var on = pa.checked;
+      each('[data-ppick]', function(el){
+        var id = el.getAttribute('data-ppick');
+        if (on) U.pipeSel[id] = true; else delete U.pipeSel[id];
+      });
+      redraw();
+    };
+    var pclr = $('pipe-clearsel');
+    if (pclr) pclr.onclick = function(){ U.pipeSel = {}; redraw(); };
+
+    function pickedPeople(){
+      var ids = Object.keys(U.pipeSel).filter(function(k){ return U.pipeSel[k]; });
+      return prospects(ctx.EV).filter(function(p){ return ids.indexOf(String(p.id)) >= 0; });
+    }
+    each('[data-pbulk]', function(el){
+      el.onclick = function(){
+        var kind = el.getAttribute('data-pbulk');
+        var picked = pickedPeople();
+        if (!picked.length) return;
+
+        if (kind === 'email' || kind === 'whatsapp'){
+          sendDialog(ctx, {
+            channel: kind, selected: picked,
+            viewList: pipeFiltered(ctx.EV),
+            viewLabel: 'Everyone the pool filters currently show'
+          });
+          return;
+        }
+        if (kind === 'export'){
+          exportCSV(poolCSV(picked), 'pipeline-selection');
+          ctx.toast(comma(picked.length) + ' rows exported');
+          return;
+        }
+        if (kind === 'batch'){
+          modal('Save as a batch',
+            '<div class="field"><label for="pb-name">Batch name</label>' +
+              '<input class="inp" id="pb-name" placeholder="e.g. Mumbai CXOs, 2024 edition"></div>' +
+              '<p class="hint" style="margin:10px 0 0">' + comma(picked.length) +
+              ' people, frozen as they are now. Batches live on the Audiences tab.</p>',
+            '<button class="btn btn-ghost" type="button" id="pb-cancel">Cancel</button>' +
+            '<button class="btn btn-primary" type="button" id="pb-go">Save batch</button>', 440);
+          $('pb-cancel').onclick = closeModal;
+          $('pb-go').onclick = function(){
+            var nm = $('pb-name').value.trim();
+            if (!nm){ ctx.toast('Give the batch a name'); return; }
+            var ids = picked.map(function(p){ return p.id; });
+            D.batches.push({ id: uid('g'), name: nm, f: emptyFilters(), ids: ids, created: Date.now() });
+            save(); closeModal(); redraw();
+            ctx.toast('"' + nm + '" saved with ' + comma(ids.length) + ' people');
+          };
+          return;
+        }
+        if (kind === 'crm'){
+          var fresh = picked.filter(function(p){ return !D.crm[p.id]; });
+          modal('Send to the CRM',
+            '<p class="hint" style="margin:0 0 14px"><b>' + comma(picked.length) + '</b> selected, ' +
+              '<b>' + comma(fresh.length) + '</b> not yet worked by anyone.</p>' +
+            '<div class="frow">' +
+              '<div class="field c6"><label for="ps-owner">Assign to</label>' +
+                '<select class="inp" id="ps-owner">' + OWNERS.map(function(o){
+                  return '<option>'+esc(o)+'</option>'; }).join('') + '</select></div>' +
+              '<div class="field c6"><label for="ps-level">Level</label>' +
+                '<select class="inp" id="ps-level">' + LEVELS.map(function(l){
+                  return '<option value="'+l.id+'"'+(l.id==='warm'?' selected':'')+'>'+l.label+'</option>';
+                }).join('') + '</select></div>' +
+            '</div>',
+            '<button class="btn btn-ghost" type="button" id="ps-cancel">Cancel</button>' +
+            '<button class="btn btn-primary" type="button" id="ps-go">Send ' + comma(fresh.length) + '</button>', 470);
+          $('ps-cancel').onclick = closeModal;
+          $('ps-go').onclick = function(){
+            var o = $('ps-owner').value, lv = $('ps-level').value;
+            fresh.forEach(function(p){
+              D.crm[p.id] = { stage:'new', owner:o, calls:0, notes:[], next:'', level:lv, touched:Date.now() };
+            });
+            U.pipeSel = {};
+            save(); closeModal(); redraw();
+            ctx.toast(comma(fresh.length) + ' sent to ' + o + ' in the CRM');
+          };
+        }
+      };
+    });
+
+    var pml = $('pipe-mail');
+    if (pml) pml.onclick = function(){
+      sendDialog(ctx, { channel:'email', selected: pickedPeople(),
+        viewList: pipeFiltered(ctx.EV), viewLabel:'Everyone the pool filters currently show' });
+    };
+    var pwa = $('pipe-wa');
+    if (pwa) pwa.onclick = function(){
+      sendDialog(ctx, { channel:'whatsapp', selected: pickedPeople(),
+        viewList: pipeFiltered(ctx.EV), viewLabel:'Everyone the pool filters currently show' });
+    };
+
+    var pex = $('pipe-export');
+    if (pex) pex.onclick = function(){
+      var list = pipeFiltered(ctx.EV);
+      exportCSV(poolCSV(list), 'pipeline-filtered');
+      ctx.toast(comma(list.length) + ' rows exported');
+    };
+    var pea = $('pipe-exportall');
+    if (pea) pea.onclick = function(){
+      var list = prospects(ctx.EV);
+      exportCSV(poolCSV(list), 'pipeline-pool');
+      ctx.toast(comma(list.length) + ' rows exported');
+    };
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   }
 
   function wire(tab, ctx){

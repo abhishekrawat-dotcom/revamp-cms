@@ -960,22 +960,6 @@
   .det-card.removed .det-shot{ filter: grayscale(1); }
 
   /* ============ HERO BANNER OPTIONS & IMPORT PSD ============ */
-  .banner-mode-segmented{
-    display:inline-flex; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 3px; gap: 3px;
-  }
-  .banner-mode-btn{
-    display:inline-flex; align-items:center; gap: 7px;
-    padding: 7px 15px; border-radius: 6px; border: none; background: transparent;
-    font-size: 12.5px; font-weight: 700; color: var(--text-muted); cursor: pointer;
-    transition: all .14s ease;
-  }
-  .banner-mode-btn:hover{ color: var(--text); background: var(--surface-2); }
-  .banner-mode-btn[aria-pressed="true"]{
-    background: var(--accent); color: var(--accent-contrast); box-shadow: var(--shadow-sm);
-  }
-  .banner-mode-btn svg{ flex-shrink: 0; }
-
   /* PSD Importer Container in Build Content */
   .psd-import-wrap{ display:flex; flex-direction:column; gap: 16px; }
 
@@ -1040,7 +1024,6 @@
   .psd-chip-cta{ background: rgba(237,28,36,0.12); color: var(--accent); }
   .psd-chip-graphic{ background: rgba(16,185,129,0.12); color: #059669; }
   .psd-chip-effect{ background: rgba(139,92,246,0.12); color: #7C3AED; }
-  .psd-actions-row{ display:flex; gap: 10px; align-items:center; flex-wrap:wrap; margin-top: 4px; }
 
   /* ============ STEP 5 - PREVIEW ============ */
   .prev-grid{ display:grid; grid-template-columns: minmax(0,1fr) 300px; gap: 18px; align-items:start; }
@@ -1163,22 +1146,10 @@
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
   /* ============ IMPORT PSD — BANNER OPTIONS ============ */
 
-  /* --- Import PSD on/off toggle (hero section head) --- */
-  .banner-mode-segmented{
-    display: inline-flex; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 3px; gap: 3px; flex-shrink: 0;
-  }
-  .banner-mode-btn{
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 13px; border-radius: 6px; border: none;
-    background: transparent; font-size: 13px; font-weight: 600;
-    color: var(--text-muted); transition: background .12s ease, color .12s ease, box-shadow .12s ease;
-    white-space: nowrap;
-  }
-  .banner-mode-btn:hover{ color: var(--text); background: var(--surface-2); }
-  .banner-mode-btn[aria-pressed="true"]{
-    background: var(--accent); color: #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,.18); font-weight: 700;
+  /* --- "Build banner from text instead of PSD" switch (hero section head), set apart from Included --- */
+  .hero-mode-switch{
+    padding-right: 14px; margin-right: 4px; border-right: 1px solid var(--border) !important;
+    border-radius: 0; white-space: nowrap;
   }
 
   /* --- PSD import wrapper --- */
@@ -1223,12 +1194,7 @@
   .psd-layer-img img{ width: 100%; height: 100%; object-fit: cover; display: block; }
 
   /* --- upload dropzone re-use (filled state) --- */
-  #e-banner.dropzone.filled, #psd-dropzone.dropzone.filled{ border-color: var(--ok) !important; background: var(--ok-soft) !important; }
-
-  /* --- actions row below dropzone --- */
-  .psd-actions-row{
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px;
-  }
+  #e-banner.dropzone.filled{ border-color: var(--ok) !important; background: var(--ok-soft) !important; }
 
   /* --- layers table --- */
   .psd-layers-box{
@@ -1265,8 +1231,114 @@
   .psd-chip-effect{background: var(--warn-soft);     color: var(--warn); }
   .psd-chip-graphic{ background: var(--surface-3);   color: var(--text-faint); }
 
-  /* drag over state on PSD dropzone */
-  #psd-dropzone.drag{ border-color: var(--accent) !important; background: var(--accent-soft) !important; }
+  /* layer visibility: the eye column, and the row of a hidden layer */
+  .psd-layers-table .psd-eye-cell{ width: 1%; padding-right: 0; color: var(--text-faint); }
+  .psd-layers-table th.psd-eye-cell svg{ display: block; margin-left: 7px; }
+  .psd-eye{
+    display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    border: none; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer;
+    transition: background .12s ease, color .12s ease;
+  }
+  .psd-eye:hover{ background: var(--surface-3); color: var(--text); }
+  .psd-eye:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+  .psd-eye[aria-pressed="false"]{ color: var(--text-faint); }
+  .psd-layers-table tr.is-hidden td:not(.psd-eye-cell):not(.psd-name-cell),
+  .psd-layers-table tr.is-hidden .psd-name-cell > :not(.psd-auto-tag){ opacity: .45; }
+  .psd-auto-tag{
+    display: block; width: max-content; margin-top: 3px; padding: 1px 6px; border-radius: 4px;
+    font-size: 10.5px; font-weight: 700; background: var(--warn-soft); color: var(--warn);
+  }
+  .psd-auto-tag.is-button{ background: var(--review-soft); color: var(--review); }
+
+  /* --- "Detected in your PSD": a Shown / Hidden switch per date and button found in the file --- */
+  .psd-detect{ border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .psd-detect-head{
+    display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  }
+  .psd-detect-head strong{ font-size: 12.5px; font-weight: 700; color: var(--text); }
+  .psd-detect-head span{ font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+  .psd-detect-row{
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px;
+    border-bottom: 1px solid var(--border); font-size: 13px; transition: background .12s ease;
+  }
+  .psd-detect-row:last-child{ border-bottom: none; }
+  .psd-detect-row:hover{ background: var(--surface-2); }
+  .psd-detect-ico{ display: inline-flex; flex-shrink: 0; color: var(--text-muted); }
+  .psd-detect-kind{
+    width: 62px; flex-shrink: 0; font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--text-faint);
+  }
+  .psd-detect-label{ flex: 1; min-width: 0; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .psd-detect-extra{ flex-shrink: 0; font-size: 11.5px; color: var(--text-faint); }
+  .psd-detect-row .switch{ flex-shrink: 0; min-width: 84px; }
+  .psd-detect-row.is-hidden .psd-detect-label{ color: var(--text-faint); }
+  .psd-detect-empty{ padding: 12px 14px; font-size: 12.5px; color: var(--text-muted); }
+
+  /* the spotlight a Detected row puts on the banner: everything else dims (the canvas clips the shadow) */
+  .psd-spot{
+    position: absolute; z-index: 15; display: none; pointer-events: none; box-sizing: border-box;
+    border: 2px solid #fff; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(12, 6, 8, .5);
+  }
+  .psd-spot.on{ display: block; }
+  .psd-spot.off{ border-style: dashed; }     /* the item is hidden: the outline shows where it would be */
+
+  /* --- "Pick on banner" mode: the upload overlay steps aside, the layer under the pointer is outlined and named --- */
+  .psd-detect-head .btn{ flex-shrink: 0; }
+  .psd-preview-card.is-picking .psd-replace{ display: none; }
+  .psd-preview-card.is-picking .psd-canvas-wrap{ cursor: crosshair; outline: 2px solid var(--accent); outline-offset: -2px; }
+  .psd-preview-card.is-picking .psd-spot{ box-shadow: 0 0 0 9999px rgba(12, 6, 8, .3); }
+  .psd-spot.named::after{
+    content: attr(data-name); position: absolute; left: -2px; bottom: calc(100% + 4px); max-width: 280px;
+    padding: 2px 7px; border-radius: 4px; background: #fff; color: #17110f;
+    font: 700 11px/1.5 var(--font-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .psd-spot.named.below::after{ bottom: auto; top: calc(100% + 4px); }
+  .psd-pick-hint{
+    display: none; position: absolute; z-index: 18; top: 10px; left: 50%; transform: translateX(-50%);
+    max-width: calc(100% - 20px); padding: 5px 12px; border-radius: 999px; pointer-events: none;
+    background: rgba(12, 6, 8, .82); color: #fff; font-size: 12px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .psd-preview-card.is-picking .psd-pick-hint{ display: block; }
+  .psd-pick-pop{
+    position: absolute; z-index: 25; width: 270px; max-width: calc(100% - 16px); box-sizing: border-box;
+    padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow-md); cursor: default; font-size: 12.5px;
+  }
+  .psd-pick-name{ margin-bottom: 8px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .psd-pick-acts{ display: flex; gap: 6px; }
+  .psd-pick-note{ margin: 9px 0 6px; font-size: 11.5px; color: var(--text-muted); }
+  .psd-pick-kinds{ display: flex; flex-wrap: wrap; gap: 6px; }
+  .psd-pick-kind{
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .psd-pick-kind:hover{ border-color: var(--accent); color: var(--accent-strong); }
+  .psd-pick-kind svg{ width: 13px; height: 13px; }
+  .psd-pick-empty{ font-size: 12px; color: var(--text-muted); }
+
+  /* --- Upload / Replace PSD: laid over the preview banner, shown on hover, keyboard focus or file drag --- */
+  .psd-replace{
+    position: absolute; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    padding: 16px; text-align: center; cursor: pointer;
+    background: rgba(12, 6, 8, .74); color: #fff;
+    outline: 2px dashed transparent; outline-offset: -10px; border-radius: inherit;
+    opacity: 0; transition: opacity .16s ease, outline-color .16s ease, background .16s ease;
+  }
+  .psd-canvas-wrap:hover .psd-replace, .psd-replace:focus-within, .psd-replace.drag{ opacity: 1; }
+  .psd-replace.drag{ outline-color: rgba(255,255,255,.7); background: rgba(12, 6, 8, .84); }
+  .psd-replace .ico{ display: inline-flex; color: #fff; }
+  .psd-replace .t{ font-size: 14px; font-weight: 700; }
+  .psd-replace .s{ max-width: 460px; font-size: 12px; line-height: 1.45; color: rgba(255,255,255,.78); }
+  .psd-replace-actions{ display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+  /* touch screens have no hover: keep a compact bar pinned to the bottom of the banner instead */
+  @media (hover: none){
+    .psd-replace{ opacity: 1; justify-content: flex-end; background: linear-gradient(transparent 40%, rgba(12, 6, 8, .82)); }
+    .psd-replace .ico, .psd-replace .s{ display: none; }
+  }
 
   /* --- Banner Palette Auto-Detection Bar --- */
   .banner-palette-bar{
@@ -1476,6 +1548,14 @@
   var IC = {
     check:  svg('<path d="M20 6L9 17l-5-5"/>', 12),
     check14:svg('<path d="M20 6L9 17l-5-5"/>', 14),
+    eye:    svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', 15),
+    /* the kinds of thing the "Detected in your PSD" panel lists */
+    kind_date:    svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', 15),
+    kind_venue:   svg('<path d="M12 21s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>', 15),
+    kind_hashtag: svg('<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>', 15),
+    crosshair:    svg('<circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>', 14),
+    kind_button:  svg('<rect x="2" y="7" width="20" height="10" rx="4"/><path d="M8 12h8"/>', 15),
+    eyeOff: svg('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.5 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/>', 15),
     grip:   svg('<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>', 15),
     trash:  svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', 14),
     plus:   svg('<path d="M12 5v14M5 12h14"/>', 14),
@@ -1848,7 +1928,7 @@
   ========================================================= */
   function seed(id){
     switch(id){
-      case 'hero': return { title:'', tagline:'Where marketing technology meets measurable growth', cta1:'Register now', cta2:'Download brochure', banner:false, bannerMode:'assemble', psdBanner:null };
+      case 'hero': return { title:'', tagline:'Where marketing technology meets measurable growth', cta1:'Register now', cta2:'Download brochure', banner:false, bannerMode:'psd', psdBanner:null };
       case 'stats': return { items:[
           {k:'Day', v:'1'}, {k:'Sessions', v:'14'}, {k:'Speakers', v:'32'}, {k:'Minutes', v:'480'}, {k:'Brands', v:'120'}
         ] };
@@ -3249,6 +3329,9 @@
   /* =========================================================
      PER-SECTION EDITOR
   ========================================================= */
+  /* the hero is built from an imported PSD unless "Build banner from text instead of PSD" is switched on */
+  function heroMode(d){ return (d && d.bannerMode) || 'psd'; }
+
   function renderEditor(){
     var host = $('editor-panel');
     if (!host) return;
@@ -3259,17 +3342,14 @@
       '<button class="btn btn-ai btn-sm" id="ai-fit">' + IC.spark + ' Fit to section</button>' +
       '<button class="btn btn-secondary btn-sm" id="ai-gen">Generate</button>';
 
-    /* the hero is built from the fields below, or — with Import PSD pressed — from an imported PSD.
-       One button, on/off: data-banner-opt is the mode a click switches to. */
-    var bannerMode = s.shape === 'hero' ? ((s.data && s.data.bannerMode) || 'assemble') : null;
-    var psdOn = bannerMode === 'psd';
+    /* the hero opens on Import PSD; switching "Build banner from text instead of PSD" on builds it from the fields instead.
+       data-banner-opt is the mode a click switches to. */
+    var bannerMode = s.shape === 'hero' ? heroMode(s.data) : null;
+    var textOn = bannerMode === 'assemble';
     var bannerToggle = !bannerMode ? '' :
-      '<div class="banner-mode-segmented">' +
-        '<button type="button" class="banner-mode-btn" data-banner-opt="' + (psdOn ? 'assemble' : 'psd') + '" aria-pressed="' + psdOn + '"' +
-          ' title="' + (psdOn ? 'Stop using the PSD and build the banner from the fields' : 'Build the banner from a PSD file') + '">' +
-          svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h7M7 16h4"/>', 14) + ' Import PSD' +
-        '</button>' +
-      '</div>';
+      '<button type="button" class="switch hero-mode-switch" data-banner-opt="' + (textOn ? 'psd' : 'assemble') + '" aria-pressed="' + textOn + '"' +
+        ' title="' + (textOn ? 'Switch off to use an imported PSD as the banner again' : 'No PSD? Switch on to type the title, tagline and buttons instead') + '">' +
+        '<span class="track"><i></i></span>Build banner from text instead of PSD</button>';
 
     var helpText = s.helper || (libBy(s.libId) || {}).helper || '';     // older drafts may not carry it
     host.innerHTML =
@@ -3865,6 +3945,7 @@
           id: 'psd_meta_date_loc',
           name: 'Schedule & Venue Metadata',
           type: 'text',
+          visible: false, autoHidden: true,       // dates start hidden (detectPsdItems)
           text: dateLoc,
           left: 120, top: 375, width: 800, height: 36,
           fontSize: 15,
@@ -3907,6 +3988,12 @@
           fontWeight: 600,
           color: 'rgba(255,255,255,0.65)'
         }
+      ],
+      /* set by hand: the title is the event name, which may itself name a month */
+      detected: [
+        { id: 'det_1', kind: 'button', label: 'Register now',      primary: 'psd_cta_primary',   layers: ['psd_cta_primary'] },
+        { id: 'det_2', kind: 'button', label: 'Download brochure', primary: 'psd_cta_secondary', layers: ['psd_cta_secondary'] },
+        { id: 'det_3', kind: 'date',   label: dateLoc,             primary: 'psd_meta_date_loc', layers: ['psd_meta_date_loc'] }
       ]
     };
   }
@@ -3918,21 +4005,63 @@
     return def;
   }
 
-  function extractPsdBannerData(psd, filename, filesize){
-    var w = psd.width || 1920;
-    var h = psd.height || 720;
-    var layers = [];
-    var rasters = [];   // non-text pixel layers, bottom to top — used when the PSD has no composite of its own
+  /* ---------- PSD layer visibility (the eye in the layers table) ----------
+     Pixel layers aren't kept on the draft (a PNG each would blow the localStorage quota the draft is saved to), so
+     the banner is one composite image. Hiding a pixel layer re-draws that composite without it: the PSD's own
+     composite stays everywhere except around the hidden layers, where the layers are re-flattened here (masks,
+     clipping, opacity and blend modes — not layer effects). The PSD file is kept in IndexedDB (editor-store.js)
+     so the layers can still be toggled after a reload. */
+  var PSD_FILE_KEY = 'create:psd';
+  var psdSource = null;     // { key, width, height, composite, rasters } for the PSD read this session
 
-    function walk(list){
-      if (!list) return;
-      for (var i = 0; i < list.length; i++){
-        var l = list[i];
-        if (l.hidden) continue;
+  function psdFileKey(file){ return [file.name, file.size, file.lastModified || 0].join('|'); }
+
+  var BLEND_OPS = {
+    'multiply': 'multiply', 'screen': 'screen', 'overlay': 'overlay', 'darken': 'darken', 'lighten': 'lighten',
+    'color dodge': 'color-dodge', 'color burn': 'color-burn', 'hard light': 'hard-light', 'soft light': 'soft-light',
+    'difference': 'difference', 'exclusion': 'exclusion', 'hue': 'hue', 'saturation': 'saturation',
+    'color': 'color', 'luminosity': 'luminosity', 'linear dodge': 'lighter'
+  };
+
+  function newCanvas(w, h){ var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+  /* a layer's own pixels with its layer mask applied (mask pixels are grey: white shows, black hides) */
+  function maskedLayerCanvas(l){
+    var m = l.mask;
+    if (!m || m.disabled || !m.canvas) return l.canvas;
+    var w = l.canvas.width, h = l.canvas.height;
+    var out = newCanvas(w, h), ctx = out.getContext('2d');
+    ctx.drawImage(l.canvas, 0, 0);
+    var px = ctx.getImageData(0, 0, w, h), d = px.data;
+    var mw = m.canvas.width, mh = m.canvas.height;
+    var md = m.canvas.getContext('2d').getImageData(0, 0, mw, mh).data;
+    var dx = (l.left || 0) - (m.left || 0), dy = (l.top || 0) - (m.top || 0);
+    var outside = m.defaultColor != null ? m.defaultColor : 0;
+    for (var y = 0; y < h; y++){
+      var my = y + dy;
+      for (var x = 0; x < w; x++){
+        var mx = x + dx;
+        var v = (mx >= 0 && my >= 0 && mx < mw && my < mh) ? md[(my * mw + mx) * 4] : outside;
+        var i = (y * w + x) * 4 + 3;
+        d[i] = d[i] * v / 255;
+      }
+    }
+    ctx.putImageData(px, 0, 0);
+    return out;
+  }
+
+  /* every visible PSD layer in paint order (bottom first): the rows of the layers table, and the pixel layers the
+     composite is flattened from. Both share ids, so a table row maps to its pixels. */
+  function collectPsdLayers(psd){
+    var layers = [], rasters = [], groups = 0;
+    (function walk(list, groupOpacity, group){
+      (list || []).forEach(function(l){
+        if (l.hidden) return;
         var left = l.left || 0;
         var top = l.top || 0;
         var width = (l.right != null && l.left != null) ? (l.right - l.left) : (l.width || 0);
         var height = (l.bottom != null && l.top != null) ? (l.bottom - l.top) : (l.height || 0);
+        var opacity = l.opacity != null ? l.opacity : 1;
 
         var layerItem = {
           id: 'psd_lyr_' + (layers.length + 1),
@@ -3941,9 +4070,13 @@
           top: top,
           width: width,
           height: height,
-          opacity: l.opacity != null ? l.opacity : 1,
-          visible: !l.hidden
+          opacity: opacity,
+          visible: true,
+          group: group             // which PSD group it sits in (0 = top level) — detectPsdItems pairs a button's text and shape by it
         };
+        /* the words of a text layer, for detectPsdItems only (ag-psd keeps them in text.text) */
+        var words = l.text && (l.text.text || l.text.value);
+        if (words) layerItem.psdText = String(words).replace(/\s+/g, ' ').trim();
 
         if (l.text && l.text.value){
           layerItem.type = /register|brochure|book|ticket|button/i.test(l.name || l.text.value) ? 'cta' : 'text';
@@ -3958,25 +4091,404 @@
             layerItem.color = '#ffffff';
           }
         } else if (l.canvas){
-          /* pixels go into the composite below, not onto the layer: a PNG per layer
-             would blow the localStorage quota the draft is saved to */
           layerItem.type = 'image';
-          rasters.push({ canvas: l.canvas, left: left, top: top, opacity: layerItem.opacity });
+          layerItem.raster = true;     // its pixels are in the composite, so hiding it re-draws that
         } else {
           layerItem.type = 'graphic';
         }
 
         if (width > 0 && height > 0){
           layers.push(layerItem);
+          if (layerItem.raster) rasters.push({
+            id: layerItem.id, layer: l, left: left, top: top, width: l.canvas.width, height: l.canvas.height,
+            opacity: opacity * groupOpacity, blend: BLEND_OPS[l.blendMode] || 'source-over', clipping: !!l.clipping
+          });
         }
 
-        if (l.children && l.children.length){
-          walk(l.children);
+        if (l.children && l.children.length) walk(l.children, groupOpacity * opacity, ++groups);
+      });
+    })(psd.children, 1, 0);
+    return { layers: layers, rasters: rasters };
+  }
+
+  /* the PSD's pixel layers painted bottom to top, leaving out `hidden` (id -> true) */
+  function flattenPsd(src, hidden){
+    var out = newCanvas(src.width, src.height), ctx = out.getContext('2d');
+    var R = src.rasters;
+    function pixels(r){ return r.canvas || (r.canvas = maskedLayerCanvas(r.layer)); }
+    for (var i = 0; i < R.length; ){
+      var base = R[i], j = i + 1;
+      while (j < R.length && R[j].clipping) j++;           // layers clipped to this one sit right above it
+      if (!hidden[base.id]){
+        var img = pixels(base), x = base.left, y = base.top;
+        if (j > i + 1){
+          var grp = newCanvas(src.width, src.height), g = grp.getContext('2d');
+          g.drawImage(img, x, y);
+          g.globalCompositeOperation = 'source-atop';
+          for (var k = i + 1; k < j; k++){
+            if (hidden[R[k].id]) continue;
+            g.globalAlpha = R[k].opacity;
+            g.drawImage(pixels(R[k]), R[k].left, R[k].top);
+          }
+          img = grp; x = 0; y = 0;
+        }
+        ctx.globalAlpha = base.opacity;
+        ctx.globalCompositeOperation = base.blend;
+        ctx.drawImage(img, x, y);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      i = j;
+    }
+    return out;
+  }
+
+  /* the banner image with `hidden` left out. Nothing hidden: the PSD's own composite, untouched. Otherwise that
+     composite with each hidden layer's area (plus a little for anti-aliasing) swapped for the re-flattened one,
+     so the rest keeps Photoshop's layer effects. A PSD saved without a composite is flattened whole. */
+  function composePsd(src, hidden){
+    var any = src.rasters.some(function(r){ return hidden[r.id]; });
+    if (!any && src.composite) return src.composite;
+    var flat = flattenPsd(src, hidden);
+    if (!src.composite) return flat;
+    var w = src.width, h = src.height;
+    var out = newCanvas(w, h), ctx = out.getContext('2d');
+    ctx.drawImage(src.composite, 0, 0);
+    var pad = Math.max(4, Math.round(Math.min(w, h) * 0.01));
+    src.rasters.forEach(function(r){
+      if (!hidden[r.id]) return;
+      var x = Math.max(0, Math.floor(r.left - pad)), y = Math.max(0, Math.floor(r.top - pad));
+      var x2 = Math.min(w, Math.ceil(r.left + r.width + pad)), y2 = Math.min(h, Math.ceil(r.top + r.height + pad));
+      if (x2 <= x || y2 <= y) return;
+      ctx.clearRect(x, y, x2 - x, y2 - y);
+      ctx.drawImage(flat, x, y, x2 - x, y2 - y, x, y, x2 - x, y2 - y);
+    });
+    return out;
+  }
+
+  function hiddenPsdLayers(b){
+    var hidden = {};
+    (b.layers || []).forEach(function(l){ if (l.raster && l.visible === false) hidden[l.id] = true; });
+    return hidden;
+  }
+
+  function setPsdComposite(b, canvas){
+    try { b.compositeImageData = canvas.toDataURL('image/jpeg', 0.88); } catch(e){}
+    /* non-enumerable: a canvas doesn't survive JSON, and after a reload it would come back as {} */
+    Object.defineProperty(b, 'compositeCanvas', { value: canvas, enumerable: false, configurable: true, writable: true });
+  }
+
+  /* ---------- dates, venues, hashtags and buttons found in the PSD (the "Detected in your PSD" panel) ----------
+     b.detected = [{ id, kind: 'date' | 'venue' | 'hashtag' | 'button', label, primary: layer id, layers: [layer ids] }]
+     - A button is a short text layer with button wording, plus the shape it sits on and anything else drawn inside
+       that shape. It starts shown.
+     - A date is a small layer naming a month with a number, a numeric date, or the word "date". A layer holding
+       the date and the venue together ("18th June, 2026 | Bengaluru") counts as the date.
+     - A hashtag is a short text layer with a #tag in it.
+     - A venue is a small text layer naming a hotel / venue word, a city, or the venue / city typed in step 1.
+     Dates, hashtags and venues take along the small icon right beside them (calendar, pin) and start hidden: what
+     the PSD prints is often stale, still to be confirmed, or repeated elsewhere on the site.
+     A panel switch shows / hides all of an item's layers together. */
+  var PSD_KIND_LABEL = { date: 'Date', venue: 'Venue', hashtag: 'Hashtag', button: 'Button' };
+  var PSD_HIDE_BY_DEFAULT = { date: true, venue: true, hashtag: true };
+  var MONTH_RE = /\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)\b/i;
+  var CTA_RE = /\b(register|book|buy|tickets?|passes?|express interest|apply|nominat\w*|enquire|inquire|sign ?up|join now|download|learn more|know more|read more|rsvp|submit|contact us|click here|reserve|enrol+|subscribe|watch now|explore)\b/i;
+  var HASHTAG_RE = /(^|\s)#[a-z]\w*/i;
+  var VENUE_RE = new RegExp('\\b(' + [
+    'venue', 'hotel', 'resort', 'convention', 'centre', 'center', 'auditorium', 'ballroom', 'palace', 'expo', 'stadium',
+    'campus', 'virtual', 'online', 'hyatt', 'taj', 'marriott', 'leela', 'oberoi', 'itc', 'novotel', 'sheraton', 'sofitel',
+    'radisson', 'westin', 'trident', 'lalit', 'ritz', 'hilton', 'pullman', 'vivanta', 'mayfair', 'crowne plaza',
+    'holiday inn', 'jw', 'shangri-la', 'andaz', 'conrad', 'delhi', 'mumbai', 'bengaluru', 'bangalore', 'gurgaon',
+    'gurugram', 'noida', 'hyderabad', 'chennai', 'kolkata', 'pune', 'goa', 'jaipur', 'ahmedabad', 'guwahati', 'dehradun',
+    'lucknow', 'chandigarh', 'kochi', 'indore', 'bhubaneswar', 'dubai', 'singapore', 'london'
+  ].join('|') + ')\\b', 'i');
+  function isDateText(s){
+    s = String(s || '');
+    return (MONTH_RE.test(s) && /\d/.test(s)) || /\b\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\b/.test(s) || /\bdates?\b/i.test(s);
+  }
+  function isVenueText(s){
+    s = String(s || '');
+    if (!s || s.length > 60) return false;
+    var b = S.basics || {}, low = s.toLowerCase();
+    return VENUE_RE.test(s) || [b.venue, b.city].some(function(k){        // what step 1 says the venue is
+      k = String(k || '').trim().toLowerCase();
+      return k.length >= 3 && low.indexOf(k) >= 0;
+    });
+  }
+
+  function detectPsdItems(layers, bannerW, bannerH){
+    var items = [], used = {};
+    function add(kind, primary, ids){
+      ids.forEach(function(id){ used[id] = true; });
+      items.push({ id: 'det_' + (items.length + 1), kind: kind, label: (primary.psdText || primary.name || '').slice(0, 80), primary: primary.id, layers: ids });
+    }
+    function inside(a, b, tol){
+      return a.left >= b.left - tol && a.top >= b.top - tol &&
+        a.left + a.width <= b.left + b.width + tol && a.top + a.height <= b.top + b.height + tol;
+    }
+    function buttonSized(s){ return s.width <= bannerW * 0.5 && s.height <= bannerH * 0.2 && s.width >= s.height * 1.8; }
+
+    /* buttons first, so "Register by 5 March" is a button rather than a date */
+    layers.forEach(function(t){
+      var s = t.psdText || '';
+      if (!s || s.length > 32 || s.split(' ').length > 4 || !CTA_RE.test(s)) return;
+      var cx = t.left + t.width / 2, cy = t.top + t.height / 2;
+      var shape = layers.filter(function(o){
+        return o !== t && !o.psdText && !used[o.id] && buttonSized(o) && o.width >= t.width &&
+          o.left <= cx && o.left + o.width >= cx && o.top <= cy && o.top + o.height >= cy;
+      }).sort(function(a, b){                                   // one in the text's own group, then the snuggest
+        return ((a.group === t.group ? 0 : 1) - (b.group === t.group ? 0 : 1)) || (a.width * a.height - b.width * b.height);
+      })[0];
+      var ids = [t.id];
+      if (shape){
+        ids.push(shape.id);
+        layers.forEach(function(o){                             // an arrow or a shadow drawn inside the button
+          if (o !== t && o !== shape && !used[o.id] && !o.psdText && inside(o, shape, 4)) ids.push(o.id);
+        });
+      }
+      add('button', t, ids);
+    });
+    /* a button that isn't a text layer, e.g. a smart object named "Register Now" */
+    layers.forEach(function(o){
+      var n = o.name || '';
+      if (used[o.id] || o.psdText || n.length > 32 || !buttonSized(o) || !(CTA_RE.test(n) || /\b(button|btn|cta)\b/i.test(n))) return;
+      add('button', o, [o.id]);
+    });
+
+    /* small layers of `kind` that pass `test`, each with the small icon right beside it on its left */
+    function textItems(kind, test){
+      layers.forEach(function(d){
+        if (used[d.id] || d.height > bannerH * 0.15 || !test(d)) return;   // a headline that happens to match stays
+        var ids = [d.id];
+        var lim = Math.min(64, Math.max(24, d.height * 1.6));
+        layers.forEach(function(ic){
+          if (ic === d || used[ic.id] || ic.psdText || ic.width > lim || ic.height > lim) return;
+          var gap = d.left - (ic.left + ic.width);
+          var rowOff = Math.abs((ic.top + ic.height / 2) - (d.top + d.height / 2));
+          if (gap >= -2 && gap <= Math.max(24, d.height * 2) && rowOff <= Math.max(d.height, ic.height) * 0.75) ids.push(ic.id);
+        });
+        add(kind, d, ids);
+      });
+    }
+    textItems('date', function(d){ return isDateText(d.psdText) || isDateText(d.name); });
+    textItems('hashtag', function(d){
+      return d.psdText ? (d.psdText.length <= 40 && HASHTAG_RE.test(d.psdText)) : /^#[a-z]/i.test(d.name || '');
+    });
+    textItems('venue', function(d){ return !!d.psdText && isVenueText(d.psdText); });
+
+    var byId = {};
+    layers.forEach(function(l){ byId[l.id] = l; });
+    items.forEach(function(it){
+      if (PSD_HIDE_BY_DEFAULT[it.kind]) it.layers.forEach(function(id){ byId[id].visible = false; byId[id].autoHidden = true; });
+    });
+    return items;
+  }
+
+  /* the PSD behind banner `b`, parsed: from this session, or read back from IndexedDB after a reload */
+  function withPsdSource(b, done){
+    if (psdSource && b.sourceKey && psdSource.key === b.sourceKey) return done(psdSource);
+    if (!b.sourceKey || !window.RevampStore || !window.agPsd) return done(null);
+    toast('Re-reading ' + (b.filename || 'the PSD') + '…');
+    RevampStore.get(PSD_FILE_KEY).then(function(rec){
+      if (!rec || rec.key !== b.sourceKey || !rec.file) return null;
+      return rec.file.arrayBuffer().then(function(buf){
+        var psd = window.agPsd.readPsd(buf, { skipThumbnail: true });
+        psdSource = { key: rec.key, width: psd.width || 1920, height: psd.height || 720,
+                      composite: psd.canvas || null, rasters: collectPsdLayers(psd).rasters };
+        return psdSource;
+      });
+    }).then(function(src){ done(src || null); }, function(){ done(null); });
+  }
+
+  function psdLayerById(b, id){ return (b.layers || []).filter(function(x){ return x.id === id; })[0]; }
+  function psdDetectedFor(b, layerId){ return (b.detected || []).filter(function(it){ return it.layers.indexOf(layerId) >= 0; })[0]; }
+
+  /* show / hide layers `ids` of banner `b` together, re-drawing the composite when any of them are pixels */
+  function setPsdLayersVisible(b, ids, show, message){
+    var set = ids.map(function(id){ return psdLayerById(b, id); }).filter(Boolean);
+    if (!set.length) return;
+    function apply(){ set.forEach(function(x){ x.visible = show; delete x.autoHidden; }); }
+    function finish(){ save(); renderEditor(); toast(message); }
+    if (!set.some(function(x){ return x.raster; })){ apply(); return finish(); }
+    withPsdSource(b, function(src){
+      if (!src){ toast('Upload ' + (b.filename || 'the PSD') + ' again to show or hide its layers'); return; }
+      apply();
+      setPsdComposite(b, composePsd(src, hiddenPsdLayers(b)));
+      finish();
+    });
+  }
+
+  /* the eye in the layers table: that one layer — or, on a detected date / button's main layer, the whole item */
+  function togglePsdLayer(b, id){
+    var l = psdLayerById(b, id);
+    if (!l) return;
+    var show = l.visible === false;
+    var it = psdDetectedFor(b, id);
+    var ids = it && it.primary === id ? it.layers : [id];
+    setPsdLayersVisible(b, ids, show, (show ? 'Layer shown: ' : 'Layer hidden: ') + l.name +
+      (ids.length > 1 ? (it.kind === 'button' ? ' (and the rest of the button)' : ' (and its icon)') : ''));
+  }
+
+  /* a switch in the "Detected in your PSD" panel */
+  function toggleDetectedPsdItem(b, detId){
+    var it = (b.detected || []).filter(function(x){ return x.id === detId; })[0];
+    if (!it) return;
+    var p = psdLayerById(b, it.primary);
+    var show = !p || p.visible === false;
+    setPsdLayersVisible(b, it.layers, show, (PSD_KIND_LABEL[it.kind] || 'Item') + ' ' + (show ? 'shown' : 'hidden') + ' on the banner: ' + it.label);
+  }
+
+  /* ---------- "Pick on banner": click a thing on the preview to hide it or list it in the Detected panel ----------
+     For when detection can't read a layer (its words are in a "Vector Smart Object", outlined, or flattened).
+     The layer under the pointer is found from its pixels: the topmost visible layer with paint within a few px
+     of the point (the sample banner's HTML layers by their bounds). Layers covering nearly the whole banner
+     (backgrounds) aren't pickable — the eye in the layers table covers those. */
+  var psdPick = { on: false };
+
+  function psdPickTargets(b, src){
+    var w = b.width || 1920, h = b.height || 720;
+    var rasterById = {};
+    ((src && src.rasters) || []).forEach(function(r){ rasterById[r.id] = r; });
+    return (b.layers || []).filter(function(l){
+      return l.visible !== false && l.width * l.height < w * h * 0.9 &&
+        (l.raster ? !!rasterById[l.id] : /^(text|badge|cta)$/.test(l.type));
+    }).reverse().map(function(l){ return { layer: l, raster: rasterById[l.id] || null }; });   // topmost first
+  }
+
+  function psdLayerAt(targets, px, py, radius){
+    for (var i = 0; i < targets.length; i++){
+      var t = targets[i], l = t.layer;
+      if (px < l.left - radius || py < l.top - radius || px > l.left + l.width + radius || py > l.top + l.height + radius) continue;
+      if (!t.raster) return l;
+      var r = t.raster;
+      if (!r.alpha){                                            // read once per layer, then kept with the raster
+        var c = r.canvas || (r.canvas = maskedLayerCanvas(r.layer));
+        r.alpha = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        r.alphaW = c.width; r.alphaH = c.height;
+      }
+      for (var dy = -radius; dy <= radius; dy++){
+        var y = Math.round(py - r.top + dy);
+        if (y < 0 || y >= r.alphaH) continue;
+        for (var dx = -radius; dx <= radius; dx++){
+          var x = Math.round(px - r.left + dx);
+          if (x >= 0 && x < r.alphaW && r.alpha[(y * r.alphaW + x) * 4 + 3] > 40) return l;
         }
       }
     }
+    return null;
+  }
 
-    walk(psd.children);
+  /* the picked layer becomes a Detected item of `kind` — hidden straight away for the kinds that start hidden */
+  function listPickedPsdLayer(b, l, kind){
+    b.detected = b.detected || [];
+    var n = 0;
+    b.detected.forEach(function(it){ n = Math.max(n, parseInt(String(it.id).replace(/\D/g, ''), 10) || 0); });
+    b.detected.push({ id: 'det_' + (n + 1), kind: kind, label: (l.psdText || l.name || 'Layer').slice(0, 80), primary: l.id, layers: [l.id], picked: true });
+    var msg = '“' + l.name + '” listed as ' + PSD_KIND_LABEL[kind].toLowerCase();
+    if (PSD_HIDE_BY_DEFAULT[kind] && l.visible !== false) return setPsdLayersVisible(b, [l.id], false, msg + ' and hidden');
+    save(); renderEditor(); toast(msg);
+  }
+
+  function psdPickMenuHtml(b, l){
+    var it = psdDetectedFor(b, l.id);
+    var name = l.psdText || l.name || 'Layer';
+    var head = '<div class="psd-pick-name" title="' + esc(name) + '">' + esc(name) + '</div>';
+    if (it){
+      var kind = PSD_KIND_LABEL[it.kind].toLowerCase();
+      return head +
+        '<div class="psd-pick-acts"><button type="button" class="btn btn-primary btn-sm" data-pick-act="item" data-det="' + esc(it.id) + '">' +
+          IC.eyeOff + ' Hide this ' + kind + '</button></div>' +
+        '<div class="psd-pick-note">Already listed as a ' + kind + ' in Detected in your PSD</div>';
+    }
+    return head +
+      '<div class="psd-pick-acts"><button type="button" class="btn btn-primary btn-sm" data-pick-act="hide">' + IC.eyeOff + ' Hide this</button></div>' +
+      '<div class="psd-pick-note">Or list it in Detected in your PSD as</div>' +
+      '<div class="psd-pick-kinds">' + ['date', 'venue', 'hashtag', 'button'].map(function(k){
+        return '<button type="button" class="psd-pick-kind" data-pick-act="' + k + '">' + IC['kind_' + k] + PSD_KIND_LABEL[k] + '</button>';
+      }).join('') + '</div>';
+  }
+
+  /* hover outlines the layer under the pointer (with its name); a click opens the menu for it */
+  function wirePsdPick(b, spot){
+    var wrap = document.querySelector('#editor-body .psd-preview-card .psd-canvas-wrap');
+    var pop = $('psd-pick-pop');
+    if (!wrap || !pop) return;
+    var w = b.width || 1920, h = b.height || 720;
+    var src = psdSource && b.sourceKey && psdSource.key === b.sourceKey ? psdSource : null;
+    var targets = psdPickTargets(b, src);
+    var radius = Math.max(2, Math.round(w * 0.004));      // forgiving: the gaps between letters still count
+
+    function pointAt(e){
+      var r = wrap.getBoundingClientRect();
+      return { x: (e.clientX - r.left) / r.width * w, y: (e.clientY - r.top) / r.height * h, cx: e.clientX - r.left, cy: e.clientY - r.top };
+    }
+    function outline(l){
+      if (!spot) return;
+      if (!l){ spot.classList.remove('on'); return; }
+      var pad = Math.min(w, h) * 0.008;
+      spot.style.left = ((l.left - pad) / w * 100) + '%';
+      spot.style.top = ((l.top - pad) / h * 100) + '%';
+      spot.style.width = ((l.width + pad * 2) / w * 100) + '%';
+      spot.style.height = ((l.height + pad * 2) / h * 100) + '%';
+      spot.setAttribute('data-name', l.psdText || l.name || 'Layer');
+      spot.classList.toggle('below', l.top < h * 0.12);      // no room for the name above it
+      spot.classList.remove('off');
+      spot.classList.add('on', 'named');
+    }
+
+    var frame = 0, last = null;
+    wrap.addEventListener('mousemove', function(e){
+      if (!pop.hidden) return;                              // the picked layer stays outlined while its menu is open
+      last = e;
+      if (frame) return;
+      frame = requestAnimationFrame(function(){
+        frame = 0;
+        var p = pointAt(last);
+        outline(psdLayerAt(targets, p.x, p.y, radius));
+      });
+    });
+    wrap.addEventListener('mouseleave', function(){ if (pop.hidden) outline(null); });
+    wrap.addEventListener('click', function(e){
+      if (e.target.closest('#psd-pick-pop')) return;
+      e.preventDefault();                                   // the sample banner's CTAs are links
+      var p = pointAt(e);
+      var l = psdLayerAt(targets, p.x, p.y, radius);
+      outline(l);
+      pop.innerHTML = l ? psdPickMenuHtml(b, l)
+        : '<div class="psd-pick-empty">Nothing to pick here &mdash; click on text, an icon or a button.</div>';
+      pop.hidden = false;
+      var ww = wrap.clientWidth, wh = wrap.clientHeight;
+      var left = Math.max(8, Math.min(p.cx + 12, ww - pop.offsetWidth - 8));
+      var top = p.cy + 14;
+      if (top + pop.offsetHeight > wh - 8) top = p.cy - pop.offsetHeight - 14;
+      pop.style.left = left + 'px';
+      pop.style.top = Math.max(8, top) + 'px';
+      if (!l) return;
+      pop.querySelectorAll('[data-pick-act]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var act = btn.getAttribute('data-pick-act');
+          pop.hidden = true;
+          if (act === 'hide') setPsdLayersVisible(b, [l.id], false, 'Layer hidden: ' + l.name);
+          else if (act === 'item') toggleDetectedPsdItem(b, btn.getAttribute('data-det'));
+          else listPickedPsdLayer(b, l, act);
+        });
+      });
+    });
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape' || !psdPick.on) return;
+    var pop = $('psd-pick-pop');
+    if (pop && !pop.hidden){ pop.hidden = true; return; }       // first Esc closes the menu, the next one ends picking
+    psdPick.on = false;
+    renderEditor();
+  });
+
+  function extractPsdBannerData(psd, filename, filesize, sourceKey){
+    var w = psd.width || 1920;
+    var h = psd.height || 720;
+    var got = collectPsdLayers(psd);
+    var layers = got.layers;
 
     if (!layers.length){
       var fallback = getDefaultPsdBanner();
@@ -3984,34 +4496,23 @@
       return fallback;
     }
 
+    var detected = detectPsdItems(layers, w, h);
     var sizeMb = filesize ? (filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Layered PSD';
     var res = {
       filename: filename || 'custom-banner.psd',
       filesize: sizeMb,
+      sourceKey: sourceKey || '',
       width: w,
       height: h,
       aspectRatio: (w / h).toFixed(4),
       layerCount: layers.length,
-      layers: layers
+      layers: layers,
+      detected: detected
     };
     /* The PSD's own composite exists only when it was saved with "Maximize compatibility";
-       without it, flatten the pixel layers ourselves so the banner isn't blank. */
-    var composite = psd.canvas;
-    if (!composite && rasters.length){
-      composite = document.createElement('canvas');
-      composite.width = w; composite.height = h;
-      var cctx = composite.getContext('2d');
-      rasters.forEach(function(r){
-        cctx.globalAlpha = r.opacity;
-        cctx.drawImage(r.canvas, r.left, r.top);
-      });
-      cctx.globalAlpha = 1;
-    }
-    if (composite){
-      try { res.compositeImageData = composite.toDataURL('image/jpeg', 0.88); } catch(e){}
-      /* non-enumerable: a canvas doesn't survive JSON, and after a reload it would come back as {} */
-      Object.defineProperty(res, 'compositeCanvas', { value: composite, enumerable: false });
-    }
+       without it composePsd flattens the pixel layers so the banner isn't blank. */
+    psdSource = { key: res.sourceKey, width: w, height: h, composite: psd.canvas || null, rasters: got.rasters };
+    if (psdSource.composite || got.rasters.length) setPsdComposite(res, composePsd(psdSource, hiddenPsdLayers(res)));
     return res;
   }
 
@@ -4062,7 +4563,10 @@
       try {
         if (window.agPsd && window.agPsd.readPsd){
           var psd = window.agPsd.readPsd(e.target.result, { skipThumbnail: false });
-          var extracted = extractPsdBannerData(psd, file.name, file.size);
+          var key = psdFileKey(file);
+          var extracted = extractPsdBannerData(psd, file.name, file.size, key);
+          /* kept so its layers can be shown / hidden again after a reload (withPsdSource) */
+          if (window.RevampStore) RevampStore.put(PSD_FILE_KEY, { key: key, name: file.name, file: file, savedAt: Date.now() }).catch(function(){});
           callback(null, extracted);
         } else {
           callback(null, createPsdFromFileFallback(file));
@@ -4076,8 +4580,9 @@
   }
 
   /* inlineImage: paint the composite straight onto the canvas (the preview here); left off, the HTML only carries
-     the sessionStorage key and custom_editor.html paints it (keeps the base64 out of the hand-off JSON) */
-  function generatePsdBannerHtml(b, inlineImage){
+     the sessionStorage key and custom_editor.html paints it (keeps the base64 out of the hand-off JSON).
+     overlayHtml: preview-only markup laid over the canvas (the hover Upload / Replace control) */
+  function generatePsdBannerHtml(b, inlineImage, overlayHtml){
     if (!b) b = getDefaultPsdBanner();
     var w = b.width || 1920;
     var h = b.height || 720;
@@ -4141,7 +4646,7 @@
       (b.compositeImageData ? 'background-image:url(' + b.compositeImageData + ');background-size:100% 100%;background-repeat:no-repeat;' : '');
     return '<div class="s-hero-psd" data-psd-banner="true" style="--psd-w:' + w + ';--psd-h:' + h + ';background:' + outerBg + ';">' +
       '<div class="psd-canvas-wrap"' + imgKeyAttr + ' style="aspect-ratio:' + w + ' / ' + h + ';' + imgStyle + '">' +
-        layersHtml +
+        layersHtml + (overlayHtml || '') +
       '</div>' +
     '</div>';
   }
@@ -4152,14 +4657,73 @@
     var h = b.height || 720;
     var ratio = (w / h).toFixed(2);
     var layers = b.layers || [];
+    var hiddenN = layers.filter(function(l){ return l.visible === false; }).length;
 
-    var previewHtml = generatePsdBannerHtml(b, true);
+    /* Upload / Replace sits on the banner itself and shows on hover (or keyboard focus, or while a file is dragged over) */
+    var replaceHtml =
+      '<div class="psd-replace" id="psd-dropzone" title="Drop a layered .PSD here, or click to browse">' +
+        '<span class="ico">' + IC.upload + '</span>' +
+        '<span class="t">Upload or replace PSD</span>' +
+        '<span class="s">Current file: ' + esc(b.filename || 'custom-banner.psd') + ' &middot; ' + esc(b.filesize || 'Layered PSD') + '<br>' +
+          'Drop a layered .PSD here or click to browse &middot; up to 200 MB</span>' +
+        '<span class="psd-replace-actions">' +
+          '<button class="btn btn-primary btn-sm" type="button" id="btn-trigger-upload-psd">' + IC.upload + ' Browse PSD file</button>' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="btn-use-sample-psd">' + IC.spark + ' Use sample banner</button>' +
+        '</span>' +
+      '</div>';
+    /* hovering a row of the Detected panel spotlights that item on the banner (wireShape moves this box) */
+    var previewHtml = generatePsdBannerHtml(b, true,
+      '<div class="psd-spot" id="psd-spot" aria-hidden="true"></div>' +
+      /* "Pick on banner" mode: a hint along the top, and the menu a click opens (wireShape fills and places it) */
+      '<div class="psd-pick-hint">Click the date, venue, hashtag or button you want to hide &middot; Esc to finish</div>' +
+      '<div class="psd-pick-pop" id="psd-pick-pop" hidden></div>' +
+      replaceHtml);
     var detectedTheme = S.detectedBannerTheme || buildThemeFromPalette('#ED1C24');
+
+    var byId = {};
+    layers.forEach(function(l){ byId[l.id] = l; });
+    var detected = (b.detected || []).filter(function(it){ return byId[it.primary]; });
+    var detectedHtml =
+      '<div class="psd-detect">' +
+        '<div class="psd-detect-head">' +
+          '<strong>Detected in your PSD</strong>' +
+          '<span>Switch one off to hide it from the banner &mdash; the preview updates straight away</span>' +
+          '<button type="button" class="btn btn-sm ' + (psdPick.on ? 'btn-primary' : 'btn-secondary') + '" id="btn-psd-pick" aria-pressed="' + psdPick.on + '"' +
+            ' title="Missed something? Click it on the banner to hide it or list it here">' +
+            IC.crosshair + (psdPick.on ? ' Done picking' : ' Pick on banner') + '</button>' +
+        '</div>' +
+        (detected.length ? detected.map(function(it){
+          var shown = byId[it.primary].visible !== false;
+          var isButton = it.kind === 'button';
+          var kindLabel = PSD_KIND_LABEL[it.kind] || 'Item';
+          /* the item's bounds on the banner, in % — the union of its layers, a touch padded */
+          var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+          it.layers.forEach(function(id){
+            var l = byId[id]; if (!l) return;
+            x1 = Math.min(x1, l.left); y1 = Math.min(y1, l.top);
+            x2 = Math.max(x2, l.left + l.width); y2 = Math.max(y2, l.top + l.height);
+          });
+          var pad = Math.min(w, h) * 0.012;
+          var box = [Math.max(0, x1 - pad) / w, Math.max(0, y1 - pad) / h, (Math.min(w, x2 + pad) - Math.max(0, x1 - pad)) / w,
+                     (Math.min(h, y2 + pad) - Math.max(0, y1 - pad)) / h].map(function(v){ return (v * 100).toFixed(3); }).join(',');
+          var extra = it.picked ? 'picked on banner' : (it.layers.length > 1 ? (isButton ? '+ background' : '+ icon') : '');
+          return '<div class="psd-detect-row' + (shown ? '' : ' is-hidden') + '" data-det-row data-box="' + box + '">' +
+            '<span class="psd-detect-ico">' + (IC['kind_' + it.kind] || IC.kind_button) + '</span>' +
+            '<span class="psd-detect-kind">' + kindLabel + '</span>' +
+            '<span class="psd-detect-label" title="' + esc(it.label) + '">' + esc(it.label) + '</span>' +
+            (extra ? '<span class="psd-detect-extra">' + extra + '</span>' : '') +
+            '<button type="button" class="switch" data-det-toggle="' + esc(it.id) + '" aria-pressed="' + shown + '"' +
+              ' aria-label="Show this ' + kindLabel.toLowerCase() + ' on the banner: ' + esc(it.label) + '">' +
+              '<span class="track"><i></i></span>' + (shown ? 'Shown' : 'Hidden') + '</button>' +
+          '</div>';
+        }).join('') :
+          '<div class="psd-detect-empty">No date, venue, hashtag or button text found in this PSD. If one is flattened into a picture, hide that layer with its eye in the list below.</div>') +
+      '</div>';
 
     /* one header row: what it is + its size on the left, the detected brand colours on the right,
        so the banner itself starts as high as possible (fitPsdPreview sizes it to the first view) */
     return '<div class="psd-import-wrap">' +
-      '<div class="psd-preview-card">' +
+      '<div class="psd-preview-card' + (psdPick.on ? ' is-picking' : '') + '">' +
         '<div class="psd-preview-header">' +
           '<div class="psd-preview-title">' +
             svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>', 14) +
@@ -4174,30 +4738,20 @@
           '</div>' +
         '</div>' +
         previewHtml +
+        '<input type="file" id="psd-file-input" accept=".psd" hidden>' +
       '</div>' +
 
-      '<div class="field">' +
-        '<span class="flabel">Upload or Replace PSD</span>' +
-        '<div class="dropzone filled" id="psd-dropzone" style="cursor:pointer;">' +
-          '<span class="ico">' + IC.upload + '</span>' +
-          '<span class="t">' + esc(b.filename || 'custom-banner.psd') + ' &middot; ' + (b.filesize || 'Layered PSD') + '</span>' +
-          '<span class="s">Drop any layered .PSD file here, or click to browse (up to 200 MB)</span>' +
-        '</div>' +
-        '<input type="file" id="psd-file-input" accept=".psd" hidden>' +
-        '<div class="psd-actions-row">' +
-          '<button class="btn btn-secondary btn-sm" type="button" id="btn-trigger-upload-psd">' + IC.upload + ' Browse PSD File</button>' +
-          '<button class="btn btn-ghost btn-sm" type="button" id="btn-use-sample-psd">' + IC.spark + ' Load Sample PSD Banner (1920&times;720)</button>' +
-        '</div>' +
-      '</div>' +
+      detectedHtml +
 
       '<div class="psd-layers-box">' +
         '<div class="psd-layers-head">' +
-          '<span>Detected PSD Layers (' + layers.length + ')</span>' +
-          '<span style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Preserved coordinate hierarchy</span>' +
+          '<span>Detected PSD Layers (' + layers.length + ')' + (hiddenN ? ' &middot; ' + hiddenN + ' hidden' : '') + '</span>' +
+          '<span style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Click the eye to show or hide a layer</span>' +
         '</div>' +
         '<div style="overflow-x:auto;">' +
           '<table class="psd-layers-table">' +
             '<thead><tr>' +
+              '<th class="psd-eye-cell" title="Visible on the banner">' + IC.eye + '</th>' +
               '<th>#</th>' +
               '<th>Layer Name</th>' +
               '<th>Type</th>' +
@@ -4208,9 +4762,19 @@
             '<tbody>' +
               layers.map(function(l, i){
                 var chipCls = l.type === 'cta' ? 'psd-chip-cta' : (l.type === 'text' ? 'psd-chip-text' : (l.type === 'effect' ? 'psd-chip-effect' : 'psd-chip-graphic'));
-                return '<tr>' +
+                var shown = l.visible !== false;
+                var it = psdDetectedFor(b, l.id);
+                var autoTag = !it ? '' :
+                  '<span class="psd-auto-tag' + (it.kind === 'button' ? ' is-button' : '') + '">' +
+                    (it.primary === l.id ? (PSD_KIND_LABEL[it.kind] || 'Item')
+                      : (it.kind === 'button' ? 'Part of the button' : 'Icon beside the ' + (PSD_KIND_LABEL[it.kind] || 'item').toLowerCase())) +
+                    (!shown && l.autoHidden ? ' &middot; hidden by default' : '') + '</span>';
+                return '<tr' + (shown ? '' : ' class="is-hidden"') + '>' +
+                  '<td class="psd-eye-cell"><button type="button" class="psd-eye" data-layer-eye="' + esc(l.id) + '" aria-pressed="' + shown + '"' +
+                    ' aria-label="Show layer: ' + esc(l.name) + '" title="' + (shown ? 'Hide this layer' : 'Show this layer') + '">' +
+                    (shown ? IC.eye : IC.eyeOff) + '</button></td>' +
                   '<td style="font-family:var(--font-mono);color:var(--text-faint);">' + (i+1) + '</td>' +
-                  '<td><strong>' + esc(l.name) + '</strong>' + (l.text ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">&ldquo;' + esc(l.text) + '&rdquo;</div>' : '') + '</td>' +
+                  '<td class="psd-name-cell"><strong>' + esc(l.name) + '</strong>' + (l.text ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">&ldquo;' + esc(l.text) + '&rdquo;</div>' : '') + autoTag + '</td>' +
                   '<td><span class="psd-layer-chip ' + chipCls + '">' + esc(l.type.toUpperCase()) + '</span></td>' +
                   '<td style="font-family:var(--font-mono);">' + l.left + 'px, ' + l.top + 'px</td>' +
                   '<td style="font-family:var(--font-mono);">' + l.width + ' &times; ' + l.height + ' px</td>' +
@@ -4242,8 +4806,8 @@
               '</span></div>');
 
       case 'hero':
-        /* the Assemble / Import PSD toggle lives in the editor head (renderEditor) */
-        if ((d.bannerMode || 'assemble') === 'psd'){
+        /* the PSD / text toggle lives in the editor head (renderEditor) */
+        if (heroMode(d) === 'psd'){
           if (!d.psdBanner) d.psdBanner = getDefaultPsdBanner();
           return renderPsdBannerEditor(d.psdBanner);
         }
@@ -4489,7 +5053,7 @@
             }
             save();
             renderEditor();
-            toast(opt === 'psd' ? 'Switched to Import PSD banner mode' : 'Import PSD off — the banner is built from the fields');
+            toast(opt === 'psd' ? 'Back to Import PSD — the banner comes from your PSD' : 'Building the banner from text — fill in the title, tagline and buttons below');
           });
         });
       }
@@ -4614,7 +5178,7 @@
         }
       }
 
-      if (d.bannerMode === 'psd'){
+      if (heroMode(d) === 'psd'){
         /* Auto-restore palette if draft was reloaded and theme was lost */
         if (d.psdBanner && !S.detectedBannerTheme){
           updatePsdPalette(d.psdBanner);  /* silent — no callback needed, next renderEditor will pick it up */
@@ -4625,7 +5189,40 @@
         var sampleBtn = $('btn-use-sample-psd');
         var uploadBtn = $('btn-trigger-upload-psd');
 
+        body.querySelectorAll('[data-layer-eye]').forEach(function(btn){
+          btn.addEventListener('click', function(){ togglePsdLayer(d.psdBanner, btn.getAttribute('data-layer-eye')); });
+        });
+        body.querySelectorAll('[data-det-toggle]').forEach(function(btn){
+          btn.addEventListener('click', function(){ toggleDetectedPsdItem(d.psdBanner, btn.getAttribute('data-det-toggle')); });
+        });
+        /* hovering (or tabbing to) a Detected row spotlights that date / button on the banner */
+        var spot = $('psd-spot');
+        body.querySelectorAll('[data-det-row]').forEach(function(row){
+          function showSpot(){
+            if (!spot) return;
+            var v = row.getAttribute('data-box').split(',');
+            spot.style.left = v[0] + '%'; spot.style.top = v[1] + '%'; spot.style.width = v[2] + '%'; spot.style.height = v[3] + '%';
+            spot.classList.toggle('off', row.classList.contains('is-hidden'));
+            spot.classList.add('on');
+          }
+          function hideSpot(){ if (spot) spot.classList.remove('on'); }
+          row.addEventListener('mouseenter', showSpot); row.addEventListener('mouseleave', hideSpot);
+          row.addEventListener('focusin', showSpot);    row.addEventListener('focusout', hideSpot);
+        });
 
+        /* "Pick on banner" */
+        var pickBtn = $('btn-psd-pick');
+        if (pickBtn) pickBtn.addEventListener('click', function(){
+          if (psdPick.on){ psdPick.on = false; return renderEditor(); }
+          var needsPixels = (d.psdBanner.layers || []).some(function(l){ return l.raster; });
+          if (!needsPixels){ psdPick.on = true; return renderEditor(); }
+          withPsdSource(d.psdBanner, function(src){            // pixels are what tell which layer is under the pointer
+            if (!src){ toast('Upload ' + (d.psdBanner.filename || 'the PSD') + ' again to pick layers on the banner'); return; }
+            psdPick.on = true;
+            renderEditor();
+          });
+        });
+        if (psdPick.on) wirePsdPick(d.psdBanner, spot);
 
         if (uploadBtn && fileInp){
           uploadBtn.addEventListener('click', function(e){
@@ -4650,7 +5247,8 @@
         if (drop && fileInp){
           drop.addEventListener('click', function(){ fileInp.click(); });
           drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('drag'); });
-          drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
+          /* the overlay has children — only drop the highlight once the drag leaves the overlay itself */
+          drop.addEventListener('dragleave', function(e){ if (!drop.contains(e.relatedTarget)) drop.classList.remove('drag'); });
           drop.addEventListener('drop', function(e){
             e.preventDefault();
             drop.classList.remove('drag');
@@ -5647,8 +6245,8 @@
 
     switch (s.shape){
       case 'hero':
-        if (d.bannerMode === 'psd' && d.psdBanner){
-          return generatePsdBannerHtml(d.psdBanner);
+        if (heroMode(d) === 'psd'){
+          return generatePsdBannerHtml(d.psdBanner || getDefaultPsdBanner());
         }
         var meta = [eventDateLabel(b), locLabel(b, true)].filter(Boolean).join('  ·  ');
         var theme = currentTheme();
