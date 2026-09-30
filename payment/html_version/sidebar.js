@@ -50,19 +50,11 @@ function renderSidebar() {
       <span class="rl">Design</span>
     </a>
     
-    <!-- Payment (hover flyout) -->
-    <div class="rail-item has-sub ${activeScreen.includes('page') || activeScreen === 'details' ? 'active' : ''}" tabindex="0" role="button" aria-label="Payment">
+    <!-- Payment Module Link -->
+    <a class="rail-item ${activeScreen.includes('page') || activeScreen === 'details' || activeScreen === 'coupons' ? 'active' : ''}" href="#" onclick="setScreen('pages'); return false;" aria-label="Payment">
       <span class="ri"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/><path d="M6 15h4"/></svg></span>
       <span class="rl">Payment</span>
-      <div class="rail-sub">
-        <a class="rail-sub-item ${activeScreen === 'pages' ? 'active' : ''}" href="#" onclick="setScreen('pages'); return false;">
-          <i class="ti ti-layout-board-split"></i> Setup
-        </a>
-        <a class="rail-sub-item ${activeScreen === 'details' ? 'active' : ''}" href="#" onclick="setScreen('details'); return false;">
-          <i class="ti ti-receipt"></i> Report
-        </a>
-      </div>
-    </div>
+    </a>
 
     <a class="rail-item" href="../../marketing.html" aria-label="Promotions">
       <span class="ri"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18.5 5a9 9 0 0 1 0 14"/></svg></span>
