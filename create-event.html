@@ -1334,6 +1334,8 @@
   .psd-replace .t{ font-size: 14px; font-weight: 700; }
   .psd-replace .s{ max-width: 460px; font-size: 12px; line-height: 1.45; color: rgba(255,255,255,.78); }
   .psd-replace-actions{ display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+  /* the blank hero before a PSD is uploaded (renderPsdBannerEmpty) */
+  .dropzone.psd-empty{ min-height: 240px; justify-content: center; cursor: pointer; }
   /* touch screens have no hover: keep a compact bar pinned to the bottom of the banner instead */
   @media (hover: none){
     .psd-replace{ opacity: 1; justify-content: flex-end; background: linear-gradient(transparent 40%, rgba(12, 6, 8, .82)); }
@@ -4651,6 +4653,23 @@
     '</div>';
   }
 
+  /* the hero before any PSD is uploaded: a blank drop area (same ids as the Upload / Replace overlay, so the
+     upload wiring in wireShape is shared) */
+  function renderPsdBannerEmpty(){
+    return '<div class="psd-import-wrap">' +
+      '<div class="dropzone psd-empty" id="psd-dropzone" title="Drop a layered .PSD here, or click to browse">' +
+        '<span class="ico">' + IC.upload + '</span>' +
+        '<span class="t">Upload your hero banner PSD</span>' +
+        '<span class="s">Drop a layered .PSD here or click to browse &middot; up to 200 MB</span>' +
+        '<span class="psd-replace-actions">' +
+          '<button class="btn btn-primary btn-sm" type="button" id="btn-trigger-upload-psd">' + IC.upload + ' Browse PSD file</button>' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="btn-use-sample-psd">' + IC.spark + ' Use sample banner</button>' +
+        '</span>' +
+        '<input type="file" id="psd-file-input" accept=".psd" hidden>' +
+      '</div>' +
+    '</div>';
+  }
+
   function renderPsdBannerEditor(b){
     if (!b) b = getDefaultPsdBanner();
     var w = b.width || 1920;
@@ -4808,8 +4827,8 @@
       case 'hero':
         /* the PSD / text toggle lives in the editor head (renderEditor) */
         if (heroMode(d) === 'psd'){
-          if (!d.psdBanner) d.psdBanner = getDefaultPsdBanner();
-          return renderPsdBannerEditor(d.psdBanner);
+          /* no PSD yet: the hero stays blank until one is uploaded (the sample is opt-in) */
+          return d.psdBanner ? renderPsdBannerEditor(d.psdBanner) : renderPsdBannerEmpty();
         }
 
         var detectedPaletteHtml = S.detectedBannerTheme ? (
@@ -5047,10 +5066,7 @@
           b.addEventListener('click', function(){
             var opt = b.getAttribute('data-banner-opt');
             d.bannerMode = opt;
-            if (opt === 'psd' && !d.psdBanner){
-              d.psdBanner = getDefaultPsdBanner();
-              markDone(s, true);
-            }
+            if (opt === 'psd') markDone(s, !!d.psdBanner);
             save();
             renderEditor();
             toast(opt === 'psd' ? 'Back to Import PSD — the banner comes from your PSD' : 'Building the banner from text — fill in the title, tagline and buttons below');
@@ -5222,7 +5238,7 @@
             renderEditor();
           });
         });
-        if (psdPick.on) wirePsdPick(d.psdBanner, spot);
+        if (psdPick.on && d.psdBanner) wirePsdPick(d.psdBanner, spot);
 
         if (uploadBtn && fileInp){
           uploadBtn.addEventListener('click', function(e){
@@ -6246,7 +6262,7 @@
     switch (s.shape){
       case 'hero':
         if (heroMode(d) === 'psd'){
-          return generatePsdBannerHtml(d.psdBanner || getDefaultPsdBanner());
+          return d.psdBanner ? generatePsdBannerHtml(d.psdBanner) : '';   // no PSD uploaded: no banner
         }
         var meta = [eventDateLabel(b), locLabel(b, true)].filter(Boolean).join('  ·  ');
         var theme = currentTheme();
