@@ -11,7 +11,8 @@
 - [Project Structure](#project-structure)
 - [Modules](#modules)
   - [Auth Shell](#1-auth-shell)
-  - [Event Listing](#2-event-listing)
+  - [Event Listing](#2-event-listing)Team & Branches
+
   - [Create Event Wizard](#3-create-event-wizard)
   - [Event Console](#4-event-console)
   - [Site / Design Editor](#5-site--design-editor)
@@ -53,31 +54,6 @@
 | `abhishek` | Integration branch — feature branches merge here before going to `main` |
 | `shruti` | Feature work |
 | `rohit` | Payment module & feature work |
-
-### Branch Workflow
-
-```
-your-branch  →  PR  →  abhishek  →  PR  →  main
-```
-
-> **Important:** Always work inside the cloned repo directory. Do **not** develop in a separate folder and manually copy files — changes made outside the repo won't be tracked by git.
-
-### Common Git Commands
-
-```bash
-# Pull latest changes from main
-git pull origin main
-
-# Check your status
-git status
-
-# Stage and commit your changes
-git add .
-git commit -m "describe your change"
-
-# Push to your branch
-git push origin <your-branch>
-```
 
 ---
 
@@ -281,7 +257,7 @@ A self-contained payments module, independently styled and state-managed. Linked
 - `sidebar.js` — payments-specific nav rail
 - `styles.css` — payments design system (independent of `edit-event.css`)
 
-> 💡 **Dev note:** Always make payment changes inside `payment/html_version/` within this repo. Do not develop in a separate location and copy files manually — changes outside the repo are invisible to git.
+> 💡 **Dev note:** All payment changes live in `payment/html_version/` within this repo.
 
 ---
 
@@ -403,36 +379,13 @@ No `npm install` required — all external resources are loaded from CDN or bund
 
 ## Git Workflow
 
-### Day-to-day
-
 ```bash
-# 1. Always start by pulling the latest
-git pull origin main
-
-# 2. Make your changes in the correct files inside the repo
-
-# 3. Check what changed
-git status
-git diff
-
-# 4. Stage and commit
+git pull origin main          # pull latest
+git checkout -b feature/name  # create a branch
 git add .
-git commit -m "feat: describe what you changed"
-
-# 5. Push to your branch
-git push origin <your-branch>
-
-# 6. Open a Pull Request on GitHub:
-#    your-branch → abhishek → main
+git commit -m "feat: description"
+git push origin <your-branch> # push and open a PR
 ```
-
-### PR Target
-
-```
-https://github.com/abhishekrawat-dotcom/revamp-cms/compare/abhishek...<your-branch>
-```
-
-> ⚠️ **Never work in a copy outside the cloned repo.** Changes made in a separate local folder are invisible to git and won't be seen by teammates.
 
 ---
 
