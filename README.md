@@ -54,6 +54,9 @@
 | `abhishek` | Integration branch — feature branches merge here before going to `main` |
 | `shruti` | Feature work |
 | `rohit` | Payment module & feature work |
+| `ayush` | Feature work |
+| `vishakha` | Feature work |
+| `vikas` | Feature work |
 
 ---
 
