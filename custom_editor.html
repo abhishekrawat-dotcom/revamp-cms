@@ -1783,6 +1783,7 @@
 <script src="edit-event-core.js"></script>
 <script src="sidebar.js"></script>
 <script src="ag-psd.bundle.js"></script>
+<script src="editor-store.js"></script>
 <script>
 (function(){
     var C = window.RevampCore;
@@ -4942,12 +4943,15 @@
       var key = el.getAttribute('data-psd-imgkey');
       var imgData = null;
       try { imgData = sessionStorage.getItem(key); } catch(e){}
-      if (imgData) {
-        el.style.backgroundImage = 'url(' + imgData + ')';
+      function paint(url){
+        el.style.backgroundImage = 'url(' + url + ')';
         el.style.backgroundSize = '100% 100%';
         el.style.backgroundRepeat = 'no-repeat';
         el.style.backgroundPosition = 'center';
       }
+      if (imgData) paint(imgData);
+      /* too big for sessionStorage: Create Event keeps every banner image in IndexedDB too (create:psd-img) */
+      else if (window.RevampStore) RevampStore.get('create:psd-img').then(function(rec){ if (rec && rec.dataUrl) paint(rec.dataUrl); }, function(){});
     });
     var ev = draft.event || {};
     var tpl = draft.template || {};

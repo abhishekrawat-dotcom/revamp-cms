@@ -2087,14 +2087,50 @@
   }
   function uid(){ return 's' + Math.random().toString(36).slice(2,8); }
 
-  /* ---------- autosave ---------- */
+  /* ---------- autosave ----------
+     The PSD banner's image (psdBanner.compositeImageData, a JPEG data URL of megabytes for a big PSD) is kept in
+     IndexedDB, not in the localStorage draft, which it would push past the ~5 MB quota. It is matched back to the
+     draft's banner by bannerImageTag() after a reload (restoreBannerImage). */
+  var PSD_IMG_KEY = 'create:psd-img';
+  var storedBannerImg = null;   // the image last written to IndexedDB, so an unchanged one isn't written again
+  var bannerImgSaving = null;   // the store write under way, so the hand-off can wait for it
+  function heroBanner(){
+    var hero = (S.sections || []).filter(function(x){ return x.libId === 'hero'; })[0];
+    return hero && hero.data && hero.data.psdBanner;
+  }
+  function bannerImageTag(b){ return [b.sourceKey || '', b.filename || '', b.width, b.height].join('|'); }
+  function keepBannerImage(){
+    var b = heroBanner();
+    if (!b || !b.compositeImageData || b.compositeImageData === storedBannerImg || !window.RevampStore) return;
+    storedBannerImg = b.compositeImageData;
+    bannerImgSaving = RevampStore.put(PSD_IMG_KEY, { tag: bannerImageTag(b), dataUrl: storedBannerImg, savedAt: Date.now() })
+      .catch(function(err){ console.warn('[create] could not keep the banner image:', err); });
+  }
+  function restoreBannerImage(){
+    var b = heroBanner();
+    if (!b || b.compositeImageData || !window.RevampStore) return;
+    RevampStore.get(PSD_IMG_KEY).then(function(rec){
+      if (!rec || rec.tag !== bannerImageTag(b) || b.compositeImageData || heroBanner() !== b) return;
+      b.compositeImageData = storedBannerImg = rec.dataUrl;
+      if (S.step === 3) renderEditor();
+    }, function(){});
+  }
+
   var saveTimer = null;
   function save(){
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch(e){}
+    keepBannerImage();
+    var saved = true;
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(S, function(k, v){ return k === 'compositeImageData' ? undefined : v; }));
+    } catch(e){ saved = false; }
     var el = $('save-state');
     if (!el) return;
-    el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
     clearTimeout(saveTimer);
+    if (!saved){
+      el.innerHTML = '<span class="d" style="background:var(--accent)"></span>Not saved — browser storage is full';
+      return;
+    }
+    el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
     saveTimer = setTimeout(function(){
       el.innerHTML = '<span class="d"></span>Draft autosaved';
     }, 520);
@@ -4492,11 +4528,9 @@
     var got = collectPsdLayers(psd);
     var layers = got.layers;
 
-    if (!layers.length){
-      var fallback = getDefaultPsdBanner();
-      fallback.filename = filename;
-      return fallback;
-    }
+    /* a flattened PSD still has its composite, shown as one image; with neither there's nothing to show — say so
+       rather than pass the sample banner off as theirs */
+    if (!layers.length && !psd.canvas) throw new Error('no layers or image found in it');
 
     var detected = detectPsdItems(layers, w, h);
     var sizeMb = filesize ? (filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Layered PSD';
@@ -4519,7 +4553,10 @@
   }
 
   function readPsdFile(file, callback){
-    if (file && (file.type.indexOf('image/') === 0 || /\.(png|jpe?g|webp|svg)$/i.test(file.name))){
+    /* the extension decides first: browsers on a Mac, or on Windows with Photoshop installed, report a .psd as
+       "image/vnd.adobe.photoshop", which would send it down the plain-image path, where it can't be decoded */
+    var isPsd = /\.psd$/i.test(file.name || '') || /photoshop/i.test(file.type || '');
+    if (!isPsd && (file.type.indexOf('image/') === 0 || /\.(png|jpe?g|webp|svg)$/i.test(file.name))){
       var imgReader = new FileReader();
       imgReader.onload = function(ev){
         var imgUrl = ev.target.result;
@@ -4550,12 +4587,10 @@
           };
           callback(null, result);
         };
-        tempImg.onerror = function(){
-          callback(null, createPsdFromFileFallback(file));
-        };
+        tempImg.onerror = function(){ callback(new Error('the browser couldn’t open this image')); };
         tempImg.src = imgUrl;
       };
-      imgReader.onerror = function(){ callback(null, createPsdFromFileFallback(file)); };
+      imgReader.onerror = function(){ callback(imgReader.error || new Error('the file couldn’t be read')); };
       imgReader.readAsDataURL(file);
       return;
     }
@@ -4571,13 +4606,13 @@
           if (window.RevampStore) RevampStore.put(PSD_FILE_KEY, { key: key, name: file.name, file: file, savedAt: Date.now() }).catch(function(){});
           callback(null, extracted);
         } else {
-          callback(null, createPsdFromFileFallback(file));
+          callback(new Error('the PSD reader didn’t load — refresh the page and try again'));
         }
       } catch(err){
         callback(err);   // the file couldn't be parsed (e.g. CMYK) — don't pass the sample banner off as theirs
       }
     };
-    reader.onerror = function(){ callback(null, createPsdFromFileFallback(file)); };
+    reader.onerror = function(){ callback(reader.error || new Error('the file couldn’t be read')); };
     reader.readAsArrayBuffer(file);
   }
 
@@ -5286,7 +5321,8 @@
             if (err){
               toast(/CMYK/i.test(err.message || '')
                 ? 'This PSD is in CMYK colour mode. Convert it to RGB in Photoshop (Image › Mode › RGB Color), save, and upload again.'
-                : 'Couldn’t read this PSD' + (err.message ? ' (' + err.message + ')' : '') + '. Try re-saving it from Photoshop.');
+                : 'Couldn’t read ' + file.name + (err.message ? ' (' + err.message + ')' : '') + '.' +
+                  (/\.psd$/i.test(file.name) ? ' Try re-saving it from Photoshop.' : ''));
               return;
             }
             d.psdBanner = result || createPsdFromFileFallback(file);
@@ -6409,12 +6445,13 @@
   function openInEditor(){
     var payload = buildEditorPayload();
 
-    /* If the PSD banner has a composite image, park it in sessionStorage
-       (higher quota than localStorage) so applyCreateHandoff can inject it
-       without the large base64 blob being part of the main JSON payload. */
-    var heroSec = S.sections.filter(function(x){ return x.libId === 'hero'; })[0];
-    var psdBanner = heroSec && heroSec.data && heroSec.data.psdBanner;
+    /* If the PSD banner has a composite image, park it in sessionStorage so applyCreateHandoff can inject it
+       without the large base64 blob being part of the main JSON payload. sessionStorage has the same ~5 MB quota
+       as localStorage, so a big one won't fit: the editor then reads the IndexedDB copy (keepBannerImage). */
+    var psdBanner = heroBanner();
+    try { sessionStorage.removeItem('revamp.psd.img.v1'); } catch(e){}   // never let the editor show a previous banner
     if (psdBanner && psdBanner.compositeImageData) {
+      keepBannerImage();
       try { sessionStorage.setItem('revamp.psd.img.v1', psdBanner.compositeImageData); } catch(e){}
     }
     try {
@@ -6435,8 +6472,8 @@
     }
     var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
       (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
-    if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
-    else window.location.href = url;
+    /* the editor reads the logo, and a banner image too big for sessionStorage, from IndexedDB on arrival */
+    Promise.all([logoSaving, bannerImgSaving]).then(function(){ window.location.href = url; });
     return true;
   }
 
@@ -6586,6 +6623,7 @@
   ========================================================= */
   function init(){
     var had = restore();
+    restoreBannerImage();
     initStep1();
     if (S.basics.logo && !logoPreviewUrl){
       RevampStore.get(LOGO_KEY).then(function(rec){
