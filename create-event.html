@@ -2119,6 +2119,7 @@
   var saveTimer = null;
   function save(){
     keepBannerImage();
+    syncDone();
     var saved = true;
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(S, function(k, v){ return k === 'compositeImageData' ? undefined : v; }));
@@ -3442,12 +3443,66 @@
   }
   window.addEventListener('resize', fitPsdPreview);
 
-  function markDone(s, val){
-    var was = s.done;
-    s.done = (val === undefined) ? true : val;
-    if (was !== s.done){ renderSecList(); renderFoot(); refreshProgress(); }
-    save();
+  /* ---------- the tick in the section list ----------
+     A section is filled when it has the content its kind needs AND that content is the user's: either it came from
+     them (their design, a past edition, a custom brief, AI Generate) or they changed the template's sample text
+     (seed()). Sample text left as it is doesn't count — it describes another event. Worked out from the content on
+     every save(), so deleting the content takes the tick away again. */
+  var OWN_SOURCES = { detected: true, edition: true, custom: true };
+  var NOT_CONTENT = { psdBanner: 1, bannerImage: 1, bannerMode: 1, banner: 1, bannerName: 1, layout: 1, whatsapp: 1 };
+  function contentSig(v, key){
+    if (key && NOT_CONTENT[key]) return '';
+    if (v == null || typeof v === 'boolean') return '';
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'string') return v.trim();
+    if (Array.isArray(v)) return v.map(function(x){ return contentSig(x); }).filter(Boolean).join('\u0001');
+    return Object.keys(v).map(function(k){ var c = contentSig(v[k], k); return c && k + '\u0002' + c; }).filter(Boolean).join('\u0001');
   }
+  function anyText(items, keys){
+    return (items || []).some(function(it){
+      if (typeof it === 'string') return !!it.trim();
+      return keys.some(function(k){ return String((it && it[k]) || '').trim(); });
+    });
+  }
+  function isSamplePsdBanner(b){ return !!b && (b.sample || (!b.sourceKey && b.filename === 'martech-summit-2026.psd')); }
+  function hasContent(s){
+    var d = s.data || {};
+    switch (s.shape){
+      case 'hero':     return heroMode(d) === 'psd' ? !!d.psdBanner && !isSamplePsdBanner(d.psdBanner) : !!String(d.title || '').trim();
+      case 'stats':    return anyText(d.items, ['v']);
+      case 'logos':    return (d.tiers || []).some(function(t){ return anyText(t.logos, ['n']); });
+      case 'rich':     return !!String(d.body || '').trim();
+      case 'line':
+      case 'heading':  return !!String(d.text || '').trim();
+      case 'cards':
+      case 'columns':  return anyText(d.items, ['t', 'd']);
+      case 'people':   return anyText(d.items, ['n', 'r', 'c']);
+      case 'benefits': return !!String(d.body || '').trim() || anyText(d.items, ['t', 'd']);
+      case 'chips':    return anyText(d.items, ['t']);
+      case 'quotes':   return anyText(d.items, ['q']);
+      case 'gallery':  return (d.count || 0) > 0;
+      case 'agenda':   return (d.items || []).length > 0;
+      case 'contacts': return contactsFilled(d);
+      case 'custom':   return !!(String(d.title || '').trim() || String(d.body || '').trim());
+      default:         return !!contentSig(d);
+    }
+  }
+  function isFilled(s){
+    if (!s || s.shape === 'auto' || !s.include || !hasContent(s)) return false;
+    if (s.shape === 'hero' && heroMode(s.data || {}) === 'psd') return true;   // hasContent already ruled out the sample banner
+    return !!(OWN_SOURCES[s.source] || s.ownContent) || contentSig(s.data) !== contentSig(seed(s.shape));
+  }
+  /* re-works out every tick; redraws the list, progress and footer only when one changed */
+  function syncDone(){
+    var changed = false;
+    (S.sections || []).forEach(function(s){
+      var now = isFilled(s);
+      if (s.done !== now){ s.done = now; changed = true; }
+    });
+    if (changed && S.step === 3){ renderSecList(); renderFoot(); refreshProgress(); }
+  }
+  /* called wherever a section's content changes; the tick itself comes from isFilled (the value is no longer used) */
+  function markDone(s){ save(); }
   function refreshProgress(){
     var included = S.sections.filter(function(s){ return s.shape !== 'auto' && s.include; });
     var doneN = included.filter(function(s){ return s.done; }).length;
@@ -3922,6 +3977,7 @@
     var dateLoc = [eventDateLabel(b), locLabel(b, true)].filter(Boolean).join(' · ') || '1 OCT 2026 – 26 SEP 2026 · DELHI';
     return {
       filename: 'martech-summit-2026.psd',
+      sample: true,          // the "Use sample banner" one — doesn't tick the hero (isFilled)
       filesize: '84 MB',
       width: 1920,
       height: 720,
@@ -4038,6 +4094,7 @@
 
   function createPsdFromFileFallback(file){
     var def = getDefaultPsdBanner();
+    delete def.sample;
     def.filename = file.name || 'custom-banner.psd';
     def.filesize = (file.size ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' : 'Layered PSD');
     return def;
@@ -5801,6 +5858,7 @@
         d.title = d.title || 'Your custom section';
         d.body = d.body || BRIEF_COPY.custom(s.customBrief || '');
       }
+      s.ownContent = true;   // drafted for this event, even where it matches the sample (isFilled)
       markDone(s, true);
       save();
       renderEditor();
