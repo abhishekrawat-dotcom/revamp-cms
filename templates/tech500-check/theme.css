@@ -1,0 +1,292 @@
+/* TECH500 event theme — copied from the live page <head> (cio.economictimes.indiatimes.com/tech-500-summit) by tools/import-template.js.
+   1) the event custom CSS block, 2) the rules ET generates from the event design settings, 3) the :root theme colour.
+   The event colour reads var(--theme-color, …) so the editor's theme colour reaches it; the default look is unchanged. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap');
+
+:root{
+   --heading-font-family-v2: "Fraunces", serif;
+}
+
+  section.mb-medium {
+    position: relative;
+  }
+
+  .page_hdng5, .page_hdng2, .page_hdng4 {
+    margin-bottom: 40px;
+  }
+
+  .page_hdng5 h1, .page_hdng5 h2, .page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2 {
+
+    color: var(--body-color, var(--default-color));
+    text-align: center;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 110%; 
+    letter-spacing: -1.161px;
+    text-transform: uppercase;
+    margin-bottom: 0px;
+    font-family: var(--heading-font-family-v2);
+  }
+
+clr {
+      color: var(--theme-color);
+}
+
+  .page_hdng2 h2 span, .page_hdng4 h1 span, .page_hdng4 h2 span, .page_hdng5 h2 span {
+    color: #4B4D50;
+    font-family: var(--body-font-family);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 16.247px; 
+    letter-spacing: 2.383px;
+    text-transform: uppercase;
+    /*max-width: 800px;*/
+    margin: 0px auto 10px;
+  }
+
+  .page_hdng2 p, .page_hdng4 p, .page_hdng4 p, .page_hdng5 p {
+    color: var(--body-color, var(--default-color));
+    text-align: center;
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 26px;
+    padding-top: 20px;
+  }
+
+  .page_hdng4.text-left {
+    text-align: left;
+}
+
+  .text-style p {
+    overflow: hidden;
+    color: var(--body-color, var(--default-color));
+    text-align: center;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 160%;
+    margin-bottom: 15px;
+  }
+
+  .text-style ul li {
+    list-style: disc;
+    text-align: left;
+  }
+
+  a.book-btn {
+        color: #fff;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 120%;
+    letter-spacing: 2.4px;
+    text-transform: uppercase;
+    padding: 15px 35px;
+    border: 1px solid #000;
+    background: #000;
+    box-shadow: -10.385px -10.385px 20.77px -8.654px rgba(55, 19, 17, 0.25) inset, 10.385px 10.385px 20.77px -10.385px rgba(223, 170, 160, 0.50) inset, 0 17.308px 20.77px -17.308px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(17.3081111907959px);
+    font-family: var(--heading-font-family-v2);
+  }
+
+  a.book-btn.btn-outline {
+    background:  transparent;
+    color: #000;
+    border: 1px solid #000;
+     box-shadow: 0 17.308px 20.77px -17.308px rgba(0, 0, 0, 0.25);
+  }
+a.book-btn.btn-outline:hover {
+    color: var(--white-color, var(--theme-color));
+    background: #000;
+}
+
+  #overview a.read-more {
+    color: var(--body-color, var(--default-color));
+    font-size: 16px;
+    background: none;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.6px;
+    padding: 0px;
+    border-radius: 0px;
+    margin-top: 20px;
+  }
+
+  @media screen and (max-width: 767px) {
+    .page_hdng5, .page_hdng2, .page_hdng4 {
+      margin-bottom: 25px;
+    }
+
+    .page_hdng5 h1, .page_hdng5 h2, .page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2 {
+      font-size: 30px;
+      line-height: 1.2em;
+    }
+
+    .page_hdng2 p, .page_hdng4 p, .page_hdng4 p, .page_hdng5 p {
+      font-size: 14px;
+      line-height: 21px;
+    }
+
+    .page_hdng2 h2 span, .page_hdng4 h1 span, .page_hdng4 h2 span, .page_hdng5 h2 span {
+      font-size: 13px;
+      letter-spacing: normal;
+      margin: 0px auto 10px;
+    }
+
+    #overview a.read-more {
+      font-size: 12px;
+      margin-top: 15px;
+    }
+  }
+
+  @media screen and (min-width: 1200px) {
+    .contacts .footer-content p, #about_us_event .container, .page_hdng2 p, .page_hdng4 p, .page_hdng4 p, .page_hdng5 p {
+      max-width: 800px;
+      margin: auto;
+    }
+  }
+
+  /**Banner css**/
+
+  #banner {
+    padding: 120px 0px;
+  }
+
+  #banner .cntnd p {
+    text-align: center;
+    font-family: var(--heading-font-family, var(--body-font-family));
+    font-size: 44px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 120%;
+    letter-spacing: -1.32px;
+    background: linear-gradient(89deg, #ff4052 21.51%, #fff 86.97%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 22px;
+  }
+
+  #banner .cntnd-bx .cntnd .lcn {
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 120%;
+    letter-spacing: 3.2px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    gap: 20px;
+  }
+
+  @media screen and (max-width: 767px) {
+  #banner {
+        padding: 100px 0px;
+   }
+    #banner .cntnd-bx {
+      margin-top: 0px !important;
+    }
+
+    #banner .cntnd .lcn .icn-box {
+      text-align: left;
+      align-items: flex-start !important;
+    }
+    #banner .cntnd-bx .cntnd .lcn {
+      margin-bottom: 15px;
+      gap: 10px;
+      font-size: 14px;
+    }
+    #banner .cntnd img.logo {
+      max-width: 90%;
+      margin: 0 auto 12px;
+    }
+
+    #banner .cntnd p {
+      font-size: 20px;
+      letter-spacing: normal;
+      margin-bottom: 10px;
+     line-height: 1.3em;
+    }
+
+    .btn-wrapper {
+      text-align: center;
+    }
+
+    #banner a.book-btn + a {
+      margin-left: 0px;
+    }
+
+    #banner a.book-btn {
+      font-size: 12px;
+      width: 100%;
+    }
+  }
+
+  /**Banner css**/
+
+  /**speaker css**/
+
+  .dtstyle-default.dt-13 h5 {
+    color: var(--custom-color, var(--theme-color));
+    font-family: var(--heading-font-family, var(--body-font-family));
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 100%;
+    letter-spacing: -0.48px;
+  }
+
+  .dtstyle-default.dt-13 span {
+    color: rgb(0 0 0 / 70%);
+    text-align: center;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
+    min-height: auto;
+  }
+  .dt-13.dtstyle-4 .caption {
+    min-height: auto;
+  }
+
+  .dtstyle-default.dt-13 img {
+    border-radius: 20px;
+  }
+
+  .dtstyle-default.dt-13 article {
+    margin-top: 0px !important;
+  }
+
+  @media screen and (max-width: 767px) {
+    .dtstyle-default.dt-13 h5 {
+      font-size: 14px;
+      letter-spacing: normal;
+    }
+  }
+
+  /**speaker css end**/
+
+  /**contact css**/
+
+  .contacts.design-style1 .contact-point div.line-1, .contacts.style7 .contact-point div.line-1 {
+    font-family: var(--heading-font-family, var(--body-font-family));
+  }
+
+  /**contact css end**/
+
+/* ---- generated from the event design settings ---- */
+body { font-family: Inter, Arial, sans-serif}
+body {background-color: rgba(255, 255, 255, 1);}
+body h1 h2 h3 { font-size: 48px ;}
+body h4 h5 h6 { font-size: 16px ;}
+body p { font-size: 16px ;}
+#header_bg_color header {background-color: var(--theme-color, #D8151E);}
+#banner_color banner {color: rgba(0, 0, 0, 1);}
+#button_color button {background-color: rgba(255, 0, 0, 1);}
+#button_font button {color: rgba(0, 0, 0, 1);}
+#footer_color footer {background-color: rgba(191, 255, 0, 1);}
+#button_links a {color: rgba(0, 0, 0, 1);}
+
+:root { --theme-color:216,  21,  30}
+:root { --theme-color-hex:#d8151e}

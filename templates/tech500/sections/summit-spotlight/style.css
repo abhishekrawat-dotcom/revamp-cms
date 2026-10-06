@@ -1,0 +1,243 @@
+    #summitSpotlight .summit-spotlight-grid {
+     
+      --light-color: #CECECE;
+
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 34px 40px;
+    }
+
+    #summitSpotlight .summit-spotlight-card {
+      position: relative;
+      min-height: 152px;
+      padding: 28px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      overflow: hidden;
+      border: 1px solid var(--light-color);
+      transition:
+        transform 0.35s ease,
+        border-color 0.35s ease,
+        box-shadow 0.35s ease;
+    }
+
+    #summitSpotlight .summit-spotlight-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(
+          circle at 12% 50%,
+          color-mix(in srgb, var(--theme-color, #D8151E) 8%, transparent),
+          transparent 42%
+        );
+      transition: opacity 0.35s ease;
+    }
+
+    #summitSpotlight .summit-spotlight-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--theme-color);
+      box-shadow: 0 18px 42px color-mix(in srgb, var(--theme-color, #D8151E) 10%, transparent);
+    }
+
+    #summitSpotlight .summit-spotlight-card:hover::before {
+      opacity: 1;
+    }
+
+    #summitSpotlight .summit-spotlight-icon {
+      position: relative;
+      z-index: 1;
+      width: 88px;
+      height: 88px;
+      flex: 0 0 88px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--light-color);
+      border-radius: 50%;
+    
+    }
+
+    #summitSpotlight .summit-spotlight-icon::before {
+      content: "";
+      position: absolute;
+      width: 64px;
+      height: 64px;
+      border: 2px solid var(--theme-color);
+      border-right-color: transparent;
+      border-radius: 50%;
+      transform: rotate(-18deg);
+      transition: transform 0.45s ease;
+    }
+
+    #summitSpotlight .summit-spotlight-icon::after {
+      content: "";
+      position: absolute;
+      right: 10px;
+      top: 43px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--theme-color);
+      box-shadow: 0 0 0 2px #fff;
+    }
+
+    #summitSpotlight .summit-spotlight-card:hover .summit-spotlight-icon::before {
+      transform: rotate(42deg);
+    }
+
+    #summitSpotlight .summit-spotlight-icon svg {
+      position: relative;
+      z-index: 2;
+      width: 38px;
+      height: 38px;
+      fill: none;
+      stroke: var(--default-color);
+      stroke-width: 1.65;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    #summitSpotlight .summit-spotlight-content {
+      position: relative;
+      z-index: 1;
+      min-width: 0;
+    }
+
+    #summitSpotlight .summit-spotlight-number {
+      margin: 0 0 2px;
+      color: var(--default-color);
+      font-size: clamp(48px, 4vw, 62px);
+      font-weight: 700;
+      line-height: 0.95;
+      letter-spacing: -2.5px;
+    }
+
+    #summitSpotlight .summit-spotlight-label {
+      margin: 0 0 6px;
+      color: var(--default-color);
+      font-size: var(--secondary-font-size);
+      font-weight: 700;
+      line-height: 1.15;
+      font-family: var(--heading-font-family-v2);
+    }
+
+    #summitSpotlight .summit-spotlight-meta {
+      margin: 0;
+      color: rgba(13, 13, 15, 0.55);
+font-size: 11px;
+font-style: normal;
+font-weight: 400;
+line-height: 17.927px; 
+letter-spacing: -0.3px;
+text-transform: uppercase;
+    }
+
+    @media (max-width: 991px) {
+      #summitSpotlight .summit-spotlight-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 24px;
+      }
+
+      #summitSpotlight .summit-spotlight-card {
+        min-height: 146px;
+      }
+    }
+
+    @media (max-width: 767px) {
+      #summitSpotlight .summit-spotlight-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    
+      }
+
+      #summitSpotlight .summit-spotlight-card {
+        min-height: 132px;
+        padding: 22px 18px;
+        gap: 16px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon {
+        width: 76px;
+        height: 76px;
+        flex-basis: 76px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon::before {
+        width: 56px;
+        height: 56px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon::after {
+        right: 7px;
+        top: 37px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon svg {
+        width: 33px;
+        height: 33px;
+      }
+
+      #summitSpotlight .summit-spotlight-number {
+        font-size: 46px;
+      }
+
+      #summitSpotlight .summit-spotlight-label {
+        font-size: 18px;
+      }
+    }
+
+    @media (max-width: 399px) {
+      #summitSpotlight .summit-spotlight-card {
+        align-items: flex-start;
+      }
+
+      #summitSpotlight .summit-spotlight-icon {
+        width: 66px;
+        height: 66px;
+        flex-basis: 66px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon::before {
+        width: 48px;
+        height: 48px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon::after {
+        right: 6px;
+        top: 31px;
+        width: 6px;
+        height: 6px;
+      }
+
+      #summitSpotlight .summit-spotlight-icon svg {
+        width: 29px;
+        height: 29px;
+      }
+
+      #summitSpotlight .summit-spotlight-number {
+        font-size: 40px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #summitSpotlight .summit-spotlight-card,
+      #summitSpotlight .summit-spotlight-card::before,
+      #summitSpotlight .summit-spotlight-icon::before {
+        transition: none;
+      }
+
+      #summitSpotlight .summit-spotlight-card:hover {
+        transform: none;
+      }
+    }
+
+    /* one or two stats fill the row; four sit two by two rather than three and one (Create Event fills these from the Stats strip) */
+    @media (min-width: 992px) {
+      #summitSpotlight .summit-spotlight-grid:has(> .summit-spotlight-card:nth-child(1):last-child) { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      #summitSpotlight .summit-spotlight-grid:has(> .summit-spotlight-card:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #summitSpotlight .summit-spotlight-grid:has(> .summit-spotlight-card:nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }

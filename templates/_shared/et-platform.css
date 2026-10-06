@@ -1,0 +1,8 @@
+/* Page-level rules the ET platform prints into every microsite <head>, outside its bundle (copied from the TECH500 page).
+   Anything tied to ET's header, login, cookie banner, forms or tracking is left out. */
+body{
+	background:none;
+}
+.product_microsite #container #content {
+	padding-top: 0;
+}

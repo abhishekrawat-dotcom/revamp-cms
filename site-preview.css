@@ -1,0 +1,141 @@
+/* Live preview styling for create-event.html's section editor (step 1) and template picker (step 2).
+   A straight copy of custom_editor.html's "SITE CONTENT STYLES" block (same source, same --site-* tokens,
+   same .s-* section classes editorSectionHtml() emits) so the preview iframe renders sections exactly as
+   custom_editor.html eventually will, without touching that already-verified file. Known duplication —
+   see Design.md's "Open Design Debt" (palette/component drift already tolerated elsewhere in this prototype).
+   Keep in sync with custom_editor.html's block by eye; it changes rarely. */
+.frame{
+  /* type */
+  --site-body-font: 'Manrope', sans-serif;
+  --site-display-font: 'Fraunces', Georgia, serif;
+  --site-display-weight: 600;
+  --site-display-case: none;
+  --site-display-tracking: normal;
+  --site-mono-font: 'IBM Plex Mono', monospace;
+  /* surfaces + text */
+  --site-text: #1c1c1c;
+  --site-text-muted: #6a6a5f;
+  --site-text-faint: #8a8a7c;
+  --site-surface: #fff;
+  --site-border: #eee9dd;
+  --site-radius: 12px;
+  --site-radius-sm: 10px;
+  /* accent */
+  --site-accent: #0F6F5C;
+  --site-accent-contrast: #fff;
+  --site-accent-soft: #DCEEE7;
+  --site-btn-radius: 100px;
+  /* nav */
+  --site-nav-bg: transparent;
+  --site-nav-text: #4a4a42;
+  --site-nav-border: #eee9dd;
+  /* hero */
+  --site-hero-bg: linear-gradient(180deg,#FBF9F3,#fff);
+  --site-hero-text: #1c1c1c;
+  --site-hero-muted: #6a6a5f;
+  --site-hero-size: 42px;
+  --site-image-bg: linear-gradient(135deg,#DCEEE7,#EBE0F0);
+  --site-image-text: #0A5445;
+  --site-tile-bg: linear-gradient(160deg,#ECE7DA,#DCEEE7);
+  /* alternating band (stats strip, CTA band) */
+  --site-band-bg: #F5F2EA;
+  --site-band-text: #1c1c1c;
+  --site-band-muted: #6a6a5f;
+  /* pull quote + footer */
+  --site-quote-bg: #0A5445;
+  --site-quote-text: #fff;
+  --site-foot-bg: #221F17;
+  --site-foot-text: #b5b0a0;
+  --site-foot-logo: #fff;
+}
+.site *{ box-sizing:border-box; }
+.site{ font-family: var(--site-body-font); color: var(--site-text); }
+.site h1,.site h2,.site h3{ font-family: var(--site-display-font); font-weight: var(--site-display-weight); margin:0; }
+.site p{ margin:0; }
+.s-nav{ display:flex; align-items:center; gap:26px; padding: 18px 40px; background: var(--site-nav-bg); border-bottom:1px solid var(--site-nav-border); }
+.s-nav .logo{ font-family: var(--site-display-font); font-weight:700; font-size:19px; letter-spacing:-0.01em; }
+.s-nav .links{ display:flex; gap:22px; margin-left:16px; font-size:13.5px; font-weight:600; color: var(--site-nav-text); }
+.s-nav .sp{ flex:1; }
+.s-nav .cta{ background: var(--site-accent); color: var(--site-accent-contrast); font-size:13px; font-weight:700; padding:9px 18px; border-radius: var(--site-btn-radius); }
+
+.s-hero{ display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:30px; padding: 54px 40px; background: var(--site-hero-bg); color: var(--site-hero-text); }
+.s-hero h1{ font-size: var(--site-hero-size); line-height:1.14; letter-spacing:-0.01em; }
+.s-hero .lead{ font-size:15px; color: var(--site-hero-muted); margin-top:14px; max-width:44ch; line-height:1.6; }
+.s-hero .btnrow{ display:flex; gap:10px; margin-top:22px; }
+.s-btn{ display:inline-flex; align-items:center; padding:11px 20px; border-radius: var(--site-btn-radius); font-size:13.5px; font-weight:700; }
+.s-btn.primary{ background: var(--site-accent); color: var(--site-accent-contrast); }
+.s-btn.secondary{ background:transparent; color: var(--site-accent); border:1.5px solid var(--site-accent); }
+.s-hero .imgph{ height:280px; border-radius:16px; background: var(--site-image-bg); display:flex; align-items:center; justify-content:center; color: var(--site-image-text); }
+
+/* full-bleed centred hero — the treatment most ET event sites lead with */
+.s-hero-banner{ padding: 76px 40px 64px; text-align:center; background: var(--site-hero-bg); background-size:cover; background-position:center; color: var(--site-hero-text); }
+.s-hero-banner .eyebrow{ display:block; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; opacity:.72; }
+.s-hero-banner h1{ font-size: clamp(30px, 4vw, 52px); line-height:1.08; max-width:24ch; margin:14px auto 0; }
+.s-hero-banner .tagline{ margin:16px auto 0; max-width:54ch; font-size:15px; line-height:1.6; color: var(--site-hero-muted); }
+.s-hero-banner .meta{ margin-top:20px; font-size:12.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.s-hero-banner .btnrow{ display:flex; justify-content:center; flex-wrap:wrap; gap:12px; margin-top:26px; }
+.s-hero-banner .s-btn.secondary{ color: var(--site-hero-text); border-color: currentColor; }
+
+/* ============ PSD HERO BANNER (Pixel-accurate layout & layers) ============ */
+.s-hero-psd{
+  position: relative; width: 100%; margin: 0 auto;
+  background: #0D080A; overflow: hidden; box-sizing: border-box;
+}
+.s-hero-psd .psd-canvas-wrap{
+  position: relative; width: 100%; container-type: inline-size;
+  overflow: hidden; display: block; box-sizing: border-box;
+  aspect-ratio: 1920 / 720;
+}
+.s-hero-psd .psd-layer{ position: absolute; box-sizing: border-box; pointer-events: auto; }
+.s-hero-psd .psd-layer img{ display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.s-hero-psd .psd-layer-text{
+  display: flex; align-items: center; white-space: pre-wrap; word-break: break-word;
+  line-height: 1.22; font-family: var(--site-display-font, var(--font-body, 'Inter', sans-serif));
+}
+.s-hero-psd .psd-layer-cta{
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+  cursor: pointer; font-weight: 700; transition: transform .14s ease, filter .14s ease;
+}
+.s-hero-psd .psd-layer-cta:hover{ filter: brightness(1.12); transform: translateY(-1px); }
+
+.s-stats{ display:flex; gap:14px; padding: 30px 40px; background: var(--site-band-bg); color: var(--site-band-text); flex-wrap:wrap; }
+.s-stat{ flex:1; min-width:130px; background: var(--site-surface); border-radius: var(--site-radius-sm); border:1px solid var(--site-border); padding:18px; text-align:center; color: var(--site-text); }
+.s-stat .n{ font-family: var(--site-mono-font); font-size:26px; font-weight:600; color: var(--site-accent); }
+.s-stat .l{ font-size:11.5px; color: var(--site-text-faint); text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+
+/* a section's full-width intro (kicker + heading + lead paragraph + bullets + CTA, from edHead()) — centered
+   by default, matching ET's own real sites (headings/CTAs centre; card/list body copy below stays left for
+   readability, see .s-card/.s-cards). Not used beside media — a text column next to a picture stays left,
+   see edSection(). */
+.s-intro{ text-align:center; }
+.s-intro h2{ margin-left:auto; margin-right:auto; }
+.s-intro p{ margin-left:auto; margin-right:auto; }
+.s-intro ul{ text-align:left; display:inline-block; margin-left:auto; margin-right:auto; }
+.s-intro .btnrow{ display:flex; justify-content:center; }
+
+.s-cards-sec{ padding: 54px 40px; }
+.s-cards-sec .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color: var(--site-accent); }
+.s-cards-sec h2{ font-size:28px; margin-top:8px; max-width:32ch; }
+.s-cards{ display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:26px; }
+.s-card{ border:1px solid var(--site-border); border-radius: var(--site-radius); padding:20px; }
+.s-card .ph{ width:40px; height:40px; border-radius:10px; background: var(--site-accent-soft); margin-bottom:14px; }
+.s-card h3{ font-size:16px; }
+.s-card p{ font-size:13px; color: var(--site-text-muted); margin-top:8px; line-height:1.6; }
+
+.s-gallery{ padding: 0 40px 54px; }
+.s-gallery .kicker{ font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color: var(--site-accent); }
+.s-gallery h2{ font-size:28px; margin-top:8px; }
+.s-gal-grid{ display:grid; grid-template-columns: repeat(4,1fr); gap:10px; }
+.s-gal-grid .gi{ padding-top:100%; border-radius: var(--site-radius-sm); background: var(--site-tile-bg); position:relative; }
+
+.s-quote{ padding: 54px 40px; background: var(--site-quote-bg); color: var(--site-quote-text); text-align:center; }
+.s-quote blockquote{ font-family: var(--site-display-font); font-size:24px; line-height:1.4; max-width:56ch; margin:0 auto; }
+.s-quote .who{ margin-top:16px; font-size:13px; opacity:.8; font-weight:600; }
+
+.s-cta-band{ padding: 44px 40px; text-align:center; background: var(--site-band-bg); color: var(--site-band-text); }
+.s-cta-band h2{ font-size:24px; }
+.s-cta-band p{ margin-top:8px; color: var(--site-band-muted); font-size:13.5px; }
+.s-cta-band .btnrow{ display:flex; justify-content:center; gap:10px; margin-top:18px; }
+
+.s-foot{ padding: 30px 40px; background: var(--site-foot-bg); color: var(--site-foot-text); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
+.s-foot .logo{ font-family: var(--site-display-font); font-weight:700; color: var(--site-foot-logo); font-size:15px; }

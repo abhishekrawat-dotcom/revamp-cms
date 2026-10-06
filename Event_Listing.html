@@ -1,0 +1,2247 @@
+<!-- ET Oneworld - Self-Serve Microsite Builder : Event Listing (v2 — premium dashboard redesign) -->
+<title>Events &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<style>
+  :root{
+    --bg: #F7F7F4;
+    --surface: #FFFFFF;
+    --surface-2: #F1F0EC;
+    --surface-3: #E7E5DF;
+    --border: #E6E4DE;
+    --border-strong: #D7D4CB;
+    --text: #1D1B17;
+    --text-muted: #6C6A60;
+    --text-faint: #9B988D;
+
+    --accent: #FF0035;
+    --accent-strong: #D6002C;
+    --accent-soft: #FFE3E8;
+    --accent-contrast: #FFFFFF;
+
+    --brand-red: #FF0035;
+    --draft: #8A7A99;
+    --draft-soft: #EEE8F2;
+
+    --ok: #16794F;
+    --ok-soft: #E4F5EC;
+    --warn: #A9700F;
+    --warn-soft: #FBF0DA;
+    --crit: #C13333;
+    --crit-soft: #FBE8E7;
+
+    --tag-blue: #1D5FA3; --tag-blue-soft: #E3EEFB;
+    --tag-teal: #0E7C6B; --tag-teal-soft: #E0F5F0;
+    --tag-violet: #7A3FA0; --tag-violet-soft: #F1E7F8;
+    --tag-cyan: #0E7490; --tag-cyan-soft: #DFF4F8;
+    --tag-amber: #9C6B0B; --tag-amber-soft: #F7EEDA;
+    --tag-rose: #B23A6B; --tag-rose-soft: #FBE7EF;
+
+    --shadow-xs: 0 1px 2px rgba(20,18,12,0.05);
+    --shadow-sm: 0 3px 8px -2px rgba(20,18,12,0.08);
+    --shadow-md: 0 14px 32px -14px rgba(20,18,12,0.22);
+    --shadow-lg: 0 30px 60px -24px rgba(20,18,12,0.30);
+
+    --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+
+    --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
+      --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
+      --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+      --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
+      --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+      --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
+      --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+      --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38;
+      --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+      --tag-amber:#E8C069; --tag-amber-soft:#332711;
+      --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
+      --shadow-sm:0 3px 8px -2px rgba(0,0,0,.4); --shadow-md:0 16px 34px -14px rgba(0,0,0,.55); --shadow-lg:0 32px 64px -24px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
+    --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
+    --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+    --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
+    --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+    --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
+    --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+    --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38;
+    --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+    --tag-amber:#E8C069; --tag-amber-soft:#332711;
+    --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
+    --shadow-sm:0 3px 8px -2px rgba(0,0,0,.4); --shadow-md:0 16px 34px -14px rgba(0,0,0,.55); --shadow-lg:0 32px 64px -24px rgba(0,0,0,.7);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--bg); color:var(--text); font-family:var(--font-body); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,h4{ font-family:var(--font-display); font-weight:700; margin:0; text-wrap:balance; }
+  p{ margin:0; }
+  a{ color:inherit; text-decoration:none; }
+  button{ font-family:var(--font-body); cursor:pointer; }
+  input,select{ font-family:var(--font-body); font-size:13.5px; color:var(--text); }
+  ::selection{ background:var(--accent-soft); }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  [hidden]{ display:none !important; }
+  .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+  .muted{ color:var(--text-muted); }
+  .faint{ color:var(--text-faint); }
+  .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+
+  /* ---------- buttons ---------- */
+  .btn{ display:inline-flex; align-items:center; justify-content:center; gap:7px; font-size:13px; font-weight:600; padding:8px 14px; border-radius:var(--r-sm); border:1px solid transparent; white-space:nowrap; transition:background .15s ease,border-color .15s ease,color .15s ease,transform .05s ease; }
+  .btn:active{ transform:translateY(1px); }
+  .btn-primary{ background:var(--accent); color:var(--accent-contrast); }
+  .btn-primary:hover{ background:var(--accent-strong); }
+  .btn-secondary{ background:var(--surface); color:var(--text); border-color:var(--border-strong); }
+  .btn-secondary:hover{ background:var(--surface-2); }
+  .btn-ghost{ background:transparent; color:var(--text-muted); border-color:transparent; }
+  .btn-ghost:hover{ background:var(--surface-2); color:var(--text); }
+  .btn-sm{ padding:6px 11px; font-size:12.5px; border-radius:7px; }
+  .btn-block{ width:100%; }
+  .btn[disabled]{ opacity:.45; pointer-events:none; }
+  .icon-btn{ width:32px; height:32px; border-radius:var(--r-sm); border:1px solid transparent; background:transparent; color:var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background .15s ease,color .15s ease; }
+  .icon-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .icon-btn.active{ background:var(--accent-soft); color:var(--accent-strong); }
+  .spin{ animation:spin .7s linear; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ---------- layout shell ---------- */
+  .app{ max-width:1240px; margin:0 auto; padding:0 24px 70px; display:flex; flex-direction:column; gap:12px; }
+
+  /* ---------- main portal navigation (sticky, full-bleed, single row) ---------- */
+  .main-nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:60; }
+  .main-nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:16px; padding:0 24px; }
+  .main-nav-brand{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
+  .brand-logo-img{ height:28px; width:auto; display:block; }
+
+  .main-nav-scroll{ flex:0 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; display:flex; align-items:center; gap:2px; }
+  .main-nav-scroll::-webkit-scrollbar{ display:none; }
+  .main-nav-links{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
+  .main-nav-links a, .mp-btn{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); white-space:nowrap; background:none; border:none; font-family:var(--font-body); cursor:pointer; flex-shrink:0; }
+  .main-nav-links a svg, .mp-btn svg{ flex-shrink:0; opacity:.75; }
+  .main-nav-links a:hover, .mp-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .main-nav-links a.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; }
+  .main-nav-links a.active svg{ opacity:1; }
+  .main-nav-more{ flex-shrink:0; }
+  .main-nav-portals{ flex-shrink:0; }
+
+  .main-nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .avatar-btn{ width:34px; height:34px; border-radius:50%; border:none; background:none; padding:0; display:flex; align-items:center; justify-content:center; }
+  .avatar-circle{ width:100%; height:100%; border-radius:50%; background:var(--accent); color:var(--accent-contrast); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; font-family:var(--font-display); }
+
+  /* at phone width, brand + "More Products" + the portal switcher + the account controls (all flex-shrink:0)
+     together exceed the viewport even with .main-nav-scroll squeezed to nothing — the account avatar (the
+     one control a signed-in user actually needs reachable at all times) was getting pushed off-screen with
+     no visible hint there was more to scroll to. Dropping the two secondary, text-labelled nav entries
+     reclaims enough width to keep the essential controls on screen without a horizontal scroll at all. */
+  @media (max-width: 640px){
+    .main-nav-more, .main-nav-portals{ display:none; }
+  }
+
+  /* ---------- section bar: tabs + actions, one compact row ---------- */
+  .section-bar{ position:relative; display:flex; align-items:center; justify-content:flex-end; gap:16px; flex-wrap:wrap; padding:10px 0 0; border-bottom:1px solid var(--border); min-height:46px; }
+  .section-bar-left{ position:absolute; left:50%; top:10px; bottom:0; transform:translateX(-50%); display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; }
+  .section-bar-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; padding-bottom:8px; }
+  .sync-btn{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-faint); font-weight:600; padding:6px 9px; border-radius:7px; background:none; border:none; }
+  .sync-btn:hover{ background:var(--surface-2); color:var(--text-muted); }
+
+  /* ---------- tabs ---------- */
+  .tabs-row{ display:flex; align-items:center; gap:4px; position:relative; }
+  .tabs-row button{ position:relative; background:none; border:none; padding:8px 4px; margin-right:18px; font-size:13.5px; font-weight:600; color:var(--text-muted); display:flex; align-items:center; gap:7px; }
+  .tabs-row button:hover{ color:var(--text); }
+  .tabs-row button .tc{ font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-faint); background:var(--surface-2); border-radius:100px; padding:1px 7px; }
+  .tabs-row button[aria-selected="true"]{ color:var(--text); }
+  .tabs-row button[aria-selected="true"] .tc{ background:var(--accent-soft); color:var(--accent-strong); }
+  .tabs-underline{ position:absolute; bottom:-1px; height:2px; background:var(--accent); border-radius:2px; transition:left .2s ease, width .2s ease; }
+
+  /* ---------- special view banner ---------- */
+  .special-banner{ display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:var(--r-md); background:var(--accent-soft); color:var(--accent-strong); font-size:13px; font-weight:600; }
+  .special-banner button{ background:none; border:none; color:var(--accent-strong); font-weight:700; text-decoration:underline; font-size:13px; margin-left:auto; }
+
+  /* ---------- insights ---------- */
+  .insights-head{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+  .insights-head h2{ font-size:17px; }
+  .kpi-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:12px; }
+  @media (max-width:760px){ .kpi-grid{ grid-template-columns:1fr; } }
+  .kpi-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; display:flex; flex-direction:column; gap:8px; box-shadow:var(--shadow-xs); }
+  .kpi-card .kpi-top{ display:flex; align-items:center; justify-content:space-between; }
+  .kpi-card .kpi-label{ font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-faint); }
+  .kpi-card .kpi-icon{ color:var(--text-faint); }
+  .kpi-card .kpi-num{ font-family:var(--font-mono); font-size:29px; font-weight:600; letter-spacing:-0.01em; }
+  .kpi-delta{ font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px; }
+  .kpi-delta.up{ color:var(--ok); } .kpi-delta.down{ color:var(--crit); }
+  .kpi-delta .vs{ color:var(--text-faint); font-weight:600; }
+  .kpi-skel{ height:29px; width:70%; background:var(--surface-3); border-radius:6px; }
+
+  /* ---------- popovers (generic) ---------- */
+  .popover-wrap{ position:relative; }
+  .popover{ position:absolute; top:calc(100% + 6px); left:0; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); box-shadow:var(--shadow-md); min-width:230px; z-index:50; padding:8px; }
+  .popover.right{ left:auto; right:0; }
+  .popover.wide{ min-width:300px; }
+  .popover-label{ padding:6px 8px 4px; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); }
+  .popover-item{ display:flex; align-items:center; gap:9px; width:100%; padding:8px 9px; border-radius:7px; font-size:13px; color:var(--text); text-align:left; background:none; border:none; }
+  .popover-item:hover{ background:var(--surface-2); }
+  .popover-item svg{ color:var(--text-faint); flex-shrink:0; }
+  .popover-item.danger{ color:var(--crit); } .popover-item.danger svg{ color:var(--crit); }
+  .popover-sep{ height:1px; background:var(--border); margin:6px 2px; }
+  .check-row{ display:flex; align-items:center; gap:9px; width:100%; padding:7px 9px; border-radius:7px; font-size:13px; background:none; border:none; text-align:left; color:var(--text); }
+  .check-row:hover{ background:var(--surface-2); }
+  .check-box{ width:16px; height:16px; border-radius:5px; border:1.5px solid var(--border-strong); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:transparent; }
+  .check-row.on .check-box{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .radio-row{ display:flex; align-items:center; gap:9px; width:100%; padding:7px 9px; border-radius:7px; font-size:13px; background:none; border:none; text-align:left; color:var(--text); }
+  .radio-row:hover{ background:var(--surface-2); }
+  .radio-row .dot{ width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border-strong); flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .radio-row .dot i{ width:7px; height:7px; border-radius:50%; background:transparent; }
+  .radio-row.on .dot{ border-color:var(--accent); } .radio-row.on .dot i{ background:var(--accent); }
+  .radio-row.on{ font-weight:700; }
+  .popover-foot{ display:flex; justify-content:flex-end; gap:8px; padding:8px 4px 2px; border-top:1px solid var(--border); margin-top:4px; }
+
+  .range-popover .custom-fields{ display:flex; gap:8px; padding:8px 8px 4px; }
+  .range-popover .cf{ flex:1; }
+  .range-popover .cf label{ display:block; font-size:10.5px; font-weight:700; color:var(--text-faint); margin-bottom:4px; text-transform:uppercase; letter-spacing:.04em; }
+  .range-popover input[type=date]{ width:100%; padding:7px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:12.5px; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .toolbar-filters-group{ flex:1; display:flex; align-items:center; justify-content:flex-start; gap:8px; flex-wrap:wrap; min-width:0; }
+  .toolbar-right-group{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .search-box{ display:flex; align-items:center; gap:7px; background:var(--surface); border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:8px 10px; width:100%; max-width:290px; color:var(--text-faint); }
+  .search-box:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .search-box input{ border:none; background:none; outline:none; color:var(--text); font-size:13px; width:100%; }
+  .search-box input::placeholder{ color:var(--text-faint); }
+  .search-box svg{ flex-shrink:0; }
+  .search-box .kbd{ font-family:var(--font-mono); font-size:10px; color:var(--text-faint); background:var(--surface-2); border:1px solid var(--border); border-radius:4px; padding:1px 5px; flex-shrink:0; }
+  .search-box .clear-btn{ background:none; border:none; color:var(--text-faint); display:flex; padding:0; flex-shrink:0; }
+  .search-box .clear-btn:hover{ color:var(--text); }
+  .toolbar-btn{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:var(--r-sm); border:1px solid var(--border-strong); background:var(--surface); font-size:12.5px; font-weight:600; color:var(--text); }
+  .toolbar-btn:hover{ background:var(--surface-2); }
+  .toolbar-btn.active-filter{ border-color:var(--accent); color:var(--accent-strong); background:var(--accent-soft); }
+  .toolbar-btn .badge-count{ font-family:var(--font-mono); font-size:10px; font-weight:700; background:var(--accent); color:#fff; border-radius:100px; padding:0 6px; }
+  .qr-toolbar-btn{ border-color:var(--tag-violet); color:var(--tag-violet); background:var(--tag-violet-soft); }
+  .qr-toolbar-btn:hover{ background:var(--tag-violet); color:#fff; }
+
+  .chip-row{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .fchip{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--accent-strong); background:var(--accent-soft); border-radius:100px; padding:5px 6px 5px 11px; }
+  .fchip button{ background:none; border:none; color:var(--accent-strong); display:flex; opacity:.7; }
+  .fchip button:hover{ opacity:1; }
+  .chip-clear{ font-size:12px; font-weight:700; color:var(--text-faint); background:none; border:none; text-decoration:underline; }
+  .chip-clear:hover{ color:var(--text); }
+
+  .result-line{ font-size:12.5px; color:var(--text-faint); white-space:nowrap; flex-shrink:0; }
+
+  /* ---------- table ---------- */
+  .table-wrap{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:auto; box-shadow:var(--shadow-sm); }
+  table.ev-table{ width:100%; border-collapse:separate; border-spacing:0; font-size:13.5px; min-width:900px; }
+  .ev-table thead th{ position:sticky; top:0; background:var(--surface-2); z-index:2; text-align:left; padding:13px 16px; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); border-bottom:1px solid var(--border-strong); white-space:nowrap; }
+  .ev-table th.sortable{ cursor:pointer; user-select:none; }
+  .ev-table th.sortable:hover{ color:var(--text); }
+  .ev-table th .sort-ic{ margin-left:4px; opacity:.4; }
+  .ev-table th.sorted .sort-ic{ opacity:1; color:var(--accent); }
+  .ev-table td{ padding:16px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .ev-table tbody tr{ transition:background .12s ease; cursor:pointer; }
+  .ev-table tbody tr td:first-child{ box-shadow:inset 3px 0 0 transparent; transition:box-shadow .12s ease; }
+  .ev-table tbody tr.st-upcoming td:first-child{ box-shadow:inset 3px 0 0 var(--accent); }
+  .ev-table tbody tr.st-active td:first-child{ box-shadow:inset 3px 0 0 var(--ok); }
+  .ev-table tbody tr.st-completed td:first-child{ box-shadow:inset 3px 0 0 var(--text-faint); }
+  .ev-table tbody tr.st-cancelled td:first-child{ box-shadow:inset 3px 0 0 var(--warn); }
+  .ev-table tbody tr.st-draft td:first-child{ box-shadow:inset 3px 0 0 var(--draft); }
+  .ev-table tbody tr.st-deleted td:first-child{ box-shadow:inset 3px 0 0 var(--crit); }
+  .ev-table tbody tr:hover{ background:var(--surface-2); }
+  .ev-table tbody tr:last-child td{ border-bottom:none; }
+
+  .ev-name-cell{ display:flex; gap:11px; align-items:flex-start; min-width:250px; }
+  .status-dot{ width:9px; height:9px; border-radius:50%; margin-top:7px; flex-shrink:0; }
+  .status-dot.upcoming{ background:var(--accent); }
+  .status-dot.active{ background:var(--ok); }
+  .status-dot.completed{ background:var(--text-faint); }
+  .status-dot.cancelled{ background:var(--warn); }
+  .status-dot.draft{ background:var(--draft); }
+  .status-dot.deleted{ background:var(--crit); }
+  .ev-name-main{ min-width:0; }
+  .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:inline; cursor:pointer; }
+  .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
+  .ev-meta-line{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); margin-top:7px; flex-wrap:wrap; }
+  .ev-meta-line .dotsep{ color:var(--text-faint); }
+  .ev-id-chip{ font-size:10.5px; font-weight:800; letter-spacing:.02em; border-radius:100px; padding:3px 10px; color:var(--accent-strong); background:var(--accent-soft); }
+  .ev-tag{ font-size:10.5px; font-weight:800; letter-spacing:.02em; border-radius:100px; padding:3px 10px; }
+  .ev-tag-blue{ color:var(--tag-blue); background:var(--tag-blue-soft); }
+  .ev-tag-teal{ color:var(--tag-teal); background:var(--tag-teal-soft); }
+  .ev-tag-violet{ color:var(--tag-violet); background:var(--tag-violet-soft); }
+  .ev-tag-cyan{ color:var(--tag-cyan); background:var(--tag-cyan-soft); }
+  .ev-tag-amber{ color:var(--tag-amber); background:var(--tag-amber-soft); }
+  .ev-tag-rose{ color:var(--tag-rose); background:var(--tag-rose-soft); }
+
+  .ev-date-cell .d1{ font-weight:600; font-size:13.5px; }
+  .ev-date-cell .d2{ font-size:12px; color:var(--text-muted); margin-top:2px; }
+  .ev-date-cell .d3{ font-size:11px; color:var(--accent-strong); margin-top:3px; font-weight:700; }
+  .ev-date-cell .unset{ color:var(--text-faint); font-style:italic; }
+  .vis-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
+  .live-tag{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:var(--ok); }
+  .live-tag i{ width:6px; height:6px; border-radius:50%; background:var(--ok); animation:pulse 1.6s ease infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+
+  .reg-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
+
+  .pay-amt{ font-weight:700; font-size:14.5px; }
+  .pay-sub{ font-size:11.5px; color:var(--text-faint); margin-top:2px; }
+  .pay-free{ color:var(--text-faint); font-weight:600; }
+
+  .row-actions{ text-align:right; position:relative; }
+  .row-action-group{ display:inline-flex; align-items:center; gap:6px; }
+  .row-actions .icon-btn{ transition:transform .12s ease, background .12s ease, color .12s ease, border-color .12s ease; }
+  .row-menu{ right:16px; left:auto; top:44px; }
+
+  .qa-btn{ border:1px solid transparent; }
+  .qa-btn:hover{ transform:translateY(-1px); }
+  .qa-edit{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .qa-edit:hover{ background:var(--tag-blue); color:#fff; }
+  .qa-view{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .qa-view:hover{ background:var(--tag-teal); color:#fff; }
+  .qa-report{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .qa-report:hover{ background:var(--tag-violet); color:#fff; }
+
+  /* ---------- QR code modal ---------- */
+  .qr-pick-row{ display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); padding:12px 14px; transition:border-color .12s ease, background .12s ease; }
+  .qr-pick-row:hover{ border-color:var(--accent); background:var(--accent-soft); }
+  .qr-pick-row:hover .qr-pick-ic{ color:var(--accent-strong); }
+  .qr-pick-ic{ width:34px; height:34px; border-radius:9px; background:var(--surface); color:var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:color .12s ease; }
+  .qr-pick-text{ flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .qr-pick-label{ font-weight:700; font-size:13px; color:var(--text); }
+  .qr-pick-hint{ font-size:11.5px; color:var(--text-muted); }
+  .qr-pick-chev{ color:var(--text-faint); transform:rotate(-90deg); flex-shrink:0; }
+  .qr-img-wrap{ display:flex; justify-content:center; padding:6px 0 2px; }
+  .qr-img{ border-radius:12px; border:1px solid var(--border); padding:10px; background:#fff; }
+
+  /* ---------- venue quick-view tooltip ---------- */
+  .venue-pop{ position:fixed; top:0; left:0; width:auto; max-width:260px; min-width:0; padding:9px 12px; display:flex; flex-direction:column; gap:6px; z-index:60; background:var(--text); border:none; border-radius:8px; box-shadow:var(--shadow-md); }
+  .venue-pop-row{ display:flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:var(--bg); line-height:1.3; }
+  .venue-pop-row svg{ color:var(--bg); opacity:.7; flex-shrink:0; }
+
+  .gt-tooltip{ position:fixed; top:0; left:0; background:var(--text); color:var(--bg); font-size:11px; font-weight:600; padding:5px 8px; border-radius:6px; white-space:nowrap; z-index:120; box-shadow:var(--shadow-sm); pointer-events:none; }
+
+  /* ---------- skeleton ---------- */
+  .skel{ background:linear-gradient(90deg, var(--surface-3) 25%, var(--surface-2) 37%, var(--surface-3) 63%); background-size:400% 100%; animation:shimmer 1.4s ease infinite; border-radius:6px; }
+  @keyframes shimmer{ 0%{ background-position:100% 50%; } 100%{ background-position:0 50%; } }
+  .skel-row td{ padding:16px; } .skel-line{ height:12px; width:70%; }
+
+  /* ---------- empty / error ---------- */
+  .empty-state{ text-align:center; padding:60px 20px; color:var(--text-muted); }
+  .empty-state .ico{ color:var(--text-faint); margin-bottom:10px; }
+  .empty-state h3{ font-size:16px; color:var(--text); margin-bottom:6px; }
+  .empty-state p{ font-size:13px; max-width:40ch; margin:0 auto; }
+  .empty-state .btn{ margin-top:16px; }
+  .error-banner{ display:flex; align-items:center; gap:12px; background:var(--crit-soft); color:var(--crit); border-radius:var(--r-md); padding:13px 16px; font-size:13px; font-weight:600; }
+  .error-banner button{ margin-left:auto; }
+
+  /* ---------- pagination ---------- */
+  .pagination{ display:flex; align-items:center; justify-content:center; gap:4px; }
+  .pagination button{ min-width:30px; height:30px; padding:0 8px; border-radius:7px; border:1px solid var(--border); background:var(--surface); font-size:12.5px; font-weight:600; color:var(--text-muted); }
+  .pagination button:hover{ background:var(--surface-2); }
+  .pagination button[aria-current="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .pagination button[disabled]{ opacity:.4; pointer-events:none; }
+
+  /* ---------- lower dashboard: segmentation + activity ---------- */
+  .lower-grid{ display:flex; flex-direction:column; gap:16px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-xs); }
+  .panel-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .panel-card-head-title{ display:flex; align-items:center; gap:11px; }
+  .panel-icon-avatar{ width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .panel-card-head h3{ font-size:15px; }
+  .panel-sub{ font-size:11.5px; color:var(--text-muted); margin-top:1px; }
+  .panel-card-head-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .panel-card-body{ padding:13px 18px 16px; min-height:60px; }
+  .segmented{ display:flex; align-items:center; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; }
+  /* its own buttons are all white-space:nowrap by design (labels shouldn't wrap mid-word) — the group can be
+     wider than a phone viewport on its own, even on its own wrapped line, so it needs to scroll internally
+     rather than push the whole page wider (same pattern as .main-nav-scroll) */
+  .segmented.sm{ padding:2px; flex-shrink:0; max-width:100%; overflow-x:auto; scrollbar-width:none; }
+  .segmented.sm::-webkit-scrollbar{ display:none; }
+  .segmented.sm button{ display:flex; align-items:center; gap:5px; padding:6px 11px; font-size:11.5px; font-weight:600; color:var(--text-muted); background:none; border:none; border-radius:7px; white-space:nowrap; }
+  .segmented.sm button:hover{ color:var(--text); }
+  .segmented.sm button svg{ flex-shrink:0; opacity:.8; }
+  .segmented.sm button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); font-weight:700; }
+  .segmented.sm button[aria-pressed="true"] svg{ opacity:1; }
+  .segmented.sm button.dim-blue[aria-pressed="true"]{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .segmented.sm button.dim-teal[aria-pressed="true"]{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .segmented.sm button.dim-violet[aria-pressed="true"]{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .segmented.sm button.dim-cyan[aria-pressed="true"]{ background:var(--tag-cyan-soft); color:var(--tag-cyan); }
+
+  .seg-select{ padding:6px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--text); }
+  .seg-select-event{ min-width:170px; max-width:260px; }
+  @media (max-width: 480px){
+    .seg-select-event{ min-width:0; max-width:100%; flex:1 1 100%; }
+  }
+  .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .seg-view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
+  .seg-view-btn{ width:28px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--text-muted); }
+  .seg-view-btn:hover{ color:var(--text); }
+  .seg-view-btn[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); }
+  .seg-top-row{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:stretch; }
+  .seg-insight{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--accent-strong); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.35; flex:2; min-width:230px; }
+  .seg-insight svg{ flex-shrink:0; }
+  .seg-stat-tile{ flex:1; min-width:150px; display:flex; align-items:center; gap:10px; padding:10px 13px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); }
+  .seg-stat-icon{ width:32px; height:32px; border-radius:9px; background:var(--surface); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-xs); }
+  .seg-stat-label{ font-size:11px; font-weight:600; color:var(--text-muted); }
+  .seg-stat-value{ font-size:18px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
+  .seg-list{ display:flex; flex-direction:column; gap:12px; }
+  .seg-row{ display:flex; align-items:center; gap:10px; }
+  .seg-rank{ width:18px; height:18px; border-radius:5px; background:var(--surface-2); color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .seg-row:first-child .seg-rank{ background:var(--accent); color:#fff; }
+  .seg-main{ flex:1; min-width:0; }
+  .seg-name-row{ display:flex; justify-content:space-between; gap:10px; font-size:12.5px; margin-bottom:5px; }
+  .seg-name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .seg-val{ font-weight:700; flex-shrink:0; }
+  .seg-bar-track{ height:6px; border-radius:100px; background:var(--surface-3); overflow:hidden; }
+  .seg-bar-fill{ height:100%; border-radius:100px; }
+  .seg-chart-row{ display:flex; align-items:center; gap:30px; flex-wrap:wrap; padding:6px 0; }
+  .seg-donut{ flex-shrink:0; }
+  .seg-donut-wrap{ position:relative; display:inline-flex; flex-shrink:0; }
+  .seg-donut-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; padding:0 22px; }
+  .seg-donut-center-pct{ font-size:23px; font-weight:800; letter-spacing:-.02em; color:var(--text); }
+  .seg-donut-center-label{ font-size:10.5px; font-weight:700; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+  .seg-legend{ display:flex; flex-direction:column; gap:10px; flex:1; min-width:190px; }
+  .seg-legend-row{ display:flex; align-items:center; gap:9px; font-size:12.5px; padding:2px 0; }
+  .seg-swatch{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .seg-legend-label{ flex:1; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .seg-legend-val{ font-weight:700; font-family:var(--font-mono); flex-shrink:0; }
+  .seg-legend-pct{ color:var(--text-faint); font-size:11px; width:36px; text-align:right; flex-shrink:0; }
+
+  /* ---------- segmentation table (list view) ---------- */
+  .seg-table-wrap{ overflow-x:auto; }
+  table.seg-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px; }
+  .seg-table th{ text-align:left; padding:8px 10px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .seg-table td{ padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
+  .seg-table tbody tr:last-child td{ border-bottom:none; }
+  .seg-rank-cell{ width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; font-weight:700; }
+  .seg-name-cell{ display:flex; align-items:center; gap:9px; font-weight:600; }
+  .seg-avatar{ width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; font-family:var(--font-display); flex-shrink:0; }
+  .seg-spark{ display:block; }
+  .intent-badge{ display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:4px 10px; border-radius:100px; white-space:nowrap; }
+  .intent-high{ color:var(--ok); background:var(--ok-soft); }
+  .intent-medium{ color:var(--warn); background:var(--warn-soft); }
+  .intent-low{ color:var(--text-faint); background:var(--surface-3); }
+
+  /* ---------- activity accordion ---------- */
+  .activity-accordion{ display:flex; flex-direction:column; }
+  .activity-item + .activity-item{ border-top:1px solid var(--border); }
+  .activity-row{ width:100%; display:flex; align-items:center; gap:13px; padding:12px 6px; background:none; border:none; text-align:left; cursor:pointer; border-radius:10px; transition:background .15s ease; font-family:var(--font-body); }
+  .activity-row:hover{ background:var(--surface-2); }
+  .activity-row[aria-expanded="true"]{ background:var(--surface-2); }
+  .activity-row-icon{ width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .activity-row-main{ flex:1; min-width:0; }
+  .activity-row-label{ font-size:13.5px; font-weight:700; color:var(--text); }
+  .activity-row-desc{ font-size:11.5px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .activity-row-total{ font-size:17px; font-weight:700; letter-spacing:-.01em; flex-shrink:0; font-family:var(--font-mono); }
+  .activity-row-chevron{ color:var(--text-faint); flex-shrink:0; display:flex; transition:transform .2s ease; }
+  .activity-row[aria-expanded="true"] .activity-row-chevron{ transform:rotate(180deg); color:var(--text); }
+
+  .act-blue .activity-row-icon{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .act-teal .activity-row-icon{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .act-amber .activity-row-icon{ background:var(--tag-amber-soft); color:var(--tag-amber); }
+  .act-violet .activity-row-icon{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .act-rose .activity-row-icon{ background:var(--tag-rose-soft); color:var(--tag-rose); }
+
+  .activity-panel{ padding:2px 6px 14px; }
+  .activity-panel-inner{ background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); padding:14px 16px; }
+
+  .act-table-wrap{ overflow-x:auto; }
+  table.act-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px; }
+  .act-table th{ text-align:left; padding:7px 10px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); border-bottom:1px solid var(--border); white-space:nowrap; }
+  .act-table td{ padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
+  .act-table tbody tr:last-child td{ border-bottom:none; }
+  .act-table tbody tr:hover{ background:var(--surface); }
+  .act-event-name{ font-weight:600; color:var(--text); }
+  .act-view-btn{ display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:var(--accent-strong); background:var(--accent-soft); border:none; border-radius:100px; padding:5px 11px; }
+  .act-view-btn:hover{ background:var(--accent); color:#fff; }
+
+  .act-kpi-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .act-kpi-tile{ flex:1; min-width:120px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:12px 14px; }
+  .act-kpi-label{ font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--text-faint); }
+  .act-kpi-value{ font-size:19px; font-weight:700; margin-top:4px; letter-spacing:-.01em; }
+  .act-kpi-tile.highlight{ background:var(--accent-soft); border-color:transparent; }
+  .act-kpi-tile.highlight .act-kpi-value{ color:var(--accent-strong); }
+  .act-kpi-tile.highlight .act-kpi-label{ color:var(--accent-strong); opacity:.85; }
+  .act-trend{ display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; margin-top:5px; }
+  .act-trend.up{ color:var(--ok); } .act-trend.down{ color:var(--crit); }
+  .act-empty{ font-size:12.5px; color:var(--text-muted); padding:6px 2px; }
+
+  /* ---------- view toggle (list / grid) ---------- */
+  .view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
+  .view-toggle button{ width:28px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; color:var(--text-muted); }
+  .view-toggle button:hover{ color:var(--text); }
+  .view-toggle button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); }
+
+  #results-view.view-list .table-wrap{ display:block; }
+  #results-view.view-list .card-list{ display:none; }
+  #results-view.view-grid .table-wrap{ display:none; }
+  #results-view.view-grid .card-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); gap:14px; }
+
+  /* ---------- help / support ---------- */
+  .help-fab{ position:fixed; bottom:22px; left:22px; z-index:80; display:flex; align-items:center; gap:8px; padding:11px 16px; border-radius:100px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--shadow-md); font-size:13px; font-weight:700; color:var(--text); }
+  .help-fab:hover{ border-color:var(--accent); color:var(--accent-strong); }
+  .modal-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:90; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal-card{ background:var(--surface); border-radius:var(--r-lg); max-width:440px; width:100%; box-shadow:var(--shadow-lg); overflow:hidden; }
+  .modal-card-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .modal-card-head h3{ font-size:16px; }
+  .modal-card-head p{ font-size:12px; color:var(--text-muted); margin-top:3px; }
+  .modal-card-body{ padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  .modal-card-foot{ padding:12px 18px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .finput{ width:100%; padding:9px 11px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:13.5px; font-family:var(--font-body); }
+  textarea.finput{ resize:vertical; min-height:90px; line-height:1.5; }
+  .finput:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .flabel{ display:block; font-size:11.5px; font-weight:700; color:var(--text-muted); margin-bottom:5px; }
+  .email-row{ display:flex; align-items:center; gap:8px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:var(--font-mono); font-size:12px; }
+  .email-row button{ margin-left:auto; background:none; border:none; color:var(--text-muted); display:flex; flex-shrink:0; }
+  .email-row button:hover{ color:var(--accent-strong); }
+
+  /* ---------- mobile / grid cards ---------- */
+  .card-list{ display:none; flex-direction:column; gap:12px; }
+  .ev-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; display:flex; flex-direction:column; gap:12px; transition:box-shadow .15s ease, border-color .15s ease, transform .15s ease; }
+  .ev-card:hover{ border-color:var(--border-strong); box-shadow:var(--shadow-sm); transform:translateY(-1px); }
+  .ev-card-top{ display:flex; align-items:flex-start; gap:10px; }
+  .ev-card-top .ev-name-main{ flex:1; min-width:0; }
+  .ev-card-info{ display:flex; flex-direction:column; gap:10px; padding-top:11px; border-top:1px solid var(--border); }
+  .ev-info-row{ display:flex; align-items:center; gap:16px; }
+  .ev-info-item{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text-muted); flex:1; min-width:0; }
+  .ev-info-item svg{ color:var(--text-faint); flex-shrink:0; }
+  .ev-info-item .v{ color:var(--text); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ev-info-item .v.faint2{ color:var(--text-faint); font-weight:600; font-style:italic; }
+  .ev-card-foot{ display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--text-faint); }
+
+  .bottom-sheet-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:70; display:flex; align-items:flex-end; }
+  .bottom-sheet{ background:var(--surface); width:100%; border-radius:16px 16px 0 0; max-height:82vh; overflow-y:auto; padding:16px; box-shadow:var(--shadow-lg); }
+  .bottom-sheet-handle{ width:36px; height:4px; border-radius:100px; background:var(--border-strong); margin:0 auto 14px; }
+
+  @media (max-width:880px){
+    .table-wrap{ display:none !important; }
+    .card-list{ display:flex !important; flex-direction:column; gap:12px; }
+    .toolbar .toolbar-btn.desk-only{ display:none; }
+    .search-box{ max-width:none; flex:1; }
+    .view-toggle{ display:none; }
+  }
+  @media (min-width:881px){ .mobile-only{ display:none !important; } }
+
+  #toast-region{ position:fixed; bottom:22px; right:22px; display:flex; flex-direction:column; gap:8px; z-index:100; }
+  .toast{ background:var(--text); color:var(--bg); font-size:13px; font-weight:600; padding:11px 16px; border-radius:8px; box-shadow:var(--shadow-md); opacity:0; transform:translateY(6px); transition:opacity .18s ease, transform .18s ease; max-width:340px; }
+  .toast.show{ opacity:1; transform:translateY(0); }
+
+  .fade-in{ animation:fadeIn .18s ease both; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+</style>
+
+<header class="main-nav">
+  <div class="main-nav-inner">
+    <a class="main-nav-brand" href="index.html">
+      <img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">
+    </a>
+
+    <div class="main-nav-scroll">
+      <nav class="main-nav-links" id="main-nav-links"></nav>
+    </div>
+
+    <div class="main-nav-more popover-wrap">
+      <button class="mp-btn" id="btn-more-products">
+        More Products
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="popover right" id="more-products-menu" hidden></div>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <div class="main-nav-portals popover-wrap">
+      <button class="mp-btn" id="btn-portals-nav">
+        Brandequity
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="popover right wide" id="portals-nav-menu" hidden></div>
+    </div>
+
+    <div class="main-nav-right">
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+      <div class="popover-wrap">
+        <button class="avatar-btn" id="btn-profile" aria-haspopup="true" aria-label="Account">
+          <span class="avatar-circle">AD</span>
+        </button>
+        <div class="popover right" id="profile-menu" hidden></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="app">
+  <div id="error-slot"></div>
+
+  <section style="display:flex;flex-direction:column;gap:8px;">
+    <div class="toolbar">
+      <div class="toolbar-filters-group">
+        <div class="search-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="search-input" placeholder="Search events…">
+          <button class="clear-btn" id="btn-clear-search" hidden aria-label="Clear search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+          <span class="kbd" id="search-kbd">/</span>
+        </div>
+
+        <div class="popover-wrap desk-only">
+          <button class="toolbar-btn" id="btn-type">Event Type <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="popover" id="type-popover" hidden></div>
+        </div>
+        <div class="popover-wrap desk-only">
+          <button class="toolbar-btn" id="btn-portal">Portal <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="popover" id="portal-popover" hidden></div>
+        </div>
+        <button class="toolbar-btn mobile-only" id="btn-mobile-filters">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
+          Filters
+        </button>
+
+        <button class="toolbar-btn qr-toolbar-btn desk-only" id="btn-qr-toolbar">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/></svg>
+          QR Codes
+        </button>
+      </div>
+
+      <div class="toolbar-right-group">
+        <span class="result-line" id="result-line"></span>
+
+        <a class="btn btn-primary btn-sm" href="create-event.html?new=1">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          Create Event
+        </a>
+
+        <div class="view-toggle" id="view-toggle">
+        <button type="button" data-view="list" aria-label="List view">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        </button>
+        <button type="button" data-view="grid" aria-label="Grid view">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        </button>
+        </div>
+      </div>
+    </div>
+    <div class="chip-row" id="chip-row"></div>
+  </section>
+
+  <div class="section-bar">
+    <div class="section-bar-left">
+      <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
+    </div>
+    <div class="section-bar-right">
+      <button class="sync-btn" id="btn-sync" data-tooltip="Refresh event data">
+        <svg id="sync-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        <span id="sync-label">Updated 2 min ago</span>
+      </button>
+      <div class="popover-wrap">
+        <button class="icon-btn" id="btn-more" aria-haspopup="true" aria-label="More">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+        </button>
+        <div class="popover right" id="more-menu" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="special-banner"></div>
+
+  <div id="results-view" class="view-list">
+    <div class="table-wrap" id="table-wrap">
+      <table class="ev-table">
+        <thead>
+          <tr>
+            <th>Event name</th>
+            <th class="sortable" data-sort="start">Event date <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="visitors">Visitors <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="registrations">Registrations <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="payment">Payment <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="card-list" id="card-list"></div>
+  </div>
+
+  <div class="pagination" id="pagination"></div>
+
+  <section id="insights-section">
+    <div class="insights-head">
+      <h2 id="insights-title">Upcoming Event Insights</h2>
+      <div class="popover-wrap">
+        <button class="btn btn-secondary btn-sm" id="btn-range">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
+          <span id="range-label">Last 30 days</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="popover range-popover" id="range-popover" hidden></div>
+      </div>
+    </div>
+    <div class="kpi-grid" id="kpi-grid"></div>
+  </section>
+
+  <section class="lower-grid">
+    <div class="card panel-card" id="segment-card">
+      <div class="panel-card-head">
+        <div class="panel-card-head-title">
+          <span class="panel-icon-avatar" id="segment-icon-avatar"></span>
+          <div>
+            <h3>Audience Segmentation</h3>
+            <p class="panel-sub" id="segment-sub">Top Company for this event</p>
+          </div>
+        </div>
+        <div class="panel-card-head-right">
+          <select class="seg-select seg-select-event" id="segment-event-select"></select>
+          <div class="seg-view-toggle" id="segment-view-toggle">
+            <button type="button" class="seg-view-btn" data-segview="list" data-tooltip="List view">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            </button>
+            <button type="button" class="seg-view-btn" data-segview="chart" data-tooltip="Chart view">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="seg-toolbar">
+        <div class="segmented sm" id="segment-dim-tabs"></div>
+      </div>
+      <div class="panel-card-body" id="segment-body"></div>
+    </div>
+
+    <div class="card panel-card" id="activity-card">
+      <div class="panel-card-head">
+        <div>
+          <h3>Latest Activity on this Portal</h3>
+          <p class="panel-sub">Platform-wide activity for the selected period</p>
+        </div>
+        <div class="popover-wrap">
+          <button class="btn btn-secondary btn-sm" id="btn-activity-range">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
+            <span id="activity-range-label">Last 30 days</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="popover range-popover" id="activity-range-popover" hidden></div>
+        </div>
+      </div>
+      <div class="panel-card-body" id="activity-body"></div>
+    </div>
+  </section>
+</div>
+
+<button class="help-fab" id="btn-help" type="button">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9-.7c.2.9-.2 1.5-1 2.1-.7.5-1.4.9-1.4 2.1"/><path d="M12 17h.01"/></svg>
+  Need help?
+</button>
+
+<div class="popover venue-pop" id="venue-quickview" hidden></div>
+<div class="gt-tooltip" id="gt-tooltip" hidden></div>
+
+<div id="sheet-root"></div>
+<div id="toast-region"></div>
+
+<script src="theme-toggle.js"></script>
+<script>
+(function(){
+
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function svg(d, w){ return '<svg width="'+(w||16)+'" height="'+(w||16)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+d+'</svg>'; }
+
+  var IC = {
+    eye:      svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>', 14),
+    edit:     svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 14),
+    settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V19a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9c.2.7.8 1.2 1.6 1.2H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.6 1z"/>', 14),
+    users:    svg('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="18" cy="9" r="2.4"/><path d="M15.5 14.2c2.6.4 4.5 2.6 4.5 5.3"/>', 14),
+    chart:    svg('<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>', 14),
+    copy:     svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>', 14),
+    link:     svg('<path d="M9 15l6-6"/><path d="M13 6.5l.9-.9a3.5 3.5 0 1 1 5 5l-2 2a3.5 3.5 0 0 1-5 0"/><path d="M11 17.5l-.9.9a3.5 3.5 0 1 1-5-5l2-2a3.5 3.5 0 0 1 5 0"/>', 14),
+    check:    svg('<path d="M20 6L9 17l-5-5"/>', 12),
+    checkCirc:svg('<circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/>', 14),
+    archive:  svg('<rect x="3" y="4" width="18" height="4.5" rx="1.2"/><path d="M5 8.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5"/><path d="M10 13h4"/>', 14),
+    restore:  svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>', 14),
+    trash:    svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', 14),
+    x:        svg('<path d="M18 6L6 18M6 6l12 12"/>', 14),
+    dots:     svg('<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>', 15),
+    file:     svg('<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/>', 14),
+    trash2:   svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', 14),
+    plusOutline: svg('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>', 40),
+    alert:    svg('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.6 17.1A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0z"/>', 15),
+    ticket:   svg('<path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/>', 15),
+    wallet:   svg('<path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M16 12h.01"/><path d="M3 10h18"/>', 15),
+    arrowUp:  svg('<path d="M12 19V5M5 12l7-7 7 7"/>', 11),
+    arrowDown:svg('<path d="M12 5v14M19 12l-7 7-7-7"/>', 11),
+    ban:      svg('<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>', 14),
+    mail:     svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', 14),
+    calendarSm: svg('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/>', 14),
+    pin:      svg('<path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/>', 13),
+    newspaper: svg('<path d="M4 4h13a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M4 4v14a2 2 0 0 0 2 2"/><path d="M8 8h7M8 12h7M8 16h4"/>', 14),
+    userPlus: svg('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M18 8v6M15 11h6"/>', 14),
+    userCircle: svg('<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/>', 14),
+    logout:   svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>', 14),
+    photo:    svg('<rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5.5-5.5L5 20"/>', 15),
+    flag:     svg('<path d="M4 3v18"/><path d="M4 4h13l-3 4.5L17 13H4"/>', 15),
+    trophy:   svg('<path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H5a2 2 0 0 0 0 4h2"/><path d="M17 6h2a2 2 0 0 1 0 4h-2"/>', 15),
+    search15: svg('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', 15),
+    chevDown: svg('<path d="M6 9l6 6 6-6"/>', 12),
+    qrcode:   svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01"/>', 14),
+    globe:    svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z"/>', 14),
+    agenda:   svg('<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>', 14),
+    mic:      svg('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5M9 22h6"/>', 14),
+    briefcase: svg('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><path d="M2 13h20"/>', 15),
+    layers:   svg('<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', 15),
+    building: svg('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1"/>', 14),
+    share:    svg('<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>', 14),
+    monitor:  svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>', 14)
+  };
+
+  function toast(msg){
+    var region = $('toast-region');
+    var t = document.createElement('div'); t.className='toast'; t.textContent = msg;
+    region.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 220); }, 2800);
+  }
+
+  /* =========================================================
+     DATA
+  ========================================================= */
+  var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table' };
+  var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber' };
+  var PORTALS = { brandequity:'Brandequity', retail:'Retail', auto:'Auto', health:'Health', telecom:'Telecom', bfsi:'BFSI', cio:'CIO', hrworld:'HRWorld', legal:'Legal', manufacturing:'Manufacturing', government:'Government' };
+  var CURRENT_PORTAL = 'brandequity';   // the portal this account is signed into — shown in the top-nav switcher
+
+  var uidn = 0;
+  function nextId(){ uidn++; return 'ev_' + uidn; }
+  function mk(o){ o.id = nextId(); return o; }
+
+  var CREATORS = ['Tanishka Bhatia','Arjun Rawat','Sofia Chen','Jonas Meyer','Marcus Osei'];
+
+  var EVENTS = [
+    mk({ name:'ET CISO Annual Conclave 2026', venue:'Grand Hyatt', city:'Goa', eventNo:4097, type:'ip', portal:'cio', status:'upcoming', start:'2026-09-10T10:00:00', registrations:2645, regTarget:2924, visitors:2923, payment:{type:'paid', amount:482000, txns:212}, createdBy:CREATORS[0] }),
+    mk({ name:'RACEx360', venue:'Taj West End', city:'Bengaluru', eventNo:4652, type:'client', portal:'auto', status:'upcoming', start:'2026-09-25T09:30:00', registrations:136, regTarget:113, visitors:113, payment:{type:'free'}, createdBy:CREATORS[1] }),
+    mk({ name:'Data Protection & Privacy Summit 2026', venue:'Venue to be confirmed', city:'Mumbai', eventNo:4138, type:'ip', portal:'legal', status:'upcoming', start:'2026-12-02T09:00:00', registrations:122, regTarget:248, visitors:248, payment:{type:'paid', amount:0, txns:0}, createdBy:CREATORS[2] }),
+    mk({ name:'ET CISO SecuFest 2027', venue:'Venue to be confirmed', city:'—', eventNo:4545, type:'ip', portal:'cio', status:'upcoming', start:'2027-03-11T08:00:00', registrations:46, regTarget:89, visitors:89, payment:{type:'free'}, createdBy:CREATORS[0] }),
+    mk({ name:'Cyber Security Council', venue:'Venue to be confirmed', city:'Delhi NCR', eventNo:2595, type:'roundtable', portal:'legal', status:'upcoming', start:null, registrations:5, regTarget:38, visitors:38, payment:{type:'free'}, createdBy:CREATORS[3] }),
+    mk({ name:'AI-Driven SecOps', venue:'Virtual', city:'Online', eventNo:3354, type:'leadgen', portal:'telecom', status:'upcoming', start:null, registrations:88, regTarget:85, visitors:85, payment:{type:'paid', amount:45000, txns:19}, createdBy:CREATORS[4] }),
+    mk({ name:'Quest Bant 2025', venue:'Virtual', city:'Online', eventNo:3425, type:'leadgen', portal:'retail', status:'upcoming', start:'2026-10-05T11:00:00', registrations:19, regTarget:90, visitors:63, payment:{type:'free'}, createdBy:CREATORS[1] }),
+    mk({ name:'SecurityStroke', venue:'ITC Maratha', city:'Mumbai', eventNo:1627, type:'roundtable', portal:'cio', status:'upcoming', start:'2026-10-19T09:00:00', registrations:95, regTarget:96, visitors:96, payment:{type:'free'}, createdBy:CREATORS[2] }),
+    mk({ name:'Manufacturing 4.0 Summit 2026', venue:'Venue to be confirmed', city:'Chennai', eventNo:4471, type:'ip', portal:'manufacturing', status:'upcoming', start:'2026-12-03T09:00:00', registrations:0, regTarget:300, visitors:0, payment:{type:'free'}, createdBy:CREATORS[4] }),
+
+    mk({ name:'Zscaler Secusphere', venue:'Virtual', city:'Online', eventNo:2304, type:'leadgen', portal:'telecom', status:'active', start:'2026-09-07T09:00:00', registrations:75, regTarget:253, visitors:253, payment:{type:'paid', amount:120000, txns:41}, createdBy:CREATORS[3] }),
+    mk({ name:'Managing Extensions with Chrome Enterprise', venue:'Virtual', city:'Online', eventNo:3871, type:'editorial', portal:'cio', status:'active', start:'2026-09-07T14:00:00', registrations:21, regTarget:122, visitors:122, payment:{type:'free'}, createdBy:CREATORS[0] }),
+    mk({ name:'Optimizing Chrome Enterprise Core', venue:'Virtual', city:'Online', eventNo:3872, type:'editorial', portal:'cio', status:'active', start:'2026-09-07T16:00:00', registrations:36, regTarget:93, visitors:93, payment:{type:'free'}, createdBy:CREATORS[0] }),
+
+    mk({ name:'BFSI Fraud & Risk Conclave 2025', venue:'ITC Grand Central', city:'Mumbai', eventNo:3980, type:'ip', portal:'bfsi', status:'completed', start:'2025-11-18T09:00:00', registrations:850, regTarget:800, visitors:1200, payment:{type:'paid', amount:950000, txns:301}, createdBy:CREATORS[4] }),
+    mk({ name:'Healthcare Innovation Awards 2025', venue:'The Leela', city:'New Delhi', eventNo:4012, type:'ip', portal:'health', status:'completed', start:'2025-08-22T18:00:00', registrations:300, regTarget:280, visitors:400, payment:{type:'paid', amount:620000, txns:150}, createdBy:CREATORS[2] }),
+    mk({ name:'Legal & Compliance Forum 2025', venue:'Virtual', city:'Online', eventNo:3690, type:'client', portal:'legal', status:'completed', start:'2025-05-14T10:00:00', registrations:60, regTarget:90, visitors:75, payment:{type:'free'}, createdBy:CREATORS[1] }),
+    mk({ name:'Redefining Cybersecurity', venue:'Taj Lands End', city:'Mumbai', eventNo:2158, type:'roundtable', portal:'cio', status:'completed', start:'2025-03-02T09:00:00', registrations:134, regTarget:998, visitors:0, payment:{type:'free'}, createdBy:CREATORS[3] }),
+
+    mk({ name:'HRWorld Culture Roundtable 2026', venue:'Zoom Webinar', city:'Online', eventNo:4489, type:'client', portal:'hrworld', status:'cancelled', start:'2026-11-05T00:00:00', registrations:0, regTarget:null, visitors:0, payment:{type:'free'}, createdBy:CREATORS[2] }),
+    mk({ name:'Telecom 5G Innovation Forum 2027', venue:'Venue to be confirmed', city:'—', eventNo:4590, type:'ip', portal:'telecom', status:'draft', start:null, registrations:0, regTarget:null, visitors:0, payment:{type:'free'}, createdBy:CREATORS[3] }),
+
+    mk({ name:'Legacy Compliance Roundtable 2024', venue:'Virtual', city:'Online', eventNo:1902, type:'roundtable', portal:'legal', status:'deleted', start:'2024-06-10T10:00:00', registrations:12, regTarget:40, visitors:22, payment:{type:'free'}, createdBy:CREATORS[1] })
+  ];
+
+  // CRM leads — a distinct engagement signal, deterministically derived so it doesn't just mirror registrations/visitors 1:1
+  EVENTS.forEach(function(e, i){
+    var mix = (e.registrations * 0.6) + (e.visitors * 0.35) + ((e.eventNo % 37) * 4);
+    e.crmLeads = Math.round(mix * (0.6 + ((i * 17) % 40) / 100));
+  });
+
+  var KPI_BASE = {
+    upcoming:  { visitors:10810, registrations:4280, revenue:3260000, dVis:12.5, dReg:8.2, dRev:16.4 },
+    active:    { visitors:2870,  registrations:890,  revenue:640000,  dVis:6.1,  dReg:-2.4, dRev:9.8 },
+    completed: { visitors:18420, registrations:6210, revenue:8920000, dVis:4.4,  dReg:5.6,  dRev:-3.1 }
+  };
+  var RANGE_FACTOR = { today:0.05, '7':0.27, '10':0.36, '30':1 };
+  var RANGE_DELTA_SCALE = { '7':0.65, '10':0.82, '30':1, 'custom':1 };
+
+  var SEGMENT_DIMENSIONS = { company:'Top Company', designation:'Top Designation', source:'Top Source', device:'Mobile vs Desktop' };
+  var SEG_PALETTE = ['#FF0035','#0F9E8E','#D97706','#7C3AED','#2563EB','#65A30D'];
+
+  /* ---- per-event attendee audience data, generated for IP events only ---- */
+  var COMPANY_POOL = ['TCS','Infosys','Wipro','HDFC Bank','ICICI Bank','Reliance Industries','Larsen & Toubro','Mahindra Group','Tata Steel','Adani Enterprises','Cognizant','Accenture','Google India','Microsoft India','Amazon India'];
+  var DESIGNATION_POOL = ['CISO','IT Head','VP - Technology','CTO','Security Analyst','Compliance Manager','Director - IT','Chief Risk Officer','Head of Engineering','Product Manager'];
+  var SOURCE_POOL = ['Organic Search','Email Campaign','Social Media','Direct','Referral Partner','Paid Ads'];
+  function generateAudience(seedNum, base){
+    base = Math.max(base, 20);
+    function rand(i){ var x = Math.sin(seedNum*13 + i*7.13) * 10000; return x - Math.floor(x); }
+    function makeTrend(seedOffset){
+      var pts = [];
+      for (var d=0; d<7; d++){ pts.push(0.35 + rand(seedOffset + d*3.7) * 0.85); }
+      return pts;
+    }
+    function pickWeighted(pool, count){
+      var idxs = pool.map(function(_,i){ return i; });
+      idxs.sort(function(a,b){ return rand(a) - rand(b); });
+      var chosen = idxs.slice(0, count);
+      var weights = [], wsum = 0;
+      chosen.forEach(function(ci,k){ var w = 0.3 + rand(ci+100)*0.7; weights.push(w); wsum += w; });
+      return chosen.map(function(ci,k){ return { label: pool[ci], value: Math.max(1, Math.round(base * (weights[k]/wsum) * 0.55)), trend: makeTrend(ci*17 + 5) }; })
+        .sort(function(a,b){ return b.value - a.value; });
+    }
+    var mobileShare = 0.45 + rand(999)*0.25;
+    var mobile = Math.round(base * mobileShare);
+    var desktop = Math.max(1, base - mobile);
+    return {
+      companies: pickWeighted(COMPANY_POOL, 8),
+      designations: pickWeighted(DESIGNATION_POOL, 8),
+      sources: pickWeighted(SOURCE_POOL, 5),
+      devices: [{ label:'Mobile', value:mobile, trend:makeTrend(201) }, { label:'Desktop', value:desktop, trend:makeTrend(211) }]
+    };
+  }
+  var EVENT_AUDIENCE = {};
+  var IP_EVENT_IDS = [];
+  EVENTS.forEach(function(e){
+    if (e.type === 'ip' && (e.status==='upcoming' || e.status==='active' || e.status==='completed')){
+      IP_EVENT_IDS.push(e.id);
+      EVENT_AUDIENCE[e.id] = generateAudience(e.eventNo, e.visitors || e.registrations || 40);
+    }
+  });
+
+  /* ---- per-IP-event activity breakdown (deterministic mock, mirrors portal totals) ---- */
+  var IP_ACTIVITY = {};
+  IP_EVENT_IDS.forEach(function(id){
+    var e = findEvent(id);
+    function r(i){ var x = Math.sin(e.eventNo * 17.3 + i * 5.11) * 10000; return x - Math.floor(x); }
+    IP_ACTIVITY[id] = {
+      mailersSent: Math.round((e.registrations || e.visitors || 10) * (1.3 + r(1) * 2.1)),
+      lastRegDays: Math.floor(r(2) * 12),
+      lastVisitDays: Math.floor(r(3) * 8),
+      lastMailerDays: Math.floor(r(4) * 18)
+    };
+  });
+
+  /* ---- portal-wide activity metrics (30-day baseline, scaled by the selected range) ---- */
+  var PORTAL_ACTIVITY_BASE = { registrations:5240, visitors:21860, mailersSent:312400, newslettersSent:58200, subscribers:2140 };
+
+  /* =========================================================
+     STATE
+  ========================================================= */
+  var state = {
+    tab: 'active',
+    specialView: null,          // null | 'cancelled' | 'deleted'
+    search: '',
+    filters: { types: [], portals: [], payment: [] },
+    sort: { field:'start', dir:'asc' },
+    page: 1,
+    range: { mode:'30', start:null, end:null },
+    activityRange: { mode:'30', start:null, end:null },
+    activityOpenKey: null,
+    loading: true,
+    openPopover: null,
+    openRowMenu: null,
+    venuePopoverFor: null,
+    view: 'list',                    // 'list' | 'grid'
+    segmentEventId: IP_EVENT_IDS[0] || null,
+    segmentDimension: 'company',     // 'company' | 'designation' | 'source' | 'device'
+    segmentView: 'list'              // 'list' | 'chart'
+  };
+  var PAGE_SIZE = 5;
+
+  try {
+    var parts = (location.hash||'').replace('#','').split('&').reduce(function(acc,p){
+      var kv=p.split('='); if(kv[0]) acc[kv[0]]=decodeURIComponent(kv[1]||''); return acc;
+    }, {});
+    if (parts.tab && ['active','upcoming','completed'].indexOf(parts.tab)!==-1) state.tab = parts.tab;
+    if (parts.q) state.search = parts.q;
+  } catch(e){}
+
+  function syncHash(){
+    try { history.replaceState(null, '', '#tab='+state.tab+(state.search?('&q='+encodeURIComponent(state.search)):'')); } catch(e){}
+  }
+
+  /* =========================================================
+     HELPERS
+  ========================================================= */
+  function fmtNum(n){ return Number(n||0).toLocaleString('en-IN'); }
+  function fmtCompact(n){
+    n = Number(n||0);
+    if (n >= 100000) return (n/100000).toFixed(2).replace(/\.00$/,'') + 'L';
+    if (n >= 1000) return (n/1000).toFixed(2).replace(/\.00$/,'') + 'K';
+    return String(n);
+  }
+  function fmtRupee(n){ return '₹' + fmtCompact(n); }
+  function fmtRupeeFull(n){ return '₹' + Number(n||0).toLocaleString('en-IN'); }
+
+  function fmtDate(iso){
+    var d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+  }
+  function fmtTime(iso){
+    var d = new Date(iso);
+    return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  }
+  function fmtRelativeDays(n){
+    if (n <= 0) return 'Today';
+    if (n === 1) return 'Yesterday';
+    return n + ' days ago';
+  }
+  function daysUntil(iso){
+    var d = new Date(iso), now = new Date();
+    return Math.round((d.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / 86400000);
+  }
+
+  function statusLabel(s){ return { upcoming:'Upcoming', active:'Active', completed:'Completed', cancelled:'Cancelled', draft:'Draft', deleted:'Deleted' }[s] || s; }
+
+  /* =========================================================
+     POPOVER / MENU MANAGEMENT
+  ========================================================= */
+  function closeAll(){
+    document.querySelectorAll('.popover').forEach(function(p){ p.hidden = true; });
+    state.openPopover = null;
+    state.openRowMenu = null;
+    state.venuePopoverFor = null;
+  }
+  function openPopover(id){
+    closeAll();
+    var el = $(id);
+    if (el){ el.hidden = false; state.openPopover = id; }
+  }
+  document.addEventListener('click', function(e){
+    if (e.target.closest('.popover-wrap') || e.target.closest('.row-actions') || e.target.closest('#venue-quickview') || e.target.closest('[data-venue-id]')) return;
+    closeAll();
+  });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAll(); });
+
+  /* =========================================================
+     GLOBAL TOOLTIPS (fixed-position, escapes overflow clipping)
+  ========================================================= */
+  function showGlobalTooltip(target){
+    var text = target.getAttribute('data-tooltip');
+    if (!text) return;
+    var el = $('gt-tooltip');
+    el.textContent = text;
+    el.hidden = false;
+    var r = target.getBoundingClientRect();
+    var tw = el.offsetWidth, th = el.offsetHeight;
+    var left = Math.max(6, Math.min(r.left + r.width/2 - tw/2, window.innerWidth - tw - 6));
+    var top = r.top - th - 8;
+    if (top < 6) top = r.bottom + 8;
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+  }
+  function hideGlobalTooltip(){ var el = $('gt-tooltip'); if (el) el.hidden = true; }
+  document.addEventListener('mouseover', function(e){
+    var t = e.target.closest('[data-tooltip]');
+    if (t) showGlobalTooltip(t);
+  });
+  document.addEventListener('mouseout', function(e){
+    var t = e.target.closest('[data-tooltip]');
+    if (t && (!e.relatedTarget || !t.contains(e.relatedTarget))) hideGlobalTooltip();
+  });
+  document.addEventListener('focusin', function(e){
+    var t = e.target.closest('[data-tooltip]');
+    if (t) showGlobalTooltip(t);
+  });
+  document.addEventListener('focusout', function(e){
+    var t = e.target.closest('[data-tooltip]');
+    if (t) hideGlobalTooltip();
+  });
+
+  /* =========================================================
+     MORE MENU (header)
+  ========================================================= */
+  function renderMoreMenu(){
+    var draftCount = EVENTS.filter(function(e){ return e.status==='draft'; }).length;
+    var cancelledCount = EVENTS.filter(function(e){ return e.status==='cancelled'; }).length;
+    var deletedCount = EVENTS.filter(function(e){ return e.status==='deleted'; }).length;
+    $('more-menu').innerHTML =
+      '<button class="popover-item" data-special="draft">' + IC.file + ' Draft Events <span class="mono faint" style="margin-left:auto;">' + draftCount + '</span></button>' +
+      '<button class="popover-item" data-special="cancelled">' + IC.ban + ' Cancelled Events <span class="mono faint" style="margin-left:auto;">' + cancelledCount + '</span></button>' +
+      '<button class="popover-item" data-special="deleted">' + IC.trash2 + ' Deleted Events <span class="mono faint" style="margin-left:auto;">' + deletedCount + '</span></button>';
+    $('more-menu').querySelectorAll('[data-special]').forEach(function(b){
+      b.addEventListener('click', function(){ state.specialView = b.getAttribute('data-special'); state.page = 1; closeAll(); renderApp(); });
+    });
+  }
+  $('btn-more').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='more-menu') closeAll(); else openPopover('more-menu'); });
+
+  /* =========================================================
+     PROFILE MENU (main nav)
+  ========================================================= */
+  function renderProfileMenu(){
+    $('profile-menu').innerHTML =
+      '<div class="popover-label">admin@etmanufacturing.in</div>' +
+      '<button class="popover-item" data-profile-stub="Your profile isn’t wired up in this preview yet.">' + IC.userCircle + ' Your profile</button>' +
+      '<button class="popover-item" data-profile-stub="Preferences aren’t wired up in this preview yet.">' + IC.settings + ' Preferences</button>' +
+      '<div class="popover-sep"></div>' +
+      '<button class="popover-item danger" data-profile-stub="Sign out isn’t wired up in this preview yet.">' + IC.logout + ' Sign out</button>';
+    $('profile-menu').querySelectorAll('[data-profile-stub]').forEach(function(b){
+      b.addEventListener('click', function(){ toast(b.getAttribute('data-profile-stub')); closeAll(); });
+    });
+  }
+  $('btn-profile').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='profile-menu'){ closeAll(); return; }
+    renderProfileMenu(); openPopover('profile-menu');
+  });
+
+  /* =========================================================
+     TOP NAV — links, More Products, Portals (access-gated)
+  ========================================================= */
+  var USER_ACCESS = ['awards','crm','events','webinars','marketing','payments','edition'];
+  var NAV_LINKS = [
+    { key:'awards',   label:'Awards',   href:'index.html', icon:IC.trophy },
+    { key:'crm',      label:'CRM',      href:'index.html', icon:IC.briefcase },
+    { key:'events',   label:'Events',   href:'Event_Listing.html', icon:IC.calendarSm, active:true },
+    { key:'webinars', label:'Webinars', href:'index.html', icon:IC.photo }
+  ];
+  var MORE_PRODUCTS_LINKS = [
+    { key:'payments',  label:'Payments', href:'index.html', icon:IC.wallet },
+    { key:'edition',   label:'Event Edition', href:'index.html', icon:IC.layers },
+    { key:'marketing', label:'Marketing Dashboard', href:'index.html', icon:IC.flag }
+  ];
+
+  function hasAccess(key){ return USER_ACCESS.indexOf(key) !== -1; }
+
+  function renderMainNavLinks(){
+    $('main-nav-links').innerHTML = NAV_LINKS.filter(function(l){ return hasAccess(l.key); }).map(function(l){
+      return '<a href="' + l.href + '"' + (l.active ? ' class="active"' : '') + '>' + l.icon + ' ' + l.label + '</a>';
+    }).join('');
+  }
+  renderMainNavLinks();
+
+  function renderMoreProductsMenu(){
+    $('more-products-menu').innerHTML = MORE_PRODUCTS_LINKS.filter(function(l){ return hasAccess(l.key); }).map(function(l){
+      return '<a class="popover-item" href="' + l.href + '">' + l.icon + ' ' + l.label + '</a>';
+    }).join('') || '<div class="popover-label">No other products available</div>';
+  }
+  $('btn-more-products').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='more-products-menu'){ closeAll(); return; }
+    renderMoreProductsMenu(); openPopover('more-products-menu');
+  });
+
+  function renderPortalsNavBtn(){
+    $('btn-portals-nav').innerHTML = esc(PORTALS[CURRENT_PORTAL]) +
+      ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>';
+  }
+  function renderPortalsNavMenu(){
+    $('portals-nav-menu').innerHTML = '<div class="popover-label">Switch portal</div>' + Object.keys(PORTALS).map(function(k){
+      return '<a class="popover-item' + (k===CURRENT_PORTAL?' on':'') + '" href="index.html">' + IC.globe + ' ' + PORTALS[k] + (k===CURRENT_PORTAL ? ' <span class="ev-tag ev-tag-blue" style="margin-left:auto;">Current</span>' : '') + '</a>';
+    }).join('');
+  }
+  $('btn-portals-nav').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='portals-nav-menu'){ closeAll(); return; }
+    renderPortalsNavMenu(); openPopover('portals-nav-menu');
+  });
+
+  /* =========================================================
+     TABS
+  ========================================================= */
+  function renderTabs(){
+    var counts = { upcoming:0, active:0, completed:0 };
+    EVENTS.forEach(function(e){ if (counts[e.status]!==undefined) counts[e.status]++; });
+    var tabs = [['active','Active'],['upcoming','Upcoming'],['completed','Completed']];
+    $('status-tabs').innerHTML = tabs.map(function(t){
+      var selected = !state.specialView && state.tab === t[0];
+      return '<button role="tab" aria-selected="'+selected+'" data-tab="'+t[0]+'">'+t[1]+' <span class="tc">'+counts[t[0]]+'</span></button>';
+    }).join('') + '<span class="tabs-underline" id="tabs-underline"></span>';
+    $('status-tabs').querySelectorAll('[data-tab]').forEach(function(b){
+      b.addEventListener('click', function(){
+        state.tab = b.getAttribute('data-tab'); state.specialView = null; state.page = 1;
+        syncHash(); renderApp();
+      });
+    });
+    requestAnimationFrame(positionUnderline);
+  }
+  function positionUnderline(){
+    var active = $('status-tabs').querySelector('[aria-selected="true"]');
+    var underline = $('tabs-underline');
+    if (!active || !underline) { if(underline) underline.style.width='0'; return; }
+    underline.style.left = active.offsetLeft + 'px';
+    underline.style.width = active.offsetWidth + 'px';
+  }
+  window.addEventListener('resize', positionUnderline);
+
+  /* =========================================================
+     SPECIAL VIEW BANNER
+  ========================================================= */
+  function renderSpecialBanner(){
+    var el = $('special-banner');
+    if (!state.specialView){ el.innerHTML=''; return; }
+    var labels = { draft:'Draft events', cancelled:'Cancelled events', deleted:'Deleted events' };
+    var icons = { draft:IC.file, cancelled:IC.ban, deleted:IC.trash2 };
+    var label = labels[state.specialView] || state.specialView;
+    var icon = icons[state.specialView] || IC.file;
+    el.innerHTML = '<div class="special-banner fade-in">' + icon + '<span>Showing <strong>' + label + '</strong></span>' +
+      '<button id="btn-back-tabs">Back to Active</button></div>';
+    $('btn-back-tabs').addEventListener('click', function(){ state.specialView = null; state.tab='active'; state.page=1; renderApp(); });
+  }
+
+  /* =========================================================
+     INSIGHTS
+  ========================================================= */
+  function computeRangeDayCount(rs){
+    if (rs.mode === 'today') return 1;
+    if (rs.mode !== 'custom') return parseInt(rs.mode, 10);
+    if (!rs.start || !rs.end) return 30;
+    var d = (new Date(rs.end) - new Date(rs.start)) / 86400000;
+    return Math.max(1, Math.round(d) + 1);
+  }
+  function computeRangeFactor(rs){
+    if (rs.mode !== 'custom') return RANGE_FACTOR[rs.mode];
+    return Math.min(1.6, Math.max(0.03, computeRangeDayCount(rs) / 30));
+  }
+  function computeRangeLabel(rs){
+    if (rs.mode === 'today') return 'Today';
+    if (rs.mode === '7') return 'Last 7 days';
+    if (rs.mode === '10') return 'Last 10 days';
+    if (rs.mode === '30') return 'Last 30 days';
+    if (rs.start && rs.end) return fmtDate(rs.start) + ' → ' + fmtDate(rs.end);
+    return 'Custom range';
+  }
+  function rangeFactor(){ return computeRangeFactor(state.range); }
+  function rangeLabelText(){ return computeRangeLabel(state.range); }
+
+  function renderInsightsTitle(){
+    var base = state.specialView ? 'upcoming' : state.tab;
+    $('insights-title').textContent = statusLabel(base) + ' Event Insights';
+    $('range-label').textContent = rangeLabelText();
+  }
+
+  function renderKPIs(){
+    if (state.loading){
+      $('kpi-grid').innerHTML = ['Total Visitors','Total Registrations','Total Revenue'].map(function(l){
+        return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">'+l+'</span></div><div class="kpi-skel skel"></div></div>';
+      }).join('');
+      return;
+    }
+    var bucket = state.specialView ? 'upcoming' : state.tab;
+    var base = KPI_BASE[bucket];
+    var f = rangeFactor();
+    var ds = RANGE_DELTA_SCALE[state.range.mode] || 1;
+    var vis = Math.round(base.visitors * f);
+    var reg = Math.round(base.registrations * f);
+    var rev = Math.round(base.revenue * f);
+    var dVis = +(base.dVis * ds).toFixed(1);
+    var dReg = +(base.dReg * ds).toFixed(1);
+    var dRev = +(base.dRev * ds).toFixed(1);
+
+    function card(label, icon, value, delta){
+      var up = delta >= 0;
+      return '<div class="kpi-card fade-in">' +
+        '<div class="kpi-top"><span class="kpi-label">' + label + '</span><span class="kpi-icon">' + icon + '</span></div>' +
+        '<span class="kpi-num">' + value + '</span>' +
+        '<span class="kpi-delta ' + (up?'up':'down') + '">' + (up ? IC.arrowUp : IC.arrowDown) + ' ' + Math.abs(delta) + '% <span class="vs">vs previous period</span></span>' +
+      '</div>';
+    }
+    $('kpi-grid').innerHTML =
+      card('Total Visitors', IC.users, fmtCompact(vis), dVis) +
+      card('Total Registrations', IC.ticket, fmtCompact(reg), dReg) +
+      card('Total Revenue', IC.wallet, fmtRupee(rev), dRev);
+  }
+
+  function renderRangePopover(){
+    var opts = [['7','Last 7 days'],['10','Last 10 days'],['30','Last 30 days'],['custom','Custom range']];
+    var body = opts.map(function(o){
+      var on = state.range.mode === o[0];
+      return '<button class="radio-row ' + (on?'on':'') + '" data-range="' + o[0] + '"><span class="dot"><i></i></span>' + o[1] + '</button>';
+    }).join('');
+    if (state.range.mode === 'custom'){
+      body += '<div class="custom-fields">' +
+        '<div class="cf"><label>Start date</label><input type="date" id="range-start" value="' + (state.range.start||'') + '"></div>' +
+        '<div class="cf"><label>End date</label><input type="date" id="range-end" value="' + (state.range.end||'') + '"></div>' +
+      '</div>' +
+      '<div class="popover-foot"><button class="btn btn-ghost btn-sm" id="range-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="range-apply">Apply</button></div>';
+    }
+    $('range-popover').innerHTML = body;
+    $('range-popover').querySelectorAll('[data-range]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var mode = b.getAttribute('data-range');
+        state.range.mode = mode;
+        if (mode !== 'custom'){ closeAll(); renderApp(); }
+        else { renderRangePopover(); }
+      });
+    });
+    var cancelBtn = $('range-cancel'), applyBtn = $('range-apply');
+    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.range.mode='30'; closeAll(); renderApp(); });
+    if (applyBtn) applyBtn.addEventListener('click', function(){
+      var s = $('range-start').value, e = $('range-end').value;
+      if (!s || !e){ toast('Pick both a start and end date.'); return; }
+      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.'); return; }
+      state.range.start = s; state.range.end = e;
+      closeAll(); renderApp();
+    });
+  }
+  $('btn-range').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='range-popover') { closeAll(); return; }
+    renderRangePopover(); openPopover('range-popover');
+  });
+
+  function renderActivityRangePopover(){
+    var opts = [['today','Today'],['7','Last 7 days'],['10','Last 10 days'],['30','Last 30 days'],['custom','Custom range']];
+    var rs = state.activityRange;
+    var body = opts.map(function(o){
+      var on = rs.mode === o[0];
+      return '<button class="radio-row ' + (on?'on':'') + '" data-arange="' + o[0] + '"><span class="dot"><i></i></span>' + o[1] + '</button>';
+    }).join('');
+    if (rs.mode === 'custom'){
+      body += '<div class="custom-fields">' +
+        '<div class="cf"><label>Start date</label><input type="date" id="arange-start" value="' + (rs.start||'') + '"></div>' +
+        '<div class="cf"><label>End date</label><input type="date" id="arange-end" value="' + (rs.end||'') + '"></div>' +
+      '</div>' +
+      '<div class="popover-foot"><button class="btn btn-ghost btn-sm" id="arange-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="arange-apply">Apply</button></div>';
+    }
+    $('activity-range-popover').innerHTML = body;
+    $('activity-range-popover').querySelectorAll('[data-arange]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var mode = b.getAttribute('data-arange');
+        state.activityRange.mode = mode;
+        if (mode !== 'custom'){ closeAll(); renderActivity(); }
+        else { renderActivityRangePopover(); }
+      });
+    });
+    var cancelBtn = $('arange-cancel'), applyBtn = $('arange-apply');
+    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.activityRange.mode='30'; closeAll(); renderActivity(); });
+    if (applyBtn) applyBtn.addEventListener('click', function(){
+      var s = $('arange-start').value, e = $('arange-end').value;
+      if (!s || !e){ toast('Pick both a start and end date.'); return; }
+      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.'); return; }
+      state.activityRange.start = s; state.activityRange.end = e;
+      closeAll(); renderActivity();
+    });
+  }
+  $('btn-activity-range').addEventListener('click', function(e){
+    e.stopPropagation();
+    if (state.openPopover==='activity-range-popover') { closeAll(); return; }
+    renderActivityRangePopover(); openPopover('activity-range-popover');
+  });
+
+  /* =========================================================
+     FILTER POPOVERS
+  ========================================================= */
+  function toggleInArray(arr, val){
+    var i = arr.indexOf(val);
+    if (i===-1) arr.push(val); else arr.splice(i,1);
+  }
+  function renderTypePopover(){
+    $('type-popover').innerHTML = '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
+      var on = state.filters.types.indexOf(k) !== -1;
+      return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
+    }).join('');
+    $('type-popover').querySelectorAll('[data-type]').forEach(function(b){
+      b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
+    });
+  }
+  function renderPortalPopover(){
+    $('portal-popover').innerHTML = '<div class="popover-label">Portal</div>' + Object.keys(PORTALS).map(function(k){
+      var on = state.filters.portals.indexOf(k) !== -1;
+      return '<button class="check-row ' + (on?'on':'') + '" data-portal="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + PORTALS[k] + '</button>';
+    }).join('');
+    $('portal-popover').querySelectorAll('[data-portal]').forEach(function(b){
+      b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.portals, b.getAttribute('data-portal')); state.page=1; renderPortalPopover(); renderResults(); renderToolbarButtons(); });
+    });
+  }
+  $('btn-type').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='type-popover'){closeAll();return;} renderTypePopover(); openPopover('type-popover'); });
+  $('btn-portal').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='portal-popover'){closeAll();return;} renderPortalPopover(); openPopover('portal-popover'); });
+  $('btn-qr-toolbar').addEventListener('click', function(){ openQRModal(); });
+
+  function renderToolbarButtons(){
+    var tCount = state.filters.types.length, pCount = state.filters.portals.length;
+    $('btn-type').className = 'toolbar-btn' + (tCount?' active-filter':'');
+    $('btn-type').innerHTML = 'Event Type' + (tCount ? ' <span class="badge-count">'+tCount+'</span>' : '') + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
+    var portalLabel = pCount ? (esc(PORTALS[state.filters.portals[0]]) + (pCount>1 ? ' +'+(pCount-1) : '')) : 'Portal';
+    $('btn-portal').className = 'toolbar-btn' + (pCount?' active-filter':'');
+    $('btn-portal').innerHTML = portalLabel + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
+  }
+
+  function renderChips(){
+    var chips = [];
+    state.filters.types.forEach(function(k){ chips.push({ label:'Type: '+EVENT_TYPES[k], onRemove:function(){ toggleInArray(state.filters.types,k); } }); });
+    state.filters.portals.forEach(function(k){ chips.push({ label:'Portal: '+PORTALS[k], onRemove:function(){ toggleInArray(state.filters.portals,k); } }); });
+    state.filters.payment.forEach(function(k){ chips.push({ label:'Payment: '+(k==='paid'?'Paid':'Free'), onRemove:function(){ toggleInArray(state.filters.payment,k); } }); });
+    if (!chips.length){ $('chip-row').innerHTML=''; return; }
+    $('chip-row').innerHTML = chips.map(function(c,i){ return '<span class="fchip">'+esc(c.label)+'<button data-chip="'+i+'">'+IC.x+'</button></span>'; }).join('') +
+      '<button class="chip-clear" id="chip-clear-all">Clear all</button>';
+    $('chip-row').querySelectorAll('[data-chip]').forEach(function(b){
+      b.addEventListener('click', function(){ chips[parseInt(b.getAttribute('data-chip'),10)].onRemove(); state.page=1; renderResults(); renderToolbarButtons(); });
+    });
+    $('chip-clear-all').addEventListener('click', function(){ state.filters = {types:[],portals:[],payment:[]}; state.page=1; renderResults(); renderToolbarButtons(); });
+  }
+
+  /* =========================================================
+     SEARCH
+  ========================================================= */
+  $('search-input').value = state.search;
+  $('btn-clear-search').hidden = !state.search;
+  $('search-input').addEventListener('input', function(){
+    state.search = this.value.trim(); state.page = 1;
+    $('btn-clear-search').hidden = !state.search;
+    $('search-kbd').hidden = !!state.search;
+    syncHash(); renderResults();
+  });
+  $('btn-clear-search').addEventListener('click', function(){
+    state.search=''; $('search-input').value=''; $('btn-clear-search').hidden=true; $('search-kbd').hidden=false;
+    syncHash(); renderResults(); $('search-input').focus();
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'){
+      e.preventDefault(); $('search-input').focus();
+    }
+  });
+
+  /* =========================================================
+     FILTER + SORT + PAGINATE
+  ========================================================= */
+  function bucketEvents(){
+    var status = state.specialView || state.tab;
+    return EVENTS.filter(function(e){ return e.status === status; });
+  }
+  function matches(e){
+    if (state.filters.types.length && state.filters.types.indexOf(e.type) === -1) return false;
+    if (state.filters.portals.length && state.filters.portals.indexOf(e.portal) === -1) return false;
+    if (state.filters.payment.length && state.filters.payment.indexOf(e.payment.type) === -1) return false;
+    if (state.search){
+      var hay = (e.name + ' ' + e.venue + ' ' + e.city + ' ' + PORTALS[e.portal] + ' ' + EVENT_TYPES[e.type] + ' ' + e.createdBy).toLowerCase();
+      if (hay.indexOf(state.search.toLowerCase()) === -1) return false;
+    }
+    return true;
+  }
+  function sortValue(e, field){
+    if (field==='start') return e.start ? new Date(e.start).getTime() : -Infinity;
+    if (field==='registrations') return e.registrations;
+    if (field==='visitors') return e.visitors;
+    if (field==='payment') return e.payment.type==='paid' ? e.payment.amount : -1;
+    return 0;
+  }
+  function getFilteredSorted(){
+    var list = bucketEvents().filter(matches);
+    var field = state.sort.field, dir = state.sort.dir === 'asc' ? 1 : -1;
+    list.sort(function(a,b){ return (sortValue(a,field) - sortValue(b,field)) * dir; });
+    return list;
+  }
+
+  /* =========================================================
+     TABLE / CARD RENDER
+  ========================================================= */
+  function dateCellHTML(e){
+    if (!e.start) return '<div class="unset">Date not set</div>';
+    var out = '<div class="d1">' + fmtDate(e.start) + '</div><div class="d2">' + fmtTime(e.start) + '</div>';
+    if (e.status === 'active') out += '<div class="live-tag"><i></i>Live now</div>';
+    else if (e.status === 'upcoming'){
+      var du = daysUntil(e.start);
+      if (du >= 0 && du <= 7) out += '<div class="d3">' + (du===0?'Today':du===1?'Tomorrow':'In '+du+' days') + '</div>';
+    }
+    return out;
+  }
+  function regCellHTML(e){
+    return '<span class="reg-num">' + fmtNum(e.registrations) + '</span>';
+  }
+  function payCellHTML(e){
+    if (e.payment.type === 'free') return '<span class="pay-free">Free</span>';
+    return '<span class="pay-amt" data-tooltip="' + (e.payment.txns||0) + ' transactions">' + fmtRupee(e.payment.amount) + '</span><div class="pay-sub">Collected</div>';
+  }
+  function metaLine(e){
+    return '<span class="ev-id-chip mono">Event ID: ' + e.eventNo + '</span>' +
+      '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(EVENT_TYPES[e.type].replace(' (IP)','')) + '</span>';
+  }
+
+  function venueQuickviewBodyHTML(e){
+    var venueText = e.venue === 'Virtual'
+      ? (e.city && e.city !== 'Online' ? e.city + ' (Virtual)' : 'Virtual')
+      : ((e.venue || 'Venue to be confirmed') + (e.city ? ', ' + e.city : ''));
+    return '<div class="venue-pop-row">' + IC.pin + '<span>' + esc(venueText) + '</span></div>' +
+      '<div class="venue-pop-row">' + IC.userCircle + '<span>Created by ' + esc(e.createdBy) + '</span></div>';
+  }
+
+  var qvCloseTimer = null;
+  function cancelCloseQV(){ clearTimeout(qvCloseTimer); }
+  function scheduleCloseQV(){ clearTimeout(qvCloseTimer); qvCloseTimer = setTimeout(function(){ if (state.openPopover === 'venue-quickview') closeAll(); }, 220); }
+
+  function openVenueQuickview(anchorEl, id){
+    var e = findEvent(id);
+    var pop = $('venue-quickview');
+    if (!e || !pop) return;
+    if (state.openPopover === 'venue-quickview' && state.venuePopoverFor === id) return;
+    closeAll();
+    pop.innerHTML = venueQuickviewBodyHTML(e);
+    pop.hidden = false;
+    var r = anchorEl.getBoundingClientRect();
+    var popW = 240, popH = pop.offsetHeight || 64;
+    var left = Math.max(12, Math.min(r.left, window.innerWidth - popW - 12));
+    var top = r.bottom + 8;
+    if (top + popH > window.innerHeight - 12) top = Math.max(12, r.top - 8 - popH);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    state.openPopover = 'venue-quickview';
+    state.venuePopoverFor = id;
+  }
+
+  function quickActionIcon(action, icon, label, id, colorClass){
+    return '<button class="icon-btn qa-btn ' + colorClass + '" data-row-action="' + action + '" data-id="' + id + '" data-tooltip="' + label + '" aria-label="' + label + '">' + icon + '</button>';
+  }
+
+  function rowActionsHTML(e, ctx){
+    var menuId = 'rowmenu-' + (ctx||'row') + '-' + e.id;
+    var items = [];
+    if (e.status === 'draft'){
+      items.push(['duplicate', IC.copy, 'Clone Event']);
+      items.push(['sep']);
+      items.push(['delete-forever', IC.trash, 'Delete event', true]);
+    } else if (e.status === 'cancelled'){
+      items.push(['duplicate', IC.copy, 'Clone Event']);
+      items.push(['copylink', IC.link, 'Copy event link']);
+      items.push(['sep']);
+      items.push(['restore', IC.restore, 'Restore to Upcoming']);
+      items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
+    } else if (e.status === 'deleted'){
+      items.push(['restore', IC.restore, 'Restore']);
+      items.push(['sep']);
+      items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
+    } else {
+      items.push(['setup', IC.settings, 'Event setup']);
+      items.push(['sep']);
+      items.push(['duplicate', IC.copy, 'Clone Event']);
+      items.push(['copylink', IC.link, 'Copy event link']);
+      if (e.status === 'active'){
+        items.push(['sep']);
+        items.push(['complete', IC.checkCirc, 'Mark as completed']);
+      }
+    }
+    var menuHTML = items.map(function(it){
+      if (it[0]==='sep') return '<div class="popover-sep"></div>';
+      return '<button class="popover-item' + (it[3]?' danger':'') + '" data-row-action="' + it[0] + '" data-id="' + e.id + '">' + it[1] + ' ' + it[2] + '</button>';
+    }).join('');
+    var quickIcons = '';
+    if (e.status === 'draft'){
+      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit');
+    } else if (e.status !== 'deleted'){
+      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
+        quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view') +
+        quickActionIcon('reports', IC.chart, 'Report', e.id, 'qa-report');
+    }
+    return '<div class="row-action-group">' + quickIcons +
+      '<div class="popover-wrap">' +
+        '<button class="icon-btn" data-row-menu-btn="' + menuId + '" aria-label="More actions">' + IC.dots + '</button>' +
+        '<div class="popover row-menu" id="' + menuId + '" hidden>' + menuHTML + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderResults(){
+    var list = getFilteredSorted();
+    var total = list.length;
+    var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (state.page > totalPages) state.page = totalPages;
+    var pageList = list.slice((state.page-1)*PAGE_SIZE, state.page*PAGE_SIZE);
+
+    renderChips();
+    $('result-line').textContent = state.loading ? '' : ('Showing ' + (total ? ((state.page-1)*PAGE_SIZE+1) : 0) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s'));
+
+    document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
+      th.classList.toggle('sorted', th.getAttribute('data-sort') === state.sort.field);
+      var ic = th.querySelector('.sort-ic');
+      if (ic) ic.style.transform = (th.getAttribute('data-sort')===state.sort.field && state.sort.dir==='desc') ? 'rotate(180deg)' : 'none';
+    });
+
+    if (state.loading){
+      $('table-body').innerHTML = Array(5).fill(0).map(function(){
+        return '<tr class="skel-row">' + Array(6).fill(0).map(function(){ return '<td><div class="skel skel-line"></div></td>'; }).join('') + '</tr>';
+      }).join('');
+      $('card-list').innerHTML = '';
+      $('pagination').innerHTML = '';
+      return;
+    }
+
+    if (!total){
+      var hasFilters = state.search || state.filters.types.length || state.filters.portals.length || state.filters.payment.length;
+      var emptyHTML;
+      if (hasFilters){
+        emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No events match</h3><p>Try a different search term, or clear your filters.</p>' +
+          '<button class="btn btn-secondary" id="empty-clear">Clear filters</button></div>';
+      } else {
+        var bucket = state.specialView || state.tab;
+        var mainBucket = ['active','upcoming','completed'].indexOf(bucket) !== -1;
+        emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No ' + statusLabel(bucket).toLowerCase() + ' events</h3>' +
+          '<p>' + (mainBucket ? 'Create your first event — it takes about ten minutes.' : 'Nothing here right now.') + '</p>' +
+          (mainBucket ? '<a class="btn btn-primary" href="create-event.html?new=1">Create Event</a>' : '') + '</div>';
+      }
+      $('table-body').innerHTML = '<tr><td colspan="6">' + emptyHTML + '</td></tr>';
+      $('card-list').innerHTML = emptyHTML;
+      var ec = $('empty-clear'); if (ec) ec.addEventListener('click', function(){ state.search=''; $('search-input').value=''; $('btn-clear-search').hidden=true; state.filters={types:[],portals:[],payment:[]}; state.page=1; renderResults(); renderToolbarButtons(); });
+      $('pagination').innerHTML = '';
+      return;
+    }
+
+    $('table-body').innerHTML = pageList.map(function(e){
+      return '<tr data-row="' + e.id + '" data-status="' + e.status + '" class="st-' + e.status + '" tabindex="0">' +
+        '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '"></span>' +
+          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '">' + esc(e.name) + '</a>' +
+          '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div></td>' +
+        '<td class="ev-date-cell">' + dateCellHTML(e) + '</td>' +
+        '<td><span class="vis-num">' + fmtNum(e.visitors) + '</span></td>' +
+        '<td class="reg-cell">' + regCellHTML(e) + '</td>' +
+        '<td>' + payCellHTML(e) + '</td>' +
+        '<td class="row-actions">' + rowActionsHTML(e, 'row') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    $('card-list').innerHTML = pageList.map(function(e){
+      var whenText = e.start ? (fmtDate(e.start) + ' · ' + fmtTime(e.start)) : 'Date not set';
+      return '<div class="ev-card fade-in">' +
+        '<div class="ev-card-top"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '" style="margin-top:7px;"></span>' +
+          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '" style="font-weight:700;font-size:14.5px;">' + esc(e.name) + '</a>' +
+          '<div class="ev-meta-line">' + metaLine(e) + '</div></div>' +
+          rowActionsHTML(e, 'card') +
+        '</div>' +
+        '<div class="ev-card-info">' +
+          '<div class="ev-info-row">' +
+            '<span class="ev-info-item">' + IC.calendarSm + '<span class="v' + (e.start?'':' faint2') + '">' + esc(whenText) + '</span></span>' +
+            '<span class="ev-info-item">' + IC.users + '<span class="v">' + fmtNum(e.visitors) + ' visitors</span></span>' +
+          '</div>' +
+          '<div class="ev-info-row">' +
+            '<span class="ev-info-item">' + IC.ticket + '<span class="v">' + fmtNum(e.registrations) + ' registrations</span></span>' +
+            '<span class="ev-info-item">' + IC.wallet + '<span class="v' + (e.payment.type==='free'?' faint2':'') + '">' + (e.payment.type==='free' ? 'Free' : fmtRupee(e.payment.amount)) + '</span></span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    renderPagination(total, totalPages);
+    wireRowEvents();
+  }
+
+  function renderPagination(total, totalPages){
+    if (totalPages <= 1){ $('pagination').innerHTML=''; return; }
+    var btns = '';
+    btns += '<button ' + (state.page===1?'disabled':'') + ' data-page="' + (state.page-1) + '" aria-label="Previous page">‹</button>';
+    for (var i=1;i<=totalPages;i++){
+      btns += '<button aria-current="' + (state.page===i) + '" data-page="' + i + '">' + i + '</button>';
+    }
+    btns += '<button ' + (state.page===totalPages?'disabled':'') + ' data-page="' + (state.page+1) + '" aria-label="Next page">›</button>';
+    $('pagination').innerHTML = btns;
+    $('pagination').querySelectorAll('[data-page]').forEach(function(b){
+      b.addEventListener('click', function(){
+        state.page = parseInt(b.getAttribute('data-page'),10); renderResults();
+        try { window.scrollTo({top:0, behavior:'smooth'}); } catch(e){ try { window.scrollTo(0,0); } catch(e2){} }
+      });
+    });
+  }
+
+  function applyView(){
+    var rv = $('results-view');
+    if (rv) rv.className = 'view-' + state.view;
+    $('view-toggle').querySelectorAll('[data-view]').forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-view') === state.view);
+    });
+  }
+  function wireViewToggle(){
+    $('view-toggle').querySelectorAll('[data-view]').forEach(function(b){
+      b.addEventListener('click', function(){ state.view = b.getAttribute('data-view'); applyView(); });
+    });
+  }
+
+  function wireSortHeaders(){
+    document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
+      th.addEventListener('click', function(){
+        var f = th.getAttribute('data-sort');
+        if (state.sort.field === f) state.sort.dir = state.sort.dir==='asc'?'desc':'asc';
+        else { state.sort.field = f; state.sort.dir = 'asc'; }
+        renderResults();
+      });
+    });
+  }
+
+  function wireRowEvents(){
+    document.querySelectorAll('[data-row]').forEach(function(tr){
+      tr.addEventListener('click', function(e){
+        if (e.target.closest('a, button, .popover')) return;
+        window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
+      });
+      tr.addEventListener('keydown', function(e){
+        if (e.key==='Enter' && !e.target.closest('a, button')) window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
+      });
+    });
+    document.querySelectorAll('[data-venue-id]').forEach(function(a){
+      function show(){ cancelCloseQV(); openVenueQuickview(a, a.getAttribute('data-venue-id')); }
+      a.addEventListener('mouseenter', show);
+      a.addEventListener('focus', show);
+      a.addEventListener('mouseleave', scheduleCloseQV);
+      a.addEventListener('blur', scheduleCloseQV);
+      a.addEventListener('click', function(e){
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+        e.preventDefault(); e.stopPropagation();
+        show();
+      });
+    });
+    document.querySelectorAll('[data-row-menu-btn]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var panelId = btn.getAttribute('data-row-menu-btn');
+        if (state.openPopover === panelId){ closeAll(); btn.classList.remove('force-show'); return; }
+        closeAll();
+        $(panelId).hidden = false; state.openPopover = panelId;
+        btn.classList.add('force-show');
+      });
+    });
+    document.querySelectorAll('[data-row-action]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        handleRowAction(btn.getAttribute('data-row-action'), btn.getAttribute('data-id'));
+        closeAll();
+      });
+    });
+  }
+
+  function findEvent(id){ return EVENTS.find(function(e){ return e.id===id; }); }
+
+  function handleRowAction(action, id){
+    var e = findEvent(id);
+    if (!e) return;
+    switch(action){
+      case 'edit': case 'setup':
+        window.location.href = 'edit-event.html?event=' + id; break;
+      case 'view':
+        window.open(eventPublicUrl(e), '_blank'); break;
+      case 'reports':
+        window.location.href = 'audience-registrations.html?event=' + id; break;
+      case 'duplicate':
+        var copy = Object.assign({}, e, { id: nextId(), name: e.name + ' (Copy)', status:'upcoming', registrations:0, visitors:0 });
+        EVENTS.splice(EVENTS.indexOf(e)+1, 0, copy);
+        toast('Duplicated as "' + copy.name + '"'); renderApp(); break;
+      case 'copylink':
+        var url = eventPublicUrl(e);
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied — ' + url); }).catch(function(){ toast(url); }); }
+        else toast(url);
+        break;
+      case 'complete':
+        e.status = 'completed'; toast('"' + e.name + '" marked as completed'); renderApp(); break;
+      case 'cancel':
+        e.status = 'cancelled'; toast('"' + e.name + '" cancelled'); renderApp(); break;
+      case 'archive':
+        e.status = 'deleted'; toast('"' + e.name + '" deleted — restore it anytime from the Deleted tab'); renderApp(); break;
+      case 'restore':
+        e.status = 'upcoming'; toast('"' + e.name + '" restored to Upcoming'); renderApp(); break;
+      case 'delete-forever':
+        EVENTS.splice(EVENTS.indexOf(e), 1); toast('"' + e.name + '" deleted permanently'); renderApp(); break;
+    }
+  }
+
+  function eventSlug(e){
+    return e.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  }
+  function eventPublicUrl(e, section){
+    var base = 'https://events.economictimes.indiatimes.com/' + eventSlug(e);
+    if (section === 'agenda') return base + '/agenda';
+    if (section === 'speakers') return base + '/speakers';
+    return base;
+  }
+
+  var QR_SECTIONS = [
+    { key:'website',  label:'QR Code — Website',  icon:'globe',  hint:'Full event landing page' },
+    { key:'agenda',   label:'QR Code — Agenda',   icon:'agenda', hint:'Jumps straight to the agenda' },
+    { key:'speakers', label:'QR Code — Speakers', icon:'mic',    hint:'Jumps straight to the speaker list' }
+  ];
+
+  function openQRModal(id){
+    var root = $('sheet-root');
+
+    function close(){ root.innerHTML=''; }
+
+    function renderEventPicker(){
+      var list = getFilteredSorted();
+      root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
+        '<div class="modal-card-head"><div><h3>QR Codes</h3><p>Pick an event to generate a QR code for</p></div>' +
+          '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
+        '<div class="modal-card-body">' +
+          (list.length
+            ? '<div><label class="flabel">Event</label><select class="finput" id="qr-event-select">' +
+                list.map(function(ev){ return '<option value="' + ev.id + '">' + esc(ev.name) + '</option>'; }).join('') +
+              '</select></div>'
+            : '<p style="font-size:12.5px;color:var(--text-muted);">No events match the current filters.</p>') +
+        '</div>' +
+        '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-cancel">Cancel</button>' +
+          (list.length ? '<button class="btn btn-primary" id="qr-continue" style="margin-left:auto;">Continue</button>' : '') +
+        '</div>' +
+      '</div></div>';
+      $('qr-close').addEventListener('click', close);
+      $('qr-cancel').addEventListener('click', close);
+      $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
+      var cont = $('qr-continue');
+      if (cont) cont.addEventListener('click', function(){ renderPicker(findEvent($('qr-event-select').value)); });
+    }
+
+    function renderPicker(e){
+      root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
+        '<div class="modal-card-head"><div><h3>QR Codes</h3><p>' + esc(e.name) + '</p></div>' +
+          '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
+        '<div class="modal-card-body">' +
+          QR_SECTIONS.map(function(s){
+            return '<button type="button" class="qr-pick-row" data-qr-sec="' + s.key + '">' +
+              '<span class="qr-pick-ic">' + IC[s.icon] + '</span>' +
+              '<span class="qr-pick-text"><span class="qr-pick-label">' + s.label + '</span><span class="qr-pick-hint">' + s.hint + '</span></span>' +
+              '<span class="qr-pick-chev">' + IC.chevDown + '</span>' +
+            '</button>';
+          }).join('') +
+        '</div>' +
+        '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-change-event">&larr; Change event</button></div>' +
+      '</div></div>';
+      $('qr-close').addEventListener('click', close);
+      $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
+      $('qr-change-event').addEventListener('click', renderEventPicker);
+      document.querySelectorAll('[data-qr-sec]').forEach(function(btn){
+        btn.addEventListener('click', function(){ renderDetail(e, btn.getAttribute('data-qr-sec')); });
+      });
+    }
+
+    function urlWithAg(base, ag){
+      ag = (ag || '').trim();
+      if (!ag) return base;
+      return base + (base.indexOf('?') === -1 ? '?' : '&') + 'ag=' + encodeURIComponent(ag);
+    }
+
+    function renderDetail(e, key){
+      var sec = QR_SECTIONS.filter(function(s){ return s.key===key; })[0];
+      var baseUrl = eventPublicUrl(e, key === 'website' ? null : key);
+      var url = baseUrl;
+      root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
+        '<div class="modal-card-head"><div><h3>' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
+          '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
+        '<div class="modal-card-body">' +
+          '<div><label class="flabel" for="qr-ag-code">AG Code <span style="font-weight:400;color:var(--text-muted);">(optional — tag the link to track where a scan came from)</span></label>' +
+            '<input class="finput" id="qr-ag-code" type="text" placeholder="e.g. mailer" spellcheck="false" autocomplete="off"></div>' +
+          '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" id="qr-img" alt="' + esc(sec.label) + '" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url) + '"></div>' +
+          '<div class="email-row"><span id="qr-link-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" type="button">' + IC.copy + '</button></div>' +
+        '</div>' +
+        '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-back">&larr; Back</button><button class="btn btn-primary" id="qr-done" style="margin-left:auto;">Done</button></div>' +
+      '</div></div>';
+      $('qr-close').addEventListener('click', close);
+      $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
+      $('qr-back').addEventListener('click', function(){ renderPicker(e); });
+      $('qr-done').addEventListener('click', close);
+      $('qr-ag-code').addEventListener('input', function(){
+        url = urlWithAg(baseUrl, this.value);
+        $('qr-link-text').textContent = url;
+        $('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
+      });
+      $('qr-copy-link').addEventListener('click', function(){
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url); }); }
+        else toast(url);
+      });
+    }
+
+    var startEvent = id ? findEvent(id) : null;
+    if (startEvent) renderPicker(startEvent);
+    else renderEventPicker();
+  }
+
+  /* =========================================================
+     MOBILE BOTTOM SHEET (filters)
+  ========================================================= */
+  function openMobileFilters(){
+    var root = $('sheet-root');
+    root.innerHTML = '<div class="bottom-sheet-scrim" id="sheet-scrim"><div class="bottom-sheet fade-in">' +
+      '<div class="bottom-sheet-handle"></div>' +
+      '<h3 style="font-size:16px;margin-bottom:12px;">Filters</h3>' +
+      '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
+        var on = state.filters.types.indexOf(k)!==-1;
+        return '<button class="check-row ' + (on?'on':'') + '" data-mtype="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
+      }).join('') +
+      '<div class="popover-label" style="margin-top:8px;">Portal</div>' + Object.keys(PORTALS).map(function(k){
+        var on = state.filters.portals.indexOf(k)!==-1;
+        return '<button class="check-row ' + (on?'on':'') + '" data-mportal="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + PORTALS[k] + '</button>';
+      }).join('') +
+      '<div class="popover-label" style="margin-top:8px;">Payment</div>' + [['paid','Paid events'],['free','Free events']].map(function(o){
+        var on = state.filters.payment.indexOf(o[0])!==-1;
+        return '<button class="check-row ' + (on?'on':'') + '" data-mpay="' + o[0] + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + o[1] + '</button>';
+      }).join('') +
+      '<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn btn-secondary btn-block" id="sheet-clear" style="flex:1;">Clear all</button><button class="btn btn-primary btn-block" id="sheet-apply" style="flex:1;">Show results</button></div>' +
+    '</div></div>';
+    function rewire(){
+      root.querySelectorAll('[data-mtype]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.types, b.getAttribute('data-mtype')); openMobileFilters(); }); });
+      root.querySelectorAll('[data-mportal]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.portals, b.getAttribute('data-mportal')); openMobileFilters(); }); });
+      root.querySelectorAll('[data-mpay]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.payment, b.getAttribute('data-mpay')); openMobileFilters(); }); });
+    }
+    rewire();
+    $('sheet-scrim').addEventListener('click', function(e){ if (e.target===$('sheet-scrim')) root.innerHTML=''; });
+    $('sheet-clear').addEventListener('click', function(){ state.filters={types:[],portals:[],payment:[]}; openMobileFilters(); });
+    $('sheet-apply').addEventListener('click', function(){ root.innerHTML=''; state.page=1; renderResults(); renderToolbarButtons(); });
+  }
+  $('btn-mobile-filters').addEventListener('click', openMobileFilters);
+
+  /* =========================================================
+     SYNC
+  ========================================================= */
+  $('btn-sync').addEventListener('click', function(){
+    var ic = $('sync-ic');
+    ic.classList.add('spin');
+    setTimeout(function(){
+      ic.classList.remove('spin');
+      $('sync-label').textContent = 'Updated just now';
+      toast('Event data refreshed');
+    }, 650);
+  });
+
+  /* =========================================================
+     ERROR STATE (defensive — shows only if data prep fails)
+  ========================================================= */
+  function renderErrorBanner(retry){
+    $('error-slot').innerHTML = '<div class="error-banner fade-in">' + IC.alert +
+      '<span>Couldn’t load your events. Check your connection and try again.</span>' +
+      '<button class="btn btn-secondary btn-sm" id="btn-retry">Retry</button></div>';
+    $('btn-retry').addEventListener('click', function(){ $('error-slot').innerHTML=''; retry(); });
+  }
+
+  /* =========================================================
+     AUDIENCE SEGMENTATION — per IP event: Top Company, Top Designation,
+     Top Source, Mobile vs Desktop. Two presentations: ranked list or donut chart.
+  ========================================================= */
+  var SEG_DIM_KEY = { company:'companies', designation:'designations', source:'sources', device:'devices' };
+  var SEG_DIM_ICONS = { company:IC.building, designation:IC.userCircle, source:IC.share, device:IC.monitor };
+  var SEG_DIM_COLOR_CLASS = { company:'dim-blue', designation:'dim-teal', source:'dim-violet', device:'dim-cyan' };
+  var SEG_NAME_COL_LABEL = { company:'Company', designation:'Designation', source:'Source', device:'Device' };
+
+  function renderSegmentControls(){
+    var validIds = IP_EVENT_IDS.filter(function(id){ var e = findEvent(id); return e && (e.status==='upcoming'||e.status==='active'||e.status==='completed'); });
+    if (validIds.indexOf(state.segmentEventId) === -1) state.segmentEventId = validIds[0] || null;
+
+    var sel = $('segment-event-select');
+    if (!validIds.length){
+      sel.innerHTML = '<option>No IP events yet</option>';
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      sel.innerHTML = validIds.map(function(id){
+        var e = findEvent(id);
+        return '<option value="' + id + '" ' + (state.segmentEventId===id?'selected':'') + '>' + esc(e.name) + '</option>';
+      }).join('');
+    }
+    sel.onchange = function(){ state.segmentEventId = sel.value; renderSegmentControls(); renderSegmentBody(); };
+
+    $('segment-icon-avatar').innerHTML = IC.users;
+
+    $('segment-dim-tabs').innerHTML = Object.keys(SEGMENT_DIMENSIONS).map(function(k){
+      return '<button type="button" class="' + SEG_DIM_COLOR_CLASS[k] + '" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEG_DIM_ICONS[k] + ' ' + SEGMENT_DIMENSIONS[k] + '</button>';
+    }).join('');
+    $('segment-dim-tabs').querySelectorAll('[data-dim]').forEach(function(b){
+      b.addEventListener('click', function(){ state.segmentDimension = b.getAttribute('data-dim'); renderSegmentControls(); renderSegmentBody(); });
+    });
+
+    $('segment-view-toggle').querySelectorAll('[data-segview]').forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-segview') === state.segmentView);
+      b.onclick = function(){ state.segmentView = b.getAttribute('data-segview'); renderSegmentControls(); renderSegmentBody(); };
+    });
+  }
+
+  function renderSparkline(trend, color){
+    var w = 64, h = 22, pad = 2;
+    var max = Math.max.apply(null, trend), min = Math.min.apply(null, trend);
+    var range = (max - min) || 1;
+    var pts = trend.map(function(v,i){
+      var x = pad + (i/(trend.length-1)) * (w - 2*pad);
+      var y = h - pad - ((v-min)/range) * (h - 2*pad);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" class="seg-spark"><polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function renderIntentBadge(shareFrac){
+    var level = shareFrac >= 0.22 ? 'high' : shareFrac >= 0.12 ? 'medium' : 'low';
+    var glyph = level === 'high' ? '&uarr;' : level === 'medium' ? '&ndash;' : '&darr;';
+    var label = level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low';
+    return '<span class="intent-badge intent-' + level + '">' + glyph + ' ' + label + '</span>';
+  }
+
+  function renderSegTopRow(insightHTML, entries, total){
+    var topN = entries.slice(0, Math.min(5, entries.length)).reduce(function(s,x){ return s + x.value; }, 0);
+    var topPct = total ? Math.round((topN/total)*100) : 0;
+    return '<div class="seg-top-row">' +
+      '<div class="seg-insight">' + insightHTML + '</div>' +
+      '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.users + '</span>' +
+        '<div><div class="seg-stat-label">Total Registrations</div><div class="seg-stat-value mono">' + fmtNum(total) + '</div></div></div>' +
+      '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.chart + '</span>' +
+        '<div><div class="seg-stat-label">Top ' + Math.min(5, entries.length) + ' Share</div><div class="seg-stat-value mono">' + topPct + '%</div></div></div>' +
+    '</div>';
+  }
+
+  function renderSegTable(entries, total, fmtVal, dim){
+    var nameLabel = SEG_NAME_COL_LABEL[dim] || 'Name';
+    var rows = entries.map(function(x,i){
+      var pct = total ? Math.round((x.value/total)*100) : 0;
+      var color = SEG_PALETTE[i % SEG_PALETTE.length];
+      return '<tr>' +
+        '<td><span class="seg-rank-cell" style="background:' + color + '22;color:' + color + ';">' + (i+1) + '</span></td>' +
+        '<td><div class="seg-name-cell"><span class="seg-avatar" style="background:' + color + '22;color:' + color + ';">' + esc(x.label.charAt(0)) + '</span><span>' + esc(x.label) + '</span></div></td>' +
+        '<td class="mono">' + fmtVal(x.value) + '</td>' +
+        '<td class="mono">' + pct + '%</td>' +
+        '<td>' + renderSparkline(x.trend, color) + '</td>' +
+        '<td>' + renderIntentBadge(total ? x.value/total : 0) + '</td>' +
+      '</tr>';
+    }).join('');
+    return '<div class="seg-table-wrap"><table class="seg-table"><thead><tr>' +
+      '<th></th><th>' + nameLabel + '</th><th>Registered</th><th>Share</th><th>Trend (7d)</th><th>Attendance Intent</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  var SEG_OTHERS_COLOR = '#C7C3B8';
+  function buildSegSlices(entries){
+    var top = entries.slice(0, 5).map(function(x,i){ return { label:x.label, value:x.value, color:SEG_PALETTE[i % SEG_PALETTE.length] }; });
+    var othersValue = entries.slice(5).reduce(function(s,x){ return s + x.value; }, 0);
+    if (othersValue > 0) top.push({ label:'Others', value:othersValue, color:SEG_OTHERS_COLOR });
+    return top;
+  }
+  function renderSegDonut(slices, total, size){
+    size = size || 176;
+    var r = size/2 - 12, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
+    var offset = 0;
+    var arcs = slices.map(function(s){
+      var frac = total ? s.value/total : 0;
+      var dash = Math.max(0, frac*circ - 3);
+      var html = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s.color + '" stroke-width="16" stroke-linecap="round" ' +
+        'stroke-dasharray="' + dash.toFixed(2) + ' ' + (circ-dash).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')">' +
+        '<title>' + esc(s.label) + ' — ' + Math.round(frac*100) + '%</title></circle>';
+      offset += frac*circ;
+      return html;
+    }).join('');
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" class="seg-donut">' + arcs + '</svg>';
+  }
+  function renderSegLegend(slices, total, fmtVal){
+    return '<div class="seg-legend">' + slices.map(function(s){
+      var pct = total ? Math.round((s.value/total)*100) : 0;
+      return '<div class="seg-legend-row"><span class="seg-swatch" style="background:' + s.color + ';"></span>' +
+        '<span class="seg-legend-label">' + esc(s.label) + '</span>' +
+        '<span class="seg-legend-val mono">' + fmtVal(s.value) + '</span>' +
+        '<span class="seg-legend-pct">' + pct + '%</span></div>';
+    }).join('') + '</div>';
+  }
+  function renderSegChartView(entries, total, fmtVal){
+    var slices = buildSegSlices(entries);
+    var hasOthers = entries.length > 5;
+    var centerPct, centerLabel;
+    if (hasOthers){
+      var topN = entries.slice(0, 5).reduce(function(s,x){ return s + x.value; }, 0);
+      centerPct = total ? Math.round((topN/total)*100) : 0;
+      centerLabel = 'Top 5 Share';
+    } else {
+      var top = entries[0];
+      centerPct = total ? Math.round((top.value/total)*100) : 0;
+      centerLabel = top.label;
+    }
+    return '<div class="seg-chart-row">' +
+      '<div class="seg-donut-wrap">' + renderSegDonut(slices, total) +
+        '<div class="seg-donut-center"><div class="seg-donut-center-pct">' + centerPct + '%</div><div class="seg-donut-center-label">' + esc(centerLabel) + '</div></div>' +
+      '</div>' +
+      renderSegLegend(slices, total, fmtVal) +
+    '</div>';
+  }
+
+  function renderSegmentBody(){
+    if (state.loading){
+      $('segment-body').innerHTML = Array(4).fill(0).map(function(){ return '<div class="skel skel-line" style="height:16px;margin-bottom:12px;"></div>'; }).join('');
+      return;
+    }
+    var ev = findEvent(state.segmentEventId);
+    if (!ev){
+      $('segment-sub').textContent = 'No IP events with audience data yet';
+      $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">Audience segmentation is available for Intellectual Property (IP) events once they have registrations.</p>';
+      return;
+    }
+    var dim = state.segmentDimension;
+    var audience = EVENT_AUDIENCE[ev.id] || { companies:[], designations:[], sources:[], devices:[] };
+    var entries = (audience[SEG_DIM_KEY[dim]] || []).slice().sort(function(a,b){ return b.value - a.value; });
+
+    $('segment-sub').textContent = SEGMENT_DIMENSIONS[dim] + ' for ' + ev.name;
+
+    if (!entries.length){ $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">No audience data yet for this event.</p>'; return; }
+
+    var total = entries.reduce(function(s,x){ return s+x.value; }, 0);
+    var top = entries[0];
+    var topShare = total ? Math.round((top.value/total)*100) : 0;
+
+    var insightHTML = IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads registrations with <strong>' + topShare + '%</strong> of total registrations.</span>';
+
+    var bodyHTML = renderSegTopRow(insightHTML, entries, total) + (state.segmentView === 'chart'
+      ? renderSegChartView(entries, total, fmtNum)
+      : renderSegTable(entries.slice(0, 5), total, fmtNum, dim));
+
+    $('segment-body').innerHTML = bodyHTML;
+  }
+
+  /* =========================================================
+     LATEST ACTIVITY ON THIS PORTAL — platform-wide flow metrics for the
+     selected period (Today / 7 / 10 / 30 days / Custom), not a per-event log.
+  ========================================================= */
+  var ACTIVITY_METRICS = [
+    { key:'registrations',   label:'New Registrations', desc:'Registrations recorded across live and upcoming IP events', icon:IC.ticket,    color:'act-blue',   kind:'events', metricCol:'Registrations', dateCol:'Last Registration' },
+    { key:'visitors',        label:'Visitors',          desc:'Visitors who viewed an IP event microsite',                 icon:IC.users,     color:'act-teal',   kind:'events', metricCol:'Visitors',      dateCol:'Last Visit' },
+    { key:'mailersSent',     label:'Mailers Sent',      desc:'Promotional mailers dispatched for IP events',              icon:IC.mail,      color:'act-amber',  kind:'events', metricCol:'Mailers Sent',  dateCol:'Last Mailer Sent' },
+    { key:'newslettersSent', label:'Newsletters Sent',  desc:'Newsletter performance across the portal',                  icon:IC.newspaper, color:'act-violet', kind:'newsletter' },
+    { key:'subscribers',     label:'New Subscribers',   desc:'Subscriber growth across the portal',                       icon:IC.userPlus,  color:'act-rose',   kind:'subscribers' }
+  ];
+
+  function activityEventRows(key, f){
+    var rows = IP_EVENT_IDS.map(function(id){
+      var e = findEvent(id);
+      var act = IP_ACTIVITY[id];
+      var value, lastDays;
+      if (key === 'registrations'){ value = Math.round((e.registrations||0) * f); lastDays = act.lastRegDays; }
+      else if (key === 'visitors'){ value = Math.round((e.visitors||0) * f); lastDays = act.lastVisitDays; }
+      else { value = Math.round((act.mailersSent||0) * f); lastDays = act.lastMailerDays; }
+      return { id:id, name:e.name, value:value, lastDays:lastDays };
+    }).filter(function(r){ return r.value > 0; }).sort(function(a,b){ return b.value - a.value; });
+    return rows.slice(0, 6);
+  }
+
+  function renderActivityEventsTable(m, f){
+    var rows = activityEventRows(m.key, f);
+    if (!rows.length) return '<p class="act-empty">No IP events with activity in this period.</p>';
+    return '<div class="act-table-wrap"><table class="act-table"><thead><tr>' +
+      '<th>Event Name</th><th>' + m.metricCol + '</th><th>' + m.dateCol + '</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(function(r){
+      return '<tr>' +
+        '<td class="act-event-name">' + esc(r.name) + '</td>' +
+        '<td class="mono">' + fmtNum(r.value) + '</td>' +
+        '<td>' + fmtRelativeDays(r.lastDays) + '</td>' +
+        '<td><a class="act-view-btn" href="custom_editor.html?event=' + r.id + '">View &rarr;</a></td>' +
+      '</tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+
+  function renderNewsletterPanel(f){
+    var sent = Math.round(PORTAL_ACTIVITY_BASE.newslettersSent * f);
+    var opened = Math.round(sent * 0.42);
+    var clicked = Math.round(sent * 0.11);
+    var openRate = sent ? Math.round((opened/sent)*100) : 0;
+    return '<div class="act-kpi-row">' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Sent</div><div class="act-kpi-value mono">' + fmtCompact(sent) + '</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Opened</div><div class="act-kpi-value mono">' + fmtCompact(opened) + '</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Clicked</div><div class="act-kpi-value mono">' + fmtCompact(clicked) + '</div></div>' +
+      '<div class="act-kpi-tile highlight"><div class="act-kpi-label">Gross Open Rate</div><div class="act-kpi-value mono">' + openRate + '%</div></div>' +
+    '</div>';
+  }
+
+  function renderSubscriberPanel(f){
+    var subs = Math.round(PORTAL_ACTIVITY_BASE.subscribers * f);
+    var unsub = Math.round(subs * 0.09);
+    var recent = Math.round(subs * 0.35);
+    var seed = Math.sin(subs * 3.7) * 10000; seed -= Math.floor(seed);
+    var trendUp = seed > 0.35;
+    var trendPct = Math.round(seed * 18) + 2;
+    return '<div class="act-kpi-row">' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Subscribers</div><div class="act-kpi-value mono">' + fmtCompact(subs) + '</div>' +
+        '<div class="act-trend ' + (trendUp?'up':'down') + '">' + (trendUp?IC.arrowUp:IC.arrowDown) + ' ' + trendPct + '% vs previous period</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Unsubscribers</div><div class="act-kpi-value mono">' + fmtCompact(unsub) + '</div></div>' +
+      '<div class="act-kpi-tile"><div class="act-kpi-label">Recent Subscribers</div><div class="act-kpi-value mono">' + fmtCompact(recent) + '</div></div>' +
+    '</div>';
+  }
+
+  function renderActivity(){
+    $('activity-range-label').textContent = computeRangeLabel(state.activityRange);
+    if (state.loading){
+      $('activity-body').innerHTML = Array(5).fill(0).map(function(){ return '<div class="skel skel-line" style="height:14px;margin-bottom:16px;"></div>'; }).join('');
+      return;
+    }
+    var f = computeRangeFactor(state.activityRange);
+    $('activity-body').innerHTML = '<div class="activity-accordion">' + ACTIVITY_METRICS.map(function(m){
+      var total = Math.round(PORTAL_ACTIVITY_BASE[m.key] * f);
+      var isOpen = state.activityOpenKey === m.key;
+      var panelHTML = m.kind === 'events' ? renderActivityEventsTable(m, f)
+        : m.kind === 'newsletter' ? renderNewsletterPanel(f)
+        : renderSubscriberPanel(f);
+      return '<div class="activity-item ' + m.color + '">' +
+        '<button type="button" class="activity-row" data-act-key="' + m.key + '" aria-expanded="' + isOpen + '">' +
+          '<span class="activity-row-icon">' + m.icon + '</span>' +
+          '<span class="activity-row-main"><div class="activity-row-label">' + m.label + '</div><div class="activity-row-desc">' + m.desc + '</div></span>' +
+          '<span class="activity-row-total mono">' + fmtCompact(total) + '</span>' +
+          '<span class="activity-row-chevron">' + IC.chevDown + '</span>' +
+        '</button>' +
+        (isOpen ? '<div class="activity-panel fade-in"><div class="activity-panel-inner">' + panelHTML + '</div></div>' : '') +
+      '</div>';
+    }).join('') + '</div>';
+
+    $('activity-body').querySelectorAll('[data-act-key]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-act-key');
+        state.activityOpenKey = (state.activityOpenKey === key) ? null : key;
+        renderActivity();
+      });
+    });
+  }
+
+  /* =========================================================
+     APP RENDER
+  ========================================================= */
+  function renderApp(){
+    renderPortalsNavBtn();
+    renderMoreMenu();
+    renderTabs();
+    renderSpecialBanner();
+    renderInsightsTitle();
+    renderKPIs();
+    renderToolbarButtons();
+    renderResults();
+    renderSegmentControls();
+    renderSegmentBody();
+    renderActivity();
+  }
+
+  /* =========================================================
+     NEED HELP — opens the visitor's mail client addressed to Customer Care.
+     No backend here, so this is a mailto: link, not an actual send.
+  ========================================================= */
+  var HELP_EMAIL = 'customercare@economictimesb2b.com';
+  function openHelpModal(){
+    var root = $('sheet-root');
+    root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
+      '<div class="modal-card-head"><div><h3>Need help?</h3><p>Send your query about this dashboard or an event, straight to our team.</p></div>' +
+        '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
+      '<div class="modal-card-body">' +
+        '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" type="button">' + IC.copy + '</button></div>' +
+        '<div><label class="flabel">Subject</label><input class="finput" id="help-subject" value="Support request — Events dashboard"></div>' +
+        '<div><label class="flabel">Your query</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with — an event, registrations, payments, anything…"></textarea></div>' +
+      '</div>' +
+      '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Cancel</button><button class="btn btn-primary" id="help-send" style="margin-left:auto;">' + IC.mail + ' Send via email</button></div>' +
+    '</div></div>';
+    function close(){ root.innerHTML=''; }
+    $('help-close').addEventListener('click', close);
+    $('help-cancel').addEventListener('click', close);
+    $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
+    $('help-copy-email').addEventListener('click', function(){
+      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(HELP_EMAIL).then(function(){ toast('Email address copied'); }).catch(function(){ toast(HELP_EMAIL); }); }
+      else toast(HELP_EMAIL);
+    });
+    $('help-send').addEventListener('click', function(){
+      var subject = $('help-subject').value.trim() || 'Support request — Events dashboard';
+      var message = $('help-message').value.trim();
+      if (!message){ toast('Add a quick note so our team knows what you need.'); return; }
+      var mailto = 'mailto:' + HELP_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message);
+      window.location.href = mailto;
+      toast('Opening your email app…');
+      close();
+    });
+  }
+  $('btn-help').addEventListener('click', openHelpModal);
+  $('venue-quickview').addEventListener('mouseenter', cancelCloseQV);
+  $('venue-quickview').addEventListener('mouseleave', scheduleCloseQV);
+
+  function init(){
+    try {
+      wireSortHeaders();
+      wireViewToggle();
+      applyView();
+      state.loading = true;
+      renderApp();
+      setTimeout(function(){
+        state.loading = false;
+        renderApp();
+      }, 550);
+    } catch(err){
+      renderErrorBanner(init);
+    }
+  }
+  init();
+
+})();
+</script>
