@@ -703,6 +703,9 @@ function buildGenerateContentPrompt(payload) {
   if (payload.brief) {
     lines.push('', 'Extracted brief from the event\'s own overview document:', JSON.stringify(payload.brief, null, 2));
   }
+  if (payload.futureEdition) {
+    lines.push('', 'IMPORTANT: this is a FUTURE edition that has not happened yet and has no logistics decided — the "own history" sources below are PAST editions, not this one. Project the THEME forward sensibly from how it has evolved across those past editions (what moved from edition to edition — don\'t just repeat the most recent one\'s angle), but never invent a specific date, venue, speaker or sponsor for this edition — those aren\'t known yet. event.date/location must stay blank unless the eventMeta given above already states them.');
+  }
   if (ownHistory.length) {
     lines.push('', 'This event\'s OWN history (previous/current edition) — your primary source of real facts and theme, but do not simply restate or lightly reword it. The job is a genuine improvement, not a refresh.');
     ownHistory.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
@@ -716,7 +719,7 @@ function buildGenerateContentPrompt(payload) {
     'Task — produce:',
     '- positioningNotes: 1-2 sentences, for internal review only (never shown on the site) — name the ONE specific thing you adapted FROM a competitor (or state "no competitor material was given" if none was provided) and the ONE specific thing you deliberately did NOT just carry over from this event\'s own previous edition. Be concrete (name the competitor/section), not generic.',
     '- event.name/date/location: only if clearly and consistently stated above; prefer this event\'s own current-edition/brief facts over a competitor\'s.',
-    '- hero.title/tagline: a strong, specific headline and one-line tagline for THIS event\'s real theme — not generic conference copy, and not a near-paraphrase of the previous edition\'s own headline.',
+    '- hero.title/tagline: a strong, specific headline and one-line tagline for THIS event\'s real theme — not generic conference copy, not a near-paraphrase of the previous edition\'s own headline, and never just the event\'s own name restated (that\'s what event.name is for).',
     '- hero.cta1/cta2: short button labels (e.g. "Register Now", "Partner With Us") only if a real call to action is implied; else leave blank.'
   );
   Object.keys(payload.needs).forEach(function (from) {
@@ -758,6 +761,12 @@ function handleGenerateContent(req, res) {
 
     var eventId = String(payload.eventId || '').trim();
     var templateId = String(payload.templateId || '').trim();
+    // sourceEventId: where to read the brief/sources FROM — defaults to eventId, but a not-yet-run future
+    // edition (e.g. "making-ai-work-2027") has no sources of its own yet; it reads the same event series'
+    // already-collected research (e.g. "making-ai-work", whose 2025/2026 editions are real past history)
+    // and writes its own draft under its own eventId, so it never collides with that series' current draft.
+    var sourceEventId = String(payload.sourceEventId || eventId).trim();
+    var futureEdition = !!payload.futureEdition;
     if (!eventId || !templateId) return sendJson(res, 400, { error: 'eventId and templateId are required.' });
     if (!/^[a-z0-9-]+$/.test(templateId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
 
@@ -772,14 +781,18 @@ function handleGenerateContent(req, res) {
     var needs = classifyLibraryNeeds((templateJson.content || {}).map);
     if (!Object.keys(needs).length) return sendJson(res, 400, { error: 'This template has no content.map entries this step knows how to generate for.' });
 
-    var eventRef = fb.db.collection('events').doc(eventId);
+    var draftRef = fb.db.collection('events').doc(eventId);
+    var sourceRef = fb.db.collection('events').doc(sourceEventId);
     Promise.all([
-      eventRef.get(),
-      eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-      eventRef.collection('sources').get()
+      sourceRef.get(),
+      sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+      sourceRef.collection('sources').get()
     ]).then(function (results) {
       var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
-      var eventMeta = eventSnap.exists ? eventSnap.data() : {};
+      // eventMeta.* from the request (e.g. {name:"ET Making AI Work 2027", date:"2027"}) wins over whatever
+      // is stored for sourceEventId — that stored data describes the PAST edition being read for research,
+      // not necessarily the one actually being generated.
+      var eventMeta = Object.assign({}, eventSnap.exists ? eventSnap.data() : {}, payload.eventMeta || {});
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
       var sources = sourcesSnap.docs.map(function (d) {
         var v = d.data();
@@ -787,15 +800,15 @@ function handleGenerateContent(req, res) {
       });
 
       var schema = buildGenerateSchema(needs);
-      var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs });
+      var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs, futureEdition: futureEdition });
 
       return callGeminiJson(prompt, schema).then(function (r) {
         if (r.error) return sendJson(res, r.status, { error: r.error });
         var library = sanitizeGeneratedLibrary(r.parsed, needs);
         var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
         var now = new Date().toISOString();
-        return eventRef.collection('drafts').add({ templateId: templateId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now })
-          .then(function (draftRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: draftRef.id, positioningNotes: positioningNotes, library: library }); });
+        return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now })
+          .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
       });
     }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
   });
