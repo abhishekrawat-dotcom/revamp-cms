@@ -828,6 +828,7 @@ function libraryToHandoffDraft(library, eventId) {
   return {
     event: {
       name: ev.name || '', slug: eventId, date: ev.date ? { mode: 'tbd', note: ev.date } : null,
+      dateLabel: ev.date || '',   // editor-template-ui.js's showTopbar() reads this string separately from the date object above
       location: ev.location || '', hasVenue: !!ev.location
     },
     sections: sections, excluded: [], sectionOrder: null

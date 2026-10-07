@@ -1225,7 +1225,8 @@
 
   /* template preview modal: image in a col-8-ish lane, toggles in a col-4-ish lane beside it */
   /* step 2 landing: AI / previous-edition as the two primary choices */
-  .design-choice-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:20px; }
+  .design-choice-grid{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:18px; margin-top:20px; }
+  @media (max-width: 1020px){ .design-choice-grid{ grid-template-columns: 1fr 1fr; } }
   @media (max-width: 760px){ .design-choice-grid{ grid-template-columns: 1fr; } }
   .design-choice-card{
     display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:26px;
@@ -1251,6 +1252,19 @@
   }
   .vibe-chip:hover{ border-color: var(--text-faint); }
   .vibe-chip[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+
+  /* "Generate from brief" progress checklist (step2-brief) — each step is a real, independently-awaited
+     request (see startGenerateFromBrief), not a simulated/rotating status line, so this reflects actual state. */
+  .gb-steps{ display:flex; flex-direction:column; gap:10px; margin-top:4px; width:100%; max-width:380px; text-align:left; }
+  .gb-step{ display:flex; align-items:center; gap:10px; font-size:13.5px; color:var(--text-muted); }
+  .gb-step svg{ flex:none; }
+  .gb-step-done{ color:var(--text); }
+  .gb-step-done svg{ color:var(--accent-strong); }
+  .gb-step-error{ color:#b42318; }
+  .gb-step-error svg{ color:#b42318; }
+  .gb-dot{ width:8px; height:8px; border-radius:50%; background:var(--border); flex:none; }
+  .gb-spin{ width:13px; height:13px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent-strong); flex:none; animation: gb-spin .7s linear infinite; }
+  @keyframes gb-spin{ to{ transform: rotate(360deg); } }
 
   /* AI design-variation cards (step2-ai) — picking one updates S.aiDesign and applies live to the mounted real-template preview canvas */
   .ai-design-list{ display:flex; flex-direction:column; gap:10px; }
@@ -1677,6 +1691,14 @@
             <p>Reuse the design from an event you’ve already built with this wizard.</p>
             <button class="btn btn-secondary" type="button" id="btn-clone-design">Browse previous editions</button>
           </div>
+          <div class="design-choice-card">
+            <span class="dc-ico">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+            </span>
+            <h3>Generate from a brief</h3>
+            <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it.</p>
+            <button class="btn btn-primary" type="button" id="btn-ai-generate">Generate from brief</button>
+          </div>
         </div>
 
         <div class="design-choice-alt">
@@ -1688,6 +1710,9 @@
 
       <!-- ===== AI result: loading / review ===== -->
       <div id="step2-ai" hidden></div>
+
+      <!-- ===== Generate from brief: progress checklist ===== -->
+      <div id="step2-brief" hidden></div>
 
       <!-- ===== MANUAL: the original template gallery, unchanged, reachable but no longer the default view ===== -->
       <div id="step2-manual" hidden>
@@ -3293,6 +3318,158 @@
     }).catch(function(){ /* same fallback: the template's default look, not a blocked wizard */ });
   }
 
+  /* ---------- Generate from brief (AI site-generation pipeline) ----------
+     Collects an overview doc + reference URLs, then calls the existing /api/extract-brief,
+     /api/ingest-source (once per URL) and /api/generate-content endpoints — each one a normal
+     request the browser awaits in turn, not a server-kicked-off background job. App Hosting
+     (apphosting.yaml: minInstances 0) only guarantees CPU while a request is actively being
+     handled; work that keeps running after the response that started it has already gone back
+     risks being throttled or the instance scaling down mid-run. Keeping every step as its own
+     awaited request/response is what makes this reliable on that infrastructure, and it also
+     means the progress checklist below reflects real, confirmed completions — never a guess.
+     Ends with the exact same localStorage hand-off + redirect openInEditor() uses below, so the
+     result opens in the real editor exactly like finishing the rest of the wizard by hand. */
+  var GENERATE_TEMPLATES = TEMPLATES.filter(function(t){ return !!t.site; });
+
+  function openGenerateFromBriefModal(){
+    var tplOptions = GENERATE_TEMPLATES.map(function(t){
+      return '<option value="' + esc(t.site) + '">' + esc(t.name) + '</option>';
+    }).join('');
+    openModal({
+      title: 'Generate from a brief',
+      sub: 'Everything below is optional except the template — the more you give it, the better grounded the result. Competitor material is used for structure and ideas only, never copied.',
+      wide: true,
+      confirm: 'Generate',
+      body:
+        '<div class="field"><label class="flabel" for="gb-template">Template</label>' +
+          '<select class="inp" id="gb-template">' + tplOptions + '</select></div>' +
+        '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-doc">Overview document (PDF)</label>' +
+          '<input class="inp" id="gb-doc" type="file" accept="application/pdf">' +
+        '</div>' +
+        '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>' +
+          '<input class="inp" id="gb-current" type="url" placeholder="https://…">' +
+        '</div>' +
+        '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-previous">Previous edition URL</label>' +
+          '<input class="inp" id="gb-previous" type="url" placeholder="https://…">' +
+        '</div>' +
+        '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-comp1">Competitor event URL</label>' +
+          '<input class="inp" id="gb-comp1" type="url" placeholder="https://…">' +
+        '</div>' +
+        '<div class="field" style="margin-top:8px;">' +
+          '<input class="inp" id="gb-comp2" type="url" placeholder="https://… (a second competitor, optional)">' +
+        '</div>' +
+        '<label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--text-muted);">' +
+          '<input type="checkbox" id="gb-future" style="margin-top:2px;">' +
+          '<span>This edition hasn’t happened yet — project the theme forward instead of assuming this year’s date/venue</span>' +
+        '</label>',
+      onConfirm: function(){ startGenerateFromBrief(); }
+    });
+  }
+
+  function startGenerateFromBrief(){
+    var templateSite = $('gb-template').value;
+    var fileInput = $('gb-doc');
+    var file = fileInput && fileInput.files && fileInput.files[0];
+    var urlFields = [
+      { url: ($('gb-current').value || '').trim(), type: 'currentEdition' },
+      { url: ($('gb-previous').value || '').trim(), type: 'previousEdition' },
+      { url: ($('gb-comp1').value || '').trim(), type: 'competitor' },
+      { url: ($('gb-comp2').value || '').trim(), type: 'competitor' }
+    ].filter(function(s){ return s.url; });
+    var futureEdition = !!($('gb-future') && $('gb-future').checked);
+
+    // the real event id this draft (and the eventual editor session) is keyed by — same slug the rest
+    // of the wizard already uses, so this is a normal persistent event, not a disposable preview
+    var eventId = S.basics.slug || ('event-' + Date.now());
+    var eventMeta = { name: S.basics.name || '', date: eventDateLabel(S.basics), location: locLabel(S.basics, false) };
+
+    var steps = [];
+    if (file) steps.push({ key: 'brief', label: 'Reading ' + file.name, status: 'pending' });
+    urlFields.forEach(function(s, i){
+      var label = s.type === 'competitor' ? 'Researching competitor event'
+        : s.type === 'currentEdition' ? 'Researching this edition’s own page' : 'Researching the previous edition';
+      steps.push({ key: 'source' + i, label: label, status: 'pending', url: s.url, type: s.type });
+    });
+    steps.push({ key: 'generate', label: 'Generating content', status: 'pending' });
+
+    showStep2View('brief');
+    renderBriefProgress(steps);
+
+    function setStep(key, status){
+      steps = steps.map(function(s){ return s.key === key ? Object.assign({}, s, { status: status }) : s; });
+      renderBriefProgress(steps);
+    }
+    function readFileAsBase64(f){
+      return new Promise(function(resolve, reject){
+        var reader = new FileReader();
+        reader.onload = function(){ resolve(String(reader.result).split(',')[1] || ''); };
+        reader.onerror = function(){ reject(new Error('Could not read ' + f.name + '.')); };
+        reader.readAsDataURL(f);
+      });
+    }
+    function postJson(url, body){
+      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || (url + ' failed')); return b; }); });
+    }
+
+    var chain = Promise.resolve();
+    if (file){
+      chain = chain.then(function(){
+        setStep('brief', 'running');
+        return readFileAsBase64(file)
+          .then(function(docBase64){
+            return postJson('/api/extract-brief', { eventId: eventId, fileName: file.name, mimeType: file.type || 'application/pdf', docBase64: docBase64, eventMeta: eventMeta });
+          })
+          .then(function(){ setStep('brief', 'done'); })
+          .catch(function(err){ setStep('brief', 'error'); throw err; });   // no brief at all is worth stopping for — the user chose to upload one
+      });
+    }
+    urlFields.forEach(function(s, i){
+      chain = chain.then(function(){
+        setStep('source' + i, 'running');
+        return postJson('/api/ingest-source', { eventId: eventId, url: s.url, type: s.type })
+          .then(function(){ setStep('source' + i, 'done'); })
+          .catch(function(){ setStep('source' + i, 'error'); });   // one bad reference URL shouldn't abort a generation that has other grounding
+      });
+    });
+    chain = chain.then(function(){
+      setStep('generate', 'running');
+      return postJson('/api/generate-content', { eventId: eventId, templateId: templateSite, eventMeta: eventMeta, futureEdition: futureEdition })
+        .then(function(){ setStep('generate', 'done'); })
+        .catch(function(err){ setStep('generate', 'error'); throw err; });
+    }).then(function(){
+      return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+        .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || 'Could not load the generated draft'); return b; }); });
+    }).then(function(draftResp){
+      try {
+        localStorage.setItem(HANDOFF_KEY, JSON.stringify(draftResp.handoff));
+      } catch(e){
+        toast('Could not hand the draft over — your browser blocked storage.');
+        showStep2View('landing');
+        return;
+      }
+      window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
+        '&template=' + encodeURIComponent(draftResp.templateId || templateSite);
+    }).catch(function(err){
+      toast(err.message || 'Generation failed.');
+    });
+  }
+
+  function renderBriefProgress(steps){
+    var host = $('step2-brief');
+    if (!host) return;
+    host.innerHTML =
+      '<div class="step-head"><span class="eyebrow">Step 2 of 3 &middot; Choose template</span><h1>Generating your site&hellip;</h1>' +
+        '<p class="desc">This takes a minute or two — researching first, then writing.</p></div>' +
+      '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
+        '<ul class="gb-steps">' + steps.map(function(s){
+          var icon = s.status === 'done' ? IC.check14 : s.status === 'error' ? IC.warn
+            : s.status === 'running' ? '<span class="gb-spin"></span>' : '<span class="gb-dot"></span>';
+          return '<li class="gb-step gb-step-' + s.status + '">' + icon + '<span>' + esc(s.label) + '</span></li>';
+        }).join('') + '</ul>' +
+      '</div></div>';
+  }
+
   /* ---------- clone design from a previous (completed) edition on this portal ---------- */
   function openCloneDesignModal(){
     /* only real events this wizard itself has a recorded template for (see create-event-editions.js) —
@@ -3342,6 +3519,7 @@
   function showStep2View(view){
     $('step2-landing').hidden = view !== 'landing';
     $('step2-ai').hidden = view !== 'ai';
+    $('step2-brief').hidden = view !== 'brief';
     $('step2-manual').hidden = view !== 'manual';
   }
 
@@ -3412,6 +3590,8 @@
         if (aiCopy) aiCopy.textContent = 'Not available for this event type yet — only templates with a finished real design can be AI-redesigned. Pick a template manually, or reuse a previous edition’s layout.';
       }
     }
+    var generateBtn = $('btn-ai-generate');
+    if (generateBtn) generateBtn.onclick = openGenerateFromBriefModal;
     var vibeHost = $('vibe-chips');
     if (vibeHost){
       vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
