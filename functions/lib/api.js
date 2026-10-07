@@ -13,6 +13,13 @@
 //                               competitor URL -> its content sections (AI-summarized, never verbatim) +
 //                               colour/font signals (regex, deterministic — not asked of the model, which
 //                               can't reliably "see" a palette from text alone)
+//   POST /api/generate-content AI site-generation pipeline, step 3: the brief + sources already collected
+//                               for an event -> real content in the SAME shape create-event.html's wizard
+//                               produces (templates/README.md's "one content model for every template" —
+//                               subheading/heading/body/points/cta per section, {t,d} per card), so it can
+//                               be fed through the existing editor-fill.js with no new client-side code.
+const fs = require('fs');
+const path = require('path');
 const { getFirebase } = require('./firebase');
 
 function sendJson(res, status, obj) {
@@ -624,12 +631,213 @@ function handleIngestSource(req, res) {
   });
 }
 
+/* ---------- POST /api/generate-content — AI site-generation pipeline, step 3 ----------
+   Reads the event's latest brief + all its sources (already collected by extract-brief/ingest-source),
+   reads the TARGET TEMPLATE's own content.map to work out exactly which Create Event library ids it can
+   use and in what shape, asks Gemini to fill them grounded in that research, and saves the result as a
+   draft. The output is deliberately shaped exactly like what create-event.html's wizard would have
+   produced (templates/README.md's "one content model for every template"), so it's a drop-in for
+   editor-fill.js — no new client-side fill logic needed.
+
+   What's generated vs. deliberately left alone, and why (mirrors choices already made in the ported
+   templates themselves — see e.g. templates/making-ai-work/template.json's own content.notes):
+   - event / hero: name, date, location, title, tagline, CTAs — grounded, left blank rather than guessed.
+   - any content.map entry with an `intro` and/or a {t,d} card list (about, priorities, whyjoin, attend, a
+     template's own custom library ids like "keyquestions", …): generated, since this is real structural
+     content the research can ground.
+   - `speakers`: NEVER generated — a real name needs a real person behind it, and the research here is
+     page summaries, not a verified speaker roster. Inventing one would be exactly the kind of fabricated
+     fact this whole pipeline is built to avoid.
+   - `contact` / `glimpses`: never generated — no real emails/phone numbers exist to fill `contact` with,
+     and `glimpses` is a photo-count toggle (see the template's own notes on why Create Event can't fill it
+     either). Both keep the template's own default content, same as an un-filled wizard section would. */
+
+// Figures out, from a template's own content.map, which library ids this generation step can safely fill
+// and in what shape — generic (intro-driven: subheading/heading/body/cta) and/or a card list (items:{t,d}).
+// `speakers`/`contact`/`glimpses`/`event` are hardcoded skips: see the handler's header comment for why.
+function classifyLibraryNeeds(map) {
+  var needs = {};
+  (map || []).forEach(function (entry) {
+    var from = entry.from;
+    if (!from || from === 'event' || from === 'speakers' || from === 'contact' || from === 'glimpses') return;
+    if (needs[from]) return; // a library can feed more than one section of the same template; classify once
+    var hasList = (entry.fill || []).some(function (r) {
+      return r && r.list && typeof r.items === 'string' && /\.items$/.test(r.items) &&
+        typeof r.require === 'string' && r.require.indexOf('{t}') !== -1 && r.require.indexOf('{d}') !== -1;
+    });
+    var hasIntro = !!entry.intro;
+    if (!hasIntro && !hasList) return; // nothing this step knows how to generate for it
+    needs[from] = { hasIntro: hasIntro, hasList: hasList };
+  });
+  return needs;
+}
+
+function buildGenerateSchema(needs) {
+  var props = {
+    event: { type: 'OBJECT', properties: { name: { type: 'STRING' }, date: { type: 'STRING' }, location: { type: 'STRING' } }, required: ['name', 'date', 'location'] },
+    hero: { type: 'OBJECT', properties: { title: { type: 'STRING' }, tagline: { type: 'STRING' }, cta1: { type: 'STRING' }, cta2: { type: 'STRING' } }, required: ['title', 'tagline', 'cta1', 'cta2'] }
+  };
+  var required = ['event', 'hero'];
+  Object.keys(needs).forEach(function (from) {
+    var need = needs[from];
+    var p = {};
+    if (need.hasIntro) { p.subheading = { type: 'STRING' }; p.heading = { type: 'STRING' }; p.body = { type: 'STRING' }; p.ctaLabel = { type: 'STRING' }; }
+    if (need.hasList) { p.items = { type: 'ARRAY', items: { type: 'OBJECT', properties: { t: { type: 'STRING' }, d: { type: 'STRING' } }, required: ['t', 'd'] } }; }
+    props[from] = { type: 'OBJECT', properties: p, required: Object.keys(p) };
+    required.push(from);
+  });
+  return { type: 'OBJECT', properties: props, required: required };
+}
+
+function buildGenerateContentPrompt(payload) {
+  var lines = [
+    'You are generating REAL content for an event microsite, for ET Oneworld\'s event builder. Ground every fact in the material below — never invent a date, number, named person or company that isn\'t clearly present in it. An empty string/array is the correct answer when nothing grounded supports a field; never pad with generic filler just to fill it in.',
+    '',
+    'Event (already known — fill in event.name/date/location below only if the material confirms or refines this):',
+    JSON.stringify(payload.eventMeta || {}, null, 2)
+  ];
+  if (payload.brief) {
+    lines.push('', 'Extracted brief from the event\'s own overview document:', JSON.stringify(payload.brief, null, 2));
+  }
+  if (payload.sources && payload.sources.length) {
+    lines.push('', 'Research material — this event\'s own previous/current edition pages, and competitor event pages. Use this for STRUCTURE and FACTS ONLY, never copy wording: the result should read as its own distinct site, better than any one of these (clearer, more specific to this event), not a copy of one.');
+    payload.sources.forEach(function (s) {
+      lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2));
+    });
+  }
+  lines.push(
+    '',
+    'Task — produce:',
+    '- event.name/date/location: only if clearly and consistently stated above; prefer this event\'s own current-edition/brief facts over a competitor\'s.',
+    '- hero.title/tagline: a strong, specific headline and one-line tagline for THIS event\'s real theme — not generic conference copy.',
+    '- hero.cta1/cta2: short button labels (e.g. "Register Now", "Partner With Us") only if a real call to action is implied; else leave blank.'
+  );
+  Object.keys(payload.needs).forEach(function (from) {
+    var need = payload.needs[from];
+    var bits = [];
+    if (need.hasIntro) bits.push('a short section intro: subheading/heading/body/ctaLabel');
+    if (need.hasList) bits.push('items: 3-5 cards, each {t: short heading, d: one-sentence body}, grounded in real points from the material');
+    lines.push('- ' + from + ': ' + bits.join(' + '));
+  });
+  return lines.join('\n');
+}
+
+function sanitizeGeneratedLibrary(parsed, needs) {
+  function str(v, max) { return String(v || '').trim().slice(0, max || 300); }
+  var out = {
+    event: { name: str(parsed.event && parsed.event.name, 120), date: str(parsed.event && parsed.event.date, 60), location: str(parsed.event && parsed.event.location, 120) },
+    hero: { title: str(parsed.hero && parsed.hero.title, 150), tagline: str(parsed.hero && parsed.hero.tagline, 200), cta1: str(parsed.hero && parsed.hero.cta1, 40), cta2: str(parsed.hero && parsed.hero.cta2, 40) }
+  };
+  Object.keys(needs).forEach(function (from) {
+    var need = needs[from], src = (parsed[from] || {}), entry = {};
+    if (need.hasIntro) {
+      entry.subheading = str(src.subheading, 80); entry.heading = str(src.heading, 150); entry.body = str(src.body, 500);
+      if (src.ctaLabel) entry.cta = { label: str(src.ctaLabel, 40) };
+    }
+    if (need.hasList) {
+      entry.items = (Array.isArray(src.items) ? src.items : []).slice(0, 6)
+        .map(function (it) { return { t: str(it.t, 100), d: str(it.d, 300) }; })
+        .filter(function (it) { return it.t || it.d; });
+    }
+    out[from] = entry;
+  });
+  return out;
+}
+
+function handleGenerateContent(req, res) {
+  readBody(req, function (raw) {
+    var payload;
+    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+
+    var eventId = String(payload.eventId || '').trim();
+    var templateId = String(payload.templateId || '').trim();
+    if (!eventId || !templateId) return sendJson(res, 400, { error: 'eventId and templateId are required.' });
+    if (!/^[a-z0-9-]+$/.test(templateId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
+
+    var fb = getFirebase();
+    if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+    var templatePath = path.join(__dirname, '..', '..', 'templates', templateId, 'template.json');
+    var templateJson;
+    try { templateJson = JSON.parse(fs.readFileSync(templatePath, 'utf8')); }
+    catch (e) { return sendJson(res, 400, { error: 'Could not read template "' + templateId + '": ' + e.message }); }
+
+    var needs = classifyLibraryNeeds((templateJson.content || {}).map);
+    if (!Object.keys(needs).length) return sendJson(res, 400, { error: 'This template has no content.map entries this step knows how to generate for.' });
+
+    var eventRef = fb.db.collection('events').doc(eventId);
+    Promise.all([
+      eventRef.get(),
+      eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+      eventRef.collection('sources').get()
+    ]).then(function (results) {
+      var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
+      var eventMeta = eventSnap.exists ? eventSnap.data() : {};
+      var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
+      var sources = sourcesSnap.docs.map(function (d) {
+        var v = d.data();
+        return { type: v.type, url: v.url, extractedSections: v.extractedSections };
+      });
+
+      var schema = buildGenerateSchema(needs);
+      var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs });
+
+      return callGeminiJson(prompt, schema).then(function (r) {
+        if (r.error) return sendJson(res, r.status, { error: r.error });
+        var library = sanitizeGeneratedLibrary(r.parsed, needs);
+        var now = new Date().toISOString();
+        return eventRef.collection('drafts').add({ templateId: templateId, library: library, model: 'gemini-3.8-flash', generatedAt: now })
+          .then(function (draftRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: draftRef.id, library: library }); });
+      });
+    }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+  });
+}
+
+/* ---------- GET /api/draft — fetches the latest generated draft, pre-shaped for the editor ----------
+   Turns a stored draft's `library` (what /api/generate-content produced and saved) into the exact
+   `revamp.editor.handoff.v1` shape the real wizard hand-off uses: {event, sections:[{libId,name,data}], …}.
+   Used by preview-draft.html so a generated draft can be opened from a plain URL — no manual payload
+   wiring per event, and it works the same locally and once deployed. */
+function libraryToHandoffDraft(library, eventId) {
+  library = library || {};
+  var ev = library.event || {};
+  var sections = Object.keys(library)
+    .filter(function (k) { return k !== 'event'; })
+    .map(function (libId) { return { libId: libId, name: libId, data: library[libId] }; });
+  return {
+    event: {
+      name: ev.name || '', slug: eventId, date: ev.date ? { mode: 'tbd', note: ev.date } : null,
+      location: ev.location || '', hasVenue: !!ev.location
+    },
+    sections: sections, excluded: [], sectionOrder: null
+  };
+}
+
+function handleGetDraft(req, res) {
+  var qs = new URLSearchParams(req.url.split('?')[1] || '');
+  var eventId = String(qs.get('eventId') || '').trim();
+  if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+
+  var fb = getFirebase();
+  if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+  fb.db.collection('events').doc(eventId).collection('drafts').orderBy('generatedAt', 'desc').limit(1).get()
+    .then(function (snap) {
+      if (snap.empty) return sendJson(res, 404, { error: 'No generated draft found for "' + eventId + '" — run /api/generate-content first.' });
+      var draft = snap.docs[0].data();
+      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, handoff: libraryToHandoffDraft(draft.library, eventId) });
+    })
+    .catch(function (err) { sendJson(res, 500, { error: 'get-draft failed: ' + err.message }); });
+}
+
 // Single entry point both tools/serve.js (local) and index.js (deployed) call into.
 function handleApi(req, res) {
   if (req.method === 'POST' && req.url === '/api/suggest-design') return handleSuggestDesign(req, res);
   if (req.method === 'POST' && req.url === '/api/chat-edit') return handleChatEdit(req, res);
   if (req.method === 'POST' && req.url === '/api/extract-brief') return handleExtractBrief(req, res);
   if (req.method === 'POST' && req.url === '/api/ingest-source') return handleIngestSource(req, res);
+  if (req.method === 'POST' && req.url === '/api/generate-content') return handleGenerateContent(req, res);
+  if (req.method === 'GET' && req.url.indexOf('/api/draft') === 0) return handleGetDraft(req, res);
   sendJson(res, 404, { error: 'No such endpoint: ' + req.method + ' ' + req.url });
 }
 

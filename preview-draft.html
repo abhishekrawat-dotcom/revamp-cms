@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opening generated draft…</title>
+<p style="font:14px system-ui;padding:24px">Loading the AI-generated draft…</p>
+<script>
+  // Dev/demo bridge: ?eventId=<id>[&templateId=<id>] -> fetches that event's latest /api/generate-content
+  // draft from Firestore (via GET /api/draft), writes it as 'revamp.editor.handoff.v1' (the exact shape
+  // create-event.html's own wizard hand-off uses), and opens the real editor on it — same effect as
+  // finishing the wizard by hand. Not linked from product nav; a direct URL for previewing generated drafts.
+  var qs = new URLSearchParams(location.search);
+  var eventId = qs.get('eventId');
+  var templateId = qs.get('templateId') || eventId;
+  if (!eventId) {
+    document.body.textContent = 'Missing ?eventId=<id> in the URL.';
+  } else {
+    fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+      .then(function (r) { return r.json().then(function (body) { if (!r.ok) throw new Error(body.error || 'request failed'); return body; }); })
+      .then(function (body) {
+        localStorage.setItem('revamp.editor.handoff.v1', JSON.stringify(body.handoff));
+        location.href = '/custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) + '&template=' + encodeURIComponent(body.templateId || templateId);
+      })
+      .catch(function (err) { document.body.textContent = 'Could not load draft: ' + err.message; });
+  }
+</script>
