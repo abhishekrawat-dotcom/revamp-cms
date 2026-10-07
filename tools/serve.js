@@ -76,8 +76,23 @@ function buildPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s.shape !== 'auto' && s.data; });
   var tpl = payload.currentTemplate || {};
   var design = tpl.design || {};
+  /* structured design intake (closer to how Wix ADI's own intake works — a short set of style/goal
+     questions, not just one free-text box): vibe is a single pick from a fixed list (create-event.html's
+     VIBE_OPTIONS), notes is free text for anything a fixed chip can't capture (a brand colour, a reference
+     site). Both optional; combined into one instruction line Gemini treats the same way the old
+     themePreference field did. */
+  var intake = payload.designIntake || {};
+  var vibe = String(intake.vibe || '').trim().slice(0, 60);
+  var notes = String(intake.notes || '').trim().slice(0, 200);
+  var themePref = [vibe, notes].filter(Boolean).join(' — ');
+  var reorderable = tpl.reorderableSections || [];
+  /* designs already shown this session (create-event.html's S.priorDesigns, both from explicit "Design with
+     AI" clicks and the silent auto-personalize fallback) — without this, a repeat click/regeneration had no
+     memory of what it already proposed and could easily resurface something near-identical. Wix's own
+     "Regenerate Design" is explicitly built to never do that. */
+  var priorDesigns = (payload.priorDesigns || []).slice(-6);
   return [
-    'You are proposing fresh, trendy VISUAL REDESIGNS of an existing event microsite for ET Oneworld\'s event builder — not a different template. This is the REAL template\'s own markup and CSS, rendered live; you are only changing its real design settings (colour, typography, heading style) — never its page structure or sections.',
+    'You are proposing fresh, trendy VISUAL REDESIGNS of an existing event microsite for ET Oneworld\'s event builder — not a different template. This is the REAL template\'s own markup and CSS, rendered live; you are only changing its real design settings (colour, typography, heading style), and optionally the order of a few sections (see below) — never which sections exist or their own internal layout.',
     '',
     'Event:', JSON.stringify(payload.event || {}, null, 2),
     '',
@@ -89,17 +104,27 @@ function buildPrompt(payload) {
     '',
     'ET Oneworld\'s own event sites centre section headings and call-to-action buttons by convention — keep headingAlign as "center" in the large majority of your suggestions; only pick something else for a deliberate, clearly-justified editorial/asymmetric direction.',
     '',
+    themePref
+      ? 'The event owner asked for this specific look: "' + themePref + '". Every design you propose should clearly read as that direction — treat it as a direct instruction, not loose inspiration.'
+      : 'The event owner did not ask for a specific look. This platform builds a unique site per event, not copies of one reference template, so do not default toward the baseline template\'s own listed swatches/fonts — the result needs to feel like its own distinct site, not the same look every other event in this category already has. In that case, ground your directions in what this event actually is — its category, its scale (numbers in its stats/content), its tone (formal boardroom vs. energetic community vs. editorial) — the way an experienced designer would read a brief, not a random palette generator.',
+    priorDesigns.length
+      ? '\nAlready shown earlier in this same session (do not propose anything this close again — these are rejected or superseded, not a starting point to riff on): ' + JSON.stringify(priorDesigns)
+      : '',
+    '',
     'Task:',
     '1. Propose 2 or 3 genuinely distinct, modern/trendy design directions for THIS SAME real template (e.g. a bold dark-mode redesign, a warm editorial look, a clean minimalist one) — not timid tweaks, real visual personality shifts. Treat the template\'s own swatches as a loose starting point, not a constraint.',
-    '2. Each design needs a short memorable name (2-4 words), a one-sentence reason, and a complete `design` object supplying every one of these fields: ' + DESIGN_FIELDS.join(', ') + '.',
+    '2. Each design needs a short memorable name (2-4 words) and a one-sentence reason that reads like a condensed design brief — name the specific thing about THIS event (its category, scale, content, or the owner\'s stated preference) that this direction serves, not a generic aesthetic description that could apply to any event. Also return a complete `design` object supplying every one of these fields: ' + DESIGN_FIELDS.join(', ') + '.',
     '   - ' + DESIGN_COLOR_FIELDS.join('/') + ': hex colours (e.g. "#1c1c1c") with real contrast against whatever they sit on.',
     '   - ' + DESIGN_FONT_FIELDS.join('/') + ': a real Google Fonts family name (e.g. "Fraunces", "Space Grotesk", "Playfair Display") — these are loaded dynamically, any real family on fonts.google.com works.',
     '   - divider: one of ' + DESIGN_ENUM_FIELDS.divider.join('/') + '. animation: one of ' + DESIGN_ENUM_FIELDS.animation.join('/') + '. headingCase: one of ' + DESIGN_ENUM_FIELDS.headingCase.join('/') + '. headingAlign: one of ' + DESIGN_ENUM_FIELDS.headingAlign.join('/') + ' (see the centring note above).',
     '   - ' + DESIGN_WEIGHT_FIELDS.join('/') + ': a CSS font-weight ("normal", "bold", or "100"-"900" in hundreds).',
     '   - bodySize/headingSize: a pixel size (bodySize ' + DESIGN_NUMERIC_FIELDS.bodySize.join('-') + ', headingSize ' + DESIGN_NUMERIC_FIELDS.headingSize.join('-') + '). sectionSpacing: vertical rhythm between sections in px (' + DESIGN_NUMERIC_FIELDS.sectionSpacing.join('-') + '). bgOpacity: 0-100.',
     '3. Separately, for sections where the existing content is thin, generic, or could read sharper, propose a partial content patch: same keys as that section\'s current `data`, only the fields you are actually improving. Never invent facts (dates, numbers, names, companies) that aren\'t already present or directly implied. This is independent of which design the user picks. Skip a section entirely if you have nothing meaningful to add — do not pad the list. Never patch the hero section\'s `title` field — it mirrors the event\'s own name (already set elsewhere), not content for you to rewrite or shorten.',
-    '4. Return `enhancements` as an array of {libId, patchJson} where patchJson is that partial patch encoded as a JSON string.'
-  ].join('\n');
+    '4. Return `enhancements` as an array of {libId, patchJson} where patchJson is that partial patch encoded as a JSON string.',
+    reorderable.length > 1
+      ? '5. Section order (optional, applies once — not per design option above): ' + JSON.stringify(reorderable) + ' are this template\'s sections you may resequence; everything else (the hero, Contact/About) is fixed and not listed here. If reading this event\'s actual content suggests a better editorial flow than the template\'s own default order (e.g. a FAQ reading better near the end, an overview before supporting detail), return `sectionOrder` as these same ids in that better order. Vary it meaningfully between events rather than defaulting to the template\'s own listed order every time — but only reorder when it genuinely improves the reading flow for THIS content, and omit `sectionOrder` entirely rather than return a worse or arbitrary order.'
+      : ''
+  ].filter(Boolean).join('\n');
 }
 
 var RESPONSE_SCHEMA_BASE = {
@@ -126,9 +151,14 @@ var RESPONSE_SCHEMA_BASE = {
         },
         required: ['libId', 'patchJson']
       }
+    },
+    sectionOrder: {
+      type: 'ARRAY',
+      description: 'Either empty (the template\'s own order already reads best) or every one of the reorderable section ids, in a better editorial order for this event.',
+      items: { type: 'STRING' }
     }
   },
-  required: ['designs', 'enhancements']
+  required: ['designs', 'enhancements', 'sectionOrder']
 };
 (function () {
   var props = RESPONSE_SCHEMA_BASE.properties.designs.items.properties.design.properties;
@@ -146,6 +176,8 @@ function responseSchemaFor(payload) {
   var schema = JSON.parse(JSON.stringify(RESPONSE_SCHEMA_BASE));
   var libIds = (payload.sections || []).map(function (s) { return s.libId; });
   if (libIds.length) schema.properties.enhancements.items.properties.libId.enum = libIds;
+  var reorderableIds = ((payload.currentTemplate || {}).reorderableSections || []).map(function (s) { return s.id; });
+  if (reorderableIds.length) schema.properties.sectionOrder.items.enum = reorderableIds;
   return schema;
 }
 
@@ -246,7 +278,14 @@ function handleSuggestDesign(req, res) {
 
       if (!designs.length) return sendJson(res, 502, { error: 'Gemini did not return any usable designs.' });
 
-      sendJson(res, 200, { designs: designs, enhancements: enhancements });
+      /* valid only if it's a genuine permutation of the reorderable ids — a partial/garbled list reads as a
+         model mistake, not a deliberate edit, so it's dropped entirely rather than passed on half-formed
+         (the client's loader would defensively patch in anything missing, but better to just not apply it) */
+      var reorderableIds = ((payload.currentTemplate || {}).reorderableSections || []).map(function (s) { return s.id; });
+      var proposedOrder = Array.isArray(parsed.sectionOrder) ? parsed.sectionOrder.filter(function (id) { return reorderableIds.indexOf(id) !== -1; }) : [];
+      var sectionOrder = (reorderableIds.length && proposedOrder.length === reorderableIds.length && new Set(proposedOrder).size === reorderableIds.length) ? proposedOrder : null;
+
+      sendJson(res, 200, { designs: designs, enhancements: enhancements, sectionOrder: sectionOrder });
     });
   });
 }

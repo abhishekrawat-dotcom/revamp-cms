@@ -1,0 +1,21 @@
+/* The live page builds this grid through an AJAX speaker-pagination widget (SpeakerAjaxPagination, grouped into
+   "Previous Edition Speakers" / "Special Appearance" sub-lists) that has no static markup to port — it fetches
+   and renders cards at runtime from the company page's speaker database. Ported here as the same real card
+   markup and classes (dt-13/dtstyle-4, news_lst17, gridPadItem, imgframe, caption) with the AJAX/pagination
+   script dropped, so content.map's speakers.items list can fill it the normal way. Most of the grid/caption
+   styling (.dt-13 img/h5/span, .gridPadItem, .caption) already comes from the shared et-global.css bundle —
+   only this design's own color/weight choices for it are below. */
+#our-speakers{padding-top:60px;margin-top:0px;margin-bottom:0px}
+#our-speakers .imgframe{display:block}
+#our-speakers .dtstyle-default.dt-13 h5,
+#our-speakers.dt-13 h5{color:#fff;text-align:center;font-size:16px;font-style:normal;font-weight:700;line-height:24px;margin-bottom:0px}
+#our-speakers .dtstyle-default.dt-13 span,
+#our-speakers.dt-13 span{color:#fff;text-align:center;font-size:14px;font-style:normal;font-weight:600;line-height:24px}
+#our-speakers .dtstyle-default.dt-13 img,
+#our-speakers.dt-13 img{border-radius:22px}
+#our-speakers .caption h5{color:#fff !important}
+#our-speakers .caption span{color:rgba(200, 200, 200, 1) !important}
+@media screen and (min-width:768px){
+  #our-speakers .dtstyle-default.dt-13 img,
+  #our-speakers.dt-13 img{max-width:88%}
+}

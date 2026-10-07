@@ -302,13 +302,24 @@
     if (!found.length) return;
     if (!items.length) {
       // most lists keep the template's sample cards when the wizard has nothing yet; a rule can opt
-      // out with "empty":"hide" when the section should show truly empty rather than stock content
+      // out with "empty":"hide" when the section should show truly empty rather than stock content.
+      // Hidden via display:none, not .remove() — the live preview re-runs apply() on the SAME mounted
+      // canvas on every keystroke (no remount), so a removed card had nothing left to re-clone from the
+      // moment the user typed a first real item: found/cards would come up empty forever after, even
+      // once items.length was genuinely non-zero again. Keeping the node (just hidden) means it's still
+      // there to find and unhide below.
       if (r.empty === 'hide') {
         var p = found[0].parentNode;
-        found.filter(function (n) { return n.parentNode === p; }).forEach(function (n) { n.remove(); });
+        found.filter(function (n) { return n.parentNode === p; }).forEach(function (n) {
+          n.style.display = 'none';
+          n.setAttribute('data-rv-hidden-empty', '1');
+        });
       }
       return;
     }
+    found.forEach(function (n) {
+      if (n.hasAttribute('data-rv-hidden-empty')) { n.style.display = ''; n.removeAttribute('data-rv-hidden-empty'); }
+    });
     var parent = found[0].parentNode;
     var cards = found.filter(function (n) { return n.parentNode === parent; });
     var models = cards.map(function (n) { return n.cloneNode(true); });

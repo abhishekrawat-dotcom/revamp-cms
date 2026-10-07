@@ -1,0 +1,37 @@
+/* CX Leaders Forum — glimpses, adapted from the live page's .glimpses-carousel-newtheme-style marquee.
+   The live page scrolls this via a CSS keyframe that depends on the track holding every photo twice (so a
+   -50% translateX loops seamlessly) — that only works for a fixed, hand-authored set of tiles, and breaks the
+   moment the editor's list rule clones/removes tiles to match the wizard's real item count (see
+   editor-fill.js's fillList, which needs one unambiguous parent to operate on). Rebuilt as a plain responsive
+   grid instead, so the "glimpses" library's real items genuinely drive what's shown (content.map uses
+   "empty":"hide" — no items yet, no photos show, instead of this event's own stock gallery standing in). */
+#glimpses_event .page_hdng4 {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+#glimpses_event .glimpses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+#glimpses_event .glimpse-tile {
+  display: block;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 373 / 249;
+}
+
+#glimpses_event .glimpse-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  #glimpses_event .glimpses-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

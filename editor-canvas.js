@@ -297,7 +297,7 @@
   }
 
   /* ---------- mounting ---------- */
-  function mount(frame, templateId) {
+  function mount(frame, templateId, opts) {
     var viewport = document.createElement('div');
     viewport.className = 'tpl-viewport';
     var iframe = document.createElement('iframe');
@@ -308,7 +308,8 @@
 
     return RevampTemplates.load(templateId, {
       editing: true,
-      headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>']
+      headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>'],
+      sectionOrder: opts && opts.sectionOrder
     }).then(function (res) {
       return new Promise(function (resolve) {
         iframe.addEventListener('load', function () { resolve(makeCanvas(viewport, iframe, res.template)); }, { once: true });

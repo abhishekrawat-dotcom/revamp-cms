@@ -1,0 +1,160 @@
+/* Retail Leadership Summit theme — copied from the live page <head> (retail.economictimes.indiatimes.com/great-india-retail-summit).
+   1) the event custom CSS block, 2) the rules ET generates from the event design settings, 3) the :root theme colour. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100;200;300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@100;200;300;400;500;600;700;800&display=swap');
+
+section.mb-medium {
+  position: relative;
+}
+
+.page_hdng4 {
+  margin-bottom: 40px;
+}
+
+.page_hdng4 h1, .page_hdng4 h2 {
+  color: var(--body-color, var(--default-color));
+  text-align: center;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 120%;
+  margin-bottom: 0px;
+  font-family: var(--heading-font-family);
+}
+
+clr {
+  color: var(--theme-color);
+}
+
+.page_hdng4 p {
+  color: var(--body-color, var(--default-color));
+  text-align: center;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 160%;
+  padding-top: 14px;
+}
+
+.page_hdng4.text-left, .page_hdng4.text-left h1, .page_hdng4.text-left h2, .page_hdng4.text-left p {
+  text-align: left;
+}
+
+.text-style p {
+  overflow: hidden;
+  color: var(--body-color, var(--default-color));
+  text-align: center;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 160%;
+  margin-bottom: 15px;
+}
+
+a.book-btn {
+  color: #71000A;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 120%;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  padding: 15px 35px;
+  border: 1px solid #FF927A;
+  background: #FF927A;
+  border-radius: 6px;
+  font-family: var(--heading-font-family);
+  display: inline-block;
+}
+
+a.book-btn.btn-outline {
+  background: transparent;
+  color: #FF927A;
+  border: 1px solid #FF927A;
+}
+a.book-btn.btn-outline:hover {
+  color: #71000A;
+  background: #FF927A;
+}
+
+#overview a.read-more {
+  color: var(--body-color, var(--default-color));
+  font-size: 14px;
+  background: none;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  padding: 0px;
+  margin-top: 16px;
+  display: inline-block;
+}
+
+@media screen and (max-width: 767px) {
+  .page_hdng4 { margin-bottom: 25px; }
+  .page_hdng4 h1, .page_hdng4 h2 { font-size: 28px; line-height: 1.2em; }
+  .page_hdng4 p { font-size: 14px; }
+}
+
+@media screen and (min-width: 1200px) {
+  .contacts .footer-content p, #about_us_event .container, .page_hdng4 p { max-width: 800px; margin: auto; }
+}
+
+/**Banner css**/
+#banner {
+  padding: 140px 0px;
+}
+
+#banner .cntnd p {
+  text-align: center;
+  font-family: var(--heading-font-family, var(--body-font-family));
+  font-size: 22px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 140%;
+  color: #fff;
+  margin-bottom: 22px;
+}
+
+#banner .cntnd h3 {
+  text-align: center;
+  font-size: 44px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+}
+
+#banner .cntnd-bx .cntnd .lcn {
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 120%;
+  color: #fff;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  margin-bottom: 32px;
+  gap: 20px;
+}
+
+@media screen and (max-width: 767px) {
+  #banner { padding: 110px 0px; }
+  #banner .cntnd h3 { font-size: 28px; }
+  #banner .cntnd p { font-size: 16px; margin-bottom: 10px; }
+  #banner .cntnd .lcn { margin-bottom: 15px; gap: 10px; font-size: 14px; flex-direction: column; }
+}
+/**Banner css end**/
+
+/* ---- generated from the event design settings ---- */
+body { font-family: Geist, Arial, sans-serif}
+body {background-color: rgba(113, 0, 10, 1);}
+body h1 h2 h3 { font-size: 50px ;}
+body h4 h5 h6 { font-size: 16px ;}
+body p { font-size: 14px ;}
+#header_bg_color header {background-color: rgba(255, 146, 122, 1);}
+#banner_color banner {color: rgba(0, 0, 0, 1);}
+#button_color button {background-color: rgba(255, 146, 122, 1);}
+#button_font button {color: rgba(113, 0, 10, 1);}
+#footer_color footer {background-color: rgba(26, 0, 2, 1);}
+#button_links a {color: rgba(255, 255, 255, 1);}
+
+:root { --theme-color:255, 146, 122}
+:root { --theme-color-hex:#ff927a}

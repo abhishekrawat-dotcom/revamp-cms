@@ -1,0 +1,29 @@
+.contacts.design-style1 .contact-point div.line-1 {
+  font-family: var(--heading-font-family, var(--body-font-family));
+  color: #FF927A;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  text-align: center;
+}
+#contact-us .contact-box {
+  color: #fff;
+  text-align: center;
+}
+#contact-us .contact-box .name {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+#contact-us .contact-box a {
+  color: rgba(255, 255, 255, 0.85);
+}
+.bottom-border {
+  content: " ";
+  display: block;
+  width: 25px;
+  margin: 10px auto 0;
+  height: 4px;
+  background: #FF927A;
+  border-radius: 9px;
+}

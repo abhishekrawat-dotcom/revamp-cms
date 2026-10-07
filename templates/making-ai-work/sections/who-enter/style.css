@@ -1,0 +1,32 @@
+/* scoped #who-enter rules, copied from the live page's own <style> block right after <section id="who-enter"> */
+#who-enter{background:linear-gradient(0deg, #000 0%, #002156 100%), #FFF}
+#who-enter .page_hdng4 p{margin-bottom:16px}
+#who-enter .page_hdng4 p:last-child{margin-bottom:40px}
+#who-enter .page_hdng4 p strong{color:#FFF;font-weight:600}
+
+#who-enter .display-style8 ul.first{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:24px}
+#who-enter .display-style8 li{display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-start;gap:16px;position:relative;padding:24px;transition:all 0.3s ease;border:2px solid #FFF;background:linear-gradient(180deg, #001333 0%, #000 100%)}
+#who-enter .display-style8 li:hover{transform:translateY(-3px)}
+#who-enter .display-style8 li span.attend-ico-box{flex:none}
+#who-enter .display-style8 li p{color:rgba(255, 255, 255, 0.70);font-size:14px;font-style:normal;font-weight:300;line-height:150%}
+#who-enter .display-style8 li h4{color:#FFF;font-family:"Plus Jakarta Sans", sans-serif;font-size:22px;font-style:normal;font-weight:700;line-height:31.925px;letter-spacing:-0.789px;text-transform:uppercase;border-bottom:1px solid #D7D7D7;padding-bottom:16px;width:100%}
+#who-enter .who-enter-txt{margin-bottom:40px}
+#who-enter .who-enter-txt h4{color:#A5A5A5;text-align:center;font-family:"Plus Jakarta Sans", sans-serif;font-size:30px;font-style:normal;font-weight:500;line-height:140%;letter-spacing:-2px}
+
+@media screen and (min-width:1024px){
+  #who-enter .display-style8 li{min-height:76px}
+  #who-enter .who-enter-txt h4{max-width:72%;margin:auto}
+}
+@media screen and (min-width:768px) and (max-width:1023px){
+  #who-enter .display-style8 ul.first{grid-template-columns:repeat(2, minmax(0, 1fr));gap:20px}
+  #who-enter .display-style8 li h4{font-size:22px;line-height:130%}
+}
+@media screen and (max-width:767px){
+  #who-enter .page_hdng4 p{margin-bottom:12px;font-size:15px}
+  #who-enter .page_hdng4 p:last-child{margin-bottom:30px}
+  #who-enter .display-style8 ul.first{grid-template-columns:repeat(1, minmax(0, 1fr));gap:16px}
+  #who-enter .display-style8 li{padding:20px;gap:10px}
+  #who-enter .display-style8 li h4{font-size:18px;letter-spacing:normal;padding-bottom:10px}
+  #who-enter .who-enter-txt{margin-bottom:25px}
+  #who-enter .who-enter-txt h4{font-size:16px;letter-spacing:normal}
+}

@@ -1,0 +1,105 @@
+/* CX Leaders Forum — contact-us, copied from the live page's #contact-us rules (the same shared "contacts
+   style7 design-style1 figma-design-1" component TECH500's own contact-us uses). */
+.contacts .contact-box-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+}
+
+.contacts.design-style1 .contact-point div, .contacts.style7 .contact-point div[class^=col-md-] {
+  margin-bottom: 0px;
+}
+
+.contacts.design-style1 .contact-point div.line-1,
+.contacts.style7 .contact-point div.line-1 {
+  margin-bottom: 20px;
+}
+
+.flex-width-auto .col-md-6 {
+  width: auto;
+  flex: none;
+  max-width: none;
+  padding: 0;
+  float: none;
+}
+
+.contacts .contact-box-wrapper .contact-box {
+  display: flex;
+  padding: 16px;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-radius: 16px;
+  background: rgb(227 224 224);
+  min-width: 308px;
+}
+
+.contacts .contact-box-wrapper .name {
+  display: block;
+  overflow: hidden;
+  color: #333333;
+  text-align: center;
+  text-overflow: ellipsis;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.contacts .contact-box-wrapper .email, .contacts .contact-box-wrapper .phone {
+  display: block;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24px;
+}
+
+.contacts .contact-box-wrapper .email a, .contacts .contact-box-wrapper .phone a {
+  color: #333333;
+  opacity: .75;
+  font-size: 14px;
+}
+
+.flex-width-auto .col-md-12:not(:last-child) {
+  margin-bottom: 30px !important;
+}
+
+.flex-width-auto .col-md-6 {
+  margin-bottom: 30px !important;
+}
+
+#contact-us .footer-content p {
+  color: var(--body-color, var(--default-color));
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+@media screen and (max-width: 767px) {
+  .flex-width-auto .col-md-6, .flex-width-auto .col-md-12 {
+    width: 100%;
+  }
+
+  .contacts .contact-box-wrapper {
+    padding: 0 15px;
+    gap: 10px;
+  }
+
+  .contacts .contact-box-wrapper .contact-box {
+    width: 100%;
+  }
+
+  .contacts .row.flex-width-auto {
+    display: block !important;
+  }
+}
+
+@media screen and (min-width: 1200px) {
+  #contact-us .footer-content p {
+    max-width: 800px;
+    margin: auto;
+  }
+}

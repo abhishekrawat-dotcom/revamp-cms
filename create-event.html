@@ -1241,6 +1241,17 @@
   .design-choice-alt a{ color: var(--accent-strong); text-decoration:underline; }
   .design-choice-alt .sep{ margin:0 8px; }
 
+  /* vibe-chip intake (step 2's "Let AI design it" card) — a single-select set of real design directions,
+     giving Gemini clean structured signal instead of relying only on free text */
+  .vibe-chips{ display:flex; flex-wrap:wrap; gap:7px; }
+  .vibe-chip{
+    font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:100px;
+    border:1.5px solid var(--border); background: var(--surface); color: var(--text-muted); cursor:pointer;
+    transition: border-color .12s ease, background .12s ease, color .12s ease;
+  }
+  .vibe-chip:hover{ border-color: var(--text-faint); }
+  .vibe-chip[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+
   /* AI design-variation cards (step2-ai) — picking one updates S.aiDesign and applies live to the mounted real-template preview canvas */
   .ai-design-list{ display:flex; flex-direction:column; gap:10px; }
   .ai-design-card{
@@ -1647,6 +1658,15 @@
             </span>
             <h3>Let AI design it</h3>
             <p>Gemini reviews what you’ve written and recommends the best-fit template, with a few content polish suggestions you can accept or skip.</p>
+            <div class="field" style="margin:4px 0 2px;">
+              <span class="flabel" style="font-size:12px;font-weight:700;color:var(--muted);">Vibe <span style="font-weight:400;">(optional)</span></span>
+              <div class="vibe-chips" id="vibe-chips" role="group" aria-label="Preferred design vibe"></div>
+            </div>
+            <div class="field" style="margin:10px 0 12px;">
+              <label for="e-theme-pref" style="font-size:12px;font-weight:700;color:var(--muted);">Anything else? <span style="font-weight:400;">(optional)</span></label>
+              <input class="inp" id="e-theme-pref" type="text" maxlength="200" placeholder="e.g. deep navy and gold, our brand colour is #1F4FD8">
+              <p class="hint" style="margin-top:4px;">Leave both blank and we’ll still give the site its own distinct look — never just the template’s default colours.</p>
+            </div>
             <button class="btn btn-primary" type="button" id="btn-ai-design">Design with AI</button>
           </div>
           <div class="design-choice-card">
@@ -1806,10 +1826,14 @@
     { id:'partners',  name:'Partner logos',          shape:'logos',   toggle:true, helper:'Sponsor and partner logos, grouped by tier.' },
     { id:'about',     name:'Overview',               shape:'rich',    limit:900, core:true, helper:'The overview paragraph with a Read More. Keep it to the point — AI can trim it for you.' },
     { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.' },
+    { id:'factoids',  name:'Factoids',               shape:'cards',   toggle:true, helper:'A scrolling strip of market stats and quick facts that make the case for your industry — headline and a line of context each.' },
     { id:'awaits',    name:'What awaits',            shape:'cards',   helper:'Conference / Awards / Studios mini blocks. Icon, title and a line of copy each.' },
     { id:'verticals', name:'Industry verticals band', shape:'heading', helper:'A full-width heading that breaks the page and names the industries in play.' },
     { id:'priorities',name:'Key Discussion Points',  shape:'columns', core:true, helper:'Three themed columns — the discussion points that guide conversations at your event.' },
+    { id:'keyquestions',name:'Questions this raises', shape:'columns', toggle:true, helper:'The hard questions your theme raises for the enterprise — each with a one-line answer or framing.' },
+    { id:'tracks',    name:'Named tracks',           shape:'chips',   toggle:true, helper:'Named mega-tracks or co-located conventions running alongside the main stage — icon, title and a short line each.' },
     { id:'industries',name:'Industries in the room', shape:'chips',   toggle:true, helper:'The industry sectors represented in the room — short names, shown as a grid of chips.' },
+    { id:'exhibitors',name:'Who should exhibit',     shape:'chips',   toggle:true, helper:'The exhibitor categories this event is built for — each with a line on what they would showcase.' },
     { id:'faq',       name:'FAQs',                   shape:'columns', toggle:true, helper:'Common questions delegates ask, each with a short answer.' },
     { id:'speakers',  name:'Speakers',               shape:'people',  toggle:true, helper:'Speaker cards with photo, name, role and company. An All Speakers link is added automatically.' },
     { id:'agenda',    name:'Agenda',                 shape:'agenda',  toggle:true, helper:'Pulled in from a previous edition — turn this on, then bring in a past edition to load its schedule. There is no manual agenda entry.' },
@@ -1830,9 +1854,18 @@
       sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.',
       site:'tech500',   // opens in the site editor as the real ET site (templates/tech500), filled with this content
       sections:['nav','hero','stats','priorities','about','whyjoin','attend','industries','faq','contact','footer'] },
+    { id:'retail-leadership-summit', name:'Retail Leadership Summit', tag:'IP event', cat:'IP', img:'template-previews/retail-leadership-summit-mini.jpg', imgFull:'template-previews/retail-leadership-summit-full.jpg',
+      sub:'Retail CXOs and mall developers under one roof — named tracks, market factoids and an exhibitor-ready expo floor.',
+      site:'retail-leadership-summit',   // opens in the site editor as the real ET site (templates/retail-leadership-summit), filled with this content
+      sections:['nav','hero','awaits','stats','about','priorities','partners','tracks','whyjoin','factoids','exhibitors','attend','glimpses','faq','contact','footer'] },
+    { id:'cx-leaders-forum', name:'CX Leaders Forum', tag:'IP event', cat:'IP', img:'template-previews/cx-leaders-forum-mini.jpg', imgFull:'template-previews/cx-leaders-forum-full.jpg',
+      sub:'CMO and CX-leadership gathering — discussion themes, speaker voices and a residential-summit stats strip.',
+      site:'cx-leaders-forum',   // opens in the site editor as the real ET site (templates/cx-leaders-forum), filled with this content
+      sections:['nav','hero','stats','about','awaits','priorities','attend','speakers','insights','glimpses','faq','contact','footer'] },
     { id:'making-ai-work', name:'Making AI Work', tag:'IP event', cat:'IP', img:'template-previews/making-ai-work-mini.jpg', imgFull:'template-previews/making-ai-work-full.jpg',
       sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.',
-      sections:['nav','hero','partners','speakers','priorities','awaits','contact','footer'] },
+      site:'making-ai-work',   // opens in the site editor as the real ET site (templates/making-ai-work), filled with this content
+      sections:['nav','hero','about','keyquestions','priorities','speakers','whyjoin','attend','glimpses','contact','footer'] },
     { id:'workplace-2035', name:'Workplace 2035', tag:'IP event', cat:'IP', img:'template-previews/workplace-2035-mini.jpg', imgFull:'template-previews/workplace-2035-full.jpg',
       sub:'The future of the intelligent enterprise — stats, partners, speakers and a two-track agenda.',
       sections:['nav','hero','stats','partners','about','priorities','speakers','contact','footer'] },
@@ -1889,6 +1922,22 @@
       quoteBg:'#141414', quoteText:'#fff',
       footBg:'#121212', footText:'#b8adad', footLogo:'#fff',
       displayFont:"'Poppins', sans-serif", displayWeight:800, displayCase:'uppercase', displayTracking:'-0.01em'
+    },
+    'retail-leadership-summit': {
+      heroStyle:'banner', accent:'#FF927A', accentSoft:'#FBDED6',
+      heroBg:'linear-gradient(150deg,#1a0002 0%,#470103 55%,#71000A 100%)', heroText:'#fff', heroMuted:'rgba(255,255,255,.78)',
+      bandBg:'#FBF1EC', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+      quoteBg:'#470103', quoteText:'#fff',
+      footBg:'#1a0002', footText:'#dcb3ab', footLogo:'#fff',
+      displayFont:"'Playfair Display', serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    'cx-leaders-forum': {
+      heroStyle:'banner', accent:'#DE3D61', accentSoft:'#FBD9E1',
+      heroBg:'linear-gradient(160deg,#071912 0%,#0d2b20 55%,#16412f 100%)', heroText:'#fff', heroMuted:'rgba(255,255,255,.78)',
+      bandBg:'#FFF0E6', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+      quoteBg:'#071912', quoteText:'#fff',
+      footBg:'#071912', footText:'#b9c9c0', footLogo:'#fff',
+      displayFont:"'SangBleu Versailles', Georgia, serif", displayWeight:700, displayCase:'uppercase', displayTracking:'-0.01em'
     },
     'making-ai-work': {
       heroStyle:'banner', accent:'#3B82F6', accentSoft:'#DCE8FE',
@@ -2031,7 +2080,7 @@
       case 'benefits': return { body:'', items:[] };
       case 'chips': return { items:[] };
       case 'quotes': return { items:[] };
-      case 'gallery': return { count:0 };
+      case 'gallery': return { count:0, items:[] };
       case 'agenda': return { items:[] };
       case 'contacts': return { blocks:[
           { t:'Speaking opportunities', people:[{ n:'', e:'', p:'' }] },
@@ -2164,6 +2213,9 @@
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content" — required before Speakers/Agenda/Sponsors/Glimpses can be switched on
     aiDesign: null,              // a chosen "Let AI design it" redesign — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
+    designIntake: { vibe: '', notes: '' },   // structured step-2 design intake (closer to how Wix ADI's intake works) — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers both an explicit "Design with AI" request and the silent auto-personalize fallback (see autoPersonalizeDesign())
+    sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
+    priorDesigns: [],            // every design name+colours/fonts shown by "Design with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
     assembled: false            // step 4 finished and the draft was handed to the site editor
   };
 
@@ -3015,6 +3067,10 @@
      canvas — instant, no reload — and also sets S.aiDesign + save() so the choice persists through the
      wizard and into the hand-off (see buildEditorPayload/openInEditor). */
   var AI_STATUS_LINES = ['Reading your content…', 'Sketching a few fresh looks…', 'Checking colour contrast…', 'Almost there…'];
+  /* structured design intake, single-select — closer to Wix ADI's own style/goal questions than one free-text
+     box alone. Short on purpose (Wix's own intake is a handful of questions, not a long form); "notes" below
+     stays for anything a fixed chip can't capture (a specific brand colour, a reference site, etc.). */
+  var VIBE_OPTIONS = ['Bold & energetic', 'Minimal & elegant', 'Warm & editorial', 'Corporate & formal', 'Dark & dramatic', 'Playful & modern'];
 
   function requestAiDesign(){
     var ported = templatesForCategory().filter(function(t){ return t.site; });
@@ -3022,6 +3078,7 @@
     var currentIsPorted = S.template && ported.some(function(t){ return t.id === S.template; });
     var baselineId = currentIsPorted ? S.template : ported[0].id;
     selectTemplate(baselineId);   /* additive/no-op if already set — see applyTemplate(); guarantees a real mounted template to redesign */
+    var priorSectionOrder = S.sectionOrder;   // captured before this request can possibly change it — see renderAiReview()'s Cancel
 
     showStep2View('ai');
     var host = $('step2-ai');
@@ -3047,7 +3104,9 @@
       var payload = {
         event: { name: S.basics.name, category: S.basics.category, dateLabel: eventDateLabel(S.basics), location: locLabel(S.basics, true) },
         sections: S.sections,
-        currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {} }
+        currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
+        designIntake: S.designIntake,
+        priorDesigns: S.priorDesigns
       };
 
       return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -3059,7 +3118,14 @@
             showStep2View('landing');
             return;
           }
-          renderAiReview(r.body, canvas);
+          recordPriorDesigns(r.body.designs);
+          /* a reorder needs a fresh mount (see ensureGen2Canvas's comment) — applies once, independent of
+             which design card the user ends up picking in renderAiReview() */
+          if (r.body.sectionOrder){
+            S.sectionOrder = fullSectionOrder(canvas, r.body.sectionOrder);
+            return ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(freshCanvas){ renderAiReview(r.body, freshCanvas, priorSectionOrder); });
+          }
+          renderAiReview(r.body, canvas, priorSectionOrder);
         });
     }).catch(function(err){
       clearInterval(statusTimer);
@@ -3068,7 +3134,7 @@
     });
   }
 
-  function renderAiReview(result, canvas){
+  function renderAiReview(result, canvas, priorSectionOrder){
     var priorDesignSnapshot = snapshotDesign(canvas);
     var priorAiDesign = S.aiDesign;
     var priorSections = JSON.parse(JSON.stringify(S.sections));
@@ -3130,7 +3196,14 @@
     $('btn-ai-cancel').onclick = function(){
       S.aiDesign = priorAiDesign;
       S.sections = priorSections;
-      restoreDesign(canvas, priorDesignSnapshot);
+      var reorderChanged = JSON.stringify(S.sectionOrder) !== JSON.stringify(priorSectionOrder);
+      S.sectionOrder = priorSectionOrder;
+      if (reorderChanged){
+        var tpl = null; TEMPLATES.forEach(function(t){ if (t.id === S.template) tpl = t; });
+        if (tpl) ensureGen2Canvas(tpl).then(fillGen2Canvas);   // remount back to the order from before this request
+      } else {
+        restoreDesign(canvas, priorDesignSnapshot);
+      }
       save();
       var contentHost = $('step1-build-host'); if (contentHost) renderBuildWorkspace(contentHost);
       showStep2View('landing');
@@ -3160,6 +3233,64 @@
       sec.done = true;
       sec.source = 'ai';
     });
+  }
+
+  /* Called right before a template-A draft leaves step 2 (onNext() and confirmUseTemplate()) when the user
+     never clicked "Design with AI" themselves. Without this, every event in a category rendered with the
+     real template's own fixed stock colours/fonts — fine for one event, but every event in that category
+     then looked visually identical, which read as "cached"/"cloned" rather than a builder making something
+     new each time. Resolves once a design is applied (or once it's given up trying) — it never rejects, so
+     a slow/unavailable AI call can't block the user from finishing their site; the template's own default
+     look is still a reasonable result, just not the personalized one this aims for. */
+  function autoPersonalizeDesign(){
+    if (S.path !== 'A') return Promise.resolve();              // "bring your own design" has no real template to redesign
+    if (S.aiDesign) return Promise.resolve();                 // the user already chose a look explicitly
+    var ported = templatesForCategory().filter(function(t){ return t.site; });
+    if (!ported.length) return Promise.resolve();               // Gen-1 only — nothing to vary yet
+    var currentIsPorted = S.template && ported.some(function(t){ return t.id === S.template; });
+    /* this used to fall back to ported[0] when the current pick wasn't real — harmless back when every
+       category had at most one real template (ported[0] was always the same template pickCategory() had
+       already defaulted to), but with several real templates now sharing a category, that fallback would
+       silently swap a user's own explicit pick (e.g. they chose "SURGE" in the manual gallery) for some
+       unrelated real template just because one happened to exist. Only ever personalize the template the
+       user is actually on; otherwise leave their Gen-1 pick alone. */
+    if (!currentIsPorted) return Promise.resolve();
+    var baselineId = S.template;
+    var tplMeta = null; TEMPLATES.forEach(function(t){ if (t.id === baselineId) tplMeta = t; });
+
+    return ensureGen2Canvas(tplMeta).then(function(canvas){
+      return fillGen2Canvas(canvas).then(function(canvas){
+        var payload = {
+          event: { name: S.basics.name, category: S.basics.category, dateLabel: eventDateLabel(S.basics), location: locLabel(S.basics, true) },
+          sections: S.sections,
+          currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
+          designIntake: S.designIntake,
+          priorDesigns: S.priorDesigns
+        };
+        return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+          .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
+          .then(function(r){
+            if (!r.ok || !r.body || !r.body.designs || !r.body.designs.length) return;   // keep the template's own default look rather than block
+            recordPriorDesigns(r.body.designs);
+            /* a random pick among Gemini's own 2-3 options (not always [0]) so two similar events
+               silently personalized back-to-back don't land on the same look every time */
+            var pick = r.body.designs[Math.floor(Math.random() * r.body.designs.length)];
+            S.aiDesign = pick.design;
+            if (r.body.sectionOrder){
+              /* a reorder needs a fresh mount (see ensureGen2Canvas's comment) */
+              S.sectionOrder = fullSectionOrder(canvas, r.body.sectionOrder);
+              return ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(freshCanvas){
+                applyAiDesignToCanvas(freshCanvas, S.aiDesign);
+                applyAiEnhancements(r.body.enhancements);
+                save();
+              });
+            }
+            applyAiDesignToCanvas(canvas, S.aiDesign);
+            applyAiEnhancements(r.body.enhancements);
+            save();
+          });
+      });
+    }).catch(function(){ /* same fallback: the template's default look, not a blocked wizard */ });
   }
 
   /* ---------- clone design from a previous (completed) edition on this portal ---------- */
@@ -3281,6 +3412,25 @@
         if (aiCopy) aiCopy.textContent = 'Not available for this event type yet — only templates with a finished real design can be AI-redesigned. Pick a template manually, or reuse a previous edition’s layout.';
       }
     }
+    var vibeHost = $('vibe-chips');
+    if (vibeHost){
+      vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
+        return '<button type="button" class="vibe-chip" data-vibe="' + esc(v) + '" aria-pressed="' + (S.designIntake.vibe === v) + '">' + esc(v) + '</button>';
+      }).join('');
+      vibeHost.querySelectorAll('[data-vibe]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var v = b.getAttribute('data-vibe');
+          S.designIntake.vibe = (S.designIntake.vibe === v) ? '' : v;   // click again to deselect
+          save();
+          vibeHost.querySelectorAll('[data-vibe]').forEach(function(c){ c.setAttribute('aria-pressed', c.getAttribute('data-vibe') === S.designIntake.vibe); });
+        });
+      });
+    }
+    var themePrefInput = $('e-theme-pref');
+    if (themePrefInput){
+      themePrefInput.value = S.designIntake.notes || '';
+      themePrefInput.oninput = function(){ S.designIntake.notes = themePrefInput.value; save(); };
+    }
   }
 
   function confirmSwitch(next, after){
@@ -3386,8 +3536,8 @@
     var tpl = null;
     TEMPLATES.forEach(function(t){ if (t.id === tplId) tpl = t; });
     if (!tpl) return;
-    /* a design chosen for a different template means nothing against this one's DOM/design knobs */
-    if (S.template !== tplId) S.aiDesign = null;
+    /* a design/section-order chosen for a different template means nothing against this one's DOM/design knobs */
+    if (S.template !== tplId){ S.aiDesign = null; S.sectionOrder = null; S.priorDesigns = []; }
     S.template = tplId;
     S.templateExcluded = skip || {};
     /* additive: content already filled in step 1 (seedSections()) is kept — a template only decides which
@@ -3836,9 +3986,15 @@
     { key: 'media',      label: 'Image or video', icon: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5l4.5 2.5-4.5 2.5z"/>' },
     { key: 'cta',        label: 'Button',         icon: '<rect x="3" y="8" width="18" height="8" rx="4"/>' }
   ];
-  var INTRO_PINNED = { about: ['body'], priorities: ['subheading'], whyjoin: ['subheading'], attend: ['subheading'] };
-  // Key Discussion Points, Why join us, Who should attend: one layout — the pinned sub heading, then item cards; no chips
-  var INTRO_NO_ADD = { priorities: 1, whyjoin: 1, attend: 1 };
+  /* Key Discussion Points / Why join us / Who should attend used to pin only their sub heading, leaving no
+     way to set a heading or intro paragraph at all — fine for create-event.html's own generic rendering
+     (edHead() always had a fallback heading), but TECH500's real template (why-now/why-attend/power-chain)
+     has a dedicated, always-visible heading + paragraph slot for each of these, so with nothing to fill them
+     from, that slot stayed TECH500's own stock pitch copy on every single event, with no way to change it.
+     Pinning heading/body (+ cta for whyjoin, whose real section has a button) makes them always-editable,
+     matching what the real template's content.map already expects to receive. */
+  var INTRO_PINNED = { about: ['body'], priorities: ['subheading', 'heading', 'body'], whyjoin: ['subheading', 'heading', 'body', 'cta'], attend: ['subheading', 'heading', 'body'] };
+  var INTRO_NO_ADD = {};
   var INTRO_OFF = { auto: 1, hero: 1, line: 1, heading: 1, custom: 1 };           // shapes that are their own text
   var INTRO_OFF_LIB = { stats: 1, contact: 1 };                                               // sections that keep only their own fields
   function hasIntro(s){ return !INTRO_OFF[s.shape] && !INTRO_OFF_LIB[s.libId]; }
@@ -4022,7 +4178,11 @@
     /* libId-specific overrides: itemsHTML checks these first, since a few library sections share a
        generic shape (chips/columns) with a different library item but need their own copy, not that item's */
     industries: { list: 'Industries',        noun: 'industry', add: 'Add an industry',        t: 'Industry, e.g. BFSI', d: 'Optional — a short line on this sector' },
-    faq:        { list: 'Questions',         noun: 'question', add: 'Add a question',         t: 'Question delegates ask', d: 'The answer' }
+    faq:        { list: 'Questions',         noun: 'question', add: 'Add a question',         t: 'Question delegates ask', d: 'The answer' },
+    keyquestions: { list: 'Questions',       noun: 'question', add: 'Add a question',         t: 'Question heading, e.g. Decision Rights', d: 'What this raises for the enterprise…' },
+    tracks:     { list: 'Tracks',            noun: 'track',     add: 'Add a track',            t: 'Track name, e.g. ShopperTech Symposium', d: 'A short line on what it covers…' },
+    exhibitors: { list: 'Exhibitor categories', noun: 'category', add: 'Add an exhibitor category', t: 'Category, e.g. Retail Tech Solutions', d: 'What this kind of exhibitor would showcase…' },
+    factoids:   { list: 'Factoids',          noun: 'factoid',   add: 'Add a factoid',          t: 'Stat or headline, e.g. ₹82 Trillion Market Power', d: 'A line of context on this data point…' }
   };
   /* Contact us: each category holds people[]; a draft from before held one person per category (t, n, e, p) */
   function normContacts(d){
@@ -5384,16 +5544,15 @@
           '<button class="add-row" id="rep-add">' + IC.plus + ' Add a testimonial</button>';
 
       case 'gallery':
-        var n = d.count || 0;
-        var tiles = '';
-        for (var g = 0; g < n; g++){
-          tiles += '<div class="tile"><button class="del" data-gdel="' + g + '" title="Remove">&times;</button>' +
+        var gItems = d.items || [];
+        var tiles = gItems.map(function(it, g){
+          return '<div class="tile"><button class="del" data-gdel="' + g + '" title="Remove">&times;</button>' +
                    '<span class="ph">' + IC.img + '</span>' +
-                   '<span class="faint mono" style="font-size:10.5px;text-align:center">glimpse-' + (g+1) + '.jpg</span></div>';
-        }
+                   '<input class="inp" data-gi="' + g + '" value="' + esc(it.url || '') + '" placeholder="Image URL"></div>';
+        }).join('');
         return '<div class="tile-grid">' + tiles +
-          '<button class="tile-add" id="g-add">' + IC.plus + '<span>Add photos</span></button></div>' +
-          '<p class="hint">' + n + ' images &middot; six to twelve reads best on mobile.</p>';
+          '<button class="tile-add" id="g-add">' + IC.plus + '<span>Add photo</span></button></div>' +
+          '<p class="hint">' + gItems.length + ' images &middot; six to twelve reads best on mobile. Paste a direct image URL for each.</p>';
 
       case 'agenda':
         var aItems = d.items || [];
@@ -5958,14 +6117,26 @@
 
     /* gallery */
     if (s.shape === 'gallery'){
+      d.items = d.items || [];
       on('g-add','click', function(){
-        d.count = (d.count || 0) + 4;
-        markDone(s, true); save(); renderEditor();
-        toast('4 photos added (mocked upload)');
+        d.items.push({ url:'' });
+        d.count = d.items.length;
+        save(); renderEditor();
+      });
+      body.querySelectorAll('[data-gi]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-gi');
+          d.items[i] = d.items[i] || {};
+          d.items[i].url = el.value;
+          markDone(s, d.items.some(function(it){ return String(it.url||'').trim(); }));
+          save();
+        });
       });
       body.querySelectorAll('[data-gdel]').forEach(function(b){
         b.addEventListener('click', function(){
-          d.count = Math.max(0, (d.count||0) - 1);
+          d.items.splice(+b.getAttribute('data-gdel'), 1);
+          d.count = d.items.length;
+          markDone(s, d.items.some(function(it){ return String(it.url||'').trim(); }));
           save(); renderEditor();
         });
       });
@@ -6789,8 +6960,17 @@
         return edHasText(d) ? edSection(d, 's-cards-sec', edHead(d, '', label), '') + quotes : quotes;
 
       case 'gallery':
+        /* real photo URLs (d.items) now exist alongside the legacy d.count — show the actual image where one
+           was pasted, falling back to an empty placeholder tile only for a slot with no URL yet */
+        var gItemsPreview = d.items || [];
+        var galleryCount = gItemsPreview.length || (d.count != null ? d.count : 0);
         var tiles = '';
-        for (var gi = 0; gi < (d.count != null ? d.count : 0); gi++) tiles += '<div class="gi" data-editable="image"></div>';
+        for (var gi = 0; gi < galleryCount; gi++){
+          var gUrl = (gItemsPreview[gi] || {}).url;
+          tiles += gUrl
+            ? '<div class="gi" data-editable="image"><img src="' + esc(gUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.closest(\'.gi\').classList.add(\'bad\');this.remove()"></div>'
+            : '<div class="gi" data-editable="image"></div>';
+        }
         return edSection(d, 's-gallery', edHead(d, 'A look back', label),
           '<div class="s-gal-grid" style="margin-top:22px">' + tiles + '</div>', 'padding-top:44px');
 
@@ -6845,6 +7025,7 @@
       excluded: tpl ? tpl.sections.filter(function(id){ return !S.sections.some(function(s){ return s.libId === id && s.include; }); }) : [],
       theme: currentTheme(),
       aiDesign: S.aiDesign || null,     // a chosen real-template AI redesign (canvas.design field values); null for the Gen-1 path
+      sectionOrder: S.sectionOrder || null,   // a chosen section sequence (see autoPersonalizeDesign()); null for the Gen-1 path or the template's own default order
       sections: sections
     };
   }
@@ -6858,7 +7039,7 @@
      RevampFill.apply() against the already-mounted canvas, which patches the live DOM in place and never
      touches iframe.srcdoc — so there's no reload and no scroll-reset for a ported template, unlike the Gen-1
      srcdoc path below (which stays exactly as it is for every template with no real port). */
-  var gen2Canvas = null, gen2TemplateId = null, gen2Mounting = null, gen2Logo = null;
+  var gen2Canvas = null, gen2TemplateId = null, gen2Mounting = null, gen2Logo = null, gen2SectionOrderKey = null;
   function portedTemplate(){
     var tpl = TEMPLATES.filter(function(t){ return t.id === S.template; })[0];
     return (tpl && tpl.site) ? tpl : null;
@@ -6902,13 +7083,18 @@
   }
   /* mounts the real template once per template id; a later call for the same id reuses the live canvas */
   function ensureGen2Canvas(tpl){
-    if (gen2TemplateId === tpl.site && (gen2Canvas || gen2Mounting)) return gen2Mounting;
+    /* a section-order change (see autoPersonalizeDesign()/requestAiDesign()) needs a fresh mount — reordering
+       is baked into the iframe's DOM at load time, so RevampFill.apply() patching an already-mounted canvas
+       in place can't move sections around after the fact, only fill text/attrs into whatever is already there. */
+    var orderKey = JSON.stringify(S.sectionOrder || null);
+    if (gen2TemplateId === tpl.site && gen2SectionOrderKey === orderKey && (gen2Canvas || gen2Mounting)) return gen2Mounting;
     var container = $('live-preview-canvas');
     if (!container) return Promise.reject(new Error('no preview container'));
     gen2TemplateId = tpl.site;
+    gen2SectionOrderKey = orderKey;
     gen2Canvas = null;
     container.innerHTML = '';
-    gen2Mounting = RevampCanvas.mount(container, tpl.site).then(function(canvas){
+    gen2Mounting = RevampCanvas.mount(container, tpl.site, { sectionOrder: S.sectionOrder }).then(function(canvas){
       gen2Canvas = canvas;
       return canvas;
     });
@@ -6926,6 +7112,34 @@
       if (S.aiDesign) applyAiDesignToCanvas(canvas, S.aiDesign);
       return canvas;
     });
+  }
+  /* the template's own sections minus whatever its layout.pinStart/pinEnd pins in place (the hero always
+     opens, Contact/About always close) — the only ones an AI-proposed sectionOrder may ever resequence. */
+  function reorderableSectionsFor(canvas){
+    var layout = canvas.template.layout || {};
+    var pinned = {};
+    (layout.pinStart || []).concat(layout.pinEnd || []).forEach(function(id){ pinned[id] = true; });
+    return canvas.template.sections.filter(function(s){ return !pinned[s.id]; }).map(function(s){ return { id: s.id, name: s.name }; });
+  }
+  /* the server only ever returns the reorderable middle (see reorderableSectionsFor) — pinStart/pinEnd have
+     to be stitched back on at their fixed ends here, or template-loader.js's reorderSections() would treat
+     them as "left over" and append them wherever the partial list happens to end, not pin them in place. */
+  function fullSectionOrder(canvas, middleOrder){
+    var layout = canvas.template.layout || {};
+    return (layout.pinStart || []).concat(middleOrder).concat(layout.pinEnd || []);
+  }
+  /* tracks every design "Design with AI" has shown this session (both the explicit button and the silent
+     auto-personalize fallback) — sent back on the next request (see requestAiDesign()/autoPersonalizeDesign())
+     so Gemini proposes genuinely different directions on a repeat call instead of near-repeats. Capped so the
+     prompt doesn't grow unbounded across many regenerate clicks. */
+  var PRIOR_DESIGNS_MAX = 6;
+  function recordPriorDesigns(designs){
+    (designs || []).forEach(function(d){
+      if (!d || !d.design) return;
+      S.priorDesigns.push({ name: d.name, themeColor: d.design.themeColor, headingFont: d.design.headingFont, bodyFont: d.design.bodyFont });
+    });
+    if (S.priorDesigns.length > PRIOR_DESIGNS_MAX) S.priorDesigns = S.priorDesigns.slice(-PRIOR_DESIGNS_MAX);
+    save();
   }
   function updateGen2Preview(tpl){
     ensureGen2Canvas(tpl).then(function(canvas){
@@ -7102,6 +7316,7 @@
      STEP 4 - AI ASSEMBLE
   ========================================================= */
   var ASSEMBLE_PHASES = [
+    { t:'Personalizing your design',         ms:900, async:true },   // real work: see run()'s special-case below
     { t:'Reshaping content to fit sections', ms:1300 },
     { t:'Mapping to pre-built components',   ms:1500 },
     { t:'Building the menu from sections',   ms:1000 },
@@ -7145,12 +7360,22 @@
       requestAnimationFrame(function(){ row.querySelector('.bar i').style.width = '100%'; });
       var note = $('asm-note');
       if (note) note.textContent = ASSEMBLE_PHASES[i].t + '…';
-      setTimeout(function(){
+      var advance = function(){
         row.classList.remove('active');
         row.classList.add('done');
         i++;
         run();
-      }, ASSEMBLE_PHASES[i].ms);
+      };
+      /* only this phase does real async work (autoPersonalizeDesign — silent "ask first, auto-vary if
+         skipped" fallback) rather than just a timed animation; a floor keeps it from flashing past if the
+         AI call happens to resolve immediately, but it's free to run longer if Gemini is slow — this step
+         was already the "your site is being built, hang on" moment, so that's the right place for it. */
+      if (ASSEMBLE_PHASES[i].async){
+        var floor = new Promise(function(res){ setTimeout(res, ASSEMBLE_PHASES[i].ms); });
+        Promise.all([autoPersonalizeDesign(), floor]).then(advance);
+      } else {
+        setTimeout(advance, ASSEMBLE_PHASES[i].ms);
+      }
     }
     setTimeout(run, 300);
   }

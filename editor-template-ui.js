@@ -37,7 +37,15 @@
     host = hostApi; templateId = tplId; frame = frameEl;
     var k = resolveKey(tplId); eventId = k.eventId; storeKey = k.storeKey;
 
-    return RevampCanvas.mount(frame, templateId).then(function (c) {
+    /* a section order chosen in Create Event (create-event.html's S.sectionOrder — see
+       autoPersonalizeDesign()/requestAiDesign()) has to be known BEFORE mount(), since reordering is baked
+       into the iframe's DOM at load time, not something RevampFill.apply() can do to an already-mounted
+       canvas afterward. Reading the handoff draft here (rather than only later, in resolveInitialContent())
+       means it's read twice on a fresh "from=create" open — cheap (one localStorage.getItem), and simpler
+       than threading it through as a boot() parameter. */
+    var earlyDraft = new URLSearchParams(location.search).get('from') === 'create' ? readHandoffDraft() : null;
+
+    return RevampCanvas.mount(frame, templateId, { sectionOrder: earlyDraft && earlyDraft.sectionOrder }).then(function (c) {
       canvas = c;
       return resolveInitialContent();
     }).then(function () {

@@ -1,0 +1,66 @@
+/* CX Annual Symposium — banner, copied from the live page's own #banner rules (brandequity.economictimes.indiatimes.com/cx-annual-symposium).
+   Same book-btn / icn-box pattern as TECH500's banner (shared ET classes), just this event's own colours and copy. */
+#banner {
+  overflow: hidden;
+  padding: 110px 0px;
+}
+
+#banner .cntnd,
+#banner .cntnd .lcn {
+  text-align: center;
+}
+
+#banner .cntnd .lcn {
+  font-variant-numeric: lining-nums proportional-nums;
+  font-style: normal;
+  line-height: 24px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 35px;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+#banner .cntnd .lcn .icn-box {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  color: #fff;
+}
+
+#banner .cntnd .lcn .bi {
+  color: #fff !important;
+}
+
+#banner .cntnd img.logo {
+  max-width: 420px;
+}
+
+#banner h3.hidden,
+#banner p.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@media screen and (max-width: 767px) {
+  #banner {
+    padding: 90px 0px;
+  }
+
+  #banner .cntnd img.logo {
+    margin: 0 auto 20px;
+    max-width: 70%;
+  }
+
+  #banner .cntnd .lcn {
+    flex-direction: column;
+    gap: 10px;
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+}

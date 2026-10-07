@@ -144,6 +144,12 @@
     ]
   },
 
+  "layout": {
+    "notes": "Which sections an event's own narrative order can touch. pinStart/pinEnd never move — the hero always opens the page and Contact/About-publisher always close it, matching every real ET microsite. Everything else is free for RevampCanvas.mount()'s sectionOrder option to resequence (see create-event.html's autoPersonalizeDesign() and requestAiDesign() — Gemini proposes a coherent order, not a blind shuffle) so two TECH500 events don't read as the identical page with different words.",
+    "pinStart": ["banner"],
+    "pinEnd": ["contact-us", "about-us"]
+  },
+
   "sectionsNotes": "repeat =the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. toggle = items that open on click (an accordion): item, the class that opens it, and the element whose aria-expanded follows; the editor opens one when something inside it is clicked, so its hidden part can be edited.",
   "sections": [
     { "id": "banner",              "name": "Banner",                         "etId": null,     "script": true },

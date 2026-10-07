@@ -1,0 +1,109 @@
+/* CX Annual Symposium — the CX Investment Stack, copied from the live page's #pillars rules.
+   Mapped to the wizard's "priorities" (Key Discussion Points) — each card's own real feature-list bullets
+   (Customer Data, Analytics, …) aren't wizard-editable (the wizard's per-item "points" field can't safely
+   replace them without doubling up — see editor-fill.js's fillBullets, which appends rather than replaces),
+   so only each card's title ({t}) is wired; the feature lists stay as this design's own real taxonomy. */
+#pillars {
+  padding-bottom: 0px !important;
+}
+
+#pillars .cards-container {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 50px;
+}
+
+#pillars .cards-container > div[class*="col-"] {
+  display: flex;
+  margin-bottom: 30px;
+}
+
+#pillars .stack-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 40px 30px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid #eaeaea;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+#pillars .stack-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+}
+
+#pillars .stack-card .top-dash {
+  width: 30px;
+  height: 2px;
+  background-color: #dddddd;
+  margin-bottom: 24px;
+}
+
+#pillars .stack-card .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+#pillars .stack-card .card-head .num-badge {
+  width: 36px;
+  height: 36px;
+  background-color: #f4f4f4;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: #111111;
+}
+
+#pillars .stack-card .layer-title {
+  font-size: 22px;
+  font-weight: bold;
+  margin: 0 0 24px 0;
+  color: #111111;
+  text-transform: uppercase;
+  font-family: SangBleuVersailles-Bold-WebS, Arial, sans-serif;
+}
+
+#pillars .stack-card .feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex-grow: 1;
+}
+
+#pillars .stack-card .feature-list li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 14px;
+  color: #555555;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+#pillars .stack-card .feature-list li:last-child {
+  margin-bottom: 0;
+}
+
+#pillars .stack-card .feature-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #D9534F;
+}
+
+@media screen and (max-width: 767px) {
+  #pillars .stack-card {
+    padding: 28px 22px;
+  }
+}

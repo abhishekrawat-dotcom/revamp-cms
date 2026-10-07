@@ -1,0 +1,36 @@
+section#brands-bnr {
+  padding-top: 20px;
+  background: transparent;
+}
+#brands-bnr .tier-group + .tier-group { margin-top: 24px; }
+#brands-bnr .tier-name {
+  display: block;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+#brands-bnr .brand-logo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+}
+#brands-bnr .brand-logo {
+  min-width: 160px;
+  text-align: center;
+  padding: 18px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 146, 122, 0.38);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+@media screen and (max-width: 767px) {
+  section#brands-bnr { padding-top: 0px; }
+  #brands-bnr .brand-logo { min-width: 44%; }
+}

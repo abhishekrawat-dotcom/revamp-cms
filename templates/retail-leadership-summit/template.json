@@ -1,0 +1,196 @@
+{
+  "id": "retail-leadership-summit",
+  "name": "Retail Leadership Summit",
+  "title": "GIRS - Great India Retail Summit | Retail Leadership Events and Conferences | ET Retail",
+  "source": "https://retail.economictimes.indiatimes.com/great-india-retail-summit",
+
+  "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
+  "fonts": [
+    "https://fonts.googleapis.com/css2?family=Geist:wght@100;200;300;400;500;600;700;800&display=swap",
+    "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@100;200;300;400;500;600;700;800&display=swap"
+  ],
+  "theme": "theme.css",
+  "design": {
+    "notes": "What the editor's theme controls act on. headingFontVar = the variable every heading in this design reads (no secondary '-v2' variant here, unlike TECH500 — Playfair Display is the one heading font throughout). headings/buttons/cards = selectors for the heading, corner-radius controls. swatches = theme colours offered besides the template's own deep-maroon/coral pair.",
+    "headingFontVar": "--heading-font-family",
+    "headings": ".page_hdng4 h1, .page_hdng4 h2",
+    "buttons": "a.book-btn",
+    "cards": ".card, .accordion-bx, .brand-logo, .display-style9 li, .display-style8 li, .news-card, #event-wdgt-wrapper li, #stats-4 section",
+    "swatches": ["#0C7B93", "#3451B2", "#9C3D54", "#B8860B", "#1A1A1A"]
+  },
+  "editorFonts": {
+    "Playfair Display": "\"Playfair Display\", Arial, sans-serif",
+    "Geist": "Geist, Arial, sans-serif"
+  },
+
+  "body": {
+    "id": "retail",
+    "class": "microsite product_microsite heading-style-3 color_white web_view_ et_retail single-header",
+    "classNotes": "single-header is added at runtime by ET's header script on the live page (the export's own 'mapping-header' is a CMS preview-mode class, not a real one); it sets #banner padding-top to clear ET's header. Revisit when the shared header design arrives, same note as TECH500's.",
+    "style": {
+      "--default-color": "rgb(25 27 31)",
+      "--bg-color": "rgba(113, 0, 10, 1)",
+      "--bg-spacing": "14px 0",
+      "--para-font-size": "14px",
+      "--theme-color": "rgba(255, 146, 122, 1)",
+      "--primary-font-size": "50px",
+      "--secondary-font-size": "16px",
+      "--body-color": "rgba(255, 255, 255, 1)",
+      "font-size": "16px",
+      "--nav-text-color": "rgba(0, 0, 0, 1)",
+      "--nav-bg-color": "rgba(255, 255, 255, 1)",
+      "--body-font-family": "Geist, Arial, sans-serif",
+      "--heading-font-family": "Playfair Display, Arial, sans-serif",
+      "--heading-color": "rgba(255, 255, 255, 1)"
+    }
+  },
+
+  "content": {
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). Every list rule below uses empty:hide, so an empty wizard section disappears rather than showing the live page's own sample cards — this template's explicit product direction, same spirit as TECH500's industries/FAQ sections but applied uniformly here. Three sections had no good match among the existing Create Event library ids and got NEW library entries instead of being left out, since they're genuine event content, not publisher boilerplate: 'tracks' (conventions-box's five named mega-tracks — a different granularity than priorities' Key Discussion Points, which maps agenda-highlights instead), 'factoids' (fact-marquee's scrolling strip of Indian-retail market stats — organiser-customisable context, not fixed copy), and 'exhibitors' (faq-4's 'Who Should Exhibit' categories — the live page reused the FAQ accordion's own CSS for this, but it is not Q&A content, and it's a distinct audience from 'attend's delegate roles). about-us (About ETRetail) has no entry and keeps its own copy deliberately — it is ET Retail's publisher boilerplate, the same on every ET Retail microsite, not event content a wizard field should own (the same exception TECH500 makes for About ETCIO). brands-bnr (now 'partners') was a single flattened, non-editable collage GIF of sponsor logos on the live page; it is rebuilt here as a real tier->logos grid so a wizard list can actually own it. events-wdgt ('awaits') drops its four magnificPopup detail modals and its second unlabelled icon row (Fashion Show / Tech Zone / ET Studios / ETMasterclass / RetailX — ET Retail's own recurring programme names, not generic to any retail event) — the 'awaits' shape only carries icon + title + one line of copy per card, so the extra detail had nowhere to go and the second row is too franchise-specific to be reusable content. The banner shows the event's own logo where the live site shows the summit's own; if the event's hero was built from an uploaded PSD banner, its composite image replaces the banner's own background image too, same as TECH500.",
+    "map": [
+      { "from": "hero", "section": "banner", "fill": [
+        { "attr": "img.banner-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
+        { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+        { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },
+        { "text": "h1.hidden, .cntnd > h3.hidden", "value": "{hero.title|event.name}" },
+        { "text": ".cntnd > p.hidden", "value": "{hero.tagline}" },
+        { "text": ".icn-box:has(.bi-calendar3)", "value": "{event.date}", "empty": "remove" },
+        { "text": ".icn-box:has(.bi-geo-alt)", "value": "{event.location}", "empty": "remove" },
+        { "text": ".btn-wrapper .book-btn:not(.btn-outline)", "value": "{hero.cta1}", "empty": "keep" },
+        { "text": ".btn-wrapper .book-btn.btn-outline", "value": "{hero.cta2}", "empty": "remove" }
+      ] },
+      { "from": "awaits", "section": "awaits",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".events-wdgt-box section", "items": "awaits.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h3", "value": "{t}" },
+          { "text": "p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "about", "section": "overview",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".second_content > p" },
+        "fill": [
+        { "text": "h2 > span", "value": "About {event.name}" }
+      ] },
+      { "from": "stats", "section": "stats", "fill": [
+        { "list": ".stats-box > section", "items": "stats.items", "require": "{v}{k}", "empty": "hide", "fill": [
+          { "text": "h3 strong", "value": "{v}" },
+          { "text": ".stats-label", "value": "{k}" }
+        ] }
+      ] },
+      { "from": "priorities", "section": "priorities",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".cards-grid > .card", "items": "priorities.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": ".card-title", "value": "{t}" },
+          { "text": ".category-tag", "value": "{d}", "skip": ".category-dot" }
+        ] }
+      ] },
+      { "from": "partners", "section": "partners",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".tier-group", "items": "partners.tiers", "require": "{t}", "empty": "hide", "fill": [
+          { "text": ".tier-name", "value": "{t}" },
+          { "list": ".brand-logo-grid > .brand-logo", "items": "logos", "require": "{n}", "empty": "hide", "fill": [
+            { "text": ".brand-name", "value": "{n}" }
+          ] }
+        ] }
+      ] },
+      { "from": "tracks", "section": "tracks",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".display-style9 li", "items": "tracks.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": ".track-title", "value": "{t}" },
+          { "text": ".track-desc", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "whyjoin", "section": "whyjoin",
+        "intro": { "heading": "h2", "body": ".page_hdng4 > p" },
+        "fill": [
+        { "list": "#event-wdgt-wrapper .ew-ds-2 ul > li", "items": "whyjoin.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h4", "value": "{t}" },
+          { "text": "span", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "factoids", "section": "factoids",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".marquee-content > .news-card", "items": "factoids.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": ".factoid-title", "value": "{t}" },
+          { "text": ".factoid-desc", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "exhibitors", "section": "exhibitors",
+        "intro": { "heading": "h2", "body": ".page_hdng4 > p" },
+        "fill": [
+        { "list": ".accordion-bx", "items": "exhibitors.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h3.accordion", "value": "{t}" },
+          { "text": ".panel p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "attend", "section": "attend",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".who-enter-box li", "items": "attend.items", "require": "{t|.}", "empty": "hide", "fill": [
+          { "text": ".role-name", "value": "{t|.}" }
+        ] }
+      ] },
+      { "from": "glimpses", "section": "glimpses",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".glimpses-grid > .images__link", "items": "glimpses.items", "require": "{url}", "empty": "hide", "fill": [
+          { "attr": "img", "name": "src", "value": "{url}" }
+        ] }
+      ] },
+      { "from": "faq", "section": "faq",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".accordion-bx", "items": "faq.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h3.accordion", "value": "{t}" },
+          { "text": ".panel p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "contact", "section": "contact-us",
+        "intro": { "heading": ".page_hdng4 h2" },
+        "fill": [
+        { "list": "#contact-us .flex-width-auto > .col-md-6", "items": "contact.blocks", "require": "{t}", "empty": "hide", "fill": [
+          { "text": ".line-1", "value": "{t}" },
+          { "list": ".contact-box", "items": "people", "empty": "hide", "fill": [
+            { "text": ".name", "value": "{n}", "empty": "remove" },
+            { "text": "a.email", "value": "{e}", "empty": "remove:span.email" },
+            { "attr": "a.email", "name": "href", "value": "mailto:{e}" },
+            { "text": "a.phone", "value": "{p}", "empty": "remove:span.phone" },
+            { "attr": "a.phone", "name": "href", "value": "tel:{p}" }
+          ] }
+        ] }
+      ] }
+    ]
+  },
+
+  "layout": {
+    "notes": "Which sections an event's own narrative order can touch. pinStart/pinEnd never move — the hero always opens the page and Contact/About-publisher always close it, matching every real ET microsite (same as TECH500). Everything else is free for RevampCanvas.mount()'s sectionOrder option to resequence.",
+    "pinStart": ["banner"],
+    "pinEnd": ["contact-us", "about-us"]
+  },
+
+  "sectionsNotes": "repeat = the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. toggle = items that open on click (an accordion): item, the class that opens it, and the element whose class/expanded state follows; the editor opens one when something inside it is clicked, so its hidden part can be edited.",
+  "sections": [
+    { "id": "banner",          "name": "Banner",                    "etId": null, "script": true },
+    { "id": "awaits",          "name": "What awaits you",            "etId": null, "repeat": { "item": ".events-wdgt-box section", "label": "h3" } },
+    { "id": "stats",           "name": "Stats strip",                "etId": null, "repeat": { "item": "#stats-4 .stats-box > section", "label": ".stats-label" } },
+    { "id": "overview",        "name": "Overview",                   "etId": null },
+    { "id": "priorities",      "name": "Key Discussion Points",      "etId": null, "repeat": { "item": "#agenda-highlights .cards-grid > .card", "label": ".card-title" } },
+    { "id": "partners",        "name": "Brands At The Summit",       "etId": null, "repeat": { "item": "#brands-bnr .tier-group", "label": ".tier-name" } },
+    { "id": "tracks",          "name": "Five Powerful Conventions",  "etId": null, "repeat": { "item": "#conventions-box .display-style9 li", "label": ".track-title" } },
+    { "id": "whyjoin",         "name": "Why Join Us",                "etId": null, "repeat": { "item": "#event-wdgt-wrapper .ew-ds-2 ul > li", "label": "h4" } },
+    { "id": "factoids",        "name": "Retail Factoids",            "etId": null, "repeat": { "item": "#fact-marquee .marquee-content > .news-card", "label": ".factoid-title" } },
+    { "id": "exhibitors",      "name": "Who Should Exhibit",         "etId": null, "script": true, "repeat": { "item": "#faq-4 .accordion-bx", "label": "h3.accordion" },
+      "toggle": { "item": ".accordion-bx", "open": "active" } },
+    { "id": "attend",          "name": "Who Should Attend",          "etId": null, "repeat": { "item": "#who-enter .who-enter-box li", "label": ".role-name" } },
+    { "id": "glimpses",        "name": "Previous Edition Glimpses",  "etId": null, "repeat": { "item": "#glimpses_event .glimpses-grid > .images__link", "label": "img" } },
+    { "id": "faq",             "name": "Frequently Asked Questions", "etId": null, "script": true, "repeat": { "item": "#faq-5 .accordion-bx", "label": "h3.accordion" },
+      "toggle": { "item": ".accordion-bx", "open": "active" } },
+    { "id": "contact-us",      "name": "Contact Us",                 "etId": null, "repeat": { "item": "#contact-us .flex-width-auto > .col-md-6", "label": ".line-1" } },
+    { "id": "about-us",        "name": "About ETRetail",             "etId": null }
+  ]
+}

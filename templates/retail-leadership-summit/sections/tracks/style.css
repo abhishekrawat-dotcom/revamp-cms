@@ -1,0 +1,57 @@
+#conventions-box {
+  background: linear-gradient(180deg, #71000A 0%, #470103 100%), #FFF;
+}
+#conventions-box .display-style9 ul.first {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: grid;
+  gap: 20px;
+}
+#conventions-box .display-style9 li {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  padding: 20px 20px 36px 20px;
+  color: rgb(255 255 255 / 80%);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 140%;
+  transition: all 0.3s ease;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 146, 122, 0.50);
+  background: linear-gradient(180deg, rgba(69, 0, 6, 0.00) 0%, #450006 49.04%), rgba(69, 0, 6, 0.50);
+  background-blend-mode: normal, luminosity, normal;
+  background-size: cover !important;
+}
+#conventions-box .display-style9 li:hover {
+  transform: translateY(-3px);
+}
+#conventions-box .display-style9 li span.conventions-ico-box {
+  flex: none;
+}
+#conventions-box .track-title {
+  color: #FFF;
+  font-weight: 700;
+  font-size: 16px;
+}
+#conventions-box .track-desc {
+  color: rgb(255 255 255 / 80%);
+  font-size: 13px;
+}
+@media screen and (min-width: 768px) {
+  #conventions-box .display-style9 li { min-height: 348px; justify-content: flex-end; }
+}
+@media screen and (max-width: 767px) {
+  #conventions-box .display-style9 ul.first { grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 12px; }
+  #conventions-box .display-style9 li { padding: 20px; background: linear-gradient(180deg, rgba(69, 0, 6, 0.00) 0%, #450006 49.04%), rgba(69, 0, 6, 0.50) !important; }
+}
+/* fewer than five tracks (Layout items adds or removes) */
+@media (min-width: 992px) {
+  #conventions-box .display-style9 ul.first:has(> li:nth-child(1):last-child) { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  #conventions-box .display-style9 ul.first:has(> li:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #conventions-box .display-style9 ul.first:has(> li:nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #conventions-box .display-style9 ul.first:has(> li:nth-child(4):last-child) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

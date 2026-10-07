@@ -38,10 +38,25 @@
     return html.replace(/^(\s*<[a-zA-Z][^\s>]*)/, '$1 data-rv-section="' + esc(id) + '"');
   }
 
+  /* opts.sectionOrder: a full id sequence (e.g. built by create-event.html from the template's own
+     layout.pinStart/pinEnd plus Gemini's reordering of what's left) — reordered sections are still fetched
+     from the same per-id files, just assembled in this order. An id that isn't one of the template's own
+     sections is ignored; a known id the override left out keeps its original relative position, so a
+     stale/partial order can never silently drop a section. */
+  function reorderSections(sections, order) {
+    if (!order || !order.length) return sections;
+    var byId = {}; sections.forEach(function (s) { byId[s.id] = s; });
+    var placed = {}, out = [];
+    order.forEach(function (id) { if (byId[id] && !placed[id]) { out.push(byId[id]); placed[id] = true; } });
+    sections.forEach(function (s) { if (!placed[s.id]) out.push(s); });
+    return out;
+  }
+
   function load(id, opts) {
     opts = opts || {};
     var base = new URL(id + '/', templatesBase);
     return get(new URL('template.json', base)).then(JSON.parse).then(function (t) {
+      if (opts.sectionOrder) t.sections = reorderSections(t.sections, opts.sectionOrder);
       var shared = function (p) { return new URL(p, sharedBase).href; };
       var jobs = [get(shared(t.header || 'header.html')), get(shared(t.footer || 'footer.html'))];
       t.sections.forEach(function (s) {

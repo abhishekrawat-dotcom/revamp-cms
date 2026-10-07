@@ -1,0 +1,36 @@
+#who-enter {
+  background: linear-gradient(180deg, #470103 0%, #71000A 100%), #71000A;
+}
+#who-enter .display-style8 ul.first {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid;
+  gap: 24px;
+}
+#who-enter .display-style8 li {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  padding: 20px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 300;
+  line-height: 140%;
+  transition: all 0.3s ease;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 146, 122, 0.38);
+}
+#who-enter .display-style8 li:hover {
+  transform: translateY(-3px);
+}
+#who-enter .display-style8 li span.attend-ico-box {
+  flex: none;
+}
+@media screen and (min-width: 768px) {
+  #who-enter .display-style8 li { min-height: 76px; }
+}
+@media screen and (max-width: 767px) {
+  #who-enter .display-style8 ul.first { grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 12px; }
+  #who-enter .display-style8 li { padding: 8px 13px; }
+}

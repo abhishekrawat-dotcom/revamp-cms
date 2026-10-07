@@ -1,0 +1,47 @@
+/* CX Annual Symposium — overview, copied from the live page's #overview- rules. The live page actually ships
+   this section's own heading commented out (<!-- <div class="page_hdng4"><h2>Experience is the Enterprise</h2>
+   </div> -->) — content.map turns it back on so "about" has a heading slot at all, same spirit as TECH500's
+   overview heading. */
+#overview- {
+  padding: 40px 0;
+}
+
+#overview- .page_hdng4 {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+#overview- .overview-image {
+  text-align: center;
+}
+
+#overview- .overview-image img {
+  max-width: 80%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: block;
+  margin: 0 auto;
+}
+
+#overview- .overview-content p {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #333333;
+  margin-bottom: 20px;
+}
+
+#overview- .overview-content p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  #overview- .overview-image img {
+    max-width: 100%;
+  }
+
+  #overview- .overview-content {
+    padding-left: 0;
+    margin-top: 30px;
+  }
+}

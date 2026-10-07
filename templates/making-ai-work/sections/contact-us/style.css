@@ -1,0 +1,19 @@
+/* scoped #contact-us / .contacts rules, copied from the live page's own <style> block right after
+   <section id="contact-us"> plus the handful of #contact-us-specific rules from its global custom-CSS block */
+#contact-us{background:linear-gradient(180deg, #002156 0%, #004F9C 88.8%);margin-bottom:-1px !important}
+.contacts .page_hdng4{text-align:center}
+.contacts .contact-point .line-1{color:#FFF;text-align:center;font-family:"Playfair Display";font-size:24px;font-style:normal;font-weight:600;line-height:160%;letter-spacing:-0.48px;text-transform:capitalize}
+.contacts .contact-box-wrapper .name,.contacts .contact-box-wrapper .email a,.contacts .contact-box-wrapper .phone a{color:rgba(236, 236, 236, 0.70) !important}
+.contacts .contact-box-wrapper .name{color:#fff !important;font-weight:600 !important}
+.contacts .contact-box-wrapper .email a,.contacts .contact-box-wrapper .phone a{opacity:1 !important;font-weight:500}
+.contacts.design-style1 .contact-box-wrapper .contact-box{border-radius:16px;border:1px solid #6781AD;background:#004F9C;backdrop-filter:blur(40px)}
+
+.contacts.figma_style_1 .contact-box-wrapper{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;margin:0 0px}
+.contacts.figma_style_1 .contact-point div,.contacts.figma_style_1 .contact-point div[class^=col-md-]{margin-bottom:0px}
+.contacts.figma_style_1 .flex-width-auto .col-md-4{width:100%;flex:none;max-width:none;padding:0;float:none}
+.contacts.figma_style_1 .contact-box-wrapper .contact-box{display:flex;padding:16px;flex-direction:column;align-items:center;gap:4px;border-radius:16px;min-width:308px;backdrop-filter:blur(40px)}
+.contacts.figma_style_1 .contact-box-wrapper .name{display:block;overflow:hidden;text-align:center;text-overflow:ellipsis;font-size:16px;font-style:normal;font-weight:600;line-height:24px}
+.contacts.figma_style_1 .contact-box-wrapper .email,.contacts.figma_style_1 .contact-box-wrapper .phone{display:block;overflow:hidden;text-align:center;text-overflow:ellipsis;font-size:14px;font-style:normal;font-weight:500;line-height:24px}
+.contacts.figma_style_1 .footer-content p{max-width:762px;margin:0 auto}
+.contacts.figma_style_1 .contact-box-wrapper .email a,.contacts.figma_style_1 .contact-box-wrapper .phone a{color:#ffffff;opacity:1;font-size:14px}
+.contacts.figma_style_1 .footer-content{margin-top:0px}

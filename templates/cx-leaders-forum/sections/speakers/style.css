@@ -1,0 +1,84 @@
+/* CX Annual Symposium — speakers, adapted from the live page's #speakers (dt-13 dtstyle-default) rules.
+   The live section is rendered through an ET AJAX speaker-pagination widget (SpeakerAjaxPagination, a
+   masonry grid, per-card popup bindings) that only works against the live CMS backend — none of that scaffolding
+   is portable here, so this keeps just the 5 real "Previous Edition Speakers" cards it renders (photo, name,
+   role, company) in a plain static grid, same as TECH500 never ported that widget either. */
+#speakers .page_hdng2 {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+#speakers .page_hdng2 h2 {
+  font-family: SangBleuVersailles-Bold-WebS, Arial, sans-serif;
+  font-size: 28px;
+  text-transform: uppercase;
+  color: #191B1F;
+}
+
+#speakers .speaker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+}
+
+#speakers .speaker-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 20px;
+  display: block;
+}
+
+#speakers .speaker-card .caption {
+  text-align: center;
+  margin-top: 14px;
+}
+
+#speakers .speaker-card .caption h5 {
+  color: var(--custom-color, #0a0a0a);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.48px;
+  margin-bottom: 4px;
+}
+
+#speakers .speaker-card .caption span {
+  display: block;
+  color: rgb(0 0 0 / 70%);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+#speakers .speakers-more {
+  text-align: center;
+  margin-top: 36px;
+}
+
+#speakers .speakers-more .btn {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 30px;
+  border: 1px solid #191B1F;
+  color: #191B1F;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+@media screen and (max-width: 991px) {
+  #speakers .speaker-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media screen and (max-width: 640px) {
+  #speakers .speaker-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  #speakers .page_hdng2 h2 {
+    font-size: 22px;
+  }
+}

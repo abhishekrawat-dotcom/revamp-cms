@@ -1,0 +1,137 @@
+/* CX Annual Symposium — FAQs. The live page (#faqs .faq.design_2.figma-style-1) builds its accordion out of
+   flat h3.accordion + div.panel siblings opened by a CSS "h3.accordion.active + .panel" adjacent-sibling rule —
+   that only works when every question/answer pair is literally adjacent, which breaks the moment the editor's
+   list rule clones or removes a card (see editor-fill.js's fillList). Rebuilt here on TECH500's own
+   .faq-item/.faq-question/.faq-answer-wrap pattern (identical script.js) instead, so FAQs can be added or
+   removed safely, just with this event's own colours/copy. */
+#faqs .faq-list {
+  width: 100%;
+  border-top: 1px solid rgba(25, 27, 31, 0.13);
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+#faqs .faq-item {
+  border-bottom: 1px solid rgba(25, 27, 31, 0.13);
+}
+
+#faqs .faq-question {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 34px;
+  align-items: center;
+  min-height: 76px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #191B1F;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  transition: color 0.3s ease, padding-left 0.3s ease;
+}
+
+#faqs .faq-number {
+  color: rgba(25, 27, 31, 0.42);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+}
+
+#faqs .faq-question-text {
+  display: block;
+  padding: 22px 18px 22px 0;
+  color: #191B1F;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.5;
+  font-family: SangBleuVersailles-Bold-WebS, Arial, sans-serif;
+}
+
+#faqs .faq-icon {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  border-radius: 50%;
+  transition: background-color 0.3s ease, transform 0.35s ease;
+}
+
+#faqs .faq-icon::before,
+#faqs .faq-icon::after {
+  position: absolute;
+  width: 8px;
+  height: 1px;
+  background: rgba(25, 27, 31, 0.65);
+  content: "";
+  top: 50%;
+  left: 7px;
+  transition: background-color 0.3s ease, transform 0.35s ease;
+}
+
+#faqs .faq-icon::before { transform: rotate(45deg); }
+#faqs .faq-icon::after { right: 7px; left: auto; transform: rotate(-45deg); }
+
+#faqs .faq-item:hover .faq-question,
+#faqs .faq-item.active .faq-question {
+  color: #DE3D61;
+}
+
+#faqs .faq-item:hover .faq-icon,
+#faqs .faq-item.active .faq-icon {
+  background: #DE3D61;
+}
+
+#faqs .faq-item.active .faq-icon {
+  transform: rotate(180deg);
+}
+
+#faqs .faq-item:hover .faq-icon::before,
+#faqs .faq-item:hover .faq-icon::after,
+#faqs .faq-item.active .faq-icon::before,
+#faqs .faq-item.active .faq-icon::after {
+  background: #fff;
+}
+
+#faqs .faq-answer-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.38s ease, opacity 0.3s ease;
+}
+
+#faqs .faq-answer-inner {
+  overflow: hidden;
+}
+
+#faqs .faq-answer {
+  max-width: 760px;
+  margin: 0;
+  padding: 0 40px 22px 42px;
+  color: rgba(25, 27, 31, 0.68);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+#faqs .faq-item.active .faq-answer-wrap {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+@media (max-width: 767px) {
+  #faqs .faq-question {
+    grid-template-columns: 34px minmax(0, 1fr) 30px;
+    min-height: 70px;
+  }
+
+  #faqs .faq-question-text {
+    padding: 18px 12px 18px 0;
+    font-size: 16px;
+  }
+
+  #faqs .faq-answer {
+    padding: 0 18px 20px 34px;
+    font-size: 14px;
+  }
+}

@@ -1,0 +1,103 @@
+/* Agentic Summit 2026 (ET Enterprise AI) event theme — copied from the live page <head>
+   (enterpriseai.economictimes.indiatimes.com/agentic-ai-summit). Three parts, same as every other template here:
+   1) the parts of the event's own custom CSS block that are shared by more than one section (anything scoped to
+      just one section's id lives in that section's own style.css instead), 2) the rules ET generates from the
+      event design settings, 3) the :root theme colour. Unlike TECH500, this design has no separate "-v2" heading
+      variable — every heading reads --heading-font-family (Plus Jakarta Sans) directly, which the body tag
+      already sets, so there's nothing extra to declare here for headingFontVar. */
+
+section.mb-medium{position:relative;padding-bottom:70px;margin:0px !important}
+
+.page_hdng5 h1,.page_hdng5 h2,.page_hdng2 h2,.page_hdng4 h1,.page_hdng4 h2{
+  font-variant-numeric:lining-nums proportional-nums;
+  font-style:normal;
+  font-weight:700;
+  line-height:90%;
+  letter-spacing:-1px;
+  text-transform:capitalize;
+  margin-bottom:25px;
+}
+.page_hdng4 h1::before,.page_hdng4 h2::before,.page_hdng2 h2:before,.page_hdng5 h2:before{
+  border-radius:9px;
+  background:var(--theme-color);
+  content:" ";
+  display:block;
+  width:25px !important;
+  height:4px !important;
+  z-index:1;
+  position:absolute;
+  top:inherit;right:0;bottom:0;left:0;
+  margin:0 auto;
+  opacity:1;
+}
+.page_hdng2 h2 span,.page_hdng4 h1 span,.page_hdng4 h2 span,.page_hdng5 h2 span{
+  color:#FFF;
+  font-family:"Geist";
+  font-size:14px;
+  font-style:normal;
+  font-weight:600;
+  line-height:normal;
+  text-transform:uppercase;
+  text-align:center;
+  max-width:800px;
+  margin:0px auto 16px;
+  letter-spacing:normal;
+}
+.page_hdng4 h2 clr{color:#186BF9}
+
+body{background-repeat:repeat-y !important;background-attachment:inherit !important;position:relative}
+
+.text-style p{
+  color:#fff;
+  overflow:hidden;
+  font-variant-numeric:lining-nums proportional-nums;
+  text-overflow:ellipsis;
+  font-size:18px;
+  font-style:normal;
+  font-weight:300;
+  line-height:140%;
+  margin-bottom:15px;
+}
+.text-style ul li{list-style:disc;text-align:left}
+
+/* buttons — every section's CTA reads this (the Book/Register button design) */
+a.book-btn{
+  color:#186BF9;
+  font-size:15px;
+  font-style:normal;
+  font-weight:600;
+  line-height:24px;
+  border-radius:80px;
+  border:1px solid #FFF;
+  background:linear-gradient(0deg, #FFF 0%, #FFF 100%), radial-gradient(351.17% 228.61% at 18.52% -87.24%, #AA762B 0%, #1A1A1A 100%);
+  box-shadow:-10.226px -10.226px 20.452px -8.521px rgba(55, 19, 17, 0.25) inset, 10.226px 10.226px 20.452px -10.226px rgba(223, 170, 160, 0.50) inset, 0 17.043px 20.452px -17.043px rgba(0, 0, 0, 0.25);
+  backdrop-filter:blur(17.042972564697266px);
+  padding:12px 40px;
+}
+a.book-btn.btn-outline{
+  color:#FFF;
+  border:0.852px solid #FFF;
+  background:#000;
+  box-shadow:0 17.043px 20.452px -17.043px rgba(0, 0, 0, 0.25);
+}
+a.book-btn:hover{color:#000000;background:#9FCDFF;border:1px solid #9FCDFF}
+
+@media screen and (max-width:767px){
+  .page_hdng5 h1,.page_hdng5 h2,.page_hdng2 h2,.page_hdng4 h1,.page_hdng4 h2{font-size:32px;line-height:1em}
+}
+
+/* ---- generated from the event design settings ---- */
+body { font-family: Geist, Arial, sans-serif}
+body {background-color: rgba(0, 14, 38, 1);}
+body h1 h2 h3 { font-size: 40px ;}
+body h4 h5 h6 { font-size: 16px ;}
+body p { font-size: 18px ;}
+#header_bg_color header {background-color: rgba(24, 107, 249, 1);}
+#banner_color banner {color: rgba(0, 0, 0, 1);}
+#button_color button {background-color: rgba(255, 0, 0, 1);}
+#button_font button {color: rgba(0, 0, 0, 1);}
+#footer_color footer {background-color: rgba(191, 255, 0, 1);}
+#button_links a {color: rgba(0, 0, 0, 1);}
+
+:root { --theme-color:24,  107,  249}
+:root { --theme-color-hex:#186bf9}
