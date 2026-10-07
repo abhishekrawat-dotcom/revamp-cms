@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Same as firestore.rules — only the Cloud Functions backend (Admin SDK) ever touches Storage.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
