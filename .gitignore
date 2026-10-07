@@ -1,3 +1,7 @@
 tools/.env.local
 .DS_Store
 .claude/
+node_modules/
+.firebase/
+firebase-debug.log
+firebase-debug.*.log

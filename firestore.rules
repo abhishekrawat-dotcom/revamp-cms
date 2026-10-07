@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only the Cloud Functions backend (functions/lib/firebase.js, via the Admin SDK) ever touches Firestore —
+    // the Admin SDK bypasses these rules entirely, and the browser never gets a Firebase client SDK config.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
