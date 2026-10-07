@@ -1,0 +1,23 @@
+# Firebase App Hosting settings for backend "revamp-cms" (project revamp-cms, region us-east4).
+# Reference: https://firebase.google.com/docs/app-hosting/configure
+runConfig:
+  minInstances: 0     # scales to zero when idle — no cost while unused (the first request after idle is slower)
+  maxInstances: 2     # ET's own teams only; raise if traffic grows
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  # functions/lib/firebase.js needs the bucket (same value as functions/.env); not a secret
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: revamp-cms.firebasestorage.app
+    availability:
+      - RUNTIME
+
+  # The Gemini key for the /api/* AI endpoints. Left out until the secret exists — a missing secret fails the
+  # whole rollout. Once it's set (firebase apphosting:secrets:set GEMINI_API_KEY --project revamp-cms, which
+  # also grants this backend access), uncomment:
+  # - variable: GEMINI_API_KEY
+  #   secret: GEMINI_API_KEY
+  #   availability:
+  #     - RUNTIME

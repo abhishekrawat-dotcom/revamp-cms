@@ -1,0 +1,16 @@
+{
+  "name": "revamp-cms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Revamp CMS — event microsite builder for ET Oneworld. Served by Firebase App Hosting via server.js.",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node tools/serve.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}
