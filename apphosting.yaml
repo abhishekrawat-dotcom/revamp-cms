@@ -14,10 +14,10 @@ env:
     availability:
       - RUNTIME
 
-  # The Gemini key for the /api/* AI endpoints. Left out until the secret exists — a missing secret fails the
-  # whole rollout. Once it's set (firebase apphosting:secrets:set GEMINI_API_KEY --project revamp-cms, which
-  # also grants this backend access), uncomment:
-  # - variable: GEMINI_API_KEY
-  #   secret: GEMINI_API_KEY
-  #   availability:
-  #     - RUNTIME
+  # The Gemini key for the /api/* AI endpoints. Requires `firebase apphosting:secrets:set GEMINI_API_KEY
+  # --project revamp-cms` — a separate command/secret from `firebase functions:secrets:set`, which only grants
+  # access to classic Cloud Functions (no longer deployed) and does nothing for this backend.
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
