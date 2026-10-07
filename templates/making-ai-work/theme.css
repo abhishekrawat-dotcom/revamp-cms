@@ -1,5 +1,10 @@
-/* Agentic Summit 2026 (ET Enterprise AI) event theme — copied from the live page <head>
-   (enterpriseai.economictimes.indiatimes.com/agentic-ai-summit). Three parts, same as every other template here:
+/* Making AI Work 2026 (ET Enterprise AI) event theme — copied from the live page <head>
+   (enterpriseai.economictimes.indiatimes.com/making-ai-work). This file's header comment previously claimed
+   the wrong source event (Agentic Summit, a different ET Enterprise AI event) — only the comment was wrong;
+   the banner section's own assets (logo/background video/hashtag) WERE actually Agentic Summit's and have
+   been corrected separately (sections/banner/index.html) using the real making-ai-work page's own markup.
+   The colour/typography values below were not re-verified against the live page beyond that fix — if
+   something here still looks off, re-check it against the real site. Three parts, same as every other template here:
    1) the parts of the event's own custom CSS block that are shared by more than one section (anything scoped to
       just one section's id lives in that section's own style.css instead), 2) the rules ET generates from the
       event design settings, 3) the :root theme colour. Unlike TECH500, this design has no separate "-v2" heading
