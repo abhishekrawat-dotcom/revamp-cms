@@ -7,6 +7,12 @@
   // draft from Firestore (via GET /api/draft), writes it as 'revamp.editor.handoff.v1' (the exact shape
   // create-event.html's own wizard hand-off uses), and opens the real editor on it — same effect as
   // finishing the wizard by hand. Not linked from product nav; a direct URL for previewing generated drafts.
+  //
+  // The editor keys its own saved snapshot off the URL's ?slug= alone (editor-template-ui.js's storeKey),
+  // checked BEFORE it ever looks at the handoff draft — so re-using the same slug across regenerations
+  // means every visit after the first just restores that first-ever snapshot, invisible to anything
+  // regenerated since. The redirect below appends the draft's own id to the slug, so every distinct draft
+  // gets its own fresh editor state and is guaranteed to actually show what was just generated.
   var qs = new URLSearchParams(location.search);
   var eventId = qs.get('eventId');
   var templateId = qs.get('templateId') || eventId;
@@ -16,8 +22,9 @@
     fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
       .then(function (r) { return r.json().then(function (body) { if (!r.ok) throw new Error(body.error || 'request failed'); return body; }); })
       .then(function (body) {
+        var previewSlug = eventId + '-' + (body.draftId || Date.now()).toString().slice(0, 8);
         localStorage.setItem('revamp.editor.handoff.v1', JSON.stringify(body.handoff));
-        location.href = '/custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) + '&template=' + encodeURIComponent(body.templateId || templateId);
+        location.href = '/custom_editor.html?from=create&slug=' + encodeURIComponent(previewSlug) + '&template=' + encodeURIComponent(body.templateId || templateId);
       })
       .catch(function (err) { document.body.textContent = 'Could not load draft: ' + err.message; });
   }

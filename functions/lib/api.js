@@ -832,8 +832,8 @@ function handleGetDraft(req, res) {
   fb.db.collection('events').doc(eventId).collection('drafts').orderBy('generatedAt', 'desc').limit(1).get()
     .then(function (snap) {
       if (snap.empty) return sendJson(res, 404, { error: 'No generated draft found for "' + eventId + '" — run /api/generate-content first.' });
-      var draft = snap.docs[0].data();
-      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, handoff: libraryToHandoffDraft(draft.library, eventId) });
+      var draftId = snap.docs[0].id, draft = snap.docs[0].data();
+      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, draftId: draftId, handoff: libraryToHandoffDraft(draft.library, eventId) });
     })
     .catch(function (err) { sendJson(res, 500, { error: 'get-draft failed: ' + err.message }); });
 }
