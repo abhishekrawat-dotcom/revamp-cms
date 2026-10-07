@@ -230,9 +230,6 @@ window.RevampShell = (function(){
           '</button>'
         : title) +
       '<span class="topbar-acts">' +
-        /* theme-toggle.js fills this; the shell owns the top bar now, so the
-           slot has to live here rather than in each page's markup */
-        '<span data-theme-toggle-target style="display:inline-flex;align-items:center"></span>' +
         (opts.actions || '') +
         '<button class="btn btn-secondary" type="button" id="btn-preview">' +
           '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>' +

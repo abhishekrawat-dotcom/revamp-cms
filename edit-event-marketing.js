@@ -139,19 +139,13 @@ window.EditEventMarketing = (function(){
         paid: rnd(s+15) > 0.86
       });
     }
-    /* A single number to sort the pool by: engagement + loyalty + seniority.
-       Clamping the raw total at 100 piled everyone worth calling onto the
-       same value, which made the hot/warm/cold split meaningless. Normalise
-       against the best score in the pool instead, so the spread is real. */
-    var raw = out.map(function(p){
-      return (p.opens * 4) + (p.clicks * 6) + (p.editions * 9) +
+    out.forEach(function(p){
+      /* a single number to sort the pool by: engagement + loyalty + seniority */
+      p.score = Math.min(100, Math.round(
+        (p.opens * 4) + (p.clicks * 6) + (p.editions * 9) +
         (p.seniority === 'CXO' ? 18 : p.seniority === 'VP / Head' ? 12 : 6) +
-        (p.sub === 'active' ? 14 : p.sub === 'passive' ? 6 : 0) +
-        (p.registered ? 8 : 0) + (p.paid ? 10 : 0);
-    });
-    var top = Math.max.apply(null, raw) || 1;
-    out.forEach(function(p, i){
-      p.score = Math.max(1, Math.min(100, Math.round(raw[i] / top * 100)));
+        (p.sub === 'active' ? 14 : p.sub === 'passive' ? 6 : 0)
+      ));
     });
     POOL[EV.id] = out;
     return applyStore(EV, out);
@@ -195,7 +189,7 @@ window.EditEventMarketing = (function(){
   var D = null, KEY = '';
   function loadStore(EV){
     KEY = 'revamp-promo-' + EV.id;
-    D = { templates:[], banners:[], posts:[], batches:[], campaigns:[], crm:{}, crmAdded:[], seeded:false };
+    D = { templates:[], banners:[], posts:[], batches:[], campaigns:[], crm:{}, seeded:false };
     try {
       var raw = localStorage.getItem(KEY);
       if (raw){ var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) D[k] = p[k]; }
@@ -262,9 +256,13 @@ window.EditEventMarketing = (function(){
   var U = {
     studio:'mailers',
     audQ:'', audPage:1,
+<<<<<<< HEAD
+    crmView:'board', crmQ:'', crmStage:'all', crmOwner:'all', crmPage:1,
+=======
     crmView:'table', crmQ:'', crmStage:'all', crmOwner:'all', crmLevel:'all',
     crmQuick:'all', crmPage:1, crmSel:{}, crmSort:{ k:'score', dir:-1 },
     pipeQ:'', pipeEd:[], pipeLevel:'all', pipeSub:'all', pipePage:1, pipeSel:{},
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
     builder:null
   };
 
@@ -607,54 +605,87 @@ window.EditEventMarketing = (function(){
 
   /* ======================================================================
      MODULE 4 : DATA PIPELINE
-
-     Every edition this event has ever run, and the one pool of people
-     behind them. The desk comes here to answer one question - who is
-     worth mailing next - so the page ends in cuts that can be pushed
-     straight into the CRM.
      ====================================================================== */
-  /* Which editions a given person actually attended. p.editions is only a
-     count, so spread it deterministically across the past editions: without
-     this, picking an older edition can never widen the set, because its
-     attendees are always a subset of the more recent one's. */
-  var EDSET = {};
-  function edSet(p, total){
-    var key = p.id + ':' + total;
-    if (EDSET[key]) return EDSET[key];
-    var set = {};
-    if (p.registered) set[0] = 1;
-    var want = Math.min(p.editions, total - 1), got = 0, i;
-    for (i = 1; i < total && got < want; i++){
-      if (rnd(p.id * 7 + i * 13) > 0.38){ set[i] = 1; got++; }
-    }
-    for (i = 1; i < total && got < want; i++){ if (!set[i]){ set[i] = 1; got++; } }
-    EDSET[key] = set;
-    return set;
-  }
-  function edMatch(p, picked, total){
-    if (!picked.length) return true;
-    var set = edSet(p, total);
-    for (var i = 0; i < picked.length; i++) if (set[picked[i]]) return true;
-    return false;
-  }
-
-  function pipeFiltered(EV){
-    var q = U.pipeQ.toLowerCase();
-    var total = editions(EV).length;
-    return prospects(EV).filter(function(p){
-      if (!edMatch(p, U.pipeEd, total)) return false;
-      if (U.pipeLevel !== 'all' && levelOf(p) !== U.pipeLevel) return false;
-      if (U.pipeSub !== 'all' && p.sub !== U.pipeSub) return false;
-      if (q && (p.name + ' ' + p.comp + ' ' + p.desig + ' ' + p.email).toLowerCase().indexOf(q) < 0) return false;
-      return true;
-    });
-  }
-
   function pipelineHTML(ctx){
     var EV = ctx.EV, eds = editions(EV), all = prospects(EV);
-    var cur = eds[0];
-    var F = pipeFiltered(EV);
+    var cur = eds[0], past = eds.slice(1);
 
+<<<<<<< HEAD
+    var totRegs = eds.reduce(function(n,e){ return n + e.regs; }, 0);
+    var totVis  = eds.reduce(function(n,e){ return n + e.visitors; }, 0);
+    var totRev  = eds.reduce(function(n,e){ return n + e.revenue; }, 0);
+    var loyal   = all.filter(function(p){ return p.editions >= 2; }).length;
+
+    var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
+      kpi(I.users,'var(--info)','Registrations, all editions', comma(totRegs),
+          comma(cur.regs)+' this edition') +
+      kpi(I.eye,'var(--ok)','Site visitors, all editions', compact(totVis),
+          compact(cur.visitors)+' this edition') +
+      kpi(I.money,'var(--review)','Revenue, all editions', compact(totRev),
+          comma(eds.reduce(function(n,e){ return n + e.paid; },0))+' paid delegates') +
+      kpi(I.star,'var(--accent)','Repeat attendees', comma(loyal),
+          'been to 2+ editions - your warmest list') +
+    '</div>';
+
+    var edRows = eds.map(function(e){
+      var conv = e.visitors ? (e.regs/e.visitors*100) : 0;
+      return '<tr>' +
+        '<td><b>'+esc(String(e.year))+'</b>'+(e.current?' <span class="badge b-accent">This edition</span>':'')+'</td>' +
+        '<td style="color:var(--text-muted)">'+esc(e.label)+'</td>' +
+        '<td class="num">'+comma(e.regs)+'</td>' +
+        '<td class="num">'+compact(e.visitors)+'</td>' +
+        '<td class="num">'+conv.toFixed(1)+'%</td>' +
+        '<td class="num">'+comma(e.paid)+'</td>' +
+        '<td class="num">'+(e.revenue?compact(e.revenue):'-')+'</td>' +
+        '<td class="num">'+comma(e.attended)+'</td>' +
+        '<td>'+esc(e.channel)+'</td>' +
+      '</tr>';
+    }).join('');
+
+    /* which channel earned registrations, across editions */
+    var chanRows = tally(all.filter(function(p){ return p.registered; }), 'src');
+    var indRows  = tally(all, 'industry');
+    var subRows  = SUB_STATE.map(function(s){
+      return { k:s.label, n: all.filter(function(p){ return p.sub===s.id; }).length, c:s.colour };
+    });
+
+    /* the prospect cuts worth pulling into a batch */
+    var recipes = [
+      { id:'loyal',    label:'Repeat attendees',  note:'Been to 2 or more past editions',
+        n: all.filter(function(p){ return p.editions>=2 && p.sub!=='unsubscribed'; }).length },
+      { id:'warmnotreg',label:'Warm but not registered', note:'Active subscribers who have not signed up yet',
+        n: all.filter(function(p){ return p.sub==='active' && !p.registered; }).length },
+      { id:'cxo',      label:'CXO tier',          note:'Chief-level across every industry',
+        n: all.filter(function(p){ return p.seniority==='CXO' && p.sub!=='unsubscribed'; }).length },
+      { id:'lapsed',   label:'Lapsed attendees',  note:'Came before, gone quiet since',
+        n: all.filter(function(p){ return p.editions>=1 && p.sub==='dormant'; }).length }
+    ];
+    var recipeCards = '<div class="pgrid">' + recipes.map(function(r){
+      return '<div class="pcard" style="cursor:pointer" data-recipe="'+r.id+'">' +
+        '<div class="pcard-h"><span class="mrow-i" style="background:var(--accent)1F;color:var(--accent)">'+svg(I.layers,15)+'</span>' +
+        '<span style="flex:1"><b style="font-size:13.5px;display:block">'+esc(r.label)+'</b>' +
+        '<span style="font-size:11.5px;color:var(--text-muted)">'+esc(r.note)+'</span></span>' +
+        '<span class="num" style="font-weight:800;font-size:15px">'+comma(r.n)+'</span></div>' +
+        '<div class="pcard-f"><span style="flex:1"></span>' +
+        '<span class="btn btn-secondary btn-sm">Save as a batch</span></div></div>';
+    }).join('') + '</div>';
+
+    return tiles +
+      panel('Edition by edition', eds.length + ' editions on record',
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>Year</th><th>Edition</th><th>Registrations</th><th>Visitors</th><th>Visitor&rarr;reg</th>' +
+        '<th>Paid</th><th>Revenue</th><th>Attended</th><th>Best channel</th>' +
+        '</tr></thead><tbody>'+edRows+'</tbody></table></div>') +
+      panel('Ready-made cuts', 'The four slices worth mailing, already counted', recipeCards) +
+      '<div class="ins-grid">' +
+        '<div class="ins-card"><h3>Where registrations came from</h3>' +
+          '<div class="cap">Acquisition source across the pool</div>'+bars(chanRows,'var(--info)')+'</div>' +
+        '<div class="ins-card"><h3>Industry mix</h3>' +
+          '<div class="cap">What the addressable base looks like</div>'+bars(indRows,'var(--review)')+'</div>' +
+        '<div class="ins-card"><h3>Subscriber health</h3>' +
+          '<div class="cap">How much of the pool is still reachable</div>'+bars(subRows,'var(--ok)',4)+'</div>' +
+      '</div>';
+=======
     var reach = all.filter(function(p){ return p.sub !== 'unsubscribed'; }).length;
 
     /* The edition cards below carry the same numbers the tiles repeated,
@@ -822,14 +853,11 @@ window.EditEventMarketing = (function(){
       '<button type="button" data-pg="' + kind + ':' + (page+1) + '"' + (page>=pages?' disabled':'') + '>Next</button>' +
       '<button type="button" data-pg="' + kind + ':' + pages + '"' + (page>=pages?' disabled':'') + '>Last</button>' +
     '</div>';
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   }
 
   /* ======================================================================
      MODULE 5 : CRM
-
-     A desk works a list: narrow it, select rows, act on the set. The
-     quick views are the cuts a desk opens every morning; everything
-     else - bulk actions, import, the drawer - hangs off a selection.
      ====================================================================== */
   var STAGES = [
     { id:'new',        label:'New',        colour:'#857F6A' },
@@ -844,45 +872,21 @@ window.EditEventMarketing = (function(){
     return STAGES[0];
   }
 
-  /* one word for how hot a lead is, because a score out of 100 is not a word */
-  var LEVELS = [
-    { id:'hot',  label:'Hot',  note:'Score 70+ - call these first' },
-    { id:'warm', label:'Warm', note:'Score 40-69 - worth a nudge' },
-    { id:'cold', label:'Cold', note:'Under 40 - mail, do not call' }
-  ];
-  function levelMeta(id){
-    for (var i=0;i<LEVELS.length;i++) if (LEVELS[i].id===id) return LEVELS[i];
-    return LEVELS[2];
-  }
-  function levelOf(p){
-    var saved = D && D.crm && D.crm[p.id] && D.crm[p.id].level;
-    if (saved) return saved;
-    return p.score >= 70 ? 'hot' : p.score >= 40 ? 'warm' : 'cold';
-  }
-
-  /* Leads are the top of the pool, plus anyone a desk has actually touched -
-     pushed in from the pipeline, added by hand or imported. Without that
-     second set, "Send to CRM" wrote a record nobody could see. */
+  /* leads are the top of the prospect pool, given a stage and an owner */
   function leads(EV){
     var all = prospects(EV);
     var top = all.slice().sort(function(a,b){ return b.score - a.score; }).slice(0, 120);
-    var seen = {};
-    top.forEach(function(p){ seen[p.id] = 1; });
-    var worked = all.filter(function(p){ return !seen[p.id] && D.crm[p.id]; });
-    var extra = (D.crmAdded || []).filter(function(p){ return !seen[p.id]; });
-    return top.concat(worked).concat(extra).map(function(p, i){
+    return top.map(function(p, i){
       var saved = D.crm[p.id];
       var s = EV.eventNo + i * 17;
       var stage = saved ? saved.stage
-        : (p.manual ? 'new'
-          : p.paid ? 'won' : p.registered ? 'registered'
+        : (p.paid ? 'won' : p.registered ? 'registered'
           : rnd(s) > 0.72 ? 'interested' : rnd(s) > 0.42 ? 'contacted' : 'new');
       return {
         id: p.id, p: p,
         stage: stage,
-        level: levelOf(p),
-        owner: saved && saved.owner ? saved.owner : (p.manual ? OWNERS[0] : OWNERS[Math.floor(rnd(s+1) * OWNERS.length)]),
-        calls: saved && saved.calls != null ? saved.calls : (p.manual ? 0 : Math.floor(rnd(s+2) * 6)),
+        owner: saved && saved.owner ? saved.owner : OWNERS[Math.floor(rnd(s+1) * OWNERS.length)],
+        calls: saved && saved.calls != null ? saved.calls : Math.floor(rnd(s+2) * 6),
         notes: (saved && saved.notes) || [],
         next: saved && saved.next ? saved.next : '',
         touched: saved && saved.touched ? saved.touched : 0
@@ -890,55 +894,35 @@ window.EditEventMarketing = (function(){
     });
   }
   function saveLead(l){
-    D.crm[l.id] = { stage:l.stage, owner:l.owner, calls:l.calls, notes:l.notes,
-                    next:l.next, level:l.level, touched:Date.now() };
+    D.crm[l.id] = { stage:l.stage, owner:l.owner, calls:l.calls, notes:l.notes, next:l.next, touched:Date.now() };
     save();
-  }
-
-  /* the cuts a desk opens every morning */
-  function quickViews(L){
-    var today = new Date(); today.setHours(23,59,59,999);
-    return [
-      { id:'all',    label:'All leads',      fn: function(){ return true; } },
-      { id:'hot',    label:'Hot',            fn: function(l){ return l.level === 'hot' && l.stage !== 'won' && l.stage !== 'lost'; } },
-      { id:'due',    label:'Follow-up due',  fn: function(l){ return l.next && new Date(l.next) <= today; } },
-      { id:'untouched', label:'Never contacted', fn: function(l){ return l.stage === 'new' && !l.calls; } },
-      { id:'open',   label:'Open',           fn: function(l){ return l.stage !== 'won' && l.stage !== 'lost'; } },
-      { id:'won',    label:'Won',            fn: function(l){ return l.stage === 'won'; } }
-    ].map(function(v){ v.n = L.filter(v.fn).length; return v; });
   }
 
   function crmFiltered(EV){
     var q = U.crmQ.toLowerCase();
-    var L = leads(EV);
-    var view = quickViews(L).filter(function(v){ return v.id === U.crmQuick; })[0];
-    var out = L.filter(function(l){
-      if (view && !view.fn(l)) return false;
+    return leads(EV).filter(function(l){
       if (U.crmStage !== 'all' && l.stage !== U.crmStage) return false;
       if (U.crmOwner !== 'all' && l.owner !== U.crmOwner) return false;
-      if (U.crmLevel !== 'all' && l.level !== U.crmLevel) return false;
-      if (q && (l.p.name+' '+l.p.comp+' '+l.p.desig+' '+(l.p.email||'')).toLowerCase().indexOf(q) < 0) return false;
+      if (q && (l.p.name+' '+l.p.comp+' '+l.p.desig).toLowerCase().indexOf(q) < 0) return false;
       return true;
     });
-    var k = U.crmSort.k, dir = U.crmSort.dir;
-    return out.sort(function(a, b){
-      var av, bv;
-      if (k === 'name' || k === 'comp'){ av = a.p[k].toLowerCase(); bv = b.p[k].toLowerCase(); }
-      else if (k === 'score'){ av = a.p.score; bv = b.p.score; }
-      else if (k === 'next'){ av = a.next || '9999'; bv = b.next || '9999'; }
-      else { av = a[k]; bv = b[k]; }
-      return av < bv ? -dir : av > bv ? dir : 0;
-    });
-  }
-
-  function selectedIds(){
-    return Object.keys(U.crmSel).filter(function(k){ return U.crmSel[k]; });
   }
 
   function crmHTML(ctx){
     var EV = ctx.EV, L = leads(EV), F = crmFiltered(EV);
     var counts = {};
     STAGES.forEach(function(s){ counts[s.id] = L.filter(function(l){ return l.stage===s.id; }).length; });
+<<<<<<< HEAD
+    var won = counts.won, open = L.length - counts.won - counts.lost;
+
+    var tiles = '<div class="kpi-row" style="margin-bottom:16px">' +
+      kpi(I.headset,'var(--info)','Leads in play', comma(open), comma(L.length)+' in the pipeline') +
+      kpi(I.check,'var(--ok)','Won', comma(won),
+          (L.length ? Math.round(won/L.length*100) : 0)+'% conversion') +
+      kpi(I.phone,'var(--review)','Calls logged', comma(L.reduce(function(n,l){ return n+l.calls; },0)), 'across all owners') +
+      kpi(I.clock,'var(--warn)','Follow-ups due', comma(L.filter(function(l){ return l.next; }).length), 'have a date set') +
+    '</div>';
+=======
     var lvlCounts = { hot:0, warm:0, cold:0 };
     L.forEach(function(l){ lvlCounts[l.level]++; });
     /* The quick views already carry every number the tiles repeated, so
@@ -947,111 +931,74 @@ window.EditEventMarketing = (function(){
       return '<button class="qview" type="button" data-qview="' + v.id + '" aria-pressed="' +
         (U.crmQuick === v.id) + '">' + esc(v.label) + '<span class="n">' + comma(v.n) + '</span></button>';
     }).join('') + '</div>';
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
 
     var toolbar = '<div class="toolbar">' +
       '<span class="search">'+svg(I.search,15)+
-        '<input id="crm-q" placeholder="Search a lead, company, role or email…" value="'+esc(U.crmQ)+'"></span>' +
+        '<input id="crm-q" placeholder="Search a lead, company or role…" value="'+esc(U.crmQ)+'"></span>' +
       '<select class="inp" id="crm-stage" style="width:auto">' +
         '<option value="all"'+(U.crmStage==='all'?' selected':'')+'>Every stage</option>' +
         STAGES.map(function(s){
           return '<option value="'+s.id+'"'+(U.crmStage===s.id?' selected':'')+'>'+s.label+' ('+counts[s.id]+')</option>';
-        }).join('') + '</select>' +
-      '<select class="inp" id="crm-level" style="width:auto">' +
-        '<option value="all"'+(U.crmLevel==='all'?' selected':'')+'>Every level</option>' +
-        LEVELS.map(function(l){
-          return '<option value="'+l.id+'"'+(U.crmLevel===l.id?' selected':'')+'>'+l.label+' ('+lvlCounts[l.id]+')</option>';
         }).join('') + '</select>' +
       '<select class="inp" id="crm-owner" style="width:auto">' +
         '<option value="all"'+(U.crmOwner==='all'?' selected':'')+'>Every owner</option>' +
         OWNERS.map(function(o){
           return '<option value="'+esc(o)+'"'+(U.crmOwner===o?' selected':'')+'>'+esc(o)+'</option>';
         }).join('') + '</select>' +
-      '<span style="flex:1"></span>' +
       '<span class="vswitch">' +
         '<button type="button" data-crmview="board" aria-pressed="'+(U.crmView==='board')+'">Board</button>' +
         '<button type="button" data-crmview="table" aria-pressed="'+(U.crmView==='table')+'">Table</button>' +
       '</span></div>';
 
-    var sel = selectedIds();
-    var bulk = sel.length ? '<div class="bulkbar">' +
-        '<span class="bn">' + sel.length + (sel.length === 1 ? ' lead selected' : ' leads selected') + '</span>' +
-        '<button class="bbtn" type="button" data-bulk="email">' + svg(I.mail,13) + ' Email</button>' +
-        '<button class="bbtn" type="button" data-bulk="whatsapp">' + svg(I.wa,13) + ' WhatsApp</button>' +
-        '<button class="bbtn" type="button" data-bulk="assign">' + svg(I.users,13) + ' Assign</button>' +
-        '<button class="bbtn" type="button" data-bulk="stage">' + svg(I.flow,13) + ' Move stage</button>' +
-        '<button class="bbtn" type="button" data-bulk="level">' + svg(I.star,13) + ' Set level</button>' +
-        '<button class="bbtn" type="button" data-bulk="export">' + svg(I.down,13) + ' Export</button>' +
-        '<span class="sp"></span>' +
-        '<button class="bclear" type="button" id="crm-clearsel">Clear</button>' +
-      '</div>' : '';
-
     var body = U.crmView === 'board' ? crmBoard(F) : crmTable(F);
 
+<<<<<<< HEAD
+    return tiles + panel('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown', toolbar + body);
+=======
     return panelFlushLocal('Lead pipeline', comma(F.length) + ' of ' + comma(L.length) + ' shown',
         views + toolbar + bulk + body);
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   }
 
   function crmBoard(F){
     return '<div class="board">' + STAGES.map(function(s){
       var items = F.filter(function(l){ return l.stage===s.id; });
-      return '<div class="bcol" data-stagecol="'+s.id+'">' +
+      return '<div class="bcol">' +
         '<div class="bcol-h"><span class="bdot" style="background:'+s.colour+'"></span>' +
           '<b>'+s.label+'</b><span class="num">'+comma(items.length)+'</span></div>' +
-        '<div class="bcol-b">' + (items.length ? items.slice(0, 25).map(function(l){
-          var lv = levelMeta(l.level);
-          return '<div class="lead" draggable="true" data-lead="'+l.id+'">' +
+        '<div class="bcol-b">' + (items.length ? items.slice(0, 20).map(function(l){
+          return '<div class="lead" data-lead="'+l.id+'">' +
             '<div class="lead-t"><span class="avat" style="background:'+l.p.colour+';width:26px;height:26px;font-size:10px">'+
               esc(l.p.initials)+'</span><b>'+esc(l.p.name)+'</b></div>' +
             '<div class="lead-s">'+esc(l.p.desig)+'</div>' +
             '<div class="lead-s" style="color:var(--text-faint)">'+esc(l.p.comp)+'</div>' +
-            '<div class="lead-f"><span class="lvl lvl-'+lv.id+'">'+lv.label+'</span>' +
-              '<span class="num">'+esc(l.owner.split(' ')[0])+'</span></div>' +
+            '<div class="lead-f"><span>'+esc(l.owner.split(' ')[0])+'</span>' +
+              '<span class="num">'+l.calls+' calls</span></div>' +
           '</div>';
         }).join('') : '<div class="bcol-e">Nothing here</div>') + '</div>' +
       '</div>';
     }).join('') + '</div>';
   }
 
-  function sortTh(k, label, cls){
-    var on = U.crmSort.k === k;
-    return '<th class="srt' + (on ? ' on' : '') + (cls ? ' ' + cls : '') + '" data-sort="' + k + '">' +
-      esc(label) + '<span class="ar">' + (on ? (U.crmSort.dir === 1 ? '▲' : '▼') : '▲▼') + '</span></th>';
-  }
-
   function crmTable(F){
-    if (!F.length) return empty(I.search,'No leads match','Loosen the search, or pick a different view.');
-    var per = 25, pages = Math.max(1, Math.ceil(F.length / per));
-    if (U.crmPage > pages) U.crmPage = pages;
-    var slice = F.slice((U.crmPage-1)*per, U.crmPage*per);
-    var allOn = slice.length > 0 && slice.every(function(l){ return U.crmSel[l.id]; });
-
-    var rows = slice.map(function(l){
-      var s = stageById(l.stage), lv = levelMeta(l.level);
-      var on = !!U.crmSel[l.id];
-      var overdue = l.next && new Date(l.next) < new Date();
-      return '<tr data-row="'+l.id+'"'+(on?' class="sel"':'')+'>' +
-        '<td class="pick"><input type="checkbox" data-pick="'+l.id+'"'+(on?' checked':'')+'></td>' +
-        '<td data-lead="'+l.id+'" style="cursor:pointer"><span class="person">' +
-          '<span class="avat" style="background:'+l.p.colour+'">'+esc(l.p.initials)+'</span>' +
+    if (!F.length) return empty(I.search,'No leads match','Loosen the search, stage or owner filter.');
+    var rows = F.slice(0, 60).map(function(l){
+      var s = stageById(l.stage);
+      return '<tr data-lead="'+l.id+'">' +
+        '<td><span class="person"><span class="avat" style="background:'+l.p.colour+'">'+esc(l.p.initials)+'</span>' +
           '<span class="pn"><b>'+esc(l.p.name)+'</b><span class="em">'+esc(l.p.desig)+'</span></span></span></td>' +
         '<td>'+esc(l.p.comp)+'</td>' +
-        '<td><span class="lvl lvl-'+lv.id+'">'+lv.label+'</span></td>' +
         '<td><span class="badge" style="background:'+s.colour+'1F;color:'+s.colour+'">'+s.label+'</span></td>' +
         '<td>'+esc(l.owner)+'</td>' +
         '<td class="num">'+l.calls+'</td>' +
         '<td class="num"><b>'+l.p.score+'</b></td>' +
-        '<td class="nw">'+(l.next
-          ? '<span style="color:'+(overdue?'var(--accent-strong)':'inherit')+'">'+fmtDate(l.next)+'</span>'
-          : '<span style="color:var(--text-faint)">-</span>')+'</td>' +
+        '<td class="nw">'+(l.next ? fmtDate(l.next) : '<span style="color:var(--text-faint)">-</span>')+'</td>' +
       '</tr>';
     }).join('');
-
     return '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th class="pick"><input type="checkbox" id="crm-all"'+(allOn?' checked':'')+'></th>' +
-      sortTh('name','Lead') + sortTh('comp','Company') + sortTh('level','Level') +
-      sortTh('stage','Stage') + sortTh('owner','Owner') + sortTh('calls','Calls') +
-      sortTh('score','Score') + sortTh('next','Follow-up') +
-      '</tr></thead><tbody>'+rows+'</tbody></table></div>' + pager(U.crmPage, pages, F.length, 'crm');
+      '<th>Lead</th><th>Company</th><th>Stage</th><th>Owner</th><th>Calls</th><th>Score</th><th>Follow-up</th>' +
+      '</tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
 
   /* ======================================================================
@@ -1389,6 +1336,8 @@ window.EditEventMarketing = (function(){
   }
 
   /* ---------------------------------------------------------------- lead drawer */
+<<<<<<< HEAD
+=======
   /* ======================================================================
      CRM : ADDING LEADS
 
@@ -2080,6 +2029,7 @@ window.EditEventMarketing = (function(){
     };
   }
 
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   function openLead(id, ctx){
     var EV = ctx.EV;
     var l = leads(EV).filter(function(x){ return String(x.id)===String(id); })[0];
@@ -2103,15 +2053,6 @@ window.EditEventMarketing = (function(){
                 (on?x.colour:'var(--border)')+';background:'+(on?x.colour+'1F':'transparent')+';color:'+
                 (on?x.colour:'var(--text-muted)')+'">'+x.label+'</button>';
             }).join('') + '</div></div>' +
-
-          '<div class="dsec"><h4>Level</h4>' +
-            '<div style="display:flex;gap:6px;flex-wrap:wrap">' + LEVELS.map(function(x){
-              var on = l.level===x.id;
-              return '<button class="lvl lvl-'+x.id+'" type="button" data-setlevel="'+x.id+'" ' +
-                'style="cursor:pointer;border:1px solid '+(on?'currentColor':'transparent')+';padding:4px 11px">' +
-                x.label+'</button>';
-            }).join('') + '</div>' +
-            '<p class="hint">'+esc(levelMeta(l.level).note)+'</p></div>' +
 
           '<div class="dsec"><h4>Owner</h4>' +
             '<select class="inp" id="ld-owner">' + OWNERS.map(function(o){
@@ -2143,7 +2084,6 @@ window.EditEventMarketing = (function(){
         '<div class="drawer-foot">' +
           '<button class="btn btn-primary btn-sm" type="button" id="ld-call">'+svg(I.phone,13)+' Log a call ('+l.calls+')</button>' +
           '<button class="btn btn-secondary btn-sm" type="button" id="ld-mail">'+svg(I.mail,13)+' Email</button>' +
-          '<button class="btn btn-secondary btn-sm" type="button" id="ld-wa">'+svg(I.wa,13)+' WhatsApp</button>' +
         '</div>' +
       '</aside>';
 
@@ -2176,27 +2116,7 @@ window.EditEventMarketing = (function(){
       saveLead(l); redraw(); openLead(id, ctx);
       ctx.toast('Call logged');
     };
-    each('[data-setlevel]', function(el){
-      el.onclick = function(){
-        l.level = el.getAttribute('data-setlevel');
-        saveLead(l); redraw(); openLead(id, ctx);
-        ctx.toast(l.p.name + ' is now ' + levelMeta(l.level).label.toLowerCase());
-      };
-    });
-    function logTouch(what){
-      if (l.stage === 'new') l.stage = 'contacted';
-      l.notes.push({ when: Date.now(), text: what });
-      saveLead(l); redraw(); openLead(id, ctx);
-      ctx.toast(what);
-    }
-    $('ld-mail').onclick = function(){
-      if (!l.p.email){ ctx.toast('No email on file for ' + l.p.name); return; }
-      logTouch('Emailed ' + l.p.email);
-    };
-    $('ld-wa').onclick = function(){
-      if (!l.p.phone){ ctx.toast('No mobile on file for ' + l.p.name); return; }
-      logTouch('WhatsApp sent to ' + l.p.phone);
-    };
+    $('ld-mail').onclick = function(){ ctx.toast('Opens the composer for ' + l.p.name); };
   }
 
   /* ======================================================================
@@ -2223,15 +2143,8 @@ window.EditEventMarketing = (function(){
     CUR.tab = tab; CUR.ctx = ctx; CUR.EV = ctx.EV;
     loadStore(ctx.EV);
     var h = HEADS[tab] || HEADS.studio;
-    var acts = '';
-    if (tab === 'campaigns')
-      acts = '<button class="btn btn-primary btn-sm" type="button" data-newcamp="1">'+svg(I.send,13)+' New campaign</button>';
-    if (tab === 'crm')
-      acts = '<button class="btn btn-secondary btn-sm" type="button" id="crm-import">'+svg(I.layers,13)+' Upload leads</button>' +
-             '<button class="btn btn-primary btn-sm" type="button" id="crm-new">'+svg(I.plus,13)+' Add lead</button>';
-    if (tab === 'pipeline')
-      acts = '<button class="btn btn-secondary btn-sm" type="button" id="pipe-exportall">'+svg(I.down,13)+' Export pool</button>';
-    return ctx.vhead(h[0], h[1], acts) +
+    return ctx.vhead(h[0], h[1],
+        tab === 'campaigns' ? '<button class="btn btn-primary btn-sm" type="button" data-newcamp="1">'+svg(I.send,13)+' New campaign</button>' : '') +
       '<div id="mkt-root">' + bodyHTML(tab, ctx) + '</div>';
   }
 
@@ -2365,17 +2278,17 @@ window.EditEventMarketing = (function(){
     /* crm */
     each('[data-crmview]', function(el){ el.onclick = function(){ U.crmView = el.getAttribute('data-crmview'); redraw(); }; });
     each('[data-lead]', function(el){ el.onclick = function(){ openLead(el.getAttribute('data-lead'), ctx); }; });
-    each('[data-qview]', function(el){
-      el.onclick = function(){ U.crmQuick = el.getAttribute('data-qview'); U.crmPage = 1; redraw(); };
-    });
     var cq = $('crm-q');
     if (cq) cq.oninput = function(){
-      U.crmQ = cq.value; U.crmPage = 1; redraw();
+      U.crmQ = cq.value; redraw();
       var n = $('crm-q'); if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
     };
     var cs = $('crm-stage');
-    if (cs) cs.onchange = function(){ U.crmStage = cs.value; U.crmPage = 1; redraw(); };
+    if (cs) cs.onchange = function(){ U.crmStage = cs.value; redraw(); };
     var co = $('crm-owner');
+<<<<<<< HEAD
+    if (co) co.onchange = function(){ U.crmOwner = co.value; redraw(); };
+=======
     if (co) co.onchange = function(){ U.crmOwner = co.value; U.crmPage = 1; redraw(); };
     var cl = $('crm-level');
     if (cl) cl.onchange = function(){ U.crmLevel = cl.value; U.crmPage = 1; redraw(); };
@@ -2612,6 +2525,7 @@ window.EditEventMarketing = (function(){
       exportCSV(poolCSV(list), 'pipeline-pool');
       ctx.toast(comma(list.length) + ' rows exported');
     };
+>>>>>>> fc3a8beab5bcc29747b24ee38972c49a73875876
   }
 
   function wire(tab, ctx){
@@ -2629,10 +2543,7 @@ window.EditEventMarketing = (function(){
       SUB_STATE: SUB_STATE, INDUSTRIES: INDUSTRIES, SENIORITY: SENIORITY,
       matchBatch: matchBatch, batchMembers: batchMembers, emptyFilters: emptyFilters,
       describeBatch: describeBatch, loadStore: loadStore, store: function(){ return D; },
-      state: U, bodyHTML: bodyHTML, merge: merge, saveLead: saveLead, stageById: stageById,
-      LEVELS: LEVELS, levelOf: levelOf, parseCSV: parseCSV, guessColumn: guessColumn,
-      IMP_FIELDS: IMP_FIELDS, crmFiltered: crmFiltered, pipeFiltered: pipeFiltered,
-      quickViews: quickViews, makeManual: makeManual
+      state: U, bodyHTML: bodyHTML, merge: merge, saveLead: saveLead, stageById: stageById
     }
   };
 })();

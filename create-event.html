@@ -5880,8 +5880,7 @@
             if (err){
               toast(/CMYK/i.test(err.message || '')
                 ? 'This PSD is in CMYK colour mode. Convert it to RGB in Photoshop (Image › Mode › RGB Color), save, and upload again.'
-                : 'Couldn’t read ' + file.name + (err.message ? ' (' + err.message + ')' : '') + '.' +
-                  (/.psd$/i.test(file.name) ? ' Try re-saving it from Photoshop.' : ''));
+                : 'Couldn’t read this PSD' + (err.message ? ' (' + err.message + ')' : '') + '. Try re-saving it from Photoshop.');
               return;
             }
             d.psdBanner = result;   // readPsdFile() either gives a real result or an err above — never the sample
