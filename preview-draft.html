@@ -9,10 +9,13 @@
   // finishing the wizard by hand. Not linked from product nav; a direct URL for previewing generated drafts.
   //
   // The editor keys its own saved snapshot off the URL's ?slug= alone (editor-template-ui.js's storeKey),
-  // checked BEFORE it ever looks at the handoff draft — so re-using the same slug across regenerations
-  // means every visit after the first just restores that first-ever snapshot, invisible to anything
-  // regenerated since. The redirect below appends the draft's own id to the slug, so every distinct draft
-  // gets its own fresh editor state and is guaranteed to actually show what was just generated.
+  // checked BEFORE it ever looks at the handoff draft — and per its own save rule (templates/README.md),
+  // once a slug has ever saved a section, a later change to that section's own index.html stops showing on
+  // that slug AT ALL, permanently (the saved snapshot wins over the template file from then on). A per-
+  // draftId slug (an earlier version of this file) only protects against two DIFFERENT drafts colliding —
+  // revisiting the SAME still-latest draft after a template file changed hits exactly this trap, since nothing
+  // about the slug changed. So: every visit here gets its own random, never-before-seen slug, always — this
+  // is a disposable preview link, not a persistent editing session, so there's nothing worth caching anyway.
   var qs = new URLSearchParams(location.search);
   var eventId = qs.get('eventId');
   var templateId = qs.get('templateId') || eventId;
@@ -22,7 +25,7 @@
     fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
       .then(function (r) { return r.json().then(function (body) { if (!r.ok) throw new Error(body.error || 'request failed'); return body; }); })
       .then(function (body) {
-        var previewSlug = eventId + '-' + (body.draftId || Date.now()).toString().slice(0, 8);
+        var previewSlug = eventId + '-preview-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
         localStorage.setItem('revamp.editor.handoff.v1', JSON.stringify(body.handoff));
         location.href = '/custom_editor.html?from=create&slug=' + encodeURIComponent(previewSlug) + '&template=' + encodeURIComponent(body.templateId || templateId);
       })
