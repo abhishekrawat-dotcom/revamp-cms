@@ -1,0 +1,59 @@
+#faq-5 .accordion-wrapper .panel {
+  margin-bottom: 0px;
+  padding: 0;
+  display: none;
+}
+#faq-5 .accordion-wrapper .accordion-bx.active .panel {
+  display: block;
+}
+#faq-5 .accordion-wrapper .text-style p {
+  text-align: left;
+  color: rgba(255, 255, 255, 0.70);
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 160%;
+}
+#faq-5 .accordion-wrapper h3.accordion {
+  overflow: hidden;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 140%;
+  padding: 0px 20px 0px 0px;
+  position: relative;
+  cursor: pointer;
+  margin: 0;
+}
+#faq-5 .accordion:after {
+  content: '';
+  background: url(https://img.etb2bimg.com/files/retail_files/file_17598188039607_Vector_1_.svg) no-repeat top center;
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  position: absolute;
+  right: 0px;
+  top: 4px;
+  transition: all .2s ease;
+}
+#faq-5 .accordion-bx.active .accordion:after {
+  transform: rotate(-90deg);
+}
+#faq-5 .accordion-wrapper h3.active {
+  margin-bottom: 10px;
+}
+#faq-5 .accordion-wrapper .dec {
+  text-align: left;
+}
+#faq-5 .accordion-wrapper .accordion-bx {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1.2px solid rgba(255, 255, 255, 0.20);
+}
+@media (min-width: 992px) {
+  #faq-5 .page_hdng4 h2 { text-align: left; }
+}
+@media (max-width: 767px) {
+  #faq-5 .accordion-wrapper h3.accordion { font-size: 16px !important; }
+  #faq-5 .accordion-wrapper .text-style p { font-size: 14px; }
+  #faq-5 .accordion:after { top: 6px; }
+}

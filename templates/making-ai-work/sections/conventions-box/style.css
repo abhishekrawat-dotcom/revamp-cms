@@ -1,0 +1,21 @@
+/* scoped #conventions-box rules, copied from the live page's own <style> block right after <section id="conventions-box"> */
+#conventions-box{background:linear-gradient(0deg, #002156 0%, #002156 100%), #FFF}
+#conventions-box .page_hdng4.text-style p{text-align:center;margin-bottom:40px}
+#conventions-box .display-style9 ul.first{grid-template-columns:repeat(4, minmax(0, 1fr));display:grid;gap:18px}
+#conventions-box .page_hdng4 h2{margin-bottom:25px}
+
+#conventions-box .display-style9 li{display:flex;justify-content:flex-start;align-items:center;flex-direction:column;gap:14px;position:relative;padding:20px 20px 25px 20px;text-align:center;transition:all 0.3s ease;border:1px solid #D4D4D4;background:linear-gradient(180deg, rgba(24, 107, 249, 0.00) 24.15%, #186BF9 57.13%);background-size:cover !important}
+#conventions-box .display-style9 li:hover{transform:translateY(-3px)}
+#conventions-box .display-style9 li h3{color:#FFF;text-align:center;font-family:"Plus Jakarta Sans";font-size:16px;font-style:normal;font-weight:700;line-height:140%;letter-spacing:-1px;text-transform:capitalize;margin-bottom:10px}
+#conventions-box .display-style9 li p{color:#FFF;text-align:center;font-size:12px;font-style:normal;font-weight:300;line-height:140%;letter-spacing:-0.24px;text-transform:capitalize}
+#conventions-box .display-style9 li span.conventions-ico-box{flex:none}
+
+@media screen and (min-width:768px){
+  #conventions-box .display-style9 li{min-height:348px;justify-content:flex-end}
+}
+@media screen and (max-width:767px){
+  #conventions-box .page_hdng4 p{margin-bottom:30px;font-size:15px}
+  #conventions-box .page_hdng4 h2{margin-bottom:15px}
+  #conventions-box .display-style9 ul.first{grid-template-columns:repeat(1, minmax(0, 1fr));gap:16px}
+  #conventions-box .display-style9 li{padding:20px;background:none !important}
+}

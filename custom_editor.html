@@ -66,7 +66,7 @@
   }
 
   *{ box-sizing: border-box; }
-  html,body{ margin:0; padding:0; height:100%; }
+  html,body{ margin:0; padding:0; height:100%; overflow-x:hidden; }
   body{
     background: var(--bg); color: var(--text); font-family: var(--font-body);
     font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow:hidden;
@@ -111,7 +111,10 @@
   }
   .gt-pill{
     display:flex; align-items:center; gap:4px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:auto; max-width:100%; flex-shrink:0;
+    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:auto; max-width:100%;
+    /* the pill's own buttons are all flex-shrink:0 by design (icons shouldn't squash) — once they stop
+       fitting at a narrow width, the pill scrolls internally instead of forcing the whole page wider */
+    overflow-x:auto; scrollbar-width:thin;
   }
   .gt-more-menu button{ display:flex; align-items:center; gap:9px; }
   .gt-more-row{ display:flex; flex-direction:column; gap:5px; }
@@ -169,6 +172,51 @@
   .side-panel-head{ padding: 15px 16px 12px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; }
   .side-panel-head h3{ font-size: 15px; }
   .side-panel-body{ flex:1; overflow-y:auto; padding: 12px 14px 20px; display:flex; flex-direction:column; gap: 16px; }
+
+  /* ---------- "Ask AI to edit" chat panel — a real messaging layout: avatar + name per turn, asymmetric
+     bubble corners (the "tail" points at who's speaking, like iMessage/WhatsApp), thread scrolls on its own
+     with the composer pinned below it, rounded pill input + round send button instead of a plain textbox. */
+  #panel-chat .side-panel-body{ padding: 12px 0 0; overflow: hidden; }
+  #panel-chat .side-panel-body > .hint{ padding: 0 14px; flex-shrink: 0; }
+  .chat-thread{ flex: 1; min-height: 0; overflow-y: auto; display:flex; flex-direction:column; gap:12px; padding: 10px 14px; }
+  .chat-turn{ display:flex; gap:8px; max-width:92%; }
+  .chat-turn.user{ align-self:flex-end; flex-direction:row-reverse; }
+  .chat-turn.ai{ align-self:flex-start; }
+  .chat-avatar{
+    flex-shrink:0; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:800; color:#fff;
+  }
+  .chat-turn.user .chat-avatar{ background: var(--accent, #ED1C24); }
+  .chat-turn.ai .chat-avatar{ background: #6b5ce7; }
+  .chat-turn-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .chat-turn.user .chat-turn-body{ align-items:flex-end; }
+  .chat-sender{ font-size:10px; font-weight:700; color: var(--text-faint); padding: 0 4px; }
+  .chat-msg{ font-size:12.5px; line-height:1.5; padding:8px 11px; border-radius:14px 14px 14px 4px; max-width:100%; white-space:pre-wrap; }
+  .chat-turn.user .chat-msg{ border-radius:14px 14px 4px 14px; background: var(--accent, #ED1C24); color:#fff; }
+  .chat-turn.ai .chat-msg{ background: var(--surface-2); color: var(--text); }
+  .chat-turn.ai .chat-msg.error{ background: #FBDBDC; color: #7a1a1f; }
+  .chat-proposal{ border:1.5px solid var(--border); border-radius:14px 14px 14px 4px; padding:10px; background: var(--surface); display:flex; flex-direction:column; gap:8px; max-width:100%; }
+  .chat-proposal .cp-summary{ font-size:12.5px; font-weight:600; }
+  .chat-proposal .cp-will-change{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color: var(--text-faint); }
+  .chat-proposal ul{ margin:0; padding-left:16px; font-size:11.5px; color: var(--text-muted); display:flex; flex-direction:column; gap:3px; }
+  .chat-proposal .cp-skipped{ font-size:11px; color: var(--crit, #c0392b); line-height:1.4; }
+  .chat-proposal [data-cp="apply"][disabled]{ opacity:.5; cursor:not-allowed; }
+  .chat-proposal .cp-actions{ display:flex; gap:8px; }
+  .chat-compose{
+    flex-shrink:0; display:flex; align-items:flex-end; gap:8px; padding: 10px 14px 14px;
+    border-top: 1px solid var(--border); background: var(--surface);
+  }
+  .chat-compose textarea{
+    flex:1; resize:none; min-height:38px; max-height:120px; padding:9px 14px; border:1px solid var(--border); border-radius:19px;
+    font: inherit; font-size:12.5px; background: var(--surface-2);
+  }
+  .chat-compose textarea:focus{ outline: none; border-color: var(--accent, #ED1C24); background: var(--surface); }
+  .chat-send-btn{
+    flex-shrink:0; width:34px; height:34px; border-radius:50%; border:none; background: var(--accent, #ED1C24);
+    color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .chat-send-btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .chat-send-btn:hover:not(:disabled){ filter: brightness(1.08); }
 
   /* ---------- design panel as a floating dropdown off its trigger button ---------- */
   .side-panel.panel-popover{
@@ -630,6 +678,20 @@
   .device-toggle{ align-self:center; margin-left:10px; display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
   .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
   .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
+  .history-toggle{ align-self:center; margin-left:6px; display:flex; align-items:center; gap:2px; }
+  .history-toggle button{ width:28px; height:26px; border-radius:6px; border:1px solid var(--border); background: var(--surface-2); color: var(--text-faint); }
+  .history-toggle button:disabled{ opacity:.4; }
+  .tpl-sel-toolbar, .tpl-sec-toolbar{ position:absolute; z-index:40; display:flex; align-items:center; gap:4px; background: var(--text); color:#fff; border-radius:8px; padding:4px 6px; box-shadow: var(--shadow-md); font-size:12px; white-space:nowrap; }
+  .tpl-sel-toolbar button, .tpl-sec-toolbar button{ background:none; border:none; color:#fff; padding:4px 7px; border-radius:5px; cursor:pointer; font-size:12px; }
+  .tpl-sel-toolbar button:hover, .tpl-sec-toolbar button:hover{ background:rgba(255,255,255,.18); }
+  .tpl-sel-toolbar button.danger:hover, .tpl-sec-toolbar button.danger:hover{ background:#ED1C24; }
+  .tpl-sel-toolbar .tpl-tb-sep{ width:1px; height:16px; background:rgba(255,255,255,.25); margin:0 2px; }
+  /* template-mode canvas: .frame normally sizes to its (naturally tall) demo content and lets .stage scroll it;
+     here it instead stretches to the available stage height so .tpl-viewport gets a stable, non-circular size for
+     editor-canvas.js's fit() to scale against — the page then scrolls inside the iframe, like a real browser window. */
+  .frame.tpl-frame{ align-self:stretch; height:100%; display:flex; min-height:0; }
+  .tpl-viewport{ flex:1; width:100%; min-height:0; overflow:hidden; border-radius:10px; position:relative; }
+  .tpl-iframe{ display:block; border:0; transform-origin: top left; }
 
   .stage{ --stage-pad-top: 34px; flex:1; overflow:auto; padding: var(--stage-pad-top) 24px 90px; display:flex; justify-content:center; }
   .frame{
@@ -1293,7 +1355,7 @@
         <div class="dp-divider"></div>
 
         <!-- ====== HERO BACKGROUND ====== -->
-        <div class="field">
+        <div class="field" id="hero-bg-field">
           <span class="dp-section-title">Hero Background</span>
           <div class="dp-seg" id="hero-bg-seg" role="group" aria-label="Hero background type">
             <button class="dp-seg-btn" data-hero-bg="static" aria-pressed="true" title="Static / colour gradient">Static</button>
@@ -1326,7 +1388,7 @@
         <div class="dp-divider"></div>
 
         <!-- ====== COUNTDOWN TIMER ====== -->
-        <div class="field">
+        <div class="field" id="countdown-field">
           <span class="dp-section-title">Countdown Timer</span>
           <div class="dp-row">
             <label for="countdown-toggle">Show countdown</label>
@@ -1441,6 +1503,22 @@
       </div>
     </aside>
 
+    <!-- Template mode only (rail button hidden until then) — a free-text instruction interpreted into a
+         design/content change, shown as a proposal the user must confirm before anything is applied. -->
+    <aside class="side-panel" id="panel-chat" hidden>
+      <div class="side-panel-head"><h3>Ask AI to edit</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body">
+        <span class="hint">Describe a change in plain words — colour, fonts, heading style, or specific section text. Nothing on the site changes until you confirm.</span>
+        <div class="chat-thread" id="chat-thread"></div>
+        <div class="chat-compose">
+          <textarea id="chat-input" rows="1" placeholder="Message the AI editor…"></textarea>
+          <button class="chat-send-btn" id="chat-send" type="button" title="Send" aria-label="Send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 11.5l17.5-8.5-8.5 17.5-2-7-7-2z"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
     <!-- ============ CANVAS ============ -->
     <main class="ed-main">
       <!-- ============ EDITOR TOOLS RAIL ============ -->
@@ -1450,12 +1528,17 @@
         <button class="rail-btn" data-panel="pages" title="Pages">Pages</button>
         <button class="rail-btn" data-panel="layers" title="Layers">Layers</button>
         <button class="rail-btn" data-panel="design" title="Design">Design</button>
+        <button class="rail-btn" data-panel="chat" id="rail-btn-chat" title="Ask AI to edit" hidden>Chat</button>
         <div class="rail-gap"></div>
         <button class="rail-btn" id="btn-media" title="Media">Media</button>
         <button class="rail-btn" id="btn-apps" title="Apps">Apps</button>
         <div class="device-toggle" role="group" aria-label="Device preview">
          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
          <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
+        </div>
+        <div class="history-toggle" role="group" aria-label="Undo / redo" id="tpl-history-toggle" hidden>
+         <button id="btn-tpl-undo" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
+         <button id="btn-tpl-redo" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>
         </div>
       </nav>
 
@@ -1784,8 +1867,14 @@
 <script src="sidebar.js"></script>
 <script src="ag-psd.bundle.js"></script>
 <script src="editor-store.js"></script>
+<script src="templates/_shared/template-loader.js"></script>
+<script src="editor-canvas.js"></script>
+<script src="editor-fill.js"></script>
+<script src="editor-template-ui.js"></script>
 <script>
 (function(){
+    var TEMPLATE_ID = new URLSearchParams(location.search).get('template');
+    var TEMPLATE_MODE = !!TEMPLATE_ID;
     var C = window.RevampCore;
     var editorEventId = new URLSearchParams(location.search).get('event') || '1';
     var EV = C.eventById(editorEventId) || C.EVENTS[0];
@@ -2595,7 +2684,7 @@
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
-  var panels = { add: document.getElementById('panel-add'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+  var panels = { add: document.getElementById('panel-add'), pages: document.getElementById('panel-pages'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design'), chat: document.getElementById('panel-chat') };
   function positionDesignPopover(anchorBtn){
     var panel = panels.design;
     var bodyEl = document.querySelector('.ed-body');
@@ -3518,10 +3607,12 @@
     });
   }
   document.getElementById('theme-font').addEventListener('change', function(){
+    if (TEMPLATE_MODE){ window.RevampTemplateUI.setDesign('headingFont', this.value); return; }
     frame.querySelectorAll('h1,h2,h3,.logo').forEach(function(h){ h.style.fontFamily = this.value; }.bind(this));
     markSaving();
   });
   document.getElementById('theme-radius').addEventListener('change', function(){
+    if (TEMPLATE_MODE){ window.RevampTemplateUI.setDesign('radius', this.value); return; }
     frame.querySelectorAll('.s-btn, .cta').forEach(function(b){ b.style.borderRadius = this.value; }.bind(this));
     frame.querySelectorAll('.s-card, .imgph, .ph, .gi, .s-stat').forEach(function(b){ b.style.borderRadius = (parseInt(this.value) > 40 ? '18px' : this.value); }.bind(this));
     markSaving();
@@ -4199,6 +4290,7 @@
       document.querySelectorAll('.device-toggle button').forEach(function(b){ b.classList.remove('active'); });
       btn.classList.add('active');
       var device = btn.getAttribute('data-device');
+      if (TEMPLATE_MODE){ window.RevampTemplateUI.setDevice(device); return; }
       stage.classList.toggle('device-mobile', device === 'mobile');
       if (selectedEl) setTimeout(function(){ positionToolbar(selectedEl); }, 50);
       if (activeSectionEl) setTimeout(function(){ positionSecToolbar(activeSectionEl); }, 50);
@@ -4308,12 +4400,14 @@
     win.document.close();
   }
   btnPreview.addEventListener('click', function(){
+    if (TEMPLATE_MODE){ window.RevampTemplateUI.openPreview(); return; }
     deselect();
     openPreviewInNewTab();
   });
 
   /* ---------- publish ---------- */
   document.getElementById('btn-publish').addEventListener('click', function(){
+    if (TEMPLATE_MODE){ window.RevampTemplateUI.publish(); return; }
     showToast('Publishing…');
     setTimeout(function(){
       /* a site handed over from Create Event publishes under its own name and slug */
@@ -4916,6 +5010,7 @@
   }
 
   function applyCreateHandoff(){
+    if (TEMPLATE_MODE) return false;
     if (new URLSearchParams(location.search).get('from') !== 'create') return false;
     var draft = null;
     try { draft = JSON.parse(localStorage.getItem(HANDOFF_KEY) || 'null'); } catch(e){ draft = null; }
@@ -4936,22 +5031,27 @@
     });
 
 
-    /* Resolve PSD banner images stored in sessionStorage.
-       generatePsdBannerHtml marks canvas elements with data-psd-imgkey instead
-       of embedding base64 directly so the localStorage payload stays small. */
+    /* Resolve PSD banner images: generatePsdBannerHtml() marks canvas elements with data-psd-imgkey instead
+       of embedding base64 directly so the hand-off payload stays small. sessionStorage is the fast, same-tab
+       path create-event.html also writes on hand-off; IndexedDB ('create:psd-banner-img', written continuously
+       by create-event.html's own autosave) is the durable fallback for everything else — a different tab, a
+       sessionStorage write that didn't make it, or hitting this draft after the originating tab closed. */
+    function paintBannerImg(el, imgData) {
+      el.style.backgroundImage = 'url(' + imgData + ')';
+      el.style.backgroundSize = '100% 100%';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.style.backgroundPosition = 'center';
+    }
     frame.querySelectorAll('[data-psd-imgkey]').forEach(function(el){
       var key = el.getAttribute('data-psd-imgkey');
       var imgData = null;
       try { imgData = sessionStorage.getItem(key); } catch(e){}
-      function paint(url){
-        el.style.backgroundImage = 'url(' + url + ')';
-        el.style.backgroundSize = '100% 100%';
-        el.style.backgroundRepeat = 'no-repeat';
-        el.style.backgroundPosition = 'center';
+      if (imgData) { paintBannerImg(el, imgData); return; }
+      if (window.RevampStore) {
+        RevampStore.get('create:psd-banner-img').then(function(rec){
+          if (rec && rec.dataUrl) paintBannerImg(el, rec.dataUrl);
+        }).catch(function(){});
       }
-      if (imgData) paint(imgData);
-      /* too big for sessionStorage: Create Event keeps every banner image in IndexedDB too (create:psd-img) */
-      else if (window.RevampStore) RevampStore.get('create:psd-img').then(function(rec){ if (rec && rec.dataUrl) paint(rec.dataUrl); }, function(){});
     });
     var ev = draft.event || {};
     var tpl = draft.template || {};
@@ -4969,13 +5069,41 @@
     }, 400);
     return true;
   }
-  applyCreateHandoff();
+  /* Hero Background (video/particles) and the Countdown Timer are decorative demo-only features with no
+     equivalent in a real ET template's own markup/CSS — there's nothing for them to apply to in template
+     mode. Rather than leave their controls clickable and silently doing nothing, disable them with an
+     explanation, same principle as gating "Let AI design it" to categories with a real ported template. */
+  function disableUnsupportedDesignControls(){
+    ['hero-bg-field', 'countdown-field'].forEach(function(id){
+      var field = document.getElementById(id);
+      if (!field) return;
+      field.querySelectorAll('input, select, button').forEach(function(el){ el.disabled = true; });
+      field.style.opacity = '.5';
+      var note = document.createElement('p');
+      note.className = 'dp-hint';
+      note.style.marginTop = '4px';
+      note.textContent = 'Not available for this template yet — it has no equivalent in the real site design.';
+      field.appendChild(note);
+    });
+  }
+  if (TEMPLATE_MODE){
+    frame.innerHTML = '';   // none of the demo's #sel-toolbar/.sec-side-toolbar/.site-section/.add-sec-row markup is used in template mode — RevampTemplateUI builds its own
+    frame.classList.add('tpl-frame');
+    document.getElementById('tpl-history-toggle').hidden = false;
+    document.getElementById('rail-btn-chat').hidden = false;
+    disableUnsupportedDesignControls();
+    document.getElementById('btn-tpl-undo').addEventListener('click', function(){ window.RevampTemplateUI.undo(); });
+    document.getElementById('btn-tpl-redo').addEventListener('click', function(){ window.RevampTemplateUI.redo(); });
+    window.RevampTemplateUI.boot(frame, TEMPLATE_ID, { escHtml: escHtml, showToast: showToast, EV: EV, editorEventId: editorEventId });
+  } else {
+    applyCreateHandoff();
 
-  frame.querySelectorAll('.site-section').forEach(function(sec){
-    if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
-  });
-  rebuildLayersPanel();
-  syncSectionToolbar();
-  syncFormatControls();
+    frame.querySelectorAll('.site-section').forEach(function(sec){
+      if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
+    });
+    rebuildLayersPanel();
+    syncSectionToolbar();
+    syncFormatControls();
+  }
 })();
 </script>

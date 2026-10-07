@@ -1,0 +1,115 @@
+/* CX Leaders Forum event theme — copied from the live page <head> (brandequity.economictimes.indiatimes.com/cx-annual-symposium).
+   1) the real self-hosted heading font (SangBleu Versailles isn't actually on Google Fonts — the live page's own
+      "fonts.googleapis.com/css2?family=SangBleu+Versailles" link 404s; the real font ships from ET's own CDN as
+      @font-face below, same as every other ET microsite font that isn't a genuine Google Font), 2) the event
+      custom CSS block (page_hdng rules, section divider), 3) the rules ET generates from the event design
+      settings, 4) the :root theme colour. */
+@font-face {
+  font-family: "SangBleuVersailles-Bold-WebS";
+  src: url("https://st.etb2bimg.com/Themes/Release/assets/fonts/SangBleuVersailles-Bold-WebS.woff2") format("woff2"),
+       url("https://st.etb2bimg.com/Themes/Release/assets/fonts/SangBleuVersailles-Bold-WebS.woff") format("woff");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "SangBleuVersailles-Regular-WebS";
+  src: url("https://st.etb2bimg.com/Themes/Release/assets/fonts/SangBleuVersailles-Regular-WebS.woff2") format("woff2"),
+       url("https://st.etb2bimg.com/Themes/Release/assets/fonts/SangBleuVersailles-Regular-WebS.woff") format("woff");
+  font-weight: 400;
+  font-display: swap;
+}
+
+section.mb-medium {
+  position: relative;
+  padding-bottom: 60px;
+}
+
+/* the hairline divider every section bleeds into the next with, in the event's own gradient */
+.mb-medium:before {
+  position: absolute;
+  content: '';
+  background: linear-gradient(90deg, rgba(222, 61, 97, 0) 0.04%, #071912 51.03%, rgba(222, 61, 97, 0) 100.04%);
+  height: 1px;
+  width: 1170px;
+  max-width: 100%;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: auto;
+  z-index: 3;
+}
+
+.page_hdng5 h1, .page_hdng5 h2, .page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2 {
+  font-family: "SangBleuVersailles-Bold-WebS", Arial, sans-serif;
+  color: var(--body-color, var(--default-color));
+  text-align: center;
+  font-variant-numeric: lining-nums proportional-nums;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 128%;
+  margin-bottom: 40px;
+}
+
+.page_hdng2 h2 span, .page_hdng4 h1 span, .page_hdng4 h2 span, .page_hdng5 h2 span {
+  display: block;
+  color: #191B1F;
+  font-family: var(--body-font-family);
+  text-align: center;
+  font-variant-numeric: lining-nums proportional-nums;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 24px;
+  max-width: 800px;
+  margin: 15px auto 0px;
+}
+
+.page_hdng2 p, .page_hdng4 p, .page_hdng5 p {
+  color: var(--body-color, var(--default-color));
+  text-align: center;
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 26px;
+  padding-top: 20px;
+}
+
+.page_hdng4.text-left {
+  text-align: left;
+}
+
+@media screen and (max-width: 767px) {
+  .page_hdng5 h1, .page_hdng5 h2, .page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2 {
+    font-size: 26px;
+    line-height: 1.25em;
+    margin-bottom: 25px;
+  }
+
+  .page_hdng2 p, .page_hdng4 p, .page_hdng5 p {
+    font-size: 14px;
+    line-height: 21px;
+  }
+}
+
+@media screen and (min-width: 1200px) {
+  .contacts .footer-content p, .page_hdng2 p, .page_hdng4 p, .page_hdng5 p {
+    max-width: 800px;
+    margin: auto;
+  }
+}
+
+/* ---- generated from the event design settings ---- */
+body { font-family: Montserrat, Arial, sans-serif; }
+body { background-color: rgba(255, 240, 230, 1); }
+body h1 h2 h3 { font-size: 24px; }
+body h4 h5 h6 { font-size: 16px; }
+body p { font-size: 14px; }
+#header_bg_color header { background-color: rgba(7, 25, 18, 1); }
+#banner_color banner { color: rgba(0, 0, 0, 1); }
+#button_color button { background-color: rgba(255, 0, 0, 1); }
+#button_font button { color: rgba(0, 0, 0, 1); }
+#footer_color footer { background-color: rgba(191, 255, 0, 1); }
+#button_links a { color: rgba(0, 0, 0, 1); }
+
+:root { --theme-color: 7, 25, 18; }
+:root { --theme-color-hex: #071912; }

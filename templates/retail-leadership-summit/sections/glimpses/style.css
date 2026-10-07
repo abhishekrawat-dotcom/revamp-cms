@@ -1,0 +1,27 @@
+#glimpses_event {
+  background: linear-gradient(180deg, #71000A 0%, #470103 100%);
+}
+#glimpses_event .glimpses-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+}
+#glimpses_event .glimpses-grid .images__link {
+  display: block;
+  border-radius: 16px;
+  overflow: hidden;
+  aspect-ratio: 373/249;
+}
+#glimpses_event .glimpses-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+@media (max-width: 991px) {
+  #glimpses_event .glimpses-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+  #glimpses_event .glimpses-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+}

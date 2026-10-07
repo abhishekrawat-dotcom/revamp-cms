@@ -1,0 +1,92 @@
+#agenda-highlights {
+  background: linear-gradient(180deg, #400101 0%, #71010A 100%);
+  margin-top: -2px !important;
+}
+#agenda-highlights .cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+#agenda-highlights .card {
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  transition: all 0.3s ease;
+  position: relative;
+  min-height: 130px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+}
+#agenda-highlights .card:hover {
+  transform: translateY(-3px);
+  background: rgba(106, 0, 0, 0.8);
+  box-shadow: 0 0px 10px rgba(0, 0, 0, 0.3);
+}
+#agenda-highlights .card-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.10);
+}
+#agenda-highlights .card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 45px;
+}
+#agenda-highlights .category-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  width: fit-content;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.70);
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 16px;
+}
+#agenda-highlights .category-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.60);
+}
+#agenda-highlights .card-title {
+  margin: 0;
+  color: #FFF;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 24px;
+}
+#agenda-highlights .action-icon {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  background: url(https://img.etb2bimg.com/files/retail_files/file_17599212185587_Icon_1_.png) no-repeat center center;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+@media (max-width: 768px) {
+  #agenda-highlights .cards-grid { grid-template-columns: 1fr; gap: 16px; }
+  #agenda-highlights .card { padding: 16px; min-height: 120px; gap: 12px; }
+  #agenda-highlights .card-content { padding-right: 0px; }
+  #agenda-highlights .card-icon { width: 50px; height: 50px; align-self: center; }
+  #agenda-highlights .action-icon { display: none; }
+  #agenda-highlights .card-title { font-size: 15px; line-height: 21px; }
+}
+/* fewer than four discussion points (Create Event's Key Discussion Points, Layout items adds or removes) */
+@media (min-width: 992px) {
+  #agenda-highlights .cards-grid:has(> .card:nth-child(1):last-child) { grid-template-columns: 1fr; }
+}

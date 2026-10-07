@@ -127,10 +127,21 @@
   .ev-title{ min-width:0; flex:1; }
   .ev-title h1{ font-size:16.5px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ev-title .meta{
-    font-size:11.5px; color: var(--text-muted); font-family: var(--font-mono);
+    /* a bare <span> is inline — overflow/text-overflow:ellipsis has no box to truncate against without this */
+    display:block; font-size:11.5px; color: var(--text-muted); font-family: var(--font-mono);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;
   }
   .topbar-acts{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
+
+  /* at phone width "Back to events" + the title + Preview + Publish (all flex-shrink:0 or nowrap) no longer
+     fit one row — collapse the two least essential labels (the back link's text, Preview's text) to icons
+     only, so the event title and both actions all stay reachable without the row overflowing */
+  @media (max-width: 480px){
+    .topbar{ gap:8px; padding:0 10px; }
+    .back-btn{ padding:7px; }
+    .back-btn span{ display:none; }
+    #btn-preview span{ display:none; }
+  }
 
   .btn{
     display:inline-flex; align-items:center; justify-content:center; gap:7px;

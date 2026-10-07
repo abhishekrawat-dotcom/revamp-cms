@@ -1,0 +1,23 @@
+/* scoped #fact-marquee rules, copied from the live page's own <style> block right after <section id="fact-marquee">.
+   Note: the live page's own animation scrolls this track by translateX(-100%) assuming a duplicated card set for
+   a seamless loop, but the export never duplicates the cards — the track visibly jump-cuts once per loop on the
+   live site today. Left as-is rather than "fixed": duplicating the cards here would double what content.map's
+   whyjoin list rule sees and fill the same text twice. */
+#fact-marquee{background:linear-gradient(180deg, #000 0%, #002156 100%)}
+#fact-marquee .page_hdng4 p{margin-bottom:50px}
+#fact-marquee .marquee-wrapper{overflow:hidden;position:relative}
+#fact-marquee .marquee-content{display:flex;animation:fact-marquee-scroll 25s linear infinite;gap:24px}
+#fact-marquee .news-card{flex:0 0 402px;height:407px;overflow:hidden;position:relative;transition:transform 0.3s ease, box-shadow 0.3s ease;cursor:pointer;padding:40px;display:flex;align-items:center;justify-content:flex-start;flex-direction:column;gap:32px;background:url(https://img.etb2bimg.com/files/cp/upload-1765273313-group-5.svg) no-repeat center;background-size:100% 100%}
+#fact-marquee .news-card .content h3{color:rgba(18, 18, 18, 0.70);text-align:center;font-family:"Plus Jakarta Sans";font-size:20px;font-style:normal;font-weight:600;line-height:180%;letter-spacing:-0.4px;text-transform:capitalize}
+@keyframes fact-marquee-scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+#fact-marquee .marquee-content:hover{animation-play-state:paused}
+@media (max-width:768px){
+  #fact-marquee .news-card{gap:16px}
+  #fact-marquee .page_hdng4 p{margin-bottom:30px;font-size:15px}
+  #fact-marquee .news-card .content h3{font-size:16px;line-height:1.4em}
+  #fact-marquee .marquee-content{gap:20px}
+}
+@media (max-width:767px){
+  #fact-marquee .news-card{flex:0 0 240px;height:auto;background-size:cover;padding:30px}
+  #fact-marquee .news-card img{width:28px}
+}

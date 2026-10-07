@@ -167,7 +167,26 @@
       if (r.drop) { if (!resolve(r.unless, content, item)) all(root, r.drop).forEach(function (el) { el.remove(); }); return; }
       var v = resolve(r.value, content, item);
       if (r.replace) {
-        all(root, r.replace).forEach(function (el) { if (v !== '' || r.empty !== 'keep') el.replaceWith(el.ownerDocument.createTextNode(v)); });
+        /* el.replaceWith(a bare text node) used to make this a one-shot operation: a plain text node matches
+           no CSS selector, so once the real content was known (the user had typed something), a LATER
+           re-fill (e.g. the preview re-running after every keystroke, or this template mounting before the
+           user had typed anything at all) could never find the original element again to update it — the
+           replaced text was permanently frozen at whatever it was on the very first fill. Replacing with a
+           marked <span> instead keeps it re-targetable, so every later fill call can find and update the
+           same spot instead of only ever getting one shot at it. */
+        var marker = 'r' + String(r.replace).replace(/[^a-z0-9]+/gi, '-');
+        var already = all(root, '[data-rv-replaced="' + marker + '"]');
+        if (already.length) {
+          already.forEach(function (el) { if (v !== '' || r.empty !== 'keep') el.textContent = v; });
+        } else {
+          all(root, r.replace).forEach(function (el) {
+            if (v === '' && r.empty === 'keep') return;
+            var span = el.ownerDocument.createElement('span');
+            span.setAttribute('data-rv-replaced', marker);
+            span.textContent = v;
+            el.replaceWith(span);
+          });
+        }
         return;
       }
       if (r.attr) {
@@ -280,7 +299,27 @@
     if (!Array.isArray(items)) return;
     if (r.require) items = items.filter(function (it, i) { return resolve(r.require, content, { data: it, index: i }) !== ''; });
     var found = all(root, r.list);
-    if (!items.length || !found.length) return;           // an empty list keeps the template's sample cards
+    if (!found.length) return;
+    if (!items.length) {
+      // most lists keep the template's sample cards when the wizard has nothing yet; a rule can opt
+      // out with "empty":"hide" when the section should show truly empty rather than stock content.
+      // Hidden via display:none, not .remove() — the live preview re-runs apply() on the SAME mounted
+      // canvas on every keystroke (no remount), so a removed card had nothing left to re-clone from the
+      // moment the user typed a first real item: found/cards would come up empty forever after, even
+      // once items.length was genuinely non-zero again. Keeping the node (just hidden) means it's still
+      // there to find and unhide below.
+      if (r.empty === 'hide') {
+        var p = found[0].parentNode;
+        found.filter(function (n) { return n.parentNode === p; }).forEach(function (n) {
+          n.style.display = 'none';
+          n.setAttribute('data-rv-hidden-empty', '1');
+        });
+      }
+      return;
+    }
+    found.forEach(function (n) {
+      if (n.hasAttribute('data-rv-hidden-empty')) { n.style.display = ''; n.removeAttribute('data-rv-hidden-empty'); }
+    });
     var parent = found[0].parentNode;
     var cards = found.filter(function (n) { return n.parentNode === parent; });
     var models = cards.map(function (n) { return n.cloneNode(true); });

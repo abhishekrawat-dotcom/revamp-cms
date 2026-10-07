@@ -47,9 +47,10 @@
   },
 
   "content": {
-    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). intro = where this design puts the section text every Create Event section carries (sub heading, heading, paragraph, pointers, image/video, button) — only the slots TECH500's design has; the rest isn't shown here. from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so; template sections with no entry (industries, FAQ, about ETCIO) keep their sample content. The banner shows the event's own logo where the live site shows the TECH500 one; the overview heading's inline TECH500 wordmark becomes the event name (an event logo is banner-shaped, 571×340, not a wordmark).",
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). intro = where this design puts the section text every Create Event section carries (sub heading, heading, paragraph, pointers, image/video, button) — only the slots TECH500's design has; the rest isn't shown here. from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so. industries and FAQ map to their own wizard sections (Industries in the room / FAQs, both toggle:true) and use empty:hide on their list rule, so their cards disappear entirely rather than showing TECH500’s own sample industries/questions when the wizard has none; the section heading stays so there is still a visible slot to fill. about-us (About ETCIO) has no entry and keeps its own copy deliberately — it is ET CIO’s publisher boilerplate, the same on every ET CIO microsite, not event content a wizard field should own. The banner shows the event's own logo where the live site shows the TECH500 one; the overview heading's inline TECH500 wordmark becomes the event name (an event logo is banner-shaped, 571×340, not a wordmark). If the event's hero was built from an uploaded PSD banner (create-event.html's PSD import, not the text-only hero mode), its composite image replaces the banner's own background image too — the PSD's own detected text/button layers themselves still don't carry over (this template's banner has fixed text slots, not an arbitrary canvas), only the flattened image.",
     "map": [
       { "from": "hero", "section": "banner", "fill": [
+        { "attr": "img.banner-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
         { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
         { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },
         { "text": "h1.hidden, .cntnd > h3.hidden", "value": "{hero.title|event.name}" },
@@ -109,6 +110,23 @@
           { "text": ".power-chain-domain", "value": "{d}" }
         ] }
       ] },
+      { "from": "industries", "section": "industries",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" } },
+        "fill": [
+        { "list": ".industry-card", "items": "industries.items", "require": "{t}", "empty": "hide", "fill": [
+          { "text": ".industry-number", "value": "{##}" },
+          { "text": ".industry-name", "value": "{t}" }
+        ] }
+      ] },
+      { "from": "faq", "section": "faq",
+        "intro": { "heading": { "sel": "h2", "skip": "span" } },
+        "fill": [
+        { "list": ".faq-item", "items": "faq.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": ".faq-number", "value": "{##}" },
+          { "text": ".faq-question-text", "value": "{t}" },
+          { "text": ".faq-answer", "value": "{d}" }
+        ] }
+      ] },
       { "from": "contact", "section": "contact-us",
         "intro": { "heading": ".page_hdng4 h2" },
         "fill": [
@@ -124,6 +142,12 @@
         ] }
       ] }
     ]
+  },
+
+  "layout": {
+    "notes": "Which sections an event's own narrative order can touch. pinStart/pinEnd never move — the hero always opens the page and Contact/About-publisher always close it, matching every real ET microsite. Everything else is free for RevampCanvas.mount()'s sectionOrder option to resequence (see create-event.html's autoPersonalizeDesign() and requestAiDesign() — Gemini proposes a coherent order, not a blind shuffle) so two TECH500 events don't read as the identical page with different words.",
+    "pinStart": ["banner"],
+    "pinEnd": ["contact-us", "about-us"]
   },
 
   "sectionsNotes": "repeat =the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. toggle = items that open on click (an accordion): item, the class that opens it, and the element whose aria-expanded follows; the editor opens one when something inside it is clicked, so its hidden part can be edited.",

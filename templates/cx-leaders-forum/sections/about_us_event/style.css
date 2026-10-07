@@ -1,0 +1,23 @@
+/* ET BrandEquity publisher boilerplate — same copy on every ET BrandEquity microsite, not this event's own
+   content (same role as TECH500's about-us / "About ETCIO"), so it has no content.map entry and keeps its
+   real stock text. Copied from the live page's #about_us_event rules. */
+#about_us_event {
+  padding: 50px 0;
+}
+
+#about_us_event .page_hdng4 {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+#about_us_event .text-style {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+#about_us_event .text-style p {
+  color: var(--body-color, var(--default-color));
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.7;
+}

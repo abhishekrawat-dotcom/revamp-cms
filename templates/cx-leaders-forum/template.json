@@ -1,0 +1,171 @@
+{
+  "id": "cx-leaders-forum",
+  "name": "CX Leaders Forum",
+  "title": "CX Annual Symposium- CX Event | CMO, CX Leaders Event and Conference | ET BrandEquity",
+  "source": "https://brandequity.economictimes.indiatimes.com/cx-annual-symposium",
+
+  "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
+  "fonts": [
+    "https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"
+  ],
+  "theme": "theme.css",
+  "design": {
+    "notes": "What the editor's theme controls act on. SangBleu Versailles isn't a real Google Font (the live page's own fonts.googleapis.com link for it 404s) — it's self-hosted, declared with @font-face in theme.css, so headingFontVar still names the CSS variable the design's headings read, same shape as TECH500's. headings/buttons/cards = selectors for the heading/corner-radius controls. swatches = theme colours offered besides the template's own.",
+    "headingFontVar": "--heading-font-family",
+    "headings": ".page_hdng2 h2, .page_hdng4 h1, .page_hdng4 h2, .page_hdng5 h1, .page_hdng5 h2",
+    "buttons": "a.book-btn",
+    "cards": ".stack-card, .conventions-grid li, .contact-box, .faq-item, .speaker-card, .quote-card",
+    "swatches": ["#071912", "#DE3D61", "#E81F3D", "#D9534F"]
+  },
+  "editorFonts": {
+    "SangBleu Versailles": "SangBleuVersailles-Bold-WebS, Arial, sans-serif",
+    "Montserrat": "Montserrat, Arial, sans-serif"
+  },
+
+  "body": {
+    "id": "brandequity",
+    "class": "microsite product_microsite heading-style-1 color_black web_view_ et_brandequity single-header",
+    "classNotes": "single-header is added at runtime by ET's header script on the live page, same as TECH500.",
+    "style": {
+      "--default-color": "rgb(25 27 31)",
+      "--bg-color": "rgba(255, 240, 230, 1)",
+      "--bg-spacing": "50px 0",
+      "--para-font-size": "14px",
+      "--theme-color": "rgba(7, 25, 18, 1)",
+      "--primary-font-size": "24px",
+      "--secondary-font-size": "16px",
+      "--body-color": "rgba(25, 27, 31, 1)",
+      "font-size": "16px",
+      "--nav-text-color": "rgba(255, 255, 255, 1)",
+      "--body-font-family": "Montserrat, Arial, sans-serif",
+      "--heading-font-family": "SangBleuVersailles-Bold-WebS, Arial, sans-serif",
+      "--heading-color": "rgba(25, 27, 31, 1)"
+    }
+  },
+
+  "content": {
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). from = a Create Event library id (step 3) or event (step 1). about_us_event (About ETBrandEquity.com) has no entry and keeps its own copy deliberately — same as TECH500's about-us, it's ET BrandEquity's publisher boilerplate, identical on every ET BrandEquity microsite, not event content a wizard field should own (the contact-us section's own escalation line, 'For any issues requiring immediate escalation, write to shahbaz.khan@...', is the same text verbatim on TECH500's contact-us too, confirming it's a corporate-wide escalation contact, not this event's — it stays static for the same reason within the otherwise-wizard-driven contact-us section). Every other real section below is wired to a library id, per this session's rule that genuine event content should end up wizard-variable rather than left as the export's own static copy — conventions-box and pillars didn't have an obvious 1:1 library match (an icon+title mini-block grid, and a 6-layer stack with per-card bullet lists) so they're mapped to the closest existing shapes (awaits, priorities) rather than left out: 'awaits' because conventions-box's cards are themed mini-blocks the live page itself calls out as what's in store at the event (same icon+title shape awaits already supports); 'priorities' because the pillars stack is literally this event's key discussion themes, and priorities.items[].points (the wizard's existing per-item pointer list) maps onto each stack card's own feature list via a nested list rule. The pillars/conventions-box card artwork (background photo, icon) stays the design's own decoration, same as TECH500 leaves industries' icon untouched — only the real text goes through the wizard. who-should-attend's roles have no second 'why' line in the live design, so only {t} is wired, matching TECH500's industries pattern of a title-only list. glimpses_event (gallery) used to only have a photo COUNT in the wizard (seed 'gallery': {count:0}, no way to set a real image), which meant its real carousel photos could never actually be replaced — this session extended the 'gallery' shape to also carry real items:[{url}] (create-event.html's gallery editor now takes a pasted image URL per tile, not just a counter), so glimpses_event's own real photography can now be swapped for the event's own via a genuine list rule, and disappears entirely (empty:hide) rather than showing CX's own past-edition photos when the user hasn't added any yet. faqs' real accordion (h3.accordion + div.panel flat siblings opened by a 'h3.accordion.active + .panel' CSS adjacent-sibling rule) doesn't survive the editor's list rule cloning/removing cards, so it's rebuilt on TECH500's own .faq-item/.faq-question/.faq-answer-wrap structure (identical script.js) with this event's own 4 real FAQs and colours. leaders (a slick.js quote carousel, not bundled here) is similarly rebuilt as a static responsive grid of its own real 10 quotes, mapped to 'insights'. speakers drops the live ET AJAX speaker-pagination widget (SpeakerAjaxPagination, masonry, popup bindings) that only works against the live CMS, keeping just the 5 real 'Previous Edition Speakers' cards it renders. The banner's own decorative '#ETCXAnnual' hashtag line had no wizard field to live in (hero carries title/tagline/date/location/CTAs, not a hashtag) and was dropped rather than shipped as frozen real text with no way to change it.",
+    "map": [
+      { "from": "hero", "section": "banner", "fill": [
+        { "attr": "img.banner-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
+        { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+        { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },
+        { "text": "h1.hidden, .cntnd > h3.hidden", "value": "{hero.title|event.name}" },
+        { "text": ".cntnd > p.hidden", "value": "{hero.tagline}" },
+        { "text": ".icn-box:has(.bi-calendar3)", "value": "{event.date}", "empty": "remove" },
+        { "text": ".icn-box:has(.bi-geo-alt)", "value": "{event.location}", "empty": "remove" },
+        { "text": ".btn-wrapper .book-btn:not(.btn-outline)", "value": "{hero.cta1}", "empty": "keep" },
+        { "text": ".btn-wrapper .book-btn.btn-outline", "value": "{hero.cta2}", "empty": "remove" }
+      ] },
+      { "from": "stats", "section": "stats-3", "fill": [
+        { "list": ".stat-box", "items": "stats.items", "require": "{v}{k}", "empty": "hide", "fill": [
+          { "text": "h3 > strong", "value": "{v}" },
+          { "text": "h3", "value": "{k}", "skip": "strong" }
+        ] }
+      ] },
+      { "from": "about", "section": "overview-",
+        "intro": { "heading": "h2", "body": ".overview-content p" },
+        "fill": [
+        { "text": "h2", "value": "About {event.name}" }
+      ] },
+      { "from": "awaits", "section": "conventions-box",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".conventions-grid li", "items": "awaits.items", "require": "{t}", "empty": "hide", "fill": [
+          { "text": ".conventions-cntnd h3", "value": "{t}" }
+        ] }
+      ] },
+      { "from": "priorities", "section": "pillars",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".stack-card", "items": "priorities.items", "require": "{t}", "empty": "hide", "fill": [
+          { "text": ".num-badge", "value": "{##}" },
+          { "text": ".layer-title", "value": "{t}" },
+          { "list": ".feature-list li", "items": "points", "fill": [
+            { "text": ".pt", "value": "{.}" }
+          ] }
+        ] }
+      ] },
+      { "from": "attend", "section": "who-should-attend",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".who-attend-item", "items": "attend.items", "require": "{t|.}", "empty": "hide", "fill": [
+          { "text": ".role", "value": "{t|.}" }
+        ] }
+      ] },
+      { "from": "speakers", "section": "speakers",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".speaker-card", "items": "speakers.items", "require": "{n}", "empty": "hide", "fill": [
+          { "attr": "img", "name": "src", "value": "{photo}", "empty": "keep" },
+          { "attr": "img", "name": "alt", "value": "{n}" },
+          { "text": "h5", "value": "{n}" },
+          { "text": "span", "value": "{r}, {c}" }
+        ] }
+      ] },
+      { "from": "insights", "section": "leaders",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".quote-card", "items": "insights.items", "require": "{q}", "empty": "hide", "fill": [
+          { "text": "p", "value": "{q}" },
+          { "text": "figcaption > strong", "value": "{n}" },
+          { "text": "figcaption .role", "value": "{r}" },
+          { "text": "figcaption .company", "value": "{c}" }
+        ] }
+      ] },
+      { "from": "glimpses", "section": "glimpses_event",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".glimpse-tile", "items": "glimpses.items", "require": "{url}", "empty": "hide", "fill": [
+          { "attr": "img", "name": "src", "value": "{url}" }
+        ] }
+      ] },
+      { "from": "faq", "section": "faqs",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".faq-item", "items": "faq.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": ".faq-number", "value": "{##}" },
+          { "text": ".faq-question-text", "value": "{t}" },
+          { "text": ".faq-answer", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "contact", "section": "contact-us",
+        "intro": { "heading": ".page_hdng4 h2" },
+        "fill": [
+        { "list": ".flex-width-auto > .col-md-6", "items": "contact.blocks", "fill": [
+          { "text": ".line-1", "value": "{t}" },
+          { "list": ".contact-box", "items": "people", "fill": [
+            { "text": ".name", "value": "{n}", "empty": "remove" },
+            { "text": "a.email", "value": "{e}", "empty": "remove:span.email" },
+            { "attr": "a.email", "name": "href", "value": "mailto:{e}" },
+            { "text": "a.phone", "value": "{p}", "empty": "remove:span.phone" },
+            { "attr": "a.phone", "name": "href", "value": "tel:{p}" }
+          ] }
+        ] }
+      ] }
+    ]
+  },
+
+  "layout": {
+    "notes": "Which sections an event's own narrative order can touch. pinStart/pinEnd never move — the hero always opens the page and Contact/About-publisher always close it, matching every real ET microsite (same convention as TECH500). Everything else is free for RevampCanvas.mount()'s sectionOrder option to resequence.",
+    "pinStart": ["banner"],
+    "pinEnd": ["contact-us", "about_us_event"]
+  },
+
+  "sectionsNotes": "repeat = the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. toggle = items that open on click (an accordion): item, the class that opens it, and the element whose aria-expanded follows.",
+  "sections": [
+    { "id": "banner",            "name": "Banner",                          "etId": null },
+    { "id": "stats-3",           "name": "Stats strip",                     "etId": null, "repeat": { "item": ".stat-box", "label": "h3" } },
+    { "id": "overview-",         "name": "Overview",                        "etId": null },
+    { "id": "conventions-box",   "name": "The Editorial Agenda",            "etId": null, "repeat": { "item": ".conventions-grid li", "label": ".conventions-cntnd h3" } },
+    { "id": "pillars",           "name": "The CX Investment Stack",         "etId": null, "repeat": { "item": ".stack-card", "label": ".layer-title" } },
+    { "id": "who-should-attend", "name": "Who Should Attend",               "etId": null, "repeat": { "item": ".who-attend-item", "label": ".role" } },
+    { "id": "speakers",          "name": "Speakers",                        "etId": null, "repeat": { "item": ".speaker-card", "label": "h5" } },
+    { "id": "leaders",           "name": "Quotes From CX Leaders",          "etId": null, "repeat": { "item": ".quote-card", "label": "figcaption > strong" } },
+    { "id": "glimpses_event",    "name": "Previous Edition Glimpses",       "etId": null, "repeat": { "item": ".glimpse-tile", "label": "img" } },
+    { "id": "faqs",              "name": "Frequently Asked Questions",      "etId": null, "script": true, "repeat": { "item": ".faq-item", "label": ".faq-question-text" },
+      "toggle": { "item": ".faq-item", "open": "active", "expanded": ".faq-question" } },
+    { "id": "contact-us",        "name": "Contact us",                      "etId": null, "repeat": { "item": ".flex-width-auto > .col-md-6", "label": ".line-1" } },
+    { "id": "about_us_event",    "name": "About ETBrandEquity.com",         "etId": null }
+  ]
+}

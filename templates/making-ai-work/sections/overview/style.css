@@ -1,0 +1,32 @@
+/* scoped #overview rules, copied from the live page's own <style> block right after <section id="overview"> —
+   on the live page this style tag trails its section rather than leading it, unlike most others; kept as its
+   own file regardless, same as every other section here */
+#overview{background:linear-gradient(0deg, #002156 0%, #000 100%), #FFF;padding-top:128px}
+#overview .text-style{text-align:left}
+
+#overview .page_hdng4 h2{text-align:left;font-size:46px;font-weight:800;line-height:1.05;letter-spacing:-1px;text-transform:uppercase;margin-bottom:28px}
+#overview .page_hdng4 h2 clr{display:block;color:#1F6BFF}
+#overview .page_hdng4 h2 span{display:block;color:#FFFFFF;text-align:left;font-size:inherit;font-weight:inherit;line-height:inherit;letter-spacing:inherit;margin:6px 0 0}
+
+#overview .text-style p{text-align:left;color:#E7E7E7;margin-bottom:22px}
+#overview .text-style h4{color:#E7E7E7;font-size:22px;font-style:normal;font-weight:500;line-height:120%}
+#overview .btn-wrapper{margin-top:35px}
+#overview .second_content{-webkit-line-clamp:9 !important}
+
+@media screen and (min-width:768px) and (max-width:1199px){
+  #overview .page_hdng4 h2{font-size:38px}
+}
+@media screen and (max-width:767px){
+  #overview{padding-top:80px}
+  #overview .page_hdng4 h2{text-align:center;font-size:30px;letter-spacing:-0.5px;line-height:1.1}
+  #overview .page_hdng4 h2 span{text-align:center;font-size:inherit;margin:6px 0 10px}
+  #overview .text-style h4{font-size:20px;line-height:1.3em}
+  #overview .text-style p,#overview .hidden-read_more{text-align:center}
+  #overview .text-style,#overview h3{text-align:center}
+  #overview .over-img{margin:20px auto 0px;max-width:80%}
+}
+@media screen and (min-width:1200px){
+  #overview .page_hdng4 h2{max-width:560px;font-size:50px}
+  #overview .ovr-img{text-align:right}
+  #overview .container{max-width:100%;margin:auto}
+}

@@ -1,0 +1,138 @@
+{
+  "id": "making-ai-work",
+  "name": "Making AI Work",
+  "title": "Agentic Summit 2026 | ET Enterprise AI",
+  "source": "https://enterpriseai.economictimes.indiatimes.com/agentic-ai-summit",
+
+  "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
+  "fonts": [
+    "https://fonts.googleapis.com/css2?family=Geist:wght@100;200;300;400;500;600;700;800&display=swap",
+    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap"
+  ],
+  "theme": "theme.css",
+  "design": {
+    "notes": "What the editor's theme controls act on. headingFontVar = the variable most headings read — unlike TECH500 this design has no separate '-v2' variant, every heading reads --heading-font-family (Plus Jakarta Sans) directly, already set on <body>. headings/buttons/cards = selectors for the heading, corner-radius controls. swatches = theme colours offered besides the template's own.",
+    "headingFontVar": "--heading-font-family",
+    "headings": ".page_hdng4 h2, .page_hdng4 h1, .page_hdng2 h2",
+    "buttons": "a.book-btn",
+    "cards": ".who-enter-box li, .key-topic-card, .conventions-wdgt li, .news-card, .gridPadItem, .contacts .contact-box-wrapper .contact-box",
+    "swatches": ["#186BF9", "#002156", "#000000", "#FFFFFF", "#9FCDFF"]
+  },
+  "editorFonts": {
+    "Geist": "Geist, Arial, sans-serif",
+    "Plus Jakarta Sans": "\"Plus Jakarta Sans\", Arial, sans-serif"
+  },
+
+  "body": {
+    "id": "enterpriseai",
+    "class": "microsite product_microsite heading-style-3 color_white web_view_ et_enterpriseai single-header",
+    "classNotes": "single-header is added at runtime by ET's header script on the live page, same as TECH500.",
+    "style": {
+      "--default-color": "rgb(25 27 31)",
+      "--bg-color": "rgba(0, 14, 38, 1)",
+      "--bg-spacing": "14px 0",
+      "--para-font-size": "18px",
+      "--theme-color": "rgba(24, 107, 249, 1)",
+      "--primary-font-size": "40px",
+      "--secondary-font-size": "16px",
+      "--body-color": "rgba(255, 255, 255, 1)",
+      "font-size": "16px",
+      "--nav-text-color": "rgba(255, 255, 255, 1)",
+      "--nav-bg-color": "rgba(0, 0, 0, 1)",
+      "--body-font-family": "Geist, Arial, sans-serif",
+      "--heading-font-family": "Plus Jakarta Sans, Arial, sans-serif",
+      "--heading-color": "rgba(255, 255, 255, 1)"
+    }
+  },
+
+  "content": {
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). from = a Create Event library id (step 3) or event (step 1). Two sections needed new LIBRARY entries added to create-event.html because nothing existing fit their real, event-specific content: 'key-topic' (the live page's own 'Key Discussion Points' graphic) is a verbatim match for the EXISTING 'priorities' library (same name, same shape) — no new entry needed there, just reused it. 'who-enter' ('Four Questions the Enterprise Now Has to Answer') had no existing fit, so a new 'keyquestions' library entry (shape 'columns', same t/d fields) was added. Both are genuine, event-specific content, not publisher boilerplate, so neither was left static. 'glimpses_event' (Previous Edition photos) maps to the EXISTING 'glimpses' library, but only for show/hide: Create Event's gallery shape only ever collects a photo COUNT, never real image uploads (case 'gallery' in create-event.html), so there is no per-photo data content.map's list rule could fill — wiring 'from':'glimpses' with no fill rules still makes the section respond to the wizard (toggled off, it hides, same as every other toggle:true section), which is the most this existing shape can honestly deliver; the real 'Previous Edition 2025' photos stay as this template's own ported content. 'about-wrapper' (the 'Making AI Work' Manifesto) is left out of content.map entirely and deliberately: it's the publisher's own brand statement, the same copy regardless of which 'Making AI Work' event is running, exactly like TECH500's 'About ETCIO' — not event content a wizard field should own. The banner shows the event's own logo where the live site shows the Agentic Summit one; speaker cards show the user's own name/role/company text but keep ET's own default-face placeholder photo in every slot (Create Event's speaker tool never collects a photo) rather than keep the live page's real, named individuals' photos, which would otherwise end up captioned with an unrelated user's typed-in name. If the event's hero was built from an uploaded PSD banner (create-event.html's PSD import), its composite image replaces the banner's own background image too, same as TECH500.",
+    "map": [
+      { "from": "hero", "section": "banner", "fill": [
+        { "attr": "img.banner-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
+        { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+        { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },
+        { "text": "h3.hidden", "value": "{hero.title|event.name}" },
+        { "text": ".cntnd > p.hidden", "value": "{hero.tagline}" },
+        { "text": ".icn-box:has(.bi-calendar3)", "value": "{event.date}", "empty": "remove" },
+        { "text": ".icn-box:has(.bi-geo-alt)", "value": "{event.location}", "empty": "remove" },
+        { "text": ".btn-wrapper .book-btn:not(.btn-outline)", "value": "{hero.cta1}", "empty": "keep" },
+        { "text": ".btn-wrapper .book-btn.btn-outline", "value": "{hero.cta2}", "empty": "remove" }
+      ] },
+      { "from": "about", "section": "overview",
+        "intro": { "heading": "h2", "body": ".second_content > p", "media": { "sel": ".ovr-img", "wrap": "col-md-7 ovr-img" } },
+        "fill": [] },
+      { "from": "keyquestions", "section": "who-enter",
+        "fill": [
+        { "list": ".who-enter-box ul.first > li", "items": "keyquestions.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h4", "value": "{t}" },
+          { "text": "p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "priorities", "section": "key-topic",
+        "intro": { "heading": { "sel": "h2", "skip": "span" } },
+        "fill": [
+        { "list": ".key-topic-card", "items": "priorities.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h3", "value": "{t}" },
+          { "text": "p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "speakers", "section": "our-speakers",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".gridPadItem", "items": "speakers.items", "require": "{n}", "empty": "hide", "fill": [
+          { "text": "h5", "value": "{n}" },
+          { "text": "span", "value": "{r}, {c}" }
+        ] }
+      ] },
+      { "from": "whyjoin", "section": "fact-marquee",
+        "intro": { "heading": "h2" },
+        "fill": [
+        { "list": ".news-card", "items": "whyjoin.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": ".content h3", "value": "{d|t}" }
+        ] }
+      ] },
+      { "from": "attend", "section": "conventions-box",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".page_hdng4.text-style > p" },
+        "fill": [
+        { "list": ".conventions-wdgt ul.first > li", "items": "attend.items", "require": "{t}{d}", "empty": "hide", "fill": [
+          { "text": "h3", "value": "{t}" },
+          { "text": "p", "value": "{d}" }
+        ] }
+      ] },
+      { "from": "glimpses", "section": "glimpses_event", "fill": [] },
+      { "from": "contact", "section": "contact-us", "fill": [
+        { "list": ".flex-width-auto > .col-md-4", "items": "contact.blocks", "fill": [
+          { "text": ".line-1", "value": "{t}" },
+          { "list": ".contact-box", "items": "people", "fill": [
+            { "text": ".name", "value": "{n}", "empty": "remove" },
+            { "text": "a.email", "value": "{e}", "empty": "remove:span.email" },
+            { "attr": "a.email", "name": "href", "value": "mailto:{e}" },
+            { "text": "a.phone", "value": "{p}", "empty": "remove:span.phone" },
+            { "attr": "a.phone", "name": "href", "value": "tel:{p}" }
+          ] }
+        ] }
+      ] }
+    ]
+  },
+
+  "layout": {
+    "notes": "Which sections an event's own narrative order can touch. pinStart/pinEnd never move — the hero always opens the page and Contact/the Manifesto publisher block always close it, matching the live site and the same spirit as TECH500's own pinEnd. Everything else is free for RevampCanvas.mount()'s sectionOrder option to resequence.",
+    "pinStart": ["banner"],
+    "pinEnd": ["contact-us", "about-wrapper"]
+  },
+
+  "sectionsNotes": "repeat = the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. 'our-speakers' sample cards show real, public previous-edition speaker names from the live page but ET's own default-face placeholder photo, not the real individuals' photos (see content.notes).",
+  "sections": [
+    { "id": "banner",         "name": "Banner",                          "etId": null,     "script": true },
+    { "id": "overview",       "name": "Overview",                        "etId": null },
+    { "id": "who-enter",      "name": "Questions this raises",           "etId": null,     "repeat": { "item": ".who-enter-box ul.first > li", "label": "h4" } },
+    { "id": "key-topic",      "name": "Key Discussion Points",           "etId": null,     "repeat": { "item": ".key-topic-card", "label": "h3" } },
+    { "id": "our-speakers",   "name": "Our Speakers",                    "etId": null,     "repeat": { "item": ".gridPadItem", "label": "h5" } },
+    { "id": "fact-marquee",   "name": "Reasons not to miss",             "etId": null,     "repeat": { "item": ".news-card", "label": ".content h3" } },
+    { "id": "conventions-box","name": "Who should attend",               "etId": null,     "repeat": { "item": ".conventions-wdgt ul.first > li", "label": "h3" } },
+    { "id": "glimpses_event", "name": "Previous edition glimpses",       "etId": null },
+    { "id": "contact-us",     "name": "Contact us",                      "etId": null,     "repeat": { "item": ".flex-width-auto > .col-md-4", "label": ".line-1" } },
+    { "id": "about-wrapper",  "name": "Manifesto",                       "etId": null }
+  ]
+}

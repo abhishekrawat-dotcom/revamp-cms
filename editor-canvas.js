@@ -297,7 +297,7 @@
   }
 
   /* ---------- mounting ---------- */
-  function mount(frame, templateId) {
+  function mount(frame, templateId, opts) {
     var viewport = document.createElement('div');
     viewport.className = 'tpl-viewport';
     var iframe = document.createElement('iframe');
@@ -308,7 +308,8 @@
 
     return RevampTemplates.load(templateId, {
       editing: true,
-      headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>']
+      headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>'],
+      sectionOrder: opts && opts.sectionOrder
     }).then(function (res) {
       return new Promise(function (resolve) {
         iframe.addEventListener('load', function () { resolve(makeCanvas(viewport, iframe, res.template)); }, { once: true });
@@ -348,6 +349,16 @@
     function uniqueId(id) {
       var base = id.replace(/-\d+$/, ''), n = 2, candidate;
       do { candidate = base + '-' + n++; } while (doc.getElementById(candidate));
+      return candidate;
+    }
+
+    /* data-rv-section is the key every consumer (RevampFill's content.map lookup, the chat-edit panel's
+       applyTextEdit, canvas.sections()) uses to find ONE specific section — querySelector only ever returns
+       the first match, so two sections sharing a value make the second one unreachable by anything keyed off
+       it. Parallel to uniqueId() above, but checked against this attribute instead of the id attribute. */
+    function uniqueSectionId(id) {
+      var base = id.replace(/-\d+$/, ''), n = 2, candidate;
+      do { candidate = base + '-' + n++; } while (doc.querySelector('[data-rv-section="' + CSS.escape(candidate) + '"]'));
       return candidate;
     }
 
@@ -684,6 +695,8 @@
         var copy = sec.cloneNode(true);
         cleanCopy(copy);
         copy.setAttribute('data-sec-name', name);
+        var origSectionId = copy.getAttribute('data-rv-section');
+        if (origSectionId) copy.setAttribute('data-rv-section', uniqueSectionId(origSectionId));
         sec.after(copy);
         return adopt(copy);
       },

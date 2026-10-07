@@ -1,0 +1,6 @@
+/* scoped #about-wrapper rules, copied from the live page's own <style> block right after <section id="about-wrapper"> */
+#about-wrapper{background:url(https://img.etb2bimg.com/files/cp/bfb08843218fd7a784ca.jpg) no-repeat top center;background-size:cover}
+#about-wrapper .page_hdng4{text-align:center}
+#about-wrapper .about-cntnd-box img{margin-bottom:20px}
+#about-wrapper .about-cntnd-box h3{text-align:center;font-size:40px;font-style:normal;font-weight:600;line-height:120%;margin-bottom:20px}
+#about-wrapper .about-cntnd-box .text-style p{font-style:normal;font-weight:300;line-height:26px;text-align:center}

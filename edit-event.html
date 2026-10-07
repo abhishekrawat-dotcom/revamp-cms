@@ -7,8 +7,24 @@
 <link rel="stylesheet" href="motion.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 
-<!-- top bar and rail are rendered by app-shell.js - same markup on every section -->
-<header class="topbar" id="topbar"></header>
+<header class="topbar">
+  <a class="back-btn" href="Event_Listing.html">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    <span>Back to events</span>
+  </a>
+  <span class="ev-title">
+    <h1 id="ev-name">&nbsp;</h1>
+    <span class="meta" id="ev-meta"></span>
+  </span>
+  <span class="topbar-acts">
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <button class="btn btn-secondary" type="button" id="btn-preview">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+      <span>Preview</span>
+    </button>
+    <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
+  </span>
+</header>
 
 <div class="shell">
   <nav class="rail" id="rail" aria-label="Sections"></nav>

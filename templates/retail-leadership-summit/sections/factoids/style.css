@@ -1,0 +1,46 @@
+#fact-marquee .marquee-wrapper {
+  overflow: hidden;
+  position: relative;
+}
+#fact-marquee .marquee-content {
+  display: flex;
+  animation: factoids-scroll 25s linear infinite;
+  gap: 22px;
+}
+#fact-marquee .marquee-content:hover {
+  animation-play-state: paused;
+}
+#fact-marquee .news-card {
+  border-radius: 21px;
+  border: 1px solid rgba(255, 146, 122, 0.38);
+  background: rgba(94, 0, 7, 0.90);
+  flex: 0 0 360px;
+  overflow: hidden;
+  position: relative;
+  padding: 25px 29px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+#fact-marquee .news-card .background { display: none; }
+#fact-marquee .factoid-title {
+  color: #FF927A;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 130%;
+  margin: 0;
+}
+#fact-marquee .factoid-desc {
+  color: #FFF;
+  font-size: 15px;
+  line-height: 150%;
+  margin: 0;
+}
+@keyframes factoids-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@media (max-width: 768px) {
+  #fact-marquee .news-card { flex: 0 0 280px; }
+  #fact-marquee .factoid-title { font-size: 16px; }
+}

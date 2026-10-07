@@ -138,6 +138,15 @@
   .avatar-btn{ width:34px; height:34px; border-radius:50%; border:none; background:none; padding:0; display:flex; align-items:center; justify-content:center; }
   .avatar-circle{ width:100%; height:100%; border-radius:50%; background:var(--accent); color:var(--accent-contrast); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; font-family:var(--font-display); }
 
+  /* at phone width, brand + "More Products" + the portal switcher + the account controls (all flex-shrink:0)
+     together exceed the viewport even with .main-nav-scroll squeezed to nothing — the account avatar (the
+     one control a signed-in user actually needs reachable at all times) was getting pushed off-screen with
+     no visible hint there was more to scroll to. Dropping the two secondary, text-labelled nav entries
+     reclaims enough width to keep the essential controls on screen without a horizontal scroll at all. */
+  @media (max-width: 640px){
+    .main-nav-more, .main-nav-portals{ display:none; }
+  }
+
   /* ---------- section bar: tabs + actions, one compact row ---------- */
   .section-bar{ position:relative; display:flex; align-items:center; justify-content:flex-end; gap:16px; flex-wrap:wrap; padding:10px 0 0; border-bottom:1px solid var(--border); min-height:46px; }
   .section-bar-left{ position:absolute; left:50%; top:10px; bottom:0; transform:translateX(-50%); display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; }
@@ -343,7 +352,7 @@
   /* ---------- lower dashboard: segmentation + activity ---------- */
   .lower-grid{ display:flex; flex-direction:column; gap:16px; }
   .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-xs); }
-  .panel-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--border); }
+  .panel-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
   .panel-card-head-title{ display:flex; align-items:center; gap:11px; }
   .panel-icon-avatar{ width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .panel-card-head h3{ font-size:15px; }
@@ -351,7 +360,11 @@
   .panel-card-head-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .panel-card-body{ padding:13px 18px 16px; min-height:60px; }
   .segmented{ display:flex; align-items:center; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; }
-  .segmented.sm{ padding:2px; flex-shrink:0; }
+  /* its own buttons are all white-space:nowrap by design (labels shouldn't wrap mid-word) — the group can be
+     wider than a phone viewport on its own, even on its own wrapped line, so it needs to scroll internally
+     rather than push the whole page wider (same pattern as .main-nav-scroll) */
+  .segmented.sm{ padding:2px; flex-shrink:0; max-width:100%; overflow-x:auto; scrollbar-width:none; }
+  .segmented.sm::-webkit-scrollbar{ display:none; }
   .segmented.sm button{ display:flex; align-items:center; gap:5px; padding:6px 11px; font-size:11.5px; font-weight:600; color:var(--text-muted); background:none; border:none; border-radius:7px; white-space:nowrap; }
   .segmented.sm button:hover{ color:var(--text); }
   .segmented.sm button svg{ flex-shrink:0; opacity:.8; }
@@ -364,6 +377,9 @@
 
   .seg-select{ padding:6px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--text); }
   .seg-select-event{ min-width:170px; max-width:260px; }
+  @media (max-width: 480px){
+    .seg-select-event{ min-width:0; max-width:100%; flex:1 1 100%; }
+  }
   .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
   .seg-view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
   .seg-view-btn{ width:28px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--text-muted); }
@@ -600,7 +616,7 @@
       <div class="toolbar-right-group">
         <span class="result-line" id="result-line"></span>
 
-        <a class="btn btn-primary btn-sm" href="create-event.html">
+        <a class="btn btn-primary btn-sm" href="create-event.html?new=1">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
           Create Event
         </a>
@@ -1552,7 +1568,7 @@
         var mainBucket = ['active','upcoming','completed'].indexOf(bucket) !== -1;
         emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No ' + statusLabel(bucket).toLowerCase() + ' events</h3>' +
           '<p>' + (mainBucket ? 'Create your first event — it takes about ten minutes.' : 'Nothing here right now.') + '</p>' +
-          (mainBucket ? '<a class="btn btn-primary" href="create-event.html">Create Event</a>' : '') + '</div>';
+          (mainBucket ? '<a class="btn btn-primary" href="create-event.html?new=1">Create Event</a>' : '') + '</div>';
       }
       $('table-body').innerHTML = '<tr><td colspan="6">' + emptyHTML + '</td></tr>';
       $('card-list').innerHTML = emptyHTML;

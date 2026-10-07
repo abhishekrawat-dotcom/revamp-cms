@@ -1,0 +1,20 @@
+/* The live page's glimpses grid loads through a skeleton-shimmer + viewport-triggered thumbnail-resizer script
+   (justified-gallery sized srcset probes) that exists purely to lazy-load and crop thumbnails — no content of
+   its own. Dropped here in favour of the same 10 real "Previous Edition 2025" photos as plain, already-sized
+   <img>s; the column layout is kept so it still reads as the live design's 5-up photo wall. This section carries
+   its own real photos deliberately and has no content.map entry (see template.json "content.notes") — they're
+   from a past edition that already happened, not something this event's own wizard data could ever supply. */
+#glimpses_event{padding-top:70px}
+#glimpses_event .page_hdng4{margin-bottom:32px}
+#glimpses_event .page_hdng4 h2{color:#fff}
+#glimpses_event .glimpses_carousel_slider{display:flex;gap:16px}
+#glimpses_event .photo-carousel-col{flex:1;display:flex;flex-direction:column;gap:16px;min-width:0}
+#glimpses_event .images__link{display:block}
+#glimpses_event .images__link img{display:block;width:100%;height:auto;border-radius:8px;object-fit:cover;aspect-ratio:373/249}
+@media(max-width:991px){
+  #glimpses_event .glimpses_carousel_slider{flex-wrap:wrap}
+  #glimpses_event .photo-carousel-col{flex:1 1 calc(50% - 8px)}
+}
+@media(max-width:575px){
+  #glimpses_event .photo-carousel-col{flex:1 1 100%}
+}

@@ -1,0 +1,60 @@
+/* CX Annual Symposium — Quotes from CX Leaders, adapted from the live page's #leaders rules.
+   The live page runs this as a slick.js carousel (slidesToShow, autoplay, cloned slides for the infinite
+   loop); slick isn't bundled here (same policy as TECH500 — no third-party JS runtime beyond this repo's own
+   et-runtime.js / per-section script.js), so the real 10 quotes are shown as a static responsive grid instead
+   of a carousel. Mapped to the wizard's "insights" (quotes) library. */
+#leaders .quote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 10px;
+}
+
+#leaders .quote-card {
+  background: #F7F4EF;
+  border-radius: 16px;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+#leaders .quote-card p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #191B1F;
+  margin: 0;
+  text-align: left;
+}
+
+#leaders .quote-card .text-style.speaker figure {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+#leaders .quote-card .text-style.speaker img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+
+#leaders .quote-card figcaption strong {
+  display: block;
+  font-size: 14px;
+  color: #071912;
+}
+
+#leaders .quote-card figcaption span {
+  font-size: 12px;
+  color: #6a6a6a;
+}
+
+@media screen and (max-width: 767px) {
+  #leaders .quote-grid {
+    grid-template-columns: 1fr;
+  }
+}

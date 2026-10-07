@@ -1,0 +1,74 @@
+/***stats css start**/
+#stats-4 .stats-box {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: grid;
+  gap: 30px;
+}
+#stats-4 section {
+  padding: 25px 10px;
+  color: #2a2a2a;
+  font-size: 15px;
+  line-height: 1.3em;
+  text-align: center;
+  min-height: 100px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.10);
+  background: rgba(94, 2, 10, 0.20);
+}
+#stats-4 section:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+#stats-4 section h3 {
+  color: #FFF;
+  text-align: center;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.3em;
+  text-transform: uppercase;
+}
+#stats-4 section h3 strong {
+  display: block;
+  color: #FF927A;
+  text-align: center;
+  font-variant-numeric: lining-nums proportional-nums;
+  font-size: 40px;
+  font-style: normal;
+  font-weight: 600 !important;
+  line-height: 60px;
+  margin-bottom: 15px;
+}
+@media screen and (max-width:767px){
+  #stats-4 .stats-box {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 15px;
+  }
+  #stats-4 section {
+    padding: 10px 10px 10px;
+    border-radius: 15px;
+  }
+  #stats-4 section h3 {
+    font-size: 12px;
+    line-height: 130%;
+  }
+  #stats-4 section:nth-child(even) {
+    margin-bottom: 10px;
+  }
+  #stats-4 section h3 strong {
+    font-size: 36px;
+    line-height: 1em;
+    margin-bottom: 10px;
+  }
+}
+/* fewer than five stats (Create Event fills them from the Stats strip, Layout items adds or removes) */
+@media (min-width: 992px) {
+  #stats-4 .stats-box:has(> section:nth-child(1):last-child) { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  #stats-4 .stats-box:has(> section:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #stats-4 .stats-box:has(> section:nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #stats-4 .stats-box:has(> section:nth-child(4):last-child) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/***stats css end**/

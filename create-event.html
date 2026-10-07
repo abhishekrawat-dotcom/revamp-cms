@@ -113,7 +113,9 @@
   .btn-ai:hover{ background: var(--review); color: var(--surface); }
 
   /* ============ WIZARD SHELL ============ */
-  .wiz{ min-height: 100vh; display: flex; flex-direction: column; }
+  /* height (not min-height): bounds the column so .wiz-split's two panes can actually scroll independently
+     instead of growing the whole page — needed for the side-by-side preview layout (see .wiz-split below) */
+  .wiz{ height: 100vh; display: flex; flex-direction: column; }
 
   .wiz-top{
     position: sticky; top: 0; z-index: 30; background: var(--surface);
@@ -133,6 +135,19 @@
     color: var(--text-muted); display:flex; align-items:center; justify-content:center;
   }
   .icon-btn:hover{ background: var(--surface-2); color: var(--text); }
+
+  /* at phone width the brand mark + title + save status + "Save & exit" + close icon no longer fit in one
+     58px row (no wrap, no shrink) — drop the least essential pieces first (subtitle, then the autosave
+     status text) so the close button and Save & exit stay reachable without horizontal scrolling */
+  @media (max-width: 560px){
+    .wiz-top-row{ gap: 8px; padding: 0 12px; }
+    .wiz-title .sub{ display:none; }
+    .save-state{ display:none; }
+    .btn-sm#btn-save-exit{ padding: 6px 9px; font-size: 12px; }
+  }
+  @media (max-width: 420px){
+    .wiz-top-row .sep, .wiz-title{ display:none; }
+  }
 
   /* ---------- progress rail ---------- */
   .rail{ display: flex; align-items: center; padding: 0 20px 12px; overflow-x: auto; scrollbar-width: none; }
@@ -163,7 +178,7 @@
   }
 
   /* ---------- step body ---------- */
-  .wiz-body{ flex: 1; padding: 30px 24px 40px; }
+  /* .wiz-body's real rule lives further down, alongside .wiz-split (the side-by-side preview layout) */
   .step-wrap{ max-width: 780px; margin: 0 auto; display:flex; flex-direction:column; gap: 22px; }
   .step-wrap.wide{ max-width: 1140px; }
   .step-head h1{ font-size: 26px; letter-spacing: -0.01em; }
@@ -263,7 +278,7 @@
   .sheet{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 2px 20px 18px; }
   .grp{ padding: 16px 0; border-top: 1px solid var(--border); }
   .grp:first-child{ border-top: 0; }
-  .grp-h{ display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+  .grp-h{ display: flex; align-items: center; gap: 11px; margin-bottom: 13px; flex-wrap: wrap; }
   .grp-h h4{
     display:flex; align-items:center; gap: 8px; font-size: 12.5px; font-weight: 800; text-transform: uppercase;
     letter-spacing: .06em; color: var(--text); white-space: nowrap;
@@ -344,6 +359,89 @@
 
   /* ===== BASIC DETAILS : wide layout ===== */
   .step-wrap.full{ max-width: 1300px; }
+
+  /* ===== STEP 1 content editor (merged in from the old step 3) + global live preview =====
+     Side-by-side split while creating the event: 30% content / 70% preview, each scrolling independently.
+     .wiz-split wraps <main> and the preview panel as flex siblings; .has-preview (steps 1/2 only, via
+     setPreviewVisible) and .preview-collapsed (the user's own toggle) are the only two states driving it. */
+  #content-grp #step1-build-host .build-grid{ min-height: 520px; }
+  .wiz-split{ display: flex; flex: 1; min-height: 0; position: relative; }
+  .wiz-body{ flex: 1; min-width: 0; padding: 30px 24px 40px; overflow-y: auto; }
+  .wiz-split.has-preview .wiz-body{ flex: 0 0 30%; max-width: 30%; }
+  .wiz-split.has-preview.preview-collapsed .wiz-body{ flex: 1; max-width: none; }
+
+  .live-preview-panel{
+    display: none; flex-direction: column; min-width: 0;
+    border-left: 1px solid var(--border); background: var(--surface-2);
+  }
+  .live-preview-panel[hidden]{ display: none !important; }
+  .wiz-split.has-preview .live-preview-panel:not([hidden]){ display: flex; flex: 0 0 70%; max-width: 70%; }
+  .wiz-split.has-preview.preview-collapsed .live-preview-panel{ display: none !important; }
+  .live-preview-head{
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; font-weight: 700;
+  }
+  .live-preview-head span.note{ flex: 1; font-weight: 500; color: var(--text-muted); font-size: 11.5px; }
+  .live-preview-collapse{
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-muted);
+  }
+  .live-preview-body{ flex: 1; min-height: 0; display: flex; background: #f2f0ea; padding: 10px; }
+  .live-preview-body iframe{ flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; border-radius: 8px; background: #fff; }
+  /* the real-template canvas (Gen-2 templates, mounted via RevampCanvas) — same box as custom_editor.html's .tpl-frame */
+  .live-preview-body .tpl-frame{ flex: 1; min-width: 0; min-height: 0; display: flex; }
+  .live-preview-body .tpl-frame[hidden]{ display: none; }
+  .tpl-viewport{ flex: 1; width: 100%; min-height: 0; overflow: hidden; border-radius: 8px; position: relative; background: #fff; }
+  .tpl-iframe{ display: block; border: 0; transform-origin: top left; }
+
+  /* the collapsed state's re-expand handle — pinned to the split's own edge, not the viewport, so it can
+     never drift over a dropdown/modal the way the old fixed-position panel once did */
+  .live-preview-expand{
+    display: none; position: absolute; top: 16px; right: 0; z-index: 2; align-items: center; gap: 6px;
+    padding: 8px 12px 8px 14px; border-radius: 8px 0 0 8px; border: 1px solid var(--border); border-right: none;
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm);
+  }
+  .wiz-split.has-preview.preview-collapsed .live-preview-expand{ display: flex; }
+
+  @media (max-width: 1040px){
+    .wiz-split.has-preview .wiz-body{ flex: 1; max-width: none; }
+    .wiz-split.has-preview .live-preview-panel{ display: none !important; }
+    .live-preview-expand{ display: none !important; }
+  }
+
+  /* the basics form (.frow, a 12-col grid) and the section editor (.build-grid, a fixed 268px rail + editor)
+     both assume the ~1300px-wide layout this column had before the preview split — squeezing them into 30%
+     left fields truncated and unreadable.
+     .frow's children use grid-column: span N (2/3/4/6/12) — collapsing the TRACK itself to 1fr (as an
+     earlier version of this fix did) breaks that: a span-2 child still needs 2 columns to exist, so with
+     only one explicit 1fr track the grid silently adds an *implicit* column sized by the child's own content
+     (not shrinking at all) to satisfy the span, which is exactly what caused the overflow. The actual
+     project-established pattern for this (see line ~338's existing `grid-column: span 6 !important` narrow-
+     window rule) is to override the CHILDREN's span instead and leave grid-template-columns (12 equal
+     tracks) alone — span 12 = full row width = natural one-per-row stacking. */
+  /* #wiz-split prefix (not just the .wiz-split class) is required here: the 1040px-and-under rule above
+     (#identity-row > .field, #sched-body .field{grid-column:span 6 !important}) carries an ID in its own
+     selector (specificity 1-1-0), which still wins over a same-!important, 0-ID rule no matter how many
+     classes that rule has — confirmed as a real bug (fields overlapping in the 1041-1080px narrow-preview
+     range) until this selector matched ID-for-ID. */
+  #wiz-split.wiz-split.has-preview .wiz-body .frow > .field{ grid-column: span 12 !important; }
+  .wiz-split.has-preview .wiz-body .build-grid{ grid-template-columns: 1fr; }
+  .wiz-split.has-preview .wiz-body .rail-panel{ position: static; }
+  /* grid/flex items default to min-width:auto — they refuse to shrink below their content's natural width
+     even once the track itself is 1fr. That's what actually overflowed here (rail-panel stayed ~500px+
+     regardless of the column's real width); this is the real fix, grid-template-columns alone wasn't enough. */
+  .wiz-split.has-preview .wiz-body .build-grid > *{ min-width: 0; }
+  .wiz-split.has-preview .wiz-body .frow > *{ min-width: 0; }
+  /* the per-section editor's header toolbar (.editor-head .tools) has flex-shrink:0 by design — reasonable
+     at full width, but it was the one place overflow-x:hidden's clipping actually mattered visually: a
+     switch's own label text ("Build banner from text instead of PSD") got cut off mid-word, and the second
+     switch button was pushed out of view entirely. Let the toolbar wrap instead of refusing to shrink. */
+  .wiz-split.has-preview .wiz-body .editor-head{ flex-wrap: wrap; row-gap: 8px; }
+  .wiz-split.has-preview .wiz-body .editor-head .tools{ flex-wrap: wrap; flex-shrink: 1; }
+  /* safety net: anything else not shrinking/wrapping to the narrower column clips at the column edge
+     instead of visually bleeding into the preview pane */
+  .wiz-split.has-preview .wiz-body{ overflow-x: hidden; }
   .basics-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
   @media (max-width: 1040px){ .basics-grid{ grid-template-columns: 1fr; } }
   .bcol{ display: flex; flex-direction: column; gap: 18px; min-width: 0; }
@@ -445,9 +543,15 @@
   /* ---------- footer bar ---------- */
   .wiz-foot{
     position: sticky; bottom: 0; z-index: 25; background: var(--surface); border-top: 1px solid var(--border);
-    padding: 12px 24px; display:flex; align-items:center; gap: 12px;
+    padding: 12px 24px; display:flex; align-items:center; gap: 12px; flex-wrap: wrap;
   }
-  .wiz-foot .note{ font-size: 12px; color: var(--text-faint); }
+  .wiz-foot .note{ font-size: 12px; color: var(--text-faint); flex: 1 1 160px; min-width: 0; }
+  /* a long step label ("Continue with a template") plus the note text no longer fit one row at phone width —
+     let the primary button wrap to its own line rather than run off the right edge */
+  @media (max-width: 480px){
+    .wiz-foot{ padding: 10px 14px; }
+    .wiz-foot #btn-next{ order: 4; flex: 1 1 100%; justify-content: center; }
+  }
 </style>
 <style>
   /* ============ STEP 2 - PATH CHOICE ============ */
@@ -1120,8 +1224,54 @@
   .modal-wide{ max-width: 920px; }
 
   /* template preview modal: image in a col-8-ish lane, toggles in a col-4-ish lane beside it */
+  /* step 2 landing: AI / previous-edition as the two primary choices */
+  .design-choice-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:20px; }
+  @media (max-width: 760px){ .design-choice-grid{ grid-template-columns: 1fr; } }
+  .design-choice-card{
+    display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:26px;
+    background: var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow: var(--shadow-sm);
+  }
+  .design-choice-card .dc-ico{
+    display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:10px;
+    background: var(--accent-soft); color: var(--accent-strong);
+  }
+  .design-choice-card h3{ margin:0; font-size:17px; }
+  .design-choice-card p{ margin:0; color: var(--text-muted); font-size:13.5px; line-height:1.55; flex:1; }
+  .design-choice-alt{ margin-top:18px; font-size:13px; color: var(--text-muted); }
+  .design-choice-alt a{ color: var(--accent-strong); text-decoration:underline; }
+  .design-choice-alt .sep{ margin:0 8px; }
+
+  /* vibe-chip intake (step 2's "Let AI design it" card) — a single-select set of real design directions,
+     giving Gemini clean structured signal instead of relying only on free text */
+  .vibe-chips{ display:flex; flex-wrap:wrap; gap:7px; }
+  .vibe-chip{
+    font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:100px;
+    border:1.5px solid var(--border); background: var(--surface); color: var(--text-muted); cursor:pointer;
+    transition: border-color .12s ease, background .12s ease, color .12s ease;
+  }
+  .vibe-chip:hover{ border-color: var(--text-faint); }
+  .vibe-chip[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+
+  /* AI design-variation cards (step2-ai) — picking one updates S.aiDesign and applies live to the mounted real-template preview canvas */
+  .ai-design-list{ display:flex; flex-direction:column; gap:10px; }
+  .ai-design-card{
+    display:flex; align-items:center; gap:12px; padding:12px; border:1.5px solid var(--border); border-radius:10px;
+    background: var(--surface); text-align:left; cursor:pointer; transition: border-color .12s ease, background .12s ease;
+  }
+  .ai-design-card:hover{ border-color: var(--text-faint); }
+  .ai-design-card.on{ border-color: var(--accent); background: var(--accent-soft); }
+  .ai-design-swatches{ display:flex; flex-shrink:0; }
+  .ai-design-swatches .sw{ width:16px; height:28px; border:1px solid rgba(0,0,0,.08); margin-left:-6px; border-radius:4px; }
+  .ai-design-swatches .sw:first-child{ margin-left:0; }
+  .ai-design-body{ display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+  .ai-design-body strong{ font-size:13.5px; }
+  .ai-design-body span{ font-size:12px; color: var(--text-muted); line-height:1.4; }
+  .ai-design-body .ai-design-fonts{ font-style:italic; color: var(--text-faint); }
+  .ai-design-check{ flex-shrink:0; color: var(--accent-strong); display:flex; }
+
   .tpl-preview-grid{ display:grid; grid-template-columns: minmax(0,2fr) minmax(220px,1fr); gap: 18px; align-items:start; }
   @media (max-width: 720px){ .tpl-preview-grid{ grid-template-columns: 1fr; } }
+  .tpl-preview-media{ height: min(70vh, 560px); background: #f2f0ea; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
   .tpl-preview-side{ display:flex; flex-direction:column; gap: 8px; min-height: 0; }
   .tpl-preview-list{ display:flex; flex-direction:column; gap: 8px; max-height: min(60vh, 480px); overflow-y: auto; padding-right: 2px; }
   .tpl-preview-row{
@@ -1396,7 +1546,8 @@
     </div>
   </header>
 
-  <!-- ============ BODY ============ -->
+  <!-- ============ BODY (+ side-by-side live preview, steps 1-2 only — see .wiz-split) ============ -->
+  <div class="wiz-split" id="wiz-split">
   <main class="wiz-body">
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
@@ -1404,7 +1555,7 @@
       <!-- ===== PHASE 1 : pick the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
-          <span class="eyebrow">Step 1 of 4 &middot; Select Event Type</span>
+          <span class="eyebrow">Step 1 of 3 &middot; Event details</span>
           <h1>What type of microsite are you creating?</h1>
           <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
         </div>
@@ -1479,34 +1630,86 @@
             <div class="frow" id="cat-panel-body"></div>
           </div>
 
+          <div class="grp" id="content-grp">
+            <div class="grp-h"><h4>Page content</h4><span class="ln"></span>
+              <span class="grp-tag">Reused across templates</span></div>
+            <div id="step1-build-host"></div>
+          </div>
+
         </div>
       </div>
     </section>
 
     <!-- ---------- STEP 2 : CHOOSE TEMPLATE ---------- -->
     <section class="step-wrap wide" id="step-2" hidden>
-      <div class="step-head step-head-row">
-        <div class="step-head-text">
-          <span class="eyebrow">Step 2 of 4 &middot; Choose Template</span>
-          <h1>Pick a template to start from</h1>
+
+      <!-- ===== LANDING: AI or a previous edition, the two primary paths ===== -->
+      <div id="step2-landing">
+        <div class="step-head">
+          <span class="eyebrow">Step 2 of 3 &middot; Choose template</span>
+          <h1>How should this site look?</h1>
+          <p class="desc">Your content from step 1 carries over either way — this only decides the design.</p>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" id="btn-clone-design" type="button">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
-            Clone Design From Previous Edition
-          </button>
-          <button class="btn btn-ai" id="btn-convert-design" type="button">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-            Convert Figma / Lovable Design
-          </button>
+
+        <div class="design-choice-grid">
+          <div class="design-choice-card">
+            <span class="dc-ico">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+            </span>
+            <h3>Let AI design it</h3>
+            <p>Gemini reviews what you’ve written and recommends the best-fit template, with a few content polish suggestions you can accept or skip.</p>
+            <div class="field" style="margin:4px 0 2px;">
+              <span class="flabel" style="font-size:12px;font-weight:700;color:var(--muted);">Vibe <span style="font-weight:400;">(optional)</span></span>
+              <div class="vibe-chips" id="vibe-chips" role="group" aria-label="Preferred design vibe"></div>
+            </div>
+            <div class="field" style="margin:10px 0 12px;">
+              <label for="e-theme-pref" style="font-size:12px;font-weight:700;color:var(--muted);">Anything else? <span style="font-weight:400;">(optional)</span></label>
+              <input class="inp" id="e-theme-pref" type="text" maxlength="200" placeholder="e.g. deep navy and gold, our brand colour is #1F4FD8">
+              <p class="hint" style="margin-top:4px;">Leave both blank and we’ll still give the site its own distinct look — never just the template’s default colours.</p>
+            </div>
+            <button class="btn btn-primary" type="button" id="btn-ai-design">Design with AI</button>
+          </div>
+          <div class="design-choice-card">
+            <span class="dc-ico">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
+            </span>
+            <h3>Use a previous edition’s layout</h3>
+            <p>Reuse the design from an event you’ve already built with this wizard.</p>
+            <button class="btn btn-secondary" type="button" id="btn-clone-design">Browse previous editions</button>
+          </div>
+        </div>
+
+        <div class="design-choice-alt">
+          <a href="#" id="link-manual-gallery">Pick a template manually</a>
+          <span class="sep">&middot;</span>
+          <a href="#" id="link-convert-url-landing">Bring your own design (Figma/Lovable) — coming soon</a>
         </div>
       </div>
 
-      <div class="tpl-grid" id="tpl-gallery"></div>
+      <!-- ===== AI result: loading / review ===== -->
+      <div id="step2-ai" hidden></div>
 
-      <div class="callout plain">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
-        <span><strong>Not a one&#8209;way door</strong>You can switch templates, or <a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">paste a Figma or Lovable URL instead</a>, later without losing your basic details.</span>
+      <!-- ===== MANUAL: the original template gallery, unchanged, reachable but no longer the default view ===== -->
+      <div id="step2-manual" hidden>
+        <div class="step-head step-head-row">
+          <div class="step-head-text">
+            <span class="eyebrow">Step 2 of 3 &middot; Choose template</span>
+            <h1>Pick a template to start from</h1>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-ai" id="btn-convert-design" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+              Convert Figma / Lovable Design
+            </button>
+          </div>
+        </div>
+
+        <div class="tpl-grid" id="tpl-gallery"></div>
+
+        <div class="callout plain">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
+          <span><strong>Not a one&#8209;way door</strong>You can switch templates later without losing your basic details. (<a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">Figma/Lovable import</a> isn’t built yet.)</span>
+        </div>
       </div>
     </section>
 
@@ -1516,6 +1719,26 @@
     <!-- ---------- STEP 4 : AI ASSEMBLE -> hands off to custom_editor.html ---------- -->
     <section class="step-wrap" id="step-4" hidden></section>
   </main>
+
+  <!-- ============ LIVE PREVIEW (side-by-side, steps 1 & 2 only, real content via buildEditorPayload()) ============ -->
+  <div class="live-preview-panel" id="live-preview-panel" hidden>
+    <div class="live-preview-head">
+      <span>Live preview</span>
+      <span class="note" id="live-preview-note">Real content, as typed</span>
+      <button class="live-preview-collapse" id="btn-toggle-preview" type="button" title="Collapse preview">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="live-preview-body">
+      <iframe id="live-preview-frame" title="Live site preview"></iframe>
+      <div id="live-preview-canvas" class="tpl-frame" hidden></div>
+    </div>
+  </div>
+  <button class="live-preview-expand" id="btn-expand-preview" type="button" hidden title="Show preview">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    Preview
+  </button>
+  </div><!-- /.wiz-split -->
 
   <!-- ============ FOOTER ACTIONS ============ -->
   <footer class="wiz-foot" id="wiz-foot">
@@ -1537,6 +1760,11 @@
 <div id="toast-region" aria-live="polite"></div>
 <script src="editor-store.js"></script>
 <script src="ag-psd.bundle.js"></script>
+<script src="edit-event-core.js"></script>
+<script src="create-event-editions.js"></script>
+<script src="templates/_shared/template-loader.js"></script>
+<script src="editor-canvas.js"></script>
+<script src="editor-fill.js"></script>
 <script>
 (function(){
   'use strict';
@@ -1598,9 +1826,15 @@
     { id:'partners',  name:'Partner logos',          shape:'logos',   toggle:true, helper:'Sponsor and partner logos, grouped by tier.' },
     { id:'about',     name:'Overview',               shape:'rich',    limit:900, core:true, helper:'The overview paragraph with a Read More. Keep it to the point — AI can trim it for you.' },
     { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.' },
+    { id:'factoids',  name:'Factoids',               shape:'cards',   toggle:true, helper:'A scrolling strip of market stats and quick facts that make the case for your industry — headline and a line of context each.' },
     { id:'awaits',    name:'What awaits',            shape:'cards',   helper:'Conference / Awards / Studios mini blocks. Icon, title and a line of copy each.' },
     { id:'verticals', name:'Industry verticals band', shape:'heading', helper:'A full-width heading that breaks the page and names the industries in play.' },
     { id:'priorities',name:'Key Discussion Points',  shape:'columns', core:true, helper:'Three themed columns — the discussion points that guide conversations at your event.' },
+    { id:'keyquestions',name:'Questions this raises', shape:'columns', toggle:true, helper:'The hard questions your theme raises for the enterprise — each with a one-line answer or framing.' },
+    { id:'tracks',    name:'Named tracks',           shape:'chips',   toggle:true, helper:'Named mega-tracks or co-located conventions running alongside the main stage — icon, title and a short line each.' },
+    { id:'industries',name:'Industries in the room', shape:'chips',   toggle:true, helper:'The industry sectors represented in the room — short names, shown as a grid of chips.' },
+    { id:'exhibitors',name:'Who should exhibit',     shape:'chips',   toggle:true, helper:'The exhibitor categories this event is built for — each with a line on what they would showcase.' },
+    { id:'faq',       name:'FAQs',                   shape:'columns', toggle:true, helper:'Common questions delegates ask, each with a short answer.' },
     { id:'speakers',  name:'Speakers',               shape:'people',  toggle:true, helper:'Speaker cards with photo, name, role and company. An All Speakers link is added automatically.' },
     { id:'agenda',    name:'Agenda',                 shape:'agenda',  toggle:true, helper:'Pulled in from a previous edition — turn this on, then bring in a past edition to load its schedule. There is no manual agenda entry.' },
     { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.' },
@@ -1619,10 +1853,19 @@
     { id:'tech500', name:'TECH500', tag:'IP event', cat:'IP', img:'template-previews/tech500-mini.jpg', imgFull:'template-previews/tech500-full.jpg',
       sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.',
       site:'tech500',   // opens in the site editor as the real ET site (templates/tech500), filled with this content
-      sections:['nav','hero','stats','priorities','about','whyjoin','attend','contact','footer'] },
+      sections:['nav','hero','stats','priorities','about','whyjoin','attend','industries','faq','contact','footer'] },
+    { id:'retail-leadership-summit', name:'Retail Leadership Summit', tag:'IP event', cat:'IP', img:'template-previews/retail-leadership-summit-mini.jpg', imgFull:'template-previews/retail-leadership-summit-full.jpg',
+      sub:'Retail CXOs and mall developers under one roof — named tracks, market factoids and an exhibitor-ready expo floor.',
+      site:'retail-leadership-summit',   // opens in the site editor as the real ET site (templates/retail-leadership-summit), filled with this content
+      sections:['nav','hero','awaits','stats','about','priorities','partners','tracks','whyjoin','factoids','exhibitors','attend','glimpses','faq','contact','footer'] },
+    { id:'cx-leaders-forum', name:'CX Leaders Forum', tag:'IP event', cat:'IP', img:'template-previews/cx-leaders-forum-mini.jpg', imgFull:'template-previews/cx-leaders-forum-full.jpg',
+      sub:'CMO and CX-leadership gathering — discussion themes, speaker voices and a residential-summit stats strip.',
+      site:'cx-leaders-forum',   // opens in the site editor as the real ET site (templates/cx-leaders-forum), filled with this content
+      sections:['nav','hero','stats','about','awaits','priorities','attend','speakers','insights','glimpses','faq','contact','footer'] },
     { id:'making-ai-work', name:'Making AI Work', tag:'IP event', cat:'IP', img:'template-previews/making-ai-work-mini.jpg', imgFull:'template-previews/making-ai-work-full.jpg',
       sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.',
-      sections:['nav','hero','partners','speakers','priorities','awaits','contact','footer'] },
+      site:'making-ai-work',   // opens in the site editor as the real ET site (templates/making-ai-work), filled with this content
+      sections:['nav','hero','about','keyquestions','priorities','speakers','whyjoin','attend','glimpses','contact','footer'] },
     { id:'workplace-2035', name:'Workplace 2035', tag:'IP event', cat:'IP', img:'template-previews/workplace-2035-mini.jpg', imgFull:'template-previews/workplace-2035-full.jpg',
       sub:'The future of the intelligent enterprise — stats, partners, speakers and a two-track agenda.',
       sections:['nav','hero','stats','partners','about','priorities','speakers','contact','footer'] },
@@ -1679,6 +1922,22 @@
       quoteBg:'#141414', quoteText:'#fff',
       footBg:'#121212', footText:'#b8adad', footLogo:'#fff',
       displayFont:"'Poppins', sans-serif", displayWeight:800, displayCase:'uppercase', displayTracking:'-0.01em'
+    },
+    'retail-leadership-summit': {
+      heroStyle:'banner', accent:'#FF927A', accentSoft:'#FBDED6',
+      heroBg:'linear-gradient(150deg,#1a0002 0%,#470103 55%,#71000A 100%)', heroText:'#fff', heroMuted:'rgba(255,255,255,.78)',
+      bandBg:'#FBF1EC', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+      quoteBg:'#470103', quoteText:'#fff',
+      footBg:'#1a0002', footText:'#dcb3ab', footLogo:'#fff',
+      displayFont:"'Playfair Display', serif", displayWeight:700, displayCase:'none', displayTracking:'normal'
+    },
+    'cx-leaders-forum': {
+      heroStyle:'banner', accent:'#DE3D61', accentSoft:'#FBD9E1',
+      heroBg:'linear-gradient(160deg,#071912 0%,#0d2b20 55%,#16412f 100%)', heroText:'#fff', heroMuted:'rgba(255,255,255,.78)',
+      bandBg:'#FFF0E6', bandText:'#1c1c1c', bandMuted:'#6a6a5f',
+      quoteBg:'#071912', quoteText:'#fff',
+      footBg:'#071912', footText:'#b9c9c0', footLogo:'#fff',
+      displayFont:"'SangBleu Versailles', Georgia, serif", displayWeight:700, displayCase:'uppercase', displayTracking:'-0.01em'
     },
     'making-ai-work': {
       heroStyle:'banner', accent:'#3B82F6', accentSoft:'#DCE8FE',
@@ -1738,138 +1997,17 @@
     }
   };
   /* the theme for whatever is currently picked — DEFAULT_THEME (no override) for
-     a "bring your own design" path, since there is no template to theme it from */
+     a "bring your own design" path, since there is no template to theme it from.
+     This only drives the Gen-1 generic preview/hand-off (buildPreviewDoc, templates with no real port) — a
+     real-template AI redesign (S.aiDesign) is a completely separate mechanism, applied via canvas.design on
+     the mounted Gen-2 template instead (see ensureGen2Canvas/applyAiDesignToCanvas), never layered in here. */
+  /* layering, lowest to highest priority: the template's own theme < a banner-detected palette (PSD upload). */
   function currentTheme(){
     var base = (S.path === 'A' && S.template && TEMPLATE_THEMES[S.template]) ? TEMPLATE_THEMES[S.template] : DEFAULT_THEME;
-    if (S.detectedBannerTheme){
-      return Object.assign({}, base, S.detectedBannerTheme);
-    }
-    return base;
+    return S.detectedBannerTheme ? Object.assign({}, base, S.detectedBannerTheme) : base;
   }
 
-  /* completed events on this portal, offered as a design to clone instead of picking a fresh template.
-     `content` is what Build Content can pull in automatically — keyed by LIBRARY id. */
-  var PAST_EDITIONS = [
-    { id:'pe-tech500', name:'TECH500 2025', cat:'IP', templateId:'tech500', content:{
-        about:{ body:'TECH500 2025 brought together 500 enterprise technology decision-makers for a single day of sessions on AI adoption, cloud economics and the CIO agenda for the year ahead.' },
-        priorities:{ items:[
-          {t:'AI in production', d:'Where generative and agentic AI is actually shipping inside the enterprise, not just piloting.'},
-          {t:'Cloud cost discipline', d:'FinOps practices that survived the 2025 renegotiation cycle.'},
-          {t:'The CIO mandate', d:'How the CIO role expanded to own security, data and now AI governance.'}
-        ]},
-        attend:{ items:['CIO','CTO','VP Engineering','Head of Cloud','Enterprise Architect','CISO'] },
-        speakers:{ items:[
-          {n:'Rajeev Malhotra', r:'CIO', c:'Leading NBFC'},
-          {n:'Sunita Rao', r:'VP Engineering', c:'Global SaaS major'},
-          {n:'Arjun Vora', r:'Head of Cloud', c:'Retail conglomerate'},
-          {n:'Neha Kapoor', r:'CISO', c:'Insurance leader'}
-        ]},
-        partners:{ tiers:[
-          {t:'Presenting partner', logos:[{n:'CloudNova'}]},
-          {t:'Gold partners', logos:[{n:'DataForge'},{n:'SecureStack'}]}
-        ]},
-        glimpses:{ count:12 },
-        agenda:{ items:[
-          {t:'09:30 AM', ti:'Opening keynote — the 2026 CIO agenda', sp:'Rajeev Malhotra'},
-          {t:'10:30 AM', ti:'Panel: AI workloads that actually shipped', sp:'Sunita Rao, Arjun Vora'},
-          {t:'12:00 PM', ti:'Fireside: FinOps after the renegotiation cycle', sp:'Neha Kapoor'},
-          {t:'02:00 PM', ti:'Breakout tracks', sp:'All speakers'},
-          {t:'04:30 PM', ti:'Closing roundtable', sp:'Rajeev Malhotra'}
-        ]}
-    }},
-    { id:'pe-mai', name:'Making AI Work 2025', cat:'IP', templateId:'making-ai-work', content:{
-        about:{ body:'Making AI Work 2025 was a leadership summit on turning generative AI pilots into production systems, with partner showcases and a full speaker grid of enterprise AI leaders.' },
-        priorities:{ items:[
-          {t:'From pilot to production', d:'What actually changes when an LLM pilot has to survive a compliance review.'},
-          {t:'The build vs buy debate', d:'Where enterprises are standardising on platforms versus building in-house.'},
-          {t:'Governing agentic systems', d:'Early patterns for auditing and guardrailing autonomous agents.'}
-        ]},
-        attend:{ items:['Chief AI Officer','Head of Data Science','VP Product','Head of Innovation','CTO'] },
-        speakers:{ items:[
-          {n:'Ishaan Verma', r:'Chief AI Officer', c:'BFSI major'},
-          {n:'Priya Deshmukh', r:'Head of Data Science', c:'Consumer tech'},
-          {n:'Karan Bhatia', r:'VP Product', c:'SaaS unicorn'}
-        ]},
-        partners:{ tiers:[
-          {t:'Presenting partner', logos:[{n:'NeuralWorks'}]},
-          {t:'Associate partners', logos:[{n:'ModelOps'},{n:'InferAI'}]}
-        ]},
-        glimpses:{ count:8 },
-        agenda:{ items:[
-          {t:'10:00 AM', ti:'Keynote: The year AI left the sandbox', sp:'Ishaan Verma'},
-          {t:'11:15 AM', ti:'Panel: Build vs buy in 2025', sp:'Priya Deshmukh, Karan Bhatia'},
-          {t:'01:30 PM', ti:'Case study: Governing an agentic workflow', sp:'Ishaan Verma'},
-          {t:'03:00 PM', ti:'Partner showcase', sp:'NeuralWorks, ModelOps'}
-        ]}
-    }},
-    { id:'pe-workplace', name:'Workplace 2035 — 2025 edition', cat:'IP', templateId:'workplace-2035', content:{
-        about:{ body:'The Workplace 2035 — 2025 edition looked at the intelligent enterprise: how AI, hybrid work and a new employee contract are reshaping how large organisations operate.' },
-        priorities:{ items:[
-          {t:'The hybrid equilibrium', d:'What large employers have settled on after three years of experimentation.'},
-          {t:'AI as a co-worker', d:'How copilots are changing role design, not just productivity.'},
-          {t:'Skilling at scale', d:'Reskilling programmes that moved the needle across a whole workforce.'}
-        ]},
-        attend:{ items:['CHRO','Head of People','VP Operations','Head of L&D','CIO'] },
-        speakers:{ items:[
-          {n:'Meenal Joshi', r:'CHRO', c:'IT services major'},
-          {n:'Tarun Sethi', r:'Head of Operations', c:'Manufacturing group'},
-          {n:'Divya Pillai', r:'Head of L&D', c:'BFSI major'}
-        ]},
-        partners:{ tiers:[
-          {t:'Gold partners', logos:[{n:'WorkForge'},{n:'PeopleGrid'}]}
-        ]},
-        glimpses:{ count:10 },
-        agenda:{ items:[
-          {t:'09:45 AM', ti:'Opening: The intelligent enterprise in 2025', sp:'Meenal Joshi'},
-          {t:'11:00 AM', ti:'Track A — People', sp:'Divya Pillai'},
-          {t:'11:00 AM', ti:'Track B — Operations', sp:'Tarun Sethi'},
-          {t:'02:30 PM', ti:'Closing panel', sp:'All speakers'}
-        ]}
-    }},
-    { id:'pe-awards', name:'ET Awards Night 2025', cat:'Awards', templateId:'awards', content:{
-        about:{ body:'ET Awards Night 2025 recognised the campaigns, teams and leaders who moved a real business number this year, judged by an independent jury.' },
-        priorities:{ items:[
-          {t:'What the jury rewarded', d:'The shift toward measurable outcomes over creative spectacle.'},
-          {t:'Categories that grew', d:'Where entries doubled year over year.'},
-          {t:'The shortlist bar', d:'How the shortlisting threshold was set and held.'}
-        ]},
-        attend:{ items:['CMO','Marketing Director','Agency Founder','Brand Head'] },
-        speakers:{ items:[
-          {n:'Rohan Kapoor', r:'Jury Chair', c:'Independent'},
-          {n:'Simran Kaur', r:'CMO', c:'D2C brand'}
-        ]},
-        partners:{ tiers:[
-          {t:'Presenting partner', logos:[{n:'BrandLift'}]}
-        ]},
-        glimpses:{ count:14 },
-        agenda:{ items:[
-          {t:'07:00 PM', ti:'Red carpet & networking', sp:''},
-          {t:'08:00 PM', ti:'Jury address', sp:'Rohan Kapoor'},
-          {t:'08:30 PM', ti:'Awards ceremony', sp:'All winners'},
-          {t:'10:00 PM', ti:'After-party', sp:''}
-        ]}
-    }},
-    { id:'pe-leadgen', name:'Leadgen Roundtable — Q4 2025', cat:'Client', templateId:'leadgen', content:{
-        about:{ body:'The Q4 2025 roundtable brought together a closed room of marketing leaders for a single working session on retention economics.' },
-        priorities:{ items:[
-          {t:'Retention over acquisition', d:'Why the room shifted budget toward existing customers this quarter.'},
-          {t:'First-party data reality', d:'What is actually feasible without a clean-room partnership.'}
-        ]},
-        attend:{ items:['Head of Growth','CRM Lead','Marketing Director'] },
-        speakers:{ items:[
-          {n:'Aditi Nair', r:'Head of Growth', c:'D2C brand'}
-        ]},
-        partners:{ tiers:[
-          {t:'Host partner', logos:[{n:'RetainIQ'}]}
-        ]},
-        glimpses:{ count:6 },
-        agenda:{ items:[
-          {t:'03:00 PM', ti:'Welcome & framing', sp:'Aditi Nair'},
-          {t:'03:20 PM', ti:'Roundtable discussion', sp:'All attendees'},
-          {t:'04:30 PM', ti:'Close & next steps', sp:'Aditi Nair'}
-        ]}
-    }}
-  ];
+  /* Real previous-edition data now comes from create-event-editions.js (RevampEditions), not a hardcoded fixture — see openPullContentModal()/openCloneDesignModal(). */
 
   var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
 
@@ -1930,43 +2068,19 @@
   ========================================================= */
   function seed(id){
     switch(id){
-      case 'hero': return { title:'', tagline:'Where marketing technology meets measurable growth', cta1:'Register now', cta2:'Download brochure', banner:false, bannerMode:'psd', psdBanner:null };
-      case 'stats': return { items:[
-          {k:'Day', v:'1'}, {k:'Sessions', v:'14'}, {k:'Speakers', v:'32'}, {k:'Minutes', v:'480'}, {k:'Brands', v:'120'}
-        ] };
-      case 'logos': return { tiers:[
-          { t:'Presenting partner', logos:[{n:'Partner one'}] },
-          { t:'Gold partners', logos:[{n:'Partner two'},{n:'Partner three'}] },
-          { t:'Associate partners', logos:[{n:'Partner four'},{n:'Partner five'},{n:'Partner six'}] }
-        ] };
+      case 'hero': return { title:'', tagline:'', cta1:'Register now', cta2:'Download brochure', banner:false, bannerMode:'psd', psdBanner:null };
+      case 'stats': return { items:[] };
+      case 'logos': return { tiers:[] };
       case 'rich': return { body:'' };
-      case 'line': return { text:'#MarTechPlus2026' };
-      case 'cards': return { items:[
-          {t:'The Conference', d:'Two stages, fourteen sessions, one agenda built around what practitioners actually ask.'},
-          {t:'The Awards', d:'Recognising the campaigns and teams that moved a number, not just a needle.'},
-          {t:'The Studios', d:'Closed-door studio conversations recorded for the ET Oneworld network.'}
-        ] };
-      case 'heading': return { text:'Industries in the room' };
-      case 'columns': return { items:[
-          {t:'Signal over noise', d:'How teams are cutting through channel sprawl to find the few signals that predict revenue.'},
-          {t:'The consent era', d:'Building first-party data practice that survives regulation and still performs.'},
-          {t:'AI that ships', d:'Where generative tooling is already in production, and where it quietly is not.'}
-        ] };
-      case 'people': return { items:[
-          {n:'', r:'Chief Marketing Officer', c:'Leading FMCG brand'},
-          {n:'', r:'VP, Growth', c:'Consumer internet'},
-          {n:'', r:'Head of Digital', c:'BFSI major'}
-        ] };
-      case 'benefits': return { body:'', items:[
-          {t:'Meet the decision makers', d:'Curated room of senior marketing and growth leaders.'},
-          {t:'Take home a playbook', d:'Every session ends with something you can run on Monday.'}
-        ] };
-      case 'chips': return { items:['CMO','Head of Marketing','Growth Lead','Brand Manager','Media Planner','MarTech Lead','Agency Partner'].map(function(t){ return { t: t, d: '' }; }) };
-      case 'quotes': return { items:[
-          {q:'The only ET forum where I left with three vendor shortlists and a hire.', n:'', r:'Marketing Director', c:'Retail chain'},
-          {q:'Sharp room. Almost no sales pitching from stage.', n:'', r:'Head of Growth', c:'D2C brand'}
-        ] };
-      case 'gallery': return { count:8 };
+      case 'line': return { text:'' };
+      case 'cards': return { items:[] };
+      case 'heading': return { text:'' };
+      case 'columns': return { items:[] };
+      case 'people': return { items:[] };
+      case 'benefits': return { body:'', items:[] };
+      case 'chips': return { items:[] };
+      case 'quotes': return { items:[] };
+      case 'gallery': return { count:0, items:[] };
       case 'agenda': return { items:[] };
       case 'contacts': return { blocks:[
           { t:'Speaking opportunities', people:[{ n:'', e:'', p:'' }] },
@@ -2005,8 +2119,21 @@
   /* =========================================================
      STATE
   ========================================================= */
-  var STEPS = ['Select Event Type','Choose Template','Build content','AI assemble'];
+  /* 3 rail dots over 4 internal S.step values (1-4) — step 3 (path B's detect/review) renders under the
+     "Choose template" dot; see railPos()/goStep(). */
+  var STEPS = ['Event details','Choose template','Assemble'];
+  function railPos(step){ return step === 3 ? 2 : (step >= 4 ? 3 : step); }
   var STORE_KEY = 'revamp.createEvent.draft.v1';
+  /* The hero banner image (PSD composite, or a plain uploaded banner) is kept in IndexedDB, not in the
+     localStorage draft, for the same reason as the logo below: a big image can be several MB, and the
+     draft's localStorage write has a hard ~5MB browser limit — embedding it there used to make save()
+     silently fail (quota exceeded), losing the WHOLE draft, not just the image. save()/restore() below strip
+     it out of what gets stringified and keep it in memory + IndexedDB instead. */
+  var HERO_IMAGE_FIELDS = [
+    { get: function(){ var sec = sectionByLib('hero'); return sec && sec.data && sec.data.psdBanner; }, field: 'compositeImageData', key: 'create:psd-banner-img' },
+    { get: function(){ var sec = sectionByLib('hero'); return sec && sec.data; }, field: 'bannerImage', key: 'create:hero-banner-img' }
+  ];
+  var heroImageCache = {};   // key -> last dataUrl written to IndexedDB, so a save() on every keystroke doesn't re-write it each time
   var logoPreviewUrl = '';   // what the step-1 logo tile shows: an object URL right after upload, the stored copy after a reload
   /* The logo itself is kept in IndexedDB (editor-store.js), not in the localStorage draft: it can be megabytes. The site
      editor reads it from there when it opens the draft and puts it on the site. Big PNGs are scaled to fit 1200×720. */
@@ -2038,6 +2165,13 @@
   function storeLogo(file){
     logoSaving = logoDataUrl(file).then(function(dataUrl){
       return RevampStore.put(LOGO_KEY, { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
+    }).then(function(){
+      /* the Gen-2 preview caches the stored logo (storedLogoDataUrl()) so repeated fills don't hit IndexedDB
+         every keystroke — that cache is now stale the moment a new logo is written, and schedulePreview()'s
+         debounced refresh can otherwise fire BEFORE this async write lands and cache the old/empty value.
+         Drop the cache and explicitly re-render once the real write is confirmed done. */
+      gen2Logo = null;
+      if (typeof renderLivePreview === 'function') renderLivePreview();
     }).catch(function(err){ console.warn('[create] could not keep the logo for the site editor:', err); });
     return logoSaving;
   }
@@ -2078,6 +2212,10 @@
     sections: [],               // [{id, libId, name, shape, include, data, done, source, customBrief, layout}]
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content" — required before Speakers/Agenda/Sponsors/Glimpses can be switched on
+    aiDesign: null,              // a chosen "Let AI design it" redesign — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
+    designIntake: { vibe: '', notes: '' },   // structured step-2 design intake (closer to how Wix ADI's intake works) — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers both an explicit "Design with AI" request and the silent auto-personalize fallback (see autoPersonalizeDesign())
+    sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
+    priorDesigns: [],            // every design name+colours/fonts shown by "Design with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
     assembled: false            // step 4 finished and the draft was handed to the site editor
   };
 
@@ -2087,53 +2225,61 @@
   }
   function uid(){ return 's' + Math.random().toString(36).slice(2,8); }
 
-  /* ---------- autosave ----------
-     The PSD banner's image (psdBanner.compositeImageData, a JPEG data URL of megabytes for a big PSD) is kept in
-     IndexedDB, not in the localStorage draft, which it would push past the ~5 MB quota. It is matched back to the
-     draft's banner by bannerImageTag() after a reload (restoreBannerImage). */
-  var PSD_IMG_KEY = 'create:psd-img';
-  var storedBannerImg = null;   // the image last written to IndexedDB, so an unchanged one isn't written again
-  var bannerImgSaving = null;   // the store write under way, so the hand-off can wait for it
-  function heroBanner(){
-    var hero = (S.sections || []).filter(function(x){ return x.libId === 'hero'; })[0];
-    return hero && hero.data && hero.data.psdBanner;
-  }
-  function bannerImageTag(b){ return [b.sourceKey || '', b.filename || '', b.width, b.height].join('|'); }
-  function keepBannerImage(){
-    var b = heroBanner();
-    if (!b || !b.compositeImageData || b.compositeImageData === storedBannerImg || !window.RevampStore) return;
-    storedBannerImg = b.compositeImageData;
-    bannerImgSaving = RevampStore.put(PSD_IMG_KEY, { tag: bannerImageTag(b), dataUrl: storedBannerImg, savedAt: Date.now() })
-      .catch(function(err){ console.warn('[create] could not keep the banner image:', err); });
-  }
-  function restoreBannerImage(){
-    var b = heroBanner();
-    if (!b || b.compositeImageData || !window.RevampStore) return;
-    RevampStore.get(PSD_IMG_KEY).then(function(rec){
-      if (!rec || rec.tag !== bannerImageTag(b) || b.compositeImageData || heroBanner() !== b) return;
-      b.compositeImageData = storedBannerImg = rec.dataUrl;
-      if (S.step === 3) renderEditor();
-    }, function(){});
-  }
-
+  /* ---------- autosave ---------- */
   var saveTimer = null;
+  /* pulls any hero banner image out of S before it's stringified (see HERO_IMAGE_FIELDS above), stashes it
+     in IndexedDB in the background, and hands back how to put it right back in memory afterward — the draft
+     written to localStorage never carries the big blob, but S itself (and the live preview) keeps it. */
+  function stashHeroImages(){
+    var restoreAfter = [];
+    HERO_IMAGE_FIELDS.forEach(function(f){
+      var owner = f.get();
+      var val = owner && owner[f.field];
+      if (!val) return;
+      if (window.RevampStore && heroImageCache[f.key] !== val){
+        heroImageCache[f.key] = val;
+        RevampStore.put(f.key, { dataUrl: val, savedAt: Date.now() }).catch(function(){});
+      }
+      owner[f.field] = null;
+      restoreAfter.push({ owner: owner, field: f.field, val: val });
+    });
+    return restoreAfter;
+  }
   function save(){
-    keepBannerImage();
-    var saved = true;
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(S, function(k, v){ return k === 'compositeImageData' ? undefined : v; }));
-    } catch(e){ saved = false; }
+    var stashed = stashHeroImages();
+    var ok = true;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch(e){ ok = false; }
+    stashed.forEach(function(s){ s.owner[s.field] = s.val; });   // back in memory for this session regardless
+    schedulePreview();
     var el = $('save-state');
     if (!el) return;
-    clearTimeout(saveTimer);
-    if (!saved){
+    if (!ok){
+      clearTimeout(saveTimer);   // a still-pending "Draft autosaved" from an earlier successful save must not overwrite this warning
       el.innerHTML = '<span class="d" style="background:var(--accent)"></span>Not saved — browser storage is full';
       return;
     }
     el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
+    clearTimeout(saveTimer);
     saveTimer = setTimeout(function(){
       el.innerHTML = '<span class="d"></span>Draft autosaved';
     }, 520);
+  }
+  /* after restore() loads S from localStorage, the hero image fields are empty (stashHeroImages() strips
+     them before every write) — pull them back from IndexedDB so a reload still shows the banner. */
+  function rehydrateHeroImages(){
+    if (!window.RevampStore) return;
+    HERO_IMAGE_FIELDS.forEach(function(f){
+      var owner = f.get();
+      if (!owner || owner[f.field]) return;
+      RevampStore.get(f.key).then(function(rec){
+        if (!rec || !rec.dataUrl) return;
+        var o = f.get();   // re-resolve: sections may have been rebuilt while this was in flight
+        if (!o || o[f.field]) return;
+        o[f.field] = rec.dataUrl;
+        heroImageCache[f.key] = rec.dataUrl;
+        schedulePreview();
+      }).catch(function(){});
+    });
   }
   function restore(){
     try {
@@ -2165,6 +2311,7 @@
         merged.dateMode = merged.start ? 'exact' : CATS[merged.category].defaultDateMode;
       }
       S.basics = merged;
+      rehydrateHeroImages();
       return true;
     } catch(e){ return false; }
   }
@@ -2185,25 +2332,27 @@
   /* =========================================================
      PROGRESS RAIL
   ========================================================= */
+  /* the real S.step a rail dot jumps to — dot 3 ("Assemble") always means S.step 4 */
+  var RAIL_TARGET = [1, 2, 4];
   function renderRail(){
     var rail = $('rail');
     var html = '';
+    var stage = railPos(S.step);
     for (var i = 0; i < STEPS.length; i++){
       var n = i + 1;
-      var stage = S.step;
       var state = n < stage ? 'done' : (n === stage ? 'current' : 'todo');
-      if (i > 0) html += '<span class="rail-line' + (n < S.step ? ' filled' : '') + '"></span>';
-      html += '<button class="rail-step" data-state="' + state + '" data-goto="' + n + '"' +
+      if (i > 0) html += '<span class="rail-line' + (n < stage ? ' filled' : '') + '"></span>';
+      html += '<button class="rail-step" data-state="' + state + '" data-goto="' + RAIL_TARGET[i] + '"' +
               (state === 'todo' ? ' disabled' : '') + '>' +
               '<span class="num">' + (state === 'done' ? IC.check : n) + '</span>' +
               (STEPS[i] ? '<span class="lbl">' + STEPS[i] + '</span>' : '') + '</button>';
     }
     rail.innerHTML = html;
-    renderTogglePanel();          // the header's previous-edition button belongs to Build content only
+    renderTogglePanel();          // the header's previous-edition button belongs to the content editor only
     rail.querySelectorAll('[data-goto]').forEach(function(b){
       b.addEventListener('click', function(){
         var n = parseInt(b.getAttribute('data-goto'), 10);
-        if (n < S.step) goStep(n);
+        if (railPos(n) < stage) goStep(n);
       });
     });
   }
@@ -2213,7 +2362,10 @@
   ========================================================= */
   function goStep(n){
     S.step = n;
-    for (var i = 1; i <= STEPS.length; i++){
+    /* always 4 DOM step sections (step-1..step-4) regardless of how many rail dots STEPS shows — step 3 is
+       path-B-only now (its own detect/review sub-flow, folded into the "Choose template" rail dot) and step 1
+       absorbed the old step 3's content editor, so the rail shows 3 dots while S.step can still be 1-4. */
+    for (var i = 1; i <= 4; i++){
       var el = $('step-' + i);
       if (el) el.hidden = (i !== n);
     }
@@ -2223,9 +2375,13 @@
        rendered once at init and after picking a template — re-render on every
        entry so a category chosen after that first render isn't left showing
        the wrong templates */
-    if (n === 2) renderStep2();
+    if (n === 1) renderStep1Content();
+    if (n === 2){ showStep2View('landing'); renderStep2(); }
     if (n === 3) renderStep3();
     if (n === 4) renderStep4();
+    /* step 1 only gets the preview once a category is picked (pickCategory()/btn-change-cat toggle it from
+       there) — the category picker itself is a full-width page with nothing yet to preview */
+    setPreviewVisible((n === 1 && S.catPicked) || n === 2);
     renderRail();
     renderFoot();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2641,6 +2797,18 @@
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
     if (!C.payment) b.payment = 'Free';
     S.catPicked = true;
+    /* Default to the category's real ported template immediately, so the live preview on the right is the
+       ACTUAL site from the very start of step 1 — not create-event.html's own generic placeholder shapes,
+       which don't look anything like what the event will really become. applyTemplate() is additive/safe to
+       call repeatedly (used the same way by "Let AI design it"), and the user can still switch templates,
+       pick manually, reuse a previous edition, or go the Figma/Lovable route later in step 2 — this only
+       sets a sensible starting point instead of no template at all. Only applies if nothing more specific
+       was already chosen (switching category after picking a template shouldn't silently discard that). */
+    if (changed || !S.template){
+      var defaultTpl = templatesForCategory().filter(function(t){ return t.site; })[0];
+      if (defaultTpl) selectTemplate(defaultTpl.id);
+    }
+    setPreviewVisible(true);   /* a category (and with it, usually a real template) is now picked — worth previewing */
     save(); initStep1(); renderFoot();
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
     toast(changed ? (C.label + ' selected — form updated') : (C.label + ' selected'));
@@ -2656,6 +2824,7 @@
 
     $('btn-change-cat').onclick = function(){
       S.catPicked = false;
+      setPreviewVisible(false);   /* back to the full-width category picker — nothing to preview yet */
       save(); initStep1(); renderFoot();
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
     };
@@ -2724,7 +2893,7 @@
       b.logo = false; b.logoName = '';
       RevampStore.remove(LOGO_KEY).catch(function(){});
       logoInput.value = '';
-      save(); initStep1();
+      save(); initStep1(); renderFoot();
       toast('Logo removed');
     };
     logoInput.onchange = function(){
@@ -2746,7 +2915,7 @@
       b.logo = true;
       b.logoName = file.name;
       storeLogo(file);
-      save(); initStep1();
+      save(); initStep1(); renderFoot();
       toast('Logo uploaded: ' + file.name);
     };
 
@@ -2764,6 +2933,11 @@
   function templatesForCategory(){
     return TEMPLATES.filter(function(t){ return t.cat === S.basics.category; });
   }
+  /* whether the active category has at least one template with a real ET site port (tpl.site) —
+     "Let AI design it" only makes sense where there's a real template to redesign */
+  function categoryHasPortedTemplate(){
+    return templatesForCategory().some(function(t){ return !!t.site; });
+  }
 
   /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point.
      `skip` (libId -> true) carries over section choices made in the Preview modal's toggles. */
@@ -2771,12 +2945,10 @@
     S.templatePick = tplId;
     if (S.path === 'A' && S.template === tplId && !skip) return;
     S.path = 'A';
-    S.sections = [];
-    S.active = null;
     S.detectPhase = 'input';
     S.detectDecisions = {};
     S.assembled = false;
-    applyTemplate(tplId, skip);
+    applyTemplate(tplId, skip);   /* additive — keeps whatever content step 1 already has */
     renderStep2();
     renderFoot();
   }
@@ -2795,7 +2967,10 @@
         '</div>',
       confirm: 'Yes',
       cancelLabel: 'No',
-      onConfirm: function(){ selectTemplate(tplId); goStep(3); }
+      /* carry over exclusions if the user already previewed+toggled this exact template (Preview modal
+         commits them to S.templateExcluded live, see openTemplatePreview) — only a genuinely different
+         template pick should reset to "everything included" */
+      onConfirm: function(){ selectTemplate(tplId, S.template === tplId ? S.templateExcluded : undefined); goStep(4); }
     });
   }
 
@@ -2803,45 +2978,60 @@
      All switches default on. Anything switched off here is never cloned into the microsite.
      Where the template defines sectionNames, the row uses that template's own on-site heading
      instead of the generic library name. */
+  /* Live preview (steps 1/2 global panel, and this modal) — real content via buildEditorPayload(), not a
+     static mock. Toggling a section here writes straight to S.templateExcluded via applyTemplate(), so the
+     exclusion survives regardless of which confirm path the user takes afterward (previously: choices made
+     here were silently discarded unless the user specifically clicked this modal's own "Use this template"
+     button — reaching step 3 via the plain gallery "Continue" footer reset S.templateExcluded to {}). */
   function openTemplatePreview(tplId){
     var t = null;
     TEMPLATES.forEach(function(x){ if (x.id === tplId) t = x; });
     if (!t) return;
     var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
-    var skip = {};   // libId -> true means the user switched this section off
+    var priorTemplate = S.template, priorExcluded = Object.assign({}, S.templateExcluded || {}), priorSections = JSON.parse(JSON.stringify(S.sections));
+    var skip = (S.template === tplId) ? Object.assign({}, S.templateExcluded || {}) : {};
+
+    function applyPreviewState(){
+      applyTemplate(tplId, skip);
+      var f = document.getElementById('tpl-preview-frame');
+      if (!f) return;
+      f.onload = function(){ paintPreviewPsdImages(f); };
+      f.srcdoc = buildPreviewDoc();
+    }
+
+    function previewListHtml(){
+      return toggleIds.map(function(id){
+        var l = libBy(id);
+        var label = (t.sectionNames && t.sectionNames[id]) || l.name;
+        var on = !skip[id];
+        return '<div class="tpl-preview-row' + (on ? '' : ' off') + '">' +
+          '<span class="nm">' + esc(label) + '</span>' +
+          '<button class="switch" data-pv-toggle="' + id + '" aria-pressed="' + on + '">' +
+            '<span class="track"><i></i></span>' + (on ? 'Included' : 'Excluded') +
+          '</button>' +
+        '</div>';
+      }).join('');
+    }
 
     function previewBody(){
       return '<div class="tpl-preview-grid">' +
-        '<div class="tpl-preview-media">' +
-          (t.imgFull ? '<img class="tpl-thumb-full" src="' + esc(t.imgFull) + '" alt="' + esc(t.name) + ' full preview">' : '') +
-        '</div>' +
+        '<div class="tpl-preview-media"><iframe id="tpl-preview-frame" title="' + esc(t.name) + ' live preview" style="width:100%;height:100%;min-height:360px;border:0;border-radius:8px;background:#fff;"></iframe></div>' +
         '<div class="tpl-preview-side">' +
           '<p class="hint" style="margin:0 0 2px">' + esc(t.sub) + '</p>' +
-          '<div class="tpl-preview-list" id="tpl-preview-list">' +
-            toggleIds.map(function(id){
-              var l = libBy(id);
-              var label = (t.sectionNames && t.sectionNames[id]) || l.name;
-              var on = !skip[id];
-              return '<div class="tpl-preview-row' + (on ? '' : ' off') + '">' +
-                '<span class="nm">' + esc(label) + '</span>' +
-                '<button class="switch" data-pv-toggle="' + id + '" aria-pressed="' + on + '">' +
-                  '<span class="track"><i></i></span>' + (on ? 'Included' : 'Excluded') +
-                '</button>' +
-              '</div>';
-            }).join('') +
-          '</div>' +
+          '<div class="tpl-preview-list" id="tpl-preview-list">' + previewListHtml() + '</div>' +
         '</div>' +
       '</div>';
     }
 
     function wireToggles(){
-      var body = document.querySelector('.modal-body');
-      if (!body) return;
-      body.querySelectorAll('[data-pv-toggle]').forEach(function(b){
+      var list = document.getElementById('tpl-preview-list');
+      if (!list) return;
+      list.querySelectorAll('[data-pv-toggle]').forEach(function(b){
         b.addEventListener('click', function(){
           var id = b.getAttribute('data-pv-toggle');
           skip[id] = !skip[id];
-          body.innerHTML = previewBody();
+          applyPreviewState();
+          list.innerHTML = previewListHtml();
           wireToggles();
         });
       });
@@ -2853,29 +3043,276 @@
       wide: true,
       body: previewBody(),
       confirm: 'Use this template',
-      onConfirm: function(){ setTimeout(function(){ selectTemplate(tplId, skip); goStep(3); }, 0); }
+      cancelLabel: 'Cancel',
+      onConfirm: function(){ setTimeout(function(){ selectTemplate(tplId, skip); goStep(4); }, 0); },
+      onCancel: function(){
+        S.template = priorTemplate; S.templateExcluded = priorExcluded; S.sections = priorSections;
+        save();
+        var host = $('step1-build-host'); if (host) renderBuildWorkspace(host);
+      }
     });
     wireToggles();
+    applyPreviewState();
+  }
+
+  /* ---------- let AI design it: Gemini, proxied through tools/serve.js (POST /api/suggest-design) ----------
+     The server holds the API key; the browser only ever talks to the same-origin proxy. This proposes VISUAL
+     REDESIGNS of the baseline template's REAL rendered site — real canvas.design field values (colour, real
+     Google Fonts, heading style…) applied live to the mounted Gen-2 canvas, not a different template pick and
+     not CSS variables grafted onto this file's own generic markup — plus optional content polish, independent
+     of which design is chosen. Only offered where the active category has a template with a real port (see
+     categoryHasPortedTemplate()/renderStep2()). See tools/serve.js for the prompt/schema and tools/README
+     (GEMINI_API_KEY / tools/.env.local) for how the key is supplied.
+     Switching between proposed designs calls canvas.design.set() directly on the already-mounted preview
+     canvas — instant, no reload — and also sets S.aiDesign + save() so the choice persists through the
+     wizard and into the hand-off (see buildEditorPayload/openInEditor). */
+  var AI_STATUS_LINES = ['Reading your content…', 'Sketching a few fresh looks…', 'Checking colour contrast…', 'Almost there…'];
+  /* structured design intake, single-select — closer to Wix ADI's own style/goal questions than one free-text
+     box alone. Short on purpose (Wix's own intake is a handful of questions, not a long form); "notes" below
+     stays for anything a fixed chip can't capture (a specific brand colour, a reference site, etc.). */
+  var VIBE_OPTIONS = ['Bold & energetic', 'Minimal & elegant', 'Warm & editorial', 'Corporate & formal', 'Dark & dramatic', 'Playful & modern'];
+
+  function requestAiDesign(){
+    var ported = templatesForCategory().filter(function(t){ return t.site; });
+    if (!ported.length){ toast('AI design is only available for templates with a finished real design.'); return; }
+    var currentIsPorted = S.template && ported.some(function(t){ return t.id === S.template; });
+    var baselineId = currentIsPorted ? S.template : ported[0].id;
+    selectTemplate(baselineId);   /* additive/no-op if already set — see applyTemplate(); guarantees a real mounted template to redesign */
+    var priorSectionOrder = S.sectionOrder;   // captured before this request can possibly change it — see renderAiReview()'s Cancel
+
+    showStep2View('ai');
+    var host = $('step2-ai');
+    host.innerHTML =
+      '<div class="step-head"><span class="eyebrow">Step 2 of 3 &middot; Choose template</span><h1>Designing with AI&hellip;</h1>' +
+        '<p class="desc">Gemini is sketching a few fresh looks for your site.</p></div>' +
+      '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
+        '<p class="hint" id="ai-status">' + esc(AI_STATUS_LINES[0]) + '</p>' +
+      '</div></div>';
+
+    var i = 0;
+    var statusTimer = setInterval(function(){
+      i = (i + 1) % AI_STATUS_LINES.length;
+      var el = $('ai-status');
+      if (el) el.textContent = AI_STATUS_LINES[i];
+    }, 2200);
+
+    var tplMeta = null; TEMPLATES.forEach(function(t){ if (t.id === baselineId) tplMeta = t; });
+
+    ensureGen2Canvas(tplMeta).then(function(canvas){
+      return fillGen2Canvas(canvas);
+    }).then(function(canvas){
+      var payload = {
+        event: { name: S.basics.name, category: S.basics.category, dateLabel: eventDateLabel(S.basics), location: locLabel(S.basics, true) },
+        sections: S.sections,
+        currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
+        designIntake: S.designIntake,
+        priorDesigns: S.priorDesigns
+      };
+
+      return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
+        .then(function(r){
+          clearInterval(statusTimer);
+          if (!r.ok || !r.body || !r.body.designs || !r.body.designs.length){
+            toast(r.body && r.body.error ? r.body.error : 'AI design request failed.');
+            showStep2View('landing');
+            return;
+          }
+          recordPriorDesigns(r.body.designs);
+          /* a reorder needs a fresh mount (see ensureGen2Canvas's comment) — applies once, independent of
+             which design card the user ends up picking in renderAiReview() */
+          if (r.body.sectionOrder){
+            S.sectionOrder = fullSectionOrder(canvas, r.body.sectionOrder);
+            return ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(freshCanvas){ renderAiReview(r.body, freshCanvas, priorSectionOrder); });
+          }
+          renderAiReview(r.body, canvas, priorSectionOrder);
+        });
+    }).catch(function(err){
+      clearInterval(statusTimer);
+      toast('Could not reach the AI design service: ' + err.message);
+      showStep2View('landing');
+    });
+  }
+
+  function renderAiReview(result, canvas, priorSectionOrder){
+    var priorDesignSnapshot = snapshotDesign(canvas);
+    var priorAiDesign = S.aiDesign;
+    var priorSections = JSON.parse(JSON.stringify(S.sections));
+    applyAiEnhancements(result.enhancements);   /* same content polish regardless of which design is picked; reverted on Cancel */
+
+    var designs = result.designs || [];
+    var selectedIdx = 0;
+    var enhancedNames = Object.keys(result.enhancements || {}).map(function(libId){ var l = libBy(libId); return l ? l.name : libId; });
+
+    function selectDesign(idx){
+      selectedIdx = idx;
+      S.aiDesign = designs[idx].design;
+      applyAiDesignToCanvas(canvas, S.aiDesign);   /* instant — the canvas is already mounted, no reload */
+      save();
+      renderCards();
+    }
+
+    function renderCards(){
+      var list = $('ai-design-list');
+      if (!list) return;
+      list.innerHTML = designs.map(function(d, i){
+        var on = i === selectedIdx, dsg = d.design || {};
+        return '<button type="button" class="ai-design-card' + (on ? ' on' : '') + '" data-idx="' + i + '">' +
+          '<span class="ai-design-swatches">' +
+            '<span class="sw" style="background:' + esc(dsg.themeColor || '#ccc') + '"></span>' +
+            '<span class="sw" style="background:' + esc(dsg.bgColor || '#fff') + '"></span>' +
+          '</span>' +
+          '<span class="ai-design-body"><strong>' + esc(d.name) + '</strong><span>' + esc(d.reason) + '</span>' +
+            (dsg.headingFont || dsg.bodyFont ? '<span class="ai-design-fonts">' + esc([dsg.headingFont, dsg.bodyFont].filter(Boolean).join(' / ')) + '</span>' : '') +
+          '</span>' +
+          (on ? '<span class="ai-design-check">' + IC.check + '</span>' : '') +
+        '</button>';
+      }).join('');
+      list.querySelectorAll('[data-idx]').forEach(function(b){
+        b.addEventListener('click', function(){ selectDesign(+b.getAttribute('data-idx')); });
+      });
+    }
+
+    var host = $('step2-ai');
+    host.innerHTML =
+      '<div class="step-head"><span class="eyebrow">Step 2 of 3 &middot; Choose template</span><h1>Pick a design</h1>' +
+        '<p class="desc">Same real template, a fresh look &mdash; check the live preview on the right, then confirm.</p></div>' +
+      '<div class="panel" style="padding:14px;">' +
+        '<div id="ai-design-list" class="ai-design-list"></div>' +
+        (enhancedNames.length ? '<p class="hint" style="margin:14px 0 0;">Content polish included for: ' + enhancedNames.map(esc).join(', ') + '.</p>' : '') +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">' +
+          '<button class="btn btn-primary" type="button" id="btn-ai-use">Use this design</button>' +
+          '<button class="btn btn-ghost" type="button" id="btn-ai-cancel">Cancel</button>' +
+        '</div>' +
+      '</div>';
+
+    selectDesign(0);   /* auto-preview the first option immediately, live, on the right */
+
+    $('btn-ai-use').onclick = function(){
+      save();
+      showStep2View('landing');
+      toast('"' + designs[selectedIdx].name + '" applied');
+    };
+    $('btn-ai-cancel').onclick = function(){
+      S.aiDesign = priorAiDesign;
+      S.sections = priorSections;
+      var reorderChanged = JSON.stringify(S.sectionOrder) !== JSON.stringify(priorSectionOrder);
+      S.sectionOrder = priorSectionOrder;
+      if (reorderChanged){
+        var tpl = null; TEMPLATES.forEach(function(t){ if (t.id === S.template) tpl = t; });
+        if (tpl) ensureGen2Canvas(tpl).then(fillGen2Canvas);   // remount back to the order from before this request
+      } else {
+        restoreDesign(canvas, priorDesignSnapshot);
+      }
+      save();
+      var contentHost = $('step1-build-host'); if (contentHost) renderBuildWorkspace(contentHost);
+      showStep2View('landing');
+    };
+  }
+
+  /* applies an AI-suggested content patch to a section's existing data — only keys the section already has,
+     so a malformed/unexpected model response can't inject fields the editor/preview don't know how to render.
+     hero.title is excluded even though it's a real key: left empty (its seed default), it deliberately falls
+     back to the event's own name (see content.map's {hero.title|event.name} and editorSectionHtml's
+     `d.title || b.name` chain) — that's the user's own name, typed in step 1, not "thin content" for the AI
+     to improve. Silently overwriting it with the AI's own shortened/restyled version (confirmed happening —
+     "FULL FLOW REAL TEST 2026" became "Full Flow 2026") is exactly the kind of unrequested rewrite that makes
+     a real, deliberately-entered choice look like it was ignored. */
+  var AI_ENHANCEMENT_PROTECTED_FIELDS = { hero: { title: true } };
+  function applyAiEnhancements(enhancements){
+    if (!enhancements) return;
+    Object.keys(enhancements).forEach(function(libId){
+      var sec = sectionByLib(libId);
+      if (!sec || !sec.data) return;
+      var protectedFields = AI_ENHANCEMENT_PROTECTED_FIELDS[libId] || {};
+      var patch = enhancements[libId];
+      Object.keys(patch || {}).forEach(function(key){
+        if (!(key in sec.data) || protectedFields[key]) return;
+        sec.data[key] = patch[key];
+      });
+      sec.done = true;
+      sec.source = 'ai';
+    });
+  }
+
+  /* Called right before a template-A draft leaves step 2 (onNext() and confirmUseTemplate()) when the user
+     never clicked "Design with AI" themselves. Without this, every event in a category rendered with the
+     real template's own fixed stock colours/fonts — fine for one event, but every event in that category
+     then looked visually identical, which read as "cached"/"cloned" rather than a builder making something
+     new each time. Resolves once a design is applied (or once it's given up trying) — it never rejects, so
+     a slow/unavailable AI call can't block the user from finishing their site; the template's own default
+     look is still a reasonable result, just not the personalized one this aims for. */
+  function autoPersonalizeDesign(){
+    if (S.path !== 'A') return Promise.resolve();              // "bring your own design" has no real template to redesign
+    if (S.aiDesign) return Promise.resolve();                 // the user already chose a look explicitly
+    var ported = templatesForCategory().filter(function(t){ return t.site; });
+    if (!ported.length) return Promise.resolve();               // Gen-1 only — nothing to vary yet
+    var currentIsPorted = S.template && ported.some(function(t){ return t.id === S.template; });
+    /* this used to fall back to ported[0] when the current pick wasn't real — harmless back when every
+       category had at most one real template (ported[0] was always the same template pickCategory() had
+       already defaulted to), but with several real templates now sharing a category, that fallback would
+       silently swap a user's own explicit pick (e.g. they chose "SURGE" in the manual gallery) for some
+       unrelated real template just because one happened to exist. Only ever personalize the template the
+       user is actually on; otherwise leave their Gen-1 pick alone. */
+    if (!currentIsPorted) return Promise.resolve();
+    var baselineId = S.template;
+    var tplMeta = null; TEMPLATES.forEach(function(t){ if (t.id === baselineId) tplMeta = t; });
+
+    return ensureGen2Canvas(tplMeta).then(function(canvas){
+      return fillGen2Canvas(canvas).then(function(canvas){
+        var payload = {
+          event: { name: S.basics.name, category: S.basics.category, dateLabel: eventDateLabel(S.basics), location: locLabel(S.basics, true) },
+          sections: S.sections,
+          currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
+          designIntake: S.designIntake,
+          priorDesigns: S.priorDesigns
+        };
+        return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+          .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
+          .then(function(r){
+            if (!r.ok || !r.body || !r.body.designs || !r.body.designs.length) return;   // keep the template's own default look rather than block
+            recordPriorDesigns(r.body.designs);
+            /* a random pick among Gemini's own 2-3 options (not always [0]) so two similar events
+               silently personalized back-to-back don't land on the same look every time */
+            var pick = r.body.designs[Math.floor(Math.random() * r.body.designs.length)];
+            S.aiDesign = pick.design;
+            if (r.body.sectionOrder){
+              /* a reorder needs a fresh mount (see ensureGen2Canvas's comment) */
+              S.sectionOrder = fullSectionOrder(canvas, r.body.sectionOrder);
+              return ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(freshCanvas){
+                applyAiDesignToCanvas(freshCanvas, S.aiDesign);
+                applyAiEnhancements(r.body.enhancements);
+                save();
+              });
+            }
+            applyAiDesignToCanvas(canvas, S.aiDesign);
+            applyAiEnhancements(r.body.enhancements);
+            save();
+          });
+      });
+    }).catch(function(){ /* same fallback: the template's default look, not a blocked wizard */ });
   }
 
   /* ---------- clone design from a previous (completed) edition on this portal ---------- */
   function openCloneDesignModal(){
-    var list = PAST_EDITIONS.filter(function(p){ return p.cat === S.basics.category; });
+    /* only real events this wizard itself has a recorded template for (see create-event-editions.js) —
+       RevampCore's seed events were never built here, so they're honestly left out rather than guessed at */
+    var list = window.RevampEditions ? RevampEditions.editionsWithTemplate(S.basics.category) : [];
     openModal({
       title: 'Clone design from a previous edition',
-      sub: 'Reuse a completed event’s section layout as your starting point.',
+      sub: 'Reuse an event you built with this wizard as your starting point.',
       body: list.length
-        ? '<div class="field"><label for="clone-event-select">Completed event</label>' +
+        ? '<div class="field"><label for="clone-event-select">Event</label>' +
             '<select class="inp" id="clone-event-select">' +
               list.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') +
             '</select></div>'
-        : '<p class="hint">No completed events in this category yet — check back once your first edition wraps.</p>',
+        : '<p class="hint">No events built with this wizard yet in this category — assemble one first, then its design can be cloned into the next.</p>',
       confirm: 'Continue',
       onConfirm: function(){
         if (!list.length) return;
         var sel = $('clone-event-select');
         var pe = null;
-        PAST_EDITIONS.forEach(function(x){ if (sel && x.id === sel.value) pe = x; });
+        list.forEach(function(x){ if (sel && String(x.id) === sel.value) pe = x; });
         if (!pe) return;
         setTimeout(function(){ confirmCloneDesign(pe); }, 0);
       }
@@ -2896,12 +3333,23 @@
         '</div>',
       confirm: 'Yes',
       cancelLabel: 'No',
-      onConfirm: function(){ selectTemplate(pe.templateId); goStep(3); },
+      onConfirm: function(){ selectTemplate(pe.templateId); goStep(4); },
       onCancel: function(){ setTimeout(openCloneDesignModal, 0); }
     });
   }
 
+  /* which of step 2's three views (landing / AI / manual gallery) is showing */
+  function showStep2View(view){
+    $('step2-landing').hidden = view !== 'landing';
+    $('step2-ai').hidden = view !== 'ai';
+    $('step2-manual').hidden = view !== 'manual';
+  }
+
   function renderStep2(){
+    /* rebuilds the gallery markup only — does NOT touch which of the 3 views is showing. It's called both on
+       a fresh entry into step 2 (goStep(2), which explicitly resets to 'landing' first) and reactively from
+       inside the manual gallery itself (picking a template re-renders the grid's selection highlight) — if
+       this reset the view every time, picking a template from the manual gallery would instantly hide it. */
     var gallery = $('tpl-gallery');
     if (S.templatePick == null && S.path === 'A' && S.template) S.templatePick = S.template;
     gallery.innerHTML = templatesForCategory().map(function(t){
@@ -2945,6 +3393,44 @@
     if (convertUrlLink) convertUrlLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
     var cloneBtn = $('btn-clone-design');
     if (cloneBtn) cloneBtn.onclick = openCloneDesignModal;
+
+    var manualLink = $('link-manual-gallery');
+    if (manualLink) manualLink.onclick = function(e){ e.preventDefault(); showStep2View('manual'); };
+    var convertLandingLink = $('link-convert-url-landing');
+    if (convertLandingLink) convertLandingLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
+    var aiBtn = $('btn-ai-design');
+    if (aiBtn){
+      var aiCard = aiBtn.closest('.design-choice-card');
+      var aiCopy = aiCard && aiCard.querySelector('p');
+      if (categoryHasPortedTemplate()){
+        aiBtn.disabled = false;
+        aiBtn.onclick = requestAiDesign;
+        if (aiCopy) aiCopy.textContent = 'Gemini redesigns the real site template with your content — switch between a few trendy looks and see them live.';
+      } else {
+        aiBtn.disabled = true;
+        aiBtn.onclick = null;
+        if (aiCopy) aiCopy.textContent = 'Not available for this event type yet — only templates with a finished real design can be AI-redesigned. Pick a template manually, or reuse a previous edition’s layout.';
+      }
+    }
+    var vibeHost = $('vibe-chips');
+    if (vibeHost){
+      vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
+        return '<button type="button" class="vibe-chip" data-vibe="' + esc(v) + '" aria-pressed="' + (S.designIntake.vibe === v) + '">' + esc(v) + '</button>';
+      }).join('');
+      vibeHost.querySelectorAll('[data-vibe]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var v = b.getAttribute('data-vibe');
+          S.designIntake.vibe = (S.designIntake.vibe === v) ? '' : v;   // click again to deselect
+          save();
+          vibeHost.querySelectorAll('[data-vibe]').forEach(function(c){ c.setAttribute('aria-pressed', c.getAttribute('data-vibe') === S.designIntake.vibe); });
+        });
+      });
+    }
+    var themePrefInput = $('e-theme-pref');
+    if (themePrefInput){
+      themePrefInput.value = S.designIntake.notes || '';
+      themePrefInput.oninput = function(){ S.designIntake.notes = themePrefInput.value; save(); };
+    }
   }
 
   function confirmSwitch(next, after){
@@ -2971,35 +3457,19 @@
     });
   }
 
-  /* ---------- convert-a-design shortcut (top-right of Choose Template) ---------- */
+  /* ---------- convert-a-design shortcut (top-right of Choose Template) ----------
+     Not built yet: there is no real Figma/Lovable/PSD reader behind this, so rather than
+     run the old fake "detected sections" demo (same canned result regardless of input —
+     see DETECTED above), this modal says so plainly instead of pretending to work. */
   function openConvertModal(){
     openModal({
-      title: 'Convert a Figma or Lovable design',
-      sub: 'Paste a shared link and we’ll read the design, split it into sections and pull the content out automatically.',
-      body: '<div class="field"><label for="convert-url">Design URL</label>' +
-        '<input class="inp mono" id="convert-url" type="text" placeholder="https://figma.com/file/… or https://yourproject.lovable.app" spellcheck="false" autocomplete="off"></div>' +
-        '<p class="hint">Works with shared Figma file/frame links (link sharing on) and published Lovable project URLs. You still get a quick Keep / Edit / Remove review before anything is final.</p>',
-      confirm: 'Convert',
-      onConfirm: function(){
-        var el = $('convert-url');
-        var val = (el && el.value || '').trim();
-        if (!val) return;
-        var kind = /lovable\.(app|dev)/i.test(val) ? 'lovable' : 'figma';
-        var start = function(){
-          S.sourceKind = kind;
-          S.sourceValue = val;
-          S.detectPhase = 'processing';
-          save();
-          goStep(3);
-        };
-        if (S.sections.length) setTimeout(function(){ confirmSwitch('B', start); }, 0);
-        else { S.path = 'B'; start(); }
-      }
-    });
-    var input = $('convert-url'), ok = $('modal-ok');
-    if (ok) ok.disabled = true;
-    if (input) input.addEventListener('input', function(){
-      if (ok) ok.disabled = !input.value.trim();
+      title: 'Bring your own design',
+      sub: 'Automatic Figma/Lovable import isn’t built yet.',
+      body: '<div class="callout plain">' + IC.info +
+        '<span>There is no real design reader behind this yet, so it can’t pull sections or content from a URL or file. ' +
+        'For now, pick a template manually, or use <strong>Design with AI</strong> on a template with a real site port — ' +
+        'it redesigns the actual live template using the content you type into this wizard.</span></div>',
+      confirm: 'Got it'
     });
   }
 
@@ -3038,7 +3508,7 @@
   function renderTemplatePicker(host){
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 4 &middot; Path A</span>' +
+        '<span class="eyebrow">Step 2 of 3 &middot; Choose template</span>' +
         '<h1>Pick a template to start from</h1>' +
         '<p class="desc">Each one is a stack of our pre-built sections. You can include or exclude any section afterwards, and add custom ones.</p>' +
       '</div>' +
@@ -3066,27 +3536,37 @@
     var tpl = null;
     TEMPLATES.forEach(function(t){ if (t.id === tplId) tpl = t; });
     if (!tpl) return;
+    /* a design/section-order chosen for a different template means nothing against this one's DOM/design knobs */
+    if (S.template !== tplId){ S.aiDesign = null; S.sectionOrder = null; S.priorDesigns = []; }
     S.template = tplId;
     S.templateExcluded = skip || {};
-    S.sections = tpl.sections.filter(function(libId){
-      return !S.templateExcluded[libId];
-    }).map(function(libId){
+    /* additive: content already filled in step 1 (seedSections()) is kept — a template only decides which
+       already-filled sections it shows (include flags, below) and adds its own decorative sections that
+       aren't part of the base/core/toggle set (e.g. a stats strip, marquee). Switching templates drops only
+       the PREVIOUS template's own decorative leftovers that the new one doesn't use; real content stays. */
+    seedSections();
+    S.sections = S.sections.filter(function(s){
+      return s.source !== 'template' || tpl.sections.indexOf(s.libId) !== -1;
+    });
+    tpl.sections.forEach(function(libId){
+      if (S.templateExcluded[libId]) return;
+      if (sectionByLib(libId)) return;
       var l = libBy(libId);
-      return {
+      S.sections.push({
         id: uid(), libId: libId, name: l.name, shape: l.shape, limit: l.limit || null,
         helper: l.helper, include: true, data: seed(l.shape), done: false, source: 'template'
-      };
+      });
     });
-    var first = S.sections.filter(function(s){ return s.shape !== 'auto'; })[0];
-    S.active = first ? first.id : (S.sections[0] ? S.sections[0].id : null);
-    if (S.basics.name){
-      var hero = S.sections.filter(function(s){ return s.libId === 'hero'; })[0];
-      if (hero) hero.data.title = S.basics.name;
-    }
+    S.sections.forEach(function(s){ s.include = !S.templateExcluded[s.libId]; });
     ensureCoreSections();
+    if (!S.active || !S.sections.some(function(s){ return s.id === S.active; })){
+      var first = S.sections.filter(function(s){ return s.shape !== 'auto'; })[0];
+      S.active = first ? first.id : (S.sections[0] ? S.sections[0].id : null);
+    }
     save();
-    renderStep3();
-    toast(tpl.name + ' loaded — ' + S.sections.length + ' section' + (S.sections.length === 1 ? '' : 's') + ' ready');
+    var host = $('step1-build-host');
+    if (host) renderBuildWorkspace(host);
+    toast(tpl.name + ' applied — ' + S.sections.filter(function(s){ return s.include && s.shape !== 'auto'; }).length + ' section' + (S.sections.length === 1 ? '' : 's') + ' shown');
   }
 
   /* =========================================================
@@ -3134,6 +3614,32 @@
     return changed;
   }
 
+  /* =========================================================
+     STEP 1 CONTENT — seeded independently of any template, so content can be filled before/without
+     picking one. Template choice (step 2) only decides which of these a design shows (S.templateExcluded)
+     plus adds that template's own decorative sections (stats/marquee/etc. — see applyTemplate()).
+  ========================================================= */
+  function seedSections(){
+    if (!sectionByLib('nav')) addSectionToRail('nav', 'base');
+    if (!sectionByLib('hero')) addSectionToRail('hero', 'base');
+    if (!sectionByLib('footer')) addSectionToRail('footer', 'base');
+    ensureCoreSections();
+    var hero = sectionByLib('hero');
+    if (hero && S.basics.name && !hero.data.title) hero.data.title = S.basics.name;
+    if (!S.active || !S.sections.some(function(s){ return s.id === S.active; })){
+      var first = S.sections.filter(function(s){ return s.shape !== 'auto'; })[0];
+      S.active = first ? first.id : (S.sections[0] ? S.sections[0].id : null);
+    }
+  }
+
+  function renderStep1Content(){
+    seedSections();
+    var host = $('step1-build-host');
+    if (host) renderBuildWorkspace(host);
+    setPreviewVisible(S.catPicked);   /* the category picker (no category yet) stays full-width, nothing to preview */
+    schedulePreview();
+  }
+
   function toggleBlock(libId){
     var l = libBy(libId);
     var sec = sectionByLib(libId);
@@ -3161,22 +3667,25 @@
 
   /* ---------- pull content from a previous edition ---------- */
   function openPullContentModal(){
-    var list = PAST_EDITIONS.filter(function(p){ return p.cat === S.basics.category && p.content; });
+    /* any real event in this category with actual stored Speakers/Agenda/Sponsors data (edit-event.html's
+       own per-event storage) — see create-event-editions.js. Overview/Glimpses have no real per-event
+       source anywhere in the app today, so an edition here can only ever fill those three blocks. */
+    var list = window.RevampEditions ? RevampEditions.editionsForCategory(S.basics.category).filter(function(p){ return !!RevampEditions.contentFor(p.id); }) : [];
     openModal({
       title: 'Bring in content from a previous edition',
-      sub: 'Overview, Key Discussion Points and Who should attend fill in automatically. Any toggled-on blocks (Speakers, Agenda, Sponsors, Glimpses) come from the same edition too.',
+      sub: 'Speakers, Agenda and Sponsors fill in from a real event’s own data — whichever of those it actually has. Turn a block on below first if you want that edition’s content for it.',
       body: list.length
-        ? '<div class="field"><label for="pull-event-select">Completed event</label>' +
+        ? '<div class="field"><label for="pull-event-select">Event</label>' +
             '<select class="inp" id="pull-event-select">' +
               list.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') +
             '</select></div>'
-        : '<p class="hint">No completed events in this category yet — check back once your first edition wraps.</p>',
+        : '<p class="hint">No events with Speakers, Agenda or Sponsors entered yet in this category — add some in an event’s console (Speakers/Agenda/Payment tabs), then they can be pulled in here.</p>',
       confirm: 'Continue',
       onConfirm: function(){
         if (!list.length) return;
         var sel = $('pull-event-select');
         var pe = null;
-        PAST_EDITIONS.forEach(function(x){ if (sel && x.id === sel.value) pe = x; });
+        list.forEach(function(x){ if (sel && String(x.id) === sel.value) pe = x; });
         if (!pe) return;
         setTimeout(function(){ confirmPullContent(pe); }, 0);
       }
@@ -3185,31 +3694,32 @@
   }
 
   function confirmPullContent(pe){
+    var peContent = RevampEditions.contentFor(pe.id) || {};
     var targets = CORE_LIB_IDS.slice();
     TOGGLE_BLOCKS.forEach(function(tb){
       var sec = sectionByLib(tb.libId);
       if (sec && sec.include) targets.push(tb.libId);
     });
-    targets = targets.filter(function(libId){ return pe.content && pe.content[libId]; });
+    targets = targets.filter(function(libId){ return peContent[libId]; });
     var names = targets.map(function(libId){ return libBy(libId).name; });
     openModal({
       title: 'Overwrite with ' + pe.name + '’s content?',
-      sub: names.length + ' block' + (names.length === 1 ? '' : 's') + ' will be filled in from this edition — existing content in them is replaced.',
+      sub: (names.length ? names.length + ' block' + (names.length === 1 ? '' : 's') + ' will be filled in from this edition — existing content in them is replaced.' : 'This event has no Speakers, Agenda or Sponsors data to bring in yet — turn one of those blocks on below first.'),
       body: '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' +
           names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
         '</div>' +
-        '<p class="hint" style="margin-top:12px">Turn on Speakers, Agenda, Sponsors or Glimpses first if you want this edition’s content for those too.</p>',
+        '<p class="hint" style="margin-top:12px">Turn on Speakers, Agenda or Sponsors first if you want this edition’s content for those too.</p>',
       confirm: 'Yes, overwrite',
       cancelLabel: 'No',
-      onConfirm: function(){ applyPastEditionContent(pe, targets); },
+      onConfirm: function(){ applyPastEditionContent(pe, targets, peContent); },
       onCancel: function(){ setTimeout(openPullContentModal, 0); }
     });
   }
 
-  function applyPastEditionContent(pe, targets){
-    if (!pe.content) return;
+  function applyPastEditionContent(pe, targets, peContent){
+    peContent = peContent || RevampEditions.contentFor(pe.id) || {};
     targets.forEach(function(libId){
-      var content = pe.content[libId];
+      var content = peContent[libId];
       if (!content) return;
       var sec = sectionByLib(libId);
       if (!sec) sec = addSectionToRail(libId, 'edition');
@@ -3221,7 +3731,7 @@
     });
     S.pulledEdition = { id: pe.id, name: pe.name };
     save();
-    renderBuildWorkspace($('step-3'));
+    var host = $('step1-build-host'); if (host) renderBuildWorkspace(host);
     toast('Content pulled from ' + pe.name);
   }
 
@@ -3229,14 +3739,13 @@
      switched on after the edition pull (see toggleBlock) */
   function applyEditionContentToBlock(sec, libId){
     if (!S.pulledEdition) return;
-    var pe = null;
-    PAST_EDITIONS.forEach(function(p){ if (p.id === S.pulledEdition.id) pe = p; });
-    var content = pe && pe.content && pe.content[libId];
+    var content = RevampEditions.contentFor(S.pulledEdition.id);
+    content = content && content[libId];
     if (!content) return;
     sec.data = JSON.parse(JSON.stringify(content));
     sec.done = true;
     sec.source = 'edition';
-    sec.editionName = pe.name;
+    sec.editionName = S.pulledEdition.name;
   }
 
   /* Previous edition + the optional blocks it unlocks (Speakers, Agenda, Sponsors, Glimpses): a button in the header,
@@ -3251,7 +3760,7 @@
   function renderTogglePanel(){
     var host = $('toggle-panel');
     if (!host) return;
-    var show = S.step === 3 && !!document.querySelector('#step-3 #sec-list');
+    var show = S.step === 1 && !!document.querySelector('#step-1 #sec-list');
     host.hidden = !show;
     if (!show){ host.innerHTML = ''; editionPopOpen = false; return; }
     var locked = !S.pulledEdition;
@@ -3477,9 +3986,15 @@
     { key: 'media',      label: 'Image or video', icon: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10 9.5l4.5 2.5-4.5 2.5z"/>' },
     { key: 'cta',        label: 'Button',         icon: '<rect x="3" y="8" width="18" height="8" rx="4"/>' }
   ];
-  var INTRO_PINNED = { about: ['body'], priorities: ['subheading'], whyjoin: ['subheading'], attend: ['subheading'] };
-  // Key Discussion Points, Why join us, Who should attend: one layout — the pinned sub heading, then item cards; no chips
-  var INTRO_NO_ADD = { priorities: 1, whyjoin: 1, attend: 1 };
+  /* Key Discussion Points / Why join us / Who should attend used to pin only their sub heading, leaving no
+     way to set a heading or intro paragraph at all — fine for create-event.html's own generic rendering
+     (edHead() always had a fallback heading), but TECH500's real template (why-now/why-attend/power-chain)
+     has a dedicated, always-visible heading + paragraph slot for each of these, so with nothing to fill them
+     from, that slot stayed TECH500's own stock pitch copy on every single event, with no way to change it.
+     Pinning heading/body (+ cta for whyjoin, whose real section has a button) makes them always-editable,
+     matching what the real template's content.map already expects to receive. */
+  var INTRO_PINNED = { about: ['body'], priorities: ['subheading', 'heading', 'body'], whyjoin: ['subheading', 'heading', 'body', 'cta'], attend: ['subheading', 'heading', 'body'] };
+  var INTRO_NO_ADD = {};
   var INTRO_OFF = { auto: 1, hero: 1, line: 1, heading: 1, custom: 1 };           // shapes that are their own text
   var INTRO_OFF_LIB = { stats: 1, contact: 1 };                                               // sections that keep only their own fields
   function hasIntro(s){ return !INTRO_OFF[s.shape] && !INTRO_OFF_LIB[s.libId]; }
@@ -3659,7 +4174,15 @@
     columns:  { list: 'Discussion points', noun: 'point',   add: 'Add a discussion point', t: 'Point heading', d: 'A short paragraph on what will be discussed…' },
     benefits: { list: 'Benefits',          noun: 'benefit', add: 'Add a benefit',          t: 'Benefit, e.g. Meet the decision makers', d: 'A line or two of detail…' },
     cards:    { list: 'Blocks',            noun: 'block',   add: 'Add a block',            t: 'Block title', d: 'One or two lines…' },
-    chips:    { list: 'Roles',             noun: 'role',    add: 'Add a role',             t: 'Role, e.g. Chief Marketing Officer', d: 'A short paragraph on why they should be there…' }
+    chips:    { list: 'Roles',             noun: 'role',    add: 'Add a role',             t: 'Role, e.g. Chief Marketing Officer', d: 'A short paragraph on why they should be there…' },
+    /* libId-specific overrides: itemsHTML checks these first, since a few library sections share a
+       generic shape (chips/columns) with a different library item but need their own copy, not that item's */
+    industries: { list: 'Industries',        noun: 'industry', add: 'Add an industry',        t: 'Industry, e.g. BFSI', d: 'Optional — a short line on this sector' },
+    faq:        { list: 'Questions',         noun: 'question', add: 'Add a question',         t: 'Question delegates ask', d: 'The answer' },
+    keyquestions: { list: 'Questions',       noun: 'question', add: 'Add a question',         t: 'Question heading, e.g. Decision Rights', d: 'What this raises for the enterprise…' },
+    tracks:     { list: 'Tracks',            noun: 'track',     add: 'Add a track',            t: 'Track name, e.g. ShopperTech Symposium', d: 'A short line on what it covers…' },
+    exhibitors: { list: 'Exhibitor categories', noun: 'category', add: 'Add an exhibitor category', t: 'Category, e.g. Retail Tech Solutions', d: 'What this kind of exhibitor would showcase…' },
+    factoids:   { list: 'Factoids',          noun: 'factoid',   add: 'Add a factoid',          t: 'Stat or headline, e.g. ₹82 Trillion Market Power', d: 'A line of context on this data point…' }
   };
   /* Contact us: each category holds people[]; a draft from before held one person per category (t, n, e, p) */
   function normContacts(d){
@@ -3676,7 +4199,7 @@
     return d.items;
   }
   function itemsHTML(s){
-    var d = s.data || (s.data = {}), items = normItems(d), c = ITEM_COPY[s.shape];
+    var d = s.data || (s.data = {}), items = normItems(d), c = ITEM_COPY[s.libId] || ITEM_COPY[s.shape];
     return '<div class="kp-list-head"><span class="flabel">' + c.list + '</span>' +
         '<span class="kp-count">' + items.length + ' ' + c.noun + (items.length === 1 ? '' : 's') + '</span></div>' +
       '<div class="kp-list" id="rep-list">' + items.map(function(it, i){
@@ -4128,11 +4651,20 @@
           } else {
             layerItem.color = '#ffffff';
           }
-        } else if (l.canvas){
-          layerItem.type = 'image';
-          layerItem.raster = true;     // its pixels are in the composite, so hiding it re-draws that
         } else {
-          layerItem.type = 'graphic';
+          /* Shape/vector-fill and some smart-object layers don't carry a pre-built `.canvas` the way plain
+             raster layers do, even though Photoshop shows pixels for them — ag-psd can still rasterise them
+             on request via getLayerCanvas. Without this, any banner built from shape layers (a common way to
+             do flat-color backgrounds/badges) silently drops its artwork from the composite. */
+          if (!l.canvas && window.agPsd && window.agPsd.getLayerCanvas){
+            try { l.canvas = window.agPsd.getLayerCanvas(l); } catch(e){}
+          }
+          if (l.canvas){
+            layerItem.type = 'image';
+            layerItem.raster = true;     // its pixels are in the composite, so hiding it re-draws that
+          } else {
+            layerItem.type = 'graphic';
+          }
         }
 
         if (width > 0 && height > 0){
@@ -4528,9 +5060,29 @@
     var got = collectPsdLayers(psd);
     var layers = got.layers;
 
-    /* a flattened PSD still has its composite, shown as one image; with neither there's nothing to show — say so
-       rather than pass the sample banner off as theirs */
-    if (!layers.length && !psd.canvas) throw new Error('no layers or image found in it');
+    /* A PSD saved flattened (or "Maximize compatibility" off with no extractable layers) has no individual
+       layers to show, but its own rasterised composite is usually still there — show that single flattened
+       image rather than quietly substituting the unrelated sample banner. Only once neither is available is
+       this genuinely unreadable. */
+    if (!layers.length){
+      var flatComposite = psd.canvas || null;
+      if (!flatComposite && window.agPsd && window.agPsd.getCompositeCanvas){
+        try { flatComposite = window.agPsd.getCompositeCanvas(psd); } catch(e){}
+      }
+      if (!flatComposite) throw new Error('this PSD has no layers and no flattened image to show');
+      var flat = {
+        filename: filename || 'custom-banner.psd',
+        filesize: filesize ? (filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Flattened PSD',
+        sourceKey: sourceKey || '',
+        width: w, height: h, aspectRatio: (w / h).toFixed(4),
+        layerCount: 1,
+        layers: [{ id: 'psd_lyr_1', name: 'Banner Background', type: 'image', left: 0, top: 0, width: w, height: h, opacity: 1, visible: true }],
+        detected: []
+      };
+      psdSource = { key: flat.sourceKey, width: w, height: h, composite: flatComposite, rasters: [] };
+      setPsdComposite(flat, flatComposite);
+      return flat;
+    }
 
     var detected = detectPsdItems(layers, w, h);
     var sizeMb = filesize ? (filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Layered PSD';
@@ -4547,16 +5099,24 @@
     };
     /* The PSD's own composite exists only when it was saved with "Maximize compatibility";
        without it composePsd flattens the pixel layers so the banner isn't blank. */
-    psdSource = { key: res.sourceKey, width: w, height: h, composite: psd.canvas || null, rasters: got.rasters };
+    var docComposite = psd.canvas || null;
+    if (!docComposite && !got.rasters.length && window.agPsd && window.agPsd.getCompositeCanvas){
+      /* Nothing to flatten from either source — last resort: ask ag-psd to render its own merge of the
+         document, rather than leaving the banner with text/buttons floating over no image at all. */
+      try { docComposite = window.agPsd.getCompositeCanvas(psd); } catch(e){}
+    }
+    psdSource = { key: res.sourceKey, width: w, height: h, composite: docComposite, rasters: got.rasters };
     if (psdSource.composite || got.rasters.length) setPsdComposite(res, composePsd(psdSource, hiddenPsdLayers(res)));
     return res;
   }
 
+  /* Some OS/browser combinations (confirmed on Mac and on Windows with Photoshop installed) report a .psd
+     file's `file.type` as some generic "image/…" MIME instead of leaving it empty — so this must check the
+     .psd extension FIRST and never let a real PSD fall into the plain-image branch just because the browser
+     mis-typed it. */
   function readPsdFile(file, callback){
-    /* the extension decides first: browsers on a Mac, or on Windows with Photoshop installed, report a .psd as
-       "image/vnd.adobe.photoshop", which would send it down the plain-image path, where it can't be decoded */
-    var isPsd = /\.psd$/i.test(file.name || '') || /photoshop/i.test(file.type || '');
-    if (!isPsd && (file.type.indexOf('image/') === 0 || /\.(png|jpe?g|webp|svg)$/i.test(file.name))){
+    var isPsdFile = /\.psd$/i.test(file && file.name || '');
+    if (!isPsdFile && file && (file.type.indexOf('image/') === 0 || /\.(png|jpe?g|webp|svg)$/i.test(file.name))){
       var imgReader = new FileReader();
       imgReader.onload = function(ev){
         var imgUrl = ev.target.result;
@@ -4587,10 +5147,10 @@
           };
           callback(null, result);
         };
-        tempImg.onerror = function(){ callback(new Error('the browser couldn’t open this image')); };
+        tempImg.onerror = function(){ callback(new Error('the image couldn’t be decoded')); };
         tempImg.src = imgUrl;
       };
-      imgReader.onerror = function(){ callback(imgReader.error || new Error('the file couldn’t be read')); };
+      imgReader.onerror = function(){ callback(new Error('the file couldn’t be read')); };
       imgReader.readAsDataURL(file);
       return;
     }
@@ -4606,13 +5166,13 @@
           if (window.RevampStore) RevampStore.put(PSD_FILE_KEY, { key: key, name: file.name, file: file, savedAt: Date.now() }).catch(function(){});
           callback(null, extracted);
         } else {
-          callback(new Error('the PSD reader didn’t load — refresh the page and try again'));
+          callback(new Error('the PSD reader isn’t available'));
         }
       } catch(err){
-        callback(err);   // the file couldn't be parsed (e.g. CMYK) — don't pass the sample banner off as theirs
+        callback(err);   // the file couldn't be parsed (e.g. CMYK) — never pass the sample banner off as theirs
       }
     };
-    reader.onerror = function(){ callback(reader.error || new Error('the file couldn’t be read')); };
+    reader.onerror = function(){ callback(new Error('the file couldn’t be read')); };
     reader.readAsArrayBuffer(file);
   }
 
@@ -4984,16 +5544,15 @@
           '<button class="add-row" id="rep-add">' + IC.plus + ' Add a testimonial</button>';
 
       case 'gallery':
-        var n = d.count || 0;
-        var tiles = '';
-        for (var g = 0; g < n; g++){
-          tiles += '<div class="tile"><button class="del" data-gdel="' + g + '" title="Remove">&times;</button>' +
+        var gItems = d.items || [];
+        var tiles = gItems.map(function(it, g){
+          return '<div class="tile"><button class="del" data-gdel="' + g + '" title="Remove">&times;</button>' +
                    '<span class="ph">' + IC.img + '</span>' +
-                   '<span class="faint mono" style="font-size:10.5px;text-align:center">glimpse-' + (g+1) + '.jpg</span></div>';
-        }
+                   '<input class="inp" data-gi="' + g + '" value="' + esc(it.url || '') + '" placeholder="Image URL"></div>';
+        }).join('');
         return '<div class="tile-grid">' + tiles +
-          '<button class="tile-add" id="g-add">' + IC.plus + '<span>Add photos</span></button></div>' +
-          '<p class="hint">' + n + ' images &middot; six to twelve reads best on mobile.</p>';
+          '<button class="tile-add" id="g-add">' + IC.plus + '<span>Add photo</span></button></div>' +
+          '<p class="hint">' + gItems.length + ' images &middot; six to twelve reads best on mobile. Paste a direct image URL for each.</p>';
 
       case 'agenda':
         var aItems = d.items || [];
@@ -5322,10 +5881,10 @@
               toast(/CMYK/i.test(err.message || '')
                 ? 'This PSD is in CMYK colour mode. Convert it to RGB in Photoshop (Image › Mode › RGB Color), save, and upload again.'
                 : 'Couldn’t read ' + file.name + (err.message ? ' (' + err.message + ')' : '') + '.' +
-                  (/\.psd$/i.test(file.name) ? ' Try re-saving it from Photoshop.' : ''));
+                  (/.psd$/i.test(file.name) ? ' Try re-saving it from Photoshop.' : ''));
               return;
             }
-            d.psdBanner = result || createPsdFromFileFallback(file);
+            d.psdBanner = result;   // readPsdFile() either gives a real result or an err above — never the sample
             updatePsdPalette(d.psdBanner, function(theme){
               markDone(s, true);
               save();
@@ -5559,14 +6118,26 @@
 
     /* gallery */
     if (s.shape === 'gallery'){
+      d.items = d.items || [];
       on('g-add','click', function(){
-        d.count = (d.count || 0) + 4;
-        markDone(s, true); save(); renderEditor();
-        toast('4 photos added (mocked upload)');
+        d.items.push({ url:'' });
+        d.count = d.items.length;
+        save(); renderEditor();
+      });
+      body.querySelectorAll('[data-gi]').forEach(function(el){
+        el.addEventListener('input', function(){
+          var i = +el.getAttribute('data-gi');
+          d.items[i] = d.items[i] || {};
+          d.items[i].url = el.value;
+          markDone(s, d.items.some(function(it){ return String(it.url||'').trim(); }));
+          save();
+        });
       });
       body.querySelectorAll('[data-gdel]').forEach(function(b){
         b.addEventListener('click', function(){
-          d.count = Math.max(0, (d.count||0) - 1);
+          d.items.splice(+b.getAttribute('data-gdel'), 1);
+          d.count = d.items.length;
+          markDone(s, d.items.some(function(it){ return String(it.url||'').trim(); }));
           save(); renderEditor();
         });
       });
@@ -5860,7 +6431,7 @@
     var cur = SOURCES.filter(function(x){ return x.id === S.sourceKind; })[0] || SOURCES[0];
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 4 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 2 of 3 &middot; Your design</span>' +
         '<h1>Point us at your design</h1>' +
         '<p class="desc">We read the design, split it into sections, capture a preview of each and pull the content out. You review what we found on the next screen.</p>' +
       '</div>' +
@@ -5924,7 +6495,7 @@
   function renderProcessing(host){
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 4 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 2 of 3 &middot; Your design</span>' +
         '<h1>Analysing your design&hellip;</h1>' +
         '<p class="desc">Reading <span class="mono">' + esc(S.sourceValue) + '</span>. This usually takes under a minute — you can leave this screen and come back, the draft is saved.</p>' +
       '</div>' +
@@ -5986,7 +6557,7 @@
 
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 4 &middot; Path B</span>' +
+        '<span class="eyebrow">Step 2 of 3 &middot; Your design</span>' +
         '<h1>Here is what we found</h1>' +
         '<p class="desc">' + DETECTED.length + ' sections detected and classified against our canonical library. Keep what is right, edit what needs a nudge, remove what you do not want.</p>' +
       '</div>' +
@@ -6249,13 +6820,16 @@
       edBullets(d.points) +
       (d.cta && d.cta.label ? '<div class="btnrow" style="margin-top:18px">' + ebtn('primary', d.cta.label) + '</div>' : '');
   }
-  /* a section block: its text (with the picture or video beside it, on the chosen side), then the rest */
+  /* a section block: its text (with the picture or video beside it, on the chosen side), then the rest.
+     The text-only case (no media) is a full-width section intro, so it's centered (.s-intro) — matching the
+     real ET convention of centered headings/CTAs (see site-preview.css). Beside media, the text shares a
+     half-width column with the picture and stays left, as a centered block reads oddly next to an image. */
   function edSection(d, cls, head, rest, style){
     var media = edMedia(d.media);
     var top = media
       ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:36px;align-items:center">' +
           (d.media.side === 'left' ? media + '<div>' + head + '</div>' : '<div>' + head + '</div>' + media) + '</div>'
-      : head;
+      : '<div class="s-intro">' + head + '</div>';
     return '<div class="' + cls + '"' + (style ? ' style="' + style + '"' : '') + '>' + top + (rest || '') + '</div>';
   }
   function edCards(items, withPhoto){
@@ -6387,8 +6961,17 @@
         return edHasText(d) ? edSection(d, 's-cards-sec', edHead(d, '', label), '') + quotes : quotes;
 
       case 'gallery':
+        /* real photo URLs (d.items) now exist alongside the legacy d.count — show the actual image where one
+           was pasted, falling back to an empty placeholder tile only for a slot with no URL yet */
+        var gItemsPreview = d.items || [];
+        var galleryCount = gItemsPreview.length || (d.count != null ? d.count : 0);
         var tiles = '';
-        for (var gi = 0; gi < (d.count || 8); gi++) tiles += '<div class="gi" data-editable="image"></div>';
+        for (var gi = 0; gi < galleryCount; gi++){
+          var gUrl = (gItemsPreview[gi] || {}).url;
+          tiles += gUrl
+            ? '<div class="gi" data-editable="image"><img src="' + esc(gUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.closest(\'.gi\').classList.add(\'bad\');this.remove()"></div>'
+            : '<div class="gi" data-editable="image"></div>';
+        }
         return edSection(d, 's-gallery', edHead(d, 'A look back', label),
           '<div class="s-gal-grid" style="margin-top:22px">' + tiles + '</div>', 'padding-top:44px');
 
@@ -6399,8 +6982,8 @@
         }), false));
 
       case 'custom':
-        return '<div class="s-cards-sec">' +
-          etext('h2', '', d.title || label) + edParagraph(d.body || '') + '</div>';
+        return '<div class="s-cards-sec"><div class="s-intro">' +
+          etext('h2', '', d.title || label) + edParagraph(d.body || '') + '</div></div>';
 
       default:
         return '';
@@ -6415,9 +6998,14 @@
     S.sections.forEach(function(s){
       if (!s.include) return;
       var html = editorSectionHtml(s);
-      if (!html) return;
-      /* data: the step-3 fields themselves — a real template (tpl.site) is filled from these, not from html */
-      sections.push({ name: sectionLabel(s), libId: s.libId, html: html, data: s.data ? JSON.parse(JSON.stringify(s.data)) : null });
+      /* data: the step-3 fields themselves — a real template (tpl.site) is filled from these, not from html.
+         Must be pushed even when html is empty (e.g. the hero before any PSD/text content exists yet) — an
+         empty html just means nothing to show in the Gen-1 preview for that section, but RevampFill still
+         needs `data` to fill the REAL template; skipping the whole entry here was silently dropping it from
+         the real-template preview/hand-off too, leaving the template's own stock placeholder content showing
+         instead of whatever the user actually filled in. */
+      if (!html && !s.data) return;
+      sections.push({ name: sectionLabel(s), libId: s.libId, html: html || '', data: s.data ? JSON.parse(JSON.stringify(s.data)) : null });
     });
     return {
       v: 1,
@@ -6437,21 +7025,262 @@
       /* the template's sections the user switched off — hidden on a real template, not deleted */
       excluded: tpl ? tpl.sections.filter(function(id){ return !S.sections.some(function(s){ return s.libId === id && s.include; }); }) : [],
       theme: currentTheme(),
+      aiDesign: S.aiDesign || null,     // a chosen real-template AI redesign (canvas.design field values); null for the Gen-1 path
+      sectionOrder: S.sectionOrder || null,   // a chosen section sequence (see autoPersonalizeDesign()); null for the Gen-1 path or the template's own default order
       sections: sections
     };
+  }
+
+  /* =========================================================
+     REAL-TEMPLATE (Gen-2) LIVE PREVIEW
+     When the active template has a real ET site port (tpl.site — only TECH500 today, but not hardcoded:
+     this works for any template a future port adds), the live preview panel mounts and fills the ACTUAL
+     template — RevampCanvas + RevampFill, the same engine custom_editor.html uses — instead of this file's
+     own generic section markup. The canvas mounts once per template id; every later edit just re-runs
+     RevampFill.apply() against the already-mounted canvas, which patches the live DOM in place and never
+     touches iframe.srcdoc — so there's no reload and no scroll-reset for a ported template, unlike the Gen-1
+     srcdoc path below (which stays exactly as it is for every template with no real port). */
+  var gen2Canvas = null, gen2TemplateId = null, gen2Mounting = null, gen2Logo = null, gen2SectionOrderKey = null;
+  function portedTemplate(){
+    var tpl = TEMPLATES.filter(function(t){ return t.id === S.template; })[0];
+    return (tpl && tpl.site) ? tpl : null;
+  }
+  /* NOT named logoDataUrl() — that name is already taken (line ~2115: converts an uploaded File to a data
+     URL) and a second function declaration with the same name in this same scope would silently replace it
+     everywhere, breaking the actual upload path. This one instead reads the ALREADY-STORED logo back out of
+     IndexedDB, for the Gen-2 preview fill, which needs the saved data URL, not a File. */
+  function storedLogoDataUrl(){
+    if (gen2Logo) return gen2Logo;
+    gen2Logo = (window.RevampStore ? RevampStore.get(LOGO_KEY) : Promise.resolve(null))
+      .then(function(rec){ return (rec && rec.dataUrl) || ''; })
+      .catch(function(){ return ''; });
+    return gen2Logo;
+  }
+  /* canvas.design.set('headingFont'/'bodyFont', …) only ever writes a CSS variable — it never loads the font
+     file itself, so a family not already linked in the template's own <head> would silently fall back to the
+     next font in the stack with no visible error. */
+  function ensureFontsLoaded(canvas, families){
+    var head = canvas.doc.head;
+    (families || []).filter(Boolean).forEach(function(family){
+      var already = Array.prototype.some.call(head.querySelectorAll('link[rel="stylesheet"]'), function(l){
+        return (l.href || '').indexOf(encodeURIComponent(family).replace(/%20/g, '+')) !== -1;
+      });
+      if (already) return;
+      var link = canvas.doc.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800&display=swap';
+      head.appendChild(link);
+    });
+  }
+  /* applies a chosen AI design (real canvas.design field values) to the mounted canvas — one .set() per field
+     present, so a design missing a field (dropped by the server's sanitizer) just leaves that knob untouched */
+  function applyAiDesignToCanvas(canvas, design){
+    if (!canvas || !design) return;
+    ensureFontsLoaded(canvas, [design.headingFont, design.bodyFont]);
+    Object.keys(design).forEach(function(key){
+      var isFont = key === 'headingFont' || key === 'bodyFont';
+      canvas.design.set(key, isFont ? ('"' + design[key] + '", sans-serif') : design[key]);
+    });
+  }
+  /* mounts the real template once per template id; a later call for the same id reuses the live canvas */
+  function ensureGen2Canvas(tpl){
+    /* a section-order change (see autoPersonalizeDesign()/requestAiDesign()) needs a fresh mount — reordering
+       is baked into the iframe's DOM at load time, so RevampFill.apply() patching an already-mounted canvas
+       in place can't move sections around after the fact, only fill text/attrs into whatever is already there. */
+    var orderKey = JSON.stringify(S.sectionOrder || null);
+    if (gen2TemplateId === tpl.site && gen2SectionOrderKey === orderKey && (gen2Canvas || gen2Mounting)) return gen2Mounting;
+    var container = $('live-preview-canvas');
+    if (!container) return Promise.reject(new Error('no preview container'));
+    gen2TemplateId = tpl.site;
+    gen2SectionOrderKey = orderKey;
+    gen2Canvas = null;
+    container.innerHTML = '';
+    gen2Mounting = RevampCanvas.mount(container, tpl.site, { sectionOrder: S.sectionOrder }).then(function(canvas){
+      gen2Canvas = canvas;
+      return canvas;
+    });
+    return gen2Mounting;
+  }
+  /* the one place real content actually reaches the mounted canvas — called explicitly (not left to the
+     debounced renderLivePreview() cycle) by anything that needs the canvas filled and ready to use/read
+     from RIGHT AWAY, e.g. before building an AI request payload or showing the preview to the user for the
+     first time. Relying on the debounce alone was a real race: ensureGen2Canvas() only mounts, so a caller
+     that mounted the canvas itself (as requestAiDesign() does, to read canvas.template.design) could read
+     from / display a canvas that still had the template's own stock placeholder content, not the user's. */
+  function fillGen2Canvas(canvas){
+    return storedLogoDataUrl().then(function(logo){
+      RevampFill.apply(canvas, RevampFill.fromHandoff(buildEditorPayload(), logo));
+      if (S.aiDesign) applyAiDesignToCanvas(canvas, S.aiDesign);
+      return canvas;
+    });
+  }
+  /* the template's own sections minus whatever its layout.pinStart/pinEnd pins in place (the hero always
+     opens, Contact/About always close) — the only ones an AI-proposed sectionOrder may ever resequence. */
+  function reorderableSectionsFor(canvas){
+    var layout = canvas.template.layout || {};
+    var pinned = {};
+    (layout.pinStart || []).concat(layout.pinEnd || []).forEach(function(id){ pinned[id] = true; });
+    return canvas.template.sections.filter(function(s){ return !pinned[s.id]; }).map(function(s){ return { id: s.id, name: s.name }; });
+  }
+  /* the server only ever returns the reorderable middle (see reorderableSectionsFor) — pinStart/pinEnd have
+     to be stitched back on at their fixed ends here, or template-loader.js's reorderSections() would treat
+     them as "left over" and append them wherever the partial list happens to end, not pin them in place. */
+  function fullSectionOrder(canvas, middleOrder){
+    var layout = canvas.template.layout || {};
+    return (layout.pinStart || []).concat(middleOrder).concat(layout.pinEnd || []);
+  }
+  /* tracks every design "Design with AI" has shown this session (both the explicit button and the silent
+     auto-personalize fallback) — sent back on the next request (see requestAiDesign()/autoPersonalizeDesign())
+     so Gemini proposes genuinely different directions on a repeat call instead of near-repeats. Capped so the
+     prompt doesn't grow unbounded across many regenerate clicks. */
+  var PRIOR_DESIGNS_MAX = 6;
+  function recordPriorDesigns(designs){
+    (designs || []).forEach(function(d){
+      if (!d || !d.design) return;
+      S.priorDesigns.push({ name: d.name, themeColor: d.design.themeColor, headingFont: d.design.headingFont, bodyFont: d.design.bodyFont });
+    });
+    if (S.priorDesigns.length > PRIOR_DESIGNS_MAX) S.priorDesigns = S.priorDesigns.slice(-PRIOR_DESIGNS_MAX);
+    save();
+  }
+  function updateGen2Preview(tpl){
+    ensureGen2Canvas(tpl).then(function(canvas){
+      if (gen2TemplateId !== tpl.site) return;    // a later switch already superseded this mount
+      return fillGen2Canvas(canvas).then(function(){
+        var note = $('live-preview-note');
+        if (note) note.textContent = tpl.name + ' · real template';
+      });
+    }).catch(function(){ /* a transient mount/fetch failure just leaves the previous preview frame showing */ });
+  }
+  function showGen2Preview(on){
+    var frame = $('live-preview-frame'), canvas = $('live-preview-canvas');
+    if (frame) frame.hidden = on;
+    if (canvas) canvas.hidden = !on;
+  }
+  /* canvas.design.state()/.load() only round-trip the "hard rule" keys (divider, animation, heading*, radius,
+     bgImage, bgOpacity) — the CSS-var-backed keys (themeColor, fonts, sizes, weights…) live purely as inline
+     style props and have no bulk read/write, so a full snapshot/restore (for the AI review's Cancel) needs
+     both: design.state() for the rule keys, plus one .get() per CSS-var key. */
+  var GEN2_VAR_KEYS = ['themeColor', 'headingFont', 'bodyFont', 'textColor', 'bgColor', 'bodySize', 'bodyWeight', 'sectionSpacing', 'headingSize'];
+  function snapshotDesign(canvas){
+    var snap = { rules: canvas.design.state() };
+    GEN2_VAR_KEYS.forEach(function(k){ snap[k] = canvas.design.get(k); });
+    return snap;
+  }
+  function restoreDesign(canvas, snap){
+    canvas.design.load(snap.rules);
+    GEN2_VAR_KEYS.forEach(function(k){ canvas.design.set(k, snap[k]); });
+  }
+
+  /* =========================================================
+     LIVE PREVIEW (steps 1 & 2) — real content, not template placeholders.
+     Reuses editorSectionHtml()/buildEditorPayload() exactly as the final hand-off does; only the render
+     target differs (an iframe here vs. custom_editor.html's DOM there). Wired reactively through save(),
+     which already runs on every relevant mutation (basics fields, section content, template/toggle changes).
+     This is the Gen-1 fallback — used whenever the active template has no real port (see ensureGen2Canvas
+     above for the real-template path, which this function defers to first). */
+  var PREVIEW_THEME_VARS = {
+    accent:'--site-accent', accentSoft:'--site-accent-soft',
+    heroBg:'--site-hero-bg', heroText:'--site-hero-text', heroMuted:'--site-hero-muted',
+    bandBg:'--site-band-bg', bandText:'--site-band-text', bandMuted:'--site-band-muted',
+    quoteBg:'--site-quote-bg', quoteText:'--site-quote-text',
+    footBg:'--site-foot-bg', footText:'--site-foot-text', footLogo:'--site-foot-logo',
+    displayFont:'--site-display-font', displayWeight:'--site-display-weight',
+    displayCase:'--site-display-case', displayTracking:'--site-display-tracking'
+  };
+  function previewThemeStyle(theme){
+    return Object.keys(PREVIEW_THEME_VARS).map(function(k){
+      return (theme[k] != null) ? (PREVIEW_THEME_VARS[k] + ':' + theme[k] + ';') : '';
+    }).join('');
+  }
+  var previewTimer = null;
+  function schedulePreview(){
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(renderLivePreview, 350);
+  }
+  /* shared by the global live-preview panel (steps 1/2) and the template Preview modal's own mini-preview */
+  function buildPreviewDoc(payload){
+    payload = payload || buildEditorPayload();
+    /* each section wrapped with its libId so renderLivePreview() can scroll straight to whichever one the
+       user is actively editing after a reload, instead of the iframe always resetting to the top */
+    var body = '<div class="site frame" id="frame" style="' + previewThemeStyle(payload.theme) + '">' +
+      payload.sections.map(function(s){ return '<div data-preview-section="' + esc(s.libId || '') + '">' + s.html + '</div>'; }).join('') +
+    '</div>';
+    return '<!doctype html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+      '<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Manrope:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">' +
+      '<link rel="stylesheet" href="site-preview.css">' +
+      '<style>html,body{margin:0;background:#fff;} .site.frame{min-height:100%;}</style>' +
+      '</head><body>' + body + '</body></html>';
+  }
+  /* keeps the preview showing whatever the user is actually working on, instead of jumping to the top on
+     every keystroke (srcdoc reassignment is a real document reload — there's no scroll position to carry
+     over automatically). Scrolls to the section matching S.active once the new document has painted. */
+  function activeLibId(){
+    var sec = S.sections.filter(function(s){ return s.id === S.active; })[0];
+    return sec && sec.libId;
+  }
+  /* generatePsdBannerHtml() deliberately leaves the PSD composite image out of its returned HTML (only a
+     data-psd-imgkey pointer) so the handoff JSON never embeds the blob — custom_editor.html paints it back in
+     from storage once the page lands there. This panel's own srcdoc never goes through that storage path at
+     all (it's just iframe content, not persisted), so there's no reason to leave the image out here: paint it
+     straight from memory (S itself has it) once the frame has loaded, instead of showing a plain gradient. */
+  function paintPreviewPsdImages(frame){
+    try {
+      var doc = frame.contentDocument;
+      var els = doc.querySelectorAll('[data-psd-imgkey]');
+      if (!els.length) return;
+      var heroSec = S.sections.filter(function(x){ return x.libId === 'hero'; })[0];
+      var imgData = heroSec && heroSec.data && heroSec.data.psdBanner && heroSec.data.psdBanner.compositeImageData;
+      if (!imgData) return;
+      els.forEach(function(el){
+        el.style.backgroundImage = 'url(' + imgData + ')';
+        el.style.backgroundSize = '100% 100%';
+        el.style.backgroundRepeat = 'no-repeat';
+        el.style.backgroundPosition = 'center';
+      });
+    } catch(e){}
+  }
+  function renderLivePreview(){
+    var ported = portedTemplate();
+    showGen2Preview(!!ported);
+    if (ported){ updateGen2Preview(ported); return; }
+    var frame = $('live-preview-frame');
+    if (!frame) return;
+    var payload = buildEditorPayload();
+    var libId = activeLibId();
+    frame.onload = function(){
+      paintPreviewPsdImages(frame);
+      try {
+        if (!libId) return;
+        var target = frame.contentDocument.querySelector('[data-preview-section="' + libId + '"]');
+        if (target) target.scrollIntoView({ block: 'start' });
+      } catch(e){}
+    };
+    frame.srcdoc = buildPreviewDoc(payload);
+    var note = $('live-preview-note');
+    if (note) note.textContent = (payload.sections.length ? payload.sections.length + ' section' + (payload.sections.length === 1 ? '' : 's') : 'Nothing to show yet') + (payload.template.name !== 'Custom' ? ' · ' + payload.template.name : '');
+  }
+  function setPreviewVisible(on){
+    var split = $('wiz-split'), panel = $('live-preview-panel'), expandBtn = $('btn-expand-preview');
+    if (!split || !panel) return;
+    split.classList.toggle('has-preview', on);
+    panel.hidden = !on;
+    /* a step with no preview at all (3/4) should never show the "expand" handle, collapsed or not */
+    if (!on && expandBtn) expandBtn.hidden = true;
   }
 
   /* hands the draft to custom_editor.html and opens it */
   function openInEditor(){
     var payload = buildEditorPayload();
 
-    /* If the PSD banner has a composite image, park it in sessionStorage so applyCreateHandoff can inject it
-       without the large base64 blob being part of the main JSON payload. sessionStorage has the same ~5 MB quota
-       as localStorage, so a big one won't fit: the editor then reads the IndexedDB copy (keepBannerImage). */
-    var psdBanner = heroBanner();
-    try { sessionStorage.removeItem('revamp.psd.img.v1'); } catch(e){}   // never let the editor show a previous banner
+    /* If the PSD banner has a composite image, also park it in sessionStorage as a fast, same-tab path —
+       applyCreateHandoff() reads from here first. It's already durably in IndexedDB too (save()'s
+       stashHeroImages(), 'create:psd-banner-img'), so if this write fails or the editor opens in a context
+       that doesn't share this tab's sessionStorage, it still finds the image there instead of losing it. */
+    var heroSec = S.sections.filter(function(x){ return x.libId === 'hero'; })[0];
+    var psdBanner = heroSec && heroSec.data && heroSec.data.psdBanner;
     if (psdBanner && psdBanner.compositeImageData) {
-      keepBannerImage();
       try { sessionStorage.setItem('revamp.psd.img.v1', psdBanner.compositeImageData); } catch(e){}
     }
     try {
@@ -6470,10 +7299,17 @@
         return false;
       }
     }
+    /* lets a LATER event's "Clone design from a previous edition" (step 2) offer this one — RevampCore.EVENTS
+       never learns about a wizard-created event (no backend), so without this registry it could never be a
+       clone-design candidate even within the same browser session. Path B ("bring your own design") has no
+       TEMPLATES-gallery id to record. */
+    if (S.path === 'A' && S.template && window.RevampEditions){
+      RevampEditions.registerEventTemplate('new-' + payload.event.slug, S.template, { name: payload.event.name, cat: S.basics.category });
+    }
     var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
       (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
-    /* the editor reads the logo, and a banner image too big for sessionStorage, from IndexedDB on arrival */
-    Promise.all([logoSaving, bannerImgSaving]).then(function(){ window.location.href = url; });
+    if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
+    else window.location.href = url;
     return true;
   }
 
@@ -6481,6 +7317,7 @@
      STEP 4 - AI ASSEMBLE
   ========================================================= */
   var ASSEMBLE_PHASES = [
+    { t:'Personalizing your design',         ms:900, async:true },   // real work: see run()'s special-case below
     { t:'Reshaping content to fit sections', ms:1300 },
     { t:'Mapping to pre-built components',   ms:1500 },
     { t:'Building the menu from sections',   ms:1000 },
@@ -6492,7 +7329,7 @@
     var included = S.sections.filter(function(s){ return s.include; });
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 4 of 4</span>' +
+        '<span class="eyebrow">Step 3 of 3</span>' +
         '<h1>Putting your site together</h1>' +
         '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. The site editor opens next, already loaded with your content.</p>' +
       '</div>' +
@@ -6515,7 +7352,7 @@
         save();
         /* the wizard ends here — the site editor takes over, loaded with this draft */
         if (!openInEditor()){
-          goStep(3);   // storage blocked; keep the content editable rather than stranding the user
+          goStep(1);   // storage blocked; keep the content editable rather than stranding the user
         }
         return;
       }
@@ -6524,12 +7361,22 @@
       requestAnimationFrame(function(){ row.querySelector('.bar i').style.width = '100%'; });
       var note = $('asm-note');
       if (note) note.textContent = ASSEMBLE_PHASES[i].t + '…';
-      setTimeout(function(){
+      var advance = function(){
         row.classList.remove('active');
         row.classList.add('done');
         i++;
         run();
-      }, ASSEMBLE_PHASES[i].ms);
+      };
+      /* only this phase does real async work (autoPersonalizeDesign — silent "ask first, auto-vary if
+         skipped" fallback) rather than just a timed animation; a floor keeps it from flashing past if the
+         AI call happens to resolve immediately, but it's free to run longer if Gemini is slow — this step
+         was already the "your site is being built, hang on" moment, so that's the right place for it. */
+      if (ASSEMBLE_PHASES[i].async){
+        var floor = new Promise(function(res){ setTimeout(res, ASSEMBLE_PHASES[i].ms); });
+        Promise.all([autoPersonalizeDesign(), floor]).then(advance);
+      } else {
+        setTimeout(advance, ASSEMBLE_PHASES[i].ms);
+      }
     }
     setTimeout(run, 300);
   }
@@ -6622,8 +7469,16 @@
      INIT
   ========================================================= */
   function init(){
+    /* "Create Event" entry points (Event_Listing.html, sidebar.js) link here with ?new=1 so a user starting a
+       brand-new event always gets a clean step 1 — without this, init() always resumed whatever draft was last
+       autosaved, including one that had reached step 3/4, so "Create Event" could silently reopen someone else's
+       abandoned draft instead of starting fresh. A return trip (e.g. from the Figma importer) has no ?new=1 and
+       still resumes normally. */
+    if (new URLSearchParams(location.search).get('new') === '1'){
+      try { localStorage.removeItem(STORE_KEY); } catch(e){}
+      history.replaceState(null, '', location.pathname);
+    }
     var had = restore();
-    restoreBannerImage();
     initStep1();
     if (S.basics.logo && !logoPreviewUrl){
       RevampStore.get(LOGO_KEY).then(function(rec){
@@ -6652,10 +7507,27 @@
       setTimeout(function(){ window.location.href = 'index.html'; }, 700);
     });
 
+    /* collapse/expand the 70% preview column — independent of setPreviewVisible()'s per-step on/off;
+       .wiz-split.preview-collapsed (set here) just lets .wiz-body reclaim the full width while it's closed.
+       [hidden] is `!important` project-wide (line 86) specifically so no class rule can accidentally override
+       it — so the expand handle's own shown/hidden state has to be set as a real attribute here, not via CSS. */
+    var wizSplit = $('wiz-split'), previewToggleBtn = $('btn-toggle-preview'), previewExpandBtn = $('btn-expand-preview');
+    if (previewToggleBtn) previewToggleBtn.addEventListener('click', function(){
+      wizSplit.classList.add('preview-collapsed');
+      if (previewExpandBtn) previewExpandBtn.hidden = false;
+    });
+    if (previewExpandBtn) previewExpandBtn.addEventListener('click', function(){
+      wizSplit.classList.remove('preview-collapsed');
+      previewExpandBtn.hidden = true;
+      schedulePreview();
+    });
+
     if (had && S.step > 1){
       if (S.detectPhase === 'processing') S.detectPhase = 'input';
-      /* step 4 is a transient hand-off to the site editor — a restored draft resumes at Build content */
-      if (S.step >= 4) S.step = 3;
+      /* step 4 is a transient hand-off to the site editor. Path B's step 3 (detect/review) is still
+         meaningful to resume into; path A's old step 3 (content editing) no longer exists as a separate
+         step — that content now lives in step 1, so a path-A draft resumes there instead. */
+      if (S.step >= 4) S.step = (S.path === 'B') ? 3 : 1;
       goStep(S.step);
     } else {
       S.step = 1;
