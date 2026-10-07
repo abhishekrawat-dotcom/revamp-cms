@@ -674,10 +674,11 @@ function classifyLibraryNeeds(map) {
 
 function buildGenerateSchema(needs) {
   var props = {
+    positioningNotes: { type: 'STRING', description: 'Internal only, never shown on the site — see the prompt for what this must name concretely.' },
     event: { type: 'OBJECT', properties: { name: { type: 'STRING' }, date: { type: 'STRING' }, location: { type: 'STRING' } }, required: ['name', 'date', 'location'] },
     hero: { type: 'OBJECT', properties: { title: { type: 'STRING' }, tagline: { type: 'STRING' }, cta1: { type: 'STRING' }, cta2: { type: 'STRING' } }, required: ['title', 'tagline', 'cta1', 'cta2'] }
   };
-  var required = ['event', 'hero'];
+  var required = ['positioningNotes', 'event', 'hero'];
   Object.keys(needs).forEach(function (from) {
     var need = needs[from];
     var p = {};
@@ -690,8 +691,11 @@ function buildGenerateSchema(needs) {
 }
 
 function buildGenerateContentPrompt(payload) {
+  var ownHistory = (payload.sources || []).filter(function (s) { return s.type !== 'competitor'; });
+  var competitors = (payload.sources || []).filter(function (s) { return s.type === 'competitor'; });
+
   var lines = [
-    'You are generating REAL content for an event microsite, for ET Oneworld\'s event builder. Ground every fact in the material below — never invent a date, number, named person or company that isn\'t clearly present in it. An empty string/array is the correct answer when nothing grounded supports a field; never pad with generic filler just to fill it in.',
+    'You are generating REAL content for an event microsite, for ET Oneworld\'s event builder. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. An empty string/array is the correct answer when nothing grounded supports a field; never pad with generic filler just to fill it in.',
     '',
     'Event (already known — fill in event.name/date/location below only if the material confirms or refines this):',
     JSON.stringify(payload.eventMeta || {}, null, 2)
@@ -699,17 +703,20 @@ function buildGenerateContentPrompt(payload) {
   if (payload.brief) {
     lines.push('', 'Extracted brief from the event\'s own overview document:', JSON.stringify(payload.brief, null, 2));
   }
-  if (payload.sources && payload.sources.length) {
-    lines.push('', 'Research material — this event\'s own previous/current edition pages, and competitor event pages. Use this for STRUCTURE and FACTS ONLY, never copy wording: the result should read as its own distinct site, better than any one of these (clearer, more specific to this event), not a copy of one.');
-    payload.sources.forEach(function (s) {
-      lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2));
-    });
+  if (ownHistory.length) {
+    lines.push('', 'This event\'s OWN history (previous/current edition) — your primary source of real facts and theme, but do not simply restate or lightly reword it. The job is a genuine improvement, not a refresh.');
+    ownHistory.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
+  }
+  if (competitors.length) {
+    lines.push('', 'COMPETITOR events running something similar — read these specifically to find what they do that this event\'s own history above does NOT: a sharper audience framing, a track or angle missing from this event, a stronger hook, a format this event lacks. You must identify at least one such gap and actively close it in your output (in this event\'s own voice, never their wording) — this is not optional background reading.');
+    competitors.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
   }
   lines.push(
     '',
     'Task — produce:',
+    '- positioningNotes: 1-2 sentences, for internal review only (never shown on the site) — name the ONE specific thing you adapted FROM a competitor (or state "no competitor material was given" if none was provided) and the ONE specific thing you deliberately did NOT just carry over from this event\'s own previous edition. Be concrete (name the competitor/section), not generic.',
     '- event.name/date/location: only if clearly and consistently stated above; prefer this event\'s own current-edition/brief facts over a competitor\'s.',
-    '- hero.title/tagline: a strong, specific headline and one-line tagline for THIS event\'s real theme — not generic conference copy.',
+    '- hero.title/tagline: a strong, specific headline and one-line tagline for THIS event\'s real theme — not generic conference copy, and not a near-paraphrase of the previous edition\'s own headline.',
     '- hero.cta1/cta2: short button labels (e.g. "Register Now", "Partner With Us") only if a real call to action is implied; else leave blank.'
   );
   Object.keys(payload.needs).forEach(function (from) {
@@ -785,9 +792,10 @@ function handleGenerateContent(req, res) {
       return callGeminiJson(prompt, schema).then(function (r) {
         if (r.error) return sendJson(res, r.status, { error: r.error });
         var library = sanitizeGeneratedLibrary(r.parsed, needs);
+        var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
         var now = new Date().toISOString();
-        return eventRef.collection('drafts').add({ templateId: templateId, library: library, model: 'gemini-3.8-flash', generatedAt: now })
-          .then(function (draftRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: draftRef.id, library: library }); });
+        return eventRef.collection('drafts').add({ templateId: templateId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now })
+          .then(function (draftRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: draftRef.id, positioningNotes: positioningNotes, library: library }); });
       });
     }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
   });
