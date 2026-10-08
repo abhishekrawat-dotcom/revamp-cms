@@ -4,23 +4,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1, user-scalable=0">
 <title>Template preview</title>
-<!-- Standalone view of one template, exactly as the editor and export will assemble it: preview.html?t=tech500
+<!-- Standalone view of one template: preview.html?t=tech500 (a ported template — shows its own real
+     captured markup as-is, no fill applied) or preview.html?t=gen-<eventId> (a GENERATED template — the
+     library sections' own markup is generic placeholder text with nothing event-specific in it at all, so
+     unlike a ported template there is nothing meaningful to show without applying that event's latest
+     /api/generate-content draft first; this mounts via the same RevampCanvas + RevampFill pipeline the real
+     editor uses, just without any editing wired up — read-only, but the real content).
      Needs the repo served over http — fetch() is blocked on file://. -->
 <script src="_shared/template-loader.js"></script>
+<script src="../editor-canvas.js"></script>
+<script src="../editor-fill.js"></script>
+<style>html,body{margin:0;height:100%}</style>
 </head>
 <body>
 <script>
   var id = new URLSearchParams(location.search).get('t') || 'tech500';
-  RevampTemplates.build(id).then(function (html) {
-    document.open();
-    document.write(html);
-    document.close();
-  }).catch(function (err) {
+
+  function showError(err) {
     document.body.style.font = '14px/1.5 system-ui, sans-serif';
     document.body.style.padding = '24px';
     document.body.textContent = 'Could not load template "' + id + '": ' + err.message +
-      (location.protocol === 'file:' ? ' — open this page over http (e.g. python -m http.server 8080 from the repo root).' : '');
-  });
+      (location.protocol === 'file:' ? ' — open this page over http (e.g. node tools/serve.js from the repo root).' : '');
+  }
+
+  if (!/^gen-/.test(id)) {
+    // ported template — unchanged: the real captured markup already has real content, no fill needed
+    RevampTemplates.build(id).then(function (html) {
+      document.open();
+      document.write(html);
+      document.close();
+    }).catch(showError);
+  } else {
+    // generated template — mount via RevampCanvas (same as the real editor) so RevampFill has a real
+    // canvas to fill, then apply that event's latest draft to it. Read-only: nothing here saves/edits.
+    var eventId = id.slice(4);
+    document.body.style.cssText = 'margin:0;height:100vh;';
+    var host = document.createElement('div');
+    host.style.cssText = 'width:100%;height:100%;';
+    document.body.appendChild(host);
+
+    RevampCanvas.mount(host, id, {}).then(function (canvas) {
+      return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+        .then(function (res) { return res.json().then(function (b) { if (!res.ok) throw new Error(b.error || 'request failed'); return b; }); })
+        .then(function (draftResp) {
+          var ctx = RevampFill.fromHandoff(draftResp.handoff, null);
+          RevampFill.apply(canvas, ctx);
+        });
+    }).catch(showError);
+  }
 </script>
 </body>
 </html>
