@@ -830,19 +830,28 @@ function buildHeroImage(fb, eventId, brief, themeColor) {
   return callGeminiImage(buildHeroImagePrompt(brief, themeColor)).then(function (r) {
     if (r.error) {
       console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
-      return { heroImageDataUrl: null, heroImageStoragePath: null, heroImageError: r.error };
+      return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
     }
     var buffer = Buffer.from(r.base64, 'base64');
     var storagePath = 'events/' + eventId + '/generated/hero-bg.png';
-    return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: r.mimeType } })
-      .then(function () { return { heroImageDataUrl: 'data:' + r.mimeType + ';base64,' + r.base64, heroImageStoragePath: storagePath, heroImageError: null }; })
+    var file = fb.bucket.file(storagePath);
+    /* The raw base64 (often several hundred KB-plus) must never go into Firestore directly — a single
+       document is capped at 1MiB total, and an inline data: URI that size blew right through it the first
+       time this ran ("Property theme contains an invalid nested entity"). The image already lives in
+       Storage; Firestore only needs a real URL to it, same as any other image reference in this app. */
+    return file.save(buffer, { metadata: { contentType: r.mimeType } })
+      .then(function () { return file.makePublic(); })
+      .then(function () {
+        var heroImageUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
+        return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null };
+      })
       .catch(function (err) {
-        console.error('plan-structure: hero image generated but Storage save failed (using the data URL anyway) — ' + err.message);
-        return { heroImageDataUrl: 'data:' + r.mimeType + ';base64,' + r.base64, heroImageStoragePath: null, heroImageError: 'Storage save failed: ' + err.message };
+        console.error('plan-structure: hero image generated but Storage save/publish failed, degrading to no hero image — ' + err.message);
+        return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'Storage save/publish failed: ' + err.message };
       });
   }).catch(function (err) {
     console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + err.message);
-    return { heroImageDataUrl: null, heroImageStoragePath: null, heroImageError: err.message };
+    return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: err.message };
   });
 }
 
@@ -938,7 +947,7 @@ function handlePlanStructure(req, res) {
           var theme = {
             themeColor: themeInfo.themeColor, headingFont: themeInfo.headingFont, bodyFont: themeInfo.bodyFont,
             usedFallback: themeInfo.usedFallback,
-            heroImageDataUrl: heroImage.heroImageDataUrl, heroImageStoragePath: heroImage.heroImageStoragePath, heroImageError: heroImage.heroImageError,
+            heroImageUrl: heroImage.heroImageUrl, heroImageStoragePath: heroImage.heroImageStoragePath, heroImageError: heroImage.heroImageError,
             generatedAt: now
           };
           return eventRef.set({ structurePlan: structurePlan, theme: theme }, { merge: true })
@@ -1132,8 +1141,8 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
     return callGeminiJson(prompt, schema).then(function (r) {
       if (r.error) return sendJson(res, r.status, { error: r.error });
       var library = sanitizeGeneratedLibrary(r.parsed, needs);
-      if (genTheme && genTheme.heroImageDataUrl && library.hero) {
-        library.hero.psdBanner = { compositeImageData: genTheme.heroImageDataUrl };
+      if (genTheme && genTheme.heroImageUrl && library.hero) {
+        library.hero.psdBanner = { compositeImageData: genTheme.heroImageUrl };
       }
       var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
       var now = new Date().toISOString();
