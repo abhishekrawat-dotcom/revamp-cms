@@ -10,6 +10,10 @@
   overflow: hidden;
   text-align: center;
   color: #ffffff;
+  /* themed fallback for whenever .hero-bg-image stays the grey placeholder (image generation failed/was
+     skipped) — reads as a deliberate, on-brand look rather than a broken/empty section, since the image
+     sits ON TOP of this (z-index 0) and only covers it once it's a real photo. */
+  background: linear-gradient(135deg, var(--theme-color, #186bf9) 0%, color-mix(in srgb, var(--theme-color, #186bf9) 55%, #0a0c10) 100%);
 }
 #hero .hero-bg-image {
   position: absolute;

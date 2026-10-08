@@ -717,8 +717,21 @@ function readLibrarySectionMap(type) {
 // planned order — exactly the shape a real template.json's content.map array has, just assembled from N
 // library map.json fragments instead of hand-written for one template. Used by both the 'gen-' branch of
 // handleGenerateContent (to classify/generate against) and GET /api/generated-template (to return as-is).
-function buildCombinedLibraryMap(sectionTypes) {
-  return (sectionTypes || []).map(readLibrarySectionMap);
+//
+// `heroImageGenerated`: each library section's own map.json is shared verbatim by every page that uses that
+// section type — including hero's "aiSkipMedia": "img.hero-bg-image", written for the common case (a PORTED
+// template, where that photo is permanently the original captured event's own asset, never AI's to touch).
+// A GENERATED page is different: when its one hero-image generation call actually succeeded, that image
+// genuinely IS AI-written content, and leaving aiSkipMedia in would wrongly badge it "not generated — replace
+// manually" in the editor. Strip it from just the hero entry in that one case; every other section's
+// aiSkipMedia (none currently use it) and hero's own fallback case (generation failed/skipped — the grey
+// placeholder really is un-replaced) are untouched.
+function buildCombinedLibraryMap(sectionTypes, heroImageGenerated) {
+  return (sectionTypes || []).map(function (type) {
+    var entry = readLibrarySectionMap(type);
+    if (type === 'hero' && heroImageGenerated && entry.aiSkipMedia) delete entry.aiSkipMedia;
+    return entry;
+  });
 }
 
 /* ---- Theme extraction: previousEdition sources ONLY ----
@@ -1187,7 +1200,7 @@ function handleGenerateContent(req, res) {
         if (!plan || !Array.isArray(plan.sections) || !plan.sections.length) {
           return sendJson(res, 400, { error: 'No structure plan found for "' + genEventId + '" — run /api/plan-structure first.' });
         }
-        var contentMap = buildCombinedLibraryMap(plan.sections);
+        var contentMap = buildCombinedLibraryMap(plan.sections, !!(data.theme && data.theme.heroImageUrl));
         var skippedLibraries = deliberatelySkippedLibraries(contentMap);
         runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, contentMap, skippedLibraries, data.theme || null);
       }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
@@ -1323,7 +1336,7 @@ function handleGeneratedTemplate(req, res) {
           '--body-color': 'rgba(0, 0, 0, 1)'
         }
       },
-      content: { map: buildCombinedLibraryMap(plan.sections) },
+      content: { map: buildCombinedLibraryMap(plan.sections, !!theme.heroImageUrl) },
       layout: { pinStart: ['hero'], pinEnd: ['footer'] },
       sections: plan.sections.map(function (type) { return { id: type, name: SECTION_TYPE_LABELS[type] || type, etId: null }; })
     };
