@@ -1833,6 +1833,7 @@
 <script src="editor-store.js"></script>
 <script src="ag-psd.bundle.js"></script>
 <script src="edit-event-core.js"></script>
+<script src="auth.js"></script>
 <script src="create-event-editions.js"></script>
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
@@ -3646,9 +3647,33 @@
           // resolveKey) — without it, a second Generate-from-Brief run for the same slug would resolve to
           // the exact same storeKey as the first and silently show that first run's cached draft instead
           // of starting fresh (the bug this `&draft=` param exists to close).
-          window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
+          var finalUrl = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
             '&template=' + encodeURIComponent(draftResp.templateId || ('gen-' + eventId)) +
             (draftResp.draftId ? '&draft=' + encodeURIComponent(draftResp.draftId) : '');
+
+          /* The events/{eventId} doc for a Generate-from-Brief event already exists by this point as a
+             side effect of /api/plan-structure (structurePlan/theme fields only, see functions/lib/api.js)
+             — but not the full canonical field set edit-event.html's console and the rest of the new
+             /api/event/* endpoints expect (category/venue/city/payment/status/templateId). This enriches
+             it, merge-only (never destructive to structurePlan/theme). Best-effort/non-blocking beyond its
+             own completion, same posture as the manual-wizard path's openInEditor() — a failure here
+             (most likely: not signed in yet) never blocks the user from reaching their generated site. */
+          if (window.RevampCore && RevampCore.createEvent) {
+            RevampCore.createEvent({
+              eventId: eventId, name: eventMeta.name, slug: eventId,
+              category: (S.basics.category || 'ip').toLowerCase(),
+              venue: S.basics.venue, city: S.basics.city,
+              start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
+              end: (S.basics.dateMode === 'exact' && S.basics.end) ? S.basics.end : null,
+              payment: { type: S.basics.payment === 'Paid' ? 'paid' : 'free' },
+              templateId: draftResp.templateId || ('gen-' + eventId),
+              status: 'draft'
+            }).catch(function(err){
+              console.warn('Could not create the real event record (it still works locally): ' + (err && err.message));
+            }).then(function(){ window.location.href = finalUrl; });
+          } else {
+            window.location.href = finalUrl;
+          }
         }).catch(function(err){
           toast(err.message || 'Generation failed.');
         });
@@ -7752,8 +7777,36 @@
     });
     var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
       (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
-    if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
-    else window.location.href = url;
+
+    /* Creates the REAL canonical event doc (events/{slug} in Firestore) — before this, the manual/
+       clone-design path (this function) created nothing server-side at all; edit-event.html's console
+       could never find this event later (it only ever lived in this browser's localStorage/IndexedDB).
+       Best-effort and non-blocking beyond its own completion: if it fails (most likely because the admin
+       isn't signed into Firebase Auth yet, or is offline), the user still gets their editor — same
+       resilient, never-block-on-a-backend-hiccup posture as registerLiveEvent() just above. They just
+       won't find this event in the real console until it's retried (no retry queue built here — that's
+       a separate concern were this to become a frequent real-world failure, not a hypothetical worth
+       solving preemptively today). */
+    function goToEditor(){
+      if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
+      else window.location.href = url;
+    }
+    if (window.RevampCore && RevampCore.createEvent) {
+      RevampCore.createEvent({
+        eventId: payload.event.slug, name: payload.event.name, slug: payload.event.slug,
+        category: (S.basics.category || 'ip').toLowerCase(),
+        venue: S.basics.venue, city: S.basics.city,
+        start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
+        end: (S.basics.dateMode === 'exact' && S.basics.end) ? S.basics.end : null,
+        payment: { type: S.basics.payment === 'Paid' ? 'paid' : 'free' },
+        templateId: payload.template.site || null,
+        status: 'draft'
+      }).catch(function(err){
+        console.warn('Could not create the real event record (it still works locally): ' + (err && err.message));
+      }).then(goToEditor);
+    } else {
+      goToEditor();
+    }
     return true;
   }
 

@@ -101,3 +101,151 @@
     text-align: center;
   }
 }
+
+/* ---- #revamp-register-modal — a sibling of #footer, not inside it (index.html), so these rules are
+   deliberately NOT #footer-scoped. Hidden by default (script.js toggles the `open` class); dims/blocks
+   the page behind a backdrop, centers a narrow dialog. Themeable: --theme-color (submit button),
+   --heading-font-family (dialog heading), --body-font-family (everything else). ---- */
+.rv-register-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+}
+.rv-register-modal.open {
+  display: block;
+}
+.rv-register-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.6);
+}
+.rv-register-dialog {
+  position: relative;
+  z-index: 1;
+  width: calc(100% - 32px);
+  max-width: 440px;
+  margin: 8vh auto 0;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  max-height: 84vh;
+  overflow-y: auto;
+}
+.rv-register-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.rv-register-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+.rv-register-body {
+  padding: 32px 28px 28px;
+  font-family: var(--body-font-family, Arial, sans-serif);
+}
+.rv-register-heading {
+  margin: 0 0 6px;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: #16181d;
+}
+.rv-register-sub {
+  margin: 0 0 20px;
+  font-size: 13.5px;
+  color: #6b7280;
+}
+.rv-register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.rv-register-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+.rv-register-field span[aria-hidden] {
+  color: var(--theme-color, #186bf9);
+  margin-left: 2px;
+}
+.rv-register-field input {
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #d8dce3;
+  font-size: 14px;
+  font-family: inherit;
+  color: #16181d;
+}
+.rv-register-field input:focus-visible {
+  outline: 2px solid var(--theme-color, #186bf9);
+  outline-offset: 1px;
+}
+.rv-register-error {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #a23b36;
+  font-size: 12.5px;
+}
+.rv-register-submit {
+  height: 46px;
+  border: none;
+  border-radius: 999px;
+  background: var(--theme-color, #186bf9);
+  color: #ffffff;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.rv-register-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.rv-register-success {
+  text-align: center;
+  padding: 12px 0 4px;
+}
+.rv-register-success p {
+  margin: 0 0 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #16181d;
+}
+.rv-register-success button {
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid #d8dce3;
+  background: #ffffff;
+  color: #16181d;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 480px) {
+  .rv-register-dialog {
+    margin-top: 0;
+    border-radius: 0;
+    max-height: 100vh;
+    height: 100%;
+    width: 100%;
+  }
+}

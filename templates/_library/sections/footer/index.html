@@ -18,7 +18,7 @@
         <div class="footer-col">
           <p class="footer-col-title">Attend</p>
           <ul>
-            <li><a href="#">Register</a></li>
+            <li><a href="#register" data-register-cta>Register</a></li>
             <li><a href="#">Partner with us</a></li>
             <li><a href="#">FAQ</a></li>
           </ul>
@@ -37,3 +37,49 @@
     </div>
   </div>
 </footer>
+
+<!-- Real registration modal (script.js), shared by every [data-register-cta] link on the page (hero's
+     primary CTA, the cta-band button, this footer's own "Register" link) — POSTs to the real, public
+     /api/register endpoint. Hidden by default; script.js toggles the `open` class. -->
+<div id="revamp-register-modal" class="rv-register-modal" aria-hidden="true">
+  <div class="rv-register-backdrop" data-register-close></div>
+  <div class="rv-register-dialog" role="dialog" aria-modal="true" aria-labelledby="rv-register-title">
+    <button type="button" class="rv-register-close" data-register-close aria-label="Close">&times;</button>
+    <div class="rv-register-body">
+      <h3 id="rv-register-title" class="rv-register-heading">Register your interest</h3>
+      <p class="rv-register-sub">Fill in your details and we'll be in touch.</p>
+      <form class="rv-register-form" novalidate>
+        <label class="rv-register-field">
+          <span>Full name<span aria-hidden="true">*</span></span>
+          <input type="text" name="name" required maxlength="120" autocomplete="name">
+        </label>
+        <label class="rv-register-field">
+          <span>Work email<span aria-hidden="true">*</span></span>
+          <input type="email" name="email" required maxlength="200" autocomplete="email">
+        </label>
+        <label class="rv-register-field">
+          <span>Phone</span>
+          <input type="tel" name="phone" maxlength="40" autocomplete="tel">
+        </label>
+        <label class="rv-register-field">
+          <span>Company</span>
+          <input type="text" name="company" maxlength="120" autocomplete="organization">
+        </label>
+        <label class="rv-register-field">
+          <span>Designation</span>
+          <input type="text" name="designation" maxlength="120">
+        </label>
+        <label class="rv-register-field">
+          <span>City</span>
+          <input type="text" name="city" maxlength="80">
+        </label>
+        <p class="rv-register-error" hidden></p>
+        <button type="submit" class="rv-register-submit btn-primary">Register</button>
+      </form>
+      <div class="rv-register-success" hidden>
+        <p>You're registered — thank you.</p>
+        <button type="button" class="btn-secondary" data-register-close>Close</button>
+      </div>
+    </div>
+  </div>
+</div>

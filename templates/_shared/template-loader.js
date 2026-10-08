@@ -101,7 +101,9 @@
 
         var b = t.body || {};
         var html = '<!DOCTYPE html>\n<html lang="en"' + (opts.editing ? ' data-rv-editing' : '') + '>\n<head>\n' + head.join('\n') + '\n</head>\n' +
-          '<body' + (b.id ? ' id="' + esc(b.id) + '"' : '') + ' class="' + esc(b.class || '') + '" style="' + esc(styleAttr(b.style)) + '">\n' +
+          '<body' + (b.id ? ' id="' + esc(b.id) + '"' : '') +
+          (b.eventId ? ' data-rv-event-id="' + esc(b.eventId) + '"' : '') +
+          ' class="' + esc(b.class || '') + '" style="' + esc(styleAttr(b.style)) + '">\n' +
           '<div class="blur_bg"></div><div id="container">\n' + header +
           '<div id="content" class="full-width"><div class="main-body"><div class="wrapper pd0 schemas"></div>' +
           '<div class="container-fluid"><div class="row"><div class="col-md-12 no-padding">\n' +

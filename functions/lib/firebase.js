@@ -57,6 +57,9 @@
 // Storage layout:
 //   events/{eventId}/briefs/{fileName}       the uploaded overview doc, as-is
 //   events/{eventId}/generated/{fileName}    any generated/selected imagery (banners, etc.)
+//   events/{eventId}/published/index.html    the fully serialized, published page (lib/api.js's
+//                                             POST /api/event/publish — canvas.serialize()'s own output,
+//                                             made public; events/{eventId}.publishedUrl points here)
 //   events/{eventId}/speakers/{fileName}, /partners/{fileName}, /gallery/{fileName}
 //                                             speaker/sponsor photos and gallery images, uploaded as base64
 //                                             in the request body (same pattern as handleExtractBrief's

@@ -15,7 +15,7 @@
 (function () {
   'use strict';
 
-  var canvas = null, host = null, templateId = null, eventId = null, storeKey = null;
+  var canvas = null, host = null, templateId = null, eventId = null, storeKey = null, sourceDraftId = null;
   var frame = null;
   var undoStack = [], undoPtr = -1, commitTimer = null;
   var selectedEl = null, activeSectionEl = null, editingEl = null;
@@ -25,27 +25,30 @@
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
 
   /* ---------- key derivation ----------
-     site:<event>:<template>; a new event from Create Event is new-<slug> (templates/README.md).
+     site:<event>:<template> — ONE stable identity per real event (its own slug, the only identifier that
+     exists now that every event is real; the old numeric 1-8 RevampCore.EVENTS scheme this briefly keyed
+     off is gone). A fresh creation (`?from=create&slug=<slug>`) and a later plain reopen (`?event=<slug>`)
+     now resolve to the EXACT SAME storeKey — that identity used to differ (creation used `new-<slug>`,
+     reopen used the bare param), which meant NO reopen link anywhere in the app could ever actually find
+     a creation session's saved snapshot (confirmed by tracing every `custom_editor.html?event=` link in
+     the repo — none of them ever passed `new-<slug>`). `slug` wins over `event` when both are present
+     (every creation redirect sends `slug`; `event` is what older/other reopen links use).
 
-     B1 fix: a plain `from=create&slug=…` handoff (the normal, by-hand wizard) is stable across repeat
-     visits to the same event ON PURPOSE — that's what lets someone come back and keep editing the same
-     draft. Generate-from-Brief reused that exact same id, though, so running it a SECOND time for the
-     same event slug resolved to the exact same storeKey as the first run and resolveInitialContent()
-     below restored run #1's old RevampStore snapshot before ever looking at run #2's fresh handoff —
-     silently showing stale content despite the UI's own copy promising a brand-new draft each time.
-     create-event.html's finish() now appends `&draft=<draftId>` (the Firestore doc id /api/generate-
-     content just wrote) ONLY on the Generate-from-Brief redirect — never on the plain wizard's
-     openInEditor() redirect, and never on a later `?event=<id>` "resume this event" visit. Folding that
-     id into the storeKey (only when present) gives every Generate-from-Brief run its own unique key,
-     while leaving the plain wizard's and the resume-existing-event's behavior completely untouched. */
+     B1 (separate problem, still needs solving without reintroducing this one): a plain `from=create`
+     wizard visit is meant to be stable across repeat opens of the SAME event — that's what lets someone
+     leave and come back to keep editing. Generate-from-Brief's redirect additionally carries `&draft=
+     <draftId>` (the Firestore doc /api/generate-content just wrote); running it a SECOND time for the
+     same slug must NOT silently restore run #1's old snapshot. Previously this was "solved" by baking
+     draftId into the KEY ITSELF — which fixed run #2 but left run #1's snapshot permanently orphaned at
+     an unreachable key, and reintroduced the exact bug this comment opens with for any later reopen.
+     resolveInitialContent() below now does this the other way: the key stays this one stable identity
+     always, and a saved snapshot is only treated as stale (fresh draft wins) when this visit is a NEW
+     Generate-from-Brief run — fromCreate, carries a draftId, and that draftId doesn't match whichever
+     run last actually wrote this canonical key (tracked via sourceDraftId, see seedSnapshot/persist). */
   function resolveKey(tplId) {
     var qs = new URLSearchParams(location.search);
-    var fromCreate = qs.get('from') === 'create';
-    var slug = qs.get('slug');
-    var draftId = qs.get('draft');
-    var id = (fromCreate && slug) ? ('new-' + slug) : (qs.get('event') || '1');
-    var storeId = (fromCreate && slug && draftId) ? (id + ':draft-' + draftId) : id;
-    return { eventId: id, storeKey: 'site:' + storeId + ':' + tplId };
+    var id = qs.get('slug') || qs.get('event') || '1';
+    return { eventId: id, storeKey: 'site:' + id + ':' + tplId };
   }
 
   /* ---------- boot ---------- */
@@ -96,12 +99,22 @@
 
   function resolveInitialContent() {
     return RevampStore.get(storeKey).then(function (saved) {
-      if (saved && saved.snapshot) {
+      var qs = new URLSearchParams(location.search);
+      var fromCreate = qs.get('from') === 'create';
+      var draftId = qs.get('draft') || null;
+
+      // B1: see resolveKey()'s own comment. Only a NEW Generate-from-Brief run for this same event
+      // (fromCreate, carries a draftId that doesn't match whoever last actually saved this key) treats
+      // an existing snapshot as stale — a plain wizard open (fromCreate, no draftId ever) or a plain
+      // reopen (not fromCreate) always finds exactly what was last saved here, same as before.
+      var isStale = !!(saved && saved.snapshot && fromCreate && draftId && saved.sourceDraftId !== draftId);
+
+      if (saved && saved.snapshot && !isStale) {
+        sourceDraftId = saved.sourceDraftId || null;
         canvas.restore(saved.snapshot);
         undoStack = [saved.snapshot]; undoPtr = 0;
         return;
       }
-      var fromCreate = new URLSearchParams(location.search).get('from') === 'create';
       if (!fromCreate) return seedSnapshot(null);
 
       var draft = readHandoffDraft();
@@ -115,6 +128,7 @@
            in the hand-off payload — apply it before the first snapshot so it survives into the undo stack,
            reload and publish, instead of silently reverting to the template's static default. */
         if (draft.aiDesign) applyAiDesignToCanvas(canvas, draft.aiDesign);
+        sourceDraftId = draftId;
         return seedSnapshot(draft);
       });
     });
@@ -246,12 +260,16 @@
   function seedSnapshot(draft) {
     var snap = canvas.snapshot();
     undoStack = [snap]; undoPtr = 0;
-    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event });
+    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId });
   }
 
   /* ---------- save / undo ---------- */
   function persist(snap) {
-    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap });
+    // sourceDraftId rides along on every later edit too, not just the first save — otherwise the very
+    // next commit() after seedSnapshot() would overwrite it with a record that has none, and a second
+    // Generate-from-Brief run later in the SAME browser would no longer be able to tell this apart from
+    // a never-regenerated draft (see resolveInitialContent()'s staleness check).
+    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId });
   }
 
   function commit() {
@@ -865,35 +883,44 @@
     win.document.close();
   }
 
-  /* This build has no publishing backend — no server to host the result, no real domain. The honest thing
-     is to say so plainly rather than show a "Your site is live" success state with a fake URL, which a user
-     stopping at this modal (the natural reading point) would reasonably take at face value. "View site"
-     instead opens the actual rendered page (canvas.serialize(), same as the Preview toolbar button) so the
-     user gets something real and useful out of the click, not just an apology toast. */
+  /* Real publish: sends canvas.serialize()'s own output (the exact same string the Preview button already
+     opens in a new tab) to POST /api/event/publish, which stores it in Firebase Storage, public, and marks
+     the event published — see functions/lib/api.js's handleEventPublish. Before this, Publish was purely
+     cosmetic (a setTimeout + a modal literally titled "Saved — not yet published") — nothing the user
+     edited ever left their own browser's IndexedDB, so there was genuinely nothing to serve from a real
+     URL even if one existed. `eventId` here is this session's resolved event identity (resolveKey()) — the
+     real slug for any genuine event; still falls back to '1' for a template opened with no event context
+     at all (e.g. a raw template-gallery preview), which is never publishable, so that case fails clearly
+     rather than silently publishing to a meaningless key. */
   function publish() {
-    showToast('Saving…');
-    setTimeout(function () {
+    if (!eventId || eventId === '1') {
+      showToast('Nothing to publish — this page isn’t attached to a real event.');
+      return;
+    }
+    showToast('Publishing…');
+    var html = canvas.serialize();
+    RevampCore.publishEvent(eventId, html).then(function (result) {
       var draft = readHandoffDraft();
       var ev = draft && draft.event;
       var pubName = ev ? ev.name : canvas.template.name;
-      var intendedUrl = ev ? ('etoneworld.com/' + ev.slug) : (templateId + '.revamp-sites.com');
       var scrim = document.createElement('div');
       scrim.className = 'scrim';
       scrim.innerHTML =
         '<div class="modal"><div class="modal-body">' +
         '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
-        '<h3>Saved — not yet published</h3>' +
-        '<p>' + escHtml(pubName) + '’s latest changes are saved in this browser. This build doesn’t publish to a live URL yet — there’s no hosting set up behind it. It would go to:</p>' +
-        '<span class="url">' + escHtml(intendedUrl) + '</span>' +
+        '<h3>Published</h3>' +
+        '<p>' + escHtml(pubName) + '’s latest changes are now live at:</p>' +
+        '<span class="url">' + escHtml(result.publishedUrl) + '</span>' +
         '</div><div class="modal-foot">' +
         '<button class="btn btn-secondary" id="publish-close">Keep editing</button>' +
-        '<button class="btn btn-primary" id="publish-view">View current page</button>' +
+        '<a class="btn btn-primary" id="publish-view" href="' + escHtml(result.publishedUrl) + '" target="_blank" rel="noopener">View live page</a>' +
         '</div></div>';
       document.body.appendChild(scrim);
       scrim.querySelector('#publish-close').addEventListener('click', function () { scrim.remove(); });
-      scrim.querySelector('#publish-view').addEventListener('click', function () { scrim.remove(); openPreview(); });
       scrim.addEventListener('click', function (e) { if (e.target === scrim) scrim.remove(); });
-    }, 700);
+    }).catch(function (err) {
+      showToast('Could not publish — ' + (err && err.message ? err.message : 'please try again.'));
+    });
   }
 
   window.RevampTemplateUI = {

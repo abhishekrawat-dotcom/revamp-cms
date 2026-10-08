@@ -24,12 +24,19 @@
 window.EditEventDashboard = (function(){
   'use strict';
 
+  var C = window.RevampCore;
+
   /* Which four numbers earn a tile.
      Mailer / WhatsApp / SMS / dial counts deliberately live under Marketing,
      next to the controls that move them — a dashboard number you cannot act
      on from the dashboard is just decoration. */
   function tiles(ctx){
     var e = ctx.EV, IC = ctx.IC;
+    /* e.payment is a real field on the event doc but may simply not be set yet (a new event, or one
+       created before payment was wired up) — fall back to an empty object rather than crash reaching
+       for .type on nothing. Real registration-derived numbers are a later stage (fetchRegistrations);
+       until then this renders placeholder/zero figures, never fake ones. */
+    var payment = e.payment || {};
     var conv   = e.visitors ? (e.registrations / e.visitors * 100) : 0;
     var regPct = e.regTarget ? Math.min(100, Math.round(e.registrations / e.regTarget * 100)) : null;
 
@@ -45,9 +52,9 @@ window.EditEventDashboard = (function(){
         { dir: conv >= 8 ? 'up' : 'down', text: conv >= 8 ? 'Above benchmark' : 'Below the 8% benchmark' },
         'audience/insights'),
 
-      e.payment.type === 'paid'
-        ? ctx.statTile(IC.money, 'Revenue', ctx.compact(e.payment.amount),
-            { dir:'up', text: ctx.comma(e.payment.txns) + ' transactions' }, 'audience/payments')
+      payment.type === 'paid'
+        ? ctx.statTile(IC.money, 'Revenue', ctx.compact(payment.amount),
+            { dir:'up', text: ctx.comma(payment.txns) + ' transactions' }, 'audience/payments')
         : ctx.statTile(IC.ticket, 'Seats left',
             regPct != null ? ctx.comma(Math.max(0, e.regTarget - e.registrations)) : 'Unlimited',
             { dir:'flat', text:'Free event' }, 'audience/reg')
@@ -58,10 +65,11 @@ window.EditEventDashboard = (function(){
      next stage's width, so the taper is the real drop-off, not decoration. */
   function funnel(ctx){
     var e = ctx.EV;
+    var payment = e.payment || {};
     var stages = [
       { label:'Visitors',      n: e.visitors,      col:'#12A870' },
       { label:'Registrations', n: e.registrations, col:'#E89B0C' },
-      { label:'Payments',      n: e.payment.type === 'paid' ? e.payment.txns : 0, col:'#7C4DBE' },
+      { label:'Payments',      n: payment.type === 'paid' ? payment.txns : 0, col:'#7C4DBE' },
       { label:'Attendees',     n: e.attendees,     col:'#ED1C24' }
     ];
     var top = Math.max(stages[0].n, 1);
@@ -130,7 +138,10 @@ window.EditEventDashboard = (function(){
   function checklist(ctx){
     var S = ctx.S;
     if (!S.checklist){
-      S.checklist = { basics:true, sections:true, speakers:true, agenda:false, sponsors:true, form:true, seo:false };
+      /* checklist is a real field on the event doc now — only a brand-new event with nothing saved
+         there yet falls back to the seed default below. */
+      S.checklist = (ctx.EV && ctx.EV.checklist) ||
+        { basics:true, sections:true, speakers:true, agenda:false, sponsors:true, form:true, seo:false };
     }
     var doneN = STEPS.filter(function(x){ return S.checklist[x[0]]; }).length;
     var pct = Math.round(doneN / STEPS.length * 100);
@@ -210,8 +221,13 @@ window.EditEventDashboard = (function(){
         if (ev.shiftKey){
           var k = b.getAttribute('data-chk');
           ctx.S.checklist[k] = !ctx.S.checklist[k];
-          ctx.save();
           ctx.render();
+          /* checklist lives on the event doc now, not localStorage */
+          C.updateEvent(ctx.EV.id, { checklist: ctx.S.checklist }).then(function(){
+            ctx.EV.checklist = ctx.S.checklist;
+          }).catch(function(err){
+            ctx.toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+          });
           return;
         }
         ctx.go(b.getAttribute('data-to'));

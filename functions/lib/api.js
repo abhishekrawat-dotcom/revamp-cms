@@ -48,6 +48,10 @@
 //   GET  /api/event/dashboard-stats                 real aggregated counts (registrations/confirmed/
 //                               waitlist/attendees/revenue) computed server-side from the registrations
 //                               subcollection, not pulled client-side
+//   POST /api/event/publish                         the real Publish button (editor-template-ui.js) —
+//                               stores the editor's final canvas.serialize() output in Storage, public,
+//                               and marks the event published. Previously Publish did nothing server-side
+//                               at all ("Saved — not yet published" was the literal, honest truth).
 //   POST /api/register                              PUBLIC, no auth — the one write path the published
 //                               microsite's own "Register Now" CTA calls; writes a registrations doc
 const fs = require('fs');
@@ -1343,6 +1347,10 @@ function handleGeneratedTemplate(req, res) {
       body: {
         id: 'gen',
         class: 'microsite product_microsite',
+        // picked up by footer/script.js at runtime (document.body.dataset.rvEventId) so the real
+        // registration POST knows which event it's for — a plain DOM attribute, so it rides through
+        // canvas.serialize() into the actually-published static page the same as any other markup.
+        eventId: eventId,
         style: {
           '--theme-color': theme.themeColor,
           '--heading-font-family': fontStack(theme.headingFont),
@@ -1353,7 +1361,16 @@ function handleGeneratedTemplate(req, res) {
       },
       content: { map: buildCombinedLibraryMap(plan.sections, !!theme.heroImageUrl) },
       layout: { pinStart: ['hero'], pinEnd: ['footer'] },
-      sections: plan.sections.map(function (type) { return { id: type, name: SECTION_TYPE_LABELS[type] || type, etId: null }; })
+      // `script: true` when this library section type ships its own script.js (templates/_shared/
+      // template-loader.js only ever fetches/inlines one when this flag is set) — previously never set
+      // here at all, so EVERY generated page silently never loaded ANY section script, including
+      // faq-accordion's own open/close interactivity (a real, separate bug: its accordion has been inert
+      // on every generated page). fs.existsSync keeps this correct automatically as section types gain
+      // their own script.js later, rather than a hardcoded list that would silently drift out of sync.
+      sections: plan.sections.map(function (type) {
+        var hasScript = fs.existsSync(path.join(LIBRARY_SECTIONS_DIR, type, 'script.js'));
+        return { id: type, name: SECTION_TYPE_LABELS[type] || type, etId: null, script: hasScript };
+      })
     };
     sendJson(res, 200, template);
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
@@ -1490,8 +1507,14 @@ var RESOURCES = {
    pipeline (handleExtractBrief/handlePlanStructure's merge:true writes) — into a real, directly
    create/read/update-able record. Both of create-event.html's creation paths (manual wizard and
    Generate-from-Brief) call POST here now; before this, the manual path created no Firestore doc at all. */
+// Deliberately NOT 'theme': that field name is already owned by the GENERATED TEMPLATES pipeline
+// (handlePlanStructure writes {themeColor, headingFont, bodyFont, heroImageUrl, ...} there) — the
+// console's own Theme tab is an unrelated, simpler concept (one of 4 named colour presets, a plain
+// string). Letting the console PATCH 'theme' would silently overwrite/corrupt a generated event's real
+// theme object the next time someone opened that tab, breaking its actual rendered page. 'paletteTheme'
+// keeps the two completely separate until/unless they're deliberately unified.
 var EVENT_FIELDS = ['name', 'slug', 'category', 'status', 'start', 'end', 'venue', 'city', 'description',
-  'payment', 'sections', 'nav', 'templateId', 'checklist', 'published'];
+  'payment', 'sections', 'nav', 'templateId', 'checklist', 'published', 'paletteTheme'];
 
 function handleEventCreate(req, res) {
   requireAdmin(req, res, function (fb, decoded) {
@@ -1616,6 +1639,43 @@ function handleRegister(req, res) {
   });
 }
 
+/* ---------- POST /api/event/publish — admin-gated ----------
+   custom_editor.html's Publish button used to be purely cosmetic (a setTimeout + a modal literally titled
+   "Saved — not yet published", by its own code comment) — nothing the user edits in the canvas was ever
+   sent anywhere outside their own browser's IndexedDB (editor-store.js's RevampStore), so there was
+   genuinely nothing to serve from a real URL even if one existed. This makes Publish real: the browser
+   sends canvas.serialize()'s own final HTML (the exact same string the Preview button already opens in a
+   new tab — no new serialization logic needed), stored in Firebase Storage (never inline in Firestore —
+   a serialized page is easily well over the 1MiB document cap; same reasoning as buildHeroImage's own
+   Storage-not-Firestore fix) and made public, same pattern as every other generated asset in this file. */
+var MAX_PUBLISHED_HTML_BYTES = 10 * 1024 * 1024;
+
+function handleEventPublish(req, res) {
+  requireAdmin(req, res, function (fb) {
+    parseJsonBody(req, res, function (body) {
+      var eventId = String(body.eventId || '').trim();
+      var html = String(body.html || '');
+      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+      if (!html.trim()) return sendJson(res, 400, { error: 'html is required.' });
+      if (Buffer.byteLength(html, 'utf8') > MAX_PUBLISHED_HTML_BYTES) {
+        return sendJson(res, 413, { error: 'This page is larger than the publish size limit.' });
+      }
+      var storagePath = 'events/' + eventId + '/published/index.html';
+      var file = fb.bucket.file(storagePath);
+      file.save(Buffer.from(html, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } })
+        .then(function () { return file.makePublic(); })
+        .then(function () {
+          var publishedUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
+          var now = new Date().toISOString();
+          return fb.db.collection('events').doc(eventId)
+            .set({ published: true, publishedUrl: publishedUrl, publishedAt: now }, { merge: true })
+            .then(function () { sendJson(res, 200, { publishedUrl: publishedUrl, publishedAt: now }); });
+        })
+        .catch(function (err) { sendJson(res, 500, { error: 'publish failed: ' + err.message }); });
+    });
+  });
+}
+
 // Single entry point both tools/serve.js (local) and index.js (deployed) call into.
 function handleApi(req, res) {
   var urlPath = req.url.split('?')[0];
@@ -1634,6 +1694,7 @@ function handleApi(req, res) {
   if (req.method === 'PATCH' && urlPath === '/api/event') return handleEventUpdate(req, res);
   if (req.method === 'GET' && urlPath === '/api/event/registrations') return handleEventRegistrationsList(req, res);
   if (req.method === 'GET' && urlPath === '/api/event/dashboard-stats') return handleEventDashboardStats(req, res);
+  if (req.method === 'POST' && urlPath === '/api/event/publish') return handleEventPublish(req, res);
   if (req.method === 'POST' && urlPath === '/api/register') return handleRegister(req, res);
 
   var resourceMatch = /^\/api\/event\/([a-z-]+)$/.exec(urlPath);

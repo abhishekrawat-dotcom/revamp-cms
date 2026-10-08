@@ -11,12 +11,29 @@
      .IC                  icon path table
      .esc .svg            escaping and icon rendering
      .comma .compact .money .fmtDate .fmtDT
-     .PORTALS .TYPES .EVENTS .eventById .AV
-     .makePeople(ev)      deterministic fake attendee list for an event
+     .PORTALS .TYPES .AV
+     .fetchEvent(eventId)         GET  /api/event — real event doc from Firestore
+     .createEvent(data)           POST /api/event — creates one
+     .updateEvent(eventId, patch) PATCH /api/event — updates one
+     .fetchRegistrations(eventId) GET  /api/event/registrations — real attendee list
+     .publishEvent(eventId, html) POST /api/event/publish — stores the editor's final rendered page for
+                                   real (custom_editor.html's Publish button), -> {publishedUrl}
+     .fetchSub(resource, eventId)              GET    /api/event/<resource> — list
+     .createSub(resource, eventId, data)       POST   /api/event/<resource> — create, -> {id}
+     .updateSub(resource, eventId, id, patch)  PATCH  /api/event/<resource> — update
+     .deleteSub(resource, eventId, id)         DELETE /api/event/<resource> — delete
+       resource is one of: speakers, speaker-groups, sessions, agenda-groups, partners,
+       partner-tiers, gallery, faqs, contacts
      .statTile .panel .panelFlush .emptyState
      .toast(msg)
      .loadState(key) .saveState(key, obj)
      .makeCtx(opts)       builds the object every section view receives
+
+   fetchEvent/createEvent/updateEvent/fetchRegistrations are admin-gated: they call
+   window.RevampAuth.getIdToken() for the Authorization: Bearer <token> header. If
+   window.RevampAuth isn't loaded yet (sign-in wiring is a parallel, separately-landing
+   piece of work), they fail soft with a console warning and a rejected promise rather
+   than throwing — callers should .catch() and show a "please sign in" state.
    =========================================================================== */
 
 window.RevampCore = (function(){
@@ -87,39 +104,10 @@ window.RevampCore = (function(){
     leadgen:'Lead-Gen Microsite', roundtable:'Round Table', awards:'Awards'
   };
 
-  var EVENTS = [
-    { id:1,  name:'MarTech+ Summit 2026', venue:'Sahara Star, Mumbai', eventNo:4060, type:'ip', portal:'brandequity', status:'active',  start:'2026-09-24T08:00:00', end:'2026-09-24T23:59:00', registrations:912, regTarget:1200, visitors:8743, visits:6670, payment:{ type:'paid', amount:387000, txns:15 } },
-    { id:2,  name:'ET CISO Annual Conclave 2026', venue:'Grand Hyatt, Goa', eventNo:4097, type:'ip', portal:'cio', status:'upcoming', start:'2026-09-10T10:00:00', end:'2026-09-11T18:00:00', registrations:2645, regTarget:2924, visitors:12923, visits:9800, payment:{ type:'paid', amount:482000, txns:212 } },
-    { id:3,  name:'RACEx360', venue:'Taj West End, Bengaluru', eventNo:4652, type:'client', portal:'auto', status:'upcoming', start:'2026-09-25T09:30:00', end:null, registrations:136, regTarget:113, visitors:1130, visits:860, payment:{ type:'free' } },
-    { id:4,  name:'Data Protection & Privacy Summit 2026', venue:'Mumbai', eventNo:4138, type:'ip', portal:'legal', status:'upcoming', start:'2026-12-02T09:00:00', end:null, registrations:122, regTarget:248, visitors:2480, visits:1900, payment:{ type:'paid', amount:0, txns:0 } },
-    { id:5,  name:'Healthcare Innovation Awards 2026', venue:'The Leela, New Delhi', eventNo:4012, type:'awards', portal:'health', status:'active', start:'2026-11-22T18:00:00', end:null, registrations:300, regTarget:280, visitors:4000, visits:3100, payment:{ type:'paid', amount:620000, txns:150 } },
-    { id:6,  name:'AI-Driven SecOps', venue:'Virtual', eventNo:3354, type:'leadgen', portal:'telecom', status:'active', start:null, end:null, registrations:88, regTarget:85, visitors:850, visits:610, payment:{ type:'paid', amount:45000, txns:19 } },
-    { id:7,  name:'Manufacturing 4.0 Summit 2026', venue:'Venue to be confirmed', eventNo:4471, type:'ip', portal:'manufacturing', status:'draft', start:'2026-12-03T00:00:00', end:null, registrations:0, regTarget:null, visitors:0, visits:0, payment:{ type:'free' } },
-    { id:8,  name:'BFSI Fraud & Risk Conclave 2025', venue:'ITC Grand Central, Mumbai', eventNo:3980, type:'ip', portal:'bfsi', status:'completed', start:'2025-11-18T09:00:00', end:'2025-11-19T18:00:00', registrations:850, regTarget:800, visitors:12000, visits:9400, payment:{ type:'paid', amount:950000, txns:301 } }
-  ];
-
-  /* deterministic pseudo-random so every reload shows the same numbers */
+  /* deterministic pseudo-random — no longer used to seed fake event/attendee data (that's gone, see
+     fetchEvent/fetchRegistrations below), but kept: other files (edit-event-marketing.js,
+     audience-registrations.html) still call RevampCore.rnd for unrelated deterministic-random UI bits. */
   function rnd(seed){ var x = Math.sin(seed) * 10000; return x - Math.floor(x); }
-
-  EVENTS.forEach(function(e, i){
-    var s = e.eventNo;
-    e.mailers    = Math.round(e.visitors * (1.8 + rnd(s) * 1.2));
-    e.opens      = Math.round(e.mailers * (0.11 + rnd(s + 1) * 0.06));
-    e.clicks     = Math.round(e.opens * (0.4 + rnd(s + 2) * 0.25));
-    e.unsub      = Math.round(e.mailers * (0.014 + rnd(s + 3) * 0.006));
-    e.dials      = Math.round(e.registrations * (0.4 + rnd(s + 4) * 0.5));
-    e.leads      = Math.round(e.registrations * (0.5 + rnd(s + 5) * 0.7));
-    e.whatsapp   = Math.round(e.visitors * (0.4 + rnd(s + 6) * 0.3));
-    e.sms        = Math.round(e.visitors * (0.2 + rnd(s + 7) * 0.3));
-    e.attendees  = e.status === 'completed' ? Math.round(e.registrations * 0.62) : 0;
-    e.shortlist  = Math.round(e.registrations * (0.12 + rnd(s + 8) * 0.1));
-    e.wishlist   = Math.round(e.registrations * (0.07 + rnd(s + 9) * 0.08));
-  });
-
-  function eventById(id){
-    for (var i = 0; i < EVENTS.length; i++) if (String(EVENTS[i].id) === String(id)) return EVENTS[i];
-    return null;
-  }
 
   var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -167,38 +155,129 @@ window.RevampCore = (function(){
     }, 2600);
   }
 
-  var FIRST = ['Irin','Nishant','Varun','Tanuj','Saakshi','Gunjan','Rhea','Amit','Priya','Karan','Meera','Rohit','Ananya','Vikram','Sneha','Arjun','Divya','Kabir','Neha','Siddharth','Tara','Manish','Ishita','Rahul','Pooja','Aditya','Kavya','Nikhil','Riya','Sameer'];
-  var LAST  = ['Patel','Neeraj','Narula','Pant','Jain','Makhijani','Kapoor','Sharma','Verma','Singh','Iyer','Nair','Bose','Chopra','Reddy','Gupta','Menon','Rao','Desai','Bhatt','Sethi','Malhotra','Joshi','Kulkarni','Shah','Agarwal','Pillai','Banerjee','Mehta','Khanna'];
-  var DESIG = ['Head - IT','Co-Founder','Manager - Growth','Director','Manager - Corporate Communications','VP Engineering','CTO','CIO','Head of Marketing','Product Lead','AVP - Digital','Senior Manager','Chief Data Officer','Head - Security','GM Operations'];
-  var COMP  = ['Ammann India','Lumetrics','DareAISearch','Holy River Hotel Pvt Ltd','Bharti Airtel','Livguard Energy','Tata Capital','HDFC Bank','Infosys','Wipro','Reliance Jio','Mahindra Group','Godrej','ICICI Lombard','Zomato','Swiggy','Paytm','Flipkart','Adani Ports','L&T Infotech'];
-  var CITY  = ['New Delhi','Noida','Mumbai','Gurgaon / Gurugram','Pune','Chennai','Bangalore / Bengaluru','Hyderabad','Ahmedabad','Kolkata','Jaipur','Rishikesh'];
-  var SRC   = ['PlatformListing','Others','Email Campaign','WhatsApp','Organic Search','LinkedIn','Referral'];
   var AV    = ['#ED1C24','#2F6FB0','#2F8F5B','#8A5A9E','#9C6B14','#B3151B','#3E7C7C','#A2457A'];
 
-  function makePeople(EV){
-    var out = [], n = Math.max(EV.registrations, 12);
-    n = Math.min(n, 400);
-    for (var i = 0; i < n; i++){
-      var s = EV.eventNo + i * 13;
-      var f = FIRST[Math.floor(rnd(s) * FIRST.length)];
-      var l = LAST[Math.floor(rnd(s + 1) * LAST.length)];
-      var day = 1 + Math.floor(rnd(s + 7) * 28);
-      out.push({
-        id: i + 1,
-        name: f + ' ' + l,
-        initials: f[0] + l[0],
-        colour: AV[Math.floor(rnd(s + 2) * AV.length)],
-        desig: DESIG[Math.floor(rnd(s + 3) * DESIG.length)],
-        comp:  COMP[Math.floor(rnd(s + 4) * COMP.length)],
-        city:  CITY[Math.floor(rnd(s + 5) * CITY.length)],
-        src:   SRC[Math.floor(rnd(s + 6) * SRC.length)],
-        email: (f + '.' + l).toLowerCase() + '@' + COMP[Math.floor(rnd(s + 4) * COMP.length)].split(' ')[0].toLowerCase() + '.com',
-        when:  '2026-0' + (1 + Math.floor(rnd(s + 8) * 8)) + '-' + (day < 10 ? '0' : '') + day,
-        paid:  rnd(s + 9) > 0.84,
-        attended: rnd(s + 10) > 0.42
-      });
+  /* ---------------------------------------------------------------- real backend (functions/lib/api.js)
+     Every event identifier from here on is the real Firestore slug string (e.g.
+     'ethrworld-nextsummit') — there is no numeric 1-8 id scheme any more, nothing here special-cases it.
+     All four calls below are admin-gated (functions/lib/api.js's requireAdmin()): they need a verified
+     Firebase ID token in an `Authorization: Bearer <token>` header. Sign-in itself is a parallel, not-yet-
+     landed piece of work (see window.RevampAuth below), so every call here fails soft — rejecting its
+     promise with a clear Error — rather than throwing, whether that's because RevampAuth isn't loaded yet,
+     the user isn't signed in, or the token is stale (server 401). Callers should .catch() and show a
+     "please sign in" state instead of letting the rejection go unhandled. */
+
+  function getIdToken(){
+    if (!window.RevampAuth || typeof window.RevampAuth.getIdToken !== 'function'){
+      console.warn('[RevampCore] window.RevampAuth.getIdToken() is not available yet (sign-in isn\'t wired up) — API calls will fail until it is.');
+      return Promise.reject(new Error('Not signed in.'));
     }
-    return out;
+    return window.RevampAuth.getIdToken();
+  }
+
+  function authedFetch(url, opts){
+    opts = opts || {};
+    return getIdToken().then(function(token){
+      var headers = {};
+      for (var k in (opts.headers || {})) if (opts.headers.hasOwnProperty(k)) headers[k] = opts.headers[k];
+      headers['Authorization'] = 'Bearer ' + token;
+      if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+      opts.headers = headers;
+      return fetch(url, opts);
+    });
+  }
+
+  function readJsonResponse(res){
+    return res.json().catch(function(){ return {}; }).then(function(data){
+      if (!res.ok){
+        var err = new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    });
+  }
+
+  function fetchEvent(eventId){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('fetchEvent: eventId is required.'));
+    return authedFetch('/api/event?eventId=' + encodeURIComponent(eventId), { method: 'GET' })
+      .then(readJsonResponse)
+      .then(function(data){
+        data.id = eventId;
+        data.eventId = eventId;
+        return data;
+      });
+  }
+
+  function createEvent(data){
+    data = data || {};
+    var eventId = String(data.eventId || data.slug || '').trim();
+    if (!eventId) return Promise.reject(new Error('createEvent: eventId/slug is required.'));
+    return authedFetch('/api/event', { method: 'POST', body: JSON.stringify(data) })
+      .then(readJsonResponse);
+  }
+
+  function updateEvent(eventId, patch){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('updateEvent: eventId is required.'));
+    var body = { eventId: eventId };
+    for (var k in (patch || {})) if (patch.hasOwnProperty(k)) body[k] = patch[k];
+    return authedFetch('/api/event', { method: 'PATCH', body: JSON.stringify(body) })
+      .then(readJsonResponse);
+  }
+
+  function publishEvent(eventId, html){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('publishEvent: eventId is required.'));
+    if (!html) return Promise.reject(new Error('publishEvent: html is required.'));
+    return authedFetch('/api/event/publish', { method: 'POST', body: JSON.stringify({ eventId: eventId, html: html }) })
+      .then(readJsonResponse);   // -> {publishedUrl, publishedAt}
+  }
+
+  function fetchRegistrations(eventId){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('fetchRegistrations: eventId is required.'));
+    return authedFetch('/api/event/registrations?eventId=' + encodeURIComponent(eventId), { method: 'GET' })
+      .then(readJsonResponse)
+      .then(function(data){ return (data && data.items) || []; });
+  }
+
+  /* ---- generic per-event subcollection CRUD ----
+     One shared client for the 9 structurally-identical resources functions/lib/api.js's own
+     subcollectionRoutes() factory serves: 'speakers', 'speaker-groups', 'sessions', 'agenda-groups',
+     'partners', 'partner-tiers', 'gallery', 'faqs', 'contacts'. Every record gets a server-assigned `id`;
+     list results are NOT guaranteed sorted beyond the server's own `order`-field sort (empty/equal `order`
+     values sort together, stable otherwise) — a tab that needs a specific manual order should still sort
+     client-side off the `order` field it itself maintains, same as before. */
+  function fetchSub(resource, eventId){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('fetchSub(' + resource + '): eventId is required.'));
+    return authedFetch('/api/event/' + resource + '?eventId=' + encodeURIComponent(eventId), { method: 'GET' })
+      .then(readJsonResponse)
+      .then(function(data){ return (data && data.items) || []; });
+  }
+  function createSub(resource, eventId, data){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('createSub(' + resource + '): eventId is required.'));
+    var body = { eventId: eventId };
+    for (var k in (data || {})) if (data.hasOwnProperty(k)) body[k] = data[k];
+    return authedFetch('/api/event/' + resource, { method: 'POST', body: JSON.stringify(body) })
+      .then(readJsonResponse);   // -> {id}
+  }
+  function updateSub(resource, eventId, id, patch){
+    eventId = String(eventId || '').trim(); id = String(id || '').trim();
+    if (!eventId || !id) return Promise.reject(new Error('updateSub(' + resource + '): eventId and id are required.'));
+    var body = { eventId: eventId, id: id };
+    for (var k in (patch || {})) if (patch.hasOwnProperty(k)) body[k] = patch[k];
+    return authedFetch('/api/event/' + resource, { method: 'PATCH', body: JSON.stringify(body) })
+      .then(readJsonResponse);   // -> {ok:true}
+  }
+  function deleteSub(resource, eventId, id){
+    eventId = String(eventId || '').trim(); id = String(id || '').trim();
+    if (!eventId || !id) return Promise.reject(new Error('deleteSub(' + resource + '): eventId and id are required.'));
+    return authedFetch('/api/event/' + resource + '?eventId=' + encodeURIComponent(eventId) + '&id=' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(readJsonResponse);   // -> {ok:true}
   }
 
   function statTile(ico, label, value, delta, viewLink){
@@ -300,8 +379,10 @@ window.RevampCore = (function(){
   return {
     $: $, esc: esc, svg: svg, IC: IC, AV: AV,
     comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, rnd: rnd,
-    PORTALS: PORTALS, TYPES: TYPES, EVENTS: EVENTS, eventById: eventById,
-    makePeople: makePeople,
+    PORTALS: PORTALS, TYPES: TYPES,
+    fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
+    fetchRegistrations: fetchRegistrations, publishEvent: publishEvent,
+    fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
     toast: toast, loadState: loadState, saveState: saveState, makeCtx: makeCtx
   };

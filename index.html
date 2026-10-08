@@ -436,16 +436,17 @@
     <div class="login-form-wrap">
       <div class="login-card">
         <h2>Sign in to Revamp</h2>
-        <span class="sub">Enter any details &mdash; this prototype skips real authentication.</span>
+        <span class="sub">Sign in with your ET Oneworld admin account.</span>
+        <div id="login-error" style="display:none;margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--crit-soft);color:var(--crit);font-size:12.5px;"></div>
 
         <form id="login-form">
           <div class="field">
             <label for="login-email">Work email</label>
-            <input id="login-email" type="email" placeholder="admin@etenterpriseai.com" autocomplete="off" value="admin@etenterpriseai.com">
+            <input id="login-email" type="email" placeholder="admin@ethrworld.com" autocomplete="username">
           </div>
           <div class="field">
             <label for="login-pass">Password</label>
-            <input id="login-pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="off">
+            <input id="login-pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
           </div>
           <div class="row-between" style="margin-bottom: 18px;">
             <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-muted);">
@@ -453,13 +454,13 @@
             </label>
             <button type="button" class="link-btn">Forgot password?</button>
           </div>
-          <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+          <button type="submit" class="btn btn-primary btn-block" id="login-submit-btn">Sign in</button>
         </form>
 
         <div class="divider">OR</div>
         <button type="button" class="btn btn-secondary btn-block" id="sso-btn">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Continue with SSO
+          Continue with Google
         </button>
 
         <div class="login-foot">
@@ -763,6 +764,7 @@
 
 <script src="theme-toggle.js"></script>
 <script src="sidebar.js"></script>
+<script src="auth.js"></script>
 <script>
   (function(){
     var loginView = document.getElementById('view-login');
@@ -770,19 +772,50 @@
     var loginForm = document.getElementById('login-form');
     var ssoBtn = document.getElementById('sso-btn');
     var logoutBtn = document.getElementById('logout-btn');
+    var submitBtn = document.getElementById('login-submit-btn');
+    var errorBox = document.getElementById('login-error');
 
     function enterApp(){
       location.href = 'Event_Listing.html';
     }
 
+    function showLoginError(err){
+      var msg = (err && err.code === 'auth/invalid-credential') ? 'Incorrect email or password.' :
+        (err && err.code === 'auth/user-not-found') ? 'No account found for that email.' :
+        (err && err.message) ? err.message : 'Sign-in failed — please try again.';
+      errorBox.textContent = msg;
+      errorBox.style.display = 'block';
+    }
+
+    // Already signed in from a previous visit (Firebase Auth persists the session itself) — skip the form.
+    if (window.RevampAuth) {
+      RevampAuth.onAuthChange(function (user) { if (user) enterApp(); });
+    }
+
     loginForm.addEventListener('submit', function(e){
       e.preventDefault();
-      enterApp();
+      errorBox.style.display = 'none';
+      var email = document.getElementById('login-email').value.trim();
+      var pass = document.getElementById('login-pass').value;
+      if (!email || !pass) { showLoginError({ message: 'Enter your email and password.' }); return; }
+      submitBtn.disabled = true; submitBtn.textContent = 'Signing in…';
+      RevampAuth.signInWithEmail(email, pass).then(enterApp).catch(function(err){
+        submitBtn.disabled = false; submitBtn.textContent = 'Sign in';
+        showLoginError(err);
+      });
     });
-    ssoBtn.addEventListener('click', enterApp);
+
+    ssoBtn.addEventListener('click', function(){
+      errorBox.style.display = 'none';
+      RevampAuth.signInWithGoogle().then(enterApp).catch(function(err){
+        if (err && err.code === 'auth/popup-closed-by-user') return;
+        showLoginError(err);
+      });
+    });
 
     logoutBtn.addEventListener('click', function(){
       closeAllMenus();
+      if (window.RevampAuth) RevampAuth.signOutUser();
       shell.hidden = true;
       loginView.hidden = false;
       activateView('view-dashboard');
