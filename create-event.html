@@ -1230,8 +1230,7 @@
 
   /* template preview modal: image in a col-8-ish lane, toggles in a col-4-ish lane beside it */
   /* step 2 landing: AI / previous-edition as the two primary choices */
-  .design-choice-grid{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:18px; margin-top:20px; }
-  @media (max-width: 1020px){ .design-choice-grid{ grid-template-columns: 1fr 1fr; } }
+  .design-choice-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:0; }
   @media (max-width: 760px){ .design-choice-grid{ grid-template-columns: 1fr; } }
   .design-choice-card{
     display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:26px;
@@ -1245,6 +1244,27 @@
   .design-choice-card p{ margin:0; color: var(--text-muted); font-size:13.5px; line-height:1.55; flex:1; }
   .design-choice-alt{ margin-top:18px; font-size:13px; color: var(--text-muted); }
   .design-choice-alt a{ color: var(--accent-strong); text-decoration:underline; }
+
+  /* the lead "Generate from a brief" card — visually distinct from the two secondary cards below it,
+     since this is now the primary path, not one of three equal options (see design-choice-divider) */
+  .design-choice-featured{ margin-top:20px; }
+  .design-choice-card-featured{
+    position:relative; padding:32px; gap:12px;
+    background: linear-gradient(180deg, var(--accent-soft), var(--surface) 60%);
+    border:1.5px solid var(--accent); border-radius:16px; box-shadow: var(--shadow-sm);
+  }
+  .design-choice-card-featured h3{ font-size:20px; }
+  .design-choice-card-featured p{ font-size:14.5px; max-width:62ch; }
+  .dc-featured-tag{
+    position:absolute; top:18px; right:18px; font-size:11px; font-weight:700; letter-spacing:.02em;
+    text-transform:uppercase; padding:4px 10px; border-radius:100px; background: var(--accent); color:#fff;
+  }
+  .dc-ico-lg{ width:48px; height:48px; border-radius:12px; }
+  .design-choice-divider{
+    display:flex; align-items:center; gap:14px; margin:26px 0 20px; font-size:12.5px; font-weight:700;
+    letter-spacing:.02em; text-transform:uppercase; color: var(--text-faint);
+  }
+  .design-choice-divider::before, .design-choice-divider::after{ content:''; flex:1; height:1px; background: var(--border); }
   .design-choice-alt .sep{ margin:0 8px; }
 
   /* vibe-chip intake (step 2's "Let AI design it" card) — a single-select set of real design directions,
@@ -1674,13 +1694,27 @@
     <!-- ---------- STEP 2 : CHOOSE TEMPLATE ---------- -->
     <section class="step-wrap wide" id="step-2" hidden>
 
-      <!-- ===== LANDING: AI or a previous edition, the two primary paths ===== -->
+      <!-- ===== LANDING: Generate from a brief leads; manual paths are the fallback ===== -->
       <div id="step2-landing">
         <div class="step-head">
           <span class="eyebrow">Step 2 of 3 &middot; Choose template</span>
-          <h1>How should this site look?</h1>
-          <p class="desc">Your content from step 1 carries over either way — this only decides the design.</p>
+          <h1>Generate your site from a brief</h1>
+          <p class="desc">Upload an overview doc and a few reference links — Gemini designs the look and writes the content, benchmarked against your previous edition and competitor events. This is the fastest way to a usable draft.</p>
         </div>
+
+        <div class="design-choice-featured">
+          <div class="design-choice-card design-choice-card-featured">
+            <span class="dc-featured-tag">Recommended</span>
+            <span class="dc-ico dc-ico-lg">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+            </span>
+            <h3>Generate from a brief</h3>
+            <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
+            <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
+          </div>
+        </div>
+
+        <div class="design-choice-divider"><span>Or build it yourself</span></div>
 
         <div class="design-choice-grid">
           <div class="design-choice-card">
@@ -1688,7 +1722,7 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
             </span>
             <h3>Let AI design it</h3>
-            <p>Gemini reviews what you’ve written and recommends the best-fit template, with a few content polish suggestions you can accept or skip.</p>
+            <p>Gemini reviews what you’ve written and recommends the best-fit template, with a few content polish suggestions you can accept or skip. You still fill in each section’s content yourself afterward.</p>
             <div class="field" style="margin:4px 0 2px;">
               <span class="flabel" style="font-size:12px;font-weight:700;color:var(--muted);">Vibe <span style="font-weight:400;">(optional)</span></span>
               <div class="vibe-chips" id="vibe-chips" role="group" aria-label="Preferred design vibe"></div>
@@ -1698,28 +1732,20 @@
               <input class="inp" id="e-theme-pref" type="text" maxlength="200" placeholder="e.g. deep navy and gold, our brand colour is #1F4FD8">
               <p class="hint" style="margin-top:4px;">Leave both blank and we’ll still give the site its own distinct look — never just the template’s default colours.</p>
             </div>
-            <button class="btn btn-primary" type="button" id="btn-ai-design">Design with AI</button>
+            <button class="btn btn-secondary" type="button" id="btn-ai-design">Design with AI</button>
           </div>
           <div class="design-choice-card">
             <span class="dc-ico">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
             </span>
             <h3>Use a previous edition’s layout</h3>
-            <p>Reuse the design from an event you’ve already built with this wizard.</p>
+            <p>Reuse the design from an event you’ve already built with this wizard. You still fill in each section’s content yourself afterward.</p>
             <button class="btn btn-secondary" type="button" id="btn-clone-design">Browse previous editions</button>
-          </div>
-          <div class="design-choice-card">
-            <span class="dc-ico">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-            </span>
-            <h3>Generate from a brief</h3>
-            <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it.</p>
-            <button class="btn btn-primary" type="button" id="btn-ai-generate">Generate from brief</button>
           </div>
         </div>
 
         <div class="design-choice-alt">
-          <a href="#" id="link-manual-gallery">Pick a template manually</a>
+          <a href="#" id="link-manual-gallery">Pick a template manually and fill in each section yourself</a>
           <span class="sep">&middot;</span>
           <a href="#" id="link-convert-url-landing">Bring your own design (Figma/Lovable) — coming soon</a>
         </div>
