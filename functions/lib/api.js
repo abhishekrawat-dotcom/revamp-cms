@@ -35,6 +35,21 @@
 //                               this the same way it reads a real templates/<id>/template.json file, and
 //                               resolves each section's markup/CSS directly from templates/_library/sections/
 //                               <type>/ (fixed library files, not served by this endpoint).
+//
+//   -- Event console (edit-event.html and its sibling tabs) — real Firestore data, replacing what used to be
+//      window.RevampCore's hardcoded 8-event array + localStorage. See lib/firebase.js's header comment for
+//      the full schema. Admin-write routes (everything below except POST /api/register) require a verified
+//      Firebase Auth ID token — see requireAdmin().
+//   POST/GET/PATCH /api/event                     create / read / update the canonical event
+//   GET/POST/PATCH/DELETE /api/event/<resource>    generic CRUD over one of the per-event subcollections —
+//                               speakers, speaker-groups, sessions, agenda-groups, partners, partner-tiers,
+//                               gallery, faqs, contacts — see subcollectionRoutes()/RESOURCES below.
+//   GET  /api/event/registrations                  list this event's real registrations
+//   GET  /api/event/dashboard-stats                 real aggregated counts (registrations/confirmed/
+//                               waitlist/attendees/revenue) computed server-side from the registrations
+//                               subcollection, not pulled client-side
+//   POST /api/register                              PUBLIC, no auth — the one write path the published
+//                               microsite's own "Register Now" CTA calls; writes a registrations doc
 const fs = require('fs');
 const path = require('path');
 const { getFirebase } = require('./firebase');
@@ -1344,16 +1359,292 @@ function handleGeneratedTemplate(req, res) {
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
 }
 
+/* =====================================================================================================
+   EVENT CONSOLE — real Firestore data for edit-event.html and its sibling tabs, replacing the hardcoded
+   window.RevampCore.EVENTS[] array + localStorage every tab used before. See lib/firebase.js's header
+   comment for the full schema this section implements.
+   ===================================================================================================== */
+
+/* ---------- auth gate ----------
+   Every admin-write/read route below (everything except the public POST /api/register) requires a
+   verified Firebase Auth ID token in `Authorization: Bearer <token>` — this is the first auth check
+   anywhere in this file; every endpoint above this point remains exactly as unauthenticated as it always
+   was (a known, separately-tracked gap, not something this change silently expands or narrows).
+   `cb(fb, decoded)` only runs once the token is confirmed real; `decoded.email`/`decoded.uid` is what gets
+   stamped as `createdBy` on anything this session creates. */
+function requireAdmin(req, res, cb) {
+  var header = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
+  var m = /^Bearer\s+(.+)$/.exec(header);
+  if (!m) return sendJson(res, 401, { error: 'Sign in required — missing Authorization: Bearer <token> header.' });
+
+  var fb = getFirebase();
+  if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+  fb.auth.verifyIdToken(m[1]).then(function (decoded) {
+    cb(fb, decoded);
+  }).catch(function () {
+    sendJson(res, 401, { error: 'Your sign-in has expired or is invalid — please log in again.' });
+  });
+}
+
+function parseJsonBody(req, res, cb) {
+  readBody(req, function (raw) {
+    var body;
+    try { body = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    cb(body);
+  });
+}
+
+/* ---------- generic per-event subcollection CRUD ----------
+   Nine of the console's tabs (speakers/speaker-groups/sessions/agenda-groups/partners/partner-tiers/
+   gallery/faqs/contacts) are structurally identical: a flat list of records under events/{eventId}/<name>,
+   each with a server-assigned id, created/updated by an admin, read back as a plain array. Rather than
+   hand-write the same list/create/update/remove four times over for each of the 9 (36 near-identical
+   handlers), this factory builds all four from just the collection name + its allowed field list — every
+   resource below is one line registering its own shape, not its own copy of this logic. `fields` is a
+   strict allow-list: only named fields are ever read off the request body, so a client can't smuggle an
+   arbitrary field (e.g. `createdBy`) into a write by just including it in the JSON. */
+function subcollectionRoutes(name, fields) {
+  function sanitize(body) {
+    var out = {};
+    fields.forEach(function (f) {
+      if (Object.prototype.hasOwnProperty.call(body, f)) out[f] = body[f];
+    });
+    return out;
+  }
+  function col(fb, eventId) { return fb.db.collection('events').doc(eventId).collection(name); }
+
+  function list(req, res) {
+    requireAdmin(req, res, function (fb) {
+      var qs = new URLSearchParams(req.url.split('?')[1] || '');
+      var eventId = String(qs.get('eventId') || '').trim();
+      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+      col(fb, eventId).get()
+        .then(function (snap) {
+          var items = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+          items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+          sendJson(res, 200, { items: items });
+        })
+        .catch(function (err) { sendJson(res, 500, { error: name + ' list failed: ' + err.message }); });
+    });
+  }
+  function create(req, res) {
+    requireAdmin(req, res, function (fb, decoded) {
+      parseJsonBody(req, res, function (body) {
+        var eventId = String(body.eventId || '').trim();
+        if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+        var data = sanitize(body);
+        var now = new Date().toISOString();
+        data.createdAt = now; data.updatedAt = now; data.createdBy = decoded.email || decoded.uid;
+        col(fb, eventId).add(data)
+          .then(function (ref) { sendJson(res, 200, { id: ref.id }); })
+          .catch(function (err) { sendJson(res, 500, { error: name + ' create failed: ' + err.message }); });
+      });
+    });
+  }
+  function update(req, res) {
+    requireAdmin(req, res, function (fb) {
+      parseJsonBody(req, res, function (body) {
+        var eventId = String(body.eventId || '').trim();
+        var id = String(body.id || '').trim();
+        if (!eventId || !id) return sendJson(res, 400, { error: 'eventId and id are required.' });
+        var data = sanitize(body);
+        data.updatedAt = new Date().toISOString();
+        col(fb, eventId).doc(id).set(data, { merge: true })
+          .then(function () { sendJson(res, 200, { ok: true }); })
+          .catch(function (err) { sendJson(res, 500, { error: name + ' update failed: ' + err.message }); });
+      });
+    });
+  }
+  function remove(req, res) {
+    requireAdmin(req, res, function (fb) {
+      var qs = new URLSearchParams(req.url.split('?')[1] || '');
+      var eventId = String(qs.get('eventId') || '').trim();
+      var id = String(qs.get('id') || '').trim();
+      if (!eventId || !id) return sendJson(res, 400, { error: 'eventId and id are required.' });
+      col(fb, eventId).doc(id).delete()
+        .then(function () { sendJson(res, 200, { ok: true }); })
+        .catch(function (err) { sendJson(res, 500, { error: name + ' delete failed: ' + err.message }); });
+    });
+  }
+  return { list: list, create: create, update: update, remove: remove };
+}
+
+// Field shapes taken directly from edit-event.html's own existing in-memory objects (S.speakers[]/
+// S.sessions[]/S.partners[] etc.) — the console UI itself barely changes, only its load/save calls move
+// from localStorage to these endpoints.
+var RESOURCES = {
+  'speakers': subcollectionRoutes('speakers', ['name', 'desig', 'comp', 'photoUrl', 'logoUrl', 'colour', 'weight', 'status', 'email', 'phone', 'li', 'bio', 'groupId', 'order']),
+  'speaker-groups': subcollectionRoutes('speakerGroups', ['name', 'order']),
+  'sessions': subcollectionRoutes('sessions', ['title', 'start', 'end', 'kind', 'speakerIds', 'desc', 'room', 'weight', 'groupId', 'order']),
+  'agenda-groups': subcollectionRoutes('agendaGroups', ['name', 'date', 'order']),
+  'partners': subcollectionRoutes('partners', ['name', 'url', 'logoUrl', 'weight', 'status', 'email', 'phone', 'contact', 'note', 'tierId', 'order']),
+  'partner-tiers': subcollectionRoutes('partnerTiers', ['name', 'weight', 'order']),
+  'gallery': subcollectionRoutes('gallery', ['imageUrl', 'caption', 'order']),
+  'faqs': subcollectionRoutes('faqs', ['question', 'answer', 'order']),
+  'contacts': subcollectionRoutes('contacts', ['label', 'name', 'email', 'phone', 'order'])
+};
+
+/* ---------- canonical Event: POST/GET/PATCH /api/event ----------
+   Formalizes events/{eventId} — previously only ever touched as a side effect of the AI brief/structure
+   pipeline (handleExtractBrief/handlePlanStructure's merge:true writes) — into a real, directly
+   create/read/update-able record. Both of create-event.html's creation paths (manual wizard and
+   Generate-from-Brief) call POST here now; before this, the manual path created no Firestore doc at all. */
+var EVENT_FIELDS = ['name', 'slug', 'category', 'status', 'start', 'end', 'venue', 'city', 'description',
+  'payment', 'sections', 'nav', 'templateId', 'checklist', 'published'];
+
+function handleEventCreate(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    parseJsonBody(req, res, function (body) {
+      var eventId = String(body.eventId || body.slug || '').trim();
+      if (!eventId || !/^[a-z0-9-]+$/.test(eventId)) {
+        return sendJson(res, 400, { error: 'A valid eventId/slug (lowercase letters, digits, hyphens) is required.' });
+      }
+      var data = {};
+      EVENT_FIELDS.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(body, f)) data[f] = body[f]; });
+      var now = new Date().toISOString();
+      data.createdAt = now; data.updatedAt = now; data.createdBy = decoded.email || decoded.uid;
+      if (data.status === undefined) data.status = 'draft';
+      if (data.published === undefined) data.published = false;
+      fb.db.collection('events').doc(eventId).set(data, { merge: true })
+        .then(function () { sendJson(res, 200, { eventId: eventId }); })
+        .catch(function (err) { sendJson(res, 500, { error: 'event create failed: ' + err.message }); });
+    });
+  });
+}
+
+function handleEventGet(req, res) {
+  requireAdmin(req, res, function (fb) {
+    var qs = new URLSearchParams(req.url.split('?')[1] || '');
+    var eventId = String(qs.get('eventId') || '').trim();
+    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+    fb.db.collection('events').doc(eventId).get().then(function (snap) {
+      if (!snap.exists) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
+      sendJson(res, 200, Object.assign({ eventId: eventId }, snap.data()));
+    }).catch(function (err) { sendJson(res, 500, { error: 'event get failed: ' + err.message }); });
+  });
+}
+
+function handleEventUpdate(req, res) {
+  requireAdmin(req, res, function (fb) {
+    parseJsonBody(req, res, function (body) {
+      var eventId = String(body.eventId || '').trim();
+      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+      var data = {};
+      EVENT_FIELDS.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(body, f)) data[f] = body[f]; });
+      data.updatedAt = new Date().toISOString();
+      fb.db.collection('events').doc(eventId).set(data, { merge: true })
+        .then(function () { sendJson(res, 200, { ok: true }); })
+        .catch(function (err) { sendJson(res, 500, { error: 'event update failed: ' + err.message }); });
+    });
+  });
+}
+
+/* ---------- GET /api/event/registrations, GET /api/event/dashboard-stats ----------
+   dashboard-stats is a server-side aggregation (not a full-list pull the client reduces itself) — the
+   Dashboard tab's 4 stat tiles need exactly these numbers, nothing more, and an event with thousands of
+   registrations shouldn't ship its entire list to the browser just to show a count. */
+function handleEventRegistrationsList(req, res) {
+  requireAdmin(req, res, function (fb) {
+    var qs = new URLSearchParams(req.url.split('?')[1] || '');
+    var eventId = String(qs.get('eventId') || '').trim();
+    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+    fb.db.collection('events').doc(eventId).collection('registrations').orderBy('createdAt', 'desc').limit(1000).get()
+      .then(function (snap) { sendJson(res, 200, { items: snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }) }); })
+      .catch(function (err) { sendJson(res, 500, { error: 'registrations list failed: ' + err.message }); });
+  });
+}
+
+function handleEventDashboardStats(req, res) {
+  requireAdmin(req, res, function (fb) {
+    var qs = new URLSearchParams(req.url.split('?')[1] || '');
+    var eventId = String(qs.get('eventId') || '').trim();
+    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+    fb.db.collection('events').doc(eventId).collection('registrations').get()
+      .then(function (snap) {
+        var regs = snap.docs.map(function (d) { return d.data(); });
+        sendJson(res, 200, {
+          registrations: regs.length,
+          confirmed: regs.filter(function (r) { return r.status === 'confirmed'; }).length,
+          waitlist: regs.filter(function (r) { return r.status === 'waitlist'; }).length,
+          attendees: regs.filter(function (r) { return !!r.checkedInAt; }).length,
+          revenue: regs.reduce(function (sum, r) { return sum + ((r.payment && r.payment.status === 'paid') ? (r.payment.amount || 0) : 0); }, 0)
+        });
+      })
+      .catch(function (err) { sendJson(res, 500, { error: 'dashboard-stats failed: ' + err.message }); });
+  });
+}
+
+/* ---------- POST /api/register — PUBLIC, no auth ----------
+   The one write path a published event microsite itself calls — this is what "Register Now" finally does
+   for real (previously a dead href="#" on every template). Deliberately open: a real visitor registering
+   for a real event isn't signed in as an admin, there is no public-visitor identity system in this app at
+   all. Paid events are captured with payment.status:'pending' — there is no payment gateway wired up yet
+   (see the plan's deferred-scope note); this endpoint only ever records intent to pay, never a real charge. */
+function handleRegister(req, res) {
+  parseJsonBody(req, res, function (body) {
+    var eventId = String(body.eventId || '').trim();
+    var name = String(body.name || '').trim();
+    var email = String(body.email || '').trim();
+    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+    if (!name) return sendJson(res, 400, { error: 'name is required.' });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: 'A valid email is required.' });
+
+    var fb = getFirebase();
+    if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+    var eventRef = fb.db.collection('events').doc(eventId);
+    eventRef.get().then(function (snap) {
+      if (!snap.exists) return sendJson(res, 404, { error: 'No such event.' });
+      var ev = snap.data();
+      var paymentType = (ev.payment && ev.payment.type) || 'free';
+      var data = {
+        name: name.slice(0, 120), email: email.slice(0, 200),
+        phone: String(body.phone || '').slice(0, 40), company: String(body.company || '').slice(0, 120),
+        designation: String(body.designation || '').slice(0, 120), city: String(body.city || '').slice(0, 80),
+        source: String(body.source || 'website').slice(0, 60),
+        status: 'confirmed',
+        payment: paymentType === 'paid'
+          ? { required: true, status: 'pending', amount: (ev.payment && ev.payment.amount) || 0, txnId: null }
+          : { required: false, status: 'n/a', amount: 0, txnId: null },
+        createdAt: new Date().toISOString(), checkedInAt: null
+      };
+      return eventRef.collection('registrations').add(data).then(function (ref) {
+        sendJson(res, 200, { id: ref.id, status: data.status, payment: data.payment });
+      });
+    }).catch(function (err) { sendJson(res, 500, { error: 'register failed: ' + err.message }); });
+  });
+}
+
 // Single entry point both tools/serve.js (local) and index.js (deployed) call into.
 function handleApi(req, res) {
-  if (req.method === 'POST' && req.url === '/api/suggest-design') return handleSuggestDesign(req, res);
-  if (req.method === 'POST' && req.url === '/api/chat-edit') return handleChatEdit(req, res);
-  if (req.method === 'POST' && req.url === '/api/extract-brief') return handleExtractBrief(req, res);
-  if (req.method === 'POST' && req.url === '/api/ingest-source') return handleIngestSource(req, res);
-  if (req.method === 'POST' && req.url === '/api/plan-structure') return handlePlanStructure(req, res);
-  if (req.method === 'POST' && req.url === '/api/generate-content') return handleGenerateContent(req, res);
-  if (req.method === 'GET' && req.url.indexOf('/api/draft') === 0) return handleGetDraft(req, res);
-  if (req.method === 'GET' && req.url.indexOf('/api/generated-template') === 0) return handleGeneratedTemplate(req, res);
+  var urlPath = req.url.split('?')[0];
+
+  if (req.method === 'POST' && urlPath === '/api/suggest-design') return handleSuggestDesign(req, res);
+  if (req.method === 'POST' && urlPath === '/api/chat-edit') return handleChatEdit(req, res);
+  if (req.method === 'POST' && urlPath === '/api/extract-brief') return handleExtractBrief(req, res);
+  if (req.method === 'POST' && urlPath === '/api/ingest-source') return handleIngestSource(req, res);
+  if (req.method === 'POST' && urlPath === '/api/plan-structure') return handlePlanStructure(req, res);
+  if (req.method === 'POST' && urlPath === '/api/generate-content') return handleGenerateContent(req, res);
+  if (req.method === 'GET' && urlPath === '/api/draft') return handleGetDraft(req, res);
+  if (req.method === 'GET' && urlPath === '/api/generated-template') return handleGeneratedTemplate(req, res);
+
+  if (req.method === 'POST' && urlPath === '/api/event') return handleEventCreate(req, res);
+  if (req.method === 'GET' && urlPath === '/api/event') return handleEventGet(req, res);
+  if (req.method === 'PATCH' && urlPath === '/api/event') return handleEventUpdate(req, res);
+  if (req.method === 'GET' && urlPath === '/api/event/registrations') return handleEventRegistrationsList(req, res);
+  if (req.method === 'GET' && urlPath === '/api/event/dashboard-stats') return handleEventDashboardStats(req, res);
+  if (req.method === 'POST' && urlPath === '/api/register') return handleRegister(req, res);
+
+  var resourceMatch = /^\/api\/event\/([a-z-]+)$/.exec(urlPath);
+  if (resourceMatch && RESOURCES[resourceMatch[1]]) {
+    var R = RESOURCES[resourceMatch[1]];
+    if (req.method === 'GET') return R.list(req, res);
+    if (req.method === 'POST') return R.create(req, res);
+    if (req.method === 'PATCH') return R.update(req, res);
+    if (req.method === 'DELETE') return R.remove(req, res);
+  }
+
   sendJson(res, 404, { error: 'No such endpoint: ' + req.method + ' ' + req.url });
 }
 
