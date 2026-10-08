@@ -34,6 +34,7 @@
 
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
+<script src="auth.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="edit-event-marketing.js"></script>
 <script src="sidebar.js"></script>
@@ -52,16 +53,36 @@
   var toast = C.toast, PORTALS = C.PORTALS, TYPES = C.TYPES;
 
   var qs = new URLSearchParams(location.search);
-  var EV = C.eventById(qs.get('event')) || C.EVENTS[0];
-  var PEOPLE = C.makePeople(EV);
+  /* The real Firestore slug, e.g. "ethrworld-nextsummit" — there is no more numeric id scheme and
+     nothing here special-cases one. Known synchronously from the URL, before the event itself has
+     loaded, so anything that only needs the id (not the rest of the record) can use it right away. */
+  var eventSlug = String(qs.get('event') || '').trim();
+
+  /* EV starts out unset and is filled in by init() below once C.fetchEvent() resolves — everything
+     that reads EV is either inside a function (never called until after the first real view renders,
+     post-load) or guarded explicitly. There is no more synchronous fallback to a fake event: a load
+     failure is a real "couldn't load this event" state, never silent fake data. */
+  var EV = null;
+  /* Audience's real registrations are a later stage (fetchRegistrations) — kept empty here purely so
+     nothing in this file crashes reaching for PEOPLE meanwhile; it renders with zero people, not fake
+     ones. */
+  var PEOPLE = [];
 
   /* ============================================================
      FORMATTERS
      ============================================================ */
   /* ============================================================
      PERSISTED PROTOTYPE STATE
+
+     sections/nav/theme/checklist used to live ONLY here, in localStorage. They are real fields on the
+     event doc now (see viewSections/wireSections, viewSetNav/wireSetNav, viewTheme/wireTheme below,
+     and edit-event-dashboard.js's checklist()) — S still holds a local mirror of them purely so this
+     file's existing render code can keep reading S.sections/S.nav/S.theme/S.checklist synchronously,
+     but the mirror is seeded from EV.* once it loads (see init()) and every write now goes through
+     C.updateEvent, not save(). Everything else still being migrated (published, settings) keeps using
+     this localStorage copy exactly as before.
      ============================================================ */
-  var KEY = 'revamp-edit-event-' + EV.id;
+  var KEY = 'revamp-edit-event-' + eventSlug;
   var S = {
     sections: null, nav: null, checklist: null, published: false, theme: 'ET Red'
   };
@@ -70,6 +91,60 @@
     if (raw) { var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) S[k] = p[k]; }
   } catch(e){}
   function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+  /* ============================================================
+     SUBCOLLECTION LOADING  (Speakers, Agenda, Sponsors, Gallery, FAQ, Contact)
+
+     These six tabs' content lives in real per-event Firestore subcollections now
+     (RevampCore.fetchSub/createSub/updateSub/deleteSub — see edit-event-core.js),
+     not in this file's own S/save()/localStorage. Each one is fetched lazily, the
+     first time its tab is actually opened — render() below gates on SUB[key] and
+     shows the same loading-spinner treatment init() uses for the event itself
+     while the fetch is in flight, then re-renders once the flag flips true. A
+     real failure gets the same "couldn't load" emptyState with a retry button —
+     never a silent fallback to seed/fake data, because there is no more seed data
+     for any of these six tabs. Once loaded, a flag stays true for the rest of
+     this page's life; every further add/edit/delete/reorder writes straight
+     through to the backend (see each tab's own wiring) and updates this local
+     mirror optimistically so the page never needs to re-fetch to reflect its own
+     writes. */
+  var SUB = { speakers:false, agenda:false, sponsors:false, gallery:false, faq:false, contact:false };
+
+  var SUB_ROUTE_KEY = {
+    'content/speakers': 'speakers', 'content/agenda': 'agenda', 'content/sponsors': 'sponsors',
+    'content/gallery': 'gallery', 'content/faq': 'faq', 'content/contact': 'contact'
+  };
+  /* keyed by name, not referenced directly, so these can be declared (as plain
+     `function loadX(){}`) anywhere else in this file — function declarations in
+     one scope all hoist before any of them run. */
+  var SUB_LOADERS = {
+    speakers: function(){ return loadSpeakers(); },
+    agenda:   function(){ return loadAgenda(); },
+    sponsors: function(){ return loadSponsors(); },
+    gallery:  function(){ return loadGallery(); },
+    faq:      function(){ return loadFaq(); },
+    contact:  function(){ return loadContact(); }
+  };
+
+  function byOrder(a, b){ return (a.order || 0) - (b.order || 0); }
+
+  function renderSubLoading(){
+    $('view').innerHTML = tabsHTML() +
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+        'gap:14px;padding:120px 20px;text-align:center;color:var(--text-muted)">' +
+        '<span class="spin" style="width:24px;height:24px;border-width:3px"></span>' +
+        '<span style="font-size:13.5px;font-weight:600">Loading…</span>' +
+      '</div>';
+  }
+  function renderSubLoadError(err, retry){
+    var msg = (err && err.message) ? err.message : 'Something went wrong loading this.';
+    $('view').innerHTML = tabsHTML() + '<div style="padding:60px 20px">' + emptyState(
+      IC.info, 'Couldn’t load this', msg,
+      '<button class="btn btn-primary btn-sm" type="button" id="sub-retry">Try again</button>'
+    ) + '</div>';
+    var b = $('sub-retry');
+    if (b) b.onclick = retry;
+  }
 
   /* ============================================================
      NAVIGATION MODEL
@@ -88,7 +163,7 @@
     ]},
 
     { id:'design', label:'Design', icon:IC.brush, tabs:[
-        { id:'editor',   label:'Site editor', link:'custom_editor.html?event=' + EV.id },
+        { id:'editor',   label:'Site editor', link:'custom_editor.html?event=' + eventSlug },
         { id:'sections', label:'Page sections' },
         { id:'nav',      label:'Navigation' },
         { id:'theme',    label:'Theme' },
@@ -137,10 +212,14 @@
       if (tab === 'shortlist') return EV.shortlist;
     }
     if (sec === 'content'){
-      if (tab === 'speakers') return spkAll().length;
-      if (tab === 'agenda')   return agAll().length;
-      if (tab === 'sponsors') return ptAll().length;
-      if (tab === 'faq')      return FAQS.length;
+      /* each is only known once its own tab has been opened at least once this
+         page-load (see SUB/render()) — a sibling tab's badge simply stays blank
+         until then, rather than forcing an eager fetch of all four resources
+         just to paint a count nobody asked for yet. */
+      if (tab === 'speakers') return SUB.speakers ? spkAll().length : null;
+      if (tab === 'agenda')   return SUB.agenda   ? agAll().length  : null;
+      if (tab === 'sponsors') return SUB.sponsors ? ptAll().length  : null;
+      if (tab === 'faq')      return SUB.faq      ? faqAll().length : null;
     }
     return null;
   }
@@ -269,8 +348,13 @@
 
   function viewBasics(){
     var e = EV;
-    var slug = slugify(e.name);
-    var desc = BASICS_DESC;
+    /* once a real slug has been saved, that's the address this event keeps — only a brand-new event
+       (nothing saved yet) gets one derived fresh from its name */
+    var slug = e.slug || slugify(e.name);
+    /* BASICS_DESC is a placeholder for a brand-new event with nothing saved yet — once the event has
+       a real description (including an explicit empty string the owner cleared on purpose), that's
+       what the field shows and edits, never the hardcoded copy. */
+    var desc = (e.description != null) ? e.description : BASICS_DESC;
 
     var identity =
       '<div class="field c7">' +
@@ -280,7 +364,7 @@
 
       '<div class="field c5"><label for="b-cat">Category</label>' +
         '<select class="inp" id="b-cat">' + Object.keys(TYPES).map(function(k){
-          return '<option' + (k === e.type ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
+          return '<option value="' + esc(k) + '"' + (k === e.category ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
         }).join('') + '</select>' +
         '<p class="hint">Decides which template and reports this event gets.</p></div>';
 
@@ -599,9 +683,39 @@
     var save = $('b-save');
     if (save) save.addEventListener('click', function(){
       if (f.slug) f.slug.value = slugify(trimmed('slug'));
-      KEYS.forEach(function(k){ if (f[k]) initial[k] = f[k].value; });
-      paint();
-      toast('Basic details saved');
+
+      /* exactly the fields this form actually collects — there is no separate city input, "venue"
+         is the one combined "venue & city" field, so no city is sent. */
+      var patch = {
+        name: trimmed('name'),
+        category: v('cat'),
+        start: v('start'),
+        end: v('end'),
+        venue: trimmed('venue'),
+        description: v('desc'),
+        slug: trimmed('slug')
+      };
+
+      var label = save.innerHTML;
+      save.disabled = true;
+      save.innerHTML = '<span class="spin"></span> Saving';
+
+      C.updateEvent(EV.id, patch).then(function(){
+        EV.name = patch.name; EV.category = patch.category;
+        EV.start = patch.start; EV.end = patch.end;
+        EV.venue = patch.venue; EV.description = patch.description;
+        EV.slug = patch.slug;
+
+        KEYS.forEach(function(k){ if (f[k]) initial[k] = f[k].value; });
+        paint();
+        paintHeader();
+        toast('Basic details saved');
+      }).catch(function(err){
+        toast('Could not save — ' + (err && err.message ? err.message : 'something went wrong.'));
+      }).then(function(){
+        save.disabled = false;
+        save.innerHTML = label;
+      });
     });
 
     var discard = $('b-discard');
@@ -667,7 +781,13 @@
       b.addEventListener('click', function(){
         var id = b.getAttribute('data-sec');
         S.sections.forEach(function(s){ if (s.id === id) s.on = !s.on; });
-        save(); render();
+        render();
+        /* sections lives on the event doc now, not localStorage */
+        C.updateEvent(EV.id, { sections: S.sections }).then(function(){
+          EV.sections = S.sections;
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
       });
     });
   }
@@ -682,15 +802,6 @@
      Photos are always square: the crop happens in the dialog, so a
      badly shaped upload can never reach the site.
      ============================================================ */
-  var SEED_SPEAKERS = [
-    ['Rajesh Uppal','CIO & Executive Director','Maruti Suzuki'],
-    ['Sunita Handa','Chief General Manager','State Bank of India'],
-    ['Vishal Salvi','Chief Information Security Officer','Infosys'],
-    ['Dr. Pavan Duggal','Cyber Law Expert','Supreme Court of India'],
-    ['Aparna Kuppuswamy','Chief Risk Officer','Axis Bank'],
-    ['Sameer Ratolikar','EVP & CISO','HDFC Bank']
-  ];
-
   /* weight is a rank with a visible consequence, not an opaque number */
   var WEIGHTS = [
     { id:'keynote',  label:'Keynote',  note:'Full-width card at the top of the block' },
@@ -723,29 +834,63 @@
   }
   function uid(p){ return p + Math.random().toString(36).slice(2, 9); }
 
-  /* ---------------- model ---------------- */
-  function spkInit(){
-    if (S.spkGroups && S.speakers) return;
-    S.spkGroups = [{ id:'g-main', name:'Keynote speakers' }];
-    S.speakers = SEED_SPEAKERS.map(function(s, i){
-      return {
-        id: uid('s-'), gid:'g-main', name:s[0], desig:s[1], comp:s[2],
-        photo:null, logo:null, colour: AV[i % AV.length],
-        weight: i === 0 ? 'keynote' : (i < 3 ? 'headline' : 'featured'),
-        status:'confirmed', email:'', phone:'', li:'', bio:''
-      };
-    });
-    save();
-  }
-  function spkAll(){ spkInit(); return S.speakers; }
-  function spkGroups(){ spkInit(); return S.spkGroups; }
+  /* ---------------- model ----------------
+     S.speakers/S.spkGroups are real `speakers`/`speaker-groups` subcollection records
+     now (see loadSpeakers() below, and SUB/render() for when it's fetched) — this file's
+     own id/field names (gid, photo, logo) are kept as the internal shape so none of the
+     render/wire code below has to change; the backend's groupId/photoUrl/logoUrl names
+     are only ever touched at the edges, mapping in on load and back out on every write. */
+  function spkAll(){ return S.speakers || []; }
+  function spkGroups(){ return S.spkGroups || []; }
   function spkIn(gid){ return spkAll().filter(function(p){ return p.gid === gid; }); }
   function spkById(id){
     var a = spkAll();
     for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
     return null;
   }
-  function spkCommit(){ save(); render(); }
+  function spkCommit(){ render(); }
+
+  function loadSpeakers(){
+    return Promise.all([
+      C.fetchSub('speaker-groups', EV.id),
+      C.fetchSub('speakers', EV.id)
+    ]).then(function(res){
+      S.spkGroups = (res[0] || []).map(function(g){
+        return { id: g.id, name: g.name, order: g.order };
+      }).sort(byOrder);
+      S.speakers = (res[1] || []).map(function(p){
+        return {
+          id: p.id, gid: p.groupId, name: p.name, desig: p.desig, comp: p.comp,
+          photo: p.photoUrl || null, logo: p.logoUrl || null, colour: p.colour,
+          weight: p.weight, status: p.status, email: p.email, phone: p.phone,
+          li: p.li, bio: p.bio, order: p.order
+        };
+      }).sort(byOrder);
+    });
+  }
+
+  /* called after any reorder (move, drag-drop, sort-by-weight) — only the rows whose
+     position actually moved get an updateSub call */
+  function persistSpeakerOrder(){
+    spkAll().forEach(function(p, i){
+      if (p.order !== i){
+        p.order = i;
+        C.updateSub('speakers', EV.id, p.id, { order: i }).catch(function(err){
+          toast('Could not save the new order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
+  }
+  function persistGroupOrder(){
+    spkGroups().forEach(function(g, i){
+      if (g.order !== i){
+        g.order = i;
+        C.updateSub('speaker-groups', EV.id, g.id, { order: i }).catch(function(err){
+          toast('Could not save the new group order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
+  }
 
   /* ---------------- photo helpers ---------------- */
   /* Everything that leaves the dialog is already square and already
@@ -928,17 +1073,39 @@
   }
 
   /* ---------------- page wiring ---------------- */
+  /* a brand-new event has zero groups — rather than seed a fake one, the group
+     the UI needs is created for real, on demand, the first time it's needed */
+  function spkEnsureGroup(cb){
+    if (spkGroups().length){ cb(spkGroups()[0].id); return; }
+    var g = { id: uid('g-'), name: 'Speakers', order: 0 };
+    S.spkGroups.push(g);
+    render();
+    C.createSub('speaker-groups', EV.id, { name: g.name, order: g.order }).then(function(res){
+      g.id = res.id;
+      cb(g.id);
+    }).catch(function(err){
+      toast('Could not create a group — ' + (err && err.message ? err.message : 'try again.'));
+    });
+  }
+
   function wireSpeakers(){
     var add = $('spk-add');
-    if (add) add.onclick = function(){ spkDialog(null, spkGroups()[0].id); };
+    if (add) add.onclick = function(){ spkEnsureGroup(function(gid){ spkDialog(null, gid); }); };
 
     var addg = $('spk-addgroup');
     if (addg) addg.onclick = function(){
-      S.spkGroups.push({ id: uid('g-'), name: 'New group' });
+      var g = { id: uid('g-'), name: 'New group', order: spkGroups().length };
+      S.spkGroups.push(g);
       spkCommit();
       toast('Group added — give it a name');
       var last = document.querySelectorAll('.gname');
       if (last.length){ last[last.length - 1].focus(); last[last.length - 1].select(); }
+      C.createSub('speaker-groups', EV.id, { name: g.name, order: g.order }).then(function(res){
+        g.id = res.id;
+        render();
+      }).catch(function(err){
+        toast('Could not save the new group — ' + (err && err.message ? err.message : 'try again.'));
+      });
     };
 
     document.querySelectorAll('[data-gadd]').forEach(function(b){
@@ -954,7 +1121,9 @@
       inp.onchange = function(){
         var v = inp.value.trim() || 'Untitled group';
         spkGroups().forEach(function(g){ if (g.id === id) g.name = v; });
-        save();
+        C.updateSub('speaker-groups', EV.id, id, { name: v }).catch(function(err){
+          toast('Could not save the group name — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
       inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
     });
@@ -969,6 +1138,9 @@
         p.weight = WEIGHTS[(i + 1) % WEIGHTS.length].id;
         spkCommit();
         toast(p.name + ' is now ' + wLabel(p.weight).toLowerCase());
+        C.updateSub('speakers', EV.id, p.id, { weight: p.weight }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
     });
 
@@ -996,6 +1168,7 @@
         S.speakers = spkSplice(rest, mine, gid);
         spkCommit();
         toast('Ordered by weight');
+        persistSpeakerOrder();
       };
     });
     document.querySelectorAll('[data-gdel]').forEach(function(b){
@@ -1008,10 +1181,19 @@
           n ? n + (n === 1 ? ' speaker moves' : ' speakers move') + ' to ' + keep.name + '. Nobody is deleted.'
             : 'The group is empty, so nothing else changes.',
           'Delete group', function(){
-            spkAll().forEach(function(p){ if (p.gid === gid) p.gid = keep.id; });
+            var moved = spkAll().filter(function(p){ return p.gid === gid; });
+            moved.forEach(function(p){ p.gid = keep.id; });
             S.spkGroups = spkGroups().filter(function(x){ return x.id !== gid; });
             spkCommit();
             toast('Group deleted');
+            moved.forEach(function(p){
+              C.updateSub('speakers', EV.id, p.id, { groupId: keep.id }).catch(function(err){
+                toast('Could not move a speaker — ' + (err && err.message ? err.message : 'try again.'));
+              });
+            });
+            C.deleteSub('speaker-groups', EV.id, gid).catch(function(err){
+              toast('Could not delete the group — ' + (err && err.message ? err.message : 'try again.'));
+            });
           });
       };
     });
@@ -1040,6 +1222,7 @@
     mine.splice(j, 0, mine.splice(i, 1)[0]);
     S.speakers = spkSplice(spkAll().filter(function(x){ return x.gid !== p.gid; }), mine, p.gid);
     spkCommit();
+    persistSpeakerOrder();
   }
 
   function grpMove(gid, dir){
@@ -1049,6 +1232,7 @@
     if (j < 0 || j >= gs.length) return;
     gs.splice(j, 0, gs.splice(i, 1)[0]);
     spkCommit();
+    persistGroupOrder();
   }
 
   /* drag a row anywhere — including into another group */
@@ -1095,6 +1279,9 @@
         if (!p) return;
         p.gid = g.getAttribute('data-grp');
         spkCommit();
+        C.updateSub('speakers', EV.id, p.id, { groupId: p.gid }).catch(function(err){
+          toast('Could not move speaker — ' + (err && err.message ? err.message : 'try again.'));
+        });
       });
     });
   }
@@ -1102,6 +1289,7 @@
   function spkDropAt(id, targetId, after){
     var p = spkById(id), t = spkById(targetId);
     if (!p || !t) return;
+    var gidChanged = p.gid !== t.gid;
     p.gid = t.gid;
     var list = spkAll().slice();
     list.splice(list.indexOf(p), 1);
@@ -1109,6 +1297,12 @@
     list.splice(at, 0, p);
     S.speakers = list;
     spkCommit();
+    if (gidChanged){
+      C.updateSub('speakers', EV.id, p.id, { groupId: p.gid }).catch(function(err){
+        toast('Could not move speaker — ' + (err && err.message ? err.message : 'try again.'));
+      });
+    }
+    persistSpeakerOrder();
   }
 
   /* ---------------- a small confirm, so nothing destructive is one click ---------------- */
@@ -1203,6 +1397,9 @@
           S.speakers = spkAll().filter(function(p){ return p.id !== editId; });
           spkCommit();
           toast('Speaker removed');
+          C.deleteSub('speakers', EV.id, editId).catch(function(err){
+            toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+          });
         });
     };
 
@@ -1344,12 +1541,20 @@
 
       $('sp-newg').onclick = function(){
         readForm();
-        var g = { id: uid('g-'), name: 'New group' };
+        var tempId = uid('g-');
+        var g = { id: tempId, name: 'New group', order: spkGroups().length };
         S.spkGroups.push(g);
-        save();
-        Q[qi].gid = g.id;
+        Q[qi].gid = tempId;
         paintForm();
         toast('Group added — rename it on the page');
+        C.createSub('speaker-groups', EV.id, { name: g.name, order: g.order }).then(function(res){
+          g.id = res.id;
+          /* any queue entry still pointing at the temporary id now follows the group's real one */
+          Q.forEach(function(e){ if (e.gid === tempId) e.gid = res.id; });
+          if ($('sp-gid')) paintForm();
+        }).catch(function(err){
+          toast('Could not save the new group — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
 
       $('sp-fetch').onclick = function(){
@@ -1548,10 +1753,16 @@
       var clean = Q.map(function(e){
         return {
           id: e.id, gid: e.gid, name: e.name, desig: e.desig, comp: e.comp,
+          /* STOPGAP: photo/logo are cropped/shrunk client-side (cropToSquare/shrinkLogo above) and
+             stored as inline base64 dataURLs straight in photoUrl/logoUrl — there is no Storage upload
+             endpoint for speaker photos yet. Should move to a real upload (functions/lib/api.js's
+             buildHeroImage() already shows the pattern: file.save() + file.makePublic() + public URL)
+             once one exists; out of scope for this pass. */
           photo: e.photo || null, logo: e.logo || null, colour: e.colour || AV[0],
           weight: e.weight, status: e.status, email: e.email, phone: e.phone, li: e.li, bio: e.bio
         };
       });
+      var wasEditing = editing;
       if (editing){
         S.speakers = spkAll().map(function(p){ return p.id === editId ? clean[0] : p; });
       } else {
@@ -1561,21 +1772,37 @@
       spkCommit();
       toast(editing ? 'Speaker updated'
         : (clean.length === 1 ? clean[0].name + ' added' : clean.length + ' speakers added'));
+
+      if (wasEditing){
+        C.updateSub('speakers', EV.id, editId, {
+          groupId: clean[0].gid, name: clean[0].name, desig: clean[0].desig, comp: clean[0].comp,
+          photoUrl: clean[0].photo, logoUrl: clean[0].logo, colour: clean[0].colour,
+          weight: clean[0].weight, status: clean[0].status, email: clean[0].email,
+          phone: clean[0].phone, li: clean[0].li, bio: clean[0].bio
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      } else {
+        var order0 = spkAll().length - clean.length;
+        Promise.all(clean.map(function(e, i){
+          return C.createSub('speakers', EV.id, {
+            groupId: e.gid, name: e.name, desig: e.desig, comp: e.comp,
+            photoUrl: e.photo, logoUrl: e.logo, colour: e.colour,
+            weight: e.weight, status: e.status, email: e.email, phone: e.phone, li: e.li, bio: e.bio,
+            order: order0 + i
+          }).then(function(res){ e.id = res.id; e.order = order0 + i; });
+        })).then(function(){
+          render();
+        }).catch(function(err){
+          toast('Some speakers may not have saved — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
     };
 
     paintQueue();
     paintForm();
     paintSave();
   }
-
-  var FAQS = [
-    ['Who should attend this event?', 'Senior decision-makers across technology, risk and operations. Most delegates are director level and above.'],
-    ['Is there a delegate fee?', EV.payment.type === 'paid' ? 'Yes. Passes start at ₹25,000 plus taxes. Group rates are available for teams of four or more.' : 'No. This event is free to attend, but seats are confirmed on approval.'],
-    ['Can I send a colleague in my place?', 'Yes, up to 48 hours before the event. Write to the event desk with both names and we will reissue the pass.'],
-    ['Will sessions be recorded?', 'Keynotes are recorded and shared with delegates afterwards. Closed-door roundtables are never recorded.'],
-    ['Do you provide travel or accommodation?', 'Travel and stay are not included. We hold a delegate rate at the venue hotel — the event desk can share the booking code.'],
-    ['How do I become a partner?', 'Use the Become a partner button on the microsite, or contact the partnerships team directly.']
-  ];
 
   /* ============================================================
      VIEW : AGENDA
@@ -1588,16 +1815,6 @@
      Sessions borrow their speakers from the line-up rather than
      retyping names, so a speaker renamed once is renamed everywhere.
      ============================================================ */
-  var SEED_SESSIONS = [
-    ['09:00','09:30','Registration & networking breakfast','networking'],
-    ['09:30','09:45','Welcome address','session'],
-    ['09:45','10:30','Keynote: The year ahead','keynote'],
-    ['10:30','11:15','Panel: Building resilient systems','panel'],
-    ['11:15','11:45','Networking break','break'],
-    ['11:45','12:30','Fireside chat','fireside'],
-    ['12:30','13:30','Lunch','lunch']
-  ];
-
   /* the kind sets the tone; quiet kinds are the gaps between the programme */
   var KINDS = [
     { id:'session',    label:'Session' },
@@ -1640,30 +1857,12 @@
     return isNaN(d) ? 'Date not set' : fmtDate(iso + 'T00:00:00');
   }
 
-  /* ---------------- model ---------------- */
-  function agInit(){
-    if (S.agGroups && S.sessions) return;
-    var d = EV.start ? EV.start.slice(0, 10) : '';
-    S.agGroups = [{ id:'d-1', name:'Day 1', date:d }];
-    S.sessions = SEED_SESSIONS.map(function(s){
-      var k = kMeta(s[3]);
-      return {
-        id: uid('ses-'), gid:'d-1', title:s[2], start:s[0], end:s[1],
-        kind:s[3], speakers:[], desc:'', room:'',
-        weight: s[3] === 'keynote' ? 'keynote' : (k.quiet ? 'standard' : 'featured')
-      };
-    });
-    /* the two seeded sessions that name a speaker should point at the real one */
-    var byName = {};
-    spkAll().forEach(function(p){ byName[p.name] = p.id; });
-    S.sessions.forEach(function(s){
-      if (s.title === 'Keynote: The year ahead' && byName['Rajesh Uppal']) s.speakers = [byName['Rajesh Uppal']];
-      if (s.title === 'Fireside chat' && byName['Vishal Salvi']) s.speakers = [byName['Vishal Salvi']];
-    });
-    save();
-  }
-  function agAll(){ agInit(); return S.sessions; }
-  function agGroups(){ agInit(); return S.agGroups; }
+  /* ---------------- model ----------------
+     Internal shape keeps gid/speakers (as in the UI code below); the backend's
+     `sessions` resource names them groupId/speakerIds — mapped at the edges only,
+     same as Speakers' gid/groupId. */
+  function agAll(){ return S.sessions || []; }
+  function agGroups(){ return S.agGroups || []; }
   function agIn(gid){ return agAll().filter(function(s){ return s.gid === gid; }); }
   function agById(id){
     var a = agAll();
@@ -1679,7 +1878,46 @@
     if (!done) out = out.concat(mine);
     return out;
   }
-  function agCommit(){ save(); render(); }
+  function agCommit(){ render(); }
+
+  function loadAgenda(){
+    return Promise.all([
+      C.fetchSub('agenda-groups', EV.id),
+      C.fetchSub('sessions', EV.id)
+    ]).then(function(res){
+      S.agGroups = (res[0] || []).map(function(g){
+        return { id: g.id, name: g.name, date: g.date, order: g.order };
+      }).sort(byOrder);
+      S.sessions = (res[1] || []).map(function(s){
+        return {
+          id: s.id, gid: s.groupId, title: s.title, start: s.start, end: s.end,
+          kind: s.kind, speakers: s.speakerIds || [], desc: s.desc, room: s.room,
+          weight: s.weight, order: s.order
+        };
+      }).sort(byOrder);
+    });
+  }
+
+  function persistSessionOrder(){
+    agAll().forEach(function(s, i){
+      if (s.order !== i){
+        s.order = i;
+        C.updateSub('sessions', EV.id, s.id, { order: i }).catch(function(err){
+          toast('Could not save the new order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
+  }
+  function persistAgGroupOrder(){
+    agGroups().forEach(function(g, i){
+      if (g.order !== i){
+        g.order = i;
+        C.updateSub('agenda-groups', EV.id, g.id, { order: i }).catch(function(err){
+          toast('Could not save the new day order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
+  }
 
   /* ---------------- the page ---------------- */
   function viewAgenda(){
@@ -1860,9 +2098,25 @@
   }
 
   /* ---------------- page wiring ---------------- */
+  /* a brand-new event has zero days — rather than seed a fake one, the day the
+     UI needs is created for real, on demand, the first time it's needed */
+  function agEnsureGroup(cb){
+    if (agGroups().length){ cb(agGroups()[0].id); return; }
+    var d = EV.start ? EV.start.slice(0, 10) : '';
+    var g = { id: uid('d-'), name: 'Day 1', date: d, order: 0 };
+    S.agGroups.push(g);
+    render();
+    C.createSub('agenda-groups', EV.id, { name: g.name, date: g.date, order: g.order }).then(function(res){
+      g.id = res.id;
+      cb(g.id);
+    }).catch(function(err){
+      toast('Could not create a day — ' + (err && err.message ? err.message : 'try again.'));
+    });
+  }
+
   function wireAgenda(){
     var add = $('ag-add');
-    if (add) add.onclick = function(){ agDialog(null, agGroups()[0].id); };
+    if (add) add.onclick = function(){ agEnsureGroup(function(gid){ agDialog(null, gid); }); };
 
     var addg = $('ag-addgroup');
     if (addg) addg.onclick = function(){
@@ -1874,9 +2128,16 @@
         nd.setDate(nd.getDate() + 1);
         d = nd.getFullYear() + '-' + ('0' + (nd.getMonth() + 1)).slice(-2) + '-' + ('0' + nd.getDate()).slice(-2);
       }
-      S.agGroups.push({ id: uid('d-'), name: 'Day ' + (gs.length + 1), date: d });
+      var g = { id: uid('d-'), name: 'Day ' + (gs.length + 1), date: d, order: gs.length };
+      S.agGroups.push(g);
       agCommit();
       toast('Day ' + gs.length + ' added');
+      C.createSub('agenda-groups', EV.id, { name: g.name, date: g.date, order: g.order }).then(function(res){
+        g.id = res.id;
+        render();
+      }).catch(function(err){
+        toast('Could not save the new day — ' + (err && err.message ? err.message : 'try again.'));
+      });
     };
 
     document.querySelectorAll('[data-agadd]').forEach(function(b){
@@ -1891,7 +2152,9 @@
       inp.onchange = function(){
         var v = inp.value.trim() || 'Untitled day';
         agGroups().forEach(function(g){ if (g.id === id) g.name = v; });
-        save();
+        C.updateSub('agenda-groups', EV.id, id, { name: v }).catch(function(err){
+          toast('Could not save the day name — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
       inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
     });
@@ -1900,6 +2163,9 @@
       inp.onchange = function(){
         agGroups().forEach(function(g){ if (g.id === id) g.date = inp.value; });
         agCommit();
+        C.updateSub('agenda-groups', EV.id, id, { date: inp.value }).catch(function(err){
+          toast('Could not save the date — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
     });
 
@@ -1912,6 +2178,9 @@
         s.weight = WEIGHTS[(i + 1) % WEIGHTS.length].id;
         agCommit();
         toast('“' + s.title + '” is now ' + wLabel(s.weight).toLowerCase());
+        C.updateSub('sessions', EV.id, s.id, { weight: s.weight }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
     });
 
@@ -1937,6 +2206,7 @@
         S.sessions = agSplice(mine, gid);
         agCommit();
         toast('Put in start-time order');
+        persistSessionOrder();
       };
     });
 
@@ -1950,10 +2220,19 @@
           n ? n + (n === 1 ? ' session moves' : ' sessions move') + ' to ' + keep.name + '. Nothing is deleted.'
             : 'The day is empty, so nothing else changes.',
           'Delete day', function(){
-            agAll().forEach(function(s){ if (s.gid === gid) s.gid = keep.id; });
+            var moved = agAll().filter(function(s){ return s.gid === gid; });
+            moved.forEach(function(s){ s.gid = keep.id; });
             S.agGroups = agGroups().filter(function(x){ return x.id !== gid; });
             agCommit();
             toast('Day deleted');
+            moved.forEach(function(s){
+              C.updateSub('sessions', EV.id, s.id, { groupId: keep.id }).catch(function(err){
+                toast('Could not move a session — ' + (err && err.message ? err.message : 'try again.'));
+              });
+            });
+            C.deleteSub('agenda-groups', EV.id, gid).catch(function(err){
+              toast('Could not delete the day — ' + (err && err.message ? err.message : 'try again.'));
+            });
           });
       };
     });
@@ -1971,6 +2250,7 @@
     mine.splice(j, 0, mine.splice(i, 1)[0]);
     S.sessions = agSplice(mine, s.gid);
     agCommit();
+    persistSessionOrder();
   }
   function agGrpMove(gid, dir){
     var gs = agGroups();
@@ -1979,6 +2259,7 @@
     if (j < 0 || j >= gs.length) return;
     gs.splice(j, 0, gs.splice(i, 1)[0]);
     agCommit();
+    persistAgGroupOrder();
   }
 
   function agDragDrop(){
@@ -2011,12 +2292,19 @@
         var after = (e.clientY - r.top) > r.height / 2;
         var p = agById(dragId), t = agById(row.getAttribute('data-ses'));
         if (!p || !t) return;
+        var gidChanged = p.gid !== t.gid;
         p.gid = t.gid;
         var list = agAll().slice();
         list.splice(list.indexOf(p), 1);
         list.splice(list.indexOf(t) + (after ? 1 : 0), 0, p);
         S.sessions = list;
         agCommit();
+        if (gidChanged){
+          C.updateSub('sessions', EV.id, p.id, { groupId: p.gid }).catch(function(err){
+            toast('Could not move session — ' + (err && err.message ? err.message : 'try again.'));
+          });
+        }
+        persistSessionOrder();
       });
     });
 
@@ -2030,6 +2318,9 @@
         if (!s) return;
         s.gid = g.getAttribute('data-aggrp');
         agCommit();
+        C.updateSub('sessions', EV.id, s.id, { groupId: s.gid }).catch(function(err){
+          toast('Could not move session — ' + (err && err.message ? err.message : 'try again.'));
+        });
       });
     });
   }
@@ -2110,6 +2401,9 @@
           S.sessions = agAll().filter(function(x){ return x.id !== editId; });
           agCommit();
           toast('Session removed');
+          C.deleteSub('sessions', EV.id, editId).catch(function(err){
+            toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+          });
         });
     };
 
@@ -2351,6 +2645,7 @@
           kind: e.kind, speakers: e.speakers.slice(), desc: e.desc, room: e.room, weight: e.weight
         };
       });
+      var wasEditing = editing;
       if (editing){
         S.sessions = agAll().map(function(s){ return s.id === editId ? clean[0] : s; });
       } else {
@@ -2360,6 +2655,29 @@
       agCommit();
       toast(editing ? 'Session updated'
         : (clean.length === 1 ? '“' + clean[0].title + '” added' : clean.length + ' sessions added'));
+
+      if (wasEditing){
+        C.updateSub('sessions', EV.id, editId, {
+          groupId: clean[0].gid, title: clean[0].title, start: clean[0].start, end: clean[0].end,
+          kind: clean[0].kind, speakerIds: clean[0].speakers, desc: clean[0].desc,
+          room: clean[0].room, weight: clean[0].weight
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      } else {
+        var order0 = agAll().length - clean.length;
+        Promise.all(clean.map(function(e, i){
+          return C.createSub('sessions', EV.id, {
+            groupId: e.gid, title: e.title, start: e.start, end: e.end,
+            kind: e.kind, speakerIds: e.speakers, desc: e.desc, room: e.room, weight: e.weight,
+            order: order0 + i
+          }).then(function(res){ e.id = res.id; e.order = order0 + i; });
+        })).then(function(){
+          render();
+        }).catch(function(err){
+          toast('Some sessions may not have saved — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
     };
 
     paintQueue();
@@ -2375,32 +2693,11 @@
      a partner is the row, and weight is the only thing that decides
      how large a logo appears on the wall.
      ============================================================ */
-  var SEED_TIERS = [
-    ['Presenting partner', ['Tata Capital'],                                  'keynote'],
-    ['Powered by',         ['HDFC Bank','Infosys'],                           'headline'],
-    ['Gold partners',      ['Wipro','Mahindra Group','Godrej'],               'featured'],
-    ['Associate partners', ['Zomato','Paytm','Adani Ports','L&T Infotech'],   'standard']
-  ];
-
-  /* ---------------- model ---------------- */
-  function ptInit(){
-    if (S.spTiers && S.partners) return;
-    S.spTiers = [];
-    S.partners = [];
-    SEED_TIERS.forEach(function(t, i){
-      var tid = 'tier-' + (i + 1);
-      S.spTiers.push({ id: tid, name: t[0], weight: t[2] });
-      t[1].forEach(function(n){
-        S.partners.push({
-          id: uid('p-'), tid: tid, name: n, url: '', logo: null, weight: t[2],
-          status:'confirmed', email:'', phone:'', contact:'', note:''
-        });
-      });
-    });
-    save();
-  }
-  function ptAll(){ ptInit(); return S.partners; }
-  function ptTiers(){ ptInit(); return S.spTiers; }
+  /* ---------------- model ----------------
+     Internal shape keeps tid/logo (as in the UI code below); the backend's
+     `partners` resource names them tierId/logoUrl — mapped at the edges only. */
+  function ptAll(){ return S.partners || []; }
+  function ptTiers(){ return S.spTiers || []; }
   function ptIn(tid){ return ptAll().filter(function(p){ return p.tid === tid; }); }
   function ptById(id){
     var a = ptAll();
@@ -2416,7 +2713,46 @@
     if (!done) out = out.concat(mine);
     return out;
   }
-  function ptCommit(){ save(); render(); }
+  function ptCommit(){ render(); }
+
+  function loadSponsors(){
+    return Promise.all([
+      C.fetchSub('partner-tiers', EV.id),
+      C.fetchSub('partners', EV.id)
+    ]).then(function(res){
+      S.spTiers = (res[0] || []).map(function(t){
+        return { id: t.id, name: t.name, weight: t.weight, order: t.order };
+      }).sort(byOrder);
+      S.partners = (res[1] || []).map(function(p){
+        return {
+          id: p.id, tid: p.tierId, name: p.name, url: p.url, logo: p.logoUrl || null,
+          weight: p.weight, status: p.status, email: p.email, phone: p.phone,
+          contact: p.contact, note: p.note, order: p.order
+        };
+      }).sort(byOrder);
+    });
+  }
+
+  function persistPartnerOrder(){
+    ptAll().forEach(function(p, i){
+      if (p.order !== i){
+        p.order = i;
+        C.updateSub('partners', EV.id, p.id, { order: i }).catch(function(err){
+          toast('Could not save the new order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
+  }
+  function persistTierOrder(){
+    ptTiers().forEach(function(t, i){
+      if (t.order !== i){
+        t.order = i;
+        C.updateSub('partner-tiers', EV.id, t.id, { order: i }).catch(function(err){
+          toast('Could not save the new tier order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
+  }
 
   /* a link people paste in every shape imaginable; store one that works */
   function tidyUrl(v){
@@ -2557,17 +2893,39 @@
   }
 
   /* ---------------- page wiring ---------------- */
+  /* a brand-new event has zero tiers — rather than seed fake ones, the tier the
+     UI needs is created for real, on demand, the first time it's needed */
+  function ptEnsureTier(cb){
+    if (ptTiers().length){ cb(ptTiers()[0].id); return; }
+    var t = { id: uid('tier-'), name: 'Partners', weight: 'standard', order: 0 };
+    S.spTiers.push(t);
+    render();
+    C.createSub('partner-tiers', EV.id, { name: t.name, weight: t.weight, order: t.order }).then(function(res){
+      t.id = res.id;
+      cb(t.id);
+    }).catch(function(err){
+      toast('Could not create a tier — ' + (err && err.message ? err.message : 'try again.'));
+    });
+  }
+
   function wireSponsors(){
     var add = $('pt-add');
-    if (add) add.onclick = function(){ ptDialog(null, ptTiers()[0].id); };
+    if (add) add.onclick = function(){ ptEnsureTier(function(tid){ ptDialog(null, tid); }); };
 
     var addt = $('pt-addtier');
     if (addt) addt.onclick = function(){
-      S.spTiers.push({ id: uid('tier-'), name: 'New tier', weight:'standard' });
+      var t = { id: uid('tier-'), name: 'New tier', weight:'standard', order: ptTiers().length };
+      S.spTiers.push(t);
       ptCommit();
       toast('Tier added — give it a name');
       var n = document.querySelectorAll('.gname');
       if (n.length){ n[n.length - 1].focus(); n[n.length - 1].select(); }
+      C.createSub('partner-tiers', EV.id, { name: t.name, weight: t.weight, order: t.order }).then(function(res){
+        t.id = res.id;
+        render();
+      }).catch(function(err){
+        toast('Could not save the new tier — ' + (err && err.message ? err.message : 'try again.'));
+      });
     };
 
     document.querySelectorAll('[data-ptadd]').forEach(function(b){
@@ -2582,7 +2940,9 @@
       inp.onchange = function(){
         var v = inp.value.trim() || 'Untitled tier';
         ptTiers().forEach(function(t){ if (t.id === id) t.name = v; });
-        save();
+        C.updateSub('partner-tiers', EV.id, id, { name: v }).catch(function(err){
+          toast('Could not save the tier name — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
       inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
     });
@@ -2596,6 +2956,9 @@
         p.weight = WEIGHTS[(i + 1) % WEIGHTS.length].id;
         ptCommit();
         toast(p.name + ' is now ' + wLabel(p.weight).toLowerCase() + ' size');
+        C.updateSub('partners', EV.id, p.id, { weight: p.weight }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
     });
 
@@ -2628,6 +2991,16 @@
         if (t) t.weight = best;
         ptCommit();
         toast('Every logo in ' + (t ? t.name : 'this tier') + ' is now ' + wLabel(best).toLowerCase());
+        list.forEach(function(p){
+          C.updateSub('partners', EV.id, p.id, { weight: best }).catch(function(err){
+            toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+          });
+        });
+        if (t){
+          C.updateSub('partner-tiers', EV.id, t.id, { weight: best }).catch(function(err){
+            toast('Could not save the tier — ' + (err && err.message ? err.message : 'try again.'));
+          });
+        }
       };
     });
 
@@ -2641,10 +3014,19 @@
           n ? n + (n === 1 ? ' partner moves' : ' partners move') + ' to ' + keep.name + '. Nobody is deleted.'
             : 'The tier is empty, so nothing else changes.',
           'Delete tier', function(){
-            ptAll().forEach(function(p){ if (p.tid === tid) p.tid = keep.id; });
+            var moved = ptAll().filter(function(p){ return p.tid === tid; });
+            moved.forEach(function(p){ p.tid = keep.id; });
             S.spTiers = ptTiers().filter(function(x){ return x.id !== tid; });
             ptCommit();
             toast('Tier deleted');
+            moved.forEach(function(p){
+              C.updateSub('partners', EV.id, p.id, { tierId: keep.id }).catch(function(err){
+                toast('Could not move a partner — ' + (err && err.message ? err.message : 'try again.'));
+              });
+            });
+            C.deleteSub('partner-tiers', EV.id, tid).catch(function(err){
+              toast('Could not delete the tier — ' + (err && err.message ? err.message : 'try again.'));
+            });
           });
       };
     });
@@ -2662,6 +3044,7 @@
     mine.splice(j, 0, mine.splice(i, 1)[0]);
     S.partners = ptSplice(mine, p.tid);
     ptCommit();
+    persistPartnerOrder();
   }
   function ptTierMove(tid, dir){
     var ts = ptTiers();
@@ -2670,6 +3053,7 @@
     if (j < 0 || j >= ts.length) return;
     ts.splice(j, 0, ts.splice(i, 1)[0]);
     ptCommit();
+    persistTierOrder();
   }
 
   function ptDragDrop(){
@@ -2702,12 +3086,19 @@
         var after = (e.clientY - r.top) > r.height / 2;
         var p = ptById(dragId), t = ptById(row.getAttribute('data-pt'));
         if (!p || !t) return;
+        var tidChanged = p.tid !== t.tid;
         p.tid = t.tid;
         var list = ptAll().slice();
         list.splice(list.indexOf(p), 1);
         list.splice(list.indexOf(t) + (after ? 1 : 0), 0, p);
         S.partners = list;
         ptCommit();
+        if (tidChanged){
+          C.updateSub('partners', EV.id, p.id, { tierId: p.tid }).catch(function(err){
+            toast('Could not move partner — ' + (err && err.message ? err.message : 'try again.'));
+          });
+        }
+        persistPartnerOrder();
       });
     });
 
@@ -2721,6 +3112,9 @@
         if (!p) return;
         p.tid = g.getAttribute('data-pttier');
         ptCommit();
+        C.updateSub('partners', EV.id, p.id, { tierId: p.tid }).catch(function(err){
+          toast('Could not move partner — ' + (err && err.message ? err.message : 'try again.'));
+        });
       });
     });
   }
@@ -2803,6 +3197,9 @@
           S.partners = ptAll().filter(function(x){ return x.id !== editId; });
           ptCommit();
           toast('Partner removed');
+          C.deleteSub('partners', EV.id, editId).catch(function(err){
+            toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+          });
         });
     };
 
@@ -2933,12 +3330,19 @@
 
       $('pt-newt').onclick = function(){
         readForm();
-        var t = { id: uid('tier-'), name: 'New tier', weight:'standard' };
+        var tempId = uid('tier-');
+        var t = { id: tempId, name: 'New tier', weight:'standard', order: ptTiers().length };
         S.spTiers.push(t);
-        save();
-        Q[qi].tid = t.id;
+        Q[qi].tid = tempId;
         paintForm();
         toast('Tier added — rename it on the page');
+        C.createSub('partner-tiers', EV.id, { name: t.name, weight: t.weight, order: t.order }).then(function(res){
+          t.id = res.id;
+          Q.forEach(function(e){ if (e.tid === tempId) e.tid = res.id; });
+          if ($('pt-tid')) paintForm();
+        }).catch(function(err){
+          toast('Could not save the new tier — ' + (err && err.message ? err.message : 'try again.'));
+        });
       };
 
       /* a pasted link arrives in every shape; keep the stored one clean */
@@ -3035,11 +3439,17 @@
       }
       var clean = Q.map(function(e){
         return {
-          id: e.id, tid: e.tid, name: e.name, url: e.url, logo: e.logo || null,
+          id: e.id, tid: e.tid, name: e.name, url: e.url,
+          /* STOPGAP: the logo is a dataURL from the drag/drop file picker (loadLogo()/shrinkLogo()
+             above), stored straight in logoUrl — there is no Storage upload endpoint for partner
+             logos yet. Should move to a real upload (functions/lib/api.js's buildHeroImage() already
+             shows the pattern: file.save() + file.makePublic() + public URL) once one exists. */
+          logo: e.logo || null,
           weight: e.weight, status: e.status, contact: e.contact,
           email: e.email, phone: e.phone, note: e.note
         };
       });
+      var wasEditing = editing;
       if (editing){
         S.partners = ptAll().map(function(p){ return p.id === editId ? clean[0] : p; });
       } else {
@@ -3049,6 +3459,29 @@
       ptCommit();
       toast(editing ? 'Partner updated'
         : (clean.length === 1 ? clean[0].name + ' added' : clean.length + ' partners added'));
+
+      if (wasEditing){
+        C.updateSub('partners', EV.id, editId, {
+          tierId: clean[0].tid, name: clean[0].name, url: clean[0].url, logoUrl: clean[0].logo,
+          weight: clean[0].weight, status: clean[0].status, contact: clean[0].contact,
+          email: clean[0].email, phone: clean[0].phone, note: clean[0].note
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      } else {
+        var order0 = ptAll().length - clean.length;
+        Promise.all(clean.map(function(e, i){
+          return C.createSub('partners', EV.id, {
+            tierId: e.tid, name: e.name, url: e.url, logoUrl: e.logo, weight: e.weight,
+            status: e.status, contact: e.contact, email: e.email, phone: e.phone, note: e.note,
+            order: order0 + i
+          }).then(function(res){ e.id = res.id; e.order = order0 + i; });
+        })).then(function(){
+          render();
+        }).catch(function(err){
+          toast('Some partners may not have saved — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
     };
 
     paintQueue();
@@ -3099,8 +3532,18 @@
   function wireTheme(){
     document.querySelectorAll('[data-theme]').forEach(function(b){
       b.addEventListener('click', function(){
-        S.theme = b.getAttribute('data-theme'); save(); render();
+        S.theme = b.getAttribute('data-theme');
+        render();
         toast(S.theme + ' applied to this microsite');
+        /* paletteTheme, not theme — 'theme' on the event doc is a different, unrelated object the AI
+           generation pipeline owns (themeColor/headingFont/bodyFont/heroImageUrl); reusing that name here
+           would silently overwrite it for a generated event's real rendered page. See EVENT_FIELDS's own
+           comment in functions/lib/api.js. */
+        C.updateEvent(EV.id, { paletteTheme: S.theme }).then(function(){
+          EV.paletteTheme = S.theme;
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
       });
     });
   }
@@ -3425,70 +3868,416 @@
 
   /* ============================================================
      CONTENT : gallery, FAQ, contact
+
+     None of the three had a real backend before this — all three were fully
+     static (hardcoded arrays, no save at all). Each is now a thin wrapper over
+     its own subcollection (gallery/faqs/contacts); there is no legacy internal
+     field-naming to preserve, so the shape here matches the backend directly.
      ============================================================ */
+  function galAll(){ return S.gallery || []; }
+  function galById(id){
+    var a = galAll();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function loadGallery(){
+    return C.fetchSub('gallery', EV.id).then(function(items){
+      S.gallery = (items || []).map(function(g){
+        return { id: g.id, imageUrl: g.imageUrl || null, caption: g.caption || '', order: g.order };
+      }).sort(byOrder);
+    });
+  }
   function viewGallery(){
-    var shots = ['Opening keynote','Panel: the year ahead','Networking lounge','Award handover',
-                 'Delegate check-in','Roundtable session','Partner booths','Closing address'];
-    var cards = shots.map(function(t, i){
-      return '<div class="media-card" data-save="' + esc(t) + ' opened">' +
-          '<div class="media-thumb" style="background:linear-gradient(135deg,' + AV[i % AV.length] + '22,' + AV[(i+3) % AV.length] + '33)">' +
-            svg(IC.image, 24) + '</div>' +
-          '<div class="media-meta"><b>' + esc(t) + '</b><span>JPG · 1.2 MB</span></div>' +
+    var items = galAll();
+    var cards = items.map(function(g, i){
+      var thumb = g.imageUrl
+        ? '<div class="media-thumb" style="background-size:cover;background-position:center;' +
+            'background-image:url(\'' + g.imageUrl.replace(/'/g, '%27') + '\')"></div>'
+        : '<div class="media-thumb" style="background:linear-gradient(135deg,' + AV[i % AV.length] + '22,' +
+            AV[(i + 3) % AV.length] + '33)">' + svg(IC.image, 24) + '</div>';
+      return '<div class="media-card">' + thumb +
+          '<div class="media-meta">' +
+            '<input class="inp" style="font-size:12.5px;padding:6px 8px" data-galcap="' + g.id + '" ' +
+              'value="' + esc(g.caption || '') + '" placeholder="Caption">' +
+            '<button class="btn btn-ghost btn-icon" type="button" data-galdel="' + g.id + '" title="Remove">' +
+              svg(IC.trash, 14) + '</button>' +
+          '</div>' +
         '</div>';
     }).join('');
 
+    var body = items.length ? ('<div class="media-grid">' + cards + '</div>')
+      : emptyState(IC.image, 'No photos yet',
+          'Upload a few shots from past editions — they render in the Glimpses block and carry into mailers.',
+          '<button class="btn btn-primary btn-sm" type="button" id="gal-add2">' + svg(IC.plus, 13) + ' Upload photos</button>');
+
     return vhead('Gallery', 'Photos from past editions. They render in the Glimpses block and carry into mailers.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Upload dialog opened">' + svg(IC.plus, 13) + ' Upload photos</button>') +
+        '<button class="btn btn-primary btn-sm" type="button" id="gal-add">' + svg(IC.plus, 13) + ' Upload photos</button>') +
       '<div class="callout info">' + svg(IC.info, 17) +
         '<span><strong>Glimpses sell the next edition</strong>' +
         'Events with eight or more photos convert noticeably better than those without. Landscape shots at 1600px wide work best.</span></div>' +
       '<div style="height:16px"></div>' +
-      panel('Photos', shots.length + ' images', '<div class="media-grid">' + cards + '</div>');
+      panel('Photos', items.length + (items.length === 1 ? ' image' : ' images'), body) +
+      '<input type="file" accept="image/*" id="gal-file" style="display:none" multiple>';
+  }
+
+  function wireGallery(){
+    var fileInput = $('gal-file');
+    function openPicker(){ if (fileInput) fileInput.click(); }
+    var add = $('gal-add'); if (add) add.onclick = openPicker;
+    var add2 = $('gal-add2'); if (add2) add2.onclick = openPicker;
+
+    if (fileInput) fileInput.onchange = function(){
+      var files = Array.prototype.slice.call(fileInput.files || []);
+      fileInput.value = '';
+      if (!files.length) return;
+      var order0 = galAll().length;
+      files.forEach(function(file, idx){
+        /* readImage() (defined under Speakers' photo helpers) is the same FileReader-based
+           dataURL reader cropToSquare/shrinkLogo build on — reused as-is, no cropping needed here */
+        readImage(file, function(img, err){
+          if (err){ toast(err); return; }
+          /* STOPGAP: no Storage upload endpoint for gallery images yet, so the dataURL itself is
+             stored directly in imageUrl — see the same note on Speakers' photo/logo fields above.
+             Should move to a real upload (functions/lib/api.js's buildHeroImage() pattern) once
+             one exists. */
+          var item = { id: uid('gal-'), imageUrl: img.src, caption: '', order: order0 + idx };
+          S.gallery.push(item);
+          render();
+          C.createSub('gallery', EV.id, { imageUrl: item.imageUrl, caption: item.caption, order: item.order })
+            .then(function(res){ item.id = res.id; render(); })
+            .catch(function(err2){
+              toast('Could not save the photo — ' + (err2 && err2.message ? err2.message : 'try again.'));
+            });
+        });
+      });
+    };
+
+    document.querySelectorAll('[data-galcap]').forEach(function(inp){
+      var id = inp.getAttribute('data-galcap');
+      inp.onchange = function(){
+        var v = inp.value.trim();
+        var g = galById(id); if (g) g.caption = v;
+        C.updateSub('gallery', EV.id, id, { caption: v }).catch(function(err){
+          toast('Could not save the caption — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      };
+      inp.onkeydown = function(e){ if (e.key === 'Enter') inp.blur(); };
+    });
+
+    document.querySelectorAll('[data-galdel]').forEach(function(b){
+      b.onclick = function(){
+        var id = b.getAttribute('data-galdel');
+        confirmDialog('Remove this photo?',
+          'It comes off the Glimpses block on the live page. This cannot be undone from here.',
+          'Remove', function(){
+            S.gallery = galAll().filter(function(x){ return x.id !== id; });
+            render();
+            toast('Photo removed');
+            C.deleteSub('gallery', EV.id, id).catch(function(err){
+              toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+            });
+          });
+      };
+    });
+  }
+
+  /* ---------------- FAQ ---------------- */
+  function faqAll(){ return S.faqs || []; }
+  function faqById(id){
+    var a = faqAll();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function loadFaq(){
+    return C.fetchSub('faqs', EV.id).then(function(items){
+      S.faqs = (items || []).map(function(f){
+        return { id: f.id, question: f.question || '', answer: f.answer || '', order: f.order };
+      }).sort(byOrder);
+    });
+  }
+  function persistFaqOrder(){
+    faqAll().forEach(function(f, i){
+      if (f.order !== i){
+        f.order = i;
+        C.updateSub('faqs', EV.id, f.id, { order: i }).catch(function(err){
+          toast('Could not save the new order — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    });
   }
 
   function viewFAQ(){
-    var rows = FAQS.map(function(f, i){
+    var items = faqAll();
+    var rows = items.map(function(f, i){
       return '<div class="sec-row" style="align-items:flex-start">' +
           '<span class="grip" style="margin-top:2px">' + svg(IC.grip, 16) + '</span>' +
-          '<span class="sn"><b>' + esc(f[0]) + '</b>' +
-          '<span style="display:block;margin-top:3px;line-height:1.55">' + esc(f[1]) + '</span></span>' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Question opened">' + svg(IC.edit, 15) + '</button>' +
+          '<span class="sn"><b>' + esc(f.question || 'Untitled question') + '</b>' +
+          '<span style="display:block;margin-top:3px;line-height:1.55">' + esc(f.answer || '') + '</span></span>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-faqup="' + f.id + '" title="Move up"' +
+            (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-faqdown="' + f.id + '" title="Move down"' +
+            (i === items.length - 1 ? ' disabled' : '') + '>' + svg(IC.down, 14) + '</button>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-faqedit="' + f.id + '" title="Edit">' +
+            svg(IC.edit, 15) + '</button>' +
         '</div>';
     }).join('');
 
+    var body = items.length ? ('<div>' + rows + '</div>')
+      : emptyState(IC.help, 'No questions yet',
+          'Answer the things delegates always ask — good answers here cut enquiry email volume sharply.',
+          '<button class="btn btn-primary btn-sm" type="button" id="faq-add2">' + svg(IC.plus, 13) + ' Add question</button>');
+
     return vhead('FAQ', 'Answers shown in the FAQ accordion. Good answers here cut enquiry email volume sharply.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Question added">' + svg(IC.plus, 13) + ' Add question</button>') +
-      panelFlush('Questions', FAQS.length + ' published', '<div>' + rows + '</div>');
+        '<button class="btn btn-primary btn-sm" type="button" id="faq-add">' + svg(IC.plus, 13) + ' Add question</button>') +
+      panelFlush('Questions', items.length + ' published', body);
+  }
+
+  function faqDialog(editId){
+    var editing = !!editId;
+    var src = editing ? faqById(editId) : null;
+    if (editing && !src) return;
+    var e = editing ? JSON.parse(JSON.stringify(src)) : { id: uid('faq-'), question:'', answer:'' };
+
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="fbg"><div class="modal" style="width:min(560px,100%)">' +
+        '<div class="modal-head"><h3>' + (editing ? 'Edit question' : 'Add question') + '</h3>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="fclose" aria-label="Close">' +
+            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
+        '</div>' +
+        '<div class="modal-body"><div class="frow">' +
+          '<div class="field c12"><div class="flabel-row"><label for="faq-q">Question ' +
+            '<span class="pill-req">Required</span></label></div>' +
+            '<input class="inp" id="faq-q" value="' + esc(e.question || '') + '" ' +
+              'placeholder="e.g. Is there a delegate fee?"></div>' +
+          '<div class="field c12"><label for="faq-a">Answer</label>' +
+            '<textarea class="inp" id="faq-a" style="min-height:100px">' + esc(e.answer || '') + '</textarea></div>' +
+        '</div></div>' +
+        '<div class="modal-foot">' +
+          '<span id="faq-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+          '<button class="btn btn-secondary" type="button" id="fcancel">Cancel</button>' +
+          (editing ? '<button class="btn btn-secondary" type="button" id="fdel">Remove question</button>' : '') +
+          '<button class="btn btn-primary" type="button" id="fsave">' + (editing ? 'Save changes' : 'Add question') + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    var close = function(){ host.innerHTML = ''; };
+    $('fclose').onclick = close;
+    $('fcancel').onclick = close;
+    $('fbg').onclick = function(ev){ if (ev.target.id === 'fbg') close(); };
+
+    if (editing) $('fdel').onclick = function(){
+      close();
+      confirmDialog('Remove this question?',
+        'It comes off the FAQ accordion on the live page. This cannot be undone from here.',
+        'Remove', function(){
+          S.faqs = faqAll().filter(function(x){ return x.id !== editId; });
+          render();
+          toast('Question removed');
+          C.deleteSub('faqs', EV.id, editId).catch(function(err){
+            toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+          });
+        });
+    };
+
+    $('fsave').onclick = function(){
+      var q = $('faq-q').value.trim(), a = $('faq-a').value.trim();
+      if (!q){ $('faq-err').textContent = 'A question is needed before this can be saved.'; return; }
+      if (editing){
+        var f = faqById(editId);
+        f.question = q; f.answer = a;
+        close(); render();
+        toast('Question updated');
+        C.updateSub('faqs', EV.id, editId, { question: q, answer: a }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      } else {
+        var item = { id: e.id, question: q, answer: a, order: faqAll().length };
+        S.faqs.push(item);
+        close(); render();
+        toast('Question added');
+        C.createSub('faqs', EV.id, { question: q, answer: a, order: item.order }).then(function(res){
+          item.id = res.id;
+          render();
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      }
+    };
+  }
+
+  function faqMove(id, dir){
+    var list = faqAll();
+    var i = list.map(function(x){ return x.id; }).indexOf(id);
+    var j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    list.splice(j, 0, list.splice(i, 1)[0]);
+    render();
+    persistFaqOrder();
+  }
+
+  function wireFaq(){
+    var add = $('faq-add'); if (add) add.onclick = function(){ faqDialog(null); };
+    var add2 = $('faq-add2'); if (add2) add2.onclick = function(){ faqDialog(null); };
+    document.querySelectorAll('[data-faqedit]').forEach(function(b){
+      b.onclick = function(){ faqDialog(b.getAttribute('data-faqedit')); };
+    });
+    document.querySelectorAll('[data-faqup]').forEach(function(b){
+      b.onclick = function(){ faqMove(b.getAttribute('data-faqup'), -1); };
+    });
+    document.querySelectorAll('[data-faqdown]').forEach(function(b){
+      b.onclick = function(){ faqMove(b.getAttribute('data-faqdown'), 1); };
+    });
+  }
+
+  /* ---------------- Contact ---------------- */
+  function ctAll(){ return S.contacts || []; }
+  function ctById(id){
+    var a = ctAll();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  }
+  function loadContact(){
+    return C.fetchSub('contacts', EV.id).then(function(items){
+      S.contacts = (items || []).map(function(c){
+        return { id: c.id, label: c.label || '', name: c.name || '', email: c.email || '', phone: c.phone || '', order: c.order };
+      }).sort(byOrder);
+    });
   }
 
   function viewContact(){
-    var team = [
-      ['Delegate enquiries','Priya Sharma','delegates@etoneworld.com','+91 98200 11223'],
-      ['Partnerships','Karan Mehta','partners@etoneworld.com','+91 98200 44556'],
-      ['Speaking opportunities','Ananya Rao','speakers@etoneworld.com','+91 98200 77889'],
-      ['Press & media','Rohit Nair','press@etoneworld.com','+91 98200 99001']
-    ];
+    var team = ctAll();
     var rows = team.map(function(t){
-      return '<tr><td class="td-strong">' + esc(t[0]) + '</td>' +
-        '<td>' + esc(t[1]) + '</td>' +
-        '<td><a href="#">' + esc(t[2]) + '</a></td>' +
-        '<td class="num">' + esc(t[3]) + '</td>' +
-        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Contact opened">' + svg(IC.edit, 14) + '</button></td></tr>';
+      return '<tr><td class="td-strong">' + esc(t.label || 'Untitled') + '</td>' +
+        '<td>' + esc(t.name || '—') + '</td>' +
+        '<td>' + (t.email ? '<a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : '—') + '</td>' +
+        '<td class="num">' + esc(t.phone || '—') + '</td>' +
+        '<td style="text-align:right">' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-ctedit="' + t.id + '" title="Edit">' + svg(IC.edit, 14) + '</button>' +
+          '<button class="btn btn-ghost btn-icon" type="button" data-ctdel="' + t.id + '" title="Remove">' + svg(IC.trash, 14) + '</button>' +
+        '</td></tr>';
     }).join('');
 
-    return vhead('Contact', 'Who visitors reach, and where the enquiry form lands.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Contact added">' + svg(IC.plus, 13) + ' Add contact</button>') +
-      panelFlush('Contact desks', team.length + ' listed',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>Purpose</th><th>Owner</th><th>Email</th><th>Phone</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>') +
-      panel('Enquiry form', 'Shown under the contact block',
-        '<div class="frow">' +
-          '<div class="field c6"><label>Send submissions to</label><input class="inp" value="delegates@etoneworld.com"></div>' +
-          '<div class="field c6"><label>Auto-reply</label><select class="inp"><option>Send a thank-you email</option><option>Do not reply</option></select></div>' +
-          '<div class="field c12"><label>Address shown on the site</label>' +
-            '<input class="inp" value="The Times of India Building, Dr DN Road, Mumbai 400001"></div>' +
-        '</div>');
+    var deskPanel = team.length
+      ? panelFlush('Contact desks', team.length + ' listed',
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>Purpose</th><th>Owner</th><th>Email</th><th>Phone</th><th></th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>')
+      : panel('Contact desks', '0 listed', emptyState(IC.headset, 'No contact desks added yet',
+          'Add who a visitor should reach for delegate, partner, speaker or press enquiries.',
+          '<button class="btn btn-primary btn-sm" type="button" id="ct-add2">' + svg(IC.plus, 13) + ' Add contact</button>'));
+
+    /* NOTE: the "Enquiry form" block that used to render here (send-to address, auto-reply,
+       site address) was hardcoded display-only markup with no save handler at all even in the
+       old prototype, and there is no backend field for it (not in EVENT_FIELDS, no subcollection) —
+       out of scope for this pass, which only covers the `contacts` resource above. Removed rather
+       than left as fake, unwired content; a future task should add a real field for it before any
+       UI for it comes back. */
+
+    return vhead('Contact', 'Who visitors reach.',
+        '<button class="btn btn-primary btn-sm" type="button" id="ct-add">' + svg(IC.plus, 13) + ' Add contact</button>') +
+      deskPanel;
+  }
+
+  function ctDialog(editId){
+    var editing = !!editId;
+    var src = editing ? ctById(editId) : null;
+    if (editing && !src) return;
+    var e = editing ? JSON.parse(JSON.stringify(src)) : { id: uid('ct-'), label:'', name:'', email:'', phone:'' };
+
+    var host = $('modal-host');
+    host.innerHTML =
+      '<div class="modal-bg" id="ctbg"><div class="modal" style="width:min(560px,100%)">' +
+        '<div class="modal-head"><h3>' + (editing ? 'Edit contact desk' : 'Add contact desk') + '</h3>' +
+          '<button class="btn btn-ghost btn-icon" type="button" id="ctclose" aria-label="Close">' +
+            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
+        '</div>' +
+        '<div class="modal-body"><div class="frow">' +
+          '<div class="field c12"><div class="flabel-row"><label for="ct-label">Purpose ' +
+            '<span class="pill-req">Required</span></label></div>' +
+            '<input class="inp" id="ct-label" value="' + esc(e.label || '') + '" ' +
+              'placeholder="e.g. Delegate enquiries"></div>' +
+          '<div class="field c6"><label for="ct-name">Owner</label>' +
+            '<input class="inp" id="ct-name" value="' + esc(e.name || '') + '" placeholder="e.g. Priya Sharma"></div>' +
+          '<div class="field c6"><label for="ct-email">Email</label>' +
+            '<input class="inp" id="ct-email" value="' + esc(e.email || '') + '" placeholder="name@etoneworld.com"></div>' +
+          '<div class="field c6"><label for="ct-phone">Phone</label>' +
+            '<input class="inp" id="ct-phone" value="' + esc(e.phone || '') + '" placeholder="+91 98200 00000"></div>' +
+        '</div></div>' +
+        '<div class="modal-foot">' +
+          '<span id="ct-err" style="flex:1;font-size:12px;color:var(--accent-strong);align-self:center"></span>' +
+          '<button class="btn btn-secondary" type="button" id="ctcancel">Cancel</button>' +
+          (editing ? '<button class="btn btn-secondary" type="button" id="ctdel">Remove</button>' : '') +
+          '<button class="btn btn-primary" type="button" id="ctsave">' + (editing ? 'Save changes' : 'Add contact') + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    var close = function(){ host.innerHTML = ''; };
+    $('ctclose').onclick = close;
+    $('ctcancel').onclick = close;
+    $('ctbg').onclick = function(ev){ if (ev.target.id === 'ctbg') close(); };
+
+    if (editing) $('ctdel').onclick = function(){
+      close();
+      confirmDialog('Remove this contact desk?',
+        'It comes off the Contact block on the live page. This cannot be undone from here.',
+        'Remove', function(){
+          S.contacts = ctAll().filter(function(x){ return x.id !== editId; });
+          render();
+          toast('Contact removed');
+          C.deleteSub('contacts', EV.id, editId).catch(function(err){
+            toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+          });
+        });
+    };
+
+    $('ctsave').onclick = function(){
+      var label = $('ct-label').value.trim(), name = $('ct-name').value.trim(),
+          email = $('ct-email').value.trim(), phone = $('ct-phone').value.trim();
+      if (!label){ $('ct-err').textContent = 'A purpose is needed before this can be saved.'; return; }
+      if (editing){
+        var c = ctById(editId);
+        c.label = label; c.name = name; c.email = email; c.phone = phone;
+        close(); render();
+        toast('Contact updated');
+        C.updateSub('contacts', EV.id, editId, { label: label, name: name, email: email, phone: phone }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
+      } else {
+        var item = { id: e.id, label: label, name: name, email: email, phone: phone, order: ctAll().length };
+        S.contacts.push(item);
+        close(); render();
+        toast('Contact added');
+        C.createSub('contacts', EV.id, { label: label, name: name, email: email, phone: phone, order: item.order })
+          .then(function(res){ item.id = res.id; render(); })
+          .catch(function(err){
+            toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+          });
+      }
+    };
+  }
+
+  function wireContact(){
+    var add = $('ct-add'); if (add) add.onclick = function(){ ctDialog(null); };
+    var add2 = $('ct-add2'); if (add2) add2.onclick = function(){ ctDialog(null); };
+    document.querySelectorAll('[data-ctedit]').forEach(function(b){
+      b.onclick = function(){ ctDialog(b.getAttribute('data-ctedit')); };
+    });
+    document.querySelectorAll('[data-ctdel]').forEach(function(b){
+      b.onclick = function(){
+        var id = b.getAttribute('data-ctdel');
+        confirmDialog('Remove this contact desk?',
+          'It comes off the Contact block on the live page. This cannot be undone from here.',
+          'Remove', function(){
+            S.contacts = ctAll().filter(function(x){ return x.id !== id; });
+            render();
+            toast('Contact removed');
+            C.deleteSub('contacts', EV.id, id).catch(function(err){
+              toast('Could not delete — ' + (err && err.message ? err.message : 'try again.'));
+            });
+          });
+      };
+    });
   }
 
   /* ============================================================
@@ -3672,7 +4461,13 @@
       b.addEventListener('click', function(){
         var t = b.getAttribute('data-navitem');
         S.nav.forEach(function(n){ if (n.t === t) n.on = !n.on; });
-        save(); render();
+        render();
+        /* nav lives on the event doc now, not localStorage */
+        C.updateEvent(EV.id, { nav: S.nav }).then(function(){
+          EV.nav = S.nav;
+        }).catch(function(err){
+          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+        });
       });
     });
   }
@@ -3787,6 +4582,19 @@
 
   function render(){
     var r = routeId();
+
+    var subKey = SUB_ROUTE_KEY[r];
+    if (subKey && !SUB[subKey]){
+      renderSubLoading();
+      SUB_LOADERS[subKey]().then(function(){
+        SUB[subKey] = true;
+        render();
+      }).catch(function(err){
+        renderSubLoadError(err, function(){ render(); });
+      });
+      return;
+    }
+
     var fn = VIEWS[r] || VIEWS.dashboard;
     $('view').innerHTML = tabsHTML() + fn();
 
@@ -3812,6 +4620,9 @@
     if (r === 'content/speakers') wireSpeakers();
     if (r === 'content/agenda') wireAgenda();
     if (r === 'content/sponsors') wireSponsors();
+    if (r === 'content/gallery') wireGallery();
+    if (r === 'content/faq') wireFaq();
+    if (r === 'content/contact') wireContact();
     if (r === 'design/sections') wireSections();
     if (r === 'design/nav') wireSetNav();
     if (r === 'design/theme') wireTheme();
@@ -3907,11 +4718,52 @@
 
   /* ============================================================
      BOOT
+
+     EV loads over the network now, so there are three states to show,
+     never a silent fourth one where a fake event quietly stands in:
+       1. renderLoading()   — while fetchEvent() is in flight
+       2. boot()            — once it resolves, the console as it always was
+       3. renderLoadError() — on a real failure (404 / network) — never a
+                               fallback event, just the truth and a way back
+     A 401 (not signed in / stale token) isn't shown as an in-page error at
+     all — it sends the admin to sign in, same as any other admin page here.
      ============================================================ */
-  function boot(){
-    $('ev-name').textContent = EV.name + ' | ' + (PORTALS[EV.portal] || '');
-    $('ev-meta').textContent = fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (TYPES[EV.type] || EV.type);
+  function paintHeader(){
+    $('ev-name').textContent = EV.name + (PORTALS[EV.portal] ? ' | ' + PORTALS[EV.portal] : '');
+    var metaBits = [fmtDT(EV.start)];
+    if (EV.eventNo) metaBits.push(EV.eventNo);
+    var catLabel = TYPES[EV.category] || EV.category;
+    if (catLabel) metaBits.push(catLabel);
+    $('ev-meta').textContent = metaBits.join('  |  ');
     document.title = 'Edit — ' + EV.name + ' — Revamp CMS';
+  }
+
+  function renderLoading(){
+    $('ev-name').textContent = 'Loading…';
+    $('ev-meta').textContent = '';
+    $('rail').innerHTML = '';
+    $('view').innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+        'gap:14px;padding:140px 20px;text-align:center;color:var(--text-muted)">' +
+        '<span class="spin" style="width:26px;height:26px;border-width:3px"></span>' +
+        '<span style="font-size:13.5px;font-weight:600">Loading event…</span>' +
+      '</div>';
+  }
+
+  function renderLoadError(err){
+    var msg = (err && err.message) ? err.message : 'Something went wrong loading this event.';
+    $('ev-name').textContent = 'Couldn’t load this event';
+    $('ev-meta').textContent = '';
+    $('rail').innerHTML = '';
+    document.title = 'Edit Event — Revamp CMS';
+    $('view').innerHTML = '<div style="padding:60px 20px">' + emptyState(
+      IC.info, 'Couldn’t load this event', msg,
+      '<a class="btn btn-primary btn-sm" href="Event_Listing.html">Back to events</a>'
+    ) + '</div>';
+  }
+
+  function boot(){
+    paintHeader();
 
     $('btn-preview').onclick = openPreview;
     $('btn-publish').onclick = doPublish;
@@ -3924,6 +4776,39 @@
     go(location.hash.slice(1) || 'content/basics');
   }
 
-  boot();
+  function init(){
+    renderLoading();
+
+    if (!eventSlug){
+      renderLoadError(new Error('No event was specified. Open this page from Event Listing.'));
+      return;
+    }
+
+    C.fetchEvent(eventSlug).then(function(data){
+      EV = data;
+      CTX.EV = EV;
+      CTX.PEOPLE = PEOPLE;
+
+      /* sections/nav/paletteTheme are real fields on the event doc now — seed this file's local mirror
+         from them, falling back to this file's own defaults only when the event has nothing saved there
+         yet (a brand-new event, legitimate empty-state scaffolding, not fake data). Deliberately
+         EV.paletteTheme, not EV.theme — see wireTheme()'s own comment: 'theme' is a different, AI
+         pipeline-owned object for generated events, not this console's 4-preset palette name. */
+      S.sections = (EV.sections != null) ? EV.sections : S.sections;
+      S.nav      = (EV.nav != null)      ? EV.nav      : S.nav;
+      S.theme    = (EV.paletteTheme != null) ? EV.paletteTheme : S.theme;
+
+      boot();
+    }).catch(function(err){
+      var msg = (err && err.message) || '';
+      if ((err && err.status === 401) || /not signed in/i.test(msg)){
+        location.href = 'index.html';
+        return;
+      }
+      renderLoadError(err);
+    });
+  }
+
+  init();
 })();
 </script>
