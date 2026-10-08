@@ -111,11 +111,6 @@
   .btn-xs{ padding: 4px 9px; font-size: 11.5px; border-radius: 5px; font-weight: 700; }
   .btn-ai{ background: var(--review-soft); color: var(--review); }
   .btn-ai:hover{ background: var(--review); color: var(--surface); }
-  /* the "unusual choice" treatment for a secondary action that's technically allowed but not the one we
-     want picked by reflex (see openTemplateMismatchModal's "Generate anyway") — amber, same pattern as
-     .btn-ai above, just on the --warn tokens instead of --review */
-  .btn-warn{ background: var(--warn-soft); color: var(--warn); }
-  .btn-warn:hover{ background: var(--warn); color: var(--surface); }
 
   /* ============ WIZARD SHELL ============ */
   /* height (not min-height): bounds the column so .wiz-split's two panes can actually scroll independently
@@ -1926,16 +1921,12 @@
   /* =========================================================
      TEMPLATES
 
-     briefReady / briefCategory (A2/E2): this is picker-UI convenience ONLY — it decides which templates
-     show up in the "Generate from a brief" dropdown (GENERATE_TEMPLATES below) and powers the brief/
-     template mismatch warning (briefCategoryMismatch), nothing more. The REAL, enforced gate is server-
-     side: functions/lib/api.js's handleGenerateContent reads templates/<id>/template.json's own
-     "briefReady"/"briefCategory" fields directly and rejects the request outright if briefReady isn't
-     literally true — it does not read or trust anything in this array. There is no fetch-at-load
-     mechanism that derives these fields here FROM each template's own template.json, so the two must be
-     kept in sync BY HAND whenever a template's own briefReady/briefCategory changes (or a new briefReady
-     template is added) — this array is a client-side mirror of a fact the server, not this file, actually
-     owns and checks.
+     Still used by the OTHER step-2 paths ("Let AI design it", "Use a previous edition's layout", the manual
+     gallery) — those are genuinely about picking/redesigning one specific real ET template. "Generate from a
+     brief" no longer reads this array at all: it builds its own section structure from the shared library
+     (templates/_library/) instead, so these entries' briefReady/briefCategory fields below are inert
+     leftovers from when that flow picked a ported template too — harmless, but no longer read by anything;
+     the real per-template audit notes in each comment are still accurate history, just not acted on anymore.
   ========================================================= */
   var TEMPLATES = [
     { id:'tech500', name:'TECH500', tag:'IP event', cat:'IP', img:'template-previews/tech500-mini.jpg', imgFull:'template-previews/tech500-full.jpg',
@@ -3058,13 +3049,6 @@
   function categoryHasPortedTemplate(){
     return templatesForCategory().some(function(t){ return !!t.site; });
   }
-  /* whether the active category has at least one template that's actually briefReady (see TEMPLATES —
-     a real content.map hero-image fill rule AND a verified, non-bled-through banner) — "Generate from a
-     brief" only makes sense where the result's hero can genuinely be wizard-filled */
-  function categoryHasBriefReadyTemplate(){
-    return templatesForCategory().some(function(t){ return !!t.briefReady; });
-  }
-
   /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point.
      `skip` (libId -> true) carries over section choices made in the Preview modal's toggles. */
   function selectTemplate(tplId, skip){
@@ -3433,9 +3417,6 @@
   /* only templates actually confirmed briefReady (see TEMPLATES) — a real, working hero-image fill rule
      is not enough on its own if the banner's own ported assets haven't been checked against event bleed-
      through (see making-ai-work's fix this session, and the templates still missing that audit) */
-  var GENERATE_TEMPLATES = TEMPLATES.filter(function(t){ return !!t.site && !!t.briefReady; });
-  function templateBySite(site){ var t = null; TEMPLATES.forEach(function(x){ if (x.site === site) t = x; }); return t; }
-
   /* Worst-case latency for one callGeminiJson call on the backend, including its one retry on a timeout/5xx
      (see the comment on GEMINI_WORST_CASE_MS right above callGeminiJson in functions/lib/api.js — this is
      that exact number, not a separately-guessed one). The `generate` step is the one call on this pipeline
@@ -3443,85 +3424,23 @@
      step this reassurance timer applies to — see renderBriefProgress's "still writing" line. */
   var GEMINI_WORST_CASE_MS = 120000;
 
-  /* ---------- Item B: brief/template industry mismatch (requirement E1) ----------
-     Compares the brief's own inferredCategory (from /api/extract-brief — see BRIEF_SCHEMA in
-     functions/lib/api.js; empty when the document gave no real signal) against the chosen template's own
-     briefCategory (see TEMPLATES above). Free-text labels on both sides, so exact equality is too strict
-     ("CIO technology leadership" vs "CIO / enterprise tech leadership" are the same thing) — instead this
-     checks whether the two labels share any real root word (case-insensitive, either one a substring of the
-     other so "tech"/"technology" still match), after dropping a short stopword list. No shared root at all
-     is treated as a real mismatch (e.g. "retail / e-commerce" vs "CIO / enterprise tech leadership" share
-     nothing) — loose enough not to fire on wording differences, strict enough to still catch a genuinely
-     different industry. */
-  function briefCategoryMismatch(inferredCategory, templateCategory){
-    var STOPWORDS = ['and','the','for','with','from','your','this','that','are'];
-    function words(s){
-      return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ')
-        .filter(function(w){ return w.length >= 2 && STOPWORDS.indexOf(w) === -1; });
-    }
-    var a = words(inferredCategory), b = words(templateCategory);
-    if (!a.length || !b.length) return false;
-    var sharesRoot = a.some(function(wa){
-      return b.some(function(wb){ return wa === wb || wa.indexOf(wb) !== -1 || wb.indexOf(wa) !== -1; });
-    });
-    return !sharesRoot;
-  }
+  /* Generate from a brief no longer asks the user to pick a template at all: the AI designs the section
+     structure itself (POST /api/plan-structure, functions/lib/api.js) from a shared, reusable library
+     (templates/_library/sections/) instead of pouring content into one of the hand-ported real-event
+     templates (tech500, making-ai-work, …) — those stay around for the OTHER step-2 paths ("Let AI design
+     it", the manual gallery), which are genuinely about a specific real template, but are reference-only as
+     far as this flow is concerned. That also retires the brief/template industry-mismatch warning (E1) that
+     used to live here — there's no longer a fixed template for the brief to mismatch against; the structure
+     plan just picks sections the material actually supports. */
 
-  /* Blocking warning shown when the brief's own inferred industry doesn't read as a match for the chosen
-     template's briefCategory (see briefCategoryMismatch above). "Generate anyway" resumes the paused
-     pipeline exactly where it left off; "Change template" reopens the original modal with the SAME inputs
-     so the user only has to re-pick a template, not start over. Dismissing via the × / Escape / scrim is
-     deliberately wired to neither action (never a silent "generate anyway" — that would be worse than being
-     stuck) — but it must not leave the pipeline stuck either, so onDismiss just re-shows this same modal
-     with the same inferredCategory/tpl/actions, giving the user another chance to pick one of the two real
-     buttons. × means "let me look at this again," not "cancel out of this entirely." */
-  function openTemplateMismatchModal(inferredCategory, tpl, actions){
-    openModal({
-      title: 'This brief doesn’t read like a ' + tpl.name + ' event',
-      sub: 'Your brief reads as a ' + inferredCategory + ' event. ' + tpl.name + ' is built and themed for ' +
-        tpl.briefCategory + '. Generating into it anyway can leave a mismatched tone, section emphasis, or imagery — nothing breaks, but it will look off until you fix it by hand.',
-      body: '<div class="callout amber">' + IC.warn +
-        '<span><strong>Why this matters</strong>Templates are tuned for their own industry’s content and layout — this isn’t a hard block, just a heads-up before you spend the next minute generating into the wrong shape.</span></div>',
-      confirm: 'Change template',
-      cancelLabel: 'Generate anyway, I understand the mismatch',
-      // onConfirm runs, THEN openModal's own click handler does close() (root.innerHTML = ''), which would
-      // wipe out a modal opened synchronously inside onConfirm — same shared #modal-root, so reopening one
-      // here has to defer to the next tick, exactly like openCloneDesignModal/confirmCloneDesign do above.
-      onConfirm: function(){ if (actions.onChangeTemplate) setTimeout(actions.onChangeTemplate, 0); },
-      onCancel: function(){ if (actions.onGenerateAnyway) actions.onGenerateAnyway(); },
-      onDismiss: function(){ openTemplateMismatchModal(inferredCategory, tpl, actions); }
-    });
-    /* the "unusual choice" treatment (D1/.btn-warn above), plus a 2s no-reflex-click delay with no visible
-       countdown — just disabled, then quietly not */
-    var genAnywayBtn = $('modal-cancel');
-    if (genAnywayBtn){
-      genAnywayBtn.classList.remove('btn-secondary');
-      genAnywayBtn.classList.add('btn-warn');
-      genAnywayBtn.disabled = true;
-      setTimeout(function(){ genAnywayBtn.disabled = false; }, 2000);
-    }
-  }
-
-  function openGenerateFromBriefModal(prefill){
-    var tplOptions = GENERATE_TEMPLATES.map(function(t){
-      return '<option value="' + esc(t.site) + '">' + esc(t.name) + '</option>';
-    }).join('');
-    /* only a couple of templates qualify for now (see GENERATE_TEMPLATES) — say so right under the picker
-       rather than let a suspiciously short list look like a bug */
-    var fewNotice = (GENERATE_TEMPLATES.length > 0 && GENERATE_TEMPLATES.length <= 2)
-      ? '<div class="callout plain" style="margin-top:8px;">' + IC.info +
-          '<span>Only templates that are fully brief-ready are listed here — more are on the way.</span></div>'
-      : '';
+  function openGenerateFromBriefModal(){
     openModal({
       title: 'Generate from a brief',
-      sub: 'Everything below is optional except the template — the more you give it, the better grounded the result. Competitor material is used for structure and ideas only, never copied.',
+      sub: 'Everything below is optional — the more you give it, the better grounded the result. Gemini designs the section structure itself, writes the content, and benchmarks it against competitor material (used for structure and ideas only, never copied).',
       wide: true,
       confirm: 'Generate',
       body:
-        '<div class="field"><label class="flabel" for="gb-template">Template</label>' +
-          '<select class="inp" id="gb-template">' + tplOptions + '</select></div>' +
-        fewNotice +
-        '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-doc">Overview document (PDF)</label>' +
+        '<div class="field"><label class="flabel" for="gb-doc">Overview document (PDF)</label>' +
           '<input class="inp" id="gb-doc" type="file" accept="application/pdf">' +
         '</div>' +
         '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>' +
@@ -3542,30 +3461,6 @@
         '</label>',
       onConfirm: function(){ startGenerateFromBrief(); }
     });
-    /* re-opening after "Change template" (see openTemplateMismatchModal) — put back the same PDF/URLs/
-       future-edition choice so the user only has to re-pick a template, not redo the whole form. The file
-       input can't be set with a plain string value (browsers block that outright), so this uses the
-       DataTransfer trick to hand the same real File object back to the <input type=file> — supported in
-       every browser this app already targets (Chrome/Edge/Firefox/Safari, all evergreen). */
-    if (prefill){
-      var fileInput = $('gb-doc');
-      if (fileInput && prefill.file){
-        try {
-          var dt = new DataTransfer();
-          dt.items.add(prefill.file);
-          fileInput.files = dt.files;
-        } catch(e){ /* older engine without DataTransfer support: field is just left empty, user re-attaches */ }
-      }
-      if (prefill.urls){
-        if ($('gb-current'))  $('gb-current').value  = prefill.urls.current  || '';
-        if ($('gb-previous')) $('gb-previous').value = prefill.urls.previous || '';
-        if ($('gb-comp1'))    $('gb-comp1').value    = prefill.urls.comp1    || '';
-        if ($('gb-comp2'))    $('gb-comp2').value    = prefill.urls.comp2    || '';
-      }
-      if ($('gb-future')) $('gb-future').checked = !!prefill.future;
-      // the template itself is deliberately left at its default option — the whole point of reopening is
-      // for the user to consciously pick a DIFFERENT one, not land back on the one that just mismatched.
-    }
   }
 
   /* The specific, human-readable cause shown under an errored step's label (D2/D3) — NEVER the raw server
@@ -3574,6 +3469,7 @@
   function briefStepErrorCause(key){
     if (key === 'brief') return 'Couldn’t read this PDF. Try a different file, or re-upload the same one.';
     if (key.indexOf('source') === 0) return 'Couldn’t reach this page. Check the URL still works, or remove it and continue.';
+    if (key === 'plan') return 'Something went wrong designing the site structure. This one’s safe to retry.';
     if (key === 'generate') return 'Something went wrong writing your content. This one’s safe to retry — nothing else needs to re-run.';
     return 'Something went wrong.';
   }
@@ -3590,7 +3486,6 @@
      empty .catch(function(){ setStep(...,'error'); }) with no rethrow) and had no way to resume a failed
      brief/generate row at all short of starting over. */
   function startGenerateFromBrief(){
-    var templateSite = $('gb-template').value;
     var fileInput = $('gb-doc');
     var file = fileInput && fileInput.files && fileInput.files[0];
     var rawUrls = {
@@ -3619,6 +3514,7 @@
         : s.type === 'currentEdition' ? 'Researching this edition’s own page' : 'Researching the previous edition';
       steps.push({ key: 'source' + i, label: label, status: 'pending', url: s.url, type: s.type });
     });
+    steps.push({ key: 'plan', label: 'Designing the site structure', status: 'pending' });
     steps.push({ key: 'generate', label: 'Generating content', status: 'pending' });
     var order = steps.map(function(s){ return s.key; });
 
@@ -3660,8 +3556,14 @@
         return postJson('/api/ingest-source', { eventId: eventId, url: s.url, type: s.type });
       };
     });
+    // "gen-<eventId>" is a GENERATED template, not a real ported one — functions/lib/api.js's
+    // handleGenerateContent reads the structurePlan the 'plan' row below just wrote (plus each chosen
+    // library section's own map.json) to build its content.map, instead of a real templates/<id>/template.json.
+    runners.plan = function(){
+      return postJson('/api/plan-structure', { eventId: eventId });
+    };
     runners.generate = function(){
-      return postJson('/api/generate-content', { eventId: eventId, templateId: templateSite, eventMeta: eventMeta, futureEdition: futureEdition });
+      return postJson('/api/generate-content', { eventId: eventId, templateId: 'gen-' + eventId, eventMeta: eventMeta, futureEdition: futureEdition });
     };
 
     // the `generate` row's "still writing, hasn't stalled" reassurance (D3's own clock, never the warning
@@ -3669,37 +3571,24 @@
     var stillWritingTimer = null;
     function clearStillWritingTimer(){ if (stillWritingTimer){ clearTimeout(stillWritingTimer); stillWritingTimer = null; } }
 
+    // both 'plan' (structure planning + the one hero-image generation call) and 'generate' are the rows
+    // that can legitimately run long — everything else (brief/source ingestion) is comparatively quick.
+    function isLongRunningStep(key){ return key === 'plan' || key === 'generate'; }
+
     function runStep(i){
       if (i >= order.length){ finish(); return; }
       var key = order[i];
       setStep(key, { status: 'running', showStillWriting: false });
-      if (key === 'generate'){
+      if (isLongRunningStep(key)){
         clearStillWritingTimer();
-        stillWritingTimer = setTimeout(function(){ setStep('generate', { showStillWriting: true }); }, GEMINI_WORST_CASE_MS);
+        stillWritingTimer = setTimeout(function(){ setStep(key, { showStillWriting: true }); }, GEMINI_WORST_CASE_MS);
       }
       runners[key]().then(function(result){
-        if (key === 'generate') clearStillWritingTimer();
+        if (isLongRunningStep(key)) clearStillWritingTimer();
         setStep(key, { status: 'done' });
-        // Item B (E1): the instant the brief resolves with a real inferredCategory, check it against the
-        // chosen template before anything else runs — only applies when a PDF was actually uploaded (no
-        // brief row at all otherwise, so this block is simply never reached) and only when the model found
-        // real signal to infer from (an empty string means "skip the check entirely", never a guess).
-        if (key === 'brief'){
-          var inferred = result && result.extracted && result.extracted.inferredCategory;
-          var tpl = templateBySite(templateSite);
-          if (inferred && tpl && tpl.briefCategory && briefCategoryMismatch(inferred, tpl.briefCategory)){
-            openTemplateMismatchModal(inferred, tpl, {
-              onGenerateAnyway: function(){ runStep(i + 1); },
-              onChangeTemplate: function(){
-                openGenerateFromBriefModal({ file: file, urls: rawUrls, future: futureEdition });
-              }
-            });
-            return;   // paused — resumes only via one of the two actions above
-          }
-        }
         runStep(i + 1);
       }).catch(function(err){
-        if (key === 'generate') clearStillWritingTimer();
+        if (isLongRunningStep(key)) clearStillWritingTimer();
         setStep(key, { status: 'error', cause: briefStepErrorCause(key) });
         // paused — resumes only via the Retry/Skip click handled by the delegated listener below
       });
@@ -3912,23 +3801,12 @@
         if (aiCopy) aiCopy.textContent = 'Not available for this event type yet — only templates with a finished real design can be AI-redesigned. Pick a template manually, or reuse a previous edition’s layout.';
       }
     }
+    // No category/template gate here any more: Generate from a brief builds its own section structure
+    // from the shared library (templates/_library/) instead of depending on a specific audited ported
+    // template, so it's available for every event category.
     var generateBtn = $('btn-ai-generate');
-    if (generateBtn){
-      var generateCard = generateBtn.closest('.design-choice-card');
-      var generateCopy = generateCard && generateCard.querySelector('p');
-      if (categoryHasBriefReadyTemplate()){
-        generateBtn.disabled = false;
-        // wrapped, not a bare function reference — openGenerateFromBriefModal now takes an optional
-        // `prefill` (see "Change template" above), and assigning it directly as an onclick handler would
-        // hand it the click's native Event object as that argument instead.
-        generateBtn.onclick = function(){ openGenerateFromBriefModal(); };
-        if (generateCopy) generateCopy.textContent = 'Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it.';
-      } else {
-        generateBtn.disabled = true;
-        generateBtn.onclick = null;
-        if (generateCopy) generateCopy.textContent = 'Not available yet for this event type — Generate from a brief needs a template that’s been fully checked for wizard editing, and none here qualify yet. Pick a template manually below; more are being added.';
-      }
-    }
+    // wrapped, not a bare function reference, so a native click Event is never passed through as an argument
+    if (generateBtn) generateBtn.onclick = function(){ openGenerateFromBriefModal(); };
     var vibeHost = $('vibe-chips');
     if (vibeHost){
       vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
