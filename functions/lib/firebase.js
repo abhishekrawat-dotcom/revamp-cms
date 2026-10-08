@@ -14,7 +14,18 @@
 // Firestore schema (all under one Google Cloud project, same one Gemini billing can live in):
 //   events/{eventId}
 //     { name, date, location, previousEditionUrl, competitorUrls: [string],
-//       templateId, createdAt, updatedAt }
+//       templateId, createdAt, updatedAt,
+//       structurePlan,    // GENERATED TEMPLATES only (lib/api.js's /api/plan-structure) — a FIELD on this
+//                         // same doc, not a subcollection, latest plan wins:
+//                         // { sections: [string, ...], generatedAt }  (nav/hero/footer always first/
+//                         // present/last; the rest is Gemini's pick from the 7 "middle" library types)
+//       theme             // GENERATED TEMPLATES only, saved alongside structurePlan by the same endpoint:
+//                         // { themeColor, headingFont, bodyFont,       // previousEdition sources ONLY —
+//                         //   usedFallback: {color, font, noPreviousEditionSource},  // see lib/api.js's
+//                         //   extractThemeFromPreviousEditionSources for the fallback this triggers
+//                         //   heroImageDataUrl, heroImageStoragePath, heroImageError,  // see below
+//                         //   generatedAt }
+//     }
 //   events/{eventId}/briefs/{briefId}            — one per uploaded overview doc
 //     { sourceFileName, mimeType, storagePath,    // the uploaded file, in Storage (see below)
 //       extracted: { theme, audience, tone, tracks: [string], speakerHints: [string],

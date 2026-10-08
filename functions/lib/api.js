@@ -18,6 +18,23 @@
 //                               produces (templates/README.md's "one content model for every template" —
 //                               subheading/heading/body/points/cta per section, {t,d} per card), so it can
 //                               be fed through the existing editor-fill.js with no new client-side code.
+//                               Also handles templateId:'gen-<eventId>' (a fully GENERATED structure, not a
+//                               ported template) by building its content.map from the structure plan below
+//                               instead of reading a real template.json — see "GENERATED TEMPLATES" further
+//                               down, right before this handler.
+//   POST /api/plan-structure   GENERATED TEMPLATES pipeline, step A: the brief + sources already collected
+//                               for an event -> which of the 10 library/sections/<type> component types this
+//                               event's page should use and in what order, plus the theme (colour/fonts,
+//                               previousEdition sources only) and a generated hero background image. Saved
+//                               on the event's own doc (events/{eventId}: structurePlan, theme) for the two
+//                               endpoints below to read.
+//   GET  /api/generated-template?eventId=<id>   GENERATED TEMPLATES pipeline, step C: assembles the exact
+//                               template.json shape (id, name, fonts, design, body.style, content.map,
+//                               layout, sections) for a generated page, from the structure plan + theme
+//                               saved by /api/plan-structure. The frontend's template-loader.js consumes
+//                               this the same way it reads a real templates/<id>/template.json file, and
+//                               resolves each section's markup/CSS directly from templates/_library/sections/
+//                               <type>/ (fixed library files, not served by this endpoint).
 const fs = require('fs');
 const path = require('path');
 const { getFirebase } = require('./firebase');
@@ -666,6 +683,272 @@ function handleIngestSource(req, res) {
   });
 }
 
+/* ---------- GENERATED TEMPLATES — structure planning, theme extraction, hero image ----------
+   A "generated" template (id 'gen-<eventId>') has no templates/<id>/ folder at all — its page is assembled
+   live from the fixed library at templates/_library/sections/<type>/, per section type chosen here. This
+   block is shared by POST /api/plan-structure (below), by handleGenerateContent's 'gen-' branch (content.map
+   construction), and by GET /api/generated-template (the final template.json-shaped assembly). */
+
+// The 10 library types, in library order. nav/hero/footer are never Gemini's decision (see
+// buildPlanStructurePrompt) — STRUCTURE_MIDDLE_TYPES is everything Gemini actually chooses from.
+var LIBRARY_SECTION_TYPES = ['nav', 'hero', 'overview', 'stats-strip', 'cards-grid-icon', 'cards-grid-chips', 'speaker-grid', 'faq-accordion', 'cta-band', 'footer'];
+var STRUCTURE_MIDDLE_TYPES = LIBRARY_SECTION_TYPES.filter(function (t) { return t !== 'nav' && t !== 'hero' && t !== 'footer'; });
+var SECTION_TYPE_LABELS = {
+  nav: 'Navigation', hero: 'Hero', overview: 'Overview', 'stats-strip': 'Stats strip',
+  'cards-grid-icon': 'Cards grid (icon)', 'cards-grid-chips': 'Cards grid (chips)',
+  'speaker-grid': 'Speaker grid', 'faq-accordion': 'FAQ accordion', 'cta-band': 'CTA band', footer: 'Footer'
+};
+
+var LIBRARY_SECTIONS_DIR = path.join(__dirname, '..', '..', 'templates', '_library', 'sections');
+
+// Reads one library section type's own map.json (its content.map fragment) straight off disk — these are
+// real files the web designer shipped, not generated. '_comment' is documentation only, left out of the
+// real content.map entry.
+function readLibrarySectionMap(type) {
+  var raw = JSON.parse(fs.readFileSync(path.join(LIBRARY_SECTIONS_DIR, type, 'map.json'), 'utf8'));
+  var entry = { from: raw.from, section: raw.section };
+  if (raw.intro) entry.intro = raw.intro;
+  if (raw.fill) entry.fill = raw.fill;
+  if (raw.aiSkipMedia) entry.aiSkipMedia = raw.aiSkipMedia;
+  return entry;
+}
+
+// The combined content.map for a generated page: one content.map entry per chosen section type, in the
+// planned order — exactly the shape a real template.json's content.map array has, just assembled from N
+// library map.json fragments instead of hand-written for one template. Used by both the 'gen-' branch of
+// handleGenerateContent (to classify/generate against) and GET /api/generated-template (to return as-is).
+function buildCombinedLibraryMap(sectionTypes) {
+  return (sectionTypes || []).map(readLibrarySectionMap);
+}
+
+/* ---- Theme extraction: previousEdition sources ONLY ----
+   Hard product requirement: a generated page's colour/fonts come from the event's OWN previous edition,
+   never from its current edition (the page being replaced) or a competitor (whose branding has nothing to
+   do with this event). currentEdition/competitor colorSignals/fontSignals are read for other purposes
+   elsewhere (buildIngestSourcePrompt's content extraction) but never for theme.
+   Fallback (no previousEdition source at all, or one with no real signals — not every event has a previous
+   edition on file): a neutral blue (matches this library's own hero.css --theme-color fallback, #186bf9)
+   and a sensible, unrelated-to-any-brand font pair, Plus Jakarta Sans (heading) / Inter (body). */
+var THEME_FALLBACK = { themeColor: '#186bf9', headingFont: 'Plus Jakarta Sans', bodyFont: 'Inter' };
+
+function extractThemeFromPreviousEditionSources(sourceDocs) {
+  var prev = (sourceDocs || []).filter(function (s) { return s && s.type === 'previousEdition'; });
+
+  // extractColorSignals (see /api/ingest-source above) already orders each source's own colorSignals
+  // most-saturated/frequent first — the first previousEdition source that has any is the pick.
+  var themeColor = null;
+  prev.some(function (s) {
+    var signals = s.colorSignals || [];
+    if (signals.length) { themeColor = signals[0]; return true; }
+    return false;
+  });
+
+  // Fonts: tally every previousEdition source's own fontSignals (also already ranked per-source), weighting
+  // each by its rank within that source, then pick the two most-frequent DISTINCT families across all of
+  // them as heading/body.
+  var tally = {};
+  prev.forEach(function (s) {
+    var signals = s.fontSignals || [];
+    signals.forEach(function (family, idx) { tally[family] = (tally[family] || 0) + (signals.length - idx); });
+  });
+  var ranked = Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a]; });
+  var headingFont = ranked[0] || THEME_FALLBACK.headingFont;
+  var bodyFont = (ranked[1] && ranked[1] !== headingFont) ? ranked[1] : (ranked.length ? THEME_FALLBACK.bodyFont : THEME_FALLBACK.bodyFont);
+
+  return {
+    themeColor: themeColor || THEME_FALLBACK.themeColor,
+    headingFont: headingFont,
+    bodyFont: bodyFont,
+    usedFallback: { color: !themeColor, font: !ranked.length, noPreviousEditionSource: !prev.length }
+  };
+}
+
+function googleFontUrl(family) {
+  return 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800&display=swap';
+}
+
+/* ---- Hero background image: Gemini's image-generation endpoint ----
+   Model/endpoint researched at the time this was written (Oct 2026) but NOT verified against a live key in
+   this environment — Google's image-model names have moved fast. gemini-2.5-flash-image ("Nano Banana") is
+   the one this code targets, called the same way callGeminiJson calls its text model (v1beta/models/
+   <model>:generateContent, generationConfig.responseModalities), which is the pattern most consistently
+   corroborated across sources seen during research. Some documentation seen during research already points
+   at newer gemini-3.x-image model names and a separate, non-generateContent "Interactions" endpoint instead
+   — this code deliberately does NOT adopt that unverified shape. Exactly like callGeminiJson's own
+   gemini-3.8-flash retirement comment: if this model name is wrong or retired, Gemini's 404 names its
+   replacement, caught below and logged — never thrown, never allowed to block or crash structure planning.
+   Hero image generation is pure enhancement; its failure must always degrade to "no hero background image"
+   (hero/style.css's own fallback — see the gap noted in this function's caller, buildHeroImage, below). */
+function callGeminiImage(prompt) {
+  var apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return Promise.resolve({ error: 'GEMINI_API_KEY is not set.' });
+  var model = 'gemini-2.5-flash-image';
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
+  var body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } };
+
+  var controller = new AbortController();
+  var timedOut = false;
+  var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 60000);
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal })
+    .then(function (geminiRes) { return geminiRes.text().then(function (text) { return { ok: geminiRes.ok, status: geminiRes.status, text: text }; }); })
+    .then(function (r) {
+      if (!r.ok) return { error: 'Gemini image API error ' + r.status + ': ' + r.text.slice(0, 400) };
+      var data;
+      try { data = JSON.parse(r.text); } catch (e) { return { error: 'Gemini image response was not valid JSON.' }; }
+      var parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+      var imagePart = (parts || []).filter(function (p) { return p && p.inlineData && p.inlineData.data; })[0];
+      if (!imagePart) return { error: 'Gemini image response had no image data (it may have been blocked by safety filters or the model/endpoint is wrong/retired).' };
+      return { mimeType: imagePart.inlineData.mimeType || 'image/png', base64: imagePart.inlineData.data };
+    })
+    .catch(function (err) {
+      if (timedOut) return { error: 'Gemini image generation took too long (over 60s).' };
+      return { error: 'Could not reach Gemini for image generation: ' + err.message };
+    })
+    .finally(function () { clearTimeout(timer); });
+}
+
+function buildHeroImagePrompt(brief, themeColor) {
+  return [
+    'Generate an abstract, editorial background image for a professional event website\'s hero banner.',
+    'Mood/theme to evoke: ' + (brief && brief.theme ? brief.theme : 'a professional conference') + '.',
+    'Tone: ' + (brief && brief.tone ? brief.tone : 'formal, modern, polished') + '.',
+    'Work the colour ' + themeColor + ' subtly into the composition as an accent.',
+    'Abstract/geometric/gradient/light-and-depth composition only, suitable to sit behind white text and buttons.',
+    'STRICT: no people, no faces, no crowds, no attendees, no venue photography, no recognizable real place, no text, no logos, no watermarks — this is an illustrative background, never a photo of an event that never happened.'
+  ].join(' ');
+}
+
+// Generates the one hero background image, stores it (Firebase Storage, same pattern handleExtractBrief
+// uses) and returns it as a base64 data URL too — ends up at content.map's existing, UNCHANGED
+// hero.psdBanner.compositeImageData fill rule (templates/_library/sections/hero/map.json), the same slot a
+// human-uploaded PSD banner composite already fills for ported templates, so no new fill logic is needed.
+// GAP for the web designer (not fixed here, per instructions): templates/_library/sections/hero/style.css
+// has no theme-coloured gradient fallback on #hero itself when hero-bg-image fails/stays the placeholder —
+// only the dark overlay gradient ON TOP of whatever image is there. On image-generation failure, the hero
+// still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
+function buildHeroImage(fb, eventId, brief, themeColor) {
+  return callGeminiImage(buildHeroImagePrompt(brief, themeColor)).then(function (r) {
+    if (r.error) {
+      console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
+      return { heroImageDataUrl: null, heroImageStoragePath: null, heroImageError: r.error };
+    }
+    var buffer = Buffer.from(r.base64, 'base64');
+    var storagePath = 'events/' + eventId + '/generated/hero-bg.png';
+    return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: r.mimeType } })
+      .then(function () { return { heroImageDataUrl: 'data:' + r.mimeType + ';base64,' + r.base64, heroImageStoragePath: storagePath, heroImageError: null }; })
+      .catch(function (err) {
+        console.error('plan-structure: hero image generated but Storage save failed (using the data URL anyway) — ' + err.message);
+        return { heroImageDataUrl: 'data:' + r.mimeType + ';base64,' + r.base64, heroImageStoragePath: null, heroImageError: 'Storage save failed: ' + err.message };
+      });
+  }).catch(function (err) {
+    console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + err.message);
+    return { heroImageDataUrl: null, heroImageStoragePath: null, heroImageError: err.message };
+  });
+}
+
+/* ---------- POST /api/plan-structure — GENERATED TEMPLATES pipeline, step A ----------
+   Reads the event's latest brief + all its sources (same read as handleGenerateContent), asks Gemini which
+   of the 7 "middle" library section types this event's real material actually supports and in what order
+   (nav/hero/footer are fixed, never Gemini's call), extracts the previousEdition-only theme, generates the
+   one hero background image, and persists {structurePlan, theme} onto the event's own doc — a doc, not a
+   subcollection, latest plan/theme wins (see the handler below). */
+var STRUCTURE_PLAN_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    reasoning: { type: 'STRING', description: 'Internal only, never shown on the site. Name the specific content evidence behind each section you included or deliberately left out (e.g. "brief names 6 confirmed speakers -> speaker-grid", "no real FAQ material -> faq-accordion omitted").' },
+    sections: {
+      type: 'ARRAY',
+      description: 'A subset of the 7 given middle section types, in the best reading order, no duplicates. Never include nav, hero or footer here — those are added automatically, not your decision.',
+      items: { type: 'STRING', enum: STRUCTURE_MIDDLE_TYPES }
+    }
+  },
+  required: ['reasoning', 'sections']
+};
+
+function buildPlanStructurePrompt(payload) {
+  var lines = [
+    'You are planning the SECTION STRUCTURE of a generated event microsite for ET Oneworld\'s event builder, choosing only from a fixed library of 10 generic, reusable section types. Ground every choice in real content-shape evidence from the material below — never include a section type that has nothing real to put in it, and never omit one the material clearly supports. A thin site with 3 well-grounded sections beats a padded one with 7 that have nothing real to say.',
+    '',
+    'The 10 library section types:',
+    '- nav: top navigation. Always included, first — not your decision.',
+    '- hero: banner (title/tagline/date/location/CTAs). Always included, pinned right after nav — not your decision.',
+    '- overview: a generic rich-text block (subheading/heading/body + optional image). Include when there\'s a clear "about this event" narrative to tell.',
+    '- stats-strip: 3-5 numeric callouts (e.g. "500+ Attendees"). Include only if the material has real numbers worth calling out.',
+    '- cards-grid-icon: 3-column icon+title+line cards (e.g. key discussion points, why join). Include for ONE genuinely distinct card-list need.',
+    '- cards-grid-chips: denser, icon-free chip cards (e.g. who should attend, industries in the room). Include only for a SECOND, genuinely DIFFERENT card-list need from cards-grid-icon\'s — never both for the same underlying list, and don\'t force a second one that isn\'t really there.',
+    '- speaker-grid: speaker photo/name/role/company grid. Include only if the material implies a real, sizeable speaker roster — a passing name-drop or two isn\'t enough on its own.',
+    '- faq-accordion: expandable Q&A. Include only if the material has (or clearly implies) a real, specific set of audience questions worth answering — not just because every event site has an FAQ.',
+    '- cta-band: closing call-to-action band. Include when there\'s one clear closing pitch (register / partner / attend) worth a dedicated closing band.',
+    '- footer: always included, last — not your decision.',
+    '',
+    'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
+  ];
+  if (payload.brief) lines.push('', 'Extracted brief:', JSON.stringify(payload.brief, null, 2));
+  if (payload.sources && payload.sources.length) {
+    lines.push('', 'Collected sources (previous/current edition, competitors):');
+    payload.sources.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
+  }
+  lines.push('', 'Task: choose which of the 7 middle section types this event\'s real material actually supports, and the best reading order for them.');
+  return lines.join('\n');
+}
+
+function sanitizeStructurePlan(parsed) {
+  var seen = {};
+  var middle = (Array.isArray(parsed.sections) ? parsed.sections : []).filter(function (t) {
+    if (STRUCTURE_MIDDLE_TYPES.indexOf(t) === -1 || seen[t]) return false;
+    seen[t] = true;
+    return true;
+  });
+  return ['nav', 'hero'].concat(middle, ['footer']);
+}
+
+function handlePlanStructure(req, res) {
+  readBody(req, function (raw) {
+    var payload;
+    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+
+    var eventId = String(payload.eventId || '').trim();
+    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+    if (!/^[a-z0-9-]+$/.test(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+
+    var fb = getFirebase();
+    if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+    var eventRef = fb.db.collection('events').doc(eventId);
+    Promise.all([
+      eventRef.get(),
+      eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+      eventRef.collection('sources').get()
+    ]).then(function (results) {
+      var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
+      var eventMeta = eventSnap.exists ? eventSnap.data() : {};
+      var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
+      var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
+      var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections }; });
+
+      var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
+
+      return callGeminiJson(buildPlanStructurePrompt({ eventMeta: eventMeta, brief: brief, sources: sources }), STRUCTURE_PLAN_SCHEMA).then(function (r) {
+        if (r.error) return sendJson(res, r.status, { error: r.error });
+        var sections = sanitizeStructurePlan(r.parsed);
+        var now = new Date().toISOString();
+
+        return buildHeroImage(fb, eventId, brief, themeInfo.themeColor).then(function (heroImage) {
+          var structurePlan = { sections: sections, generatedAt: now };
+          var theme = {
+            themeColor: themeInfo.themeColor, headingFont: themeInfo.headingFont, bodyFont: themeInfo.bodyFont,
+            usedFallback: themeInfo.usedFallback,
+            heroImageDataUrl: heroImage.heroImageDataUrl, heroImageStoragePath: heroImage.heroImageStoragePath, heroImageError: heroImage.heroImageError,
+            generatedAt: now
+          };
+          return eventRef.set({ structurePlan: structurePlan, theme: theme }, { merge: true })
+            .then(function () { sendJson(res, 200, { eventId: eventId, structurePlan: structurePlan, theme: theme }); });
+        });
+      });
+    }).catch(function (err) { sendJson(res, 500, { error: 'plan-structure failed: ' + err.message }); });
+  });
+}
+
 /* ---------- POST /api/generate-content — AI site-generation pipeline, step 3 ----------
    Reads the event's latest brief + all its sources (already collected by extract-brief/ingest-source),
    reads the TARGET TEMPLATE's own content.map to work out exactly which Create Event library ids it can
@@ -812,6 +1095,54 @@ function sanitizeGeneratedLibrary(parsed, needs) {
   return out;
 }
 
+// The shared tail of handleGenerateContent, UNCHANGED from before the 'gen-' branch existed — reads
+// brief/sources for sourceEventId, builds the schema/prompt from `needs`, calls Gemini, sanitizes, saves the
+// draft under eventId. Fed either a real template's content.map (ported-template path) or a combined
+// library content.map (generated-template path, see handleGenerateContent below) — this function itself
+// doesn't know or care which. `genTheme` is non-null ONLY on the generated-template path, so its hero image
+// (if any) can be spliced into the sanitized library's hero.psdBanner — the existing, unchanged
+// hero.psdBanner.compositeImageData fill rule (templates/_library/sections/hero/map.json) then picks it up
+// with zero new fill logic, same slot a human-uploaded PSD banner composite already fills for ported
+// templates.
+function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, contentMap, skippedLibraries, genTheme) {
+  var needs = classifyLibraryNeeds(contentMap);
+  if (!Object.keys(needs).length) return sendJson(res, 400, { error: 'This template has no content.map entries this step knows how to generate for.' });
+
+  var draftRef = fb.db.collection('events').doc(eventId);
+  var sourceRef = fb.db.collection('events').doc(sourceEventId);
+  Promise.all([
+    sourceRef.get(),
+    sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+    sourceRef.collection('sources').get()
+  ]).then(function (results) {
+    var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
+    // eventMeta.* from the request (e.g. {name:"ET Making AI Work 2027", date:"2027"}) wins over whatever
+    // is stored for sourceEventId — that stored data describes the PAST edition being read for research,
+    // not necessarily the one actually being generated.
+    var eventMeta = Object.assign({}, eventSnap.exists ? eventSnap.data() : {}, payload.eventMeta || {});
+    var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
+    var sources = sourcesSnap.docs.map(function (d) {
+      var v = d.data();
+      return { type: v.type, url: v.url, extractedSections: v.extractedSections };
+    });
+
+    var schema = buildGenerateSchema(needs);
+    var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs, futureEdition: futureEdition });
+
+    return callGeminiJson(prompt, schema).then(function (r) {
+      if (r.error) return sendJson(res, r.status, { error: r.error });
+      var library = sanitizeGeneratedLibrary(r.parsed, needs);
+      if (genTheme && genTheme.heroImageDataUrl && library.hero) {
+        library.hero.psdBanner = { compositeImageData: genTheme.heroImageDataUrl };
+      }
+      var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
+      var now = new Date().toISOString();
+      return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now, skippedLibraries: skippedLibraries })
+        .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
+    });
+  }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+}
+
 function handleGenerateContent(req, res) {
   readBody(req, function (raw) {
     var payload;
@@ -831,6 +1162,28 @@ function handleGenerateContent(req, res) {
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
 
+    // GENERATED TEMPLATES: templateId:'gen-<eventId>' has no templates/<id>/template.json on disk at all —
+    // its content.map is instead the combined library map.json fragments for whatever /api/plan-structure
+    // already chose and saved on events/{genEventId} (structurePlan/theme). Everything from here down
+    // (classifyLibraryNeeds -> buildGenerateSchema -> buildGenerateContentPrompt -> Gemini -> sanitize) is
+    // the exact same pipeline the ported-template path below uses, via runGenerateContent — this branch's
+    // ONLY new logic is building `contentMap`/`skippedLibraries`/`genTheme` from Firestore instead of from
+    // a real template.json.
+    if (/^gen-/.test(templateId)) {
+      var genEventId = templateId.slice(4);
+      if (!genEventId || !/^[a-z0-9-]+$/.test(genEventId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
+      return fb.db.collection('events').doc(genEventId).get().then(function (snap) {
+        var data = snap.exists ? snap.data() : {};
+        var plan = data.structurePlan;
+        if (!plan || !Array.isArray(plan.sections) || !plan.sections.length) {
+          return sendJson(res, 400, { error: 'No structure plan found for "' + genEventId + '" — run /api/plan-structure first.' });
+        }
+        var contentMap = buildCombinedLibraryMap(plan.sections);
+        var skippedLibraries = deliberatelySkippedLibraries(contentMap);
+        runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, contentMap, skippedLibraries, data.theme || null);
+      }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+    }
+
     var templatePath = path.join(__dirname, '..', '..', 'templates', templateId, 'template.json');
     var templateJson;
     try { templateJson = JSON.parse(fs.readFileSync(templatePath, 'utf8')); }
@@ -849,44 +1202,15 @@ function handleGenerateContent(req, res) {
       });
     }
 
-    var needs = classifyLibraryNeeds((templateJson.content || {}).map);
-    if (!Object.keys(needs).length) return sendJson(res, 400, { error: 'This template has no content.map entries this step knows how to generate for.' });
     // C2/C3: the real "deliberately excluded from generation" list (speakers/contact/glimpses, when this
     // template actually has them) — saved on the draft and threaded through to the client (see
     // libraryToHandoffDraft/handleGetDraft below) so editor-fill.js's AI-provenance skip-marking can use the
     // exact same list this request used, instead of re-deriving an incomplete one from content.map alone.
+    // (classifyLibraryNeeds itself — and its "nothing to generate for" check — now live inside
+    // runGenerateContent, shared with the 'gen-' branch above.)
     var skippedLibraries = deliberatelySkippedLibraries((templateJson.content || {}).map);
 
-    var draftRef = fb.db.collection('events').doc(eventId);
-    var sourceRef = fb.db.collection('events').doc(sourceEventId);
-    Promise.all([
-      sourceRef.get(),
-      sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-      sourceRef.collection('sources').get()
-    ]).then(function (results) {
-      var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
-      // eventMeta.* from the request (e.g. {name:"ET Making AI Work 2027", date:"2027"}) wins over whatever
-      // is stored for sourceEventId — that stored data describes the PAST edition being read for research,
-      // not necessarily the one actually being generated.
-      var eventMeta = Object.assign({}, eventSnap.exists ? eventSnap.data() : {}, payload.eventMeta || {});
-      var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
-      var sources = sourcesSnap.docs.map(function (d) {
-        var v = d.data();
-        return { type: v.type, url: v.url, extractedSections: v.extractedSections };
-      });
-
-      var schema = buildGenerateSchema(needs);
-      var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs, futureEdition: futureEdition });
-
-      return callGeminiJson(prompt, schema).then(function (r) {
-        if (r.error) return sendJson(res, r.status, { error: r.error });
-        var library = sanitizeGeneratedLibrary(r.parsed, needs);
-        var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
-        var now = new Date().toISOString();
-        return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now, skippedLibraries: skippedLibraries })
-          .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
-      });
-    }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+    runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null);
   });
 }
 
@@ -934,14 +1258,80 @@ function handleGetDraft(req, res) {
     .catch(function (err) { sendJson(res, 500, { error: 'get-draft failed: ' + err.message }); });
 }
 
+/* ---------- GET /api/generated-template?eventId=<id> — GENERATED TEMPLATES pipeline, step C ----------
+   Assembles the exact template.json shape (see the top-of-file comment and the contract shared with the
+   frontend's template-loader.js) from the structurePlan + theme /api/plan-structure already saved on
+   events/{eventId}. No "theme" key: every theme/colour value goes straight into body.style as inline CSS
+   custom properties, computed fresh on every request — no Storage round-trip, no separate theme.css file. */
+function buildGeneratedDesign(theme) {
+  return {
+    headingFontVar: '--heading-font-family',
+    headings: 'h1, h2, h3',
+    buttons: '.btn-primary, .btn-secondary, .hero-cta-primary, .hero-cta-secondary, .cta-band-btn',
+    cards: '.stat-item, .cards-icon-card, .chip-card, .speaker-card, .faq-item',
+    swatches: [theme.themeColor]
+  };
+}
+
+function fontStack(family) { return '"' + family + '", Arial, sans-serif'; }
+
+function handleGeneratedTemplate(req, res) {
+  var qs = new URLSearchParams(req.url.split('?')[1] || '');
+  var eventId = String(qs.get('eventId') || '').trim();
+  if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+  if (!/^[a-z0-9-]+$/.test(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+
+  var fb = getFirebase();
+  if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+  fb.db.collection('events').doc(eventId).get().then(function (snap) {
+    if (!snap.exists) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
+    var data = snap.data();
+    var plan = data.structurePlan;
+    if (!plan || !Array.isArray(plan.sections) || !plan.sections.length) {
+      return sendJson(res, 404, { error: 'No structure plan found for "' + eventId + '" — run /api/plan-structure first.' });
+    }
+    var theme = Object.assign({}, THEME_FALLBACK, data.theme || {});
+    var name = String(data.name || eventId);
+    var fonts = [googleFontUrl(theme.headingFont), googleFontUrl(theme.bodyFont)]
+      .filter(function (url, i, arr) { return arr.indexOf(url) === i; });
+
+    var template = {
+      id: 'gen-' + eventId,
+      name: name,
+      title: name,
+      shared: ['et-global.css', 'et-animate.css', 'et-platform.css'],
+      fonts: fonts,
+      design: buildGeneratedDesign(theme),
+      body: {
+        id: 'gen',
+        class: 'microsite product_microsite',
+        style: {
+          '--theme-color': theme.themeColor,
+          '--heading-font-family': fontStack(theme.headingFont),
+          '--body-font-family': fontStack(theme.bodyFont),
+          '--default-color': 'rgb(25 27 31)',
+          '--body-color': 'rgba(0, 0, 0, 1)'
+        }
+      },
+      content: { map: buildCombinedLibraryMap(plan.sections) },
+      layout: { pinStart: ['hero'], pinEnd: ['footer'] },
+      sections: plan.sections.map(function (type) { return { id: type, name: SECTION_TYPE_LABELS[type] || type, etId: null }; })
+    };
+    sendJson(res, 200, template);
+  }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
+}
+
 // Single entry point both tools/serve.js (local) and index.js (deployed) call into.
 function handleApi(req, res) {
   if (req.method === 'POST' && req.url === '/api/suggest-design') return handleSuggestDesign(req, res);
   if (req.method === 'POST' && req.url === '/api/chat-edit') return handleChatEdit(req, res);
   if (req.method === 'POST' && req.url === '/api/extract-brief') return handleExtractBrief(req, res);
   if (req.method === 'POST' && req.url === '/api/ingest-source') return handleIngestSource(req, res);
+  if (req.method === 'POST' && req.url === '/api/plan-structure') return handlePlanStructure(req, res);
   if (req.method === 'POST' && req.url === '/api/generate-content') return handleGenerateContent(req, res);
   if (req.method === 'GET' && req.url.indexOf('/api/draft') === 0) return handleGetDraft(req, res);
+  if (req.method === 'GET' && req.url.indexOf('/api/generated-template') === 0) return handleGeneratedTemplate(req, res);
   sendJson(res, 404, { error: 'No such endpoint: ' + req.method + ' ' + req.url });
 }
 
