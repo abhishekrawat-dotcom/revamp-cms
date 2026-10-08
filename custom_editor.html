@@ -90,6 +90,7 @@
     transition: background .12s ease, border-color .12s ease, transform .05s ease, color .12s ease;
   }
   .btn:active{ transform: translateY(1px); }
+  .btn:disabled{ opacity: .45; cursor: default; pointer-events: none; }
   .btn-primary{ background: var(--accent); color: var(--accent-contrast); }
   .btn-primary:hover{ background: var(--accent-strong); }
   .btn-secondary{ background: var(--surface); color: var(--text); border-color: var(--border); }
@@ -1297,11 +1298,14 @@
       <button class="icon-btn" type="button" id="btn-ai-markers" title="Show/hide AI markers" aria-pressed="false" hidden>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
       </button>
-      <button class="btn btn-secondary" type="button" id="btn-preview">
+      <!-- start disabled: only enabled once the canvas has actually mounted AND (template mode) its AI
+           content fill has finished — see editor-template-ui.js's boot(). Publishing/previewing before
+           that captures the template's raw, unfilled placeholder markup, not the real content. -->
+      <button class="btn btn-secondary" type="button" id="btn-preview" disabled>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
         Preview
       </button>
-      <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
+      <button class="btn btn-primary" type="button" id="btn-publish" disabled>Publish</button>
     </span>
   </header>
 
@@ -5346,6 +5350,10 @@
     rebuildLayersPanel();
     syncSectionToolbar();
     syncFormatControls();
+    // demo mode's content is static markup already in the document — no async mount/fill step to race,
+    // so (unlike template mode, see the <button disabled> markup above) there's nothing to wait for here.
+    document.getElementById('btn-publish').disabled = false;
+    document.getElementById('btn-preview').disabled = false;
   }
 })();
 </script>

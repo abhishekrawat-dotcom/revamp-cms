@@ -75,6 +75,17 @@
       wireChatPanel();
       updateHistoryButtons();
       showTopbar();
+      /* Publish/Preview start disabled (see the <button disabled> markup in custom_editor.html) and are
+         only enabled here, once mount() + resolveInitialContent()'s AI-content fill have BOTH genuinely
+         finished — real, confirmed bug this closes: RevampCanvas.mount() renders the template's raw,
+         UNFILLED library markup first, fill is a separate async step straight after, and neither button
+         was ever gated on either one completing. A user who clicked Publish in that window (exactly
+         "clicked Publish as soon as the site was created") captured and published the unfilled template
+         itself — "Event name goes here", "Card title" placeholders — not the real generated content,
+         which was sitting correctly in Firestore the whole time. Left disabled on the .catch() below: if
+         loading genuinely failed, there is nothing real to publish/preview either. */
+      document.getElementById('btn-publish').disabled = false;
+      document.getElementById('btn-preview').disabled = false;
     }).catch(function (err) {
       showToast("Couldn't load this template");
       if (window.console) console.error(err);
