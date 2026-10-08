@@ -859,6 +859,35 @@
     e.crmLeads = Math.round(mix * (0.6 + ((i * 17) % 40) / 100));
   });
 
+  /* Events this wizard has actually created, in THIS browser (localStorage, 'revamp.liveEvents.v1' — written
+     by registerLiveEvent() in create-event.html, called from every Create Event finish path: the manual
+     wizard, "Let AI design it", and "Generate from a brief" alike). EVENTS above is otherwise static demo
+     data with zero connection to anything actually built — without this merge, a newly created event is
+     fully functional (it opens and edits fine) but invisible everywhere outside the editor itself, including
+     here. Prepended so the most recent shows first; real (zero) stats, not invented ones; status 'draft'
+     since nothing has been published yet — see the "Draft Events" item in the header's "..." menu to find
+     these, same as any other draft event already in the static seed data above. */
+  (function(){
+    try {
+      var raw = localStorage.getItem('revamp.liveEvents.v1');
+      var live = raw ? JSON.parse(raw) : [];
+      live.slice().reverse().forEach(function(ev){   // reverse so the MOST recently created ends up first
+        if (!ev || !ev.slug) return;
+        var hash = 0;
+        String(ev.slug).split('').forEach(function(c){ hash = ((hash << 5) - hash + c.charCodeAt(0)) | 0; });
+        EVENTS.unshift({
+          id: 'live_' + ev.slug, slug: ev.slug, name: ev.name || 'Untitled event',
+          venue: ev.venue || 'Venue to be confirmed', city: ev.city || '—',
+          eventNo: (Math.abs(hash) % 9000) + 1000,
+          type: ev.type || 'ip', portal: 'cio', status: 'draft', start: ev.start || null,
+          registrations: 0, regTarget: null, visitors: 0, crmLeads: 0,
+          payment: { type: ev.paymentType || 'free', amount: 0, txns: 0 },
+          createdBy: 'You'
+        });
+      });
+    } catch(e){}
+  })();
+
   var KPI_BASE = {
     upcoming:  { visitors:10810, registrations:4280, revenue:3260000, dVis:12.5, dReg:8.2, dRev:16.4 },
     active:    { visitors:2870,  registrations:890,  revenue:640000,  dVis:6.1,  dReg:-2.4, dRev:9.8 },

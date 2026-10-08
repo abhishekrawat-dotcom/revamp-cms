@@ -3630,6 +3630,12 @@
                custom_editor.html reads this to show the one-time "this is an AI-generated draft" modal + the
                persistent reminder strip, neither of which apply to a normal manual-template handoff */
             localStorage.setItem(HANDOFF_KEY, JSON.stringify(Object.assign({}, draftResp.handoff, { generatedFromBrief: true })));
+            registerLiveEvent({
+              slug: eventId, name: eventMeta.name,
+              venue: S.basics.venue, city: S.basics.city, category: S.basics.category,
+              start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
+              paid: S.basics.payment === 'Paid'
+            });
           } catch(e){
             toast('Could not hand the draft over — your browser blocked storage.');
             showStep2View('landing');
@@ -3641,7 +3647,7 @@
           // the exact same storeKey as the first and silently show that first run's cached draft instead
           // of starting fresh (the bug this `&draft=` param exists to close).
           window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
-            '&template=' + encodeURIComponent(draftResp.templateId || templateSite) +
+            '&template=' + encodeURIComponent(draftResp.templateId || ('gen-' + eventId)) +
             (draftResp.draftId ? '&draft=' + encodeURIComponent(draftResp.draftId) : '');
         }).catch(function(err){
           toast(err.message || 'Generation failed.');
@@ -7675,6 +7681,33 @@
     if (!on && expandBtn) expandBtn.hidden = true;
   }
 
+  /* Registers a newly created event into Event_Listing.html's own display registry. Without this, an event
+     built through ANY path in this wizard (manual, "Let AI design it", or Generate from a brief) never shows
+     up anywhere outside the editor itself — Event_Listing.html's EVENTS array is static demo data with no
+     connection to anything this wizard builds, and this has been true since before today; it's not specific
+     to the new generative pipeline. Keyed by slug — calling this again for the same slug (e.g. re-saving,
+     or a later "Generate from a brief" run on the same event) updates that one row instead of duplicating.
+     registrations/visitors start at 0 — true for a just-created event, not placeholder/fake numbers. */
+  var LIVE_EVENTS_KEY = 'revamp.liveEvents.v1';
+  function registerLiveEvent(opts){
+    try {
+      var raw = localStorage.getItem(LIVE_EVENTS_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      list = list.filter(function(e){ return e.slug !== opts.slug; });
+      list.unshift({
+        slug: opts.slug,
+        name: opts.name || 'Untitled event',
+        venue: opts.venue || '',
+        city: opts.city || '',
+        type: (opts.category || 'ip').toLowerCase(),
+        start: opts.start || null,
+        paymentType: opts.paid ? 'paid' : 'free',
+        createdAt: Date.now()
+      });
+      localStorage.setItem(LIVE_EVENTS_KEY, JSON.stringify(list.slice(0, 200)));
+    } catch(e){ /* storage blocked/full — the event still exists and opens fine, it just won't list */ }
+  }
+
   /* hands the draft to custom_editor.html and opens it */
   function openInEditor(){
     var payload = buildEditorPayload();
@@ -7711,6 +7744,12 @@
     if (S.path === 'A' && S.template && window.RevampEditions){
       RevampEditions.registerEventTemplate('new-' + payload.event.slug, S.template, { name: payload.event.name, cat: S.basics.category });
     }
+    registerLiveEvent({
+      slug: payload.event.slug, name: payload.event.name,
+      venue: S.basics.venue, city: S.basics.city, category: S.basics.category,
+      start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
+      paid: S.basics.payment === 'Paid'
+    });
     var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
       (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
     if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
