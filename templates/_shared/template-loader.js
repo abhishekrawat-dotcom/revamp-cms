@@ -1,4 +1,6 @@
-/* Builds one complete HTML document from a template folder (templates/<id>/template.json + its section files).
+/* Builds one complete HTML document from a template folder (templates/<id>/template.json + its section files),
+   or, for a generated template (id = 'gen-' + eventId), from the backend's template.json plus the shared
+   section library at templates/_library/sections/ — see load()'s own comment below for that branch.
 
    RevampTemplates.build(id)        -> Promise<string>                the document
    RevampTemplates.load(id, opts)   -> Promise<{ template, html }>    the document plus template.json
@@ -52,15 +54,26 @@
     return out;
   }
 
+  /* A "generated" template (id === 'gen-' + eventId, from the generative site-building feature) has no
+     templates/<id>/ folder on disk: its template.json comes from the backend's /api/generated-template
+     endpoint instead of a static file, and its sections resolve against the shared component library
+     (templates/_library/sections/<sectionId>/) instead of a per-template sections/ folder. Everything past
+     that point — header/footer, shared/fonts/theme head assembly, section HTML assembly, the final document
+     build — is identical to a ported template, so this only branches the two things that actually differ. */
   function load(id, opts) {
     opts = opts || {};
+    var generated = /^gen-/.test(id);
     var base = new URL(id + '/', templatesBase);
-    return get(new URL('template.json', base)).then(JSON.parse).then(function (t) {
+    var libraryBase = new URL('_library/sections/', templatesBase);
+    var tplJson = generated
+      ? get('/api/generated-template?eventId=' + encodeURIComponent(id.slice(4)))
+      : get(new URL('template.json', base));
+    return tplJson.then(JSON.parse).then(function (t) {
       if (opts.sectionOrder) t.sections = reorderSections(t.sections, opts.sectionOrder);
       var shared = function (p) { return new URL(p, sharedBase).href; };
       var jobs = [get(shared(t.header || 'header.html')), get(shared(t.footer || 'footer.html'))];
       t.sections.forEach(function (s) {
-        var dir = new URL('sections/' + s.id + '/', base);
+        var dir = generated ? new URL(s.id + '/', libraryBase) : new URL('sections/' + s.id + '/', base);
         jobs.push(get(new URL('index.html', dir)), get(new URL('style.css', dir)),
           s.script ? get(new URL('script.js', dir)) : Promise.resolve(''));
       });
