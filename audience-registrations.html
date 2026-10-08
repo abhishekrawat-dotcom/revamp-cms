@@ -352,6 +352,22 @@
   var $ = function(id){ return document.getElementById(id); };
   var esc = C.esc, svg = C.svg, comma = C.comma, fmtDate = C.fmtDate;
 
+  /* This page was built entirely around RevampCore.EVENTS (a hardcoded 8-event array) and makePeople()
+     (fake deterministic attendee data) for every figure it shows, down to per-person "email quality"/
+     "form type" fields invented from nothing real. Both are gone now that there's a real registrations
+     collection (POST /api/register, GET /api/event/registrations) — rewiring this report to the real data
+     is substantial, separate work, not safe to improvise here. Failing honestly beats letting the removed
+     functions throw partway through rendering, which is what was happening before this guard existed. */
+  if (!C.EVENTS) {
+    $('page').innerHTML =
+      '<div style="max-width:420px;margin:80px auto;text-align:center;font-family:var(--font-body,inherit);color:var(--text-muted)">' +
+      '<h2 style="color:var(--text);margin-bottom:8px">This report isn’t connected to real registrations yet</h2>' +
+      '<p>Real sign-ups land in Firestore (POST /api/register) — this page hasn’t been rewired to read them.</p>' +
+      '<a class="btn btn-primary" href="Event_Listing.html" style="display:inline-flex;margin-top:12px">Back to events</a>' +
+      '</div>';
+    return;
+  }
+
   /* ======================================================================
      ICONS
      ====================================================================== */

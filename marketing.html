@@ -45,6 +45,15 @@
   'use strict';
   var C=window.RevampCore, MKT=window.EditEventMarketing, select=document.getElementById('event-select'), page=document.getElementById('page');
   var query=new URLSearchParams(location.search), tab=query.get('tab')||'studio';
+  /* Built entirely around RevampCore.EVENTS/makePeople (both removed — see audience-registrations.html's
+     own, longer version of this same comment). Rewiring this to real data is separate, substantial work;
+     failing honestly beats letting the removed functions throw partway through rendering. */
+  if (!C.EVENTS) {
+    page.innerHTML = '<div style="max-width:420px;margin:80px auto;text-align:center;color:var(--text-muted)">' +
+      '<h2 style="color:var(--text);margin-bottom:8px">This page isn’t connected to real event data yet</h2>' +
+      '<a class="btn btn-primary" href="Event_Listing.html" style="display:inline-flex;margin-top:12px">Back to events</a></div>';
+    return;
+  }
   select.innerHTML=C.EVENTS.map(function(e){return '<option value="'+e.id+'">'+C.esc(e.name)+'</option>';}).join('');
   select.value=query.get('event')||C.EVENTS[0].id;
   function event(){return C.eventById(select.value)||C.EVENTS[0];}

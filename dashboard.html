@@ -110,6 +110,24 @@
 (function(){
   'use strict';
   var C = window.RevampCore;
+
+  /* This standalone page was built entirely around RevampCore.EVENTS (a hardcoded 8-event array) and
+     RevampCore.makePeople() (fake deterministic attendee data) for its event-switcher and every figure it
+     shows — both are gone now that the event console reads real Firestore data (edit-event.html's own
+     in-page Dashboard tab already does, and is the primary way to see this view today). Rewiring THIS
+     separate page to the same real data is real, substantial, separate work — not safe to improvise under
+     incident pressure. Failing honestly here (once) beats letting the removed functions throw partway
+     through rendering, which is what was happening before this guard existed. */
+  if (!C || !C.EVENTS) {
+    document.getElementById('view').innerHTML =
+      '<div style="max-width:420px;margin:80px auto;text-align:center;font-family:var(--font-body);color:var(--text-muted)">' +
+      '<h2 style="color:var(--text);margin-bottom:8px">This page isn’t connected to real event data yet</h2>' +
+      '<p>Use an event’s own Dashboard tab in the console instead.</p>' +
+      '<a class="btn btn-primary" href="Event_Listing.html" style="display:inline-flex;margin-top:12px">Back to events</a>' +
+      '</div>';
+    return;
+  }
+
   var DASH = window.EditEventDashboard;
   var sel = document.getElementById('dash-event');
 

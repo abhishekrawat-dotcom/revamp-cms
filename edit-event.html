@@ -163,7 +163,15 @@
     ]},
 
     { id:'design', label:'Design', icon:IC.brush, tabs:[
-        { id:'editor',   label:'Site editor', link:'custom_editor.html?event=' + eventSlug },
+        /* a function, not a plain string: EV.templateId isn't known yet at this array's own (synchronous,
+           pre-fetchEvent) construction time. Resolved fresh wherever t.link is actually read (see
+           subtabsHTML()/go() below) — critically, without it custom_editor.html gets no `template=` param
+           at all, boots with TEMPLATE_MODE false, and silently shows its own built-in generic placeholder
+           site instead of this real event (confirmed, real bug — not hypothetical). */
+        { id:'editor',   label:'Site editor', link: function(){
+            return 'custom_editor.html?event=' + encodeURIComponent(eventSlug) +
+              (EV && EV.templateId ? '&template=' + encodeURIComponent(EV.templateId) : '');
+        } },
         { id:'sections', label:'Page sections' },
         { id:'nav',      label:'Navigation' },
         { id:'theme',    label:'Theme' },
@@ -240,7 +248,8 @@
       /* a link tab leaves the console entirely — render it as a real anchor
          so middle-click and "open in new tab" behave the way people expect */
       if (t.link){
-        return '<a class="tab-link" href="' + esc(t.link) + '">' +
+        var href = typeof t.link === 'function' ? t.link() : t.link;
+        return '<a class="tab-link" href="' + esc(href) + '">' +
           svg(IC.ext, 13) + inner + '</a>';
       }
       return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '">' +
@@ -274,7 +283,7 @@
     var asked = parts[1] && real.filter(function(t){ return t.id === parts[1]; }).length ? parts[1] : null;
     /* #design/editor means "take me to the editor", not "render a landing page" */
     var linked = parts[1] && s.tabs.filter(function(t){ return t.id === parts[1] && t.link; })[0];
-    if (linked){ location.href = linked.link; return; }
+    if (linked){ location.href = typeof linked.link === 'function' ? linked.link() : linked.link; return; }
     cur.tab = real.length ? (asked || real[0].id) : null;
     var r = routeId();
     if (location.hash.slice(1) !== r) location.hash = r;
@@ -768,7 +777,7 @@
     }).join('');
 
     return vhead('Page sections', 'Turn blocks on or off and drag to reorder. This is exactly what renders on the live microsite.',
-        '<a class="btn btn-secondary btn-sm" href="custom_editor.html?event=' + EV.id + '">' + svg(IC.brush, 13) + ' Open site editor</a>') +
+        '<a class="btn btn-secondary btn-sm" href="custom_editor.html?event=' + esc(EV.id) + (EV.templateId ? '&template=' + esc(EV.templateId) : '') + '">' + svg(IC.brush, 13) + ' Open site editor</a>') +
       '<div class="callout info">' + svg(IC.info, 17) +
         '<span><strong>' + onN + ' of ' + DEFAULT_SECTIONS.length + ' sections are live</strong>' +
         'These are the canonical blocks Ops uses today. Turning one off hides it everywhere — nav, anchors and the page itself — without deleting its content.</span></div>' +
@@ -4693,7 +4702,7 @@
         '</div>' +
         '<div class="modal-foot">' +
           '<span style="flex:1;font-size:12px;color:var(--text-muted);align-self:center">This is a rendering of the current draft. Publish to make it live.</span>' +
-          '<a class="btn btn-secondary" href="custom_editor.html?event=' + EV.id + '">' + svg(IC.brush, 14) + ' Edit in editor</a>' +
+          '<a class="btn btn-secondary" href="custom_editor.html?event=' + esc(EV.id) + (EV.templateId ? '&template=' + esc(EV.templateId) : '') + '">' + svg(IC.brush, 14) + ' Edit in editor</a>' +
           '<button class="btn btn-primary" type="button" id="pv-publish">Publish</button>' +
         '</div>' +
       '</div></div>';

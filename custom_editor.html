@@ -1943,22 +1943,42 @@
     var TEMPLATE_ID = new URLSearchParams(location.search).get('template');
     var TEMPLATE_MODE = !!TEMPLATE_ID;
     var C = window.RevampCore;
-    var editorEventId = new URLSearchParams(location.search).get('event') || '1';
-    var EV = C.eventById(editorEventId) || C.EVENTS[0];
-    document.getElementById('ed-event-name').textContent = EV.name + ' | ' + (C.PORTALS[EV.portal] || '');
-    document.getElementById('ed-event-meta').textContent = C.fmtDT(EV.start) + '  |  ' + EV.eventNo + '  |  ' + (C.TYPES[EV.type] || EV.type);
-    renderEventRail('global-rail', {
-      activeSection: 'design',
-      onSection: function(section){
-        if (section === 'design') return;
-        if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#audience/payments'; return; }
-        if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
-        if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(editorEventId); return; }
-        if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(editorEventId); return; }
-        if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(editorEventId); return; }
-        location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#' + section;
-      }
-    });
+    var qsEarly = new URLSearchParams(location.search);
+    var editorEventId = qsEarly.get('event') || qsEarly.get('slug') || '';
+    // EV here is chrome-only (the header name/meta text below, and the demo-mode-only preview builder
+    // further down) — editor-template-ui.js's own boot() never reads it (confirmed: host.EV/
+    // host.editorEventId are accepted but unused there), so loading it async, deferred past this point,
+    // blocks nothing. C.eventById/C.EVENTS (the old hardcoded 8-event array) are gone — this used to call
+    // them directly and would throw on every single page load, template mode or not, stopping this whole
+    // script before it ever reached the real canvas-mounting code far below. fetchEvent's own rejection
+    // (no event context, not signed in, a stale/bad id) degrades to just not having chrome text — it must
+    // never block TEMPLATE_MODE's real boot() from running.
+    var EV = null;
+    function wireEventRail(){
+      renderEventRail('global-rail', {
+        activeSection: 'design',
+        onSection: function(section){
+          if (section === 'design') return;
+          if (section === 'payment') { location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#audience/payments'; return; }
+          if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
+          if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(editorEventId); return; }
+          if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(editorEventId); return; }
+          if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(editorEventId); return; }
+          location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#' + section;
+        }
+      });
+    }
+    if (editorEventId && C && C.fetchEvent) {
+      C.fetchEvent(editorEventId).then(function(data){
+        EV = data;
+        document.getElementById('ed-event-name').textContent = EV.name + (EV.category ? ' | ' + (C.TYPES[EV.category] || EV.category) : '');
+        document.getElementById('ed-event-meta').textContent = [EV.start ? C.fmtDT(EV.start) : '', EV.venue].filter(Boolean).join('  |  ');
+      }).catch(function(err){
+        console.warn('[custom_editor] could not load event chrome info: ' + (err && err.message));
+      }).then(wireEventRail);
+    } else {
+      wireEventRail();
+    }
 
   /* ---------- "Generate from a brief" arrival notice ----------
      create-event.html's startGenerateFromBrief() stamps the handoff payload with generatedFromBrief:true
@@ -4510,7 +4530,7 @@
     '})();<\\x2Fscript>';
 
     var doc = '<!doctype html><html><head><meta charset="utf-8"><title>' +
-      EV.name +
+      ((EV && EV.name) || 'Site') +
       ' — Preview</title>' + headTags +
       '<style>body{background:#fff;overflow:auto;} .frame{max-width:100%;margin:0;box-shadow:none;border-radius:0;outline:none;}</style>' +
       '</head><body>' + clone.outerHTML + carouselScript + motionPreviewScript + '</body></html>';

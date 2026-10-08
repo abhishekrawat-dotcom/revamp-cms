@@ -49,6 +49,17 @@
 (function(){
   'use strict';
   var C = window.RevampCore;
+  /* Standalone dev workbench, built around RevampCore.EVENTS/makePeople (removed — see
+     audience-registrations.html's longer version of this comment). Not linked from real navigation. Also
+     depends on edit-event-marketing.js, which separately has unresolved git merge-conflict markers and
+     fails to parse at all — a second, independent reason this page can't work yet. */
+  if (!C.EVENTS) {
+    document.getElementById('view').innerHTML =
+      '<div style="max-width:420px;margin:80px auto;text-align:center;color:var(--text-muted)">' +
+      '<h2 style="color:var(--text);margin-bottom:8px">This workbench isn’t connected to real event data yet</h2>' +
+      '<a class="btn btn-primary" href="Event_Listing.html" style="display:inline-flex;margin-top:12px">Back to events</a></div>';
+    return;
+  }
   var MKT = window.EditEventMarketing;
   var wbEvent = new URLSearchParams(location.search).get('event') || '1';
   renderEventRail('global-rail', { activeSection:'marketing', onSection:function(section){
