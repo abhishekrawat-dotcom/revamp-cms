@@ -8010,14 +8010,26 @@
         sub: 'Your draft is autosaved — you can pick it back up from the dashboard.',
         body: '<div class="callout plain">' + IC.info + '<span>Nothing is lost. Every step saves as you go.</span></div>',
         confirm: 'Leave builder',
-        onConfirm: function(){ window.location.href = 'index.html'; }
+        /* goes to the dashboard (Event_Listing.html), matching this dialog's own copy above — was
+           'index.html' (the sign-in page itself), which only ever worked by accident: already-signed-in
+           visitors get silently bounced onward from there, a round trip through the login page that was
+           easy to miss when sign-in was instant, and is a visible, confusing "why am I back at login"
+           flash now that it's a real Google sign-in with a real server-side gate. */
+        onConfirm: function(){ exitToDashboard(); }
       });
     });
     $('btn-save-exit').addEventListener('click', function(){
       save();
       toast('Draft saved');
-      setTimeout(function(){ window.location.href = 'index.html'; }, 700);
+      setTimeout(exitToDashboard, 700);
     });
+    /* refreshes the session cookie first (same reasoning as auth.js's own a.back-btn click interceptor —
+       this button isn't one, so it needs its own copy) so a long wizard session's cookie going stale never
+       bounces an actually-signed-in admin to the sign-in page on exit. */
+    function exitToDashboard(){
+      if (window.RevampAuth) RevampAuth.ensureSession().then(go, go); else go();
+      function go(){ window.location.href = 'Event_Listing.html'; }
+    }
 
     /* collapse/expand the 70% preview column — independent of setPreviewVisible()'s per-step on/off;
        .wiz-split.preview-collapsed (set here) just lets .wiz-body reclaim the full width while it's closed.
