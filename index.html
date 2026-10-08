@@ -436,10 +436,10 @@
     <div class="login-form-wrap">
       <div class="login-card">
         <h2>Sign in to Revamp</h2>
-        <span class="sub">Sign in with your ET Oneworld admin account.</span>
+        <span class="sub">Sign in with your @timesinternet.in Google account.</span>
         <div id="login-error" style="display:none;margin:10px 0 0;padding:9px 12px;border-radius:8px;background:var(--crit-soft);color:var(--crit);font-size:12.5px;"></div>
 
-        <form id="login-form">
+        <form id="login-form" hidden>
           <div class="field">
             <label for="login-email">Work email</label>
             <input id="login-email" type="email" placeholder="admin@ethrworld.com" autocomplete="username">
@@ -457,9 +457,8 @@
           <button type="submit" class="btn btn-primary btn-block" id="login-submit-btn">Sign in</button>
         </form>
 
-        <div class="divider">OR</div>
-        <button type="button" class="btn btn-secondary btn-block" id="sso-btn">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <button type="button" class="btn btn-primary btn-block" id="sso-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.8 3-4.4 3-7.3z"/><path fill="currentColor" opacity=".8" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z"/><path fill="currentColor" opacity=".6" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2L6.4 14z"/><path fill="currentColor" opacity=".9" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.4 3-4.1 5.6-4.1z"/></svg>
           Continue with Google
         </button>
 
@@ -775,8 +774,14 @@
     var submitBtn = document.getElementById('login-submit-btn');
     var errorBox = document.getElementById('login-error');
 
+    var params = new URLSearchParams(location.search);
+    /* where the server's sign-in gate sent the user from (functions/lib/access.js) — same-site paths only */
+    var next = params.get('next');
+    if (!next || next.charAt(0) !== '/' || next.charAt(1) === '/' || next.charAt(1) === '\\') next = 'Event_Listing.html';
+
+    /* writes the session cookie the server checks before leaving, so the next page isn't bounced back here */
     function enterApp(){
-      location.href = 'Event_Listing.html';
+      RevampAuth.ensureSession().then(function(){ location.href = next; }, showLoginError);
     }
 
     function showLoginError(err){
@@ -787,9 +792,16 @@
       errorBox.style.display = 'block';
     }
 
-    // Already signed in from a previous visit (Firebase Auth persists the session itself) — skip the form.
+    // /?signout=1 signs out (a link any page can use); ?denied=1 means the server refused this account.
+    // Otherwise an earlier sign-in (Firebase Auth persists it) goes straight in.
     if (window.RevampAuth) {
-      RevampAuth.onAuthChange(function (user) { if (user) enterApp(); });
+      if (params.get('signout') === '1' || params.get('denied') === '1') {
+        RevampAuth.signOutUser().then(function(){
+          if (params.get('denied') === '1') showLoginError({ message: 'Only @' + RevampAuth.allowedDomain + ' Google accounts can use Revamp. Sign in with your company account.' });
+        });
+      } else {
+        RevampAuth.onAuthChange(function (user) { if (user) enterApp(); });
+      }
     }
 
     loginForm.addEventListener('submit', function(e){

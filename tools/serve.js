@@ -8,6 +8,7 @@
 // reads the same two variable names either way, see its header comment).
 const http = require('http'), fs = require('fs'), path = require('path');
 const { handleApi } = require('../functions/lib/api');
+const { gate } = require('../functions/lib/access');
 
 const root = path.resolve(__dirname, '..');
 const port = +process.argv[2] || 8080;
@@ -29,7 +30,12 @@ function loadEnvFile() {
 }
 loadEnvFile();
 
-http.createServer((req, res) => {
+// Same @timesinternet.in sign-in gate as server.js (functions/lib/access.js); REVAMP_AUTH_DISABLED=1 in
+// tools/.env.local turns it off for local work without a network or a company Google account.
+const passThrough = (req, res, next) => next();
+const guard = process.env.REVAMP_AUTH_DISABLED === '1' ? passThrough : gate;
+
+http.createServer((req, res) => guard(req, res, () => {
   if (req.url.indexOf('/api/') === 0) return handleApi(req, res);
 
   let rel = decodeURIComponent(req.url.split('?')[0]);
@@ -41,4 +47,4 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(buf);
   });
-}).listen(port, () => console.log(`Serving ${root}\n  http://localhost:${port}/templates/preview.html?t=tech500`));
+})).listen(port, () => console.log(`Serving ${root}\n  http://localhost:${port}/templates/preview.html?t=tech500`));

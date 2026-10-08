@@ -6,6 +6,7 @@
 // Local: `npm install`, then `npm start` → http://localhost:8080 (tools/serve.js stays the dev server).
 const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { handleApi } = require('./functions/lib/api');
+const { gate } = require('./functions/lib/access');   // @timesinternet.in Google sign-in for pages and /api/*
 
 const root = __dirname;
 const port = +process.env.PORT || 8080;
@@ -32,7 +33,7 @@ function isPrivate(rel){
 }
 
 function cacheFor(ext){
-  if (ext === '.html') return 'no-cache';                          // always revalidate pages, so a rollout shows at once
+  if (ext === '.html') return 'private, no-cache';                 // signed-in only (gate), so never in a shared cache
   if (ext === '.js' || ext === '.css' || ext === '.json') return 'public, max-age=300';   // file names aren't hashed
   return 'public, max-age=86400';
 }
@@ -54,7 +55,10 @@ function notFound(req, res){
   send(req, res, 404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' }, Buffer.from('Not found'));
 }
 
-http.createServer(function(req, res){
+http.createServer(function(req, res){ gate(req, res, function(){ serve(req, res); }); })
+  .listen(port, function(){ console.log('Revamp listening on port ' + port); });
+
+function serve(req, res){
   const url = req.url.split('?')[0];
   if (url.indexOf('/api/') === 0) return handleApi(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
@@ -77,4 +81,4 @@ http.createServer(function(req, res){
       send(req, res, 200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': cacheFor(ext) }, buf);
     });
   });
-}).listen(port, function(){ console.log('Revamp listening on port ' + port); });
+}

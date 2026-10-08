@@ -57,6 +57,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getFirebase } = require('./firebase');
+const { isAllowedUser, deniedMessage } = require('./access');
 
 function sendJson(res, status, obj) {
   var body = JSON.stringify(obj);
@@ -1398,6 +1399,8 @@ function requireAdmin(req, res, cb) {
   if (fb.error) return sendJson(res, 503, { error: fb.error });
 
   fb.auth.verifyIdToken(m[1]).then(function (decoded) {
+    // a real sign-in isn't enough: only Google accounts on the company domain (access.js)
+    if (!isAllowedUser(decoded)) return sendJson(res, 403, { error: deniedMessage() });
     cb(fb, decoded);
   }).catch(function () {
     sendJson(res, 401, { error: 'Your sign-in has expired or is invalid — please log in again.' });
