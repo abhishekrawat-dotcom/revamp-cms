@@ -1,0 +1,94 @@
+/* #nav — generic top navigation. Theme: reads --nav-bg-color/--nav-text-color when a template sets them
+   (ET's own convention), falling back to --default-color/body background; link hover reads --theme-color. */
+#nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  width: 100%;
+  background: var(--nav-bg-color, #ffffff);
+  font-family: var(--body-font-family, Arial, sans-serif);
+  box-shadow: 0 1px 0 rgba(25, 27, 31, 0.08);
+}
+#nav .rv-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 24px;
+}
+#nav .rv-nav-brand {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+#nav .nav-logo {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+#nav .rv-nav-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+#nav .rv-nav-links li {
+  flex: 0 0 auto;
+}
+#nav .rv-nav-links a {
+  display: inline-block;
+  color: var(--nav-text-color, var(--default-color, #191b1f));
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+#nav .rv-nav-links a:hover,
+#nav .rv-nav-links a:focus-visible {
+  color: var(--theme-color, #186bf9);
+}
+
+/* ---- ~768px: trim the horizontal gaps, keep everything on one row ---- */
+@media (max-width: 768px) {
+  #nav .rv-nav-inner {
+    padding: 10px 16px;
+    gap: 14px;
+  }
+  #nav .rv-nav-links {
+    gap: 18px;
+  }
+}
+
+/* ---- ~390px: the full link list no longer fits one row — let it scroll horizontally inside its own
+   lane instead of wrapping (which would push the bar's height around) or hiding links with no menu
+   control to reach them again (this component ships with no script). The page itself never scrolls
+   sideways; only this one strip does. ---- */
+@media (max-width: 480px) {
+  #nav .rv-nav-inner {
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  #nav .nav-logo {
+    width: 32px;
+    height: 32px;
+  }
+  #nav .rv-nav-links {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 16px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+  #nav .rv-nav-links a {
+    font-size: 14px;
+  }
+}

@@ -1,0 +1,111 @@
+/* #faq-accordion — one-at-a-time accordion. Themeable: --theme-color (open state), --heading-font-family,
+   --body-font-family, --default-color/--body-color, --para-font-size (answer). */
+#faq-accordion {
+  padding: var(--bg-spacing, 64px 0);
+  background: #ffffff;
+}
+#faq-accordion .faq-accordion-inner {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+#faq-accordion .faq-accordion-head {
+  text-align: center;
+  margin-bottom: 32px;
+}
+#faq-accordion .faq-accordion-heading {
+  margin: 0;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: var(--primary-font-size, 30px);
+  font-weight: 700;
+  color: var(--default-color, #191b1f);
+}
+#faq-accordion .faq-accordion-list {
+  border-top: 1px solid rgba(25, 27, 31, 0.12);
+}
+#faq-accordion .faq-item {
+  border-bottom: 1px solid rgba(25, 27, 31, 0.12);
+}
+#faq-accordion .faq-question {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  appearance: none;
+}
+#faq-accordion .faq-question-text {
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--default-color, #191b1f);
+}
+#faq-accordion .faq-icon {
+  flex: 0 0 auto;
+  font-size: 16px;
+  color: var(--body-color, #63666e);
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+#faq-accordion .faq-item.active .faq-question-text,
+#faq-accordion .faq-item.active .faq-icon {
+  color: var(--theme-color, #186bf9);
+}
+#faq-accordion .faq-item.active .faq-icon {
+  transform: rotate(180deg);
+}
+#faq-accordion .faq-answer-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.3s ease, opacity 0.25s ease;
+}
+#faq-accordion .faq-item.active .faq-answer-wrap {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+#faq-accordion .faq-answer-inner {
+  overflow: hidden;
+}
+#faq-accordion .faq-answer {
+  margin: 0;
+  padding: 0 4px 20px;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: var(--para-font-size, 15px);
+  line-height: 1.6;
+  color: var(--body-color, #63666e);
+}
+#faq-accordion .faq-question:focus-visible {
+  outline: 2px solid var(--theme-color, #186bf9);
+  outline-offset: 2px;
+}
+
+/* ---- ~768px ---- */
+@media (max-width: 768px) {
+  #faq-accordion {
+    padding: 48px 0;
+  }
+}
+
+/* ---- ~390px: tighter row padding and smaller type so a long question still wraps to 2 lines without
+   crowding the chevron; the accordion itself (flex column, no fixed widths) needs no structural change ---- */
+@media (max-width: 480px) {
+  #faq-accordion .faq-accordion-head {
+    margin-bottom: 24px;
+  }
+  #faq-accordion .faq-question {
+    padding: 16px 2px;
+    gap: 12px;
+  }
+  #faq-accordion .faq-question-text {
+    font-size: 15px;
+  }
+  #faq-accordion .faq-answer {
+    font-size: 14px;
+    padding-bottom: 16px;
+  }
+}

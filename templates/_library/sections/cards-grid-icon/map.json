@@ -1,0 +1,15 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/cards-grid-icon. Rule reference: editor-fill.js header comment. 'from':'awaits' (shape:'cards', helper literally 'Icon, title and a line of copy each') is the canonical fit; 'priorities' (Key Discussion Points) and 'whyjoin' (benefit cards) are the same {t,d} item shape and work identically.",
+  "from": "awaits",
+  "section": "cards-grid-icon",
+  "intro": {
+    "subheading": ".cards-icon-eyebrow",
+    "heading": "h2.cards-icon-heading"
+  },
+  "fill": [
+    { "list": ".cards-icon-card", "items": "awaits.items", "require": "{t}{d}", "empty": "hide", "fill": [
+      { "text": ".cards-icon-card-title", "value": "{t}" },
+      { "text": ".cards-icon-card-body", "value": "{d}" }
+    ] }
+  ]
+}

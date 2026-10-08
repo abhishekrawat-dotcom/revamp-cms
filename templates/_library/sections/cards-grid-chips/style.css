@@ -1,0 +1,77 @@
+/* #cards-grid-chips — dense, icon-free chip wrap. Deliberately flatter/tighter than cards-grid-icon:
+   smaller radius, tinted fill instead of a bordered white card, flex-wrap instead of a fixed grid.
+   Themeable: --theme-color (fill tint + title), --heading-font-family, --body-font-family, --body-color. */
+#cards-grid-chips {
+  padding: var(--bg-spacing, 64px 0);
+  background: #fafafb;
+}
+#cards-grid-chips .cards-chips-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+#cards-grid-chips .cards-chips-head {
+  max-width: 640px;
+  margin: 0 auto 32px;
+  text-align: center;
+}
+#cards-grid-chips .cards-chips-heading {
+  margin: 0;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: var(--primary-font-size, 30px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--default-color, #191b1f);
+}
+#cards-grid-chips .cards-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+}
+#cards-grid-chips .chip-card {
+  flex: 1 1 220px;
+  max-width: 280px;
+  padding: 18px 20px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--theme-color, #186bf9) 6%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--theme-color, #186bf9) 16%, transparent);
+}
+#cards-grid-chips .chip-card-title {
+  margin: 0 0 4px;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--default-color, #191b1f);
+}
+#cards-grid-chips .chip-card-body {
+  margin: 0;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--body-color, #63666e);
+}
+
+/* ---- ~768px: shrink the minimum chip width a step so three still fit per row on a tablet ---- */
+@media (max-width: 860px) {
+  #cards-grid-chips .chip-card {
+    flex-basis: 180px;
+  }
+}
+
+/* ---- ~390px: a 220px flex-basis would only just fit one per row with 18px side padding on a 390px
+   phone (390 - 2*16 outer padding = 358px) — drop to two per row instead of one, with a lower basis
+   so the wrap triggers reliably, rather than leaving single huge chips that look like an accident ---- */
+@media (max-width: 480px) {
+  #cards-grid-chips {
+    padding: 44px 0;
+  }
+  #cards-grid-chips .cards-chips-grid {
+    gap: 10px;
+  }
+  #cards-grid-chips .chip-card {
+    flex: 1 1 calc(50% - 5px);
+    max-width: none;
+    padding: 14px 16px;
+  }
+}

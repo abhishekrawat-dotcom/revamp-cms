@@ -1,0 +1,12 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/overview. Rule reference: editor-fill.js header comment. Uses the universal 'section text' intro slots (subheading/heading/body/media) every Create Event library item carries — 'from':'about' is the canonical fit (shape:'rich', core:true), but any single-text library works the same way.",
+  "from": "about",
+  "section": "overview",
+  "intro": {
+    "subheading": ".overview-eyebrow",
+    "heading": "h2.overview-heading",
+    "body": ".overview-body p",
+    "media": { "sel": ".overview-media", "wrap": "overview-media" }
+  },
+  "fill": []
+}

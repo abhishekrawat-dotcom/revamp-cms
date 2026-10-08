@@ -1,0 +1,11 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/stats-strip. Rule reference: editor-fill.js header comment. 'from':'stats' is Create Event's stats-shape library id; its items are {k: label, v: value} (create-event.html's stats editor, shape:'stats') — not the t/d card-item shape every 'cards'/'columns'/'chips' library uses.",
+  "from": "stats",
+  "section": "stats-strip",
+  "fill": [
+    { "list": ".stat-item", "items": "stats.items", "require": "{v}{k}", "empty": "hide", "fill": [
+      { "text": ".stat-value", "value": "{v}" },
+      { "text": ".stat-label", "value": "{k}" }
+    ] }
+  ]
+}

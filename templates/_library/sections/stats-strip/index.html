@@ -1,0 +1,33 @@
+<!-- Generic stats strip. 3–5 {value, label} callouts in a grid that reflows by itself as items are added
+     or removed (auto-fit columns, no fixed count to keep in sync — see style.css). Each stat's icon is
+     decorative only (content.map never touches it; this library's one icon approach is bootstrap-icons,
+     see ../../README.md) and simply cycles through a small set as items are added/removed in the editor. -->
+<section id="stats-strip" class="rv-stats-strip mb-medium">
+  <div class="stats-strip-inner">
+    <div class="stat-item">
+      <i class="bi bi-people stat-icon" aria-hidden="true"></i>
+      <span class="stat-value">500+</span>
+      <span class="stat-label">Attendees</span>
+    </div>
+    <div class="stat-item">
+      <i class="bi bi-mic stat-icon" aria-hidden="true"></i>
+      <span class="stat-value">50+</span>
+      <span class="stat-label">Speakers</span>
+    </div>
+    <div class="stat-item">
+      <i class="bi bi-calendar3 stat-icon" aria-hidden="true"></i>
+      <span class="stat-value">2</span>
+      <span class="stat-label">Days</span>
+    </div>
+    <div class="stat-item">
+      <i class="bi bi-easel stat-icon" aria-hidden="true"></i>
+      <span class="stat-value">30+</span>
+      <span class="stat-label">Sessions</span>
+    </div>
+    <div class="stat-item">
+      <i class="bi bi-globe stat-icon" aria-hidden="true"></i>
+      <span class="stat-value">15+</span>
+      <span class="stat-label">Countries</span>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,11 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/cta-band. Rule reference: editor-fill.js header comment. Create Event has no dedicated 'closing CTA band' library id — this uses the universal 'section text' intro slots (heading/body/cta) every library item carries, so it can take its intro from whichever library the generated page is using for its closing pitch. 'whyjoin' is the most natural fit (it already carries an advantage-pitch + a single CTA in spirit); 'about' or 'attend' work the same way if whyjoin isn't in the page.",
+  "from": "whyjoin",
+  "section": "cta-band",
+  "intro": {
+    "heading": "h2.cta-band-heading",
+    "body": ".cta-band-body",
+    "cta": { "label": "a.cta-band-btn", "link": "a.cta-band-btn" }
+  },
+  "fill": []
+}

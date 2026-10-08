@@ -1,0 +1,81 @@
+/* #cta-band — full-width closing band on the theme colour. Themeable: --theme-color (band background),
+   --heading-font-family, --body-font-family, --primary-font-size. */
+#cta-band {
+  padding: var(--bg-spacing, 72px 0);
+  background: var(--theme-color, #186bf9);
+  text-align: center;
+}
+#cta-band .cta-band-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+#cta-band .cta-band-heading {
+  margin: 0;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: var(--primary-font-size, 32px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+}
+#cta-band .cta-band-body {
+  margin: 0;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: var(--para-font-size, 16px);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.88);
+}
+#cta-band .cta-band-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 32px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--theme-color, #186bf9);
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+#cta-band .cta-band-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+/* ---- ~768px ---- */
+@media (max-width: 768px) {
+  #cta-band {
+    padding: 56px 0;
+  }
+}
+
+/* ---- ~390px: smaller heading, a full-width button sized for a thumb tap rather than the inline
+   pill that suits a wide band ---- */
+@media (max-width: 480px) {
+  #cta-band {
+    padding: 44px 0;
+  }
+  #cta-band .cta-band-inner {
+    padding: 0 20px;
+    gap: 12px;
+  }
+  #cta-band .cta-band-heading {
+    font-size: clamp(24px, 7vw, 28px);
+  }
+  #cta-band .cta-band-body {
+    font-size: 15px;
+  }
+  #cta-band .cta-band-btn {
+    width: 100%;
+    margin-top: 4px;
+  }
+}

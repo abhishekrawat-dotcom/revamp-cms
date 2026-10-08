@@ -1,0 +1,14 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/cards-grid-chips. Rule reference: editor-fill.js header comment. 'from':'attend' (shape:'chips', core:true, 'Who should attend') is the canonical fit; 'industries', 'tracks' and 'exhibitors' are the same chips shape with the same {t,d} item fields and work identically.",
+  "from": "attend",
+  "section": "cards-grid-chips",
+  "intro": {
+    "heading": "h2.cards-chips-heading"
+  },
+  "fill": [
+    { "list": ".chip-card", "items": "attend.items", "require": "{t}{d}", "empty": "hide", "fill": [
+      { "text": ".chip-card-title", "value": "{t}" },
+      { "text": ".chip-card-body", "value": "{d}" }
+    ] }
+  ]
+}

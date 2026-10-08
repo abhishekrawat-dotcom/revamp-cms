@@ -1,0 +1,15 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/speaker-grid. Rule reference: editor-fill.js header comment. 'from':'speakers' is Create Event's people-shape library id; its items are {n: name, r: role, c: company} (create-event.html's speakers editor) plus a photo Create Event's speaker tool never collects — the photo placeholder is always left as this section's own sample image, same convention as every ported template's speaker cards (see templates/making-ai-work/sections/our-speakers).",
+  "from": "speakers",
+  "section": "speaker-grid",
+  "intro": {
+    "heading": "h2.speaker-grid-heading"
+  },
+  "fill": [
+    { "list": ".speaker-card", "items": "speakers.items", "require": "{n}", "empty": "hide", "fill": [
+      { "text": ".speaker-name", "value": "{n}" },
+      { "text": ".speaker-role", "value": "{r}" },
+      { "text": ".speaker-company", "value": "{c}" }
+    ] }
+  ]
+}

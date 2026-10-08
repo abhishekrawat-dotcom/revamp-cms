@@ -1,0 +1,9 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/nav — one entry for template.json's content.map array. Rule reference: editor-fill.js header comment. 'from':'nav' is Create Event's own library id for this shape (shape:'auto' — create-event.html gives it no text fields of its own), so the only thing that ever applies here is the event's own logo from step 1.",
+  "from": "nav",
+  "section": "nav",
+  "fill": [
+    { "attr": "img.nav-logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+    { "attr": "img.nav-logo", "name": "alt", "value": "{event.name}", "empty": "keep" }
+  ]
+}

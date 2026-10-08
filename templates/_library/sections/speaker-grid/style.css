@@ -1,0 +1,89 @@
+/* #speaker-grid — photo/name/role/company cards. Themeable: --heading-font-family (heading/name),
+   --body-font-family (role/company), --theme-color (role), --default-color/--body-color. */
+#speaker-grid {
+  padding: var(--bg-spacing, 64px 0);
+  background: #ffffff;
+}
+#speaker-grid .speaker-grid-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+#speaker-grid .speaker-grid-head {
+  max-width: 640px;
+  margin: 0 auto 36px;
+  text-align: center;
+}
+#speaker-grid .speaker-grid-heading {
+  margin: 0;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: var(--primary-font-size, 32px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--default-color, #191b1f);
+}
+#speaker-grid .speaker-grid-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 32px 24px;
+}
+#speaker-grid .speaker-card {
+  text-align: center;
+}
+#speaker-grid .speaker-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 999px;
+  margin: 0 0 16px;
+}
+#speaker-grid .speaker-name {
+  margin: 0 0 4px;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--default-color, #191b1f);
+}
+#speaker-grid .speaker-role {
+  margin: 0;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: var(--para-font-size, 14px);
+  line-height: 1.4;
+  color: var(--theme-color, #186bf9);
+}
+#speaker-grid .speaker-company {
+  margin: 2px 0 0;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--body-color, #63666e);
+}
+
+/* ---- ~768px: slightly smaller minimum card width so 3 fit a tablet row ---- */
+@media (max-width: 860px) {
+  #speaker-grid .speaker-grid-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 24px 16px;
+  }
+}
+
+/* ---- ~390px: auto-fit alone would drop to a single, oversized column on a ~350px content width
+   (minmax(160px) needs ~340px for 2) — pin it to 2 explicitly so phone speaker photos stay a sensible
+   size instead of filling the screen one at a time ---- */
+@media (max-width: 480px) {
+  #speaker-grid {
+    padding: 44px 0;
+  }
+  #speaker-grid .speaker-grid-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px 14px;
+  }
+  #speaker-grid .speaker-name {
+    font-size: 15px;
+  }
+  #speaker-grid .speaker-role,
+  #speaker-grid .speaker-company {
+    font-size: 12px;
+  }
+}

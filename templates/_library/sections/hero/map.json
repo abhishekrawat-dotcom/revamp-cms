@@ -1,0 +1,17 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/hero. Rule reference: editor-fill.js header comment. 'from':'hero' is Create Event's hero-shape library id; its own special fields (hero.title/hero.tagline/hero.cta1/hero.cta2 — not the generic subheading/heading/body/cta slots other sections use) plus the step-1 event fields (event.logo/event.date/event.location) are exactly what ported templates' own banner sections map (see templates/making-ai-work/template.json and templates/tech500/template.json's 'banner' entries) — this mirrors that convention 1:1 so a template built from this library section needs no new fill logic.",
+  "from": "hero",
+  "section": "hero",
+  "fill": [
+    { "attr": "img.hero-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
+    { "attr": "img.hero-logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+    { "attr": "img.hero-logo", "name": "alt", "value": "{hero.title|event.name}" },
+    { "text": "h1.hero-title", "value": "{hero.title|event.name}" },
+    { "text": ".hero-tagline", "value": "{hero.tagline}" },
+    { "text": ".hero-date", "value": "{event.date}", "empty": "remove" },
+    { "text": ".hero-location", "value": "{event.location}", "empty": "remove" },
+    { "text": ".hero-cta-primary", "value": "{hero.cta1}", "empty": "keep" },
+    { "text": ".hero-cta-secondary", "value": "{hero.cta2}", "empty": "remove" }
+  ],
+  "aiSkipMedia": "img.hero-bg-image"
+}

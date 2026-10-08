@@ -1,0 +1,86 @@
+/* #overview — generic two-column rich text. Themeable: --heading-font-family, --body-font-family,
+   --default-color, --body-color, --para-font-size, --theme-color (eyebrow accent). */
+#overview {
+  padding: var(--bg-spacing, 64px 0);
+  background: #ffffff;
+}
+#overview .overview-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+}
+#overview .overview-media {
+  order: 2;
+}
+#overview.rv-overview--reverse .overview-media {
+  order: -1;
+}
+#overview .overview-eyebrow {
+  margin: 0 0 12px;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--theme-color, #186bf9);
+}
+#overview .overview-heading {
+  margin: 0 0 20px;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: var(--primary-font-size, 36px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--default-color, #191b1f);
+}
+#overview .overview-body p {
+  margin: 0 0 16px;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: var(--para-font-size, 17px);
+  line-height: 1.65;
+  color: var(--body-color, #4a4e57);
+}
+#overview .overview-body p:last-child {
+  margin-bottom: 0;
+}
+#overview .overview-media img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+/* ---- ~768px: still side by side, but the gap/heading shrink before the columns get too narrow to read ---- */
+@media (max-width: 992px) {
+  #overview .overview-inner {
+    gap: 36px;
+  }
+  #overview .overview-heading {
+    font-size: calc(var(--primary-font-size, 36px) * 0.85);
+  }
+}
+
+/* ---- ~390px: a 2-column grid under ~700px leaves each side too narrow for both text and a legible
+   image, so it drops to one column — text first, image under it, regardless of the left/right modifier
+   (there is no "left/right" once there's only one column) ---- */
+@media (max-width: 700px) {
+  #overview {
+    padding: 48px 0;
+  }
+  #overview .overview-inner {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 0 20px;
+  }
+  #overview .overview-media,
+  #overview.rv-overview--reverse .overview-media {
+    order: 2;
+  }
+  #overview .overview-heading {
+    font-size: clamp(26px, 7vw, 32px);
+  }
+}

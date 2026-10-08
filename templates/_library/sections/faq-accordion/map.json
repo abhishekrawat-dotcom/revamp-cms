@@ -1,0 +1,14 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/faq-accordion. Rule reference: editor-fill.js header comment. 'from':'faq' is Create Event's columns-shape library id for this; items are {t: question, d: answer}. In the editor, opening one answer to edit it needs template.json → sections[].toggle: { item: '.faq-item', open: 'active', expanded: '.faq-question' } (see templates/README.md and templates/tech500/template.json's own 'frequently-asked-questions' entry) wired on whichever template includes this section — not something this fragment itself can declare.",
+  "from": "faq",
+  "section": "faq-accordion",
+  "intro": {
+    "heading": "h2.faq-accordion-heading"
+  },
+  "fill": [
+    { "list": ".faq-item", "items": "faq.items", "require": "{t}{d}", "empty": "hide", "fill": [
+      { "text": ".faq-question-text", "value": "{t}" },
+      { "text": ".faq-answer", "value": "{d}" }
+    ] }
+  ]
+}

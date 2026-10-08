@@ -1,0 +1,10 @@
+{
+  "_comment": "content.map fragment for templates/_library/sections/footer. Rule reference: editor-fill.js header comment. 'from':'footer' is Create Event's own library id for this shape (shape:'auto' — link columns are generated chrome, not wizard text). Only the event's logo and name apply.",
+  "from": "footer",
+  "section": "footer",
+  "fill": [
+    { "attr": "img.footer-logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
+    { "attr": "img.footer-logo", "name": "alt", "value": "{event.name}", "empty": "keep" },
+    { "text": ".footer-copyright", "value": "© {event.name}. All rights reserved.", "empty": "keep" }
+  ]
+}

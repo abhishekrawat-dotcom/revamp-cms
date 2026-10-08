@@ -1,0 +1,76 @@
+/* #stats-strip — 3–5 numeric callouts. auto-fit columns mean the grid copes with any item count the
+   editor's Layout items tool produces, without a fixed column count to update. Themeable: --theme-color
+   (value + icon), --heading-font-family (value), --body-font-family (label), --default-color. */
+#stats-strip {
+  padding: var(--bg-spacing, 48px 0);
+  background: var(--default-color, #191b1f);
+}
+#stats-strip .stats-strip-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 32px 24px;
+}
+#stats-strip .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+}
+#stats-strip .stat-item:last-child {
+  border-right: 0;
+}
+#stats-strip .stat-icon {
+  font-size: 22px;
+  color: var(--theme-color, #186bf9);
+  margin-bottom: 4px;
+}
+#stats-strip .stat-value {
+  display: block;
+  font-family: var(--heading-font-family, Arial, sans-serif);
+  font-size: var(--primary-font-size, 34px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #ffffff;
+}
+#stats-strip .stat-label {
+  display: block;
+  font-family: var(--body-font-family, Arial, sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ---- ~768px: narrower columns before the divider lines start looking cramped against the numbers ---- */
+@media (max-width: 768px) {
+  #stats-strip .stats-strip-inner {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 24px 16px;
+  }
+}
+
+/* ---- ~390px: two per row (minmax(130px,1fr) inside a ~350px content width leaves room for exactly 2),
+   so dividers that assumed a single row would land in the wrong places — drop them and let the grid's own
+   gap do the separating instead ---- */
+@media (max-width: 480px) {
+  #stats-strip {
+    padding: 36px 0;
+  }
+  #stats-strip .stats-strip-inner {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px 12px;
+  }
+  #stats-strip .stat-item {
+    border-right: 0;
+  }
+  #stats-strip .stat-value {
+    font-size: 26px;
+  }
+}
