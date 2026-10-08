@@ -3,6 +3,8 @@
   "name": "Retail Leadership Summit",
   "title": "GIRS - Great India Retail Summit | Retail Leadership Events and Conferences | ET Retail",
   "source": "https://retail.economictimes.indiatimes.com/great-india-retail-summit",
+  "briefReady": false,
+  "briefReadyNote": "Unaudited wrong-event bleed-through: template.json's own title/source (\"GIRS - Great India Retail Summit\", great-india-retail-summit) name a different real ET Retail event than this template's own id/name, and the banner's ported logo/video filenames (\"girs_ilu.svg\", \"girs-loop…\") carry that other event's branding too — the same bug class making-ai-work had before being audited and fixed; this template hasn't been checked against the real retail-leadership-summit page yet.",
 
   "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
   "fonts": [

@@ -9,7 +9,9 @@
    canvas.snapshot()/restore(), device switching, preview and publish.
 
    window.RevampTemplateUI = { boot(frameEl, templateId, host) }
-     host: { escHtml, showToast, EV, editorEventId } — only showToast/escHtml are used here. */
+     host: { escHtml, showToast, EV, editorEventId } — only showToast/escHtml are used here.
+   Also: hasAiProvenance(), aiProvenanceSections(), setAiMarkers(show) — custom_editor.html's AI-provenance
+   badge toggle and publish-review gate read/drive these; see "AI-provenance badges" below. */
 (function () {
   'use strict';
 
@@ -23,13 +25,27 @@
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
 
   /* ---------- key derivation ----------
-     site:<event>:<template>; a new event from Create Event is new-<slug> (templates/README.md). */
+     site:<event>:<template>; a new event from Create Event is new-<slug> (templates/README.md).
+
+     B1 fix: a plain `from=create&slug=…` handoff (the normal, by-hand wizard) is stable across repeat
+     visits to the same event ON PURPOSE — that's what lets someone come back and keep editing the same
+     draft. Generate-from-Brief reused that exact same id, though, so running it a SECOND time for the
+     same event slug resolved to the exact same storeKey as the first run and resolveInitialContent()
+     below restored run #1's old RevampStore snapshot before ever looking at run #2's fresh handoff —
+     silently showing stale content despite the UI's own copy promising a brand-new draft each time.
+     create-event.html's finish() now appends `&draft=<draftId>` (the Firestore doc id /api/generate-
+     content just wrote) ONLY on the Generate-from-Brief redirect — never on the plain wizard's
+     openInEditor() redirect, and never on a later `?event=<id>` "resume this event" visit. Folding that
+     id into the storeKey (only when present) gives every Generate-from-Brief run its own unique key,
+     while leaving the plain wizard's and the resume-existing-event's behavior completely untouched. */
   function resolveKey(tplId) {
     var qs = new URLSearchParams(location.search);
     var fromCreate = qs.get('from') === 'create';
     var slug = qs.get('slug');
+    var draftId = qs.get('draft');
     var id = (fromCreate && slug) ? ('new-' + slug) : (qs.get('event') || '1');
-    return { eventId: id, storeKey: 'site:' + id + ':' + tplId };
+    var storeId = (fromCreate && slug && draftId) ? (id + ':draft-' + draftId) : id;
+    return { eventId: id, storeKey: 'site:' + storeId + ':' + tplId };
   }
 
   /* ---------- boot ---------- */
@@ -93,6 +109,7 @@
       return RevampStore.get('create:logo').then(function (logoRec) {
         var ctx = RevampFill.fromHandoff(draft, logoRec && logoRec.dataUrl);
         var report = RevampFill.apply(canvas, ctx);
+        renderAiProvenanceBadges();
         if (report.skipped.length) showToast('Not shown on this template: ' + report.skipped.join(', '));
         /* a design chosen in Create Event's "Let AI design it" (create-event.html's S.aiDesign) rides along
            in the hand-off payload — apply it before the first snapshot so it survives into the undo stack,
@@ -126,6 +143,104 @@
       var isFont = key === 'headingFont' || key === 'bodyFont';
       canvas.design.set(key, isFont ? ('"' + design[key] + '", sans-serif') : design[key]);
     });
+  }
+
+  /* ---------- AI-provenance badges (Generate-from-Brief review gate) ----------
+     editor-fill.js's apply() is the source of truth: it stamps data-ai-generated="true" (a content.map
+     entry that actually ran and wrote real content) or data-ai-skipped="true" (no content.map entry
+     targets that section at all) on the section itself, and only for an actual Generate-from-Brief draft.
+     This renders the always-visible corner pill each attribute gets — plain markup inside the section, so
+     it rides along in canvas.snapshot()'s saved outerHTML like everything else, no re-render needed on a
+     later reload/restore. Visibility itself is pure CSS (editor-canvas.css, gated on html.show-ai-markers),
+     so clearing the badge on edit (clearAiGenerated below) is just removing the attribute — the pill
+     disappears on its own, one-way, with nothing to undo back on short of an actual Ctrl+Z to a prior
+     snapshot (the same as undoing any other change). */
+  var AI_SPARK_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
+  var AI_INFO_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>';
+
+  function renderAiProvenanceBadges() {
+    if (!canvas) return;
+    // data-ed="none" (editor-canvas.js's walk()) is the template-authoring escape hatch for "never make this
+    // editable" — the same one templates/README.md documents for template markup. Badges aren't template
+    // markup, but they hit the exact same problem: canvas.restore() re-walks every section it rebuilds from a
+    // snapshot string (every reload of an already-generated draft, and any undo/redo touching that section),
+    // and by then these badges are already baked into the saved markup. Without data-ed="none", walk() would
+    // tag the sparkle <svg>'s real <path>s data-editable="image" and the label <span> data-editable="text" on
+    // every such rebuild — making the badge clickable/replaceable, and letting a click-out of its own text
+    // fire exitEdit() -> clearAiGenerated(), silently stripping the real marker off a section nobody touched.
+    // data-ed="none" makes walk() return before it ever calls descend() on the span, so neither it nor its
+    // children are visited — and since it's a plain attribute on the span itself, it rides along in every
+    // snapshot string same as the badge's own markup, so the skip holds on every future re-walk too, not just
+    // the first mount.
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-ai-generated]'), function (sec) {
+      if (sec.querySelector(':scope > .ai-prov-badge')) return;
+      var span = canvas.doc.createElement('span');
+      span.className = 'ai-prov-badge';
+      span.setAttribute('data-ed', 'none');
+      span.innerHTML = AI_SPARK_SVG + '<span>AI-generated</span>';
+      sec.insertBefore(span, sec.firstChild);
+    });
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-ai-skipped]'), function (sec) {
+      if (sec.querySelector(':scope > .ai-skip-badge')) return;
+      var span = canvas.doc.createElement('span');
+      span.className = 'ai-skip-badge';
+      span.setAttribute('data-ed', 'none');
+      span.innerHTML = AI_INFO_SVG + '<span>Not generated — add manually</span>';
+      sec.insertBefore(span, sec.firstChild);
+    });
+    // A2 — hero banner image/video: editor-fill.js stamps data-ai-media-skipped directly on the template's
+    // own ported <img>/<video> elements it named via content.map's aiSkipMedia (image/video generation is
+    // explicitly out of scope this pass — see editor-fill.js's header comment). Those elements can't host a
+    // child badge themselves (an <img>/<video> can't contain child markup), so this is one badge per
+    // SECTION, appended into the nearest [data-rv-section] ancestor instead — bottom-left (see
+    // editor-canvas.css), so it never collides with that same section's own top-left .ai-prov-badge for its
+    // (genuinely AI-written) text. Skipped when the section is already data-ai-skipped in full: that
+    // section's one .ai-skip-badge already says "not generated" for everything in it, media included.
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-ai-media-skipped]'), function (el) {
+      var sec = el.closest('[data-rv-section]');
+      if (!sec || sec.hasAttribute('data-ai-skipped')) return;
+      if (sec.querySelector(':scope > .ai-media-skip-badge')) return;
+      var span = canvas.doc.createElement('span');
+      span.className = 'ai-media-skip-badge';
+      span.setAttribute('data-ed', 'none');
+      span.innerHTML = AI_INFO_SVG + '<span>Template photo/video — replace manually</span>';
+      sec.appendChild(span);
+    });
+  }
+
+  /* whether this draft has any AI-provenance attribute currently mounted — gates both the topbar's
+     show/hide-markers toggle (custom_editor.html) and whether a publish click shows the review gate at all,
+     so neither ever appears for a normal hand-filled wizard draft. */
+  function hasAiProvenance() {
+    return !!(canvas && canvas.doc.querySelector('[data-ai-generated], [data-ai-skipped]'));
+  }
+
+  /* fresh, live read of the current DOM — never cached — for the publish-review gate's own body
+     (custom_editor.html): one row per section currently carrying either attribute, by its own real name. */
+  function aiProvenanceSections() {
+    if (!canvas) return { generated: [], skipped: [] };
+    function list(attr) {
+      return Array.prototype.map.call(canvas.doc.querySelectorAll('[' + attr + ']'), function (sec) {
+        var id = sec.getAttribute('data-rv-section');
+        return { id: id, name: sec.getAttribute('data-sec-name') || id };
+      });
+    }
+    return { generated: list('data-ai-generated'), skipped: list('data-ai-skipped') };
+  }
+
+  /* the topbar toggle's actual effect — a class on the iframe document's own <html>, since the badges
+     (and editor-canvas.css's visibility rule for them) live inside it, not in custom_editor.html itself. */
+  function setAiMarkers(show) {
+    if (canvas) canvas.doc.documentElement.classList.toggle('show-ai-markers', !!show);
+  }
+
+  /* C1 — "cleared once a human edits that section": called at each of this file's own actual content-edit
+     commit points below (never from the generic commit()/design bridges, which change layout/theme rather
+     than a specific section's own written content) with whatever element is in scope there. One-way: once
+     removed, nothing in this file ever sets it back. */
+  function clearAiGenerated(el) {
+    var sec = el && el.nodeType === 1 ? el.closest('[data-ai-generated]') : null;
+    if (sec) sec.removeAttribute('data-ai-generated');
   }
 
   function seedSnapshot(draft) {
@@ -272,28 +387,32 @@
     var action = btn.getAttribute('data-action');
     if (TEXT_FORMAT_ACTIONS[action]) {
       canvas.doc.execCommand(action === 'strikethrough' ? 'strikeThrough' : action);
+      clearAiGenerated(selectedEl);
       commit();
     } else if (action === 'align-left' || action === 'align-center' || action === 'align-right') {
       selectedEl.style.textAlign = action.slice(6);
+      clearAiGenerated(selectedEl);
       commit();
     } else if (action === 'link') {
       var url = prompt('Link URL', selectedEl.getAttribute('data-href') || 'https://');
-      if (url) { selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); commit(); }
+      if (url) { selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); clearAiGenerated(selectedEl); commit(); }
     } else if (action === 'replace-image') {
       var picUrl = prompt('Image URL', canvas.pictureOf(selectedEl) || 'https://');
-      if (picUrl) { canvas.setPicture(selectedEl, picUrl); commit(); }
+      if (picUrl) { canvas.setPicture(selectedEl, picUrl); clearAiGenerated(selectedEl); commit(); }
     } else if (action === 'alt-text') {
       var alt = prompt('Alt text', selectedEl.getAttribute('alt') || selectedEl.getAttribute('data-alt') || '');
-      if (alt !== null) { if (selectedEl.tagName === 'IMG') selectedEl.setAttribute('alt', alt); else selectedEl.setAttribute('data-alt', alt); commit(); }
+      if (alt !== null) { if (selectedEl.tagName === 'IMG') selectedEl.setAttribute('alt', alt); else selectedEl.setAttribute('data-alt', alt); clearAiGenerated(selectedEl); commit(); }
     } else if (action === 'duplicate') {
       var clone = selectedEl.cloneNode(true);
       clone.classList.remove('ed-selected');
       selectedEl.after(clone);
       canvas.retag(clone);
+      clearAiGenerated(selectedEl);
       commit();
       selectElement(clone);
     } else if (action === 'delete') {
       var toRemove = selectedEl;
+      clearAiGenerated(toRemove);    // closest() needs it still attached — before remove(), not after
       deselect();
       toRemove.remove();
       commit();
@@ -302,16 +421,28 @@
     }
   }
 
+  // dirty-check for exitEdit below: only text/button elements ever go through enterEdit/exitEdit (the
+  // other data-editable call sites — image/link/etc — clear the badge themselves right at their own commit
+  // point, see onToolbarClick above), and .textContent is what's actually typed into those via
+  // contenteditable, matching the granularity sectionTextNodes()/applyTextEdit() already rely on elsewhere
+  // in this file. Captured on enterEdit, read and cleared on exitEdit so a later edit session on a
+  // DIFFERENT element never compares against this one's stale value.
+  var editingBeforeText = null;
+
   function enterEdit(el) {
     if (editingEl) exitEdit(editingEl);
     el.setAttribute('contenteditable', 'true');
     editingEl = el;
+    editingBeforeText = el.textContent;
     el.focus();
   }
 
   function exitEdit(el) {
     el.removeAttribute('contenteditable');
     editingEl = null;
+    var changed = editingBeforeText !== null && el.textContent !== editingBeforeText;
+    editingBeforeText = null;
+    if (changed) clearAiGenerated(el);
     commit();
   }
 
@@ -388,6 +519,7 @@
     var clone = last.cloneNode(true);
     last.after(clone);
     canvas.retag(clone);
+    clearAiGenerated(sec);
     commit();
     return true;
   }
@@ -398,6 +530,7 @@
     var items = sec.querySelectorAll(cfg.item);
     if (items.length <= 1) { showToast('At least one item is required'); return false; }
     item.remove();
+    clearAiGenerated(sec);
     commit();
     return true;
   }
@@ -624,7 +757,12 @@
     card.querySelector('[data-cp="apply"]').addEventListener('click', function () {
       if (result.design && Object.keys(result.design).length) applyAiDesignToCanvas(canvas, result.design);
       var appliedText = 0;
-      (result.textEdits || []).forEach(function (t) { if (applyTextEdit(t)) appliedText++; });
+      (result.textEdits || []).forEach(function (t) {
+        if (applyTextEdit(t)) {
+          appliedText++;
+          clearAiGenerated(canvas.doc.querySelector('[data-rv-section="' + t.sectionId + '"]'));
+        }
+      });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
       commit();
       card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
@@ -760,6 +898,7 @@
 
   window.RevampTemplateUI = {
     boot: boot, setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo,
-    addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem, setDesign: setDesign
+    addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem, setDesign: setDesign,
+    hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers
   };
 })();

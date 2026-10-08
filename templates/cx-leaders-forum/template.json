@@ -3,6 +3,8 @@
   "name": "CX Leaders Forum",
   "title": "CX Annual Symposium- CX Event | CMO, CX Leaders Event and Conference | ET BrandEquity",
   "source": "https://brandequity.economictimes.indiatimes.com/cx-annual-symposium",
+  "briefReady": false,
+  "briefReadyNote": "Two unaudited problems carried over from this template's porting: (1) content.map's banner.fill targets \"img.banner-bg-image\", but this template's own sections/banner/index.html has no such element — the hero background is only a static inline CSS background on the <section> itself, so that fill rule is dead. (2) template.json's own title/source (\"CX Annual Symposium…\", cx-annual-symposium) name a different real ET BrandEquity event than \"CX Leaders Forum\" — the same wrong-event bleed-through making-ai-work had before being audited and fixed; this template hasn't been.",
 
   "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
   "fonts": [

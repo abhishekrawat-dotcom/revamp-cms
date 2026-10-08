@@ -14,3 +14,38 @@ html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; o
 
 /* Shared header/footer can't be edited per template. */
 html[data-rv-editing] [data-rv-locked]{ cursor:not-allowed; }
+
+/* AI-provenance badges (Generate-from-Brief review gate) — editor-template-ui.js renders these as plain
+   child spans on any section editor-fill.js stamped data-ai-generated / data-ai-skipped (a Generate-from-
+   -Brief draft only). Deliberately NOT hover-gated like [data-editable] above — the whole point is to be
+   seen without hunting for it — so visibility is gated purely by html.show-ai-markers (the topbar toggle in
+   custom_editor.html, default state decided there). Colours are hardcoded, not var(--review)/var(--text-
+   -muted): this stylesheet loads straight into the template's OWN iframe document, a separate document from
+   custom_editor.html with no access to its :root tokens — same --review/--review-soft (AI) and
+   --surface-3/--text-muted (neutral) values as custom_editor.html's own :root, light mode only, matching
+   the rest of this file (no dark-mode variant exists here for anything else either). */
+[data-ai-generated], [data-ai-skipped]{ position:relative; }
+.ai-prov-badge, .ai-skip-badge{
+  display:none; position:absolute; top:8px; left:8px; z-index:6; align-items:center; gap:4px;
+  font-size:10px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+  padding:3px 8px 3px 6px; border-radius:999px; pointer-events:none; white-space:nowrap;
+}
+html.show-ai-markers [data-ai-generated] > .ai-prov-badge,
+html.show-ai-markers [data-ai-skipped] > .ai-skip-badge{ display:flex; }
+.ai-prov-badge{ background:#EBE0F0; color:#8A5A9E; }
+.ai-skip-badge{ background:#E9E2E0; color:#756865; }
+
+/* A2 — hero banner image/video: a NARROWER version of .ai-skip-badge for a section that's otherwise
+   data-ai-generated (its text is genuinely AI-written) but still carries one or more elements the template
+   itself flagged as its own ported media, never actually replaceable by this generation pipeline
+   (data-ai-media-skipped — see editor-fill.js's aiSkipMedia). Bottom-left, not top-left, specifically so it
+   never collides with that same section's own .ai-prov-badge sitting top-left — the two read as "this
+   section's text is AI's, this corner of it is still the template's own photo/video", not a conflicting
+   pair of claims about the same section. */
+.ai-media-skip-badge{
+  display:none; position:absolute; bottom:8px; left:8px; z-index:6; align-items:center; gap:4px;
+  font-size:10px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+  padding:3px 8px 3px 6px; border-radius:999px; pointer-events:none; white-space:nowrap;
+  background:#E9E2E0; color:#756865;
+}
+html.show-ai-markers [data-ai-generated] .ai-media-skip-badge{ display:flex; }

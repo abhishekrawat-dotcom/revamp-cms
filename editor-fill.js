@@ -5,10 +5,28 @@
                      library id (the ids of create-event.html's LIBRARY), plus the event itself from step 1
        ctx.names     library id -> the section's name in Create Event (for telling the user what was left out)
        ctx.excluded  library ids of the template's sections the user switched off
+       ctx.generatedFromBrief   true only for a "Generate from a brief" result (create-event.html's
+                     startGenerateFromBrief stamps this on the hand-off) — never a normal hand-filled wizard
+                     draft. Gates the AI-provenance stamping below: a plain draft gets neither attribute.
    RevampFill.apply(canvas, ctx) -> { filled, hidden, skipped }      section names, for the editor to report
+       Also, when ctx.generatedFromBrief: stamps each mounted section with data-ai-generated="true" (its
+       content.map entry actually ran and wrote real content) or data-ai-skipped="true" — either because no
+       content.map entry targets that template section id at all, OR because its content.map entry's
+       `from` is one of ctx.aiSkippedLibraries (speakers/contact/glimpses — a library the generation step
+       deliberately never asked to fill, even though the template DOES have a real content.map entry for
+       it; see functions/lib/api.js's GENERATION_EXCLUDED_LIBRARIES). custom_editor.html's AI-provenance
+       badges and publish-review gate read these two attributes as their source of truth. A section whose
+       map entry ran with nothing to write for some OTHER reason (e.g. an empty "fill":[] used only for the
+       show/hide toggle) gets neither — it was attempted, just not "genuinely populated".
 
    What goes where is data, in template.json → content.map — one entry per template section that takes content:
-     { "from": "<library id | event>", "section": "<template section id>", "intro": { slots }, "fill": [ rules ] }
+     { "from": "<library id | event>", "section": "<template section id>", "intro": { slots }, "fill": [ rules ],
+       "aiSkipMedia": "<selector, relative to the section>" }
+   "aiSkipMedia" (optional; Generate-from-Brief only — ignored on a normal hand-filled draft): elements inside
+   this section that are the template's OWN ported image/video and can never actually be replaced by this
+   generation pipeline (image/video generation is explicitly out of scope — text content only; see A2). Gets
+   its own narrower data-ai-media-skipped marker, layered onto a section that's otherwise data-ai-generated
+   for its text, instead of forcing the whole section into one all-or-nothing AI/not-AI state.
 
    Every Create Event section carries the same section text (create-event.html → SECTION TEXT):
      subheading · heading · body · points[] · media { kind: image|video, url, side } · cta { label, url }
@@ -106,7 +124,14 @@
       content[s.libId] = d;
       names[s.libId] = s.name || s.libId;
     });
-    return { content: content, names: names, excluded: draft.excluded || [] };
+    return {
+      content: content, names: names, excluded: draft.excluded || [], generatedFromBrief: !!draft.generatedFromBrief,
+      // C2/C3: library ids (e.g. speakers/contact/glimpses) the generation step deliberately never wrote
+      // content for on THIS draft's template — see functions/lib/api.js's GENERATION_EXCLUDED_LIBRARIES /
+      // libraryToHandoffDraft. Only ever non-empty on a generatedFromBrief draft; undefined/absent on a
+      // normal hand-filled wizard draft, same as generatedFromBrief itself.
+      aiSkippedLibraries: draft.aiSkippedLibraries || []
+    };
   }
 
   /* ---------- values ---------- */
@@ -339,6 +364,28 @@
     var used = { event: 1, nav: 1, footer: 1 };             // nav and footer are the shared, locked header/footer
     var names = {};
     canvas.template.sections.forEach(function (s) { names[s.id] = s.name; });
+    // AI provenance (custom_editor.html's badges + publish gate): every template section id content.map
+    // actually targets, whether or not it ends up genuinely filled below (e.g. making-ai-work's
+    // "glimpses_event", mapped only for the show/hide toggle, "fill":[]) — anything NOT in here has no
+    // content.map entry at all, i.e. a section the template deliberately leaves for a human (see the
+    // mappedSections.forEach below).
+    var mappedSections = {};
+    spec.forEach(function (m) { mappedSections[m.section] = 1; });
+    // C2/C3: sections mapped to a library the generation step deliberately excluded (ctx.aiSkippedLibraries
+    // — speakers/contact/glimpses, whichever this template actually has). mappedSections alone can't tell
+    // these apart from a genuinely-generated section, since both have a real content.map entry — this is
+    // the real server-reported list, not a guess re-derived from content.map presence. Only counts when the
+    // map entry's own "fill" is non-empty — a real, substantive mapping (speakers/contact have list-fill
+    // rules) that was deliberately not invoked. An entry with "fill": [] (e.g. making-ai-work's
+    // glimpses_event) was never going to write anything regardless of who's filling it — it's a pure
+    // show/hide toggle — so it isn't "excluded from generation", it's just empty; it must NOT land here,
+    // or it wrongly earns data-ai-skipped below for a section that was never asked to generate content.
+    var excludedSections = {};
+    if (ctx.generatedFromBrief && ctx.aiSkippedLibraries && ctx.aiSkippedLibraries.length) {
+      spec.forEach(function (m) {
+        if (ctx.aiSkippedLibraries.indexOf(m.from) !== -1 && (m.fill || []).length) excludedSections[m.section] = 1;
+      });
+    }
     spec.forEach(function (m) {
       used[m.from] = 1;
       var sec = canvas.doc.querySelector('[data-rv-section="' + m.section + '"]');
@@ -354,8 +401,40 @@
       run((m.fill || []).concat(m.intro ? introRules(m.from, m.intro) : []), sec, ctx.content, null);
       canvas.retag(sec);
       if (m.from !== 'event' && report.filled.indexOf(name) === -1) report.filled.push(name);
+      // Generate-from-Brief only (ctx.generatedFromBrief) — never a normal hand-filled wizard draft. 'event'
+      // is excluded same as above: that's the human-typed step-1 name/date/venue, not the AI's to claim.
+      if (ctx.generatedFromBrief && m.from !== 'event') sec.setAttribute('data-ai-generated', 'true');
+      // A2 (hero banner image/video): generating a real replacement image/video is out of scope this pass
+      // (text content only) — the hero's own content.map.fill rule for its background image
+      // ("img.banner-bg-image") only ever fires from a MANUAL PSD-banner upload (hero.psdBanner, a
+      // completely separate Create Event feature); the generation pipeline never produces that field, so
+      // the rule is permanently dead for a Generate-from-Brief draft, and the section's own <video> has no
+      // content.map coverage at all — it would otherwise just sit there silently showing the ORIGINAL
+      // captured event's footage, indistinguishable from the genuinely AI-written heading/tagline right
+      // next to it inside the same data-ai-generated section. Rather than invent image/video generation
+      // (explicitly out of scope) or leave this silently wrong, a template can name its own "this is the
+      // template's own media, not the AI's" elements via a selector on the map entry itself (aiSkipMedia —
+      // see templates/making-ai-work and tech500's template.json), and those get their own narrower
+      // data-ai-media-skipped marker — a smaller, second signal layered onto an otherwise data-ai-generated
+      // section, rather than forcing the whole hero into one all-or-nothing state it doesn't deserve.
+      if (ctx.generatedFromBrief && m.aiSkipMedia) {
+        all(sec, m.aiSkipMedia).forEach(function (el) { el.setAttribute('data-ai-media-skipped', 'true'); });
+      }
     });
     Object.keys(ctx.names).forEach(function (id) { if (!used[id]) report.skipped.push(ctx.names[id]); });
+    // A template section with NO content.map entry at all: the template's own ported markup/copy stays
+    // exactly as it was, untouched by either the wizard or the AI (templates/README.md's "sections left
+    // out, and the editor says which") — flagged only for a Generate-from-Brief draft.
+    if (ctx.generatedFromBrief) {
+      canvas.template.sections.forEach(function (s) {
+        // genuinely mapped (and NOT one of the deliberate exclusions above) means it was either already
+        // stamped data-ai-generated in the spec.forEach above, or legitimately had nothing to write for
+        // some other reason (e.g. a show/hide-only toggle entry) — either way, leave it alone here.
+        if (mappedSections[s.id] && !excludedSections[s.id]) return;
+        var sec = canvas.doc.querySelector('[data-rv-section="' + s.id + '"]');
+        if (sec) sec.setAttribute('data-ai-skipped', 'true');
+      });
+    }
     return report;
   }
 

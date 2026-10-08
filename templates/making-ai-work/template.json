@@ -3,6 +3,8 @@
   "name": "Making AI Work",
   "title": "ETAI Summit and Conclave 2026 - Making AI Work | ET Enterprise AI",
   "source": "https://enterpriseai.economictimes.indiatimes.com/making-ai-work",
+  "briefReady": true,
+  "briefCategory": "enterprise AI leadership",
 
   "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
   "fonts": [
@@ -48,7 +50,9 @@
   "content": {
     "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). from = a Create Event library id (step 3) or event (step 1). Two sections needed new LIBRARY entries added to create-event.html because nothing existing fit their real, event-specific content: 'key-topic' (the live page's own 'Key Discussion Points' graphic) is a verbatim match for the EXISTING 'priorities' library (same name, same shape) — no new entry needed there, just reused it. 'who-enter' ('Four Questions the Enterprise Now Has to Answer') had no existing fit, so a new 'keyquestions' library entry (shape 'columns', same t/d fields) was added. Both are genuine, event-specific content, not publisher boilerplate, so neither was left static. 'glimpses_event' (Previous Edition photos) maps to the EXISTING 'glimpses' library, but only for show/hide: Create Event's gallery shape only ever collects a photo COUNT, never real image uploads (case 'gallery' in create-event.html), so there is no per-photo data content.map's list rule could fill — wiring 'from':'glimpses' with no fill rules still makes the section respond to the wizard (toggled off, it hides, same as every other toggle:true section), which is the most this existing shape can honestly deliver; the real 'Previous Edition 2025' photos stay as this template's own ported content. 'about-wrapper' (the 'Making AI Work' Manifesto) is left out of content.map entirely and deliberately: it's the publisher's own brand statement, the same copy regardless of which 'Making AI Work' event is running, exactly like TECH500's 'About ETCIO' — not event content a wizard field should own. The banner shows the event's own logo where the live site shows the Agentic Summit one; speaker cards show the user's own name/role/company text but keep ET's own default-face placeholder photo in every slot (Create Event's speaker tool never collects a photo) rather than keep the live page's real, named individuals' photos, which would otherwise end up captioned with an unrelated user's typed-in name. If the event's hero was built from an uploaded PSD banner (create-event.html's PSD import), its composite image replaces the banner's own background image too, same as TECH500.",
     "map": [
-      { "from": "hero", "section": "banner", "fill": [
+      { "from": "hero", "section": "banner",
+        "aiSkipMedia": "img.banner-bg-image, #banner-video",
+        "fill": [
         { "attr": "img.banner-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
         { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
         { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },

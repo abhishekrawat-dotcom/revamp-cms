@@ -3,6 +3,8 @@
   "name": "TECH500",
   "title": "Tech500 Summit - Technology Summit and Conference | CIO Tech Conferences | ET CIO",
   "source": "https://cio.economictimes.indiatimes.com/tech-500-summit",
+  "briefReady": true,
+  "briefCategory": "CIO / enterprise tech leadership",
 
   "shared": ["et-global.css", "et-animate.css", "et-platform.css"],
   "fonts": [
@@ -49,7 +51,9 @@
   "content": {
     "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). intro = where this design puts the section text every Create Event section carries (sub heading, heading, paragraph, pointers, image/video, button) — only the slots TECH500's design has; the rest isn't shown here. from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so. industries and FAQ map to their own wizard sections (Industries in the room / FAQs, both toggle:true) and use empty:hide on their list rule, so their cards disappear entirely rather than showing TECH500’s own sample industries/questions when the wizard has none; the section heading stays so there is still a visible slot to fill. about-us (About ETCIO) has no entry and keeps its own copy deliberately — it is ET CIO’s publisher boilerplate, the same on every ET CIO microsite, not event content a wizard field should own. The banner shows the event's own logo where the live site shows the TECH500 one; the overview heading's inline TECH500 wordmark becomes the event name (an event logo is banner-shaped, 571×340, not a wordmark). If the event's hero was built from an uploaded PSD banner (create-event.html's PSD import, not the text-only hero mode), its composite image replaces the banner's own background image too — the PSD's own detected text/button layers themselves still don't carry over (this template's banner has fixed text slots, not an arbitrary canvas), only the flattened image.",
     "map": [
-      { "from": "hero", "section": "banner", "fill": [
+      { "from": "hero", "section": "banner",
+        "aiSkipMedia": "img.banner-bg-image, #banner-video",
+        "fill": [
         { "attr": "img.banner-bg-image", "name": "src", "value": "{hero.psdBanner.compositeImageData}", "empty": "keep" },
         { "attr": "img.logo", "name": "src", "value": "{event.logo}", "empty": "keep" },
         { "attr": "img.logo", "name": "alt", "value": "{hero.title|event.name}" },

@@ -111,6 +111,11 @@
   .btn-xs{ padding: 4px 9px; font-size: 11.5px; border-radius: 5px; font-weight: 700; }
   .btn-ai{ background: var(--review-soft); color: var(--review); }
   .btn-ai:hover{ background: var(--review); color: var(--surface); }
+  /* the "unusual choice" treatment for a secondary action that's technically allowed but not the one we
+     want picked by reflex (see openTemplateMismatchModal's "Generate anyway") — amber, same pattern as
+     .btn-ai above, just on the --warn tokens instead of --review */
+  .btn-warn{ background: var(--warn-soft); color: var(--warn); }
+  .btn-warn:hover{ background: var(--warn); color: var(--surface); }
 
   /* ============ WIZARD SHELL ============ */
   /* height (not min-height): bounds the column so .wiz-split's two panes can actually scroll independently
@@ -1254,10 +1259,13 @@
   .vibe-chip[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
 
   /* "Generate from brief" progress checklist (step2-brief) — each step is a real, independently-awaited
-     request (see startGenerateFromBrief), not a simulated/rotating status line, so this reflects actual state. */
-  .gb-steps{ display:flex; flex-direction:column; gap:10px; margin-top:4px; width:100%; max-width:380px; text-align:left; }
-  .gb-step{ display:flex; align-items:center; gap:10px; font-size:13.5px; color:var(--text-muted); }
-  .gb-step svg{ flex:none; }
+     request (see startGenerateFromBrief), not a simulated/rotating status line, so this reflects actual state.
+     A step is a column (icon+label row, then an optional sub-row) rather than a single flex row, so an
+     errored/reassuring step can grow a second line without breaking the others' layout. */
+  .gb-steps{ display:flex; flex-direction:column; gap:12px; margin-top:4px; width:100%; max-width:420px; text-align:left; }
+  .gb-step{ display:flex; flex-direction:column; gap:4px; font-size:13.5px; color:var(--text-muted); }
+  .gb-step-row{ display:flex; align-items:center; gap:10px; }
+  .gb-step-row svg{ flex:none; }
   .gb-step-done{ color:var(--text); }
   .gb-step-done svg{ color:var(--accent-strong); }
   .gb-step-error{ color:#b42318; }
@@ -1265,6 +1273,15 @@
   .gb-dot{ width:8px; height:8px; border-radius:50%; background:var(--border); flex:none; }
   .gb-spin{ width:13px; height:13px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent-strong); flex:none; animation: gb-spin .7s linear infinite; }
   @keyframes gb-spin{ to{ transform: rotate(360deg); } }
+  /* the sub-row under an errored or "still running, taking a while" step — indented to sit under the label,
+     not the icon. On an error, the cause sits left and Retry/Skip sit right (space-between); the "still
+     writing" reassurance is just the one line, no actions. */
+  .gb-step-sub-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-left:23px; }
+  .gb-step-cause{ font-size:12px; font-weight:500; color:var(--text-faint); }
+  .gb-step-actions{ display:flex; align-items:center; gap:12px; flex:none; }
+  .gb-skip-link{ background:none; border:none; padding:0; font-size:12px; font-weight:600; color:var(--text-muted); text-decoration:underline; cursor:pointer; }
+  .gb-skip-link:hover{ color:var(--text); }
+  .gb-skip-tag{ font-size:11px; font-weight:700; color:var(--text-faint); margin-left:6px; }
 
   /* AI design-variation cards (step2-ai) — picking one updates S.aiDesign and applies live to the mounted real-template preview canvas */
   .ai-design-list{ display:flex; flex-direction:column; gap:10px; }
@@ -1873,23 +1890,66 @@
 
   /* =========================================================
      TEMPLATES
+
+     briefReady / briefCategory (A2/E2): this is picker-UI convenience ONLY — it decides which templates
+     show up in the "Generate from a brief" dropdown (GENERATE_TEMPLATES below) and powers the brief/
+     template mismatch warning (briefCategoryMismatch), nothing more. The REAL, enforced gate is server-
+     side: functions/lib/api.js's handleGenerateContent reads templates/<id>/template.json's own
+     "briefReady"/"briefCategory" fields directly and rejects the request outright if briefReady isn't
+     literally true — it does not read or trust anything in this array. There is no fetch-at-load
+     mechanism that derives these fields here FROM each template's own template.json, so the two must be
+     kept in sync BY HAND whenever a template's own briefReady/briefCategory changes (or a new briefReady
+     template is added) — this array is a client-side mirror of a fact the server, not this file, actually
+     owns and checks.
   ========================================================= */
   var TEMPLATES = [
     { id:'tech500', name:'TECH500', tag:'IP event', cat:'IP', img:'template-previews/tech500-mini.jpg', imgFull:'template-previews/tech500-full.jpg',
       sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.',
       site:'tech500',   // opens in the site editor as the real ET site (templates/tech500), filled with this content
+      /* briefReady: content.map's banner.fill has real img.banner-bg-image/img.logo rules, the section's own
+         markup actually has those elements (sections/banner/index.html), and the ported banner's own hard-coded
+         copy/assets (logo file, h3/p text, date/venue) are self-consistent with this template's own identity —
+         template.json's title/source ("Tech500 Summit…", tech-500-summit) match tech500, no sign of the
+         wrong-event bleed-through found (and fixed) in making-ai-work */
+      briefReady: true,
+      /* the industry/category this template is actually built and themed for (title/source confirm it:
+         "Tech500 Summit…", ET CIO's "CIO Tech Conferences") — used by the brief/template mismatch check
+         (see briefCategoryMismatch/openTemplateMismatchModal) to warn before generating a brief that reads
+         as a different industry into this template's CXO/CIO-flavoured sections and imagery */
+      briefCategory: 'CIO / enterprise tech leadership',
       sections:['nav','hero','stats','priorities','about','whyjoin','attend','industries','faq','contact','footer'] },
     { id:'retail-leadership-summit', name:'Retail Leadership Summit', tag:'IP event', cat:'IP', img:'template-previews/retail-leadership-summit-mini.jpg', imgFull:'template-previews/retail-leadership-summit-full.jpg',
       sub:'Retail CXOs and mall developers under one roof — named tracks, market factoids and an exhibitor-ready expo floor.',
       site:'retail-leadership-summit',   // opens in the site editor as the real ET site (templates/retail-leadership-summit), filled with this content
+      /* NOT briefReady: template.json's own title/source ("GIRS - Great India Retail Summit",
+         great-india-retail-summit) name a different real ET Retail event than this template's own id/name,
+         and the banner's ported logo/video filenames ("girs_ilu.svg", "girs-loop…") carry that other event's
+         branding too — the same wrong-event bleed-through pattern found in making-ai-work before this
+         session's fix, just not yet audited/corrected here. Until that's checked against the real
+         retail-leadership-summit page, the hero can't be trusted to show this event's own assets. */
       sections:['nav','hero','awaits','stats','about','priorities','partners','tracks','whyjoin','factoids','exhibitors','attend','glimpses','faq','contact','footer'] },
     { id:'cx-leaders-forum', name:'CX Leaders Forum', tag:'IP event', cat:'IP', img:'template-previews/cx-leaders-forum-mini.jpg', imgFull:'template-previews/cx-leaders-forum-full.jpg',
       sub:'CMO and CX-leadership gathering — discussion themes, speaker voices and a residential-summit stats strip.',
       site:'cx-leaders-forum',   // opens in the site editor as the real ET site (templates/cx-leaders-forum), filled with this content
+      /* NOT briefReady: two separate problems. (1) content.map's banner.fill targets "img.banner-bg-image",
+         but this template's own sections/banner/index.html has no such element — the hero background is only
+         a static inline CSS background on the <section> itself, so that fill rule is dead and the banner
+         image can't actually be wizard-filled. (2) template.json's title/source ("CX Annual Symposium…",
+         cx-annual-symposium) name a different real ET BrandEquity event than "CX Leaders Forum" — the same
+         wrong-event bleed-through making-ai-work had, unaudited here. */
       sections:['nav','hero','stats','about','awaits','priorities','attend','speakers','insights','glimpses','faq','contact','footer'] },
     { id:'making-ai-work', name:'Making AI Work', tag:'IP event', cat:'IP', img:'template-previews/making-ai-work-mini.jpg', imgFull:'template-previews/making-ai-work-full.jpg',
       sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.',
       site:'making-ai-work',   // opens in the site editor as the real ET site (templates/making-ai-work), filled with this content
+      /* briefReady: audited and fixed this session (see "Fix making-ai-work template" commit) — the banner's
+         logo/background video/image and date/venue are now the real making-ai-work page's own assets, and
+         content.map's banner.fill has real img.banner-bg-image/img.logo rules targeting elements that are
+         actually present in sections/banner/index.html */
+      briefReady: true,
+      /* the industry/category this template is actually built and themed for (title/source confirm it:
+         "ETAI Summit and Conclave… Making AI Work", ET Enterprise AI) — see tech500's briefCategory comment
+         above for what this is used for */
+      briefCategory: 'enterprise AI leadership',
       sections:['nav','hero','about','keyquestions','priorities','speakers','whyjoin','attend','glimpses','contact','footer'] },
     { id:'workplace-2035', name:'Workplace 2035', tag:'IP event', cat:'IP', img:'template-previews/workplace-2035-mini.jpg', imgFull:'template-previews/workplace-2035-full.jpg',
       sub:'The future of the intelligent enterprise — stats, partners, speakers and a two-track agenda.',
@@ -2963,6 +3023,12 @@
   function categoryHasPortedTemplate(){
     return templatesForCategory().some(function(t){ return !!t.site; });
   }
+  /* whether the active category has at least one template that's actually briefReady (see TEMPLATES —
+     a real content.map hero-image fill rule AND a verified, non-bled-through banner) — "Generate from a
+     brief" only makes sense where the result's hero can genuinely be wizard-filled */
+  function categoryHasBriefReadyTemplate(){
+    return templatesForCategory().some(function(t){ return !!t.briefReady; });
+  }
 
   /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point.
      `skip` (libId -> true) carries over section choices made in the Preview modal's toggles. */
@@ -3329,12 +3395,88 @@
      means the progress checklist below reflects real, confirmed completions — never a guess.
      Ends with the exact same localStorage hand-off + redirect openInEditor() uses below, so the
      result opens in the real editor exactly like finishing the rest of the wizard by hand. */
-  var GENERATE_TEMPLATES = TEMPLATES.filter(function(t){ return !!t.site; });
+  /* only templates actually confirmed briefReady (see TEMPLATES) — a real, working hero-image fill rule
+     is not enough on its own if the banner's own ported assets haven't been checked against event bleed-
+     through (see making-ai-work's fix this session, and the templates still missing that audit) */
+  var GENERATE_TEMPLATES = TEMPLATES.filter(function(t){ return !!t.site && !!t.briefReady; });
+  function templateBySite(site){ var t = null; TEMPLATES.forEach(function(x){ if (x.site === site) t = x; }); return t; }
 
-  function openGenerateFromBriefModal(){
+  /* Worst-case latency for one callGeminiJson call on the backend, including its one retry on a timeout/5xx
+     (see the comment on GEMINI_WORST_CASE_MS right above callGeminiJson in functions/lib/api.js — this is
+     that exact number, not a separately-guessed one). The `generate` step is the one call on this pipeline
+     that always goes through callGeminiJson directly with no other network legs around it, so it's the one
+     step this reassurance timer applies to — see renderBriefProgress's "still writing" line. */
+  var GEMINI_WORST_CASE_MS = 120000;
+
+  /* ---------- Item B: brief/template industry mismatch (requirement E1) ----------
+     Compares the brief's own inferredCategory (from /api/extract-brief — see BRIEF_SCHEMA in
+     functions/lib/api.js; empty when the document gave no real signal) against the chosen template's own
+     briefCategory (see TEMPLATES above). Free-text labels on both sides, so exact equality is too strict
+     ("CIO technology leadership" vs "CIO / enterprise tech leadership" are the same thing) — instead this
+     checks whether the two labels share any real root word (case-insensitive, either one a substring of the
+     other so "tech"/"technology" still match), after dropping a short stopword list. No shared root at all
+     is treated as a real mismatch (e.g. "retail / e-commerce" vs "CIO / enterprise tech leadership" share
+     nothing) — loose enough not to fire on wording differences, strict enough to still catch a genuinely
+     different industry. */
+  function briefCategoryMismatch(inferredCategory, templateCategory){
+    var STOPWORDS = ['and','the','for','with','from','your','this','that','are'];
+    function words(s){
+      return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ')
+        .filter(function(w){ return w.length >= 2 && STOPWORDS.indexOf(w) === -1; });
+    }
+    var a = words(inferredCategory), b = words(templateCategory);
+    if (!a.length || !b.length) return false;
+    var sharesRoot = a.some(function(wa){
+      return b.some(function(wb){ return wa === wb || wa.indexOf(wb) !== -1 || wb.indexOf(wa) !== -1; });
+    });
+    return !sharesRoot;
+  }
+
+  /* Blocking warning shown when the brief's own inferred industry doesn't read as a match for the chosen
+     template's briefCategory (see briefCategoryMismatch above). "Generate anyway" resumes the paused
+     pipeline exactly where it left off; "Change template" reopens the original modal with the SAME inputs
+     so the user only has to re-pick a template, not start over. Dismissing via the × / Escape / scrim is
+     deliberately wired to neither action (never a silent "generate anyway" — that would be worse than being
+     stuck) — but it must not leave the pipeline stuck either, so onDismiss just re-shows this same modal
+     with the same inferredCategory/tpl/actions, giving the user another chance to pick one of the two real
+     buttons. × means "let me look at this again," not "cancel out of this entirely." */
+  function openTemplateMismatchModal(inferredCategory, tpl, actions){
+    openModal({
+      title: 'This brief doesn’t read like a ' + tpl.name + ' event',
+      sub: 'Your brief reads as a ' + inferredCategory + ' event. ' + tpl.name + ' is built and themed for ' +
+        tpl.briefCategory + '. Generating into it anyway can leave a mismatched tone, section emphasis, or imagery — nothing breaks, but it will look off until you fix it by hand.',
+      body: '<div class="callout amber">' + IC.warn +
+        '<span><strong>Why this matters</strong>Templates are tuned for their own industry’s content and layout — this isn’t a hard block, just a heads-up before you spend the next minute generating into the wrong shape.</span></div>',
+      confirm: 'Change template',
+      cancelLabel: 'Generate anyway, I understand the mismatch',
+      // onConfirm runs, THEN openModal's own click handler does close() (root.innerHTML = ''), which would
+      // wipe out a modal opened synchronously inside onConfirm — same shared #modal-root, so reopening one
+      // here has to defer to the next tick, exactly like openCloneDesignModal/confirmCloneDesign do above.
+      onConfirm: function(){ if (actions.onChangeTemplate) setTimeout(actions.onChangeTemplate, 0); },
+      onCancel: function(){ if (actions.onGenerateAnyway) actions.onGenerateAnyway(); },
+      onDismiss: function(){ openTemplateMismatchModal(inferredCategory, tpl, actions); }
+    });
+    /* the "unusual choice" treatment (D1/.btn-warn above), plus a 2s no-reflex-click delay with no visible
+       countdown — just disabled, then quietly not */
+    var genAnywayBtn = $('modal-cancel');
+    if (genAnywayBtn){
+      genAnywayBtn.classList.remove('btn-secondary');
+      genAnywayBtn.classList.add('btn-warn');
+      genAnywayBtn.disabled = true;
+      setTimeout(function(){ genAnywayBtn.disabled = false; }, 2000);
+    }
+  }
+
+  function openGenerateFromBriefModal(prefill){
     var tplOptions = GENERATE_TEMPLATES.map(function(t){
       return '<option value="' + esc(t.site) + '">' + esc(t.name) + '</option>';
     }).join('');
+    /* only a couple of templates qualify for now (see GENERATE_TEMPLATES) — say so right under the picker
+       rather than let a suspiciously short list look like a bug */
+    var fewNotice = (GENERATE_TEMPLATES.length > 0 && GENERATE_TEMPLATES.length <= 2)
+      ? '<div class="callout plain" style="margin-top:8px;">' + IC.info +
+          '<span>Only templates that are fully brief-ready are listed here — more are on the way.</span></div>'
+      : '';
     openModal({
       title: 'Generate from a brief',
       sub: 'Everything below is optional except the template — the more you give it, the better grounded the result. Competitor material is used for structure and ideas only, never copied.',
@@ -3343,6 +3485,7 @@
       body:
         '<div class="field"><label class="flabel" for="gb-template">Template</label>' +
           '<select class="inp" id="gb-template">' + tplOptions + '</select></div>' +
+        fewNotice +
         '<div class="field" style="margin-top:12px;"><label class="flabel" for="gb-doc">Overview document (PDF)</label>' +
           '<input class="inp" id="gb-doc" type="file" accept="application/pdf">' +
         '</div>' +
@@ -3364,17 +3507,68 @@
         '</label>',
       onConfirm: function(){ startGenerateFromBrief(); }
     });
+    /* re-opening after "Change template" (see openTemplateMismatchModal) — put back the same PDF/URLs/
+       future-edition choice so the user only has to re-pick a template, not redo the whole form. The file
+       input can't be set with a plain string value (browsers block that outright), so this uses the
+       DataTransfer trick to hand the same real File object back to the <input type=file> — supported in
+       every browser this app already targets (Chrome/Edge/Firefox/Safari, all evergreen). */
+    if (prefill){
+      var fileInput = $('gb-doc');
+      if (fileInput && prefill.file){
+        try {
+          var dt = new DataTransfer();
+          dt.items.add(prefill.file);
+          fileInput.files = dt.files;
+        } catch(e){ /* older engine without DataTransfer support: field is just left empty, user re-attaches */ }
+      }
+      if (prefill.urls){
+        if ($('gb-current'))  $('gb-current').value  = prefill.urls.current  || '';
+        if ($('gb-previous')) $('gb-previous').value = prefill.urls.previous || '';
+        if ($('gb-comp1'))    $('gb-comp1').value    = prefill.urls.comp1    || '';
+        if ($('gb-comp2'))    $('gb-comp2').value    = prefill.urls.comp2    || '';
+      }
+      if ($('gb-future')) $('gb-future').checked = !!prefill.future;
+      // the template itself is deliberately left at its default option — the whole point of reopening is
+      // for the user to consciously pick a DIFFERENT one, not land back on the one that just mismatched.
+    }
   }
 
+  /* The specific, human-readable cause shown under an errored step's label (D2/D3) — NEVER the raw server
+     error message (that could be anything from a Gemini quota string to a stack trace), matched purely by
+     step kind so it's the same reassuring, actionable line every time that kind of step fails. */
+  function briefStepErrorCause(key){
+    if (key === 'brief') return 'Couldn’t read this PDF. Try a different file, or re-upload the same one.';
+    if (key.indexOf('source') === 0) return 'Couldn’t reach this page. Check the URL still works, or remove it and continue.';
+    if (key === 'generate') return 'Something went wrong writing your content. This one’s safe to retry — nothing else needs to re-run.';
+    return 'Something went wrong.';
+  }
+
+  /* ---------- Generate from brief: the step engine (D1-D3, E1) ----------
+     Each checklist row (steps array) is paired with a runner function (runners, keyed the same as the row)
+     that does that ONE step's real network call and nothing else — no setStep bookkeeping inside it, that
+     all happens centrally in runStep below. runStep(i) is the whole "chain": it runs row i, and on success
+     either moves on to runStep(i+1) or (uniquely for the brief row, see below) pauses for the mismatch
+     modal; on failure it marks the row 'error' and STOPS — nothing past a failed row runs on its own.
+     The only two ways past an 'error' row are the user clicking Retry (re-calls runStep(i), which re-runs
+     just that row) or, source rows only, Skip (marks it 'skipped' and calls runStep(i+1) itself). This
+     replaces the old flat .then() chain, which both let a failed source row silently continue (see the old
+     empty .catch(function(){ setStep(...,'error'); }) with no rethrow) and had no way to resume a failed
+     brief/generate row at all short of starting over. */
   function startGenerateFromBrief(){
     var templateSite = $('gb-template').value;
     var fileInput = $('gb-doc');
     var file = fileInput && fileInput.files && fileInput.files[0];
+    var rawUrls = {
+      current: ($('gb-current').value || '').trim(),
+      previous: ($('gb-previous').value || '').trim(),
+      comp1: ($('gb-comp1').value || '').trim(),
+      comp2: ($('gb-comp2').value || '').trim()
+    };
     var urlFields = [
-      { url: ($('gb-current').value || '').trim(), type: 'currentEdition' },
-      { url: ($('gb-previous').value || '').trim(), type: 'previousEdition' },
-      { url: ($('gb-comp1').value || '').trim(), type: 'competitor' },
-      { url: ($('gb-comp2').value || '').trim(), type: 'competitor' }
+      { url: rawUrls.current, type: 'currentEdition' },
+      { url: rawUrls.previous, type: 'previousEdition' },
+      { url: rawUrls.comp1, type: 'competitor' },
+      { url: rawUrls.comp2, type: 'competitor' }
     ].filter(function(s){ return s.url; });
     var futureEdition = !!($('gb-future') && $('gb-future').checked);
 
@@ -3391,12 +3585,14 @@
       steps.push({ key: 'source' + i, label: label, status: 'pending', url: s.url, type: s.type });
     });
     steps.push({ key: 'generate', label: 'Generating content', status: 'pending' });
+    var order = steps.map(function(s){ return s.key; });
 
     showStep2View('brief');
     renderBriefProgress(steps);
 
-    function setStep(key, status){
-      steps = steps.map(function(s){ return s.key === key ? Object.assign({}, s, { status: status }) : s; });
+    function setStep(key, patch){
+      if (typeof patch === 'string') patch = { status: patch };
+      steps = steps.map(function(s){ return s.key === key ? Object.assign({}, s, patch) : s; });
       renderBriefProgress(steps);
     }
     function readFileAsBase64(f){
@@ -3410,49 +3606,125 @@
     function postJson(url, body){
       return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || (url + ' failed')); return b; }); });
+      // deliberately NO client-side timeout/abort wrapper here (D4) — a row only ever becomes 'error'
+      // because the server itself actually responded with failure (after its own one retry — see
+      // callGeminiJson in functions/lib/api.js), never because the browser gave up first.
     }
 
-    var chain = Promise.resolve();
+    // one runner per row, keyed the same as steps[i].key — the actual request, no status bookkeeping
+    var runners = {};
     if (file){
-      chain = chain.then(function(){
-        setStep('brief', 'running');
-        return readFileAsBase64(file)
-          .then(function(docBase64){
-            return postJson('/api/extract-brief', { eventId: eventId, fileName: file.name, mimeType: file.type || 'application/pdf', docBase64: docBase64, eventMeta: eventMeta });
-          })
-          .then(function(){ setStep('brief', 'done'); })
-          .catch(function(err){ setStep('brief', 'error'); throw err; });   // no brief at all is worth stopping for — the user chose to upload one
-      });
+      runners.brief = function(){
+        return readFileAsBase64(file).then(function(docBase64){
+          return postJson('/api/extract-brief', { eventId: eventId, fileName: file.name, mimeType: file.type || 'application/pdf', docBase64: docBase64, eventMeta: eventMeta });
+        });
+      };
     }
     urlFields.forEach(function(s, i){
-      chain = chain.then(function(){
-        setStep('source' + i, 'running');
-        return postJson('/api/ingest-source', { eventId: eventId, url: s.url, type: s.type })
-          .then(function(){ setStep('source' + i, 'done'); })
-          .catch(function(){ setStep('source' + i, 'error'); });   // one bad reference URL shouldn't abort a generation that has other grounding
-      });
+      runners['source' + i] = function(){
+        return postJson('/api/ingest-source', { eventId: eventId, url: s.url, type: s.type });
+      };
     });
-    chain = chain.then(function(){
-      setStep('generate', 'running');
-      return postJson('/api/generate-content', { eventId: eventId, templateId: templateSite, eventMeta: eventMeta, futureEdition: futureEdition })
-        .then(function(){ setStep('generate', 'done'); })
-        .catch(function(err){ setStep('generate', 'error'); throw err; });
-    }).then(function(){
-      return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
-        .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || 'Could not load the generated draft'); return b; }); });
-    }).then(function(draftResp){
-      try {
-        localStorage.setItem(HANDOFF_KEY, JSON.stringify(draftResp.handoff));
-      } catch(e){
-        toast('Could not hand the draft over — your browser blocked storage.');
-        showStep2View('landing');
-        return;
+    runners.generate = function(){
+      return postJson('/api/generate-content', { eventId: eventId, templateId: templateSite, eventMeta: eventMeta, futureEdition: futureEdition });
+    };
+
+    // the `generate` row's "still writing, hasn't stalled" reassurance (D3's own clock, never the warning
+    // icon) — armed when it starts running, disarmed the moment it actually resolves either way.
+    var stillWritingTimer = null;
+    function clearStillWritingTimer(){ if (stillWritingTimer){ clearTimeout(stillWritingTimer); stillWritingTimer = null; } }
+
+    function runStep(i){
+      if (i >= order.length){ finish(); return; }
+      var key = order[i];
+      setStep(key, { status: 'running', showStillWriting: false });
+      if (key === 'generate'){
+        clearStillWritingTimer();
+        stillWritingTimer = setTimeout(function(){ setStep('generate', { showStillWriting: true }); }, GEMINI_WORST_CASE_MS);
       }
-      window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
-        '&template=' + encodeURIComponent(draftResp.templateId || templateSite);
-    }).catch(function(err){
-      toast(err.message || 'Generation failed.');
-    });
+      runners[key]().then(function(result){
+        if (key === 'generate') clearStillWritingTimer();
+        setStep(key, { status: 'done' });
+        // Item B (E1): the instant the brief resolves with a real inferredCategory, check it against the
+        // chosen template before anything else runs — only applies when a PDF was actually uploaded (no
+        // brief row at all otherwise, so this block is simply never reached) and only when the model found
+        // real signal to infer from (an empty string means "skip the check entirely", never a guess).
+        if (key === 'brief'){
+          var inferred = result && result.extracted && result.extracted.inferredCategory;
+          var tpl = templateBySite(templateSite);
+          if (inferred && tpl && tpl.briefCategory && briefCategoryMismatch(inferred, tpl.briefCategory)){
+            openTemplateMismatchModal(inferred, tpl, {
+              onGenerateAnyway: function(){ runStep(i + 1); },
+              onChangeTemplate: function(){
+                openGenerateFromBriefModal({ file: file, urls: rawUrls, future: futureEdition });
+              }
+            });
+            return;   // paused — resumes only via one of the two actions above
+          }
+        }
+        runStep(i + 1);
+      }).catch(function(err){
+        if (key === 'generate') clearStillWritingTimer();
+        setStep(key, { status: 'error', cause: briefStepErrorCause(key) });
+        // paused — resumes only via the Retry/Skip click handled by the delegated listener below
+      });
+    }
+
+    function retryStep(key){
+      var i = order.indexOf(key);
+      if (i !== -1) runStep(i);
+    }
+    function skipStep(key){
+      if (key.indexOf('source') !== 0) return;   // only source rows are ever skippable (D2)
+      var i = order.indexOf(key);
+      if (i === -1) return;
+      setStep(key, { status: 'skipped' });
+      runStep(i + 1);
+    }
+
+    // one delegated click listener on the persistent host (innerHTML is replaced wholesale on every render,
+    // so per-button listeners would be destroyed and re-leaked on every single re-render) — replaced fresh
+    // on every call to startGenerateFromBrief so a second run never double-fires off a stale one.
+    var host = $('step2-brief');
+    if (host){
+      if (host._gbClickHandler) host.removeEventListener('click', host._gbClickHandler);
+      host._gbClickHandler = function(e){
+        var retryBtn = e.target.closest('[data-step-retry]');
+        if (retryBtn){ retryStep(retryBtn.getAttribute('data-step-retry')); return; }
+        var skipBtn = e.target.closest('[data-step-skip]');
+        if (skipBtn){ skipStep(skipBtn.getAttribute('data-step-skip')); return; }
+      };
+      host.addEventListener('click', host._gbClickHandler);
+    }
+
+    function finish(){
+      fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+        .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || 'Could not load the generated draft'); return b; }); })
+        .then(function(draftResp){
+          try {
+            /* marks this handoff as a Generate-from-Brief result (vs. finishing the rest of the wizard by hand) —
+               custom_editor.html reads this to show the one-time "this is an AI-generated draft" modal + the
+               persistent reminder strip, neither of which apply to a normal manual-template handoff */
+            localStorage.setItem(HANDOFF_KEY, JSON.stringify(Object.assign({}, draftResp.handoff, { generatedFromBrief: true })));
+          } catch(e){
+            toast('Could not hand the draft over — your browser blocked storage.');
+            showStep2View('landing');
+            return;
+          }
+          // draftResp.draftId (the Firestore doc id /api/generate-content just wrote — see handleGetDraft
+          // in functions/lib/api.js) makes THIS run's editor store key unique (editor-template-ui.js's
+          // resolveKey) — without it, a second Generate-from-Brief run for the same slug would resolve to
+          // the exact same storeKey as the first and silently show that first run's cached draft instead
+          // of starting fresh (the bug this `&draft=` param exists to close).
+          window.location.href = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
+            '&template=' + encodeURIComponent(draftResp.templateId || templateSite) +
+            (draftResp.draftId ? '&draft=' + encodeURIComponent(draftResp.draftId) : '');
+        }).catch(function(err){
+          toast(err.message || 'Generation failed.');
+        });
+    }
+
+    runStep(0);
   }
 
   function renderBriefProgress(steps){
@@ -3463,9 +3735,24 @@
         '<p class="desc">This takes a minute or two — researching first, then writing.</p></div>' +
       '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
         '<ul class="gb-steps">' + steps.map(function(s){
-          var icon = s.status === 'done' ? IC.check14 : s.status === 'error' ? IC.warn
-            : s.status === 'running' ? '<span class="gb-spin"></span>' : '<span class="gb-dot"></span>';
-          return '<li class="gb-step gb-step-' + s.status + '">' + icon + '<span>' + esc(s.label) + '</span></li>';
+          var rowStatus = s.status === 'skipped' ? 'done' : s.status;
+          var icon = rowStatus === 'done' ? IC.check14 : rowStatus === 'error' ? IC.warn
+            : rowStatus === 'running' ? '<span class="gb-spin"></span>' : '<span class="gb-dot"></span>';
+          var label = esc(s.label) + (s.status === 'skipped' ? ' <span class="gb-skip-tag">Skipped</span>' : '');
+          var sub = '';
+          if (s.status === 'error'){
+            var isSource = s.key.indexOf('source') === 0;
+            sub = '<div class="gb-step-sub-row">' +
+                '<span class="gb-step-cause">' + esc(s.cause || briefStepErrorCause(s.key)) + '</span>' +
+                '<span class="gb-step-actions">' +
+                  '<button type="button" class="btn btn-secondary btn-xs" data-step-retry="' + esc(s.key) + '">Retry</button>' +
+                  (isSource ? '<button type="button" class="gb-skip-link" data-step-skip="' + esc(s.key) + '">Skip this</button>' : '') +
+                '</span>' +
+              '</div>';
+          } else if (s.status === 'running' && s.showStillWriting){
+            sub = '<div class="gb-step-sub-row"><span class="gb-step-cause">Still writing — this step takes the longest, it hasn’t stalled.</span></div>';
+          }
+          return '<li class="gb-step gb-step-' + rowStatus + '"><div class="gb-step-row">' + icon + '<span>' + label + '</span></div>' + sub + '</li>';
         }).join('') + '</ul>' +
       '</div></div>';
   }
@@ -3591,7 +3878,22 @@
       }
     }
     var generateBtn = $('btn-ai-generate');
-    if (generateBtn) generateBtn.onclick = openGenerateFromBriefModal;
+    if (generateBtn){
+      var generateCard = generateBtn.closest('.design-choice-card');
+      var generateCopy = generateCard && generateCard.querySelector('p');
+      if (categoryHasBriefReadyTemplate()){
+        generateBtn.disabled = false;
+        // wrapped, not a bare function reference — openGenerateFromBriefModal now takes an optional
+        // `prefill` (see "Change template" above), and assigning it directly as an onclick handler would
+        // hand it the click's native Event object as that argument instead.
+        generateBtn.onclick = function(){ openGenerateFromBriefModal(); };
+        if (generateCopy) generateCopy.textContent = 'Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it.';
+      } else {
+        generateBtn.disabled = true;
+        generateBtn.onclick = null;
+        if (generateCopy) generateCopy.textContent = 'Not available yet for this event type — Generate from a brief needs a template that’s been fully checked for wizard editing, and none here qualify yet. Pick a template manually below; more are being added.';
+      }
+    }
     var vibeHost = $('vibe-chips');
     if (vibeHost){
       vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
@@ -7578,14 +7880,18 @@
       '</div></div>';
 
     function close(){ root.innerHTML = ''; document.removeEventListener('keydown', onKey); }
-    function onKey(e){ if (e.key === 'Escape') close(); }
+    // ×/Escape/scrim-click are a "dismiss", never a decision — they must not fire onCancel/onConfirm.
+    // opts.onDismiss is opt-in (defaults to a no-op) so every other existing caller of openModal() that
+    // doesn't pass it keeps behaving exactly as before: dismiss just closes, nothing more.
+    function dismiss(){ close(); if (opts.onDismiss) opts.onDismiss(); }
+    function onKey(e){ if (e.key === 'Escape') dismiss(); }
     document.addEventListener('keydown', onKey);
-    $('modal-x').addEventListener('click', close);
+    $('modal-x').addEventListener('click', dismiss);
     $('modal-cancel').addEventListener('click', function(){
       close();
       if (opts.onCancel) opts.onCancel();
     });
-    $('scrim').addEventListener('click', function(e){ if (e.target === $('scrim')) close(); });
+    $('scrim').addEventListener('click', function(e){ if (e.target === $('scrim')) dismiss(); });
     $('modal-ok').addEventListener('click', function(){
       if (opts.onConfirm) opts.onConfirm();
       close();

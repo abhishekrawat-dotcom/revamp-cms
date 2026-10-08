@@ -103,6 +103,55 @@
   .ed-workspace{ flex:1; min-height:0; display:flex; }
   .ed-workspace > .rail{ flex:0 0 92px; height:auto; min-height:0; max-height:none; position:relative; top:auto; }
 
+  /* persistent "generated from brief" reminder strip, directly under the topbar — a flex sibling of
+     .topbar/.ed-workspace inside .ed, so it just pushes the workspace down rather than needing its own
+     vh math (see initGenerateFromBriefNotice()) */
+  .gb-strip{
+    display:flex; align-items:center; gap:9px; padding:8px 16px; flex-shrink:0;
+    background: var(--review-soft); color: var(--review); font-size:12.5px; font-weight:600;
+    border-bottom:1px solid var(--border);
+  }
+  .gb-strip svg{ flex-shrink:0; }
+  .gb-strip .gb-strip-text{ flex:1; }
+  .gb-strip-x{
+    background:none; border:none; padding:2px 7px; border-radius:6px; cursor:pointer;
+    color:inherit; font-size:16px; line-height:1; opacity:.65;
+  }
+  .gb-strip-x:hover{ opacity:1; background: rgba(0,0,0,.07); }
+
+  /* the AI-flavoured callout variant (edit-event.css only ships the plain/info ones) — same tokens
+     create-event.html's own "callout ai" uses */
+  .callout.ai{ background: var(--review-soft); color: var(--review); }
+
+  /* topbar "show/hide AI markers" toggle (see initAiProvenanceToggle()) — same .icon-btn every other
+     topbar/toolbar icon button already uses, just with an on-state in the AI/review tones. */
+  .icon-btn.is-active{ background: var(--review-soft); color: var(--review); }
+
+  /* ---------- publish-review gate (Generate-from-Brief, item C3) ----------
+     Same ad-hoc scrim/modal builder every other modal in this file uses (there's no shared openModal()
+     helper here — see openSectionVariantModal/openAddSectionChooser above and initGenerateFromBriefNotice's
+     own welcome modal) — close icon positioned the same way .asc-modal/.variant-modal already do.
+     Pills reuse the review (AI) / surface-3+text-muted (neutral) token pairing the canvas's own corner
+     badges use (editor-canvas.css — a separate document inside the iframe, so it can't share these rules,
+     hence the duplicated-but-consistent colours there). */
+  .ai-gate-modal{ max-width: 480px; text-align:left; position:relative; }
+  .ai-gate-modal .icon-btn{ position:absolute; top:14px; right:14px; }
+  .ai-gate-modal .modal-body{ align-items:stretch; padding: 26px 26px 22px; }
+  .ai-gate-modal h3{ font-size:18px; text-align:center; }
+  .ai-gate-modal > .modal-body > p{ font-size:13px; color:var(--text-muted); text-align:center; margin:-4px 0 4px; }
+  .ai-gate-group{ display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+  .ai-gate-group h4{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint); margin:4px 0 0; }
+  .ai-gate-row{ display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid var(--border); border-radius:9px; }
+  .ai-gate-row input[type="checkbox"]{ width:16px; height:16px; flex-shrink:0; accent-color: var(--accent); }
+  .ai-gate-name{ flex:1; font-size:13px; font-weight:600; }
+  .ai-gate-pill{
+    display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:800; text-transform:uppercase;
+    letter-spacing:.03em; padding:3px 8px; border-radius:999px; flex-shrink:0; white-space:nowrap;
+  }
+  .ai-gate-pill svg{ flex-shrink:0; }
+  .ai-gate-pill.ai{ background: var(--review-soft); color: var(--review); }
+  .ai-gate-pill.skip{ background: var(--surface-3); color: var(--text-muted); }
+
   /* ---------- global command toolbar (matches floating text-editor toolbar style) ---------- */
   .global-toolbar{
     height: 64px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
@@ -879,6 +928,10 @@
   .asc-modal .modal-body{ align-items:stretch; padding: 26px 26px 24px; }
   .asc-modal h3{ font-size:18px; text-align:center; }
   .asc-modal > .modal-body > p{ text-align:center; margin: -4px 0 4px; }
+  /* one-time "generated from brief" welcome (see initGenerateFromBriefNotice()) — the callout reads left-
+     aligned like every other callout in the app, so the body can't stay center-aligned like .modal's default */
+  .gb-welcome-modal .modal-body{ align-items:stretch; text-align:left; }
+  .gb-welcome-modal h3{ text-align:center; }
   .asc-cards{ display:flex; gap:12px; margin-top:6px; }
   .asc-card{
     flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left;
@@ -1239,6 +1292,11 @@
     </span>
     <span class="topbar-acts">
       <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+      <!-- shown only for a Generate-from-Brief draft that actually has AI-provenance markers to toggle
+           (see initAiProvenanceToggle()) -->
+      <button class="icon-btn" type="button" id="btn-ai-markers" title="Show/hide AI markers" aria-pressed="false" hidden>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+      </button>
       <button class="btn btn-secondary" type="button" id="btn-preview">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
         Preview
@@ -1246,6 +1304,14 @@
       <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
     </span>
   </header>
+
+  <!-- shown only for a draft handed off from "Generate from a brief" (see initGenerateFromBriefNotice()) —
+       reappears on reload until dismissed, per draft (localStorage, keyed by slug) -->
+  <div class="gb-strip" id="gb-strip" hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+    <span class="gb-strip-text">Generated from brief — further changes happen here, not by regenerating.</span>
+    <button class="gb-strip-x" type="button" id="gb-strip-close" aria-label="Dismiss">&times;</button>
+  </div>
 
   <div class="ed-workspace">
     <nav class="rail" id="global-rail" aria-label="Sections"></nav>
@@ -1892,6 +1958,61 @@
         location.href = 'edit-event.html?event=' + encodeURIComponent(editorEventId) + '#' + section;
       }
     });
+
+  /* ---------- "Generate from a brief" arrival notice ----------
+     create-event.html's startGenerateFromBrief() stamps the handoff payload with generatedFromBrief:true
+     before redirecting here with ?from=create — a plain manual/AI-design handoff has no such flag, so this
+     only fires for an actual brief-generated draft. Runs up front, independent of TEMPLATE_MODE (every
+     brief-generated draft opens a real ET site template, i.e. TEMPLATE_MODE, but this doesn't assume that),
+     so the modal appears before the template/canvas even starts mounting. */
+  (function initGenerateFromBriefNotice(){
+    var qs = new URLSearchParams(location.search);
+    if (qs.get('from') !== 'create') return;
+    var draft = null;
+    try { draft = JSON.parse(localStorage.getItem('revamp.editor.handoff.v1') || 'null'); } catch(e){ draft = null; }
+    if (!draft || !draft.generatedFromBrief) return;
+
+    var slug = qs.get('slug') || '';
+    var SPARK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
+
+    /* persistent strip, directly under the topbar — reappears on every reload of this draft until
+       explicitly dismissed (no "clears on first edit" hook exists yet; that's a separate piece of work) */
+    var stripKey = 'revamp.gbStripDismissed.' + slug;
+    var strip = document.getElementById('gb-strip');
+    var stripDismissed = false;
+    try { stripDismissed = localStorage.getItem(stripKey) === '1'; } catch(e){}
+    if (strip && !stripDismissed){
+      strip.hidden = false;
+      var stripClose = document.getElementById('gb-strip-close');
+      if (stripClose) stripClose.addEventListener('click', function(){
+        strip.hidden = true;
+        try { localStorage.setItem(stripKey, '1'); } catch(e){}
+      });
+    }
+
+    /* one-time modal, shown once per draft — acknowledging it (the only way to close it) marks it seen */
+    var modalSeenKey = 'revamp.gbWelcomeSeen.' + slug;
+    var modalSeen = false;
+    try { modalSeen = localStorage.getItem(modalSeenKey) === '1'; } catch(e){}
+    if (modalSeen) return;
+
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML =
+      '<div class="modal gb-welcome-modal"><div class="modal-body">' +
+      '<h3>Your site is ready to review</h3>' +
+      '<div class="callout ai">' + SPARK +
+        '<span><strong>This draft is yours now</strong> — Running Generate from a brief again will start a brand-new draft — it will not update this one. From here, make any further changes by editing directly, right here.</span>' +
+      '</div>' +
+      '</div><div class="modal-foot">' +
+      '<button class="btn btn-primary" id="gb-welcome-ok">Got it, let’s look</button>' +
+      '</div></div>';
+    document.body.appendChild(scrim);
+    scrim.querySelector('#gb-welcome-ok').addEventListener('click', function(){
+      scrim.remove();
+      try { localStorage.setItem(modalSeenKey, '1'); } catch(e){}
+    });
+  })();
 
   var stage = document.getElementById('stage');
   var frame = document.getElementById('frame');
@@ -4405,9 +4526,80 @@
     openPreviewInNewTab();
   });
 
+  /* ---------- publish-review gate (Generate-from-Brief, item C3) ----------
+     Only ever shown when the mounted canvas currently has at least one [data-ai-generated]/[data-ai-skipped]
+     section (window.RevampTemplateUI.hasAiProvenance()) — a normal hand-filled wizard draft never has
+     either, so this never appears for it. Re-checked fresh on every single publish click (see the handler
+     below) and built fresh from the live DOM every time it opens (window.RevampTemplateUI.aiProvenanceSections()),
+     never from stale state carried over from an earlier open of this same gate. */
+  var AI_SPARK_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
+  var AI_INFO_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>';
+  function openAiPublishGate(onConfirmPublish){
+    var info = window.RevampTemplateUI.aiProvenanceSections();
+    var genRows = info.generated.map(function(s){
+      return '<label class="ai-gate-row">' +
+        '<input type="checkbox" class="ai-gate-check">' +
+        '<span class="ai-gate-name">' + escHtml(s.name) + '</span>' +
+        '<span class="ai-gate-pill ai">' + AI_SPARK_SVG + 'AI-generated</span>' +
+        '</label>';
+    }).join('');
+    var skipRows = info.skipped.map(function(s){
+      return '<div class="ai-gate-row">' +
+        '<span class="ai-gate-name">' + escHtml(s.name) + '</span>' +
+        '<span class="ai-gate-pill skip">' + AI_INFO_SVG + 'Not generated — add manually</span>' +
+        '</div>';
+    }).join('');
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML =
+      '<div class="modal ai-gate-modal">' +
+      '<button class="icon-btn" id="ai-gate-close" title="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '<div class="modal-body">' +
+      '<h3>Review before you publish</h3>' +
+      '<p>This draft was generated from your brief. Confirm what the AI wrote before this goes live — the sections left for you stay exactly as they are either way.</p>' +
+      (genRows ? '<div class="ai-gate-group"><h4>Written by AI — check each one</h4>' + genRows + '</div>' : '') +
+      (skipRows ? '<div class="ai-gate-group"><h4>Left for you to add</h4>' + skipRows + '</div>' : '') +
+      '<div class="callout info" style="margin-top:14px;">' + AI_INFO_SVG + '<span>Publishing doesn’t lock anything — you can keep editing after you go live.</span></div>' +
+      '</div><div class="modal-foot">' +
+      '<button class="btn btn-secondary" id="ai-gate-cancel">Not yet — back to editing</button>' +
+      '<button class="btn btn-primary" id="ai-gate-confirm" disabled title="Check each AI-written section first">Publish site</button>' +
+      '</div></div>';
+    document.body.appendChild(scrim);
+
+    function close(){ scrim.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    scrim.addEventListener('click', function(e){ if (e.target === scrim) close(); });
+    scrim.querySelector('#ai-gate-close').addEventListener('click', close);
+    scrim.querySelector('#ai-gate-cancel').addEventListener('click', close);
+
+    var confirmBtn = scrim.querySelector('#ai-gate-confirm');
+    var checks = Array.prototype.slice.call(scrim.querySelectorAll('.ai-gate-check'));
+    function syncConfirm(){
+      var allChecked = checks.every(function(c){ return c.checked; });   // vacuously true when there's nothing to check
+      confirmBtn.disabled = !allChecked;
+      confirmBtn.title = allChecked ? '' : 'Check each AI-written section first';
+    }
+    checks.forEach(function(c){ c.addEventListener('change', syncConfirm); });
+    syncConfirm();
+
+    confirmBtn.addEventListener('click', function(){
+      if (confirmBtn.disabled) return;
+      close();
+      onConfirmPublish();
+    });
+  }
+
   /* ---------- publish ---------- */
   document.getElementById('btn-publish').addEventListener('click', function(){
-    if (TEMPLATE_MODE){ window.RevampTemplateUI.publish(); return; }
+    if (TEMPLATE_MODE){
+      if (window.RevampTemplateUI.hasAiProvenance()){
+        openAiPublishGate(function(){ window.RevampTemplateUI.publish(); });
+      } else {
+        window.RevampTemplateUI.publish();
+      }
+      return;
+    }
     showToast('Publishing…');
     setTimeout(function(){
       /* a site handed over from Create Event publishes under its own name and slug */
@@ -5086,6 +5278,34 @@
       field.appendChild(note);
     });
   }
+  /* ---------- AI-provenance marker toggle (Generate-from-Brief, item C1) ----------
+     Hidden entirely (see the button's own `hidden` in the markup) unless the just-booted canvas actually
+     has AI-provenance attributes to toggle at all — window.RevampTemplateUI.hasAiProvenance() is only ever
+     true for a real Generate-from-Brief draft, never a normal hand-filled wizard one. Default ON the first
+     time a freshly-generated draft is opened, remembered afterward per-browser, per-draft — same
+     localStorage key pattern (revamp.<thing>.<slug>) initGenerateFromBriefNotice() uses for the landing
+     strip/modal dismissal above. */
+  function initAiProvenanceToggle(){
+    var btn = document.getElementById('btn-ai-markers');
+    if (!btn || !window.RevampTemplateUI.hasAiProvenance()) return;
+    var slug = new URLSearchParams(location.search).get('slug') || '';
+    var key = 'revamp.aiMarkersShown.' + slug;
+    var stored = null;
+    try { stored = localStorage.getItem(key); } catch(e){}
+    var show = stored === null ? true : stored === '1';
+    function sync(){
+      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+      btn.classList.toggle('is-active', show);
+      window.RevampTemplateUI.setAiMarkers(show);
+    }
+    btn.hidden = false;
+    sync();
+    btn.addEventListener('click', function(){
+      show = !show;
+      sync();
+      try { localStorage.setItem(key, show ? '1' : '0'); } catch(e){}
+    });
+  }
   if (TEMPLATE_MODE){
     frame.innerHTML = '';   // none of the demo's #sel-toolbar/.sec-side-toolbar/.site-section/.add-sec-row markup is used in template mode — RevampTemplateUI builds its own
     frame.classList.add('tpl-frame');
@@ -5094,7 +5314,8 @@
     disableUnsupportedDesignControls();
     document.getElementById('btn-tpl-undo').addEventListener('click', function(){ window.RevampTemplateUI.undo(); });
     document.getElementById('btn-tpl-redo').addEventListener('click', function(){ window.RevampTemplateUI.redo(); });
-    window.RevampTemplateUI.boot(frame, TEMPLATE_ID, { escHtml: escHtml, showToast: showToast, EV: EV, editorEventId: editorEventId });
+    window.RevampTemplateUI.boot(frame, TEMPLATE_ID, { escHtml: escHtml, showToast: showToast, EV: EV, editorEventId: editorEventId })
+      .then(initAiProvenanceToggle);
   } else {
     applyCreateHandoff();
 

@@ -214,6 +214,13 @@ function sanitizeDesignField(key, v) {
    uploaded document directly (Gemini accepts PDF/text inline the same way it accepts images). GEMINI_API_KEY
    itself comes from tools/.env.local locally, or from Firebase Secret Manager when deployed (bound in
    functions/index.js) — either way it lands in process.env the same way, so this code doesn't need to care. */
+// Worst-case latency for ONE callGeminiJson call, including its one retry (see below): 60s timeout on the
+// first attempt + 60s timeout on the retry = ~120000ms (~120s) in the worst case. create-event.html's
+// "Generate from a brief" checklist keys its own "still writing, hasn't stalled" reassurance line (shown
+// once the `generate` step has been running longer than this) off this exact number — if this changes,
+// that must change with it (see GEMINI_WORST_CASE_MS in create-event.html, right next to GENERATE_TEMPLATES).
+var GEMINI_WORST_CASE_MS = 120000;
+
 function callGeminiJson(prompt, schema, inlineFile) {
   var apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -228,30 +235,45 @@ function callGeminiJson(prompt, schema, inlineFile) {
     contents: [{ parts: parts }],
     generationConfig: { responseMimeType: 'application/json', responseSchema: schema }
   };
-  /* Nothing here used to bound how long a call could take — a genuinely slow or hung response from Google
-     left the browser's "Thinking…" indicator spinning forever with no way to know anything had gone wrong.
-     60s is generous for a structured-JSON generateContent call; past that, fail loudly instead of silently. */
-  var controller = new AbortController();
-  var timedOut = false;
-  var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 60000);
-  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal })
-    .then(function (geminiRes) {
-      return geminiRes.text().then(function (text) { return { ok: geminiRes.ok, status: geminiRes.status, text: text }; });
-    })
-    .then(function (r) {
-      if (!r.ok) return { error: 'Gemini API error ' + r.status + ': ' + r.text.slice(0, 400), status: 502 };
-      var data;
-      try { data = JSON.parse(r.text); } catch (e) { return { error: 'Gemini returned a response that was not valid JSON.', status: 502 }; }
-      var modelText = data && data.candidates && data.candidates[0] && data.candidates[0].content &&
-        data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-      if (!modelText) return { error: 'Gemini response had no content (it may have been blocked by safety filters).', status: 502 };
-      try { return { parsed: JSON.parse(modelText) }; } catch (e) { return { error: 'Could not parse the AI suggestion as JSON.', status: 502 }; }
-    })
-    .catch(function (err) {
-      if (timedOut) return { error: 'Gemini took too long to respond (over 60s) — please try again.', status: 504 };
-      return { error: 'Could not reach Gemini: ' + err.message, status: 502 };
-    })
-    .finally(function () { clearTimeout(timer); });
+
+  /* One attempt at the actual call. Nothing here used to bound how long a call could take — a genuinely
+     slow or hung response from Google left the browser's "Thinking…" indicator spinning forever with no
+     way to know anything had gone wrong. 60s is generous for a structured-JSON generateContent call; past
+     that, fail loudly instead of silently. Pulled out into its own function so the retry below can just
+     call it again rather than duplicating the request/timeout plumbing. */
+  function attempt() {
+    var controller = new AbortController();
+    var timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 60000);
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal })
+      .then(function (geminiRes) {
+        return geminiRes.text().then(function (text) { return { ok: geminiRes.ok, status: geminiRes.status, text: text }; });
+      })
+      .then(function (r) {
+        if (!r.ok) return { error: 'Gemini API error ' + r.status + ': ' + r.text.slice(0, 400), status: 502 };
+        var data;
+        try { data = JSON.parse(r.text); } catch (e) { return { error: 'Gemini returned a response that was not valid JSON.', status: 502 }; }
+        var modelText = data && data.candidates && data.candidates[0] && data.candidates[0].content &&
+          data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+        if (!modelText) return { error: 'Gemini response had no content (it may have been blocked by safety filters).', status: 502 };
+        try { return { parsed: JSON.parse(modelText) }; } catch (e) { return { error: 'Could not parse the AI suggestion as JSON.', status: 502 }; }
+      })
+      .catch(function (err) {
+        if (timedOut) return { error: 'Gemini took too long to respond (over 60s) — please try again.', status: 504 };
+        return { error: 'Could not reach Gemini: ' + err.message, status: 502 };
+      })
+      .finally(function () { clearTimeout(timer); });
+  }
+
+  /* Retry exactly once on a timeout (504) or any 5xx-class failure (502/503) — Google's own infrastructure
+     having a bad moment, or this one request happening to time out, is exactly what a single retry can
+     paper over. A 4xx would mean WE sent something Gemini rejected outright (never actually returned by
+     this function today, but the check is here on principle) — retrying an identical request wouldn't
+     change that, so it isn't retried. */
+  return attempt().then(function (r) {
+    if (r.error && r.status >= 500 && r.status <= 599) return attempt();
+    return r;
+  });
 }
 
 function handleSuggestDesign(req, res) {
@@ -413,9 +435,16 @@ var BRIEF_SCHEMA = {
     tracks: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Named tracks, sessions or themes the document mentions.' },
     speakerHints: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Any speaker names/roles/companies the document mentions, verbatim.' },
     sponsorHints: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Any sponsor/partner names or tiers the document mentions, verbatim.' },
-    keyMessages: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Up to 5 key points or selling points the document wants communicated.' }
+    keyMessages: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Up to 5 key points or selling points the document wants communicated.' },
+    /* used by create-event.html to warn the user before generating into a template built for a different
+       industry (see openTemplateMismatchModal there) — same grounding discipline as every other field here:
+       read from the document's own actual subject matter, never a guess dressed up as one. A short free-text
+       label ("enterprise AI leadership", "retail / e-commerce"), not a fixed enum — the set of real-world
+       event industries isn't closed, and forcing one here would mean inventing a category the document never
+       actually supports. */
+    inferredCategory: { type: 'STRING', description: 'A short (2-4 word) industry/category label this document genuinely reads as, e.g. "enterprise AI leadership" or "retail / e-commerce" — empty string if the document gives no real signal, never a guess.' }
   },
-  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages']
+  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory']
 };
 
 function buildExtractBriefPrompt(eventMeta) {
@@ -427,7 +456,12 @@ function buildExtractBriefPrompt(eventMeta) {
     '',
     'The document is attached. Read it and extract ONLY what it actually says or clearly implies. Never invent a',
     'track, speaker, sponsor or claim that isn\'t in the document — an empty array/field is correct when the',
-    'document simply doesn\'t cover that, better than a plausible-sounding guess.'
+    'document simply doesn\'t cover that, better than a plausible-sounding guess.',
+    '',
+    'inferredCategory specifically: name the short industry/category this event genuinely reads as (e.g.',
+    '"enterprise AI leadership", "CIO technology leadership", "retail / e-commerce") — base it only on real',
+    'signal in the document (its subject matter, audience, themes), never on the event basics above, and never',
+    'invent one if the document itself gives no real signal to go on — an empty string is the correct answer then.'
   ].join('\n');
 }
 
@@ -472,7 +506,8 @@ function handleExtractBrief(req, res) {
           tracks: (r.parsed.tracks || []).slice(0, 20).map(function (s) { return String(s).slice(0, 200); }),
           speakerHints: (r.parsed.speakerHints || []).slice(0, 30).map(function (s) { return String(s).slice(0, 200); }),
           sponsorHints: (r.parsed.sponsorHints || []).slice(0, 30).map(function (s) { return String(s).slice(0, 200); }),
-          keyMessages: (r.parsed.keyMessages || []).slice(0, 5).map(function (s) { return String(s).slice(0, 300); })
+          keyMessages: (r.parsed.keyMessages || []).slice(0, 5).map(function (s) { return String(s).slice(0, 300); }),
+          inferredCategory: String(r.parsed.inferredCategory || '').trim().slice(0, 60)
         };
 
         var now = new Date().toISOString();
@@ -652,14 +687,26 @@ function handleIngestSource(req, res) {
      and `glimpses` is a photo-count toggle (see the template's own notes on why Create Event can't fill it
      either). Both keep the template's own default content, same as an un-filled wizard section would. */
 
+// Library ids classifyLibraryNeeds deliberately never generates for (see the handler's header comment for
+// why) — named here instead of just inlined in the `if` below, so handleGenerateContent can report this
+// EXACT list back to the client (see deliberatelySkippedLibraries right below). C2/C3: editor-fill.js's
+// AI-provenance skip-marking used to re-derive "what's AI's territory" from content.map presence alone,
+// which can't tell "deliberately excluded from generation" (this list) apart from "genuinely generated" —
+// speakers/contact/glimpses DO have real content.map entries, they're just never asked to generate into.
+// That mismatch meant those sections got neither the "AI-generated" nor the "not generated" badge. Pulling
+// the one real exclusion list out here, and threading it through to the client (handleGenerateContent ->
+// the stored draft -> handleGetDraft -> the handoff payload -> editor-fill.js), lets the client use the
+// SAME list the server actually used instead of guessing.
+var GENERATION_EXCLUDED_LIBRARIES = ['speakers', 'contact', 'glimpses'];
+
 // Figures out, from a template's own content.map, which library ids this generation step can safely fill
 // and in what shape — generic (intro-driven: subheading/heading/body/cta) and/or a card list (items:{t,d}).
-// `speakers`/`contact`/`glimpses`/`event` are hardcoded skips: see the handler's header comment for why.
+// GENERATION_EXCLUDED_LIBRARIES/`event` are hardcoded skips: see the handler's header comment for why.
 function classifyLibraryNeeds(map) {
   var needs = {};
   (map || []).forEach(function (entry) {
     var from = entry.from;
-    if (!from || from === 'event' || from === 'speakers' || from === 'contact' || from === 'glimpses') return;
+    if (!from || from === 'event' || GENERATION_EXCLUDED_LIBRARIES.indexOf(from) !== -1) return;
     if (needs[from]) return; // a library can feed more than one section of the same template; classify once
     var hasList = (entry.fill || []).some(function (r) {
       return r && r.list && typeof r.items === 'string' && /\.items$/.test(r.items) &&
@@ -670,6 +717,17 @@ function classifyLibraryNeeds(map) {
     needs[from] = { hasIntro: hasIntro, hasList: hasList };
   });
   return needs;
+}
+
+// The subset of GENERATION_EXCLUDED_LIBRARIES this particular template's content.map actually targets
+// (e.g. a template with no `contact` section at all has nothing to report for "contact"). This is what
+// actually rides through to the client — see the comment on GENERATION_EXCLUDED_LIBRARIES above.
+function deliberatelySkippedLibraries(map) {
+  var found = {};
+  (map || []).forEach(function (entry) {
+    if (entry.from && GENERATION_EXCLUDED_LIBRARIES.indexOf(entry.from) !== -1) found[entry.from] = 1;
+  });
+  return Object.keys(found);
 }
 
 function buildGenerateSchema(needs) {
@@ -778,8 +836,26 @@ function handleGenerateContent(req, res) {
     try { templateJson = JSON.parse(fs.readFileSync(templatePath, 'utf8')); }
     catch (e) { return sendJson(res, 400, { error: 'Could not read template "' + templateId + '": ' + e.message }); }
 
+    // A2/E2: create-event.html's own picker UI (TEMPLATES[].briefReady) already keeps templates with known
+    // wrong-event bleed-through out of the "Generate from a brief" dropdown, but that's a client-side nicety
+    // only — nothing stopped POSTing straight to this endpoint with e.g. templateId:'cx-leaders-forum' and
+    // generating real content into a template whose banner still shows a DIFFERENT real event's branding.
+    // This is the actual gate: template.json (the stated source of truth for template metadata) must itself
+    // say briefReady:true, checked here server-side, every time, regardless of what called this endpoint.
+    if (templateJson.briefReady !== true) {
+      return sendJson(res, 400, {
+        error: 'Template "' + templateId + '" is not ready for brief-based generation' +
+          (templateJson.briefReadyNote ? ' (' + templateJson.briefReadyNote + ')' : '') + '.'
+      });
+    }
+
     var needs = classifyLibraryNeeds((templateJson.content || {}).map);
     if (!Object.keys(needs).length) return sendJson(res, 400, { error: 'This template has no content.map entries this step knows how to generate for.' });
+    // C2/C3: the real "deliberately excluded from generation" list (speakers/contact/glimpses, when this
+    // template actually has them) — saved on the draft and threaded through to the client (see
+    // libraryToHandoffDraft/handleGetDraft below) so editor-fill.js's AI-provenance skip-marking can use the
+    // exact same list this request used, instead of re-deriving an incomplete one from content.map alone.
+    var skippedLibraries = deliberatelySkippedLibraries((templateJson.content || {}).map);
 
     var draftRef = fb.db.collection('events').doc(eventId);
     var sourceRef = fb.db.collection('events').doc(sourceEventId);
@@ -807,7 +883,7 @@ function handleGenerateContent(req, res) {
         var library = sanitizeGeneratedLibrary(r.parsed, needs);
         var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
         var now = new Date().toISOString();
-        return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now })
+        return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now, skippedLibraries: skippedLibraries })
           .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
       });
     }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
@@ -819,7 +895,7 @@ function handleGenerateContent(req, res) {
    `revamp.editor.handoff.v1` shape the real wizard hand-off uses: {event, sections:[{libId,name,data}], …}.
    Used by preview-draft.html so a generated draft can be opened from a plain URL — no manual payload
    wiring per event, and it works the same locally and once deployed. */
-function libraryToHandoffDraft(library, eventId) {
+function libraryToHandoffDraft(library, eventId, skippedLibraries) {
   library = library || {};
   var ev = library.event || {};
   var sections = Object.keys(library)
@@ -831,7 +907,13 @@ function libraryToHandoffDraft(library, eventId) {
       dateLabel: ev.date || '',   // editor-template-ui.js's showTopbar() reads this string separately from the date object above
       location: ev.location || '', hasVenue: !!ev.location
     },
-    sections: sections, excluded: [], sectionOrder: null
+    sections: sections, excluded: [], sectionOrder: null,
+    // C2/C3: the real library ids classifyLibraryNeeds deliberately never generated for on THIS draft's
+    // template (speakers/contact/glimpses, whichever this template actually has) — see
+    // GENERATION_EXCLUDED_LIBRARIES/deliberatelySkippedLibraries above. editor-fill.js's apply() uses this
+    // to mark those sections data-ai-skipped even though they DO carry a real content.map entry (just
+    // never invoked), instead of re-deriving "what's AI's territory" from content.map presence alone.
+    aiSkippedLibraries: skippedLibraries || []
   };
 }
 
@@ -847,7 +929,7 @@ function handleGetDraft(req, res) {
     .then(function (snap) {
       if (snap.empty) return sendJson(res, 404, { error: 'No generated draft found for "' + eventId + '" — run /api/generate-content first.' });
       var draftId = snap.docs[0].id, draft = snap.docs[0].data();
-      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, draftId: draftId, handoff: libraryToHandoffDraft(draft.library, eventId) });
+      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, draftId: draftId, handoff: libraryToHandoffDraft(draft.library, eventId, draft.skippedLibraries) });
     })
     .catch(function (err) { sendJson(res, 500, { error: 'get-draft failed: ' + err.message }); });
 }
