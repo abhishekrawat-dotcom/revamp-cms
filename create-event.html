@@ -284,6 +284,11 @@
   .grp{ padding: 16px 0; border-top: 1px solid var(--border); }
   .grp:first-child{ border-top: 0; }
   .grp-h{ display: flex; align-items: center; gap: 11px; margin-bottom: 13px; flex-wrap: wrap; }
+  /* the one collapsible group header (#content-grp-toggle) — a <button> wearing .grp-h, so it looks
+     identical to every other (static) group header except for the cursor and the chevron */
+  button.grp-h-toggle{ width:100%; background:none; border:none; padding:0; cursor:pointer; text-align:left; font:inherit; }
+  .grp-chevron{ color: var(--text-muted); transition: transform .15s ease; flex-shrink:0; }
+  button.grp-h-toggle[aria-expanded="true"] .grp-chevron{ transform: rotate(180deg); }
   .grp-h h4{
     display:flex; align-items:center; gap: 8px; font-size: 12.5px; font-weight: 800; text-transform: uppercase;
     letter-spacing: .06em; color: var(--text); white-space: nowrap;
@@ -1682,9 +1687,13 @@
           </div>
 
           <div class="grp" id="content-grp">
-            <div class="grp-h"><h4>Page content</h4><span class="ln"></span>
-              <span class="grp-tag">Reused across templates</span></div>
-            <div id="step1-build-host"></div>
+            <button type="button" class="grp-h grp-h-toggle" id="content-grp-toggle" aria-expanded="false" aria-controls="step1-build-host">
+              <h4>Page content</h4><span class="ln"></span>
+              <span class="grp-tag">Optional</span>
+              <svg class="grp-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <p class="hint" style="margin:6px 0 14px;">Only needed if you won’t be using “Generate from a brief” on the next step — that path writes all of this for you from your overview doc.</p>
+            <div id="step1-build-host" hidden></div>
           </div>
 
         </div>
@@ -4362,7 +4371,18 @@
   function renderSecList(){
     var host = $('sec-list');
     if (!host) return;
-    host.innerHTML = S.sections.map(function(s, i){
+    /* display-only order: footer always last, regardless of S.sections' own internal array order.
+       seedSections() keeps footer correctly anchored last while core sections (about/priorities/attend)
+       are being seeded, but a template's own additional sections (stats/whyjoin/industries/faq/contact —
+       added later via applyTemplate(), a separate code path with no "stay before footer" anchoring) get
+       appended straight to the end, landing AFTER footer and stranding it mid-list. Sorting a COPY here
+       (never S.sections itself — other code depends on its real order: buildEditorPayload, the live
+       preview, the editor hand-off) fixes the visible symptom without touching any of that. */
+    var ordered = S.sections.slice().sort(function(a, b){
+      function rank(s){ return s.libId === 'footer' ? 1 : (s.libId === 'nav' ? -1 : 0); }
+      return rank(a) - rank(b);
+    });
+    host.innerHTML = ordered.map(function(s, i){
       var cls = 'sec-row' + (s.done ? ' done' : '') + (s.include ? '' : ' excluded');
       var right = s.shape === 'auto'
         ? '<span class="auto-tag">Auto</span>'
@@ -7999,6 +8019,17 @@
       }, function(){});
     }
     renderStep2();
+    /* "Page content" (step 1) starts collapsed — see content-grp's own copy: filling it in is pointless
+       busywork for anyone about to use "Generate from a brief" (step 2), which writes all of this itself.
+       renderBuildWorkspace() still renders into #step1-build-host while it's hidden (hidden only affects
+       display, not the DOM/JS reading it) — expanding is purely a visibility toggle, nothing re-renders. */
+    var contentToggle = $('content-grp-toggle');
+    if (contentToggle) contentToggle.addEventListener('click', function(){
+      var host = $('step1-build-host');
+      var expanded = contentToggle.getAttribute('aria-expanded') === 'true';
+      contentToggle.setAttribute('aria-expanded', String(!expanded));
+      if (host) host.hidden = expanded;
+    });
     $('btn-next').addEventListener('click', onNext);
     $('btn-back').addEventListener('click', onBack);
     $('btn-foot-alt').addEventListener('click', onAlt);
