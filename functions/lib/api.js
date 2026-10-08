@@ -52,6 +52,10 @@
 //                               stores the editor's final canvas.serialize() output in Storage, public,
 //                               and marks the event published. Previously Publish did nothing server-side
 //                               at all ("Saved — not yet published" was the literal, honest truth).
+//   POST /api/event/stage                           the real Preview button — same mechanism as Publish,
+//                               a separate Storage folder, never touches published/publishedUrl. One
+//                               stable URL per event; Preview re-uploads to it every click, so an already-
+//                               open tab just needs a reload to see the latest change.
 //   POST /api/register                              PUBLIC, no auth — the one write path the published
 //                               microsite's own "Register Now" CTA calls; writes a registrations doc
 const fs = require('fs');
@@ -1653,6 +1657,29 @@ function handleRegister(req, res) {
    Storage-not-Firestore fix) and made public, same pattern as every other generated asset in this file. */
 var MAX_PUBLISHED_HTML_BYTES = 10 * 1024 * 1024;
 
+// Shared by handleEventPublish and handleEventStage below — both just write canvas.serialize()'s output to
+// a public Storage file, the only real difference is the folder and whether the event doc's own
+// published/publishedUrl fields move. `folder` is 'published' or 'staging'.
+//
+// cacheControl is NOT optional here: a public GCS object with no cache-control metadata is served with
+// Google's own default (`public, max-age=3600`, confirmed by direct testing) — real server-side edge
+// caching, not something a client-side `fetch(url, {cache:'no-store'})` or even a hard browser refresh can
+// bypass. Left at the default, re-staging after an edit and reloading the SAME already-open tab could keep
+// showing up-to-an-hour-old content — exactly the "reload doesn't reflect the change" bug this whole
+// mechanism exists to fix. no-cache (not no-store) still lets a client cache the response, but forces it to
+// revalidate with the server first — paired with a fresh ETag on every save(), that revalidation always
+// finds the new content, so a plain reload is guaranteed to show it.
+function storeRenderedPage(fb, eventId, html, folder) {
+  if (Buffer.byteLength(html, 'utf8') > MAX_PUBLISHED_HTML_BYTES) {
+    return Promise.reject(Object.assign(new Error('This page is larger than the publish size limit.'), { status: 413 }));
+  }
+  var storagePath = 'events/' + eventId + '/' + folder + '/index.html';
+  var file = fb.bucket.file(storagePath);
+  return file.save(Buffer.from(html, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8', cacheControl: 'no-cache, max-age=0, must-revalidate' } })
+    .then(function () { return file.makePublic(); })
+    .then(function () { return 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath; });
+}
+
 function handleEventPublish(req, res) {
   requireAdmin(req, res, function (fb) {
     parseJsonBody(req, res, function (body) {
@@ -1660,21 +1687,35 @@ function handleEventPublish(req, res) {
       var html = String(body.html || '');
       if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
       if (!html.trim()) return sendJson(res, 400, { error: 'html is required.' });
-      if (Buffer.byteLength(html, 'utf8') > MAX_PUBLISHED_HTML_BYTES) {
-        return sendJson(res, 413, { error: 'This page is larger than the publish size limit.' });
-      }
-      var storagePath = 'events/' + eventId + '/published/index.html';
-      var file = fb.bucket.file(storagePath);
-      file.save(Buffer.from(html, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } })
-        .then(function () { return file.makePublic(); })
-        .then(function () {
-          var publishedUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
-          var now = new Date().toISOString();
-          return fb.db.collection('events').doc(eventId)
-            .set({ published: true, publishedUrl: publishedUrl, publishedAt: now }, { merge: true })
-            .then(function () { sendJson(res, 200, { publishedUrl: publishedUrl, publishedAt: now }); });
-        })
-        .catch(function (err) { sendJson(res, 500, { error: 'publish failed: ' + err.message }); });
+      storeRenderedPage(fb, eventId, html, 'published').then(function (publishedUrl) {
+        var now = new Date().toISOString();
+        return fb.db.collection('events').doc(eventId)
+          .set({ published: true, publishedUrl: publishedUrl, publishedAt: now }, { merge: true })
+          .then(function () { sendJson(res, 200, { publishedUrl: publishedUrl, publishedAt: now }); });
+      }).catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('publish failed: ' + err.message) }); });
+    });
+  });
+}
+
+/* ---------- POST /api/event/stage — admin-gated ----------
+   The Preview button (editor-template-ui.js's openPreview()) used to open a BLANK new tab and
+   document.write() the serialized page straight into it — a one-off snapshot with no real URL, so
+   reloading that tab (or sharing it) showed nothing. This gives Preview a real, stable, reloadable URL
+   instead — same storeRenderedPage() mechanism as Publish, but to a separate 'staging' Storage folder, and
+   deliberately does NOT touch the event doc's published/publishedUrl fields at all: staging a preview must
+   never look like, or count as, actually publishing the page. Clicking Preview again re-uploads to the
+   SAME url (every event has exactly one staging URL, not one per click), so a tab already open on it just
+   needs a reload to see the latest change — which is the whole point. */
+function handleEventStage(req, res) {
+  requireAdmin(req, res, function (fb) {
+    parseJsonBody(req, res, function (body) {
+      var eventId = String(body.eventId || '').trim();
+      var html = String(body.html || '');
+      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+      if (!html.trim()) return sendJson(res, 400, { error: 'html is required.' });
+      storeRenderedPage(fb, eventId, html, 'staging').then(function (stagingUrl) {
+        sendJson(res, 200, { stagingUrl: stagingUrl });
+      }).catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('stage failed: ' + err.message) }); });
     });
   });
 }
@@ -1698,6 +1739,7 @@ function handleApi(req, res) {
   if (req.method === 'GET' && urlPath === '/api/event/registrations') return handleEventRegistrationsList(req, res);
   if (req.method === 'GET' && urlPath === '/api/event/dashboard-stats') return handleEventDashboardStats(req, res);
   if (req.method === 'POST' && urlPath === '/api/event/publish') return handleEventPublish(req, res);
+  if (req.method === 'POST' && urlPath === '/api/event/stage') return handleEventStage(req, res);
   if (req.method === 'POST' && urlPath === '/api/register') return handleRegister(req, res);
 
   var resourceMatch = /^\/api\/event\/([a-z-]+)$/.exec(urlPath);

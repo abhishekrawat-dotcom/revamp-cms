@@ -163,4 +163,23 @@
   // start at once on every page that includes this file, so the __session cookie keeps being refreshed while
   // a CMS page is open (otherwise the server would bounce the next page load to sign-in after an hour)
   ready().catch(function () {});
+
+  /* Every "back to events"/"save and exit"-style link in the app is a plain <a class="back-btn" href="…">
+     — a real page navigation the browser follows immediately, with no chance for anything here to run
+     first. If the __session cookie happened to be stale at that exact moment (the onIdTokenChanged
+     listener above refreshes it continuously, but only once this file has actually loaded on EVERY page —
+     for a while it was missing from most of them, which is exactly what made this bite), the server's own
+     sign-in gate (functions/lib/access.js) would bounce an actually-signed-in user to the login page
+     instead of where they meant to go. This intercepts exactly those links — not every link on the page,
+     only ones already marked with this one shared class — refreshes the cookie first, then completes the
+     same navigation. A user who isn't really signed in still correctly lands on login either way (ensureSession()
+     rejects, the catch() below still navigates, and the server's gate makes the real call from there). */
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a.back-btn[href]');
+    if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (a.target && a.target !== '' && a.target !== '_self') return;
+    e.preventDefault();
+    var href = a.getAttribute('href');
+    ensureSession().then(function () { location.href = href; }, function () { location.href = href; });
+  });
 })();

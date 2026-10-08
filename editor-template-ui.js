@@ -874,13 +874,37 @@
     }, 50);
   }
 
+  /* Real preview: stages canvas.serialize()'s output to a real, stable, reloadable URL (POST /api/event/
+     stage — the same mechanism Publish uses, a separate Storage folder, never marks the event published)
+     instead of the old window.open('', '_blank') + document.write(), which opened a blank about:blank tab
+     with no real URL at all — reloading it just erased the content, and it could never be reloaded to pick
+     up a later edit. A NAMED window target (not '_blank') means clicking Preview again reuses the SAME tab
+     rather than piling up new ones, so "make a change, click Preview again" naturally lands back on a tab
+     the user may already have open. The tab is opened SYNCHRONOUSLY, in the same click handler, with a
+     "Loading…" placeholder — opening it only after the stage() fetch resolves would lose the user-gesture
+     context most browsers require to allow a new tab at all. */
   function openPreview() {
     deselect();
-    var win = window.open('', '_blank');
+    if (!eventId || eventId === '1') {
+      // no real event context (e.g. a raw template-gallery preview) — nothing to stage server-side;
+      // fall back to the old one-off snapshot rather than fail outright.
+      var win0 = window.open('', '_blank');
+      if (!win0) { showToast('Allow pop-ups to open the preview in a new tab.'); return; }
+      win0.document.open(); win0.document.write(canvas.serialize()); win0.document.close();
+      return;
+    }
+    var win = window.open('', 'revamp-staging-' + eventId);
     if (!win) { showToast('Allow pop-ups to open the preview in a new tab.'); return; }
     win.document.open();
-    win.document.write(canvas.serialize());
+    win.document.write('<!doctype html><title>Loading preview…</title><body style="font:14px/1.5 system-ui,sans-serif;padding:40px;color:#666">Loading preview…</body>');
     win.document.close();
+    RevampCore.stageEvent(eventId, canvas.serialize()).then(function (result) {
+      win.location.href = result.stagingUrl;
+    }).catch(function (err) {
+      win.document.open();
+      win.document.write('<!doctype html><title>Preview failed</title><body style="font:14px/1.5 system-ui,sans-serif;padding:40px;color:#a23b36">Could not load the preview — ' + escHtml(err && err.message ? err.message : 'please try again.') + '</body>');
+      win.document.close();
+    });
   }
 
   /* Real publish: sends canvas.serialize()'s own output (the exact same string the Preview button already

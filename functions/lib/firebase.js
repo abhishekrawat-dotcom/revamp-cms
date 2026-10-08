@@ -60,6 +60,9 @@
 //   events/{eventId}/published/index.html    the fully serialized, published page (lib/api.js's
 //                                             POST /api/event/publish — canvas.serialize()'s own output,
 //                                             made public; events/{eventId}.publishedUrl points here)
+//   events/{eventId}/staging/index.html      same mechanism, for the Preview button (POST /api/event/
+//                                             stage) — one stable URL per event, re-uploaded on every
+//                                             Preview click; never touches published/publishedUrl
 //   events/{eventId}/speakers/{fileName}, /partners/{fileName}, /gallery/{fileName}
 //                                             speaker/sponsor photos and gallery images, uploaded as base64
 //                                             in the request body (same pattern as handleExtractBrief's

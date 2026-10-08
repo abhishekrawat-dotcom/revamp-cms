@@ -18,6 +18,8 @@
      .fetchRegistrations(eventId) GET  /api/event/registrations — real attendee list
      .publishEvent(eventId, html) POST /api/event/publish — stores the editor's final rendered page for
                                    real (custom_editor.html's Publish button), -> {publishedUrl}
+     .stageEvent(eventId, html)   POST /api/event/stage — same, for the Preview button, -> {stagingUrl}
+                                   (one stable URL per event, never touches published/publishedUrl)
      .fetchSub(resource, eventId)              GET    /api/event/<resource> — list
      .createSub(resource, eventId, data)       POST   /api/event/<resource> — create, -> {id}
      .updateSub(resource, eventId, id, patch)  PATCH  /api/event/<resource> — update
@@ -235,6 +237,14 @@ window.RevampCore = (function(){
       .then(readJsonResponse);   // -> {publishedUrl, publishedAt}
   }
 
+  function stageEvent(eventId, html){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(new Error('stageEvent: eventId is required.'));
+    if (!html) return Promise.reject(new Error('stageEvent: html is required.'));
+    return authedFetch('/api/event/stage', { method: 'POST', body: JSON.stringify({ eventId: eventId, html: html }) })
+      .then(readJsonResponse);   // -> {stagingUrl}
+  }
+
   function fetchRegistrations(eventId){
     eventId = String(eventId || '').trim();
     if (!eventId) return Promise.reject(new Error('fetchRegistrations: eventId is required.'));
@@ -381,7 +391,7 @@ window.RevampCore = (function(){
     comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, rnd: rnd,
     PORTALS: PORTALS, TYPES: TYPES,
     fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
-    fetchRegistrations: fetchRegistrations, publishEvent: publishEvent,
+    fetchRegistrations: fetchRegistrations, publishEvent: publishEvent, stageEvent: stageEvent,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
     toast: toast, loadState: loadState, saveState: saveState, makeCtx: makeCtx
