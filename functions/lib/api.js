@@ -41,6 +41,17 @@
 //      the full schema. Admin-write routes (everything below except POST /api/register) require a verified
 //      Firebase Auth ID token — see requireAdmin().
 //   POST/GET/PATCH /api/event                     create / read / update the canonical event
+//   GET  /api/events                                list ALL events across the whole team (plural — distinct
+//                               from the singular GET /api/event?eventId=<id> above), for Event_Listing.html's
+//                               dashboard. No per-user/creator filter: this is a shared, team-wide CMS, every
+//                               signed-in admin sees every event, same access model as every other route here.
+//                               Ordered by updatedAt desc, capped at EVENTS_LIST_LIMIT docs (no pagination yet
+//                               — a deliberate first-version simplification). Excludes the Lovable-import
+//                               staging docs (events/import-<id>, written by POST /api/import-lovable below —
+//                               an unrelated staging mechanism, never a real event): those docs have no
+//                               `updatedAt` field at all, so Firestore's own orderBy('updatedAt') already
+//                               drops them, and the handler also filters any doc id starting with "import-"
+//                               as a second, explicit guard.
 //   GET/POST/PATCH/DELETE /api/event/<resource>    generic CRUD over one of the per-event subcollections —
 //                               speakers, speaker-groups, sessions, agenda-groups, partners, partner-tiers,
 //                               gallery, faqs, contacts — see subcollectionRoutes()/RESOURCES below.
@@ -1876,6 +1887,37 @@ function handleEventUpdate(req, res) {
   });
 }
 
+/* ---------- GET /api/events — list ALL events, team-wide ----------
+   Event_Listing.html's dashboard used to have no real, shared source for "what events exist" at all: it
+   only ever showed a static mock seed (since removed) plus whatever THIS browser's own localStorage had
+   recorded for events created locally (create-event.html's registerLiveEvent()) — invisible to every other
+   teammate. This is the real, shared, backend-driven replacement: every event any admin has created, for
+   every admin to see, same no-owner-filter access model requireAdmin() already uses everywhere else in this
+   file (there is no concept of per-user event scoping anywhere in this app).
+
+   Capped at EVENTS_LIST_LIMIT, newest-updated first — a sane bound for a dashboard list, not a real
+   pagination scheme; fine for a first version at this app's current scale.
+
+   Excludes events/import-<id> docs (POST /api/import-lovable's staging docs for an in-progress Lovable
+   import — see that handler below — never a real event). Those docs are never given an `updatedAt` field,
+   so ordering by it already excludes them from the query entirely (Firestore only returns documents that
+   have the field you order by); the explicit id-prefix filter below is a second, explicit guard against
+   that relying on an implicit Firestore behavior alone. */
+var EVENTS_LIST_LIMIT = 500;
+
+function handleEventsList(req, res) {
+  requireAdmin(req, res, function (fb) {
+    fb.db.collection('events').orderBy('updatedAt', 'desc').limit(EVENTS_LIST_LIMIT).get()
+      .then(function (snap) {
+        var items = snap.docs
+          .filter(function (d) { return d.id.indexOf('import-') !== 0; })
+          .map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        sendJson(res, 200, { items: items });
+      })
+      .catch(function (err) { sendJson(res, 500, { error: 'events list failed: ' + err.message }); });
+  });
+}
+
 /* ---------- GET /api/event/registrations, GET /api/event/dashboard-stats ----------
    dashboard-stats is a server-side aggregation (not a full-list pull the client reduces itself) — the
    Dashboard tab's 4 stat tiles need exactly these numbers, nothing more, and an event with thousands of
@@ -2046,6 +2088,7 @@ function handleApi(req, res) {
   if (req.method === 'POST' && urlPath === '/api/event') return handleEventCreate(req, res);
   if (req.method === 'GET' && urlPath === '/api/event') return handleEventGet(req, res);
   if (req.method === 'PATCH' && urlPath === '/api/event') return handleEventUpdate(req, res);
+  if (req.method === 'GET' && urlPath === '/api/events') return handleEventsList(req, res);
   if (req.method === 'GET' && urlPath === '/api/event/registrations') return handleEventRegistrationsList(req, res);
   if (req.method === 'GET' && urlPath === '/api/event/dashboard-stats') return handleEventDashboardStats(req, res);
   if (req.method === 'POST' && urlPath === '/api/event/publish') return handleEventPublish(req, res);

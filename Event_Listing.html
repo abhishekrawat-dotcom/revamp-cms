@@ -827,45 +827,66 @@
   function mk(o){ o.id = nextId(); return o; }
 
   /* Used to be seeded with ~20 hardcoded demo rows (fake names, registrations, revenue) with zero
-     connection to anything Create Event actually builds. Backed up to Event_Listing.dummy-data.backup.js
-     (2026-10-08) and replaced with a real, empty start — the only rows that appear now are events this
-     wizard has actually created, merged in below from 'revamp.liveEvents.v1'. */
+     connection to anything Create Event actually builds (backed up to Event_Listing.dummy-data.backup.js,
+     2026-10-08), then briefly with a per-browser localStorage merge ('revamp.liveEvents.v1', written by
+     registerLiveEvent() in create-event.html) — real but only ever visible to the one browser that created
+     the event, invisible to every other teammate, and keyed by a synthesized 'live_<slug>' id that never
+     matched the real Firestore doc id (just the slug), so opening one 404'd ("No event found for
+     'live_<slug>'").
+     Now populated for real by loadEvents() below: GET /api/events (functions/lib/api.js), the one real,
+     shared, backend-driven list — every event any admin on the team has created, for every admin to see.
+     Starts empty; loadAndRender() fills it once the fetch resolves. */
   var EVENTS = [];
 
-  // CRM leads — a distinct engagement signal, deterministically derived so it doesn't just mirror registrations/visitors 1:1
-  EVENTS.forEach(function(e, i){
-    var mix = (e.registrations * 0.6) + (e.visitors * 0.35) + ((e.eventNo % 37) * 4);
-    e.crmLeads = Math.round(mix * (0.6 + ((i * 17) % 40) / 100));
-  });
+  /* A real event straight out of the wizard has zero real registrations/visitors — correct, not a bug (the
+     real per-event numbers live behind GET /api/event/dashboard-stats and GET /api/event/registrations,
+     which this list view deliberately doesn't call once per row — an N-query fan-out per page load isn't
+     worth it for a first version). eventNo ("Event ID: ####" chip) and crmLeads have no real backend field
+     either; eventNo is a stable hash of the real id purely so the chip has a deterministic, non-churning
+     number to show, and crmLeads stays 0 until this page has a real CRM signal to show instead of an
+     invented one. */
+  function hashToEventNo(id){
+    var hash = 0;
+    String(id).split('').forEach(function(c){ hash = ((hash << 5) - hash + c.charCodeAt(0)) | 0; });
+    return (Math.abs(hash) % 9000) + 1000;
+  }
 
-  /* Events this wizard has actually created, in THIS browser (localStorage, 'revamp.liveEvents.v1' — written
-     by registerLiveEvent() in create-event.html, called from every Create Event finish path: the manual
-     wizard, "Let AI design it", and "Generate from a brief" alike). EVENTS above is otherwise static demo
-     data with zero connection to anything actually built — without this merge, a newly created event is
-     fully functional (it opens and edits fine) but invisible everywhere outside the editor itself, including
-     here. Prepended so the most recent shows first; real (zero) stats, not invented ones; status 'draft'
-     since nothing has been published yet — see the "Draft Events" item in the header's "..." menu to find
-     these, same as any other draft event already in the static seed data above. */
-  (function(){
-    try {
-      var raw = localStorage.getItem('revamp.liveEvents.v1');
-      var live = raw ? JSON.parse(raw) : [];
-      live.slice().reverse().forEach(function(ev){   // reverse so the MOST recently created ends up first
-        if (!ev || !ev.slug) return;
-        var hash = 0;
-        String(ev.slug).split('').forEach(function(c){ hash = ((hash << 5) - hash + c.charCodeAt(0)) | 0; });
-        EVENTS.unshift({
-          id: 'live_' + ev.slug, slug: ev.slug, name: ev.name || 'Untitled event',
-          venue: ev.venue || 'Venue to be confirmed', city: ev.city || '—',
-          eventNo: (Math.abs(hash) % 9000) + 1000,
-          type: ev.type || 'ip', portal: 'cio', status: 'draft', start: ev.start || null,
-          registrations: 0, regTarget: null, visitors: 0, crmLeads: 0,
-          payment: { type: ev.paymentType || 'free', amount: 0, txns: 0 },
-          createdBy: 'You'
-        });
+  /* functions/lib/api.js's GET /api/events returns each events/{id} doc close to verbatim (id + whatever
+     EVENT_FIELDS that event doc has: name, slug, category, status, start, end, venue, city, payment,
+     templateId, createdBy, createdAt, updatedAt, ...) — this maps that straight onto the row shape every
+     render function in this file already expects (metaLine/dateCellHTML/payCellHTML/statusLabel etc.). */
+  function mapApiEventToRow(ev){
+    return {
+      id: ev.id, slug: ev.slug || ev.id, name: ev.name || 'Untitled event',
+      venue: ev.venue || 'Venue to be confirmed', city: ev.city || '—',
+      eventNo: hashToEventNo(ev.id),
+      type: ev.category || 'ip', portal: 'cio',
+      status: ev.status || 'draft',
+      start: ev.start || null,
+      registrations: 0, regTarget: null, visitors: 0, crmLeads: 0,
+      payment: { type: (ev.payment && ev.payment.type) || 'free', amount: (ev.payment && ev.payment.amount) || 0, txns: (ev.payment && ev.payment.txns) || 0 },
+      createdBy: ev.createdBy || '—'
+    };
+  }
+
+  /* GET /api/events, admin-gated — same Authorization: Bearer <token> pattern every other authed call in
+     this app uses (see edit-event-core.js's RevampCore.authedFetch()); window.RevampAuth comes from auth.js,
+     already loaded on this page. Resolves to the mapped row array; rejects (never throws) on any failure —
+     not signed in, token expired, network down, server error — so loadAndRender() below can show the
+     existing defensive error banner instead of leaving the page on its loading skeleton forever. */
+  function loadEvents(){
+    if (!window.RevampAuth || typeof window.RevampAuth.getIdToken !== 'function'){
+      return Promise.reject(new Error('Not signed in.'));
+    }
+    return window.RevampAuth.getIdToken().then(function(token){
+      return fetch('/api/events', { headers: { 'Authorization': 'Bearer ' + token } });
+    }).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(data){
+        if (!res.ok) throw new Error((data && data.error) || ('Could not load events (' + res.status + ')'));
+        return (data.items || []).map(mapApiEventToRow);
       });
-    } catch(e){}
-  })();
+    });
+  }
 
   var RANGE_FACTOR = { today:0.05, '7':0.27, '10':0.36, '30':1 };
 
@@ -905,25 +926,35 @@
   }
   var EVENT_AUDIENCE = {};
   var IP_EVENT_IDS = [];
-  EVENTS.forEach(function(e){
-    if (e.type === 'ip' && (e.status==='upcoming' || e.status==='active' || e.status==='completed')){
-      IP_EVENT_IDS.push(e.id);
-      EVENT_AUDIENCE[e.id] = generateAudience(e.eventNo, e.visitors || e.registrations || 40);
-    }
-  });
-
-  /* ---- per-IP-event activity breakdown (deterministic mock, mirrors portal totals) ---- */
   var IP_ACTIVITY = {};
-  IP_EVENT_IDS.forEach(function(id){
-    var e = findEvent(id);
-    function r(i){ var x = Math.sin(e.eventNo * 17.3 + i * 5.11) * 10000; return x - Math.floor(x); }
-    IP_ACTIVITY[id] = {
-      mailersSent: Math.round((e.registrations || e.visitors || 10) * (1.3 + r(1) * 2.1)),
-      lastRegDays: Math.floor(r(2) * 12),
-      lastVisitDays: Math.floor(r(3) * 8),
-      lastMailerDays: Math.floor(r(4) * 18)
-    };
-  });
+  /* Rebuilds every EVENTS-derived structure (audience segmentation + activity breakdown, both IP-events-only
+     and still deterministic mock, just no longer seeded from fake rows) — called once at startup (EVENTS is
+     empty, so this is a no-op) and again by loadAndRender() every time EVENTS itself changes (the real
+     GET /api/events fetch resolving, or any retry). findEvent() is defined further down but hoisted, same
+     as every other forward reference in this file. */
+  function recomputeDerived(){
+    EVENT_AUDIENCE = {};
+    IP_EVENT_IDS = [];
+    EVENTS.forEach(function(e){
+      if (e.type === 'ip' && (e.status==='upcoming' || e.status==='active' || e.status==='completed')){
+        IP_EVENT_IDS.push(e.id);
+        EVENT_AUDIENCE[e.id] = generateAudience(e.eventNo, e.visitors || e.registrations || 40);
+      }
+    });
+
+    IP_ACTIVITY = {};
+    IP_EVENT_IDS.forEach(function(id){
+      var e = findEvent(id);
+      function r(i){ var x = Math.sin(e.eventNo * 17.3 + i * 5.11) * 10000; return x - Math.floor(x); }
+      IP_ACTIVITY[id] = {
+        mailersSent: Math.round((e.registrations || e.visitors || 10) * (1.3 + r(1) * 2.1)),
+        lastRegDays: Math.floor(r(2) * 12),
+        lastVisitDays: Math.floor(r(3) * 8),
+        lastMailerDays: Math.floor(r(4) * 18)
+      };
+    });
+  }
+  recomputeDerived();
 
   /* ---- portal-wide activity metrics (30-day baseline, scaled by the selected range) ---- */
   var PORTAL_ACTIVITY_BASE = { registrations:5240, visitors:21860, mailersSent:312400, newslettersSent:58200, subscribers:2140 };
@@ -2227,17 +2258,33 @@
   $('venue-quickview').addEventListener('mouseenter', cancelCloseQV);
   $('venue-quickview').addEventListener('mouseleave', scheduleCloseQV);
 
+  /* The real network fetch (GET /api/events) that replaces the old synchronous mock/localStorage data —
+     unlike those, this can genuinely fail (not signed in yet, token expired, offline, server error), so
+     this is also the retry target handed to renderErrorBanner() below. */
+  function loadAndRender(){
+    $('error-slot').innerHTML = '';
+    state.loading = true;
+    renderApp();
+    loadEvents().then(function(rows){
+      EVENTS.length = 0;
+      rows.forEach(function(row){ EVENTS.push(row); });
+      recomputeDerived();
+      state.loading = false;
+      renderApp();
+    }).catch(function(err){
+      state.loading = false;
+      renderApp();
+      renderErrorBanner(loadAndRender);
+      console.warn('[Event Listing] Could not load events: ' + (err && err.message));
+    });
+  }
+
   function init(){
     try {
       wireSortHeaders();
       wireViewToggle();
       applyView();
-      state.loading = true;
-      renderApp();
-      setTimeout(function(){
-        state.loading = false;
-        renderApp();
-      }, 550);
+      loadAndRender();
     } catch(err){
       renderErrorBanner(init);
     }
