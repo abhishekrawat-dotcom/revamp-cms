@@ -2248,8 +2248,19 @@
   var heroImageCache = {};   // key -> last dataUrl written to IndexedDB, so a save() on every keystroke doesn't re-write it each time
   var logoPreviewUrl = '';   // what the step-1 logo tile shows: an object URL right after upload, the stored copy after a reload
   /* The logo itself is kept in IndexedDB (editor-store.js), not in the localStorage draft: it can be megabytes. The site
-     editor reads it from there when it opens the draft and puts it on the site. Big PNGs are scaled to fit 1200×720. */
-  var LOGO_KEY = 'create:logo';
+     editor reads it from there when it opens the draft and puts it on the site. Big PNGs are scaled to fit 1200×720.
+
+     Keyed per-draft (S.logoSessionId, minted once and persisted — it rides along in S's own save()/restore()
+     cycle, same as every other field here), NOT a single fixed 'create:logo' key as this used to be — that
+     fixed key was a real, confirmed bug: whichever event's logo was uploaded MOST RECENTLY in this browser
+     silently became every SUBSEQUENT new event's logo too, with no upload needed to trigger it, since every
+     draft read and wrote the exact same global slot. A fresh draft (no S.logoSessionId restored) gets its
+     own fresh id the first time logoKey() is called, so it starts with no logo of its own, exactly as a
+     brand-new event should — never another event's leftover. */
+  function logoKey(){
+    if (!S.logoSessionId) S.logoSessionId = 'logo-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    return 'create:logo:' + S.logoSessionId;
+  }
   var logoSaving = null;      // the store write under way, so the hand-off can wait for it
   function logoDataUrl(file){
     return new Promise(function(resolve, reject){
@@ -2276,7 +2287,7 @@
   }
   function storeLogo(file){
     logoSaving = logoDataUrl(file).then(function(dataUrl){
-      return RevampStore.put(LOGO_KEY, { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
+      return RevampStore.put(logoKey(), { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
     }).then(function(){
       /* the Gen-2 preview caches the stored logo (storedLogoDataUrl()) so repeated fills don't hit IndexedDB
          every keystroke — that cache is now stale the moment a new logo is written, and schedulePreview()'s
@@ -2290,6 +2301,7 @@
 
   var S = {
     step: 1,
+    logoSessionId: null,   // minted lazily by logoKey() on first use; persists via save()/restore() like everything else here
     basics: {
       category: 'IP', name: '', client: '',
 
@@ -3003,7 +3015,7 @@
       e.stopPropagation();
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
-      RevampStore.remove(LOGO_KEY).catch(function(){});
+      RevampStore.remove(logoKey()).catch(function(){});
       logoInput.value = '';
       save(); initStep1(); renderFoot();
       toast('Logo removed');
@@ -3629,8 +3641,15 @@
           try {
             /* marks this handoff as a Generate-from-Brief result (vs. finishing the rest of the wizard by hand) —
                custom_editor.html reads this to show the one-time "this is an AI-generated draft" modal + the
-               persistent reminder strip, neither of which apply to a normal manual-template handoff */
-            localStorage.setItem(HANDOFF_KEY, JSON.stringify(Object.assign({}, draftResp.handoff, { generatedFromBrief: true })));
+               persistent reminder strip, neither of which apply to a normal manual-template handoff.
+               logoKey rides along the same way: the server's own handoff.event has no concept of the
+               browser's IndexedDB at all, so this client-side merge is the only place it can be added —
+               without it the editor had no way to find this draft's own logo (if one was uploaded in step 1
+               before Generate-from-Brief ran) and would fall back to whatever the fixed global key last
+               held, which could be a completely different event's logo (see logoKey()'s own comment). */
+            var handoffWithLogo = Object.assign({}, draftResp.handoff, { generatedFromBrief: true });
+            if (S.basics.logo) handoffWithLogo.event = Object.assign({}, handoffWithLogo.event, { logoKey: logoKey() });
+            localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoffWithLogo));
             registerLiveEvent({
               slug: eventId, name: eventMeta.name,
               venue: S.basics.venue, city: S.basics.city, category: S.basics.category,
@@ -7455,7 +7474,8 @@
         payment: b.payment,
         date: { mode: b.dateMode, start: b.start, end: b.end, month: b.month, quarter: b.quarter, year: b.year, note: b.dateNote },
         hasVenue: !!(CATS[b.category] || {}).venue,
-        logo: b.logo ? (b.logoName || 'logo') : ''      // the file itself is in IndexedDB under LOGO_KEY
+        logo: b.logo ? (b.logoName || 'logo') : '',     // the file itself is in IndexedDB under logoKey()
+        logoKey: b.logo ? logoKey() : null               // lets the editor read the SAME per-draft slot back
       },
       template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom'), site: (tpl && tpl.site) || null },
       /* the template's sections the user switched off — hidden on a real template, not deleted */
@@ -7487,7 +7507,7 @@
      IndexedDB, for the Gen-2 preview fill, which needs the saved data URL, not a File. */
   function storedLogoDataUrl(){
     if (gen2Logo) return gen2Logo;
-    gen2Logo = (window.RevampStore ? RevampStore.get(LOGO_KEY) : Promise.resolve(null))
+    gen2Logo = (window.RevampStore ? RevampStore.get(logoKey()) : Promise.resolve(null))
       .then(function(rec){ return (rec && rec.dataUrl) || ''; })
       .catch(function(){ return ''; });
     return gen2Logo;
@@ -7982,7 +8002,7 @@
     var had = restore();
     initStep1();
     if (S.basics.logo && !logoPreviewUrl){
-      RevampStore.get(LOGO_KEY).then(function(rec){
+      RevampStore.get(logoKey()).then(function(rec){
         if (!rec || rec.name !== S.basics.logoName || logoPreviewUrl) return;
         logoPreviewUrl = rec.dataUrl;
         if (S.step === 1) initStep1();
