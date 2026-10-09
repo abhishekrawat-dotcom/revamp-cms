@@ -3240,18 +3240,42 @@
 
   /* Inline template carousel — one real template previewed full-size at a time, with prev/next cycling
      through templatesForCategory(). Replaces the old card-grid-plus-popup-modal flow: browsing IS
-     previewing now, there's nothing separate to "open". Each step applies that template to S (silent — see
-     applyTemplate's 3rd arg) so "Use this template"/the footer's Continue both act on the right template+
-     skip set; per-template section include/exclude choices are kept in tplCarouselSkip for the length of
-     this visit so flipping back to a template you already toggled doesn't lose your choices.
+     previewing now, there's nothing separate to "open".
 
-     The preview itself is the REAL template (RevampCanvas.mount — same engine custom_editor.html uses),
-     not a static screenshot or the generic Gen-1 placeholder render: a ported template's own stock imagery
-     is baked into its files and shows the instant it mounts, and toggling a section below shows/hides that
-     exact element in the already-mounted canvas (no remount, no reload) — see applyCarouselSkipToCanvas().
-     Templates with no real port (no .site — e.g. Awards/Leadgen's generic fallbacks) have no real markup to
-     mount, so they fall back to the same Gen-1 buildPreviewDoc() iframe render the old preview modal used,
-     which at least still reflects toggles live, just without real imagery it was never given to begin with. */
+     ONE SOURCE OF TRUTH, not per-template special-casing: for every template with a real port (tpl.site),
+     the section list shown below the preview — names, ids, which ones are even toggleable — comes
+     entirely from canvas.template.sections / canvas.template.layout, i.e. straight from THAT template's own
+     template.json once RevampCanvas actually mounts it. It is never read from TEMPLATES[].sections here.
+     That matters because TEMPLATES[].sections (this file, above) is a DIFFERENT, generic vocabulary — the
+     shared library "shape" ids (hero/stats/priorities/…) used for the AI-generated/Gen-1 content model —
+     not the real ported site's own section ids. For tech500, for example, TEMPLATES[].sections says
+     ['nav','hero','stats',…] while the real templates/tech500/template.json sections are actually
+     ['banner','why-now','overview','power-chain',…] — two unrelated id spaces that only coincidentally
+     look similar for some templates. Driving the toggle list off the generic list (the previous version of
+     this code) is exactly why it could show wrong/missing section names and why toggling silently did
+     nothing — the querySelector('[data-rv-section="hero"]') it ran never matches a template whose real
+     section is called "banner". Reading canvas.template.sections instead means a newly ported template
+     needs ZERO changes here to get a correct, live-toggling preview — it falls out of its own template.json
+     automatically, which is also why this file never needs its own copy of "which sections exist".
+     pinStart/pinEnd sections (nav/hero-equivalent opener, Contact/About closer — see reorderableSectionsFor,
+     already used elsewhere for the same structural-vs-optional distinction) are left out of the toggle list
+     since hiding the page's fixed chrome was never really an "optional section" decision.
+
+     Also deliberately does NOT fill the mounted canvas with the wizard's content (no fillGen2Canvas call):
+     this carousel runs in the method phase, before any content has been entered, so every section would
+     have nothing but its own empty seed data — filling would strip the template's real stock copy/images
+     down to a bare heading with nothing underneath instead of showing what the template actually looks
+     like. The real fill happens later, in the real editor, once there's real content to fill it with.
+
+     Templates with no real port (no .site — Awards/Leadgen's generic fallbacks) have no template.json to
+     read any of this from, so they fall back to the old generic TEMPLATES[].sections/LIBRARY list against
+     the Gen-1 buildPreviewDoc() iframe render — the one case where that generic vocabulary is actually the
+     right one, because there's no real site backing them for it to disagree with.
+
+     Each step applies the chosen template to S (silent — see applyTemplate's 3rd arg) so "Use this
+     template"/the footer's Continue both act on the right template+skip set; per-template section
+     include/exclude choices are kept in tplCarouselSkip for the length of this visit so flipping back to a
+     template you already toggled doesn't lose your choices. */
   var tplCarouselIdx = 0;
   var tplCarouselSkip = {};
   var tplCarouselCanvas = { id: null, canvas: null, mounting: null };
@@ -3285,15 +3309,19 @@
     });
     return tplCarouselCanvas.mounting;
   }
+  /* the real, always-current toggle list for a mounted template — straight from canvas.template, see the
+     big comment above for why this replaces any hand-maintained per-template section list */
+  function carouselSectionsFor(canvas){
+    return reorderableSectionsFor(canvas);   // {id, name}[], pinStart/pinEnd already excluded
+  }
   /* the actual "instant toggle" — shows/hides that one section's real DOM node in the already-mounted
-     canvas directly, no remount. t.sections uses the same id vocabulary the real template's own
-     data-rv-section attributes do (confirmed by reorderableSectionsFor() using canvas.template.sections
-     ids the same way), so this is a direct 1:1 match, not a lookup through the generic LIBRARY shapes. */
-  function applyCarouselSkipToCanvas(canvas, t, skip){
+     canvas directly, no remount. sectionList's ids are canvas.template.sections ids (data-rv-section's own
+     real values), not the generic LIBRARY vocabulary, so this always matches. */
+  function applyCarouselSkipToCanvas(canvas, sectionList, skip){
     if (!canvas) return;
-    t.sections.forEach(function(libId){
-      var el = canvas.doc.querySelector('[data-rv-section="' + libId + '"]');
-      if (el) el.style.display = skip[libId] ? 'none' : '';
+    sectionList.forEach(function(s){
+      var el = canvas.doc.querySelector('[data-rv-section="' + s.id + '"]');
+      if (el) el.style.display = skip[s.id] ? 'none' : '';
     });
   }
 
@@ -3302,22 +3330,19 @@
     if (!t) return;
     var skip = tplCarouselSkip[t.id] || (S.template === t.id ? Object.assign({}, S.templateExcluded || {}) : {});
     tplCarouselSkip[t.id] = skip;
-    var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
     var requestId = ++tplCarouselRequestSeq;   // guards against a slow mount resolving after a later next/prev click
 
     $('tpl-carousel-count').textContent = (tplCarouselIdx + 1) + ' / ' + list.length;
     $('tpl-carousel-name').textContent = t.name;
     $('tpl-carousel-sub').textContent = t.sub || '';
 
-    function renderToggles(){
+    function renderToggles(sectionList){
       var listHost = $('tpl-carousel-sections');
-      listHost.innerHTML = toggleIds.map(function(id){
-        var l = libBy(id);
-        var label = (t.sectionNames && t.sectionNames[id]) || l.name;
-        var on = !skip[id];
+      listHost.innerHTML = sectionList.map(function(s){
+        var on = !skip[s.id];
         return '<div class="tpl-preview-row' + (on ? '' : ' off') + '">' +
-          '<span class="nm">' + esc(label) + '</span>' +
-          '<button class="switch" data-pv-toggle="' + id + '" aria-pressed="' + on + '">' +
+          '<span class="nm">' + esc(s.name) + '</span>' +
+          '<button class="switch" data-pv-toggle="' + esc(s.id) + '" aria-pressed="' + on + '">' +
             '<span class="track"><i></i></span>' + (on ? 'Included' : 'Excluded') +
           '</button>' +
         '</div>';
@@ -3326,28 +3351,27 @@
         b.addEventListener('click', function(){
           var id = b.getAttribute('data-pv-toggle');
           skip[id] = !skip[id];
-          applyPreview();
-          renderToggles();
+          save();
+          if (t.site && tplCarouselCanvas.id === t.site && tplCarouselCanvas.canvas){
+            applyCarouselSkipToCanvas(tplCarouselCanvas.canvas, sectionList, skip);
+          } else if (!t.site){
+            var frame = $('tpl-carousel-frame');
+            if (frame) frame.srcdoc = buildPreviewDoc();
+          }
+          renderToggles(sectionList);
         });
       });
     }
 
-    function applyPreview(){
-      /* keeps S.template/S.templateExcluded in sync with whatever's currently shown (same additive/silent
-         pattern used while browsing — see applyTemplate's 3rd arg) so "Use this template" and the footer's
-         own Continue button both act on the right template+skip set without a redundant confirm step. */
-      applyTemplate(t.id, skip, true);
-      S.templatePick = t.id;
-      save();
-      if (t.site && tplCarouselCanvas.id === t.site && tplCarouselCanvas.canvas){
-        applyCarouselSkipToCanvas(tplCarouselCanvas.canvas, t, skip);
-      } else if (!t.site) {
-        var frame = $('tpl-carousel-frame');
-        if (frame) frame.srcdoc = buildPreviewDoc();
-      }
-    }
-
     var canvasHost = $('tpl-carousel-canvas'), frame = $('tpl-carousel-frame'), placeholder = $('tpl-carousel-placeholder');
+    /* keeps S.template in sync with whatever's currently shown (silent — see applyTemplate's 3rd arg) so
+       "Use this template"/the footer's own Continue button both act on the right template without a
+       redundant confirm step. Not meaningfully affected by skip for a ported template — see the big
+       comment above; S.templateExcluded only actually drives section inclusion in the generic (non-ported)
+       content model, which the !t.site branch below still uses untouched. */
+    applyTemplate(t.id, skip, true);
+    S.templatePick = t.id;
+    save();
 
     if (t.site){
       if (frame) frame.hidden = true;
@@ -3355,10 +3379,9 @@
       if (canvasHost) canvasHost.hidden = false;
       ensureCarouselCanvas(t).then(function(canvas){
         if (requestId !== tplCarouselRequestSeq) return;   // superseded by a later next/prev click
-        return fillGen2Canvas(canvas).then(function(){
-          if (requestId !== tplCarouselRequestSeq) return;
-          applyCarouselSkipToCanvas(canvas, t, skip);
-        });
+        var sectionList = carouselSectionsFor(canvas);
+        renderToggles(sectionList);
+        applyCarouselSkipToCanvas(canvas, sectionList, skip);
       }).catch(function(){
         if (requestId !== tplCarouselRequestSeq) return;
         if (canvasHost) canvasHost.hidden = true;
@@ -3370,11 +3393,14 @@
       if (frame){
         frame.hidden = false;
         frame.onload = function(){ paintPreviewPsdImages(frame); };
+        frame.srcdoc = buildPreviewDoc();
       }
+      var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
+      renderToggles(toggleIds.map(function(id){
+        var l = libBy(id);
+        return { id: id, name: (t.sectionNames && t.sectionNames[id]) || l.name };
+      }));
     }
-
-    renderToggles();
-    applyPreview();
 
     var useBtn = $('tpl-carousel-use');
     if (useBtn) useBtn.onclick = function(){ selectTemplate(t.id, skip); advanceToDetails('template'); };
