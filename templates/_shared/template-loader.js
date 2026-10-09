@@ -48,9 +48,22 @@
      very first load right after generation. Ported templates' own section files have no such leading
      comment, which is why those have always tagged and filled correctly.
      Now skips zero or more leading <!-- ... --> blocks (each own optional surrounding whitespace) before
-     matching the real opening tag, so the attribute still lands on that real tag either way. */
+     matching the real opening tag, so the attribute still lands on that real tag either way.
+
+     Second, related, also-confirmed bug this same fix closes: the Lovable-import pipeline's own
+     /api/imported-section response (functions/lib/api.js's handleImportedTemplate/handleImportedSection —
+     see that handler's own CSS-inline-vs-linked comment) leads with one or more inlined <style
+     data-rv-imported-css="…"> blocks before the real <div class="rv-imported"> content, by design — the
+     same "first tag in the string wins" assumption that broke on a leading comment broke here too, just
+     tagging a <style> element as the section root instead of the real content div. Confirmed via a real
+     import + a real browser: editor-canvas.js's tagEditables()/descend() only ever walks DOWN from
+     whatever data-rv-section lands on, so tagging the wrong (empty, childless) <style> element meant ZERO
+     elements in the entire real imported page ever got data-editable — nothing was clickable at all, for
+     every Lovable import, confirmed on a real captured page (657 real elements, 0 tagged editable).
+     Now also skips zero or more leading <style>...</style> blocks, interleaved with comments in any
+     order/count, before matching the real tag — covering both known cases with one fix. */
   function tagSection(html, id) {
-    return html.replace(/^((?:\s*<!--[\s\S]*?-->)*\s*<[a-zA-Z][^\s>]*)/, '$1 data-rv-section="' + esc(id) + '"');
+    return html.replace(/^((?:\s*<!--[\s\S]*?-->|\s*<style[^>]*>[\s\S]*?<\/style>)*\s*<[a-zA-Z][^\s>]*)/i, '$1 data-rv-section="' + esc(id) + '"');
   }
 
   /* opts.sectionOrder: a full id sequence (e.g. built by create-event.html from the template's own
