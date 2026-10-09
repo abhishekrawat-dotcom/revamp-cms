@@ -36,8 +36,21 @@
     return Object.keys(map || {}).map(function (k) { return k + ':' + map[k]; }).join(';');
   }
 
+  /* Every templates/_library/sections/<id>/index.html file opens with a leading documentation comment
+     (<!-- Generic hero/banner... -->) — real, confirmed bug this closes: the old regex (^\s*<[a-zA-Z]…)
+     anchors straight to the start of the string and has no way to look past that comment to the real tag,
+     so it silently failed to match at all for every single library section, meaning NO generated template's
+     section ever actually got data-rv-section — the one attribute RevampFill.apply()'s own section lookup
+     (canvas.doc.querySelector('[data-rv-section="…"]')) depends on. Every content.map rule for every
+     Generate-from-Brief event has therefore always hit that lookup's `if (!sec) return;` guard and silently
+     done nothing, leaving every generated site showing the library's own raw unfilled placeholder copy
+     ("Event name goes here") — not a caching or reopen-timing bug, the fill itself never ran, even on the
+     very first load right after generation. Ported templates' own section files have no such leading
+     comment, which is why those have always tagged and filled correctly.
+     Now skips zero or more leading <!-- ... --> blocks (each own optional surrounding whitespace) before
+     matching the real opening tag, so the attribute still lands on that real tag either way. */
   function tagSection(html, id) {
-    return html.replace(/^(\s*<[a-zA-Z][^\s>]*)/, '$1 data-rv-section="' + esc(id) + '"');
+    return html.replace(/^((?:\s*<!--[\s\S]*?-->)*\s*<[a-zA-Z][^\s>]*)/, '$1 data-rv-section="' + esc(id) + '"');
   }
 
   /* opts.sectionOrder: a full id sequence (e.g. built by create-event.html from the template's own
