@@ -1661,13 +1661,12 @@
               <button class="btn btn-secondary" type="button" id="btn-clone-design">Choose a previous edition</button>
             </div>
             <div class="design-choice-card">
-              <span class="dc-featured-tag dc-soon-tag">Coming soon</span>
               <span class="dc-ico">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
               </span>
               <h3>Bring your own design</h3>
-              <p>Import a Figma or Lovable design directly and edit it here.</p>
-              <button class="btn btn-ghost" type="button" id="link-convert-url-landing">Learn more</button>
+              <p>Already built it in Lovable? Export it and upload the ZIP to edit it here as a real microsite. (Figma import isn’t built yet.)</p>
+              <button class="btn btn-secondary" type="button" id="link-convert-url-landing">Import from Lovable</button>
             </div>
           </div>
 
@@ -1731,6 +1730,8 @@
            neither depends on which of the three phase divs happens to be visible. ===== -->
       <div id="step2-ai" hidden></div>
       <div id="step2-brief" hidden></div>
+      <!-- "Bring your own design" (Lovable import) progress — same reasoning as step2-ai/step2-brief above. -->
+      <div id="step2-import" hidden></div>
 
       <!-- ===== PHASE 3 : the basic details form ===== -->
       <div class="phase" id="basics-form" hidden>
@@ -2035,26 +2036,6 @@
          above for what this is used for */
       briefCategory: 'enterprise AI leadership',
       sections:['nav','hero','about','keyquestions','priorities','speakers','whyjoin','attend','glimpses','contact','footer'] },
-    { id:'workplace-2035', name:'Workplace 2035', tag:'IP event', cat:'IP', img:'template-previews/workplace-2035-mini.jpg', imgFull:'template-previews/workplace-2035-full.jpg',
-      sub:'The future of the intelligent enterprise — stats, partners, speakers and a two-track agenda.',
-      sections:['nav','hero','stats','partners','about','priorities','speakers','contact','footer'] },
-    { id:'surge', name:'SURGE', tag:'Residential event', cat:'IP', img:'template-previews/surge-mini.jpg', imgFull:'template-previews/surge-full.jpg',
-      sub:'India\u2019s largest residential GCC summit — experience zones, speakers and past-edition glimpses.',
-      sections:['nav','hero','partners','about','stats','awaits','priorities','speakers','glimpses','contact','footer'],
-      /* labels matched to this template's own on-site headings, from the shared SURGE design */
-      sectionNames:{
-        about:'Overview',
-        awaits:'What Awaits You at the ET GCC Surge?',
-        priorities:'Key Discussion Points',
-        speakers:'Speakers & Delegates',
-        glimpses:'Snippets From a Previous Edition'
-      } },
-    { id:'annual-education-summit', name:'Annual Education Summit', tag:'Residential event', cat:'IP', img:'template-previews/annual-education-summit-mini.jpg', imgFull:'template-previews/annual-education-summit-full.jpg',
-      sub:'India\u2019s largest education summit & expo — tracks, speaker clubs and glimpses.',
-      sections:['nav','hero','stats','about','awaits','speakers','whyjoin','glimpses','attend','contact','footer'] },
-    { id:'nbfc-leaders-retreat', name:'NBFC Leaders\u2019 Retreat', tag:'Residential event', cat:'IP', img:'template-previews/nbfc-leaders-retreat-mini.jpg', imgFull:'template-previews/nbfc-leaders-retreat-full.jpg',
-      sub:'A resort-based leadership retreat — focus areas, glimpses and speaker snippets.',
-      sections:['nav','hero','stats','partners','speakers','verticals','priorities','glimpses','insights','contact','footer'] },
     { id:'awards', name:'Awards Night', tag:'Awards', cat:'Awards',
       sub:'Nomination-first, jury and categories up top.',
       sections:['nav','hero','stats','about','awaits','priorities','speakers','whyjoin','insights','glimpses','partners','contact','footer'] },
@@ -2385,7 +2366,7 @@
       payment: 'Paid', slug: '', slugTouched: false, logo: false, logoName: ''
     },
     step1Phase: 'category',     // category | method | details — see setStep1Phase()
-    creationMethod: null,       // null | 'template' | 'brief' — which card was picked in the 'method' phase;
+    creationMethod: null,       // null | 'template' | 'brief' | 'imported' — which card was picked in the 'method' phase;
                                  // drives the trimmed-vs-full details form. Deliberately separate from `path`
                                  // ('A'/'B', below) so it never collides with the legacy, now-dead-for-new-
                                  // sessions step-3 detect/review semantics.
@@ -3404,12 +3385,12 @@
       }));
       var src = t.imgFull || t.img;
       if (src){
-        /* no real port exists for this template (see the big comment above — workplace-2035, surge,
-           annual-education-summit, nbfc-leaders-retreat and others are gallery entries with a real
-           reference screenshot but no templates/<id>/ site actually built yet) — its own real screenshot
-           is the only genuine asset there is to show, so show that instead of an empty generic render.
-           Toggling a section still updates what will actually be included once this template is used
-           (S.templateExcluded, via applyTemplate above); it just can't visually update a static image. */
+        /* no real port exists for this template (a gallery entry with a real reference screenshot but no
+           templates/<id>/ site actually built yet — none currently in TEMPLATES[] are in this state, but
+           this stays correct if one is added again later) — its own real screenshot is the only genuine
+           asset there is to show, so show that instead of an empty generic render. Toggling a section
+           still updates what will actually be included once this template is used (S.templateExcluded,
+           via applyTemplate above); it just can't visually update a static image. */
         hideAllMedia();
         if (img){
           img.hidden = false;
@@ -4059,6 +4040,7 @@
     $('step2-landing').hidden = view !== 'landing';
     $('step2-ai').hidden = view !== 'ai';
     $('step2-brief').hidden = view !== 'brief';
+    $('step2-import').hidden = view !== 'import';
   }
 
   function renderStep2(){
@@ -4084,7 +4066,7 @@
     if (cloneBtn) cloneBtn.onclick = function(e){ e.preventDefault(); openCloneDesignModal(); };
 
     var convertLandingLink = $('link-convert-url-landing');
-    if (convertLandingLink) convertLandingLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
+    if (convertLandingLink) convertLandingLink.onclick = function(e){ e.preventDefault(); openImportLovableModal(); };
     /* "Let AI design it" — a plain link now (not a boxed-out card with its own vibe-chip/notes intake;
        that extra step added friction for a genuinely secondary path and competed visually with the two
        real choices above it — template gallery, generate-from-brief). Runs with whatever S.designIntake
@@ -4145,6 +4127,116 @@
         'For now, pick a template manually, or use <strong>Design with AI</strong> on a template with a real site port — ' +
         'it redesigns the actual live template using the content you type into this wizard.</span></div>',
       confirm: 'Got it'
+    });
+  }
+
+  /* ---------- "Bring your own design" (real Lovable import) ----------
+     The real backend for this already exists (functions/lib/api.js's LOVABLE IMPORT PIPELINE — POST
+     /api/import-lovable, admin-gated): the user runs lovable-exporter.js (a browser-console script they
+     already have, not shipped in this repo) against their own live Lovable site, which downloads a ZIP;
+     this modal just uploads that ZIP. The server unzips it, strips the React/JS runtime, re-hosts every
+     image to Storage, and returns `imported-<importId>` as the new template id — from here on it's a
+     template id exactly like a ported/generated one (template-loader.js's `imported-` branch), so the
+     rest of the wizard/editor hand-off needs no special-casing beyond applyImportedTemplate() below and
+     buildEditorPayload()'s own `importedTplId` branch (TEMPLATES[] has no entry for it to look up). */
+  function openImportLovableModal(){
+    openModal({
+      title: 'Import from Lovable',
+      sub: 'Run lovable-exporter.js in your Lovable site’s browser console first, then upload the ZIP it produces.',
+      body: '<div class="field"><label class="flabel" for="import-zip-file">Exported ZIP</label>' +
+          '<input class="inp" id="import-zip-file" type="file" accept=".zip,application/zip"></div>' +
+        '<p class="hint" style="margin-top:8px;">Up to 40&nbsp;MB.</p>',
+      confirm: 'Import',
+      cancelLabel: 'Cancel',
+      onConfirm: function(){
+        var input = $('import-zip-file');
+        var file = input && input.files && input.files[0];
+        if (file) runLovableImport(file);
+      }
+    });
+    var ok = $('modal-ok');
+    if (ok) ok.disabled = true;      // nothing picked yet
+    var input = $('import-zip-file');
+    if (input) input.addEventListener('change', function(){
+      var btn = $('modal-ok');
+      if (btn) btn.disabled = !(input.files && input.files[0]);
+    });
+  }
+
+  // Raw base64 of the file's bytes, no "data:...;base64," prefix — /api/import-lovable's zipBase64 is fed
+  // straight to Buffer.from(zipBase64, 'base64') server-side. readAsDataURL is the same FileReader primitive
+  // this file already uses for binary uploads (see logoDataUrl()/readPsdFile() above); only the prefix differs.
+  function readFileAsRawBase64(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = function(){ reject(reader.error || new Error('the file couldn’t be read')); };
+      reader.onload = function(){
+        var result = String(reader.result || '');
+        var i = result.indexOf(',');
+        resolve(i === -1 ? result : result.slice(i + 1));
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // importId needs no relation to the real event's own slug (basicsIssue() hasn't even run yet at this
+  // point in the wizard) — just a short, throwaway session id, same reasoning as logoKey()'s logoSessionId.
+  function lovableImportId(){
+    return 'imp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  /* Sets the minimal state an imported design actually needs — deliberately NOT routed through
+     applyTemplate() (that function is built entirely around TEMPLATES[]/the generic library content model:
+     pushing tpl.sections-derived S.sections entries, seeding library shapes, etc., none of which applies to
+     an opaque imported page). Also clears every "previous method" leftover (S.path/aiDesign/sectionOrder/
+     templateExcluded/detect* and any template-only decorative sections) so switching TO an import after
+     already picking a real template — or vice-versa later — can't leave stale state behind; mirrors
+     confirmSwitch()'s own reset, minus wiping the user's own real section content. */
+  function applyImportedTemplate(templateId){
+    S.template = templateId;
+    S.path = null;
+    S.templateExcluded = {};
+    S.aiDesign = null;
+    S.sectionOrder = null;
+    S.priorDesigns = [];
+    S.detectPhase = 'input';
+    S.detectDecisions = {};
+    S.assembled = false;
+    S.sections = S.sections.filter(function(s){ return s.source !== 'template'; });
+    save();
+  }
+
+  function runLovableImport(file){
+    var importId = lovableImportId();
+    showStep2View('import');
+    $('step2-import').innerHTML =
+      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Importing your design&hellip;</h1>' +
+        '<p class="desc">Unzipping your export and re-hosting its images — this can take a moment for a larger design.</p></div>' +
+      '<div class="panel"><div class="proc-wrap">' + ET_LOADER + '</div></div>';
+
+    readFileAsRawBase64(file).then(function(zipBase64){
+      if (!window.RevampAuth || typeof RevampAuth.getIdToken !== 'function'){
+        throw new Error('You need to be signed in to import a design.');
+      }
+      return RevampAuth.getIdToken().then(function(token){
+        return fetch('/api/import-lovable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ importId: importId, zipBase64: zipBase64, fileName: file.name })
+        });
+      });
+    }).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(body){
+        if (!res.ok) throw new Error((body && body.error) || ('Import failed (' + res.status + ').'));
+        return body;
+      });
+    }).then(function(body){
+      applyImportedTemplate(body.templateId || ('imported-' + importId));
+      advanceToDetails('imported');
+      toast('Design imported');
+    }).catch(function(err){
+      toast((err && err.message) || 'Could not import this design.');
+      showStep2View('landing');
     });
   }
 
@@ -4436,7 +4528,11 @@
   function renderTogglePanel(){
     var host = $('toggle-panel');
     if (!host) return;
-    var show = S.step === 1 && !!document.querySelector('#step-1 #sec-list');
+    /* S.step stays 1 throughout category/method/details now (see the step1/step2 merge) — #sec-list
+       itself can already exist in the DOM during the method phase (a category pick seeds it ahead of
+       time), so without the step1Phase check this button showed up over the template carousel too, not
+       only its real home, the details/build phase's section editor. */
+    var show = S.step === 1 && S.step1Phase === 'details' && !!document.querySelector('#step-1 #sec-list');
     host.hidden = !show;
     if (!show){ host.innerHTML = ''; editionPopOpen = false; return; }
     var locked = !S.pulledEdition;
@@ -7680,19 +7776,33 @@
   function buildEditorPayload(){
     var b = S.basics;
     var tpl = TEMPLATES.filter(function(t){ return t.id === S.template; })[0];
+    /* An imported design (S.template === 'imported-<id>', from "Bring your own design" — see
+       runLovableImport()/applyImportedTemplate()) has no TEMPLATES[] entry at all, so `tpl` above is always
+       undefined for it: it's a one-off upload, not a gallery pick. Its real "site" id for the hand-off IS
+       S.template itself — custom_editor.html/template-loader.js dispatch purely on that id's own 'imported-'
+       prefix, no TEMPLATES[] lookup involved — which a plain `tpl && tpl.site` would otherwise silently miss,
+       landing the user in the wrong (Gen-1, generic-content-model) hand-off path instead of TEMPLATE_MODE. */
+    var importedTplId = /^imported-/.test(S.template || '') ? S.template : null;
     var sections = [];
-    S.sections.forEach(function(s){
-      if (!s.include) return;
-      var html = editorSectionHtml(s);
-      /* data: the step-3 fields themselves — a real template (tpl.site) is filled from these, not from html.
-         Must be pushed even when html is empty (e.g. the hero before any PSD/text content exists yet) — an
-         empty html just means nothing to show in the Gen-1 preview for that section, but RevampFill still
-         needs `data` to fill the REAL template; skipping the whole entry here was silently dropping it from
-         the real-template preview/hand-off too, leaving the template's own stock placeholder content showing
-         instead of whatever the user actually filled in. */
-      if (!html && !s.data) return;
-      sections.push({ name: sectionLabel(s), libId: s.libId, html: html || '', data: s.data ? JSON.parse(JSON.stringify(s.data)) : null });
-    });
+    if (!importedTplId){
+      /* an imported design doesn't participate in the generic section-content model at all (one opaque,
+         already-filled section, server-side) — its own wizard-seeded sections (nav/hero/footer/core —
+         seedSections(), never shown to the user for this method, see renderStep1Content()'s content-grp
+         gating) are left out of the hand-off entirely, rather than sent across only to be reported by
+         editor-fill.js's apply() as "skipped"/"not shown on this template". */
+      S.sections.forEach(function(s){
+        if (!s.include) return;
+        var html = editorSectionHtml(s);
+        /* data: the step-3 fields themselves — a real template (tpl.site) is filled from these, not from html.
+           Must be pushed even when html is empty (e.g. the hero before any PSD/text content exists yet) — an
+           empty html just means nothing to show in the Gen-1 preview for that section, but RevampFill still
+           needs `data` to fill the REAL template; skipping the whole entry here was silently dropping it from
+           the real-template preview/hand-off too, leaving the template's own stock placeholder content showing
+           instead of whatever the user actually filled in. */
+        if (!html && !s.data) return;
+        sections.push({ name: sectionLabel(s), libId: s.libId, html: html || '', data: s.data ? JSON.parse(JSON.stringify(s.data)) : null });
+      });
+    }
     return {
       v: 1,
       createdAt: Date.now(),
@@ -7708,7 +7818,7 @@
         logo: b.logo ? (b.logoName || 'logo') : '',     // the file itself is in IndexedDB under logoKey()
         logoKey: b.logo ? logoKey() : null               // lets the editor read the SAME per-draft slot back
       },
-      template: { id: S.template, name: tpl ? tpl.name : (S.path === 'B' ? 'Your own design' : 'Custom'), site: (tpl && tpl.site) || null },
+      template: { id: S.template, name: tpl ? tpl.name : (importedTplId ? 'Imported design' : (S.path === 'B' ? 'Your own design' : 'Custom')), site: importedTplId || (tpl && tpl.site) || null },
       /* the template's sections the user switched off — hidden on a real template, not deleted */
       excluded: tpl ? tpl.sections.filter(function(id){ return !S.sections.some(function(s){ return s.libId === id && s.include; }); }) : [],
       theme: currentTheme(),
