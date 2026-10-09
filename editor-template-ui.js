@@ -175,40 +175,45 @@
       // reopen (not fromCreate) always finds exactly what was last saved here, same as before.
       var isStale = !!(saved && saved.snapshot && fromCreate && draftId && saved.sourceDraftId !== draftId);
 
-      /* A locally-cached snapshot for a gen-<id> (Generate-from-Brief) template that was never actually
-         seeded from a real draft (sourceDraftId never set — see persist()'s own comment: it rides along on
-         every save once applyHandoffDraft() has run once, so its absence here means this exact device has
-         NEVER successfully shown real content for this event) is not trustworthy enough to restore and stop
-         there: it's exactly the shape the bug fetchServerDraft() above was built to fix left behind
-         PERMANENTLY, for every device that hit it before that fix existed — this device's local cache is
-         itself stale, not just this one visit. Re-check the server before trusting it, same as a device with
-         no local snapshot at all would; only fall back to this cached copy (further down) if the server
-         genuinely has nothing either, so a real manual edit never gets silently discarded. */
-      var localNeverSeeded = /^gen-/.test(templateId || '') && !!(saved && saved.snapshot) && !saved.sourceDraftId;
-
-      if (saved && saved.snapshot && !isStale && !localNeverSeeded) {
+      function restoreLocal() {
         sourceDraftId = saved.sourceDraftId || null;
         canvas.restore(saved.snapshot);
         undoStack = [saved.snapshot]; undoPtr = 0;
-        return;
       }
+
+      /* A gen-<id> (Generate-from-Brief) template's local snapshot is NOT unconditionally trusted on a
+         plain reopen, the way every other template's is — the server's own latest draftId (GET /api/draft)
+         is checked first and is authoritative. This isn't just the "never seeded at all" case (an earlier,
+         narrower version of this fix only caught that, via sourceDraftId being unset): a device can also
+         have a local snapshot that WAS seeded, with a real sourceDraftId recorded, from an earlier, lower-
+         quality or outright broken version of the generation/fill pipeline predating later fixes — looking
+         "seeded" is not the same as being correct. Comparing against the server's real current draftId
+         catches both: a local copy is only trusted outright when it matches a draft that genuinely exists
+         server-side right now. A real local edit is still safe either way — it only changes section
+         content, never sourceDraftId itself (see persist()'s own comment), so an edited-but-still-current
+         draft keeps matching and is never silently discarded. */
       if (fromCreate) {
+        if (saved && saved.snapshot && !isStale) { restoreLocal(); return; }
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
+        if (saved && saved.snapshot) { restoreLocal(); return; }
+        return seedSnapshot(null);
       }
-      // No usable (or trusted) local snapshot, and either not a fresh fromCreate visit or its handoff was
-      // empty/missing (a stateless reopen, or a previously-poisoned local cache — see fetchServerDraft()'s
-      // and localNeverSeeded's own comments above for why this matters).
+
+      if (!/^gen-/.test(templateId || '')) {
+        if (saved && saved.snapshot) { restoreLocal(); return; }
+        return seedSnapshot(null);
+      }
+
       return fetchServerDraft().then(function (res) {
+        var serverDraftId = res && res.draftId;
+        if (saved && saved.snapshot && serverDraftId && saved.sourceDraftId === serverDraftId) { restoreLocal(); return; }
         if (res && res.handoff && res.handoff.sections && res.handoff.sections.length) {
-          return applyHandoffDraft(res.handoff, res.draftId || null);
+          return applyHandoffDraft(res.handoff, serverDraftId || null);
         }
-        if (saved && saved.snapshot) {
-          sourceDraftId = saved.sourceDraftId || null;
-          canvas.restore(saved.snapshot);
-          undoStack = [saved.snapshot]; undoPtr = 0;
-          return;
-        }
+        // Nothing current on the server — fall back to whatever's cached locally rather than re-seeding
+        // blank, so a real edit (or a draft the server fetch itself just failed to reach) isn't discarded.
+        if (saved && saved.snapshot) { restoreLocal(); return; }
         return seedSnapshot(null);
       });
     });
