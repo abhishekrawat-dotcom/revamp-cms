@@ -109,7 +109,12 @@
         }
         if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
         if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(eventId); return; }
-        if (section === 'design') { location.href = 'custom_editor.html?event=' + encodeURIComponent(eventId); return; }
+        /* Not a direct custom_editor.html link: that page only clears its own built-in demo content when a
+           real &template= param is attached, and this component doesn't know the event's real templateId.
+           edit-event.html's own Design > Site editor route already resolves it (EV.templateId, fetched
+           before this hash route runs) before redirecting — going through it instead of guessing the URL
+           here is what actually gets the real site to load instead of fake placeholder content. */
+        if (section === 'design') { location.href = 'edit-event.html?event=' + encodeURIComponent(eventId) + '#design/editor'; return; }
         if (section === 'payment') { location.href = 'payment/html_version/index.html?event=' + encodeURIComponent(eventId); return; }
         if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(eventId); return; }
         if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(eventId); return; }

@@ -758,7 +758,7 @@
   function goSection(section){
     var id = encodeURIComponent(select.value);
     if (section === 'dashboard'){ location.href = 'dashboard.html'; return; }
-    if (section === 'design'){ location.href = 'custom_editor.html?event=' + id; return; }
+    if (section === 'design'){ location.href = 'edit-event.html?event=' + id + '#design/editor'; return; }
     if (section === 'payment'){ location.href = 'edit-event.html?event=' + id + '#audience/payments'; return; }
     if (section === 'audience' || section === 'reporting') return;
     location.href = 'edit-event.html?event=' + id + '#' + section;
