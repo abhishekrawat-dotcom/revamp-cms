@@ -1938,6 +1938,15 @@ function handleImportedTemplate(req, res) {
       shared: [],
       fonts: [],
       design: {},
+      /* header/footer: 'none.html' (see templates/_shared/none.html), not the default header.html/
+         footer.html — those are a real, visible "Shared header/footer — design to come" placeholder banner
+         every OTHER template shows while the real unified ET chrome design is still pending. An imported
+         design already captured its own complete, real header/nav/footer as part of the one opaque section
+         below; stacking the generic placeholder on top of an already-finished site is wrong, not pending —
+         confirmed visible in a real published page (the banner text literally appeared above the real
+         imported content). */
+      header: 'none.html',
+      footer: 'none.html',
       body: { id: 'imported', class: 'microsite imported-microsite', style: {} },
       content: { map: [{ from: 'imported', section: 'imported', fill: [] }] },
       layout: { pinStart: ['imported'], pinEnd: [] },
