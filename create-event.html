@@ -365,32 +365,34 @@
   /* ===== BASIC DETAILS : wide layout ===== */
   .step-wrap.full{ max-width: 1300px; }
 
-  /* ===== STEP 1 content editor (merged in from the old step 3) + global live preview =====
-     Side-by-side split while creating the event: 30% content / 70% preview, each scrolling independently.
-     .wiz-split wraps <main> and the preview panel as flex siblings; .has-preview (steps 1/2 only, via
-     setPreviewVisible) and .preview-collapsed (the user's own toggle) are the only two states driving it. */
+  /* ===== STEP 1 content editor (merged in from the old step 3) + full-page live preview =====
+     The preview used to be a permanent 30/70 side-by-side split; now it's a full-page view the "Preview"
+     button swaps to, in the SAME page (not a new tab) — .wiz-body (the form) and .live-preview-panel are
+     mutually exclusive full-width views of #wiz-split, never simultaneous columns. .preview-available
+     (steps 1/2 only, via setPreviewVisible) controls whether the Preview button itself shows at all;
+     .showing-preview (the button's own toggle) controls which of the two views is currently up. Because
+     the form is never squeezed into a narrow column any more, none of the old compensating CSS that used
+     to force its grids to single-column/shrink its rail panel for a 30%-wide space is needed either. */
   #content-grp #step1-build-host .build-grid{ min-height: 520px; }
   .wiz-split{ display: flex; flex: 1; min-height: 0; position: relative; }
   .wiz-body{ flex: 1; min-width: 0; padding: 30px 24px 40px; overflow-y: auto; }
-  .wiz-split.has-preview .wiz-body{ flex: 0 0 30%; max-width: 30%; }
-  .wiz-split.has-preview.preview-collapsed .wiz-body{ flex: 1; max-width: none; }
+  .wiz-split.showing-preview .wiz-body{ display: none; }
 
   .live-preview-panel{
-    display: none; flex-direction: column; min-width: 0;
-    border-left: 1px solid var(--border); background: var(--surface-2);
+    display: none; flex-direction: column; min-width: 0; flex: 1; width: 100%;
+    background: var(--surface-2);
   }
   .live-preview-panel[hidden]{ display: none !important; }
-  .wiz-split.has-preview .live-preview-panel:not([hidden]){ display: flex; flex: 0 0 70%; max-width: 70%; }
-  .wiz-split.has-preview.preview-collapsed .live-preview-panel{ display: none !important; }
+  .wiz-split.showing-preview .live-preview-panel:not([hidden]){ display: flex; }
   .live-preview-head{
     display: flex; align-items: center; gap: 8px; flex-shrink: 0;
     padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; font-weight: 700;
   }
   .live-preview-head span.note{ flex: 1; font-weight: 500; color: var(--text-muted); font-size: 11.5px; }
   .live-preview-collapse{
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border);
-    background: var(--surface); color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 700;
   }
   .live-preview-body{ flex: 1; min-height: 0; display: flex; background: #f2f0ea; padding: 10px; }
   .live-preview-body iframe{ flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; border-radius: 8px; background: #fff; }
@@ -400,53 +402,18 @@
   .tpl-viewport{ flex: 1; width: 100%; min-height: 0; overflow: hidden; border-radius: 8px; position: relative; background: #fff; }
   .tpl-iframe{ display: block; border: 0; transform-origin: top left; }
 
-  /* the collapsed state's re-expand handle — pinned to the split's own edge, not the viewport, so it can
-     never drift over a dropdown/modal the way the old fixed-position panel once did */
+  /* the "Preview" trigger — pinned to the split's own top-right corner, visible whenever a preview is
+     available for the current phase/step and we're not already showing it. */
   .live-preview-expand{
-    display: none; position: absolute; top: 16px; right: 0; z-index: 2; align-items: center; gap: 6px;
-    padding: 8px 12px 8px 14px; border-radius: 8px 0 0 8px; border: 1px solid var(--border); border-right: none;
-    background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm);
+    display: none; position: absolute; top: 16px; right: 24px; z-index: 2; align-items: center; gap: 6px;
+    padding: 9px 16px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 700;
   }
-  .wiz-split.has-preview.preview-collapsed .live-preview-expand{ display: flex; }
+  .wiz-split.preview-available:not(.showing-preview) .live-preview-expand{ display: flex; }
 
   @media (max-width: 1040px){
-    .wiz-split.has-preview .wiz-body{ flex: 1; max-width: none; }
-    .wiz-split.has-preview .live-preview-panel{ display: none !important; }
     .live-preview-expand{ display: none !important; }
   }
-
-  /* the basics form (.frow, a 12-col grid) and the section editor (.build-grid, a fixed 268px rail + editor)
-     both assume the ~1300px-wide layout this column had before the preview split — squeezing them into 30%
-     left fields truncated and unreadable.
-     .frow's children use grid-column: span N (2/3/4/6/12) — collapsing the TRACK itself to 1fr (as an
-     earlier version of this fix did) breaks that: a span-2 child still needs 2 columns to exist, so with
-     only one explicit 1fr track the grid silently adds an *implicit* column sized by the child's own content
-     (not shrinking at all) to satisfy the span, which is exactly what caused the overflow. The actual
-     project-established pattern for this (see line ~338's existing `grid-column: span 6 !important` narrow-
-     window rule) is to override the CHILDREN's span instead and leave grid-template-columns (12 equal
-     tracks) alone — span 12 = full row width = natural one-per-row stacking. */
-  /* #wiz-split prefix (not just the .wiz-split class) is required here: the 1040px-and-under rule above
-     (#identity-row > .field, #sched-body .field{grid-column:span 6 !important}) carries an ID in its own
-     selector (specificity 1-1-0), which still wins over a same-!important, 0-ID rule no matter how many
-     classes that rule has — confirmed as a real bug (fields overlapping in the 1041-1080px narrow-preview
-     range) until this selector matched ID-for-ID. */
-  #wiz-split.wiz-split.has-preview .wiz-body .frow > .field{ grid-column: span 12 !important; }
-  .wiz-split.has-preview .wiz-body .build-grid{ grid-template-columns: 1fr; }
-  .wiz-split.has-preview .wiz-body .rail-panel{ position: static; }
-  /* grid/flex items default to min-width:auto — they refuse to shrink below their content's natural width
-     even once the track itself is 1fr. That's what actually overflowed here (rail-panel stayed ~500px+
-     regardless of the column's real width); this is the real fix, grid-template-columns alone wasn't enough. */
-  .wiz-split.has-preview .wiz-body .build-grid > *{ min-width: 0; }
-  .wiz-split.has-preview .wiz-body .frow > *{ min-width: 0; }
-  /* the per-section editor's header toolbar (.editor-head .tools) has flex-shrink:0 by design — reasonable
-     at full width, but it was the one place overflow-x:hidden's clipping actually mattered visually: a
-     switch's own label text ("Build banner from text instead of PSD") got cut off mid-word, and the second
-     switch button was pushed out of view entirely. Let the toolbar wrap instead of refusing to shrink. */
-  .wiz-split.has-preview .wiz-body .editor-head{ flex-wrap: wrap; row-gap: 8px; }
-  .wiz-split.has-preview .wiz-body .editor-head .tools{ flex-wrap: wrap; flex-shrink: 1; }
-  /* safety net: anything else not shrinking/wrapping to the narrower column clips at the column edge
-     instead of visually bleeding into the preview pane */
-  .wiz-split.has-preview .wiz-body{ overflow-x: hidden; }
   .basics-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
   @media (max-width: 1040px){ .basics-grid{ grid-template-columns: 1fr; } }
   .bcol{ display: flex; flex-direction: column; gap: 18px; min-width: 0; }
@@ -1667,34 +1634,14 @@
             <span><strong>Not a one&#8209;way door</strong>You can switch templates later without losing your basic details. (<a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">Figma/Lovable import</a> isn’t built yet.)</span>
           </div>
 
-          <div class="design-choice-grid design-choice-grid-secondary">
-            <div class="design-choice-card design-choice-card-sm">
-              <span class="dc-ico">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-              </span>
-              <h3>Or let AI design it</h3>
-              <p>Gemini picks the best-fit template above and proposes a look for it — colours, fonts, a few content tweaks. You still fill in each section's content yourself afterward.</p>
-              <div class="field" style="margin:4px 0 2px;">
-                <span class="flabel" style="font-size:12px;font-weight:700;color:var(--muted);">Vibe <span style="font-weight:400;">(optional)</span></span>
-                <div class="vibe-chips" id="vibe-chips" role="group" aria-label="Preferred design vibe"></div>
-              </div>
-              <div class="field" style="margin:10px 0 12px;">
-                <label for="e-theme-pref" style="font-size:12px;font-weight:700;color:var(--muted);">Anything else? <span style="font-weight:400;">(optional)</span></label>
-                <input class="inp" id="e-theme-pref" type="text" maxlength="200" placeholder="e.g. deep navy and gold, our brand colour is #1F4FD8">
-              </div>
-              <button class="btn btn-secondary btn-sm" type="button" id="btn-ai-design">Design with AI</button>
-            </div>
-            <div class="design-choice-card design-choice-card-sm">
-              <span class="dc-ico">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
-              </span>
-              <h3>Or use a previous edition's layout</h3>
-              <p>Reuse the design from an event you've already built with this wizard. You still fill in each section's content yourself afterward.</p>
-              <button class="btn btn-secondary btn-sm" type="button" id="btn-clone-design">Browse previous editions</button>
-            </div>
-          </div>
-
+          <!-- Minor alternatives, not a third top-level choice — the template gallery above and the
+               "Generate from a brief" card are the two real choices on this screen; these just offer two
+               different ways to arrive at a template pick, so they're plain links, not competing boxes. -->
           <div class="design-choice-alt">
+            <a href="#" id="btn-ai-design">Let AI design it</a>
+            <span class="sep">&middot;</span>
+            <a href="#" id="btn-clone-design">Use a previous edition's layout</a>
+            <span class="sep">&middot;</span>
             <a href="#" id="link-convert-url-landing">Bring your own design (Figma/Lovable) — coming soon</a>
           </div>
         </div>
@@ -1823,13 +1770,15 @@
     <section class="step-wrap" id="step-4" hidden></section>
   </main>
 
-  <!-- ============ LIVE PREVIEW (side-by-side, steps 1 & 2 only, real content via buildEditorPayload()) ============ -->
+  <!-- ============ LIVE PREVIEW (full-page, steps 1 & 2 only, real content via buildEditorPayload()) ============
+       Swaps in over the form, same page — not a side column, not a new tab. See .showing-preview in the CSS. -->
   <div class="live-preview-panel" id="live-preview-panel" hidden>
     <div class="live-preview-head">
       <span>Live preview</span>
       <span class="note" id="live-preview-note">Real content, as typed</span>
-      <button class="live-preview-collapse" id="btn-toggle-preview" type="button" title="Collapse preview">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      <button class="live-preview-collapse" id="btn-toggle-preview" type="button" title="Back to editing">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        Back to editing
       </button>
     </div>
     <div class="live-preview-body">
@@ -1837,8 +1786,8 @@
       <div id="live-preview-canvas" class="tpl-frame" hidden></div>
     </div>
   </div>
-  <button class="live-preview-expand" id="btn-expand-preview" type="button" hidden title="Show preview">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+  <button class="live-preview-expand" id="btn-expand-preview" type="button" hidden title="Show full-page preview">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
     Preview
   </button>
   </div><!-- /.wiz-split -->
@@ -3966,23 +3915,22 @@
     var convertUrlLink = $('link-convert-url');
     if (convertUrlLink) convertUrlLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
     var cloneBtn = $('btn-clone-design');
-    if (cloneBtn) cloneBtn.onclick = openCloneDesignModal;
+    if (cloneBtn) cloneBtn.onclick = function(e){ e.preventDefault(); openCloneDesignModal(); };
 
     var convertLandingLink = $('link-convert-url-landing');
     if (convertLandingLink) convertLandingLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
+    /* "Let AI design it" — a plain link now (not a boxed-out card with its own vibe-chip/notes intake;
+       that extra step added friction for a genuinely secondary path and competed visually with the two
+       real choices above it — template gallery, generate-from-brief). Runs with whatever S.designIntake
+       already holds (empty by default — the backend prompt already reads a blank vibe/notes as "no
+       specific look requested" and designs from the event's own content instead, see buildPrompt() in
+       functions/lib/api.js), rather than collecting it here. Hidden entirely (not just disabled) when
+       there's no ported template to redesign — a dead link needs no explanation copy. */
     var aiBtn = $('btn-ai-design');
     if (aiBtn){
-      var aiCard = aiBtn.closest('.design-choice-card');
-      var aiCopy = aiCard && aiCard.querySelector('p');
-      if (categoryHasPortedTemplate()){
-        aiBtn.disabled = false;
-        aiBtn.onclick = requestAiDesign;
-        if (aiCopy) aiCopy.textContent = 'Gemini redesigns the real site template with your content — switch between a few trendy looks and see them live.';
-      } else {
-        aiBtn.disabled = true;
-        aiBtn.onclick = null;
-        if (aiCopy) aiCopy.textContent = 'Not available for this event type yet — only templates with a finished real design can be AI-redesigned. Pick a template manually, or reuse a previous edition’s layout.';
-      }
+      var available = categoryHasPortedTemplate();
+      aiBtn.hidden = !available;
+      aiBtn.onclick = available ? function(e){ e.preventDefault(); requestAiDesign(); } : null;
     }
     // No category/template gate here any more: Generate from a brief builds its own section structure
     // from the shared library (templates/_library/) instead of depending on a specific audited ported
@@ -3992,25 +3940,6 @@
     // phase instead (same element ids — see the #brief-grp markup — so startGenerateFromBrief() itself
     // needed no changes), reached the same way the template path is: advanceToDetails().
     if (generateBtn) generateBtn.onclick = function(){ advanceToDetails('brief'); };
-    var vibeHost = $('vibe-chips');
-    if (vibeHost){
-      vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
-        return '<button type="button" class="vibe-chip" data-vibe="' + esc(v) + '" aria-pressed="' + (S.designIntake.vibe === v) + '">' + esc(v) + '</button>';
-      }).join('');
-      vibeHost.querySelectorAll('[data-vibe]').forEach(function(b){
-        b.addEventListener('click', function(){
-          var v = b.getAttribute('data-vibe');
-          S.designIntake.vibe = (S.designIntake.vibe === v) ? '' : v;   // click again to deselect
-          save();
-          vibeHost.querySelectorAll('[data-vibe]').forEach(function(c){ c.setAttribute('aria-pressed', c.getAttribute('data-vibe') === S.designIntake.vibe); });
-        });
-      });
-    }
-    var themePrefInput = $('e-theme-pref');
-    if (themePrefInput){
-      themePrefInput.value = S.designIntake.notes || '';
-      themePrefInput.oninput = function(){ S.designIntake.notes = themePrefInput.value; save(); };
-    }
   }
 
   function confirmSwitch(next, after){
@@ -7853,13 +7782,31 @@
     var note = $('live-preview-note');
     if (note) note.textContent = (payload.sections.length ? payload.sections.length + ' section' + (payload.sections.length === 1 ? '' : 's') : 'Nothing to show yet') + (payload.template.name !== 'Custom' ? ' · ' + payload.template.name : '');
   }
+  /* on: is a preview available AT ALL for the current phase/step (category phase, step 3/4 = no). Does
+     NOT itself show the preview — that's togglePreviewMode(), driven by the "Preview"/"Back to editing"
+     buttons — it only controls whether the trigger button exists and force-exits preview mode when a
+     phase/step with nothing to preview is entered (e.g. navigating to step 4 while mid-preview). */
   function setPreviewVisible(on){
     var split = $('wiz-split'), panel = $('live-preview-panel'), expandBtn = $('btn-expand-preview');
     if (!split || !panel) return;
-    split.classList.toggle('has-preview', on);
-    panel.hidden = !on;
-    /* a step with no preview at all (3/4) should never show the "expand" handle, collapsed or not */
-    if (!on && expandBtn) expandBtn.hidden = true;
+    split.classList.toggle('preview-available', on);
+    if (!on){
+      split.classList.remove('showing-preview');
+      panel.hidden = true;
+      if (expandBtn) expandBtn.hidden = true;
+    } else {
+      panel.hidden = !split.classList.contains('showing-preview');
+    }
+  }
+  /* the "Preview"/"Back to editing" toggle itself — full-page, same page, not a new tab (see .showing-
+     preview in the CSS). renderLivePreview() is called directly (not left to schedulePreview()'s 350ms
+     debounce) so the very latest edit is never stale the instant the user opens the preview. */
+  function togglePreviewMode(show){
+    var split = $('wiz-split'), panel = $('live-preview-panel');
+    if (!split || !panel) return;
+    split.classList.toggle('showing-preview', show);
+    panel.hidden = !show;
+    if (show) renderLivePreview();
   }
 
   /* Registers a newly created event into Event_Listing.html's own display registry. Without this, an event
@@ -8190,20 +8137,11 @@
       function go(){ window.location.href = 'Event_Listing.html'; }
     }
 
-    /* collapse/expand the 70% preview column — independent of setPreviewVisible()'s per-step on/off;
-       .wiz-split.preview-collapsed (set here) just lets .wiz-body reclaim the full width while it's closed.
-       [hidden] is `!important` project-wide (line 86) specifically so no class rule can accidentally override
-       it — so the expand handle's own shown/hidden state has to be set as a real attribute here, not via CSS. */
-    var wizSplit = $('wiz-split'), previewToggleBtn = $('btn-toggle-preview'), previewExpandBtn = $('btn-expand-preview');
-    if (previewToggleBtn) previewToggleBtn.addEventListener('click', function(){
-      wizSplit.classList.add('preview-collapsed');
-      if (previewExpandBtn) previewExpandBtn.hidden = false;
-    });
-    if (previewExpandBtn) previewExpandBtn.addEventListener('click', function(){
-      wizSplit.classList.remove('preview-collapsed');
-      previewExpandBtn.hidden = true;
-      schedulePreview();
-    });
+    /* "Preview" <-> "Back to editing" — full-page, same page, via togglePreviewMode() — independent of
+       setPreviewVisible()'s per-step on/off (that controls whether this toggle is available at all). */
+    var previewToggleBtn = $('btn-toggle-preview'), previewExpandBtn = $('btn-expand-preview');
+    if (previewToggleBtn) previewToggleBtn.addEventListener('click', function(){ togglePreviewMode(false); });
+    if (previewExpandBtn) previewExpandBtn.addEventListener('click', function(){ togglePreviewMode(true); });
 
     if (had && S.step > 1){
       if (S.detectPhase === 'processing') S.detectPhase = 'input';
