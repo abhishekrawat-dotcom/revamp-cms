@@ -1,0 +1,16 @@
+{
+  "name": "lovable-scraper-service",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Standalone Cloud Run service that renders a live Lovable.app URL with real headless Chrome and hands back its HTML -- the one piece of the 'Import from Lovable by URL' pipeline that can't run inside Firebase App Hosting's buildpack-built container. Called by ../functions/lib/api.js's scrapeLovableUrl(). See README.md.",
+  "main": "server.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "puppeteer": "24.43.1"
+  }
+}

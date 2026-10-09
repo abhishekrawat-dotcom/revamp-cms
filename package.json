@@ -11,9 +11,7 @@
     "dev": "node tools/serve.js"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^131.0.1",
     "firebase-admin": "^12.6.0",
-    "jszip": "^3.10.1",
-    "puppeteer-core": "^23.11.1"
+    "jszip": "^3.10.1"
   }
 }

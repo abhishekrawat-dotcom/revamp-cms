@@ -1730,89 +1730,81 @@ function runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName) {
    There is no way to get the real final markup without actually executing the page's JS in a real browser
    engine — which is exactly what the browser-console exporter script (the OTHER input method, see this
    block's header comment) does by running inside an already-rendered tab. This adapter gets the same real,
-   rendered markup a different way: launching headless Chrome server-side, navigating it to the URL, and
-   reading document.documentElement.outerHTML back out once the page has actually mounted.
+   rendered markup a different way: a real headless Chrome navigates to the URL and
+   document.documentElement.outerHTML is read back out once the page has actually mounted.
 
-   puppeteer-core + @sparticuz/chromium, not full `puppeteer`/`playwright`: those bundle their own full
-   browser download, which is too heavy for a serverless function's deploy image. puppeteer-core ships NO
-   browser at all — just the driver — and @sparticuz/chromium provides a single pre-compiled Chromium
-   binary built specifically to run inside a Lambda/Cloud-Run-style container (brotli-compressed, unpacked
-   to /tmp at cold start), which is exactly the shape of this app's own deploy target (Firebase App Hosting
-   -> Cloud Run, see apphosting.yaml). Versions pinned to a contemporaneous, Node-20-compatible pair
-   (puppeteer-core@23.11.1 / @sparticuz/chromium@131.0.1, both published Nov–Dec 2024) rather than each
-   package's latest, which now requires Node >=22 — this repo's functions/package.json still targets Node 20
-   (see its "engines" field) and isn't changing that just for this feature.
+   This used to launch that Chrome in-process, right here, via puppeteer-core + @sparticuz/chromium. That
+   broke in production: this backend deploys on Firebase App Hosting, whose container is built by Google's
+   automatic Cloud Native Buildpacks — there is no Dockerfile, and therefore no way to apt-get install the
+   system libraries (libnss3 and friends) headless Chrome needs, so the deployed process failed with
+   "libnss3.so: cannot open shared object file" the moment it tried to launch Chrome.
 
-   Local dev note: @sparticuz/chromium's bundled binary only runs on the Amazon-Linux-like environment
-   Cloud Run's container provides, NOT a developer's own Mac/Windows machine. Local testing (`node
-   tools/serve.js`) instead points puppeteer-core at a real local Chrome install via the
-   PUPPETEER_EXECUTABLE_PATH env var (tools/.env.local) — getChromiumLaunchOptions() below picks whichever
-   is set, so the exact same scrapeLovableUrl()/processLovableImport() code runs in both places; only which
-   Chromium binary gets launched differs. */
+   The fix: Chrome now runs in a separate, dedicated service — ../../lovable-scraper-service/ — deployed
+   straight to Cloud Run with a real Dockerfile (not through App Hosting's buildpack pipeline), which CAN
+   install whatever Chrome needs. scrapeLovableUrl() below is now just an HTTP client calling that
+   service's one POST /scrape endpoint; see that directory's README.md for what it does, how to deploy it,
+   and the env vars below. Everything else in this file — processLovableImport(), the SSRF guard just
+   below, runImportLovableFromUrl() — needed zero changes: scrapeLovableUrl(url) still resolves to the
+   same rendered-HTML string (or rejects with the same {status, message}-shaped error) it always did. */
 
-// A single Chrome instance doing real rendering is slow and memory-hungry per request (see apphosting.yaml's
-// own comment on why cpu/memoryMiB/concurrency all went up for this feature) — these two timeouts keep one
-// slow/hung site from tying up a request (and its headless Chrome process) forever.
-var SCRAPE_NAV_TIMEOUT_MS = 30000;   // page.goto()'s own ceiling for reaching network-idle
-var SCRAPE_TOTAL_TIMEOUT_MS = 55000; // hard ceiling on the whole scrape, Chrome launch included
+// How long this backend will wait for the scraper service to respond before giving up and treating the
+// render as failed. Set comfortably above that service's own internal 55s hard timeout (see
+// lovable-scraper-service/server.js) so ITS clean {error} response is what normally wins — this is just
+// the backstop for "the service didn't even respond" (e.g. it's down, or a network partition).
+var SCRAPE_TOTAL_TIMEOUT_MS = 65000;
 
-function getChromiumLaunchOptions() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    return Promise.resolve({ executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, headless: true });
-  }
-  var chromium = require('@sparticuz/chromium');
-  return chromium.executablePath().then(function (executablePath) {
-    return { executablePath: executablePath, args: chromium.args, headless: chromium.headless, defaultViewport: chromium.defaultViewport };
-  });
-}
-
-// Launches headless Chrome, navigates to `url`, waits for the page to actually render (networkidle2 — two
-// or fewer in-flight requests for 500ms — rather than domcontentloaded, which fires before a React app's own
-// JS has run; see this block's header comment), and returns its final rendered outerHTML. Closes the browser
-// in every case — success, navigation timeout, launch failure, or the overall SCRAPE_TOTAL_TIMEOUT_MS firing
-// — so a failed/slow request never leaks a headless Chrome process.
+// Calls the separate lovable-scraper-service over plain HTTP instead of launching headless Chrome in this
+// process (see the block comment above for why). LOVABLE_SCRAPER_URL/LOVABLE_SCRAPER_SECRET are read from
+// process.env on every call, not cached at module load, matching how every other env-var read in this file
+// behaves — see apphosting.yaml for how they're set in production and tools/.env.local for local dev.
 function scrapeLovableUrl(url) {
-  var puppeteer = require('puppeteer-core');
-  var browser = null;
-  var timer = null;
-
-  function closeBrowser() {
-    if (!browser) return Promise.resolve();
-    var b = browser; browser = null;
-    return b.close().catch(function (err) { console.error('import-lovable: error closing headless Chrome: ' + err.message); });
+  var scraperUrl = process.env.LOVABLE_SCRAPER_URL;
+  if (!scraperUrl) {
+    return Promise.reject(Object.assign(
+      new Error('LOVABLE_SCRAPER_URL is not configured on this backend — see lovable-scraper-service/README.md.'),
+      { status: 503 }
+    ));
   }
+  var scraperSecret = process.env.LOVABLE_SCRAPER_SECRET || '';
+  var headers = { 'Content-Type': 'application/json' };
+  if (scraperSecret) headers['X-Scraper-Secret'] = scraperSecret;
 
-  var work = getChromiumLaunchOptions()
-    .then(function (opts) { return puppeteer.launch(opts); })
-    .then(function (b) {
-      browser = b;
-      return browser.newPage();
-    })
-    .then(function (page) {
-      return page.setViewport({ width: 1440, height: 900 })
-        .then(function () { return page.goto(url, { waitUntil: 'networkidle2', timeout: SCRAPE_NAV_TIMEOUT_MS }); })
-        .catch(function (err) {
-          // A site with e.g. continuous analytics pings may never truly go network-idle — don't fail the
-          // whole import over that; capture whatever has rendered by now instead (same "degrade, never
-          // crash" discipline the rest of this pipeline uses for a missing CSS/image file).
-          console.error('import-lovable: navigation to "' + url + '" did not fully settle (' + err.message + ') — capturing whatever rendered so far.');
-        })
-        .then(function () { return new Promise(function (resolve) { setTimeout(resolve, 1200); }); }) // let any late mount/animation settle
-        .then(function () { return page.evaluate(function () { return document.documentElement.outerHTML; }); });
-    });
+  var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = null;
+  var fetchPromise = fetch(scraperUrl.replace(/\/+$/, '') + '/scrape', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({ url: url }),
+    signal: controller ? controller.signal : undefined
+  });
 
   return new Promise(function (resolve, reject) {
     timer = setTimeout(function () {
+      if (controller) controller.abort();
       reject(Object.assign(new Error('Rendering this page took too long (over ' + Math.round(SCRAPE_TOTAL_TIMEOUT_MS / 1000) + 's).'), { status: 504 }));
     }, SCRAPE_TOTAL_TIMEOUT_MS);
-    work.then(resolve, reject);
-  }).then(function (html) {
-    clearTimeout(timer);
-    return closeBrowser().then(function () { return html; });
-  }, function (err) {
-    clearTimeout(timer);
-    return closeBrowser().then(function () { throw err; });
-  });
+    fetchPromise.then(resolve, reject);
+  })
+    .then(function (r) {
+      clearTimeout(timer);
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (!r.ok) {
+          // A 401 here means SCRAPER_SECRET/LOVABLE_SCRAPER_SECRET are out of sync between the two
+          // services — an ops misconfiguration, not something the end user did; surface it as a plain 500
+          // rather than an "unauthorized" the admin triggering this import had no part in.
+          var status = (r.status === 401) ? 500 : (r.status || 502);
+          throw Object.assign(new Error((body && body.error) || ('Rendering that page failed (scraper service returned ' + r.status + ').')), { status: status });
+        }
+        if (!body || typeof body.html !== 'string') {
+          throw Object.assign(new Error('The scraper service returned an unexpected response.'), { status: 502 });
+        }
+        return body.html;
+      });
+    }, function (err) {
+      clearTimeout(timer);
+      if (err && err.status) throw err;
+      throw Object.assign(new Error('Could not reach the rendering service: ' + err.message), { status: 502 });
+    });
 }
 
 // SSRF guard for the user-supplied url: only http(s), and not a host that resolves to this backend's own
