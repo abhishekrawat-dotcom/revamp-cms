@@ -38,7 +38,7 @@ env:
   # exists, and the exact `gcloud run deploy` command that prints this URL). Not a secret, just an address;
   # no trailing slash.
   - variable: LOVABLE_SCRAPER_URL
-    value: "" # TODO: paste the Cloud Run service URL from `gcloud run deploy lovable-scraper-service` here
+    value: "https://lovable-scraper-service-298413755047.us-east4.run.app"
     availability:
       - RUNTIME
 
