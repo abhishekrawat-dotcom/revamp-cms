@@ -1695,6 +1695,7 @@
               <div class="tpl-carousel-media">
                 <div class="tpl-carousel-canvas" id="tpl-carousel-canvas"></div>
                 <iframe id="tpl-carousel-frame" title="Template preview" style="width:100%;height:100%;border:0;background:#fff;" hidden></iframe>
+                <img id="tpl-carousel-img" alt="" style="width:100%;height:auto;display:block;" hidden>
                 <div class="tpl-carousel-placeholder" id="tpl-carousel-placeholder" hidden>No preview available for this template yet.</div>
               </div>
               <button class="tpl-carousel-nav" id="tpl-carousel-next" type="button" aria-label="Next template">
@@ -3354,7 +3355,7 @@
           save();
           if (t.site && tplCarouselCanvas.id === t.site && tplCarouselCanvas.canvas){
             applyCarouselSkipToCanvas(tplCarouselCanvas.canvas, sectionList, skip);
-          } else if (!t.site){
+          } else if (!t.site && !(t.imgFull || t.img)){
             var frame = $('tpl-carousel-frame');
             if (frame) frame.srcdoc = buildPreviewDoc();
           }
@@ -3363,19 +3364,27 @@
       });
     }
 
-    var canvasHost = $('tpl-carousel-canvas'), frame = $('tpl-carousel-frame'), placeholder = $('tpl-carousel-placeholder');
+    var canvasHost = $('tpl-carousel-canvas'), frame = $('tpl-carousel-frame'), img = $('tpl-carousel-img'), placeholder = $('tpl-carousel-placeholder');
     /* keeps S.template in sync with whatever's currently shown (silent — see applyTemplate's 3rd arg) so
        "Use this template"/the footer's own Continue button both act on the right template without a
        redundant confirm step. Not meaningfully affected by skip for a ported template — see the big
        comment above; S.templateExcluded only actually drives section inclusion in the generic (non-ported)
-       content model, which the !t.site branch below still uses untouched. */
+       content model, which the two non-ported branches below still use untouched. */
     applyTemplate(t.id, skip, true);
     S.templatePick = t.id;
     save();
 
-    if (t.site){
+    function hideAllMedia(){
+      if (canvasHost) canvasHost.hidden = true;
       if (frame) frame.hidden = true;
+      if (img) img.hidden = true;
       if (placeholder) placeholder.hidden = true;
+    }
+
+    if (t.site){
+      /* real port — the live mounted canvas, real stock imagery, instant toggling. See the big comment
+         above for why this is the only template tier that can do any of that. */
+      hideAllMedia();
       if (canvasHost) canvasHost.hidden = false;
       ensureCarouselCanvas(t).then(function(canvas){
         if (requestId !== tplCarouselRequestSeq) return;   // superseded by a later next/prev click
@@ -3388,18 +3397,36 @@
         if (placeholder){ placeholder.hidden = false; placeholder.textContent = 'Could not load this template’s preview.'; }
       });
     } else {
-      if (canvasHost) canvasHost.hidden = true;
-      if (placeholder) placeholder.hidden = true;
-      if (frame){
-        frame.hidden = false;
-        frame.onload = function(){ paintPreviewPsdImages(frame); };
-        frame.srcdoc = buildPreviewDoc();
-      }
       var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
       renderToggles(toggleIds.map(function(id){
         var l = libBy(id);
         return { id: id, name: (t.sectionNames && t.sectionNames[id]) || l.name };
       }));
+      var src = t.imgFull || t.img;
+      if (src){
+        /* no real port exists for this template (see the big comment above — workplace-2035, surge,
+           annual-education-summit, nbfc-leaders-retreat and others are gallery entries with a real
+           reference screenshot but no templates/<id>/ site actually built yet) — its own real screenshot
+           is the only genuine asset there is to show, so show that instead of an empty generic render.
+           Toggling a section still updates what will actually be included once this template is used
+           (S.templateExcluded, via applyTemplate above); it just can't visually update a static image. */
+        hideAllMedia();
+        if (img){
+          img.hidden = false;
+          img.onerror = function(){ img.hidden = true; if (placeholder){ placeholder.hidden = false; placeholder.textContent = 'Could not load this template’s preview.'; } };
+          img.src = src;
+        }
+      } else {
+        /* no real port AND no screenshot (Awards/Leadgen's fully generic fallbacks) — nothing real to
+           show at all, so this is the one case the generic Gen-1 placeholder render is actually honest:
+           there's no real design behind this template either way. At least still reflects toggles live. */
+        hideAllMedia();
+        if (frame){
+          frame.hidden = false;
+          frame.onload = function(){ paintPreviewPsdImages(frame); };
+          frame.srcdoc = buildPreviewDoc();
+        }
+      }
     }
 
     var useBtn = $('tpl-carousel-use');
