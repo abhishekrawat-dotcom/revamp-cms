@@ -108,6 +108,55 @@
     try { return JSON.parse(localStorage.getItem('revamp.editor.handoff.v1') || 'null'); } catch (e) { return null; }
   }
 
+  /* Applies a handoff draft (the revamp.editor.handoff.v1 shape — from localStorage on a fresh fromCreate
+     visit, or from GET /api/draft's own `handoff` field on a stateless reopen, see resolveInitialContent())
+     to the just-mounted canvas and seeds it as this device's first local snapshot. `draftId` is whichever
+     run actually produced this content — the URL's own `?draft=` on a fresh run, or the server's own
+     `draftId` field when fetched fresh from Firestore — recorded so a LATER fromCreate regeneration in this
+     same browser can still tell "stale" apart from "already current" (see resolveKey()'s own B1 comment). */
+  function applyHandoffDraft(draft, draftIdForThisDraft) {
+    /* create-event.html keys each draft's logo under its own per-session slot now (S.logoSessionId,
+       handed off as draft.event.logoKey) — NOT the single fixed 'create:logo' key this used to read
+       unconditionally, which was a real, confirmed bug: whichever event's logo was uploaded most
+       recently in this browser silently became every OTHER event's logo too, since every draft read and
+       wrote that exact same global slot regardless of which event it actually belonged to. The fallback
+       to the old fixed key only matters for a handoff written before this fix landed (there is no
+       migration for an in-flight draft mid-edit at deploy time) — every new draft from here on always
+       carries its own logoKey. */
+    return RevampStore.get((draft.event && draft.event.logoKey) || 'create:logo').then(function (logoRec) {
+      var ctx = RevampFill.fromHandoff(draft, logoRec && logoRec.dataUrl);
+      var report = RevampFill.apply(canvas, ctx);
+      renderAiProvenanceBadges();
+      if (report.skipped.length) showToast('Not shown on this template: ' + report.skipped.join(', '));
+      /* a design chosen in Create Event's "Let AI design it" (create-event.html's S.aiDesign) rides along
+         in the hand-off payload — apply it before the first snapshot so it survives into the undo stack,
+         reload and publish, instead of silently reverting to the template's static default. */
+      if (draft.aiDesign) applyAiDesignToCanvas(canvas, draft.aiDesign);
+      sourceDraftId = draftIdForThisDraft;
+      return seedSnapshot(draft);
+    });
+  }
+
+  /* Real, confirmed bug this closes: a Generate-from-Brief event's AI-written content only ever reached
+     the editor via the ?from=create handoff in THIS browser's own localStorage — written once, right after
+     generation, in the same tab. Any later, stateless reopen (a different device, a different browser, this
+     same browser after the handoff/local snapshot is gone) had no local snapshot and fromCreate was false,
+     so it fell straight to seedSnapshot(null) — the template's raw, UNFILLED library markup ("Event name
+     goes here", the 1x1 grey logo placeholder) — even though the real generated content was sitting
+     correctly in Firestore the whole time. Worse, seedSnapshot(null) then PERMANENTLY saves that blank
+     render as this device's own local snapshot, so every later open on that device keeps finding it and
+     never checks again. GET /api/draft?eventId=<id> already exists for exactly this (same endpoint
+     preview-draft.html — a dev-only bridge — already uses, returning the exact revamp.editor.handoff.v1
+     shape) — a plain reopen now tries it before giving up, same as the fromCreate path, just sourced from
+     the server instead of localStorage. A 404 (not a Generate-from-Brief event / nothing ever generated)
+     correctly falls through to the real blank-template case, unchanged. */
+  function fetchServerDraft() {
+    return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) { return res.ok ? res.body : null; })
+      .catch(function () { return null; });
+  }
+
   function resolveInitialContent() {
     return RevampStore.get(storeKey).then(function (saved) {
       var qs = new URLSearchParams(location.search);
@@ -126,29 +175,17 @@
         undoStack = [saved.snapshot]; undoPtr = 0;
         return;
       }
-      if (!fromCreate) return seedSnapshot(null);
-
-      var draft = readHandoffDraft();
-      if (!draft || !draft.sections || !draft.sections.length) return seedSnapshot(null);
-      /* create-event.html keys each draft's logo under its own per-session slot now (S.logoSessionId,
-         handed off as draft.event.logoKey) — NOT the single fixed 'create:logo' key this used to read
-         unconditionally, which was a real, confirmed bug: whichever event's logo was uploaded most
-         recently in this browser silently became every OTHER event's logo too, since every draft read and
-         wrote that exact same global slot regardless of which event it actually belonged to. The fallback
-         to the old fixed key only matters for a handoff written before this fix landed (there is no
-         migration for an in-flight draft mid-edit at deploy time) — every new draft from here on always
-         carries its own logoKey. */
-      return RevampStore.get((draft.event && draft.event.logoKey) || 'create:logo').then(function (logoRec) {
-        var ctx = RevampFill.fromHandoff(draft, logoRec && logoRec.dataUrl);
-        var report = RevampFill.apply(canvas, ctx);
-        renderAiProvenanceBadges();
-        if (report.skipped.length) showToast('Not shown on this template: ' + report.skipped.join(', '));
-        /* a design chosen in Create Event's "Let AI design it" (create-event.html's S.aiDesign) rides along
-           in the hand-off payload — apply it before the first snapshot so it survives into the undo stack,
-           reload and publish, instead of silently reverting to the template's static default. */
-        if (draft.aiDesign) applyAiDesignToCanvas(canvas, draft.aiDesign);
-        sourceDraftId = draftId;
-        return seedSnapshot(draft);
+      if (fromCreate) {
+        var draft = readHandoffDraft();
+        if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
+      }
+      // No usable local snapshot, and either not a fresh fromCreate visit or its handoff was empty/missing
+      // (a stateless reopen — see fetchServerDraft()'s own comment above for why this matters).
+      return fetchServerDraft().then(function (res) {
+        if (res && res.handoff && res.handoff.sections && res.handoff.sections.length) {
+          return applyHandoffDraft(res.handoff, res.draftId || null);
+        }
+        return seedSnapshot(null);
       });
     });
   }
