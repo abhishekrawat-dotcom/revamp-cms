@@ -53,6 +53,19 @@
 //     { name, email, phone, company, designation, city, source, status: 'confirmed'|'waitlist'|'cancelled',
 //       payment: { required, status: 'n/a'|'pending'|'paid'|'failed', amount, txnId },
 //       createdAt, checkedInAt }
+//   events/import-{importId}              — LOVABLE IMPORT PIPELINE only (lib/api.js's POST /api/import-
+//                                            lovable). Deliberately namespaced under its own 'import-'
+//                                            prefix (never a real event slug) so it can never collide with a
+//                                            real events/{eventId} doc above. Read back by the public GET
+//                                            /api/imported-template and GET /api/imported-section — see
+//                                            lib/api.js's LOVABLE IMPORT PIPELINE block for the full design:
+//     { importedAt,            // ISO timestamp of the import
+//       sourceZipName,         // the uploaded ZIP's own filename, if the client sent one, else null
+//       flattenedHtmlPath,     // Storage path of the full flattened standalone document — an intermediate/
+//                              // debug artifact only, NOT served directly to end users (unlike
+//                              // events/{eventId}/published/index.html below)
+//       sectionHtmlPath }      // Storage path of the one section's ready-to-serve markup (CSS already
+//                              // inlined) — exactly what GET /api/imported-section streams back
 //
 // Storage layout:
 //   events/{eventId}/briefs/{fileName}       the uploaded overview doc, as-is
@@ -69,6 +82,17 @@
 //                                             docBase64) and stored here as real files — never inline as a
 //                                             data: URI in Firestore (a single doc is capped at 1MiB; see
 //                                             buildHeroImage's own comment on the bug this caused once already)
+//   events/import-{importId}/index.html      LOVABLE IMPORT PIPELINE — the full flattened document (scripts
+//                                             stripped, CSS inlined, images re-hosted below). Intermediate/
+//                                             debug artifact only, fetched server-side by nothing today;
+//                                             never served straight to a browser the way events/{eventId}/
+//                                             published/index.html is — that's a separate, already-built
+//                                             feature for already-published real events.
+//   events/import-{importId}/section.html    the one section's ready-to-serve markup (CSS inlined) — what
+//                                             GET /api/imported-section actually proxies back.
+//   events/import-{importId}/images/{name}   every image the flattened markup/CSS actually references,
+//                                             re-hosted here (same save()+makePublic() pattern as every
+//                                             other image in this file), original filename sanitized.
 //
 // Firestore/Storage security rules (firestore.rules, storage.rules, repo root) deny all direct client
 // access — only this Admin SDK code (which bypasses rules) ever touches either; every read/write of this

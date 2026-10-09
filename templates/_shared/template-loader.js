@@ -59,20 +59,35 @@
      endpoint instead of a static file, and its sections resolve against the shared component library
      (templates/_library/sections/<sectionId>/) instead of a per-template sections/ folder. Everything past
      that point — header/footer, shared/fonts/theme head assembly, section HTML assembly, the final document
-     build — is identical to a ported template, so this only branches the two things that actually differ. */
+     build — is identical to a ported template, so this only branches the two things that actually differ.
+
+     An "imported" template (id === 'imported-' + importId, from the Lovable-export import pipeline —
+     see functions/lib/api.js's LOVABLE IMPORT PIPELINE block) is the same idea, a third and final branch,
+     additive only: its template.json comes from /api/imported-template instead of a static file, and it
+     has exactly one section whose real markup comes from /api/imported-section instead of EITHER a
+     per-template sections/ folder OR the generated library — that endpoint already returns the section's
+     CSS inlined into the same HTML response (see that pipeline's own CSS inline-vs-linked judgment call),
+     so the "style.css" slot every other branch fetches over the network is simply never used here. */
   function load(id, opts) {
     opts = opts || {};
     var generated = /^gen-/.test(id);
+    var imported = /^imported-/.test(id);
     var base = new URL(id + '/', templatesBase);
     var libraryBase = new URL('_library/sections/', templatesBase);
     var tplJson = generated
       ? get('/api/generated-template?eventId=' + encodeURIComponent(id.slice(4)))
-      : get(new URL('template.json', base));
+      : imported
+        ? get('/api/imported-template?eventId=' + encodeURIComponent(id.slice(9)))
+        : get(new URL('template.json', base));
     return tplJson.then(JSON.parse).then(function (t) {
       if (opts.sectionOrder) t.sections = reorderSections(t.sections, opts.sectionOrder);
       var shared = function (p) { return new URL(p, sharedBase).href; };
       var jobs = [get(shared(t.header || 'header.html')), get(shared(t.footer || 'footer.html'))];
       t.sections.forEach(function (s) {
+        if (imported) {
+          jobs.push(get('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))), Promise.resolve(''), Promise.resolve(''));
+          return;
+        }
         var dir = generated ? new URL(s.id + '/', libraryBase) : new URL('sections/' + s.id + '/', base);
         jobs.push(get(new URL('index.html', dir)), get(new URL('style.css', dir)),
           s.script ? get(new URL('script.js', dir)) : Promise.resolve(''));
