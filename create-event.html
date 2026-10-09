@@ -1250,17 +1250,28 @@
   }
   .tpl-carousel-nav:hover{ background: var(--surface-2); border-color: var(--text-faint); }
   .tpl-carousel-media{
-    flex:1; min-width:0; height: min(50vh, 440px); background:#f2f0ea; border-radius:12px;
+    position:relative; flex:1; min-width:0; height: min(50vh, 440px); background:#f2f0ea; border-radius:12px;
     border:1px solid var(--border); overflow:hidden;
   }
-  .tpl-carousel-info{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:14px; }
+  .tpl-carousel-placeholder{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center;
+    padding:32px; font-size:13.5px; color: var(--text-faint);
+  }
+  .tpl-carousel-info{ margin-top:16px; }
+  .tpl-carousel-info-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .tpl-carousel-info-head{ flex:1; min-width:220px; }
   .tpl-carousel-count{ font-size:12px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; color: var(--text-faint); }
   .tpl-carousel-info-head h3{ margin:2px 0 2px; font-size:19px; }
   .tpl-carousel-info-head p{ margin:0; }
-  /* reuses .tpl-preview-list/.tpl-preview-row from the (now superseded) preview-modal styles below —
-     same column-of-toggle-rows layout, just not inside a modal any more */
-  #tpl-carousel-sections.tpl-preview-list{ max-width:420px; }
+  .tpl-carousel-sections-label{
+    margin:18px 0 8px; font-size:12px; font-weight:700; letter-spacing:.02em;
+    text-transform:uppercase; color: var(--text-faint);
+  }
+  /* reuses .tpl-preview-row from the (now superseded) preview-modal styles below, but as a wrapping row of
+     chips spanning the full width here, not a narrow scrollable sidebar column */
+  #tpl-carousel-sections.tpl-preview-list{
+    flex-direction:row; flex-wrap:wrap; max-width:none; max-height:none; overflow:visible; padding-right:0;
+  }
 
   /* vibe-chip intake (step 2's "Let AI design it" card) — a single-select set of real design directions,
      giving Gemini clean structured signal instead of relying only on free text */
@@ -1665,27 +1676,34 @@
             </button>
           </div>
 
-          <!-- One template previewed full-size at a time (iframe, same real render as the live editor),
-               with prev/next cycling through templatesForCategory() — replaces the old card-grid + popup
-               preview modal (see renderTemplateCarousel()/renderCarouselFrame()). -->
+          <!-- One template previewed full-size at a time — the template's own real screenshot (imgFull),
+               not a live render of blank/unfilled content (that has no hero image, no real copy, nothing
+               to show yet), with prev/next cycling through templatesForCategory(). Replaces the old
+               card-grid + popup preview modal (see renderTemplateCarousel()/renderCarouselFrame()). -->
           <div class="tpl-carousel" id="tpl-carousel" hidden>
             <div class="tpl-carousel-stage">
               <button class="tpl-carousel-nav" id="tpl-carousel-prev" type="button" aria-label="Previous template">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
-              <div class="tpl-carousel-media"><iframe id="tpl-carousel-frame" title="Template preview" style="width:100%;height:100%;border:0;background:#fff;"></iframe></div>
+              <div class="tpl-carousel-media">
+                <img id="tpl-carousel-img" alt="" style="width:100%;height:100%;object-fit:cover;object-position:top center;display:block;">
+                <div class="tpl-carousel-placeholder" id="tpl-carousel-placeholder" hidden>No preview image yet — open it to see the real sections.</div>
+              </div>
               <button class="tpl-carousel-nav" id="tpl-carousel-next" type="button" aria-label="Next template">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
               </button>
             </div>
             <div class="tpl-carousel-info">
-              <div class="tpl-carousel-info-head">
-                <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
-                <h3 id="tpl-carousel-name"></h3>
-                <p class="hint" id="tpl-carousel-sub"></p>
+              <div class="tpl-carousel-info-top">
+                <div class="tpl-carousel-info-head">
+                  <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
+                  <h3 id="tpl-carousel-name"></h3>
+                  <p class="hint" id="tpl-carousel-sub"></p>
+                </div>
+                <button class="btn btn-primary btn-lg" type="button" id="tpl-carousel-use">Use this template</button>
               </div>
+              <div class="tpl-carousel-sections-label">Sections in this template</div>
               <div class="tpl-preview-list" id="tpl-carousel-sections"></div>
-              <button class="btn btn-primary btn-lg" type="button" id="tpl-carousel-use">Use this template</button>
             </div>
           </div>
 
@@ -3269,14 +3287,25 @@
     }
 
     function applyPreview(){
+      /* keeps S.template/S.templateExcluded in sync with whatever's currently shown (same additive/silent
+         pattern used while browsing — see applyTemplate's 3rd arg) so "Use this template" and the footer's
+         own Continue button both act on the right template+skip set without a redundant confirm step. This
+         no longer drives the visual preview itself — see the real screenshot set below instead of a live,
+         still-empty render (a freshly-applied template has no real copy or hero image yet to show). */
       applyTemplate(t.id, skip, true);
       S.templatePick = t.id;
       save();
-      var f = $('tpl-carousel-frame');
-      if (!f) return;
-      f.onload = function(){ paintPreviewPsdImages(f); };
-      f.srcdoc = buildPreviewDoc();
     }
+
+    var img = $('tpl-carousel-img'), placeholder = $('tpl-carousel-placeholder'), src = t.imgFull || t.img;
+    if (img){
+      img.style.display = src ? 'block' : 'none';
+      /* a missing/404'ing screenshot file falls back to the text placeholder instead of a broken-image
+         icon — same visible failure mode either way (no image), but one looks intentional */
+      img.onerror = function(){ img.style.display = 'none'; if (placeholder) placeholder.hidden = false; };
+      if (src) img.src = src;
+    }
+    if (placeholder) placeholder.hidden = !!src;
 
     renderToggles();
     applyPreview();
