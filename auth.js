@@ -7,7 +7,9 @@
      .signInWithEmail(email, password)   -> Promise<User>
      .signInWithGoogle()                 -> Promise<User>  (popup)
      .signOutUser()                      -> Promise<void>
-     .getIdToken()                       -> Promise<string>  rejects if not signed in
+     .getIdToken()                       -> Promise<string>  waits for Firebase's real first auth-
+                                             state answer, then rejects if not signed in (see
+                                             waitForAuthResolved() below for why that wait matters)
      .currentUser()                      -> User|null, synchronous, best-effort (see note below)
      .onAuthChange(cb)                   -> cb(User|null), called immediately with current state and
                                              again on every future sign-in/out
@@ -47,6 +49,30 @@
   var lastUser = null;
   var readyPromise = null;
 
+  // How long to wait for Firebase's own first onAuthStateChanged before giving up and treating
+  // auth as resolved anyway (see waitForAuthResolved() below) — bounds the worst case (a stuck or
+  // blocked persistence lookup) instead of letting a caller hang forever.
+  var AUTH_RESOLVE_TIMEOUT_MS = 8000;
+  var authResolvedPromise = null;
+  var resolveAuthResolved = null;
+
+  /* Resolves once Firebase has reported the REAL signed-in state at least once — its first
+     onAuthStateChanged callback, which only fires after the SDK finishes restoring any persisted
+     session (an async IndexedDB lookup). ready() resolving only means the SDK script has loaded
+     and initializeApp() has run; it says nothing about whether that restoration has finished, so
+     firebase.auth().currentUser can still read null for a signed-in user for a brief window right
+     after ready() resolves. Every caller that needs a trustworthy "is anyone signed in" answer
+     (getIdToken(), below) should wait on this instead of reading currentUser synchronously. */
+  function waitForAuthResolved() {
+    if (!authResolvedPromise) {
+      authResolvedPromise = new Promise(function (resolve) {
+        resolveAuthResolved = resolve;
+        setTimeout(resolve, AUTH_RESOLVE_TIMEOUT_MS);
+      });
+    }
+    return authResolvedPromise;
+  }
+
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
       var s = document.createElement('script');
@@ -71,6 +97,9 @@
           user.getIdToken().then(setSessionCookie, function () {});
         });
         window.firebase.auth().onAuthStateChanged(function (user) {
+          // first real callback ever (whatever it reports) means persistence restore is done —
+          // unblock waitForAuthResolved()'s callers exactly once
+          if (resolveAuthResolved) { resolveAuthResolved(); resolveAuthResolved = null; }
           // a remembered sign-in from an account that isn't allowed (e.g. a personal Gmail used before the
           // domain rule existed) is signed out; listeners then hear null, never the wrong user
           if (user && !isAllowedEmail(user.email)) { window.firebase.auth().signOut(); return; }
@@ -128,9 +157,15 @@
 
   function getIdToken() {
     return ready().then(function (firebase) {
-      var user = firebase.auth().currentUser;
-      if (!user) return Promise.reject(new Error('Not signed in.'));
-      return user.getIdToken(/* forceRefresh */ false);
+      // wait for Firebase's real first auth-state answer before trusting currentUser — see
+      // waitForAuthResolved() above. On a fresh page load (every page here is a full navigation,
+      // not an SPA) this closes a real race: without it, a genuinely signed-in user could still
+      // get "Not signed in." here if persistence restore just hadn't finished yet.
+      return waitForAuthResolved().then(function () {
+        var user = firebase.auth().currentUser;
+        if (!user) return Promise.reject(new Error('Not signed in.'));
+        return user.getIdToken(/* forceRefresh */ false);
+      });
     });
   }
 

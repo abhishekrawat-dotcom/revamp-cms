@@ -4785,6 +4785,28 @@
     go(location.hash.slice(1) || 'content/basics');
   }
 
+  function isAuthError(err){
+    var msg = (err && err.message) || '';
+    return !!((err && err.status === 401) || /not signed in/i.test(msg));
+  }
+
+  function onEventLoaded(data){
+    EV = data;
+    CTX.EV = EV;
+    CTX.PEOPLE = PEOPLE;
+
+    /* sections/nav/paletteTheme are real fields on the event doc now — seed this file's local mirror
+       from them, falling back to this file's own defaults only when the event has nothing saved there
+       yet (a brand-new event, legitimate empty-state scaffolding, not fake data). Deliberately
+       EV.paletteTheme, not EV.theme — see wireTheme()'s own comment: 'theme' is a different, AI
+       pipeline-owned object for generated events, not this console's 4-preset palette name. */
+    S.sections = (EV.sections != null) ? EV.sections : S.sections;
+    S.nav      = (EV.nav != null)      ? EV.nav      : S.nav;
+    S.theme    = (EV.paletteTheme != null) ? EV.paletteTheme : S.theme;
+
+    boot();
+  }
+
   function init(){
     renderLoading();
 
@@ -4793,28 +4815,23 @@
       return;
     }
 
-    C.fetchEvent(eventSlug).then(function(data){
-      EV = data;
-      CTX.EV = EV;
-      CTX.PEOPLE = PEOPLE;
+    C.fetchEvent(eventSlug).then(onEventLoaded).catch(function(err){
+      if (!isAuthError(err)){ renderLoadError(err); return; }
 
-      /* sections/nav/paletteTheme are real fields on the event doc now — seed this file's local mirror
-         from them, falling back to this file's own defaults only when the event has nothing saved there
-         yet (a brand-new event, legitimate empty-state scaffolding, not fake data). Deliberately
-         EV.paletteTheme, not EV.theme — see wireTheme()'s own comment: 'theme' is a different, AI
-         pipeline-owned object for generated events, not this console's 4-preset palette name. */
-      S.sections = (EV.sections != null) ? EV.sections : S.sections;
-      S.nav      = (EV.nav != null)      ? EV.nav      : S.nav;
-      S.theme    = (EV.paletteTheme != null) ? EV.paletteTheme : S.theme;
-
-      boot();
-    }).catch(function(err){
-      var msg = (err && err.message) || '';
-      if ((err && err.status === 401) || /not signed in/i.test(msg)){
-        location.href = 'index.html';
-        return;
-      }
-      renderLoadError(err);
+      /* getIdToken() (auth.js) now waits for Firebase's own real first auth-state resolution
+         before deciding the user isn't signed in, so this should be rare going forward — but a
+         genuinely stale __session cookie, or a token that expired a moment before this call,
+         can still surface as a real 401 here. Refresh the session once and retry before bouncing
+         to sign-in, same "refresh, don't just bounce" reasoning as auth.js's own a.back-btn
+         interceptor — only a SECOND auth failure, after that retry, is treated as the user truly
+         not being signed in. */
+      if (!window.RevampAuth){ location.href = 'index.html'; return; }
+      RevampAuth.ensureSession().then(function(){
+        return C.fetchEvent(eventSlug);
+      }).then(onEventLoaded).catch(function(err2){
+        if (isAuthError(err2)){ location.href = 'index.html'; return; }
+        renderLoadError(err2);
+      });
     });
   }
 
