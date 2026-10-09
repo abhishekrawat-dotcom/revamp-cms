@@ -4126,51 +4126,40 @@
 
   /* ---------- "Bring your own design" (real Lovable import) ----------
      The real backend for this already exists (functions/lib/api.js's LOVABLE IMPORT PIPELINE — POST
-     /api/import-lovable, admin-gated): the user runs lovable-exporter.js (a browser-console script they
-     already have, not shipped in this repo) against their own live Lovable site, which downloads a ZIP;
-     this modal just uploads that ZIP. The server unzips it, strips the React/JS runtime, re-hosts every
+     /api/import-lovable, admin-gated): paste a live Lovable.app URL and the server renders it with real
+     headless Chrome (functions/lib/api.js's HEADLESS RENDER ADAPTER — a plain fetch() of the URL would only
+     return the empty pre-render React shell, never the real page), strips its scripts, re-hosts every real
      image to Storage, and returns `imported-<importId>` as the new template id — from here on it's a
      template id exactly like a ported/generated one (template-loader.js's `imported-` branch), so the
      rest of the wizard/editor hand-off needs no special-casing beyond applyImportedTemplate() below and
-     buildEditorPayload()'s own `importedTplId` branch (TEMPLATES[] has no entry for it to look up). */
+     buildEditorPayload()'s own `importedTplId` branch (TEMPLATES[] has no entry for it to look up).
+     (The same backend also still accepts the older {importId, zipBase64} ZIP-upload shape from
+     lovable-exporter.js, a browser-console script some users may already have — this modal just no longer
+     exposes that path in the UI now that pasting a URL needs no manual export step at all.) */
   function openImportLovableModal(){
     openModal({
       title: 'Import from Lovable',
-      sub: 'Run lovable-exporter.js in your Lovable site’s browser console first, then upload the ZIP it produces.',
-      body: '<div class="field"><label class="flabel" for="import-zip-file">Exported ZIP</label>' +
-          '<input class="inp" id="import-zip-file" type="file" accept=".zip,application/zip"></div>' +
-        '<p class="hint" style="margin-top:8px;">Up to 40&nbsp;MB.</p>',
+      sub: 'Paste the live URL of your Lovable.app site — we’ll render it and bring in its real design.',
+      body: '<div class="field"><label class="flabel" for="import-lovable-url">Lovable site URL</label>' +
+          '<input class="inp" id="import-lovable-url" type="url" placeholder="https://your-site.lovable.app"></div>',
       confirm: 'Import',
       cancelLabel: 'Cancel',
       onConfirm: function(){
-        var input = $('import-zip-file');
-        var file = input && input.files && input.files[0];
-        if (file) runLovableImport(file);
+        var input = $('import-lovable-url');
+        var url = input && input.value && input.value.trim();
+        if (url) runLovableImport(url);
       }
     });
     var ok = $('modal-ok');
-    if (ok) ok.disabled = true;      // nothing picked yet
-    var input = $('import-zip-file');
-    if (input) input.addEventListener('change', function(){
-      var btn = $('modal-ok');
-      if (btn) btn.disabled = !(input.files && input.files[0]);
-    });
-  }
-
-  // Raw base64 of the file's bytes, no "data:...;base64," prefix — /api/import-lovable's zipBase64 is fed
-  // straight to Buffer.from(zipBase64, 'base64') server-side. readAsDataURL is the same FileReader primitive
-  // this file already uses for binary uploads (see logoDataUrl()/readPsdFile() above); only the prefix differs.
-  function readFileAsRawBase64(file){
-    return new Promise(function(resolve, reject){
-      var reader = new FileReader();
-      reader.onerror = function(){ reject(reader.error || new Error('the file couldn’t be read')); };
-      reader.onload = function(){
-        var result = String(reader.result || '');
-        var i = result.indexOf(',');
-        resolve(i === -1 ? result : result.slice(i + 1));
-      };
-      reader.readAsDataURL(file);
-    });
+    if (ok) ok.disabled = true;      // nothing typed yet
+    var input = $('import-lovable-url');
+    if (input){
+      input.addEventListener('input', function(){
+        var btn = $('modal-ok');
+        if (btn) btn.disabled = !/^https?:\/\/.+/i.test(input.value.trim());
+      });
+      input.focus();
+    }
   }
 
   // importId needs no relation to the real event's own slug (basicsIssue() hasn't even run yet at this
@@ -4200,26 +4189,30 @@
     save();
   }
 
-  function runLovableImport(file){
+  // Rendering a live page with real headless Chrome (functions/lib/api.js's HEADLESS RENDER ADAPTER) takes
+  // noticeably longer than unzipping an uploaded file did — observed ~45–65s end-to-end against a real
+  // Lovable site in testing (page render + settle wait, then fetching/re-hosting every discovered
+  // stylesheet and image) — so the loading copy says so rather than implying a near-instant operation.
+  function runLovableImport(url){
     var importId = lovableImportId();
     showStep2View('import');
     $('step2-import').innerHTML =
       '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Importing your design&hellip;</h1>' +
-        '<p class="desc">Unzipping your export and re-hosting its images — this can take a moment for a larger design.</p></div>' +
+        '<p class="desc">Rendering your site and re-hosting its images — this can take up to a minute for a larger design.</p></div>' +
       '<div class="panel"><div class="proc-wrap">' + ET_LOADER + '</div></div>';
 
-    readFileAsRawBase64(file).then(function(zipBase64){
+    (function(){
       if (!window.RevampAuth || typeof RevampAuth.getIdToken !== 'function'){
-        throw new Error('You need to be signed in to import a design.');
+        return Promise.reject(new Error('You need to be signed in to import a design.'));
       }
       return RevampAuth.getIdToken().then(function(token){
         return fetch('/api/import-lovable', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ importId: importId, zipBase64: zipBase64, fileName: file.name })
+          body: JSON.stringify({ importId: importId, url: url })
         });
       });
-    }).then(function(res){
+    })().then(function(res){
       return res.json().catch(function(){ return {}; }).then(function(body){
         if (!res.ok) throw new Error((body && body.error) || ('Import failed (' + res.status + ').'));
         return body;

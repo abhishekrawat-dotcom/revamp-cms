@@ -3,9 +3,28 @@
 runConfig:
   minInstances: 0     # scales to zero when idle — no cost while unused (the first request after idle is slower)
   maxInstances: 2     # ET's own teams only; raise if traffic grows
-  concurrency: 80
-  cpu: 1
-  memoryMiB: 512
+
+  # cpu/memoryMiB/concurrency below were raised together for the Lovable live-URL import feature
+  # (functions/lib/api.js's HEADLESS RENDER ADAPTER block — puppeteer-core + @sparticuz/chromium): a real
+  # Chrome process rendering a real page is a different cost profile than every other /api/* handler in
+  # this app, which are all plain JSON-in/JSON-out. Every other route's existing behavior is unaffected by
+  # the bump — they just get more headroom than they strictly need.
+  #   memoryMiB: 2048 — the single most commonly cited real-world minimum for headless Chrome on a
+  #     Lambda/Cloud-Run-style container (the old 512MiB isn't even enough for Chrome to launch reliably,
+  #     let alone render a real page without being OOM-killed mid-request); 2048 leaves real margin above
+  #     that floor rather than the bare minimum, since a flaky headless-browser backend is worse than a
+  #     slightly more expensive one.
+  #   cpu: 2 — Chrome's own rendering/layout work is CPU-bound, not just memory-bound; Cloud Run also ties
+  #     a request's allowed concurrency to its CPU allocation, so this and `concurrency` below move together.
+  #   concurrency: 4 — the one real departure from "just raise the ceiling": the old 80 assumed every
+  #     request is cheap and instant, which a real browser render is not (a single Chrome instance per
+  #     in-flight render, each holding real memory for the lifetime of the request, up to the ~55s hard
+  #     timeout in scrapeLovableUrl()). A low number here is what actually keeps one instance from trying to
+  #     run many simultaneous Chrome processes inside the memory budget above; every other (cheap, JSON)
+  #     route on this same backend just ends up with more headroom per request than it needs.
+  concurrency: 4
+  cpu: 2
+  memoryMiB: 2048
 
 env:
   # functions/lib/firebase.js needs the bucket (same value as functions/.env); not a secret

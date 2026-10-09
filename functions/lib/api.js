@@ -70,18 +70,23 @@
 //   POST /api/register                              PUBLIC, no auth — the one write path the published
 //                               microsite's own "Register Now" CTA calls; writes a registrations doc
 //
-//   -- Lovable import pipeline — a captured-site ZIP (from the browser console exporter the user runs on a
-//      live Lovable.app site, not part of this repo) -> flattened static HTML+CSS -> a third template-loader.js
-//      template kind ('imported-<id>'), mounted through the EXACT same RevampCanvas.mount() pipeline every
-//      real ported/generated template already uses, so it comes out fully click-to-edit for free (see
-//      editor-canvas.js's walk() — tags any markup editable independent of content.map). See LOVABLE IMPORT
-//      PIPELINE below for the full design (CSS inline-vs-linked decision, the one-section content.map shape).
-//   POST /api/import-lovable                 admin-gated. Body: {importId, zipBase64, fileName?}. Unzips,
-//                               strips the exporter's re-hydration JS runtime (meaningless once this app's
-//                               own click-to-edit canvas takes over the same DOM), re-hosts referenced
-//                               images to Storage, inlines the gathered CSS, stores the flattened result in
-//                               Storage, and persists an events/import-<importId> doc. Returns
-//                               {templateId: 'imported-<importId>'}.
+//   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
+//      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
+//      server-side with headless Chrome — see the HEADLESS RENDER ADAPTER block) -> flattened static HTML+CSS
+//      -> a third template-loader.js template kind ('imported-<id>'), mounted through the EXACT same
+//      RevampCanvas.mount() pipeline every real ported/generated template already uses, so it comes out fully
+//      click-to-edit for free (see editor-canvas.js's walk() — tags any markup editable independent of
+//      content.map). See LOVABLE IMPORT PIPELINE below for the full design (CSS inline-vs-linked decision,
+//      the one-section content.map shape). Both input methods share one core (processLovableImport) and only
+//      differ in how they produce {html, cssHrefs->text, imageRef->bytes} — see that function's own comment.
+//   POST /api/import-lovable                 admin-gated. Body: {importId, zipBase64, fileName?} (ZIP upload)
+//                               OR {importId, url} (live render). Either way: strips scripts (the exporter's
+//                               own re-hydration JS runtime, or — for the url path — every script tag in the
+//                               rendered DOM, since there's no re-hydration loader worth preserving there
+//                               either way; both are meaningless once this app's own click-to-edit canvas
+//                               takes over the same DOM), re-hosts referenced images to Storage, inlines the
+//                               gathered CSS, stores the flattened result in Storage, and persists an
+//                               events/import-<importId> doc. Returns {templateId: 'imported-<importId>'}.
 //   GET  /api/imported-template?eventId=<importId>   PUBLIC, no auth (template-loader.js's load() runs in the
 //                               ordinary browser context, same as /api/generated-template) — the
 //                               template.json-shaped object for an imported design: one opaque 'imported'
@@ -95,6 +100,7 @@
 //                               asset in this app.
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
 const JSZip = require('jszip');
 const { getFirebase } = require('./firebase');
 const { isAllowedUser, deniedMessage } = require('./access');
@@ -1450,7 +1456,19 @@ function handleGeneratedTemplate(req, res) {
    would (templates/README.md's "sections left out, and the editor says which"). The entry still exists
    (rather than an empty content.map) purely so `mappedSections`/AI-provenance bookkeeping in editor-fill.js
    has a definite, harmless answer for this section id, should that code path ever run against an imported
-   template — `fill: []` + a `from` that can never resolve means it can never write anything. */
+   template — `fill: []` + a `from` that can never resolve means it can never write anything.
+
+   Two input methods, one core — a second input method was added after the above (a live site URL, rendered
+   with real headless Chrome instead of requiring the user to run the console exporter and upload its ZIP;
+   see the HEADLESS RENDER ADAPTER block below for why a plain server-side fetch() of a Lovable URL can't
+   work: it only returns the empty pre-render React shell, never the real page, since Lovable sites are
+   client-rendered SPAs). Both methods produce the SAME three ingredients — HTML text, a way to fetch a
+   stylesheet's content by its href, a way to fetch an image's bytes by its ref — and hand them to the one
+   shared processLovableImport() below, which does everything past that point (CSS gathering, image rehost,
+   Storage artifacts, the Firestore doc) identically regardless of where the ingredients came from. Keeping
+   that function the single place this logic lives means template-loader.js's `imported-` branch, the
+   content.map judgment call above, and everything else in this block needed ZERO changes to support the
+   new input method. */
 
 // 40MB cap on the decoded ZIP — generous for a real site export (it can carry many images), small enough to
 // keep one request well under Cloud Functions' own request size ceiling. Named/sized the same way
@@ -1483,15 +1501,15 @@ function parseTagAttrs(tag) {
   return attrs;
 }
 
-// Strips exactly the markup the exporter's own re-hydration runtime needs and nothing else (see this
-// block's header comment): the loader + its JS chunks, any inline bootstrap script, any lov-module script,
-// and the <link> preload/preconnect hints that are meaningless without that runtime. Every
-// <link rel="stylesheet" href="./css/...">  is REMOVED too (its content is gathered separately below and
-// re-inlined into the final document instead — see the CSS inline-vs-linked judgment call above), its href
-// collected first so the caller can still go read that file out of the zip.
-function stripLovableMarkup(html) {
+// Strips the <link> noise (preload/preconnect/dns-prefetch/modulepreload hints meaningless without a JS
+// runtime) and collects every <link rel="stylesheet" href="..."> for the caller to fetch separately (its
+// content is gathered by the caller's own getCss() and re-inlined into the final document instead — see
+// the CSS inline-vs-linked judgment call above). Shared by BOTH import adapters — a ZIP's own css/*.css
+// links and a live-rendered page's real stylesheet links are discovered exactly the same way, only how the
+// href is turned into actual CSS text (getCss) differs per adapter.
+function extractStylesheetLinks(html) {
   var cssHrefs = [];
-  html = html.replace(/<link\b[^>]*>/gi, function (tag) {
+  var out = html.replace(/<link\b[^>]*>/gi, function (tag) {
     var attrs = parseTagAttrs(tag);
     var rel = (attrs.rel || '').toLowerCase();
     var as = (attrs.as || '').toLowerCase();
@@ -1500,7 +1518,15 @@ function stripLovableMarkup(html) {
     if (rel === 'preload' && (as === 'script' || as === 'font')) return '';
     return tag; // icons/canonical/manifest/etc. — not in the strip list, left alone
   });
-  html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, function (full, attrPart, body) {
+  return { html: out, cssHrefs: cssHrefs };
+}
+
+// ZIP-export-specific script stripping — exactly what this pipeline always did (unchanged behavior): only
+// the exporter's own re-hydration runtime (its JS chunks under js/, any text/lov-module script, any inline
+// bootstrap carrying __LOV_CONFIG/__LOV_SRC). A ZIP export can carry other, harmless inline scripts (e.g.
+// JSON-LD) that this intentionally leaves alone.
+function stripZipExportScripts(html) {
+  return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, function (full, attrPart, body) {
     var attrs = parseTagAttrs('<script' + attrPart + '>');
     var src = attrs.src || '';
     var type = (attrs.type || '').toLowerCase();
@@ -1509,7 +1535,17 @@ function stripLovableMarkup(html) {
     if (!src && (body.indexOf('__LOV_CONFIG') !== -1 || body.indexOf('__LOV_SRC') !== -1)) return '';
     return full;
   });
-  return { html: html, cssHrefs: cssHrefs };
+}
+
+// Generic "<script>...</script>" removal for the headless-render adapter's live DOM snapshot — a direct
+// capture of document.documentElement.outerHTML has real Lovable runtime/analytics/etc. <script> tags with
+// no exporter-specific markers to target selectively (none of stripZipExportScripts's patterns apply: there's
+// no js/ folder, no lov-module, no __LOV_CONFIG bootstrap — this is a live page, not the exporter's static
+// output). Removing every script tag outright is still correct: editor-canvas.js's click-to-edit canvas
+// never wants a second JS runtime in its DOM either way (see this block's header comment), and there's no
+// re-hydration loader worth preserving in a direct DOM capture.
+function stripAllScriptTags(html) {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 }
 
 function extractBodyInner(html) {
@@ -1517,21 +1553,12 @@ function extractBodyInner(html) {
   return m ? m[1] : html;
 }
 
-// Reads every referenced ./css/<name>.css straight out of the zip (gracefully skipping one that's missing
-// instead of failing the whole import — the same "degrade, never crash" discipline buildHeroImage uses).
-function gatherImportCss(zip, cssHrefs) {
-  return Promise.all(cssHrefs.map(function (href) {
-    var norm = href.replace(/^\.{1,2}\//, '').replace(/^\//, '');
-    var file = zip.file(norm);
-    if (!file) { console.error('import-lovable: referenced CSS file not found in zip: ' + href); return null; }
-    return file.async('string').then(function (text) { return { href: href, text: text }; });
-  })).then(function (results) { return results.filter(Boolean); });
-}
-
 // Every "images/<name>.<ext>" token found anywhere in the given text (HTML body + gathered CSS combined),
 // however it's written (./images/x, ../images/x, images/x — inside url(...), src="...", a style attribute,
 // whatever) — a plain substring scan, same pragmatic regex-over-text approach as stripToText/
-// extractColorSignals elsewhere in this file, not a real CSS/HTML parse.
+// extractColorSignals elsewhere in this file, not a real CSS/HTML parse. This is the ZIP adapter's default
+// finder (processLovableImport's `findImageRefs` option) — scoped to the ZIP's own known images/ folder
+// convention, which a live-rendered page has no equivalent of (see findLiveImageRefs below for that case).
 function findImportImageRefs(text) {
   var seen = {};
   var re = /(?:\.{1,2}\/)?images\/[A-Za-z0-9_\-.]+\.[A-Za-z0-9]+/gi;
@@ -1540,33 +1567,124 @@ function findImportImageRefs(text) {
   return Object.keys(seen);
 }
 
+// The headless-render adapter's image finder — a live page's images can be absolute CDN URLs, root-relative
+// paths, or data: URIs, with no shared folder convention to anchor on the way the ZIP export's images/
+// folder lets findImportImageRefs above anchor. Matches an <img>/<source> src or srcset entry, and a CSS
+// url(...), ending in a real image extension. data: URIs are skipped (already inline, nothing to re-host).
+function findLiveImageRefs(text) {
+  var seen = {};
+  var re = /(?:\bsrc|\bsrcset)\s*=\s*["']([^"']+)["']|url\(\s*["']?([^"')]+)["']?\s*\)/gi;
+  var m;
+  while ((m = re.exec(text))) {
+    var raw = m[1] || m[2];
+    if (!raw) continue;
+    raw.split(',').forEach(function (part) {
+      var url = part.trim().split(/\s+/)[0];
+      if (!url || /^data:/i.test(url)) return;
+      if (!/\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)(\?|#|$)/i.test(url)) return;
+      seen[url] = 1;
+    });
+  }
+  return Object.keys(seen);
+}
+
 // Replaces every written form of a reference to one zip-relative path (./images/x, ../images/x, images/x)
-// with its final Storage URL, across one piece of text.
+// with its final Storage URL, across one piece of text. (Works unchanged for the live-render adapter's
+// absolute/root-relative URL refs too — they have no "./"/"../" prefix to begin with, so that part of the
+// pattern just never matches, and the plain escaped-URL match still does.)
 function buildImportRefRegex(ref) {
   return new RegExp('(?:\\.{1,2}\\/)?' + escapeRegex(ref), 'g');
 }
 
-function handleImportLovable(req, res) {
-  requireAdmin(req, res, function (fb) {
-    parseJsonBody(req, res, function (body) {
-      var importId = String(body.importId || '').trim();
-      var zipBase64 = String(body.zipBase64 || '');
-      var sourceZipName = body.fileName ? String(body.fileName).trim().slice(0, 200) : null;
-      if (!importId || !/^[a-z0-9-]+$/.test(importId)) {
-        return sendJson(res, 400, { error: 'A valid importId (lowercase letters, digits, hyphens) is required.' });
-      }
-      if (!zipBase64) return sendJson(res, 400, { error: 'zipBase64 is required.' });
-      runImportLovable(fb, res, importId, zipBase64, sourceZipName);
+/* The real work shared by BOTH import adapters (ZIP upload and live-URL render) — everything from "clean,
+   script-stripped markup in hand" to "Storage artifacts + Firestore doc written". Pulled out so it's a
+   plain (fb, importId, ...) function callable on its own by an integration test without needing a real
+   Firebase Auth ID token to get past requireAdmin — same shape/reasoning as runGenerateContent elsewhere in
+   this file. Not exported; handleImportLovable below is still the only real HTTP entry point.
+
+     html            string    already script-stripped (stripZipExportScripts or stripAllScriptTags) HTML —
+                                full document or just <body>, either way (extractBodyInner trims either).
+                                Still has its <link rel="stylesheet"> tags; extractStylesheetLinks above
+                                strips+collects those itself, so every caller does this step identically.
+     getCss(href)    href is exactly the string written in that <link href="...">; -> Promise<string|null>
+                                (null for "couldn't fetch this one" — degrades, never fails the whole import,
+                                same discipline the old gatherImportCss used).
+     getImage(ref)   ref is exactly one token findImageRefs(text) returned; -> Promise<Buffer|null>.
+     findImageRefs(text)       optional; defaults to findImportImageRefs (the ZIP adapter's own convention).
+     docFields                 extra fields merged into the events/import-<id> Firestore doc (e.g.
+                                {sourceZipName} or {sourceUrl}) — whatever that adapter wants
+                                handleImportedTemplate's display-name lookup to see. */
+function processLovableImport(fb, importId, html, getCss, getImage, findImageRefs, docFields) {
+  findImageRefs = findImageRefs || findImportImageRefs;
+  var linked = extractStylesheetLinks(html);
+  var bodyHtml = extractBodyInner(linked.html);
+
+  return Promise.all(linked.cssHrefs.map(function (href) {
+    return getCss(href).then(function (text) { return (text == null) ? null : { href: href, text: text }; });
+  })).then(function (cssResults) {
+    cssResults = cssResults.filter(Boolean);
+    var combined = bodyHtml + '\n' + cssResults.map(function (r) { return r.text; }).join('\n');
+    var imageRefs = findImageRefs(combined);
+
+    return Promise.all(imageRefs.map(function (ref) {
+      return getImage(ref).then(function (imgBuffer) {
+        if (!imgBuffer) return null;
+        var basename = ref.split(/[\\/]/).pop().split('?')[0].split('#')[0] || 'image';
+        var sanitized = basename.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 120) || 'image';
+        var storagePath = 'events/import-' + importId + '/images/' + sanitized;
+        var file = fb.bucket.file(storagePath);
+        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized) } })
+          .then(function () { return file.makePublic(); })
+          .then(function () { return { ref: ref, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath }; });
+      }).catch(function (err) {
+        console.error('import-lovable: failed to re-host image "' + ref + '": ' + err.message);
+        return null; // that one image stays unrewritten rather than failing the whole import
+      });
+    })).then(function (uploaded) {
+      uploaded.filter(Boolean).forEach(function (u) {
+        var re = buildImportRefRegex(u.ref);
+        bodyHtml = bodyHtml.replace(re, u.url);
+        cssResults = cssResults.map(function (r) { return { href: r.href, text: r.text.replace(re, u.url) }; });
+      });
+
+      var styleBlocks = cssResults.map(function (r) {
+        return '<style data-rv-imported-css="' + escAttr(r.href) + '">\n' + r.text + '\n</style>';
+      }).join('\n');
+      var wrappedBody = '<div class="rv-imported">\n' + bodyHtml + '\n</div>';
+      // Served as-is by GET /api/imported-section — CSS + the one wrapper div template-loader.js's
+      // tagSection() needs a single root element to stamp data-rv-section onto (see this block's
+      // header comment on the CSS judgment call).
+      var sectionHtml = styleBlocks + '\n' + wrappedBody;
+      // The separate, full standalone document — an intermediate/debug artifact only (never served
+      // directly to end users, unlike events/{id}/published/index.html — see lib/firebase.js).
+      var fullDoc = '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n' + styleBlocks +
+        '\n</head>\n<body>\n' + bodyHtml + '\n</body>\n</html>\n';
+
+      var flattenedHtmlPath = 'events/import-' + importId + '/index.html';
+      var sectionHtmlPath = 'events/import-' + importId + '/section.html';
+
+      return fb.bucket.file(flattenedHtmlPath)
+        .save(Buffer.from(fullDoc, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } })
+        .then(function () { return fb.bucket.file(flattenedHtmlPath).makePublic(); })
+        .then(function () {
+          return fb.bucket.file(sectionHtmlPath)
+            .save(Buffer.from(sectionHtml, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } });
+        })
+        .then(function () { return fb.bucket.file(sectionHtmlPath).makePublic(); })
+        .then(function () {
+          var now = new Date().toISOString();
+          return fb.db.collection('events').doc('import-' + importId).set(Object.assign(
+            { importedAt: now, flattenedHtmlPath: flattenedHtmlPath, sectionHtmlPath: sectionHtmlPath },
+            docFields || {}
+          ), { merge: true });
+        })
+        .then(function () { return { templateId: 'imported-' + importId }; });
     });
   });
 }
 
-// The real work, pulled out of handleImportLovable so it's a plain (fb, res, ...) function callable on its
-// own — same shape/reasoning as runGenerateContent above (shared by two callers there; here, callable
-// directly by an integration test without needing a real Firebase Auth ID token to get past requireAdmin,
-// which is exactly what it exists to gate — this function itself has no opinion on auth, same as
-// runGenerateContent). Not exported; handleImportLovable above is still the only real entry point.
-function runImportLovable(fb, res, importId, zipBase64, sourceZipName) {
+/* ---------- ZIP adapter — unchanged behavior, restructured to call into processLovableImport ---------- */
+function runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName) {
   var buffer;
   try { buffer = Buffer.from(zipBase64, 'base64'); } catch (e) { return sendJson(res, 400, { error: 'zipBase64 is not valid base64.' }); }
   if (buffer.length === 0) return sendJson(res, 400, { error: 'The uploaded ZIP is empty.' });
@@ -1580,72 +1698,232 @@ function runImportLovable(fb, res, importId, zipBase64, sourceZipName) {
         throw Object.assign(new Error('Couldn\'t find index.html in this ZIP — make sure you uploaded the export unchanged.'), { status: 400 });
       }
       return entry.async('string').then(function (rawHtml) {
-        var stripped = stripLovableMarkup(rawHtml);
-        var bodyHtml = extractBodyInner(stripped.html);
-
-        return gatherImportCss(zip, stripped.cssHrefs).then(function (cssResults) {
-          var combined = bodyHtml + '\n' + cssResults.map(function (r) { return r.text; }).join('\n');
-          var imageRefs = findImportImageRefs(combined)
-            .map(function (ref) { return { ref: ref, file: zip.file(ref) }; })
-            .filter(function (r) { return r.file; });
-
-          return Promise.all(imageRefs.map(function (r) {
-            return r.file.async('nodebuffer').then(function (imgBuffer) {
-              var basename = r.ref.split('/').pop();
-              var sanitized = basename.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 120) || 'image';
-              var storagePath = 'events/import-' + importId + '/images/' + sanitized;
-              var file = fb.bucket.file(storagePath);
-              return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized) } })
-                .then(function () { return file.makePublic(); })
-                .then(function () { return { ref: r.ref, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath }; });
-            }).catch(function (err) {
-              console.error('import-lovable: failed to re-host image "' + r.ref + '": ' + err.message);
-              return null; // that one image stays unrewritten rather than failing the whole import
-            });
-          })).then(function (uploaded) {
-            uploaded.filter(Boolean).forEach(function (u) {
-              var re = buildImportRefRegex(u.ref);
-              bodyHtml = bodyHtml.replace(re, u.url);
-              cssResults = cssResults.map(function (r) { return { href: r.href, text: r.text.replace(re, u.url) }; });
-            });
-
-            var styleBlocks = cssResults.map(function (r) {
-              return '<style data-rv-imported-css="' + escAttr(r.href) + '">\n' + r.text + '\n</style>';
-            }).join('\n');
-            var wrappedBody = '<div class="rv-imported">\n' + bodyHtml + '\n</div>';
-            // Served as-is by GET /api/imported-section — CSS + the one wrapper div template-loader.js's
-            // tagSection() needs a single root element to stamp data-rv-section onto (see this block's
-            // header comment on the CSS judgment call).
-            var sectionHtml = styleBlocks + '\n' + wrappedBody;
-            // The separate, full standalone document — an intermediate/debug artifact only (never served
-            // directly to end users, unlike events/{id}/published/index.html — see lib/firebase.js).
-            var fullDoc = '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n' + styleBlocks +
-              '\n</head>\n<body>\n' + bodyHtml + '\n</body>\n</html>\n';
-
-            var flattenedHtmlPath = 'events/import-' + importId + '/index.html';
-            var sectionHtmlPath = 'events/import-' + importId + '/section.html';
-
-            return fb.bucket.file(flattenedHtmlPath)
-              .save(Buffer.from(fullDoc, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } })
-              .then(function () { return fb.bucket.file(flattenedHtmlPath).makePublic(); })
-              .then(function () {
-                return fb.bucket.file(sectionHtmlPath)
-                  .save(Buffer.from(sectionHtml, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } });
-              })
-              .then(function () { return fb.bucket.file(sectionHtmlPath).makePublic(); })
-              .then(function () {
-                var now = new Date().toISOString();
-                return fb.db.collection('events').doc('import-' + importId).set({
-                  importedAt: now, sourceZipName: sourceZipName,
-                  flattenedHtmlPath: flattenedHtmlPath, sectionHtmlPath: sectionHtmlPath
-                }, { merge: true });
-              })
-              .then(function () { sendJson(res, 200, { templateId: 'imported-' + importId }); });
-          });
-        });
+        var html = stripZipExportScripts(rawHtml);
+        // Reads a referenced ./css/<name>.css straight out of the zip — gracefully resolving to null when
+        // missing instead of failing the whole import (same "degrade, never crash" discipline buildHeroImage
+        // uses), exactly as the pre-refactor gatherImportCss did.
+        var getCss = function (href) {
+          var norm = href.replace(/^\.{1,2}\//, '').replace(/^\//, '');
+          var file = zip.file(norm);
+          if (!file) { console.error('import-lovable: referenced CSS file not found in zip: ' + href); return Promise.resolve(null); }
+          return file.async('string');
+        };
+        var getImage = function (ref) {
+          var file = zip.file(ref);
+          if (!file) return Promise.resolve(null);
+          return file.async('nodebuffer');
+        };
+        return processLovableImport(fb, importId, html, getCss, getImage, findImportImageRefs, { sourceZipName: sourceZipName });
       });
     })
+    .then(function (result) { sendJson(res, 200, { templateId: result.templateId }); })
     .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
+}
+
+/* =====================================================================================================
+   HEADLESS RENDER ADAPTER — the live-URL input method (POST /api/import-lovable with {importId, url}
+   instead of {importId, zipBase64}).
+   ---------------------------------------------------------------------------------------------------
+   Why this needs a real browser: a Lovable.app site is a client-rendered React SPA — a plain server-side
+   fetch() of the URL returns only the near-empty pre-render shell (an almost bare <div id="root">, the
+   bundle <script> tags, and nothing of the real page), confirmed against the real test site this session.
+   There is no way to get the real final markup without actually executing the page's JS in a real browser
+   engine — which is exactly what the browser-console exporter script (the OTHER input method, see this
+   block's header comment) does by running inside an already-rendered tab. This adapter gets the same real,
+   rendered markup a different way: launching headless Chrome server-side, navigating it to the URL, and
+   reading document.documentElement.outerHTML back out once the page has actually mounted.
+
+   puppeteer-core + @sparticuz/chromium, not full `puppeteer`/`playwright`: those bundle their own full
+   browser download, which is too heavy for a serverless function's deploy image. puppeteer-core ships NO
+   browser at all — just the driver — and @sparticuz/chromium provides a single pre-compiled Chromium
+   binary built specifically to run inside a Lambda/Cloud-Run-style container (brotli-compressed, unpacked
+   to /tmp at cold start), which is exactly the shape of this app's own deploy target (Firebase App Hosting
+   -> Cloud Run, see apphosting.yaml). Versions pinned to a contemporaneous, Node-20-compatible pair
+   (puppeteer-core@23.11.1 / @sparticuz/chromium@131.0.1, both published Nov–Dec 2024) rather than each
+   package's latest, which now requires Node >=22 — this repo's functions/package.json still targets Node 20
+   (see its "engines" field) and isn't changing that just for this feature.
+
+   Local dev note: @sparticuz/chromium's bundled binary only runs on the Amazon-Linux-like environment
+   Cloud Run's container provides, NOT a developer's own Mac/Windows machine. Local testing (`node
+   tools/serve.js`) instead points puppeteer-core at a real local Chrome install via the
+   PUPPETEER_EXECUTABLE_PATH env var (tools/.env.local) — getChromiumLaunchOptions() below picks whichever
+   is set, so the exact same scrapeLovableUrl()/processLovableImport() code runs in both places; only which
+   Chromium binary gets launched differs. */
+
+// A single Chrome instance doing real rendering is slow and memory-hungry per request (see apphosting.yaml's
+// own comment on why cpu/memoryMiB/concurrency all went up for this feature) — these two timeouts keep one
+// slow/hung site from tying up a request (and its headless Chrome process) forever.
+var SCRAPE_NAV_TIMEOUT_MS = 30000;   // page.goto()'s own ceiling for reaching network-idle
+var SCRAPE_TOTAL_TIMEOUT_MS = 55000; // hard ceiling on the whole scrape, Chrome launch included
+
+function getChromiumLaunchOptions() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return Promise.resolve({ executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, headless: true });
+  }
+  var chromium = require('@sparticuz/chromium');
+  return chromium.executablePath().then(function (executablePath) {
+    return { executablePath: executablePath, args: chromium.args, headless: chromium.headless, defaultViewport: chromium.defaultViewport };
+  });
+}
+
+// Launches headless Chrome, navigates to `url`, waits for the page to actually render (networkidle2 — two
+// or fewer in-flight requests for 500ms — rather than domcontentloaded, which fires before a React app's own
+// JS has run; see this block's header comment), and returns its final rendered outerHTML. Closes the browser
+// in every case — success, navigation timeout, launch failure, or the overall SCRAPE_TOTAL_TIMEOUT_MS firing
+// — so a failed/slow request never leaks a headless Chrome process.
+function scrapeLovableUrl(url) {
+  var puppeteer = require('puppeteer-core');
+  var browser = null;
+  var timer = null;
+
+  function closeBrowser() {
+    if (!browser) return Promise.resolve();
+    var b = browser; browser = null;
+    return b.close().catch(function (err) { console.error('import-lovable: error closing headless Chrome: ' + err.message); });
+  }
+
+  var work = getChromiumLaunchOptions()
+    .then(function (opts) { return puppeteer.launch(opts); })
+    .then(function (b) {
+      browser = b;
+      return browser.newPage();
+    })
+    .then(function (page) {
+      return page.setViewport({ width: 1440, height: 900 })
+        .then(function () { return page.goto(url, { waitUntil: 'networkidle2', timeout: SCRAPE_NAV_TIMEOUT_MS }); })
+        .catch(function (err) {
+          // A site with e.g. continuous analytics pings may never truly go network-idle — don't fail the
+          // whole import over that; capture whatever has rendered by now instead (same "degrade, never
+          // crash" discipline the rest of this pipeline uses for a missing CSS/image file).
+          console.error('import-lovable: navigation to "' + url + '" did not fully settle (' + err.message + ') — capturing whatever rendered so far.');
+        })
+        .then(function () { return new Promise(function (resolve) { setTimeout(resolve, 1200); }); }) // let any late mount/animation settle
+        .then(function () { return page.evaluate(function () { return document.documentElement.outerHTML; }); });
+    });
+
+  return new Promise(function (resolve, reject) {
+    timer = setTimeout(function () {
+      reject(Object.assign(new Error('Rendering this page took too long (over ' + Math.round(SCRAPE_TOTAL_TIMEOUT_MS / 1000) + 's).'), { status: 504 }));
+    }, SCRAPE_TOTAL_TIMEOUT_MS);
+    work.then(resolve, reject);
+  }).then(function (html) {
+    clearTimeout(timer);
+    return closeBrowser().then(function () { return html; });
+  }, function (err) {
+    clearTimeout(timer);
+    return closeBrowser().then(function () { throw err; });
+  });
+}
+
+// SSRF guard for the user-supplied url: only http(s), and not a host that resolves to this backend's own
+// network — a real security boundary (this fetches an arbitrary user-supplied URL server-side), not just a
+// correctness check. Rejects obviously-internal hostnames outright, then confirms via a real DNS lookup
+// that the host doesn't resolve to a loopback/private/link-local address either (catches "a public-looking
+// hostname that actually points at an internal IP" — a literal IP literal is caught by the same check since
+// dns.lookup() on an IP string just returns that IP). Does NOT re-validate every subresource URL
+// (stylesheet/image hrefs) discovered on the page afterward — those are fetched the same way a browser
+// fetches any page's own subresources, no more of a server-side-request-forgery risk than the main fetch
+// those requests are already covered by.
+function isPrivateOrLoopbackIp(ip) {
+  if (/^127\./.test(ip)) return true;                                    // IPv4 loopback
+  if (/^10\./.test(ip)) return true;                                     // RFC1918
+  if (/^192\.168\./.test(ip)) return true;                               // RFC1918
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;                // RFC1918
+  if (/^169\.254\./.test(ip)) return true;                               // link-local / cloud metadata
+  if (ip === '0.0.0.0') return true;
+  if (ip === '::1') return true;                                         // IPv6 loopback
+  if (/^f[cd][0-9a-f]{2}:/i.test(ip)) return true;                       // IPv6 unique-local (fc00::/7)
+  if (/^fe80:/i.test(ip)) return true;                                   // IPv6 link-local
+  return false;
+}
+function validateImportUrl(rawUrl) {
+  var u;
+  try { u = new URL(rawUrl); } catch (e) { return Promise.resolve('That doesn\'t look like a valid URL.'); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return Promise.resolve('Only http:// and https:// URLs are allowed.');
+  var host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || isPrivateOrLoopbackIp(host)) {
+    return Promise.resolve('That host isn\'t allowed.');
+  }
+  return new Promise(function (resolve) {
+    dns.lookup(host, { all: true }, function (err, addrs) {
+      if (err) return resolve('Could not resolve that host.');
+      var bad = (addrs || []).some(function (a) { return isPrivateOrLoopbackIp(a.address); });
+      resolve(bad ? 'That host resolves to a private address and isn\'t allowed.' : null);
+    });
+  });
+}
+
+/* ---------- live-URL adapter — same processLovableImport() core as the ZIP adapter above ---------- */
+function runImportLovableFromUrl(fb, res, importId, url) {
+  scrapeLovableUrl(url)
+    .then(function (rawHtml) {
+      var html = stripAllScriptTags(rawHtml);
+      /* Both getCss/getImage resolve the (possibly relative, possibly already-absolute) ref against the
+         page's own URL, then fetch it directly — a public Lovable preview site's own CSS/images are public,
+         ordinary GETs, same as a browser loading them; no cookie/session/Puppeteer-request-interception
+         plumbing needed (confirmed against the real test site: both its stylesheet and its images are
+         fetchable with a plain, unauthenticated fetch()).
+
+         Each resolved URL is re-run through validateImportUrl() before fetching — this is NOT redundant
+         with the top-level URL's own check above. The page being scraped is fully attacker-controlled
+         (anyone can publish a Lovable site), so every CSS href / image src found IN that page's own
+         rendered markup is attacker-controlled too. Without this, a malicious page could embed e.g.
+         <img src="http://169.254.169.254/latest/meta-data/iam/security-credentials/"> and this server
+         would dutifully fetch its own cloud metadata endpoint on the attacker's behalf — a classic
+         confused-deputy SSRF via page content, a completely different request path from the one the
+         top-level guard covers. A rejected subresource just degrades to "missing" (null), same as any
+         other fetch failure here — never worth failing the whole import over one bad asset reference. */
+      var getCss = function (href) {
+        var abs; try { abs = new URL(href, url).href; } catch (e) { return Promise.resolve(null); }
+        return validateImportUrl(abs).then(function (badReason) {
+          if (badReason) { console.error('import-lovable: refused to fetch CSS "' + abs + '": ' + badReason); return null; }
+          return fetch(abs).then(function (r) { return r.ok ? r.text() : null; }).catch(function (err) {
+            console.error('import-lovable: failed to fetch CSS "' + abs + '": ' + err.message);
+            return null;
+          });
+        });
+      };
+      var getImage = function (ref) {
+        var abs; try { abs = new URL(ref, url).href; } catch (e) { return Promise.resolve(null); }
+        return validateImportUrl(abs).then(function (badReason) {
+          if (badReason) { console.error('import-lovable: refused to fetch image "' + abs + '": ' + badReason); return null; }
+          return fetch(abs).then(function (r) {
+            if (!r.ok) return null;
+            return r.arrayBuffer().then(function (buf) { return Buffer.from(buf); });
+          }).catch(function (err) {
+            console.error('import-lovable: failed to fetch image "' + abs + '": ' + err.message);
+            return null;
+          });
+        });
+      };
+      return processLovableImport(fb, importId, html, getCss, getImage, findLiveImageRefs, { sourceUrl: url });
+    })
+    .then(function (result) { sendJson(res, 200, { templateId: result.templateId }); })
+    .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
+}
+
+function handleImportLovable(req, res) {
+  requireAdmin(req, res, function (fb) {
+    parseJsonBody(req, res, function (body) {
+      var importId = String(body.importId || '').trim();
+      if (!importId || !/^[a-z0-9-]+$/.test(importId)) {
+        return sendJson(res, 400, { error: 'A valid importId (lowercase letters, digits, hyphens) is required.' });
+      }
+      var zipBase64 = body.zipBase64 ? String(body.zipBase64) : '';
+      var url = body.url ? String(body.url).trim() : '';
+      if (!zipBase64 && !url) return sendJson(res, 400, { error: 'Either zipBase64 or url is required.' });
+
+      if (zipBase64) {
+        var sourceZipName = body.fileName ? String(body.fileName).trim().slice(0, 200) : null;
+        return runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName);
+      }
+
+      validateImportUrl(url).then(function (urlError) {
+        if (urlError) return sendJson(res, 400, { error: urlError });
+        runImportLovableFromUrl(fb, res, importId, url);
+      });
+    });
+  });
 }
 
 function handleImportedTemplate(req, res) {
@@ -1660,7 +1938,7 @@ function handleImportedTemplate(req, res) {
   fb.db.collection('events').doc('import-' + importId).get().then(function (snap) {
     if (!snap.exists) return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
     var data = snap.data();
-    var name = data.sourceZipName || importId;
+    var name = data.sourceZipName || data.sourceUrl || importId;
     sendJson(res, 200, {
       id: 'imported-' + importId,
       name: name,
@@ -2108,3 +2386,12 @@ function handleApi(req, res) {
 }
 
 module.exports = { handleApi };
+
+// A handful of internal functions, exported ONLY so an integration test can call the real import-pipeline
+// logic in-process — same (fb, res, ...) functions handleImportLovable itself calls — without needing a real
+// Firebase Auth ID token to get past requireAdmin (which these intentionally skip; requireAdmin's own
+// correctness is exercised separately, same reasoning runGenerateContent's design already established
+// elsewhere in this file: pulling the real work out into a plain, directly-callable function is the
+// permanent fix, not a test-only shim). Nothing in this file imports from this property; it exists purely
+// for tooling under tools/.
+module.exports._testHooks = { processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl };
