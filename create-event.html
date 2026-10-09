@@ -1243,12 +1243,14 @@
   .tpl-carousel{ margin-top:18px; }
   .tpl-carousel-stage{ display:flex; align-items:stretch; gap:10px; }
   .tpl-carousel-nav{
-    flex:none; display:flex; align-items:center; justify-content:center; width:44px; border-radius:10px;
+    flex:none; align-self:center; display:flex; align-items:center; justify-content:center;
+    width:44px; height:44px; border-radius:100px;
     background: var(--surface); border:1px solid var(--border); color: var(--text); cursor:pointer;
+    box-shadow: var(--shadow-sm);
   }
   .tpl-carousel-nav:hover{ background: var(--surface-2); border-color: var(--text-faint); }
   .tpl-carousel-media{
-    flex:1; min-width:0; height: min(72vh, 620px); background:#f2f0ea; border-radius:12px;
+    flex:1; min-width:0; height: min(50vh, 440px); background:#f2f0ea; border-radius:12px;
     border:1px solid var(--border); overflow:hidden;
   }
   .tpl-carousel-info{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:14px; }
