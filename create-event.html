@@ -1249,10 +1249,15 @@
     box-shadow: var(--shadow-sm);
   }
   .tpl-carousel-nav:hover{ background: var(--surface-2); border-color: var(--text-faint); }
+  /* the real mounted template (RevampCanvas) scales itself to fit this box (same auto-fit the editor's own
+     canvas uses — see editor-canvas.js's fit()); the Gen-1 iframe fallback (templates with no real port)
+     has no such scaling, so the box stays scrollable for that case rather than cropping it. */
   .tpl-carousel-media{
-    position:relative; flex:1; min-width:0; height: min(50vh, 440px); background:#f2f0ea; border-radius:12px;
-    border:1px solid var(--border); overflow:hidden;
+    position:relative; flex:1; min-width:0; height: min(68vh, 600px); background:#f2f0ea; border-radius:12px;
+    border:1px solid var(--border); overflow-y:auto; overflow-x:hidden; display:flex;
   }
+  .tpl-carousel-canvas{ display:flex; flex:1; min-width:0; min-height:0; }
+  .tpl-carousel-canvas[hidden]{ display:none; }
   .tpl-carousel-placeholder{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center;
     padding:32px; font-size:13.5px; color: var(--text-faint);
@@ -1676,18 +1681,21 @@
             </button>
           </div>
 
-          <!-- One template previewed full-size at a time — the template's own real screenshot (imgFull),
-               not a live render of blank/unfilled content (that has no hero image, no real copy, nothing
-               to show yet), with prev/next cycling through templatesForCategory(). Replaces the old
-               card-grid + popup preview modal (see renderTemplateCarousel()/renderCarouselFrame()). -->
+          <!-- One template previewed full-size at a time — the REAL mounted template (RevampCanvas, same
+               engine custom_editor.html uses), not a static screenshot: its own real stock imagery shows
+               immediately because that's baked into the template's own files, and toggling a section below
+               hides/shows it in this exact canvas instantly, no reload. Templates with no real port fall
+               back to the generic Gen-1 iframe render. Prev/next cycles templatesForCategory(). Replaces
+               the old card-grid + popup preview modal (see renderTemplateCarousel()/renderCarouselFrame()). -->
           <div class="tpl-carousel" id="tpl-carousel" hidden>
             <div class="tpl-carousel-stage">
               <button class="tpl-carousel-nav" id="tpl-carousel-prev" type="button" aria-label="Previous template">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
               <div class="tpl-carousel-media">
-                <img id="tpl-carousel-img" alt="" style="width:100%;height:100%;object-fit:cover;object-position:top center;display:block;">
-                <div class="tpl-carousel-placeholder" id="tpl-carousel-placeholder" hidden>No preview image yet — open it to see the real sections.</div>
+                <div class="tpl-carousel-canvas" id="tpl-carousel-canvas"></div>
+                <iframe id="tpl-carousel-frame" title="Template preview" style="width:100%;height:100%;border:0;background:#fff;" hidden></iframe>
+                <div class="tpl-carousel-placeholder" id="tpl-carousel-placeholder" hidden>No preview available for this template yet.</div>
               </div>
               <button class="tpl-carousel-nav" id="tpl-carousel-next" type="button" aria-label="Next template">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
@@ -3230,14 +3238,24 @@
     });
   }
 
-  /* Inline template carousel — one real template previewed full-size at a time (same live-rendered iframe
-     the old Preview modal used), with prev/next cycling through templatesForCategory(). Replaces the old
-     card-grid-plus-popup-modal flow: browsing IS previewing now, there's nothing separate to "open". Each
-     step applies that template to S (silent — see applyTemplate's 3rd arg) so the iframe always shows the
-     real render; per-template section include/exclude choices are kept in tplCarouselSkip for the length of
-     this visit so flipping back to a template you already toggled doesn't lose your choices. */
+  /* Inline template carousel — one real template previewed full-size at a time, with prev/next cycling
+     through templatesForCategory(). Replaces the old card-grid-plus-popup-modal flow: browsing IS
+     previewing now, there's nothing separate to "open". Each step applies that template to S (silent — see
+     applyTemplate's 3rd arg) so "Use this template"/the footer's Continue both act on the right template+
+     skip set; per-template section include/exclude choices are kept in tplCarouselSkip for the length of
+     this visit so flipping back to a template you already toggled doesn't lose your choices.
+
+     The preview itself is the REAL template (RevampCanvas.mount — same engine custom_editor.html uses),
+     not a static screenshot or the generic Gen-1 placeholder render: a ported template's own stock imagery
+     is baked into its files and shows the instant it mounts, and toggling a section below shows/hides that
+     exact element in the already-mounted canvas (no remount, no reload) — see applyCarouselSkipToCanvas().
+     Templates with no real port (no .site — e.g. Awards/Leadgen's generic fallbacks) have no real markup to
+     mount, so they fall back to the same Gen-1 buildPreviewDoc() iframe render the old preview modal used,
+     which at least still reflects toggles live, just without real imagery it was never given to begin with. */
   var tplCarouselIdx = 0;
   var tplCarouselSkip = {};
+  var tplCarouselCanvas = { id: null, canvas: null, mounting: null };
+  var tplCarouselRequestSeq = 0;
   function renderTemplateCarousel(){
     var host = $('tpl-carousel');
     if (!host) return;
@@ -3252,12 +3270,40 @@
     renderCarouselFrame(list);
   }
 
+  /* mounts tpl.site once per template id and caches it — switching back to a template already visited in
+     this carousel session reuses the live canvas instead of re-fetching/re-mounting it */
+  function ensureCarouselCanvas(tpl){
+    var container = $('tpl-carousel-canvas');
+    if (!container) return Promise.reject(new Error('no carousel canvas container'));
+    if (tplCarouselCanvas.id === tpl.site && (tplCarouselCanvas.canvas || tplCarouselCanvas.mounting)) return tplCarouselCanvas.mounting;
+    tplCarouselCanvas.id = tpl.site;
+    tplCarouselCanvas.canvas = null;
+    container.innerHTML = '';
+    tplCarouselCanvas.mounting = RevampCanvas.mount(container, tpl.site, {}).then(function(canvas){
+      tplCarouselCanvas.canvas = canvas;
+      return canvas;
+    });
+    return tplCarouselCanvas.mounting;
+  }
+  /* the actual "instant toggle" — shows/hides that one section's real DOM node in the already-mounted
+     canvas directly, no remount. t.sections uses the same id vocabulary the real template's own
+     data-rv-section attributes do (confirmed by reorderableSectionsFor() using canvas.template.sections
+     ids the same way), so this is a direct 1:1 match, not a lookup through the generic LIBRARY shapes. */
+  function applyCarouselSkipToCanvas(canvas, t, skip){
+    if (!canvas) return;
+    t.sections.forEach(function(libId){
+      var el = canvas.doc.querySelector('[data-rv-section="' + libId + '"]');
+      if (el) el.style.display = skip[libId] ? 'none' : '';
+    });
+  }
+
   function renderCarouselFrame(list){
     var t = list[tplCarouselIdx];
     if (!t) return;
     var skip = tplCarouselSkip[t.id] || (S.template === t.id ? Object.assign({}, S.templateExcluded || {}) : {});
     tplCarouselSkip[t.id] = skip;
     var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
+    var requestId = ++tplCarouselRequestSeq;   // guards against a slow mount resolving after a later next/prev click
 
     $('tpl-carousel-count').textContent = (tplCarouselIdx + 1) + ' / ' + list.length;
     $('tpl-carousel-name').textContent = t.name;
@@ -3289,23 +3335,43 @@
     function applyPreview(){
       /* keeps S.template/S.templateExcluded in sync with whatever's currently shown (same additive/silent
          pattern used while browsing — see applyTemplate's 3rd arg) so "Use this template" and the footer's
-         own Continue button both act on the right template+skip set without a redundant confirm step. This
-         no longer drives the visual preview itself — see the real screenshot set below instead of a live,
-         still-empty render (a freshly-applied template has no real copy or hero image yet to show). */
+         own Continue button both act on the right template+skip set without a redundant confirm step. */
       applyTemplate(t.id, skip, true);
       S.templatePick = t.id;
       save();
+      if (t.site && tplCarouselCanvas.id === t.site && tplCarouselCanvas.canvas){
+        applyCarouselSkipToCanvas(tplCarouselCanvas.canvas, t, skip);
+      } else if (!t.site) {
+        var frame = $('tpl-carousel-frame');
+        if (frame) frame.srcdoc = buildPreviewDoc();
+      }
     }
 
-    var img = $('tpl-carousel-img'), placeholder = $('tpl-carousel-placeholder'), src = t.imgFull || t.img;
-    if (img){
-      img.style.display = src ? 'block' : 'none';
-      /* a missing/404'ing screenshot file falls back to the text placeholder instead of a broken-image
-         icon — same visible failure mode either way (no image), but one looks intentional */
-      img.onerror = function(){ img.style.display = 'none'; if (placeholder) placeholder.hidden = false; };
-      if (src) img.src = src;
+    var canvasHost = $('tpl-carousel-canvas'), frame = $('tpl-carousel-frame'), placeholder = $('tpl-carousel-placeholder');
+
+    if (t.site){
+      if (frame) frame.hidden = true;
+      if (placeholder) placeholder.hidden = true;
+      if (canvasHost) canvasHost.hidden = false;
+      ensureCarouselCanvas(t).then(function(canvas){
+        if (requestId !== tplCarouselRequestSeq) return;   // superseded by a later next/prev click
+        return fillGen2Canvas(canvas).then(function(){
+          if (requestId !== tplCarouselRequestSeq) return;
+          applyCarouselSkipToCanvas(canvas, t, skip);
+        });
+      }).catch(function(){
+        if (requestId !== tplCarouselRequestSeq) return;
+        if (canvasHost) canvasHost.hidden = true;
+        if (placeholder){ placeholder.hidden = false; placeholder.textContent = 'Could not load this template’s preview.'; }
+      });
+    } else {
+      if (canvasHost) canvasHost.hidden = true;
+      if (placeholder) placeholder.hidden = true;
+      if (frame){
+        frame.hidden = false;
+        frame.onload = function(){ paintPreviewPsdImages(frame); };
+      }
     }
-    if (placeholder) placeholder.hidden = !!src;
 
     renderToggles();
     applyPreview();
