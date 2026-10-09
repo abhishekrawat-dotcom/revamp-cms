@@ -115,15 +115,21 @@
      `draftId` field when fetched fresh from Firestore — recorded so a LATER fromCreate regeneration in this
      same browser can still tell "stale" apart from "already current" (see resolveKey()'s own B1 comment). */
   function applyHandoffDraft(draft, draftIdForThisDraft) {
-    /* create-event.html keys each draft's logo under its own per-session slot now (S.logoSessionId,
-       handed off as draft.event.logoKey) — NOT the single fixed 'create:logo' key this used to read
-       unconditionally, which was a real, confirmed bug: whichever event's logo was uploaded most
-       recently in this browser silently became every OTHER event's logo too, since every draft read and
-       wrote that exact same global slot regardless of which event it actually belonged to. The fallback
-       to the old fixed key only matters for a handoff written before this fix landed (there is no
-       migration for an in-flight draft mid-edit at deploy time) — every new draft from here on always
-       carries its own logoKey. */
-    return RevampStore.get((draft.event && draft.event.logoKey) || 'create:logo').then(function (logoRec) {
+    /* create-event.html keys each draft's logo under its own per-session slot (S.logoSessionId, handed off
+       as draft.event.logoKey) — deliberately NOT a fallback to the single fixed 'create:logo' key: that was
+       a real, confirmed bug (whichever event's logo was uploaded most recently in this browser silently
+       became every OTHER event's logo too, since every draft read and wrote that exact same global slot
+       regardless of which event it actually belonged to), and GET /api/draft's own handoff shape
+       (libraryToHandoffDraft() in functions/lib/api.js) never sets logoKey at all — a Generate-from-Brief
+       event's uploaded logo only ever lived in the creating browser's own IndexedDB, never persisted
+       server-side, so there is no real logo to recover on a stateless reopen (a different browser, or this
+       one after local state is gone) either way. Falling back to the shared key here would silently show
+       this browser's most recently cached OTHER event's logo instead — worse than no logo at all. Missing
+       logoKey now correctly means "nothing to show", not "guess" — note this must stay a no-op Promise
+       rather than RevampStore.get(undefined): IndexedDB's own get() throws synchronously on an invalid
+       key, which would reject this whole chain and fail the entire editor load over a missing logo. */
+    var logoKey = draft.event && draft.event.logoKey;
+    return (logoKey ? RevampStore.get(logoKey) : Promise.resolve(undefined)).then(function (logoRec) {
       var ctx = RevampFill.fromHandoff(draft, logoRec && logoRec.dataUrl);
       var report = RevampFill.apply(canvas, ctx);
       renderAiProvenanceBadges();
