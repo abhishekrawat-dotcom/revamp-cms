@@ -17,6 +17,18 @@
 
   var canvas = null, host = null, templateId = null, eventId = null, storeKey = null, sourceDraftId = null;
   var frame = null;
+  /* Bump this whenever a fix changes what "correctly filled" means for a generated template's local
+     snapshot (e.g. the templates/_shared/template-loader.js tagSection() fix: every data-rv-section attr
+     was silently never added for any library-section-based template, so RevampFill.apply() was a no-op on
+     every Generate-from-Brief event, EVER — including the very first fill, which still got saved as a
+     "successfully seeded" (real sourceDraftId recorded) local snapshot). resolveInitialContent()'s
+     authoritative-draftId check alone can't catch that case: the draftId genuinely matches, the snapshot
+     really was seeded from the real draft, the FILL that ran against it was just broken at the time. A
+     locally-cached snapshot only skips re-fetching the server's draft when its own recorded fillVersion
+     also matches this constant; anything older (or never set, i.e. every snapshot that predates this
+     version-stamp existing at all) is treated the same as "never successfully seeded", forcing one real
+     re-fetch-and-refill — same self-healing idea as the sourceDraftId check, one layer more precise. */
+  var FILL_LOGIC_VERSION = 2;
   var undoStack = [], undoPtr = -1, commitTimer = null;
   var selectedEl = null, activeSectionEl = null, editingEl = null;
   var selToolbar = null, secToolbar = null;
@@ -174,6 +186,12 @@
       // an existing snapshot as stale — a plain wizard open (fromCreate, no draftId ever) or a plain
       // reopen (not fromCreate) always finds exactly what was last saved here, same as before.
       var isStale = !!(saved && saved.snapshot && fromCreate && draftId && saved.sourceDraftId !== draftId);
+      // See FILL_LOGIC_VERSION's own comment: a snapshot seeded under an older fill-logic version can have
+      // the exactly-right sourceDraftId and still be wrong, because what ran against it to fill it was
+      // broken at the time. Gates every "trust this outright, no need to re-fetch" decision below for a
+      // gen-<id> template; the true last-resort fallbacks (server unreachable/empty) deliberately skip this
+      // gate further down — showing a possibly-stale local copy there is still better than nothing.
+      var isCurrentVersion = !/^gen-/.test(templateId || '') || (saved && saved.fillVersion === FILL_LOGIC_VERSION);
 
       function restoreLocal() {
         sourceDraftId = saved.sourceDraftId || null;
@@ -193,7 +211,7 @@
          content, never sourceDraftId itself (see persist()'s own comment), so an edited-but-still-current
          draft keeps matching and is never silently discarded. */
       if (fromCreate) {
-        if (saved && saved.snapshot && !isStale) { restoreLocal(); return; }
+        if (saved && saved.snapshot && !isStale && isCurrentVersion) { restoreLocal(); return; }
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
         if (saved && saved.snapshot) { restoreLocal(); return; }
@@ -207,7 +225,7 @@
 
       return fetchServerDraft().then(function (res) {
         var serverDraftId = res && res.draftId;
-        if (saved && saved.snapshot && serverDraftId && saved.sourceDraftId === serverDraftId) { restoreLocal(); return; }
+        if (saved && saved.snapshot && serverDraftId && saved.sourceDraftId === serverDraftId && isCurrentVersion) { restoreLocal(); return; }
         if (res && res.handoff && res.handoff.sections && res.handoff.sections.length) {
           return applyHandoffDraft(res.handoff, serverDraftId || null);
         }
@@ -345,16 +363,17 @@
   function seedSnapshot(draft) {
     var snap = canvas.snapshot();
     undoStack = [snap]; undoPtr = 0;
-    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId });
+    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
   }
 
   /* ---------- save / undo ---------- */
   function persist(snap) {
-    // sourceDraftId rides along on every later edit too, not just the first save — otherwise the very
-    // next commit() after seedSnapshot() would overwrite it with a record that has none, and a second
-    // Generate-from-Brief run later in the SAME browser would no longer be able to tell this apart from
-    // a never-regenerated draft (see resolveInitialContent()'s staleness check).
-    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId });
+    // sourceDraftId/fillVersion ride along on every later edit too, not just the first save — otherwise the
+    // very next commit() after seedSnapshot() would overwrite it with a record that has neither, and a
+    // second Generate-from-Brief run later in the SAME browser would no longer be able to tell this apart
+    // from a never-regenerated draft (see resolveInitialContent()'s staleness check), and a real manual
+    // edit made just after a correct seed would look exactly like an old, pre-fix snapshot again.
+    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
   }
 
   function commit() {
