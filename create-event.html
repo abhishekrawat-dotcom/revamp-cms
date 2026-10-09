@@ -1199,8 +1199,12 @@
   /* step 2 landing: AI / previous-edition as the two primary choices */
   .design-choice-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:0; }
   @media (max-width: 760px){ .design-choice-grid{ grid-template-columns: 1fr; } }
+  /* the three top-level "how to build it" choices, side by side — Generate-from-brief stays visually
+     primary (design-choice-card-featured), the other two are the same boxed treatment, just plain. */
+  .design-choice-top{ display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap:18px; margin-top:20px; }
+  @media (max-width: 900px){ .design-choice-top{ grid-template-columns: 1fr; } }
   .design-choice-card{
-    display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:26px;
+    position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:26px;
     background: var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow: var(--shadow-sm);
   }
   .design-choice-card .dc-ico{
@@ -1212,20 +1216,20 @@
   .design-choice-alt{ margin-top:18px; font-size:13px; color: var(--text-muted); }
   .design-choice-alt a{ color: var(--accent-strong); text-decoration:underline; }
 
-  /* the lead "Generate from a brief" card — visually distinct from the two secondary cards below it,
-     since this is now the primary path, not one of three equal options (see design-choice-divider) */
-  .design-choice-featured{ margin-top:20px; }
+  /* the lead "Generate from a brief" card — visually distinct from the two other top cards beside it,
+     since it's still the recommended path, not one of three identical options */
   .design-choice-card-featured{
-    position:relative; padding:32px; gap:12px;
+    padding:32px; gap:12px;
     background: linear-gradient(180deg, var(--accent-soft), var(--surface) 60%);
     border:1.5px solid var(--accent); border-radius:16px; box-shadow: var(--shadow-sm);
   }
   .design-choice-card-featured h3{ font-size:20px; }
-  .design-choice-card-featured p{ font-size:14.5px; max-width:62ch; }
+  .design-choice-card-featured p{ font-size:14.5px; }
   .dc-featured-tag{
     position:absolute; top:18px; right:18px; font-size:11px; font-weight:700; letter-spacing:.02em;
     text-transform:uppercase; padding:4px 10px; border-radius:100px; background: var(--accent); color:#fff;
   }
+  .dc-soon-tag{ background: var(--surface-3); color: var(--text-muted); }
   .dc-ico-lg{ width:48px; height:48px; border-radius:12px; }
   .design-choice-divider{
     display:flex; align-items:center; gap:14px; margin:26px 0 20px; font-size:12.5px; font-weight:700;
@@ -1234,14 +1238,27 @@
   .design-choice-divider::before, .design-choice-divider::after{ content:''; flex:1; height:1px; background: var(--border); }
   .design-choice-alt .sep{ margin:0 8px; }
 
-  /* the two demoted entry points (AI-redesign / previous-edition) now sit BELOW the template gallery —
-     visually smaller than the main two choices (gallery, brief card) above, since they're alternate ways
-     into the SAME "pick a template" path, not a third top-level option (see design-choice-grid). */
-  .design-choice-grid-secondary{ margin-top:22px; }
-  .design-choice-card-sm{ padding:18px; gap:7px; }
-  .design-choice-card-sm .dc-ico{ width:32px; height:32px; border-radius:8px; }
-  .design-choice-card-sm h3{ font-size:14.5px; }
-  .design-choice-card-sm p{ font-size:12.5px; }
+  /* one template previewed full-size at a time, prev/next cycling through templatesForCategory() —
+     replaces the old card-grid + popup preview modal (see renderTemplateCarousel() in the script). */
+  .tpl-carousel{ margin-top:18px; }
+  .tpl-carousel-stage{ display:flex; align-items:stretch; gap:10px; }
+  .tpl-carousel-nav{
+    flex:none; display:flex; align-items:center; justify-content:center; width:44px; border-radius:10px;
+    background: var(--surface); border:1px solid var(--border); color: var(--text); cursor:pointer;
+  }
+  .tpl-carousel-nav:hover{ background: var(--surface-2); border-color: var(--text-faint); }
+  .tpl-carousel-media{
+    flex:1; min-width:0; height: min(72vh, 620px); background:#f2f0ea; border-radius:12px;
+    border:1px solid var(--border); overflow:hidden;
+  }
+  .tpl-carousel-info{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:14px; }
+  .tpl-carousel-info-head{ flex:1; min-width:220px; }
+  .tpl-carousel-count{ font-size:12px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; color: var(--text-faint); }
+  .tpl-carousel-info-head h3{ margin:2px 0 2px; font-size:19px; }
+  .tpl-carousel-info-head p{ margin:0; }
+  /* reuses .tpl-preview-list/.tpl-preview-row from the (now superseded) preview-modal styles below —
+     same column-of-toggle-rows layout, just not inside a modal any more */
+  #tpl-carousel-sections.tpl-preview-list{ max-width:420px; }
 
   /* vibe-chip intake (step 2's "Let AI design it" card) — a single-select set of real design directions,
      giving Gemini clean structured signal instead of relying only on free text */
@@ -1607,7 +1624,7 @@
             <p class="desc">Start from a real template and fill it in yourself, or give Gemini an overview doc and a few reference links and let it write the content for you — benchmarked against your previous edition and competitor events.</p>
           </div>
 
-          <div class="design-choice-featured">
+          <div class="design-choice-top">
             <div class="design-choice-card design-choice-card-featured">
               <span class="dc-featured-tag">Recommended</span>
               <span class="dc-ico dc-ico-lg">
@@ -1616,6 +1633,23 @@
               <h3>Generate from a brief</h3>
               <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
               <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
+            </div>
+            <div class="design-choice-card">
+              <span class="dc-ico">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
+              </span>
+              <h3>Use a previous edition's layout</h3>
+              <p>Start from a prior event's design and sections instead of a blank template.</p>
+              <button class="btn btn-secondary" type="button" id="btn-clone-design">Choose a previous edition</button>
+            </div>
+            <div class="design-choice-card">
+              <span class="dc-featured-tag dc-soon-tag">Coming soon</span>
+              <span class="dc-ico">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
+              </span>
+              <h3>Bring your own design</h3>
+              <p>Import a Figma or Lovable design directly and edit it here.</p>
+              <button class="btn btn-ghost" type="button" id="link-convert-url-landing">Learn more</button>
             </div>
           </div>
 
@@ -1628,21 +1662,35 @@
               Convert Figma / Lovable Design
             </button>
           </div>
-          <div class="tpl-grid" id="tpl-gallery"></div>
-          <div class="callout plain">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
-            <span><strong>Not a one&#8209;way door</strong>You can switch templates later without losing your basic details. (<a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">Figma/Lovable import</a> isn’t built yet.)</span>
+
+          <!-- One template previewed full-size at a time (iframe, same real render as the live editor),
+               with prev/next cycling through templatesForCategory() — replaces the old card-grid + popup
+               preview modal (see renderTemplateCarousel()/renderCarouselFrame()). -->
+          <div class="tpl-carousel" id="tpl-carousel" hidden>
+            <div class="tpl-carousel-stage">
+              <button class="tpl-carousel-nav" id="tpl-carousel-prev" type="button" aria-label="Previous template">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <div class="tpl-carousel-media"><iframe id="tpl-carousel-frame" title="Template preview" style="width:100%;height:100%;border:0;background:#fff;"></iframe></div>
+              <button class="tpl-carousel-nav" id="tpl-carousel-next" type="button" aria-label="Next template">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </div>
+            <div class="tpl-carousel-info">
+              <div class="tpl-carousel-info-head">
+                <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
+                <h3 id="tpl-carousel-name"></h3>
+                <p class="hint" id="tpl-carousel-sub"></p>
+              </div>
+              <div class="tpl-preview-list" id="tpl-carousel-sections"></div>
+              <button class="btn btn-primary btn-lg" type="button" id="tpl-carousel-use">Use this template</button>
+            </div>
           </div>
 
-          <!-- Minor alternatives, not a third top-level choice — the template gallery above and the
-               "Generate from a brief" card are the two real choices on this screen; these just offer two
-               different ways to arrive at a template pick, so they're plain links, not competing boxes. -->
+          <!-- "Let AI design it" is a plain link, not a competing box: it's a redesign of whichever
+               template is already showing above, not an independent third way to start. -->
           <div class="design-choice-alt">
             <a href="#" id="btn-ai-design">Let AI design it</a>
-            <span class="sep">&middot;</span>
-            <a href="#" id="btn-clone-design">Use a previous edition's layout</a>
-            <span class="sep">&middot;</span>
-            <a href="#" id="link-convert-url-landing">Bring your own design (Figma/Lovable) — coming soon</a>
           </div>
         </div>
       </div>
@@ -3005,7 +3053,7 @@
     $('basics-form').hidden  = S.step1Phase !== 'details';
 
     if (S.step1Phase === 'method'){
-      renderStep2();   /* populates #tpl-gallery; also syncs S.templatePick from S.template if needed */
+      renderStep2();   /* populates the template carousel; also syncs S.templatePick from S.template if needed */
       return;
     }
     if (S.step1Phase !== 'details') return;   /* category phase: nothing else to wire */
@@ -3162,33 +3210,42 @@
     });
   }
 
-  /* Preview modal — a plain checklist of this template's real sections, each with an on/off switch.
-     All switches default on. Anything switched off here is never cloned into the microsite.
-     Where the template defines sectionNames, the row uses that template's own on-site heading
-     instead of the generic library name. */
-  /* Live preview (steps 1/2 global panel, and this modal) — real content via buildEditorPayload(), not a
-     static mock. Toggling a section here writes straight to S.templateExcluded via applyTemplate(), so the
-     exclusion survives regardless of which confirm path the user takes afterward (previously: choices made
-     here were silently discarded unless the user specifically clicked this modal's own "Use this template"
-     button — reaching step 3 via the plain gallery "Continue" footer reset S.templateExcluded to {}). */
-  function openTemplatePreview(tplId){
-    var t = null;
-    TEMPLATES.forEach(function(x){ if (x.id === tplId) t = x; });
+  /* Inline template carousel — one real template previewed full-size at a time (same live-rendered iframe
+     the old Preview modal used), with prev/next cycling through templatesForCategory(). Replaces the old
+     card-grid-plus-popup-modal flow: browsing IS previewing now, there's nothing separate to "open". Each
+     step applies that template to S (silent — see applyTemplate's 3rd arg) so the iframe always shows the
+     real render; per-template section include/exclude choices are kept in tplCarouselSkip for the length of
+     this visit so flipping back to a template you already toggled doesn't lose your choices. */
+  var tplCarouselIdx = 0;
+  var tplCarouselSkip = {};
+  function renderTemplateCarousel(){
+    var host = $('tpl-carousel');
+    if (!host) return;
+    var list = templatesForCategory();
+    if (!list.length){ host.hidden = true; return; }
+    host.hidden = false;
+    tplCarouselSkip = {};
+    var startId = S.templatePick || S.template || list[0].id;
+    var startIdx = -1;
+    list.forEach(function(t, i){ if (t.id === startId) startIdx = i; });
+    tplCarouselIdx = startIdx >= 0 ? startIdx : 0;
+    renderCarouselFrame(list);
+  }
+
+  function renderCarouselFrame(list){
+    var t = list[tplCarouselIdx];
     if (!t) return;
+    var skip = tplCarouselSkip[t.id] || (S.template === t.id ? Object.assign({}, S.templateExcluded || {}) : {});
+    tplCarouselSkip[t.id] = skip;
     var toggleIds = t.sections.filter(function(id){ var l = libBy(id); return l && l.shape !== 'auto'; });
-    var priorTemplate = S.template, priorExcluded = Object.assign({}, S.templateExcluded || {}), priorSections = JSON.parse(JSON.stringify(S.sections));
-    var skip = (S.template === tplId) ? Object.assign({}, S.templateExcluded || {}) : {};
 
-    function applyPreviewState(){
-      applyTemplate(tplId, skip);
-      var f = document.getElementById('tpl-preview-frame');
-      if (!f) return;
-      f.onload = function(){ paintPreviewPsdImages(f); };
-      f.srcdoc = buildPreviewDoc();
-    }
+    $('tpl-carousel-count').textContent = (tplCarouselIdx + 1) + ' / ' + list.length;
+    $('tpl-carousel-name').textContent = t.name;
+    $('tpl-carousel-sub').textContent = t.sub || '';
 
-    function previewListHtml(){
-      return toggleIds.map(function(id){
+    function renderToggles(){
+      var listHost = $('tpl-carousel-sections');
+      listHost.innerHTML = toggleIds.map(function(id){
         var l = libBy(id);
         var label = (t.sectionNames && t.sectionNames[id]) || l.name;
         var on = !skip[id];
@@ -3199,48 +3256,34 @@
           '</button>' +
         '</div>';
       }).join('');
-    }
-
-    function previewBody(){
-      return '<div class="tpl-preview-grid">' +
-        '<div class="tpl-preview-media"><iframe id="tpl-preview-frame" title="' + esc(t.name) + ' live preview" style="width:100%;height:100%;min-height:360px;border:0;border-radius:8px;background:#fff;"></iframe></div>' +
-        '<div class="tpl-preview-side">' +
-          '<p class="hint" style="margin:0 0 2px">' + esc(t.sub) + '</p>' +
-          '<div class="tpl-preview-list" id="tpl-preview-list">' + previewListHtml() + '</div>' +
-        '</div>' +
-      '</div>';
-    }
-
-    function wireToggles(){
-      var list = document.getElementById('tpl-preview-list');
-      if (!list) return;
-      list.querySelectorAll('[data-pv-toggle]').forEach(function(b){
+      listHost.querySelectorAll('[data-pv-toggle]').forEach(function(b){
         b.addEventListener('click', function(){
           var id = b.getAttribute('data-pv-toggle');
           skip[id] = !skip[id];
-          applyPreviewState();
-          list.innerHTML = previewListHtml();
-          wireToggles();
+          applyPreview();
+          renderToggles();
         });
       });
     }
 
-    openModal({
-      title: t.name,
-      sub: t.tag,
-      wide: true,
-      body: previewBody(),
-      confirm: 'Use this template',
-      cancelLabel: 'Cancel',
-      onConfirm: function(){ setTimeout(function(){ selectTemplate(tplId, skip); advanceToDetails('template'); }, 0); },
-      onCancel: function(){
-        S.template = priorTemplate; S.templateExcluded = priorExcluded; S.sections = priorSections;
-        save();
-        var host = $('step1-build-host'); if (host) renderBuildWorkspace(host);
-      }
-    });
-    wireToggles();
-    applyPreviewState();
+    function applyPreview(){
+      applyTemplate(t.id, skip, true);
+      S.templatePick = t.id;
+      save();
+      var f = $('tpl-carousel-frame');
+      if (!f) return;
+      f.onload = function(){ paintPreviewPsdImages(f); };
+      f.srcdoc = buildPreviewDoc();
+    }
+
+    renderToggles();
+    applyPreview();
+
+    var useBtn = $('tpl-carousel-use');
+    if (useBtn) useBtn.onclick = function(){ selectTemplate(t.id, skip); advanceToDetails('template'); };
+    var prevBtn = $('tpl-carousel-prev'), nextBtn = $('tpl-carousel-next');
+    if (prevBtn) prevBtn.onclick = function(){ tplCarouselIdx = (tplCarouselIdx - 1 + list.length) % list.length; renderCarouselFrame(list); };
+    if (nextBtn) nextBtn.onclick = function(){ tplCarouselIdx = (tplCarouselIdx + 1) % list.length; renderCarouselFrame(list); };
   }
 
   /* ---------- let AI design it: Gemini, proxied through tools/serve.js (POST /api/suggest-design) ----------
@@ -3873,35 +3916,8 @@
        It's called both on entry into step 1's 'method' phase (initStep1()) and reactively from inside the
        gallery itself (picking a template re-renders the grid's selection highlight) — if this reset the
        view every time, picking a template would instantly hide the AI-review/brief-progress overlays. */
-    var gallery = $('tpl-gallery');
     if (S.templatePick == null && S.path === 'A' && S.template) S.templatePick = S.template;
-    gallery.innerHTML = templatesForCategory().map(function(t){
-      var on = S.templatePick === t.id;
-      return '<div class="tpl-card tpl-card-min" data-selected="' + on + '" data-pick="' + t.id + '">' +
-        '<span class="tpl-thumb-mini">' +
-          (t.img ? '<img src="' + esc(t.img) + '" alt="' + esc(t.name) + ' preview">' : '') +
-          '<span class="tpl-type-chip">' + esc(t.tag) + '</span>' +
-        '</span>' +
-        '<span class="tpl-card-min-body">' +
-          '<span class="tpl-card-min-name">' + esc(t.name) + '</span>' +
-          '<span class="tpl-actions">' +
-            '<button class="btn btn-primary" type="button" data-preview="' + t.id + '">Preview</button>' +
-          '</span>' +
-        '</span>' +
-      '</div>';
-    }).join('');
-
-    gallery.querySelectorAll('[data-pick]').forEach(function(card){
-      card.addEventListener('click', function(){
-        S.templatePick = card.getAttribute('data-pick');
-        renderStep2();
-        renderFoot();
-        save();
-      });
-    });
-    gallery.querySelectorAll('[data-preview]').forEach(function(b){
-      b.addEventListener('click', function(e){ e.stopPropagation(); openTemplatePreview(b.getAttribute('data-preview')); });
-    });
+    renderTemplateCarousel();
 
     // Opens the standalone Figma converter. Wizard state is saved first so it
     // restores from localStorage when the user comes back.
@@ -4041,7 +4057,7 @@
     });
   }
 
-  function applyTemplate(tplId, skip){
+  function applyTemplate(tplId, skip, silent){
     var tpl = null;
     TEMPLATES.forEach(function(t){ if (t.id === tplId) tpl = t; });
     if (!tpl) return;
@@ -4075,7 +4091,7 @@
     save();
     var host = $('step1-build-host');
     if (host) renderBuildWorkspace(host);
-    toast(tpl.name + ' applied — ' + S.sections.filter(function(s){ return s.include && s.shape !== 'auto'; }).length + ' section' + (S.sections.length === 1 ? '' : 's') + ' shown');
+    if (!silent) toast(tpl.name + ' applied — ' + S.sections.filter(function(s){ return s.include && s.shape !== 'auto'; }).length + ' section' + (S.sections.length === 1 ? '' : 's') + ' shown');
   }
 
   /* =========================================================
