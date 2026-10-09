@@ -1267,6 +1267,15 @@
   .design-choice-divider::before, .design-choice-divider::after{ content:''; flex:1; height:1px; background: var(--border); }
   .design-choice-alt .sep{ margin:0 8px; }
 
+  /* the two demoted entry points (AI-redesign / previous-edition) now sit BELOW the template gallery —
+     visually smaller than the main two choices (gallery, brief card) above, since they're alternate ways
+     into the SAME "pick a template" path, not a third top-level option (see design-choice-grid). */
+  .design-choice-grid-secondary{ margin-top:22px; }
+  .design-choice-card-sm{ padding:18px; gap:7px; }
+  .design-choice-card-sm .dc-ico{ width:32px; height:32px; border-radius:8px; }
+  .design-choice-card-sm h3{ font-size:14.5px; }
+  .design-choice-card-sm p{ font-size:12.5px; }
+
   /* vibe-chip intake (step 2's "Let AI design it" card) — a single-select set of real design directions,
      giving Gemini clean structured signal instead of relying only on free text */
   .vibe-chips{ display:flex; flex-wrap:wrap; gap:7px; }
@@ -1606,7 +1615,7 @@
       <!-- ===== PHASE 1 : pick the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
-          <span class="eyebrow">Step 1 of 3 &middot; Event details</span>
+          <span class="eyebrow">Step 1 of 2 &middot; Event details</span>
           <h1>What type of microsite are you creating?</h1>
           <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
         </div>
@@ -1619,7 +1628,87 @@
         </div>
       </div>
 
-      <!-- ===== PHASE 2 : the basic details form ===== -->
+      <!-- ===== PHASE 2 : how to build it — template gallery + generate-from-brief, together =====
+           Was step-2's own separate screen; moved here (same element ids, so renderStep2()/showStep2View()/
+           openTemplatePreview()/requestAiDesign()/openGenerateFromBriefModal() need no internal rewiring)
+           so the method choice happens before, not after, the basics form — see setStep1Phase(). -->
+      <div class="phase" id="step1-method" hidden>
+        <div id="step2-landing">
+          <div class="step-head">
+            <span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span>
+            <h1>Pick a template, or generate your site from a brief</h1>
+            <p class="desc">Start from a real template and fill it in yourself, or give Gemini an overview doc and a few reference links and let it write the content for you — benchmarked against your previous edition and competitor events.</p>
+          </div>
+
+          <div class="design-choice-featured">
+            <div class="design-choice-card design-choice-card-featured">
+              <span class="dc-featured-tag">Recommended</span>
+              <span class="dc-ico dc-ico-lg">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+              </span>
+              <h3>Generate from a brief</h3>
+              <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
+              <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
+            </div>
+          </div>
+
+          <div class="design-choice-divider"><span>Or start from a template</span></div>
+
+          <div class="step-head-row" style="margin-bottom:0;">
+            <div class="step-head-text"><h2 style="margin:0;font-size:17px;">Pick a template to start from</h2></div>
+            <button class="btn btn-ai" id="btn-convert-design" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+              Convert Figma / Lovable Design
+            </button>
+          </div>
+          <div class="tpl-grid" id="tpl-gallery"></div>
+          <div class="callout plain">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
+            <span><strong>Not a one&#8209;way door</strong>You can switch templates later without losing your basic details. (<a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">Figma/Lovable import</a> isn’t built yet.)</span>
+          </div>
+
+          <div class="design-choice-grid design-choice-grid-secondary">
+            <div class="design-choice-card design-choice-card-sm">
+              <span class="dc-ico">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+              </span>
+              <h3>Or let AI design it</h3>
+              <p>Gemini picks the best-fit template above and proposes a look for it — colours, fonts, a few content tweaks. You still fill in each section's content yourself afterward.</p>
+              <div class="field" style="margin:4px 0 2px;">
+                <span class="flabel" style="font-size:12px;font-weight:700;color:var(--muted);">Vibe <span style="font-weight:400;">(optional)</span></span>
+                <div class="vibe-chips" id="vibe-chips" role="group" aria-label="Preferred design vibe"></div>
+              </div>
+              <div class="field" style="margin:10px 0 12px;">
+                <label for="e-theme-pref" style="font-size:12px;font-weight:700;color:var(--muted);">Anything else? <span style="font-weight:400;">(optional)</span></label>
+                <input class="inp" id="e-theme-pref" type="text" maxlength="200" placeholder="e.g. deep navy and gold, our brand colour is #1F4FD8">
+              </div>
+              <button class="btn btn-secondary btn-sm" type="button" id="btn-ai-design">Design with AI</button>
+            </div>
+            <div class="design-choice-card design-choice-card-sm">
+              <span class="dc-ico">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
+              </span>
+              <h3>Or use a previous edition's layout</h3>
+              <p>Reuse the design from an event you've already built with this wizard. You still fill in each section's content yourself afterward.</p>
+              <button class="btn btn-secondary btn-sm" type="button" id="btn-clone-design">Browse previous editions</button>
+            </div>
+          </div>
+
+          <div class="design-choice-alt">
+            <a href="#" id="link-convert-url-landing">Bring your own design (Figma/Lovable) — coming soon</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== AI result (loading/review) and Generate-from-brief progress — NOT nested inside
+           #step1-method: "Let AI design it" is only ever triggered from there, but the brief progress
+           checklist is triggered from the DETAILS phase's own footer (S.creationMethod === 'brief'), after
+           #step1-method itself is already hidden. Both live here, as direct step-1 overlay children, so
+           neither depends on which of the three phase divs happens to be visible. ===== -->
+      <div id="step2-ai" hidden></div>
+      <div id="step2-brief" hidden></div>
+
+      <!-- ===== PHASE 3 : the basic details form ===== -->
       <div class="phase" id="basics-form" hidden>
 
         <div class="b-head">
@@ -1681,109 +1770,51 @@
             <div class="frow" id="cat-panel-body"></div>
           </div>
 
+          <!-- shown for S.creationMethod === 'template' — the method choice already happened (see the
+               'method' phase above), so there's no longer a reason for this to be collapsed/optional. -->
           <div class="grp" id="content-grp">
-            <button type="button" class="grp-h grp-h-toggle" id="content-grp-toggle" aria-expanded="false" aria-controls="step1-build-host">
-              <h4>Page content</h4><span class="ln"></span>
-              <span class="grp-tag">Optional</span>
-              <svg class="grp-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <p class="hint" style="margin:6px 0 14px;">Only needed if you won’t be using “Generate from a brief” on the next step — that path writes all of this for you from your overview doc.</p>
-            <div id="step1-build-host" hidden></div>
+            <div class="grp-h"><h4>Page content</h4><span class="ln"></span></div>
+            <div id="step1-build-host"></div>
+          </div>
+
+          <!-- shown for S.creationMethod === 'brief' — the same fields openGenerateFromBriefModal() used to
+               collect in a popup, inline here instead (same element ids, so startGenerateFromBrief() —
+               which reads them by getElementById — needs no changes at all). -->
+          <div class="grp" id="brief-grp" hidden>
+            <div class="grp-h"><h4>Tell Gemini about the event</h4><span class="ln"></span><span class="grp-tag">Optional, but the more you give it the better</span></div>
+            <p class="hint" style="margin:6px 0 14px;">Gemini designs the section structure itself, writes the content, and benchmarks it against competitor material (used for structure and ideas only, never copied).</p>
+            <div class="field"><label class="flabel" for="gb-brief-text">Describe the event</label>
+              <textarea class="inp" id="gb-brief-text" rows="4" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
+            </div>
+            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-doc">Overview document (PDF)</label>
+              <input class="inp" id="gb-doc" type="file" accept="application/pdf">
+            </div>
+            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>
+              <input class="inp" id="gb-current" type="url" placeholder="https://…">
+            </div>
+            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-previous">Previous edition URL</label>
+              <input class="inp" id="gb-previous" type="url" placeholder="https://…">
+            </div>
+            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-comp1">Competitor event URL</label>
+              <input class="inp" id="gb-comp1" type="url" placeholder="https://…">
+            </div>
+            <div class="field" style="margin-top:8px;">
+              <input class="inp" id="gb-comp2" type="url" placeholder="https://… (a second competitor, optional)">
+            </div>
+            <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--text-muted);">
+              <input type="checkbox" id="gb-future" style="margin-top:2px;">
+              <span>This edition hasn’t happened yet — project the theme forward instead of assuming this year’s date/venue</span>
+            </label>
           </div>
 
         </div>
       </div>
     </section>
 
-    <!-- ---------- STEP 2 : CHOOSE TEMPLATE ---------- -->
-    <section class="step-wrap wide" id="step-2" hidden>
-
-      <!-- ===== LANDING: Generate from a brief leads; manual paths are the fallback ===== -->
-      <div id="step2-landing">
-        <div class="step-head">
-          <span class="eyebrow">Step 2 of 3 &middot; Choose template</span>
-          <h1>Generate your site from a brief</h1>
-          <p class="desc">Upload an overview doc and a few reference links — Gemini designs the look and writes the content, benchmarked against your previous edition and competitor events. This is the fastest way to a usable draft.</p>
-        </div>
-
-        <div class="design-choice-featured">
-          <div class="design-choice-card design-choice-card-featured">
-            <span class="dc-featured-tag">Recommended</span>
-            <span class="dc-ico dc-ico-lg">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-            </span>
-            <h3>Generate from a brief</h3>
-            <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
-            <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
-          </div>
-        </div>
-
-        <div class="design-choice-divider"><span>Or build it yourself</span></div>
-
-        <div class="design-choice-grid">
-          <div class="design-choice-card">
-            <span class="dc-ico">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-            </span>
-            <h3>Let AI design it</h3>
-            <p>Gemini reviews what you’ve written and recommends the best-fit template, with a few content polish suggestions you can accept or skip. You still fill in each section’s content yourself afterward.</p>
-            <div class="field" style="margin:4px 0 2px;">
-              <span class="flabel" style="font-size:12px;font-weight:700;color:var(--muted);">Vibe <span style="font-weight:400;">(optional)</span></span>
-              <div class="vibe-chips" id="vibe-chips" role="group" aria-label="Preferred design vibe"></div>
-            </div>
-            <div class="field" style="margin:10px 0 12px;">
-              <label for="e-theme-pref" style="font-size:12px;font-weight:700;color:var(--muted);">Anything else? <span style="font-weight:400;">(optional)</span></label>
-              <input class="inp" id="e-theme-pref" type="text" maxlength="200" placeholder="e.g. deep navy and gold, our brand colour is #1F4FD8">
-              <p class="hint" style="margin-top:4px;">Leave both blank and we’ll still give the site its own distinct look — never just the template’s default colours.</p>
-            </div>
-            <button class="btn btn-secondary" type="button" id="btn-ai-design">Design with AI</button>
-          </div>
-          <div class="design-choice-card">
-            <span class="dc-ico">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M9 15v2a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-2"/></svg>
-            </span>
-            <h3>Use a previous edition’s layout</h3>
-            <p>Reuse the design from an event you’ve already built with this wizard. You still fill in each section’s content yourself afterward.</p>
-            <button class="btn btn-secondary" type="button" id="btn-clone-design">Browse previous editions</button>
-          </div>
-        </div>
-
-        <div class="design-choice-alt">
-          <a href="#" id="link-manual-gallery">Pick a template manually and fill in each section yourself</a>
-          <span class="sep">&middot;</span>
-          <a href="#" id="link-convert-url-landing">Bring your own design (Figma/Lovable) — coming soon</a>
-        </div>
-      </div>
-
-      <!-- ===== AI result: loading / review ===== -->
-      <div id="step2-ai" hidden></div>
-
-      <!-- ===== Generate from brief: progress checklist ===== -->
-      <div id="step2-brief" hidden></div>
-
-      <!-- ===== MANUAL: the original template gallery, unchanged, reachable but no longer the default view ===== -->
-      <div id="step2-manual" hidden>
-        <div class="step-head step-head-row">
-          <div class="step-head-text">
-            <span class="eyebrow">Step 2 of 3 &middot; Choose template</span>
-            <h1>Pick a template to start from</h1>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-ai" id="btn-convert-design" type="button">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-              Convert Figma / Lovable Design
-            </button>
-          </div>
-        </div>
-
-        <div class="tpl-grid" id="tpl-gallery"></div>
-
-        <div class="callout plain">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
-          <span><strong>Not a one&#8209;way door</strong>You can switch templates later without losing your basic details. (<a href="#" id="link-convert-url" style="color:inherit;text-decoration:underline;">Figma/Lovable import</a> isn’t built yet.)</span>
-        </div>
-      </div>
-    </section>
+    <!-- ---------- STEP 2 shell : now empty — its content moved into step-1's "method" phase (see above).
+         Left in place rather than deleted: goStep()'s existing `if (el)` null-guards tolerate it either way,
+         and keeping the DOM id stable is lower-risk than renumbering every #step-N below it. ---------- -->
+    <section class="step-wrap wide" id="step-2" hidden></section>
 
     <!-- ---------- STEP 3 : BUILD CONTENT ---------- -->
     <section class="step-wrap wide" id="step-3" hidden></section>
@@ -2231,10 +2262,13 @@
   /* =========================================================
      STATE
   ========================================================= */
-  /* 3 rail dots over 4 internal S.step values (1-4) — step 3 (path B's detect/review) renders under the
-     "Choose template" dot; see railPos()/goStep(). */
-  var STEPS = ['Event details','Choose template','Assemble'];
-  function railPos(step){ return step === 3 ? 2 : (step >= 4 ? 3 : step); }
+  /* 2 rail dots over 4 internal S.step values (1-4) — step 1's own three phases (category/method/details,
+     see setStep1Phase()) all render under dot 1; step 3 (the legacy path-B detect/review flow, no longer
+     reachable from a fresh session — see onBack()'s own comment) also collapses onto dot 1, same as it
+     always rendered under "Choose template" before that step existed as its own screen. Only step 4 (the
+     hand-off/assemble screen) gets its own dot. */
+  var STEPS = ['Event details','Assemble'];
+  function railPos(step){ return step >= 4 ? 2 : 1; }
   var STORE_KEY = 'revamp.createEvent.draft.v1';
   /* The hero banner image (PSD composite, or a plain uploaded banner) is kept in IndexedDB, not in the
      localStorage draft, for the same reason as the logo below: a big image can be several MB, and the
@@ -2324,7 +2358,11 @@
 
       payment: 'Paid', slug: '', slugTouched: false, logo: false, logoName: ''
     },
-    catPicked: false,           // step 1 phase: false = category picker, true = the form
+    step1Phase: 'category',     // category | method | details — see setStep1Phase()
+    creationMethod: null,       // null | 'template' | 'brief' — which card was picked in the 'method' phase;
+                                 // drives the trimmed-vs-full details form. Deliberately separate from `path`
+                                 // ('A'/'B', below) so it never collides with the legacy, now-dead-for-new-
+                                 // sessions step-3 detect/review semantics.
     path: null,                 // 'A' | 'B'
     template: null,             // template id
     templatePick: null,         // card highlighted in the gallery, chosen but not yet confirmed
@@ -2415,6 +2453,17 @@
       var defBasics = S.basics;                       // pristine defaults
       Object.keys(d).forEach(function(k){ S[k] = d[k]; });
 
+      /* A draft saved before step1Phase/creationMethod existed only has the old boolean catPicked.
+         pickCategory() always auto-selected a (real-ported) default template the moment catPicked became
+         true, so a draft with catPicked:true already has a real S.template to resume into — map it
+         straight to the details phase, template method, same as a brand-new 'template' choice would land.
+         catPicked:false (still on the category picker) maps to the category phase, same as a fresh draft. */
+      if (d.step1Phase === undefined && d.catPicked !== undefined){
+        S.step1Phase = d.catPicked ? 'details' : 'category';
+        S.creationMethod = d.catPicked ? 'template' : null;
+      }
+      delete S.catPicked;
+
       /* A draft saved before the flexible-date fields existed is missing keys
          the new step 1 relies on. Backfill from defaults, then migrate. */
       var merged = {};
@@ -2456,8 +2505,8 @@
   /* =========================================================
      PROGRESS RAIL
   ========================================================= */
-  /* the real S.step a rail dot jumps to — dot 3 ("Assemble") always means S.step 4 */
-  var RAIL_TARGET = [1, 2, 4];
+  /* the real S.step a rail dot jumps to — dot 2 ("Assemble") always means S.step 4 */
+  var RAIL_TARGET = [1, 4];
   function renderRail(){
     var rail = $('rail');
     var html = '';
@@ -2505,11 +2554,36 @@
     if (n === 4) renderStep4();
     /* step 1 only gets the preview once a category is picked (pickCategory()/btn-change-cat toggle it from
        there) — the category picker itself is a full-width page with nothing yet to preview */
-    setPreviewVisible((n === 1 && S.catPicked) || n === 2);
+    setPreviewVisible((n === 1 && S.step1Phase !== 'category') || n === 2);
     renderRail();
     renderFoot();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     save();
+  }
+
+  /* ---------- step 1's own internal phases: category -> method -> details ----------
+     The one place a step-1 phase transition goes through, mirroring goStep()'s own shape (re-render,
+     preview visibility, rail, footer, save, scroll) but WITHOUT touching S.step itself — these are all
+     still "step 1" to the rail/resume logic (see STEPS/RAIL_TARGET/railPos and restore()'s migration
+     branch). The category phase gets no live preview (nothing chosen yet to show); method and details
+     both do. */
+  function setStep1Phase(phase){
+    S.step1Phase = phase;
+    renderStep1Content();
+    setPreviewVisible(phase !== 'category');
+    renderRail();
+    renderFoot();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    save();
+  }
+
+  /* Replaces every old goStep(4)-on-confirm (confirmUseTemplate/openTemplatePreview/confirmCloneDesign —
+     all three "I've picked a template" confirm paths) now that picking a template leads to the details
+     phase, not straight to the hand-off screen. S.template/S.sections are already set by selectTemplate()
+     before this runs (every caller does that first); this only moves the phase + records which method won. */
+  function advanceToDetails(method){
+    S.creationMethod = method;
+    setStep1Phase('details');
   }
 
   /* =========================================================
@@ -2524,20 +2598,28 @@
     next.disabled = false;
 
     if (S.step === 1){
-      if (!S.catPicked){
+      /* step 1's own three internal phases (category -> method -> details) — see setStep1Phase(). Back is
+         only hidden on 'category' (nothing before it); 'method'/'details' both go back one phase, not out
+         of step 1 entirely (see onBack()'s own S.step===1 branch). */
+      if (S.step1Phase === 'category'){
+        back.hidden = true;
         next.hidden = true;
-        note.textContent = 'Choose a microsite type to open the event details form.';
-      } else {
-        var issue = basicsIssue(S.basics);
+        note.textContent = 'Choose a microsite type to continue.';
+      }
+      else if (S.step1Phase === 'method'){
+        back.hidden = false;
+        next.disabled = !S.templatePick;
+        next.innerHTML = 'Continue with a template ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+        if (!S.templatePick) note.textContent = 'Pick a template to continue — you can change it later. Or use one of the options above.';
+      }
+      else if (S.step1Phase === 'details'){
+        back.hidden = false;
+        var briefMethod = S.creationMethod === 'brief';
+        var issue = briefMethod ? briefBasicsIssue(S.basics) : basicsIssue(S.basics);
         next.disabled = !!issue;
-        next.innerHTML = 'Continue ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+        next.innerHTML = (briefMethod ? 'Generate my site ' : 'Continue ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
         note.textContent = issue;
       }
-    }
-    else if (S.step === 2){
-      next.disabled = !(S.path === 'B' || S.templatePick);
-      next.innerHTML = (S.path === 'B' ? 'Continue with my design ' : 'Continue with a template ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
-      if (!S.path && !S.templatePick) note.textContent = 'Pick a template to continue — you can change it later.';
     }
     else if (S.step === 3){
       if (S.path === 'A' && !S.template){
@@ -2696,6 +2778,21 @@
     return '';
   }
 
+  /* The brief ('S.creationMethod === "brief"') details phase is deliberately trimmed to exactly what the
+     user asked for — name/URL/date/venue — so it skips basicsIssue()'s logo/client/nomination checks
+     entirely (those fields aren't even shown in that phase, see initStep1()'s brief-mode branch). */
+  function briefBasicsIssue(b){
+    if (!b.name.trim())    return 'Event name is needed to continue.';
+    if (!b.slug.trim())    return 'A URL slug is needed to continue.';
+    if (!slugFree(b.slug)) return 'That slug is taken — pick another to continue.';
+    if (!dateComplete(b)){
+      if (b.dateMode === 'month')   return 'Pick the month, or switch the date to “To be announced”.';
+      if (b.dateMode === 'quarter') return 'Pick the quarter and year, or switch the date to “To be announced”.';
+      return 'A start and end date are needed — or switch the date to “To be announced”.';
+    }
+    return '';
+  }
+
   /* ---------- small segmented control (value/label pairs) ---------- */
   /* Fill a <select>. Accepts plain strings or {v,t} pairs. */
   function selectFrom(el, opts, current, onPick){
@@ -2712,13 +2809,16 @@
   function applySmartDefaults(){
     var b = S.basics, C = CATS[b.category];
 
-    $('client-wrap').hidden   = !C.client;
+    var briefMode = S.creationMethod === 'brief';
+    $('client-wrap').hidden   = !C.client || briefMode;
     $('client-requirement').className = C.client === 'required' ? 'pill-req' : 'pill-opt';
     $('client-requirement').textContent = C.client === 'required' ? '*' : 'Optional';
-    /* The first row contains identity and logo only. */
-    $('name-cell').className     = 'field ' + (C.client ? 'c3' : 'c4');
+    $('logo-cell').hidden = briefMode;
+    /* The first row contains identity and logo only. Brief mode drops client (above) and logo (below) —
+       only name+slug remain, so they split the row evenly instead of the usual 3-or-4-way share. */
+    $('name-cell').className     = 'field ' + (briefMode ? 'c6' : (C.client ? 'c3' : 'c4'));
     $('client-wrap').className   = 'field c3';
-    $('slug-cell').className     = 'field ' + (C.client ? 'c3' : 'c4');
+    $('slug-cell').className     = 'field ' + (briefMode ? 'c6' : (C.client ? 'c3' : 'c4'));
     $('logo-cell').className     = 'field ' + (C.client ? 'c3' : 'c4') + ' logo-field';
 
     $('cat-bar-ico').innerHTML     = svg(CAT_ICON[b.category], 19);
@@ -2731,9 +2831,14 @@
   /* ---------- schedule block: reshapes per date mode ---------- */
   function renderSchedule(){
     var b = S.basics, C = CATS[b.category], host = $('sched-body'), h = '';
+    var briefMode = S.creationMethod === 'brief';   // trimmed form: no payment field at all (see Payment/Entry-fee below)
     /* two-field date modes (exact, quarter) leave less room for venue than the one-field modes */
     var twoUp = (b.dateMode === 'exact' || b.dateMode === 'quarter');
-    var venueSpan = C.venue ? (twoUp ? 'c4' : 'c5') : (twoUp ? 'c6' : 'c7');
+    /* brief mode drops the payment field entirely — venue takes the combined span the two would otherwise
+       split between them (same numbers the no-venue branch already uses for payment alone, just reused
+       here: venue+payment's spans always sum to c6/c7, so giving venue that same total is exactly "venue
+       now occupies the row alone"), not just whatever venue's own narrower span was when payment sat next to it. */
+    var venueSpan = briefMode ? (twoUp ? 'c6' : 'c7') : (C.venue ? (twoUp ? 'c4' : 'c5') : (twoUp ? 'c6' : 'c7'));
     var paymentSpan = C.venue ? 'c2' : (twoUp ? 'c6' : 'c7');
 
     h += '<div class="field c2">' +
@@ -2770,15 +2875,19 @@
              '<div class="flabel-row"><label for="f-venue">Venue &amp; city</label><span class="pill-opt">Optional</span></div>' +
              '<input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Mumbai" value="' + esc(b.venue) + '"></div>';
     }
-    h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
-           '<label for="f-payment" id="lbl-payment">' + (C.nomination ? 'Entry fee' : 'Payment') + '</label>' +
-           '<select class="inp" id="f-payment"></select></div>';
+    if (!briefMode){
+      h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
+             '<label for="f-payment" id="lbl-payment">' + (C.nomination ? 'Entry fee' : 'Payment') + '</label>' +
+             '<select class="inp" id="f-payment"></select></div>';
+    }
 
     host.innerHTML = '<div class="frow">' + h + '</div>';
 
-    selectFrom($('f-payment'), [{v:'Free',t:'Non-paid'},{v:'Paid',t:'Paid'}], b.payment, function(v){
-      b.payment = v; save();
-    });
+    if (!briefMode){
+      selectFrom($('f-payment'), [{v:'Free',t:'Non-paid'},{v:'Paid',t:'Paid'}], b.payment, function(v){
+        b.payment = v; save();
+      });
+    }
 
     var venueEl = $('f-venue');
     if (venueEl){
@@ -2811,7 +2920,9 @@
   /* ---------- category-specific panel ---------- */
   function renderCatPanel(){
     var b = S.basics, C = CATS[b.category], panel = $('cat-panel');
-    if (!C.nomination && !C.campaign){ panel.hidden = true; return; }
+    // brief mode keeps the details form to exactly name/URL/date/venue — nomination/campaign dates can be
+    // set later in the real event console once the event exists, same reasoning as skipping logo/payment.
+    if ((!C.nomination && !C.campaign) || S.creationMethod === 'brief'){ panel.hidden = true; return; }
     panel.hidden = false;
     var body = $('cat-panel-body');
 
@@ -2901,7 +3012,7 @@
     var b = S.basics, cg = $('cat-grid');
     cg.innerHTML = Object.keys(CATS).map(function(k){
       var C = CATS[k];
-      return '<button class="tpl-card category-card" type="button" aria-pressed="' + (S.catPicked && k === b.category) + '" data-cat="' + k + '">' +
+      return '<button class="tpl-card category-card" type="button" aria-pressed="' + (S.step1Phase !== 'category' && k === b.category) + '" data-cat="' + k + '">' +
           '<span class="category-card-top"><span class="category-icon">' + svg(CAT_ICON[k], 25) + '</span>' +
             (C.badge ? '<span class="category-badge">' + esc(C.badge) + '</span>' : '') + '</span>' +
           '<span class="tpl-info"><h4>' + esc(C.label) + '</h4>' +
@@ -2920,38 +3031,37 @@
     /* carry the date over only if the new category understands that mode */
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
     if (!C.payment) b.payment = 'Free';
-    S.catPicked = true;
     /* Default to the category's real ported template immediately, so the live preview on the right is the
-       ACTUAL site from the very start of step 1 — not create-event.html's own generic placeholder shapes,
-       which don't look anything like what the event will really become. applyTemplate() is additive/safe to
-       call repeatedly (used the same way by "Let AI design it"), and the user can still switch templates,
-       pick manually, reuse a previous edition, or go the Figma/Lovable route later in step 2 — this only
-       sets a sensible starting point instead of no template at all. Only applies if nothing more specific
-       was already chosen (switching category after picking a template shouldn't silently discard that). */
+       ACTUAL site from the very start of the method phase — not create-event.html's own generic placeholder
+       shapes, which don't look anything like what the event will really become. applyTemplate() is
+       additive/safe to call repeatedly (used the same way by "Let AI design it"), and the user can still
+       switch templates, pick manually, reuse a previous edition, or choose "Generate from a brief" instead
+       — this only sets a sensible starting point, not a commitment to the template path. Only applies if
+       nothing more specific was already chosen (switching category after picking a template shouldn't
+       silently discard that). */
     if (changed || !S.template){
       var defaultTpl = templatesForCategory().filter(function(t){ return t.site; })[0];
       if (defaultTpl) selectTemplate(defaultTpl.id);
     }
-    setPreviewVisible(true);   /* a category (and with it, usually a real template) is now picked — worth previewing */
-    save(); initStep1(); renderFoot();
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
     toast(changed ? (C.label + ' selected — form updated') : (C.label + ' selected'));
+    setStep1Phase('method');
   }
 
   function initStep1(){
     var b = S.basics;
 
     renderCatPicker();
-    $('cat-picker').hidden  = !!S.catPicked;
-    $('basics-form').hidden = !S.catPicked;
-    if (!S.catPicked) return;   /* nothing else to wire while the picker is up */
+    $('cat-picker').hidden   = S.step1Phase !== 'category';
+    $('step1-method').hidden = S.step1Phase !== 'method';
+    $('basics-form').hidden  = S.step1Phase !== 'details';
 
-    $('btn-change-cat').onclick = function(){
-      S.catPicked = false;
-      setPreviewVisible(false);   /* back to the full-width category picker — nothing to preview yet */
-      save(); initStep1(); renderFoot();
-      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0,0); }
-    };
+    if (S.step1Phase === 'method'){
+      renderStep2();   /* populates #tpl-gallery; also syncs S.templatePick from S.template if needed */
+      return;
+    }
+    if (S.step1Phase !== 'details') return;   /* category phase: nothing else to wire */
+
+    $('btn-change-cat').onclick = function(){ setStep1Phase('category'); };
 
     var nameEl = $('f-name');
     nameEl.value = b.name;
@@ -3048,6 +3158,12 @@
     renderCatPanel();
     renderSlugStatus(false);
     renderSlugAI();
+
+    /* the two mutually-exclusive bottom groups: section-content editor for the template method (always
+       expanded now — the method choice already happened), the brief-collection fields for the AI method. */
+    var briefGrp = $('brief-grp'), contentGrp = $('content-grp');
+    if (briefGrp) briefGrp.hidden = S.creationMethod !== 'brief';
+    if (contentGrp) contentGrp.hidden = S.creationMethod !== 'template';
   }
 
   /* =========================================================
@@ -3093,7 +3209,7 @@
       /* carry over exclusions if the user already previewed+toggled this exact template (Preview modal
          commits them to S.templateExcluded live, see openTemplatePreview) — only a genuinely different
          template pick should reset to "everything included" */
-      onConfirm: function(){ selectTemplate(tplId, S.template === tplId ? S.templateExcluded : undefined); goStep(4); }
+      onConfirm: function(){ selectTemplate(tplId, S.template === tplId ? S.templateExcluded : undefined); advanceToDetails('template'); }
     });
   }
 
@@ -3167,7 +3283,7 @@
       body: previewBody(),
       confirm: 'Use this template',
       cancelLabel: 'Cancel',
-      onConfirm: function(){ setTimeout(function(){ selectTemplate(tplId, skip); goStep(4); }, 0); },
+      onConfirm: function(){ setTimeout(function(){ selectTemplate(tplId, skip); advanceToDetails('template'); }, 0); },
       onCancel: function(){
         S.template = priorTemplate; S.templateExcluded = priorExcluded; S.sections = priorSections;
         save();
@@ -3206,7 +3322,7 @@
     showStep2View('ai');
     var host = $('step2-ai');
     host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">Step 2 of 3 &middot; Choose template</span><h1>Designing with AI&hellip;</h1>' +
+      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Designing with AI&hellip;</h1>' +
         '<p class="desc">Gemini is sketching a few fresh looks for your site.</p></div>' +
       '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
         '<p class="hint" id="ai-status">' + esc(AI_STATUS_LINES[0]) + '</p>' +
@@ -3298,7 +3414,7 @@
 
     var host = $('step2-ai');
     host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">Step 2 of 3 &middot; Choose template</span><h1>Pick a design</h1>' +
+      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Pick a design</h1>' +
         '<p class="desc">Same real template, a fresh look &mdash; check the live preview on the right, then confirm.</p></div>' +
       '<div class="panel" style="padding:14px;">' +
         '<div id="ai-design-list" class="ai-design-list"></div>' +
@@ -3501,6 +3617,13 @@
   function startGenerateFromBrief(){
     var fileInput = $('gb-doc');
     var file = fileInput && fileInput.files && fileInput.files[0];
+    // the free-text "Describe the event" field (gb-brief-text) — sent through the SAME /api/extract-brief
+    // call as an uploaded PDF would be, just as a text/plain inline "file" instead of a real document; the
+    // endpoint already accepts any {mimeType, docBase64} pair for Gemini to read, so this needs no backend
+    // change. A real uploaded PDF takes priority if both are given — richer source material — rather than
+    // running two separate brief-extraction calls for one event.
+    var briefTextEl = $('gb-brief-text');
+    var briefText = (briefTextEl && briefTextEl.value || '').trim();
     var rawUrls = {
       current: ($('gb-current').value || '').trim(),
       previous: ($('gb-previous').value || '').trim(),
@@ -3522,6 +3645,7 @@
 
     var steps = [];
     if (file) steps.push({ key: 'brief', label: 'Reading ' + file.name, status: 'pending' });
+    else if (briefText) steps.push({ key: 'brief', label: 'Reading your description', status: 'pending' });
     urlFields.forEach(function(s, i){
       var label = s.type === 'competitor' ? 'Researching competitor event'
         : s.type === 'currentEdition' ? 'Researching this edition’s own page' : 'Researching the previous edition';
@@ -3562,6 +3686,14 @@
         return readFileAsBase64(file).then(function(docBase64){
           return postJson('/api/extract-brief', { eventId: eventId, fileName: file.name, mimeType: file.type || 'application/pdf', docBase64: docBase64, eventMeta: eventMeta });
         });
+      };
+    } else if (briefText){
+      runners.brief = function(){
+        // btoa only handles Latin1 — unescape(encodeURIComponent(...)) is the standard shim for real UTF-8
+        // text (accents, non-Latin names) before base64-encoding it, same as readFileAsBase64 gets for free
+        // from FileReader for an actual file.
+        var docBase64 = btoa(unescape(encodeURIComponent(briefText)));
+        return postJson('/api/extract-brief', { eventId: eventId, fileName: 'description.txt', mimeType: 'text/plain', docBase64: docBase64, eventMeta: eventMeta });
       };
     }
     urlFields.forEach(function(s, i){
@@ -3705,7 +3837,7 @@
     var host = $('step2-brief');
     if (!host) return;
     host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">Step 2 of 3 &middot; Choose template</span><h1>Generating your site&hellip;</h1>' +
+      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Generating your site&hellip;</h1>' +
         '<p class="desc">This takes a minute or two — researching first, then writing.</p></div>' +
       '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
         '<ul class="gb-steps">' + steps.map(function(s){
@@ -3771,24 +3903,27 @@
         '</div>',
       confirm: 'Yes',
       cancelLabel: 'No',
-      onConfirm: function(){ selectTemplate(pe.templateId); goStep(4); },
+      onConfirm: function(){ selectTemplate(pe.templateId); advanceToDetails('template'); },
       onCancel: function(){ setTimeout(openCloneDesignModal, 0); }
     });
   }
 
   /* which of step 2's three views (landing / AI / manual gallery) is showing */
+  /* 'manual' no longer exists as its own hideable view — the template gallery lives permanently inside
+     'landing' now (promoted from a demoted link, per the step-1/step-2 merge) — but every caller that used
+     to pass 'manual' still works unchanged: it just lands on 'landing', where the gallery already is. */
   function showStep2View(view){
+    if (view === 'manual') view = 'landing';
     $('step2-landing').hidden = view !== 'landing';
     $('step2-ai').hidden = view !== 'ai';
     $('step2-brief').hidden = view !== 'brief';
-    $('step2-manual').hidden = view !== 'manual';
   }
 
   function renderStep2(){
-    /* rebuilds the gallery markup only — does NOT touch which of the 3 views is showing. It's called both on
-       a fresh entry into step 2 (goStep(2), which explicitly resets to 'landing' first) and reactively from
-       inside the manual gallery itself (picking a template re-renders the grid's selection highlight) — if
-       this reset the view every time, picking a template from the manual gallery would instantly hide it. */
+    /* rebuilds the gallery markup only — does NOT touch which of the 3 views (landing/ai/brief) is showing.
+       It's called both on entry into step 1's 'method' phase (initStep1()) and reactively from inside the
+       gallery itself (picking a template re-renders the grid's selection highlight) — if this reset the
+       view every time, picking a template would instantly hide the AI-review/brief-progress overlays. */
     var gallery = $('tpl-gallery');
     if (S.templatePick == null && S.path === 'A' && S.template) S.templatePick = S.template;
     gallery.innerHTML = templatesForCategory().map(function(t){
@@ -3833,8 +3968,6 @@
     var cloneBtn = $('btn-clone-design');
     if (cloneBtn) cloneBtn.onclick = openCloneDesignModal;
 
-    var manualLink = $('link-manual-gallery');
-    if (manualLink) manualLink.onclick = function(e){ e.preventDefault(); showStep2View('manual'); };
     var convertLandingLink = $('link-convert-url-landing');
     if (convertLandingLink) convertLandingLink.onclick = function(e){ e.preventDefault(); openConvertModal(); };
     var aiBtn = $('btn-ai-design');
@@ -3855,8 +3988,10 @@
     // from the shared library (templates/_library/) instead of depending on a specific audited ported
     // template, so it's available for every event category.
     var generateBtn = $('btn-ai-generate');
-    // wrapped, not a bare function reference, so a native click Event is never passed through as an argument
-    if (generateBtn) generateBtn.onclick = function(){ openGenerateFromBriefModal(); };
+    // used to open openGenerateFromBriefModal() as a popup; its fields now render inline in the details
+    // phase instead (same element ids — see the #brief-grp markup — so startGenerateFromBrief() itself
+    // needed no changes), reached the same way the template path is: advanceToDetails().
+    if (generateBtn) generateBtn.onclick = function(){ advanceToDetails('brief'); };
     var vibeHost = $('vibe-chips');
     if (vibeHost){
       vibeHost.innerHTML = VIBE_OPTIONS.map(function(v){
@@ -4078,10 +4213,11 @@
   }
 
   function renderStep1Content(){
+    initStep1();
     seedSections();
     var host = $('step1-build-host');
     if (host) renderBuildWorkspace(host);
-    setPreviewVisible(S.catPicked);   /* the category picker (no category yet) stays full-width, nothing to preview */
+    setPreviewVisible(S.step1Phase !== 'category');   /* the category picker (no category yet) stays full-width, nothing to preview */
     schedulePreview();
   }
 
@@ -7846,7 +7982,7 @@
     var included = S.sections.filter(function(s){ return s.include; });
     host.innerHTML =
       '<div class="step-head">' +
-        '<span class="eyebrow">Step 3 of 3</span>' +
+        '<span class="eyebrow">Step 2 of 2</span>' +
         '<h1>Putting your site together</h1>' +
         '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. The site editor opens next, already loaded with your content.</p>' +
       '</div>' +
@@ -7940,11 +8076,17 @@
      NEXT / BACK / ALT
   ========================================================= */
   function onNext(){
-    if (S.step === 1){ goStep(2); return; }
-    if (S.step === 2){
-      if (S.path !== 'B' && S.templatePick){ confirmUseTemplate(S.templatePick); return; }
-      goStep(3);
-      return;
+    if (S.step === 1){
+      if (S.step1Phase === 'method'){
+        if (S.templatePick) confirmUseTemplate(S.templatePick);   /* confirmUseTemplate() itself calls advanceToDetails('template') */
+        return;
+      }
+      if (S.step1Phase === 'details'){
+        if (S.creationMethod === 'brief'){ startGenerateFromBrief(); return; }
+        goStep(4);
+        return;
+      }
+      return;   /* category phase: Continue is hidden, nothing to do */
     }
     if (S.step === 3){
       if (S.path === 'B' && S.detectPhase === 'review' && !S.sections.length){
@@ -7960,6 +8102,11 @@
   }
 
   function onBack(){
+    if (S.step === 1){
+      if (S.step1Phase === 'details'){ setStep1Phase('method'); return; }
+      if (S.step1Phase === 'method'){ setStep1Phase('category'); return; }
+      return;   /* category phase: Back is hidden, nothing to do */
+    }
     if (S.step === 3){
       if (S.path === 'A' && S.template){
         S.template = null; S.sections = []; S.active = null;
@@ -7973,14 +8120,17 @@
         S.detectPhase = 'input';
         save(); renderStep3(); return;
       }
-      goStep(2); return;
+      /* was goStep(2) — step 2 no longer has its own screen (its content moved into step 1's 'method'
+         phase); only still-resumable old drafts in this legacy path-B flow ever reach here at all. */
+      S.step1Phase = 'method'; goStep(1); return;
     }
     if (S.step > 1) goStep(S.step - 1);
   }
 
   function onAlt(){
     if (S.step === 3){
-      goStep(2);
+      /* was goStep(2) — see onBack()'s own comment on the same substitution. */
+      S.step1Phase = 'method'; goStep(1);
       toast('Pick a different path — your basic details are kept');
       return;
     }
@@ -8009,17 +8159,6 @@
       }, function(){});
     }
     renderStep2();
-    /* "Page content" (step 1) starts collapsed — see content-grp's own copy: filling it in is pointless
-       busywork for anyone about to use "Generate from a brief" (step 2), which writes all of this itself.
-       renderBuildWorkspace() still renders into #step1-build-host while it's hidden (hidden only affects
-       display, not the DOM/JS reading it) — expanding is purely a visibility toggle, nothing re-renders. */
-    var contentToggle = $('content-grp-toggle');
-    if (contentToggle) contentToggle.addEventListener('click', function(){
-      var host = $('step1-build-host');
-      var expanded = contentToggle.getAttribute('aria-expanded') === 'true';
-      contentToggle.setAttribute('aria-expanded', String(!expanded));
-      if (host) host.hidden = expanded;
-    });
     $('btn-next').addEventListener('click', onNext);
     $('btn-back').addEventListener('click', onBack);
     $('btn-foot-alt').addEventListener('click', onAlt);
@@ -8072,6 +8211,14 @@
          meaningful to resume into; path A's old step 3 (content editing) no longer exists as a separate
          step — that content now lives in step 1, so a path-A draft resumes there instead. */
       if (S.step >= 4) S.step = (S.path === 'B') ? 3 : 1;
+      /* Old-shaped drafts (saved before step 1/2 merged) could be sitting at the old step 2 (any of its
+         sub-views) or at old step 3 with path A (same "content lives in step 1 now" reasoning as just
+         above) — neither exists as its own screen any more. Path B at step 3 is left exactly as the
+         branch above already handles it (still genuinely meaningful to resume into). */
+      if (S.step === 2 || (S.step === 3 && S.path !== 'B')){
+        S.step = 1;
+        if (S.step1Phase !== 'details') S.step1Phase = 'method';
+      }
       goStep(S.step);
     } else {
       S.step = 1;
