@@ -5342,18 +5342,47 @@
     window.RevampTemplateUI.boot(frame, TEMPLATE_ID, { escHtml: escHtml, showToast: showToast, EV: EV, editorEventId: editorEventId })
       .then(initAiProvenanceToggle);
   } else {
-    applyCreateHandoff();
+    // applyCreateHandoff() is itself a no-op (returns false) when TEMPLATE_MODE is true, so calling it
+    // unconditionally here — once — covers both of this branch's cases below without a second call.
+    var handedOff = applyCreateHandoff();
 
-    frame.querySelectorAll('.site-section').forEach(function(sec){
-      if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
-    });
-    rebuildLayersPanel();
-    syncSectionToolbar();
-    syncFormatControls();
-    // demo mode's content is static markup already in the document — no async mount/fill step to race,
-    // so (unlike template mode, see the <button disabled> markup above) there's nothing to wait for here.
-    document.getElementById('btn-publish').disabled = false;
-    document.getElementById('btn-preview').disabled = false;
+    if (editorEventId && !handedOff) {
+      /* Reopening a real, already-created event (an `event=`/`slug=` query param is present — unlike the
+         bare, no-params standalone demo entry point, e.g. sidebar.html's static Design nav link) landed
+         here with no `?template=` at all AND no fresh from=create handoff to rebuild from. TEMPLATE_MODE's
+         boot() above is the ONLY code path that ever clears this file's own hardcoded "Northwind Studio"
+         demo markup out of #frame — reaching this branch for a real event means something upstream built
+         the editor URL without that event's real templateId (confirmed real, live instances: sidebar.js's
+         renderEventRail() default 'design' handler, and the same-shaped overrides in
+         edit-event-dashboard.html/audience-registrations.html/marketing.html/settings.html, all still
+         navigate straight to `custom_editor.html?event=<id>` with no `&template=` — only edit-event.html's
+         own Design > Site editor link resolves the real one). Silently leaving the demo's fake copy up in
+         that case is the actual bug this closes: an admin can mistake "Northwind Studio" for their own
+         event's real site, or worse, hit Publish and overwrite it. Show an honest empty state instead. */
+      frame.querySelectorAll('.site-section').forEach(function(sec){ sec.remove(); });
+      var addRow = document.getElementById('btn-add-section-end');
+      addRow = addRow && addRow.closest('.add-sec-row');
+      if (addRow) addRow.hidden = true;
+      frame.insertAdjacentHTML('beforeend',
+        '<div style="padding:120px 24px;text-align:center;color:var(--text-muted,#666)">' +
+          '<p style="font-size:15px;font-weight:600;margin:0 0 6px;color:var(--text,#111)">This event has no site template set up yet</p>' +
+          '<p style="font-size:13px;margin:0">Open it from Event Listing &rarr; Design &rarr; Site editor so its real template loads here.</p>' +
+        '</div>');
+      document.getElementById('btn-publish').disabled = true;
+      document.getElementById('btn-preview').disabled = true;
+      showToast("Couldn't find a template for this event");
+    } else {
+      frame.querySelectorAll('.site-section').forEach(function(sec){
+        if (!sec.querySelector(':scope > .sec-add-below')) sec.insertAdjacentHTML('beforeend', addSectionBelowMarkup());
+      });
+      rebuildLayersPanel();
+      syncSectionToolbar();
+      syncFormatControls();
+      // demo mode's content is static markup already in the document — no async mount/fill step to race,
+      // so (unlike template mode, see the <button disabled> markup above) there's nothing to wait for here.
+      document.getElementById('btn-publish').disabled = false;
+      document.getElementById('btn-preview').disabled = false;
+    }
   }
 })();
 </script>
