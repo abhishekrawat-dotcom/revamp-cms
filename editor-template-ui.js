@@ -80,6 +80,10 @@
       canvas = c;
       return resolveInitialContent();
     }).then(function () {
+      // real Content-tab data (speakers/partners/faq/contacts/glimpses) overlaid on top of whatever base
+      // content resolveInitialContent() just settled on — see applySubcollectionOverlay()'s own comment.
+      return applySubcollectionOverlay();
+    }).then(function () {
       buildToolbars();
       wireCanvasEvents();
       wireGlobalKeys();
@@ -234,6 +238,171 @@
         if (saved && saved.snapshot) { restoreLocal(); return; }
         return seedSnapshot(null);
       });
+    });
+  }
+
+  /* ---------- real Content-tab data (speakers/partners/faq/contacts/glimpses) ----------
+     edit-event.html's Content tab writes real, persistent per-event Firestore subcollections
+     (functions/lib/api.js's RESOURCES — speakers, partners, faqs, contacts, gallery, + their
+     speaker-groups/partner-tiers side tables) that, until now, nothing ever read back into a mounted
+     template: editing a speaker there had zero effect on what this editor (or a publish) showed, because
+     the content.map-driven sections above are wired only to the one-time wizard/Generate-from-Brief
+     hand-off snapshot (resolveInitialContent()/applyHandoffDraft() above), never to the real subcollections.
+
+     SUBCOLLECTION_SOURCES is the explicit `from` -> resource bridge — content.map's own `from` strings
+     don't all match the subcollection's resource name (e.g. "faq" vs "faqs"), so this can't be derived
+     automatically. One entry per `from` a REAL ported template actually maps to one of these resources
+     today (confirmed by reading every template.json under templates/ and its own content.map):
+       speakers -> speakers            {n,r,c,photo} items   (cx-leaders-forum, making-ai-work)
+       faq      -> faqs                {t,d} items           (cx-leaders-forum, retail-leadership-summit, tech500)
+       partners -> partners+partner-tiers  {t, logos:[{n}]} tiers  (retail-leadership-summit)
+       contact  -> contacts            {t, people:[{n,e,p}]} blocks (cx-leaders-forum, making-ai-work,
+                                        retail-leadership-summit, tech500 — same shape editor-fill.js's
+                                        own fromHandoff() already special-cases for the OLDER per-category
+                                        hand-off shape)
+       glimpses -> gallery             {url} items — "glimpses" is create-event.html's own library id for
+                                        this (shape:'gallery', GENERATION_EXCLUDED_LIBRARIES — real photos,
+                                        never AI-written); the subcollection's own `caption` field has no
+                                        content.map consumer anywhere yet, so it's read but not used.
+     Deliberately NOT covered: sessions/agenda. No ported template's content.map has a `from` for it at all
+     (grepped every template.json under templates/ — none exists), so there is no existing fill-rule SHAPE to
+     translate into; inventing one here would mean designing that convention from scratch, which is a
+     bigger, separate decision than bridging an existing one. Left for a future task once a template
+     actually wires an agenda section into content.map.
+
+     translate() turns GET /api/event/<resource>'s raw items (the real subcollection field names) into the
+     exact shape that `from`'s own content.map fill rules already expect — same values RevampFill.apply()
+     already knows how to render, just sourced for real instead of from the one-time hand-off. Returns null
+     for "nothing real yet" (so the caller never confuses an empty subcollection with real-but-empty
+     content — see fetchSubcollectionOverlay()'s own comment on why that distinction matters). Lists come
+     back from the server already sorted by their own `order` field (subcollectionRoutes()'s list handler),
+     including speakers/partners' own flat, cross-group display order (edit-event.html's persistSpeakerOrder/
+     the partner equivalent re-numbers `order` across the whole flat list, not per-group) — so no extra
+     client-side sort is needed for the plain lists; translatePartners still groups by tier explicitly,
+     since that structure (tiers -> logos) doesn't exist on the flat `partners` list itself. */
+  function byOrder(a, b) { return (a.order || 0) - (b.order || 0); }
+
+  function translateSpeakers(items) {
+    if (!items || !items.length) return null;
+    return { items: items.map(function (p) { return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; }) };
+  }
+  function translateFaqs(items) {
+    if (!items || !items.length) return null;
+    return { items: items.map(function (f) { return { t: f.question || '', d: f.answer || '' }; }) };
+  }
+  function translateGallery(items) {
+    if (!items || !items.length) return null;
+    return { items: items.map(function (g) { return { url: g.imageUrl || '' }; }) };
+  }
+  function translateContacts(items) {
+    if (!items || !items.length) return null;
+    // one row per contact (label + one person) — several rows can share the same label (several people
+    // under one "purpose"), same shape editor-fill.js's own fromHandoff() already builds for the older
+    // per-category hand-off (one block per label, each with a people[] list).
+    var blocks = [], byLabel = {};
+    items.forEach(function (c) {
+      var label = c.label || '';
+      if (!byLabel[label]) { byLabel[label] = { t: label, people: [] }; blocks.push(byLabel[label]); }
+      byLabel[label].people.push({ n: c.name || '', e: c.email || '', p: c.phone || '' });
+    });
+    return blocks.length ? { blocks: blocks } : null;
+  }
+  function translatePartners(partners, tiers) {
+    if (!partners || !partners.length) return null;
+    var slots = {}, ordered = [];
+    (tiers || []).slice().sort(byOrder).forEach(function (t) {
+      var slot = { t: t.name || '', logos: [] };
+      slots[t.id] = slot;
+      ordered.push(slot);
+    });
+    // a partner with no tier (or no tiers set up at all) still needs to show somewhere — real data from
+    // the Content tab is never silently dropped just because Tiers haven't been configured.
+    var fallback = { t: '', logos: [] };
+    partners.slice().sort(byOrder).forEach(function (p) {
+      (slots[p.tierId] || fallback).logos.push({ n: p.name || '' });
+    });
+    if (fallback.logos.length) ordered.push(fallback);
+    var tiersOut = ordered.filter(function (t) { return t.logos.length; });
+    return tiersOut.length ? { tiers: tiersOut } : null;
+  }
+
+  var SUBCOLLECTION_SOURCES = {
+    speakers: { resources: ['speakers'], translate: translateSpeakers },
+    faq: { resources: ['faqs'], translate: translateFaqs },
+    partners: { resources: ['partners', 'partner-tiers'], translate: translatePartners },
+    contact: { resources: ['contacts'], translate: translateContacts },
+    glimpses: { resources: ['gallery'], translate: translateGallery }
+  };
+
+  /* Fetches whichever of the resources above this MOUNTED template's own content.map actually uses (never
+     more — a template with no speaker/partner/faq/contact/glimpses section makes zero extra calls) and
+     builds the merged content object, or resolves null when there's nothing real to overlay (no matching
+     content.map entry at all, no real event context, or every matching resource came back empty/failed).
+
+     Real subcollection rows are AUTHORITATIVE for their own `from` when they exist: a user who adds
+     structured data via the Content tab almost certainly wants that to be what the page shows, not a
+     stale wizard/Generate-from-Brief snapshot from whenever the draft was first generated — overriding,
+     not merging field-by-field, is the one unambiguous reading of "the real data now wins". An EMPTY
+     subcollection (nobody has touched the Content tab yet, or a resource's own fetch genuinely failed —
+     not signed in, offline, etc.) must NOT override anything — scrubbing a real event's existing
+     wizard-snapshot speakers down to nothing just because the Content tab is still empty would be a real
+     regression, not an improvement. translate() returning null is exactly that "leave it alone" signal;
+     a failed fetch (rejected promise, caught below as null in byResource — not the same null as an empty
+     array) is treated the same way for the same reason: "couldn't tell" must never look like "confirmed
+     empty". */
+  function fetchSubcollectionOverlay() {
+    if (!canvas || !eventId || eventId === '1') return Promise.resolve(null);
+    var spec = (canvas.template.content || {}).map || [];
+    var froms = Object.keys(SUBCOLLECTION_SOURCES).filter(function (from) {
+      return spec.some(function (m) { return m.from === from; });
+    });
+    if (!froms.length) return Promise.resolve(null);
+    var resourceNames = [];
+    froms.forEach(function (from) {
+      SUBCOLLECTION_SOURCES[from].resources.forEach(function (r) { if (resourceNames.indexOf(r) === -1) resourceNames.push(r); });
+    });
+    return Promise.all(resourceNames.map(function (r) {
+      return RevampCore.fetchSub(r, eventId).catch(function () { return null; });   // null: couldn't fetch, not "empty"
+    })).then(function (results) {
+      var byResource = {};
+      resourceNames.forEach(function (name, i) { byResource[name] = results[i]; });
+      var content = {};
+      froms.forEach(function (from) {
+        var cfg = SUBCOLLECTION_SOURCES[from];
+        var inputs = cfg.resources.map(function (r) { return byResource[r]; });
+        if (inputs.indexOf(null) !== -1) return;   // a needed fetch failed — leave this `from` untouched
+        var value = cfg.translate.apply(null, inputs);
+        if (value) content[from] = value;
+      });
+      return Object.keys(content).length ? content : null;
+    });
+  }
+
+  /* Runs once per boot(), right after resolveInitialContent() has settled the canvas into whatever base
+     state it was going to have (a restored local snapshot, a freshly-applied hand-off, or the template's
+     own blank sample content) — see boot()'s own call site. Scoped deliberately to "the editor just
+     (re)opened", not live sync: a Content-tab edit shows up the NEXT time this page loads, not instantly in
+     an already-open tab elsewhere (see the task's own point on this). Reuses RevampFill.apply() completely
+     unchanged — ctx.content here only ever has the few `from` keys fetchSubcollectionOverlay() actually
+     resolved, so every OTHER content.map entry's `if (!(m.from in ctx.content)) return;` guard skips it,
+     leaving the rest of the canvas exactly as resolveInitialContent() left it. ctx.excluded is deliberately
+     [] (never hides/shows a section — that's the user's own Hide toggle's business, not this overlay's),
+     and ctx.generatedFromBrief is false (no AI-provenance badge should ever appear just because this ran). */
+  function applySubcollectionOverlay() {
+    return fetchSubcollectionOverlay().then(function (content) {
+      if (!content) return;
+      var report = RevampFill.apply(canvas, { content: content, names: {}, excluded: [], generatedFromBrief: false, aiSkippedLibraries: [] });
+      if (!report.filled.length) return;
+      // bakes the overlay into THIS session's baseline, same as any other edit — so Ctrl+Z doesn't revert
+      // past it, and it rides along in the snapshot persist() already saves for every other reason.
+      var snap = canvas.snapshot(undoStack[undoPtr]);
+      undoStack[undoPtr] = snap;
+      return persist(snap);
+    }).catch(function (err) {
+      // Never blocks the editor loading over this — same fail-soft posture as every other RevampCore
+      // admin call in this app (not signed in yet, offline, a transient 500, …): the canvas still has
+      // whatever resolveInitialContent() already gave it, which is strictly better than failing to load.
+      if (window.console) console.warn('[RevampTemplateUI] Could not load real Content-tab data:', err);
     });
   }
 
