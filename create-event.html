@@ -3905,12 +3905,6 @@
             var handoffWithLogo = Object.assign({}, draftResp.handoff, { generatedFromBrief: true });
             if (S.basics.logo) handoffWithLogo.event = Object.assign({}, handoffWithLogo.event, { logoKey: logoKey() });
             localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoffWithLogo));
-            registerLiveEvent({
-              slug: eventId, name: eventMeta.name,
-              venue: S.basics.venue, city: S.basics.city, category: S.basics.category,
-              start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
-              paid: S.basics.payment === 'Paid'
-            });
           } catch(e){
             toast('Could not hand the draft over — your browser blocked storage.');
             showStep2View('landing');
@@ -8085,33 +8079,6 @@
     if (show) renderLivePreview();
   }
 
-  /* Registers a newly created event into Event_Listing.html's own display registry. Without this, an event
-     built through ANY path in this wizard (manual, "Let AI design it", or Generate from a brief) never shows
-     up anywhere outside the editor itself — Event_Listing.html's EVENTS array is static demo data with no
-     connection to anything this wizard builds, and this has been true since before today; it's not specific
-     to the new generative pipeline. Keyed by slug — calling this again for the same slug (e.g. re-saving,
-     or a later "Generate from a brief" run on the same event) updates that one row instead of duplicating.
-     registrations/visitors start at 0 — true for a just-created event, not placeholder/fake numbers. */
-  var LIVE_EVENTS_KEY = 'revamp.liveEvents.v1';
-  function registerLiveEvent(opts){
-    try {
-      var raw = localStorage.getItem(LIVE_EVENTS_KEY);
-      var list = raw ? JSON.parse(raw) : [];
-      list = list.filter(function(e){ return e.slug !== opts.slug; });
-      list.unshift({
-        slug: opts.slug,
-        name: opts.name || 'Untitled event',
-        venue: opts.venue || '',
-        city: opts.city || '',
-        type: (opts.category || 'ip').toLowerCase(),
-        start: opts.start || null,
-        paymentType: opts.paid ? 'paid' : 'free',
-        createdAt: Date.now()
-      });
-      localStorage.setItem(LIVE_EVENTS_KEY, JSON.stringify(list.slice(0, 200)));
-    } catch(e){ /* storage blocked/full — the event still exists and opens fine, it just won't list */ }
-  }
-
   /* hands the draft to custom_editor.html and opens it */
   function openInEditor(){
     var payload = buildEditorPayload();
@@ -8148,24 +8115,16 @@
     if (S.path === 'A' && S.template && window.RevampEditions){
       RevampEditions.registerEventTemplate('new-' + payload.event.slug, S.template, { name: payload.event.name, cat: S.basics.category });
     }
-    registerLiveEvent({
-      slug: payload.event.slug, name: payload.event.name,
-      venue: S.basics.venue, city: S.basics.city, category: S.basics.category,
-      start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
-      paid: S.basics.payment === 'Paid'
-    });
     var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
       (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
 
     /* Creates the REAL canonical event doc (events/{slug} in Firestore) — before this, the manual/
        clone-design path (this function) created nothing server-side at all; edit-event.html's console
-       could never find this event later (it only ever lived in this browser's localStorage/IndexedDB).
-       Best-effort and non-blocking beyond its own completion: if it fails (most likely because the admin
-       isn't signed into Firebase Auth yet, or is offline), the user still gets their editor — same
-       resilient, never-block-on-a-backend-hiccup posture as registerLiveEvent() just above. They just
-       won't find this event in the real console until it's retried (no retry queue built here — that's
-       a separate concern were this to become a frequent real-world failure, not a hypothetical worth
-       solving preemptively today). */
+       could never find this event later. Best-effort and non-blocking beyond its own completion: if it
+       fails (most likely because the admin isn't signed into Firebase Auth yet, or is offline), the user
+       still gets their editor. They just won't find this event in the real console until it's retried (no
+       retry queue built here — that's a separate concern were this to become a frequent real-world
+       failure, not a hypothetical worth solving preemptively today). */
     function goToEditor(){
       if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
       else window.location.href = url;
