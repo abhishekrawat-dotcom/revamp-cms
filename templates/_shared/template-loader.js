@@ -99,7 +99,6 @@
     var generated = /^gen-/.test(id);
     var imported = /^imported-/.test(id);
     var base = new URL(id + '/', templatesBase);
-    var libraryBase = new URL('_library/sections/', templatesBase);
     var tplJson = generated
       ? get('/api/generated-template?eventId=' + encodeURIComponent(id.slice(4)))
       : imported
@@ -114,7 +113,19 @@
           jobs.push(get('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))), Promise.resolve(''), Promise.resolve(''));
           return;
         }
-        var dir = generated ? new URL(s.id + '/', libraryBase) : new URL('sections/' + s.id + '/', base);
+        if (generated) {
+          /* The AI-bespoke-section pipeline (functions/lib/api.js's new "Gemini writes each section"
+             path, not the old fixed-library-of-components one) stores each section's real html/css in
+             Firestore, served per-section via /api/generated-section — same id.slice(4) eventId pattern
+             /api/generated-template already uses just above. One fetch per section; script.js never
+             exists for a generated section under this pipeline, so that slot is always ''. Still pushes
+             exactly 3 job slots (html, css, script) so the parts[2 + i*3 / 3 + i*3 / 4 + i*3] indexing in
+             the assembly code below stays correct regardless of which branch filled them. */
+          var sectionJob = get('/api/generated-section?eventId=' + encodeURIComponent(id.slice(4)) + '&id=' + encodeURIComponent(s.id)).then(JSON.parse);
+          jobs.push(sectionJob.then(function (r) { return r.html; }), sectionJob.then(function (r) { return r.css; }), Promise.resolve(''));
+          return;
+        }
+        var dir = new URL('sections/' + s.id + '/', base);
         jobs.push(get(new URL('index.html', dir)), get(new URL('style.css', dir)),
           s.script ? get(new URL('script.js', dir)) : Promise.resolve(''));
       });

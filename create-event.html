@@ -3825,25 +3825,18 @@
       };
     });
     // "gen-<eventId>" is a GENERATED template, not a real ported one — functions/lib/api.js's
-    // handleGenerateContent reads the structurePlan the 'plan' row below just wrote (plus each chosen
-    // library section's own map.json) to build its content.map, instead of a real templates/<id>/template.json.
-    //
-    // matchedTemplateId: real, confirmed bug this closes — every Generate-from-Brief event has always gone
-    // through the generic 'gen-' path above, unconditionally, with no exception, even for a brief whose
-    // real subject matter is a confident, specific fit for a real, premium, already-audited ported template
-    // (tech500/making-ai-work) — the actual reason multiple generated events all "look like the same
-    // template": they structurally are, every one of them, regardless of what they're really about. The
-    // 'plan' step below now asks the server to check that first; captured here so 'generate' can use the
-    // real template id it found instead of the generic fallback, same as if a human had picked it manually.
-    var matchedTemplateId = null;
+    // handleGenerateContent reads the designPlan the 'plan' row below just wrote to generate each
+    // section's own bespoke HTML/CSS directly, instead of a real templates/<id>/template.json. (Earlier
+    // revision of this comment described matching onto a real ported template — tech500/making-ai-work —
+    // when the brief's subject fit one confidently. Reverted: the user's own call was that even a fixed
+    // menu of 2 real templates still means every matching event looks the same, just a smaller menu.
+    // Gemini now designs each event's structure AND visual HTML/CSS independently every time, grounded in
+    // that event's own research — see /api/plan-structure's own comment in functions/lib/api.js.)
     runners.plan = function(){
-      return postJson('/api/plan-structure', { eventId: eventId }).then(function(result){
-        matchedTemplateId = (result && result.matchedTemplateId) || null;
-        return result;
-      });
+      return postJson('/api/plan-structure', { eventId: eventId });
     };
     runners.generate = function(){
-      return postJson('/api/generate-content', { eventId: eventId, templateId: matchedTemplateId || ('gen-' + eventId), eventMeta: eventMeta, futureEdition: futureEdition });
+      return postJson('/api/generate-content', { eventId: eventId, templateId: 'gen-' + eventId, eventMeta: eventMeta, futureEdition: futureEdition });
     };
 
     // the `generate` row's "still writing, hasn't stalled" reassurance (D3's own clock, never the warning

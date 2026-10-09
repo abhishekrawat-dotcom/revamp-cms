@@ -5,7 +5,12 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { handleApi } = require('./lib/api');
 
+// timeoutSeconds: 240 — the AI-designed "Generate from a brief" pipeline's per-section HTML/CSS
+// generation call (functions/lib/api.js's callGeminiJson, passed a 100000ms timeoutMs) can legitimately
+// run close to 100s writing bespoke markup/CSS for 6-8 sections in one response; 120s left too little
+// margin for normal network/Firestore overhead on top of that. Every other endpoint still returns in a
+// fraction of this — it's a ceiling, not a forced wait.
 exports.api = onRequest(
-  { secrets: ['GEMINI_API_KEY'], timeoutSeconds: 120, memory: '512MiB' },
+  { secrets: ['GEMINI_API_KEY'], timeoutSeconds: 240, memory: '512MiB' },
   handleApi
 );

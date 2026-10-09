@@ -334,6 +334,159 @@
     glimpses: { resources: ['gallery'], translate: translateGallery }
   };
 
+  /* ---------- generic data-rv-repeat-template convention (AI-bespoke `gen-` sections) ----------
+     The content.map-driven mechanism just above exists for PORTED templates (real templates/<id>/
+     template.json files with their own fill rules). The new AI-designed `gen-` pipeline (functions/lib/
+     api.js having Gemini write bespoke per-section HTML+CSS instead of filling a fixed component
+     library) has an EMPTY content.map — nothing for the `from` scan above to find — so it needs its own,
+     independent detection: Gemini is instructed to emit a fixed, simple DOM convention instead of a
+     content.map entry. A section with dynamic data has exactly one `[data-rv-repeat-template="<kind>"]`
+     element (the template for ONE repeated item), with descendants inside it carrying
+     `data-rv-field="<fieldName>"` using a small fixed per-kind vocabulary (see applyGenericRepeat()'s own
+     comment). This block translates the same real subcollection rows the mechanism above reads into the
+     SIMPLE FLAT list shape that convention needs, and fills the DOM directly (no RevampFill.apply() —
+     that function only knows about content.map rules, which these templates don't have).
+
+     Named *Flat and kept entirely separate from translateSpeakers/translateFaqs/translateGallery/
+     translatePartners/translateContacts above even where the shape ends up nearly identical (speakers/
+     faq/glimpses) — those existing ones are documented as serving ONLY the content.map mechanism;
+     sharing them here would be an accidental coupling waiting to break either path if the other is
+     edited for its own reasons later. Same "confirmed empty -> null, don't override" discipline as the
+     existing translators: null tells the caller to leave Gemini's own placeholder example item alone
+     rather than wiping it. */
+  function translateSpeakersFlat(items) {
+    if (!items || !items.length) return null;
+    return items.map(function (p) { return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; });
+  }
+  function translateFaqsFlat(items) {
+    if (!items || !items.length) return null;
+    return items.map(function (f) { return { t: f.question || '', d: f.answer || '' }; });
+  }
+  function translateGalleryFlat(items) {
+    if (!items || !items.length) return null;
+    return items.map(function (g) { return { imageUrl: g.imageUrl || '', caption: g.caption || '' }; });
+  }
+  function translateContactsFlat(items) {
+    if (!items || !items.length) return null;
+    return items.map(function (c) { return { label: c.label || '', name: c.name || '', email: c.email || '', phone: c.phone || '' }; });
+  }
+  // Flat convention has no tier grouping (unlike translatePartners above) — one item per partner,
+  // tierId is simply dropped; order still follows the same flat display `order` field.
+  function translatePartnersFlat(partners) {
+    if (!partners || !partners.length) return null;
+    return partners.slice().sort(byOrder).map(function (p) { return { name: p.name || '', url: p.url || '', logo: p.logoUrl || '' }; });
+  }
+
+  var GENERIC_REPEAT_SOURCES = {
+    speakers: { resources: ['speakers'], translate: translateSpeakersFlat },
+    faq: { resources: ['faqs'], translate: translateFaqsFlat },
+    partners: { resources: ['partners'], translate: translatePartnersFlat },
+    contact: { resources: ['contacts'], translate: translateContactsFlat },
+    glimpses: { resources: ['gallery'], translate: translateGalleryFlat }
+  };
+
+  // Distinct `kind` values actually present in the mounted canvas, restricted to the 5 known kinds
+  // (anything else is ignored defensively — not this convention's business).
+  function findRepeatKindsInDom(canvas) {
+    if (!canvas || !canvas.doc) return [];
+    var found = [];
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-repeat-template]'), function (el) {
+      var kind = el.getAttribute('data-rv-repeat-template');
+      if (GENERIC_REPEAT_SOURCES[kind] && found.indexOf(kind) === -1) found.push(kind);
+    });
+    return found;
+  }
+
+  /* Fixed per-kind field vocabulary (byte-for-byte contract with the backend task's Gemini prompt —
+     do not rename):
+       speakers: n (name), r (role), c (company), photo (image)
+       faq:      t (question), d (answer)
+       partners: name, url (href on an <a>, else text), logo (image)
+       contact:  label, name, email, phone
+       glimpses: imageUrl (image), caption
+     Missing/falsy values leave the clone's existing placeholder content alone rather than blanking it —
+     same never-wipe-to-empty discipline used elsewhere in this file (see translate() comment above). */
+  function setGenericRepeatField(fieldEl, field, value, kind) {
+    if (!value) return;
+    var isImage = field === 'photo' || field === 'logo' || field === 'imageUrl';
+    if (isImage) {
+      if (fieldEl.tagName === 'IMG') fieldEl.src = value;
+      else fieldEl.style.backgroundImage = 'url(' + value + ')';
+      return;
+    }
+    if (kind === 'partners' && field === 'url') {
+      if (fieldEl.tagName === 'A') fieldEl.href = value;
+      else fieldEl.textContent = value;
+      return;
+    }
+    if ('value' in fieldEl) fieldEl.value = value;
+    else fieldEl.textContent = value;
+  }
+
+  function fillGenericRepeatClone(clone, item, kind) {
+    var fields = clone.hasAttribute('data-rv-field') ? [clone] : [];
+    fields = fields.concat(Array.prototype.slice.call(clone.querySelectorAll('[data-rv-field]')));
+    fields.forEach(function (fieldEl) {
+      var field = fieldEl.getAttribute('data-rv-field');
+      setGenericRepeatField(fieldEl, field, item[field], kind);
+    });
+  }
+
+  /* items null/empty -> do nothing, leave Gemini's own markup exactly as written (no template element to
+     clone from means nothing to do either way). Otherwise: clone the single `[data-rv-repeat-template=
+     "<kind>"]` element once per item, fill its data-rv-field descendants, insert each clone right after
+     the previous one (so document order follows `items`' own order, starting right after the original),
+     then drop the original template node once every clone is in — leaving only real, filled items.
+     data-rv-repeat-template/data-rv-field are left on the clones: harmless, unrendered markers, not worth
+     stripping. */
+  function applyGenericRepeat(canvas, kind, items) {
+    if (!items || !items.length) return;
+    if (!canvas || !canvas.doc) return;
+    var tpl = canvas.doc.querySelector('[data-rv-repeat-template="' + kind + '"]');
+    if (!tpl || !tpl.parentNode) return;
+    var ref = tpl;
+    items.forEach(function (item) {
+      var clone = tpl.cloneNode(true);
+      fillGenericRepeatClone(clone, item, kind);
+      ref.parentNode.insertBefore(clone, ref.nextSibling);
+      ref = clone;
+    });
+    tpl.parentNode.removeChild(tpl);
+  }
+
+  /* Mirrors fetchSubcollectionOverlay() below, one layer over: detection is findRepeatKindsInDom()
+     (scans the mounted DOM for data-rv-repeat-template) instead of a content.map `from` scan, and
+     translation goes through GENERIC_REPEAT_SOURCES (the *Flat translators) instead of
+     SUBCOLLECTION_SOURCES. A ported template never has data-rv-repeat-template elements, so this
+     resolves null for it with zero extra fetches; a `gen-` template's empty content.map means the OTHER
+     function's `from` scan finds nothing for it — the two detection paths are complementary, never
+     competing for the same template. Same "couldn't fetch" vs "confirmed empty" null handling as
+     fetchSubcollectionOverlay(). */
+  function fetchGenericRepeatOverlay() {
+    if (!canvas || !eventId || eventId === '1') return Promise.resolve(null);
+    var kinds = findRepeatKindsInDom(canvas);
+    if (!kinds.length) return Promise.resolve(null);
+    var resourceNames = [];
+    kinds.forEach(function (kind) {
+      GENERIC_REPEAT_SOURCES[kind].resources.forEach(function (r) { if (resourceNames.indexOf(r) === -1) resourceNames.push(r); });
+    });
+    return Promise.all(resourceNames.map(function (r) {
+      return RevampCore.fetchSub(r, eventId).catch(function () { return null; });
+    })).then(function (results) {
+      var byResource = {};
+      resourceNames.forEach(function (name, i) { byResource[name] = results[i]; });
+      var overlay = {};
+      kinds.forEach(function (kind) {
+        var cfg = GENERIC_REPEAT_SOURCES[kind];
+        var inputs = cfg.resources.map(function (r) { return byResource[r]; });
+        if (inputs.indexOf(null) !== -1) return;   // a needed fetch failed — leave this kind untouched
+        var items = cfg.translate.apply(null, inputs);
+        if (items) overlay[kind] = items;
+      });
+      return Object.keys(overlay).length ? overlay : null;
+    });
+  }
+
   /* Fetches whichever of the resources above this MOUNTED template's own content.map actually uses (never
      more — a template with no speaker/partner/faq/contact/glimpses section makes zero extra calls) and
      builds the merged content object, or resolves null when there's nothing real to overlay (no matching
@@ -389,10 +542,23 @@
      [] (never hides/shows a section — that's the user's own Hide toggle's business, not this overlay's),
      and ctx.generatedFromBrief is false (no AI-provenance badge should ever appear just because this ran). */
   function applySubcollectionOverlay() {
-    return fetchSubcollectionOverlay().then(function (content) {
-      if (!content) return;
-      var report = RevampFill.apply(canvas, { content: content, names: {}, excluded: [], generatedFromBrief: false, aiSkippedLibraries: [] });
-      if (!report.filled.length) return;
+    // Both detection paths run together — content.map `from` (ported templates) and the DOM
+    // data-rv-repeat-template convention (AI-bespoke `gen-` templates) — and contribute additively to
+    // one merged apply pass; see fetchGenericRepeatOverlay()'s own comment on why they never compete.
+    return Promise.all([fetchSubcollectionOverlay(), fetchGenericRepeatOverlay()]).then(function (results) {
+      var content = results[0], repeatOverlay = results[1];
+      var changed = false;
+      if (content) {
+        var report = RevampFill.apply(canvas, { content: content, names: {}, excluded: [], generatedFromBrief: false, aiSkippedLibraries: [] });
+        if (report.filled.length) changed = true;
+      }
+      if (repeatOverlay) {
+        Object.keys(repeatOverlay).forEach(function (kind) {
+          applyGenericRepeat(canvas, kind, repeatOverlay[kind]);
+          changed = true;
+        });
+      }
+      if (!changed) return;
       // bakes the overlay into THIS session's baseline, same as any other edit — so Ctrl+Z doesn't revert
       // past it, and it rides along in the snapshot persist() already saves for every other reason.
       var snap = canvas.snapshot(undoStack[undoPtr]);
