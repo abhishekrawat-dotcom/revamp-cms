@@ -175,7 +175,18 @@
       // reopen (not fromCreate) always finds exactly what was last saved here, same as before.
       var isStale = !!(saved && saved.snapshot && fromCreate && draftId && saved.sourceDraftId !== draftId);
 
-      if (saved && saved.snapshot && !isStale) {
+      /* A locally-cached snapshot for a gen-<id> (Generate-from-Brief) template that was never actually
+         seeded from a real draft (sourceDraftId never set — see persist()'s own comment: it rides along on
+         every save once applyHandoffDraft() has run once, so its absence here means this exact device has
+         NEVER successfully shown real content for this event) is not trustworthy enough to restore and stop
+         there: it's exactly the shape the bug fetchServerDraft() above was built to fix left behind
+         PERMANENTLY, for every device that hit it before that fix existed — this device's local cache is
+         itself stale, not just this one visit. Re-check the server before trusting it, same as a device with
+         no local snapshot at all would; only fall back to this cached copy (further down) if the server
+         genuinely has nothing either, so a real manual edit never gets silently discarded. */
+      var localNeverSeeded = /^gen-/.test(templateId || '') && !!(saved && saved.snapshot) && !saved.sourceDraftId;
+
+      if (saved && saved.snapshot && !isStale && !localNeverSeeded) {
         sourceDraftId = saved.sourceDraftId || null;
         canvas.restore(saved.snapshot);
         undoStack = [saved.snapshot]; undoPtr = 0;
@@ -185,11 +196,18 @@
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
       }
-      // No usable local snapshot, and either not a fresh fromCreate visit or its handoff was empty/missing
-      // (a stateless reopen — see fetchServerDraft()'s own comment above for why this matters).
+      // No usable (or trusted) local snapshot, and either not a fresh fromCreate visit or its handoff was
+      // empty/missing (a stateless reopen, or a previously-poisoned local cache — see fetchServerDraft()'s
+      // and localNeverSeeded's own comments above for why this matters).
       return fetchServerDraft().then(function (res) {
         if (res && res.handoff && res.handoff.sections && res.handoff.sections.length) {
           return applyHandoffDraft(res.handoff, res.draftId || null);
+        }
+        if (saved && saved.snapshot) {
+          sourceDraftId = saved.sourceDraftId || null;
+          canvas.restore(saved.snapshot);
+          undoStack = [saved.snapshot]; undoPtr = 0;
+          return;
         }
         return seedSnapshot(null);
       });
