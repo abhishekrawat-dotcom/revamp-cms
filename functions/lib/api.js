@@ -934,12 +934,73 @@ function buildHeroImage(fb, eventId, brief, themeColor) {
   });
 }
 
+/* ---------- real-template matching — GENERATED TEMPLATES pipeline, step A0 (before structure planning) ----------
+   Real, confirmed product regression this closes: "Generate from a brief" originally picked a real ported
+   template (create-event.html's own TEMPLATES[].briefReady/briefCategory fields, still present but — per
+   that array's own header comment — explicitly "no longer read by anything... inert leftovers from when
+   that flow picked a ported template too") before switching, at some earlier point, to ALWAYS building a
+   generic library-assembled site instead, for every single event regardless of category or brief content.
+   That's the literal reason "all 7 AI-generated events are on the same template" — every one of them,
+   without exception, has always gone through the exact same generic library-assembly path; the real,
+   premium, visually distinct ported templates (tech500, making-ai-work — both already real, audited,
+   briefReady:true sites, confirmed working via the OTHER real pipeline just below, handleGenerateContent's
+   non-gen- branch, gated on template.json's own briefReady flag) were never once actually used for this,
+   even though the infra to generate real content into one has existed and worked the whole time.
+
+   This step restores that, but more carefully than before (to avoid re-introducing the exact
+   wrong-event-bleed-through issue that's the documented, real reason retail-leadership-summit/
+   cx-leaders-forum are NOT briefReady): before committing to the generic path, ask Gemini whether the
+   brief's actual, specific subject matter is a genuine, confident fit for one of the real briefReady
+   templates below — not just "same broad category" (an IP-category brief isn't automatically a CIO/tech-
+   leadership or enterprise-AI event; most IP-category briefs still won't match either one, and should still
+   fall through to the generic path exactly as today). Only a template.json that's actually audited
+   briefReady:true belongs in this list — do not add one without that same audit. */
+var BRIEF_READY_TEMPLATES = [
+  { id: 'tech500', briefCategory: 'CIO / enterprise tech leadership', description: 'Enterprise tech decision-makers, one power room — CXO signal over noise. For events specifically about CIOs/CTOs/enterprise technology leadership and decision-making.' },
+  { id: 'making-ai-work', briefCategory: 'enterprise AI leadership', description: 'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI. For events specifically about enterprise AI adoption/strategy/leadership.' }
+];
+var TEMPLATE_MATCH_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    reasoning: { type: 'STRING', description: 'Internal only, never shown on the site. Name the specific brief evidence for your decision either way.' },
+    matchedTemplateId: { type: 'STRING', description: 'One of the given candidate template ids, or the literal string "none" if no candidate is a genuine, confident subject-matter fit.' }
+  },
+  required: ['reasoning', 'matchedTemplateId']
+};
+function buildTemplateMatchPrompt(payload) {
+  var lines = [
+    'You are deciding whether a real, pre-built premium event template is a genuine subject-matter fit for this event\'s brief, before falling back to a generic, library-assembled site.',
+    '',
+    'Only say yes if the brief\'s ACTUAL, SPECIFIC subject is a strong, confident match for the candidate template\'s own real audience/topic — not just a loosely related industry or a shared broad category. When genuinely unsure, or the fit is only partial/approximate, answer "none" — a wrong match puts this event\'s real content into a template literally built and branded for a different, specific event, which is worse than the generic (but always-correct) fallback.',
+    '',
+    'Candidate templates:',
+  ];
+  BRIEF_READY_TEMPLATES.forEach(function (t) { lines.push('- id "' + t.id + '": ' + t.description); });
+  lines.push('', 'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2));
+  if (payload.brief) lines.push('', 'Extracted brief:', JSON.stringify(payload.brief, null, 2));
+  lines.push('', 'Task: does this brief\'s real subject matter confidently match exactly one candidate? Respond with that id, or "none".');
+  return lines.join('\n');
+}
+function matchBriefReadyTemplate(eventMeta, brief) {
+  if (!BRIEF_READY_TEMPLATES.length) return Promise.resolve(null);
+  return callGeminiJson(buildTemplateMatchPrompt({ eventMeta: eventMeta, brief: brief }), TEMPLATE_MATCH_SCHEMA).then(function (r) {
+    // A failed/errored match call degrades to "no match" (the generic path), same as any other best-effort
+    // AI enhancement in this file — never blocks or fails the real generation request over this one extra step.
+    if (r.error || !r.parsed) return null;
+    var id = String(r.parsed.matchedTemplateId || '').trim();
+    var found = BRIEF_READY_TEMPLATES.some(function (t) { return t.id === id; });
+    return found ? id : null;
+  }).catch(function () { return null; });
+}
+
 /* ---------- POST /api/plan-structure — GENERATED TEMPLATES pipeline, step A ----------
    Reads the event's latest brief + all its sources (same read as handleGenerateContent), asks Gemini which
    of the 7 "middle" library section types this event's real material actually supports and in what order
    (nav/hero/footer are fixed, never Gemini's call), extracts the previousEdition-only theme, generates the
    one hero background image, and persists {structurePlan, theme} onto the event's own doc — a doc, not a
-   subcollection, latest plan/theme wins (see the handler below). */
+   subcollection, latest plan/theme wins (see the handler below). Step A0 above runs first: a confident real-
+   template match skips all of this entirely (a real ported template has its own fixed structure/theme, see
+   the handler's own branch below), same as today's behavior when no match is found. */
 var STRUCTURE_PLAN_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -1014,23 +1075,34 @@ function handlePlanStructure(req, res) {
       var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections }; });
 
-      var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
+      return matchBriefReadyTemplate(eventMeta, brief).then(function (matchedTemplateId) {
+        // A confident real-template match needs none of the generic path below — a real ported template
+        // already has its own fixed section structure and real design, not a library-assembled one. Persist
+        // the match on the event doc too (not just return it) so a later plain reopen/retry can see it was
+        // already decided, same persistence discipline structurePlan/theme already get.
+        if (matchedTemplateId) {
+          return eventRef.set({ matchedTemplateId: matchedTemplateId }, { merge: true })
+            .then(function () { sendJson(res, 200, { eventId: eventId, matchedTemplateId: matchedTemplateId, structurePlan: null, theme: null }); });
+        }
 
-      return callGeminiJson(buildPlanStructurePrompt({ eventMeta: eventMeta, brief: brief, sources: sources }), STRUCTURE_PLAN_SCHEMA).then(function (r) {
-        if (r.error) return sendJson(res, r.status, { error: r.error });
-        var sections = sanitizeStructurePlan(r.parsed);
-        var now = new Date().toISOString();
+        var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
 
-        return buildHeroImage(fb, eventId, brief, themeInfo.themeColor).then(function (heroImage) {
-          var structurePlan = { sections: sections, generatedAt: now };
-          var theme = {
-            themeColor: themeInfo.themeColor, headingFont: themeInfo.headingFont, bodyFont: themeInfo.bodyFont,
-            usedFallback: themeInfo.usedFallback,
-            heroImageUrl: heroImage.heroImageUrl, heroImageStoragePath: heroImage.heroImageStoragePath, heroImageError: heroImage.heroImageError,
-            generatedAt: now
-          };
-          return eventRef.set({ structurePlan: structurePlan, theme: theme }, { merge: true })
-            .then(function () { sendJson(res, 200, { eventId: eventId, structurePlan: structurePlan, theme: theme }); });
+        return callGeminiJson(buildPlanStructurePrompt({ eventMeta: eventMeta, brief: brief, sources: sources }), STRUCTURE_PLAN_SCHEMA).then(function (r) {
+          if (r.error) return sendJson(res, r.status, { error: r.error });
+          var sections = sanitizeStructurePlan(r.parsed);
+          var now = new Date().toISOString();
+
+          return buildHeroImage(fb, eventId, brief, themeInfo.themeColor).then(function (heroImage) {
+            var structurePlan = { sections: sections, generatedAt: now };
+            var theme = {
+              themeColor: themeInfo.themeColor, headingFont: themeInfo.headingFont, bodyFont: themeInfo.bodyFont,
+              usedFallback: themeInfo.usedFallback,
+              heroImageUrl: heroImage.heroImageUrl, heroImageStoragePath: heroImage.heroImageStoragePath, heroImageError: heroImage.heroImageError,
+              generatedAt: now
+            };
+            return eventRef.set({ structurePlan: structurePlan, theme: theme, matchedTemplateId: null }, { merge: true })
+              .then(function () { sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: structurePlan, theme: theme }); });
+          });
         });
       });
     }).catch(function (err) { sendJson(res, 500, { error: 'plan-structure failed: ' + err.message }); });

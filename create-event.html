@@ -3827,11 +3827,23 @@
     // "gen-<eventId>" is a GENERATED template, not a real ported one — functions/lib/api.js's
     // handleGenerateContent reads the structurePlan the 'plan' row below just wrote (plus each chosen
     // library section's own map.json) to build its content.map, instead of a real templates/<id>/template.json.
+    //
+    // matchedTemplateId: real, confirmed bug this closes — every Generate-from-Brief event has always gone
+    // through the generic 'gen-' path above, unconditionally, with no exception, even for a brief whose
+    // real subject matter is a confident, specific fit for a real, premium, already-audited ported template
+    // (tech500/making-ai-work) — the actual reason multiple generated events all "look like the same
+    // template": they structurally are, every one of them, regardless of what they're really about. The
+    // 'plan' step below now asks the server to check that first; captured here so 'generate' can use the
+    // real template id it found instead of the generic fallback, same as if a human had picked it manually.
+    var matchedTemplateId = null;
     runners.plan = function(){
-      return postJson('/api/plan-structure', { eventId: eventId });
+      return postJson('/api/plan-structure', { eventId: eventId }).then(function(result){
+        matchedTemplateId = (result && result.matchedTemplateId) || null;
+        return result;
+      });
     };
     runners.generate = function(){
-      return postJson('/api/generate-content', { eventId: eventId, templateId: 'gen-' + eventId, eventMeta: eventMeta, futureEdition: futureEdition });
+      return postJson('/api/generate-content', { eventId: eventId, templateId: matchedTemplateId || ('gen-' + eventId), eventMeta: eventMeta, futureEdition: futureEdition });
     };
 
     // the `generate` row's "still writing, hasn't stalled" reassurance (D3's own clock, never the warning
