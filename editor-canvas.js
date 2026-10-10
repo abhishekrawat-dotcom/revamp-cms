@@ -30,6 +30,8 @@
      canvas.createGenericSection(name, html, siteCss)
                                              one of the editor's generic sections, dressed in the template's tokens
      canvas.adopt(el)                        after inserting: unique ids (+ their CSS), section scripts started
+     canvas.adoptElement(el)                 the same for a copy of one element inside a section (no scripts to start)
+     canvas.anchorFor(sec)                   the id a link to this section uses ("#<id>"); gives the section one if it has none
      canvas.retag(el)                        after changing markup in place: marks what has become editable
      canvas.openItem(el)                     opens the accordion item around el (template.json → sections[].toggle)
                                              so its hidden part can be edited; editor-only, never saved
@@ -37,7 +39,11 @@
      canvas.pictureOf(el)                    the URL it shows now ('' for a drawn icon)
      canvas.duplicateSection(sec, name)      copy placed right after the original, already adopted
      canvas.removeSection(sec)               removes it with any CSS made for it
-     canvas.contentRoot()                    where sections live when the page has none left */
+     canvas.contentRoot()                    where sections live when the page has none left
+
+   The page in the canvas is edited, never visited: mount() stops every link, form and submit button from taking
+   the canvas somewhere else. Should the canvas still load another document (a script setting location),
+   canvas.onNavigate is called; the canvas is then dead and canvas.destroy() + a new mount() replace it. */
 (function () {
   'use strict';
 
@@ -312,10 +318,31 @@
       sectionOrder: opts && opts.sectionOrder
     }).then(function (res) {
       return new Promise(function (resolve) {
-        iframe.addEventListener('load', function () { resolve(makeCanvas(viewport, iframe, res.template)); }, { once: true });
+        var canvas = null;
+        iframe.addEventListener('load', function () {
+          if (canvas) { if (canvas.onNavigate) canvas.onNavigate(); return; }     // a second load: the page went somewhere
+          canvas = makeCanvas(viewport, iframe, res.template);
+          guardNavigation(canvas.doc);
+          resolve(canvas);
+        });
         iframe.srcdoc = res.html;
       });
     });
+  }
+
+  /* Capture phase, so it runs before anything on the page; only the browser's own action is cancelled — the page's
+     and the editor's listeners still see the event. */
+  function guardNavigation(doc) {
+    function stop(e) {
+      var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+      if (!t) return;
+      if (t.closest('a, area')) { e.preventDefault(); return; }
+      var control = t.closest('button, input');
+      if (control && control.form && (control.type === 'submit' || control.type === 'image')) e.preventDefault();
+    }
+    doc.addEventListener('click', stop, true);
+    doc.addEventListener('auxclick', stop, true);       // middle click opens a link in a new tab
+    doc.addEventListener('submit', function (e) { e.preventDefault(); }, true);
   }
 
   function makeCanvas(viewport, iframe, template) {
@@ -389,7 +416,10 @@
       return out.join('\n');
     }
 
-    function adopt(el) {
+    /* Gives every id inside el that the page already uses a fresh one, repoints what refers to it inside el, and
+       puts the CSS copied for the new ids right after `owner` — the section the copy belongs to, so the CSS is
+       saved, and removed, with it. */
+    function renameDuplicateIds(el, owner) {
       var renames = {};
       [el].concat(Array.prototype.slice.call(el.querySelectorAll('[id]'))).forEach(function (n) {
         if (n.id && doc.querySelectorAll('#' + CSS.escape(n.id)).length > 1) {
@@ -398,34 +428,55 @@
           n.id = fresh;
         }
       });
-      if (Object.keys(renames).length) {
-        var css = copyRulesFor(renames);
-        if (css) {
-          var st = doc.createElement('style');
-          st.setAttribute('data-rv-copy-for', el.id);
-          st.textContent = css;
-          el.after(st);
-        }
-        // in-section references to renamed ids (anchor links, labels, aria)
-        el.querySelectorAll('[href^="#"], [for], [aria-controls], [aria-labelledby], [aria-describedby]').forEach(function (n) {
-          ['href', 'for', 'aria-controls', 'aria-labelledby', 'aria-describedby'].forEach(function (a) {
-            var v = n.getAttribute(a);
-            if (!v) return;
-            var key = a === 'href' ? v.slice(1) : v;
-            if (renames[key]) n.setAttribute(a, (a === 'href' ? '#' : '') + renames[key]);
-          });
-        });
+      if (!Object.keys(renames).length) return;
+      var css = copyRulesFor(renames);
+      if (css) {
+        var st = doc.createElement('style');
+        st.setAttribute('data-rv-copy-for', owner.id);
+        st.textContent = css;
+        owner.after(st);
       }
+      // references to renamed ids (anchor links, labels, aria, an icon's own gradient or clip path)
+      var inSvg = /url\(\s*["']?#([^"')\s]+)["']?\s*\)/g;
+      [el].concat(Array.prototype.slice.call(el.querySelectorAll('*'))).forEach(function (n) {
+        ['href', 'xlink:href', 'for', 'aria-controls', 'aria-labelledby', 'aria-describedby'].forEach(function (a) {
+          var v = n.getAttribute(a);
+          if (!v) return;
+          var isRef = a === 'href' || a === 'xlink:href';
+          if (isRef && v.charAt(0) !== '#') return;
+          var key = isRef ? v.slice(1) : v;
+          if (renames[key]) n.setAttribute(a, (isRef ? '#' : '') + renames[key]);
+        });
+        ['fill', 'stroke', 'clip-path', 'mask', 'filter', 'style'].forEach(function (a) {
+          var v = n.getAttribute(a);
+          if (!v || v.indexOf('url(') === -1) return;
+          var next = v.replace(inSvg, function (m, id) { return renames[id] ? 'url(#' + renames[id] + ')' : m; });
+          if (next !== v) n.setAttribute(a, next);
+        });
+      });
+    }
+
+    function adopt(el) {
+      renameDuplicateIds(el, el);
       if (win.RevampSections) win.RevampSections.init(el);
+      return el;
+    }
+
+    function adoptElement(el) {
+      renameDuplicateIds(el, el.closest('[data-rv-section]') || el);
       return el;
     }
 
     /* ---------- items that open (accordions) ----------
        template.json → sections[].toggle: { item, open, expanded } — e.g. an FAQ whose .faq-item gets .active. The
-       site's own script opens them on click, but the editor keeps clicks from the site, so the editor opens an item
-       itself when something inside it is clicked: its answer can then be picked and edited. That open state belongs to
-       the editor only (data-rv-open / data-rv-aria), so saves, undo steps and the published page keep every item as
-       the template has it. */
+       site's own script opens them on click, but the editor stops canvas clicks before they reach the site's scripts
+       (editor-template-ui.js, wireCanvasEvents), so the editor opens an item itself when something inside it is
+       clicked: its answer can then be picked and edited. That open state belongs to the editor only (data-rv-open /
+       data-rv-aria), so saves, undo steps and the published page keep every item as the template has it.
+
+       A saved page can still hold an item that is open with no editor marker (the site's script opened it).
+       closeStray() puts those back as the template has them — in what is saved and published (nodeHtml, serialize)
+       and in the canvas when such a page is restored. */
     function toggleOf(sec) {
       var id = sec.getAttribute('data-rv-section');
       var s = template.sections.filter(function (x) { return x.id === id; })[0];
@@ -434,7 +485,8 @@
     function unopen(root) {
       [root].concat(Array.prototype.slice.call(root.querySelectorAll('[data-rv-open], [data-rv-aria]'))).forEach(function (m) {
         if (m.hasAttribute('data-rv-open')) {
-          m.classList.remove(m.getAttribute('data-rv-open'));
+          if (m.tagName === 'DETAILS') m.removeAttribute('open');      // a native <details> the editor opened (openItem)
+          else m.classList.remove(m.getAttribute('data-rv-open'));
           m.removeAttribute('data-rv-open');
           if (!m.getAttribute('class')) m.removeAttribute('class');
         }
@@ -444,7 +496,62 @@
         }
       });
     }
+    var openAtStart = {};       // section id -> which of its items the template itself has open, by position
+    function templateOpen(id, t) {
+      if (!openAtStart[id]) {
+        var item = library.filter(function (s) { return s.id === id; })[0];
+        var tmp = doc.createElement('template');
+        tmp.innerHTML = item ? item.html : '';
+        openAtStart[id] = Array.prototype.map.call(tmp.content.querySelectorAll(t.item), function (it) { return it.classList.contains(t.open); });
+      }
+      return openAtStart[id];
+    }
+    function hasStray(sec) {
+      var t = toggleOf(sec);
+      if (!t) return false;
+      var start = templateOpen(sec.getAttribute('data-rv-section'), t);
+      return Array.prototype.some.call(sec.querySelectorAll(t.item), function (it, i) {
+        return it.classList.contains(t.open) && !it.hasAttribute('data-rv-open') && !start[i];
+      });
+    }
+    function closeStray(sec) {
+      var t = toggleOf(sec);
+      if (!t) return;
+      var start = templateOpen(sec.getAttribute('data-rv-section'), t);
+      Array.prototype.forEach.call(sec.querySelectorAll(t.item), function (it, i) {
+        if (!it.classList.contains(t.open) || it.hasAttribute('data-rv-open') || start[i]) return;
+        it.classList.remove(t.open);
+        if (!it.getAttribute('class')) it.removeAttribute('class');
+        var trigger = t.expanded && it.querySelector(t.expanded);
+        if (trigger && trigger.getAttribute('aria-expanded') === 'true' && !trigger.hasAttribute('data-rv-aria')) trigger.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    /* Saved pages can carry a link's address in data-href, an attribute no browser follows. Where the element is a
+       link with no real address, the saved one becomes its href (unless it is one a link may not have); the
+       attribute itself is dropped everywhere. */
+    function dropLegacyHref(root) {
+      [root].concat(Array.prototype.slice.call(root.querySelectorAll('[data-href]'))).forEach(function (n) {
+        if (!n.hasAttribute || !n.hasAttribute('data-href')) return;
+        var v = (n.getAttribute('data-href') || '').trim();
+        if (n.tagName === 'A' && !n.getAttribute('href') && /^(https?:\/\/|mailto:|tel:|#|\/(?!\/))/i.test(v)) n.setAttribute('href', v);
+        n.removeAttribute('data-href');
+      });
+    }
+
     function openItem(el) {
+      /* A native <details> — the FAQ markup of imported and AI-designed pages — has no toggle entry in
+         template.json, and its own click-to-open is one of the default actions the editor cancels for every
+         canvas click. So it is opened here, under the same editor-only marker as a template accordion: the
+         answer inside can be reached and edited, and saves and the published page keep it closed. One the
+         page itself ships open has no marker and stays open. */
+      var summary = el.closest('summary'), det = summary && summary.parentElement;
+      if (det && det.tagName === 'DETAILS') {
+        if (det.hasAttribute('open')) return false;
+        det.setAttribute('open', '');
+        det.setAttribute('data-rv-open', 'open');
+        return true;
+      }
       var sec = el.closest('[data-rv-section]'), t = sec && toggleOf(sec);
       if (!t) return false;
       var item = el.closest(t.item);
@@ -554,6 +661,8 @@
         if (!n.className) n.removeAttribute('class');
       });
       unopen(root);
+      root.querySelectorAll('[data-rv-section]').forEach(closeStray);
+      dropLegacyHref(root);
       return '<!DOCTYPE html>\n' + root.outerHTML;
     }
 
@@ -580,7 +689,8 @@
 
     function nodeHtml(n) {
       if (n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
-      if (!n.matches(TRANSIENT) && !n.querySelector(TRANSIENT)) return n.outerHTML;
+      var isSection = n.hasAttribute('data-rv-section');
+      if (!n.matches(TRANSIENT) && !n.querySelector(TRANSIENT) && !(isSection && hasStray(n))) return n.outerHTML;
       var c = n.cloneNode(true);
       [c].concat(Array.prototype.slice.call(c.querySelectorAll(TRANSIENT))).forEach(function (m) {
         m.classList.remove('ed-selected', 'sec-active');
@@ -589,6 +699,7 @@
         m.removeAttribute('data-text-original');
       });
       unopen(c);
+      if (isSection) closeStray(c);
       return c.outerHTML;
     }
 
@@ -650,6 +761,8 @@
       });
 
       return built.filter(function (n) { return n.hasAttribute('data-rv-section'); }).map(function (sec) {
+        closeStray(sec);
+        dropLegacyHref(sec);
         descend(sec, false);             // no-op for what was saved marked; picks up anything new in the rules
         if (win.RevampSections) win.RevampSections.init(sec);
         return sec;
@@ -687,6 +800,14 @@
         return prepare(sec, name);
       },
       adopt: adopt,
+      adoptElement: adoptElement,
+      anchorFor: function (sec) {
+        if (!sec.id) {
+          var own = sec.getAttribute('data-rv-section') || 'section';
+          sec.id = doc.getElementById(own) ? uniqueId(own) : own;
+        }
+        return sec.id;
+      },
       retag: function (el) { descend(el, false); },       // after changing a section's markup: new text becomes editable
       openItem: openItem,                                 // an accordion item around el opened for editing; true if it did
       setPicture: setPicture,                             // a new picture in an <img>, an <svg> icon or an image box
@@ -711,15 +832,18 @@
         if (hdr && /fixed|sticky/.test(win.getComputedStyle(hdr).position)) off += hdr.getBoundingClientRect().height;
         win.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + win.scrollY - off), behavior: 'smooth' });
       },
-      onResize: null          // set by the editor: called after every re-fit
+      onResize: null,         // set by the editor: called after every re-fit
+      onNavigate: null,       // set by the editor: the canvas has loaded another document and can no longer be used
+      destroy: function () { resizing.disconnect(); viewport.remove(); }
     };
 
     /* the frame changes size with the window and whenever a side panel opens or closes */
     fit();
-    new ResizeObserver(function () {
+    var resizing = new ResizeObserver(function () {
       fit();
       if (api.onResize) api.onResize();
-    }).observe(viewport);
+    });
+    resizing.observe(viewport);
     return api;
   }
 

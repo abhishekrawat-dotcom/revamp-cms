@@ -41,6 +41,10 @@
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(STORE, mode);
         var req = work(tx.objectStore(STORE));
+        // A write is committed at once instead of when the browser gets round to it: left to itself the commit
+        // waits for the request's reply, and a page that is being closed or reloaded never receives it — the
+        // write made on the way out (the last thing typed) would be dropped.
+        if (mode === 'readwrite' && tx.commit) tx.commit();
         tx.oncomplete = function () { resolve(req.result); };
         tx.onerror = tx.onabort = function () { reject(tx.error || new Error('IndexedDB transaction failed')); };
       });

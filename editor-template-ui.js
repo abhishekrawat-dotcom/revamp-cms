@@ -9,7 +9,9 @@
    canvas.snapshot()/restore(), device switching, preview and publish.
 
    window.RevampTemplateUI = { boot(frameEl, templateId, host) }
-     host: { escHtml, showToast, EV, editorEventId } — only showToast/escHtml are used here.
+     host: { escHtml, showToast, showNotice, clearNotice, openDialog, EV, editorEventId } — the page's own
+           feedback helpers (custom_editor.html); EV/editorEventId are not used here.
+   flush() records an edit that is still pending (text being typed, a slider still moving).
    Also: hasAiProvenance(), aiProvenanceSections(), setAiMarkers(show) — custom_editor.html's AI-provenance
    badge toggle and publish-review gate read/drive these; see "AI-provenance badges" below. */
 (function () {
@@ -30,10 +32,13 @@
      re-fetch-and-refill — same self-healing idea as the sourceDraftId check, one layer more precise. */
   var FILL_LOGIC_VERSION = 2;
   var undoStack = [], undoPtr = -1, commitTimer = null;
+  var typingTimer = null, typingPtr = -1;     // the undo step the text being typed is recorded in (-1: none yet)
   var selectedEl = null, activeSectionEl = null, editingEl = null;
-  var selToolbar = null, secToolbar = null;
+  var selToolbar = null, secToolbar = null, selWatch = null;
+  var mountOpts = null, remounting = false, deviceName = 'desktop', aiMarkersOn = false;
 
-  function showToast(msg) { if (host && host.showToast) host.showToast(msg); }
+  function showToast(msg, opts) { return host && host.showToast ? host.showToast(msg, opts) : null; }
+  function showNotice(id, opts) { if (host && host.showNotice) host.showNotice(id, opts); }
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
 
   /* ---------- key derivation ----------
@@ -76,7 +81,8 @@
        than threading it through as a boot() parameter. */
     var earlyDraft = new URLSearchParams(location.search).get('from') === 'create' ? readHandoffDraft() : null;
 
-    return RevampCanvas.mount(frame, templateId, { sectionOrder: earlyDraft && earlyDraft.sectionOrder }).then(function (c) {
+    mountOpts = { sectionOrder: earlyDraft && earlyDraft.sectionOrder };
+    return RevampCanvas.mount(frame, templateId, mountOpts).then(function (c) {
       canvas = c;
       return resolveInitialContent();
     }).then(function () {
@@ -87,6 +93,7 @@
       buildToolbars();
       wireCanvasEvents();
       wireGlobalKeys();
+      wireLeaving();
       wireDesignBridge();
       wireChatPanel();
       updateHistoryButtons();
@@ -200,7 +207,9 @@
       function restoreLocal() {
         sourceDraftId = saved.sourceDraftId || null;
         canvas.restore(saved.snapshot);
-        undoStack = [saved.snapshot]; undoPtr = 0;
+        // read back rather than reused: restore() repairs what older saves got wrong, and the first undo step
+        // must be the page as it stands, or opening the editor would itself count as a change
+        undoStack = [canvas.snapshot(saved.snapshot)]; undoPtr = 0;
       }
 
       /* A gen-<id> (Generate-from-Brief) template's local snapshot is NOT unconditionally trusted on a
@@ -683,7 +692,8 @@
   /* the topbar toggle's actual effect — a class on the iframe document's own <html>, since the badges
      (and editor-canvas.css's visibility rule for them) live inside it, not in custom_editor.html itself. */
   function setAiMarkers(show) {
-    if (canvas) canvas.doc.documentElement.classList.toggle('show-ai-markers', !!show);
+    aiMarkersOn = !!show;
+    if (canvas) canvas.doc.documentElement.classList.toggle('show-ai-markers', aiMarkersOn);
   }
 
   /* C1 — "cleared once a human edits that section": called at each of this file's own actual content-edit
@@ -701,41 +711,97 @@
     return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
   }
 
-  /* ---------- save / undo ---------- */
+  /* ---------- save / undo ----------
+     Every committed change is one undo step and is written to this browser's copy at once, not after a delay:
+     whatever is waiting for a timer when the page is left is lost. Three ways in:
+       commitNow()     a finished action (toolbar, section tools, an applied AI proposal, leaving a text)
+       commitTyping()  text being typed: the first one of an edit session adds a step, the later ones replace it,
+                       so one stretch of typing is one undo step however long it took
+       commit()        a control that fires continuously (a slider): one step once it has been still for a moment
+     flush() records whatever is still pending; everything that reads or leaves the page calls it first. */
   function persist(snap) {
     // sourceDraftId/fillVersion ride along on every later edit too, not just the first save — otherwise the
-    // very next commit() after seedSnapshot() would overwrite it with a record that has neither, and a
+    // very next commit after seedSnapshot() would overwrite it with a record that has neither, and a
     // second Generate-from-Brief run later in the SAME browser would no longer be able to tell this apart
     // from a never-regenerated draft (see resolveInitialContent()'s staleness check), and a real manual
     // edit made just after a correct seed would look exactly like an old, pre-fix snapshot again.
     return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
   }
 
-  function commit() {
-    clearTimeout(commitTimer);
-    commitTimer = setTimeout(function () {
-      var snap = canvas.snapshot(undoStack[undoPtr]);
-      if (canvas.sameSnapshot(snap, undoStack[undoPtr])) return;
+  var localStoreOk = true;
+  function markLocalStoreUnavailable(err) {
+    if (window.console) console.warn('[RevampTemplateUI] Could not write the local copy:', err);
+    if (!localStoreOk) return;
+    localStoreOk = false;
+    showNotice('local-store', {
+      kind: 'warn', dismissible: true,
+      text: 'This browser cannot keep a copy of your work. Your changes will be lost when you close this tab.'
+    });
+  }
+  function saveLocal(snap) {
+    try { persist(snap).catch(markLocalStoreUnavailable); } catch (err) { markLocalStoreUnavailable(err); }
+  }
+
+  /* The site lives in this browser's copy only; sending each committed change to the server starts here. */
+  function scheduleServerSave() {}
+
+  function record(typing) {
+    clearTimeout(commitTimer); commitTimer = null;
+    if (!canvas || remounting) return false;
+    var replacing = typing && typingPtr === undoPtr && undoPtr > 0;
+    if (!typing) typingPtr = -1;
+    var snap = canvas.snapshot(undoStack[undoPtr]);
+    if (canvas.sameSnapshot(snap, undoStack[undoPtr])) return false;
+    if (replacing && canvas.sameSnapshot(snap, undoStack[undoPtr - 1])) {
+      // typed back to what it was before this edit session: no step left to undo
+      undoStack = undoStack.slice(0, undoPtr);
+      undoPtr--; typingPtr = -1;
+    } else if (replacing) {
+      undoStack[undoPtr] = snap;
+    } else {
       undoStack = undoStack.slice(0, undoPtr + 1).concat([snap]);
       undoPtr = undoStack.length - 1;
-      updateHistoryButtons();
-      persist(snap);
-    }, 400);
+      typingPtr = typing ? undoPtr : -1;
+    }
+    dismissUndoToast();
+    updateHistoryButtons();
+    saveLocal(undoStack[undoPtr]);
+    scheduleServerSave();
+    repositionToolbars();
+    return true;
+  }
+  function commitNow() { return record(false); }
+  function commitTyping() { return record(true); }
+
+  function commit() {
+    clearTimeout(commitTimer);
+    commitTimer = setTimeout(commitNow, 400);
   }
 
-  function undo() {
-    if (undoPtr <= 0) return;
-    deselect();
-    undoPtr--; canvas.restore(undoStack[undoPtr]);
-    updateHistoryButtons(); persist(undoStack[undoPtr]);
+  function flush() {
+    if (!canvas || remounting) return;
+    clearTimeout(typingTimer); typingTimer = null;
+    if (editingEl) commitTyping();
+    else if (commitTimer) commitNow();
   }
 
-  function redo() {
-    if (undoPtr >= undoStack.length - 1) return;
-    deselect();
-    undoPtr++; canvas.restore(undoStack[undoPtr]);
-    updateHistoryButtons(); persist(undoStack[undoPtr]);
+  function step(by) {
+    if (!canvas || remounting) return;
+    deselect();       // leaves any text being edited, which records it
+    flush();          // either may just have added the newest step, so the pointer is read after them
+    var ptr = undoPtr + by;
+    if (ptr < 0 || ptr >= undoStack.length) return;
+    typingPtr = -1;
+    dismissUndoToast();
+    undoPtr = ptr;
+    canvas.restore(undoStack[undoPtr]);
+    updateHistoryButtons();
+    saveLocal(undoStack[undoPtr]);
+    scheduleServerSave();
+    repositionToolbars();
   }
+  function undo() { step(-1); }
+  function redo() { step(1); }
 
   function updateHistoryButtons() {
     var u = document.getElementById('btn-tpl-undo'), r = document.getElementById('btn-tpl-redo');
@@ -743,7 +809,18 @@
     if (r) r.disabled = undoPtr >= undoStack.length - 1;
   }
 
-  /* ---------- selection + floating toolbar ---------- */
+  /* "Deleted — Undo": the button undoes the newest step, so the toast goes as soon as that step is no longer
+     the deletion it talks about. */
+  var undoToast = null;
+  function dismissUndoToast() {
+    if (undoToast) { undoToast.dismiss(); undoToast = null; }
+  }
+  function offerUndo(msg) {
+    var t = showToast(msg, { action: { label: 'Undo', onClick: function () { undoToast = null; undo(); } } });
+    undoToast = t || null;
+  }
+
+  /* ---------- selection + floating toolbars ---------- */
   function buildToolbars() {
     selToolbar = document.createElement('div');
     selToolbar.id = 'tpl-sel-toolbar';
@@ -757,6 +834,13 @@
     secToolbar.hidden = true;
     frame.appendChild(secToolbar);
 
+    linkPop = document.createElement('div');
+    linkPop.id = 'tpl-link-pop';
+    linkPop.className = 'tpl-pop';
+    linkPop.hidden = true;
+    frame.appendChild(linkPop);
+    wireLinkPop();
+
     selToolbar.addEventListener('mousedown', function (e) { if (!e.target.closest('select, input')) e.preventDefault(); });
     selToolbar.addEventListener('click', onToolbarClick);
     secToolbar.addEventListener('click', onSecToolbarClick);
@@ -766,38 +850,82 @@
     });
   }
 
-  function deselect() {
-    if (editingEl) exitEdit(editingEl);
-    if (selectedEl) selectedEl.classList.remove('ed-selected');
+  /* taking a marker class off must not leave class="" behind: the page would then differ from what was saved
+     although nothing was changed */
+  function unmark(el, cls) {
+    el.classList.remove(cls);
+    if (!el.getAttribute('class')) el.removeAttribute('class');
+  }
+
+  function clearElementSelection() {
+    closeLinkPop();
+    if (selectedEl) unmark(selectedEl, 'ed-selected');
     selectedEl = null;
+    if (selWatch) selWatch.disconnect();
     selToolbar.hidden = true;
-    if (activeSectionEl) activeSectionEl.classList.remove('sec-active');
+  }
+
+  function clearActiveSection() {
+    if (activeSectionEl) unmark(activeSectionEl, 'sec-active');
     activeSectionEl = null;
     secToolbar.hidden = true;
   }
 
-  function selectSectionOnly(sec) {
-    if (selectedEl) { selectedEl.classList.remove('ed-selected'); selectedEl = null; selToolbar.hidden = true; }
-    if (activeSectionEl) activeSectionEl.classList.remove('sec-active');
+  function setActiveSection(sec) {
+    if (activeSectionEl && activeSectionEl !== sec) unmark(activeSectionEl, 'sec-active');
     activeSectionEl = sec; sec.classList.add('sec-active');
     buildSecToolbar(sec);
-    positionSecToolbar(sec);
+  }
+
+  function deselect() {
+    if (editingEl) exitEdit(editingEl);
+    clearElementSelection();
+    clearActiveSection();
+  }
+
+  function selectSectionOnly(sec) {
+    if (editingEl) exitEdit(editingEl);
+    clearElementSelection();
+    setActiveSection(sec);
+    positionToolbars();
   }
 
   function selectElement(el) {
     if (editingEl && editingEl !== el) exitEdit(editingEl);
-    if (selectedEl) selectedEl.classList.remove('ed-selected');
-    selectedEl = el; el.classList.add('ed-selected');
+    if (selectedEl !== el) clearElementSelection();
     var sec = el.closest('[data-rv-section]');
-    if (sec) selectSectionOnly(sec);
+    if (sec) setActiveSection(sec); else clearActiveSection();
+    selectedEl = el; el.classList.add('ed-selected');
     buildToolbar(el);
-    positionToolbar(el);
+    // the element grows and shrinks as its text is typed; the pill follows it
+    if (canvas.win.ResizeObserver) {
+      if (selWatch) selWatch.disconnect();
+      selWatch = new canvas.win.ResizeObserver(repositionToolbars);
+      selWatch.observe(el);
+    }
+    positionToolbars();
   }
 
   var TEXT_FORMAT_ACTIONS = { bold: 1, italic: 1, underline: 1, strikethrough: 1 };
 
+  /* Where a Link on this element is kept: the element when it is a link itself, else the link around it. A text
+     with no link gets one around the words selected in it. Nothing can be linked inside a <button>, which may
+     not contain a link, and a button-like box that is not a link is first turned into one (linkHost). */
+  function anchorOf(el) {
+    var a = el.closest('a');
+    var sec = el.closest('[data-rv-section]');
+    return a && sec && sec.contains(a) ? a : null;
+  }
+  function canLink(el) {
+    var type = el.getAttribute('data-editable');
+    if (anchorOf(el)) return true;
+    if (el.closest('button')) return false;
+    return type === 'text' || type === 'button';
+  }
+
   function buildToolbar(el) {
     var type = el.getAttribute('data-editable');
+    var link = canLink(el) ? '<button data-action="link" title="Where this leads when clicked">Link</button>' : '';
     var html = '';
     if (type === 'text') {
       html +=
@@ -809,73 +937,434 @@
         '<button class="icon-only" data-action="align-left" title="Align left">&#8676;</button>' +
         '<button class="icon-only" data-action="align-center" title="Align center">&#8596;</button>' +
         '<button class="icon-only" data-action="align-right" title="Align right">&#8677;</button>' +
-        '<span class="tpl-tb-sep"></span>' +
-        '<button data-action="link" title="Link">Link</button>';
+        (link ? '<span class="tpl-tb-sep"></span>' + link : '');
     } else if (type === 'button') {
-      html += '<button data-action="link" title="Link">Link</button>';
+      html += link;
     } else if (type === 'image') {
       html += '<button data-action="replace-image" title="Replace image">Replace image</button>' +
-        '<button data-action="alt-text" title="Alt text">Alt text</button>';
+        '<button data-action="alt-text" title="Alt text">Alt text</button>' + link;
     }
     html += '<span class="tpl-tb-sep"></span>' +
       '<button class="icon-only" data-action="duplicate" title="Duplicate">&#10697;</button>' +
       '<button class="icon-only danger" data-action="delete" title="Delete">&#10005;</button>' +
       '<button class="icon-only" data-action="deselect" title="Close">&#10060;</button>';
     selToolbar.innerHTML = html;
-    selToolbar.hidden = false;
   }
 
-  function positionToolbar(el) {
-    var r = canvas.screenRect(el);
+  /* ---------- where the two pills sit ----------
+     Both are positioned in #frame's own coordinates from the selection's place on screen (canvas.screenRect
+     allows for the canvas being scaled), and are placed again whenever that place can have changed: the canvas
+     scrolls, the text grows, the frame is resized, the device changes, an undo step is put back.
+       element pill   above the element, below it when there is no room above; gone while the element is out of view
+       section pill   inside the section's top-right corner, staying at the top of the canvas while a tall section
+                      scrolls past; gone while the section is out of view; moved out of the element pill's way */
+  var positionFrame = 0;
+  function repositionToolbars() {
+    if (positionFrame) return;
+    positionFrame = requestAnimationFrame(function () { positionFrame = 0; positionToolbars(); });
+  }
+
+  function overlaps(a, b) {
+    return a && b && a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+  }
+  function place(node, box) {
+    node.style.left = Math.round(box.left) + 'px';
+    node.style.top = Math.round(box.top) + 'px';
+  }
+
+  function positionToolbars() {
+    if (!canvas || remounting || !selToolbar) return;
     var fr = frame.getBoundingClientRect();
-    selToolbar.style.visibility = 'hidden'; selToolbar.hidden = false;
-    var tbH = selToolbar.offsetHeight || 36, tbW = selToolbar.offsetWidth || 0;
-    var top = (r.top - fr.top) - tbH - 8;
-    if (top < 4) top = (r.bottom - fr.top) + 8;
-    var left = Math.max(6, Math.min((r.left - fr.left), fr.width - tbW - 6));
-    selToolbar.style.top = top + 'px';
-    selToolbar.style.left = left + 'px';
-    selToolbar.style.visibility = '';
+    var selBox = null, elBox = null;
+
+    if (selectedEl && selectedEl.isConnected && canvas.inView(selectedEl)) {
+      var r = canvas.screenRect(selectedEl);
+      elBox = { left: r.left - fr.left, top: r.top - fr.top, width: r.width, height: r.height };
+      selToolbar.hidden = false;
+      var w = selToolbar.offsetWidth, h = selToolbar.offsetHeight;
+      var top = r.top - fr.top - h - 8;
+      if (top < 4) top = r.bottom - fr.top + 8;
+      // taller than the canvas, so no room on either side: the bottom edge of the canvas is the least in the way
+      if (top + h > fr.height - 4) top = fr.height - h - 4;
+      selBox = { left: Math.max(6, Math.min(r.left - fr.left, fr.width - w - 6)), top: top, width: w, height: h };
+      place(selToolbar, selBox);
+      if (!linkPop.hidden) positionLinkPop(selBox, fr);
+    } else {
+      selToolbar.hidden = true;
+      if (!selectedEl || !selectedEl.isConnected) closeLinkPop();
+      else linkPop.style.visibility = linkPop.hidden ? '' : 'hidden';      // scrolled away with its element
+    }
+
+    if (!activeSectionEl || !activeSectionEl.isConnected) { secToolbar.hidden = true; return; }
+    if (activeSectionEl.classList.contains('is-hidden-sec')) {
+      // a hidden section takes no room on the canvas; its pill (with Show) waits in the corner
+      secToolbar.hidden = false;
+      place(secToolbar, { left: 6, top: 4 });
+      return;
+    }
+    var s = canvas.screenRect(activeSectionEl);
+    if (s.bottom <= fr.top || s.top >= fr.bottom) { secToolbar.hidden = true; return; }
+    secToolbar.hidden = false;
+    var sw = secToolbar.offsetWidth, sh = secToolbar.offsetHeight;
+    var secTop = Math.max(s.top - fr.top, 0) + 8;
+    secTop = Math.max(4, Math.min(secTop, s.bottom - fr.top - sh - 8));
+    var rightEdge = Math.min(s.right - fr.left, fr.width), leftEdge = Math.max(s.left - fr.left, 0);
+    var spots = [];
+    // a phone-width canvas leaves the frame empty beside it: the pill goes there, off the page altogether
+    if (fr.width - rightEdge >= sw + 16) spots.push({ left: rightEdge + 8, top: secTop });
+    spots.push({ left: Math.max(6, rightEdge - sw - 8), top: secTop });
+    spots.push({ left: Math.max(6, leftEdge + 8), top: secTop });
+    if (selBox) {
+      spots.push({ left: Math.max(6, rightEdge - sw - 8), top: selBox.top - sh - 6 });
+      spots.push({ left: Math.max(6, rightEdge - sw - 8), top: selBox.top + selBox.height + 6 });
+    }
+    var inFrame = spots.filter(function (b) { return b.top >= 4 && b.top + sh <= fr.height - 4; });
+    if (inFrame.length) spots = inFrame;
+    spots.forEach(function (b) { b.width = sw; b.height = sh; });
+    // first choice: clear of the element and of its pill; failing that, clear of the pill
+    var best = spots.filter(function (b) { return !overlaps(b, selBox) && !overlaps(b, elBox); })[0] ||
+      spots.filter(function (b) { return !overlaps(b, selBox); })[0] || spots[0];
+    place(secToolbar, best);
   }
 
   function onToolbarClick(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn || !selectedEl) return;
     var action = btn.getAttribute('data-action');
+    if (action !== 'link') closeLinkPop();
     if (TEXT_FORMAT_ACTIONS[action]) {
+      if (editingEl !== selectedEl) {
+        // not being typed in, so there is no selection of the user's to keep: the whole text takes the format
+        enterEdit(selectedEl);
+        var all = canvas.doc.createRange();
+        all.selectNodeContents(selectedEl);
+        var sel = canvas.win.getSelection();
+        sel.removeAllRanges(); sel.addRange(all);
+      }
       canvas.doc.execCommand(action === 'strikethrough' ? 'strikeThrough' : action);
       clearAiGenerated(selectedEl);
-      commit();
+      commitNow();
     } else if (action === 'align-left' || action === 'align-center' || action === 'align-right') {
       selectedEl.style.textAlign = action.slice(6);
       clearAiGenerated(selectedEl);
-      commit();
+      commitNow();
     } else if (action === 'link') {
-      var url = prompt('Link URL', selectedEl.getAttribute('data-href') || 'https://');
-      if (url) { selectedEl.setAttribute('data-href', url); showToast('Link set to ' + url); clearAiGenerated(selectedEl); commit(); }
+      if (linkPop.hidden) openLinkPop(); else closeLinkPop();
     } else if (action === 'replace-image') {
       var picUrl = prompt('Image URL', canvas.pictureOf(selectedEl) || 'https://');
-      if (picUrl) { canvas.setPicture(selectedEl, picUrl); clearAiGenerated(selectedEl); commit(); }
+      if (picUrl) { canvas.setPicture(selectedEl, picUrl); clearAiGenerated(selectedEl); commitNow(); }
     } else if (action === 'alt-text') {
       var alt = prompt('Alt text', selectedEl.getAttribute('alt') || selectedEl.getAttribute('data-alt') || '');
-      if (alt !== null) { if (selectedEl.tagName === 'IMG') selectedEl.setAttribute('alt', alt); else selectedEl.setAttribute('data-alt', alt); clearAiGenerated(selectedEl); commit(); }
+      if (alt !== null) { if (selectedEl.tagName === 'IMG') selectedEl.setAttribute('alt', alt); else selectedEl.setAttribute('data-alt', alt); clearAiGenerated(selectedEl); commitNow(); }
     } else if (action === 'duplicate') {
+      if (editingEl) exitEdit(editingEl);
       var clone = selectedEl.cloneNode(true);
       clone.classList.remove('ed-selected');
+      if (!clone.getAttribute('class')) clone.removeAttribute('class');
       selectedEl.after(clone);
+      canvas.adoptElement(clone);
       canvas.retag(clone);
       clearAiGenerated(selectedEl);
-      commit();
+      commitNow();
       selectElement(clone);
     } else if (action === 'delete') {
-      var toRemove = selectedEl;
-      clearAiGenerated(toRemove);    // closest() needs it still attached — before remove(), not after
-      deselect();
-      toRemove.remove();
-      commit();
+      deleteElement(selectedEl);
     } else if (action === 'deselect') {
       deselect();
     }
+  }
+
+  var KIND_NAMES = { text: 'Text', button: 'Button', image: 'Picture' };
+
+  /* An element that is the label of a repeated item (a card's title, a tile's picture — template.json →
+     sections[].repeat) stands for the whole item: deleting only the label would leave an empty card behind. */
+  function repeatItemLabelled(el) {
+    var sec = el.closest('[data-rv-section]'), cfg = sec && repeatConfigFor(sec);
+    if (!cfg || !cfg.item) return null;
+    var item = el.closest(cfg.item);
+    if (!item || !sec.contains(item)) return null;
+    if (item === el) return item;
+    return cfg.label && item.querySelector(cfg.label) === el ? item : null;
+  }
+
+  function deleteElement(el) {
+    var sec = el.closest('[data-rv-section]');
+    var item = repeatItemLabelled(el);
+    var what = item ? 'Item' : (KIND_NAMES[el.getAttribute('data-editable')] || 'Element');
+    deselect();
+    if (item) {
+      if (!removeRepeatItem(sec, item)) return;
+    } else {
+      clearAiGenerated(el);    // closest() needs it still attached — before remove(), not after
+      el.remove();
+      commitNow();
+    }
+    offerUndo(what + ' deleted.');
+  }
+
+  /* ---------- Link pop-over ----------
+     Edits the real href of the link the selected element is or sits in (anchorOf); for a text without one it
+     wraps the words selected in it. The text selection is taken when the pop-over opens: typing in the
+     pop-over's own fields moves focus out of the canvas, which ends the edit there. */
+  var linkPop = null, linkCtx = null;
+
+  function sectionChoices() {
+    return canvas.sections().filter(function (sec) { return !sec.classList.contains('is-hidden-sec'); }).map(function (sec) {
+      return { sec: sec, name: sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-section') };
+    });
+  }
+
+  function describeLink(a) {
+    if (!a) return 'No link yet.';
+    var href = (a.getAttribute('href') || '').trim();
+    if (a.hasAttribute('data-register-cta')) return 'Opens the registration form.';
+    if (!href || href === '#') return 'No link yet.';
+    if (href.charAt(0) === '#') {
+      var target = canvas.doc.getElementById(href.slice(1));
+      var sec = target && target.closest('[data-rv-section]');
+      return sec ? 'Goes to the section "' + (sec.getAttribute('data-sec-name') || href.slice(1)) + '".' : 'Goes to ' + href + ' on this page.';
+    }
+    if (/^mailto:/i.test(href)) return 'Starts an email to ' + href.slice(7).split('?')[0] + '.';
+    if (/^tel:/i.test(href)) return 'Calls ' + href.slice(4) + '.';
+    return 'Opens ' + href;
+  }
+
+  /* What a link may point to: a web address, an email address, a phone number, a place on this page or a path
+     on this site. Anything else that names a scheme (javascript:, data:, file: …) is refused. */
+  var LINK_HELP = 'A link can go to a web address (https://…), an email address, a phone number or a section of this page.';
+  function normaliseLink(raw) {
+    var v = String(raw == null ? '' : raw).trim();
+    if (!v) return { error: 'Enter a web address.' };
+    if (/[\s\u0000-\u001f<>"]/.test(v)) return { error: 'A web address cannot contain spaces or quotes.' };
+    if (/^https?:\/\//i.test(v)) {
+      try { new URL(v); } catch (e) { return { error: 'That is not a complete web address. Try something like https://example.org/tickets.' }; }
+      return { href: v };
+    }
+    if (/^(mailto|tel):./i.test(v)) return { href: v };
+    if (v.charAt(0) === '#') return v.length > 1 ? { href: v } : { error: LINK_HELP };
+    if (/^\/\//.test(v)) return normaliseLink('https:' + v);
+    if (v.charAt(0) === '/') return { href: v };
+    if (/^[^@\/:]+@[^@\/:]+\.[a-z]{2,}$/i.test(v)) return { href: 'mailto:' + v };
+    // a name with a dot before any ":" is a bare domain (example.org, example.org:8080/x), not a scheme
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([\/?#].*)?$/i.test(v)) return normaliseLink('https://' + v);
+    if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return { error: 'That kind of link is not allowed. ' + LINK_HELP };
+    return { error: 'That does not look like a web address. Try something like https://example.org/tickets.' };
+  }
+
+  function linkKindOf(a) {
+    var href = a ? (a.getAttribute('href') || '').trim() : '';
+    if (a && a.hasAttribute('data-register-cta')) return 'register';
+    if (/^mailto:/i.test(href)) return 'email';
+    if (href.length > 1 && href.charAt(0) === '#' && canvas.doc.getElementById(href.slice(1))) return 'section';
+    return 'web';
+  }
+
+  function openLinkPop() {
+    var el = selectedEl;
+    var anchor = anchorOf(el);
+    var range = null;
+    if (!anchor && el.getAttribute('data-editable') === 'text') {
+      var sel = canvas.win.getSelection();
+      if (sel.rangeCount && !sel.isCollapsed && el.contains(sel.getRangeAt(0).commonAncestorContainer)) range = sel.getRangeAt(0).cloneRange();
+      if (!range) { showToast('Select the words to link first, then press Link.'); return; }
+    }
+    linkCtx = { el: el, anchor: anchor, range: range, sections: sectionChoices() };
+    var href = anchor ? (anchor.getAttribute('href') || '').trim() : '';
+    var kind = linkKindOf(anchor);
+    var hasLink = !!(anchor && (href || anchor.hasAttribute('data-register-cta')));
+    linkPop.innerHTML =
+      '<h4>Link</h4>' +
+      '<span class="tpl-pop-now">' + escHtml(range ? 'Links the selected words.' : describeLink(anchor)) + '</span>' +
+      '<label>Goes to<select data-link="kind">' +
+        '<option value="web">A web address</option>' +
+        '<option value="section">A section on this page</option>' +
+        '<option value="email">An email address</option>' +
+        '<option value="register">The registration form</option>' +
+      '</select></label>' +
+      '<label data-link-row="web">Web address<input type="text" data-link="web" placeholder="https://example.org/tickets" autocomplete="off" spellcheck="false"></label>' +
+      '<label data-link-row="section">Section<select data-link="section">' +
+        linkCtx.sections.map(function (c, i) { return '<option value="' + i + '">' + escHtml(c.name) + '</option>'; }).join('') +
+      '</select></label>' +
+      '<label data-link-row="email">Email address<input type="text" data-link="email" placeholder="name@example.org" autocomplete="off" spellcheck="false"></label>' +
+      '<span class="tpl-pop-now" data-link-row="register">Visitors who click it get the registration form.</span>' +
+      '<label class="tpl-pop-check" data-link-row="web"><input type="checkbox" data-link="newtab"> Open in a new tab</label>' +
+      '<span class="tpl-pop-error" data-link="error" role="alert" hidden></span>' +
+      '<div class="tpl-pop-acts">' +
+        (hasLink ? '<button type="button" class="danger" data-link="remove">Remove link</button>' : '') +
+        '<span class="grow"></span>' +
+        '<button type="button" data-link="cancel">Cancel</button>' +
+        '<button type="button" class="primary" data-link="apply">Apply</button>' +
+      '</div>';
+    var f = linkField;
+    f('kind').value = kind;
+    if (kind === 'web') f('web').value = href === '#' ? '' : href;
+    if (kind === 'email') f('email').value = href.slice(7).split('?')[0];
+    if (kind === 'section') {
+      var target = canvas.doc.getElementById(href.slice(1));
+      linkCtx.sections.forEach(function (c, i) { if (target && c.sec.contains(target)) f('section').value = String(i); });
+    }
+    f('newtab').checked = !!(anchor && anchor.getAttribute('target') === '_blank');
+    syncLinkRows();
+    linkPop.hidden = false;
+    linkPop.style.visibility = '';
+    positionToolbars();
+    var first = kind === 'web' ? f('web') : kind === 'email' ? f('email') : f('kind');
+    first.focus();
+    if (first.select) first.select();
+  }
+
+  function linkField(name) { return linkPop.querySelector('[data-link="' + name + '"]'); }
+
+  function syncLinkRows() {
+    var kind = linkField('kind').value;
+    Array.prototype.forEach.call(linkPop.querySelectorAll('[data-link-row]'), function (row) {
+      row.hidden = row.getAttribute('data-link-row') !== kind;
+    });
+    linkError('');
+  }
+
+  function linkError(msg) {
+    var box = linkField('error');
+    if (!box) return;
+    box.textContent = msg;
+    box.hidden = !msg;
+  }
+
+  function closeLinkPop() {
+    if (!linkPop || linkPop.hidden) return;
+    linkPop.hidden = true;
+    linkPop.innerHTML = '';
+    linkCtx = null;
+  }
+
+  function positionLinkPop(selBox, fr) {
+    linkPop.style.visibility = '';
+    var w = linkPop.offsetWidth, h = linkPop.offsetHeight;
+    var top = selBox.top + selBox.height + 6;
+    if (top + h > fr.height - 4) top = Math.max(4, selBox.top - h - 6);
+    place(linkPop, { left: Math.max(6, Math.min(selBox.left, fr.width - w - 6)), top: top });
+  }
+
+  function wireLinkPop() {
+    linkPop.addEventListener('change', function (e) {
+      if (e.target.getAttribute('data-link') === 'kind') { syncLinkRows(); positionToolbars(); }
+    });
+    linkPop.addEventListener('input', function () { linkError(''); });
+    linkPop.addEventListener('click', function (e) {
+      var which = e.target.getAttribute('data-link');
+      if (which === 'cancel') closeLinkPop();
+      else if (which === 'apply') applyLink();
+      else if (which === 'remove') removeLink();
+    });
+    linkPop.addEventListener('keydown', function (e) {
+      e.stopPropagation();        // Escape here closes the pop-over only; the selection stays
+      if (e.key === 'Escape') closeLinkPop();
+      else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type === 'text') { e.preventDefault(); applyLink(); }
+    });
+  }
+
+  /* the destination the form describes: { href, register, newTab } or { error } */
+  function readLinkForm() {
+    var kind = linkField('kind').value;
+    if (kind === 'register') return { href: '#register', register: true };
+    if (kind === 'section') {
+      var choice = linkCtx.sections[+linkField('section').value];
+      if (!choice || !choice.sec.isConnected) return { error: 'That section is no longer on the page. Choose another.' };
+      return { href: '#' + canvas.anchorFor(choice.sec) };
+    }
+    if (kind === 'email') {
+      var mail = linkField('email').value.trim().replace(/^mailto:/i, '');
+      if (!/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(mail)) return { error: 'Enter an email address, like name@example.org.' };
+      return { href: 'mailto:' + mail };
+    }
+    var res = normaliseLink(linkField('web').value);
+    if (res.error) return res;
+    return { href: res.href, newTab: linkField('newtab').checked && /^https?:/i.test(res.href) };
+  }
+
+  function writeLink(a, dest) {
+    a.setAttribute('href', dest.href);
+    if (dest.register) a.setAttribute('data-register-cta', ''); else a.removeAttribute('data-register-cta');
+    if (dest.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+    else {
+      a.removeAttribute('target');
+      if (a.getAttribute('rel') === 'noopener') a.removeAttribute('rel');
+    }
+  }
+
+  /* a button-like box that is not a link (the editor's own generic sections use a <span>) becomes one, keeping
+     its classes, styles and content */
+  function linkHost(el) {
+    var a = canvas.doc.createElement('a');
+    Array.prototype.forEach.call(el.attributes, function (at) { a.setAttribute(at.name, at.value); });
+    while (el.firstChild) a.appendChild(el.firstChild);
+    el.replaceWith(a);
+    return a;
+  }
+
+  function unwrap(node) {
+    while (node.firstChild) node.parentNode.insertBefore(node.firstChild, node);
+    node.remove();
+  }
+
+  function applyLink() {
+    if (!linkCtx || !linkCtx.el.isConnected) { closeLinkPop(); return; }
+    var dest = readLinkForm();
+    if (dest.error) { linkError(dest.error); return; }
+    var el = linkCtx.el, anchor = linkCtx.anchor, range = linkCtx.range;
+    var reselect = el;
+    if (anchor) {
+      writeLink(anchor, dest);
+    } else if (range) {
+      var before = Array.prototype.slice.call(el.querySelectorAll('a'));
+      // the browser only wraps a selection in a link inside an editable, focused element
+      el.setAttribute('contenteditable', 'true');
+      el.focus({ preventScroll: true });
+      var sel = canvas.win.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      canvas.doc.execCommand('createLink', false, dest.href);
+      sel.removeAllRanges();
+      el.removeAttribute('contenteditable');
+      var made = Array.prototype.filter.call(el.querySelectorAll('a'), function (a) { return before.indexOf(a) === -1; });
+      if (!made.length) { linkError('Could not link those words. Select them again and retry.'); return; }
+      // a selection that ran across an existing link leaves one link inside another, which is not valid
+      Array.prototype.forEach.call(el.querySelectorAll('a a'), unwrap);
+      made.filter(function (a) { return a.isConnected; }).forEach(function (a) { writeLink(a, dest); });
+      canvas.retag(el);
+    } else {
+      reselect = linkHost(el);
+      writeLink(reselect, dest);
+    }
+    clearAiGenerated(reselect);
+    closeLinkPop();
+    commitNow();
+    if (reselect !== selectedEl) selectElement(reselect); else { buildToolbar(reselect); positionToolbars(); }
+    showToast(dest.register ? 'It now opens the registration form.' : 'Link set to ' + dest.href);
+  }
+
+  function removeLink() {
+    if (!linkCtx || !linkCtx.anchor || !linkCtx.anchor.isConnected) { closeLinkPop(); return; }
+    var a = linkCtx.anchor;
+    var holder = a.parentElement && a.parentElement.closest('[data-editable="text"]');
+    clearAiGenerated(a);
+    closeLinkPop();
+    if (holder) {
+      // a link inside a paragraph: the words stay, the link goes
+      deselect();
+      unwrap(a);
+      holder.normalize();
+      commitNow();
+      selectElement(holder);
+    } else {
+      a.removeAttribute('href');
+      a.removeAttribute('data-register-cta');
+      a.removeAttribute('target');
+      if (a.getAttribute('rel') === 'noopener') a.removeAttribute('rel');
+      commitNow();
+      buildToolbar(selectedEl);
+      positionToolbars();
+    }
+    showToast('Link removed.');
   }
 
   // dirty-check for exitEdit below: only text/button elements ever go through enterEdit/exitEdit (the
@@ -891,16 +1380,30 @@
     el.setAttribute('contenteditable', 'true');
     editingEl = el;
     editingBeforeText = el.textContent;
-    el.focus();
+    el.focus({ preventScroll: true });
   }
 
   function exitEdit(el) {
     el.removeAttribute('contenteditable');
     editingEl = null;
+    var sel = canvas.win.getSelection();
+    if (sel.rangeCount && el.contains(sel.anchorNode)) sel.removeAllRanges();
+    clearTimeout(typingTimer); typingTimer = null;
     var changed = editingBeforeText !== null && el.textContent !== editingBeforeText;
     editingBeforeText = null;
     if (changed) clearAiGenerated(el);
-    commit();
+    commitTyping();
+    typingPtr = -1;       // the next text edited starts its own undo step
+  }
+
+  /* typed text is recorded while the caret is still in the element — waiting for it to leave loses whatever
+     was typed last when the page is closed or reloaded */
+  function onCanvasInput() {
+    repositionToolbars();
+    if (!editingEl) return;
+    if (editingBeforeText !== null && editingEl.textContent !== editingBeforeText) clearAiGenerated(editingEl);
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(function () { typingTimer = null; commitTyping(); }, 600);
   }
 
   /* ---------- section toolbar (duplicate/hide/delete/add-from-library) ---------- */
@@ -911,14 +1414,12 @@
       '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
       '<button data-action="toggle-hide" title="Hide/show section">' + (hidden ? 'Show' : 'Hide') + '</button>' +
       '<button class="danger" data-action="delete-section" title="Delete section">Delete</button>';
-    secToolbar.hidden = false;
   }
 
-  function positionSecToolbar(sec) {
-    var r = canvas.screenRect(sec);
-    var fr = frame.getBoundingClientRect();
-    secToolbar.style.top = Math.max(4, r.top - fr.top - (secToolbar.offsetHeight || 32) - 4) + 'px';
-    secToolbar.style.left = Math.max(6, r.left - fr.left) + 'px';
+  function setSectionHidden(sec, hide) {
+    sec.classList.toggle('is-hidden-sec', hide);
+    sec.style.display = hide ? 'none' : '';
+    commitNow();
   }
 
   function onSecToolbarClick(e) {
@@ -926,23 +1427,46 @@
     if (!btn || !activeSectionEl) return;
     var action = btn.getAttribute('data-action');
     if (action === 'duplicate-section') {
+      if (editingEl) exitEdit(editingEl);
       var copy = canvas.duplicateSection(activeSectionEl, (activeSectionEl.getAttribute('data-sec-name') || 'Section') + ' copy');
-      commit();
+      commitNow();
       selectSectionOnly(copy);
     } else if (action === 'toggle-hide') {
-      var hide = !activeSectionEl.classList.contains('is-hidden-sec');
-      activeSectionEl.classList.toggle('is-hidden-sec', hide);
-      activeSectionEl.style.display = hide ? 'none' : '';
+      setSectionHidden(activeSectionEl, !activeSectionEl.classList.contains('is-hidden-sec'));
       buildSecToolbar(activeSectionEl);
-      commit();
+      positionToolbars();
     } else if (action === 'delete-section') {
-      var sec = activeSectionEl;
-      deselect();
-      canvas.removeSection(sec);
-      commit();
+      confirmDeleteSection(activeSectionEl);
     } else if (action === 'add-from-library') {
       openLibraryPicker(activeSectionEl);
     }
+  }
+
+  function confirmDeleteSection(sec) {
+    var name = sec.getAttribute('data-sec-name') || 'this section';
+    var actions = [
+      { label: 'Cancel', kind: 'secondary', autofocus: true },
+      { label: 'Delete', kind: 'danger', onClick: function () {
+        if (!sec.isConnected) return;
+        deselect();
+        canvas.removeSection(sec);
+        commitNow();
+        offerUndo('"' + name + '" deleted.');
+      } }
+    ];
+    if (!sec.classList.contains('is-hidden-sec')) {
+      actions.unshift({ label: 'Hide instead', kind: 'ghost', aside: true, onClick: function () {
+        if (!sec.isConnected) return;
+        deselect();
+        setSectionHidden(sec, true);
+        offerUndo('"' + name + '" is hidden. It is not shown on the site.');
+      } });
+    }
+    host.openDialog({
+      title: 'Delete "' + name + '"?',
+      bodyHtml: '<p>Its text and pictures are removed from the site. You can undo this until you leave the editor.</p>',
+      actions: actions
+    });
   }
 
   function openLibraryPicker(afterSec) {
@@ -956,7 +1480,7 @@
     var el = canvas.createLibrarySection(items[idx].id);
     afterSec.after(el);
     canvas.adopt(el);
-    commit();
+    commitNow();
     selectSectionOnly(el);
   }
 
@@ -977,7 +1501,7 @@
     last.after(clone);
     canvas.retag(clone);
     clearAiGenerated(sec);
-    commit();
+    commitNow();
     return true;
   }
 
@@ -988,15 +1512,27 @@
     if (items.length <= 1) { showToast('At least one item is required'); return false; }
     item.remove();
     clearAiGenerated(sec);
-    commit();
+    commitNow();
     return true;
   }
 
-  /* ---------- canvas (iframe document) event wiring ---------- */
+  /* ---------- canvas (iframe document) event wiring ----------
+     Runs again for every canvas the editor mounts (see recoverCanvas). The click listener is in the capture
+     phase and ends the event there: a click on the canvas selects and edits, it never also runs the site's own
+     click scripts (an accordion's script would open the item for good — the editor opens items itself, see
+     canvas.openItem) or follows a link. Placing the caret in a text is done on mousedown, so typing is not
+     affected. */
   function wireCanvasEvents() {
     canvas.doc.addEventListener('click', function (e) {
-      if (canvas.openItem(e.target)) return;
-      var editable = e.target.closest('[data-editable]');
+      e.preventDefault();
+      e.stopPropagation();
+      // a click with no mouse behind it is the browser "pressing" a <button> or link for Space / Enter typed
+      // into its label (an FAQ question is a <button>): that is typing, not picking something else
+      if (editingEl && e.detail === 0) return;
+      var target = e.target.nodeType === 1 ? e.target : e.target.parentElement;
+      if (!target) return;
+      if (canvas.openItem(target)) { repositionToolbars(); return; }
+      var editable = target.closest('[data-editable]');
       if (editable) {
         selectElement(editable);
         /* text/button content starts typing immediately on the one click that selected it — no separate
@@ -1006,29 +1542,80 @@
         if ((type === 'text' || type === 'button') && editingEl !== editable) enterEdit(editable);
         return;
       }
-      var sec = e.target.closest('[data-rv-section]');
+      var sec = target.closest('[data-rv-section]');
       if (sec) { selectSectionOnly(sec); return; }
       deselect();
-    });
+    }, true);
+    // a link or a picture dragged out of the canvas would be dropped somewhere as a link to follow
+    canvas.doc.addEventListener('dragstart', function (e) {
+      var t = e.target.nodeType === 1 ? e.target : e.target.parentElement;
+      if (t && t.closest('a, img')) e.preventDefault();
+    }, true);
+    // Enter / Space on a focused link or button would activate it; inside a text being edited they are typing
+    canvas.doc.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var t = e.target.nodeType === 1 ? e.target : e.target.parentElement;
+      if (!t || t.closest('[contenteditable="true"]')) return;
+      if (t.closest('a, button, summary, [role="button"]')) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
     canvas.doc.addEventListener('blur', function (e) {
       if (e.target === editingEl) exitEdit(e.target);
     }, true);
-    if (canvas.onResize === null) canvas.onResize = function () {
-      if (selectedEl) positionToolbar(selectedEl);
-      if (activeSectionEl) positionSecToolbar(activeSectionEl);
-    };
+    canvas.doc.addEventListener('input', onCanvasInput, true);
+    canvas.win.addEventListener('scroll', repositionToolbars, { passive: true });
+    canvas.win.addEventListener('keydown', onGlobalKey);
+    if (canvas.onResize === null) canvas.onResize = repositionToolbars;
+    canvas.onNavigate = recoverCanvas;
   }
 
+  /* The canvas has loaded some other document (a script on the page set location; links and forms are already
+     stopped by RevampCanvas). That iframe is no longer the site, so it is replaced by a fresh mount of the
+     template with the last recorded state put back. */
+  function recoverCanvas() {
+    if (remounting) return;
+    remounting = true;
+    clearTimeout(commitTimer); commitTimer = null;
+    clearTimeout(typingTimer); typingTimer = null;
+    editingEl = null; editingBeforeText = null; typingPtr = -1;
+    selectedEl = null; activeSectionEl = null;
+    if (selWatch) selWatch.disconnect();
+    closeLinkPop();
+    selToolbar.hidden = true; secToolbar.hidden = true;
+    canvas.destroy();
+    RevampCanvas.mount(frame, templateId, mountOpts).then(function (c) {
+      canvas = c;
+      canvas.restore(undoStack[undoPtr]);
+      canvas.setDevice(deviceName);
+      setAiMarkers(aiMarkersOn);
+      wireCanvasEvents();
+      remounting = false;
+      showNotice('canvas-restored', { kind: 'info', dismissible: true, text: 'The page tried to open a link. Your work is restored.' });
+    }).catch(function (err) {
+      if (window.console) console.error(err);
+      showNotice('canvas-restored', {
+        kind: 'error',
+        text: 'The page left the editor and could not be put back. Reload to carry on from your last change.',
+        actions: [{ label: 'Reload', onClick: function () { location.reload(); } }]
+      });
+    });
+  }
+
+  function onGlobalKey(e) {
+    if (e.key === 'Escape') { deselect(); return; }
+    var mod = e.ctrlKey || e.metaKey;
+    if (!mod || editingEl) return;
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); redo(); }
+  }
   function wireGlobalKeys() {
-    function handler(e) {
-      if (e.key === 'Escape') { deselect(); return; }
-      var mod = e.ctrlKey || e.metaKey;
-      if (!mod || editingEl) return;
-      if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-      else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); redo(); }
-    }
-    document.addEventListener('keydown', handler);
-    canvas.win.addEventListener('keydown', handler);
+    document.addEventListener('keydown', onGlobalKey);
+  }
+
+  /* Leaving by any road — a link, the back button, reload, closing the tab, switching away on a phone —
+     records what is still pending first. */
+  function wireLeaving() {
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
   }
 
   /* ---------- design bridge (theme color only for this pass; full Design panel is a fast-follow) ---------- */
@@ -1039,7 +1626,7 @@
       var sw = e.target.closest('.swatch[data-theme-color]');
       if (!sw) return;
       canvas.design.set('themeColor', sw.getAttribute('data-theme-color'));
-      commit();
+      commitNow();
     });
   }
 
@@ -1221,7 +1808,7 @@
         }
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
-      commit();
+      commitNow();
       card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
       card.style.opacity = '.6';
       var skipped = (result.textEdits || []).length - appliedText;
@@ -1306,11 +1893,10 @@
 
   /* ---------- device / preview / publish ---------- */
   function setDevice(name) {
+    deviceName = name;
     canvas.setDevice(name);
-    setTimeout(function () {
-      if (selectedEl) positionToolbar(selectedEl);
-      if (activeSectionEl) positionSecToolbar(activeSectionEl);
-    }, 50);
+    repositionToolbars();
+    setTimeout(repositionToolbars, 120);      // again once the page has settled into its new width
   }
 
   /* Real preview: stages canvas.serialize()'s output to a real, stable, reloadable URL (POST /api/event/
@@ -1324,6 +1910,7 @@
      context most browsers require to allow a new tab at all. */
   function openPreview() {
     deselect();
+    flush();
     if (!eventId || eventId === '1') {
       // no real event context (e.g. a raw template-gallery preview) — nothing to stage server-side;
       // fall back to the old one-off snapshot rather than fail outright.
@@ -1360,6 +1947,8 @@
       showToast('Nothing to publish — this page isn’t attached to a real event.');
       return;
     }
+    deselect();
+    flush();
     showToast('Publishing…');
     var html = canvas.serialize();
     RevampCore.publishEvent(eventId, html).then(function (result) {
@@ -1387,7 +1976,7 @@
   }
 
   window.RevampTemplateUI = {
-    boot: boot, setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo,
+    boot: boot, setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo, flush: flush,
     addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem, setDesign: setDesign,
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers
   };

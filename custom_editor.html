@@ -157,11 +157,11 @@
   .global-toolbar{
     height: 64px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
     /* background: var(--bg); border-bottom: 1px solid var(--border); */
-    padding: 8px 24px; z-index: 45; position:relative;
+    padding: 8px 24px; z-index: 45; position:relative; min-width:0;
   }
   .gt-pill{
     display:flex; align-items:center; gap:4px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:auto; max-width:100%;
+    border-radius: 100px; box-shadow: var(--shadow-sm); padding: 6px 10px; width:auto; max-width:100%; min-width:0;
     /* the pill's own buttons are all flex-shrink:0 by design (icons shouldn't squash) — once they stop
        fitting at a narrow width, the pill scrolls internally instead of forcing the whole page wider */
     overflow-x:auto; scrollbar-width:thin;
@@ -201,13 +201,20 @@
   .icon-btn[disabled]{ opacity:.35; pointer-events:none; }
 
   /* ---------- editor tools rail ---------- */
-  .ed-body{ flex:1; min-height:0; display:flex; position:relative; }
+  /* min-width:0 all the way down: a flex item never shrinks below its content's width by default, and body
+     clips what overflows, so without it the right end of the tools row and the canvas are cut off and
+     unreachable on a laptop screen */
+  .ed-body{ flex:1; min-width:0; min-height:0; display:flex; position:relative; }
   .ed-rail{
-    height: 38px; flex-shrink:0; background: var(--surface); border-bottom: 1px solid var(--border);
+    height: 38px; flex-shrink:0; min-width:0; background: var(--surface); border-bottom: 1px solid var(--border);
     display:flex; flex-direction:row; align-items:stretch; padding: 0 14px; gap: 4px; z-index: 40;
   }
+  /* the panel buttons scroll sideways when they run out of room; the device switch and Undo / Redo never move */
+  .rail-tools{ flex:1; min-width:0; display:flex; align-items:stretch; gap:4px; overflow-x:auto; scrollbar-width:none; }
+  .rail-tools::-webkit-scrollbar{ display:none; }
+  .rail-fixed{ flex-shrink:0; display:flex; align-items:stretch; }
   .rail-btn{
-    width:auto; height: 100%; padding: 0 12px; border-radius: 0; border:none; border-bottom: 2.5px solid transparent; background:transparent; color: var(--text-muted);
+    width:auto; height: 100%; flex-shrink:0; padding: 0 12px; border-radius: 0; border:none; border-bottom: 2.5px solid transparent; background:transparent; color: var(--text-muted);
     display:flex; align-items:center; justify-content:center; font-size: 12.5px; font-weight:700; white-space:nowrap;
   }
   .rail-btn:hover{ color: var(--text); border-bottom-color: var(--border); }
@@ -724,18 +731,37 @@
   .field .hint{ font-size:11.5px; color: var(--text-faint); }
 
   /* ---------- canvas ---------- */
-  .ed-main{ flex:1; min-width:0; display:flex; flex-direction:column; background: var(--surface-2); }
+  .ed-main{ flex:1; min-width:0; overflow:hidden; display:flex; flex-direction:column; background: var(--surface-2); }
   .device-toggle{ align-self:center; margin-left:10px; display:flex; align-items:center; gap:2px; background: var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; }
   .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
   .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
   .history-toggle{ align-self:center; margin-left:6px; display:flex; align-items:center; gap:2px; }
   .history-toggle button{ width:28px; height:26px; border-radius:6px; border:1px solid var(--border); background: var(--surface-2); color: var(--text-faint); }
   .history-toggle button:disabled{ opacity:.4; }
-  .tpl-sel-toolbar, .tpl-sec-toolbar{ position:absolute; z-index:40; display:flex; align-items:center; gap:4px; background: var(--text); color:#fff; border-radius:8px; padding:4px 6px; box-shadow: var(--shadow-md); font-size:12px; white-space:nowrap; }
+  /* these float over the site being edited, not over the CMS, so they keep one dark pill in both themes
+     (var(--text) is near-white in the dark theme, which made the labels white on white) */
+  .tpl-sel-toolbar, .tpl-sec-toolbar, .tpl-pop{ position:absolute; z-index:40; background:#241B1A; color:#fff; border:1px solid rgba(255,255,255,.14); border-radius:8px; box-shadow: var(--shadow-md); font-size:12px; }
+  .tpl-sel-toolbar, .tpl-sec-toolbar{ display:flex; align-items:center; gap:4px; padding:4px 6px; white-space:nowrap; }
   .tpl-sel-toolbar button, .tpl-sec-toolbar button{ background:none; border:none; color:#fff; padding:4px 7px; border-radius:5px; cursor:pointer; font-size:12px; }
   .tpl-sel-toolbar button:hover, .tpl-sec-toolbar button:hover{ background:rgba(255,255,255,.18); }
   .tpl-sel-toolbar button.danger:hover, .tpl-sec-toolbar button.danger:hover{ background:#ED1C24; }
+  .tpl-sel-toolbar button:disabled, .tpl-sec-toolbar button:disabled{ opacity:.45; cursor:default; background:none; }
   .tpl-sel-toolbar .tpl-tb-sep{ width:1px; height:16px; background:rgba(255,255,255,.25); margin:0 2px; }
+  /* a small form opened from the element toolbar (Link) */
+  .tpl-pop{ z-index:41; width:300px; max-width:calc(100% - 12px); padding:12px; display:flex; flex-direction:column; gap:10px; }
+  .tpl-pop h4{ font-size:13px; font-weight:700; color:#fff; }
+  .tpl-pop .tpl-pop-now{ color:rgba(255,255,255,.72); overflow-wrap:anywhere; }
+  .tpl-pop label{ display:flex; flex-direction:column; gap:4px; font-weight:600; color:rgba(255,255,255,.86); }
+  .tpl-pop label.tpl-pop-check{ flex-direction:row; align-items:center; gap:7px; font-weight:500; }
+  .tpl-pop select, .tpl-pop input[type="text"]{ width:100%; height:30px; border-radius:6px; border:1px solid rgba(255,255,255,.28); background:#fff; color:#1c1c1c; font:inherit; font-size:12.5px; padding:0 8px; }
+  .tpl-pop .tpl-pop-error{ color:#FFB4B0; font-weight:600; }
+  .tpl-pop .tpl-pop-acts{ display:flex; align-items:center; gap:6px; }
+  .tpl-pop .tpl-pop-acts .grow{ flex:1; }
+  .tpl-pop button{ height:28px; padding:0 11px; border-radius:6px; border:1px solid rgba(255,255,255,.28); background:none; color:#fff; font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+  .tpl-pop button:hover{ background:rgba(255,255,255,.18); }
+  .tpl-pop button.primary{ background:#fff; color:#241B1A; border-color:#fff; }
+  .tpl-pop button.primary:hover{ background:#EDE6E4; }
+  .tpl-pop button.danger:hover{ background:#ED1C24; border-color:#ED1C24; }
   /* template-mode canvas: .frame normally sizes to its (naturally tall) demo content and lets .stage scroll it;
      here it instead stretches to the available stage height so .tpl-viewport gets a stable, non-circular size for
      editor-canvas.js's fit() to scale against — the page then scrolls inside the iframe, like a real browser window. */
@@ -1004,6 +1030,35 @@
     max-width: 360px; text-align:center;
   }
   .toast.show{ opacity: 1; transform: translateY(0); }
+  /* a toast that carries a button or stays until it is closed */
+  .toast.has-acts{ display:flex; align-items:center; gap:10px; text-align:left; max-width:460px; }
+  .toast.has-acts .toast-msg{ flex:1; }
+  .toast button{ flex-shrink:0; border:none; background:none; color:inherit; font:inherit; font-weight:800; cursor:pointer; border-radius:5px; padding:3px 7px; }
+  .toast button.toast-act{ text-decoration:underline; }
+  .toast button:hover{ background: color-mix(in srgb, currentColor 16%, transparent); }
+  .toast.error{ background:#3A1B18; color:#fff; border-left:4px solid #ED1C24; }
+  .toast.error svg{ flex-shrink:0; color:#FF8A84; }
+
+  /* notices that stay above the canvas until dealt with; several can show at once */
+  .ed-notices{ flex-shrink:0; display:flex; flex-direction:column; }
+  .ed-notice{
+    display:flex; align-items:center; gap:10px; padding:8px 16px; font-size:13px; font-weight:600;
+    background: var(--surface-3); color: var(--text); border-bottom:1px solid var(--border);
+  }
+  .ed-notice .ed-notice-text{ flex:1; min-width:0; }
+  .ed-notice.warn{ background: var(--warn-soft); }
+  .ed-notice.error{ background: var(--crit-soft); color: var(--crit); }
+  .ed-notice.ok{ background: var(--ok-soft); }
+  .ed-notice button{ flex-shrink:0; border:1px solid currentColor; background:none; color:inherit; font:inherit; font-size:12px; font-weight:700; border-radius:6px; padding:3px 10px; cursor:pointer; }
+  .ed-notice button.ed-notice-x{ border:none; font-size:16px; line-height:1; padding:2px 6px; }
+
+  .ed-dialog:focus{ outline:none; }
+  .ed-dialog .modal-body{ align-items:stretch; text-align:left; padding: 24px 24px 8px; }
+  .ed-dialog .modal-body h3{ font-size:17px; }
+  .ed-dialog .ed-dialog-body{ font-size:13.5px; color: var(--text-muted); display:flex; flex-direction:column; gap:10px; }
+  .ed-dialog .modal-foot{ justify-content:flex-end; flex-wrap:wrap; padding: 14px 24px 22px; }
+  .ed-dialog .modal-foot .ed-dialog-aside{ margin-right:auto; }
+  .btn.btn-danger{ background: var(--crit); border-color: var(--crit); color:#fff; }
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
 
@@ -1593,6 +1648,7 @@
     <main class="ed-main">
       <!-- ============ EDITOR TOOLS RAIL ============ -->
       <nav class="ed-rail" aria-label="Editor tools">
+       <div class="rail-tools">
         <button class="rail-btn" data-panel="add" title="Add elements">Add</button>
         <button class="rail-btn" data-panel="predefined" title="Predefined sections">Sections</button>
         <button class="rail-btn" data-panel="pages" title="Pages">Pages</button>
@@ -1602,6 +1658,8 @@
         <div class="rail-gap"></div>
         <button class="rail-btn" id="btn-media" title="Media">Media</button>
         <button class="rail-btn" id="btn-apps" title="Apps">Apps</button>
+       </div>
+       <div class="rail-fixed">
         <div class="device-toggle" role="group" aria-label="Device preview">
          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
          <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
@@ -1610,6 +1668,7 @@
          <button id="btn-tpl-undo" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
          <button id="btn-tpl-redo" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>
         </div>
+       </div>
       </nav>
 
       <!-- ============ GLOBAL COMMAND TOOLBAR ============ -->
@@ -1742,6 +1801,8 @@
           Animation
         </button>
       </div>
+
+      <div class="ed-notices" id="ed-notices"></div>
 
       <div class="stage" id="stage">
         <div class="frame" id="frame">
@@ -1930,7 +1991,7 @@
     <div class="cd-unit"><span class="cd-num" id="cd-bar-s">00</span><span class="cd-tag">Secs</span></div>
   </div>
 </div>
-<div id="toast-region"></div>
+<div id="toast-region" role="status" aria-live="polite"></div>
 
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
@@ -2074,15 +2135,171 @@
   function hideSecToolbar(){ secToolbarEl.hidden = true; }
 
   /* ---------- toast ---------- */
-  function showToast(msg){
+  /* showToast(msg) — a short message that goes away by itself.
+     showToast(msg, { kind:'error' })                 stays until closed, announced at once
+     showToast(msg, { action:{ label, onClick } })    carries one button (e.g. Undo)
+     showToast(msg, { sticky:true })                  stays until closed
+     Returns { dismiss() }. */
+  var TOAST_ERR_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>';
+  function showToast(msg, opts){
+    opts = opts || {};
     var region = document.getElementById('toast-region');
     var t = document.createElement('div');
-    t.className = 'toast';
-    t.textContent = msg;
+    var isError = opts.kind === 'error';
+    var stays = isError || !!opts.sticky;
+    var timer = null, gone = false;
+    t.className = 'toast' + (isError ? ' error' : '');
+    function dismiss(){
+      if (gone) return;
+      gone = true;
+      clearTimeout(timer);
+      t.classList.remove('show');
+      setTimeout(function(){ t.remove(); }, 200);
+    }
+    if (isError) t.setAttribute('role', 'alert');
+    if (!stays && !opts.action){
+      t.textContent = msg;
+    } else {
+      t.classList.add('has-acts');
+      if (isError) t.insertAdjacentHTML('beforeend', TOAST_ERR_SVG);
+      var text = document.createElement('span');
+      text.className = 'toast-msg';
+      text.textContent = msg;
+      t.appendChild(text);
+      if (opts.action){
+        var act = document.createElement('button');
+        act.type = 'button';
+        act.className = 'toast-act';
+        act.textContent = opts.action.label;
+        act.addEventListener('click', function(){ dismiss(); opts.action.onClick(); });
+        t.appendChild(act);
+      }
+      if (stays){
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.setAttribute('aria-label', 'Dismiss');
+        x.innerHTML = '&times;';
+        x.addEventListener('click', dismiss);
+        t.appendChild(x);
+      }
+    }
     region.appendChild(t);
     requestAnimationFrame(function(){ t.classList.add('show'); });
-    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 200); }, 2600);
+    // long enough to read the message and reach its button
+    if (!stays) timer = setTimeout(dismiss, opts.action ? 8000 : 2600);
+    return { dismiss: dismiss };
   }
+
+  /* ---------- notices: stay above the canvas until dealt with ----------
+     showNotice(id, { text, kind:'info'|'warn'|'error'|'ok', actions:[{ label, onClick }], dismissible })
+     One row per id — showing an id again replaces that row only, so different notices never overwrite each other. */
+  function showNotice(id, opts){
+    opts = opts || {};
+    var box = document.getElementById('ed-notices');
+    var row = box.querySelector('[data-notice="' + id + '"]');
+    if (!row){
+      row = document.createElement('div');
+      row.setAttribute('data-notice', id);
+      box.appendChild(row);
+    }
+    var kind = opts.kind || 'info';
+    row.className = 'ed-notice ' + kind;
+    row.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    row.innerHTML = '';
+    var text = document.createElement('span');
+    text.className = 'ed-notice-text';
+    text.textContent = opts.text || '';
+    row.appendChild(text);
+    (opts.actions || []).forEach(function(a){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = a.label;
+      b.addEventListener('click', function(){ a.onClick(); });
+      row.appendChild(b);
+    });
+    if (opts.dismissible){
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'ed-notice-x';
+      x.setAttribute('aria-label', 'Dismiss');
+      x.innerHTML = '&times;';
+      x.addEventListener('click', function(){ clearNotice(id); });
+      row.appendChild(x);
+    }
+  }
+  function clearNotice(id){
+    var row = document.getElementById('ed-notices').querySelector('[data-notice="' + id + '"]');
+    if (row) row.remove();
+  }
+
+  /* ---------- one dialog at a time ----------
+     openDialog({ title, bodyHtml, actions:[{ label, kind:'primary'|'danger'|'secondary'|'ghost', onClick, autofocus, aside }],
+                  onClose, modal })
+     Esc and a click outside close it (not when modal:true); every action closes it unless its onClick returns
+     false. Focus moves into the dialog and goes back to where it was. Returns { close(), el }. */
+  var openDialogNow = null, dialogSeq = 0;
+  function openDialog(opts){
+    opts = opts || {};
+    if (openDialogNow) openDialogNow.close();
+    var opener = document.activeElement;
+    var titleId = 'ed-dialog-title-' + (++dialogSeq);
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML =
+      '<div class="modal ed-dialog" role="dialog" aria-modal="true" aria-labelledby="' + titleId + '" tabindex="-1">' +
+        '<div class="modal-body"><h3 id="' + titleId + '"></h3><div class="ed-dialog-body"></div></div>' +
+        '<div class="modal-foot"></div>' +
+      '</div>';
+    var modal = scrim.firstChild;
+    modal.querySelector('h3').textContent = opts.title || '';
+    modal.querySelector('.ed-dialog-body').innerHTML = opts.bodyHtml || '';
+    var foot = modal.querySelector('.modal-foot');
+    var closed = false, focusFirst = null;
+    function close(){
+      if (closed) return;
+      closed = true;
+      document.removeEventListener('keydown', onKey, true);
+      scrim.remove();
+      if (openDialogNow === handle) openDialogNow = null;
+      if (opener && opener.focus && document.contains(opener)) opener.focus();
+      if (opts.onClose) opts.onClose();
+    }
+    function onKey(e){
+      if (e.key === 'Escape'){
+        e.stopPropagation();
+        if (!opts.modal) close();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      // keep Tab inside the dialog
+      var stops = modal.querySelectorAll('button, [href], input, select, textarea');
+      if (!stops.length) return;
+      var first = stops[0], last = stops[stops.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === modal)){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+    (opts.actions || []).forEach(function(a){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-' + (a.kind || 'secondary') + (a.aside ? ' ed-dialog-aside' : '');
+      b.textContent = a.label;
+      b.addEventListener('click', function(){
+        if (a.onClick && a.onClick() === false) return;
+        close();
+      });
+      foot.appendChild(b);
+      if (a.autofocus) focusFirst = b;
+    });
+    scrim.addEventListener('mousedown', function(e){ if (e.target === scrim && !opts.modal) close(); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(scrim);
+    (focusFirst || modal).focus();
+    var handle = { close: close, el: modal };
+    openDialogNow = handle;
+    return handle;
+  }
+  /* the same four helpers for the scripts that work on this page from outside this block */
+  window.RevampEditorFeedback = { showToast: showToast, showNotice: showNotice, clearNotice: clearNotice, openDialog: openDialog };
 
   /* ---------- save state (no-op: save-state indicator removed from topbar) ---------- */
   function markSaving(){}
@@ -5339,7 +5556,7 @@
     disableUnsupportedDesignControls();
     document.getElementById('btn-tpl-undo').addEventListener('click', function(){ window.RevampTemplateUI.undo(); });
     document.getElementById('btn-tpl-redo').addEventListener('click', function(){ window.RevampTemplateUI.redo(); });
-    window.RevampTemplateUI.boot(frame, TEMPLATE_ID, { escHtml: escHtml, showToast: showToast, EV: EV, editorEventId: editorEventId })
+    window.RevampTemplateUI.boot(frame, TEMPLATE_ID, { escHtml: escHtml, showToast: showToast, showNotice: showNotice, clearNotice: clearNotice, openDialog: openDialog, EV: EV, editorEventId: editorEventId })
       .then(initAiProvenanceToggle);
   } else {
     // applyCreateHandoff() is itself a no-op (returns false) when TEMPLATE_MODE is true, so calling it
