@@ -55,8 +55,29 @@ function notFound(req, res){
   send(req, res, 404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' }, Buffer.from('Not found'));
 }
 
-http.createServer(function(req, res){ gate(req, res, function(){ serve(req, res); }); })
-  .listen(port, function(){ console.log('Revamp listening on port ' + port); });
+/* One request must never be able to take the server down. In a plain Node http server an exception nobody
+   catches ends the process, and on App Hosting that drops every request in flight on the instance — another
+   user's 100-second AI generation, a publish upload — then cold-starts. Three signed-out requests used to do
+   exactly that (a malformed __session cookie, a %00 in a static path, POST /api/register with the body
+   `null`); each is fixed where it threw, and these two layers make sure the next one nobody has thought of
+   costs a single request rather than the service:
+     - fail(): a synchronous throw while gating or serving answers 500 for that request;
+     - the process-level handlers: a throw inside a later stream or promise callback is logged and the
+       server keeps serving (that one request gets no reply and times out — the lesser harm). */
+function fail(req, res, err){
+  console.error('request failed: ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+  if (res.headersSent){ try { res.end(); } catch (e) { /* socket already gone */ } return; }
+  const api = req.url.indexOf('/api/') === 0;
+  send(req, res, 500, { 'Content-Type': api ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    Buffer.from(api ? JSON.stringify({ error: 'Something went wrong on the server. Please try again.' }) : 'Something went wrong. Please try again.'));
+}
+process.on('uncaughtException', function(err){ console.error('uncaughtException (still serving): ' + (err && err.stack || err)); });
+process.on('unhandledRejection', function(err){ console.error('unhandledRejection (still serving): ' + (err && err.stack || err)); });
+
+http.createServer(function(req, res){
+  try { gate(req, res, function(){ try { serve(req, res); } catch (err) { fail(req, res, err); } }); }
+  catch (err) { fail(req, res, err); }
+}).listen(port, function(){ console.log('Revamp listening on port ' + port); });
 
 function serve(req, res){
   const url = req.url.split('?')[0];
@@ -65,6 +86,8 @@ function serve(req, res){
 
   let rel;
   try { rel = decodeURIComponent(url); } catch (e) { return notFound(req, res); }
+  // a NUL byte (/x%00.js) makes fs.stat() throw synchronously, before its callback exists — see the listener below
+  if (rel.indexOf('\0') !== -1) return notFound(req, res);
   if (rel.endsWith('/')) rel += 'index.html';
   const file = path.join(root, rel);
   if (!file.startsWith(root + path.sep) || isPrivate(path.relative(root, file).split(path.sep).join('/'))) return notFound(req, res);

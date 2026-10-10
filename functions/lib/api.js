@@ -123,6 +123,18 @@ function sendJson(res, status, obj) {
 // Firebase Functions (v2 HTTPS) buffers the request body itself before our handler ever runs, and exposes it
 // as req.rawBody — reading req.on('data') again at that point gets nothing, the stream is already consumed.
 // Locally, under plain http.createServer, there is no rawBody, so we read the stream ourselves as before.
+/* A request body that is valid JSON but not an object — `null`, `[]`, `7`, `"x"` — used to get past every
+   handler's own try/catch around JSON.parse, and the very next line (payload.eventId, body.slug, ...) then
+   threw inside the request stream's "end" callback, where nothing can catch it. That is an uncaught
+   exception, and in a plain Node http server an uncaught exception ends the process: one unauthenticated
+   POST /api/register with the body `null` took the whole production server down, along with every request
+   in flight on it. Throwing here instead lands in each caller's existing catch -> 400 "Invalid JSON body". */
+function parseJsonObject(raw) {
+  var v = JSON.parse(raw || '{}');
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('The JSON body must be an object.');
+  return v;
+}
+
 function readBody(req, cb) {
   if (req.rawBody) return cb(req.rawBody.toString('utf8'));
   var chunks = [];
@@ -378,7 +390,7 @@ function callGeminiJson(prompt, schema, inlineFile, timeoutMs) {
 function handleSuggestDesign(req, res) {
   readBody(req, function (raw) {
     var payload;
-    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
     callGeminiJson(buildPrompt(payload), responseSchemaFor(payload)).then(function (r) {
       if (r.error) return sendJson(res, r.status, { error: r.error });
@@ -479,7 +491,7 @@ function chatResponseSchema(payload) {
 function handleChatEdit(req, res) {
   readBody(req, function (raw) {
     var payload;
-    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
 
     callGeminiJson(buildChatPrompt(payload), chatResponseSchema(payload)).then(function (r) {
@@ -571,7 +583,7 @@ var MAX_BRIEF_BYTES = 15 * 1024 * 1024;
 function handleExtractBrief(req, res) {
   readBody(req, function (raw) {
     var payload;
-    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
     var eventId = String(payload.eventId || '').trim();
     var fileName = String(payload.fileName || '').trim();
@@ -722,7 +734,7 @@ function buildIngestSourcePrompt(url, type, text) {
 function handleIngestSource(req, res) {
   readBody(req, function (raw) {
     var payload;
-    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
     var eventId = String(payload.eventId || '').trim();
     var url = String(payload.url || '').trim();
@@ -1038,7 +1050,7 @@ function sanitizeDesignPlanDesign(parsed) {
 function handlePlanStructure(req, res) {
   readBody(req, function (raw) {
     var payload;
-    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
     var eventId = String(payload.eventId || '').trim();
     if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
@@ -1488,7 +1500,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
 function handleGenerateContent(req, res) {
   readBody(req, function (raw) {
     var payload;
-    try { payload = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
     var eventId = String(payload.eventId || '').trim();
     var templateId = String(payload.templateId || '').trim();
@@ -2300,7 +2312,7 @@ function requireAdmin(req, res, cb) {
 function parseJsonBody(req, res, cb) {
   readBody(req, function (raw) {
     var body;
-    try { body = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    try { body = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
     cb(body);
   });
 }
@@ -2638,7 +2650,21 @@ function handleEventStage(req, res) {
 }
 
 // Single entry point both tools/serve.js (local) and index.js (deployed) call into.
+/* The one entry point every server (server.js on App Hosting, tools/serve.js locally, the legacy Cloud
+   Function) calls. A synchronous throw anywhere in routing or in a handler's own first lines becomes a
+   500 for THAT request instead of an uncaught exception for the whole process (see parseJsonObject above
+   for what an uncaught one costs). Throws inside later stream/promise callbacks are each handler's own
+   .catch() to deal with; server.js adds a process-level net under all of it. */
 function handleApi(req, res) {
+  try { return routeApi(req, res); }
+  catch (err) {
+    console.error('api: unhandled error on ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+    if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+    sendJson(res, 500, { error: 'Something went wrong on the server. Please try again.' });
+  }
+}
+
+function routeApi(req, res) {
   var urlPath = req.url.split('?')[0];
 
   if (req.method === 'POST' && urlPath === '/api/suggest-design') return handleSuggestDesign(req, res);

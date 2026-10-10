@@ -39,7 +39,12 @@ function readToken(req) {
   const m = /^Bearer\s+(.+)$/.exec(req.headers.authorization || '');
   if (m) return m[1];
   const c = new RegExp('(?:^|;\\s*)' + SESSION_COOKIE + '=([^;]+)').exec(req.headers.cookie || '');
-  return c ? decodeURIComponent(c[1]) : '';
+  if (!c) return '';
+  // decodeURIComponent throws URIError on a malformed escape ("__session=%E0%A4%A", or just "%"). This runs
+  // synchronously inside the request listener for every gated page and API route, so that one throw used to
+  // be an uncaught exception: any signed-out visitor could end the server process with a single request.
+  // A cookie that cannot be decoded is simply not a session.
+  try { return decodeURIComponent(c[1]); } catch (e) { return ''; }
 }
 
 function isPublic(req, urlPath) {
