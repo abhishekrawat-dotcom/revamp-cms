@@ -352,6 +352,7 @@
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .logo-meta.ok{ color: var(--ok); }
+  .logo-meta.bad{ color: var(--crit); }
   @media (max-width: 1080px){
     #identity-row > .field, #sched-body .field{ grid-column: span 6 !important; }
   }
@@ -504,6 +505,10 @@
   .callout.amber{ background: var(--warn-soft); color: var(--warn); }
   .callout.plain{ background: var(--surface-2); color: var(--text-muted); }
   .callout.ai{ background: var(--review-soft); color: var(--review); }
+  .callout.crit{ background: var(--crit-soft); color: var(--crit); }
+  .callout a{ color: inherit; font-weight: 700; text-decoration: underline; }
+  .callout .callout-actions{ display:flex; flex-wrap:wrap; gap: 8px; margin-top: 10px; }
+  #existing-event{ margin-bottom: 14px; }
 
   .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding: 3px 9px 3px 7px; border-radius: 100px; white-space:nowrap; }
   .pill .d{ width:6px; height:6px; border-radius:50%; }
@@ -1213,8 +1218,6 @@
   }
   .design-choice-card h3{ margin:0; font-size:17px; }
   .design-choice-card p{ margin:0; color: var(--text-muted); font-size:13.5px; line-height:1.55; flex:1; }
-  .design-choice-alt{ margin-top:18px; font-size:13px; color: var(--text-muted); }
-  .design-choice-alt a{ color: var(--accent-strong); text-decoration:underline; }
 
   /* the lead "Generate from a brief" card — visually distinct from the two other top cards beside it,
      since it's still the recommended path, not one of three identical options */
@@ -1236,7 +1239,6 @@
     letter-spacing:.02em; text-transform:uppercase; color: var(--text-faint);
   }
   .design-choice-divider::before, .design-choice-divider::after{ content:''; flex:1; height:1px; background: var(--border); }
-  .design-choice-alt .sep{ margin:0 8px; }
 
   /* one template previewed full-size at a time, prev/next cycling through templatesForCategory() —
      replaces the old card-grid + popup preview modal (see renderTemplateCarousel() in the script). */
@@ -1314,7 +1316,7 @@
   .gb-skip-link:hover{ color:var(--text); }
   .gb-skip-tag{ font-size:11px; font-weight:700; color:var(--text-faint); margin-left:6px; }
 
-  /* AI design-variation cards (step2-ai) — picking one updates S.aiDesign and applies live to the mounted real-template preview canvas */
+  /* AI design proposal cards (the review strip, #ai-review) — picking one shows it on the mounted real-template preview */
   .ai-design-list{ display:flex; flex-direction:column; gap:10px; }
   .ai-design-card{
     display:flex; align-items:center; gap:12px; padding:12px; border:1.5px solid var(--border); border-radius:10px;
@@ -1330,6 +1332,34 @@
   .ai-design-body span{ font-size:12px; color: var(--text-muted); line-height:1.4; }
   .ai-design-body .ai-design-fonts{ font-style:italic; color: var(--text-faint); }
   .ai-design-check{ flex-shrink:0; color: var(--accent-strong); display:flex; }
+  .ai-design-card{ color: var(--text); font: inherit; width: 100%; }
+  .ai-design-body strong{ color: var(--text); }
+
+  /* "Redesign with AI" on the details form, and the review strip beside the full-page preview */
+  .ai-entry{ display:flex; align-items:center; gap: 8px; flex-wrap: wrap; }
+  .ai-entry[hidden]{ display:none; }
+  .ai-entry .btn svg{ flex-shrink: 0; }
+  #ai-entry-hint{ margin: -6px 0 12px; font-size: 11.5px; color: var(--text-faint); }
+  .ai-review{
+    flex: 0 0 340px; width: 340px; margin-right: 10px; padding: 16px; overflow-y: auto; border-radius: 8px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .ai-review[hidden]{ display: none; }
+  .ai-review h3{ margin: 0; font-size: 16px; }
+  .ai-review h4{ margin: 0 0 8px; font-size: 12.5px; }
+  .ai-review p{ margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+  .ai-review-opt{ display:flex; align-items:flex-start; gap: 8px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+  .ai-review-opt input{ margin-top: 2px; flex-shrink: 0; }
+  .ai-change{ border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-top: 8px; }
+  .ai-change .ai-change-vals{ margin: 8px 0 0 22px; display:flex; flex-direction:column; gap: 6px; font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ai-change .lb{ display:block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+  .ai-change .was{ color: var(--text-muted); }
+  .ai-review-actions{ display:flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: -16px; background: var(--surface); padding: 10px 0 0; margin-top: auto; }
+
+  /* progress rows shared by the hand-off screen and the busy panels */
+  .busy-actions{ display:flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .handoff-error{ width: 100%; max-width: 460px; text-align: left; }
 
   .tpl-preview-grid{ display:grid; grid-template-columns: minmax(0,2fr) minmax(220px,1fr); gap: 18px; align-items:start; }
   @media (max-width: 720px){ .tpl-preview-grid{ grid-template-columns: 1fr; } }
@@ -1715,19 +1745,12 @@
             </div>
           </div>
 
-          <!-- "Let AI design it" is a plain link, not a competing box: it's a redesign of whichever
-               template is already showing above, not an independent third way to start. -->
-          <div class="design-choice-alt">
-            <a href="#" id="btn-ai-design">Let AI design it</a>
-          </div>
         </div>
       </div>
 
-      <!-- ===== AI result (loading/review) and Generate-from-brief progress — NOT nested inside
-           #step1-method: "Let AI design it" is only ever triggered from there, but the brief progress
-           checklist is triggered from the DETAILS phase's own footer (S.creationMethod === 'brief'), after
-           #step1-method itself is already hidden. Both live here, as direct step-1 overlay children, so
-           neither depends on which of the three phase divs happens to be visible. ===== -->
+      <!-- ===== Busy views: AI design request, Generate-from-brief progress, design import. Direct children
+           of step 1, not of a phase: showStep2View() shows exactly one of them INSTEAD of the three phase
+           containers, so a running job never sits above a form that still looks usable. ===== -->
       <div id="step2-ai" hidden></div>
       <div id="step2-brief" hidden></div>
       <!-- "Bring your own design" (Lovable import) progress — same reasoning as step2-ai/step2-brief above. -->
@@ -1735,6 +1758,8 @@
 
       <!-- ===== PHASE 3 : the basic details form ===== -->
       <div class="phase" id="basics-form" hidden>
+
+        <div class="callout plain" id="existing-event" role="status" hidden></div>
 
         <div class="b-head">
           <span class="ttl">Basic details</span>
@@ -1798,7 +1823,16 @@
           <!-- shown for S.creationMethod === 'template' — the method choice already happened (see the
                'method' phase above), so there's no longer a reason for this to be collapsed/optional. -->
           <div class="grp" id="content-grp">
-            <div class="grp-h"><h4>Page content</h4><span class="ln"></span></div>
+            <div class="grp-h"><h4>Page content</h4><span class="ln"></span>
+              <span class="ai-entry" id="ai-entry" hidden>
+                <button class="btn btn-ai btn-sm" type="button" id="btn-ai-design">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+                  Redesign with AI
+                </button>
+                <button class="btn btn-ghost btn-sm" type="button" id="btn-ai-undo" hidden>Undo AI text changes</button>
+              </span>
+            </div>
+            <p id="ai-entry-hint" hidden></p>
             <div id="step1-build-host"></div>
           </div>
 
@@ -1844,7 +1878,7 @@
     <!-- ---------- STEP 3 : BUILD CONTENT ---------- -->
     <section class="step-wrap wide" id="step-3" hidden></section>
 
-    <!-- ---------- STEP 4 : AI ASSEMBLE -> hands off to custom_editor.html ---------- -->
+    <!-- ---------- STEP 4 : hand-off — saves the event, then opens custom_editor.html ---------- -->
     <section class="step-wrap" id="step-4" hidden></section>
   </main>
 
@@ -1860,6 +1894,7 @@
       </button>
     </div>
     <div class="live-preview-body">
+      <aside class="ai-review" id="ai-review" aria-label="AI design proposals" hidden></aside>
       <iframe id="live-preview-frame" title="Live site preview"></iframe>
       <div id="live-preview-canvas" class="tpl-frame" hidden></div>
     </div>
@@ -2185,7 +2220,7 @@
       dateTitle: 'Event schedule',
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'exact',
-      venue: true, payment: true, nomination: false, campaign: false, client: false,
+      venue: true, nomination: false, campaign: false, client: false,
       hint: 'IP and residential events include the full section stack. Use an exact date, month, or quarter while the edition is being planned.'
     },
     Client: {
@@ -2195,7 +2230,7 @@
       dateTitle: 'Event schedule',
       dateModes: ['none','exact','month','tbd'],
       defaultDateMode: 'exact',
-      venue: true, payment: true, nomination: false, campaign: false, client: 'optional',
+      venue: true, nomination: false, campaign: false, client: 'optional',
       hint: 'Custom events cover client activations, lead generation, roundtables, and virtual formats. Add a client or sponsor only when relevant.'
     },
     Awards: {
@@ -2205,7 +2240,7 @@
       dateTitle: 'Awards ceremony',
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'month',
-      venue: true, payment: true, nomination: true, campaign: false, client: false,
+      venue: true, nomination: true, campaign: false, client: false,
       hint: 'Awards microsites support the nomination window, jury milestones, shortlist, and ceremony date.'
     }
   };
@@ -2303,6 +2338,7 @@
     return 'create:logo:' + S.logoSessionId;
   }
   var logoSaving = null;      // the store write under way, so the hand-off can wait for it
+  var logoFailed = false;     // the last chosen logo could not be stored; the tile says so until another is chosen
   function logoDataUrl(file){
     return new Promise(function(resolve, reject){
       var reader = new FileReader();
@@ -2336,13 +2372,28 @@
          Drop the cache and explicitly re-render once the real write is confirmed done. */
       gen2Logo = null;
       if (typeof renderLivePreview === 'function') renderLivePreview();
-    }).catch(function(err){ console.warn('[create] could not keep the logo for the site editor:', err); });
+    }).catch(function(){
+      /* the editor reads the logo from this store, so a logo that was not stored is not a logo the event
+         has: take it back off the draft and say so on the tile instead of leaving "Logo uploaded" up */
+      if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(e){} logoPreviewUrl = ''; }
+      S.basics.logo = false;
+      S.basics.logoName = '';
+      logoFailed = true;
+      var input = $('f-logo');
+      if (input) input.value = '';     // so choosing the very same file again is still a change
+      save();
+      if (S.step === 1 && S.step1Phase === 'details') initStep1();
+      renderFoot();
+    });
     return logoSaving;
   }
 
   var S = {
     step: 1,
     logoSessionId: null,   // minted lazily by logoKey() on first use; persists via save()/restore() like everything else here
+    draftId: null,         // identifies this draft on every hand-off it writes; minted by draftId()
+    createdEventId: null,  // set once the server has created this draft's event — from then on the event is updated, never created again, and its address is fixed
+    createdAt: null,       // the server's createdAt for that event, when it reports one
     basics: {
       category: 'IP', name: '', client: '',
 
@@ -2363,7 +2414,7 @@
       /* --- leadgen: campaign window instead of an event date --- */
       campaignStart: '', campaignEnd: '', evergreen: true,
 
-      payment: 'Paid', slug: '', slugTouched: false, logo: false, logoName: ''
+      payment: 'Free', slug: '', slugTouched: false, logo: false, logoName: ''
     },
     step1Phase: 'category',     // category | method | details — see setStep1Phase()
     creationMethod: null,       // null | 'template' | 'brief' | 'imported' — which card was picked in the 'method' phase;
@@ -2381,12 +2432,16 @@
     sections: [],               // [{id, libId, name, shape, include, data, done, source, customBrief, layout}]
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content" — required before Speakers/Agenda/Sponsors/Glimpses can be switched on
-    aiDesign: null,              // a chosen "Let AI design it" redesign — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
-    designIntake: { vibe: '', notes: '' },   // structured step-2 design intake (closer to how Wix ADI's intake works) — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers both an explicit "Design with AI" request and the silent auto-personalize fallback (see autoPersonalizeDesign())
+    aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
+    designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
     sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
-    priorDesigns: [],            // every design name+colours/fonts shown by "Design with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
-    assembled: false            // step 4 finished and the draft was handed to the site editor
+    priorDesigns: [],            // every design name+colours/fonts shown by "Redesign with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
+    assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
+  function draftId(){
+    if (!S.draftId) S.draftId = 'draft-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    return S.draftId;
+  }
 
   var $ = function(id){ return document.getElementById(id); };
   function esc(s){
@@ -2414,7 +2469,10 @@
     });
     return restoreAfter;
   }
+  var draftClosed = false;    // the draft was handed to the editor and removed; nothing may write it back
+  var resumedExisting = false;   // this page load restored a draft whose event already exists on the server
   function save(){
+    if (draftClosed) return;
     var stashed = stashHeroImages();
     var ok = true;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch(e){ ok = false; }
@@ -2456,6 +2514,12 @@
       if (!raw) return false;
       var d = JSON.parse(raw);
       if (!d || typeof d !== 'object') return false;
+      /* a draft that was already handed to the editor is finished: resuming it would run the hand-off a
+         second time against an event that has since moved on */
+      if (d.assembled === true){
+        localStorage.removeItem(STORE_KEY);
+        return false;
+      }
 
       var defBasics = S.basics;                       // pristine defaults
       Object.keys(d).forEach(function(k){ S[k] = d[k]; });
@@ -2486,11 +2550,16 @@
         merged.nomCloseTbd = false;
       }
       delete merged.deadline;
+      merged.payment = 'Free';                        // online payment is not available; older drafts defaulted to Paid
       /* a legacy draft has no dateMode — infer one from what it did have */
       if (CATS[merged.category].dateModes.indexOf(merged.dateMode) < 0){
         merged.dateMode = merged.start ? 'exact' : CATS[merged.category].defaultDateMode;
       }
       S.basics = merged;
+      if (S.createdEventId){
+        S.basics.slug = S.createdEventId;             // the event's id cannot change once it exists
+        resumedExisting = true;
+      }
       rehydrateHeroImages();
       return true;
     } catch(e){ return false; }
@@ -2510,6 +2579,66 @@
   }
 
   /* =========================================================
+     BUSY STATE — one long-running job at a time
+     A design import, an AI design request, a brief generation and the hand-off to the editor all take
+     over the screen while they run. `busy` is the single record that one is active: its progress view
+     replaces the form (showStep2View / step 4), the footer offers only Cancel (renderFoot), the rail is
+     locked (renderRail), and a second start is refused (beginBusy returns null). The run object is also
+     the token every asynchronous continuation checks with isCurrent(): an answer that arrives after the
+     run was cancelled or replaced must change nothing.
+  ========================================================= */
+  var busy = null;            // null | { kind: 'import'|'ai'|'brief'|'handoff', controller, onCancel, note }
+  function beginBusy(kind){
+    if (busy) return null;
+    busy = { kind: kind, controller: window.AbortController ? new AbortController() : null, onCancel: null, note: '' };
+    return busy;
+  }
+  function isCurrent(run){ return !!run && busy === run; }
+  function runSignal(run){ return run.controller ? run.controller.signal : undefined; }
+  function endBusy(run){
+    if (busy !== run) return;
+    busy = null;
+    renderRail();
+    renderFoot();
+  }
+  /* viaNav: the cancel comes from a navigation that renders its own destination, so the run only has to
+     take its view down — it must not navigate or announce anything itself. */
+  function cancelBusy(viaNav){
+    var run = busy;
+    if (!run) return;
+    busy = null;
+    if (run.controller){ try { run.controller.abort(); } catch(e){} }
+    if (run.onCancel) run.onCancel(!!viaNav);
+    renderRail();
+    renderFoot();
+  }
+  /* what the footer's Cancel and every in-panel Cancel button do. A generation has already spent paid
+     work, so that one asks first. */
+  function requestCancelBusy(){
+    if (!busy) return;
+    if (busy.kind !== 'brief'){ cancelBusy(); return; }
+    openModal({
+      title: 'Stop generating?',
+      sub: 'Steps already done are discarded.',
+      confirm: 'Stop generating',
+      cancelLabel: 'Keep going',
+      onConfirm: function(){ if (busy && busy.kind === 'brief') cancelBusy(); }
+    });
+  }
+  /* a failure as a sentence a person can act on — fetch() rejects with a bare TypeError when the
+     network is down, which says nothing useful */
+  function plainError(err){
+    var msg = (err && err.message) || '';
+    if ((err && err.name === 'TypeError') || /failed to fetch|networkerror|load failed/i.test(msg) || navigator.onLine === false)
+      return 'The server could not be reached. Check your connection and try again.';
+    return msg || 'Something went wrong.';
+  }
+  function scrollBodyTop(){
+    var body = document.querySelector('.wiz-body');
+    if (body) body.scrollTo({ top: 0 });
+  }
+
+  /* =========================================================
      PROGRESS RAIL
   ========================================================= */
   /* the real S.step a rail dot jumps to — dot 2 ("Assemble") always means S.step 4 */
@@ -2523,7 +2652,7 @@
       var state = n < stage ? 'done' : (n === stage ? 'current' : 'todo');
       if (i > 0) html += '<span class="rail-line' + (n < stage ? ' filled' : '') + '"></span>';
       html += '<button class="rail-step" data-state="' + state + '" data-goto="' + RAIL_TARGET[i] + '"' +
-              (state === 'todo' ? ' disabled' : '') + '>' +
+              (state === 'todo' || busy ? ' disabled' : '') + '>' +
               '<span class="num">' + (state === 'done' ? IC.check : n) + '</span>' +
               (STEPS[i] ? '<span class="lbl">' + STEPS[i] + '</span>' : '') + '</button>';
     }
@@ -2532,7 +2661,7 @@
     rail.querySelectorAll('[data-goto]').forEach(function(b){
       b.addEventListener('click', function(){
         var n = parseInt(b.getAttribute('data-goto'), 10);
-        if (railPos(n) < stage) goStep(n);
+        if (!busy && railPos(n) < stage) goStep(n);
       });
     });
   }
@@ -2541,6 +2670,7 @@
      STEP NAVIGATION
   ========================================================= */
   function goStep(n){
+    if (busy) cancelBusy(true);
     S.step = n;
     /* always 4 DOM step sections (step-1..step-4) regardless of how many rail dots STEPS shows — step 3 is
        path-B-only now (its own detect/review sub-flow, folded into the "Choose template" rail dot) and step 1
@@ -2564,7 +2694,8 @@
     setPreviewVisible((n === 1 && S.step1Phase !== 'category') || n === 2);
     renderRail();
     renderFoot();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollBodyTop();
+    if (n === 1) focusNameIfEmpty();
     save();
   }
 
@@ -2575,13 +2706,21 @@
      branch). The category phase gets no live preview (nothing chosen yet to show); method and details
      both do. */
   function setStep1Phase(phase){
+    if (busy) cancelBusy(true);
     S.step1Phase = phase;
     renderStep1Content();
     setPreviewVisible(phase !== 'category');
     renderRail();
     renderFoot();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollBodyTop();
+    focusNameIfEmpty();
     save();
+  }
+  /* the details form opens ready to type in; a name that is already there is left alone */
+  function focusNameIfEmpty(){
+    if (S.step !== 1 || S.step1Phase !== 'details') return;
+    var nameEl = $('f-name');
+    if (nameEl && !nameEl.value) nameEl.focus({ preventScroll: true });
   }
 
   /* Replaces every old goStep(4)-on-confirm (confirmUseTemplate/openTemplatePreview/confirmCloneDesign —
@@ -2596,8 +2735,20 @@
   /* =========================================================
      FOOTER BAR - label + gating per step
   ========================================================= */
+  var BACK_LABEL = svg('<path d="M15 18l-6-6 6-6"/>', 15) + ' Back';
   function renderFoot(){
     var back = $('btn-back'), next = $('btn-next'), alt = $('btn-foot-alt'), note = $('foot-note');
+    renderAiEntry();
+    if (busy){
+      /* nothing can move forward while a job owns the screen; Back becomes that job's Cancel */
+      back.hidden = false;
+      back.textContent = 'Cancel';
+      alt.hidden = true;
+      next.hidden = true;
+      note.textContent = busy.note || '';
+      return;
+    }
+    back.innerHTML = BACK_LABEL;
     back.hidden = (S.step === 1);
     alt.hidden = true;
     note.textContent = '';
@@ -2622,7 +2773,7 @@
       else if (S.step1Phase === 'details'){
         back.hidden = false;
         var briefMethod = S.creationMethod === 'brief';
-        var issue = briefMethod ? briefBasicsIssue(S.basics) : basicsIssue(S.basics);
+        var issue = currentBasicsIssue();
         next.disabled = !!issue;
         next.innerHTML = (briefMethod ? 'Generate my site ' : 'Continue ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
         note.textContent = issue;
@@ -2652,6 +2803,9 @@
       next.hidden = true;
       note.textContent = '';
     }
+  }
+  function currentBasicsIssue(){
+    return S.creationMethod === 'brief' ? briefBasicsIssue(S.basics) : basicsIssue(S.basics);
   }
 
   /* =========================================================
@@ -2683,6 +2837,11 @@
     var host = $('slug-status');
     var slug = S.basics.slug;
     if (!slug){ host.innerHTML = ''; return; }
+    if (S.createdEventId){
+      host.className = 'slug-status checking';
+      host.innerHTML = IC.lock + ' The event already exists, so its address can no longer change.';
+      return;
+    }
     if (checking){
       host.className = 'slug-status checking';
       host.innerHTML = 'Checking availability…';
@@ -2699,7 +2858,7 @@
   function renderSlugAI(){
     var host = $('slug-ai');
     var suggestion = slugify(S.basics.name);
-    if (!suggestion || suggestion === S.basics.slug){ host.innerHTML = ''; return; }
+    if (!suggestion || suggestion === S.basics.slug || S.createdEventId){ host.innerHTML = ''; return; }
     host.innerHTML = '<span class="ai-chip">' + IC.spark +
       'AI suggests <span class="mono">' + esc(suggestion) + '</span>' +
       '<button type="button" id="slug-apply">Use it</button></span>';
@@ -2838,15 +2997,11 @@
   /* ---------- schedule block: reshapes per date mode ---------- */
   function renderSchedule(){
     var b = S.basics, C = CATS[b.category], host = $('sched-body'), h = '';
-    var briefMode = S.creationMethod === 'brief';   // trimmed form: no payment field at all (see Payment/Entry-fee below)
     /* two-field date modes (exact, quarter) leave less room for venue than the one-field modes */
     var twoUp = (b.dateMode === 'exact' || b.dateMode === 'quarter');
-    /* brief mode drops the payment field entirely — venue takes the combined span the two would otherwise
-       split between them (same numbers the no-venue branch already uses for payment alone, just reused
-       here: venue+payment's spans always sum to c6/c7, so giving venue that same total is exactly "venue
-       now occupies the row alone"), not just whatever venue's own narrower span was when payment sat next to it. */
-    var venueSpan = briefMode ? (twoUp ? 'c6' : 'c7') : (C.venue ? (twoUp ? 'c4' : 'c5') : (twoUp ? 'c6' : 'c7'));
-    var paymentSpan = C.venue ? 'c2' : (twoUp ? 'c6' : 'c7');
+    /* venue and the registration note share what the date fields leave of the row (c6 or c7) */
+    var venueSpan = twoUp ? 'c3' : 'c4';
+    var paymentSpan = C.venue ? 'c3' : (twoUp ? 'c6' : 'c7');
 
     h += '<div class="field c2">' +
            '<label for="f-datemode">Date Format</label>' +
@@ -2882,19 +3037,13 @@
              '<div class="flabel-row"><label for="f-venue">Venue &amp; city</label><span class="pill-opt">Optional</span></div>' +
              '<input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Mumbai" value="' + esc(b.venue) + '"></div>';
     }
-    if (!briefMode){
-      h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
-             '<label for="f-payment" id="lbl-payment">' + (C.nomination ? 'Entry fee' : 'Payment') + '</label>' +
-             '<select class="inp" id="f-payment"></select></div>';
-    }
+    /* every event is free to register for: there is no online payment to offer yet, on any path */
+    h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
+           '<span class="flabel" id="lbl-payment">' + (C.nomination ? 'Entry fee' : 'Registration') + '</span>' +
+           '<p class="hint" id="payment-note" style="margin:0;font-size:12px;line-height:1.4;color:var(--text-muted)">' +
+             (C.nomination ? 'Entry is free.' : 'Registration is free.') + ' Online payment is not available yet.</p></div>';
 
     host.innerHTML = '<div class="frow">' + h + '</div>';
-
-    if (!briefMode){
-      selectFrom($('f-payment'), [{v:'Free',t:'Non-paid'},{v:'Paid',t:'Paid'}], b.payment, function(v){
-        b.payment = v; save();
-      });
-    }
 
     var venueEl = $('f-venue');
     if (venueEl){
@@ -3037,11 +3186,10 @@
     b.category = k;
     /* carry the date over only if the new category understands that mode */
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
-    if (!C.payment) b.payment = 'Free';
     /* Default to the category's real ported template immediately, so the live preview on the right is the
        ACTUAL site from the very start of the method phase — not create-event.html's own generic placeholder
        shapes, which don't look anything like what the event will really become. applyTemplate() is
-       additive/safe to call repeatedly (used the same way by "Let AI design it"), and the user can still
+       additive/safe to call repeatedly, and the user can still
        switch templates, pick manually, reuse a previous edition, or choose "Generate from a brief" instead
        — this only sets a sensible starting point, not a commitment to the template path. Only applies if
        nothing more specific was already chosen (switching category after picking a template shouldn't
@@ -3058,9 +3206,7 @@
     var b = S.basics;
 
     renderCatPicker();
-    $('cat-picker').hidden   = S.step1Phase !== 'category';
-    $('step1-method').hidden = S.step1Phase !== 'method';
-    $('basics-form').hidden  = S.step1Phase !== 'details';
+    showStep1Phase();
 
     if (S.step1Phase === 'method'){
       renderStep2();   /* populates the template carousel; also syncs S.templatePick from S.template if needed */
@@ -3074,7 +3220,7 @@
     nameEl.value = b.name;
     nameEl.oninput = function(){
       b.name = nameEl.value;
-      if (!b.slugTouched){
+      if (!b.slugTouched && !S.createdEventId){
         b.slug = slugify(b.name);
         $('f-slug').value = b.slug;
         renderSlugStatus(false);
@@ -3089,9 +3235,11 @@
     var slugEl = $('f-slug');
     slugEl.value = b.slug;
     slugEl.oninput = function(){
+      if (S.createdEventId){ slugEl.value = b.slug; return; }
       b.slugTouched = true;
       b.slug = slugify(slugEl.value);
       renderSlugStatus(true);
+      renderFoot();              // Continue must reflect an emptied address at once, not after the tidy-up below
       clearTimeout(slugCheckTimer);
       slugCheckTimer = setTimeout(function(){
         slugEl.value = b.slug;
@@ -3122,8 +3270,8 @@
       previewImg.hidden = true;
       removeBtn.hidden = true;
       logoCta.textContent = 'Upload logo';
-      logoHint.className = 'logo-meta';
-      logoHint.textContent = 'PNG or SVG · 571×340 · max 5 MB';
+      logoHint.className = logoFailed ? 'logo-meta bad' : 'logo-meta';
+      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG or SVG · 571×340 · max 5 MB';
     }
 
     var openLogoPicker = function(){ logoInput.click(); };
@@ -3153,6 +3301,7 @@
       }
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} }
       logoPreviewUrl = URL.createObjectURL(file);
+      logoFailed = false;
       b.logo = true;
       b.logoName = file.name;
       storeLogo(file);
@@ -3163,8 +3312,7 @@
     applySmartDefaults();
     renderSchedule();
     renderCatPanel();
-    renderSlugStatus(false);
-    renderSlugAI();
+    renderEventExists();
 
     /* the two mutually-exclusive bottom groups: section-content editor for the template method (always
        expanded now — the method choice already happened), the brief-collection fields for the AI method. */
@@ -3173,17 +3321,41 @@
     if (contentGrp) contentGrp.hidden = S.creationMethod !== 'template';
   }
 
+  /* which of step 1's three phase containers is on screen — also how showStep2View() puts the form back
+     once a busy view comes down */
+  function showStep1Phase(){
+    $('cat-picker').hidden   = S.step1Phase !== 'category';
+    $('step1-method').hidden = S.step1Phase !== 'method';
+    $('basics-form').hidden  = S.step1Phase !== 'details';
+  }
+  /* where the site editor opens for this draft's event, when a hand-off of this draft has a site to open */
+  function editorUrlForCreatedEvent(){
+    var tpl = handoffTemplate();
+    if (!S.createdEventId || S.creationMethod === 'brief' || !tpl.site) return '';
+    return 'custom_editor.html?event=' + encodeURIComponent(S.createdEventId) + '&template=' + encodeURIComponent(tpl.site);
+  }
+  /* The parts of the details form that depend on whether this draft's event already exists on the server:
+     the notice saying so, and the address, which is fixed from that moment. Also called the moment the
+     event is created, which can be after the owner cancelled the hand-off and is back on the form. */
+  function renderEventExists(){
+    var host = $('existing-event'), slugEl = $('f-slug');
+    if (!host || !slugEl) return;
+    slugEl.readOnly = !!S.createdEventId;
+    renderSlugStatus(false);
+    renderSlugAI();
+    host.hidden = !S.createdEventId;
+    if (!S.createdEventId) return;
+    var url = editorUrlForCreatedEvent();
+    host.innerHTML = IC.info + '<span><strong>This event already exists (' + esc(S.basics.name.trim() || S.createdEventId) + ').</strong>' +
+      'Continuing updates it.' + (url ? ' <a href="' + esc(url) + '">Open it in the editor instead</a>' : '') + '</span>';
+  }
+
   /* =========================================================
      STEP 2 - CHOOSE PATH
   ========================================================= */
   /* templates relevant to the currently chosen event category (IP & Residential, Awards, Client) */
   function templatesForCategory(){
     return TEMPLATES.filter(function(t){ return t.cat === S.basics.category; });
-  }
-  /* whether the active category has at least one template with a real ET site port (tpl.site) —
-     "Let AI design it" only makes sense where there's a real template to redesign */
-  function categoryHasPortedTemplate(){
-    return templatesForCategory().some(function(t){ return !!t.site; });
   }
   /* applies a template — used once the "are you sure" confirmation is accepted, from any entry point.
      `skip` (libId -> true) carries over section choices made in the Preview modal's toggles. */
@@ -3417,39 +3589,83 @@
     if (nextBtn) nextBtn.onclick = function(){ tplCarouselIdx = (tplCarouselIdx + 1) % list.length; renderCarouselFrame(list); };
   }
 
-  /* ---------- let AI design it: Gemini, proxied through tools/serve.js (POST /api/suggest-design) ----------
-     The server holds the API key; the browser only ever talks to the same-origin proxy. This proposes VISUAL
-     REDESIGNS of the baseline template's REAL rendered site — real canvas.design field values (colour, real
-     Google Fonts, heading style…) applied live to the mounted Gen-2 canvas, not a different template pick and
-     not CSS variables grafted onto this file's own generic markup — plus optional content polish, independent
-     of which design is chosen. Only offered where the active category has a template with a real port (see
-     categoryHasPortedTemplate()/renderStep2()). See tools/serve.js for the prompt/schema and tools/README
-     (GEMINI_API_KEY / tools/.env.local) for how the key is supplied.
-     Switching between proposed designs calls canvas.design.set() directly on the already-mounted preview
-     canvas — instant, no reload — and also sets S.aiDesign + save() so the choice persists through the
-     wizard and into the hand-off (see buildEditorPayload/openInEditor). */
+  /* ---------- Redesign with AI (POST /api/suggest-design) ----------
+     Asked for from the details form of the template method, once the details validate, so the request is
+     about this event: its real name, date, venue and the text typed so far. The answer proposes VISUAL
+     REDESIGNS of the chosen template's real rendered site — canvas.design field values (colour, Google
+     Fonts, heading style…) — plus, separately, wording suggestions and an optional section order.
+     Nothing is written to the draft until "Use this design": while the proposals are reviewed they are
+     shown on the mounted template through previewOverride (see ensureGen2Canvas / fillGen2Canvas), and
+     Cancel simply drops the override. This is the only place that calls /api/suggest-design, and only on
+     a click. */
   var AI_STATUS_LINES = ['Reading your content…', 'Sketching a few fresh looks…', 'Checking colour contrast…', 'Almost there…'];
   /* structured design intake, single-select — closer to Wix ADI's own style/goal questions than one free-text
      box alone. Short on purpose (Wix's own intake is a handful of questions, not a long form); "notes" below
      stays for anything a fixed chip can't capture (a specific brand colour, a reference site, etc.). */
   var VIBE_OPTIONS = ['Bold & energetic', 'Minimal & elegant', 'Warm & editorial', 'Corporate & formal', 'Dark & dramatic', 'Playful & modern'];
 
-  function requestAiDesign(){
-    var ported = templatesForCategory().filter(function(t){ return t.site; });
-    if (!ported.length){ toast('AI design is only available for templates with a finished real design.'); return; }
-    var currentIsPorted = S.template && ported.some(function(t){ return t.id === S.template; });
-    var baselineId = currentIsPorted ? S.template : ported[0].id;
-    selectTemplate(baselineId);   /* additive/no-op if already set — see applyTemplate(); guarantees a real mounted template to redesign */
-    var priorSectionOrder = S.sectionOrder;   // captured before this request can possibly change it — see renderAiReview()'s Cancel
+  var previewOverride = null;   // { aiDesign, sectionOrder } shown on the preview while proposals are reviewed; never saved
+  var aiTextUndo = null;        // the wording changes the last accepted proposal made, kept for this page load so they can be taken back
+  function previewDesign(){ return previewOverride ? previewOverride.aiDesign : S.aiDesign; }
+  function previewSectionOrder(){ return previewOverride ? previewOverride.sectionOrder : S.sectionOrder; }
 
-    showStep2View('ai');
-    var host = $('step2-ai');
-    host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Designing with AI&hellip;</h1>' +
-        '<p class="desc">Gemini is sketching a few fresh looks for your site.</p></div>' +
-      '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
-        '<p class="hint" id="ai-status">' + esc(AI_STATUS_LINES[0]) + '</p>' +
-      '</div></div>';
+  /* The entry point on the details form. Called from renderFoot(), which every field change already goes
+     through, so the button follows the form's validity without its own wiring. */
+  function renderAiEntry(){
+    var wrap = $('ai-entry'), hint = $('ai-entry-hint');
+    if (!wrap || !hint) return;
+    var show = S.step === 1 && S.step1Phase === 'details' && S.creationMethod === 'template' && !!portedTemplate();
+    wrap.hidden = !show;
+    hint.hidden = !show;
+    if (!show) return;
+    var issue = basicsIssue(S.basics);
+    $('btn-ai-design').disabled = !!issue;
+    hint.textContent = issue
+      ? 'Fill in the event details above to ask for a redesign.'
+      : 'Proposes new colours and fonts for this template, and optional wording changes. Nothing changes until you accept a proposal.';
+    $('btn-ai-undo').hidden = !aiTextUndo;
+  }
+
+  /* What the model is given to read: the text of the included sections and nothing else. A banner can put
+     megabytes of base64 into S.sections (the PSD composite, its layers, a plain uploaded image); none of
+     that may ever travel in a prompt. */
+  var AI_PAYLOAD_DROP_KEYS = { psdBanner: true, bannerImage: true, layers: true, imageData: true, compositeImageData: true };
+  var AI_PAYLOAD_MAX_STRING = 2000, AI_PAYLOAD_MAX_BYTES = 100 * 1024;
+  function aiTextOnly(v){
+    if (typeof v === 'string') return (v.indexOf('data:') === 0 || v.length > AI_PAYLOAD_MAX_STRING) ? undefined : v;
+    if (Array.isArray(v)) return v.map(aiTextOnly).filter(function(x){ return x !== undefined; });
+    if (v && typeof v === 'object'){
+      var out = {};
+      Object.keys(v).forEach(function(k){
+        if (AI_PAYLOAD_DROP_KEYS[k]) return;
+        var c = aiTextOnly(v[k]);
+        if (c !== undefined) out[k] = c;
+      });
+      return out;
+    }
+    return v;
+  }
+  function aiSectionsPayload(){
+    var list = [];
+    S.sections.forEach(function(sec){
+      if (!sec.include || sec.shape === 'auto' || !sec.data) return;
+      var data = aiTextOnly(sec.data);
+      /* the words on an uploaded banner are still content the design should read, without its pixels */
+      var banner = sec.libId === 'hero' && sec.data.psdBanner;
+      if (banner && banner.detected && banner.detected.length){
+        data.bannerText = banner.detected.map(function(it){ return String(it.label || '').slice(0, 200); }).filter(Boolean);
+      }
+      list.push({ libId: sec.libId, shape: sec.shape, name: sec.name, data: data });
+    });
+    return JSON.stringify(list).length > AI_PAYLOAD_MAX_BYTES ? [] : list;
+  }
+
+  function requestAiDesign(){
+    var tplMeta = portedTemplate();
+    if (!tplMeta || S.creationMethod !== 'template' || basicsIssue(S.basics)) return;
+    var run = beginBusy('ai');
+    if (!run) return;
+    run.note = 'Waiting for design proposals — nothing changes until you accept one.';
 
     var i = 0;
     var statusTimer = setInterval(function(){
@@ -3457,202 +3673,241 @@
       var el = $('ai-status');
       if (el) el.textContent = AI_STATUS_LINES[i];
     }, 2200);
-
-    var tplMeta = null; TEMPLATES.forEach(function(t){ if (t.id === baselineId) tplMeta = t; });
-
-    ensureGen2Canvas(tplMeta).then(function(canvas){
-      return fillGen2Canvas(canvas);
-    }).then(function(canvas){
-      var payload = {
-        event: { name: S.basics.name, category: S.basics.category, dateLabel: eventDateLabel(S.basics), location: locLabel(S.basics, true) },
-        sections: S.sections,
-        currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
-        designIntake: S.designIntake,
-        priorDesigns: S.priorDesigns
-      };
-
-      return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
-        .then(function(r){
-          clearInterval(statusTimer);
-          if (!r.ok || !r.body || !r.body.designs || !r.body.designs.length){
-            toast(r.body && r.body.error ? r.body.error : 'AI design request failed.');
-            showStep2View('landing');
-            return;
-          }
-          recordPriorDesigns(r.body.designs);
-          /* a reorder needs a fresh mount (see ensureGen2Canvas's comment) — applies once, independent of
-             which design card the user ends up picking in renderAiReview() */
-          if (r.body.sectionOrder){
-            S.sectionOrder = fullSectionOrder(canvas, r.body.sectionOrder);
-            return ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(freshCanvas){ renderAiReview(r.body, freshCanvas, priorSectionOrder); });
-          }
-          renderAiReview(r.body, canvas, priorSectionOrder);
-        });
-    }).catch(function(err){
+    run.onCancel = function(viaNav){
       clearInterval(statusTimer);
-      toast('Could not reach the AI design service: ' + err.message);
       showStep2View('landing');
-    });
-  }
-
-  function renderAiReview(result, canvas, priorSectionOrder){
-    var priorDesignSnapshot = snapshotDesign(canvas);
-    var priorAiDesign = S.aiDesign;
-    var priorSections = JSON.parse(JSON.stringify(S.sections));
-    applyAiEnhancements(result.enhancements);   /* same content polish regardless of which design is picked; reverted on Cancel */
-
-    var designs = result.designs || [];
-    var selectedIdx = 0;
-    var enhancedNames = Object.keys(result.enhancements || {}).map(function(libId){ var l = libBy(libId); return l ? l.name : libId; });
-
-    function selectDesign(idx){
-      selectedIdx = idx;
-      S.aiDesign = designs[idx].design;
-      applyAiDesignToCanvas(canvas, S.aiDesign);   /* instant — the canvas is already mounted, no reload */
-      save();
-      renderCards();
-    }
-
-    function renderCards(){
-      var list = $('ai-design-list');
-      if (!list) return;
-      list.innerHTML = designs.map(function(d, i){
-        var on = i === selectedIdx, dsg = d.design || {};
-        return '<button type="button" class="ai-design-card' + (on ? ' on' : '') + '" data-idx="' + i + '">' +
-          '<span class="ai-design-swatches">' +
-            '<span class="sw" style="background:' + esc(dsg.themeColor || '#ccc') + '"></span>' +
-            '<span class="sw" style="background:' + esc(dsg.bgColor || '#fff') + '"></span>' +
-          '</span>' +
-          '<span class="ai-design-body"><strong>' + esc(d.name) + '</strong><span>' + esc(d.reason) + '</span>' +
-            (dsg.headingFont || dsg.bodyFont ? '<span class="ai-design-fonts">' + esc([dsg.headingFont, dsg.bodyFont].filter(Boolean).join(' / ')) + '</span>' : '') +
-          '</span>' +
-          (on ? '<span class="ai-design-check">' + IC.check + '</span>' : '') +
-        '</button>';
-      }).join('');
-      list.querySelectorAll('[data-idx]').forEach(function(b){
-        b.addEventListener('click', function(){ selectDesign(+b.getAttribute('data-idx')); });
-      });
-    }
+      if (!viaNav) toast('Cancelled — nothing was changed');
+    };
 
     var host = $('step2-ai');
     host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Pick a design</h1>' +
-        '<p class="desc">Same real template, a fresh look &mdash; check the live preview on the right, then confirm.</p></div>' +
-      '<div class="panel" style="padding:14px;">' +
-        '<div id="ai-design-list" class="ai-design-list"></div>' +
-        (enhancedNames.length ? '<p class="hint" style="margin:14px 0 0;">Content polish included for: ' + enhancedNames.map(esc).join(', ') + '.</p>' : '') +
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">' +
-          '<button class="btn btn-primary" type="button" id="btn-ai-use">Use this design</button>' +
-          '<button class="btn btn-ghost" type="button" id="btn-ai-cancel">Cancel</button>' +
-        '</div>' +
-      '</div>';
+      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; Event details</span><h1>Asking for design proposals&hellip;</h1>' +
+        '<p class="desc">A few new looks for ' + esc(tplMeta.name) + ', based on your event details and text. This usually takes under a minute.</p></div>' +
+      '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
+        '<p class="hint" id="ai-status">' + esc(AI_STATUS_LINES[0]) + '</p>' +
+        '<div class="busy-actions"><button class="btn btn-secondary" type="button" id="btn-ai-request-cancel">Cancel</button></div>' +
+      '</div></div>';
+    $('btn-ai-request-cancel').onclick = requestCancelBusy;
+    showStep2View('ai');
 
-    selectDesign(0);   /* auto-preview the first option immediately, live, on the right */
-
-    $('btn-ai-use').onclick = function(){
-      save();
+    ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(canvas){
+      if (!isCurrent(run)) return;
+      var b = S.basics;
+      var payload = {
+        event: { name: b.name.trim(), category: CATS[b.category].label, dateLabel: eventDateLabel(b), location: locLabel(b, false) },
+        sections: aiSectionsPayload(),
+        currentTemplate: { id: tplMeta.id, name: tplMeta.name, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
+        designIntake: S.designIntake,
+        priorDesigns: S.priorDesigns
+      };
+      return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: runSignal(run) })
+        .then(function(res){
+          return res.json().catch(function(){ return null; }).then(function(body){
+            if (!res.ok) throw new Error((body && body.error) || ('The design service answered with an error (' + res.status + ').'));
+            if (!body || !body.designs || !body.designs.length) throw new Error('The design service did not return any proposals.');
+            return body;
+          });
+        })
+        .then(function(body){
+          if (!isCurrent(run)) return;
+          clearInterval(statusTimer);
+          recordPriorDesigns(body.designs);
+          reviewAiProposals(run, body, canvas, tplMeta);
+        });
+    }).catch(function(err){
+      if (!isCurrent(run)) return;
+      clearInterval(statusTimer);
+      endBusy(run);
       showStep2View('landing');
-      toast('"' + designs[selectedIdx].name + '" applied');
-    };
-    $('btn-ai-cancel').onclick = function(){
-      S.aiDesign = priorAiDesign;
-      S.sections = priorSections;
-      var reorderChanged = JSON.stringify(S.sectionOrder) !== JSON.stringify(priorSectionOrder);
-      S.sectionOrder = priorSectionOrder;
-      if (reorderChanged){
-        var tpl = null; TEMPLATES.forEach(function(t){ if (t.id === S.template) tpl = t; });
-        if (tpl) ensureGen2Canvas(tpl).then(fillGen2Canvas);   // remount back to the order from before this request
-      } else {
-        restoreDesign(canvas, priorDesignSnapshot);
-      }
-      save();
-      var contentHost = $('step1-build-host'); if (contentHost) renderBuildWorkspace(contentHost);
-      showStep2View('landing');
-    };
-  }
-
-  /* applies an AI-suggested content patch to a section's existing data — only keys the section already has,
-     so a malformed/unexpected model response can't inject fields the editor/preview don't know how to render.
-     hero.title is excluded even though it's a real key: left empty (its seed default), it deliberately falls
-     back to the event's own name (see content.map's {hero.title|event.name} and editorSectionHtml's
-     `d.title || b.name` chain) — that's the user's own name, typed in step 1, not "thin content" for the AI
-     to improve. Silently overwriting it with the AI's own shortened/restyled version (confirmed happening —
-     "FULL FLOW REAL TEST 2026" became "Full Flow 2026") is exactly the kind of unrequested rewrite that makes
-     a real, deliberately-entered choice look like it was ignored. */
-  var AI_ENHANCEMENT_PROTECTED_FIELDS = { hero: { title: true } };
-  function applyAiEnhancements(enhancements){
-    if (!enhancements) return;
-    Object.keys(enhancements).forEach(function(libId){
-      var sec = sectionByLib(libId);
-      if (!sec || !sec.data) return;
-      var protectedFields = AI_ENHANCEMENT_PROTECTED_FIELDS[libId] || {};
-      var patch = enhancements[libId];
-      Object.keys(patch || {}).forEach(function(key){
-        if (!(key in sec.data) || protectedFields[key]) return;
-        sec.data[key] = patch[key];
-      });
-      sec.done = true;
-      sec.source = 'ai';
+      toast('Could not get design proposals: ' + plainError(err));
     });
   }
 
-  /* Called right before a template-A draft leaves step 2 (onNext() and confirmUseTemplate()) when the user
-     never clicked "Design with AI" themselves. Without this, every event in a category rendered with the
-     real template's own fixed stock colours/fonts — fine for one event, but every event in that category
-     then looked visually identical, which read as "cached"/"cloned" rather than a builder making something
-     new each time. Resolves once a design is applied (or once it's given up trying) — it never rejects, so
-     a slow/unavailable AI call can't block the user from finishing their site; the template's own default
-     look is still a reasonable result, just not the personalized one this aims for. */
-  function autoPersonalizeDesign(){
-    if (S.path !== 'A') return Promise.resolve();              // "bring your own design" has no real template to redesign
-    if (S.aiDesign) return Promise.resolve();                 // the user already chose a look explicitly
-    var ported = templatesForCategory().filter(function(t){ return t.site; });
-    if (!ported.length) return Promise.resolve();               // Gen-1 only — nothing to vary yet
-    var currentIsPorted = S.template && ported.some(function(t){ return t.id === S.template; });
-    /* this used to fall back to ported[0] when the current pick wasn't real — harmless back when every
-       category had at most one real template (ported[0] was always the same template pickCategory() had
-       already defaulted to), but with several real templates now sharing a category, that fallback would
-       silently swap a user's own explicit pick (e.g. they chose "SURGE" in the manual gallery) for some
-       unrelated real template just because one happened to exist. Only ever personalize the template the
-       user is actually on; otherwise leave their Gen-1 pick alone. */
-    if (!currentIsPorted) return Promise.resolve();
-    var baselineId = S.template;
-    var tplMeta = null; TEMPLATES.forEach(function(t){ if (t.id === baselineId) tplMeta = t; });
-
-    return ensureGen2Canvas(tplMeta).then(function(canvas){
-      return fillGen2Canvas(canvas).then(function(canvas){
-        var payload = {
-          event: { name: S.basics.name, category: S.basics.category, dateLabel: eventDateLabel(S.basics), location: locLabel(S.basics, true) },
-          sections: S.sections,
-          currentTemplate: { id: baselineId, name: tplMeta ? tplMeta.name : baselineId, design: canvas.template.design || {}, reorderableSections: reorderableSectionsFor(canvas) },
-          designIntake: S.designIntake,
-          priorDesigns: S.priorDesigns
-        };
-        return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-          .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
-          .then(function(r){
-            if (!r.ok || !r.body || !r.body.designs || !r.body.designs.length) return;   // keep the template's own default look rather than block
-            recordPriorDesigns(r.body.designs);
-            /* a random pick among Gemini's own 2-3 options (not always [0]) so two similar events
-               silently personalized back-to-back don't land on the same look every time */
-            var pick = r.body.designs[Math.floor(Math.random() * r.body.designs.length)];
-            S.aiDesign = pick.design;
-            if (r.body.sectionOrder){
-              /* a reorder needs a fresh mount (see ensureGen2Canvas's comment) */
-              S.sectionOrder = fullSectionOrder(canvas, r.body.sectionOrder);
-              return ensureGen2Canvas(tplMeta).then(fillGen2Canvas).then(function(freshCanvas){
-                applyAiDesignToCanvas(freshCanvas, S.aiDesign);
-                applyAiEnhancements(r.body.enhancements);
-                save();
-              });
-            }
-            applyAiDesignToCanvas(canvas, S.aiDesign);
-            applyAiEnhancements(r.body.enhancements);
-            save();
-          });
+  /* hero.title is never offered for rewording: left empty it falls back to the event's own name (see
+     content.map's {hero.title|event.name} and editorSectionHtml's `d.title || b.name` chain), which the
+     owner typed in the details form — not thin content for a model to restyle. */
+  var AI_ENHANCEMENT_PROTECTED_FIELDS = { hero: { title: true } };
+  var AI_FIELD_LABELS = { body: 'Text', text: 'Text', tagline: 'Tagline', title: 'Heading', items: 'Items', cta1: 'Main button', cta2: 'Second button', blocks: 'Contacts' };
+  function aiHasContent(v){
+    if (typeof v === 'string') return !!v.trim();
+    if (Array.isArray(v)) return v.length > 0;
+    return v != null && v !== false;
+  }
+  /* a section value as plain lines a person can compare: strings as they are, lists one item per line */
+  function aiValueText(v){
+    var text;
+    if (typeof v === 'string') text = v;
+    else if (Array.isArray(v)){
+      text = v.map(function(item){
+        if (item && typeof item === 'object'){
+          return Object.keys(item).map(function(k){ return item[k]; })
+            .filter(function(x){ return typeof x === 'string' && x.trim() && x.indexOf('data:') !== 0; }).join(' — ');
+        }
+        return String(item == null ? '' : item);
+      }).filter(Boolean).join('\n');
+    }
+    else text = v == null ? '' : String(v);
+    text = text.trim();
+    return text.length > 600 ? text.slice(0, 600) + '…' : text;
+  }
+  /* The proposed wording, one entry per section field that would really change. Only fields the section
+     already has, of the same kind of value, so an unexpected answer cannot inject anything the editor does
+     not know how to render. `typed` marks text the owner wrote themselves: non-empty and not the value an
+     earlier accepted proposal put there. */
+  function aiTextChanges(enhancements){
+    var list = [];
+    Object.keys(enhancements || {}).forEach(function(libId){
+      var sec = sectionByLib(libId), patch = enhancements[libId];
+      if (!sec || !sec.include || !sec.data || !patch || typeof patch !== 'object') return;
+      var protectedFields = AI_ENHANCEMENT_PROTECTED_FIELDS[libId] || {};
+      Object.keys(patch).forEach(function(key){
+        if (!(key in sec.data) || protectedFields[key]) return;
+        var before = sec.data[key], after = patch[key];
+        if (typeof before !== typeof after || Array.isArray(before) !== Array.isArray(after)) return;
+        if (typeof after !== 'string' && !Array.isArray(after)) return;
+        if (JSON.stringify(before) === JSON.stringify(after) || !aiValueText(after)) return;
+        var aiWrote = sec.source === 'ai' || (sec.aiFields && sec.aiFields[key] === JSON.stringify(before));
+        list.push({ libId: libId, key: key, name: sec.name, label: AI_FIELD_LABELS[key] || key, before: before, after: after,
+          typed: aiHasContent(before) && !aiWrote });
       });
-    }).catch(function(){ /* same fallback: the template's default look, not a blocked wizard */ });
+    });
+    return list;
+  }
+
+  function reviewAiProposals(run, result, baseCanvas, tplMeta){
+    var designs = result.designs;
+    var proposedOrder = result.sectionOrder ? fullSectionOrder(baseCanvas, result.sectionOrder) : null;
+    if (proposedOrder && JSON.stringify(proposedOrder) === JSON.stringify(S.sectionOrder || baseCanvas.template.sections.map(function(x){ return x.id; }))) proposedOrder = null;
+    var changes = aiTextChanges(result.enhancements);
+    var ticked = changes.map(function(c){ return !c.typed; });
+    var selectedIdx = 0, useOrder = !!proposedOrder;
+    var strip = $('ai-review'), backToEditing = $('btn-toggle-preview'), note = $('live-preview-note');
+
+    function showOnPreview(){
+      previewOverride = { aiDesign: designs[selectedIdx].design, sectionOrder: (useOrder && proposedOrder) ? proposedOrder : S.sectionOrder };
+      repaintGen2Preview(tplMeta);
+    }
+    function close(){
+      previewOverride = null;
+      strip.hidden = true;
+      strip.innerHTML = '';
+      if (backToEditing) backToEditing.hidden = false;
+      togglePreviewMode(false);
+      showStep2View('landing');
+      repaintGen2Preview(tplMeta);
+    }
+    run.note = 'Pick a design in the panel on the left, or cancel to keep things as they are.';
+    run.onCancel = function(viaNav){
+      close();
+      if (!viaNav) toast('Cancelled — nothing was changed');
+    };
+
+    function render(){
+      strip.innerHTML =
+        '<div><h3>Pick a design</h3>' +
+          '<p style="margin-top:6px">Click a look to see it on your site. Nothing changes until you choose “Use this design”.</p></div>' +
+        '<div class="ai-design-list">' + designs.map(function(d, i){
+          var on = i === selectedIdx, dsg = d.design || {};
+          return '<button type="button" class="ai-design-card' + (on ? ' on' : '') + '" data-idx="' + i + '" aria-pressed="' + on + '">' +
+            '<span class="ai-design-swatches">' +
+              '<span class="sw" style="background:' + esc(dsg.themeColor || '#ccc') + '"></span>' +
+              '<span class="sw" style="background:' + esc(dsg.bgColor || '#fff') + '"></span>' +
+            '</span>' +
+            '<span class="ai-design-body"><strong>' + esc(d.name) + '</strong><span>' + esc(d.reason) + '</span>' +
+              (dsg.headingFont || dsg.bodyFont ? '<span class="ai-design-fonts">' + esc([dsg.headingFont, dsg.bodyFont].filter(Boolean).join(' / ')) + '</span>' : '') +
+            '</span>' +
+            (on ? '<span class="ai-design-check">' + IC.check + '</span>' : '') +
+          '</button>';
+        }).join('') + '</div>' +
+        (proposedOrder
+          ? '<label class="ai-review-opt"><input type="checkbox" id="ai-use-order"' + (useOrder ? ' checked' : '') + '>' +
+              '<span>Also use the suggested order of sections</span></label>'
+          : '') +
+        (changes.length
+          ? '<div><h4>Suggested wording</h4>' +
+              '<p>Tick the changes you want. Text you wrote yourself is left as it is unless you tick it.</p>' +
+              changes.map(function(c, i){
+                return '<div class="ai-change">' +
+                  '<label class="ai-review-opt"><input type="checkbox" data-change="' + i + '"' + (ticked[i] ? ' checked' : '') + '>' +
+                    '<span><strong>' + esc(c.name) + '</strong> &middot; ' + esc(c.label) + '</span></label>' +
+                  '<div class="ai-change-vals">' +
+                    '<div class="was"><span class="lb">Now</span>' + (esc(aiValueText(c.before)) || '<em>Empty</em>') + '</div>' +
+                    '<div><span class="lb">Suggested</span>' + esc(aiValueText(c.after)) + '</div>' +
+                  '</div></div>';
+              }).join('') + '</div>'
+          : '') +
+        '<div class="ai-review-actions">' +
+          '<button class="btn btn-primary" type="button" id="btn-ai-use">Use this design</button>' +
+          '<button class="btn btn-ghost" type="button" id="btn-ai-cancel">Cancel</button>' +
+        '</div>';
+
+      strip.querySelectorAll('[data-idx]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          selectedIdx = +btn.getAttribute('data-idx');
+          render();
+          showOnPreview();
+        });
+      });
+      strip.querySelectorAll('[data-change]').forEach(function(box){
+        box.addEventListener('change', function(){ ticked[+box.getAttribute('data-change')] = box.checked; });
+      });
+      var orderBox = $('ai-use-order');
+      if (orderBox) orderBox.addEventListener('change', function(){ useOrder = orderBox.checked; showOnPreview(); });
+      $('btn-ai-cancel').onclick = requestCancelBusy;
+      $('btn-ai-use').onclick = function(){
+        if (!isCurrent(run)) return;
+        var applied = [];
+        changes.forEach(function(c, i){
+          var sec = ticked[i] && sectionByLib(c.libId);
+          if (!sec || !sec.data || !(c.key in sec.data)) return;
+          applied.push({ libId: c.libId, key: c.key, before: JSON.parse(JSON.stringify(sec.data[c.key])), after: JSON.stringify(c.after), done: sec.done });
+          sec.data[c.key] = JSON.parse(JSON.stringify(c.after));
+          sec.aiFields = sec.aiFields || {};
+          sec.aiFields[c.key] = JSON.stringify(c.after);
+          sec.done = true;
+        });
+        aiTextUndo = applied.length ? applied : null;
+        S.aiDesign = designs[selectedIdx].design;
+        if (useOrder && proposedOrder) S.sectionOrder = proposedOrder;
+        busy = null;                    // the proposal is now the draft; close() below re-renders the footer and rail
+        close();
+        save();
+        var contentHost = $('step1-build-host');
+        if (contentHost) renderBuildWorkspace(contentHost);
+        renderRail();
+        toast('“' + designs[selectedIdx].name + '” applied' + (applied.length ? ' with ' + applied.length + ' wording change' + (applied.length === 1 ? '' : 's') : ''));
+      };
+    }
+
+    $('step2-ai').innerHTML = '';
+    if (backToEditing) backToEditing.hidden = true;
+    if (note) note.textContent = tplMeta.name + ' · previewing a proposal';
+    strip.hidden = false;
+    render();
+    togglePreviewMode(true);
+    showOnPreview();
+    renderFoot();
+  }
+
+  /* takes back the wording an accepted proposal changed — only where the text is still exactly what the
+     proposal put there, so anything typed since is never overwritten */
+  function undoAiTextChanges(){
+    if (!aiTextUndo) return;
+    var restored = 0;
+    aiTextUndo.forEach(function(u){
+      var sec = sectionByLib(u.libId);
+      if (!sec || !sec.data || JSON.stringify(sec.data[u.key]) !== u.after) return;
+      sec.data[u.key] = u.before;
+      sec.done = u.done;
+      if (sec.aiFields) delete sec.aiFields[u.key];
+      restored++;
+    });
+    aiTextUndo = null;
+    save();
+    var contentHost = $('step1-build-host');
+    if (contentHost) renderBuildWorkspace(contentHost);
+    renderFoot();
+    toast(restored ? 'AI wording changes undone' : 'Nothing to undo — that text has been edited since');
   }
 
   /* ---------- Generate from brief (AI site-generation pipeline) ----------
@@ -3664,8 +3919,9 @@
      risks being throttled or the instance scaling down mid-run. Keeping every step as its own
      awaited request/response is what makes this reliable on that infrastructure, and it also
      means the progress checklist below reflects real, confirmed completions — never a guess.
-     Ends with the exact same localStorage hand-off + redirect openInEditor() uses below, so the
-     result opens in the real editor exactly like finishing the rest of the wizard by hand. */
+     The event record is created first (createEventRecord(), the checklist's first row) so every later
+     step writes into an event that exists, and the run ends with the same hand-off + leaveForEditor()
+     the template path uses. */
   /* only templates actually confirmed briefReady (see TEMPLATES) — a real, working hero-image fill rule
      is not enough on its own if the banner's own ported assets haven't been checked against event bleed-
      through (see making-ai-work's fix this session, and the templates still missing that audit) */
@@ -3733,11 +3989,16 @@
      either moves on to runStep(i+1) or (uniquely for the brief row, see below) pauses for the mismatch
      modal; on failure it marks the row 'error' and STOPS — nothing past a failed row runs on its own.
      The only two ways past an 'error' row are the user clicking Retry (re-calls runStep(i), which re-runs
-     just that row) or, source rows only, Skip (marks it 'skipped' and calls runStep(i+1) itself). This
-     replaces the old flat .then() chain, which both let a failed source row silently continue (see the old
-     empty .catch(function(){ setStep(...,'error'); }) with no rethrow) and had no way to resume a failed
-     brief/generate row at all short of starting over. */
+     just that row) or, source rows only, Skip (marks it 'skipped' and calls runStep(i+1) itself).
+     There is exactly one run at a time: it holds the 'brief' busy state (beginBusy), and every
+     continuation — a step resolving, Retry, Skip — returns without doing anything once that run has been
+     cancelled, so no paid call and no navigation can follow a Cancel. */
   function startGenerateFromBrief(){
+    if (briefBasicsIssue(S.basics)){ renderFoot(); return; }
+    var run = beginBusy('brief');
+    if (!run) return;
+    run.note = 'Generating your site — keep this tab open.';
+
     var fileInput = $('gb-doc');
     var file = fileInput && fileInput.files && fileInput.files[0];
     // the free-text "Describe the event" field (gb-brief-text) — sent through the SAME /api/extract-brief
@@ -3761,12 +4022,12 @@
     ].filter(function(s){ return s.url; });
     var futureEdition = !!($('gb-future') && $('gb-future').checked);
 
-    // the real event id this draft (and the eventual editor session) is keyed by — same slug the rest
-    // of the wizard already uses, so this is a normal persistent event, not a disposable preview
-    var eventId = S.basics.slug || ('event-' + Date.now());
-    var eventMeta = { name: S.basics.name || '', date: eventDateLabel(S.basics), location: locLabel(S.basics, false) };
+    // the real event id this draft (and the eventual editor session) is keyed by: the event an earlier,
+    // abandoned run of this draft already created, or the address on the form
+    var eventId = S.createdEventId || S.basics.slug;
+    var eventMeta = { name: S.basics.name.trim(), date: eventDateLabel(S.basics), location: locLabel(S.basics, false) };
 
-    var steps = [];
+    var steps = [{ key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event', status: 'pending' }];
     if (file) steps.push({ key: 'brief', label: 'Reading ' + file.name, status: 'pending' });
     else if (briefText) steps.push({ key: 'brief', label: 'Reading your description', status: 'pending' });
     urlFields.forEach(function(s, i){
@@ -3776,10 +4037,8 @@
     });
     steps.push({ key: 'plan', label: 'Designing the site structure', status: 'pending' });
     steps.push({ key: 'generate', label: 'Generating content', status: 'pending' });
+    steps.push({ key: 'open', label: 'Opening your site', status: 'pending' });
     var order = steps.map(function(s){ return s.key; });
-
-    showStep2View('brief');
-    renderBriefProgress(steps);
 
     function setStep(key, patch){
       if (typeof patch === 'string') patch = { status: patch };
@@ -3794,16 +4053,22 @@
         reader.readAsDataURL(f);
       });
     }
+    function readJson(res, fallback){
+      return res.json().catch(function(){ return null; }).then(function(b){
+        if (!res.ok) throw new Error((b && b.error) || fallback);
+        return b || {};
+      });
+    }
     function postJson(url, body){
-      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || (url + ' failed')); return b; }); });
-      // deliberately NO client-side timeout/abort wrapper here (D4) — a row only ever becomes 'error'
-      // because the server itself actually responded with failure (after its own one retry — see
-      // callGeminiJson in functions/lib/api.js), never because the browser gave up first.
+      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: runSignal(run) })
+        .then(function(res){ return readJson(res, url + ' failed'); });
+      // deliberately NO client-side timeout here (D4) — a row only ever becomes 'error' because the server
+      // itself responded with failure (after its own one retry — see callGeminiJson in functions/lib/api.js),
+      // never because the browser gave up first. The signal only ever aborts on the owner's own Cancel.
     }
 
     // one runner per row, keyed the same as steps[i].key — the actual request, no status bookkeeping
-    var runners = {};
+    var runners = { create: createEventRecord };
     if (file){
       runners.brief = function(){
         return readFileAsBase64(file).then(function(docBase64){
@@ -3838,6 +4103,40 @@
     runners.generate = function(){
       return postJson('/api/generate-content', { eventId: eventId, templateId: 'gen-' + eventId, eventMeta: eventMeta, futureEdition: futureEdition });
     };
+    /* The last row is real work too: load what was generated, record its template on the event, write the
+       hand-off and only then leave. Each part is a server call that can fail, and none of them is a paid
+       call, so a failure here is retried on its own without regenerating anything. */
+    runners.open = function(){
+      return fetch('/api/draft?eventId=' + encodeURIComponent(eventId), { signal: runSignal(run) })
+        .then(function(res){ return readJson(res, 'The generated site could not be loaded (' + res.status + ').'); })
+        .then(function(draftResp){
+          var templateId = draftResp.templateId || ('gen-' + eventId);
+          return RevampCore.updateEvent(eventId, { templateId: templateId }).then(null, function(err){
+            throw new Error('The event could not be updated: ' + plainError(err));
+          }).then(function(){
+            if (!isCurrent(run)) return;
+            /* generatedFromBrief marks this hand-off as a generated draft — custom_editor.html reads it to
+               show the one-time "this is an AI-generated draft" notice. The server's own event block knows
+               nothing the owner typed on the details form (for a generated template its name, date and
+               venue are empty), so the form's values are laid over it. */
+            var handoff = Object.assign({}, draftResp.handoff, { generatedFromBrief: true, createdAt: Date.now(), draftId: draftResp.draftId || draftId() });
+            handoff.event = Object.assign({}, handoff.event, handoffEvent());
+            try {
+              localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoff));
+            } catch(e){
+              throw new Error(HANDOFF_BLOCKED);
+            }
+            // draftResp.draftId (the Firestore doc id /api/generate-content just wrote — see handleGetDraft
+            // in functions/lib/api.js) makes THIS run's editor store key unique (editor-template-ui.js's
+            // resolveKey) — without it, a second Generate-from-Brief run for the same slug would resolve to
+            // the exact same storeKey as the first and silently show that first run's cached draft instead
+            // of starting fresh (the bug this `&draft=` param exists to close).
+            leaveForEditor(run, 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
+              '&template=' + encodeURIComponent(templateId) +
+              (draftResp.draftId ? '&draft=' + encodeURIComponent(draftResp.draftId) : ''));
+          });
+        });
+    };
 
     // the `generate` row's "still writing, hasn't stalled" reassurance (D3's own clock, never the warning
     // icon) — armed when it starts running, disarmed the moment it actually resolves either way.
@@ -3847,22 +4146,26 @@
     // both 'plan' (structure planning + the one hero-image generation call) and 'generate' are the rows
     // that can legitimately run long — everything else (brief/source ingestion) is comparatively quick.
     function isLongRunningStep(key){ return key === 'plan' || key === 'generate'; }
+    // these two rows are the wizard's own requests, whose failure reason is safe and useful to show as it is
+    function showsRealCause(key){ return key === 'create' || key === 'open'; }
 
     function runStep(i){
-      if (i >= order.length){ finish(); return; }
+      if (!isCurrent(run) || i >= order.length) return;
       var key = order[i];
       setStep(key, { status: 'running', showStillWriting: false });
       if (isLongRunningStep(key)){
         clearStillWritingTimer();
-        stillWritingTimer = setTimeout(function(){ setStep(key, { showStillWriting: true }); }, GEMINI_WORST_CASE_MS);
+        stillWritingTimer = setTimeout(function(){ if (isCurrent(run)) setStep(key, { showStillWriting: true }); }, GEMINI_WORST_CASE_MS);
       }
       runners[key]().then(function(result){
+        if (!isCurrent(run)) return;
         if (isLongRunningStep(key)) clearStillWritingTimer();
         setStep(key, { status: 'done' });
         runStep(i + 1);
       }).catch(function(err){
+        if (!isCurrent(run)) return;
         if (isLongRunningStep(key)) clearStillWritingTimer();
-        setStep(key, { status: 'error', cause: briefStepErrorCause(key) });
+        setStep(key, { status: 'error', cause: showsRealCause(key) ? plainError(err) : briefStepErrorCause(key) });
         // paused — resumes only via the Retry/Skip click handled by the delegated listener below
       });
     }
@@ -3881,77 +4184,31 @@
 
     // one delegated click listener on the persistent host (innerHTML is replaced wholesale on every render,
     // so per-button listeners would be destroyed and re-leaked on every single re-render) — replaced fresh
-    // on every call to startGenerateFromBrief so a second run never double-fires off a stale one.
+    // on every run so a later run never fires off an earlier one's listener.
     var host = $('step2-brief');
-    if (host){
-      if (host._gbClickHandler) host.removeEventListener('click', host._gbClickHandler);
-      host._gbClickHandler = function(e){
-        var retryBtn = e.target.closest('[data-step-retry]');
-        if (retryBtn){ retryStep(retryBtn.getAttribute('data-step-retry')); return; }
-        var skipBtn = e.target.closest('[data-step-skip]');
-        if (skipBtn){ skipStep(skipBtn.getAttribute('data-step-skip')); return; }
-      };
-      host.addEventListener('click', host._gbClickHandler);
-    }
+    if (host._gbClickHandler) host.removeEventListener('click', host._gbClickHandler);
+    host._gbClickHandler = function(e){
+      if (!isCurrent(run)) return;
+      if (e.target.closest('[data-brief-cancel]')){ requestCancelBusy(); return; }
+      var retryBtn = e.target.closest('[data-step-retry]');
+      if (retryBtn){ retryStep(retryBtn.getAttribute('data-step-retry')); return; }
+      var skipBtn = e.target.closest('[data-step-skip]');
+      if (skipBtn){ skipStep(skipBtn.getAttribute('data-step-skip')); return; }
+    };
+    host.addEventListener('click', host._gbClickHandler);
 
-    function finish(){
-      fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
-        .then(function(res){ return res.json().then(function(b){ if (!res.ok) throw new Error((b && b.error) || 'Could not load the generated draft'); return b; }); })
-        .then(function(draftResp){
-          try {
-            /* marks this handoff as a Generate-from-Brief result (vs. finishing the rest of the wizard by hand) —
-               custom_editor.html reads this to show the one-time "this is an AI-generated draft" modal + the
-               persistent reminder strip, neither of which apply to a normal manual-template handoff.
-               logoKey rides along the same way: the server's own handoff.event has no concept of the
-               browser's IndexedDB at all, so this client-side merge is the only place it can be added —
-               without it the editor had no way to find this draft's own logo (if one was uploaded in step 1
-               before Generate-from-Brief ran) and would fall back to whatever the fixed global key last
-               held, which could be a completely different event's logo (see logoKey()'s own comment). */
-            var handoffWithLogo = Object.assign({}, draftResp.handoff, { generatedFromBrief: true });
-            if (S.basics.logo) handoffWithLogo.event = Object.assign({}, handoffWithLogo.event, { logoKey: logoKey() });
-            localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoffWithLogo));
-          } catch(e){
-            toast('Could not hand the draft over — your browser blocked storage.');
-            showStep2View('landing');
-            return;
-          }
-          // draftResp.draftId (the Firestore doc id /api/generate-content just wrote — see handleGetDraft
-          // in functions/lib/api.js) makes THIS run's editor store key unique (editor-template-ui.js's
-          // resolveKey) — without it, a second Generate-from-Brief run for the same slug would resolve to
-          // the exact same storeKey as the first and silently show that first run's cached draft instead
-          // of starting fresh (the bug this `&draft=` param exists to close).
-          var finalUrl = 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
-            '&template=' + encodeURIComponent(draftResp.templateId || ('gen-' + eventId)) +
-            (draftResp.draftId ? '&draft=' + encodeURIComponent(draftResp.draftId) : '');
+    /* Cancel puts the brief form back exactly as it was left (its inputs never left the page). The event
+       this run created stays, and the next run reuses it. */
+    run.onCancel = function(viaNav){
+      clearStillWritingTimer();
+      showStep2View('landing');
+      if (viaNav) return;
+      setStep1Phase('details');
+      toast('Generation stopped');
+    };
 
-          /* The events/{eventId} doc for a Generate-from-Brief event already exists by this point as a
-             side effect of /api/plan-structure (structurePlan/theme fields only, see functions/lib/api.js)
-             — but not the full canonical field set edit-event.html's console and the rest of the new
-             /api/event/* endpoints expect (category/venue/city/payment/status/templateId). This enriches
-             it, merge-only (never destructive to structurePlan/theme). Best-effort/non-blocking beyond its
-             own completion, same posture as the manual-wizard path's openInEditor() — a failure here
-             (most likely: not signed in yet) never blocks the user from reaching their generated site. */
-          if (window.RevampCore && RevampCore.createEvent) {
-            RevampCore.createEvent({
-              eventId: eventId, name: eventMeta.name, slug: eventId,
-              category: (S.basics.category || 'ip').toLowerCase(),
-              venue: S.basics.venue, city: S.basics.city,
-              start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
-              end: (S.basics.dateMode === 'exact' && S.basics.end) ? S.basics.end : null,
-              payment: { type: S.basics.payment === 'Paid' ? 'paid' : 'free' },
-              templateId: draftResp.templateId || ('gen-' + eventId),
-              status: 'draft'
-            }).catch(function(err){
-              console.warn('Could not create the real event record (it still works locally): ' + (err && err.message));
-            }).then(function(){ window.location.href = finalUrl; });
-          } else {
-            window.location.href = finalUrl;
-          }
-        }).catch(function(err){
-          toast(err.message || 'Generation failed.');
-        });
-    }
-
+    renderBriefProgress(steps);
+    showStep2View('brief');
     runStep(0);
   }
 
@@ -3982,6 +4239,7 @@
           }
           return '<li class="gb-step gb-step-' + rowStatus + '"><div class="gb-step-row">' + icon + '<span>' + label + '</span></div>' + sub + '</li>';
         }).join('') + '</ul>' +
+        '<div class="busy-actions"><button type="button" class="btn btn-secondary" data-brief-cancel>Cancel generation</button></div>' +
       '</div></div>';
   }
 
@@ -4034,12 +4292,27 @@
   /* 'manual' no longer exists as its own hideable view — the template gallery lives permanently inside
      'landing' now (promoted from a demoted link, per the step-1/step-2 merge) — but every caller that used
      to pass 'manual' still works unchanged: it just lands on 'landing', where the gallery already is. */
+  /* Any view other than 'landing' is a busy view (a request in progress): it is shown INSTEAD of step 1's
+     phase containers, at the top of the page, with the footer re-rendered for it — never above a form
+     that still looks usable. 'landing' puts back whichever phase S.step1Phase says the owner was on. */
   function showStep2View(view){
     if (view === 'manual') view = 'landing';
     $('step2-landing').hidden = view !== 'landing';
     $('step2-ai').hidden = view !== 'ai';
     $('step2-brief').hidden = view !== 'brief';
     $('step2-import').hidden = view !== 'import';
+    if (view === 'landing'){
+      showStep1Phase();
+      setPreviewVisible(S.step === 1 && S.step1Phase !== 'category');
+    } else {
+      $('cat-picker').hidden = true;
+      $('step1-method').hidden = true;
+      $('basics-form').hidden = true;
+      setPreviewVisible(false);
+      scrollBodyTop();
+    }
+    renderRail();
+    renderFoot();
   }
 
   function renderStep2(){
@@ -4066,19 +4339,6 @@
 
     var convertLandingLink = $('link-convert-url-landing');
     if (convertLandingLink) convertLandingLink.onclick = function(e){ e.preventDefault(); openImportLovableModal(); };
-    /* "Let AI design it" — a plain link now (not a boxed-out card with its own vibe-chip/notes intake;
-       that extra step added friction for a genuinely secondary path and competed visually with the two
-       real choices above it — template gallery, generate-from-brief). Runs with whatever S.designIntake
-       already holds (empty by default — the backend prompt already reads a blank vibe/notes as "no
-       specific look requested" and designs from the event's own content instead, see buildPrompt() in
-       functions/lib/api.js), rather than collecting it here. Hidden entirely (not just disabled) when
-       there's no ported template to redesign — a dead link needs no explanation copy. */
-    var aiBtn = $('btn-ai-design');
-    if (aiBtn){
-      var available = categoryHasPortedTemplate();
-      aiBtn.hidden = !available;
-      aiBtn.onclick = available ? function(e){ e.preventDefault(); requestAiDesign(); } : null;
-    }
     // No category/template gate here any more: Generate from a brief builds its own section structure
     // from the shared library (templates/_library/) instead of depending on a specific audited ported
     // template, so it's available for every event category.
@@ -4094,7 +4354,7 @@
       title: next === 'A' ? 'Switch to a template?' : 'Switch to your own design?',
       sub: 'Your basic details are kept. The content you have filled so far is cleared.',
       body: '<div class="callout amber">' + IC.warn +
-            '<span><strong>What you keep</strong>Event name, dates, venue, slug, logo and payment type all carry over. Only section content resets.</span></div>',
+            '<span><strong>What you keep</strong>Event name, dates, venue, slug and logo all carry over. Only section content resets.</span></div>',
       confirm: 'Switch',
       onConfirm: function(){
         S.path = next;
@@ -4123,7 +4383,7 @@
       sub: 'Automatic Figma/Lovable import isn’t built yet.',
       body: '<div class="callout plain">' + IC.info +
         '<span>There is no real design reader behind this yet, so it can’t pull sections or content from a URL or file. ' +
-        'For now, pick a template manually, or use <strong>Design with AI</strong> on a template with a real site port — ' +
+        'For now, pick a template manually, or use <strong>Redesign with AI</strong> on a template with a real site port — ' +
         'it redesigns the actual live template using the content you type into this wizard.</span></div>',
       confirm: 'Got it'
     });
@@ -4199,12 +4459,22 @@
   // Lovable site in testing (page render + settle wait, then fetching/re-hosting every discovered
   // stylesheet and image) — so the loading copy says so rather than implying a near-instant operation.
   function runLovableImport(url){
+    var run = beginBusy('import');
+    if (!run) return;
+    run.note = 'Importing your design — this can take up to a minute.';
+    run.onCancel = function(viaNav){
+      showStep2View('landing');
+      if (!viaNav) toast('Import cancelled — nothing was changed');
+    };
     var importId = lovableImportId();
-    showStep2View('import');
     $('step2-import').innerHTML =
       '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Importing your design&hellip;</h1>' +
         '<p class="desc">Rendering your site and re-hosting its images — this can take up to a minute for a larger design.</p></div>' +
-      '<div class="panel"><div class="proc-wrap">' + ET_LOADER + '</div></div>';
+      '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
+        '<div class="busy-actions"><button class="btn btn-secondary" type="button" id="btn-import-cancel">Cancel</button></div>' +
+      '</div></div>';
+    $('btn-import-cancel').onclick = requestCancelBusy;
+    showStep2View('import');
 
     (function(){
       if (!window.RevampAuth || typeof RevampAuth.getIdToken !== 'function'){
@@ -4214,7 +4484,8 @@
         return fetch('/api/import-lovable', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ importId: importId, url: url })
+          body: JSON.stringify({ importId: importId, url: url }),
+          signal: runSignal(run)
         });
       });
     })().then(function(res){
@@ -4223,12 +4494,17 @@
         return body;
       });
     }).then(function(body){
+      if (!isCurrent(run)) return;      // cancelled, or the owner has moved on: a late answer changes nothing
+      endBusy(run);
       applyImportedTemplate(body.templateId || ('imported-' + importId));
+      showStep2View('landing');
       advanceToDetails('imported');
       toast('Design imported');
     }).catch(function(err){
-      toast((err && err.message) || 'Could not import this design.');
+      if (!isCurrent(run)) return;
+      endBusy(run);
       showStep2View('landing');
+      toast(plainError(err) || 'Could not import this design.');
     });
   }
 
@@ -4524,7 +4800,7 @@
        itself can already exist in the DOM during the method phase (a category pick seeds it ahead of
        time), so without the step1Phase check this button showed up over the template carousel too, not
        only its real home, the details/build phase's section editor. */
-    var show = S.step === 1 && S.step1Phase === 'details' && !!document.querySelector('#step-1 #sec-list');
+    var show = !busy && S.step === 1 && S.step1Phase === 'details' && !!document.querySelector('#step-1 #sec-list');
     host.hidden = !show;
     if (!show){ host.innerHTML = ''; editionPopOpen = false; return; }
     var locked = !S.pulledEdition;
@@ -7764,9 +8040,35 @@
     }
   }
 
+  /* The event block of every hand-off the wizard writes — the template path, an imported design and a
+     generated site all describe the event to the editor with exactly these fields. */
+  function handoffEvent(){
+    var b = S.basics;
+    var ev = {
+      name: b.name.trim(),
+      slug: S.createdEventId || b.slug,
+      category: (CATS[b.category] || {}).label || b.category,
+      dateLabel: eventDateLabel(b),
+      location: locLabel(b, false),
+      payment: 'Free',
+      date: { mode: b.dateMode, start: b.start, end: b.end, month: b.month, quarter: b.quarter, year: b.year, note: b.dateNote },
+      hasVenue: !!(CATS[b.category] || {}).venue,
+      logo: b.logo ? (b.logoName || 'logo') : '',     // the file itself is in IndexedDB under logoKey()
+      logoKey: b.logo ? logoKey() : null               // lets the editor read the SAME per-draft slot back
+    };
+    if (S.createdAt) ev.createdAt = S.createdAt;
+    return ev;
+  }
+  /* which template the hand-off opens: { id, name, site } — `site` is the id the editor mounts, null when
+     the pick has no real site behind it */
+  function handoffTemplate(){
+    var tpl = TEMPLATES.filter(function(t){ return t.id === S.template; })[0];
+    var importedTplId = /^imported-/.test(S.template || '') ? S.template : null;
+    return { id: S.template, name: tpl ? tpl.name : (importedTplId ? 'Imported design' : (S.path === 'B' ? 'Your own design' : 'Custom')), site: importedTplId || (tpl && tpl.site) || null };
+  }
+
   /* everything the editor needs to open on this draft */
   function buildEditorPayload(){
-    var b = S.basics;
     var tpl = TEMPLATES.filter(function(t){ return t.id === S.template; })[0];
     /* An imported design (S.template === 'imported-<id>', from "Bring your own design" — see
        runLovableImport()/applyImportedTemplate()) has no TEMPLATES[] entry at all, so `tpl` above is always
@@ -7798,24 +8100,14 @@
     return {
       v: 1,
       createdAt: Date.now(),
-      event: {
-        name: b.name || 'Untitled event',
-        slug: b.slug || 'your-event',
-        category: (CATS[b.category] || {}).label || b.category,
-        dateLabel: eventDateLabel(b),
-        location: locLabel(b, false),
-        payment: b.payment,
-        date: { mode: b.dateMode, start: b.start, end: b.end, month: b.month, quarter: b.quarter, year: b.year, note: b.dateNote },
-        hasVenue: !!(CATS[b.category] || {}).venue,
-        logo: b.logo ? (b.logoName || 'logo') : '',     // the file itself is in IndexedDB under logoKey()
-        logoKey: b.logo ? logoKey() : null               // lets the editor read the SAME per-draft slot back
-      },
-      template: { id: S.template, name: tpl ? tpl.name : (importedTplId ? 'Imported design' : (S.path === 'B' ? 'Your own design' : 'Custom')), site: importedTplId || (tpl && tpl.site) || null },
+      draftId: draftId(),
+      event: handoffEvent(),
+      template: handoffTemplate(),
       /* the template's sections the user switched off — hidden on a real template, not deleted */
       excluded: tpl ? tpl.sections.filter(function(id){ return !S.sections.some(function(s){ return s.libId === id && s.include; }); }) : [],
       theme: currentTheme(),
       aiDesign: S.aiDesign || null,     // a chosen real-template AI redesign (canvas.design field values); null for the Gen-1 path
-      sectionOrder: S.sectionOrder || null,   // a chosen section sequence (see autoPersonalizeDesign()); null for the Gen-1 path or the template's own default order
+      sectionOrder: S.sectionOrder || null,   // a section sequence accepted from an AI proposal (see reviewAiProposals()); null for the Gen-1 path or the template's own default order
       sections: sections
     };
   }
@@ -7873,10 +8165,12 @@
   }
   /* mounts the real template once per template id; a later call for the same id reuses the live canvas */
   function ensureGen2Canvas(tpl){
-    /* a section-order change (see autoPersonalizeDesign()/requestAiDesign()) needs a fresh mount — reordering
-       is baked into the iframe's DOM at load time, so RevampFill.apply() patching an already-mounted canvas
-       in place can't move sections around after the fact, only fill text/attrs into whatever is already there. */
-    var orderKey = JSON.stringify(S.sectionOrder || null);
+    /* a section-order change (an accepted AI proposal, or one being reviewed — see previewSectionOrder())
+       needs a fresh mount — reordering is baked into the iframe's DOM at load time, so RevampFill.apply()
+       patching an already-mounted canvas in place can't move sections around after the fact, only fill
+       text/attrs into whatever is already there. */
+    var order = previewSectionOrder();
+    var orderKey = JSON.stringify(order || null);
     if (gen2TemplateId === tpl.site && gen2SectionOrderKey === orderKey && (gen2Canvas || gen2Mounting)) return gen2Mounting;
     var container = $('live-preview-canvas');
     if (!container) return Promise.reject(new Error('no preview container'));
@@ -7884,10 +8178,12 @@
     gen2SectionOrderKey = orderKey;
     gen2Canvas = null;
     container.innerHTML = '';
-    gen2Mounting = RevampCanvas.mount(container, tpl.site, { sectionOrder: S.sectionOrder }).then(function(canvas){
+    var mounting = RevampCanvas.mount(container, tpl.site, { sectionOrder: order }).then(function(canvas){
+      if (gen2Mounting !== mounting) return gen2Mounting;   // a later mount replaced this one while it loaded
       gen2Canvas = canvas;
       return canvas;
     });
+    gen2Mounting = mounting;
     return gen2Mounting;
   }
   /* the one place real content actually reaches the mounted canvas — called explicitly (not left to the
@@ -7899,9 +8195,18 @@
   function fillGen2Canvas(canvas){
     return storedLogoDataUrl().then(function(logo){
       RevampFill.apply(canvas, RevampFill.fromHandoff(buildEditorPayload(), logo));
-      if (S.aiDesign) applyAiDesignToCanvas(canvas, S.aiDesign);
+      var design = previewDesign();
+      if (design) applyAiDesignToCanvas(canvas, design);
       return canvas;
     });
+  }
+  /* Shows exactly the current look: the template's own design with the accepted or reviewed AI design on
+     top. Design values can only be laid over one another on a mounted canvas, never taken off again, so
+     whenever the look changes to anything other than "one more design over the last" — switching between
+     proposals, dropping them on Cancel — the template is mounted afresh. */
+  function repaintGen2Preview(tpl){
+    gen2TemplateId = null;
+    return ensureGen2Canvas(tpl).then(fillGen2Canvas).catch(function(){ /* a failed mount leaves the preview empty until the next render */ });
   }
   /* the template's own sections minus whatever its layout.pinStart/pinEnd pins in place (the hero always
      opens, Contact/About always close) — the only ones an AI-proposed sectionOrder may ever resequence. */
@@ -7918,10 +8223,9 @@
     var layout = canvas.template.layout || {};
     return (layout.pinStart || []).concat(middleOrder).concat(layout.pinEnd || []);
   }
-  /* tracks every design "Design with AI" has shown this session (both the explicit button and the silent
-     auto-personalize fallback) — sent back on the next request (see requestAiDesign()/autoPersonalizeDesign())
-     so Gemini proposes genuinely different directions on a repeat call instead of near-repeats. Capped so the
-     prompt doesn't grow unbounded across many regenerate clicks. */
+  /* tracks every design "Redesign with AI" has shown this session — sent back on the next request (see
+     requestAiDesign()) so a repeat request proposes genuinely different directions instead of near-repeats.
+     Capped so the prompt doesn't grow unbounded across many requests. */
   var PRIOR_DESIGNS_MAX = 6;
   function recordPriorDesigns(designs){
     (designs || []).forEach(function(d){
@@ -7945,21 +8249,6 @@
     if (frame) frame.hidden = on;
     if (canvas) canvas.hidden = !on;
   }
-  /* canvas.design.state()/.load() only round-trip the "hard rule" keys (divider, animation, heading*, radius,
-     bgImage, bgOpacity) — the CSS-var-backed keys (themeColor, fonts, sizes, weights…) live purely as inline
-     style props and have no bulk read/write, so a full snapshot/restore (for the AI review's Cancel) needs
-     both: design.state() for the rule keys, plus one .get() per CSS-var key. */
-  var GEN2_VAR_KEYS = ['themeColor', 'headingFont', 'bodyFont', 'textColor', 'bgColor', 'bodySize', 'bodyWeight', 'sectionSpacing', 'headingSize'];
-  function snapshotDesign(canvas){
-    var snap = { rules: canvas.design.state() };
-    GEN2_VAR_KEYS.forEach(function(k){ snap[k] = canvas.design.get(k); });
-    return snap;
-  }
-  function restoreDesign(canvas, snap){
-    canvas.design.load(snap.rules);
-    GEN2_VAR_KEYS.forEach(function(k){ canvas.design.set(k, snap[k]); });
-  }
-
   /* =========================================================
      LIVE PREVIEW (steps 1 & 2) — real content, not template placeholders.
      Reuses editorSectionHtml()/buildEditorPayload() exactly as the final hand-off does; only the render
@@ -8077,8 +8366,78 @@
     if (show) renderLivePreview();
   }
 
-  /* hands the draft to custom_editor.html and opens it */
-  function openInEditor(){
+  /* =========================================================
+     HAND-OFF TO THE SITE EDITOR
+     Step 4 is a short list of real steps, run strictly in order by runHandoff(): a row is ticked when its
+     work has finished, never on a timer, and a row that fails stops the run and says why. The event
+     record is always created first; the editor is only opened for an event that exists.
+  ========================================================= */
+  var HANDOFF_BLOCKED = 'Your browser would not store the draft for the editor — its storage for this site is full or blocked. Free some space or allow site data, then try again.';
+
+  /* the details the event record takes from the form */
+  function eventRecordFromBasics(){
+    var b = S.basics, exact = b.dateMode === 'exact';
+    var rec = {
+      name: b.name.trim(),
+      category: (b.category || 'ip').toLowerCase(),
+      venue: b.venue, city: b.city,
+      start: (exact && b.start) ? b.start : null,
+      end: (exact && b.end) ? b.end : null,
+      payment: { type: 'free' }
+    };
+    /* a generated site only has a template once generation has finished (startGenerateFromBrief()'s last row sets it) */
+    if (S.creationMethod !== 'brief') rec.templateId = handoffTemplate().site;
+    return rec;
+  }
+  /* Makes sure the event exists on the server and carries the form's details. Created exactly once per
+     draft: after that (a retry, or the owner went back and changed something) the same event is updated.
+     Rejects with a message fit to show; nothing else may start until it has resolved. */
+  function createEventRecord(){
+    return Promise.resolve(logoSaving).then(function(){
+      var issue = currentBasicsIssue();
+      if (issue) throw new Error(issue);
+      if (!window.RevampCore || !RevampCore.createEvent || !RevampCore.updateEvent)
+        throw new Error('This page did not load completely. Reload it and try again.');
+      var details = eventRecordFromBasics();
+      if (S.createdEventId){
+        return RevampCore.updateEvent(S.createdEventId, details).then(null, function(err){
+          if (err && err.status === 404){
+            /* the event was removed since this draft created it — the draft is all that is left, so it starts over */
+            S.createdEventId = null;
+            S.createdAt = null;
+            save();
+            return createEventRecord();
+          }
+          throw new Error('Could not update the event: ' + plainError(err));
+        });
+      }
+      var id = S.basics.slug;
+      return RevampCore.createEvent(Object.assign({ eventId: id, slug: id, status: 'draft' }, details)).then(function(resp){
+        /* recorded even if the run was cancelled meanwhile: the event exists now, whatever the owner does next */
+        S.createdEventId = id;
+        S.createdAt = (resp && resp.createdAt) || null;
+        save();
+        renderEventExists();
+      }, function(err){
+        throw new Error('Could not create the event: ' + plainError(err));
+      });
+    });
+  }
+
+  /* The wizard's one exit into the editor. The draft is finished at this point, so it is removed: coming
+     back to the wizard starts a new event instead of submitting this one again. replace() keeps the
+     finished wizard page out of the browser's Back history for the same reason. */
+  function leaveForEditor(run, url){
+    if (!isCurrent(run)) return;
+    S.assembled = true;
+    draftClosed = true;
+    try { localStorage.removeItem(STORE_KEY); } catch(e){}
+    busy = null;
+    window.location.replace(url);
+  }
+
+  /* writes the draft's hand-off for custom_editor.html and opens it — the last step of the hand-off */
+  function openInEditor(run){
     var payload = buildEditorPayload();
 
     /* If the PSD banner has a composite image, also park it in sessionStorage as a fast, same-tab path —
@@ -8102,8 +8461,7 @@
         });
         localStorage.setItem(HANDOFF_KEY, JSON.stringify(stripped));
       } catch(e2){
-        toast('Could not hand the draft over — your browser blocked storage.');
-        return false;
+        return Promise.reject(new Error(HANDOFF_BLOCKED));
       }
     }
     /* lets a LATER event's "Clone design from a previous edition" (step 2) offer this one — RevampCore.EVENTS
@@ -8113,105 +8471,82 @@
     if (S.path === 'A' && S.template && window.RevampEditions){
       RevampEditions.registerEventTemplate('new-' + payload.event.slug, S.template, { name: payload.event.name, cat: S.basics.category });
     }
-    var url = 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
-      (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : '');
-
-    /* Creates the REAL canonical event doc (events/{slug} in Firestore) — before this, the manual/
-       clone-design path (this function) created nothing server-side at all; edit-event.html's console
-       could never find this event later. Best-effort and non-blocking beyond its own completion: if it
-       fails (most likely because the admin isn't signed into Firebase Auth yet, or is offline), the user
-       still gets their editor. They just won't find this event in the real console until it's retried (no
-       retry queue built here — that's a separate concern were this to become a frequent real-world
-       failure, not a hypothetical worth solving preemptively today). */
-    function goToEditor(){
-      if (logoSaving) logoSaving.then(function(){ window.location.href = url; });   // the editor reads the logo on arrival
-      else window.location.href = url;
-    }
-    if (window.RevampCore && RevampCore.createEvent) {
-      RevampCore.createEvent({
-        eventId: payload.event.slug, name: payload.event.name, slug: payload.event.slug,
-        category: (S.basics.category || 'ip').toLowerCase(),
-        venue: S.basics.venue, city: S.basics.city,
-        start: (S.basics.dateMode === 'exact' && S.basics.start) ? S.basics.start : null,
-        end: (S.basics.dateMode === 'exact' && S.basics.end) ? S.basics.end : null,
-        payment: { type: S.basics.payment === 'Paid' ? 'paid' : 'free' },
-        templateId: payload.template.site || null,
-        status: 'draft'
-      }).catch(function(err){
-        console.warn('Could not create the real event record (it still works locally): ' + (err && err.message));
-      }).then(goToEditor);
-    } else {
-      goToEditor();
-    }
-    return true;
+    leaveForEditor(run, 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
+      (payload.template.site ? '&template=' + encodeURIComponent(payload.template.site) : ''));
+    return Promise.resolve();
   }
 
-  /* =========================================================
-     STEP 4 - AI ASSEMBLE
-  ========================================================= */
-  var ASSEMBLE_PHASES = [
-    { t:'Personalizing your design',         ms:900, async:true },   // real work: see run()'s special-case below
-    { t:'Reshaping content to fit sections', ms:1300 },
-    { t:'Mapping to pre-built components',   ms:1500 },
-    { t:'Building the menu from sections',   ms:1000 },
-    { t:'Opening your site in the editor',   ms:1400 }
-  ];
+  /* the rows of the hand-off for the current path, in order — a further step is one more entry here */
+  function handoffSteps(){
+    return [
+      { key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event', run: createEventRecord },
+      { key: 'open', label: 'Opening the editor', run: openInEditor }
+    ];
+  }
+
+  /* steps: [{ key, label, run: function(run) -> Promise, skip?: function() -> bool }] */
+  function runHandoff(steps){
+    var run = beginBusy('handoff');
+    if (!run) return;
+    run.onCancel = function(viaNav){ if (!viaNav) goStep(1); };
+
+    var host = $('step-4');
+    var status = steps.map(function(){ return 'pending'; });
+    var failure = null;         // { index, message } while the run is stopped on a failed step
+
+    function render(){
+      host.innerHTML =
+        '<div class="step-head">' +
+          '<span class="eyebrow">Step 2 of 2</span>' +
+          '<h1>Saving your event</h1>' +
+          '<p class="desc">Saving your event and opening it in the editor.</p>' +
+        '</div>' +
+        '<div class="panel"><div class="proc-wrap">' +
+          (failure ? '' : ET_LOADER) +
+          '<ul class="gb-steps" id="asm-steps">' + steps.map(function(st, i){
+            var state = status[i] === 'skipped' ? 'done' : status[i];
+            var icon = state === 'done' ? IC.check14 : state === 'error' ? IC.warn
+              : state === 'running' ? '<span class="gb-spin"></span>' : '<span class="gb-dot"></span>';
+            return '<li class="gb-step gb-step-' + state + '" data-as="' + esc(st.key) + '"><div class="gb-step-row">' + icon + '<span>' + esc(st.label) + '</span></div></li>';
+          }).join('') + '</ul>' +
+          (failure
+            ? '<div class="callout crit handoff-error" role="alert">' + IC.warn +
+                '<span><strong>' + esc(steps[failure.index].label) + ' did not finish</strong>' + esc(failure.message) +
+                  '<span class="callout-actions">' +
+                    '<button class="btn btn-primary btn-sm" type="button" id="asm-retry">Try again</button>' +
+                    '<button class="btn btn-secondary btn-sm" type="button" id="asm-back">Back to my details</button>' +
+                  '</span></span></div>'
+            : '<div class="busy-actions"><button class="btn btn-secondary" type="button" id="asm-cancel">Cancel</button></div>') +
+        '</div></div>';
+      var retry = $('asm-retry'), back = $('asm-back'), cancel = $('asm-cancel');
+      if (retry) retry.onclick = function(){ if (isCurrent(run) && failure) exec(failure.index); };
+      if (back) back.onclick = requestCancelBusy;
+      if (cancel) cancel.onclick = requestCancelBusy;
+    }
+    function exec(i){
+      if (!isCurrent(run) || i >= steps.length) return;
+      failure = null;
+      if (steps[i].skip && steps[i].skip()){ status[i] = 'skipped'; exec(i + 1); return; }
+      status[i] = 'running';
+      render();
+      Promise.resolve().then(function(){ return steps[i].run(run); }).then(function(){
+        if (!isCurrent(run)) return;
+        status[i] = 'done';
+        render();
+        exec(i + 1);
+      }, function(err){
+        if (!isCurrent(run)) return;
+        status[i] = 'error';
+        failure = { index: i, message: plainError(err) };
+        render();
+      });
+    }
+    render();
+    exec(0);
+  }
 
   function renderStep4(){
-    var host = $('step-4');
-    var included = S.sections.filter(function(s){ return s.include; });
-    host.innerHTML =
-      '<div class="step-head">' +
-        '<span class="eyebrow">Step 2 of 2</span>' +
-        '<h1>Putting your site together</h1>' +
-        '<p class="desc">Formatting each section, mapping it into the structure the backend expects, and generating the menu. The site editor opens next, already loaded with your content.</p>' +
-      '</div>' +
-      '<div class="panel"><div class="proc-wrap">' +
-        ET_LOADER +
-        '<div class="proc-steps" id="asm-steps">' + ASSEMBLE_PHASES.map(function(p, i){
-          return '<div class="proc-step" data-as="' + i + '">' +
-            '<span class="ic">' + IC.check + '</span>' +
-            '<span style="flex:1">' + esc(p.t) + '</span>' +
-            '<span class="bar" style="max-width:80px"><i></i></span></div>';
-        }).join('') + '</div>' +
-        '<p class="hint" id="asm-note">' + included.length + ' sections queued</p>' +
-      '</div></div>';
-
-    var i = 0;
-    function run(){
-      var rows = host.querySelectorAll('[data-as]');
-      if (i >= ASSEMBLE_PHASES.length){
-        S.assembled = true;
-        save();
-        /* the wizard ends here — the site editor takes over, loaded with this draft */
-        if (!openInEditor()){
-          goStep(1);   // storage blocked; keep the content editable rather than stranding the user
-        }
-        return;
-      }
-      var row = rows[i];
-      row.classList.add('active');
-      requestAnimationFrame(function(){ row.querySelector('.bar i').style.width = '100%'; });
-      var note = $('asm-note');
-      if (note) note.textContent = ASSEMBLE_PHASES[i].t + '…';
-      var advance = function(){
-        row.classList.remove('active');
-        row.classList.add('done');
-        i++;
-        run();
-      };
-      /* only this phase does real async work (autoPersonalizeDesign — silent "ask first, auto-vary if
-         skipped" fallback) rather than just a timed animation; a floor keeps it from flashing past if the
-         AI call happens to resolve immediately, but it's free to run longer if Gemini is slow — this step
-         was already the "your site is being built, hang on" moment, so that's the right place for it. */
-      if (ASSEMBLE_PHASES[i].async){
-        var floor = new Promise(function(res){ setTimeout(res, ASSEMBLE_PHASES[i].ms); });
-        Promise.all([autoPersonalizeDesign(), floor]).then(advance);
-      } else {
-        setTimeout(advance, ASSEMBLE_PHASES[i].ms);
-      }
-    }
-    setTimeout(run, 300);
+    runHandoff(handoffSteps());
   }
 
   /* =========================================================
@@ -8256,14 +8591,33 @@
      NEXT / BACK / ALT
   ========================================================= */
   function onNext(){
+    if (busy) return;
     if (S.step === 1){
       if (S.step1Phase === 'method'){
         if (S.templatePick) confirmUseTemplate(S.templatePick);   /* confirmUseTemplate() itself calls advanceToDetails('template') */
         return;
       }
       if (S.step1Phase === 'details'){
-        if (S.creationMethod === 'brief'){ startGenerateFromBrief(); return; }
-        goStep(4);
+        /* checked again here, not trusted from the last renderFoot(): the button may be clicked in the
+           same tick a field was emptied */
+        if (currentBasicsIssue()){ renderFoot(); return; }
+        var proceed = function(){
+          if (busy) return;
+          if (S.creationMethod === 'brief') startGenerateFromBrief();
+          else goStep(4);
+        };
+        /* a draft picked up again after its event was created: say what Continue will do to that event first */
+        if (resumedExisting && S.createdEventId){
+          openModal({
+            title: 'Update the existing event?',
+            sub: '“' + (S.basics.name.trim() || S.createdEventId) + '” already exists. Continuing updates its details' +
+              (S.creationMethod === 'brief' ? ' and generates its site.' : ' and opens it in the editor.'),
+            confirm: 'Update and continue',
+            onConfirm: function(){ resumedExisting = false; proceed(); }
+          });
+          return;
+        }
+        proceed();
         return;
       }
       return;   /* category phase: Continue is hidden, nothing to do */
@@ -8282,6 +8636,7 @@
   }
 
   function onBack(){
+    if (busy){ requestCancelBusy(); return; }
     if (S.step === 1){
       if (S.step1Phase === 'details'){ setStep1Phase('method'); return; }
       if (S.step1Phase === 'method'){ setStep1Phase('category'); return; }
@@ -8342,8 +8697,32 @@
     $('btn-next').addEventListener('click', onNext);
     $('btn-back').addEventListener('click', onBack);
     $('btn-foot-alt').addEventListener('click', onAlt);
+    $('btn-ai-design').addEventListener('click', requestAiDesign);
+    $('btn-ai-undo').addEventListener('click', undoAiTextChanges);
+
+    /* a generation is paid work that stops when this page goes away: leaving has to be a decision */
+    function leavingStopsGeneration(){
+      if (!busy || busy.kind !== 'brief') return false;
+      openModal({
+        title: 'Leave while your site is being generated?',
+        sub: 'A site is being generated. Leaving now stops it.',
+        confirm: 'Stop and leave',
+        cancelLabel: 'Stay',
+        onConfirm: function(){ cancelBusy(true); exitToDashboard(); }
+      });
+      return true;
+    }
+    window.addEventListener('beforeunload', function(e){
+      if (busy && busy.kind === 'brief'){ e.preventDefault(); e.returnValue = ''; }
+    });
+    /* a finished wizard page brought back from the browser's page cache would still show the form of an
+       event that has already been handed over */
+    window.addEventListener('pageshow', function(e){
+      if (e.persisted && S.assembled) window.location.replace(location.pathname);
+    });
 
     $('btn-close').addEventListener('click', function(){
+      if (leavingStopsGeneration()) return;
       openModal({
         title: 'Leave the builder?',
         sub: 'Your draft is autosaved — you can pick it back up from the dashboard.',
@@ -8358,6 +8737,7 @@
       });
     });
     $('btn-save-exit').addEventListener('click', function(){
+      if (leavingStopsGeneration()) return;
       save();
       toast('Draft saved');
       setTimeout(exitToDashboard, 700);
