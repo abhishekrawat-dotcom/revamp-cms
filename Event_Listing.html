@@ -817,8 +817,13 @@
   /* =========================================================
      DATA
   ========================================================= */
-  var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table' };
-  var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber' };
+  /* awards: create-event.html's own category picker stores category:"awards" (its CATS keys, lowercased) —
+     it was missing here, and metaLine() below then threw on that one row, which left the whole list page on
+     skeleton rows for everyone. typeLabel() is the tolerant lookup every reader must use: a category this
+     table has never heard of shows as its own name instead of taking the page down. */
+  var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table', awards:'Awards' };
+  var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber', awards:'ev-tag-amber' };
+  function typeLabel(type){ return EVENT_TYPES[type] || (type ? String(type) : 'Event'); }
   var PORTALS = { brandequity:'Brandequity', retail:'Retail', auto:'Auto', health:'Health', telecom:'Telecom', bfsi:'BFSI', cio:'CIO', hrworld:'HRWorld', legal:'Legal', manufacturing:'Manufacturing', government:'Government' };
   var CURRENT_PORTAL = 'brandequity';   // the portal this account is signed into — shown in the top-nav switcher
 
@@ -1438,7 +1443,7 @@
     if (state.filters.portals.length && state.filters.portals.indexOf(e.portal) === -1) return false;
     if (state.filters.payment.length && state.filters.payment.indexOf(e.payment.type) === -1) return false;
     if (state.search){
-      var hay = (e.name + ' ' + e.venue + ' ' + e.city + ' ' + PORTALS[e.portal] + ' ' + EVENT_TYPES[e.type] + ' ' + e.createdBy).toLowerCase();
+      var hay = (e.name + ' ' + e.venue + ' ' + e.city + ' ' + PORTALS[e.portal] + ' ' + typeLabel(e.type) + ' ' + e.createdBy).toLowerCase();
       if (hay.indexOf(state.search.toLowerCase()) === -1) return false;
     }
     return true;
@@ -1479,7 +1484,7 @@
   }
   function metaLine(e){
     return '<span class="ev-id-chip mono">Event ID: ' + e.eventNo + '</span>' +
-      '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(EVENT_TYPES[e.type].replace(' (IP)','')) + '</span>';
+      '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type).replace(' (IP)','')) + '</span>';
   }
 
   function venueQuickviewBodyHTML(e){
