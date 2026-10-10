@@ -32,11 +32,8 @@ window.EditEventDashboard = (function(){
      on from the dashboard is just decoration. */
   function tiles(ctx){
     var e = ctx.EV, IC = ctx.IC;
-    /* e.payment is a real field on the event doc but may simply not be set yet (a new event, or one
-       created before payment was wired up) — fall back to an empty object rather than crash reaching
-       for .type on nothing. Real registration-derived numbers are a later stage (fetchRegistrations);
-       until then this renders placeholder/zero figures, never fake ones. */
-    var payment = e.payment || {};
+    /* Online payment is not available, so nothing here reads the event's payment settings: no revenue,
+       no transactions, and every event counts seats the same way. */
     var conv   = e.visitors ? (e.registrations / e.visitors * 100) : 0;
     var regPct = e.regTarget ? Math.min(100, Math.round(e.registrations / e.regTarget * 100)) : null;
 
@@ -52,12 +49,9 @@ window.EditEventDashboard = (function(){
         { dir: conv >= 8 ? 'up' : 'down', text: conv >= 8 ? 'Above benchmark' : 'Below the 8% benchmark' },
         'audience/insights'),
 
-      payment.type === 'paid'
-        ? ctx.statTile(IC.money, 'Revenue', ctx.compact(payment.amount),
-            { dir:'up', text: ctx.comma(payment.txns) + ' transactions' }, 'audience/payments')
-        : ctx.statTile(IC.ticket, 'Seats left',
-            regPct != null ? ctx.comma(Math.max(0, e.regTarget - e.registrations)) : 'Unlimited',
-            { dir:'flat', text:'Free event' }, 'audience/reg')
+      ctx.statTile(IC.ticket, 'Seats left',
+        regPct != null ? ctx.comma(Math.max(0, e.regTarget - e.registrations)) : 'Unlimited',
+        null, 'audience/reg')
     ].join('');
   }
 
@@ -65,11 +59,9 @@ window.EditEventDashboard = (function(){
      next stage's width, so the taper is the real drop-off, not decoration. */
   function funnel(ctx){
     var e = ctx.EV;
-    var payment = e.payment || {};
     var stages = [
       { label:'Visitors',      n: e.visitors,      col:'#12A870' },
       { label:'Registrations', n: e.registrations, col:'#E89B0C' },
-      { label:'Payments',      n: payment.type === 'paid' ? payment.txns : 0, col:'#7C4DBE' },
       { label:'Attendees',     n: e.attendees,     col:'#ED1C24' }
     ];
     var top = Math.max(stages[0].n, 1);
@@ -88,13 +80,12 @@ window.EditEventDashboard = (function(){
     }).join('');
   }
 
-  /* The four things people actually open this screen to do. */
+  /* The things people actually open this screen to do. */
   function quickActions(ctx){
     var IC = ctx.IC;
     return [
       ['Edit the site',     'Open the visual editor',                     IC.brush, 'design/editor'],
       ['Add a speaker',     'The line-up drives registrations',           IC.users, 'content/speakers'],
-      ['Send a mailer',     'Reach your target list',                     IC.send,  'marketing/email'],
       ['See registrations', ctx.comma(ctx.EV.registrations) + ' so far',  IC.chart, 'audience/reg']
     ].map(function(q){
       return '<button class="check-row" type="button" data-goto="' + q[3] + '" ' +

@@ -76,53 +76,72 @@
     ].join('');
   }
 
+  /* The event rail and where each item leads: the one routing table every in-event page shares.
+     Targets are root-absolute so the same table works from any folder (the payment pages sit two
+     levels down). Dashboard, Content and Settings are views of the console; Design goes through the
+     console as well, because only it knows the event's template, which the editor needs in its URL. */
+  var RAIL_SECTIONS = [
+    { id:'dashboard', label:'Dashboard', icon:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15.5 3.5A9 9 0 0 1 20.5 8.5H15.5z"/>' },
+    { id:'content', label:'Content', icon:'<path d="M12 2.5l9.5 5-9.5 5-9.5-5z"/><path d="M2.5 12.5l9.5 5 9.5-5"/><path d="M2.5 17l9.5 5 9.5-5"/>' },
+    { id:'design', label:'Design', icon:'<path d="M12 2l7 7-9 9H3v-7z"/><path d="M15 5l4 4"/>' },
+    { id:'payment', label:'Payment', soon:'Not available yet', icon:'<rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/><path d="M6 15h4"/>' },
+    { id:'marketing', label:'Promotions', icon:'<path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18.5 5a9 9 0 0 1 0 14"/>' },
+    { id:'audience', label:'Reporting', icon:'<circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 8.5a3 3 0 0 1 0 6"/><path d="M18.5 20a5.6 5.6 0 0 0-3-4.4"/>' },
+    { id:'settings', label:'Settings', icon:'<circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2v.18a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.93-1.15l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3.5 13.6h-.18a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.57 6.67L4.5 6.6a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 1 1.87.34h.08A1.7 1.7 0 0 0 10.4 2.6v-.18a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.87 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.55 1.02h.18a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.55 1.02z"/>' }
+  ];
+
+  function railHref(section, eventId){
+    var ev = encodeURIComponent(String(eventId == null ? '' : eventId));
+    if (section === 'dashboard') return '/edit-event.html?event=' + ev + '#dashboard';
+    if (section === 'content')   return '/edit-event.html?event=' + ev + '#content/basics';
+    if (section === 'design')    return '/edit-event.html?event=' + ev + '#design/editor';
+    if (section === 'payment')   return '/payment/html_version/index.html?event=' + ev;
+    if (section === 'marketing') return '/marketing.html?event=' + ev;
+    if (section === 'audience')  return '/audience-registrations.html?event=' + ev;
+    if (section === 'settings')  return '/edit-event.html?event=' + ev + '#settings/form';
+    return '/edit-event.html?event=' + ev + '#content/basics';
+  }
+
+  function attr(s){
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
   function renderEventRail(targetId, options){
     var root = document.getElementById(targetId);
     if (!root) return;
 
     var activeSection = (options && options.activeSection) || 'dashboard';
-    var eventId = (options && options.eventId) || new URLSearchParams(location.search).get('event') || '1';
+    var eventId = (options && options.eventId) || new URLSearchParams(location.search).get('event') || '';
     var onSection = options && options.onSection;
-    var sections = [
-      { id:'dashboard', label:'Dashboard', icon:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15.5 3.5A9 9 0 0 1 20.5 8.5H15.5z"/>' },
-      { id:'content', label:'Content', icon:'<path d="M12 2.5l9.5 5-9.5 5-9.5-5z"/><path d="M2.5 12.5l9.5 5 9.5-5"/><path d="M2.5 17l9.5 5 9.5-5"/>' },
-      { id:'design', label:'Design', icon:'<path d="M12 2l7 7-9 9H3v-7z"/><path d="M15 5l4 4"/>' },
-      { id:'payment', label:'Payment', icon:'<rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/><path d="M6 15h4"/>' },
-      { id:'marketing', label:'Promotions', icon:'<path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18.5 5a9 9 0 0 1 0 14"/>' },
-      { id:'audience', label:'Reporting', icon:'<circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 8.5a3 3 0 0 1 0 6"/><path d="M18.5 20a5.6 5.6 0 0 0-3-4.4"/>' },
-      { id:'settings', label:'Settings', icon:'<circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2v.18a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.93-1.15l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3.5 13.6h-.18a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.57 6.67L4.5 6.6a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 1 1.87.34h.08A1.7 1.7 0 0 0 10.4 2.6v-.18a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.87 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.55 1.02h.18a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.55 1.02z"/>' }
-    ];
 
-    root.innerHTML = sections.map(function(section){
-      return '<button class="rail-item' + (section.id === activeSection ? ' active' : '') + '" type="button" data-section="' + section.id + '" aria-current="' + (section.id === activeSection) + '">' +
+    /* a rail without an event would lead to somebody else's event or to nothing */
+    if (!eventId){ root.innerHTML = ''; return; }
+
+    root.innerHTML = RAIL_SECTIONS.map(function(section){
+      var active = section.id === activeSection;
+      var name = section.label + (section.soon ? ' — ' + section.soon.toLowerCase() : '');
+      return '<a class="rail-item' + (active ? ' active' : '') + '" href="' + attr(railHref(section.id, eventId)) + '" ' +
+        'data-section="' + section.id + '"' + (active ? ' aria-current="page"' : '') +
+        (section.soon ? ' title="' + attr(name) + '" aria-label="' + attr(name) + '"' : '') + '>' +
         '<span class="ri"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + section.icon + '</svg></span>' +
         '<span class="rl">' + section.label + '</span>' +
-      '</button>';
+        (section.soon ? '<span class="soon">' + section.soon + '</span>' : '') +
+      '</a>';
     }).join('');
 
-    root.querySelectorAll('[data-section]').forEach(function(button){
-      button.addEventListener('click', function(){
-        var section = button.getAttribute('data-section');
-        if (onSection) {
-          onSection(section);
-          return;
-        }
-        if (section === 'dashboard') { location.href = 'dashboard.html'; return; }
-        if (section === 'audience') { location.href = 'audience-registrations.html?event=' + encodeURIComponent(eventId); return; }
-        /* Not a direct custom_editor.html link: that page only clears its own built-in demo content when a
-           real &template= param is attached, and this component doesn't know the event's real templateId.
-           edit-event.html's own Design > Site editor route already resolves it (EV.templateId, fetched
-           before this hash route runs) before redirecting — going through it instead of guessing the URL
-           here is what actually gets the real site to load instead of fake placeholder content. */
-        if (section === 'design') { location.href = 'edit-event.html?event=' + encodeURIComponent(eventId) + '#design/editor'; return; }
-        if (section === 'payment') { location.href = 'payment/html_version/index.html?event=' + encodeURIComponent(eventId); return; }
-        if (section === 'marketing') { location.href = 'marketing.html?event=' + encodeURIComponent(eventId); return; }
-        if (section === 'settings') { location.href = 'settings.html?event=' + encodeURIComponent(eventId); return; }
-        location.href = 'edit-event.html?event=' + encodeURIComponent(eventId) + '#' + section;
+    /* Pages that still pass their own onSection keep working: a plain click goes to their handler.
+       A modified click (new tab, new window) always follows the shared target. */
+    if (!onSection) return;
+    root.querySelectorAll('[data-section]').forEach(function(link){
+      link.addEventListener('click', function(e){
+        if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        onSection(link.getAttribute('data-section'));
       });
     });
   }
 
   global.renderSidebar = renderSidebar;
   global.renderEventRail = renderEventRail;
+  global.RevampRail = { SECTIONS: RAIL_SECTIONS, href: railHref };
 })(window);

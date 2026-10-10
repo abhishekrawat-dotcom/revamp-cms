@@ -16,6 +16,13 @@
   </span>
   <span class="topbar-acts">
     <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span class="acct" id="acct" hidden>
+      <button class="acct-btn" type="button" id="acct-btn" aria-haspopup="true" aria-expanded="false" aria-controls="acct-menu"></button>
+      <span class="acct-menu" id="acct-menu" hidden>
+        <span class="acct-who">Signed in as<b id="acct-email"></b></span>
+        <button class="acct-out" type="button" id="acct-out">Sign out</button>
+      </span>
+    </span>
     <button class="btn btn-secondary" type="button" id="btn-preview">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
       <span>Preview</span>
@@ -36,7 +43,6 @@
 <script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
 <script src="edit-event-dashboard.js"></script>
-<script src="edit-event-marketing.js"></script>
 <script src="sidebar.js"></script>
 
 <script>
@@ -47,9 +53,9 @@
      use it too. The shell just borrows the names it needs. */
   var C = window.RevampCore;
   var $ = C.$, esc = C.esc, svg = C.svg, IC = C.IC, AV = C.AV;
-  var comma = C.comma, compact = C.compact, money = C.money;
+  var comma = C.comma;
   var fmtDate = C.fmtDate, fmtDT = C.fmtDT;
-  var statTile = C.statTile, panel = C.panel, panelFlush = C.panelFlush, emptyState = C.emptyState;
+  var panel = C.panel, panelFlush = C.panelFlush, emptyState = C.emptyState;
   var toast = C.toast, PORTALS = C.PORTALS, TYPES = C.TYPES;
 
   var qs = new URLSearchParams(location.search);
@@ -63,10 +69,6 @@
      post-load) or guarded explicitly. There is no more synchronous fallback to a fake event: a load
      failure is a real "couldn't load this event" state, never silent fake data. */
   var EV = null;
-  /* Audience's real registrations are a later stage (fetchRegistrations) — kept empty here purely so
-     nothing in this file crashes reaching for PEOPLE meanwhile; it renders with zero people, not fake
-     ones. */
-  var PEOPLE = [];
 
   /* ============================================================
      FORMATTERS
@@ -74,18 +76,11 @@
   /* ============================================================
      PERSISTED PROTOTYPE STATE
 
-     sections/nav/theme/checklist used to live ONLY here, in localStorage. They are real fields on the
-     event doc now (see viewSections/wireSections, viewSetNav/wireSetNav, viewTheme/wireTheme below,
-     and edit-event-dashboard.js's checklist()) — S still holds a local mirror of them purely so this
-     file's existing render code can keep reading S.sections/S.nav/S.theme/S.checklist synchronously,
-     but the mirror is seeded from EV.* once it loads (see init()) and every write now goes through
-     C.updateEvent, not save(). Everything else still being migrated (published, settings) keeps using
-     this localStorage copy exactly as before.
+     A per-browser copy of the few things that are not on the server yet (published, checklist). The
+     six content tabs also keep their loaded records on S, in memory, for the life of the page.
      ============================================================ */
   var KEY = 'revamp-edit-event-' + eventSlug;
-  var S = {
-    sections: null, nav: null, checklist: null, published: false, theme: 'ET Red'
-  };
+  var S = { checklist: null, published: false };
   try {
     var raw = localStorage.getItem(KEY);
     if (raw) { var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) S[k] = p[k]; }
@@ -109,6 +104,7 @@
      mirror optimistically so the page never needs to re-fetch to reflect its own
      writes. */
   var SUB = { speakers:false, agenda:false, sponsors:false, gallery:false, faq:false, contact:false };
+  var SUB_LOADING = {};
 
   var SUB_ROUTE_KEY = {
     'content/speakers': 'speakers', 'content/agenda': 'agenda', 'content/sponsors': 'sponsors',
@@ -162,38 +158,6 @@
         { id:'contact',  label:'Contact' }
     ]},
 
-    { id:'design', label:'Design', icon:IC.brush, tabs:[
-        /* a function, not a plain string: EV.templateId isn't known yet at this array's own (synchronous,
-           pre-fetchEvent) construction time. Resolved fresh wherever t.link is actually read (see
-           subtabsHTML()/go() below) — critically, without it custom_editor.html gets no `template=` param
-           at all, boots with TEMPLATE_MODE false, and silently shows its own built-in generic placeholder
-           site instead of this real event (confirmed, real bug — not hypothetical). */
-        { id:'editor',   label:'Site editor', link: function(){
-            return 'custom_editor.html?event=' + encodeURIComponent(eventSlug) +
-              (EV && EV.templateId ? '&template=' + encodeURIComponent(EV.templateId) : '');
-        } },
-        { id:'sections', label:'Page sections' },
-        { id:'nav',      label:'Navigation' },
-        { id:'theme',    label:'Theme' },
-        { id:'media',    label:'Media' }
-    ]},
-
-    { id:'audience', label:'Audience', icon:IC.users, tabs:[
-        { id:'reg',       label:'Registrations' },
-        { id:'attendees', label:'Attendees' },
-        { id:'shortlist', label:'Shortlisted' },
-        { id:'payments',  label:'Payments' },
-        { id:'insights',  label:'Insights' }
-    ]},
-
-    { id:'marketing', label:'Promotions', icon:IC.megaphone, tabs:[
-        { id:'studio',    label:'Studio' },
-        { id:'audiences', label:'Audiences' },
-        { id:'campaigns', label:'Campaigns' },
-        { id:'pipeline',  label:'Data pipeline' },
-        { id:'crm',       label:'CRM' }
-    ]},
-
     { id:'settings', label:'Settings', icon:IC.gear, tabs:[
         { id:'form',       label:'Registration form' },
         { id:'seo',        label:'URL & SEO' },
@@ -214,11 +178,6 @@
 
   /* counts shown on the tabs, worked out at render time */
   function tabCount(sec, tab){
-    if (sec === 'audience'){
-      if (tab === 'reg')       return EV.registrations;
-      if (tab === 'attendees') return PEOPLE.filter(function(p){ return p.attended; }).length;
-      if (tab === 'shortlist') return EV.shortlist;
-    }
     if (sec === 'content'){
       /* each is only known once its own tab has been opened at least once this
          page-load (see SUB/render()) — a sibling tab's badge simply stays blank
@@ -233,10 +192,7 @@
   }
 
   function renderRail(){
-    renderEventRail('rail', {
-      activeSection: cur.sec === 'audience' && cur.tab === 'payments' ? 'payment' : cur.sec,
-      eventId: EV.id
-    });
+    renderEventRail('rail', { activeSection: cur.sec, eventId: EV.id });
   }
 
   function tabsHTML(){
@@ -245,48 +201,58 @@
     return '<div class="subtabs">' + s.tabs.map(function(t){
       var n = tabCount(s.id, t.id);
       var inner = esc(t.label) + (n != null ? '<span class="cnt">' + comma(n) + '</span>' : '');
-      /* a link tab leaves the console entirely — render it as a real anchor
-         so middle-click and "open in new tab" behave the way people expect */
-      if (t.link){
-        var href = typeof t.link === 'function' ? t.link() : t.link;
-        return '<a class="tab-link" href="' + esc(href) + '">' +
-          svg(IC.ext, 13) + inner + '</a>';
-      }
       return '<button type="button" data-tab="' + t.id + '" aria-pressed="' + (cur.tab === t.id) + '">' +
         inner + '</button>';
     }).join('') + '</div>';
   }
 
-  /* accepts "section" or "section/tab" */
-  function go(route){
-    var parts = String(route).split('/');
-    if (parts[0] === 'audience' && parts[1] === 'reg') {
-      location.href = 'audience-registrations.html?event=' + encodeURIComponent(EV.id);
+  /* The site editor only loads the event's real site when it is told the template; without it the
+     editor opens its built-in sample page. */
+  function editorUrl(){
+    return '/custom_editor.html?event=' + encodeURIComponent(EV.id) +
+      (EV.templateId ? '&template=' + encodeURIComponent(EV.templateId) : '');
+  }
+
+  /* Where a route leads: { url } for a screen that lives on another page, otherwise { sec, tab }.
+     A route the console does not know resolves to Basics, never to a view under the wrong address. */
+  function resolveRoute(route){
+    var parts = String(route || '').split('/');
+    var sec = parts[0], tab = parts[1] || '';
+    if (sec === 'design') return { url: editorUrl() };
+    if (sec === 'marketing'){
+      return { url: RevampRail.href('marketing', EV.id) + (tab ? '&tab=' + encodeURIComponent(tab) : '') };
+    }
+    if (sec === 'payment' || (sec === 'audience' && tab === 'payments')){
+      return { url: RevampRail.href('payment', EV.id) };
+    }
+    if (sec === 'audience'){
+      if (tab === 'insights') return { sec: 'dashboard', tab: null };
+      return { url: RevampRail.href('audience', EV.id) };
+    }
+    var s = secById(sec);
+    if (!s) return { sec: 'content', tab: 'basics' };
+    if (!s.tabs.length) return tab ? { sec: 'content', tab: 'basics' } : { sec: s.id, tab: null };
+    if (!tab) return { sec: s.id, tab: s.tabs[0].id };
+    var known = s.tabs.filter(function(t){ return t.id === tab; }).length;
+    return known ? { sec: s.id, tab: tab } : { sec: 'content', tab: 'basics' };
+  }
+
+  /* Accepts "section" or "section/tab". byUser is true for a click inside the console: that is the only
+     case that adds a history entry. A route read from the address bar (first load, Back / Forward, a
+     link from another page) has its entry already, so a correction or a redirect replaces that entry —
+     otherwise Back would land on the redirecting address and bounce forward again. */
+  function go(route, byUser){
+    var dest = resolveRoute(route);
+    if (dest.url){
+      if (byUser) location.assign(dest.url); else location.replace(dest.url);
       return;
     }
-    if (parts[0] === 'marketing') {
-      location.href = 'marketing.html?event=' + encodeURIComponent(EV.id) + (parts[1] ? '&tab=' + encodeURIComponent(parts[1]) : '');
-      return;
-    }
-    if (parts[0] === 'payment') {
-      location.href = 'edit-event.html?event=' + encodeURIComponent(EV.id) + '#audience/payments';
-      return;
-    }
-    if (parts[0] === 'settings') {
-      location.href = 'settings.html?event=' + encodeURIComponent(EV.id) + (parts[1] ? '&tab=' + encodeURIComponent(parts[1]) : '');
-      return;
-    }
-    var s = secById(parts[0]);
-    if (!s) s = SECTIONS[0];
-    cur.sec = s.id;
-    var real = s.tabs.filter(function(t){ return !t.link; });
-    var asked = parts[1] && real.filter(function(t){ return t.id === parts[1]; }).length ? parts[1] : null;
-    /* #design/editor means "take me to the editor", not "render a landing page" */
-    var linked = parts[1] && s.tabs.filter(function(t){ return t.id === parts[1] && t.link; })[0];
-    if (linked){ location.href = typeof linked.link === 'function' ? linked.link() : linked.link; return; }
-    cur.tab = real.length ? (asked || real[0].id) : null;
+    cur.sec = dest.sec;
+    cur.tab = dest.tab;
     var r = routeId();
-    if (location.hash.slice(1) !== r) location.hash = r;
+    if (location.hash.slice(1) !== r){
+      if (byUser) location.hash = r; else history.replaceState(null, '', '#' + r);
+    }
     renderRail();
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -313,9 +279,6 @@
       '</div></div>';
   }
 
-  /* ============================================================
-     FAKE PEOPLE  (deterministic)
-     ============================================================ */
   /* ============================================================
      VIEW : DASHBOARD
      ============================================================ */
@@ -736,69 +699,6 @@
     });
 
     paint();
-  }
-
-  /* ============================================================
-     VIEW : PAGE SECTIONS
-     ============================================================ */
-  var DEFAULT_SECTIONS = [
-    { id:'hero',        name:'Hero banner',            note:'Title, date, venue and the primary CTA', on:true },
-    { id:'stats',       name:'Key numbers',            note:'Delegates, speakers, sessions, sponsors', on:true },
-    { id:'about',       name:'About the event',        note:'The long-form pitch', on:true },
-    { id:'speakers',    name:'Speakers',               note:'Grid of speaker cards', on:true },
-    { id:'agenda',      name:'Agenda',                 note:'Day-wise session breakdown', on:true },
-    { id:'partners',    name:'Partners & sponsors',    note:'Logo wall by tier', on:true },
-    { id:'why',         name:'Why attend',             note:'Benefit tiles', on:true },
-    { id:'who',         name:'Who should attend',      note:'Audience profile', on:true },
-    { id:'glimpses',    name:'Glimpses',               note:'Photo gallery from past editions', on:true },
-    { id:'testimonial', name:'Testimonials',           note:'Quotes from past delegates', on:false },
-    { id:'awards',      name:'Award categories',       note:'Only for awards programmes', on:false },
-    { id:'nominate',    name:'Nomination form',        note:'Entry capture for awards', on:false },
-    { id:'venue',       name:'Venue & travel',         note:'Map, hotel and directions', on:true },
-    { id:'faq',         name:'FAQ',                    note:'Accordion of common questions', on:false },
-    { id:'contact',     name:'Contact us',             note:'Team contacts and enquiry form', on:true },
-    { id:'footer',      name:'Footer',                 note:'Legal, social and portal links', on:true }
-  ];
-
-  function viewSections(){
-    if (!S.sections) S.sections = DEFAULT_SECTIONS.map(function(s){ return { id:s.id, on:s.on }; });
-    var map = {}; S.sections.forEach(function(s){ map[s.id] = s.on; });
-    var onN = DEFAULT_SECTIONS.filter(function(s){ return map[s.id]; }).length;
-
-    var rows = DEFAULT_SECTIONS.map(function(s, i){
-      var on = !!map[s.id];
-      return '<div class="sec-row' + (on ? '' : ' off') + '">' +
-          '<span class="grip">' + svg(IC.grip, 16) + '</span>' +
-          '<span class="num" style="color:var(--text-faint);min-width:22px">' + (i + 1) + '</span>' +
-          '<span class="sn"><b>' + esc(s.name) + '</b><span>' + esc(s.note) + '</span></span>' +
-          '<button class="tgl" type="button" data-sec="' + s.id + '" aria-pressed="' + on + '">' +
-            '<span class="track"><i></i></span>' + (on ? 'Included' : 'Hidden') + '</button>' +
-        '</div>';
-    }).join('');
-
-    return vhead('Page sections', 'Turn blocks on or off and drag to reorder. This is exactly what renders on the live microsite.',
-        '<a class="btn btn-secondary btn-sm" href="custom_editor.html?event=' + esc(EV.id) + (EV.templateId ? '&template=' + esc(EV.templateId) : '') + '">' + svg(IC.brush, 13) + ' Open site editor</a>') +
-      '<div class="callout info">' + svg(IC.info, 17) +
-        '<span><strong>' + onN + ' of ' + DEFAULT_SECTIONS.length + ' sections are live</strong>' +
-        'These are the canonical blocks Ops uses today. Turning one off hides it everywhere — nav, anchors and the page itself — without deleting its content.</span></div>' +
-      '<div style="height:16px"></div>' +
-      panelFlush('Section stack', 'Top to bottom, as the visitor sees it', '<div>' + rows + '</div>');
-  }
-
-  function wireSections(){
-    document.querySelectorAll('[data-sec]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var id = b.getAttribute('data-sec');
-        S.sections.forEach(function(s){ if (s.id === id) s.on = !s.on; });
-        render();
-        /* sections lives on the event doc now, not localStorage */
-        C.updateEvent(EV.id, { sections: S.sections }).then(function(){
-          EV.sections = S.sections;
-        }).catch(function(err){
-          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
-        });
-      });
-    });
   }
 
   /* ============================================================
@@ -2015,19 +1915,6 @@
         '</div>';
     }).join('');
 
-    /* the block really is hidden sometimes — say so only when it is */
-    var hidden = false;
-    if (S.sections){
-      S.sections.forEach(function(s){ if (s.id === 'agenda' && !s.on) hidden = true; });
-    }
-    var warn = (hidden && all.length)
-      ? '<div class="callout" style="margin-bottom:18px">' + svg(IC.info, 17) +
-          '<span><strong>The agenda block is switched off</strong>' +
-          'These sessions are saved, but the Agenda section is off in <b>Design &rsaquo; Page sections</b>, ' +
-          'so nobody can see them yet.</span>' +
-          '<button class="btn btn-secondary btn-sm" type="button" data-goto="design/sections" ' +
-            'style="align-self:center;flex-shrink:0">Turn it on</button></div>'
-      : '';
 
     var sub = all.length + (all.length === 1 ? ' session' : ' sessions') +
       ' across ' + groups.length + (groups.length === 1 ? ' day' : ' days') + '. ' +
@@ -2040,7 +1927,7 @@
           svg(IC.plus, 13) + ' Add sessions</button>') +
 
       '<div class="ag">' +
-        '<div class="ag-main">' + warn + body +
+        '<div class="ag-main">' + body +
           '<div class="callout info">' + svg(IC.info, 17) +
             '<span><strong>Speakers come from the line-up</strong>' +
             'Pick them from the list you already built on the Speakers tab rather than typing names again — ' +
@@ -3499,313 +3386,8 @@
   }
 
   /* ============================================================
-     VIEW : DESIGN
+     VIEW : SEO / HISTORY
      ============================================================ */
-  function viewTheme(){
-    var themes = [
-      ['ET Red', '#ED1C24', 'The house style. Safe default for IP events.'],
-      ['Deep Teal', '#0F6F5C', 'Calmer, used for BFSI and legal properties.'],
-      ['Midnight', '#243B6B', 'High-contrast dark hero for awards nights.'],
-      ['Sand', '#B5843C', 'Warm palette for roundtables and closed-door formats.']
-    ];
-    var cards = themes.map(function(t){
-      var on = S.theme === t[0];
-      return '<button class="stat clickable' + (on ? '' : '') + '" type="button" data-theme="' + esc(t[0]) + '" ' +
-          'style="text-align:left;align-items:stretch' + (on ? ';border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)' : '') + '">' +
-          '<span style="display:flex;gap:6px;margin-bottom:8px">' +
-            '<span style="width:26px;height:26px;border-radius:7px;background:' + t[1] + '"></span>' +
-            '<span style="width:26px;height:26px;border-radius:7px;background:var(--surface-2);border:1px solid var(--border)"></span>' +
-            '<span style="width:26px;height:26px;border-radius:7px;background:var(--text);opacity:.85"></span>' +
-          '</span>' +
-          '<span class="st-lb" style="font-size:13px;color:var(--text)"><b>' + esc(t[0]) + '</b></span>' +
-          '<span style="font-size:11.5px;color:var(--text-muted);line-height:1.45">' + esc(t[2]) + '</span>' +
-          (on ? '<span class="badge b-accent" style="margin-top:8px;align-self:flex-start">In use</span>' : '') +
-        '</button>';
-    }).join('');
-
-    return vhead('Theme & branding', 'Applies to every block on this microsite. Per-element overrides still win in the editor.') +
-      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' + cards + '</div>' +
-      panel('Logo & favicon', '',
-        '<div class="frow">' +
-          '<div class="field c6"><label>Event logo</label>' +
-            '<div style="border:1.5px dashed var(--border);border-radius:11px;padding:20px;text-align:center;color:var(--text-muted)">' +
-            svg(IC.image, 22) + '<div style="font-size:12.5px;font-weight:700;margin-top:5px">Upload PNG or SVG</div>' +
-            '<div style="font-size:11px;color:var(--text-faint)">Minimum 300×300, 1:1 square</div></div></div>' +
-          '<div class="field c6"><label>Favicon</label>' +
-            '<div style="border:1.5px dashed var(--border);border-radius:11px;padding:20px;text-align:center;color:var(--text-muted)">' +
-            svg(IC.image, 22) + '<div style="font-size:12.5px;font-weight:700;margin-top:5px">Upload 32×32 ICO or PNG</div>' +
-            '<div style="font-size:11px;color:var(--text-faint)">Shown in the browser tab</div></div></div>' +
-        '</div>');
-  }
-
-  function wireTheme(){
-    document.querySelectorAll('[data-theme]').forEach(function(b){
-      b.addEventListener('click', function(){
-        S.theme = b.getAttribute('data-theme');
-        render();
-        toast(S.theme + ' applied to this microsite');
-        /* paletteTheme, not theme — 'theme' on the event doc is a different, unrelated object the AI
-           generation pipeline owns (themeColor/headingFont/bodyFont/heroImageUrl); reusing that name here
-           would silently overwrite it for a generated event's real rendered page. See EVENT_FIELDS's own
-           comment in functions/lib/api.js. */
-        C.updateEvent(EV.id, { paletteTheme: S.theme }).then(function(){
-          EV.paletteTheme = S.theme;
-        }).catch(function(err){
-          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
-        });
-      });
-    });
-  }
-
-  /* ============================================================
-     VIEW : PEOPLE TABLES  (registrations / attendees / shortlist / visitors)
-     ============================================================ */
-  var tState = { q:'', page:1, per:25, sort:'name', dir:1, sel:{} };
-
-  function peopleFor(kind){
-    if (kind === 'attendees') return PEOPLE.filter(function(p){ return p.attended; });
-    if (kind === 'shortlist') return PEOPLE.slice(0, EV.shortlist);
-    if (kind === 'visitors')  return PEOPLE;
-    return PEOPLE;
-  }
-
-  function viewPeople(kind){
-    var titleMap = {
-      reg:       ['Registrations', 'Everyone who filled the registration form for this event.'],
-      attendees: ['Attendees', 'Registrations that were actually checked in on the day.'],
-      shortlist: ['Shortlisted users', 'People your team flagged for follow-up or VIP handling.'],
-      visitors:  ['Unique visitors', 'Distinct people who opened the microsite, registered or not.']
-    };
-    var t = titleMap[kind] || titleMap.reg;
-    var all = peopleFor(kind);
-
-    var q = tState.q.toLowerCase();
-    var rows = all.filter(function(p){
-      if (!q) return true;
-      return (p.name + ' ' + p.email + ' ' + p.comp + ' ' + p.desig + ' ' + p.city).toLowerCase().indexOf(q) >= 0;
-    });
-    rows.sort(function(a, b){
-      var A = a[tState.sort], B = b[tState.sort];
-      return (A > B ? 1 : A < B ? -1 : 0) * tState.dir;
-    });
-
-    var total = rows.length;
-    var pages = Math.max(1, Math.ceil(total / tState.per));
-    if (tState.page > pages) tState.page = pages;
-    var from = (tState.page - 1) * tState.per;
-    var page = rows.slice(from, from + tState.per);
-    var selN = Object.keys(tState.sel).filter(function(k){ return tState.sel[k]; }).length;
-
-    function th(key, label){
-      var on = tState.sort === key;
-      return '<th class="sortable' + (on ? ' sorted' : '') + '" data-sort="' + key + '">' + esc(label) +
-        '<span class="arr">' + (on ? (tState.dir > 0 ? '↑' : '↓') : '↕') + '</span></th>';
-    }
-
-    var body = page.map(function(p){
-      return '<tr>' +
-        '<td style="width:34px"><input type="checkbox" data-sel="' + p.id + '"' + (tState.sel[p.id] ? ' checked' : '') + '></td>' +
-        '<td><span class="person"><span class="avat" style="background:' + p.colour + '">' + esc(p.initials) + '</span>' +
-          '<span class="pn"><b>' + esc(p.name) + '</b><span>' + esc(p.email) + '</span></span></span></td>' +
-        '<td>' + esc(p.desig) + '</td>' +
-        '<td>' + esc(p.comp) + '</td>' +
-        '<td>' + esc(p.city) + '</td>' +
-        '<td><span class="badge b-mute">' + esc(p.src) + '</span></td>' +
-        '<td class="num">' + fmtDate(p.when) + '</td>' +
-        (kind === 'reg' ? '<td>' + (p.paid ? '<span class="badge b-ok">Paid</span>' : '<span class="badge b-mute">Free</span>') + '</td>' : '') +
-        '</tr>';
-    }).join('');
-
-    if (!page.length){
-      body = '<tr><td colspan="9">' + emptyState(IC.search, 'Nothing matches that search',
-        'Try a different name, company or city — or clear the search to see all ' + comma(all.length) + ' records.') + '</td></tr>';
-    }
-
-    var pagerBtns = '';
-    var show = [];
-    for (var i = 1; i <= pages; i++){
-      if (i === 1 || i === pages || Math.abs(i - tState.page) <= 1) show.push(i);
-      else if (show[show.length - 1] !== '…') show.push('…');
-    }
-    pagerBtns = show.map(function(n){
-      if (n === '…') return '<span style="color:var(--text-faint);padding:0 3px">…</span>';
-      return '<button class="pg-btn" type="button" data-page="' + n + '"' +
-        (n === tState.page ? ' aria-current="true"' : '') + '>' + n + '</button>';
-    }).join('');
-
-    var tabs = '<div class="tabs">' +
-      [['reg','Registrations',EV.registrations],['attendees','Attendees',PEOPLE.filter(function(p){return p.attended;}).length],
-       ['shortlist','Shortlisted',EV.shortlist],['visitors','Unique visitors',PEOPLE.length]].map(function(x){
-        return '<button type="button" data-goto="' + x[0] + '" aria-pressed="' + (kind === x[0]) + '">' +
-          esc(x[1]) + ' (' + comma(x[2]) + ')</button>';
-      }).join('') + '</div>';
-
-    var toolbar =
-      '<div class="toolbar">' +
-        '<span class="search">' + svg(IC.search, 15) +
-          '<input id="tbl-q" placeholder="Search name, email, company, designation…" value="' + esc(tState.q) + '"></span>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-save="Filters panel opened">Filters</button>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-save="Report queued">' + svg(IC.down, 13) + ' Export</button>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-save="Column picker opened">Columns</button>' +
-      '</div>';
-
-    var bulk = selN
-      ? '<div class="bulk"><b>' + selN + ' selected</b>' +
-          '<button class="btn btn-secondary btn-sm" type="button" data-save="Mailer queued for ' + selN + '">' + svg(IC.mail, 13) + ' Email</button>' +
-          '<button class="btn btn-secondary btn-sm" type="button" data-save="WhatsApp queued for ' + selN + '">' + svg(IC.wa, 13) + ' WhatsApp</button>' +
-          '<button class="btn btn-secondary btn-sm" type="button" data-save="Shortlisted ' + selN + '">Shortlist</button>' +
-          '<button class="btn btn-ghost btn-sm" type="button" id="clear-sel">Clear</button>' +
-        '</div>'
-      : '';
-
-    return vhead(t[0], t[1]) +
-      '<div style="margin-bottom:16px">' + tabs + '</div>' +
-      '<div class="panel">' + toolbar + bulk +
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-          '<th style="width:34px"><input type="checkbox" id="sel-all"></th>' +
-          th('name','Name') + th('desig','Designation') + th('comp','Company') +
-          th('city','Location') + th('src','Source') + th('when','Registered') +
-          (kind === 'reg' ? th('paid','Payment') : '') +
-        '</tr></thead><tbody>' + body + '</tbody></table></div>' +
-        '<div class="pager"><span class="cnt">Showing ' + (total ? from + 1 : 0) + ' to ' +
-          Math.min(from + tState.per, total) + ' of ' + comma(total) + ' entries</span>' +
-          '<button class="pg-btn" type="button" data-page="' + (tState.page - 1) + '"' + (tState.page <= 1 ? ' disabled' : '') + '>‹</button>' +
-          pagerBtns +
-          '<button class="pg-btn" type="button" data-page="' + (tState.page + 1) + '"' + (tState.page >= pages ? ' disabled' : '') + '>›</button>' +
-        '</div>' +
-      '</div>';
-  }
-
-  function wirePeople(){
-    var q = $('tbl-q');
-    if (q){
-      q.oninput = function(){ tState.q = q.value; tState.page = 1; render();
-        var n = $('tbl-q'); if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } };
-    }
-    document.querySelectorAll('[data-sort]').forEach(function(th){
-      th.addEventListener('click', function(){
-        var k = th.getAttribute('data-sort');
-        if (tState.sort === k) tState.dir = -tState.dir; else { tState.sort = k; tState.dir = 1; }
-        render();
-      });
-    });
-    document.querySelectorAll('[data-page]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var n = parseInt(b.getAttribute('data-page'), 10);
-        if (!isNaN(n) && n > 0){ tState.page = n; render(); }
-      });
-    });
-    document.querySelectorAll('[data-sel]').forEach(function(cb){
-      cb.addEventListener('change', function(){
-        tState.sel[cb.getAttribute('data-sel')] = cb.checked; render();
-      });
-    });
-    var all = $('sel-all');
-    if (all) all.onchange = function(){
-      document.querySelectorAll('[data-sel]').forEach(function(cb){
-        tState.sel[cb.getAttribute('data-sel')] = all.checked;
-      });
-      render();
-    };
-    var clr = $('clear-sel');
-    if (clr) clr.onclick = function(){ tState.sel = {}; render(); };
-  }
-
-  /* ============================================================
-     VIEW : PAYMENT
-     ============================================================ */
-  function viewPayPages(){
-    var pages = [
-      [6060,'MarTech Summit 2026','martech_summit_2026_9sep_1','$ 868', false],
-      [5812,'MAD Pass','mad_pass_price_3aug_1','₹ 35,000', true],
-      [5470,'MarTech Summit 2026','martech_summit_2026','₹ 25,000', true]
-    ];
-    var rows = pages.map(function(p){
-      return '<tr><td class="num">' + p[0] + '</td>' +
-        '<td class="td-strong">' + esc(p[1]) + '</td>' +
-        '<td class="num" style="color:var(--text-muted)">' + esc(p[2]) + '</td>' +
-        '<td class="num td-strong">' + esc(p[3]) + '</td>' +
-        '<td>' + (p[4] ? '<span class="badge b-ok">Landing</span>' : '<span class="badge b-mute">Off</span>') + '</td>' +
-        '<td style="text-align:right;white-space:nowrap">' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Preview opened">' + svg(IC.eye, 14) + '</button>' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Payment page opened">' + svg(IC.edit, 14) + '</button>' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-save="Duplicated">' + svg(IC.plus, 14) + '</button>' +
-        '</td></tr>';
-    }).join('');
-
-    return vhead('Payment pages', 'Each page is a priced ticket type. The one marked Landing is what the microsite CTA points at.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Payment page builder opened">' + svg(IC.plus, 13) + ' Create payment page</button>') +
-      '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' +
-        statTile(IC.money,  'Collected', EV.payment.type === 'paid' ? money(EV.payment.amount) : 'Free', null, null) +
-        statTile(IC.ticket, 'Transactions', comma(EV.payment.txns || 0), null, 'pay-txn') +
-        statTile(IC.check,  'Paid registrations', comma(PEOPLE.filter(function(p){ return p.paid; }).length), null, null) +
-        statTile(IC.card,   'Active pages', '3', null, null) +
-      '</div>' +
-      panelFlush('Standard payment pages', '3 pages',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>ID</th><th>Payment page name</th><th>Code</th><th>Price</th><th>Landing</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
-
-  /* ============================================================
-     VIEW : AUDIENCE
-     ============================================================ */
-  function viewAudience(){
-    function tally(key){
-      var m = {};
-      PEOPLE.forEach(function(p){ m[p[key]] = (m[p[key]] || 0) + 1; });
-      return Object.keys(m).map(function(k){ return { k:k, n:m[k] }; })
-        .sort(function(a,b){ return b.n - a.n; });
-    }
-    function barList(rows, colour){
-      var max = rows.length ? rows[0].n : 1;
-      return '<div class="bar-list">' + rows.slice(0, 9).map(function(r){
-        return '<div class="bar-item"><div class="bl"><b>' + esc(r.k) + '</b><span>' + comma(r.n) + '</span></div>' +
-          '<div class="bar-track"><i style="width:' + Math.round(r.n / max * 100) + '%;background:' + colour + '"></i></div></div>';
-      }).join('') + '</div>';
-    }
-
-    return vhead('Target Audience', 'Who is actually registering, broken down three ways. Built from ' + comma(PEOPLE.length) + ' records.') +
-      '<div class="split">' +
-        '<div>' +
-          panel('By location', 'Top cities', barList(tally('city'), 'var(--accent)')) +
-          panel('By company', 'Top organisations', barList(tally('comp'), 'var(--info)')) +
-        '</div>' +
-        '<div>' +
-          panel('By designation', 'Seniority mix', barList(tally('desig'), 'var(--review)')) +
-          panel('By source', 'Where they came from', barList(tally('src'), 'var(--ok)')) +
-        '</div>' +
-      '</div>';
-  }
-
-  /* ============================================================
-     VIEW : EMAIL / CRM / REMINDERS / POSTS
-     ============================================================ */
-
-
-  /* ============================================================
-     VIEW : MEDIA / SEO / HISTORY
-     ============================================================ */
-  function viewMedia(){
-    var files = [
-      ['hero-banner.jpg','JPG','1.8 MB'], ['logo-primary.svg','SVG','24 KB'],
-      ['speaker-uppal.jpg','JPG','420 KB'], ['speaker-handa.jpg','JPG','388 KB'],
-      ['partner-wall.png','PNG','760 KB'], ['glimpse-01.jpg','JPG','1.2 MB'],
-      ['glimpse-02.jpg','JPG','1.1 MB'], ['brochure-2026.pdf','PDF','3.4 MB'],
-      ['agenda-day1.pdf','PDF','210 KB'], ['social-card.png','PNG','540 KB']
-    ];
-    var cards = files.map(function(f){
-      return '<div class="media-card" data-save="' + esc(f[0]) + ' opened">' +
-        '<div class="media-thumb">' + svg(f[1] === 'PDF' ? IC.card : IC.image, 26) + '</div>' +
-        '<div class="media-meta"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + ' · ' + esc(f[2]) + '</span></div>' +
-      '</div>';
-    }).join('');
-
-    return vhead('Media Center', files.length + ' assets attached to this event. Everything the editor and mailers pull from.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Upload dialog opened">' + svg(IC.plus, 13) + ' Upload</button>') +
-      panel('Assets', '9.9 MB of 500 MB used', '<div class="media-grid">' + cards + '</div>');
-  }
-
   function viewSEO(){
     var slug = EV.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     return vhead('SEO', 'How this microsite appears in search results and when shared on social.') +
@@ -4290,12 +3872,6 @@
   }
 
   /* ============================================================
-     MARKETING : banners, messaging, social
-     ============================================================ */
-
-
-
-  /* ============================================================
      SETTINGS : social links, visibility
      ============================================================ */
   function viewSocialLinks(){
@@ -4367,42 +3943,6 @@
   }
 
   /* ============================================================
-     COMBINED : payments (pages + transactions on one screen)
-     ============================================================ */
-  function viewPayments(){
-    if (EV.payment.type !== 'paid'){
-      return vhead('Payments', 'Ticketing and transactions for this event.') +
-        '<div class="panel">' + emptyState(IC.money, 'This is a free event',
-          'No payment pages exist and nothing has been charged. Add a paid pass if you want to start taking money.',
-          '<button class="btn btn-primary btn-sm" type="button" data-save="Payment page builder opened" style="margin-top:6px">Add a paid pass</button>') + '</div>';
-    }
-    return viewPayPages() + viewTxnPanel();
-  }
-
-  function viewTxnPanel(){
-    var paid = PEOPLE.filter(function(p){ return p.paid; }).slice(0, 25);
-    var rows = paid.map(function(p, i){
-      var amt = 25000 + (i % 3) * 10000;
-      return '<tr><td class="num">TXN' + (480000 + p.id) + '</td>' +
-        '<td><span class="person"><span class="avat" style="background:' + p.colour + '">' + esc(p.initials) + '</span>' +
-        '<span class="pn"><b>' + esc(p.name) + '</b><span>' + esc(p.comp) + '</span></span></span></td>' +
-        '<td class="num td-strong">' + money(amt) + '</td>' +
-        '<td>' + (i % 7 === 0 ? '<span class="badge b-warn">Pending</span>' : '<span class="badge b-ok">Success</span>') + '</td>' +
-        '<td class="num">' + fmtDate(p.when) + '</td>' +
-        '<td style="text-align:right"><button class="btn btn-ghost btn-icon" type="button" data-save="Receipt opened">' + svg(IC.eye, 14) + '</button></td></tr>';
-    }).join('');
-    return panelFlush('Recent transactions', comma(paid.length) + ' shown',
-      '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Transaction</th><th>Payer</th><th>Amount</th><th>Status</th><th>Date</th><th></th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
-
-  /* ============================================================
-     COMBINED : CRM + leads on one screen
-     ============================================================ */
-  function viewLeads(){ return viewCRM(); }
-
-  /* ============================================================
      ROUTER
      ============================================================ */
   /* ---------- settings views (shell-local) ---------- */
@@ -4417,66 +3957,6 @@
         var row = b.closest('.sec-row');
         if (row) row.classList.toggle('off', on);
         toast('Setting ' + (!on ? 'enabled' : 'turned off'));
-      });
-    });
-  }
-
-  var DEFAULT_NAV_ITEMS = [
-    { t:'Overview',              on:true },
-    { t:'What to Expect',        on:true },
-    { t:'Key Discussion Points', on:true },
-    { t:'Speakers',              on:true },
-    { t:'Who Should Attend',     on:true },
-    { t:'Focus Areas',           on:true },
-    { t:'Testimonial',           on:false },
-    { t:'Survey',                on:false },
-    { t:'Contact Us',            on:true }
-  ];
-  DEFAULT_NAV_ITEMS.forEach(function(n){
-    n.a = '#' + n.t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  });
-
-  function viewSetNav(){
-    if (!S.nav) S.nav = DEFAULT_NAV_ITEMS.map(function(n){ return { t:n.t, on:n.on }; });
-    var onMap = {}; S.nav.forEach(function(n){ onMap[n.t] = n.on; });
-
-    var rows = DEFAULT_NAV_ITEMS.map(function(n, i){
-      var on = !!onMap[n.t];
-      return '<tr' + (on ? '' : ' style="opacity:.55"') + '>' +
-        '<td class="num" style="width:44px">' + (i + 1) + '</td>' +
-        '<td class="td-strong">' + esc(n.t) + '</td>' +
-        '<td class="num" style="color:var(--text-muted)">' + esc(n.a) + '</td>' +
-        '<td>' + (on ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Hidden</span>') + '</td>' +
-        '<td style="text-align:right;white-space:nowrap">' +
-          '<button class="tgl" type="button" data-navitem="' + esc(n.t) + '" aria-pressed="' + on + '">' +
-            '<span class="track"><i></i></span></button>' +
-        '</td></tr>';
-    }).join('');
-
-    return vhead('Site navigation', 'The menu that appears across the top of the microsite. Each item scrolls to a section anchor.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Menu item added">' + svg(IC.plus, 13) + ' Add menu item</button>') +
-      '<div class="callout info">' + svg(IC.info, 17) +
-        '<span><strong>Hidden items keep their content</strong>' +
-        'Switching an item off only removes it from the menu bar. The section itself is controlled in Event Setup › Page sections.</span></div>' +
-      '<div style="height:16px"></div>' +
-      panelFlush('Menu items', DEFAULT_NAV_ITEMS.length + ' items',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>S.No.</th><th>Menu title</th><th>Target</th><th>Status</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
-  }
-
-  function wireSetNav(){
-    document.querySelectorAll('[data-navitem]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var t = b.getAttribute('data-navitem');
-        S.nav.forEach(function(n){ if (n.t === t) n.on = !n.on; });
-        render();
-        /* nav lives on the event doc now, not localStorage */
-        C.updateEvent(EV.id, { nav: S.nav }).then(function(){
-          EV.nav = S.nav;
-        }).catch(function(err){
-          toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
-        });
       });
     });
   }
@@ -4541,14 +4021,13 @@
      without guessing what is in scope here.
      ------------------------------------------------------------------ */
   var DASH = window.EditEventDashboard || { view: function(){ return ''; }, wire: function(){} };
-  var MKT  = window.EditEventMarketing || { view: function(){ return ''; }, wire: function(){}, TABS: [] };
 
   /* Built by core, so the console and the standalone workbenches hand each
      section file exactly the same object. */
   var CTX = C.makeCtx({
-    EV: EV, S: S, PEOPLE: PEOPLE,
+    EV: EV, S: S,
     vhead:  function(t, sub, right){ return vhead(t, sub, right); },
-    go:     function(r){ return go(r); },
+    go:     function(r){ return go(r, true); },
     render: function(){ return render(); },
     save:   function(){ return save(); }
   });
@@ -4564,23 +4043,6 @@
     'content/faq':          viewFAQ,
     'content/contact':      viewContact,
 
-    'design/sections':      viewSections,
-    'design/nav':           viewSetNav,
-    'design/theme':         viewTheme,
-    'design/media':         viewMedia,
-
-    'audience/attendees':   function(){ return viewPeople('attendees'); },
-    'audience/shortlist':   function(){ return viewPeople('shortlist'); },
-    'audience/payments':    function() { location.href = 'payment/html_version/index.html?event=' + encodeURIComponent(EV.id); return '<div style="padding:100px;text-align:center;color:#666;">Redirecting to Payment Dashboard...</div>'; },
-    'audience/insights':    viewAudience,
-
-
-    'marketing/studio':     function(){ return MKT.view('studio', CTX); },
-    'marketing/audiences':  function(){ return MKT.view('audiences', CTX); },
-    'marketing/campaigns':  function(){ return MKT.view('campaigns', CTX); },
-    'marketing/pipeline':   function(){ return MKT.view('pipeline', CTX); },
-    'marketing/crm':        function(){ return MKT.view('crm', CTX); },
-
     'settings/form':        viewSetForm,
     'settings/seo':         viewSEO,
     'settings/links':       viewSocialLinks,
@@ -4595,27 +4057,28 @@
     var subKey = SUB_ROUTE_KEY[r];
     if (subKey && !SUB[subKey]){
       renderSubLoading();
-      SUB_LOADERS[subKey]().then(function(){
-        SUB[subKey] = true;
-        render();
-      }).catch(function(err){
-        renderSubLoadError(err, function(){ render(); });
-      });
+      /* The answer may arrive after the user has moved on: it then only fills the cache, and never
+         pulls the view back to the tab that asked for it. */
+      if (!SUB_LOADING[subKey]){
+        SUB_LOADING[subKey] = true;
+        SUB_LOADERS[subKey]().then(function(){
+          SUB_LOADING[subKey] = false;
+          SUB[subKey] = true;
+          if (routeId() === r) render();
+        }).catch(function(err){
+          SUB_LOADING[subKey] = false;
+          if (routeId() === r) renderSubLoadError(err, function(){ render(); });
+        });
+      }
       return;
     }
 
-    var fn = VIEWS[r] || VIEWS.dashboard;
+    var fn = VIEWS[r];
+    if (!fn){ go('content/basics'); return; }
     $('view').innerHTML = tabsHTML() + fn();
 
-    /* tabs */
-    document.querySelectorAll('[data-tab]').forEach(function(b){
-      b.addEventListener('click', function(){ go(cur.sec + '/' + b.getAttribute('data-tab')); });
-    });
-
-    /* generic wiring available on every view */
-    document.querySelectorAll('[data-goto]').forEach(function(b){
-      b.addEventListener('click', function(){ go(b.getAttribute('data-goto')); });
-    });
+    /* generic wiring available on every view ([data-tab] and [data-goto] are handled by the one
+       listener boot() puts on #view, so they also work on the loading and error states) */
     document.querySelectorAll('[data-save]').forEach(function(b){
       b.addEventListener('click', function(e){
         e.stopPropagation();
@@ -4632,13 +4095,8 @@
     if (r === 'content/gallery') wireGallery();
     if (r === 'content/faq') wireFaq();
     if (r === 'content/contact') wireContact();
-    if (r === 'design/sections') wireSections();
-    if (r === 'design/nav') wireSetNav();
-    if (r === 'design/theme') wireTheme();
     if (r === 'settings/visibility') wireVisibility();
-    if (cur.sec === 'marketing') MKT.wire(cur.tab, CTX);
     if (['settings/form','settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
-    if (['audience/attendees','audience/shortlist'].indexOf(r) >= 0) wirePeople();
 
     var p2 = $('btn-preview-2');
     if (p2) p2.onclick = openPreview;
@@ -4747,7 +4205,15 @@
     document.title = 'Edit — ' + EV.name + ' — Revamp CMS';
   }
 
+  /* Preview, Publish and the rail only mean something once there is an event behind them. */
+  function setChrome(ready){
+    $('btn-preview').hidden = !ready;
+    $('btn-publish').hidden = !ready;
+    $('rail').hidden = !ready;
+  }
+
   function renderLoading(){
+    setChrome(false);
     $('ev-name').textContent = 'Loading…';
     $('ev-meta').textContent = '';
     $('rail').innerHTML = '';
@@ -4759,30 +4225,101 @@
       '</div>';
   }
 
-  function renderLoadError(err){
-    var msg = (err && err.message) ? err.message : 'Something went wrong loading this event.';
-    $('ev-name').textContent = 'Couldn’t load this event';
+  /* kind: 'none' (no event in the address), otherwise decided from the failure itself */
+  function renderLoadError(err, kind){
+    var missing = kind === 'none' || (err && err.status === 404);
+    var title = kind === 'none' ? 'No event selected'
+      : missing ? 'Event not found' : 'Couldn’t load this event';
+    var msg = kind === 'none' ? 'Use Back to events and open the event you want to edit.'
+      : missing ? 'This event doesn’t exist or was deleted. Use Back to events to open another one.'
+      : 'The event could not be loaded. Check your connection and try again.';
+    if (err && kind !== 'none') console.error('Event load failed:', err);
+    setChrome(false);
+    $('ev-name').textContent = title;
     $('ev-meta').textContent = '';
     $('rail').innerHTML = '';
     document.title = 'Edit Event — Revamp CMS';
+    /* the way out is the top bar's "Back to events", which stays on screen in every state */
     $('view').innerHTML = '<div style="padding:60px 20px">' + emptyState(
-      IC.info, 'Couldn’t load this event', msg,
-      '<a class="btn btn-primary btn-sm" href="Event_Listing.html">Back to events</a>'
+      IC.info, title, msg,
+      missing ? '' : '<button class="btn btn-primary btn-sm" type="button" id="ev-retry">Try again</button>'
     ) + '</div>';
+    var again = $('ev-retry');
+    if (again) again.onclick = init;
   }
+
+  /* ---------- account menu ---------- */
+  function acctOpen(open){
+    $('acct-menu').hidden = !open;
+    $('acct-btn').setAttribute('aria-expanded', String(open));
+  }
+
+  function wireAccount(){
+    if (!window.RevampAuth) return;
+    RevampAuth.onAuthChange(function(user){
+      var email = user && user.email;
+      $('acct').hidden = !email;
+      if (!email) return;
+      $('acct-btn').textContent = initials(email.split('@')[0].replace(/[._-]+/g, ' ')) || email.charAt(0).toUpperCase();
+      $('acct-btn').title = email;
+      $('acct-btn').setAttribute('aria-label', 'Account: ' + email);
+      $('acct-email').textContent = email;
+    });
+
+    $('acct-btn').onclick = function(){ acctOpen($('acct-menu').hidden); };
+    document.addEventListener('click', function(e){
+      if (!$('acct').contains(e.target)) acctOpen(false);
+    });
+    document.addEventListener('keydown', function(e){
+      if (e.key !== 'Escape' || $('acct-menu').hidden) return;
+      acctOpen(false);
+      $('acct-btn').focus();
+    });
+
+    $('acct-out').onclick = function(){
+      var out = $('acct-out');
+      out.disabled = true;
+      out.textContent = 'Signing out…';
+      RevampAuth.signOutUser().then(function(){
+        location.replace('/');
+      }).catch(function(err){
+        console.error('Sign out failed:', err);
+        out.disabled = false;
+        out.textContent = 'Sign out';
+        toast('Could not sign you out. Check your connection and try again.');
+      });
+    };
+  }
+
+  var booted = false;
 
   function boot(){
     paintHeader();
+    setChrome(true);
 
-    $('btn-preview').onclick = openPreview;
-    $('btn-publish').onclick = doPublish;
+    /* a retry after a failed load comes through here again; the listeners must not be added twice */
+    if (!booted){
+      booted = true;
 
-    window.addEventListener('hashchange', function(){
-      var h = location.hash.slice(1);
-      if (h && h !== routeId()) go(h);
-    });
+      $('btn-preview').onclick = openPreview;
+      $('btn-publish').onclick = doPublish;
 
-    go(location.hash.slice(1) || 'content/basics');
+      /* one listener for every sub-tab and in-view link, so they work on whatever #view is showing —
+         a loaded view, "Loading…" or "Couldn’t load this" alike */
+      $('view').addEventListener('click', function(e){
+        var el = e.target.closest ? e.target.closest('[data-tab],[data-goto]') : null;
+        if (!el || !$('view').contains(el)) return;
+        if (el.hasAttribute('data-tab')) go(cur.sec + '/' + el.getAttribute('data-tab'), true);
+        else go(el.getAttribute('data-goto'), true);
+      });
+
+      window.addEventListener('hashchange', function(){
+        var h = location.hash.slice(1);
+        if (h !== routeId()) go(h);
+      });
+    }
+
+    go(location.hash.slice(1));
   }
 
   function isAuthError(err){
@@ -4790,19 +4327,17 @@
     return !!((err && err.status === 401) || /not signed in/i.test(msg));
   }
 
+  /* The sign-in page brings the user back to the address they were on. Going through RevampAuth records
+     that this page was just sent there — which is what stops the sign-in page from forwarding a session
+     the server has refused straight back here, and the two pages bouncing for ever. */
+  function toSignIn(){
+    if (window.RevampAuth && typeof RevampAuth.redirectToSignIn === 'function') return RevampAuth.redirectToSignIn();
+    location.replace('/?next=' + encodeURIComponent(location.pathname + location.search + location.hash));
+  }
+
   function onEventLoaded(data){
     EV = data;
     CTX.EV = EV;
-    CTX.PEOPLE = PEOPLE;
-
-    /* sections/nav/paletteTheme are real fields on the event doc now — seed this file's local mirror
-       from them, falling back to this file's own defaults only when the event has nothing saved there
-       yet (a brand-new event, legitimate empty-state scaffolding, not fake data). Deliberately
-       EV.paletteTheme, not EV.theme — see wireTheme()'s own comment: 'theme' is a different, AI
-       pipeline-owned object for generated events, not this console's 4-preset palette name. */
-    S.sections = (EV.sections != null) ? EV.sections : S.sections;
-    S.nav      = (EV.nav != null)      ? EV.nav      : S.nav;
-    S.theme    = (EV.paletteTheme != null) ? EV.paletteTheme : S.theme;
 
     boot();
   }
@@ -4811,7 +4346,7 @@
     renderLoading();
 
     if (!eventSlug){
-      renderLoadError(new Error('No event was specified. Open this page from Event Listing.'));
+      renderLoadError(null, 'none');
       return;
     }
 
@@ -4825,16 +4360,17 @@
          to sign-in, same "refresh, don't just bounce" reasoning as auth.js's own a.back-btn
          interceptor — only a SECOND auth failure, after that retry, is treated as the user truly
          not being signed in. */
-      if (!window.RevampAuth){ location.href = 'index.html'; return; }
+      if (!window.RevampAuth){ toSignIn(); return; }
       RevampAuth.ensureSession().then(function(){
         return C.fetchEvent(eventSlug);
       }).then(onEventLoaded).catch(function(err2){
-        if (isAuthError(err2)){ location.href = 'index.html'; return; }
+        if (isAuthError(err2)){ toSignIn(); return; }
         renderLoadError(err2);
       });
     });
   }
 
+  wireAccount();
   init();
 })();
 </script>

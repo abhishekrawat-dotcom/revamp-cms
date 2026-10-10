@@ -103,6 +103,31 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px;
   }
   .topbar-acts{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
+  /* .btn and .rail set their own display, which would otherwise beat the hidden attribute */
+  .topbar [hidden], .rail[hidden]{ display:none; }
+
+  /* account: who is signed in, and the way out */
+  .acct{ position:relative; display:inline-flex; }
+  .acct-btn{
+    width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background: var(--surface-2);
+    color: var(--text); font-size:12px; font-weight:800; letter-spacing:.02em; cursor:pointer;
+    display:grid; place-items:center; transition: background .14s, border-color .14s;
+  }
+  .acct-btn:hover, .acct-btn[aria-expanded="true"]{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+  .acct-btn:focus-visible, .acct-out:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .acct-menu{
+    position:absolute; right:0; top: calc(100% + 8px); z-index:50; min-width:220px; max-width: min(300px, 86vw);
+    background: var(--surface); border:1px solid var(--border); border-radius:12px; padding:6px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.16); display:flex; flex-direction:column; gap:2px;
+  }
+  .acct-who{ display:block; padding:8px 10px 9px; font-size:11.5px; color: var(--text-muted); border-bottom:1px solid var(--border); }
+  .acct-who b{ display:block; margin-top:2px; font-size:13px; color: var(--text); overflow-wrap:anywhere; }
+  .acct-out{
+    border:0; background:transparent; text-align:left; padding:9px 10px; border-radius:8px;
+    font-size:13px; font-weight:700; color: var(--text); cursor:pointer;
+  }
+  .acct-out:hover{ background: var(--surface-2); }
+  .acct-out:disabled{ opacity:.55; cursor:default; }
 
   /* at phone width "Back to events" + the title + Preview + Publish (all flex-shrink:0 or nowrap) no longer
      fit one row — collapse the two least essential labels (the back link's text, Preview's text) to icons
@@ -145,11 +170,18 @@
     display:flex; flex-direction:column; align-items:center; gap:6px; width:100%;
     padding: 11px 4px; border-radius:13px; border:0; background:transparent; cursor:pointer;
     color: var(--text-muted); transition: background .14s, color .14s;
+    text-decoration:none; box-sizing:border-box;
   }
+  .rail-item:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; }
   .rail-item:hover{ background: var(--surface-2); color: var(--text); }
   .rail-item.active{ background: var(--accent-soft); color: var(--accent-strong); }
   .rail-item .ri{ display:grid; place-items:center; }
   .rail-item .rl{ font-size:10.5px; font-weight:800; letter-spacing:.005em; line-height:1.2; text-align:center; }
+  /* a destination that exists but cannot be used yet says so before it is clicked */
+  .rail-item .soon{
+    font-size:9px; font-weight:700; line-height:1.15; text-align:center; color: var(--text-faint);
+    margin-top:-3px;
+  }
   .rail-item .rdot{
     width:5px; height:5px; border-radius:50%; background: var(--accent); margin-top:-3px;
   }
@@ -183,13 +215,6 @@
   .subtabs .cnt{
     font-size:10.5px; font-family: var(--font-mono); opacity:.7; margin-left:5px;
   }
-  /* a tab that leaves the console — reads as an action, not a destination */
-  .subtabs .tab-link{
-    display:inline-flex; align-items:center; gap:7px; padding:9px 14px;
-    font-size:13px; font-weight:700; color: var(--accent-strong); text-decoration:none;
-    border-bottom:2.5px solid transparent; margin-bottom:-1px; white-space:nowrap;
-  }
-  .subtabs .tab-link:hover{ border-bottom-color: var(--accent); }
 
   /* ============ VIEW HEADER ============ */
   .vhead{ margin-bottom: 18px; }
