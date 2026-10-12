@@ -135,8 +135,6 @@
   .main-nav-portals{ flex-shrink:0; }
 
   .main-nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
-  .avatar-btn{ width:34px; height:34px; border-radius:50%; border:none; background:none; padding:0; display:flex; align-items:center; justify-content:center; }
-  .avatar-circle{ width:100%; height:100%; border-radius:50%; background:var(--accent); color:var(--accent-contrast); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; font-family:var(--font-display); }
 
   /* at phone width, brand + "More Products" + the portal switcher + the account controls (all flex-shrink:0)
      together exceed the viewport even with .main-nav-scroll squeezed to nothing — the account avatar (the
@@ -569,12 +567,8 @@
 
     <div class="main-nav-right">
       <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
-      <div class="popover-wrap">
-        <button class="avatar-btn" id="btn-profile" aria-haspopup="true" aria-label="Account">
-          <span class="avatar-circle">AD</span>
-        </button>
-        <div class="popover right" id="profile-menu" hidden></div>
-      </div>
+      <!-- the signed-in user's avatar and the real Sign out: auth.js renders it into any [data-rv-account] -->
+      <span data-rv-account></span>
     </div>
   </div>
 </header>
@@ -1104,26 +1098,6 @@
     });
   }
   $('btn-more').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='more-menu') closeAll(); else openPopover('more-menu'); });
-
-  /* =========================================================
-     PROFILE MENU (main nav)
-  ========================================================= */
-  function renderProfileMenu(){
-    $('profile-menu').innerHTML =
-      '<div class="popover-label">admin@etmanufacturing.in</div>' +
-      '<button class="popover-item" data-profile-stub="Your profile isn’t wired up in this preview yet.">' + IC.userCircle + ' Your profile</button>' +
-      '<button class="popover-item" data-profile-stub="Preferences aren’t wired up in this preview yet.">' + IC.settings + ' Preferences</button>' +
-      '<div class="popover-sep"></div>' +
-      '<button class="popover-item danger" data-profile-stub="Sign out isn’t wired up in this preview yet.">' + IC.logout + ' Sign out</button>';
-    $('profile-menu').querySelectorAll('[data-profile-stub]').forEach(function(b){
-      b.addEventListener('click', function(){ toast(b.getAttribute('data-profile-stub')); closeAll(); });
-    });
-  }
-  $('btn-profile').addEventListener('click', function(e){
-    e.stopPropagation();
-    if (state.openPopover==='profile-menu'){ closeAll(); return; }
-    renderProfileMenu(); openPopover('profile-menu');
-  });
 
   /* =========================================================
      TOP NAV — links, More Products, Portals (access-gated)
