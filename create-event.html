@@ -220,6 +220,26 @@
   .inp[aria-invalid="true"]{ border-color: var(--crit); }
   .inp[aria-invalid="true"]:focus{ box-shadow: 0 0 0 3px var(--crit-soft); }
   .logo-row:has([aria-invalid="true"]){ border-color: var(--crit); }
+  /* "Generate from a brief": two fields to a row, the rarely used ones folded under "More options" */
+  .gb-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; align-items:start; }
+  .gb-grid .gb-wide{ grid-column: 1 / -1; }
+  .gb-grid textarea.inp{ resize: vertical; }
+  @media (max-width: 760px){ .gb-grid{ grid-template-columns: 1fr; } }
+  .gb-seg{ display:grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .gb-seg label{ position:relative; display:block; cursor:pointer; }
+  .gb-seg input{ position:absolute; opacity:0; inset:0; cursor:pointer; }
+  .gb-seg span{ display:block; border:1.5px solid var(--border); border-radius:10px; padding: 8px 12px; background: var(--surface); min-height: 100%; }
+  .gb-seg b{ display:block; font-size:13.5px; }
+  .gb-seg i{ display:block; font-style:normal; font-size:11.5px; line-height:1.35; color: var(--text-muted); margin-top:2px; }
+  .gb-seg input:checked + span{ border-color: var(--accent); background: var(--accent-soft, rgba(237,28,36,.06)); }
+  .gb-seg input:focus-visible + span{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .gb-more{ margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .gb-more > summary{ cursor:pointer; font-size:13px; font-weight:700; color: var(--text); list-style: none; display:flex; align-items:center; gap:8px; }
+  .gb-more > summary::-webkit-details-marker{ display:none; }
+  .gb-more > summary::before{ content:'+'; display:inline-grid; place-items:center; width:18px; height:18px; border-radius:50%; border:1px solid var(--border); font-weight:700; font-size:12px; }
+  .gb-more[open] > summary::before{ content:'–'; }
+  .gb-more > .gb-grid{ margin-top: 12px; }
+  .gb-more-note{ font-weight:500; color: var(--text-muted); font-size:12px; }
   /* the lines under a control: what a date reads as, a warning that does not block, what is wrong */
   .field-note{ margin: 6px 0 0; font-size: 12px; line-height: 1.4; }
   .field-note[hidden]{ display: none; }
@@ -1891,49 +1911,62 @@
           <!-- shown for S.creationMethod === 'brief' — kept in S.brief (wireBriefInputs) -->
           <div class="grp" id="brief-grp" hidden>
             <div class="grp-h"><h4>Tell Gemini about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
-            <p class="hint" style="margin:6px 0 14px;">The site is modelled on the previous edition’s structure and look when you give its link (a competitor’s otherwise), then improved. Gemini writes the content, makes the pictures and places your logo. Nothing is copied word for word.</p>
-            <div class="field"><label class="flabel" for="gb-brief-text">Describe the event</label>
-              <textarea class="inp" id="gb-brief-text" rows="4" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
-            </div>
-            <div class="field" style="margin-top:12px;"><span class="flabel" id="gb-doc-label">Overview document (PDF)</span>
-              <div class="logo-row" id="gb-doc-row">
-                <span class="logo-row-icon">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg>
-                </span>
-                <button class="logo-row-cta" id="gb-doc-pick" type="button" aria-labelledby="gb-doc-label gb-doc-pick">Choose a PDF</button>
-                <button class="logo-tile-remove" id="gb-doc-remove" type="button" title="Remove document" aria-label="Remove document" hidden>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
+            <p class="hint" style="margin:6px 0 12px;">Modelled on the previous edition when you give its link, then improved. The AI writes the content, makes the pictures and places your logo.</p>
+            <div class="gb-grid">
+              <div class="field"><span class="flabel" id="gb-mode-label">Site type</span>
+                <div class="gb-seg" role="radiogroup" aria-labelledby="gb-mode-label">
+                  <label><input type="radio" name="gb-mode" value="standard"><span><b>Standard</b><i>The usual ET sections, as the previous edition had them</i></span></label>
+                  <label><input type="radio" name="gb-mode" value="advanced"><span><b>Advanced</b><i>The AI chooses the sections for this event</i></span></label>
+                </div>
               </div>
-              <p class="hint" id="gb-doc-note"></p>
-              <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
+              <div class="field"><label class="flabel" for="gb-theme">Site theme</label>
+                <select class="inp" id="gb-theme">
+                  <option value="auto">Match the previous edition (or let the design decide)</option>
+                  <option value="light">Light — dark text on a light background</option>
+                  <option value="dark">Dark — light text on a dark background</option>
+                </select>
+              </div>
+              <div class="field"><label class="flabel" for="gb-brief-text">Describe the event</label>
+                <textarea class="inp" id="gb-brief-text" rows="3" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
+              </div>
+              <div class="field"><span class="flabel" id="gb-doc-label">Overview document (PDF)</span>
+                <div class="logo-row" id="gb-doc-row">
+                  <span class="logo-row-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg>
+                  </span>
+                  <button class="logo-row-cta" id="gb-doc-pick" type="button" aria-labelledby="gb-doc-label gb-doc-pick">Choose a PDF</button>
+                  <button class="logo-tile-remove" id="gb-doc-remove" type="button" title="Remove document" aria-label="Remove document" hidden>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                  </button>
+                </div>
+                <p class="hint" id="gb-doc-note"></p>
+                <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
+              </div>
+              <div class="field"><label class="flabel" for="gb-previous">Previous edition URL</label>
+                <input class="inp" id="gb-previous" type="url" placeholder="https://…">
+              </div>
+              <div class="field"><label class="flabel" for="gb-comp1">Competitor event URL</label>
+                <input class="inp" id="gb-comp1" type="url" placeholder="https://…">
+              </div>
             </div>
-            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>
-              <input class="inp" id="gb-current" type="url" placeholder="https://…">
-            </div>
-            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-previous">Previous edition URL</label>
-              <input class="inp" id="gb-previous" type="url" placeholder="https://…">
-            </div>
-            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-comp1">Competitor event URL</label>
-              <input class="inp" id="gb-comp1" type="url" placeholder="https://…">
-            </div>
-            <div class="field" style="margin-top:8px;">
-              <input class="inp" id="gb-comp2" type="url" placeholder="https://… (a second competitor, optional)">
-            </div>
-            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-instructions">Instructions for the AI <span class="pill-opt">Optional</span></label>
-              <textarea class="inp" id="gb-instructions" rows="3" maxlength="1500" placeholder="How the site should look and what it should stress — e.g. “premium and minimal, lots of white space”, “lead with the awards night”, “use a carousel for the categories”, “no stats band”…"></textarea>
-            </div>
-            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-theme">Site theme</label>
-              <select class="inp" id="gb-theme">
-                <option value="auto">Match the previous edition (or let the design decide)</option>
-                <option value="light">Light — dark text on a light background</option>
-                <option value="dark">Dark — light text on a dark background</option>
-              </select>
-            </div>
-            <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--text-muted);">
-              <input type="checkbox" id="gb-future" style="margin-top:2px;">
-              <span>This edition hasn’t happened yet — project the theme forward instead of assuming this year’s date/venue</span>
-            </label>
+            <details class="gb-more" id="gb-more">
+              <summary>More options <span class="gb-more-note" id="gb-more-note"></span></summary>
+              <div class="gb-grid">
+                <div class="field"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>
+                  <input class="inp" id="gb-current" type="url" placeholder="https://…">
+                </div>
+                <div class="field"><label class="flabel" for="gb-comp2">A second competitor URL</label>
+                  <input class="inp" id="gb-comp2" type="url" placeholder="https://…">
+                </div>
+                <div class="field gb-wide"><label class="flabel" for="gb-instructions">Instructions for the AI <span class="pill-opt">Optional</span></label>
+                  <textarea class="inp" id="gb-instructions" rows="2" maxlength="1500" placeholder="How the site should look and what it should stress — e.g. “premium and minimal”, “lead with the awards night”, “no stats band”…"></textarea>
+                </div>
+                <label class="gb-wide" style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text-muted);">
+                  <input type="checkbox" id="gb-future" style="margin-top:2px;">
+                  <span>This edition hasn’t happened yet — project the theme forward instead of assuming this year’s date/venue</span>
+                </label>
+              </div>
+            </details>
           </div>
 
         </div>
@@ -2504,7 +2537,7 @@
     imgSeq: 0,                  // the last img slot number this draft handed out (addImageFile)
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
-    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
+    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
@@ -2678,7 +2711,7 @@
       delete S.catPicked;
       /* what earlier versions of this page kept in the draft and nothing reads any more */
       ['path', 'templatePick', 'templateExcluded', 'sourceKind', 'sourceValue', 'detectPhase', 'detectDecisions', 'detectedBannerTheme'].forEach(function(k){ delete S[k]; });
-      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '' };
+      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard' };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
@@ -3733,7 +3766,21 @@
     theme.onchange = function(){ S.brief.themeMode = theme.value; save(); };
     var notes = $('gb-instructions');
     notes.value = S.brief.instructions || '';
-    notes.oninput = function(){ S.brief.instructions = notes.value; save(); };
+    notes.oninput = function(){ S.brief.instructions = notes.value; save(); moreNote(); };
+    /* Standard (the usual ET sections) or Advanced (the AI chooses) */
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="gb-mode"]'), function(radio){
+      radio.checked = radio.value === (S.brief.siteMode === 'advanced' ? 'advanced' : 'standard');
+      radio.onchange = function(){ if (radio.checked){ S.brief.siteMode = radio.value; save(); } };
+    });
+    /* what is filled in under "More options" is said on the closed fold, and the fold opens when it holds something */
+    function moreNote(){
+      var n = ['current', 'comp2', 'instructions'].filter(function(k){ return String(S.brief[k] || '').trim(); }).length + (S.brief.future ? 1 : 0);
+      $('gb-more-note').textContent = n ? '(' + n + ' filled in)' : '';
+      return n;
+    }
+    if (moreNote()) $('gb-more').open = true;
+    ['gb-current', 'gb-comp2'].forEach(function(id){ $(id).addEventListener('input', moreNote); });
+    future.addEventListener('change', moreNote);
     function showDoc(){
       pick.textContent = briefDoc ? briefDoc.name + ' · ' + fileSize(briefDoc.size) : 'Choose a PDF';
       remove.hidden = !briefDoc && !briefDocError;
@@ -4715,7 +4762,7 @@
       };
     });
     /* read when the row runs, like the other inputs: instructions corrected before a retry are what is sent */
-    runners.plan = function(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim() }); };
+    runners.plan = function(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim(), siteMode: S.brief.siteMode === 'advanced' ? 'advanced' : 'standard' }); };
     runners.generate = function(){
       return postJson('/api/generate-content', { templateId: 'gen-' + eventId }).then(function(resp){
         /* from here on this draft's event has a generated site: generating again replaces it (onNext asks first) */

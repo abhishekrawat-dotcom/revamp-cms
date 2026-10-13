@@ -979,7 +979,34 @@ var DESIGN_FALLBACK_ACCENT = '#0f172a';
    explicitly nulls out the old pipeline's matchedTemplateId/structurePlan/theme fields so a re-run of an
    old-pipeline event cleanly migrates. Step 2 (POST /api/generate-content's 'gen-' branch, further down)
    reads designPlan back and writes the real HTML/CSS for every section it describes. */
-var DESIGN_SECTION_KINDS = ['custom', 'speakers', 'faq', 'partners', 'contact', 'glimpses'];
+var DESIGN_SECTION_KINDS = ['custom', 'speakers', 'sessions', 'faq', 'partners', 'contact', 'glimpses'];
+
+/* A STANDARD site is made of the sections every ET event microsite has had, edition after edition — these
+   twelve and no others. Which of them a site gets is read from its reference page (what the previous
+   edition had is made again for this one) and from the brief; the document and the owner's instructions
+   can ask for one or rule one out. Everything else about the site — pictures, type, motion, the hero — is
+   as for an ADVANCED site, whose sections the AI chooses freely. `also`: other names a section goes by. */
+var STANDARD_SECTIONS = [
+  { id: 'overview', name: 'Overview', kind: 'custom', also: /overview|about (the )?(event|summit|conclave|awards|conference)|introduction|why now|the theme/ },
+  { id: 'speakers', name: 'Speakers', kind: 'speakers', also: /speaker|jury|panel(l)?ist|faculty/ },
+  { id: 'agenda', name: 'Agenda', kind: 'sessions', also: /agenda|schedule|programme|program|session|itinerary/ },
+  { id: 'sponsors', name: 'Sponsors', kind: 'partners', also: /sponsor|partner|supported by|exhibitor/ },
+  { id: 'key-discussion-points', name: 'Key Discussion Points', kind: 'custom', also: /discussion|key (topic|theme|point|takeaway)|track|what (we|you).ll discuss|spotlight|pillar/ },
+  { id: 'who-should-attend', name: 'Who Should Attend', kind: 'custom', also: /who should attend|who (will|is) (attend|in the room)|audience|delegate profile|industries in the room/ },
+  { id: 'why-join-us', name: 'Why Join Us', kind: 'custom', also: /why (join|attend|participate|nominate)|reasons to|benefit|what awaits/ },
+  { id: 'resources', name: 'Resources', kind: 'custom', also: /resource|download|brochure|report|whitepaper|media kit/ },
+  { id: 'contact-us', name: 'Contact Us', kind: 'contact', also: /contact|get in touch|reach us|enquir|queries/ },
+  { id: 'faqs', name: 'FAQs', kind: 'faq', also: /faq|frequently asked|questions/ },
+  { id: 'about-vertical', name: 'About Vertical', kind: 'custom', also: /about (et|the economic times|us|the organi[sz]er|the vertical)|about et[a-z]+|organi[sz]ed by/ },
+  { id: 'past-edition-glimpses', name: 'Past Edition Glimpses', kind: 'glimpses', also: /glimpse|gallery|past edition|previous edition|highlights|photos|moments/ }
+];
+function standardSectionFor(id) {
+  var key = slugifyId(id);
+  var exact = STANDARD_SECTIONS.filter(function (x) { return x.id === key; })[0];
+  if (exact) return exact;
+  var words = key.replace(/-/g, ' ');
+  return STANDARD_SECTIONS.filter(function (x) { return x.also.test(words); })[0] || null;
+}
 var DESIGN_PLAN_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -1022,7 +1049,7 @@ var DESIGN_PLAN_SCHEMA = {
         type: 'OBJECT',
         properties: {
           id: { type: 'STRING', description: 'short kebab-case id, unique, describing this section\'s actual role (e.g. "why-attend", "agenda-day-one", "speaker-lineup") — never a generic name like "section-1".' },
-          kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the other 5 ONLY when this section is really that specific data-bound type (see below).' },
+          kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the others ONLY when this section is really that specific data-bound type (see below).' },
           purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' },
           layout: { type: 'STRING', description: 'one sentence: how THIS section is laid out (e.g. "picture left, text right, three ticked points under the text", "one dark band of four large numbers", "three-column cards with an icon each", "a vertical timeline"). Neighbouring sections must not share a layout.' },
           image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence: the specific objects, place or materials that THIS section is about (not a generic backdrop, and different from every other picture on the page) — never people, text or logos. Empty string only for a section that carries no generated picture.' }
@@ -1093,15 +1120,19 @@ function buildDesignPlanPrompt(payload) {
     '',
     'Ground every section in real content-shape evidence from the material below — never include a section that has nothing real to put in it, and never omit one the material clearly supports. A thin site with 3 well-grounded sections beats a padded one with 7 that have nothing real to say.',
     '',
-    'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
+    payload.siteMode === 'standard'
+      ? 'THIS IS A STANDARD SITE. Its sections are chosen ONLY from this list — use exactly these ids and kinds, and no section that is not on it:\n' +
+        STANDARD_SECTIONS.map(function (x) { return '  ' + x.id + '  (kind "' + x.kind + '") — ' + x.name; }).join('\n') + '\n' +
+        'Which of them this site has: every one of these that the reference page above has, under whatever name it goes there (its "Partners" are sponsors, its "Gallery" or "Glimpses" are past-edition-glimpses, its "Why attend" is why-join-us, its "Themes" or "Tracks" are key-discussion-points…), is made again for this edition; add one the brief document or the owner\'s instructions ask for; leave out one they say this edition does not have. With no reference page, include the ones the material supports — Overview always. Order them as the reference page does; with none, in the order of the list. (nav, hero and footer are added automatically and are not in your list.)'
+      : 'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
     'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, right under the hero, and everything a visitor needs to understand the event lives in the sections.',
     '',
-    'Set each section\'s kind to "custom" unless it is really one of 5 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery). Only use one of those 5 when the material genuinely supports that this event will have real data of that kind.',
+    'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.'),
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
     '',
-    'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage). Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture.',
+    'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage). Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
     'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", and never the same subject twice on one page. Pictures show objects, places, materials, tools or abstract forms: never people, never text or logos, never something that could pass for a photograph of this event.',
     '',
     'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
@@ -1141,19 +1172,29 @@ function buildDesignPlanPrompt(payload) {
 }
 
 var RESERVED_DESIGN_SECTION_IDS = ['nav', 'hero', 'footer'];
-function sanitizeDesignPlanSections(parsed) {
+function sanitizeDesignPlanSections(parsed, siteMode) {
   var seen = {};
   var out = [];
   var pictures = 0;
-  (Array.isArray(parsed.sections) ? parsed.sections : []).forEach(function (s) {
+  var list = Array.isArray(parsed.sections) ? parsed.sections.slice() : [];
+  /* a standard site always opens with its overview */
+  if (siteMode === 'standard' && !list.some(function (s) { return s && standardSectionFor(s.id) && standardSectionFor(s.id).id === 'overview'; })) {
+    list.unshift({ id: 'overview', kind: 'custom', purpose: 'What this event is, who it is for and why it matters this year.', layout: 'picture and text side by side', image: '' });
+  }
+  list.forEach(function (s) {
     if (!s) return;
-    var id = slugifyId(s.id);
+    var id = slugifyId(s.id), std = null;
+    if (siteMode === 'standard') {
+      std = standardSectionFor(s.id);
+      if (!std) return;                                   // not one of the twelve: a standard site does not have it
+      id = std.id;
+    }
     if (!id || RESERVED_DESIGN_SECTION_IDS.indexOf(id) !== -1 || seen[id]) return;
     seen[id] = true;
-    var kind = DESIGN_SECTION_KINDS.indexOf(s.kind) !== -1 ? s.kind : 'custom';
+    var kind = std ? std.kind : (DESIGN_SECTION_KINDS.indexOf(s.kind) !== -1 ? s.kind : 'custom');
     var image = kind === 'custom' ? String(s.image || '').trim().slice(0, 300) : '';
     if (image && ++pictures > MAX_SECTION_IMAGES) image = '';
-    out.push({ id: id, kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image });
+    out.push({ id: id, name: std ? std.name : '', kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image });
   });
   return out;
 }
@@ -1190,6 +1231,8 @@ function handlePlanStructure(req, res) {
     var themeMode = genDesign.normaliseMode(payload.themeMode);
     /* what the owner typed under "Anything else the AI should know" in Create Event, in their own words */
     var ownerNotes = String(payload.designNotes || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+    /* 'standard': the twelve sections every ET microsite draws on; 'advanced': the AI chooses the sections */
+    var siteMode = payload.siteMode === 'standard' ? 'standard' : 'advanced';
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1218,10 +1261,10 @@ function handlePlanStructure(req, res) {
       var reference = designReference(sourceDocs);
       var artDirection = genDesign.artDirectionFor(eventId);
 
-      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes });
+      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode });
       return callGeminiJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
-        var sections = sanitizeDesignPlanSections(r.parsed);
+        var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
         var now = new Date().toISOString();
         var stamp = now.replace(/[^0-9]/g, '').slice(0, 14);
@@ -1249,7 +1292,7 @@ function handlePlanStructure(req, res) {
           });
 
           var designPlan = {
-            sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes,
+            sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
             reference: reference.basis
               ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
               : { type: 'none', artDirection: artDirection.id }
@@ -1606,8 +1649,9 @@ function buildSectionCodePrompt(payload) {
     '',
     'For each section with kind "custom" (including nav/hero/footer): write real, grounded text directly into the html — there is no separate content-fill step, content and markup are generated together.',
     '',
-    'For a section with one of the 5 data-bound kinds (speakers/faq/partners/contact/glimpses): design the section\'s own visual container and any intro/heading copy with real text, but the REPEATING list items are real records a human CMS editor manages elsewhere — never yours to invent. Write exactly ONE well-designed example item, marked with the attribute data-rv-repeat-template="<kind>" on its root element, with clearly-labeled placeholder values (e.g. "Speaker Name", "Role, Company") — that is the ONLY item you write; a client-side mechanism clones or replaces it once real records exist, or leaves this one placeholder item visible as-is when none do. Its container must lay the clones out well however many there are (a responsive grid: repeat(auto-fill, minmax(…, 1fr))). Inside that one template element, put these EXACT, case-sensitive data-rv-field attributes on the right descendant elements, by kind — never invent other field names:',
+    'For a section with one of the data-bound kinds (speakers/sessions/faq/partners/contact/glimpses): design the section\'s own visual container and any intro/heading copy with real text, but the REPEATING list items are real records a human CMS editor manages elsewhere — never yours to invent. Write exactly ONE well-designed example item, marked with the attribute data-rv-repeat-template="<kind>" on its root element, with clearly-labeled placeholder values (e.g. "Speaker Name", "Role, Company") — that is the ONLY item you write; a client-side mechanism clones or replaces it once real records exist, or leaves this one placeholder item visible as-is when none do. Its container must lay the clones out well however many there are (a responsive grid: repeat(auto-fill, minmax(…, 1fr))). Inside that one template element, put these EXACT, case-sensitive data-rv-field attributes on the right descendant elements, by kind — never invent other field names:',
     '  speakers: data-rv-field="n" (name, text), "r" (role/title, text), "c" (company, text), "photo" (headshot — on an <img>, or on a div meant to show a background-image photo)',
+    '  sessions (the agenda): data-rv-field="time" (e.g. "9:30 AM – 10:15 AM", text), "title" (text), "desc" (text), "speakers" (the speakers\' names, text), "room" (text)',
     '  faq: data-rv-field="t" (question, text), "d" (answer, text)',
     '  partners: data-rv-field="name" (text), "url" (the href target if the item is/contains a link — put this on the <a>), "logo" (on an <img>)',
     '  contact: data-rv-field="label" (e.g. department/role, text), "name" (text), "email" (text), "phone" (text)',
@@ -2145,7 +2189,9 @@ function handleGeneratedTemplate(req, res) {
       layout: { pinStart: ['hero'], pinEnd: ['footer'] },
       // No section ships its own script.js any more — scripts were never allowed through sanitization.
       sections: orderedIds.filter(function (id) { return byId[id]; }).map(function (id) {
-        return { id: id, name: id, etId: null, script: false };
+        var planned = designPlan.sections.filter(function (x) { return x.id === id; })[0];
+        var label = (planned && planned.name) || (id === 'nav' ? 'Top bar' : id.replace(/-/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }));
+        return { id: id, name: label, etId: null, script: false };
       })
     };
     sendJson(res, 200, template);
