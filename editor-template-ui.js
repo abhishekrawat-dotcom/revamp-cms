@@ -2841,7 +2841,7 @@
   function sectionsContext(instruction) {
     var words = String(instruction || '').toLowerCase().match(/[a-z0-9][a-z0-9'’&.-]{2,}/g) || [];
     var asked = function (t) { var low = t.toLowerCase(); return words.some(function (w) { return low.indexOf(w) !== -1; }); };
-    var secs = canvas.sections().filter(function (sec) { return !sec.classList.contains('is-hidden-sec'); });
+    var secs = canvas.sections();
     var share = Math.max(1500, Math.floor(CHAT_TEXTS_BUDGET / Math.max(1, secs.length)));
     return secs.map(function (sec) {
       // the key, not the type: an edit must reach the one section it was proposed for, copies included
@@ -2857,6 +2857,7 @@
       // back in page order, which is how the section reads
       texts.sort(function (a, b) { return all.indexOf(a) - all.indexOf(b); });
       var out = { id: id, name: sec.getAttribute('data-sec-name') || id, texts: texts };
+      if (sec.classList.contains('is-hidden-sec')) out.hidden = true;
       var buttons = sectionButtonLabels(sec).slice(0, 8).map(short);
       if (buttons.length) out.buttons = buttons;
       if (hasImageHeadline(sec)) out.imageHeadline = true;
@@ -2977,12 +2978,24 @@
     });
     (result.skipped || []).forEach(function (s) { notes.push(escHtml(skippedLabel(s))); });
 
+    /* what goes beyond a setting or a wording: sections reworked, hidden, removed, moved or added */
+    var known = function (id) { return !!(id && canvas.sectionByKey(id)); };
+    var edits = (result.sectionEdits || []).filter(function (e) { return e && known(e.sectionId) && e.instruction; });
+    var ops = (result.sectionOps || []).filter(function (o) { return o && known(o.sectionId); });
+    var additions = (result.newSections || []).filter(function (n) { return n && n.instruction; });
+    var OP_WORDS = { hide: 'hide', show: 'show again', remove: 'remove', move: 'move' };
     var items = Object.keys(design).map(function (k) { return designChangeHtml(k, design[k]); })
       .concat(textEdits.map(function (t) {
         var where = escHtml(sectionLabel(t.sectionId)) + ' — ';
         return t.replace ? where + 'change &ldquo;' + escHtml(t.find) + '&rdquo; to &ldquo;' + escHtml(t.replace) + '&rdquo;'
           : where + 'remove &ldquo;' + escHtml(t.find) + '&rdquo;';
-      }));
+      }))
+      .concat(ops.map(function (o) {
+        return escHtml(sectionLabel(o.sectionId)) + ' — ' + OP_WORDS[o.op] + ' this section' +
+          (o.op === 'move' ? (o.beforeSectionId && known(o.beforeSectionId) ? ' to just before ' + escHtml(sectionLabel(o.beforeSectionId)) : ' to the end of the page') : '');
+      }))
+      .concat(edits.map(function (e) { return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction); }))
+      .concat(additions.map(function (n) { return 'New section &ldquo;' + escHtml(n.name) + '&rdquo;' + (n.afterSectionId && known(n.afterSectionId) ? ' after ' + escHtml(sectionLabel(n.afterSectionId)) : '') + ' — ' + escHtml(n.instruction); }));
     var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
     var usable = items.length > 0;
 
@@ -2999,7 +3012,7 @@
         : '<span class="cp-skipped">Nothing — this request did not produce a change that can be applied.</span>') +
       (notes.length ? '<span class="cp-skipped">Couldn’t apply:</span><ul class="cp-skipped">' + notes.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>' : '') +
       (cannot.length ? '<span class="cp-note">I can’t do this here: ' + escHtml(cannot.join('; ')) +
-        '. Speakers, agenda, sponsors, FAQs and contacts are managed in the event’s Content tabs; sections are added, moved, hidden and deleted from the section toolbar or Layers.</span>' : '') +
+        '. Speakers, agenda, sponsors, FAQs and contacts are managed in the event’s Content tabs.</span>' : '') +
       (usable ? '' : '<span class="cp-note">The AI answered: &ldquo;' + escHtml(result.summary) + '&rdquo;</span>' +
         '<span class="cp-note">The site is unchanged. Ask again in other words, or make the change yourself on the page or in Design.</span>') +
       '<div class="cp-actions">' +
@@ -3034,7 +3047,7 @@
       if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (discarded, not applied)';
     });
     card.querySelector('[data-cp="apply"]').addEventListener('click', function () {
-      if (!canvas || remounting || openProposals.indexOf(me) === -1) return;
+      if (!canvas || remounting || openProposals.indexOf(me) === -1 || aiWorking) return;
       deselect();
       flush();                          // what was pending stays its own undo step
       closeProposals(me);
@@ -3046,42 +3059,149 @@
         changedEls.push(el);
         clearAiGenerated(el);
       });
+      var said = [], done = [];
+      /* whole sections: hidden, shown, removed, moved */
+      ops.forEach(function (o) {
+        var sec = canvas.sectionByKey(o.sectionId);
+        if (!isLive(sec)) return;
+        var label = '“' + sectionLabel(o.sectionId) + '”';
+        if (o.op === 'hide' || o.op === 'show') { canvas.setHidden(sec, o.op === 'hide'); done.push(label + (o.op === 'hide' ? ' hidden' : ' shown')); }
+        else if (o.op === 'remove') { canvas.removeSection(sec); done.push(label + ' removed'); }
+        else if (o.op === 'move') {
+          var before = o.beforeSectionId ? canvas.sectionByKey(o.beforeSectionId) : null;
+          if (canvas.moveSection(sec, before || null)) done.push(label + ' moved');
+          else said.push(label + ' could not be moved there — the page’s first and last sections keep their places.');
+        }
+      });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
-      var changed = commitNow();
-      close('');
 
-      var said = [];
-      // a setting this site has nothing for is said, not counted as applied
-      if (leftOut.length) {
-        said.push('Not changed: ' + leftOut.map(function (k) { return designLabel(k) + ' — ' + (unsupportedReason(k) || 'nothing on the page changed for it.'); }).join(' '));
+      /* sections reworked or written by the AI: one request each, one after another, then ONE undo step */
+      var jobs = edits.map(function (e) { return { edit: e }; }).concat(additions.map(function (n) { return { add: n }; }));
+      var state = card.querySelector('.cp-state');
+      function step(i) {
+        if (i >= jobs.length) return Promise.resolve();
+        var job = jobs[i], sec, label;
+        if (job.edit) { sec = canvas.sectionByKey(job.edit.sectionId); label = sectionLabel(job.edit.sectionId); }
+        else {
+          sec = addBlankSection(job.add.name, job.add.afterSectionId ? canvas.sectionByKey(job.add.afterSectionId) : null);
+          label = job.add.name;
+        }
+        if (!isLive(sec)) { said.push('“' + label + '” is no longer on the page, so it was left out.'); return step(i + 1); }
+        state.textContent = 'Working on “' + label + '” (' + (i + 1) + ' of ' + jobs.length + ') — about half a minute each…';
+        state.hidden = false;
+        return requestSectionCode(sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction).then(function (code) {
+          if (!isLive(sec)) throw new Error('the section was removed meanwhile');
+          var fresh = applySectionCode(sec, code);
+          if (!fresh) throw new Error('the AI’s answer was not a usable section');
+          changedEls.push(fresh);
+          done.push('“' + label + '” ' + (job.edit ? 'reworked' : 'added'));
+        }).then(null, function (err) {
+          if (job.add && isLive(sec)) canvas.removeSection(sec);       // an empty shell is not left behind
+          said.push('“' + label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + ((err && err.message) || 'the AI could not do it') + '.');
+        }).then(function () { return step(i + 1); });
       }
-      var missed = textEdits.length - changedEls.length;
-      if (missed > 0) said.push(missed + ' text change' + (missed === 1 ? ' was' : 's were') + ' skipped — that text is no longer on the page.');
-      var appliedDesign = {};
-      Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) appliedDesign[k] = design[k]; });
+      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      aiWorking = jobs.length > 0;
+      step(0).then(function () {
+        aiWorking = false;
+        var redraw = changedEls.some(function (el) { return el.querySelector && el.querySelector('[data-rv-repeat-template]'); });
+        var changed = commitNow();
+        close('');
+        // a setting this site has nothing for is said, not counted as applied
+        if (leftOut.length) {
+          said.push('Not changed: ' + leftOut.map(function (k) { return designLabel(k) + ' — ' + (unsupportedReason(k) || 'nothing on the page changed for it.'); }).join(' '));
+        }
+        var appliedDesign = {};
+        Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) appliedDesign[k] = design[k]; });
 
-      if (!changed) {
-        designChanged();                // a setting that was tried and did nothing is put away in the Design panel
-        appendChatMsg('ai', ['Nothing could be applied — the site is unchanged.'].concat(said).join(' '));
-        if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (nothing could be applied; the site is unchanged)';
-        return;
-      }
-      if (changedEls.length) {
-        // the first change is brought into view; inside an accordion item, the whole item, opened
-        var first = changedEls[0], around = canvas.itemAround(first) || first;
-        canvas.openItem(first);
-        canvas.scrollToSection(isShown(around) ? around : first.closest('[data-rv-section]'));
-      }
-      var bubble = appendChatMsg('ai', ['Applied.'].concat(said).join(' '));
-      if (histEntry) {
-        histEntry.text = 'Proposed and applied: ' + result.summary +
-          (Object.keys(appliedDesign).length ? ' (design: ' + JSON.stringify(appliedDesign) + ')' : '') +
-          (changedEls.length ? ' (' + changedEls.length + ' text edit' + (changedEls.length === 1 ? '' : 's') + ' applied)' : '');
-      }
-      offerAiUndo(bubble, histEntry, result.summary);
-      chatThread().scrollTop = chatThread().scrollHeight;
+        if (!changed) {
+          designChanged();                // a setting that was tried and did nothing is put away in the Design panel
+          appendChatMsg('ai', ['Nothing could be applied — the site is unchanged.'].concat(said).join(' '));
+          if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (nothing could be applied; the site is unchanged)';
+          return;
+        }
+        var first = changedEls.filter(function (el) { return el && el.isConnected; })[0];
+        if (first) {
+          // the first change is brought into view; inside an accordion item, the whole item, opened
+          var around = canvas.itemAround(first) || first;
+          canvas.openItem(first);
+          canvas.scrollToSection(isShown(around) ? around : first.closest('[data-rv-section]'));
+        }
+        var bubble = appendChatMsg('ai', ['Applied.'].concat(done.length ? [done.join('; ') + '.'] : []).concat(said).join(' '));
+        if (histEntry) {
+          histEntry.text = 'Proposed and applied: ' + result.summary +
+            (Object.keys(appliedDesign).length ? ' (design: ' + JSON.stringify(appliedDesign) + ')' : '') +
+            (done.length ? ' (' + done.join('; ') + ')' : '') + (said.length ? ' (not done: ' + said.join(' ') + ')' : '');
+        }
+        offerAiUndo(bubble, histEntry, result.summary);
+        chatThread().scrollTop = chatThread().scrollHeight;
+        if (redraw) drawRecords(false);         // the event's records, drawn into what was rewritten
+      });
     });
     return usable;
+  }
+
+  /* ---------- a section's code, asked of the AI ----------
+     requestSectionCode: the section as it stands (devSource: no editor marks, records as their one model
+     item) goes to POST /api/redesign-section with what is wanted — mode "edit" (change this, keep the rest),
+     "create" (write a new one) or "redesign" — and the answer is { html, css, summary }.
+     applySectionCode puts an answer on the page: on a site whose section CSS is its own the section's
+     stylesheet is replaced; elsewhere the CSS is added inside the section. The caller records the undo step. */
+  var aiWorking = false;
+  function requestSectionCode(sec, mode, instruction) {
+    var secs = canvas.sections(), at = secs.indexOf(sec), src = devSource(sec);
+    return RevampAuth.authedFetch('/api/redesign-section', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: eventId, sectionId: sec.getAttribute('data-rv-section'), mode: mode, instruction: instruction,
+        html: src.html, css: src.css, generated: /^gen-/.test(canvas.template.id || ''),
+        above: sectionOutline(secs[at - 1]), below: sectionOutline(secs[at + 1])
+      })
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var body = null;
+        try { body = JSON.parse(text); } catch (e) { /* an error page from in front of the API */ }
+        if (!res.ok || !body || body.error || !body.html) throw new Error((body && body.error) || 'the AI could not answer (error ' + res.status + ')');
+        body.js = src.js;
+        body.cssIsOwn = src.cssIsOwn;
+        return body;
+      });
+    });
+  }
+  function applySectionCode(sec, code) {
+    var t = document.createElement('template');
+    t.innerHTML = String(code.html || '').trim();
+    var root = t.content.firstElementChild;
+    if (!root || /^(SCRIPT|STYLE|TEMPLATE)$/.test(root.tagName)) return null;
+    Array.prototype.forEach.call(root.querySelectorAll('style[data-rv-custom-css], script[data-rv-js]'), function (n) { n.remove(); });
+    if (!code.cssIsOwn && code.css) {
+      var st = document.createElement('style');
+      st.setAttribute('data-rv-custom-css', '');
+      st.textContent = code.css;
+      root.appendChild(st);
+    }
+    if (code.js) {
+      var holder = document.createElement('script');
+      holder.setAttribute('type', 'text/plain');
+      holder.setAttribute('data-rv-js', '');
+      holder.textContent = code.js;
+      root.appendChild(holder);
+    }
+    var fresh = canvas.replaceSection(sec, root.outerHTML, code.cssIsOwn ? code.css : null);
+    if (fresh) fresh.setAttribute('data-ai-generated', 'true');      // written by the AI: asked about before publishing
+    return fresh;
+  }
+  /* an empty section of its own type, for the AI to write into */
+  function addBlankSection(name, afterSec) {
+    var doc = canvas.doc, base = String(name || 'section').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'section';
+    var type = base, n = 2;
+    while (doc.querySelector('[data-rv-section="' + type + '"]') || doc.getElementById(type)) type = base + '-' + (n++);
+    var el = doc.createElement('section');
+    el.setAttribute('data-rv-section', type);
+    el.setAttribute('data-sec-name', name || 'New section');
+    el.id = type;
+    canvas.insertSection(el, isLive(afterSec) ? afterSec : null);
+    return el;
   }
 
   /* A real back-and-forth, not a one-shot command box: chatHistory carries prior turns (what was asked, what
@@ -3108,7 +3228,7 @@
        that only becomes visible on a follow-up ("now make it darker instead"). Say so up front, so this
        reads as an actual chat from the first message, not a repaint of the old one-shot prompt box. */
     if (chatHistory.length === 0) {
-      appendChatMsg('ai', 'Hi, I’m ETB2B AI. Describe a change (colour, fonts, text…) or ask a question about this page. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
+      appendChatMsg('ai', 'Hi, I’m ETB2B AI. Ask for any change to this site — wording, colours and fonts, a section’s layout or content, adding, moving, hiding or removing sections — or ask a question about the page. I show you what will change first; nothing happens until you press Apply. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
     }
     // one request at a time: each is a paid call, and Enter must not start a second while one is running
     var busy = false;

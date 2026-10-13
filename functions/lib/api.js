@@ -374,29 +374,35 @@ function handleSuggestDesign(req, res) {
    is applied server-side; the browser shows the proposal and only calls canvas.design.set()/does the text
    replacement once the user confirms (see editor-template-ui.js's wireChatPanel). */
 function buildChatPrompt(payload) {
-  var sections = (payload.sections || []).filter(function (s) { return s.texts && s.texts.length; });
+  var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
   var history = (payload.history || []).slice(-16);
   return [
-    'You are a real conversation partner helping someone edit their already-built event microsite for ET Oneworld, directly on its own real template — never a different template, never inventing new sections. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
+    'You are ETB2B AI, a real conversation partner helping someone edit their already-built event microsite for ET Oneworld. You can change ANYTHING on the page the owner asks for — wording, design, the layout or content of any section, the order of sections, hiding, removing or adding sections — through the tools below; nothing is applied until the owner accepts your proposal. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
     '',
     (history.length ? 'Conversation so far (oldest first):\n' + history.map(function (h) { return (h.role === 'user' ? 'User: ' : 'You: ') + String(h.text || '').slice(0, 400); }).join('\n') + '\n' : ''),
-    'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 500) + '"',
+    'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
     '',
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
     '',
-    'The site\'s real sections right now (sectionId -> its own current text, verbatim):',
-    JSON.stringify(sections.map(function (s) { return { sectionId: s.id, name: s.name, texts: s.texts }; }), null, 2),
+    'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it):',
+    JSON.stringify(sections.map(function (s) { return { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, texts: s.texts || [] }; }), null, 2),
     '',
     'Task:',
     '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site, "reply" if it\'s a question, small talk, or anything else that doesn\'t call for one — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.',
     '2. If `kind` is "reply": leave `design` empty and `textEdits` empty, and put a natural, helpful, conversational answer in `summary` — reference the actual sections/design above if relevant, don\'t make things up.',
     '3. If `kind` is "edit": if it asks for a visual/design change (colour, font, spacing, heading style…), return a partial `design` object — ONLY the fields the instruction actually calls for, using these field names: ' + DESIGN_FIELDS.join(', ') + '. Leave out any field it didn\'t ask to change. A colour field MUST be a hex code ("#1c1c1c") — if it names a colour in words ("orange", "navy blue"), translate it to the closest real hex value yourself; never write the colour word into a colour field, it will be rejected. If it asks to change text, return `textEdits`: an array of {sectionId, find, replace}, where `find` is copied VERBATIM (exact substring, same spelling/punctuation) from that section\'s own text shown above — never invent or paraphrase the original. Never invent facts (dates, numbers, names) that aren\'t already present. A follow-up like "make it bigger instead" that refines a design mentioned earlier in the conversation should produce a fresh, complete replacement for the fields it\'s changing, not an incremental tweak instruction.',
     'A text edit applies to EVERY place that exact `find` text appears in that section. To change a word, a year, a name or a number everywhere (e.g. "change 2026 to 2027"), give `find` as just that word or number and return one edit for each section whose texts contain it — check every section\'s texts, do not stop at the first. `find` must be copied exactly from the texts above.',
-    '4. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`/`textEdits` actually contain, nothing more — never mention a change that isn\'t also a real field in `design` or a real entry in `textEdits`, the user sees both side by side so any mismatch is a bug.'
+    '4. For everything those two cannot do, use the three tools that follow — choose the lightest tool that does the job, and combine tools freely:',
+    '   - `sectionEdits`: [{sectionId, instruction}] — one section is reworked by a designer-developer who follows your instruction exactly: change its layout, add, remove or reorder cards and blocks, rewrite or extend its content, restyle only that section (colours, sizes, spacing, alignment, backgrounds), turn a grid into a carousel or a timeline, anything. Write `instruction` as a complete, specific brief in plain words, including every fact the owner gave (names, numbers, wording) — the designer sees the section and your brief, not this conversation. One entry per section that needs it. Do NOT use it for a change `textEdits` or `design` can make.',
+    '   - `sectionOps`: [{op, sectionId, beforeSectionId}] — op "hide", "show" or "remove" a whole section; op "move" puts sectionId right before beforeSectionId (an empty beforeSectionId means the end of the page). The site\'s first and last sections (navigation, hero banner, footer) stay where they are.',
+    '   - `newSections`: [{afterSectionId, name, instruction}] — a NEW section is designed and written from your brief and placed after afterSectionId. `name` is its short label (e.g. "Venue & Travel"); `instruction` is the complete brief: what it is for, what it must say (only facts the owner gave or that are on the page — never invented names, numbers or dates), and how it should look.',
+    '   What you still cannot do: make or upload a new picture (a section keeps the pictures it has; the owner changes them with Replace image), and add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves. If the request needs one of these, say so in `summary` and do the rest.',
+    '5. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`, `textEdits`, `sectionEdits`, `sectionOps` and `newSections` actually contain, nothing more — the owner sees your summary beside the list of what will change, so any mismatch is a bug.'
   ].join('\n');
 }
 
+var CHAT_SECTION_OPS = ['hide', 'show', 'remove', 'move'];
 function chatResponseSchema(payload) {
   var sectionIds = (payload.sections || []).map(function (s) { return s.id; });
   var designProps = {};
@@ -422,9 +428,16 @@ function chatResponseSchema(payload) {
         }
       }
     },
-    required: ['kind', 'summary', 'design', 'textEdits']
+    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections']
   };
-  if (sectionIds.length) schema.properties.textEdits.items.properties.sectionId.enum = sectionIds;
+  schema.properties.sectionEdits = { type: 'ARRAY', items: { type: 'OBJECT', properties: { sectionId: { type: 'STRING' }, instruction: { type: 'STRING' } }, required: ['sectionId', 'instruction'] } };
+  schema.properties.sectionOps = { type: 'ARRAY', items: { type: 'OBJECT', properties: { op: { type: 'STRING', enum: CHAT_SECTION_OPS }, sectionId: { type: 'STRING' }, beforeSectionId: { type: 'STRING' } }, required: ['op', 'sectionId'] } };
+  schema.properties.newSections = { type: 'ARRAY', items: { type: 'OBJECT', properties: { afterSectionId: { type: 'STRING' }, name: { type: 'STRING' }, instruction: { type: 'STRING' } }, required: ['afterSectionId', 'name', 'instruction'] } };
+  if (sectionIds.length) {
+    schema.properties.textEdits.items.properties.sectionId.enum = sectionIds;
+    schema.properties.sectionEdits.items.properties.sectionId.enum = sectionIds;
+    schema.properties.sectionOps.items.properties.sectionId.enum = sectionIds;
+  }
   return schema;
 }
 
@@ -461,12 +474,30 @@ function handleChatEdit(req, res) {
         return { sectionId: t.sectionId, find: find, replace: replace };
       }).filter(Boolean);
 
-      var summary = String(parsed.summary || '').slice(0, 300);
-      if (!summary && !Object.keys(design).length && !textEdits.length) {
+      function brief(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 1500); }
+      var sectionEdits = [], edited = {};
+      (parsed.sectionEdits || []).forEach(function (e) {
+        if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || edited[e.sectionId] || !brief(e.instruction)) return;
+        edited[e.sectionId] = true;
+        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction) });
+      });
+      var sectionOps = (parsed.sectionOps || []).map(function (o) {
+        if (!o || CHAT_SECTION_OPS.indexOf(o.op) === -1 || knownSectionIds.indexOf(o.sectionId) === -1) return null;
+        var before = knownSectionIds.indexOf(o.beforeSectionId) !== -1 ? o.beforeSectionId : '';
+        return o.op === 'move' ? { op: 'move', sectionId: o.sectionId, beforeSectionId: before } : { op: o.op, sectionId: o.sectionId };
+      }).filter(Boolean).slice(0, 12);
+      var newSections = (parsed.newSections || []).map(function (n) {
+        if (!n || !brief(n.instruction)) return null;
+        return { afterSectionId: knownSectionIds.indexOf(n.afterSectionId) !== -1 ? n.afterSectionId : '', name: String(n.name || 'New section').trim().slice(0, 60) || 'New section', instruction: brief(n.instruction) };
+      }).filter(Boolean).slice(0, 4);
+
+      var summary = String(parsed.summary || '').slice(0, 400);
+      if (!summary && !Object.keys(design).length && !textEdits.length && !sectionEdits.length && !sectionOps.length && !newSections.length) {
         return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
       }
       var kind = parsed.kind === 'reply' ? 'reply' : 'edit';
-      sendJson(res, 200, { kind: kind, summary: summary || 'A change is ready to review.', design: design, textEdits: textEdits, skipped: skipped });
+      sendJson(res, 200, { kind: kind, summary: summary || 'A change is ready to review.', design: design, textEdits: textEdits,
+        sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections, skipped: skipped });
     });
   }, BODY_LIMITS.ai);
 }
@@ -1788,20 +1819,32 @@ function buildRedesignPrompt(payload) {
   var radius = (design.cornerRadius || '12') + 'px';
   var urls = payload.pictureTokens || [];
   var lines = [
-    'You are redesigning ONE section of an event microsite that is already built, for ET Oneworld\'s event builder. Return that section\'s new HTML and CSS — a visibly different, better design of the same section, to the standard of a top agency.',
+    payload.mode === 'edit'
+      ? 'You are changing ONE section of an event microsite that is already built, for ET Oneworld\'s event builder, exactly as its owner asked. Return the section\'s whole HTML and CSS after the change.'
+      : payload.mode === 'create'
+        ? 'You are writing ONE NEW section for an event microsite that is already built, for ET Oneworld\'s event builder, from its owner\'s brief. Return the section\'s HTML and CSS, to the standard of a top agency.'
+        : 'You are redesigning ONE section of an event microsite that is already built, for ET Oneworld\'s event builder. Return that section\'s new HTML and CSS — a visibly different, better design of the same section, to the standard of a top agency.',
     '',
-    payload.instruction
-      ? 'WHAT THE OWNER ASKED FOR — this comes first: "' + String(payload.instruction).slice(0, 600) + '"'
-      : 'The owner gave no particular instruction: choose a clearly different layout for this content (if it is a card grid, try a picture/text split, a timeline, a band of large numbers, a carousel, an alternating list…) and make it more striking.',
+    payload.mode === 'edit'
+      ? 'WHAT THE OWNER ASKED FOR: "' + String(payload.instruction).slice(0, 1500) + '"'
+      : payload.mode === 'create'
+        ? 'THE BRIEF: "' + String(payload.instruction).slice(0, 1500) + '"'
+        : payload.instruction
+          ? 'WHAT THE OWNER ASKED FOR — this comes first: "' + String(payload.instruction).slice(0, 600) + '"'
+          : 'The owner gave no particular instruction: choose a clearly different layout for this content (if it is a card grid, try a picture/text split, a timeline, a band of large numbers, a carousel, an alternating list…) and make it more striking.',
     '',
-    'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
-    'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it.',
+    payload.mode === 'edit'
+      ? 'DO WHAT WAS ASKED, ALL OF IT, AND NOTHING ELSE. Anything the request needs is allowed: adding, removing, reordering or rewriting content, a different layout, other colours, sizes, spacing or alignment. Whatever the request does not touch stays exactly as it is — the same markup, class names, wording and styles. New facts come only from the request itself: never invent a name, company, number, date, address, e-mail or phone number.'
+      : payload.mode === 'create'
+        ? 'Write what the brief asks for. Facts come only from the brief: never invent a name, company, number, date, address, e-mail or phone number — where the brief gives no detail, write honest general copy.'
+        : 'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
+    payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go.',
     urls.length ? 'PICTURES: these are the only pictures you may use, by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
-    'THE SITE\'S DESIGN — the new section must sit naturally between its neighbours:',
-    'Mood: ' + (design.mood || ''),
-    'Layout system: ' + (design.layout || ''),
-    'Colours and fonts are CSS variables already on the page — use the variables, never raw values: var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).',
+    'THE SITE\'S DESIGN — the section must sit naturally between its neighbours:',
+    payload.generated === false
+      ? 'This site is built on a fixed template: its CSS is not shown to you and stays as it is. Keep the section\'s existing class names wherever you keep its markup, so that the template\'s styling still applies. The CSS you return is ADDED for this section: write only the rules your change needs, with new class names for new things. Use var(--theme-color) for the brand colour and inherit fonts. Sizes in px only (never rem or em: this site\'s root font size is 10px).'
+      : 'Mood: ' + (design.mood || '') + '\nLayout system: ' + (design.layout || '') + '\nColours and fonts are CSS variables already on the page — use the variables for the site\'s own colours (a specific colour the owner asked for is written as asked): var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).',
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
     '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; h2 clamp(2rem, 4.2vw, 3.25rem); card titles 1.25rem or larger; nothing below 0.875rem. Set font-family, font-size, line-height and color explicitly.',
@@ -1844,7 +1887,10 @@ function handleRedesignSection(req, res) {
       found.forEach(function (u, i) { var token = genDesign.pictureToken('p' + (i + 1)); pictures[token] = u; html = html.split(u).join(token); css = css.split(u).join(token); });
       /* measured once pictures are tokens: a picture kept inline in the page is not text the model reads */
       if (html.length + css.length > REDESIGN_MAX_CHARS) return sendJson(res, 413, { error: 'This section has too much in it to redesign in one go. Move part of it into a second section, then redesign each.' });
+      var mode = payload.mode === 'edit' || payload.mode === 'create' ? payload.mode : 'redesign';
+      if (mode !== 'redesign' && !String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'Say what should change.' });
       var prompt = buildRedesignPrompt({
+        mode: mode, generated: payload.generated !== false,
         pictureTokens: Object.keys(pictures),
         sectionId: sectionId, html: html, css: css, design: design,
         instruction: String(payload.instruction || '').trim(),

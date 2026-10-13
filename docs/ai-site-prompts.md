@@ -298,13 +298,13 @@ You are redesigning ONE section of an event microsite that is already built, for
 WHAT THE OWNER ASKED FOR — this comes first: "make it a horizontal three-step layout"
 
 KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link's href.
-KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it.
+KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go.
 This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.
 
-THE SITE'S DESIGN — the new section must sit naturally between its neighbours:
+THE SITE'S DESIGN — the section must sit naturally between its neighbours:
 Mood: (the mood step 3 wrote)
 Layout system: (the layout system step 3 wrote)
-Colours and fonts are CSS variables already on the page — use the variables, never raw values: var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).
+Colours and fonts are CSS variables already on the page — use the variables for the site's own colours (a specific colour the owner asked for is written as asked): var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).
 - Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).
 - Corner radius 6px on cards, pictures and inputs. Buttons: padding 15px 30px, radius 6px, font-weight 600, font-size 1rem.
 - Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; h2 clamp(2rem, 4.2vw, 3.25rem); card titles 1.25rem or larger; nothing below 0.875rem. Set font-family, font-size, line-height and color explicitly.

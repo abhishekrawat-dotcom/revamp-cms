@@ -4644,7 +4644,11 @@
           s.label = inputs.file ? 'Reading ' + inputs.file.name + (inputs.text ? ' and your description' : '') : 'Reading your description';
         } else if (isSource(s)){
           var host = urlHost(inputs.urls[s.field.key]);
-          s.label = s.field.type === 'competitor' ? 'Researching competitor: ' + host : 'Researching ' + s.field.what + ': ' + host;
+          /* the page that is read is the one that was given, so the row names it: its host and its path */
+          var page = host;
+          try { var u = new URL(inputs.urls[s.field.key]); page = host + (u.pathname && u.pathname !== '/' ? u.pathname.replace(/\/$/, '') : ''); } catch (e) { /* named by its host */ }
+          if (page.length > 70) page = page.slice(0, 67) + '…';
+          s.label = s.field.type === 'competitor' ? 'Researching competitor: ' + page : 'Researching ' + s.field.what + ': ' + page;
           s.host = host;
         }
       });
