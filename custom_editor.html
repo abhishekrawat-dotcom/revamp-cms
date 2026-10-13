@@ -252,23 +252,23 @@
   .chat-head-id small{ display:flex; align-items:center; gap:6px; font-size:11px; opacity:.85; }
   .chat-head-id small i{ width:7px; height:7px; border-radius:50%; background:#2fd27a; display:inline-block; }
   .chat-launcher{
-    position: fixed; right: 22px; bottom: 22px; z-index: 60; display:flex; align-items:center; gap:0;
+    position: fixed; right: 14px; bottom: 14px; z-index: 60; display:flex; align-items:center; gap:0;
     padding:0; border:0; background:none; cursor:pointer; font: inherit; text-align:left;
-    filter: drop-shadow(0 10px 22px rgba(20,16,40,.22)); transition: transform .18s ease;
+    filter: drop-shadow(0 6px 14px rgba(20,16,40,.2)); transition: transform .18s ease;
   }
   .chat-launcher:hover{ transform: translateY(-2px); }
   .chat-launcher:focus-visible{ outline: 2px solid var(--accent, #ED1C24); outline-offset: 4px; border-radius: 40px; }
   .chat-launcher-bubble{
     position:relative; background: var(--surface, #fff); color: var(--text, #1c1a2b); border:1px solid var(--border);
-    border-radius: 26px 26px 6px 26px; padding: 10px 22px 11px 20px; margin-right: 10px; white-space:nowrap;
+    border-radius: 18px 18px 5px 18px; padding: 6px 14px 7px 13px; margin-right: 7px; white-space:nowrap;
   }
-  .chat-launcher-bubble b{ display:block; font-size:10px; letter-spacing:.3em; color: var(--accent, #ED1C24); font-weight:800; margin-bottom:2px; }
-  .chat-launcher-bubble span{ font-size:14px; font-weight:500; }
+  .chat-launcher-bubble b{ display:block; font-size:8.5px; letter-spacing:.26em; color: var(--accent, #ED1C24); font-weight:800; margin-bottom:2px; }
+  .chat-launcher-bubble span{ font-size:12px; font-weight:500; }
   .chat-launcher-face{
-    position:relative; width:62px; height:62px; border-radius:50%; background: var(--surface, #fff); border:1px solid var(--border);
+    position:relative; width:44px; height:44px; border-radius:50%; background: var(--surface, #fff); border:1px solid var(--border);
     display:grid; place-items:center; flex-shrink:0;
   }
-  .chat-launcher-face::after{ content:''; position:absolute; right:4px; bottom:4px; width:11px; height:11px; border-radius:50%; background:#2fd27a; border:2px solid var(--surface, #fff); }
+  .chat-launcher-face::after{ content:''; position:absolute; right:2px; bottom:2px; width:9px; height:9px; border-radius:50%; background:#2fd27a; border:2px solid var(--surface, #fff); }
   .chat-launcher.is-quiet .chat-launcher-bubble{ display:none; }
   body.ed-load-failed .chat-launcher{ display:none; }
   @media (max-width: 720px){ .chat-launcher-bubble{ display:none; } }
@@ -1086,7 +1086,7 @@
 
     <button class="chat-launcher" id="chat-launcher" type="button" aria-label="Open ETB2B AI" aria-controls="panel-chat" aria-expanded="false" data-keep-selection>
       <span class="chat-launcher-bubble"><b>ETB2B AI</b><span>Hi, I’m ETB2B AI. Need help?</span></span>
-      <span class="chat-launcher-face"><svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><defs><linearGradient id="rvbl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg></span>
+      <span class="chat-launcher-face"><svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><defs><linearGradient id="rvbl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg></span>
     </button>
 
     <!-- ============ CANVAS ============ -->
