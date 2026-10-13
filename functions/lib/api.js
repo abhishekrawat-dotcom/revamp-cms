@@ -959,9 +959,19 @@ var DESIGN_PLAN_SCHEMA = {
         layout: { type: 'STRING', description: '2-3 sentences: the layout system of the whole page — the grid, how sections alternate, how pictures are placed, what the hero is built like. Specific enough that two designers would build the same page from it.' },
         cornerRadius: { type: 'STRING', enum: ['0', '6', '12', '20'], description: 'Corner radius in px used for every card, picture and input on the site (buttons follow it too).' },
         imageStyle: { type: 'STRING', description: 'One sentence: the single visual style every generated picture on this site shares (e.g. "moody long-exposure photographs of industrial interiors, teal and amber light").' },
+        logoUnit: {
+          type: 'OBJECT',
+          description: 'The event\'s NAME, split into three parts for its logo lock-up without changing, adding or dropping a single word: the one distinctive keyword that identifies this event (what a regular would call it for short — "TECH500" in "TECH500 Summit", "EV" in "EV Conclave", "CIO" in "ETCIO Awards 2027" is not a word so the keyword is "ETCIO"), and whatever of the name comes before and after it. Generic words (Summit, Awards, Conclave, Forum, Conference, the year) are never the keyword.',
+          properties: {
+            before: { type: 'STRING', description: 'The words of the name before the keyword, or an empty string.' },
+            keyword: { type: 'STRING', description: 'The one or two distinctive words.' },
+            after: { type: 'STRING', description: 'The words of the name after the keyword, or an empty string.' }
+          },
+          required: ['before', 'keyword', 'after']
+        },
         heroImage: { type: 'STRING', description: 'One sentence: what the hero background picture shows — objects, spaces or abstract forms that evoke this event\'s subject. Never people, text or logos.' }
       },
-      required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'heroImage']
+      required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'logoUnit', 'heroImage']
     },
     sections: {
       type: 'ARRAY',
@@ -1000,9 +1010,9 @@ function designReference(sourceDocs) {
   return { basis: basis, others: others };
 }
 
-/* About a third of a generated page is pictures: the hero's, and one for most of the sections the model
+/* About two fifths of a generated page is pictures: the hero's, and one for most of the sections the model
    writes itself. Each is a paid image call, made side by side with the others. */
-var MAX_SECTION_IMAGES = 7;
+var MAX_SECTION_IMAGES = 8;
 
 function buildDesignPlanPrompt(payload) {
   var ref = payload.reference || { basis: null, others: [] };
@@ -1032,6 +1042,11 @@ function buildDesignPlanPrompt(payload) {
     );
   }
 
+  if (payload.ownerNotes) {
+    lines.push('', 'THE OWNER\'S OWN INSTRUCTIONS FOR THIS SITE — follow them. They override the reference and the art direction wherever they differ (never the facts: nothing may be invented to satisfy them):',
+      '"' + payload.ownerNotes + '"');
+  }
+
   lines.push(
     '',
     'Ground every section in real content-shape evidence from the material below — never include a section that has nothing real to put in it, and never omit one the material clearly supports. A thin site with 3 well-grounded sections beats a padded one with 7 that have nothing real to say.',
@@ -1042,7 +1057,7 @@ function buildDesignPlanPrompt(payload) {
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
     '',
-    'PICTURES: aim for a page that is about 70% text and 30% pictures by area — a visitor scrolling it should never see two screens in a row without a picture. The hero has a background picture (design.heroImage). Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers or a short list — and design each of those sections around its picture, at a generous size: a half-width split, a framed plate, a full-bleed band, a wide picture above the text. Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture.',
+    'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage). Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture.',
     'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", and never the same subject twice on one page. Pictures show objects, places, materials, tools or abstract forms: never people, never text or logos, never something that could pass for a photograph of this event.',
     '',
     'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
@@ -1098,7 +1113,7 @@ function sanitizeDesignPlanSections(parsed) {
   });
   return out;
 }
-function sanitizeDesignPlanDesign(parsed, themeMode) {
+function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
   var d = (parsed && parsed.design) || {};
   var colours = genDesign.palette(d, themeMode);
   return {
@@ -1113,6 +1128,7 @@ function sanitizeDesignPlanDesign(parsed, themeMode) {
     layout: String(d.layout || '').trim().slice(0, 700),
     cornerRadius: ['0', '6', '12', '20'].indexOf(String(d.cornerRadius)) !== -1 ? String(d.cornerRadius) : '12',
     imageStyle: String(d.imageStyle || '').trim().slice(0, 300),
+    logoUnit: genDesign.logoUnitParts(eventName, d.logoUnit),
     heroImage: String(d.heroImage || '').trim().slice(0, 300)
   };
 }
@@ -1127,6 +1143,8 @@ function handlePlanStructure(req, res) {
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
     /* 'light' | 'dark' as the owner chose in Create Event, else 'auto': the design decides */
     var themeMode = genDesign.normaliseMode(payload.themeMode);
+    /* what the owner typed under "Anything else the AI should know" in Create Event, in their own words */
+    var ownerNotes = String(payload.designNotes || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1155,11 +1173,11 @@ function handlePlanStructure(req, res) {
       var reference = designReference(sourceDocs);
       var artDirection = genDesign.artDirectionFor(eventId);
 
-      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode });
+      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes });
       return callGeminiJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed);
-        var design = sanitizeDesignPlanDesign(r.parsed, themeMode);
+        var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
         var now = new Date().toISOString();
         var stamp = now.replace(/[^0-9]/g, '').slice(0, 14);
 
@@ -1186,7 +1204,7 @@ function handlePlanStructure(req, res) {
           });
 
           var designPlan = {
-            sections: sections, design: design, generatedAt: now, themeMode: themeMode,
+            sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes,
             reference: reference.basis
               ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
               : { type: 'none', artDirection: artDirection.id }
@@ -1492,17 +1510,24 @@ function buildSectionCodePrompt(payload) {
       JSON.stringify(reference.design, null, 2));
   }
 
+  if (designPlan.ownerNotes) {
+    lines.push('', 'THE OWNER\'S OWN INSTRUCTIONS FOR THIS SITE — follow them in what you write (never by inventing facts):', '"' + designPlan.ownerNotes + '"');
+  }
+
+  lines.push('', 'THE HERO\'S LOGO UNIT: the hero opens with the event\'s logo lock-up, which the server builds — the event\'s name set as a wordmark, with "An initiative by" and The Economic Times Business Verticals logo under it. In the hero\'s html write exactly this empty element where it belongs, as the first thing in the hero\'s content, above the headline: <div data-rv-logo-unit></div> — nothing inside it, no styling for it. Because the logo unit already shows the event\'s name, the hero\'s h1 is a headline about the event (its theme or promise), NOT the name again. The hero\'s veil is ' +
+    (design.mode === 'dark' ? 'DARK with LIGHT text over it' : 'LIGHT with DARK text over it') + ' — the logo unit is drawn for exactly that, so keep to it.');
+
   lines.push('', 'PICTURES — the site must not be text only:');
   if (design.heroImageUrl) {
-    lines.push('- Hero background picture, already made: ' + design.heroImageUrl + ' — use it as the hero\'s background (background-image, cover, centred) under a gradient veil strong enough that the headline is easy to read.');
+    lines.push('- Hero background picture, already made: ' + design.heroImageUrl + ' — use it as the hero\'s background (background-image, cover, centred) under a gradient veil that keeps the headline easy to read while the picture stays clearly visible — no part of the veil more than about 65% opaque, and lighter away from the text.');
   } else {
     lines.push('- No hero picture could be made: build the hero\'s background from CSS alone (gradients, shapes) in the site\'s colours.');
   }
   var pictured = fullList.filter(function (s) { return s.imageUrl; });
   pictured.forEach(function (s) {
-    lines.push('- Section "' + s.id + '" has a picture, already made: ' + s.imageUrl + ' (it shows: ' + s.image + '). Use it with <img src="…" alt="…" loading="lazy"> and give it real presence — about half the section\'s width in a split or the full container width as a plate or band, at least 380px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
+    lines.push('- Section "' + s.id + '" has a picture, already made: ' + s.imageUrl + ' (it shows: ' + s.image + '). Use it with <img src="…" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band, at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
   });
-  lines.push('- Pictures should fill roughly 30% of the page: size them generously, never as thumbnails.');
+  lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails. The hero is a full screen tall (min-height: 88vh).');
   lines.push('- Use ONLY the picture addresses given above; never link to any other image address and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
 
   if (payload.logoUrl) {
@@ -1677,8 +1702,13 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var written = [];
       answers.forEach(function (r) { written = written.concat(Array.isArray(r.parsed.sections) ? r.parsed.sections : []); });
       var sections = sanitizeSectionCodeResult({ sections: written }, designPlan);
-      /* the event's own logo is in the top bar whatever was written */
-      sections.forEach(function (sec) { if (sec.id === 'nav' && logoUrl) sec.html = genDesign.ensureLogo(sec.html, logoUrl, eventMeta.name); });
+      /* the event's own logo is in the top bar whatever was written, and its logo unit opens the hero */
+      var design = designPlan.design || {};
+      var unit = genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode);
+      sections.forEach(function (sec) {
+        if (sec.id === 'nav' && logoUrl) sec.html = genDesign.ensureLogo(sec.html, logoUrl, eventMeta.name);
+        if (sec.id === 'hero') sec.html = genDesign.placeLogoUnit(sec.html, unit);
+      });
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();
 
@@ -2384,7 +2414,7 @@ function runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName) {
 // render as failed. Set comfortably above that service's own internal 55s hard timeout (see
 // lovable-scraper-service/server.js) so ITS clean {error} response is what normally wins — this is just
 // the backstop for "the service didn't even respond" (e.g. it's down, or a network partition).
-var SCRAPE_TOTAL_TIMEOUT_MS = 65000;
+var SCRAPE_TOTAL_TIMEOUT_MS = 115000;
 
 // Calls the separate lovable-scraper-service over plain HTTP instead of launching headless Chrome in this
 // process (see the block comment above for why). LOVABLE_SCRAPER_URL/LOVABLE_SCRAPER_SECRET are read from

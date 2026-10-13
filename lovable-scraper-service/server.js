@@ -35,7 +35,7 @@ var SECRET = process.env.SCRAPER_SECRET || '';
 // TOTAL_TIMEOUT_MS is the hard ceiling on the whole render (Chrome launch included) so one slow/hung
 // site can never tie up this process (and its headless Chrome) forever.
 var NAV_TIMEOUT_MS = 30000;
-var TOTAL_TIMEOUT_MS = 55000;
+var TOTAL_TIMEOUT_MS = 105000;   // the page is walked through before capture (carousels, accordions): see settlePage
 
 // ---------- SSRF guard (ported from functions/lib/api.js's isPrivateOrLoopbackIp/validateImportUrl) ----------
 
@@ -96,6 +96,46 @@ async function settlePage(page) {
     await wait(900);
   }, SETTLE_MAX_SCROLL_STEPS);
 
+  /* Carousels that keep only the cards on show in the page: a previous and a next button beside a region
+     holding one row. Next is pressed until no new card turns up, and the row is rebuilt with every card in
+     it, as a strip that scrolls sideways (data-rv-carousel / -track / -prev / -next: et-runtime.js moves it
+     on the live page, and the editor shows the whole strip). */
+  await page.evaluate(async function (maxPages) {
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var found = [];
+    var nexts = Array.prototype.slice.call(document.querySelectorAll('button[aria-label]')).filter(function (b) {
+      return /^next\b/i.test(b.getAttribute('aria-label')) && !b.closest('header, nav');
+    }).slice(0, 12);
+    for (var n = 0; n < nexts.length; n++) {
+      var next = nexts[n], box = next.parentElement;
+      var holder = box && box.querySelector('[role="region"], [aria-roledescription="carousel"]');
+      if (!holder) continue;
+      var row = function () { return holder.querySelector('[data-carousel-layer="current"]') || holder.querySelector('[data-carousel-layer]') || holder.firstElementChild; };
+      if (!row() || !row().children.length) continue;
+      var first = row().firstElementChild.getBoundingClientRect().width;
+      var gap = parseFloat(getComputedStyle(row()).columnGap) || 16;
+      var cards = [], seen = {}, stale = 0, onShow = row().children.length;
+      for (var i = 0; i < maxPages && stale < 2; i++) {
+        var fresh = 0;
+        Array.prototype.forEach.call(row().children, function (card) {
+          var key = (card.textContent || '').replace(/\s+/g, ' ').trim() || card.outerHTML;
+          if (seen[key]) return;
+          seen[key] = true; cards.push(card.outerHTML); fresh++;
+        });
+        stale = fresh ? 0 : stale + 1;
+        next.click();
+        await wait(600);
+      }
+      if (cards.length <= onShow || !first) continue;          // everything was in the page already
+      found.push({ next: next, box: box, holder: holder, cards: cards, first: Math.round(first), gap: gap });
+    }
+    /* The rows are rebuilt at the very last moment, in the same step that reads the page (finishPage): the
+       page's own script draws a row again whenever it likes (a timer, another click), and would put its
+       few cards back over ours. */
+    window.__rvCarousels = found;
+    window.scrollTo(0, 0);
+  }, 40);
+
   await page.evaluate(async function (maxRows) {
     function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     var rows = Array.prototype.slice.call(document.querySelectorAll('button[aria-expanded]')).filter(function (b) {
@@ -128,6 +168,29 @@ async function settlePage(page) {
     window.scrollTo(0, 0);
     await wait(300);
   }, SETTLE_MAX_ROWS);
+}
+
+/* Runs in the page, in one go: what settlePage prepared is put into the markup and the markup is read, with
+   no moment in between for the page's own script to redraw anything. */
+function finishPage() {
+  try {
+    (window.__rvCarousels || []).forEach(function (c) {
+      if (!c.holder.isConnected) return;
+      var keep = c.holder.querySelector('[data-carousel-layer="current"]') || c.holder.querySelector('[data-carousel-layer]') || c.holder.firstElementChild;
+      if (!keep) return;
+      Array.prototype.slice.call(c.holder.children).forEach(function (n) { if (n !== keep) n.remove(); });
+      keep.innerHTML = c.cards.join('');
+      Array.prototype.forEach.call(keep.children, function (card) { card.style.flex = '0 0 ' + c.first + 'px'; card.style.scrollSnapAlign = 'start'; });
+      keep.style.cssText = 'display:flex;gap:' + c.gap + 'px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;width:100%';
+      keep.setAttribute('data-rv-carousel-track', '');
+      c.box.setAttribute('data-rv-carousel', '');
+      c.next.setAttribute('data-rv-carousel-next', '');
+      Array.prototype.forEach.call(c.box.querySelectorAll('button[aria-label]'), function (b) {
+        if (/^previous\b/i.test(b.getAttribute('aria-label'))) b.setAttribute('data-rv-carousel-prev', '');
+      });
+    });
+  } catch (e) { /* the page is read as it stands */ }
+  return document.documentElement.outerHTML;
 }
 
 // Launches headless Chrome, navigates to `url`, waits briefly for any late mount/animation, and returns
@@ -169,7 +232,7 @@ async function scrapeUrl(url) {
       // best effort: a page this cannot walk through is still captured as it stands
       console.error('scrape: could not settle "' + url + '" before capture (' + err.message + ').');
     }
-    return page.evaluate(function () { return document.documentElement.outerHTML; });
+    return page.evaluate(finishPage);
   })();
 
   var timer;

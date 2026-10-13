@@ -1152,7 +1152,7 @@
     }
     var item = repeatItemOf(el);
     if (item) {
-      var around = repeatItems(el.closest('[data-rv-section]')), at = around.indexOf(item);
+      var around = groupOf(el.closest('[data-rv-section]'), item), at = around.indexOf(item);
       html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
         '<button data-action="item-add" title="Add another item like this one, right after it">+ Add item</button>' +
         '<button class="icon-only" data-action="item-earlier" title="Move this item earlier"' + (at <= 0 ? ' disabled' : '') + '>&#8592;</button>' +
@@ -2056,9 +2056,39 @@
   }
   function repeatItemOf(el) {
     var sec = el.closest('[data-rv-section]'), cfg = sec && repeatConfigFor(sec);
-    if (!cfg || !cfg.item) return null;
+    if (!cfg || !cfg.item) return looseItemOf(el);
     var item = el.closest(itemSelector(cfg));
     return item && item !== sec && sec.contains(item) ? item : null;
+  }
+
+  /* A design that names no repeated items (an AI-designed or imported site) still has them: the slides of a
+     carousel, the cards of a grid, the points of a list. Such an item is what the selection is in when that
+     has brothers built the same way (same tag, same classes) — the slide itself inside a carousel. Items
+     that show the event's records (speakers, partners…) are not these: they are managed in Content. */
+  var EDITOR_CLASSES = /(^|\s)(ed-selected|sec-active|rv-in|rv-shown)(?=\s|$)/g;
+  function builtLike(n) { return n.tagName + '|' + (n.getAttribute('class') || '').replace(EDITOR_CLASSES, ' ').replace(/\s+/g, ' ').trim(); }
+  function brothers(n) {
+    var like = builtLike(n);
+    return Array.prototype.filter.call(n.parentNode.children, function (c) { return builtLike(c) === like; });
+  }
+  function looseItemOf(el) {
+    var sec = el.closest('[data-rv-section]');
+    if (!sec || el.closest('[data-rv-repeat-template], [data-rv-bound], [data-rv-auto], header, nav')) return null;
+    var slide = el.closest('[data-rv-carousel-track] > *');
+    if (slide && sec.contains(slide)) return slide;
+    for (var n = el; n && n !== sec && n.parentElement; n = n.parentElement) {
+      if (/^(SPAN|A|B|I|EM|STRONG|SMALL|IMG|BR|svg|path)$/i.test(n.tagName)) continue;
+      if (canvas.win.getComputedStyle(n).display === 'inline') continue;
+      if (brothers(n).length >= 2 && (n.hasAttribute('data-editable') || n.querySelector('[data-editable]'))) return n;
+    }
+    return null;
+  }
+  /* the items an item stands among, in order */
+  function groupOf(sec, item) {
+    var cfg = repeatConfigFor(sec);
+    if (cfg && cfg.item) return repeatItems(sec);
+    if (!item || !item.parentNode) return [];
+    return item.parentNode.hasAttribute('data-rv-carousel-track') ? Array.prototype.slice.call(item.parentNode.children) : brothers(item);
   }
 
   // the item the selection is in carries an editor-only mark, so it can be outlined (editor-canvas.css)
@@ -2071,7 +2101,7 @@
 
   /* A copy of `item` right after it; without one, of the section's last item. Returns the new item. */
   function addRepeatItem(sec, item) {
-    var items = repeatItems(sec);
+    var items = item ? groupOf(sec, item) : repeatItems(sec);
     if (!items.length) return null;
     var from = item && items.indexOf(item) !== -1 ? item : items[items.length - 1];
     var clone = canvas.copyOf(from);
@@ -2084,7 +2114,7 @@
   }
 
   function removeRepeatItem(sec, item) {
-    var items = repeatItems(sec);
+    var items = groupOf(sec, item);
     if (items.indexOf(item) === -1) return false;
     if (items.length <= 1) { showToast('At least one item is required'); return false; }
     item.remove();
@@ -2094,7 +2124,7 @@
   }
 
   function moveRepeatItem(sec, item, dir) {
-    var items = repeatItems(sec), i = items.indexOf(item), other = items[i + dir];
+    var items = groupOf(sec, item), i = items.indexOf(item), other = items[i + dir];
     if (i === -1 || !other) return false;
     if (dir < 0) other.parentNode.insertBefore(item, other); else other.after(item);
     clearAiGenerated(sec);
@@ -2105,7 +2135,7 @@
   // the new item's own label is what the owner will want to type over
   function selectNewItem(item) {
     if (!item) return;
-    var cfg = repeatConfigFor(item.closest('[data-rv-section]'));
+    var cfg = repeatConfigFor(item.closest('[data-rv-section]')) || {};
     var label = cfg.label && (item.matches(cfg.label) ? item : item.querySelector(cfg.label));
     var pick = label && label.hasAttribute('data-editable') ? label
       : item.hasAttribute('data-editable') ? item : item.querySelector('[data-editable]');

@@ -1920,6 +1920,9 @@
             <div class="field" style="margin-top:8px;">
               <input class="inp" id="gb-comp2" type="url" placeholder="https://… (a second competitor, optional)">
             </div>
+            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-instructions">Instructions for the AI <span class="pill-opt">Optional</span></label>
+              <textarea class="inp" id="gb-instructions" rows="3" maxlength="1500" placeholder="How the site should look and what it should stress — e.g. “premium and minimal, lots of white space”, “lead with the awards night”, “use a carousel for the categories”, “no stats band”…"></textarea>
+            </div>
             <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-theme">Site theme</label>
               <select class="inp" id="gb-theme">
                 <option value="auto">Match the previous edition (or let the design decide)</option>
@@ -2501,7 +2504,7 @@
     imgSeq: 0,                  // the last img slot number this draft handed out (addImageFile)
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
-    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
+    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
@@ -2675,7 +2678,7 @@
       delete S.catPicked;
       /* what earlier versions of this page kept in the draft and nothing reads any more */
       ['path', 'templatePick', 'templateExcluded', 'sourceKind', 'sourceValue', 'detectPhase', 'detectDecisions', 'detectedBannerTheme'].forEach(function(k){ delete S[k]; });
-      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto' };
+      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '' };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
@@ -3728,6 +3731,9 @@
     var theme = $('gb-theme');
     theme.value = ['light', 'dark'].indexOf(S.brief.themeMode) !== -1 ? S.brief.themeMode : 'auto';
     theme.onchange = function(){ S.brief.themeMode = theme.value; save(); };
+    var notes = $('gb-instructions');
+    notes.value = S.brief.instructions || '';
+    notes.oninput = function(){ S.brief.instructions = notes.value; save(); };
     function showDoc(){
       pick.textContent = briefDoc ? briefDoc.name + ' · ' + fileSize(briefDoc.size) : 'Choose a PDF';
       remove.hidden = !briefDoc && !briefDocError;
@@ -4704,7 +4710,8 @@
         return postJson('/api/ingest-source', { url: inputs.urls[s.field.key], type: s.field.type });
       };
     });
-    runners.plan = function(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode }); };
+    /* read when the row runs, like the other inputs: instructions corrected before a retry are what is sent */
+    runners.plan = function(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim() }); };
     runners.generate = function(){
       return postJson('/api/generate-content', { templateId: 'gen-' + eventId }).then(function(resp){
         /* from here on this draft's event has a generated site: generating again replaces it (onNext asks first) */

@@ -569,6 +569,52 @@
   /* ---------- carousels ---------- */
   var CAROUSEL_STEP_MS = 4500;
 
+  /* The rules a carousel needs travel with this script, because an imported page loads no stylesheet of
+     ours. In the editor the strip wraps instead of scrolling, so every slide can be seen and edited. */
+  var CAROUSEL_CSS = [
+    '[data-rv-carousel-track]{display:flex;gap:24px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
+    '[data-rv-carousel-track]::-webkit-scrollbar{display:none}',
+    '[data-rv-carousel-track] > *{flex:0 0 auto;scroll-snap-align:start}',
+    '.rv-carousel-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--rv-surface,#fff);color:var(--rv-text,#111);box-shadow:0 4px 16px rgba(0,0,0,.18)}',
+    '.rv-carousel-btn[hidden]{display:none}',
+    '[data-rv-carousel] button:disabled{opacity:.35;cursor:default}',
+    '.rv-carousel-prev{left:8px}',
+    '.rv-carousel-next{right:8px}',
+    'html[data-rv-editing] [data-rv-carousel-track]{flex-wrap:wrap!important;overflow:visible!important;height:auto!important}',
+    'html[data-rv-editing] [data-rv-carousel] :has(> [data-rv-carousel-track]){height:auto!important;overflow:visible!important}'
+  ].join('\n');
+  function carouselCss() {
+    if (document.querySelector('style[data-rv-carousel-css]') || !document.head) return;
+    var st = document.createElement('style');
+    st.setAttribute('data-rv-carousel-css', '');
+    st.textContent = CAROUSEL_CSS;
+    document.head.appendChild(st);
+  }
+
+  /* An imported page's own carousel — a previous and a next button beside a region holding one row of cards —
+     moved its cards by script. It becomes one of ours: the row is the track, its buttons are the buttons.
+     (lovable-scraper-service marks these when it captures a page, with every card in the row; this covers
+     pages imported before it did.) */
+  function adoptImportedCarousels(root) {
+    each(root.querySelectorAll('.rv-imported button[aria-label]'), function (next) {
+      if (!/^next\b/i.test(next.getAttribute('aria-label')) || next.closest('header, nav')) return;
+      var box = next.parentElement;
+      if (!box || box.querySelector('[data-rv-carousel-track]')) return;
+      var holder = box && box.querySelector('[role="region"], [aria-roledescription="carousel"]');
+      var row = holder && (holder.querySelector('[data-carousel-layer]') || holder.firstElementChild);
+      if (!row || row.children.length < 2) return;
+      var first = row.firstElementChild.getBoundingClientRect().width;
+      if (!first) return;
+      var gap = parseFloat(getComputedStyle(row).columnGap) || 16;
+      each(row.children, function (card) { card.style.flex = '0 0 ' + Math.round(first) + 'px'; card.style.scrollSnapAlign = 'start'; });
+      row.style.cssText = 'display:flex;gap:' + gap + 'px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;width:100%';
+      row.setAttribute('data-rv-carousel-track', '');
+      box.setAttribute('data-rv-carousel', '');
+      next.setAttribute('data-rv-carousel-next', '');
+      each(box.querySelectorAll('button[aria-label]'), function (b) { if (/^previous\b/i.test(b.getAttribute('aria-label'))) b.setAttribute('data-rv-carousel-prev', ''); });
+    });
+  }
+
   function carousel(box) {
     if (box.__rvCarousel || editing()) return;
     var track = box.querySelector('[data-rv-carousel-track]') || box;
@@ -582,6 +628,9 @@
       track.scrollBy({ left: dir * step(), behavior: 'smooth' });
     }
     function button(dir) {
+      // the page's own button where it has one
+      var own = box.querySelector(dir < 0 ? '[data-rv-carousel-prev]' : '[data-rv-carousel-next]');
+      if (own) { own.addEventListener('click', function (e) { e.preventDefault(); go(dir, false); }); return own; }
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'rv-carousel-btn rv-carousel-' + (dir < 0 ? 'prev' : 'next');
@@ -594,7 +643,8 @@
     var prev = button(-1), next = button(1);
     function sync() {
       var fits = track.scrollWidth <= track.clientWidth + 2;
-      prev.hidden = next.hidden = fits;
+      if (prev.classList.contains('rv-carousel-btn')) prev.hidden = fits;
+      if (next.classList.contains('rv-carousel-btn')) next.hidden = fits;
       prev.disabled = track.scrollLeft <= 2;
       next.disabled = atEnd();
     }
@@ -618,6 +668,8 @@
   }
 
   function carousels(root) {
+    adoptImportedCarousels(root && root.querySelectorAll ? root : document);
+    if (document.querySelector('[data-rv-carousel]')) carouselCss();
     if (editing()) return;
     each((root || document).querySelectorAll('[data-rv-carousel]'), carousel);
     if (root && root.matches && root.matches('[data-rv-carousel]')) carousel(root);

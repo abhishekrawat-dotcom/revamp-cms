@@ -228,6 +228,66 @@ function ensureLogo(navHtml, logoUrl, eventName) {
   return html.slice(0, m[0].length) + img + html.slice(m[0].length);
 }
 
+/* ---------- the logo unit ----------
+   The lock-up that opens a generated site's hero, as on ET's own event sites: the event's name as a wordmark
+   with its one distinctive keyword made the largest thing in it, then "An initiative by" and The Economic
+   Times Business Verticals logo. It is built here, not by the model, so that it is the same careful piece of
+   typography on every site; its rules are in templates/_shared/gen-base.css (.rv-lu…). */
+var GENERIC_NAME_WORDS = /^(the|a|an|of|for|and|&|in|on|at|by|to|with|summit|summits|award|awards|conclave|forum|conference|congress|symposium|expo|meet|meetup|week|day|days|festival|fest|edition|annual|india|global|national|international|leadership|leaders|excellence|et|economic|times|\d{2,4}|\d+(st|nd|rd|th))$/i;
+
+function words(text) { return String(text || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean); }
+
+/* -> { before, keyword, after }: the event's own name, split. `given` is the model's split; it is used only
+   when it really is this name, word for word — otherwise the keyword is the first word of the name that is
+   not a generic one (Summit, Awards, a year…), together with a number that follows it ("TECH 500"). */
+function logoUnitParts(eventName, given) {
+  var name = words(eventName);
+  if (!name.length) return { before: '', keyword: '', after: '' };
+  if (given && String(given.keyword || '').trim()) {
+    var b = words(given.before), k = words(given.keyword), a = words(given.after);
+    var joined = b.concat(k, a).join(' ').toLowerCase();
+    if (joined === name.join(' ').toLowerCase() && k.length <= 3) {
+      return { before: name.slice(0, b.length).join(' '), keyword: name.slice(b.length, b.length + k.length).join(' '), after: name.slice(b.length + k.length).join(' ') };
+    }
+  }
+  var at = -1;
+  name.forEach(function (w, i) { if (at === -1 && !GENERIC_NAME_WORDS.test(w.replace(/[^\w&]/g, ''))) at = i; });
+  if (at === -1) at = 0;
+  var len = 1;
+  if (name[at + 1] && /^\d{2,4}$/.test(name[at + 1]) && !/^(19|20)\d\d$/.test(name[at + 1])) len = 2;
+  return { before: name.slice(0, at).join(' '), keyword: name.slice(at, at + len).join(' '), after: name.slice(at + len).join(' ') };
+}
+
+var ET_LOGO = { dark: '/templates/_shared/img/et-business-verticals-on-dark.svg', light: '/templates/_shared/img/et-business-verticals-on-light.svg' };
+
+/* mode: the site's — a dark site has a dark veil over the hero picture and light text on it */
+function logoUnitHtml(parts, mode) {
+  parts = parts || {};
+  if (!String(parts.keyword || '').trim()) return '';
+  var tone = mode === 'dark' ? 'dark' : 'light';
+  function span(cls, text) { return text ? '<span class="' + cls + '">' + escAttr(text) + '</span>' : ''; }
+  return '<div class="rv-lu rv-lu-on-' + tone + '" data-rv-logo-unit>' +
+    '<div class="rv-lu-name">' + span('rv-lu-pre', parts.before) + span('rv-lu-key', parts.keyword) + span('rv-lu-post', parts.after) + '</div>' +
+    '<div class="rv-lu-by"><span class="rv-lu-by-label">An initiative by</span>' +
+    '<img class="rv-lu-et" src="' + ET_LOGO[tone] + '" alt="The Economic Times Business Verticals" width="320" height="31"></div>' +
+    '</div>';
+}
+
+/* The unit takes the place of the empty <div data-rv-logo-unit></div> the model was asked for; where the
+   model left that out, it goes right above the hero's headline. */
+function placeLogoUnit(heroHtml, unitHtml) {
+  var html = String(heroHtml || '');
+  if (!unitHtml || !html) return html;
+  var slot = /<div\b[^>]*\bdata-rv-logo-unit\b[^>]*>[\s\S]*?<\/div>/i;
+  if (slot.test(html)) return html.replace(slot, function () { return unitHtml; });
+  /* above the headline, which is where the hero's content begins */
+  var h1 = html.search(/<h1\b/i);
+  if (h1 !== -1) return html.slice(0, h1) + unitHtml + html.slice(h1);
+  var m = /^\s*<[a-zA-Z][^>]*>/.exec(html);
+  if (!m) return unitHtml + html;
+  return html.slice(0, m[0].length) + unitHtml + html.slice(m[0].length);
+}
+
 /* ---------- pictures ---------- */
 
 var IMAGE_RULES = 'STRICT: no people, no faces, no crowds, no hands, no text, no letters, no numbers, no logos, no watermarks, no flags, no recognisable real building or landmark. This illustrates a theme; it must never look like a photograph of this event, its venue or its attendees.';
@@ -253,5 +313,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
-  ensureLogo, imagePrompt, luminance, contrast, colourOf
+  ensureLogo, imagePrompt, logoUnitParts, logoUnitHtml, placeLogoUnit, luminance, contrast, colourOf
 };
