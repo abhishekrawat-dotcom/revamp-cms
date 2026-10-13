@@ -1001,6 +1001,7 @@
     function canRedesign(sec) {
       if (!sec || !/^gen-/.test(template.id || '')) return false;
       var type = sec.getAttribute('data-rv-section');
+      if (type === 'hero') return false;       // the banner keeps the one pattern every ET event site has
       return doc.querySelectorAll('[data-rv-section="' + type.replace(/["\\]/g, '\\$&') + '"]').length === 1 &&
         !!doc.querySelector('style[data-rv-style="' + type.replace(/["\\]/g, '\\$&') + '"]');
     }

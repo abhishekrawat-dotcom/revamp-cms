@@ -260,32 +260,117 @@ function logoUnitParts(eventName, given) {
 
 var ET_LOGO = { dark: '/templates/_shared/img/et-business-verticals-on-dark.svg', light: '/templates/_shared/img/et-business-verticals-on-light.svg' };
 
-/* mode: the site's — a dark site has a dark veil over the hero picture and light text on it */
+/* tone: 'dark' when the unit stands on a dark veil (light type), else 'light'. The Economic Times Business
+   Verticals logo is shown exactly as supplied — the file for that tone, at its own proportions, never
+   recoloured, cropped or redrawn — above the event's wordmark, as on ET's own event sites. */
 function logoUnitHtml(parts, mode) {
   parts = parts || {};
   if (!String(parts.keyword || '').trim()) return '';
   var tone = mode === 'dark' ? 'dark' : 'light';
   function span(cls, text) { return text ? '<span class="' + cls + '">' + escAttr(text) + '</span>' : ''; }
   return '<div class="rv-lu rv-lu-on-' + tone + '" data-rv-logo-unit>' +
+    '<img class="rv-lu-et" src="' + ET_LOGO[tone] + '" alt="The Economic Times Business Verticals" width="' + (tone === 'dark' ? 401 : 365) + '" height="' + (tone === 'dark' ? 39 : 35) + '">' +
     '<div class="rv-lu-name">' + span('rv-lu-pre', parts.before) + span('rv-lu-key', parts.keyword) + span('rv-lu-post', parts.after) + '</div>' +
-    '<div class="rv-lu-by"><span class="rv-lu-by-label">An initiative by</span>' +
-    '<img class="rv-lu-et" src="' + ET_LOGO[tone] + '" alt="The Economic Times Business Verticals" width="320" height="31"></div>' +
     '</div>';
 }
 
-/* The unit takes the place of the empty <div data-rv-logo-unit></div> the model was asked for; where the
-   model left that out, it goes right above the hero's headline. */
-function placeLogoUnit(heroHtml, unitHtml) {
-  var html = String(heroHtml || '');
-  if (!unitHtml || !html) return html;
-  var slot = /<div\b[^>]*\bdata-rv-logo-unit\b[^>]*>[\s\S]*?<\/div>/i;
-  if (slot.test(html)) return html.replace(slot, function () { return unitHtml; });
-  /* above the headline, which is where the hero's content begins */
-  var h1 = html.search(/<h1\b/i);
-  if (h1 !== -1) return html.slice(0, h1) + unitHtml + html.slice(h1);
-  var m = /^\s*<[a-zA-Z][^>]*>/.exec(html);
-  if (!m) return unitHtml + html;
-  return html.slice(0, m[0].length) + unitHtml + html.slice(m[0].length);
+/* ---------- the hero ----------
+   The banner that opens a generated site is built here, not written by the model, to the pattern of ET's own
+   event sites: centred; the logo unit; one line about the event; its date and place; two buttons. Nothing
+   else — the overview, numbers and tracks belong to the sections below it. What varies from site to site is
+   what the design decided: the picture, the colours, the fonts, the corner radius, the line itself.
+     o: { unit, tagline, date, place, mode, image, primary: { label, href }, secondary: { label, href } | null } */
+var HERO_ICONS = {
+  date: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  place: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>'
+};
+
+function heroHtml(o) {
+  o = o || {};
+  var facts = '';
+  if (o.date) facts += '<span class="hero-fact">' + HERO_ICONS.date + '<span>' + escAttr(o.date) + '</span></span>';
+  if (o.place) facts += '<span class="hero-fact">' + HERO_ICONS.place + '<span>' + escAttr(o.place) + '</span></span>';
+  var buttons = '';
+  if (o.primary && o.primary.label) buttons += '<a class="hero-btn hero-btn-primary" data-register-cta href="' + escAttr(o.primary.href || '#') + '">' + escAttr(o.primary.label) + '</a>';
+  if (o.secondary && o.secondary.label) buttons += '<a class="hero-btn hero-btn-secondary" href="' + escAttr(o.secondary.href || '#') + '">' + escAttr(o.secondary.label) + '</a>';
+  return '<section id="hero" class="hero-root hero-on-' + (o.mode === 'dark' ? 'dark' : 'light') + '">' +
+    '<div class="hero-veil" aria-hidden="true"></div>' +
+    '<div class="hero-inner">' +
+    (o.unit || '') +
+    (o.tagline ? '<h1 class="hero-tagline">' + escAttr(o.tagline) + '</h1>' : '') +
+    (facts ? '<div class="hero-facts">' + facts + '</div>' : '') +
+    (buttons ? '<div class="hero-actions">' + buttons + '</div>' : '') +
+    '</div></section>';
+}
+
+function heroCss(o) {
+  o = o || {};
+  var dark = o.mode === 'dark';
+  var radius = (o.cornerRadius || '12') + 'px';
+  /* strongest behind the words in the middle, lighter towards the edges, so the picture is still seen */
+  var veil = dark
+    ? 'radial-gradient(ellipse 75% 80% at 50% 50%, rgba(8,10,16,.8) 0%, rgba(8,10,16,.58) 62%, rgba(8,10,16,.36) 100%)'
+    : 'radial-gradient(ellipse 75% 80% at 50% 50%, rgba(255,255,255,.9) 0%, rgba(255,255,255,.66) 62%, rgba(255,255,255,.38) 100%)';
+  var ink = dark ? '#ffffff' : '#14161b';
+  return [
+    '.hero-root{position:relative;min-height:88vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:clamp(96px,12vw,150px) 24px clamp(64px,9vw,110px);color:' + ink + ';background-color:var(--rv-bg);' +
+      (o.image ? 'background-image:url("' + o.image + '");background-size:cover;background-position:center;' : 'background-image:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--theme-color) 34%, transparent), transparent 70%);') + '}',
+    '.hero-veil{position:absolute;inset:0;background:' + (o.image ? veil : 'none') + ';pointer-events:none}',
+    '.hero-inner{position:relative;z-index:1;width:100%;max-width:980px;margin:0 auto;display:flex;flex-direction:column;align-items:center}',
+    '.hero-tagline{font-family:var(--heading-font-family);font-size:clamp(1.6rem,3.4vw,2.75rem);font-weight:600;line-height:1.18;letter-spacing:-.01em;max-width:22ch;margin:0 0 26px;color:' + ink + '}',
+    '.hero-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 34px;margin:0 0 34px;font-family:var(--body-font-family);font-size:1.0625rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;line-height:1.4;color:' + ink + '}',
+    '.hero-fact{display:inline-flex;align-items:center;gap:10px}',
+    '.hero-fact svg{color:var(--theme-color);flex-shrink:0}',
+    '.hero-on-dark .hero-fact svg{color:#fff}',
+    '.hero-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:14px}',
+    '.hero-btn{display:inline-flex;align-items:center;justify-content:center;min-width:190px;padding:15px 30px;border-radius:' + radius + ';font-family:var(--body-font-family);font-size:1rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;line-height:1.2;text-decoration:none;border:2px solid transparent;transition:transform .25s ease,box-shadow .25s ease}',
+    '.hero-btn:hover{transform:translateY(-3px);box-shadow:0 14px 30px -14px rgba(0,0,0,.55)}',
+    '.hero-btn-primary{background:var(--theme-color);border-color:var(--theme-color);color:' + (luminance(o.themeColor || '#186bf9') > 0.5 ? '#14161b' : '#ffffff') + '}',
+    '.hero-btn-secondary{background:' + (dark ? 'transparent' : 'rgba(255,255,255,.7)') + ';border-color:' + ink + ';color:' + ink + '}',
+    '@media (max-width:820px){.hero-root{min-height:76vh}.hero-btn{min-width:0;width:100%;max-width:340px}.hero-facts{font-size:.9375rem;letter-spacing:.1em}}'
+  ].join(' ');
+}
+
+/* "18 February 2027", or "18–19 February 2027", from the event's stored start and end ("2027-02-18T09:00"). */
+var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function dateLabel(start, end) {
+  function parts(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? { y: +m[1], m: +m[2], d: +m[3] } : null; }
+  var a = parts(start), b = parts(end);
+  if (!a || a.m < 1 || a.m > 12) return '';
+  if (!b || (b.y === a.y && b.m === a.m && b.d === a.d)) return a.d + ' ' + MONTHS[a.m - 1] + ' ' + a.y;
+  if (b.y === a.y && b.m === a.m) return a.d + '–' + b.d + ' ' + MONTHS[a.m - 1] + ' ' + a.y;
+  if (b.m < 1 || b.m > 12) return a.d + ' ' + MONTHS[a.m - 1] + ' ' + a.y;
+  return a.d + ' ' + MONTHS[a.m - 1] + (b.y === a.y ? '' : ' ' + a.y) + ' – ' + b.d + ' ' + MONTHS[b.m - 1] + ' ' + b.y;
+}
+
+/* ---------- picture addresses ----------
+   A model asked to copy a long storage address gets a character wrong now and then, and the picture is then
+   broken on the site. So it is never shown one: in a prompt a picture is a short token ("rvimg://hero"), and
+   what comes back has the tokens put back as addresses. Any picture address in the answer that is not one
+   of ours — an invented one, a mistyped one, a token that names nothing — is replaced by `fallback` (the
+   section's own picture) or, without one, its <img> is taken out and its CSS url() emptied. */
+function pictureToken(name) { return 'rvimg://' + String(name || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-'); }
+
+function restorePictures(text, map, fallback) {
+  var out = String(text || '');
+  Object.keys(map || {}).forEach(function (token) { out = out.split(token).join(map[token]); });
+  var allowed = Object.keys(map || {}).map(function (t) { return map[t]; });
+  function ours(url) {
+    return allowed.indexOf(url) !== -1 || /^\/templates\/_shared\//.test(url) || /^data:image\//i.test(url) || /^#/.test(url);
+  }
+  out = out.replace(/<img\b[^>]*>/gi, function (tag) {
+    var m = /\ssrc\s*=\s*("([^"]*)"|'([^']*)')/i.exec(tag);
+    if (!m) return tag;                                        // a record's picture: no address of its own
+    var url = (m[2] != null ? m[2] : m[3] || '').trim();
+    if (ours(url)) return tag;
+    return fallback ? tag.replace(m[0], ' src="' + fallback + '"') : '';
+  });
+  out = out.replace(/url\(\s*(["']?)([^"')]*)\1\s*\)/gi, function (full, q, url) {
+    url = url.trim();
+    if (ours(url)) return full;
+    return fallback ? 'url("' + fallback + '")' : 'none';
+  });
+  return out;
 }
 
 /* ---------- pictures ---------- */
@@ -313,5 +398,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
-  ensureLogo, imagePrompt, logoUnitParts, logoUnitHtml, placeLogoUnit, luminance, contrast, colourOf
+  ensureLogo, imagePrompt, logoUnitParts, logoUnitHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

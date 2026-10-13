@@ -969,9 +969,10 @@ var DESIGN_PLAN_SCHEMA = {
           },
           required: ['before', 'keyword', 'after']
         },
+        heroTagline: { type: 'STRING', description: 'The ONE line under the event\'s name in the hero banner: what this event is, or its promise, in at most 10 words, no full stop needed (e.g. "India\'s Most Influential Enterprise Technology Decision-Makers. One Room."). Not the event\'s name, not a paragraph.' },
         heroImage: { type: 'STRING', description: 'One sentence: what the hero background picture shows — objects, spaces or abstract forms that evoke this event\'s subject. Never people, text or logos.' }
       },
-      required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'logoUnit', 'heroImage']
+      required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'logoUnit', 'heroTagline', 'heroImage']
     },
     sections: {
       type: 'ARRAY',
@@ -1053,6 +1054,8 @@ function buildDesignPlanPrompt(payload) {
     '',
     'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
+    'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, right under the hero, and everything a visitor needs to understand the event lives in the sections.',
+    '',
     'Set each section\'s kind to "custom" unless it is really one of 5 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery). Only use one of those 5 when the material genuinely supports that this event will have real data of that kind.',
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
@@ -1129,6 +1132,7 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
     cornerRadius: ['0', '6', '12', '20'].indexOf(String(d.cornerRadius)) !== -1 ? String(d.cornerRadius) : '12',
     imageStyle: String(d.imageStyle || '').trim().slice(0, 300),
     logoUnit: genDesign.logoUnitParts(eventName, d.logoUnit),
+    heroTagline: String(d.heroTagline || '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 14).join(' ').slice(0, 120),
     heroImage: String(d.heroImage || '').trim().slice(0, 300)
   };
 }
@@ -1459,7 +1463,7 @@ function eventFacts(stored, sent) {
 function plannedSectionList(designPlan) {
   var planned = (designPlan && designPlan.sections) || [];
   return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site: the event\'s logo (or its name when there is no logo) and links to the sections below. Always present.', layout: 'One slim bar; logo left, links right; the links wrap onto a second line or scroll sideways on a phone (there is no script to open a menu).' }]
-    .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner: a strong, specific headline, a line under it, date and place when known, one or two buttons. Always present, right after nav.', layout: 'As the design\'s layout says for the hero.' }])
+    .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner, built by the server: the ET Business Verticals logo, the event\'s wordmark, one line, date and place, two buttons. Always present, right after nav. Not written by you.', layout: 'Centred, a full screen tall, over the hero picture.' }])
     .concat(planned)
     .concat([{ id: 'footer', kind: 'footer', purpose: 'Closing footer for this event site. Always present, last.', layout: 'A calm closing band: event name or logo, a short line, the section links again.' }]);
 }
@@ -1514,24 +1518,20 @@ function buildSectionCodePrompt(payload) {
     lines.push('', 'THE OWNER\'S OWN INSTRUCTIONS FOR THIS SITE — follow them in what you write (never by inventing facts):', '"' + designPlan.ownerNotes + '"');
   }
 
-  lines.push('', 'THE HERO\'S LOGO UNIT: the hero opens with the event\'s logo lock-up, which the server builds — the event\'s name set as a wordmark, with "An initiative by" and The Economic Times Business Verticals logo under it. In the hero\'s html write exactly this empty element where it belongs, as the first thing in the hero\'s content, above the headline: <div data-rv-logo-unit></div> — nothing inside it, no styling for it. Because the logo unit already shows the event\'s name, the hero\'s h1 is a headline about the event (its theme or promise), NOT the name again. The hero\'s veil is ' +
-    (design.mode === 'dark' ? 'DARK with LIGHT text over it' : 'LIGHT with DARK text over it') + ' — the logo unit is drawn for exactly that, so keep to it.');
+  lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section under it introduces the event properly.',
+    'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.');
 
   lines.push('', 'PICTURES — the site must not be text only:');
-  if (design.heroImageUrl) {
-    lines.push('- Hero background picture, already made: ' + design.heroImageUrl + ' — use it as the hero\'s background (background-image, cover, centred) under a gradient veil that keeps the headline easy to read while the picture stays clearly visible — no part of the veil more than about 65% opaque, and lighter away from the text.');
-  } else {
-    lines.push('- No hero picture could be made: build the hero\'s background from CSS alone (gradients, shapes) in the site\'s colours.');
-  }
   var pictured = fullList.filter(function (s) { return s.imageUrl; });
   pictured.forEach(function (s) {
-    lines.push('- Section "' + s.id + '" has a picture, already made: ' + s.imageUrl + ' (it shows: ' + s.image + '). Use it with <img src="…" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band, at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
+    lines.push('- Section "' + s.id + '" has a picture, already made. Its address is exactly ' + genDesign.pictureToken(s.id) + ' (it shows: ' + s.image + '). Use it with <img src="' + genDesign.pictureToken(s.id) + '" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band, at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
   });
-  lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails. The hero is a full screen tall (min-height: 88vh).');
-  lines.push('- Use ONLY the picture addresses given above; never link to any other image address and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
+  lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails.');
+  lines.push('- Use ONLY the picture addresses given above, written exactly as given (they begin "rvimg://" — the server turns them into the real addresses); never write an http address for a picture and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
 
   if (payload.logoUrl) {
-    lines.push('', 'THE EVENT\'S LOGO: ' + payload.logoUrl + ' — it MUST appear in the nav, as <img data-rv-logo src="' + payload.logoUrl + '" alt="' + String((payload.eventMeta || {}).name || 'Event logo').replace(/"/g, '') + '"> linked to "#hero", 44–56px tall (height set in CSS, width auto), in place of the event name as text.' +
+    var logoToken = genDesign.pictureToken('logo');
+    lines.push('', 'THE EVENT\'S LOGO has the address ' + logoToken + ' — it MUST appear in the nav, as <img data-rv-logo src="' + logoToken + '" alt="' + String((payload.eventMeta || {}).name || 'Event logo').replace(/"/g, '') + '"> linked to "#hero", 44–56px tall (height set in CSS, width auto), in place of the event name as text.' +
       (design.mode === 'dark' ? ' The page is dark and the logo was most likely drawn for a light background: set it on a white chip (background #fff, padding 6px 12px, radius ' + radius + ').' : '') +
       ' Show it again in the footer, smaller.');
   } else {
@@ -1654,7 +1654,8 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
    the whole plan and the same rules. -> [[ids], [ids]] or [[ids]] */
 var SECTION_CODE_SPLIT_ABOVE = 5;
 function sectionCodeBatches(designPlan) {
-  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; });
+  /* every section but the hero, which is built here (genDesign.heroHtml) */
+  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; }).filter(function (id) { return id !== 'hero'; });
   if (ids.length <= SECTION_CODE_SPLIT_ABOVE) return [ids];
   var cut = Math.ceil(ids.length / 2);
   return [ids.slice(0, cut), ids.slice(cut)];
@@ -1701,13 +1702,37 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       if (failed) return sendAiFailure(res, failed);
       var written = [];
       answers.forEach(function (r) { written = written.concat(Array.isArray(r.parsed.sections) ? r.parsed.sections : []); });
-      var sections = sanitizeSectionCodeResult({ sections: written }, designPlan);
-      /* the event's own logo is in the top bar whatever was written, and its logo unit opens the hero */
       var design = designPlan.design || {};
-      var unit = genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode);
+      var planned = designPlan.sections || [];
+      /* The hero is built here, to the one pattern every ET event site has. Its buttons go to what the
+         page really has: registration to the contact section (or the footer), partnership to the partners
+         section when there is one. */
+      function firstOf(kind) { return planned.filter(function (x) { return x.kind === kind; })[0]; }
+      var contact = firstOf('contact'), partners = firstOf('partners');
+      var place = [eventMeta.venue, eventMeta.city].filter(function (v, i, list) { return v && list.indexOf(v) === i; }).join(', ') || eventMeta.location || '';
+      var heroOpts = {
+        unit: genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode),
+        tagline: design.heroTagline, date: eventMeta.dateLabel || eventMeta.date || genDesign.dateLabel(stored.start, stored.end), place: place,
+        mode: design.mode, cornerRadius: design.cornerRadius, themeColor: design.themeColor, image: design.heroImageUrl || '',
+        primary: { label: 'Register Now', href: '#' + (contact ? contact.id : 'footer') },
+        secondary: { label: 'Join as Partner', href: '#' + (partners ? partners.id : contact ? contact.id : 'footer') }
+      };
+      written.push({ id: 'hero', html: genDesign.heroHtml(heroOpts), css: genDesign.heroCss(heroOpts) });
+
+      var sections = sanitizeSectionCodeResult({ sections: written }, designPlan);
+      /* Pictures were named to the model by short tokens; here they become addresses again, and any picture
+         address that is not one of this site's is repaired (genDesign.restorePictures). The event's own
+         logo is in the top bar whatever was written. */
+      var pictures = {};
+      planned.forEach(function (x) { if (x.imageUrl) pictures[genDesign.pictureToken(x.id)] = x.imageUrl; });
+      if (logoUrl) pictures[genDesign.pictureToken('logo')] = logoUrl;
+      if (design.heroImageUrl) pictures[genDesign.pictureToken('hero')] = design.heroImageUrl;
       sections.forEach(function (sec) {
+        if (sec.id === 'hero') return;                               // built above, from real addresses
+        var own = pictures[genDesign.pictureToken(sec.id)] || '';
+        sec.html = genDesign.restorePictures(sec.html, pictures, own);
+        sec.css = genDesign.restorePictures(sec.css, pictures, own);
         if (sec.id === 'nav' && logoUrl) sec.html = genDesign.ensureLogo(sec.html, logoUrl, eventMeta.name);
-        if (sec.id === 'hero') sec.html = genDesign.placeLogoUnit(sec.html, unit);
       });
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();
@@ -1761,8 +1786,7 @@ var PICTURE_URL = /https?:\/\/[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?
 function buildRedesignPrompt(payload) {
   var design = payload.design || {};
   var radius = (design.cornerRadius || '12') + 'px';
-  var urls = (String(payload.html).match(PICTURE_URL) || []).concat(String(payload.css).match(PICTURE_URL) || []);
-  urls = urls.filter(function (u, i) { return urls.indexOf(u) === i; });
+  var urls = payload.pictureTokens || [];
   var lines = [
     'You are redesigning ONE section of an event microsite that is already built, for ET Oneworld\'s event builder. Return that section\'s new HTML and CSS — a visibly different, better design of the same section, to the standard of a top agency.',
     '',
@@ -1772,7 +1796,7 @@ function buildRedesignPrompt(payload) {
     '',
     'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
     'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it.',
-    urls.length ? 'PICTURES: these are the only pictures you may use, by exactly these addresses — keep using them, larger if anything: ' + urls.join(' , ') : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
+    urls.length ? 'PICTURES: these are the only pictures you may use, by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
     'THE SITE\'S DESIGN — the new section must sit naturally between its neighbours:',
     'Mood: ' + (design.mood || ''),
@@ -1814,16 +1838,22 @@ function handleRedesignSection(req, res) {
     watchEvent(fb, eventId).then(function () { return fb.db.collection('events').doc(eventId).get(); }).then(function (snap) {
       var data = snap.exists ? snap.data() : {};
       var design = (data.designPlan && data.designPlan.design) || {};
+      /* pictures go to the model as short tokens and come back as addresses (genDesign.restorePictures) */
+      var found = (html.match(PICTURE_URL) || []).concat(css.match(PICTURE_URL) || []);
+      found = found.filter(function (u, i) { return found.indexOf(u) === i && !/^https?:\/\/[^/]+\/templates\/_shared\//i.test(u); });
+      var pictures = {};
+      found.forEach(function (u, i) { var token = genDesign.pictureToken('p' + (i + 1)); pictures[token] = u; html = html.split(u).join(token); css = css.split(u).join(token); });
       var prompt = buildRedesignPrompt({
+        pictureTokens: Object.keys(pictures),
         sectionId: sectionId, html: html, css: css, design: design,
         instruction: String(payload.instruction || '').trim(),
         above: String(payload.above || '').slice(0, 200), below: String(payload.below || '').slice(0, 200)
       });
       return callGeminiJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
-        var newHtml = sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim();
+        var newHtml = genDesign.restorePictures(sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim(), pictures, found[0] || '');
         if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' });
-        var newCss = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || '')));
+        var newCss = genDesign.restorePictures(genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || ''))), pictures, found[0] || '');
         sendJson(res, 200, {
           sectionId: sectionId, html: newHtml,
           css: scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml)),

@@ -29,17 +29,15 @@ html.rv-motion:not([data-rv-editing]) [data-rv-reveal="zoom"]{transform:scale(.9
 html.rv-motion:not([data-rv-editing]) [data-rv-reveal="fade"]{transform:none}
 html.rv-motion:not([data-rv-editing]) [data-rv-reveal].rv-in{opacity:1;transform:none}
 
-/* The logo unit that opens the hero (functions/lib/gen-design.js, logoUnitHtml): the event's name as a
-   wordmark with its keyword largest, then "An initiative by" and The Economic Times Business Verticals logo.
-   rv-lu-on-dark sits on a dark veil (light type), rv-lu-on-light on a light one. */
-.rv-lu{display:block;margin:0 0 28px;max-width:100%;font-family:var(--heading-font-family);line-height:1;text-align:inherit}
-.rv-lu-name{text-transform:uppercase;letter-spacing:.02em}
+/* The logo unit that opens the hero (functions/lib/gen-design.js, logoUnitHtml), as on ET's own event sites:
+   The Economic Times Business Verticals logo exactly as supplied, then the event's name as a wordmark with its
+   keyword largest. rv-lu-on-dark stands on a dark veil (light type), rv-lu-on-light on a light one. */
+.rv-lu{display:block;margin:0 0 26px;max-width:100%;font-family:var(--heading-font-family);line-height:1;text-align:center}
+.rv-lu-et{display:block;margin:0 auto 22px;width:clamp(250px,30vw,400px);max-width:100%;height:auto}
+.rv-lu-name{text-transform:uppercase}
 .rv-lu-name > span{display:block}
-.rv-lu-pre,.rv-lu-post{font-size:clamp(1rem,2.1vw,1.6rem);font-weight:500;letter-spacing:.18em;line-height:1.3;opacity:.92}
-.rv-lu-key{font-size:clamp(2.6rem,7.5vw,5.6rem);font-weight:800;line-height:1;letter-spacing:-.01em;color:var(--theme-color)}
-.rv-lu-by{display:inline-block;margin-top:16px;padding-top:12px;border-top:1px solid rgba(128,128,128,.45)}
-.rv-lu-by-label{display:block;margin-bottom:8px;font-family:var(--body-font-family);font-size:.8125rem;letter-spacing:.14em;text-transform:uppercase;opacity:.8}
-.rv-lu-et{display:inline-block;height:auto;width:clamp(200px,26vw,320px);max-width:100%}
+.rv-lu-pre,.rv-lu-post{font-size:clamp(1.05rem,2.3vw,1.85rem);font-weight:500;letter-spacing:.22em;line-height:1.35}
+.rv-lu-key{font-size:clamp(3rem,9.5vw,7.5rem);font-weight:800;line-height:.98;letter-spacing:-.015em;color:var(--theme-color)}
 .rv-lu-on-dark{color:#fff}
-.rv-lu-on-dark .rv-lu-key{color:#fff;text-shadow:0 2px 24px rgba(0,0,0,.35)}
-.rv-lu-on-light{color:#16181d}
+.rv-lu-on-dark .rv-lu-key{color:#fff;text-shadow:0 2px 28px rgba(0,0,0,.4)}
+.rv-lu-on-light{color:#14161b}
