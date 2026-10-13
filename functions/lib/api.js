@@ -1781,6 +1781,12 @@ function stripAllScriptTags(html) {
   return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 }
 
+// The site builder's own "Edit with Lovable" badge — a link into the owner's Lovable project, not part of
+// their page. (et-runtime.js removes it from pages imported before this did.)
+function stripBuilderBadge(html) {
+  return html.replace(/<aside\b[^>]*\bid=["']lovable-badge["'][\s\S]*?<\/aside>/gi, '');
+}
+
 function extractBodyInner(html) {
   var m = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(html);
   return m ? m[1] : html;
@@ -1850,7 +1856,7 @@ function buildImportRefRegex(ref) {
 function processLovableImport(fb, importId, html, getCss, getImage, findImageRefs, docFields) {
   findImageRefs = findImageRefs || findImportImageRefs;
   var linked = extractStylesheetLinks(html);
-  var bodyHtml = extractBodyInner(linked.html);
+  var bodyHtml = stripBuilderBadge(extractBodyInner(linked.html));
 
   return Promise.all(linked.cssHrefs.map(function (href) {
     return getCss(href).then(function (text) { return (text == null) ? null : { href: href, text: text }; });

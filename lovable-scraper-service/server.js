@@ -71,6 +71,65 @@ function validateUrl(rawUrl) {
 
 // ---------- the actual render ----------
 
+// The capture keeps the page's markup and drops its scripts, so whatever a script would have done later
+// for a visitor has to have happened before the capture:
+//   - content revealed when it scrolls into view, and lazy pictures: the page is scrolled through once,
+//     top to bottom, and put back at the top;
+//   - rows that open on a click (button[aria-expanded]) whose panel only exists while open: each closed row
+//     is opened once, its panel copied, and the copies put back closed (height 0) after their buttons, so
+//     the imported page has every panel to open (templates/_shared/et-runtime.js does the opening).
+// Bounded: at most SETTLE_MAX_ROWS rows and SETTLE_MAX_SCROLL_STEPS scroll steps.
+var SETTLE_MAX_ROWS = 40;
+var SETTLE_MAX_SCROLL_STEPS = 80;
+
+async function settlePage(page) {
+  await page.evaluate(async function (maxSteps) {
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var step = Math.max(300, Math.round(window.innerHeight * 0.7));
+    for (var i = 0, y = 0; i < maxSteps && y < document.documentElement.scrollHeight; i++, y += step) {
+      window.scrollTo(0, y);
+      await wait(140);
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await wait(300);
+    window.scrollTo(0, 0);
+    await wait(900);
+  }, SETTLE_MAX_SCROLL_STEPS);
+
+  await page.evaluate(async function (maxRows) {
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var rows = Array.prototype.slice.call(document.querySelectorAll('button[aria-expanded]')).filter(function (b) {
+      return !b.closest('header, nav') && !b.hasAttribute('aria-haspopup');
+    }).slice(0, maxRows);
+    if (!rows.length) return;
+    var wasOpen = rows.filter(function (b) { return b.getAttribute('aria-expanded') === 'true'; });
+    var copies = [];
+    for (var i = 0; i < rows.length; i++) {
+      var b = rows[i];
+      if (b.getAttribute('aria-expanded') === 'true' || b.nextElementSibling) continue;   // its panel is in the page already
+      b.click();
+      await wait(650);
+      var panel = b.nextElementSibling;
+      if (b.getAttribute('aria-expanded') === 'true' && panel && !/^(BUTTON|A)$/.test(panel.tagName)) {
+        copies.push({ row: b, html: panel.outerHTML });
+      }
+    }
+    // back to how the page opens
+    for (var j = 0; j < rows.length; j++) {
+      var open = rows[j].getAttribute('aria-expanded') === 'true';
+      if (open !== (wasOpen.indexOf(rows[j]) !== -1)) { rows[j].click(); await wait(650); }
+    }
+    copies.forEach(function (c) {
+      if (c.row.nextElementSibling || c.row.getAttribute('aria-expanded') === 'true') return;
+      c.row.insertAdjacentHTML('afterend', c.html);
+      var p = c.row.nextElementSibling;
+      p.style.height = '0px'; p.style.opacity = '0'; p.style.overflow = 'hidden';
+    });
+    window.scrollTo(0, 0);
+    await wait(300);
+  }, SETTLE_MAX_ROWS);
+}
+
 // Launches headless Chrome, navigates to `url`, waits briefly for any late mount/animation, and returns
 // the final rendered outerHTML. Closes the browser on every path -- success, navigation timeout, launch
 // failure, or the overall TOTAL_TIMEOUT_MS firing -- so a failed/slow request never leaks a Chrome
@@ -105,7 +164,11 @@ async function scrapeUrl(url) {
       // whole render over that; capture whatever has rendered by now instead.
       console.error('scrape: navigation to "' + url + '" did not fully settle (' + err.message + ') -- capturing whatever rendered so far.');
     }
-    await new Promise(function (resolve) { setTimeout(resolve, 1200); }); // let any late mount/animation settle
+    await new Promise(function (resolve) { setTimeout(resolve, 3500); }); // let an intro animation play out
+    try { await settlePage(page); } catch (err) {
+      // best effort: a page this cannot walk through is still captured as it stands
+      console.error('scrape: could not settle "' + url + '" before capture (' + err.message + ').');
+    }
     return page.evaluate(function () { return document.documentElement.outerHTML; });
   })();
 

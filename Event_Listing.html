@@ -854,15 +854,34 @@
      EVENT_FIELDS that event doc has: name, slug, category, status, start, end, venue, city, payment,
      templateId, createdBy, createdAt, updatedAt, ...) — this maps that straight onto the row shape every
      render function in this file already expects (metaLine/dateCellHTML/payCellHTML/statusLabel etc.). */
+  /* Where an event sits in the list. The record's own `status` says "draft" from the day the event is made
+     and nothing moves it on, so the tab is worked out from what is true of the event: a site that is not
+     live is a Draft; a live one is Upcoming until it starts, Active while it runs and Completed once it has
+     ended (an event with no end runs to the end of the day it starts; one with no date yet is Upcoming).
+     Cancelled and deleted events stay where they were put. */
+  function lifecycleOf(ev, now){
+    if (ev.deletedAt || ev.status === 'deleted') return 'deleted';
+    if (ev.status === 'cancelled') return 'cancelled';
+    if (ev.published !== true) return 'draft';
+    var start = ev.start ? new Date(ev.start).getTime() : NaN;
+    var end = ev.end ? new Date(ev.end).getTime() : NaN;
+    if (isNaN(start) && isNaN(end)) return 'upcoming';
+    if (isNaN(end)){ var d = new Date(start); d.setHours(23, 59, 59, 999); end = d.getTime(); }
+    if (end < now) return 'completed';
+    if (isNaN(start) || start <= now) return 'active';
+    return 'upcoming';
+  }
+
   function mapApiEventToRow(ev){
+    var counters = ev.counters || {};
     return {
       id: ev.id, slug: ev.slug || ev.id, name: ev.name || 'Untitled event',
       venue: ev.venue || 'Venue to be confirmed', city: ev.city || '—',
       eventNo: hashToEventNo(ev.id),
       type: ev.category || 'ip', portal: 'cio',
-      status: ev.status || 'draft',
-      start: ev.start || null,
-      registrations: 0, regTarget: null, visitors: 0, crmLeads: 0,
+      status: lifecycleOf(ev, Date.now()),
+      start: ev.start || null, end: ev.end || null,
+      registrations: Number(counters.registrations) || 0, regTarget: null, visitors: Number(counters.views) || 0, crmLeads: 0,
       payment: { type: (ev.payment && ev.payment.type) || 'free', amount: (ev.payment && ev.payment.amount) || 0, txns: (ev.payment && ev.payment.txns) || 0 },
       createdBy: ev.createdBy || '—'
     };
@@ -934,12 +953,9 @@
   function recomputeDerived(){
     EVENT_AUDIENCE = {};
     IP_EVENT_IDS = [];
-    EVENTS.forEach(function(e){
-      if (e.type === 'ip' && (e.status==='upcoming' || e.status==='active' || e.status==='completed')){
-        IP_EVENT_IDS.push(e.id);
-        EVENT_AUDIENCE[e.id] = generateAudience(e.eventNo, e.visitors || e.registrations || 40);
-      }
-    });
+    /* No event gets an audience breakdown or activity figures here: the only ones this page could show are
+       generated (generateAudience above — sample companies, shares and trends), and a live event must not
+       carry invented registrants. The panels that read these lists stay hidden until real figures exist. */
 
     IP_ACTIVITY = {};
     IP_EVENT_IDS.forEach(function(id){
