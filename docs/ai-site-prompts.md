@@ -299,6 +299,7 @@ WHAT THE OWNER ASKED FOR — this comes first: "make it a horizontal three-step 
 
 KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link's href.
 KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go.
+
 This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.
 
 THE SITE'S DESIGN — the section must sit naturally between its neighbours:

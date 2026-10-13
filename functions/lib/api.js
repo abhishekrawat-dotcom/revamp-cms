@@ -382,6 +382,9 @@ function buildChatPrompt(payload) {
     (history.length ? 'Conversation so far (oldest first):\n' + history.map(function (h) { return (h.role === 'user' ? 'User: ' : 'You: ') + String(h.text || '').slice(0, 400); }).join('\n') + '\n' : ''),
     'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
     '',
+    (payload.attachmentCount
+      ? 'The owner ATTACHED ' + payload.attachmentCount + ' picture' + (payload.attachmentCount === 1 ? '' : 's') + ' to this message, numbered 1' + (payload.attachmentCount > 1 ? ' to ' + payload.attachmentCount : '') + '. You cannot see them; the owner\'s words say what they are for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
+      : ''),
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
     '',
@@ -397,7 +400,7 @@ function buildChatPrompt(payload) {
     '   - `sectionEdits`: [{sectionId, instruction}] — one section is reworked by a designer-developer who follows your instruction exactly: change its layout, add, remove or reorder cards and blocks, rewrite or extend its content, restyle only that section (colours, sizes, spacing, alignment, backgrounds), turn a grid into a carousel or a timeline, anything. Write `instruction` as a complete, specific brief in plain words, including every fact the owner gave (names, numbers, wording) — the designer sees the section and your brief, not this conversation. One entry per section that needs it. Do NOT use it for a change `textEdits` or `design` can make.',
     '   - `sectionOps`: [{op, sectionId, beforeSectionId}] — op "hide", "show" or "remove" a whole section; op "move" puts sectionId right before beforeSectionId (an empty beforeSectionId means the end of the page). The site\'s first and last sections (navigation, hero banner, footer) stay where they are.',
     '   - `newSections`: [{afterSectionId, name, instruction}] — a NEW section is designed and written from your brief and placed after afterSectionId. `name` is its short label (e.g. "Venue & Travel"); `instruction` is the complete brief: what it is for, what it must say (only facts the owner gave or that are on the page — never invented names, numbers or dates), and how it should look.',
-    '   What you still cannot do: make or upload a new picture (a section keeps the pictures it has; the owner changes them with Replace image), and add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves. If the request needs one of these, say so in `summary` and do the rest.',
+    '   What you still cannot do: make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above), and add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves. If the request needs one of these, say so in `summary` and do the rest.',
     '5. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`, `textEdits`, `sectionEdits`, `sectionOps` and `newSections` actually contain, nothing more — the owner sees your summary beside the list of what will change, so any mismatch is a bug.'
   ].join('\n');
 }
@@ -430,9 +433,9 @@ function chatResponseSchema(payload) {
     },
     required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections']
   };
-  schema.properties.sectionEdits = { type: 'ARRAY', items: { type: 'OBJECT', properties: { sectionId: { type: 'STRING' }, instruction: { type: 'STRING' } }, required: ['sectionId', 'instruction'] } };
+  schema.properties.sectionEdits = { type: 'ARRAY', items: { type: 'OBJECT', properties: { sectionId: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this edit uses' } }, required: ['sectionId', 'instruction'] } };
   schema.properties.sectionOps = { type: 'ARRAY', items: { type: 'OBJECT', properties: { op: { type: 'STRING', enum: CHAT_SECTION_OPS }, sectionId: { type: 'STRING' }, beforeSectionId: { type: 'STRING' } }, required: ['op', 'sectionId'] } };
-  schema.properties.newSections = { type: 'ARRAY', items: { type: 'OBJECT', properties: { afterSectionId: { type: 'STRING' }, name: { type: 'STRING' }, instruction: { type: 'STRING' } }, required: ['afterSectionId', 'name', 'instruction'] } };
+  schema.properties.newSections = { type: 'ARRAY', items: { type: 'OBJECT', properties: { afterSectionId: { type: 'STRING' }, name: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this section uses' } }, required: ['afterSectionId', 'name', 'instruction'] } };
   if (sectionIds.length) {
     schema.properties.textEdits.items.properties.sectionId.enum = sectionIds;
     schema.properties.sectionEdits.items.properties.sectionId.enum = sectionIds;
@@ -475,11 +478,17 @@ function handleChatEdit(req, res) {
       }).filter(Boolean);
 
       function brief(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 1500); }
+      var attached = Math.max(0, Math.min(6, parseInt(payload.attachmentCount, 10) || 0));
+      function picturesOf(v) {
+        var out = [];
+        (Array.isArray(v) ? v : []).forEach(function (n) { n = parseInt(n, 10); if (n >= 1 && n <= attached && out.indexOf(n) === -1) out.push(n); });
+        return out;
+      }
       var sectionEdits = [], edited = {};
       (parsed.sectionEdits || []).forEach(function (e) {
         if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || edited[e.sectionId] || !brief(e.instruction)) return;
         edited[e.sectionId] = true;
-        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction) });
+        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures) });
       });
       var sectionOps = (parsed.sectionOps || []).map(function (o) {
         if (!o || CHAT_SECTION_OPS.indexOf(o.op) === -1 || knownSectionIds.indexOf(o.sectionId) === -1) return null;
@@ -488,7 +497,7 @@ function handleChatEdit(req, res) {
       }).filter(Boolean).slice(0, 12);
       var newSections = (parsed.newSections || []).map(function (n) {
         if (!n || !brief(n.instruction)) return null;
-        return { afterSectionId: knownSectionIds.indexOf(n.afterSectionId) !== -1 ? n.afterSectionId : '', name: String(n.name || 'New section').trim().slice(0, 60) || 'New section', instruction: brief(n.instruction) };
+        return { afterSectionId: knownSectionIds.indexOf(n.afterSectionId) !== -1 ? n.afterSectionId : '', name: String(n.name || 'New section').trim().slice(0, 60) || 'New section', instruction: brief(n.instruction), pictures: picturesOf(n.pictures) };
       }).filter(Boolean).slice(0, 4);
 
       var summary = String(parsed.summary || '').slice(0, 400);
@@ -1839,7 +1848,10 @@ function buildRedesignPrompt(payload) {
         ? 'Write what the brief asks for. Facts come only from the brief: never invent a name, company, number, date, address, e-mail or phone number — where the brief gives no detail, write honest general copy.'
         : 'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
     payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go.',
-    urls.length ? 'PICTURES: these are the only pictures you may use, by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
+    (payload.supplied || []).length
+      ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) { return 'attached picture ' + p.n + ' = ' + p.token; }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
+      : '',
+    urls.length ? 'PICTURES: the section\'s own pictures — with any attached above, the only pictures you may use — by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : (payload.supplied || []).length ? 'Besides the attached ones, this section has no picture.' : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
     'THE SITE\'S DESIGN — the section must sit naturally between its neighbours:',
     payload.generated === false
@@ -1887,11 +1899,21 @@ function handleRedesignSection(req, res) {
       found.forEach(function (u, i) { var token = genDesign.pictureToken('p' + (i + 1)); pictures[token] = u; html = html.split(u).join(token); css = css.split(u).join(token); });
       /* measured once pictures are tokens: a picture kept inline in the page is not text the model reads */
       if (html.length + css.length > REDESIGN_MAX_CHARS) return sendJson(res, 413, { error: 'This section has too much in it to redesign in one go. Move part of it into a second section, then redesign each.' });
+      /* pictures the owner attached in the chat for this change: only ones stored for this event */
+      var ownStore = 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/';
+      var supplied = [];
+      (Array.isArray(payload.addPictures) ? payload.addPictures : []).slice(0, 6).forEach(function (p) {
+        var url = String((p && p.url) || '').trim(), n = parseInt(p && p.n, 10);
+        if (url.indexOf(ownStore) !== 0 || !(n >= 1) || pictures[genDesign.pictureToken('attached-' + n)]) return;
+        var token = genDesign.pictureToken('attached-' + n);
+        pictures[token] = url;
+        supplied.push({ n: n, token: token });
+      });
       var mode = payload.mode === 'edit' || payload.mode === 'create' ? payload.mode : 'redesign';
       if (mode !== 'redesign' && !String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'Say what should change.' });
       var prompt = buildRedesignPrompt({
-        mode: mode, generated: payload.generated !== false,
-        pictureTokens: Object.keys(pictures),
+        mode: mode, generated: payload.generated !== false, supplied: supplied,
+        pictureTokens: Object.keys(pictures).filter(function (t) { return !/^rvimg:\/\/attached-/.test(t); }),
         sectionId: sectionId, html: html, css: css, design: design,
         instruction: String(payload.instruction || '').trim(),
         above: String(payload.above || '').slice(0, 200), below: String(payload.below || '').slice(0, 200)

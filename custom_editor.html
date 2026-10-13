@@ -285,9 +285,28 @@
   .dev-tabs{ display:flex; align-items:center; gap:4px; padding: 8px 18px 0; border-bottom: 1px solid var(--border); }
   .dev-tabs button{ font: inherit; font-size:13px; font-weight:700; padding: 8px 14px; border:0; background:none; color: var(--text-muted); border-bottom: 2px solid transparent; cursor:pointer; }
   .dev-tabs button.active{ color: var(--accent-strong, #c8102e); border-bottom-color: var(--accent, #ED1C24); }
-  .dev-note{ margin-left:auto; font-size:11.5px; color: var(--text-muted); padding-bottom:6px; text-align:right; max-width: 62%; }
+  .dev-note{ margin-left:auto; font-size:11.5px; color: var(--text-muted); padding-bottom:6px; text-align:right; max-width: 48%; }
+  .dev-wrap{ display:flex; align-items:center; gap:6px; margin-left:14px; font-size:12px; color: var(--text-muted); cursor:pointer; padding-bottom:6px; }
+  .dev-keys{ font-size:11.5px; color: var(--text-faint); padding: 0 0 6px 10px; }
   .dev-body{ flex:1; min-height:0; display:flex; background:#12141c; }
-  .dev-body textarea{ flex:1; width:100%; border:0; outline:0; resize:none; padding: 16px 18px; background:#12141c; color:#e6e9f2; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size:2; white-space:pre; }
+  .dev-body .CodeMirror{ flex:1; height:auto; min-width:0; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .dev-body .CodeMirror[hidden]{ display:none; }
+  /* the developer zone's own dark theme */
+  .cm-s-rvdark.CodeMirror{ background:#12141c; color:#e6e9f2; }
+  .cm-s-rvdark .CodeMirror-gutters{ background:#12141c; border-right:1px solid #262a38; }
+  .cm-s-rvdark .CodeMirror-linenumber{ color:#5b6178; }
+  .cm-s-rvdark .CodeMirror-cursor{ border-left:1.5px solid #fff; }
+  .cm-s-rvdark .CodeMirror-selected, .cm-s-rvdark .CodeMirror-line::selection, .cm-s-rvdark .CodeMirror-line > span::selection, .cm-s-rvdark .CodeMirror-line > span > span::selection{ background:#31406b; }
+  .cm-s-rvdark .CodeMirror-activeline-background{ background:#1a1e2b; }
+  .cm-s-rvdark .cm-tag{ color:#ff7b8a; } .cm-s-rvdark .cm-attribute{ color:#ffcb6b; } .cm-s-rvdark .cm-string{ color:#a5e075; }
+  .cm-s-rvdark .cm-comment{ color:#6b7391; font-style:italic; } .cm-s-rvdark .cm-keyword{ color:#c792ea; } .cm-s-rvdark .cm-number, .cm-s-rvdark .cm-atom{ color:#f78c6c; }
+  .cm-s-rvdark .cm-property{ color:#82aaff; } .cm-s-rvdark .cm-qualifier, .cm-s-rvdark .cm-builtin{ color:#ffcb6b; } .cm-s-rvdark .cm-variable-2, .cm-s-rvdark .cm-def{ color:#89ddff; }
+  .cm-s-rvdark .cm-bracket, .cm-s-rvdark .cm-operator{ color:#b8c0d8; } .cm-s-rvdark .cm-error{ color:#ff5370; text-decoration: underline wavy; }
+  .cm-s-rvdark .CodeMirror-matchingtag{ background: rgba(130,170,255,.28); } .cm-s-rvdark .CodeMirror-matchingbracket{ color:#fff !important; background: rgba(130,170,255,.35); }
+  .cm-s-rvdark .CodeMirror-dialog{ background:#1f2433; color:#e6e9f2; border-bottom:1px solid #31374d; padding:6px 12px; }
+  .cm-s-rvdark .CodeMirror-dialog input{ background:#12141c; color:#fff; border:1px solid #3a4160; border-radius:4px; padding:3px 6px; font: inherit; }
+  .cm-searching{ background: rgba(255,203,107,.35); }
+  .dev-body textarea{ flex:1; width:100%; border:0; outline:0; resize:none; padding: 16px 18px; background:#12141c; color:#e6e9f2; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size:2; white-space:pre-wrap; }
   .dev-foot{ display:flex; align-items:center; justify-content:flex-end; gap:10px; padding: 12px 18px; border-top: 1px solid var(--border); }
   .dev-error{ margin-right:auto; font-size:12.5px; color: var(--crit, #c0392b); }
   #panel-chat .side-panel-body{ padding: 12px 0 0; overflow: hidden; }
@@ -335,6 +354,19 @@
     color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer;
   }
   .chat-send-btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .chat-attach-btn{ flex-shrink:0; width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background: var(--surface); color: var(--text-muted); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .chat-attach-btn:hover:not(:disabled){ color: var(--accent, #ED1C24); border-color: var(--accent, #ED1C24); }
+  .chat-attach-btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .chat-attached{ flex-shrink:0; display:flex; flex-wrap:wrap; gap:8px; padding: 8px 14px 0; border-top: 1px solid var(--border); background: var(--surface); }
+  .chat-attached[hidden]{ display:none; }
+  .chat-attached + .chat-compose{ border-top: 0; }
+  .chat-chip{ position:relative; width:54px; height:54px; border-radius:8px; overflow:hidden; border:1px solid var(--border); background: var(--surface-2); }
+  .chat-chip img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .chat-chip b{ position:absolute; left:3px; bottom:3px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:rgba(0,0,0,.7); color:#fff; font-size:10px; line-height:16px; text-align:center; }
+  .chat-chip button{ position:absolute; top:2px; right:2px; width:17px; height:17px; border-radius:50%; border:0; background:rgba(0,0,0,.7); color:#fff; font-size:11px; line-height:17px; padding:0; cursor:pointer; }
+  .chat-chip.is-loading{ display:grid; place-items:center; font-size:10px; color: var(--text-muted); }
+  .chat-msg .chat-sent-pics{ display:flex; gap:5px; margin-top:6px; }
+  .chat-msg .chat-sent-pics img{ width:42px; height:42px; object-fit:cover; border-radius:6px; }
   .chat-send-btn:hover:not(:disabled){ filter: brightness(1.08); }
 
   /* ---------- design-panel toggle switch ---------- */
@@ -1093,7 +1125,12 @@
       <div class="side-panel-body">
         <span class="hint">Ask for any change in plain words — text, design, a section’s layout or content, or adding, moving and removing sections. Nothing on the site changes until you press Apply.</span>
         <div class="chat-thread" id="chat-thread"></div>
+        <div class="chat-attached" id="chat-attached" hidden></div>
         <div class="chat-compose">
+          <button class="chat-attach-btn" id="chat-attach" type="button" title="Attach a picture for ETB2B AI to place on the site" aria-label="Attach a picture">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.3-8.3"/></svg>
+          </button>
+          <input type="file" id="chat-file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" multiple hidden>
           <textarea id="chat-input" rows="1" placeholder="Message ETB2B AI…"></textarea>
           <button class="chat-send-btn" id="chat-send" type="button" title="Send" aria-label="Send">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 11.5l17.5-8.5-8.5 17.5-2-7-7-2z"/></svg>

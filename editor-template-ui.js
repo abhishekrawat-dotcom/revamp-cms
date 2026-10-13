@@ -1592,6 +1592,30 @@
     return String(css).replace(/\s*\{\s*/g, ' {\n  ').replace(/;\s*/g, ';\n  ').replace(/\s*\}\s*/g, '\n}\n').replace(/\n  \n/g, '\n').trim();
   }
 
+  /* The code editor is loaded the first time the developer zone opens, one file after another (each needs
+     the one before it), and resolves window.CodeMirror — or null when a file could not be loaded. */
+  var codeEditorLoading = null;
+  function loadCodeEditor() {
+    if (window.CodeMirror && window.CodeMirror.__rvReady) return Promise.resolve(window.CodeMirror);
+    if (codeEditorLoading) return codeEditorLoading;
+    var base = 'assets/codemirror/';
+    ['codemirror.min.css', 'addon-dialog-dialog.min.css'].forEach(function (f) {
+      var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + f; document.head.appendChild(l);
+    });
+    var files = ['codemirror.min.js', 'mode-xml-xml.min.js', 'mode-css-css.min.js', 'mode-javascript-javascript.min.js', 'mode-htmlmixed-htmlmixed.min.js',
+      'addon-fold-xml-fold.min.js', 'addon-edit-closetag.min.js', 'addon-edit-closebrackets.min.js', 'addon-edit-matchbrackets.min.js', 'addon-edit-matchtags.min.js',
+      'addon-dialog-dialog.min.js', 'addon-search-searchcursor.min.js', 'addon-search-search.min.js', 'addon-selection-active-line.min.js'];
+    codeEditorLoading = files.reduce(function (chain, f) {
+      return chain.then(function () {
+        return new Promise(function (resolve, reject) {
+          var sc = document.createElement('script'); sc.src = base + f; sc.onload = resolve; sc.onerror = function () { reject(new Error(f)); };
+          document.head.appendChild(sc);
+        });
+      });
+    }, Promise.resolve()).then(function () { window.CodeMirror.__rvReady = true; return window.CodeMirror; }, function () { codeEditorLoading = null; return null; });
+    return codeEditorLoading;
+  }
+
   function openDevZone(startSec) {
     if (!canvas || remounting) return;
     if (editingEl) exitEdit(editingEl);
@@ -1607,8 +1631,10 @@
         '<div class="dev-head"><h3 id="rv-dev-title">Developer zone</h3>' +
           '<label class="dev-pick">Section <select id="rv-dev-section"></select></label>' +
           '<button class="icon-btn" id="rv-dev-close" title="Close" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>' +
-        '<div class="dev-tabs" role="tablist"><button data-dev-tab="html" class="active">HTML</button><button data-dev-tab="css">CSS</button><button data-dev-tab="js">JS</button><span class="dev-note" id="rv-dev-note"></span></div>' +
-        '<div class="dev-body"><textarea id="rv-dev-html" spellcheck="false" wrap="off"></textarea><textarea id="rv-dev-css" spellcheck="false" wrap="off" hidden></textarea><textarea id="rv-dev-js" spellcheck="false" wrap="off" hidden></textarea></div>' +
+        '<div class="dev-tabs" role="tablist"><button data-dev-tab="html" class="active">HTML</button><button data-dev-tab="css">CSS</button><button data-dev-tab="js">JS</button>' +
+          '<label class="dev-wrap"><input type="checkbox" id="rv-dev-wrap" checked> Word wrap</label><span class="dev-keys">Find: Ctrl/⌘ + F</span>' +
+          '<span class="dev-note" id="rv-dev-note"></span></div>' +
+        '<div class="dev-body"><textarea id="rv-dev-html" spellcheck="false" wrap="soft"></textarea><textarea id="rv-dev-css" spellcheck="false" wrap="soft" hidden></textarea><textarea id="rv-dev-js" spellcheck="false" wrap="soft" hidden></textarea></div>' +
         '<div class="dev-foot"><span class="dev-error" id="rv-dev-error" role="alert" hidden></span><button class="btn btn-secondary" id="rv-dev-cancel">Close</button><button class="btn btn-primary" id="rv-dev-apply">Apply to the page</button></div>' +
       '</div>';
     document.body.appendChild(scrim);
@@ -1616,6 +1642,37 @@
     var pick = $('rv-dev-section'), boxes = { html: $('rv-dev-html'), css: $('rv-dev-css'), js: $('rv-dev-js') };
     var note = $('rv-dev-note'), problem = $('rv-dev-error');
     var tab = 'html', src = null, loaded = null;
+    /* The three boxes become code editors (CodeMirror, kept with the app under assets/codemirror): syntax
+       colours, line numbers, word wrap, the matching tag and bracket shown, tags and brackets closed as
+       they are typed, find and replace. Until it has loaded — or if it cannot — they are plain text boxes
+       and everything else works the same. */
+    var editors = {};
+    var MODES = { html: 'htmlmixed', css: 'css', js: 'javascript' };
+    function val(k) { return editors[k] ? editors[k].getValue() : boxes[k].value; }
+    function setVal(k, v) { if (editors[k]) { editors[k].setValue(v); editors[k].clearHistory(); } else boxes[k].value = v; }
+    loadCodeEditor().then(function (CM) {
+      if (!CM || !document.contains(scrim)) return;
+      var wrap = $('rv-dev-wrap').checked;
+      Object.keys(boxes).forEach(function (k) {
+        var was = boxes[k].hidden;
+        boxes[k].hidden = false;
+        editors[k] = CM.fromTextArea(boxes[k], {
+          mode: MODES[k], theme: 'rvdark', lineNumbers: true, lineWrapping: wrap, tabSize: 2, indentUnit: 2, indentWithTabs: false,
+          autoCloseTags: k === 'html', autoCloseBrackets: true, matchBrackets: true, matchTags: k === 'html' ? { bothTags: true } : false,
+          styleActiveLine: true,
+          extraKeys: { Tab: function (cm) { if (cm.somethingSelected()) cm.indentSelection('add'); else cm.replaceSelection('  ', 'end'); }, 'Shift-Tab': 'indentLess' }
+        });
+        editors[k].getWrapperElement().hidden = was;
+      });
+      if (editors[tab]) { editors[tab].refresh(); editors[tab].focus(); }
+    });
+    $('rv-dev-wrap').addEventListener('change', function () {
+      var on = this.checked;
+      Object.keys(boxes).forEach(function (k) {
+        if (editors[k]) editors[k].setOption('lineWrapping', on);
+        else { boxes[k].setAttribute('wrap', on ? 'soft' : 'off'); boxes[k].style.whiteSpace = on ? 'pre-wrap' : 'pre'; }
+      });
+    });
     var NOTES = {
       html: function () { return 'One root element.' + (src.records ? ' Lists of the event’s records show the one item they are drawn from; the records come back after Apply.' : ''); },
       css: function () { return src.cssIsOwn ? 'This section’s own stylesheet. Keep each rule starting with [data-rv-section="' + sec.getAttribute('data-rv-section') + '"].' : 'Added to this section, on top of the template’s CSS. Start rules with [data-rv-section="' + sec.getAttribute('data-rv-section') + '"] to keep them to it.'; },
@@ -1623,26 +1680,29 @@
     };
     function show(name) {
       tab = name;
-      Object.keys(boxes).forEach(function (k) { boxes[k].hidden = k !== name; });
+      Object.keys(boxes).forEach(function (k) {
+        if (editors[k]) editors[k].getWrapperElement().hidden = k !== name; else boxes[k].hidden = k !== name;
+      });
       Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-tab]'), function (b) { b.classList.toggle('active', b.getAttribute('data-dev-tab') === name); });
       note.textContent = NOTES[name]();
-      boxes[name].focus();
+      if (editors[name]) { editors[name].refresh(); editors[name].focus(); } else boxes[name].focus();
     }
     function load(target) {
       sec = target;
       src = devSource(sec);
-      boxes.html.value = prettyHtml(src.html);
-      boxes.css.value = prettyCss(src.css);
-      boxes.js.value = src.js;
-      loaded = { html: boxes.html.value, css: boxes.css.value, js: boxes.js.value };
+      setVal('html', prettyHtml(src.html));
+      setVal('css', prettyCss(src.css));
+      setVal('js', src.js);
+      loaded = { html: val('html'), css: val('css'), js: val('js') };
       problem.hidden = true;
       show(tab);
     }
-    function dirty() { return loaded && (boxes.html.value !== loaded.html || boxes.css.value !== loaded.css || boxes.js.value !== loaded.js); }
+    function dirty() { return loaded && (val('html') !== loaded.html || val('css') !== loaded.css || val('js') !== loaded.js); }
     function close() { scrim.remove(); document.removeEventListener('keydown', onKey, true); }
     function askClose() { if (!dirty() || window.confirm('Close without applying your changes?')) close(); }
     function onKey(e) {
-      if (e.key === 'Escape') { e.stopPropagation(); askClose(); }
+      // Escape first closes the editor's own find box
+      if (e.key === 'Escape') { if (scrim.querySelector('.CodeMirror-dialog')) return; e.stopPropagation(); askClose(); }
       // Tab types two spaces in a code box instead of leaving it
       if (e.key === 'Tab' && !e.shiftKey && e.target && e.target.tagName === 'TEXTAREA' && scrim.contains(e.target)) {
         e.preventDefault();
@@ -1671,11 +1731,11 @@
       function fail(text, where) { problem.textContent = text; problem.hidden = false; if (where) show(where); }
       if (!isLive(sec)) return fail('This section is no longer on the page. Pick another one.');
       var t = document.createElement('template');
-      t.innerHTML = boxes.html.value.trim();
+      t.innerHTML = val('html').trim();
       var roots = t.content.children;
       if (roots.length !== 1) return fail(roots.length ? 'The HTML must be ONE element: everything of the section inside a single root tag (now ' + roots.length + ').' : 'The HTML is empty. A section needs one root element.', 'html');
       if (/^(SCRIPT|STYLE|TEMPLATE)$/.test(roots[0].tagName)) return fail('The root of a section must be an ordinary element such as <section> or <div>.', 'html');
-      var root = roots[0], css = boxes.css.value.trim(), js = boxes.js.value.trim();
+      var root = roots[0], css = val('css').trim(), js = val('js').trim();
       if (js) { try { new Function('section', js); } catch (err) { return fail('The JS has a syntax error: ' + err.message, 'js'); } }
       Array.prototype.forEach.call(root.querySelectorAll('style[data-rv-custom-css], script[data-rv-js]'), function (n) { n.remove(); });
       if (!src.cssIsOwn && css) {
@@ -2965,7 +3025,12 @@
     openProposals.slice().forEach(function (p) { if (p !== except) p.supersede(); });
   }
 
-  function renderProposal(result, histEntry) {
+  function renderProposal(result, histEntry, attached) {
+    attached = attached || [];
+    /* the pictures an entry names by number, as { n, url } for the request that reworks its section */
+    function picturesFor(entry) {
+      return (entry.pictures || []).map(function (n) { return attached[n - 1] ? { n: n, url: attached[n - 1] } : null; }).filter(Boolean);
+    }
     var design = {}, notes = [];
     Object.keys(result.design || {}).forEach(function (k) {
       if (canvas.design.supports(k)) design[k] = result.design[k];
@@ -2994,7 +3059,7 @@
         return escHtml(sectionLabel(o.sectionId)) + ' — ' + OP_WORDS[o.op] + ' this section' +
           (o.op === 'move' ? (o.beforeSectionId && known(o.beforeSectionId) ? ' to just before ' + escHtml(sectionLabel(o.beforeSectionId)) : ' to the end of the page') : '');
       }))
-      .concat(edits.map(function (e) { return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction); }))
+      .concat(edits.map(function (e) { return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction) + (picturesFor(e).length ? ' <em>(uses attached picture ' + picturesFor(e).map(function (x) { return x.n; }).join(', ') + ')</em>' : ''); }))
       .concat(additions.map(function (n) { return 'New section &ldquo;' + escHtml(n.name) + '&rdquo;' + (n.afterSectionId && known(n.afterSectionId) ? ' after ' + escHtml(sectionLabel(n.afterSectionId)) : '') + ' — ' + escHtml(n.instruction); }));
     var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
     var usable = items.length > 0;
@@ -3089,7 +3154,7 @@
         if (!isLive(sec)) { said.push('“' + label + '” is no longer on the page, so it was left out.'); return step(i + 1); }
         state.textContent = 'Working on “' + label + '” (' + (i + 1) + ' of ' + jobs.length + ') — about half a minute each…';
         state.hidden = false;
-        return requestSectionCode(sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction).then(function (code) {
+        return requestSectionCode(sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
           if (!isLive(sec)) throw new Error('the section was removed meanwhile');
           var fresh = applySectionCode(sec, code);
           if (!fresh) throw new Error('the AI’s answer was not a usable section');
@@ -3148,13 +3213,13 @@
      applySectionCode puts an answer on the page: on a site whose section CSS is its own the section's
      stylesheet is replaced; elsewhere the CSS is added inside the section. The caller records the undo step. */
   var aiWorking = false;
-  function requestSectionCode(sec, mode, instruction) {
+  function requestSectionCode(sec, mode, instruction, addPictures) {
     var secs = canvas.sections(), at = secs.indexOf(sec), src = devSource(sec);
     return RevampAuth.authedFetch('/api/redesign-section', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         eventId: eventId, sectionId: sec.getAttribute('data-rv-section'), mode: mode, instruction: instruction,
-        html: src.html, css: src.css, generated: /^gen-/.test(canvas.template.id || ''),
+        html: src.html, css: src.css, generated: /^gen-/.test(canvas.template.id || ''), addPictures: addPictures || [],
         above: sectionOutline(secs[at - 1]), below: sectionOutline(secs[at + 1])
       })
     }).then(function (res) {
@@ -3230,16 +3295,74 @@
     if (chatHistory.length === 0) {
       appendChatMsg('ai', 'Hi, I’m ETB2B AI. Ask for any change to this site — wording, colours and fonts, a section’s layout or content, adding, moving, hiding or removing sections — or ask a question about the page. I show you what will change first; nothing happens until you press Apply. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
     }
+    /* Pictures for the AI to place: chosen with the paper-clip (or dropped on the message box), stored with
+       the event at once (RevampCore.uploadImage), shown as numbered thumbnails above the box and sent with
+       the next message. The AI is told how many there are and refers to them by number. */
+    var attachBtn = document.getElementById('chat-attach'), fileBox = document.getElementById('chat-file'), tray = document.getElementById('chat-attached');
+    var attachments = [], uploading = 0, MAX_ATTACHED = 6;
+    function drawTray() {
+      if (!tray) return;
+      tray.textContent = '';
+      attachments.forEach(function (a, i) {
+        var chip = document.createElement('span');
+        chip.className = 'chat-chip';
+        var img = document.createElement('img'); img.src = a.url; img.alt = a.name || '';
+        var num = document.createElement('b'); num.textContent = String(i + 1);
+        var rm = document.createElement('button'); rm.type = 'button'; rm.title = 'Remove'; rm.setAttribute('aria-label', 'Remove picture ' + (i + 1)); rm.textContent = '×';
+        rm.addEventListener('click', function () { attachments.splice(i, 1); drawTray(); });
+        chip.appendChild(img); chip.appendChild(num); chip.appendChild(rm);
+        tray.appendChild(chip);
+      });
+      for (var k = 0; k < uploading; k++) { var wait = document.createElement('span'); wait.className = 'chat-chip is-loading'; wait.textContent = 'Uploading…'; tray.appendChild(wait); }
+      tray.hidden = !attachments.length && !uploading;
+    }
+    function attach(files) {
+      if (!eventId || !window.RevampCore || !RevampCore.uploadImage) { appendChatMsg('ai error', 'Pictures can be attached once the site belongs to an event.'); return; }
+      Array.prototype.slice.call(files || []).forEach(function (file) {
+        if (attachments.length + uploading >= MAX_ATTACHED) { showToast('Up to ' + MAX_ATTACHED + ' pictures per message.', { kind: 'error' }); return; }
+        uploading++; drawTray();
+        RevampCore.uploadImage(eventId, 'media', file).then(function (up) {
+          uploading--; attachments.push({ url: up.url, name: file.name }); drawTray();
+        }, function (err) {
+          uploading--; drawTray();
+          appendChatMsg('ai error', (err && err.message) || 'That picture could not be uploaded. Please try again.');
+        });
+      });
+    }
+    if (attachBtn && fileBox) {
+      attachBtn.addEventListener('click', function () { fileBox.click(); });
+      fileBox.addEventListener('change', function () { attach(fileBox.files); fileBox.value = ''; });
+      input.addEventListener('paste', function (e) {
+        var files = Array.prototype.filter.call((e.clipboardData && e.clipboardData.files) || [], function (f) { return /^image\//.test(f.type); });
+        if (files.length) { e.preventDefault(); attach(files); }
+      });
+      input.addEventListener('dragover', function (e) { e.preventDefault(); });
+      input.addEventListener('drop', function (e) {
+        var files = Array.prototype.filter.call((e.dataTransfer && e.dataTransfer.files) || [], function (f) { return /^image\//.test(f.type); });
+        if (files.length) { e.preventDefault(); attach(files); }
+      });
+    }
+
     // one request at a time: each is a paid call, and Enter must not start a second while one is running
     var busy = false;
     function go() {
       if (busy || !canvas || remounting) return;
       var instruction = input.value.trim();
+      if (uploading) { showToast('A picture is still uploading — one moment.'); return; }
+      if (!instruction && attachments.length) { showToast('Say what the picture is for — e.g. “use this as the hero background”.'); input.focus(); return; }
       if (!instruction) return;
       busy = true;
       send.disabled = true;
       input.value = '';
-      appendChatMsg('user', instruction);
+      var sent = attachments.map(function (a) { return a.url; });
+      attachments = []; drawTray();
+      var mine = appendChatMsg('user', instruction);
+      if (sent.length && mine) {
+        var strip = document.createElement('div');
+        strip.className = 'chat-sent-pics';
+        sent.forEach(function (u) { var im = document.createElement('img'); im.src = u; im.alt = 'Attached picture'; strip.appendChild(im); });
+        mine.appendChild(strip);
+      }
       var thinking = appendChatMsg('ai', CHAT_THINKING_LINES[0]);
       var lineIdx = 0;
       var thinkingTimer = setInterval(function () {
@@ -3259,10 +3382,12 @@
         appendChatMsg('ai error', message);
         var typed = input.value.trim();
         input.value = instruction + (typed ? '\n' + typed : '');
+        // the pictures go back with the words they were sent with
+        if (sent.length) { attachments = sent.map(function (u) { return { url: u, name: '' }; }).concat(attachments).slice(0, MAX_ATTACHED); drawTray(); }
       }
       fetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction) })
+        body: JSON.stringify({ instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction), attachmentCount: sent.length })
       })
         .then(function (res) {
           return res.text().then(function (text) {
@@ -3282,14 +3407,14 @@
             return;
           }
           settle();
-          pushHistory('user', instruction);
+          pushHistory('user', instruction + (sent.length ? ' [' + sent.length + ' picture' + (sent.length === 1 ? '' : 's') + ' attached]' : ''));
           chatTurnCount++;
           if (r.body.kind === 'reply') {
             appendChatMsg('ai', r.body.summary);
             pushHistory('assistant', r.body.summary);
             return;
           }
-          var usable = renderProposal(r.body, pushHistory('assistant', 'Proposed: ' + r.body.summary + ' (awaiting your Apply/Discard)'));
+          var usable = renderProposal(r.body, pushHistory('assistant', 'Proposed: ' + r.body.summary + ' (awaiting your Apply/Discard)'), sent);
           /* shown once, after the very first edit, so a user who only ever tries one instruction still
              discovers the thing that makes this an actual chat rather than a prompt box */
           if (usable && chatTurnCount === 1) appendChatMsg('ai', 'You can also ask me to adjust this before deciding — e.g. "make it a bit darker instead" — and I’ll understand you mean this change.');
