@@ -75,7 +75,10 @@ ok(g.ensureLogo(nav, '', 'E') === nav, 'no logo, no change');
 
 /* ---- imagePrompt ---- */
 var ip = g.imagePrompt('server halls', { mode: 'dark', themeColor: '#123456', accentColor: '#abcdef', imageStyle: 'long exposure' }, { hero: true });
-ok(/no people/.test(ip) && /no text/.test(ip) && /16:9/.test(ip) && /server halls/.test(ip) && /long exposure/.test(ip), 'image prompt carries the subject, the style and the rules', ip);
+ok(/never a clear, recognisable face/.test(ip) && /No readable text/.test(ip) && /16:9/.test(ip) && /Scene: server halls/.test(ip) && /long exposure/.test(ip), 'image prompt carries the scene, the style and the rules', ip);
+ok(!/no people/i.test(ip) && /anonymously/.test(ip), 'people may be shown, never as anyone in particular', ip);
+var ipAbout = g.imagePrompt('a panel on stage', {}, { about: 'MarTech Summit 2027, marketing technology, Gurugram' });
+ok(/The event: MarTech Summit 2027, marketing technology, Gurugram\./.test(ipAbout) && /4:3/.test(ipAbout), 'a picture is told which event it belongs to', ipAbout);
 
 /* ---- the logo unit as one picture ---- */
 var lu = g.logoUnitImageHtml({ url: 'https://storage.googleapis.com/b/events/e/generated/1-logo-unit.svg', alt: 'A & B "Summit" 2027', width: 404.4, height: 308, mode: 'dark' });

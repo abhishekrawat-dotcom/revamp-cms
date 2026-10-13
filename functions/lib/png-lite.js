@@ -18,6 +18,7 @@
                    opaque each is), in the box or in the whole picture; coverage 0..1 is how much of it is ink
    inkBounds(img, box, background) -> the exact box and colour of the lettering inside a box, or null
    edgeColour(img, box) -> [r, g, b] the colour around a box;  hasTransparency(img) -> boolean
+   crop(img, box) -> that part as its own picture;  inkProfile(img, 'x'|'y', background) -> lettering per column / row
    No network, no Firebase: see png-lite.test.js. */
 
 const zlib = require('zlib');
@@ -232,4 +233,25 @@ function inkBounds(img, box, background) {
   };
 }
 
-module.exports = { decode, encode, flatten, clearBox, fillBox, inkOf, inkBounds, edgeColour, hasTransparency, MAX_PIXELS };
+/* the part of the picture inside a box, as a picture of its own (null when the box holds nothing) */
+function crop(img, box) {
+  var b = clampBox(img, box), w = b.x1 - b.x0, h = b.y1 - b.y0;
+  if (w <= 0 || h <= 0) return null;
+  var out = Buffer.alloc(w * h * 4);
+  for (var y = 0; y < h; y++) img.data.copy(out, y * w * 4, ((b.y0 + y) * img.width + b.x0) * 4, ((b.y0 + y) * img.width + b.x1) * 4);
+  return { width: w, height: h, data: out };
+}
+
+/* How much lettering each row (axis 'y') or column (axis 'x') of the picture holds: an array of counts.
+   Where it is 0 the picture can be cut without cutting through anything. */
+function inkProfile(img, axis, background) {
+  var n = axis === 'y' ? img.height : img.width, counts = new Array(n).fill(0), d = img.data;
+  for (var y = 0; y < img.height; y++) {
+    for (var x = 0; x < img.width; x++) {
+      if (isInk(d, (y * img.width + x) * 4, background)) counts[axis === 'y' ? y : x]++;
+    }
+  }
+  return counts;
+}
+
+module.exports = { decode, encode, flatten, clearBox, fillBox, crop, inkOf, inkBounds, inkProfile, edgeColour, hasTransparency, MAX_PIXELS };

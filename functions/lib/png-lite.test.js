@@ -99,5 +99,9 @@ check('inkBounds on an opaque picture', onGrey && onGrey.x === 1 && onGrey.width
 var filled = png.fillBox(flat, { x: 1, y: 1, width: 2, height: 2 }, edge);
 check('fillBox paints the box', filled.data[(1 * 6 + 1) * 4] === 128 && filled.data[(2 * 6 + 4) * 4] === 255 && flat.data[(1 * 6 + 1) * 4] === 255);
 
+var cut = png.crop(img, { x: 1, y: 1, width: 2, height: 2 });
+check('crop takes the box out as a picture', cut && cut.width === 2 && cut.height === 2 && cut.data.every(function (v) { return v === 255; }) && png.crop(img, { x: 40, y: 0, width: 2, height: 2 }) === null);
+check('inkProfile counts lettering per row and per column', png.inkProfile(img, 'y', null).join() === '0,2,3,0' && png.inkProfile(img, 'x', null).join() === '0,2,2,0,1,0');
+
 if (failed) { console.error('png-lite: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('png-lite: all ' + passed + ' checks passed');

@@ -394,19 +394,24 @@ function restorePictures(text, map, fallback) {
 
 /* ---------- pictures ---------- */
 
-var IMAGE_RULES = 'STRICT: no people, no faces, no crowds, no hands, no text, no letters, no numbers, no logos, no watermarks, no flags, no recognisable real building or landmark. This illustrates a theme; it must never look like a photograph of this event, its venue or its attendees.';
+/* What a generated picture may show. Pictures are scenes from the event's own world — the event (a hall, a
+   stage, delegates) and its subject at work — because a picture of unrelated objects, however handsome,
+   tells a visitor nothing about the event. People are in them, never as anyone in particular: no face that
+   could be taken for a real person's, so that no picture passes for a photograph of who was there. */
+var IMAGE_RULES = 'STRICT: people only anonymously — seen from behind, in silhouette, out of focus or at a distance, or hands at work; never a clear, recognisable face and never a real, named person. No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
 
 function imagePrompt(subject, design, opts) {
   design = design || {};
   opts = opts || {};
   var lines = [
     opts.hero
-      ? 'Create the wide background picture for the hero banner of a professional event website. Text and buttons will sit on top of it, so keep the composition calm, with open space and no strong detail in the centre.'
-      : 'Create one picture for a section of a professional event website.',
-    'Subject: ' + String(subject || 'the theme of a professional conference').slice(0, 400) + '.',
-    opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that, shown through concrete objects, places and materials — not a generic backdrop.' : '',
-    design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial, natural light, shallow depth of field.',
-    'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents.',
+      ? 'Create the wide background photograph for the hero banner of a professional event website. It must say at a glance what this event is: show the scene described below, not an abstraction of it. The event\'s name and buttons will sit over the middle of it, so compose it with depth and atmosphere, the main elements towards the sides, the back and the lower third, and a calmer, darker or softer middle.'
+      : 'Create one editorial photograph for a section of a professional event website.',
+    'Scene: ' + String(subject || 'a large business conference in session, the audience seen from behind facing a lit stage').slice(0, 500) + '.',
+    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting, the people at work and the objects in view.' : '',
+    opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
+    design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
+    'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents in the lighting.',
     'Every picture on this site shares this one style, so that they read as a set.',
     opts.hero ? 'Landscape, 16:9.' : 'Landscape, 4:3.',
     IMAGE_RULES

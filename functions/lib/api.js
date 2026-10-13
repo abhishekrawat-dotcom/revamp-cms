@@ -122,7 +122,7 @@ const { getFirebase } = require('./firebase');
 const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
 const { logActivity, actorOf } = require('./activity');
-const { callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
+const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
 /* every text call goes through llm.js: Claude first when its key is set, Gemini as the fallback */
 const llm = require('./llm');
 const logoUnit = require('./logo-unit');
@@ -964,8 +964,8 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
    { sectionId, url, subject } — or null when it could not be made, which costs the site that one picture
    and nothing else. `stamp` keeps a re-run's pictures apart from the last run's (a cached old picture under
    the same address would otherwise be shown for the new site). */
-function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context) {
-  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about) {
+  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
     var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
     var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
@@ -1058,7 +1058,7 @@ var DESIGN_PLAN_SCHEMA = {
         bodyFont: { type: 'STRING', description: 'a real Google Fonts family name' },
         layout: { type: 'STRING', description: '2-3 sentences: the layout system of the whole page — the grid, how sections alternate, how pictures are placed, what the hero is built like. Specific enough that two designers would build the same page from it.' },
         cornerRadius: { type: 'STRING', enum: ['0', '6', '12', '20'], description: 'Corner radius in px used for every card, picture and input on the site (buttons follow it too).' },
-        imageStyle: { type: 'STRING', description: 'One sentence: the single visual style every generated picture on this site shares (e.g. "moody long-exposure photographs of industrial interiors, teal and amber light").' },
+        imageStyle: { type: 'STRING', description: 'One sentence: the single PHOTOGRAPHIC style every generated picture on this site shares — the look of the photographs, not their subject (e.g. "editorial event photography, wide and atmospheric, deep shadows with warm stage light and teal accents").' },
         logoUnit: {
           type: 'OBJECT',
           description: 'The event\'s NAME, split into three parts for its logo lock-up without changing, adding or dropping a single word: the one distinctive keyword that identifies this event (what a regular would call it for short — "TECH500" in "TECH500 Summit", "EV" in "EV Conclave", "CIO" in "ETCIO Awards 2027" is not a word so the keyword is "ETCIO"), and whatever of the name comes before and after it. Generic words (Summit, Awards, Conclave, Forum, Conference, the year) are never the keyword.',
@@ -1071,7 +1071,7 @@ var DESIGN_PLAN_SCHEMA = {
           required: ['before', 'keyword', 'after', 'style']
         },
         heroTagline: { type: 'STRING', description: 'The ONE line under the event\'s name in the hero banner: what this event is, or its promise, in at most 10 words, no full stop needed (e.g. "India\'s Most Influential Enterprise Technology Decision-Makers. One Room."). Not the event\'s name, not a paragraph.' },
-        heroImage: { type: 'STRING', description: 'One sentence: what the hero background picture shows — objects, spaces or abstract forms that evoke this event\'s subject. Never people, text or logos.' }
+        heroImage: { type: 'STRING', description: 'One or two sentences: the scene of the hero background picture. A visitor must see at once (1) that this is a business EVENT of this kind (a summit: a large hall with an audience seen from behind facing a lit stage; an awards night: a stage with trophies under spotlights; an immersion or study tour: a delegation of executives being shown round the place they visit; an expo: a show floor) and (2) WHAT FIELD it is about — the stage screens, the setting and the objects in view come from this event\'s own subject — and, where the place matters (a named city or country), that place. Never an abstract pattern, never unrelated objects. People are anonymous: from behind, in silhouette or at a distance. No text, no logos.' }
       },
       required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'logoUnit', 'heroTagline', 'heroImage']
     },
@@ -1085,7 +1085,7 @@ var DESIGN_PLAN_SCHEMA = {
           kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the others ONLY when this section is really that specific data-bound type (see below).' },
           purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' },
           layout: { type: 'STRING', description: 'one sentence: how THIS section is laid out (e.g. "picture left, text right, three ticked points under the text", "one dark band of four large numbers", "three-column cards with an icon each", "a vertical timeline"). Neighbouring sections must not share a layout.' },
-          image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence: the specific objects, place or materials that THIS section is about (not a generic backdrop, and different from every other picture on the page) — never people, text or logos. Empty string only for a section that carries no generated picture.' }
+          image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence: the real-world scene THIS section is about, as a photographer covering this event and its industry would shoot it (not a generic backdrop, and different from every other picture on the page). For a section about the event itself (overview, why attend, who attends, networking, awards) that is the event: delegates in conversation, a panel on stage, an audience, a registration desk, a trophy table. For a section about the subject (themes, tracks, discussion points) it is that subject at work in its real setting, with the people who do it. People are anonymous (from behind, in profile at a distance, hands at work) — never a recognisable face. No text or logos. Empty string only for a section that carries no generated picture.' }
         },
         required: ['id', 'kind', 'purpose', 'layout', 'image']
       }
@@ -1165,8 +1165,8 @@ function buildDesignPlanPrompt(payload) {
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
     '',
-    'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage). Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
-    'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", and never the same subject twice on one page. Pictures show objects, places, materials, tools or abstract forms: never people, never text or logos, never something that could pass for a photograph of this event.',
+    'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage): the one picture that tells a visitor what this event is — an event scene of this event\'s own kind and field, never an abstraction. Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
+    'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", never a metaphor made of unrelated objects (glass blocks, light trails, a server rack for a marketing event), and never the same subject twice on one page. RELEVANCE IS THE TEST: someone shown the picture alone should be able to say what kind of event this is and what it is about. So the pictures are scenes from this event\'s world, as an editorial photographer would shoot them: the event itself (a hall and its audience, a panel on stage, delegates talking over coffee, an awards table) and its subject at work in its real setting (for marketing technology: a marketing team around campaign dashboards; for German industry: a factory floor being shown to visiting executives; for retail: a shop floor). People belong in them, but anonymously — from behind, in silhouette, at a distance, hands at work; never a recognisable face, never a named person. Where the event is tied to a place (a city, a country), let that place show. No text or logos in any picture (screens and signs are blank or blurred).',
     '',
     'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
   );
@@ -1286,9 +1286,10 @@ var LOGO_READ_SCHEMA = {
     yearBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there is a year: [ymin, xmin, ymax, xmax] of its four digits ONLY, each 0-1000 relative to the picture. Else an empty list.' },
     yearFont: { type: 'STRING', enum: ['serif', 'sans-serif'] },
     yearWeight: { type: 'STRING', enum: ['regular', 'bold'] },
-    extras: { type: 'STRING', description: 'Anything drawn inside that belongs to one edition only: a sponsor\'s name or logo ("Powered by …"), a theme line, an edition number. Else an empty string.' }
+    extras: { type: 'STRING', description: 'Anything drawn inside that belongs to one edition only: a sponsor\'s or partner\'s name or logo ("Powered by …", "Presented by …", "In association with …"), a theme line of that edition, an edition number. Else an empty string. The publisher\'s own mark (ET, The Economic Times, an ET vertical such as ETAuto) is NOT an extra.' },
+    unitBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there are extras: [ymin, xmin, ymax, xmax], each 0-1000 relative to the picture, of ONE box that encloses ALL the extras together (every sponsor mark, "Powered by" line and theme line) and nothing of the publisher\'s mark or of the event\'s name. Else an empty list.' }
   },
-  required: ['allText', 'year', 'yearBox', 'yearFont', 'yearWeight', 'extras']
+  required: ['allText', 'year', 'yearBox', 'yearFont', 'yearWeight', 'extras', 'unitBox']
 };
 var LOGO_READ_PROMPT = 'This picture is the logo unit (lock-up) of an event, taken from its website. It is shown here on a plain grey background that is not part of it. Read it carefully and answer.';
 
@@ -1402,15 +1403,68 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt) {
   if (shown.data.length > 4 * 1024 * 1024) return Promise.resolve(null);       // base64 of 3 MB: nothing a logo unit needs
   var ask = { route: 'logo-unit', eventId: eventId, images: [shown], timeoutMs: 40000, maxOutputTokens: AI_OUTPUT_TOKENS.small };
   if (deadlineAt) ask.deadlineAt = deadlineAt;
-  return llm.callJson(LOGO_READ_PROMPT, LOGO_READ_SCHEMA, ask).then(function (r) {
+  /* This one reading goes to Gemini, not through llm.js: what is needed from it is WHERE things are in
+     the picture, and Gemini places a box to the pixel where Claude's boxes land beside the lettering
+     (measured on the same lock-up: Gemini's box was the year's own, Claude's was 300 px off). */
+  return callGeminiJson(LOGO_READ_PROMPT, LOGO_READ_SCHEMA, ask).then(function (r) {
     if (r.error) return null;
     var p = r.parsed || {}, year = /^(19|20)\d\d$/.test(String(p.year || '').trim()) ? String(p.year).trim() : '';
     var b = Array.isArray(p.yearBox) ? p.yearBox.map(Number) : [], box = null;
     if (year && b.length === 4 && b.every(function (n) { return n >= 0 && n <= 1000; }) && b[2] > b[0] && b[3] > b[1]) {
       box = { x: b[1] / 1000 * picture.info.width, y: b[0] / 1000 * picture.info.height, width: (b[3] - b[1]) / 1000 * picture.info.width, height: (b[2] - b[0]) / 1000 * picture.info.height };
     }
-    return { year: year, box: box, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160) };
+    var u = Array.isArray(p.unitBox) ? p.unitBox.map(Number) : [], unitBox = null;
+    if (u.length === 4 && u.every(function (n) { return n >= 0 && n <= 1000; }) && u[2] > u[0] && u[3] > u[1]) {
+      unitBox = { x: u[1] / 1000 * picture.info.width, y: u[0] / 1000 * picture.info.height, width: (u[3] - u[1]) / 1000 * picture.info.width, height: (u[2] - u[0]) / 1000 * picture.info.height };
+    }
+    return { year: year, box: box, unitBox: unitBox, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160) };
   }, function () { return null; });
+}
+
+/* Last edition's sponsor is not this edition's. A lock-up that has a sponsor's mark, a "Powered by" line
+   or that edition's theme line drawn into it is cut down to the event's own part: the publisher's mark and
+   the event's name. Nothing is redrawn — the picture is cropped.
+     decoded: the PNG's pixels; extras: the one box the model drew round everything that has to go. What
+     is kept is the side of the picture away from it: above it when it sits at the bottom (the usual
+     place for a sponsor), below, left or right of it otherwise.
+   -> the cropped picture ({ width, height, data }), or null when there is no clean place to cut. The cut
+   is moved to the nearest empty row or column, so that it never runs through lettering, and the result is
+   trimmed to what is drawn in it. */
+function cropToOwnUnit(decoded, extras) {
+  if (!decoded || !extras) return null;
+  var W = decoded.width, H = decoded.height;
+  var ex0 = extras.x / W, ex1 = (extras.x + extras.width) / W, ey0 = extras.y / H, ey1 = (extras.y + extras.height) / H;
+  var box = ey0 >= 0.3 ? { x: 0, y: 0, width: W, height: extras.y }
+    : ey1 <= 0.7 ? { x: 0, y: extras.y + extras.height, width: W, height: H - extras.y - extras.height }
+    : ex0 >= 0.3 ? { x: 0, y: 0, width: extras.x, height: H }
+    : ex1 <= 0.7 ? { x: extras.x + extras.width, y: 0, width: W - extras.x - extras.width, height: H }
+    : null;
+  if (!box) return null;
+  var background = pngLite.hasTransparency(decoded) ? null : pngLite.edgeColour(decoded, { x: 1, y: 1, width: W - 2, height: H - 2 });
+  var rows = pngLite.inkProfile(decoded, 'y', background), cols = pngLite.inkProfile(decoded, 'x', background);
+  /* the empty line nearest to where the model put the edge, looking a twelfth of the picture either way */
+  function settle(profile, at, reach) {
+    at = Math.max(0, Math.min(profile.length - 1, Math.round(at)));
+    for (var d = 0; d <= reach; d++) {
+      if (at + d < profile.length && profile[at + d] === 0) return at + d;
+      if (at - d >= 0 && profile[at - d] === 0) return at - d;
+    }
+    return -1;
+  }
+  var top = box.y <= H * 0.03 ? 0 : settle(rows, box.y, Math.ceil(H / 12));
+  var bottom = box.y + box.height >= H * 0.97 ? H : settle(rows, box.y + box.height, Math.ceil(H / 12));
+  var left = box.x <= W * 0.03 ? 0 : settle(cols, box.x, Math.ceil(W / 12));
+  var right = box.x + box.width >= W * 0.97 ? W : settle(cols, box.x + box.width, Math.ceil(W / 12));
+  if (top < 0 || bottom < 0 || left < 0 || right < 0 || bottom - top < 24 || right - left < 60) return null;
+  var cut = pngLite.crop(decoded, { x: left, y: top, width: right - left, height: bottom - top });
+  if (!cut) return null;
+  var ink = pngLite.inkBounds(cut, { x: 0, y: 0, width: cut.width, height: cut.height }, background);
+  if (!ink) return null;
+  var pad = Math.round(Math.max(ink.width, ink.height) * 0.02) + 2;
+  var tight = pngLite.crop(cut, { x: ink.x - pad, y: ink.y - pad, width: ink.width + 2 * pad, height: ink.height + 2 * pad });
+  /* cutting must have taken something away, and must have left a lock-up */
+  if (!tight || tight.width * tight.height > W * H * 0.94 || tight.width < 120 || tight.height < 30) return null;
+  return tight;
 }
 
 /* A PNG with the old year drawn in -> one SVG: the same picture with that year's rectangle emptied, and
@@ -1532,7 +1586,7 @@ function previousEditionUnit(fb, eventId, o) {
     function stillShows(year) {
       notes.push('The logo unit is the previous edition\'s and still shows ' + year + ', not ' + years.to + ': it could not be changed without redrawing it. Select it and use Replace image to put in this edition\'s artwork.');
     }
-    function carries(extras) { if (extras) notes.push('It also carries “' + extras + '” from that edition — check that it still applies.'); }
+    function carries(extras) { if (extras) notes.push('The logo unit also carries “' + extras + '” from the previous edition, which could not be cropped out cleanly. Select it and use Replace image to put in artwork without it.'); }
 
     if (picture.info.type === 'svg') {
       var svgText = picture.bytes.toString('utf8');
@@ -1554,18 +1608,37 @@ function previousEditionUnit(fb, eventId, o) {
       if (!wrapped) return done(picture);
       var innerBytes = Buffer.from(wrapped[2].replace(/\s+/g, ''), 'base64'), innerInfo = logoUnit.imageInfo(innerBytes);
       var innerDecoded = innerInfo.type === 'png' && innerInfo.width * innerInfo.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(innerBytes) : null;
-      return readLogoPicture(eventId, { bytes: innerBytes, info: innerInfo }, innerDecoded, o.deadlineAt).then(function (inner) {
-        if (inner) { if (isOldEdition(inner.year)) stillShows(inner.year); carries(inner.extras); }
-        return done(picture);
-      });
+      /* an SVG that is nothing but that one PNG is that PNG: it is taken out and handled as one, so that a
+         sponsor's mark in it can be cropped and its year moved */
+      var onlyWraps = !/<(path|text|rect|circle|ellipse|polygon|polyline|line|g|mask|clipPath|filter)[\s>]/i.test(svgText);
+      if (innerDecoded && onlyWraps && !logoUnit.plausibleUnit(innerInfo)) picture = { bytes: innerBytes, info: innerInfo };
+      else {
+        return readLogoPicture(eventId, { bytes: innerBytes, info: innerInfo }, innerDecoded, o.deadlineAt).then(function (inner) {
+          if (inner) { if (isOldEdition(inner.year)) stillShows(inner.year); carries(inner.extras); }
+          return done(picture);
+        });
+      }
     }
 
     /* a logo unit is a small picture: one too large to be worth reading pixel by pixel is used as it is */
     var decoded = picture.info.type === 'png' && picture.info.width * picture.info.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(picture.bytes) : null;
     tone = rasterTone(decoded);
-    return readLogoPicture(eventId, picture, decoded, o.deadlineAt).then(function (read) {
+    return readLogoPicture(eventId, picture, decoded, o.deadlineAt).then(function (first) {
+      if (!first || !first.extras) return first;
+      /* A sponsor's mark or that edition's theme line is drawn in: the picture is cut down to the event's
+         own lock-up, and read again — the cut is kept only if the second reading finds nothing left of it. */
+      var cut = cropToOwnUnit(decoded, first.unitBox);
+      if (!cut) { carries(first.extras); return first; }
+      var cutBytes = pngLite.encode(cut), cutPicture = { bytes: cutBytes, info: logoUnit.imageInfo(cutBytes) };
+      if (logoUnit.plausibleUnit(cutPicture.info)) { carries(first.extras); return first; }
+      return readLogoPicture(eventId, cutPicture, cut, o.deadlineAt).then(function (second) {
+        if (!second || second.extras) { carries(first.extras); return first; }
+        picture = cutPicture; decoded = cut; tone = rasterTone(cut) || tone;
+        notes.push('“' + first.extras + '” belonged to the previous edition and was cropped out of the logo unit; the rest of it is untouched.');
+        return second;
+      });
+    }).then(function (read) {
       if (!read) return done(picture);
-      carries(read.extras);
       var old = isOldEdition(read.year) ? read.year : '';
       if (!old) return done(picture);
       return moveYearInPng(decoded, read, years.to, o.eventMeta.name, picture.bytes.length).then(function (patched) {
@@ -1674,12 +1747,15 @@ function handlePlanStructure(req, res) {
 
         /* The pictures are made side by side: the hero's and one for each section the plan gave one. A
            picture that fails costs the site that picture only. */
-        var heroPrompt = genDesign.imagePrompt(design.heroImage || (brief && brief.theme) || eventMeta.name, design, { hero: true });
+        /* what every picture is told about the event it belongs to: its name, its subject, its place */
+        var about = [eventMeta.name, (brief && brief.theme) || eventMeta.description, [eventMeta.venue, eventMeta.city].filter(Boolean).join(', ')]
+          .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
+        var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about });
         var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt)].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
-            var context = 'It illustrates the "' + s.id.replace(/-/g, ' ') + '" section of the website of ' + String(eventMeta.name || 'an event') + ': ' + s.purpose;
-            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context);
+            var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
+            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about);
           })
         );
         /* the logo unit is made alongside them: the previous edition's own, or a new one drawn */
@@ -5967,5 +6043,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, readLogoPicture, moveYearInPng, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA
+  buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA
 };
