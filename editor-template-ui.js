@@ -146,6 +146,7 @@
       document.getElementById('btn-publish').hidden = !eventId;
       document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
+      loadSiteInfo();
       return true;
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -1066,8 +1067,6 @@
   }
   function saveLocal(snap) { persist(snap); }
 
-  /* The site lives in this browser's copy only; sending each committed change to the server starts here. */
-  function scheduleServerSave() {}
 
   function record(typing) {
     clearTimeout(commitTimer); commitTimer = null;
@@ -3460,7 +3459,8 @@
     win.document.open();
     win.document.write('<!doctype html><title>Loading preview…</title><body style="font:14px/1.5 system-ui,sans-serif;padding:40px;color:#666">Loading preview…</body>');
     win.document.close();
-    RevampCore.stageEvent(eventId, canvas.serialize()).then(function (result) {
+    /* the page as it is in this editor, saved or not: this person's own preview. Staging changes on Save. */
+    RevampCore.previewDraft(eventId, canvas.serialize()).then(function (result) {
       win.location.href = result.stagingUrl;
     }).catch(function (err) {
       win.document.open();
@@ -3469,39 +3469,200 @@
     });
   }
 
-  /* Real publish: sends canvas.serialize()'s own output (the exact same string the Preview button already
-     opens in a new tab) to POST /api/event/publish, which stores it in Firebase Storage, public, and marks
-     the event published — see functions/lib/api.js's handleEventPublish. Before this, Publish was purely
-     cosmetic (a setTimeout + a modal literally titled "Saved — not yet published") — nothing the user
-     edited ever left their own browser's IndexedDB, so there was genuinely nothing to serve from a real
-     URL even if one existed. A template opened with no event has nothing to publish to (its Publish
-     button is not shown). */
-  function publish() {
-    if (!canvas || !eventId) return;
+  /* ---------- save to staging / publish changes ----------
+     The editor keeps every change in this browser as it is made. Nothing reaches the server until Save: that
+     stores the site as a new version, puts it on the staging address and records what changed, by whom.
+     Publish changes sends everything saved since what is live for approval; approving it is what makes it
+     live (see "SAVE -> STAGING -> APPROVAL -> LIVE" in functions/lib/api.js). */
+  var siteInfo = null;          // { savedVersion, publishedVersion, published, pending, required } from the server
+  var savedMark = null;         // { version, hash } — what this browser last saved, to tell "unsaved" from "saved"
+  var saving = false, stateTimer = null;
+
+  function markKey() { return 'rv-site-saved:' + eventId; }
+  function readMark() { try { return JSON.parse(localStorage.getItem(markKey()) || 'null'); } catch (e) { return null; } }
+  function writeMark(mark) { savedMark = mark; try { localStorage.setItem(markKey(), JSON.stringify(mark)); } catch (e) { /* kept in memory */ } }
+  function snapHash(snap) {
+    var text = JSON.stringify(snap || null), h = 5381;
+    for (var i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+    return text.length + ':' + h;
+  }
+  function isDirty() {
+    if (!savedMark || !siteInfo || !siteInfo.savedVersion) return true;
+    return savedMark.hash !== snapHash(undoStack[undoPtr]);
+  }
+
+  function loadSiteInfo() {
+    if (!eventId) return Promise.resolve();
+    savedMark = readMark();
+    return RevampCore.fetchApproval(eventId).then(function (a) {
+      siteInfo = {
+        savedVersion: a.savedVersion || 0, published: !!a.published, publishedVersion: a.publishedVersion || 0,
+        pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false
+      };
+    }, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true }; })
+      .then(renderSiteState);
+  }
+  function reviewHref(id) { return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(id); }
+
+  /* the chip beside Save: where this site stands, and the way to it */
+  function renderSiteState() {
+    var chip = document.getElementById('site-state'), save = document.getElementById('btn-save'), pub = document.getElementById('btn-publish');
+    if (!chip || !save) return;
+    chip.hidden = save.hidden = !eventId || !canvas;
+    if (!eventId || !canvas || !siteInfo) return;
+    var dirty = isDirty(), v = siteInfo.savedVersion, kind = 'plain', text, href = '', title = '';
+    if (!v) { kind = 'warn'; text = 'Not saved yet'; title = 'Save puts this site on the staging address.'; }
+    else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Staging still shows version ' + v + '. Save to update it.'; href = '/preview/' + eventId + '?staged=1'; }
+    else if (siteInfo.pending && siteInfo.pending.toVersion === v) { kind = 'wait'; text = 'v' + v + ' · waiting for approval'; href = reviewHref(siteInfo.pending.id); title = 'Sent for approval by ' + siteInfo.pending.requestedBy + '. Open the review page.'; }
+    else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'v' + v + ' · live'; href = '/e/' + eventId; title = 'This version is the live site.'; }
+    else { text = 'v' + v + ' · saved to staging'; href = '/preview/' + eventId + '?staged=1'; title = 'Open the staging site.'; }
+    chip.className = 'site-state ' + kind;
+    chip.textContent = text; chip.title = title;
+    if (href) { chip.href = href; chip.target = '_blank'; chip.rel = 'noopener'; } else { chip.removeAttribute('href'); }
+    save.disabled = saving || !dirty;
+    save.textContent = saving ? 'Saving…' : 'Save';
+    if (pub) pub.textContent = siteInfo.required ? 'Publish changes' : 'Publish';
+  }
+  /* The site lives in this browser's copy until Save; a change only moves the chip to "Unsaved changes". */
+  function scheduleServerSave() {
+    clearTimeout(stateTimer);
+    stateTimer = setTimeout(renderSiteState, 250);
+  }
+
+  function modal(html, cls) {
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim';
+    scrim.innerHTML = '<div class="modal ' + (cls || '') + '">' + html + '</div>';
+    document.body.appendChild(scrim);
+    scrim.addEventListener('click', function (e) { if (e.target === scrim || (e.target.closest && e.target.closest('[data-close]'))) scrim.remove(); });
+    return scrim;
+  }
+  function when(iso) { var d = new Date(iso || ''); return isNaN(d) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+
+  /* -> a promise of the save's answer; rejects when it was not saved (the reason has been shown) */
+  function saveToStaging(opts) {
+    opts = opts || {};
+    if (!canvas || !eventId) return Promise.reject(new Error('no site'));
+    if (saving) return Promise.reject(new Error('busy'));
     deselect();
     flush();
-    showToast('Publishing…');
-    var html = canvas.serialize();
-    RevampCore.publishEvent(eventId, html).then(function (result) {
-      var pubName = (currentEvent && currentEvent.name) || 'Untitled event';
-      if (currentEvent) { currentEvent.published = true; renderTopbar(); }
-      var scrim = document.createElement('div');
-      scrim.className = 'scrim';
-      scrim.innerHTML =
-        '<div class="modal"><div class="modal-body">' +
-        '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
-        '<h3>Published</h3>' +
-        '<p>' + escHtml(pubName) + '’s latest changes are now live at:</p>' +
-        '<span class="url">' + escHtml(result.publishedUrl) + '</span>' +
-        '</div><div class="modal-foot">' +
-        '<button class="btn btn-secondary" id="publish-close">Keep editing</button>' +
-        '<a class="btn btn-primary" id="publish-view" href="' + escHtml(result.publishedUrl) + '" target="_blank" rel="noopener">View live page</a>' +
-        '</div></div>';
-      document.body.appendChild(scrim);
-      scrim.querySelector('#publish-close').addEventListener('click', function () { scrim.remove(); });
-      scrim.addEventListener('click', function (e) { if (e.target === scrim) scrim.remove(); });
+    var snap = undoStack[undoPtr], hash = snapHash(snap), html = canvas.serialize();
+    saving = true; renderSiteState();
+    function send(force) {
+      return RevampCore.saveSite(eventId, {
+        templateId: templateId, baseVersion: force ? 0 : ((savedMark && savedMark.version) || 0), snapshot: snap, html: html, force: force
+      });
+    }
+    function conflict(err) {
+      if (!err || err.status !== 409 || err.code !== 'site-conflict') throw err;
+      var cur = err.current || {};
+      /* never saved from this browser, and nobody else has either: nothing can be overwritten */
+      if (!cur.version) return send(true);
+      /* this browser has never saved this site but the same person may have, elsewhere; either way they are told */
+      return new Promise(function (resolve, reject) {
+        var m = modal(
+          '<div class="modal-body"><h3>Save over version ' + cur.version + '?</h3>' +
+          '<p>Staging holds version ' + cur.version + (cur.updatedBy ? ', saved by ' + escHtml(cur.updatedBy) : '') + (cur.updatedAt ? ' on ' + escHtml(when(cur.updatedAt)) : '') +
+          '. Saving puts what is in this editor on staging as version ' + (cur.version + 1) + '. Version ' + cur.version + ' is kept in the history.</p></div>' +
+          '<div class="modal-foot"><button class="btn btn-secondary" data-close id="sv-no">Cancel</button><button class="btn btn-primary" id="sv-yes">Save as version ' + (cur.version + 1) + '</button></div>');
+        var done = false;
+        m.querySelector('#sv-yes').addEventListener('click', function () { done = true; m.remove(); send(true).then(resolve, reject); });
+        m.addEventListener('click', function () { setTimeout(function () { if (!done && !m.isConnected) { done = true; reject(Object.assign(new Error('cancelled'), { cancelled: true })); } }, 0); });
+      });
+    }
+    return send(false).then(null, conflict).then(function (out) {
+      saving = false;
+      writeMark({ version: out.version, hash: hash });
+      siteInfo = siteInfo || { required: true };
+      siteInfo.savedVersion = out.version;
+      renderSiteState();
+      if (!opts.quiet) {
+        showToast('Saved to staging as version ' + out.version + (out.summary ? ' — ' + out.summary : ''), {
+          action: { label: 'Open staging', onClick: function () { window.open('/preview/' + eventId + '?staged=1', 'revamp-staging-' + eventId); } }
+        });
+      }
+      return out;
+    }, function (err) {
+      saving = false; renderSiteState();
+      if (!(err && err.cancelled)) showToast('Could not save — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
+      throw err;
+    });
+  }
+
+  function showPublished(result) {
+    var pubName = (currentEvent && currentEvent.name) || 'Untitled event';
+    if (currentEvent) { currentEvent.published = true; renderTopbar(); }
+    var m = modal(
+      '<div class="modal-body">' +
+      '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
+      '<h3>Published</h3><p>' + escHtml(pubName) + '’s latest changes are now live at:</p>' +
+      '<span class="url">' + escHtml(result.publishedUrl) + '</span></div>' +
+      '<div class="modal-foot"><button class="btn btn-secondary" data-close>Keep editing</button>' +
+      '<a class="btn btn-primary" href="' + escHtml(result.publishedUrl) + '" target="_blank" rel="noopener">View live page</a></div>');
+    return m;
+  }
+
+  /* Publish changes: saves what is unsaved, then asks for approval of everything saved since what is live.
+     Where approval has been switched off (Review page → Who approves), it publishes at once instead. */
+  function publish() {
+    if (!canvas || !eventId || saving) return;
+    deselect();
+    flush();
+    var ready = isDirty() ? saveToStaging({ quiet: true }) : Promise.resolve();
+    ready.then(function () {
+      if (siteInfo && siteInfo.required === false) {
+        showToast('Publishing…');
+        return RevampCore.publishEvent(eventId).then(function (result) {
+          siteInfo.published = true; siteInfo.publishedVersion = result.publishedVersion; renderSiteState();
+          showPublished(result);
+        });
+      }
+      if (siteInfo && siteInfo.published && siteInfo.publishedVersion === siteInfo.savedVersion) {
+        showToast('Version ' + siteInfo.savedVersion + ' is already live: there is nothing new to publish.');
+        return;
+      }
+      askApproval();
     }).catch(function (err) {
-      showToast('Could not publish — ' + (err && err.message ? err.message : 'please try again.'));
+      if (err && (err.cancelled || err.message === 'busy')) return;
+      if (err && err.status) showToast('Could not publish — ' + err.message, { kind: 'error' });
+    });
+  }
+
+  function askApproval() {
+    var pending = siteInfo && siteInfo.pending, v = siteInfo.savedVersion;
+    var m = modal(
+      '<div class="modal-body"><h3>Send for approval</h3>' +
+      '<p>Version ' + v + ' is on staging. It goes live once it is approved' + (siteInfo.published ? '; until then the live site stays on version ' + siteInfo.publishedVersion : '') + '. ' +
+      'The approver sees every change saved since ' + (siteInfo.published ? 'the live version' : 'the start') + ', and who made it.</p>' +
+      (pending ? '<p class="apv-note">A request by ' + escHtml(pending.requestedBy) + ' is already waiting (version ' + pending.toVersion + '). Sending updates it to version ' + v + '.</p>' : '') +
+      '<textarea id="apv-msg" rows="3" maxlength="1000" placeholder="Note for the approver (optional): what changed and why"></textarea></div>' +
+      '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary" id="apv-send">Send for approval</button></div>', 'apv-modal');
+    var send = m.querySelector('#apv-send');
+    send.addEventListener('click', function () {
+      send.disabled = true; send.textContent = 'Sending…';
+      RevampCore.requestApproval(eventId, m.querySelector('#apv-msg').value).then(function (r) {
+        m.remove();
+        siteInfo.pending = { id: r.id, toVersion: r.toVersion, requestedBy: (pending && pending.requestedBy) || 'you' };
+        renderSiteState();
+        var link = r.reviewUrl || (location.origin + r.reviewPath);
+        var d = modal(
+          '<div class="modal-body"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
+          '<h3>' + (r.updated ? 'Request updated' : 'Sent for approval') + '</h3>' +
+          '<p>Version ' + r.toVersion + ' — ' + escHtml(r.summary || 'changes') + '. Share this link with the approver: it lists what changed, who changed it, and shows the live site beside the new one.</p>' +
+          '<span class="url" id="apv-link">' + escHtml(link) + '</span></div>' +
+          '<div class="modal-foot"><button class="btn btn-secondary" id="apv-copy">Copy link</button>' +
+          '<a class="btn btn-primary" href="' + escHtml(r.reviewPath) + '" target="_blank" rel="noopener">Open review page</a></div>', 'apv-modal');
+        d.querySelector('#apv-copy').addEventListener('click', function () {
+          var btn = this;
+          (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { btn.textContent = 'Copied'; }, function () {
+            var range = document.createRange(); range.selectNodeContents(d.querySelector('#apv-link'));
+            var sel = getSelection(); sel.removeAllRanges(); sel.addRange(range); btn.textContent = 'Select and copy';
+          });
+        });
+      }, function (err) {
+        send.disabled = false; send.textContent = 'Send for approval';
+        showToast('Could not send for approval — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
+      });
     });
   }
 
@@ -3515,7 +3676,7 @@
   window.RevampTemplateUI = {
     openDevZone: openDevZone,
     open: open, leave: leave, handoffFor: handoffFor,
-    setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo, flush: flush,
+    setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty() }; }, undo: undo, redo: redo, flush: flush,
     addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
     getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl,
     selectedStyle: selectedStyle, styleSelected: styleSelected,

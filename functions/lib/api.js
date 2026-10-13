@@ -126,6 +126,7 @@ const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini
 const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
+const { diffPages, summarise } = require('./page-diff');
 const { safeFetch } = require('./safe-fetch');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
@@ -3181,6 +3182,14 @@ function checkIfUpdatedAt(body) {
 }
 function sameValue(a, b) { return a === b || JSON.stringify(a) === JSON.stringify(b); }
 
+/* the fields of a record that say when and by whom, not what: left out of a history line */
+var RECORD_META = ['createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'order', 'eventId', 'id'];
+/* what a person would call the record: its name, title, question … */
+function recordTitle(d) {
+  var v = d && (d.name || d.title || d.question || d.label || d.company || d.email || d.heading);
+  return String(v || 'untitled').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
 function subcollectionRoutes(name, spec) {
   var fields = spec.fields, label = spec.label;
   var required = spec.required || [], anyOf = spec.anyOf || null, fixed = spec.fixed || [];
@@ -3249,7 +3258,10 @@ function subcollectionRoutes(name, spec) {
       data.createdAt = now; data.updatedAt = now; data.createdBy = actorOf(decoded); data.updatedBy = data.createdBy;
       loadLiveEvent(fb, eventId)
         .then(function () { return col(fb, eventId).add(data); })
-        .then(function (ref) { sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now }); })
+        .then(function (ref) {
+          sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now });
+          logActivity(fb, eventId, decoded, 'content-added', label + ' “' + recordTitle(data) + '”', { fields: fieldChanges(null, data, RECORD_META) });
+        })
         .catch(function (err) { sendFailure(res, name + ' create', err, 'Could not save the ' + label + '. Please try again.'); });
     });
   }
@@ -3264,7 +3276,7 @@ function subcollectionRoutes(name, spec) {
       if (!isRecordId(body.id)) return sendJson(res, 400, { error: 'A valid id is required.' });
       var bad = checkIfUpdatedAt(body);
       if (bad) return sendJson(res, 400, { error: bad, field: 'ifUpdatedAt' });
-      var ref = col(fb, eventId).doc(body.id), now = new Date().toISOString();
+      var ref = col(fb, eventId).doc(body.id), now = new Date().toISOString(), diff = [], title = '';
       /* the event is read outside the transaction: every registration writes to that document, and a
          content save must not queue behind them */
       loadLiveEvent(fb, eventId).then(function () {
@@ -3276,26 +3288,36 @@ function subcollectionRoutes(name, spec) {
             var clean = sanitize(body, false, stored);
             if (clean.error) throw httpError(400, clean.error, { field: clean.field });
             var data = clean.data;
+            diff = fieldChanges(stored, data, RECORD_META);
+            title = recordTitle(Object.assign({}, stored, data));
             data.updatedAt = now; data.updatedBy = actorOf(decoded);
             tx.update(ref, data);
           });
         });
-      }).then(function () { sendJson(res, 200, { ok: true, updatedAt: now }); })
+      }).then(function () {
+        sendJson(res, 200, { ok: true, updatedAt: now });
+        if (diff.length) logActivity(fb, eventId, decoded, 'content-changed', label + ' “' + title + '” — ' + diff.map(function (f) { return f.field; }).join(', '), { fields: diff });
+      })
         .catch(function (err) { sendFailure(res, name + ' update', err, 'Could not save the ' + label + '. Please try again.'); });
     });
   }
   function remove(req, res) {
-    withAdmin(req, res, function (fb) {
+    withAdmin(req, res, function (fb, decoded) {
       var qs = queryOf(req);
       var eventId = eventIdOr400(res, qs.get('eventId'));
       if (!eventId) return;
       var id = qs.get('id');
       if (!isRecordId(id)) return sendJson(res, 400, { error: 'A valid id is required.' });
-      var ref = col(fb, eventId).doc(id);
+      var ref = col(fb, eventId).doc(id), was = null;
       Promise.all([loadLiveEvent(fb, eventId), ref.get()]).then(function (r) {
         if (!r[1].exists) throw httpError(404, 'That ' + label + ' no longer exists — it may already have been deleted.', { code: 'record-not-found' });
+        was = r[1].data() || {};
         return spec.onRemove ? spec.onRemove(fb, eventId, id, ref) : ref.delete();
-      }).then(function (extra) { sendJson(res, 200, Object.assign({ ok: true }, spec.onRemove ? extra : null)); })
+      }).then(function (extra) {
+        sendJson(res, 200, Object.assign({ ok: true }, spec.onRemove ? extra : null));
+        var gone = fieldChanges(null, was, RECORD_META).map(function (f) { return { field: f.field, before: f.after, after: '(deleted)' }; });
+        logActivity(fb, eventId, decoded, 'content-removed', label + ' “' + recordTitle(was) + '”', { fields: gone });
+      })
         .catch(function (err) { sendFailure(res, name + ' delete', err, 'Could not delete the ' + label + '. Please try again.'); });
     });
   }
@@ -4019,7 +4041,7 @@ function handleEventUpdate(req, res) {
     var changed = Object.keys(clean.data);
     if (!changed.length && !clean.settings) return sendJson(res, 400, { error: 'Nothing to update.' });
 
-    var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), statusChange = null;
+    var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), statusChange = null, diff = [], settingsDiff = [];
     fb.db.runTransaction(function (tx) {
       return tx.get(ref).then(function (snap) {
         var state = eventStateOf(snap);
@@ -4029,17 +4051,20 @@ function handleEventUpdate(req, res) {
           throw staleError('event', { updatedAt: isoOf(stored.updatedAt), updatedBy: stored.updatedBy });
         }
         var write = Object.assign({}, clean.data, { updatedAt: now, detailsUpdatedAt: now, updatedBy: actorOf(decoded) });
-        if (clean.settings) write.settings = mergeSettings(stored.settings, clean.settings);
+        if (clean.settings) {
+          write.settings = mergeSettings(stored.settings, clean.settings);
+          settingsDiff = fieldChanges(stored.settings || {}, pick(write.settings, Object.keys(clean.settings)));
+        }
+        diff = fieldChanges(stored, clean.data, ['status']);
         statusChange = has(clean.data, 'status') && clean.data.status != null && clean.data.status !== stored.status
           ? (stored.status || 'no status') + ' → ' + clean.data.status : null;
         tx.update(ref, write);
       });
     }).then(function () {
       sendJson(res, 200, { ok: true, updatedAt: now });
-      if (clean.settings) logActivity(fb, eventId, decoded, 'settings-changed', Object.keys(clean.settings).join(', '));
+      if (clean.settings && settingsDiff.length) logActivity(fb, eventId, decoded, 'settings-changed', settingsDiff.map(function (f) { return f.field; }).join(', '), { fields: settingsDiff });
       if (statusChange) logActivity(fb, eventId, decoded, 'status-changed', statusChange);
-      var other = changed.filter(function (f) { return f !== 'status'; });
-      if (other.length) logActivity(fb, eventId, decoded, 'updated', other.join(', '));
+      if (diff.length) logActivity(fb, eventId, decoded, 'updated', diff.map(function (f) { return f.field; }).join(', '), { fields: diff });
     }).catch(function (err) { sendFailure(res, 'event update', err, 'The event could not be saved. Please try again.'); });
   });
 }
@@ -4334,23 +4359,25 @@ function handleSitePut(req, res) {
     }).then(function (data) {
       var previous = data.site || {}, version = siteVersionOf(data) + 1;
       var templateId = body.templateId || previous.templateId || data.templateId || null;
-      return Promise.all([
-        saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8'),
-        saveObject(fb, sitePath(eventId, 'page.html'), pageHtml, 'text/html; charset=utf-8')
-      ]).then(function () {
+      var beforeHtml = null;
+      /* the page as it was, read before it is replaced: what this save is compared with */
+      return readObject(fb, sitePath(eventId, 'page.html')).then(function (text) { beforeHtml = siteVersionOf(data) ? text : null; }).then(function () {
+        return Promise.all([
+          saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8'),
+          saveObject(fb, sitePath(eventId, 'page.html'), pageHtml, 'text/html; charset=utf-8')
+        ]);
+      }).then(function () {
         return commitSiteLock(fb, eventId, token, {
           site: { version: version, snapshotVersion: version, templateId: templateId, updatedAt: now, updatedBy: actor },
           updatedAt: now
         });
       }).then(function () {
-        sendJson(res, 200, { version: version, updatedAt: now });
-        /* The editor saves a couple of seconds after every change. One history line per editing session
-           is what a person reading the History wants: a new line when somebody else takes over, or when
-           the last recorded save is more than ten minutes old. */
-        var last = Date.parse(previous.updatedAt || '');
-        if (previous.updatedBy !== actor || isNaN(last) || Date.parse(now) - last > 600000) {
-          logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version);
-        }
+        /* a save is somebody pressing Save: every one is a kept version, on staging, with its own line in
+           the history saying what changed */
+        return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note).then(function (rec) {
+          sendJson(res, 200, { version: version, updatedAt: now, changeId: rec.changeId, summary: rec.summary, changes: rec.items.length,
+            stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
+        });
       }, function (err) {
         return releaseSiteLock(fb, eventId, token).then(function () { throw err; });
       });
@@ -4790,6 +4817,18 @@ function handleEventPublish(req, res) {
     if (body.html != null && typeof body.html !== 'string') return sendJson(res, 400, { error: '"html" must be the page as text.' });
     var legacyHtml = typeof body.html === 'string' && body.html.trim() ? body.html : null;
     var base = publicBaseFor(req, body.origin);
+    if (!body.__approvalChecked) {
+      /* nothing goes live without an approval, unless approval has been switched off (config/approvals) */
+      return approvalsConfig(fb).then(function (cfg) {
+        if (cfg.required) {
+          return sendJson(res, 409, { error: 'Changes go live once they are approved. Save the site, then use “Publish changes” to send it for approval.', code: 'approval-required' });
+        }
+        body.__approvalChecked = true;
+        publishAfterCheck();
+      }).catch(function (err) { sendFailure(res, 'publish', err, 'The site could not be published. Please try again.'); });
+    }
+    publishAfterCheck();
+    function publishAfterCheck() {
     var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
     var HTML = 'text/html; charset=utf-8';
 
@@ -4850,7 +4889,322 @@ function handleEventPublish(req, res) {
           .then(function () { throw err; });
       });
     }).catch(function (err) { sendFailure(res, 'publish', err, 'The site could not be published. The page that was live before is unchanged. Please try again.'); });
+    }
   });
+}
+
+/* =====================================================================================================
+   SAVE -> STAGING -> APPROVAL -> LIVE, and the history of it
+   ---------------------------------------------------------------------------------------------------
+   Save (PUT /api/event/site) stores the site as a new version, keeps that version's page for good
+   (site/versions/<n>/page.html), puts it on the staging address and records what changed against the
+   version before it (events/<id>/changes/<auto>: who, when, section by section, before and after).
+
+   Publishing is never direct. "Publish changes" asks for approval (POST /api/event/approval/request): one
+   request covers everything saved since what is live, however many saves by however many people — a second
+   request while one is waiting updates it. The request names every change and who made it, and has one
+   address a reviewer opens (/review.html?event=…&request=…) to see the changes listed and the live page
+   beside the proposed one. Approving (POST /api/event/approval/decide) is what makes that exact version
+   live; rejecting sends it back with the reason.
+
+   Who may approve (config/approvals): `approvers`, a list of e-mail addresses — empty means any signed-in
+   member of the team; and never the person who asked, unless `allowSelf` is true. `required: false` turns
+   approval off and lets Publish go live at once.
+
+   Everything above is written to the event's history (events/<id>/activity) with the change or the request
+   it belongs to; GET /api/event/history answers the history with those attached. ===================== */
+function draftObjectPath(eventId, decoded) {
+  return sitePath(eventId, 'drafts/' + String((decoded && decoded.uid) || 'anon').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) + '.html');
+}
+function versionPath(eventId, version) { return sitePath(eventId, 'versions/' + version + '/page.html'); }
+
+function approvalsConfig(fb) {
+  return fb.db.collection('config').doc('approvals').get().then(function (snap) {
+    var d = snap.exists ? (snap.data() || {}) : {};
+    return {
+      approvers: (Array.isArray(d.approvers) ? d.approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(function (e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }),
+      allowSelf: d.allowSelf === true,
+      required: d.required !== false
+    };
+  });
+}
+/* '' when `email` may decide a request made by `requestedBy`, else the reason it may not */
+function whyNotApprover(cfg, email, requestedBy) {
+  email = String(email || '').toLowerCase();
+  if (cfg.approvers.length && cfg.approvers.indexOf(email) === -1) return 'Only ' + cfg.approvers.join(', ') + ' can approve changes.';
+  if (!cfg.allowSelf && email === String(requestedBy || '').toLowerCase()) return 'You sent these changes for approval, so someone else has to approve them.';
+  return '';
+}
+
+function reviewPathOf(eventId, id) { return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(id); }
+
+/* After a save: keeps the version's page, puts it on staging, and records what changed. Never the reason
+   a save fails — what it cannot do is logged, and the save stands. -> { changeId, summary, items } */
+function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note) {
+  var HTML = 'text/html; charset=utf-8', now = new Date().toISOString(), actor = actorOf(decoded);
+  var items = [];
+  try { items = diffPages(beforeHtml || '', pageHtml); } catch (e) { console.error('api: could not compare versions of ' + eventId + ' — ' + e.message); }
+  var summary = beforeHtml == null ? 'first saved version' : summarise(items);
+  return Promise.all([
+    saveObject(fb, versionPath(eventId, version), pageHtml, HTML),
+    saveObject(fb, stagingObjectPath(eventId), pageHtml, HTML)
+  ]).then(function () {
+    return eventDocRef(fb, eventId).collection('changes').add({
+      at: now, by: actor, version: version, baseVersion: version - 1, summary: summary,
+      items: beforeHtml == null ? [] : items, note: String(note || '').trim().slice(0, 500)
+    });
+  }).then(function (ref) {
+    logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version + ' — ' + summary, { changeId: ref.id, version: version });
+    return { changeId: ref.id, summary: summary, items: items };
+  }).then(null, function (err) {
+    console.error('api: the save of ' + eventId + ' v' + version + ' was stored but not recorded — ' + (err && err.message));
+    return { changeId: '', summary: summary, items: items };
+  });
+}
+
+function handleApprovalRequest(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var note = String(body.note || '').trim().slice(0, 1000), actor = actorOf(decoded), now = new Date().toISOString();
+    var ref = eventDocRef(fb, eventId);
+    loadLiveEvent(fb, eventId).then(function (data) {
+      var version = siteVersionOf(data);
+      if (!version) throw httpError(409, 'Save the site first: there is nothing to send for approval yet.', { code: 'site-not-saved' });
+      var liveVersion = data.published === true ? (+data.publishedVersion || 0) : 0;
+      if (data.published === true && liveVersion === version) throw httpError(409, 'The saved site is already live: there is nothing new to publish.', { code: 'nothing-to-publish' });
+      return Promise.all([
+        liveVersion ? readObject(fb, versionPath(eventId, liveVersion)) : Promise.resolve(null),
+        readObject(fb, versionPath(eventId, version)).then(function (t) { return t != null ? t : readObject(fb, sitePath(eventId, 'page.html')); }),
+        ref.collection('changes').where('version', '>', liveVersion).orderBy('version').limit(60).get()
+      ]).then(function (r) {
+        var before = r[0], after = r[1];
+        if (after == null) throw httpError(409, 'The saved site could not be found. Save it again, then send it for approval.', { code: 'site-not-saved' });
+        var saves = r[2].docs.map(function (d) { var c = d.data(); return { id: d.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note || '', items: c.items || [] }; })
+          .filter(function (c) { return c.version <= version; });
+        /* what the reviewer is shown: live against proposed when the live version's page was kept, else the
+           saves one after another */
+        var items = [];
+        /* a first publication has no "before": the whole site is new, and listing every section as added says nothing */
+        if (before != null) { try { items = diffPages(before, after); } catch (e) { items = []; } }
+        if (liveVersion && before == null) saves.forEach(function (c) { items = items.concat(c.items); });
+        var people = [];
+        saves.forEach(function (c) { if (c.by && people.indexOf(c.by) === -1) people.push(c.by); });
+        var pendingId = data.approval && data.approval.id;
+        var doc = {
+          status: 'pending', eventId: eventId, updatedAt: now, fromVersion: liveVersion, toVersion: version,
+          firstPublish: !liveVersion, note: note, items: items.slice(0, 80), summary: !liveVersion ? 'first publication of the site' : summarise(items),
+          contributors: people,
+          saves: saves.map(function (c) { return { id: c.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note }; })
+        };
+        var target = pendingId ? ref.collection('approvals').doc(pendingId) : ref.collection('approvals').doc();
+        return (pendingId ? target.get() : Promise.resolve(null)).then(function (snap) {
+          var open = snap && snap.exists && snap.data().status === 'pending';
+          if (!open) { target = ref.collection('approvals').doc(); doc.requestedBy = actor; doc.requestedAt = now; }
+          else { doc.requestedBy = snap.data().requestedBy; doc.requestedAt = snap.data().requestedAt; doc.resubmittedBy = actor; }
+          return target.set(doc, { merge: true }).then(function () {
+            return ref.update({ approval: { id: target.id, toVersion: version, requestedBy: doc.requestedBy, requestedAt: doc.requestedAt, updatedAt: now } });
+          }).then(function () {
+            logActivity(fb, eventId, decoded, 'approval-requested', 'version ' + version + ' — ' + doc.summary + (open ? ' (request updated)' : ''), { approvalId: target.id, version: version });
+            var reviewPath = reviewPathOf(eventId, target.id);
+            sendJson(res, 200, { id: target.id, status: 'pending', toVersion: version, fromVersion: liveVersion, summary: doc.summary, updated: !!open, reviewPath: reviewPath, reviewUrl: publicBaseFor(req, body.origin) + reviewPath });
+          });
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'approval request', err, 'The changes could not be sent for approval. Please try again.'); });
+  });
+}
+
+function approvalView(id, d) {
+  return {
+    id: id, status: d.status, requestedBy: d.requestedBy || '', requestedAt: d.requestedAt || null, updatedAt: d.updatedAt || null,
+    fromVersion: d.fromVersion || 0, toVersion: d.toVersion || 0, firstPublish: d.firstPublish === true, note: d.note || '',
+    summary: d.summary || '', items: d.items || [], saves: d.saves || [], contributors: d.contributors || [],
+    decidedBy: d.decidedBy || '', decidedAt: d.decidedAt || null, decisionNote: d.decisionNote || ''
+  };
+}
+
+function handleApprovalGet(req, res) {
+  withAdmin(req, res, function (fb, decoded) {
+    var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
+    if (!eventId) return;
+    var id = String(qs.get('id') || '').trim();
+    var ref = eventDocRef(fb, eventId);
+    Promise.all([loadLiveEvent(fb, eventId), approvalsConfig(fb)]).then(function (r) {
+      var data = r[0], cfg = r[1];
+      var wanted = id || (data.approval && data.approval.id) || '';
+      var list = ref.collection('approvals').orderBy('requestedAt', 'desc').limit(20).get();
+      return Promise.all([wanted ? ref.collection('approvals').doc(wanted).get() : Promise.resolve(null), list]).then(function (x) {
+        var snap = x[0];
+        var request = snap && snap.exists ? approvalView(snap.id, snap.data()) : null;
+        var why = request ? whyNotApprover(cfg, actorOf(decoded), request.requestedBy) : '';
+        sendJson(res, 200, {
+          eventId: eventId, name: data.name || eventId, me: actorOf(decoded),
+          published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0,
+          publishedPath: data.published === true ? publicPathOf(eventId) : null, savedVersion: siteVersionOf(data),
+          request: request, canDecide: !!request && request.status === 'pending' && !why, whyNot: why,
+          approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required,
+          requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null }; })
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'approval get', err, 'The request could not be loaded. Please try again.'); });
+  });
+}
+
+/* Makes one kept version the live page. The caller has decided that it may. */
+function publishVersion(fb, req, eventId, version, actor, origin, extra) {
+  var HTML = 'text/html; charset=utf-8', token = crypto.randomBytes(12).toString('hex'), now = new Date().toISOString();
+  var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null;
+  return acquireSiteLock(fb, eventId, token, null).then(function (data) {
+    return readObject(fb, versionPath(eventId, version)).then(function (text) {
+      if (text != null) return text;
+      return siteVersionOf(data) === version ? readObject(fb, sitePath(eventId, 'page.html')) : null;
+    }).then(function (pageHtml) {
+      if (pageHtml == null) throw httpError(409, 'Version ' + version + ' of this site is no longer stored. Save the site again and send a new request.', { code: 'version-missing' });
+      var live = publishTransform(pageHtml, {
+        eventId: eventId, event: data, mode: 'live', publicBase: base,
+        templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
+      });
+      return readObject(fb, livePath).then(function (before) {
+        undo = function () { return restoreObject(fb, livePath, before, HTML); };
+        return saveObject(fb, livePath, live, HTML);
+      });
+    }).then(function () {
+      return commitSiteLock(fb, eventId, token, Object.assign({
+        published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
+        publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now
+      }, extra || {}));
+    }).then(function () {
+      forgetCachedPage(eventId);
+      return { publishedPath: publicPathOf(eventId), publishedUrl: base + publicPathOf(eventId), publishedAt: now, publishedVersion: version };
+    }, function (err) {
+      return Promise.resolve(undo ? undo() : null).then(null, function () {}).then(function () { return releaseSiteLock(fb, eventId, token); }).then(function () { throw err; });
+    });
+  });
+}
+
+function handleApprovalDecide(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var id = String(body.id || '').trim(), decision = body.decision, note = String(body.note || '').trim().slice(0, 1000);
+    if (!/^[A-Za-z0-9]{6,40}$/.test(id)) return sendJson(res, 400, { error: 'A valid request id is required.' });
+    if (decision !== 'approve' && decision !== 'reject') return sendJson(res, 400, { error: '"decision" must be "approve" or "reject".' });
+    if (decision === 'reject' && !note) return sendJson(res, 400, { error: 'Say why, so the person who made the changes knows what to fix.', field: 'note' });
+    var actor = actorOf(decoded), now = new Date().toISOString();
+    var ref = eventDocRef(fb, eventId), reqRef = ref.collection('approvals').doc(id);
+    Promise.all([loadLiveEvent(fb, eventId), reqRef.get(), approvalsConfig(fb)]).then(function (r) {
+      var snap = r[1], cfg = r[2];
+      if (!snap.exists) throw httpError(404, 'That request does not exist.', { code: 'request-not-found' });
+      var request = snap.data();
+      if (request.status !== 'pending') throw httpError(409, 'This request was already ' + request.status + (request.decidedBy ? ' by ' + request.decidedBy : '') + '.', { code: 'request-closed' });
+      var why = whyNotApprover(cfg, actor, request.requestedBy);
+      if (why) throw httpError(403, why, { code: 'not-an-approver' });
+      var closed = { decidedBy: actor, decidedAt: now, decisionNote: note };
+      if (decision === 'reject') {
+        return reqRef.update(Object.assign({ status: 'rejected' }, closed))
+          .then(function () { return ref.update({ approval: fieldDelete() }); })
+          .then(function () {
+            logActivity(fb, eventId, decoded, 'rejected', 'version ' + request.toVersion + ' — ' + note, { approvalId: id, version: request.toVersion, requestedBy: request.requestedBy });
+            sendJson(res, 200, { id: id, status: 'rejected' });
+          });
+      }
+      return publishVersion(fb, req, eventId, request.toVersion, actor, body.origin, {
+        approval: fieldDelete(), lastApproval: { id: id, by: actor, at: now, requestedBy: request.requestedBy, version: request.toVersion }
+      }).then(function (out) {
+        return reqRef.update(Object.assign({ status: 'approved' }, closed)).then(function () {
+          logActivity(fb, eventId, decoded, 'approved', 'version ' + request.toVersion + ' — ' + (request.summary || '') + (note ? ' — “' + note + '”' : ''), { approvalId: id, version: request.toVersion, requestedBy: request.requestedBy });
+          logActivity(fb, eventId, decoded, 'published', 'version ' + request.toVersion + ', requested by ' + request.requestedBy + ', approved by ' + actor, { approvalId: id, version: request.toVersion });
+          sendJson(res, 200, Object.assign({ id: id, status: 'approved' }, out));
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'approval decide', err, 'The decision could not be recorded. Please try again.'); });
+  });
+}
+
+function handleApprovalSettingsGet(req, res) {
+  withAdmin(req, res, function (fb) {
+    approvalsConfig(fb).then(function (cfg) { sendJson(res, 200, cfg); })
+      .catch(function (err) { sendFailure(res, 'approval settings', err, 'The settings could not be loaded.'); });
+  });
+}
+function handleApprovalSettingsPut(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var list = Array.isArray(body.approvers) ? body.approvers : String(body.approvers || '').split(/[\s,;]+/);
+    list = list.map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(Boolean);
+    var bad = list.filter(function (e) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); })[0];
+    if (bad) return sendJson(res, 400, { error: '"' + bad + '" is not an e-mail address.', field: 'approvers' });
+    approvalsConfig(fb).then(function (cfg) {
+      /* once approvers are named, only they change who approves — else anyone could add themselves */
+      if (cfg.approvers.length && cfg.approvers.indexOf(actorOf(decoded).toLowerCase()) === -1) {
+        return sendJson(res, 403, { error: 'Only an approver (' + cfg.approvers.join(', ') + ') can change these settings.', code: 'not-an-approver' });
+      }
+      return write();
+    }).catch(function (err) { sendFailure(res, 'approval settings', err, 'The settings could not be saved.'); });
+    function write() {
+    var doc = { approvers: list.filter(function (e, i) { return list.indexOf(e) === i; }).slice(0, 50), allowSelf: body.allowSelf === true, required: body.required !== false,
+      updatedAt: new Date().toISOString(), updatedBy: actorOf(decoded) };
+    return fb.db.collection('config').doc('approvals').set(doc).then(function () { sendJson(res, 200, { approvers: doc.approvers, allowSelf: doc.allowSelf, required: doc.required }); });
+    }
+  });
+}
+
+/* The event's history, newest first: every recorded action with who and when, and — for a save or an
+   approval request — what changed, before and after. */
+function handleEventHistory(req, res) {
+  withAdmin(req, res, function (fb) {
+    var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
+    if (!eventId) return;
+    var ref = eventDocRef(fb, eventId);
+    loadLiveEvent(fb, eventId).then(function (data) {
+      return Promise.all([
+        ref.collection('activity').orderBy('at', 'desc').limit(300).get(),
+        ref.collection('changes').orderBy('at', 'desc').limit(120).get(),
+        ref.collection('approvals').orderBy('requestedAt', 'desc').limit(60).get()
+      ]).then(function (r) {
+        var changes = {}, approvals = {};
+        r[1].docs.forEach(function (d) { changes[d.id] = d.data(); });
+        r[2].docs.forEach(function (d) { approvals[d.id] = d.data(); });
+        sendJson(res, 200, {
+          eventId: eventId, name: data.name || eventId,
+          items: r[0].docs.map(function (d) {
+            var a = d.data(), out = { id: d.id, at: a.at || null, by: a.by || '', action: a.action || '', detail: a.detail || '', version: a.version || null };
+            if (a.fields) out.fields = a.fields;
+            var c = a.changeId && changes[a.changeId];
+            if (c) out.changes = c.items || [];
+            var p = a.approvalId && approvals[a.approvalId];
+            if (p) {
+              out.approval = { id: a.approvalId, status: p.status, requestedBy: p.requestedBy || '', requestedAt: p.requestedAt || null, decidedBy: p.decidedBy || '', decidedAt: p.decidedAt || null, decisionNote: p.decisionNote || '', fromVersion: p.fromVersion || 0, toVersion: p.toVersion || 0 };
+              if (a.action === 'approval-requested') out.changes = p.items || [];
+            }
+            return out;
+          })
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'history', err, 'The history could not be loaded. Please try again.'); });
+  });
+}
+
+/* what a history line shows of a field's value: short, and never a picture's bytes */
+function historyValue(v) {
+  if (v == null || v === '') return '(empty)';
+  if (Array.isArray(v)) return v.length + (v.length === 1 ? ' item' : ' items');
+  if (typeof v === 'object') return JSON.stringify(v).slice(0, 160);
+  var s = String(v);
+  if (/^data:/i.test(s)) return '(an uploaded picture)';
+  return s.length > 200 ? s.slice(0, 200) + '…' : s;
+}
+function pick(obj, keys) { var out = {}; keys.forEach(function (k) { if (obj && has(obj, k)) out[k] = obj[k]; }); return out; }
+/* [{ field, before, after }] for the fields of `next` that differ from `prev` */
+function fieldChanges(prev, next, skip) {
+  var out = [];
+  Object.keys(next || {}).forEach(function (k) {
+    if (skip && skip.indexOf(k) !== -1) return;
+    var a = prev ? prev[k] : undefined, b = next[k];
+    if (JSON.stringify(a == null ? '' : a) === JSON.stringify(b == null ? '' : b)) return;
+    out.push({ field: k, before: historyValue(a), after: historyValue(b) });
+  });
+  return out.slice(0, 30);
 }
 
 /* ---------- POST /api/event/unpublish ----------
@@ -4892,10 +5246,13 @@ function handleEventStage(req, res) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
     if (typeof body.html !== 'string' || !body.html.trim()) return sendJson(res, 400, { error: 'The page to preview ("html") is missing.' });
+    /* draft: true — the editor's Preview: the page as it is in that person's editor, saved or not. It is
+       theirs alone and is not staging: staging changes only when somebody presses Save. */
+    var draft = body.draft === true;
     loadLiveEvent(fb, eventId).then(function () {
-      return saveObject(fb, stagingObjectPath(eventId), rewriteOrigins(body.html, [cleanOrigin(body.origin)]), 'text/html; charset=utf-8');
+      return saveObject(fb, draft ? draftObjectPath(eventId, decoded) : stagingObjectPath(eventId), rewriteOrigins(body.html, [cleanOrigin(body.origin)]), 'text/html; charset=utf-8');
     }).then(function () {
-      var previewPath = '/preview/' + eventId + '?staged=1';
+      var previewPath = '/preview/' + eventId + (draft ? '?draft=1' : '?staged=1');
       sendJson(res, 200, { stagingUrl: publicBaseFor(req, body.origin) + previewPath, previewPath: previewPath });
     }).catch(function (err) { sendFailure(res, 'stage', err, 'The preview could not be prepared. Please try again.'); });
   });
@@ -5007,15 +5364,25 @@ function handlePreviewPage(req, res, eventId) {
     var fb = getFirebase();
     if (fb.error) return sendHtml(req, res, 503, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
     var staged = queryOf(req).get('staged') === '1';
+    /* ?version=N: that saved version exactly — what a reviewer is shown, and what approving makes live */
+    var wantVersion = parseInt(queryOf(req).get('version'), 10);
+    if (!(wantVersion > 0)) wantVersion = 0;
+    var ownDraft = queryOf(req).get('draft') === '1';
     return eventDocRef(fb, eventId).get().then(function (snap) {
       if (eventStateOf(snap) !== 'live') {
         return sendHtml(req, res, 404, messagePage('This event does not exist', 'It may have been deleted, or the address may be wrong.'), 'no-store');
       }
       var data = snap.data();
-      if (!staged && !siteVersionOf(data)) {
+      if (!staged && !ownDraft && !siteVersionOf(data)) {
         return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
       }
-      return readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html')).then(function (html) {
+      var source = ownDraft ? readObject(fb, draftObjectPath(eventId, user)) : wantVersion
+        ? readObject(fb, versionPath(eventId, wantVersion)).then(function (t) { return t == null && wantVersion === siteVersionOf(data) ? readObject(fb, sitePath(eventId, 'page.html')) : t; })
+        : readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html'));
+      return source.then(function (html) {
+        if (html == null && wantVersion) {
+          return sendHtml(req, res, 404, messagePage('That version is not stored', 'Version ' + wantVersion + ' of this site was saved before versions were kept, or does not exist.'), 'no-store');
+        }
         if (html == null) {
           return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
         }
@@ -5105,6 +5472,12 @@ var ROUTES = {
   'GET /api/event/site': handleSiteGet,
   'PUT /api/event/site': handleSitePut,
   'POST /api/event/publish': handleEventPublish,
+  'POST /api/event/approval/request': handleApprovalRequest,
+  'POST /api/event/approval/decide': handleApprovalDecide,
+  'GET /api/event/approval': handleApprovalGet,
+  'GET /api/event/history': handleEventHistory,
+  'GET /api/settings/approvals': handleApprovalSettingsGet,
+  'PUT /api/settings/approvals': handleApprovalSettingsPut,
   'POST /api/event/unpublish': handleEventUnpublish,
   'POST /api/event/stage': handleEventStage,
 

@@ -4445,31 +4445,99 @@
       '</div>';
   }
 
-  function viewHistory(){
-    var hist = [
-      ['2026-09-10 13:31','Abhishek Rawat','Setup','Custom section cloning enabled'],
-      ['2026-09-09 15:49','Vishakha Singh','Event Setup','Sponsor group "Gold partners" created'],
-      ['2026-09-09 15:48','Vishakha Singh','Design','Hero banner image replaced'],
-      ['2026-09-08 18:12','Ayush Vishwakarma','Payment','MAD Pass price changed 30,000 → 35,000'],
-      ['2026-09-08 11:02','Ayush Vishwakarma','Email Marketing','Campaign "Final reminder" scheduled'],
-      ['2026-09-07 16:40','Abhishek Rawat','Settings','Registration form: "Industry" field added'],
-      ['2026-09-05 10:20','Vishakha Singh','Setup','Agenda day 1 imported from spreadsheet'],
-      ['2026-09-02 09:15','System','Publish','Site published to production'],
-      ['2026-08-28 17:05','Ayush Vishwakarma','Basic details','Registration target set to ' + (EV.regTarget || '—')]
-    ];
-    var rows = hist.map(function(h){
-      return '<tr><td class="num" style="white-space:nowrap">' + esc(h[0]) + '</td>' +
-        '<td class="td-strong">' + esc(h[1]) + '</td>' +
-        '<td><span class="badge b-mute">' + esc(h[2]) + '</span></td>' +
-        '<td>' + esc(h[3]) + '</td></tr>';
-    }).join('');
+  /* The event's real history (GET /api/event/history): every recorded action, newest first, with who did it
+     and when; for a save or an approval request the changes section by section, before and after; for a
+     Content record or a detail of the event the fields that changed; and who approved what went live. */
+  var HIST = { items: null, at: 0, loading: false, error: null };
+  var HIST_AREA = {
+    'created':'Event', 'updated':'Basic details', 'status-changed':'Status', 'settings-changed':'Settings', 'site-saved':'Site · saved to staging',
+    'approval-requested':'Site · sent for approval', 'approved':'Site · approved', 'rejected':'Site · rejected', 'published':'Site · live',
+    'unpublished':'Site · taken down', 'deleted':'Event', 'restored':'Event', 'cloned':'Event', 'content-seeded':'Content',
+    'content-added':'Content · added', 'content-changed':'Content · changed', 'content-removed':'Content · removed',
+    'registration-updated':'Registrations', 'registration-deleted':'Registrations', 'leads-imported':'Leads', 'leads-deleted':'Leads'
+  };
+  var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
+  function histWhen(iso){
+    var d = new Date(iso || '');
+    if (isNaN(d)) return '—';
+    function p(n){ return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  /* [{ what, before, after }] — the before/after lines of one history entry */
+  function histLines(h){
+    var out = [];
+    (h.changes || []).forEach(function(c){
+      out.push({ what: (c.name || c.section || 'Page') + ' — ' + (HIST_KIND[c.type] || c.type), before: c.before || '', after: c.after || (c.note || '') });
+    });
+    (h.fields || []).forEach(function(f){ out.push({ what: f.field, before: f.before, after: f.after }); });
+    return out;
+  }
+  function histApprovedBy(h){
+    var a = h.approval;
+    if (!a) return '';
+    if (a.status === 'approved') return a.decidedBy;
+    if (a.status === 'rejected') return 'rejected by ' + a.decidedBy;
+    return 'waiting';
+  }
+  function loadHistory(){
+    if (HIST.loading) return;
+    HIST.loading = true;
+    C.fetchHistory(EV.id).then(function(items){ HIST.items = items; HIST.error = null; }, function(err){ HIST.error = (err && err.message) || 'The history could not be loaded.'; })
+      .then(function(){ HIST.loading = false; HIST.at = Date.now(); if (routeId() === 'settings/history') render(); });
+  }
+  function exportHistory(){
+    function cell(v){ v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+    var rows = [['When', 'Who', 'Area', 'What', 'Item', 'Before', 'After', 'Version', 'Requested by', 'Approved by', 'Approved at']];
+    (HIST.items || []).forEach(function(h){
+      var a = h.approval || {}, lines = histLines(h);
+      var tail = [h.version || '', a.requestedBy || '', a.status === 'approved' ? a.decidedBy : '', a.status === 'approved' ? histWhen(a.decidedAt) : ''];
+      var head = [histWhen(h.at), h.by, HIST_AREA[h.action] || h.action, h.detail];
+      if (!lines.length) rows.push(head.concat(['', '', ''], tail));
+      lines.forEach(function(l){ rows.push(head.concat([l.what, l.before, l.after], tail)); });
+    });
+    var blob = new Blob(['﻿' + rows.map(function(r){ return r.map(cell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = EV.id + '-history.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  }
+  document.addEventListener('click', function(e){
+    var t = e.target && e.target.closest && e.target.closest('[data-hist]');
+    if (!t) return;
+    if (t.getAttribute('data-hist') === 'export') exportHistory();
+    else { HIST.items = null; render(); }
+  });
 
-    return vhead('Event History', 'Every change made to this event, newest first. Useful when something looks wrong and nobody owns up.',
-        '<button class="btn btn-secondary btn-sm" type="button" data-save="Audit log exported">' + svg(IC.down, 13) + ' Export log</button>') +
-      panelFlush('Audit trail', hist.length + ' entries',
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>When</th><th>Who</th><th>Area</th><th>What changed</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>');
+  function viewHistory(){
+    if (!HIST.loading && (!HIST.items && !HIST.error || Date.now() - HIST.at > 20000)) loadHistory();
+    var head = function(count){
+      return vhead('Event History', 'Every change made to this event, newest first: who made it, when, what it was before and after, and who approved what went live.',
+        '<button class="btn btn-secondary btn-sm" type="button" data-hist="refresh">Refresh</button> ' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-hist="export"' + (count ? '' : ' disabled') + '>' + svg(IC.down, 13) + ' Export log</button>');
+    };
+    if (!HIST.items){
+      return head(0) + panelFlush('Audit trail', '', '<p style="padding:22px;color:var(--text-muted)">' + esc(HIST.error || 'Loading the history…') + '</p>');
+    }
+    var rows = HIST.items.map(function(h){
+      var lines = histLines(h), a = h.approval;
+      var more = lines.length ? '<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--text-muted);font-size:12px">Before and after (' + lines.length + ')</summary>' +
+        '<table style="width:100%;margin-top:6px;font-size:12px;border-collapse:collapse">' + lines.map(function(l){
+          return '<tr><td style="padding:4px 8px 4px 0;vertical-align:top;font-weight:600;width:28%">' + esc(l.what) + '</td>' +
+            '<td style="padding:4px 8px;vertical-align:top;background:var(--danger-soft, rgba(179,38,30,.08));width:36%;white-space:pre-wrap;word-break:break-word">' + esc(l.before || '—') + '</td>' +
+            '<td style="padding:4px 8px;vertical-align:top;background:var(--ok-soft, rgba(47,143,91,.1));white-space:pre-wrap;word-break:break-word">' + esc(l.after || '—') + '</td></tr>';
+        }).join('') + '</table></details>' : '';
+      var review = a ? ' <a href="/review.html?event=' + encodeURIComponent(EV.id) + '&request=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener" style="font-size:12px">Open review</a>' : '';
+      return '<tr><td class="num" style="white-space:nowrap;vertical-align:top">' + esc(histWhen(h.at)) + '</td>' +
+        '<td class="td-strong" style="vertical-align:top">' + esc(h.by) + '</td>' +
+        '<td style="vertical-align:top"><span class="badge b-mute">' + esc(HIST_AREA[h.action] || h.action) + '</span></td>' +
+        '<td style="vertical-align:top">' + esc(h.detail || '—') + review + more + '</td>' +
+        '<td style="vertical-align:top;white-space:nowrap">' + (a ? esc(histApprovedBy(h)) + (a.status === 'approved' ? '<div style="color:var(--text-muted);font-size:12px">' + esc(histWhen(a.decidedAt)) + '</div>' : '') : '—') + '</td></tr>';
+    }).join('');
+    return head(HIST.items.length) +
+      panelFlush('Audit trail', HIST.items.length + (HIST.items.length === 1 ? ' entry' : ' entries'),
+        HIST.items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>When</th><th>Who</th><th>Area</th><th>What changed</th><th>Approved by</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p style="padding:22px;color:var(--text-muted)">Nothing has been recorded for this event yet.</p>');
   }
 
 
@@ -5303,9 +5371,19 @@
     });
   }
 
+  /* Publishes the site as it was last saved in the site editor. Where changes need approval (the default)
+     that means asking for it: the request and its review page are the same ones the editor's
+     "Publish changes" makes. */
   function doPublish(){
-    S.published = true; save();
-    notify('Published. The site is live at etoneworld.com');
+    C.publishEvent(EV.id).then(function(out){
+      notify('Published. Version ' + out.publishedVersion + ' is live at ' + out.publishedPath);
+    }, function(err){
+      if (!err || err.code !== 'approval-required') throw err;
+      return C.requestApproval(EV.id).then(function(r){
+        notify((r.updated ? 'The approval request was updated' : 'Sent for approval') + ': version ' + r.toVersion + '. Opening the review page…');
+        setTimeout(function(){ location.href = r.reviewPath; }, 1200);
+      });
+    }).catch(function(err){ notifyError(err, { what: 'Could not publish.' }); });
   }
 
   /* ============================================================

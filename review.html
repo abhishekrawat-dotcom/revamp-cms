@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Review changes &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+  /* The page an approver opens from the link in an approval request: what changed and who changed it on the
+     left, the live site beside the proposed one on the right, Approve / Reject at the bottom of the list.
+     Data: GET /api/event/approval; decision: POST /api/event/approval/decide (functions/lib/api.js). */
+  :root{
+    --bg:#F6F4F1; --surface:#fff; --surface-2:#F3EEED; --border:#E4DDDA; --text:#1E1A1A; --muted:#6B6361;
+    --accent:#ED1C24; --ok:#2F8F5B; --ok-soft:#DFEEE1; --warn:#9C6B14; --warn-soft:#F3E7C8; --bad:#B3261E; --bad-soft:#F7DEDC;
+  }
+  :root[data-theme="dark"]{
+    --bg:#151312; --surface:#1E1B1A; --surface-2:#262221; --border:#38322F; --text:#F2ECEA; --muted:#A79F9C;
+    --ok:#4FAE7A; --ok-soft:#1F3524; --warn:#D6A544; --warn-soft:#3A2E14; --bad:#F0857D; --bad-soft:#3B1E1C;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; }
+  body{ background:var(--bg); color:var(--text); font:14px/1.5 Manrope,-apple-system,"Segoe UI",Arial,sans-serif; display:flex; flex-direction:column; }
+  a{ color:inherit; }
+  header{ display:flex; align-items:center; gap:14px; padding:12px 18px; background:var(--surface); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  header h1{ font-size:16px; margin:0; font-weight:700; }
+  header .sub{ color:var(--muted); font-size:12.5px; }
+  header .grow{ flex:1; min-width:0; }
+  .badge{ font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; text-transform:uppercase; letter-spacing:.04em; }
+  .badge.pending{ background:var(--warn-soft); color:var(--warn); }
+  .badge.approved{ background:var(--ok-soft); color:var(--ok); }
+  .badge.rejected{ background:var(--bad-soft); color:var(--bad); }
+  .btn{ font:inherit; font-weight:600; font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn.primary{ background:var(--ok); border-color:var(--ok); color:#fff; }
+  .btn.danger{ color:var(--bad); border-color:var(--bad); }
+  .btn.small{ padding:5px 10px; font-size:12px; }
+  main{ flex:1; min-height:0; display:grid; grid-template-columns:minmax(340px, 420px) 1fr; }
+  .side{ overflow:auto; border-right:1px solid var(--border); background:var(--surface); padding:16px 18px 28px; }
+  .side h2{ font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:22px 0 8px; }
+  .side h2:first-child{ margin-top:0; }
+  .who{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px; margin:0; }
+  .who dt{ color:var(--muted); } .who dd{ margin:0; word-break:break-word; }
+  .note{ background:var(--surface-2); border-radius:8px; padding:9px 12px; font-size:13px; margin-top:10px; white-space:pre-wrap; }
+  .saves{ list-style:none; margin:0; padding:0; }
+  .saves li{ padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .saves li:last-child{ border-bottom:0; }
+  .saves .meta{ color:var(--muted); font-size:12px; }
+  .chg{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .chg .top{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; }
+  .chg .kind{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); }
+  .chg .kind.added{ background:var(--ok-soft); color:var(--ok); } .chg .kind.removed{ background:var(--bad-soft); color:var(--bad); }
+  .chg .ba{ margin-top:8px; display:grid; gap:6px; font-size:12.5px; }
+  .chg .ba div{ padding:6px 9px; border-radius:6px; white-space:pre-wrap; word-break:break-word; max-height:132px; overflow:auto; }
+  .chg .ba .b{ background:var(--bad-soft); } .chg .ba .a{ background:var(--ok-soft); }
+  .chg .ba b{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; display:block; margin-bottom:2px; }
+  .chg .extra{ color:var(--muted); font-size:12px; margin-top:6px; }
+  .empty{ color:var(--muted); font-size:13px; }
+  .decide{ position:sticky; bottom:-28px; background:var(--surface); border-top:1px solid var(--border); margin:18px -18px -28px; padding:14px 18px 18px; }
+  .decide textarea, .settings input[type=text]{ width:100%; font:inherit; font-size:13px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical; }
+  .decide .row{ display:flex; gap:8px; margin-top:10px; }
+  .decide .row .btn{ flex:1; justify-content:center; }
+  .msg{ font-size:12.5px; margin-top:8px; padding:8px 10px; border-radius:8px; background:var(--warn-soft); color:var(--warn); }
+  .msg.err{ background:var(--bad-soft); color:var(--bad); } .msg.ok{ background:var(--ok-soft); color:var(--ok); }
+  details.settings{ margin-top:22px; border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:13px; }
+  details.settings summary{ cursor:pointer; font-weight:600; }
+  details.settings label{ display:flex; gap:8px; align-items:flex-start; margin-top:10px; }
+  details.settings .hint{ color:var(--muted); font-size:12px; margin:4px 0 0; }
+  .view{ display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .tabs{ display:flex; gap:6px; padding:10px 14px; align-items:center; border-bottom:1px solid var(--border); background:var(--surface); }
+  .tabs .btn.on{ background:var(--text); color:var(--surface); border-color:var(--text); }
+  .tabs .sp{ flex:1; }
+  .tabs label{ font-size:12.5px; color:var(--muted); display:inline-flex; gap:6px; align-items:center; }
+  .panes{ flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); }
+  .panes.one{ grid-template-columns:1fr; }
+  .pane{ background:var(--surface-2); display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .pane[hidden]{ display:none; }
+  .pane .cap{ font-size:12px; font-weight:700; padding:7px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+  .pane .cap a{ font-weight:500; color:var(--muted); margin-left:auto; }
+  .pane .box{ flex:1; min-height:0; position:relative; overflow:hidden; }
+  .pane iframe{ position:absolute; top:0; left:0; border:0; background:#fff; transform-origin:0 0; }
+  .loading{ padding:60px 20px; text-align:center; color:var(--muted); grid-column:1/-1; }
+  @media (max-width: 900px){ main{ grid-template-columns:1fr; grid-template-rows:auto 70vh; } .side{ border-right:0; border-bottom:1px solid var(--border); } body{ height:auto; } }
+</style>
+</head>
+<body>
+<header>
+  <a class="btn small" id="back" href="/Event_Listing.html">&larr; Events</a>
+  <div class="grow">
+    <h1 id="title">Review changes</h1>
+    <div class="sub" id="sub">&nbsp;</div>
+  </div>
+  <span class="badge" id="status" hidden></span>
+  <span data-rv-account></span>
+</header>
+<main id="main"><div class="loading" id="loading">Loading the request…</div></main>
+
+<script src="theme-toggle.js"></script>
+<script src="edit-event-core.js"></script>
+<script src="auth.js"></script>
+<script>
+(function(){
+  var C = window.RevampCore;
+  var qs = new URLSearchParams(location.search);
+  var eventId = String(qs.get('event') || '').trim(), requestId = String(qs.get('request') || '').trim();
+  var main = document.getElementById('main'), data = null;
+
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+  function when(iso){ var d = new Date(iso || ''); return isNaN(d) ? '—' : d.toLocaleString(undefined, { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
+  var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design' };
+
+  function fail(message){
+    main.innerHTML = '<div class="loading">' + esc(message) + '</div>';
+  }
+  if (!eventId) return fail('This link is missing the event it is about.');
+
+  function load(){
+    return C.fetchApproval(eventId, requestId).then(function(d){ data = d; render(); }, function(err){ fail((err && err.message) || 'The request could not be loaded.'); });
+  }
+
+  function changeHtml(it){
+    var ba = '';
+    if (it.type === 'moved') ba = '<div class="extra">' + esc(it.before) + ' → ' + esc(it.after) + '</div>';
+    else if (it.before || it.after){
+      ba = '<div class="ba">' +
+        (it.before ? '<div class="b"><b>Before</b>' + esc(it.before) + '</div>' : '') +
+        (it.after ? '<div class="a"><b>After</b>' + esc(it.after) + '</div>' : '') + '</div>';
+    }
+    return '<div class="chg"><div class="top"><span class="kind ' + esc(it.type) + '">' + esc(KIND[it.type] || it.type) + '</span>' +
+      '<span>' + esc(it.name || it.section || 'Page') + '</span></div>' + ba +
+      (it.note ? '<div class="extra">' + esc(it.note) + '</div>' : '') + '</div>';
+  }
+
+  function render(){
+    var r = data.request;
+    document.getElementById('title').textContent = 'Review changes — ' + (data.name || eventId);
+    document.getElementById('back').href = '/edit-event.html?event=' + encodeURIComponent(eventId) + '#settings/history';
+    document.getElementById('back').innerHTML = '&larr; Event history';
+    var badge = document.getElementById('status');
+    if (!r){
+      badge.hidden = true;
+      document.getElementById('sub').textContent = 'Nothing is waiting for approval.';
+      main.innerHTML = '<div class="side" style="grid-column:1/-1;border:0">' +
+        '<p class="empty">No request is waiting for approval for this event. ' +
+        (data.published ? 'Version ' + data.publishedVersion + ' is live' : 'The site is not live yet') +
+        (data.savedVersion ? '; version ' + data.savedVersion + ' is on staging.' : '.') + '</p>' + pastHtml() + settingsHtml() + '</div>';
+      wireSettings();
+      return;
+    }
+    badge.hidden = false; badge.className = 'badge ' + r.status; badge.textContent = r.status === 'pending' ? 'Waiting for approval' : r.status;
+    document.getElementById('sub').textContent = 'Requested by ' + r.requestedBy + ' · ' + when(r.requestedAt) + ' · ' +
+      (r.firstPublish ? 'first publication, version ' + r.toVersion : 'version ' + r.fromVersion + ' → ' + r.toVersion);
+
+    var people = (r.contributors || []).join(', ') || r.requestedBy;
+    var side =
+      '<h2>Request</h2><dl class="who">' +
+      '<dt>Requested by</dt><dd>' + esc(r.requestedBy) + '</dd>' +
+      '<dt>When</dt><dd>' + esc(when(r.requestedAt)) + (r.updatedAt && r.updatedAt !== r.requestedAt ? ' (updated ' + esc(when(r.updatedAt)) + ')' : '') + '</dd>' +
+      '<dt>Changes by</dt><dd>' + esc(people) + '</dd>' +
+      '<dt>Versions</dt><dd>' + (r.firstPublish ? 'not live yet → version ' + r.toVersion : 'live version ' + r.fromVersion + ' → version ' + r.toVersion) + '</dd>' +
+      '<dt>Summary</dt><dd>' + esc(r.summary || '—') + '</dd>' +
+      (r.status !== 'pending' ? '<dt>' + (r.status === 'approved' ? 'Approved by' : 'Rejected by') + '</dt><dd>' + esc(r.decidedBy) + ' · ' + esc(when(r.decidedAt)) + '</dd>' : '') +
+      '</dl>' +
+      (r.note ? '<div class="note">' + esc(r.note) + '</div>' : '') +
+      (r.decisionNote ? '<div class="note"><b>' + (r.status === 'approved' ? 'Approver’s note' : 'Reason') + ':</b> ' + esc(r.decisionNote) + '</div>' : '') +
+
+      '<h2>Saves in this request (' + (r.saves || []).length + ')</h2>' +
+      ((r.saves || []).length ? '<ul class="saves">' + r.saves.map(function(s){
+        return '<li><b>Version ' + esc(s.version) + '</b> — ' + esc(s.summary || 'saved') + '<div class="meta">' + esc(s.by) + ' · ' + esc(when(s.at)) + '</div>' +
+          (s.note ? '<div class="meta">“' + esc(s.note) + '”</div>' : '') + '</li>';
+      }).join('') + '</ul>' : '<p class="empty">The individual saves were not recorded for these versions.</p>') +
+
+      '<h2>What changed (' + (r.items || []).length + ')</h2>' +
+      ((r.items || []).length ? r.items.map(changeHtml).join('') :
+        '<p class="empty">' + (r.firstPublish ? 'This is the first time the site goes live: the whole site is new. See it on the right.' : 'No difference a reader would see was found between the two versions.') + '</p>') +
+      settingsHtml() + decideHtml();
+
+    var live = data.published && !r.firstPublish && r.status === 'pending';
+    var proposed = '/preview/' + encodeURIComponent(eventId) + '?version=' + r.toVersion;
+    var before = r.status === 'pending' ? '/e/' + encodeURIComponent(eventId) : (r.fromVersion ? '/preview/' + encodeURIComponent(eventId) + '?version=' + r.fromVersion : '');
+    var hasBefore = r.status === 'pending' ? live : !!r.fromVersion;
+    main.innerHTML = '<div class="side">' + side + '</div>' +
+      '<div class="view"><div class="tabs">' +
+      (hasBefore ? '<button class="btn small on" data-view="both">Side by side</button><button class="btn small" data-view="before">' + (r.status === 'pending' ? 'Live now' : 'Before') + '</button>' : '') +
+      '<button class="btn small' + (hasBefore ? '' : ' on') + '" data-view="after">Proposed</button><span class="sp"></span>' +
+      (hasBefore ? '<label><input type="checkbox" id="sync" checked> Scroll together</label>' : '') + '</div>' +
+      '<div class="panes' + (hasBefore ? '' : ' one') + '" id="panes">' +
+      (hasBefore ? '<div class="pane" data-pane="before"><div class="cap">' + (r.status === 'pending' ? 'Live now · version ' + r.fromVersion : 'Before · version ' + r.fromVersion) +
+        '<a href="' + before + '" target="_blank" rel="noopener">Open ↗</a></div><div class="box"><iframe id="f-before" title="Before" src="' + before + '"></iframe></div></div>' : '') +
+      '<div class="pane" data-pane="after"><div class="cap">Proposed · version ' + r.toVersion + '<a href="' + proposed + '" target="_blank" rel="noopener">Open ↗</a></div>' +
+      '<div class="box"><iframe id="f-after" title="Proposed" src="' + proposed + '"></iframe></div></div></div></div>';
+    wireView(); wireDecide(); wireSettings();
+  }
+
+  function pastHtml(){
+    var list = (data.requests || []);
+    if (!list.length) return '';
+    return '<h2>Earlier requests</h2><ul class="saves">' + list.map(function(p){
+      return '<li><a href="/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(p.id) + '"><b>Version ' + esc(p.toVersion) + '</b></a> — ' + esc(p.summary || '') +
+        '<div class="meta">' + esc(p.status) + ' · requested by ' + esc(p.requestedBy) + ' ' + esc(when(p.requestedAt)) + (p.decidedBy ? ' · ' + esc(p.status) + ' by ' + esc(p.decidedBy) + ' ' + esc(when(p.decidedAt)) : '') + '</div></li>';
+    }).join('') + '</ul>';
+  }
+
+  /* ---------- approve / reject ---------- */
+  function decideHtml(){
+    var r = data.request;
+    if (r.status !== 'pending') return '';
+    if (!data.canDecide) return '<div class="decide"><div class="msg">' + esc(data.whyNot || 'You cannot decide this request.') + '</div></div>';
+    return '<div class="decide"><textarea id="d-note" rows="2" maxlength="1000" placeholder="Note (needed when rejecting: what should be fixed)"></textarea>' +
+      '<div class="row"><button class="btn danger" id="d-reject">Reject</button><button class="btn primary" id="d-approve">Approve and publish</button></div>' +
+      '<div id="d-msg"></div></div>';
+  }
+  function wireDecide(){
+    var ok = document.getElementById('d-approve'), no = document.getElementById('d-reject');
+    if (!ok) return;
+    function decide(decision){
+      var note = document.getElementById('d-note').value.trim(), msg = document.getElementById('d-msg');
+      if (decision === 'reject' && !note){ msg.className = 'msg err'; msg.textContent = 'Say why, so the person who made the changes knows what to fix.'; document.getElementById('d-note').focus(); return; }
+      ok.disabled = no.disabled = true; msg.className = 'msg'; msg.textContent = decision === 'approve' ? 'Publishing version ' + data.request.toVersion + '…' : 'Recording…';
+      C.decideApproval(eventId, data.request.id, decision, note).then(function(out){
+        requestId = data.request.id;
+        return load().then(function(){
+          var m = document.createElement('div');
+          m.className = 'msg ok'; m.style.margin = '14px 0 0';
+          m.innerHTML = decision === 'approve' ? 'Approved. Version ' + esc(out.publishedVersion) + ' is live at <a href="' + esc(out.publishedPath) + '" target="_blank" rel="noopener">' + esc(out.publishedUrl || out.publishedPath) + '</a>.' : 'Rejected. The live site is unchanged.';
+          var side = document.querySelector('.side'); if (side) side.insertBefore(m, side.firstChild);
+        });
+      }, function(err){
+        ok.disabled = no.disabled = false; msg.className = 'msg err'; msg.textContent = (err && err.message) || 'The decision could not be recorded.';
+      });
+    }
+    ok.addEventListener('click', function(){ decide('approve'); });
+    no.addEventListener('click', function(){ decide('reject'); });
+  }
+
+  /* ---------- who approves ---------- */
+  function settingsHtml(){
+    return '<details class="settings"><summary>Who approves</summary>' +
+      '<p class="hint">' + (data.approvers.length ? 'Approvers: ' + esc(data.approvers.join(', ')) + '.' : 'Any signed-in member of the team can approve.') +
+      (data.allowSelf ? ' A person may approve their own request.' : ' Nobody approves their own request.') + (data.required ? '' : ' Approval is switched off: Publish goes live at once.') + '</p>' +
+      '<label style="display:block">Approvers (e-mail addresses, separated by commas; empty = anyone on the team)<input type="text" id="s-approvers" value="' + esc(data.approvers.join(', ')) + '" style="margin-top:6px"></label>' +
+      '<label><input type="checkbox" id="s-self"' + (data.allowSelf ? ' checked' : '') + '> <span>A person may approve their own request</span></label>' +
+      '<label><input type="checkbox" id="s-required"' + (data.required ? ' checked' : '') + '> <span>Changes need approval before they go live</span></label>' +
+      '<div style="margin-top:10px"><button class="btn small" id="s-save">Save</button></div><div id="s-msg"></div></details>';
+  }
+  function wireSettings(){
+    var b = document.getElementById('s-save');
+    if (!b) return;
+    b.addEventListener('click', function(){
+      var msg = document.getElementById('s-msg');
+      b.disabled = true;
+      C.saveApprovalSettings({
+        approvers: document.getElementById('s-approvers').value, allowSelf: document.getElementById('s-self').checked, required: document.getElementById('s-required').checked
+      }).then(function(){ return load(); }, function(err){
+        b.disabled = false; msg.className = 'msg err'; msg.textContent = (err && err.message) || 'The settings could not be saved.';
+      });
+    });
+  }
+
+  /* ---------- the two pages, at desktop width, scaled to fit ---------- */
+  var PAGE_W = 1280;
+  function fit(){
+    Array.prototype.forEach.call(document.querySelectorAll('.pane .box'), function(box){
+      var f = box.querySelector('iframe'); if (!f || !box.clientWidth) return;
+      var s = Math.min(1, box.clientWidth / PAGE_W);
+      f.style.width = (box.clientWidth / s) + 'px'; f.style.height = (box.clientHeight / s) + 'px'; f.style.transform = 'scale(' + s + ')';
+    });
+  }
+  function wireView(){
+    var panes = document.getElementById('panes');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function(btn){
+      btn.addEventListener('click', function(){
+        var v = btn.getAttribute('data-view');
+        Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function(b){ b.classList.toggle('on', b === btn); });
+        Array.prototype.forEach.call(panes.querySelectorAll('[data-pane]'), function(p){ p.hidden = v !== 'both' && p.getAttribute('data-pane') !== v; });
+        panes.classList.toggle('one', v !== 'both');
+        fit();
+      });
+    });
+    fit();
+    /* both pages are on this host, so one can follow the other down the page — by how far down it is, not by
+       pixels: the two versions are rarely the same height */
+    var a = document.getElementById('f-before'), b = document.getElementById('f-after'), busy = false;
+    if (!a || !b) return;
+    function follow(from, to){
+      try {
+        var fw = from.contentWindow, tw = to.contentWindow;
+        fw.addEventListener('scroll', function(){
+          var sync = document.getElementById('sync');
+          if (busy || !sync || !sync.checked) return;
+          var fd = fw.document.documentElement, td = tw.document.documentElement;
+          var max = fd.scrollHeight - fw.innerHeight, tmax = td.scrollHeight - tw.innerHeight;
+          busy = true;
+          tw.scrollTo(0, max > 0 ? (fw.scrollY / max) * tmax : 0);
+          setTimeout(function(){ busy = false; }, 40);
+        }, { passive: true });
+      } catch (e) { /* a page that cannot be reached is simply not followed */ }
+    }
+    a.addEventListener('load', function(){ follow(a, b); });
+    b.addEventListener('load', function(){ follow(b, a); });
+  }
+  window.addEventListener('resize', fit);
+
+  load();
+})();
+</script>
+</body>
+</html>

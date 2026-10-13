@@ -396,6 +396,37 @@ window.RevampCore = (function(){
     if (!html) return Promise.reject(apiError('stageEvent: html is required.', 400));
     return api('POST', '/api/event/stage', { eventId: eventId, html: html });   // -> {stagingUrl}
   }
+  /* The editor's Preview: the page as it is in this person's editor, saved or not. Theirs alone — staging
+     itself changes only on Save (saveSite). */
+  function previewDraft(eventId, html){
+    return need(eventId, 'previewDraft: eventId') ||
+      api('POST', '/api/event/stage', { eventId: String(eventId).trim(), html: html, draft: true, origin: location.origin });
+  }
+
+  /* ---- approval: nothing goes live until somebody approves it ----
+     requestApproval -> {id, status, toVersion, fromVersion, summary, updated, reviewPath, reviewUrl}
+     fetchApproval   -> {name, me, published, publishedVersion, savedVersion, request, canDecide, whyNot,
+                         approvers, allowSelf, required, requests}   (id omitted: the one that is waiting)
+     decideApproval  -> {id, status} (+ publishedUrl … when approved)
+     fetchHistory    -> [{at, by, action, detail, version, fields, changes, approval}], newest first */
+  function requestApproval(eventId, note){
+    return need(eventId, 'requestApproval: eventId') ||
+      api('POST', '/api/event/approval/request', { eventId: String(eventId).trim(), note: note || '', origin: location.origin });
+  }
+  function fetchApproval(eventId, id){
+    return need(eventId, 'fetchApproval: eventId') ||
+      api('GET', '/api/event/approval?eventId=' + q(eventId) + (id ? '&id=' + q(id) : ''));
+  }
+  function decideApproval(eventId, id, decision, note){
+    return need(eventId, 'decideApproval: eventId') ||
+      api('POST', '/api/event/approval/decide', { eventId: String(eventId).trim(), id: id, decision: decision, note: note || '', origin: location.origin });
+  }
+  function fetchHistory(eventId){
+    return need(eventId, 'fetchHistory: eventId') ||
+      api('GET', '/api/event/history?eventId=' + q(eventId)).then(function(data){ return (data && data.items) || []; });
+  }
+  function fetchApprovalSettings(){ return api('GET', '/api/settings/approvals'); }
+  function saveApprovalSettings(settings){ return api('PUT', '/api/settings/approvals', settings || {}); }
 
   /* Both are plain strings, built from the host this page is on — never a made-up domain. The public
      address of an event is /e/<id> whether or not it is published yet (callers say "not live yet"
@@ -444,6 +475,7 @@ window.RevampCore = (function(){
       origin: location.origin                     // the server rewrites this host to root-relative
     };
     if (site.force === true) body.force = true;
+    if (site.note) body.note = String(site.note);
     // 409 -> err.current {version, updatedAt, updatedBy}: someone saved on top of baseVersion
     return api('PUT', '/api/event/site', body);  // -> {version, updatedAt}
   }
@@ -865,6 +897,8 @@ window.RevampCore = (function(){
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
     fetchSite: fetchSite, saveSite: saveSite, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
+    previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
+    fetchHistory: fetchHistory, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
     uploadImage: uploadImage, seedContent: seedContent,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,

@@ -612,6 +612,17 @@
   .range-value{ float:right; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); text-transform:none; letter-spacing:0; }
   .button-settings-pop .pop-actions{ display:flex; justify-content:flex-en d; gap:7px; margin-top:13px; }
   /* ---------- publish modal ---------- */
+  .site-state{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap;
+    background: var(--surface-2, var(--surface)); color: var(--text-muted); border:1px solid var(--border); text-decoration:none; }
+  .site-state::before{ content:''; width:7px; height:7px; border-radius:50%; background: currentColor; opacity:.75; }
+  .site-state.warn{ background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .site-state.ok{ background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .site-state.wait{ color: var(--text); border-style: dashed; }
+  a.site-state[href]:hover{ filter: brightness(.97); text-decoration: underline; }
+  .apv-modal{ max-width: 500px; }
+  .apv-modal textarea{ width:100%; margin-top:12px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; font-size:13px; resize:vertical; text-align:left; }
+  .apv-modal .apv-note{ margin-top:10px; padding:8px 10px; border-radius:8px; background:var(--warn-soft); color:var(--warn); font-size:12.5px; }
+  .apv-modal .url{ word-break: break-all; user-select: all; }
   .scrim{ position: fixed; inset: 0; background: rgba(30,26,10,.5); z-index: 90; display:flex; align-items:center; justify-content:center; padding: 22px; }
   .modal{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); overflow:hidden; text-align:center; }
   .modal-body{ padding: 30px 26px 22px; display:flex; flex-direction:column; align-items:center; gap:12px; }
@@ -990,7 +1001,11 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
         Preview
       </button>
-      <button class="btn btn-primary" type="button" id="btn-publish" disabled>Publish</button>
+      <!-- where the site stands (unsaved / saved to staging / waiting for approval / live), and Save: the
+           only thing that puts changes on staging — see editor-template-ui.js's saveToStaging() -->
+      <a class="site-state" id="site-state" hidden></a>
+      <button class="btn btn-secondary" type="button" id="btn-save" title="Save to staging (Ctrl/⌘ + S)" hidden disabled>Save</button>
+      <button class="btn btn-primary" type="button" id="btn-publish" disabled>Publish changes</button>
       <!-- the signed-in user's avatar and Sign out: auth.js renders it into any [data-rv-account] -->
       <span data-rv-account></span>
     </span>
@@ -2371,6 +2386,16 @@
       onConfirmPublish();
     });
   }
+
+  /* ---------- save to staging ---------- */
+  document.getElementById('btn-save').addEventListener('click', function(){ window.RevampTemplateUI.save().then(null, function(){}); });
+  document.addEventListener('keydown', function(e){
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 's'){
+      e.preventDefault();
+      var b = document.getElementById('btn-save');
+      if (!b.hidden && !b.disabled) b.click();
+    }
+  });
 
   /* ---------- publish ---------- */
   document.getElementById('btn-publish').addEventListener('click', function(){
