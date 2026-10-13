@@ -243,6 +243,12 @@
     var body = doc.body, html = doc.documentElement;
     var headingVar = conf.headingFontVar || '--heading-font-family';
     var H = conf.headings || 'h1, h2';
+    /* An AI-designed site ("gen-<event>"): its sections paint their own backgrounds and set their own type,
+       so the page-wide settings reach them through the variables they are written against (--rv-bg,
+       --rv-text) and, for size, weight and spacing, through rules on the sections themselves. */
+    var generated = body.id === 'gen' || body.classList.contains('rv-generated');
+    var PROSE = '[data-rv-section] :is(p, li, dd, blockquote)';
+    var MIDDLE = '[data-rv-section]:not([data-rv-section="nav"]):not([data-rv-section="hero"]):not([data-rv-section="footer"])';
     var styleEl = doc.querySelector('style[data-rv-design]');
     var rules = {};
     if (styleEl) { try { rules = JSON.parse(styleEl.getAttribute('data-rv-state') || '{}'); } catch (e) { rules = {}; } }
@@ -345,6 +351,11 @@
         if (conf.buttons) css.push(conf.buttons + '{ border-radius: ' + rules.radius + ' !important; }');
         if (conf.cards) css.push(conf.cards + '{ border-radius: ' + (parseInt(rules.radius, 10) > 40 ? '18px' : rules.radius) + ' !important; overflow: hidden; }');
       }
+      if (generated) {
+        if (rules.bodySize) css.push(PROSE + '{ font-size: ' + rules.bodySize + 'px !important; }');
+        if (rules.bodyWeight) css.push(PROSE + '{ font-weight: ' + rules.bodyWeight + ' !important; }');
+        if (rules.sectionSpacing != null) css.push(MIDDLE + '{ padding-top: ' + rules.sectionSpacing + 'px !important; padding-bottom: ' + rules.sectionSpacing + 'px !important; }');
+      }
       var between = '[data-rv-section] ~ [data-rv-section]';
       if (rules.divider === 'line') css.push(between + '{ border-top: 1px solid #DCDEE1; }');
       if (rules.divider === 'dashed') css.push(between + '{ border-top: 1px dashed #C9CCD1; }');
@@ -386,13 +397,22 @@
         return firstFamily(rules.headingFont || (h ? win.getComputedStyle(h).fontFamily : '') || cssVar(headingVar));
       },
       bodyFont: function () { return firstFamily(cssVar('--body-font-family') || win.getComputedStyle(body).fontFamily); },
-      textColor: function () { return toHex(cssVar('--default-color') || win.getComputedStyle(body).color); },
-      bgColor: function () { return toHex(win.getComputedStyle(body).backgroundColor); },
+      textColor: function () { return toHex((generated && cssVar('--rv-text')) || cssVar('--default-color') || win.getComputedStyle(body).color); },
+      bgColor: function () { return toHex((generated && cssVar('--rv-bg')) || win.getComputedStyle(body).backgroundColor); },
       bgImage: function () { return rules.bgImage || ''; },
       bgOpacity: function () { return rules.bgOpacity == null ? 100 : rules.bgOpacity; },
-      bodySize: function () { return parseInt(cssVar('--para-font-size'), 10) || parseInt(win.getComputedStyle(body).fontSize, 10) || 16; },
-      bodyWeight: function () { return win.getComputedStyle(body).fontWeight; },
-      sectionSpacing: function () { return parseInt(cssVar('--bg-spacing'), 10) || 0; },
+      bodySize: function () {
+        if (generated) { var p = find(PROSE); return rules.bodySize || (p ? Math.round(parseFloat(win.getComputedStyle(p).fontSize)) : 0) || 18; }
+        return parseInt(cssVar('--para-font-size'), 10) || parseInt(win.getComputedStyle(body).fontSize, 10) || 16;
+      },
+      bodyWeight: function () {
+        if (generated) { var p = find(PROSE); return rules.bodyWeight || (p ? win.getComputedStyle(p).fontWeight : '400'); }
+        return win.getComputedStyle(body).fontWeight;
+      },
+      sectionSpacing: function () {
+        if (generated) { var sec = find(MIDDLE); return rules.sectionSpacing != null ? rules.sectionSpacing : (sec ? Math.round(parseFloat(win.getComputedStyle(sec).paddingTop)) : 0); }
+        return parseInt(cssVar('--bg-spacing'), 10) || 0;
+      },
       divider: function () { return rules.divider || 'none'; },
       animation: function () { return rules.animation || 'none'; },
       headingSize: function () { return rules.headingSize || parseInt(cssVar('--primary-font-size'), 10) || 32; },
@@ -421,13 +441,28 @@
         render();
       },
       bodyFont: function (stack) { body.style.setProperty('--body-font-family', clean(stack)); render(); },
-      textColor: function (hex) { body.style.setProperty('--default-color', hex); body.style.setProperty('--body-color', hex); },
-      bgColor: function (hex) { body.style.backgroundColor = hex; body.style.setProperty('--bg-color', hex); },
+      textColor: function (hex) {
+        body.style.setProperty('--default-color', hex); body.style.setProperty('--body-color', hex);
+        if (generated) { body.style.setProperty('--rv-text', hex); body.style.color = hex; }
+      },
+      bgColor: function (hex) {
+        body.style.backgroundColor = hex; body.style.setProperty('--bg-color', hex);
+        if (generated) body.style.setProperty('--rv-bg', hex);
+      },
       bgImage: function (url) { rules.bgImage = url || ''; if (!url) delete rules.bgImage; applyBackground(); render(); },
       bgOpacity: function (n) { rules.bgOpacity = +n; applyBackground(); render(); },
-      bodySize: function (px) { body.style.setProperty('--para-font-size', px + 'px'); body.style.fontSize = px + 'px'; },
-      bodyWeight: function (w) { body.style.fontWeight = w; },
-      sectionSpacing: function (px) { body.style.setProperty('--bg-spacing', px + 'px 0'); },
+      bodySize: function (px) {
+        body.style.setProperty('--para-font-size', px + 'px'); body.style.fontSize = px + 'px';
+        if (generated) { rules.bodySize = parseInt(px, 10) || 18; render(); }
+      },
+      bodyWeight: function (w) {
+        body.style.fontWeight = w;
+        if (generated) { rules.bodyWeight = clean(w); render(); }
+      },
+      sectionSpacing: function (px) {
+        body.style.setProperty('--bg-spacing', px + 'px 0');
+        if (generated) { rules.sectionSpacing = Math.max(0, parseInt(px, 10) || 0); render(); }
+      },
       headingSize: function (px) {
         px = parseInt(px, 10);
         if (!px) return;
@@ -443,8 +478,12 @@
     /* ---------- what a setting can act on ----------
        A setting that only writes a variable changes nothing on a page whose CSS never reads that variable (an
        imported site, an AI design with fixed colours); one that styles headings, buttons or cards needs some. */
-    var READS = { themeColor: ['--theme-color', '--theme-color-hex'], textColor: ['--default-color', '--body-color'],
-      bodyFont: ['--body-font-family'], sectionSpacing: ['--bg-spacing'] };
+    var READS = generated
+      /* the background too is only as changeable as the sections make it; spacing is a rule, so it always is */
+      ? { themeColor: ['--theme-color', '--theme-color-hex'], textColor: ['--rv-text', '--default-color', '--body-color'],
+        bgColor: ['--rv-bg'], bodyFont: ['--body-font-family'] }
+      : { themeColor: ['--theme-color', '--theme-color-hex'], textColor: ['--default-color', '--body-color'],
+        bodyFont: ['--body-font-family'], sectionSpacing: ['--bg-spacing'] };
     /* The variables that reach something on this page: read by a rule (or an inline style) that applies to an
        element that is here, directly or through another variable such a rule defines from it. A shared stylesheet
        that reads --theme-color only for classes this page does not use does not count. */
@@ -543,6 +582,8 @@
       if (/^heading/.test(key)) return !!firstHeading();
       if (key === 'radius') return !!((conf.buttons && find(conf.buttons)) || (conf.cards && find(conf.cards)));
       if (key === 'reveals') return !!doc.querySelector('.animated');
+      /* a wallpaper behind the page would sit under sections that each paint their own background */
+      if (generated && (key === 'bgImage' || key === 'bgOpacity')) return false;
       return !!setters[key];
     }
 
@@ -927,6 +968,33 @@
       return /^data:/.test(u || '') ? '' : (u || '');
     }
 
+    /* ---------- a section's background picture ----------
+       A picture set as a CSS background (a hero banner behind its text) is not an element anyone can click:
+       the section's own menu changes it. backgroundHost(sec) is the element that carries it — the section or
+       the largest thing inside it with a picture as its background, covering a good part of the section. */
+    function bgUrlOf(el) {
+      var m = /url\(\s*(["']?)(.*?)\1\s*\)/.exec(win.getComputedStyle(el).backgroundImage || '');
+      return m && !/^data:/i.test(m[2]) ? m[2] : '';
+    }
+    function backgroundHost(sec) {
+      if (!sec) return null;
+      var whole = sec.getBoundingClientRect(), area = whole.width * whole.height, best = null, bestArea = 0;
+      [sec].concat(Array.prototype.slice.call(sec.querySelectorAll('*'))).forEach(function (el) {
+        if (el.hasAttribute('data-editable') && el.getAttribute('data-editable') === 'image') return;   // a picture box is clicked directly
+        if (!bgUrlOf(el)) return;
+        var r = el.getBoundingClientRect(), a = r.width * r.height;
+        if (a >= area * 0.3 && a > bestArea) { best = el; bestArea = a; }
+      });
+      return best;
+    }
+    /* the new picture takes the old one's place; whatever is layered over it (a gradient veil that keeps the
+       text readable) stays */
+    function setBackgroundPicture(el, url) {
+      var now = win.getComputedStyle(el).backgroundImage || '';
+      var next = 'url("' + String(url).replace(/"/g, '%22') + '")';
+      el.style.backgroundImage = /url\(/.test(now) ? now.replace(/url\(\s*(["']?).*?\1\s*\)/, next) : next;
+    }
+
     function cleanCopy(root) {
       unopen(root);
       [root].concat(Array.prototype.slice.call(root.querySelectorAll('.ed-selected, .sec-active, [contenteditable]'))).forEach(function (n) {
@@ -1287,6 +1355,9 @@
       itemAround: itemAround,
       setPicture: setPicture,                             // a new picture in an <img>, an <svg> icon or an image box
       pictureOf: pictureOf,
+      backgroundHost: backgroundHost,                     // the element carrying a section's background picture, or null
+      backgroundOf: bgUrlOf,
+      setBackgroundPicture: setBackgroundPicture,
       duplicateSection: function (sec, name) {
         var copy = sec.cloneNode(true);
         cleanCopy(copy);

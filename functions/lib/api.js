@@ -1037,7 +1037,7 @@ function buildDesignPlanPrompt(payload) {
     '',
     'Set each section\'s kind to "custom" unless it is really one of 5 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery). Only use one of those 5 when the material genuinely supports that this event will have real data of that kind.',
     '',
-    'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists.',
+    'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
     '',
     'PICTURES: the site must not be text only. The hero has a background picture (design.heroImage). Besides it, give up to ' + MAX_SECTION_IMAGES + ' "custom" sections a picture (sections[].image) — the ones where a picture carries meaning, spread down the page — and design those sections around their picture (a split, a framed plate, a full-bleed band). Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture. Pictures show objects, spaces or abstract forms that evoke the subject: never people, never text or logos, never something that could pass for a photograph of this event.',
     '',
@@ -1474,7 +1474,8 @@ function buildSectionCodePrompt(payload) {
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = var(--theme-color) background with a readable text colour; secondary = outlined.',
     '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): clamp(2rem, 4.2vw, 3.25rem), line-height 1.1. Hero headline (h1): clamp(2.6rem, 6.5vw, 5rem). Card titles: 1.25rem or larger. Small labels and captions: never below 0.875rem. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
-    '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.'
+    '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
+    '- CAROUSELS: where a section\'s layout calls for a carousel or slider (a row with more cards, logos, quotes or photos than fit), mark the wrapper with data-rv-carousel (data-rv-carousel="auto" to make it advance by itself) and the element that directly holds the items with data-rv-carousel-track. Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
   ];
 
   if (reference.type && reference.type !== 'none' && reference.design) {
@@ -4830,5 +4831,6 @@ module.exports = { handleApi };
 module.exports._testHooks = {
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
+  buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf
 };

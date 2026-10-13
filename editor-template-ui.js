@@ -1269,8 +1269,11 @@
     } else if (action === 'link') {
       if (linkPop.hidden) openLinkPop(); else closeLinkPop();
     } else if (action === 'replace-image') {
-      var picUrl = prompt('Image URL', canvas.pictureOf(selectedEl) || 'https://');
-      if (picUrl) { canvas.setPicture(selectedEl, picUrl); clearAiGenerated(selectedEl); commitNow(); }
+      var picEl = selectedEl;
+      openPictureDialog('Replace image', canvas.pictureOf(picEl), function (url) {
+        if (!picEl.isConnected) return;
+        canvas.setPicture(picEl, url); clearAiGenerated(picEl); commitNow(); repositionToolbars();
+      });
     } else if (action === 'alt-text') {
       var alt = prompt('Alt text', selectedEl.getAttribute('alt') || selectedEl.getAttribute('data-alt') || '');
       if (alt !== null) { if (selectedEl.tagName === 'IMG') selectedEl.setAttribute('alt', alt); else selectedEl.setAttribute('data-alt', alt); clearAiGenerated(selectedEl); commitNow(); }
@@ -1291,6 +1294,69 @@
       deselect();
     } else if (action.indexOf('item-') === 0) {
       onItemAction(action.slice(5), selectedEl);
+    }
+  }
+
+  /* ---------- choosing a picture ----------
+     For a picture on the page and for a section's background: a file from the computer (stored with the event,
+     RevampCore.uploadImage) or the web address of a picture that is already online. The picture is only set
+     once it is known to load. apply(url) does the setting. */
+  function openPictureDialog(title, current, apply) {
+    var canUpload = !!(eventId && window.RevampCore && RevampCore.uploadImage);
+    var handle = host.openDialog({
+      title: title,
+      bodyHtml:
+        (canUpload
+          ? '<button type="button" class="btn btn-secondary" id="rv-pic-upload">Upload from your computer</button>' +
+            '<input type="file" id="rv-pic-file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden>' +
+            '<p style="margin:10px 0 6px;font-size:12px;opacity:.7;">PNG, JPG, WebP, GIF or SVG, up to 8 MB — or paste the web address of a picture</p>'
+          : '<p style="margin:0 0 6px;font-size:12px;opacity:.7;">Paste the web address of a picture</p>') +
+        '<input type="text" id="rv-pic-url" placeholder="https://example.org/picture.jpg" autocomplete="off" spellcheck="false" style="width:100%;">' +
+        '<p id="rv-pic-error" role="alert" style="margin:8px 0 0;font-size:12px;color:var(--crit,#c0392b);" hidden></p>',
+      actions: [
+        { label: 'Cancel', kind: 'secondary' },
+        { label: 'Use this picture', kind: 'primary', onClick: function () { useAddress(); return false; } }
+      ]
+    });
+    var urlBox = document.getElementById('rv-pic-url'), problem = document.getElementById('rv-pic-error');
+    var fileBox = document.getElementById('rv-pic-file'), uploadBtn = document.getElementById('rv-pic-upload');
+    if (!urlBox) return;
+    urlBox.value = /^https?:/i.test(current || '') ? current : '';
+    var busy = false;
+    function fail(text) { problem.textContent = text; problem.hidden = false; }
+    function done(url) { if (handle && handle.close) handle.close(); apply(url); host.showToast('Picture updated'); }
+    function useAddress() {
+      if (busy) return;
+      problem.hidden = true;
+      busy = true;
+      checkImageUrl(urlBox.value).then(function (res) {
+        busy = false;
+        if (!document.contains(urlBox)) return;                 // closed meanwhile
+        if (res.error) { fail(res.error); urlBox.focus(); return; }
+        done(res.url);
+      });
+    }
+    urlBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); useAddress(); } });
+    urlBox.addEventListener('input', function () { problem.hidden = true; });
+    if (uploadBtn) {
+      uploadBtn.addEventListener('click', function () { if (!busy) fileBox.click(); });
+      fileBox.addEventListener('change', function () {
+        var file = fileBox.files && fileBox.files[0];
+        fileBox.value = '';
+        if (!file || busy) return;
+        problem.hidden = true;
+        busy = true; uploadBtn.disabled = true; uploadBtn.textContent = 'Uploading…';
+        RevampCore.uploadImage(eventId, 'media', file).then(function (up) {
+          busy = false;
+          if (!document.contains(urlBox)) return;
+          done(up.url);
+        }, function (err) {
+          busy = false;
+          if (!document.contains(urlBox)) return;
+          uploadBtn.disabled = false; uploadBtn.textContent = 'Upload from your computer';
+          fail((err && err.message) || 'The picture could not be uploaded. Please try again.');
+        });
+      });
     }
   }
 
@@ -1637,6 +1703,7 @@
     } else {
       html += '<button data-action="add-section" title="Add a section below this one">+ Section</button>' +
         (repeatItems(sec).length ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
+        (canvas.backgroundHost(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
     }
@@ -1697,6 +1764,12 @@
       host.pickSection(sec);
     } else if (action === 'add-item') {
       selectNewItem(addRepeatItem(sec));
+    } else if (action === 'section-background') {
+      var bgEl = canvas.backgroundHost(sec);
+      if (bgEl) openPictureDialog('Background picture', canvas.backgroundOf(bgEl), function (url) {
+        if (!bgEl.isConnected) return;
+        canvas.setBackgroundPicture(bgEl, url); commitNow();
+      });
     } else if (action === 'move-up' || action === 'move-down') {
       var before = moveTarget(sec, action === 'move-up' ? -1 : 1);
       if (before !== undefined) moveSectionBefore(sec, before);
@@ -2091,6 +2164,9 @@
     bodyFont: 'This design sets the font of each text itself. Select a text and use “Selected text” to change its font.',
     sectionSpacing: 'This design sets the space between its sections itself, so this setting has nothing to change.',
     radius: 'This design has no buttons or cards for the corner setting to round.',
+    bgColor: 'This design gives each section its own fixed background, so there is no page background to change. Ask in Chat to recolor a section.',
+    bgImage: 'Each section of this design has its own background. To change a section’s picture, select the section and use “Background picture”.',
+    bgOpacity: 'Each section of this design has its own background, so there is no page picture to fade.',
     reveals: 'This design has no scroll effects to switch off.'
   };
   var DESIGN_KEYS = ['themeColor', 'textColor', 'bgColor', 'bgImage', 'bgOpacity', 'bodyFont', 'bodySize', 'bodyWeight',

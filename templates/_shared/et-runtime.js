@@ -49,6 +49,15 @@
        · a "menu" button on a narrow window opens the bar's own links as a list (never while editing);
        · the site builder's "Edit with …" badge is removed.
 
+   Carousels
+     A row with more items than fit: the wrapper carries data-rv-carousel and the element holding the items
+     data-rv-carousel-track (the wrapper itself when there is none). The track scrolls sideways by its own CSS
+     (overflow-x:auto, scroll-snap); this adds a previous and a next button, drag-free keyboard use (the
+     buttons are real buttons) and, with data-rv-carousel="auto", a step every few seconds that pauses while
+     the visitor points at or focuses the row and never runs for visitors who asked for no motion. The
+     buttons are made on the live page each time and are never part of the saved site. While editing there
+     are no buttons and nothing moves: the row is a strip the editor scrolls and edits item by item.
+
    Editing
      The editor sets data-rv-editing on <html> before this runs. Reveal is then left to the editor's canvas CSS
      (everything shown, no animation), so no .go classes end up in the saved page; sections check
@@ -512,6 +521,63 @@
     });
   }
 
+  /* ---------- carousels ---------- */
+  var CAROUSEL_STEP_MS = 4500;
+
+  function carousel(box) {
+    if (box.__rvCarousel || editing()) return;
+    var track = box.querySelector('[data-rv-carousel-track]') || box;
+    box.__rvCarousel = true;
+    if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+
+    function step() { var item = track.firstElementChild; return item ? item.getBoundingClientRect().width + (parseFloat(getComputedStyle(track).columnGap) || 0) : track.clientWidth; }
+    function atEnd() { return track.scrollLeft + track.clientWidth >= track.scrollWidth - 2; }
+    function go(dir, wrap) {
+      if (dir > 0 && atEnd()) { if (wrap) track.scrollTo({ left: 0, behavior: 'smooth' }); return; }
+      track.scrollBy({ left: dir * step(), behavior: 'smooth' });
+    }
+    function button(dir) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rv-carousel-btn rv-carousel-' + (dir < 0 ? 'prev' : 'next');
+      b.setAttribute('aria-label', dir < 0 ? 'Previous' : 'Next');
+      b.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (dir < 0 ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7') + '"/></svg>';
+      b.addEventListener('click', function () { go(dir, false); });
+      box.appendChild(b);
+      return b;
+    }
+    var prev = button(-1), next = button(1);
+    function sync() {
+      var fits = track.scrollWidth <= track.clientWidth + 2;
+      prev.hidden = next.hidden = fits;
+      prev.disabled = track.scrollLeft <= 2;
+      next.disabled = atEnd();
+    }
+    track.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    if ('MutationObserver' in window) new MutationObserver(sync).observe(track, { childList: true });   // records arriving
+    sync();
+
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (box.getAttribute('data-rv-carousel') === 'auto' && !still) {
+      var held = false;
+      ['mouseenter', 'focusin', 'touchstart'].forEach(function (t) { box.addEventListener(t, function () { held = true; }, { passive: true }); });
+      ['mouseleave', 'focusout'].forEach(function (t) { box.addEventListener(t, function () { held = false; }); });
+      setInterval(function () {
+        if (held || document.hidden || !box.isConnected || track.scrollWidth <= track.clientWidth + 2) return;
+        var r = box.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight) return;          // not on screen: nothing to show moving
+        go(1, true);
+      }, CAROUSEL_STEP_MS);
+    }
+  }
+
+  function carousels(root) {
+    if (editing()) return;
+    each((root || document).querySelectorAll('[data-rv-carousel]'), carousel);
+    if (root && root.matches && root.matches('[data-rv-carousel]')) carousel(root);
+  }
+
   window.RevampSections = {
     register: register,
     widget: function (name, init) {
@@ -524,6 +590,7 @@
     init: function (el) {
       initSection(el);
       reveal(el);
+      carousels(el);
       if (el.matches('.rv-imported') || el.querySelector('.rv-imported')) settleImported();
     },
     reveal: reveal,
@@ -532,7 +599,7 @@
     goTo: goTo
   };
 
-  function start() { reveal(); settleImported(); arrive(); }
+  function start() { reveal(); settleImported(); carousels(); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
