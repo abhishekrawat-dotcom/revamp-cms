@@ -1866,7 +1866,7 @@
               </div>
               <div class="field c4 logo-field" id="logo-cell">
                 <div class="flabel-row"><span class="flabel">Event logo <span class="pill-req" id="logo-requirement">*</span></span></div>
-                <div class="logo-row" id="logo-tile" title="Upload a PNG or SVG event logo">
+                <div class="logo-row" id="logo-tile" title="Upload a PNG, WEBP or SVG event logo">
                   <span class="logo-row-icon">
                     <img class="logo-tile-img" id="logo-preview-img" alt="" hidden>
                     <svg class="logo-tile-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M7.5 8.5L12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
@@ -1876,8 +1876,8 @@
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18"/></svg>
                   </button>
                 </div>
-                <div class="logo-meta" id="logo-hint">PNG or SVG &middot; 571&times;340 &middot; max 5&nbsp;MB</div>
-                <input id="f-logo" type="file" accept="image/png,image/svg+xml,.svg" hidden>
+                <div class="logo-meta" id="logo-hint">PNG, WEBP or SVG &middot; 571&times;340 &middot; max 5&nbsp;MB</div>
+                <input id="f-logo" type="file" accept="image/png,image/webp,image/svg+xml,.webp,.svg" hidden>
               </div>
             </div>
           </div>
@@ -3689,7 +3689,7 @@
       removeBtn.hidden = true;
       logoCta.textContent = 'Upload logo';
       logoHint.className = logoFailed ? 'logo-meta bad' : 'logo-meta';
-      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG or SVG · 571×340 · max 5 MB';
+      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG, WEBP or SVG · 571×340 · max 5 MB';
     }
 
     var openLogoPicker = function(){ logoInput.click(); };
@@ -3707,10 +3707,10 @@
     logoInput.onchange = function(){
       var file = logoInput.files && logoInput.files[0];
       if (!file) return;
-      var validType = file.type === 'image/png' || file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+      var validType = file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/svg+xml' || /\.(svg|webp)$/i.test(file.name);
       if (!validType){
         logoInput.value = '';
-        toast('Choose a PNG or SVG logo file', { type: 'error' });
+        toast('Choose a PNG, WEBP or SVG logo file', { type: 'error' });
         return;
       }
       if (file.size > 5 * 1024 * 1024){
