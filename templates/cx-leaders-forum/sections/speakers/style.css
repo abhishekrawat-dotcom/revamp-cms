@@ -1,8 +1,8 @@
-/* CX Annual Symposium — speakers, adapted from the live page's #speakers (dt-13 dtstyle-default) rules.
+/* CX Leaders Forum — speakers, adapted from the live page's #speakers (dt-13 dtstyle-default) rules.
    The live section is rendered through an ET AJAX speaker-pagination widget (SpeakerAjaxPagination, a
    masonry grid, per-card popup bindings) that only works against the live CMS backend — none of that scaffolding
-   is portable here, so this keeps just the 5 real "Previous Edition Speakers" cards it renders (photo, name,
-   role, company) in a plain static grid, same as TECH500 never ported that widget either. */
+   is portable here, so this is a plain static grid of one card per speaker (photo, name, role, company):
+   five to a row, a shorter row centred. */
 #speakers .page_hdng2 {
   text-align: center;
   margin-bottom: 36px;
@@ -16,9 +16,14 @@
 }
 
 #speakers .speaker-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 20px;
+}
+
+#speakers .speaker-card {
+  width: calc((100% - 80px) / 5);
 }
 
 #speakers .speaker-card img {
@@ -49,33 +54,19 @@
   line-height: 1.4;
 }
 
-#speakers .speakers-more {
-  text-align: center;
-  margin-top: 36px;
-}
-
-#speakers .speakers-more .btn {
-  display: inline-block;
-  padding: 12px 28px;
-  border-radius: 30px;
-  border: 1px solid #191B1F;
-  color: #191B1F;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
 @media screen and (max-width: 991px) {
-  #speakers .speaker-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  #speakers .speaker-card {
+    width: calc((100% - 40px) / 3);
   }
 }
 
 @media screen and (max-width: 640px) {
   #speakers .speaker-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
+  }
+
+  #speakers .speaker-card {
+    width: calc((100% - 14px) / 2);
   }
 
   #speakers .page_hdng2 h2 {

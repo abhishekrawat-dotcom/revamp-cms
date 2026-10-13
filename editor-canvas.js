@@ -13,9 +13,14 @@
      canvas.screenRect(el)          an element's box in editor-window coordinates
      canvas.inView(el)              whether any of it is inside the visible canvas
      canvas.design.get(key) / .set(key, value)
-                                    theme settings (colour, fonts, sizes, spacing, heading look, radius, dividers …)
+                                    theme settings (colour, fonts, sizes, spacing, heading look, radius, dividers,
+                                    motion …)
+                                    set() answers false, and changes nothing, when the page turned out to
+                                    have nothing that setting acts on
+     canvas.design.supports(key)    whether that setting has anything on this page to act on
      canvas.sections()              section roots, in page order
-     canvas.serialize()             the page as published: editor markers stripped, hidden sections left out
+     canvas.serialize()             the page as published: editor and AI-review markers stripped, hidden sections
+                                    left out
 
    Saving (the editor keeps these per event, and as its undo/redo steps)
      canvas.snapshot(prev)          what the user has changed, as a plain object (see below); prev lets unchanged
@@ -25,19 +30,36 @@
      canvas.sameSnapshot(a, b)      whether two snapshots describe the same page
 
    Sections (all of them work on real DOM in the iframe, so the result is the page itself — nothing to translate back)
+     A section root carries two names. data-rv-section is its TYPE — the template section it is an instance of; its
+     script (et-runtime.js), its CSS, its accordion and repeat settings in template.json all go by it, and every
+     copy keeps it. data-rv-key tells the instances apart: unique on the page, the type itself for the first one,
+     then <type>-2, <type>-3 …. Anything that means one particular section uses the key.
      canvas.library()                        the template's own sections as they were when it loaded
      canvas.createLibrarySection(id)         a fresh copy of one of them, ready to insert
      canvas.createGenericSection(name, html, siteCss)
                                              one of the editor's generic sections, dressed in the template's tokens
-     canvas.adopt(el)                        after inserting: unique ids (+ their CSS), section scripts started
+     canvas.insertSection(el, afterSec)      puts a new section on the page after afterSec (at the end when null),
+                                             never outside the part of the page sections may move in, and adopts it
+     canvas.adopt(el)                        after inserting: its key, unique ids (+ their CSS), section scripts started
      canvas.adoptElement(el)                 the same for a copy of one element inside a section (no scripts to start)
+     canvas.copyOf(el)                       a copy of an element without the editor's selection and editing marks
+     canvas.sectionByKey(key)                the section with that data-rv-key
+     canvas.pinned(sec)                      'start' / 'end' for a section the template keeps at the top / bottom
+                                             (template.json → layout.pinStart / pinEnd), else ''
+     canvas.canMoveSection(sec, before)      whether moveSection would move it there
+     canvas.moveSection(sec, before)         moves it (with the CSS that belongs to it) in front of `before`, or to
+                                             the end when null. Pinned sections stay, and nothing moves past one
+     canvas.setHidden(sec, hide)             a hidden section stays in the editor as a slim bar (editor-canvas.css)
+                                             and is left out of the published page
+     canvas.ensureBlockStyle()               the CSS of the Add panel's blocks (.rv-block-*), added once
      canvas.anchorFor(sec)                   the id a link to this section uses ("#<id>"); gives the section one if it has none
      canvas.retag(el)                        after changing markup in place: marks what has become editable
      canvas.openItem(el)                     opens the accordion item around el (template.json → sections[].toggle)
                                              so its hidden part can be edited; editor-only, never saved
+     canvas.itemAround(el)                   the accordion item (or native <details>) el sits in, else null
      canvas.setPicture(el, url)              a new picture in an image slot: <img>, <svg> icon, or image box
      canvas.pictureOf(el)                    the URL it shows now ('' for a drawn icon)
-     canvas.duplicateSection(sec, name)      copy placed right after the original, already adopted
+     canvas.duplicateSection(sec, name)      copy placed right after the original, already adopted: same type, own key
      canvas.removeSection(sec)               removes it with any CSS made for it
      canvas.contentRoot()                    where sections live when the page has none left
 
@@ -108,12 +130,19 @@
     }
   }
 
-  function tagEditables(doc, names) {
+  function tagEditables(doc, names, ensureKey) {
     sectionsOf(doc).forEach(function (sec) {
       var id = sec.getAttribute('data-rv-section');
       sec.setAttribute('data-sec-name', names[id] || id);
+      ensureKey(sec);
       descend(sec, false);
     });
+  }
+
+  /* a section that has only an id for a name ("why-attend", on AI-designed sites) is shown as "Why attend" */
+  function readableName(id) {
+    var words = String(id).replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return words ? words.charAt(0).toUpperCase() + words.slice(1) : String(id);
   }
 
   function sectionsOf(doc) {
@@ -126,33 +155,34 @@
      Built from the editor's own "SITE CONTENT STYLES" (passed in, so there is one source of truth): every rule is
      scoped under .rv-generic, the demo's .stage.device-mobile variants become a real phone media query, and the
      demo's --site-* tokens are mapped onto the template's own variables — so the section picks up the template's
-     colour and fonts. Close to the template's look, not identical: ET's global rules still apply around it. */
+     colour and fonts. Close to the template's look, not identical: ET's global rules still apply around it.
+     The designs are drawn for a light surface, so a generic section brings its own white background and dark
+     text: on a template whose page is dark it would otherwise be dark text on a dark page. */
   var GENERIC_BASE = [
     '.rv-generic{',
     '  --site-body-font: var(--body-font-family, Arial, sans-serif);',
     '  --site-display-font: var(--heading-font-family-v2, var(--heading-font-family, Georgia, serif));',
     '  --site-display-weight: 400; --site-display-case: none; --site-display-tracking: normal;',
     "  --site-mono-font: 'IBM Plex Mono', monospace;",
-    '  --site-text: var(--default-color, #1c1c1c); --site-text-muted: #4B4D50; --site-text-faint: #6f7175;',
+    '  --site-text: #191B1F; --site-text-muted: #4B4D50; --site-text-faint: #6f7175;',
     '  --site-surface: #fff; --site-border: #DCDEE1; --site-radius: 0px; --site-radius-sm: 0px; --site-btn-radius: 0px;',
     '  --site-accent: var(--theme-color, #0F6F5C); --site-accent-contrast: #fff;',
     '  --site-accent-soft: color-mix(in srgb, var(--theme-color, #0F6F5C) 10%, #fff);',
     '  --site-nav-bg: transparent; --site-nav-text: #4a4a42; --site-nav-border: #DCDEE1;',
-    '  --site-hero-bg: #F7F7F7; --site-hero-text: var(--default-color, #1c1c1c); --site-hero-muted: #4B4D50; --site-hero-size: 42px;',
+    '  --site-hero-bg: #F7F7F7; --site-hero-text: #191B1F; --site-hero-muted: #4B4D50; --site-hero-size: 42px;',
     '  --site-image-bg: color-mix(in srgb, var(--theme-color, #0F6F5C) 8%, #F4F4F4); --site-image-text: var(--theme-color, #0F6F5C);',
     '  --site-tile-bg: color-mix(in srgb, var(--theme-color, #0F6F5C) 8%, #F4F4F4);',
-    '  --site-band-bg: #F7F7F7; --site-band-text: var(--default-color, #1c1c1c); --site-band-muted: #4B4D50;',
+    '  --site-band-bg: #F7F7F7; --site-band-text: #191B1F; --site-band-muted: #4B4D50;',
     '  --site-quote-bg: #08090B; --site-quote-text: #fff;',
     '  --site-foot-bg: #191b1f; --site-foot-text: #b5b0a0; --site-foot-logo: #fff;',
-    '  font-family: var(--site-body-font); color: var(--site-text);',
+    '  font-family: var(--site-body-font); color: var(--site-text); background: var(--site-surface);',
     '}',
     '.rv-generic *{ box-sizing: border-box; }',
     '.rv-generic h1, .rv-generic h2, .rv-generic h3, .rv-generic blockquote{ font-family: var(--site-display-font); font-weight: var(--site-display-weight); text-transform: var(--site-display-case); letter-spacing: var(--site-display-tracking); margin: 0; }',
     '.rv-generic p{ margin: 0; }',
     '/* content lines up with the site\'s 1170px container; backgrounds stay full-bleed */',
     '.rv-generic > *{ padding-left: max(40px, calc((100% - 1140px) / 2)) !important; padding-right: max(40px, calc((100% - 1140px) / 2)) !important; }',
-    '@media (max-width: 767px){ .rv-generic > *{ padding-left: 22px !important; padding-right: 22px !important; } }',
-    '.rv-generic [data-editable="image"]{ background-size: cover; background-position: center; }'
+    '@media (max-width: 767px){ .rv-generic > *{ padding-left: 22px !important; padding-right: 22px !important; } }'
   ].join('\n');
 
   function scopeGenericCss(css) {
@@ -175,17 +205,44 @@
     return GENERIC_BASE + '\n' + desktop.join('\n') + '\n@media (max-width: 767px){\n' + phone.join('\n') + '\n}\n';
   }
 
-  /* ---------- design: the Design panel and global toolbar, in template mode ----------
+  /* ---------- the Add panel's blocks ----------
+     A heading, text, button, picture, divider or spacer the owner adds inside a section (editor-template-ui.js,
+     addBlock). They are plain elements of the page, styled from the page's own variables so they follow the site's
+     colour and fonts. headingVar: the variable this template's headings read (template.json → design). */
+  function blockCss(headingVar) {
+    return [
+      '.rv-block-heading{ margin:24px 0 12px; font-family:var(' + headingVar + ', inherit); font-size:28px; line-height:1.25; font-weight:700; color:inherit; }',
+      '.rv-block-text{ margin:12px 0; font-family:var(--body-font-family, inherit); font-size:var(--para-font-size, 16px); line-height:1.6; color:inherit; }',
+      '.rv-block-button{ display:inline-block; margin:12px 0; padding:12px 26px; background:var(--theme-color, #1c1c1c); color:#fff; font-family:var(--body-font-family, inherit); font-size:15px; font-weight:600; line-height:1.2; text-decoration:none; border-radius:4px; }',
+      '.rv-block-image{ display:block; max-width:100%; height:auto; min-width:48px; min-height:48px; margin:16px 0; }',
+      '.rv-block-divider{ display:block; width:100%; height:21px; margin:14px 0; padding:0; border:0; background:linear-gradient(currentColor, currentColor) center / 100% 1px no-repeat; opacity:.25; }',
+      '.rv-block-spacer{ display:block; width:100%; height:40px; }'
+    ].join('\n');
+  }
+
+  /* ---------- design: the Design panel and global toolbar ----------
      ET templates are themed through CSS variables on <body> (--theme-color, --body-font-family, --primary-font-size,
      --bg-spacing …) — the ones ET's own design settings write — so a change sets those, and the whole site follows
-     the way it does on ET. The few things ET hard-codes (heading weight/colour/case/alignment, corner radius, section
-     dividers and animation) become rules in one <style data-rv-design>; its settings ride along as JSON in
+     the way it does on ET. What the variables do not reach (the heading look, corner radius, section dividers and
+     animation, motion) becomes rules in one <style data-rv-design>; its settings ride along as JSON in
      data-rv-state, so a saved page keeps them. Which elements count as headings, buttons and cards comes from
-     template.json → design. */
+     template.json → design.
+
+     Fonts: a family the page did not come with needs its stylesheet, or the browser falls back to another font.
+     Every such family in use — the heading and body fonts, and any set on a single text — gets one
+     <link data-rv-font> in <head>, worked out from the page itself each time the design is set or loaded. So the
+     links follow undo, redo and a reload without being stored anywhere, and are part of the published page. */
+  var SYSTEM_FONTS = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-[a-z-]+|-apple-system|blinkmacsystemfont|inherit|initial|unset|arial|helvetica|helvetica neue|georgia|times|times new roman|courier|courier new|verdana|tahoma|trebuchet ms|segoe ui)$/i;
+
+  function fontHref(family) {
+    return 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800&display=swap';
+  }
+
   function makeDesign(doc, win, conf) {
     conf = conf || {};
     var body = doc.body, html = doc.documentElement;
     var headingVar = conf.headingFontVar || '--heading-font-family';
+    var H = conf.headings || 'h1, h2';
     var styleEl = doc.querySelector('style[data-rv-design]');
     var rules = {};
     if (styleEl) { try { rules = JSON.parse(styleEl.getAttribute('data-rv-state') || '{}'); } catch (e) { rules = {}; } }
@@ -205,6 +262,8 @@
       var n = parseInt(hex.slice(1), 16);
       return ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255);
     }
+    function find(selector) { try { return doc.querySelector(selector); } catch (e) { return null; } }
+    function firstHeading() { return find(H); }
 
     function applyBackground() {
       if (!rules.bgImage) { body.style.backgroundImage = ''; body.style.backgroundSize = ''; body.style.backgroundPosition = ''; body.style.backgroundAttachment = ''; return; }
@@ -215,8 +274,69 @@
       body.style.backgroundAttachment = 'fixed';     // a wallpaper behind the page, not one image stretched down it
     }
 
+    /* ---------- fonts ---------- */
+    function ownSheet(node) {
+      return !!node && node.nodeType === 1 && (node.hasAttribute('data-rv-font') || node.hasAttribute('data-rv-editor') || node.hasAttribute('data-rv-design'));
+    }
+    // the families the page's own stylesheets bring: @font-face rules, and the stylesheets it links by family name
+    var declared = null;
+    function pageProvides(family) {
+      var name = family.toLowerCase();
+      if (!declared) {
+        declared = {};
+        Array.prototype.forEach.call(doc.styleSheets, function (sheet) {
+          if (ownSheet(sheet.ownerNode)) return;
+          var list;
+          try { list = sheet.cssRules; } catch (e) { return; }          // another origin's sheet cannot be read
+          for (var i = 0; list && i < list.length; i++) {
+            if (list[i].type === 5) declared[firstFamily(list[i].style.getPropertyValue('font-family')).toLowerCase()] = 1;
+          }
+        });
+      }
+      if (declared[name]) return true;
+      return Array.prototype.some.call(doc.querySelectorAll('link[rel="stylesheet"]:not([data-rv-font])'), function (l) {
+        var href = '';
+        try { href = decodeURIComponent((l.getAttribute('href') || '').replace(/\+/g, ' ')).toLowerCase(); } catch (e) { return false; }
+        var at = href.indexOf('family=');
+        return at !== -1 && href.slice(at + 7).split(/[|&]|family=/).some(function (f) { return f.split(':')[0].trim() === name; });
+      });
+    }
+    /* The fonts the page came with are the template's business: whether it loads them or leaves them to the
+       visitor's computer, the editor does not change that. */
+    var cameWith = {};
+    [cssVar(headingVar), cssVar('--body-font-family')].forEach(function (stack) { cameWith[firstFamily(stack).toLowerCase()] = 1; });
+
+    function syncFonts() {
+      var wanted = {};
+      function want(stack) {
+        var family = firstFamily(stack), key = family.toLowerCase();
+        if (!family || /^var\(/i.test(family) || SYSTEM_FONTS.test(family) || cameWith[key]) return;
+        wanted[key] = family;
+      }
+      want(rules.headingFont || cssVar(headingVar));
+      want(cssVar('--body-font-family'));
+      Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-section] [style*="font-family"], [data-rv-section][style*="font-family"]'), function (el) {
+        want(el.style.fontFamily);
+      });
+      Array.prototype.forEach.call(doc.head.querySelectorAll('link[data-rv-font]'), function (l) {
+        var key = l.getAttribute('data-rv-font').toLowerCase();
+        if (wanted[key]) delete wanted[key]; else l.remove();
+      });
+      Object.keys(wanted).forEach(function (key) {
+        if (pageProvides(wanted[key])) return;
+        var link = doc.createElement('link');
+        link.rel = 'stylesheet';
+        link.setAttribute('data-rv-font', wanted[key]);
+        link.href = fontHref(wanted[key]);
+        doc.head.appendChild(link);
+      });
+    }
+
     function render() {
-      var H = conf.headings || 'h1, h2', css = [];
+      var css = [];
+      if (rules.headingFont) css.push(H + '{ font-family: ' + rules.headingFont + ' !important; }');
+      // never wider than a phone can show: the size is a desktop size, and the template's own phone sizes no longer apply
+      if (rules.headingSize) css.push(H + '{ font-size: min(' + rules.headingSize + 'px, 9vw) !important; }');
       if (rules.headingWeight) css.push(H + '{ font-weight: ' + rules.headingWeight + ' !important; }');
       if (rules.headingColor) css.push(H + '{ color: ' + rules.headingColor + ' !important; }');
       if (rules.headingCase) css.push(H + '{ text-transform: ' + rules.headingCase + ' !important; }');
@@ -235,6 +355,19 @@
           '@keyframes rvSectionPulse{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.01)} }');
         css.push('[data-rv-section]{ animation: ' + ({ fade: 'rvSectionFade .6s ease both', rise: 'rvSectionRise .6s ease both', pulse: 'rvSectionPulse 2.2s ease-in-out infinite' })[rules.animation] + '; }');
       }
+      /* Motion. ET's scroll reveal keeps .animated blocks invisible until they are scrolled to (et-animate.css):
+         with reveals off they are simply there. With all motion off, animations and transitions are not removed
+         but made instant, so anything that only becomes visible at the end of one still does. The editor's own
+         canvas is left alone. */
+      var still = rules.motion === 'off';
+      if (still || rules.reveals === 'off') css.push('.animated{ opacity: 1 !important; animation: none !important; transform: none !important; }');
+      if (still) {
+        css.push('html:not([data-rv-editing]) *, html:not([data-rv-editing]) *::before, html:not([data-rv-editing]) *::after{ animation-duration: .001s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }');
+        html.setAttribute('data-rv-motion', 'off');
+      } else {
+        html.removeAttribute('data-rv-motion');
+      }
+      syncFonts();
       if (!styleEl) {
         if (!Object.keys(rules).length) return;      // nothing set yet: the page stays as the template made it
         styleEl = doc.createElement('style');
@@ -247,32 +380,47 @@
 
     var getters = {
       themeColor: function () { return toHex(cssVar('--theme-color')); },
-      headingFont: function () { return firstFamily(cssVar(headingVar)); },
-      bodyFont: function () { return firstFamily(cssVar('--body-font-family')); },
-      textColor: function () { return toHex(cssVar('--default-color')); },
+      // what the headings show: a design whose headings do not read the variable has its own font there
+      headingFont: function () {
+        var h = firstHeading();
+        return firstFamily(rules.headingFont || (h ? win.getComputedStyle(h).fontFamily : '') || cssVar(headingVar));
+      },
+      bodyFont: function () { return firstFamily(cssVar('--body-font-family') || win.getComputedStyle(body).fontFamily); },
+      textColor: function () { return toHex(cssVar('--default-color') || win.getComputedStyle(body).color); },
       bgColor: function () { return toHex(win.getComputedStyle(body).backgroundColor); },
       bgImage: function () { return rules.bgImage || ''; },
       bgOpacity: function () { return rules.bgOpacity == null ? 100 : rules.bgOpacity; },
-      bodySize: function () { return parseInt(cssVar('--para-font-size'), 10) || 16; },
+      bodySize: function () { return parseInt(cssVar('--para-font-size'), 10) || parseInt(win.getComputedStyle(body).fontSize, 10) || 16; },
       bodyWeight: function () { return win.getComputedStyle(body).fontWeight; },
       sectionSpacing: function () { return parseInt(cssVar('--bg-spacing'), 10) || 0; },
       divider: function () { return rules.divider || 'none'; },
       animation: function () { return rules.animation || 'none'; },
-      headingSize: function () { return parseInt(cssVar('--primary-font-size'), 10) || 32; },
+      headingSize: function () { return rules.headingSize || parseInt(cssVar('--primary-font-size'), 10) || 32; },
       headingWeight: function () { return rules.headingWeight || ''; },
       headingColor: function () { return rules.headingColor || ''; },
       headingCase: function () { return rules.headingCase || ''; },
       headingAlign: function () { return rules.headingAlign || ''; },
-      radius: function () { return rules.radius || ''; }
+      radius: function () { return rules.radius || ''; },
+      motion: function () { return rules.motion || ''; },
+      reveals: function () { return rules.reveals || ''; }
     };
+    /* Sanitised where a value ends up inside the rules above: it may have come from the AI assistant. */
+    function clean(v) { return String(v == null ? '' : v).replace(/[;{}<>\\]/g, '').trim(); }
     var setters = {
       themeColor: function (hex) {
         body.style.setProperty('--theme-color', hex);
         html.style.setProperty('--theme-color', rgbTriplet(hex));      // ET also keeps an "r, g, b" copy on :root
         html.style.setProperty('--theme-color-hex', hex);
       },
-      headingFont: function (stack) { body.style.setProperty(headingVar, stack); },
-      bodyFont: function (stack) { body.style.setProperty('--body-font-family', stack); },
+      /* the variable, for everything that reads it, and a rule on the headings themselves: not every design's
+         headings read the variable */
+      headingFont: function (stack) {
+        stack = clean(stack);
+        body.style.setProperty(headingVar, stack);
+        if (stack) rules.headingFont = stack; else delete rules.headingFont;
+        render();
+      },
+      bodyFont: function (stack) { body.style.setProperty('--body-font-family', clean(stack)); render(); },
       textColor: function (hex) { body.style.setProperty('--default-color', hex); body.style.setProperty('--body-color', hex); },
       bgColor: function (hex) { body.style.backgroundColor = hex; body.style.setProperty('--bg-color', hex); },
       bgImage: function (url) { rules.bgImage = url || ''; if (!url) delete rules.bgImage; applyBackground(); render(); },
@@ -280,15 +428,136 @@
       bodySize: function (px) { body.style.setProperty('--para-font-size', px + 'px'); body.style.fontSize = px + 'px'; },
       bodyWeight: function (w) { body.style.fontWeight = w; },
       sectionSpacing: function (px) { body.style.setProperty('--bg-spacing', px + 'px 0'); },
-      headingSize: function (px) { body.style.setProperty('--primary-font-size', px + 'px'); }
+      headingSize: function (px) {
+        px = parseInt(px, 10);
+        if (!px) return;
+        body.style.setProperty('--primary-font-size', px + 'px');
+        rules.headingSize = px;
+        render();
+      }
     };
-    ['divider', 'animation', 'headingWeight', 'headingColor', 'headingCase', 'headingAlign', 'radius'].forEach(function (k) {
-      setters[k] = function (v) { if (v) rules[k] = v; else delete rules[k]; render(); };
+    ['divider', 'animation', 'headingWeight', 'headingColor', 'headingCase', 'headingAlign', 'radius', 'motion', 'reveals'].forEach(function (k) {
+      setters[k] = function (v) { v = clean(v); if (v) rules[k] = v; else delete rules[k]; render(); };
     });
+
+    /* ---------- what a setting can act on ----------
+       A setting that only writes a variable changes nothing on a page whose CSS never reads that variable (an
+       imported site, an AI design with fixed colours); one that styles headings, buttons or cards needs some. */
+    var READS = { themeColor: ['--theme-color', '--theme-color-hex'], textColor: ['--default-color', '--body-color'],
+      bodyFont: ['--body-font-family'], sectionSpacing: ['--bg-spacing'] };
+    /* The variables that reach something on this page: read by a rule (or an inline style) that applies to an
+       element that is here, directly or through another variable such a rule defines from it. A shared stylesheet
+       that reads --theme-color only for classes this page does not use does not count. */
+    var used = null, usedFor = '';
+    // what the answers below were worked out for: they hold until the page gains or loses a stylesheet or a section
+    function pageStamp() { return doc.styleSheets.length + ':' + doc.querySelectorAll('[data-rv-section]').length; }
+    function variablesRead() {
+      var stamp = pageStamp();
+      if (used && usedFor === stamp) return used;
+      used = {}; usedFor = stamp;
+      var defines = {};                                   // variable -> the variables its value is made from
+      function note(text) {
+        var rest = text.replace(/(--[\w-]+)\s*:\s*([^;}]*)/g, function (m, name, value) {
+          var re = /var\(\s*(--[\w-]+)/g, v;
+          while ((v = re.exec(value))) (defines[name] = defines[name] || []).push(v[1]);
+          return '';
+        });
+        var read = /var\(\s*(--[\w-]+)/g, r;
+        while ((r = read.exec(rest))) used[r[1]] = 1;
+      }
+      function applies(selector) {
+        // a state or a pseudo-element of something that is here counts as here
+        return !!find(selector.replace(/::?(before|after|hover|focus-visible|focus-within|focus|active|visited|placeholder|selection|first-letter|first-line|marker)\b/g, ''));
+      }
+      function walkRules(list) {
+        for (var i = 0; list && i < list.length; i++) {
+          var r = list[i];
+          if (r.type === 1) { if (r.cssText.indexOf('var(') !== -1 && applies(r.selectorText)) note(r.style.cssText); }
+          else if (r.cssRules) walkRules(r.cssRules);
+        }
+      }
+      Array.prototype.forEach.call(doc.styleSheets, function (sheet) {
+        if (ownSheet(sheet.ownerNode)) return;
+        try { walkRules(sheet.cssRules); } catch (e) { /* another origin's sheet cannot be read */ }
+      });
+      Array.prototype.forEach.call(doc.querySelectorAll('[style*="var(--"]'), function (el) { note(el.getAttribute('style')); });
+      for (var grew = true; grew;) {
+        grew = false;
+        Object.keys(defines).forEach(function (name) {
+          if (!used[name]) return;
+          defines[name].forEach(function (from) { if (!used[from]) { used[from] = 1; grew = true; } });
+        });
+      }
+      return used;
+    }
+    /* Reading the CSS only says a variable is used somewhere on the page; whether what uses it is then seen (a
+       section may set its own colour over an inherited one) is known by setting it and looking. That is done the
+       first time such a setting is changed: when nothing on the page looks different, the change is taken back
+       and the setting counts as having nothing to act on. */
+    var reaches = {};
+    function looks() {
+      function of(el, pseudo) {
+        var cs = win.getComputedStyle(el, pseudo);
+        return cs.color + cs.backgroundColor + cs.backgroundImage + cs.borderTopColor + cs.borderBottomColor;
+      }
+      return Array.prototype.map.call(doc.querySelectorAll('[data-rv-section], [data-rv-section] *'), function (el) {
+        var cs = win.getComputedStyle(el);
+        return of(el) + of(el, '::before') + of(el, '::after') + cs.borderLeftColor + cs.outlineColor + cs.fill + cs.stroke +
+          cs.boxShadow + cs.textDecorationColor + cs.fontFamily + cs.paddingTop + cs.paddingBottom + cs.marginTop + cs.marginBottom;
+      }).join('|');
+    }
+    function sameAsNow(key, value) {
+      return String(getters[key]()).toLowerCase() === (key === 'bodyFont' ? firstFamily(value) : String(value)).toLowerCase();
+    }
+    function tryOut(key, value) {
+      // a colour that eases in would still read as the old one
+      var steady = doc.createElement('style');
+      steady.textContent = '*, *::before, *::after{ transition: none !important; }';
+      doc.head.appendChild(steady);
+      var htmlWas = html.getAttribute('style'), bodyWas = body.getAttribute('style'), before = looks();
+      setters[key](value);
+      var changed = looks() !== before;
+      steady.remove();
+      if (!changed) {
+        if (htmlWas === null) html.removeAttribute('style'); else html.setAttribute('style', htmlWas);
+        if (bodyWas === null) body.removeAttribute('style'); else body.setAttribute('style', bodyWas);
+        render();
+      }
+      return changed;
+    }
+    function set(key, value) {
+      if (!READS[key]) { setters[key](value); return true; }
+      var known = reaches[key] && reaches[key].stamp === pageStamp() ? reaches[key] : null;
+      if ((known && known.ok) || sameAsNow(key, value)) { setters[key](value); return true; }
+      var ok = tryOut(key, value);
+      reaches[key] = { stamp: pageStamp(), ok: ok };
+      return ok;
+    }
+
+    function supports(key) {
+      if (READS[key]) {
+        if (reaches[key] && reaches[key].stamp === pageStamp()) return reaches[key].ok;
+        var seen = variablesRead();
+        return READS[key].some(function (v) { return seen[v]; });
+      }
+      if (/^heading/.test(key)) return !!firstHeading();
+      if (key === 'radius') return !!((conf.buttons && find(conf.buttons)) || (conf.cards && find(conf.cards)));
+      if (key === 'reveals') return !!doc.querySelector('.animated');
+      return !!setters[key];
+    }
 
     return {
       get: function (key) { return getters[key](); },
-      set: function (key, value) { setters[key](value); },
+      /* false when the setting was tried and changed nothing on this page; it is then left as it was */
+      set: set,
+      supports: supports,
+      /* the heading colour the page shows now, whether or not one has been set */
+      headingColorShown: function () {
+        var h = firstHeading();
+        return rules.headingColor || (h ? toHex(win.getComputedStyle(h).color) : '');
+      },
+      /* after a font has been set on a single element: its family is loaded like the site's own two */
+      syncFonts: syncFonts,
       /* the rules as JSON, and back — the variables live in <body>/<html> inline styles, which a snapshot keeps itself */
       state: function () { return JSON.stringify(rules); },
       load: function (json) {
@@ -303,6 +572,8 @@
   }
 
   /* ---------- mounting ---------- */
+  var LOAD_TIMEOUT_MS = 20000;
+
   function mount(frame, templateId, opts) {
     var viewport = document.createElement('div');
     viewport.className = 'tpl-viewport';
@@ -317,16 +588,36 @@
       headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>'],
       sectionOrder: opts && opts.sectionOrder
     }).then(function (res) {
-      return new Promise(function (resolve) {
-        var canvas = null;
-        iframe.addEventListener('load', function () {
-          if (canvas) { if (canvas.onNavigate) canvas.onNavigate(); return; }     // a second load: the page went somewhere
+      return new Promise(function (resolve, reject) {
+        var canvas = null, gaveUp = false, early = false;
+        function ready() {
+          clearTimeout(stalled);
           canvas = makeCanvas(viewport, iframe, res.template);
           guardNavigation(canvas.doc);
           resolve(canvas);
+        }
+        /* The load event waits for every picture and font. A page that is all there but still fetching some of
+           them after this long is used as it is; one that has not even been read through is a failure the
+           caller can show, not an empty box. */
+        var stalled = setTimeout(function () {
+          var d = iframe.contentDocument;
+          if (d && d.body && d.readyState !== 'loading') { early = true; ready(); return; }
+          gaveUp = true;
+          var err = new Error('The page took too long to load.');
+          err.code = 'timeout';
+          reject(err);
+        }, LOAD_TIMEOUT_MS);
+        iframe.addEventListener('load', function () {
+          if (gaveUp) return;
+          if (early) { early = false; return; }                                   // the load that was not waited for
+          if (canvas) { if (canvas.onNavigate) canvas.onNavigate(); return; }     // a second load: the page went somewhere
+          ready();
         });
         iframe.srcdoc = res.html;
       });
+    }).catch(function (err) {
+      viewport.remove();          // nothing half-mounted is left behind for the next attempt
+      throw err;
     });
   }
 
@@ -351,24 +642,53 @@
     var device = 'desktop';
     var scale = 1;
 
-    var names = {};
-    template.sections.forEach(function (s) { names[s.id] = s.name; });
+    var names = {}, types = { generic: 1 };
+    template.sections.forEach(function (s) {
+      names[s.id] = s.name && s.name !== s.id ? s.name : readableName(s.id);
+      types[s.id] = 1;
+    });
 
     // untouched copies of the template's sections, taken before anything is marked or edited
     var library = sectionsOf(doc).map(function (sec) {
       var id = sec.getAttribute('data-rv-section');
       var h = sec.querySelector('h1, h2, h3');
-      return { id: id, name: names[id] || id, html: sec.outerHTML, snippet: h ? h.textContent.replace(/\s+/g, ' ').trim().slice(0, 90) : '' };
+      // as it reads on the page (line breaks between its parts), or its plain text when it is not laid out
+      return { id: id, name: names[id] || id, html: sec.outerHTML, snippet: h ? (h.innerText || h.textContent).replace(/\s+/g, ' ').trim().slice(0, 90) : '' };
     });
 
     // each template section's CSS as its file has it now — what a restored page gets, whatever was saved
     var ownCss = {};
     doc.querySelectorAll('style[data-rv-style]').forEach(function (st) { ownCss[st.getAttribute('data-rv-style')] = st.textContent; });
+    /* That holds for the templates kept as files: their CSS is code, and a fix to it must reach pages saved before
+       it. The CSS of an AI-designed or imported site was made for that one event and is replaced or gone when the
+       design is made again, so it is saved with the page's markup and put back as saved. */
+    var ownsCss = !/^(gen-|imported-)/.test(template.id || '');
 
-    tagEditables(doc, names);
+    /* The key that tells this section from the others of its type: kept when it has one nobody else on the page
+       uses, otherwise the type, then <type>-2, <type>-3 … */
+    function keyTaken(key, el) {
+      var owners = doc.querySelectorAll('[data-rv-key="' + CSS.escape(key) + '"]');
+      return owners.length > 1 || (owners.length === 1 && owners[0] !== el);
+    }
+    function ensureKey(el) {
+      var key = el.getAttribute('data-rv-key');
+      if (key && !keyTaken(key, el)) return key;
+      var type = el.getAttribute('data-rv-section') || 'section', n = 1;
+      key = type;
+      while (keyTaken(key, el)) key = type + '-' + (++n);
+      el.setAttribute('data-rv-key', key);
+      return key;
+    }
+    function sectionByKey(key) {
+      return key ? doc.querySelector('[data-rv-section][data-rv-key="' + CSS.escape(key) + '"]') : null;
+    }
+
+    tagEditables(doc, names, ensureKey);
 
     function prepare(el, name) {
       el.setAttribute('data-sec-name', name);
+      el.removeAttribute('data-rv-key');
+      ensureKey(el);
       descend(el, false);
       return el;
     }
@@ -376,16 +696,6 @@
     function uniqueId(id) {
       var base = id.replace(/-\d+$/, ''), n = 2, candidate;
       do { candidate = base + '-' + n++; } while (doc.getElementById(candidate));
-      return candidate;
-    }
-
-    /* data-rv-section is the key every consumer (RevampFill's content.map lookup, the chat-edit panel's
-       applyTextEdit, canvas.sections()) uses to find ONE specific section — querySelector only ever returns
-       the first match, so two sections sharing a value make the second one unreachable by anything keyed off
-       it. Parallel to uniqueId() above, but checked against this attribute instead of the id attribute. */
-    function uniqueSectionId(id) {
-      var base = id.replace(/-\d+$/, ''), n = 2, candidate;
-      do { candidate = base + '-' + n++; } while (doc.querySelector('[data-rv-section="' + CSS.escape(candidate) + '"]'));
       return candidate;
     }
 
@@ -432,7 +742,7 @@
       var css = copyRulesFor(renames);
       if (css) {
         var st = doc.createElement('style');
-        st.setAttribute('data-rv-copy-for', owner.id);
+        st.setAttribute('data-rv-copy-for', ensureKey(owner));
         st.textContent = css;
         owner.after(st);
       }
@@ -457,6 +767,7 @@
     }
 
     function adopt(el) {
+      ensureKey(el);
       renameDuplicateIds(el, el);
       if (win.RevampSections) win.RevampSections.init(el);
       return el;
@@ -539,23 +850,32 @@
       });
     }
 
+    /* the item that opens and closes around el: a template accordion item, else a native <details> */
+    function itemAround(el) {
+      var sec = el.closest('[data-rv-section]'), t = sec && toggleOf(sec);
+      if (!sec) return null;
+      var item = t ? el.closest(t.item) : null;
+      if (item && item !== sec && sec.contains(item)) return item;
+      var det = el.closest('details');
+      return det && sec.contains(det) ? det : null;
+    }
+
     function openItem(el) {
       /* A native <details> — the FAQ markup of imported and AI-designed pages — has no toggle entry in
          template.json, and its own click-to-open is one of the default actions the editor cancels for every
          canvas click. So it is opened here, under the same editor-only marker as a template accordion: the
          answer inside can be reached and edited, and saves and the published page keep it closed. One the
          page itself ships open has no marker and stays open. */
-      var summary = el.closest('summary'), det = summary && summary.parentElement;
-      if (det && det.tagName === 'DETAILS') {
-        if (det.hasAttribute('open')) return false;
-        det.setAttribute('open', '');
-        det.setAttribute('data-rv-open', 'open');
+      var item = itemAround(el);
+      if (!item) return false;
+      if (item.tagName === 'DETAILS') {
+        if (item.hasAttribute('open')) return false;
+        item.setAttribute('open', '');
+        item.setAttribute('data-rv-open', 'open');
         return true;
       }
-      var sec = el.closest('[data-rv-section]'), t = sec && toggleOf(sec);
-      if (!t) return false;
-      var item = el.closest(t.item);
-      if (!item || !sec.contains(item) || item.classList.contains(t.open)) return false;
+      var sec = el.closest('[data-rv-section]'), t = toggleOf(sec);
+      if (item.classList.contains(t.open)) return false;
       Array.prototype.forEach.call(sec.querySelectorAll('[data-rv-open]'), unopen);     // one open at a time, as on the site
       item.classList.add(t.open);
       item.setAttribute('data-rv-open', t.open);
@@ -615,9 +935,104 @@
         if (!n.className) n.removeAttribute('class');
       });
       root.classList.remove('is-hidden-sec');
+      if (!root.getAttribute('class')) root.removeAttribute('class');
       root.removeAttribute('data-scheduled-at');
-      root.style.display = '';
-      if (!root.getAttribute('style')) root.removeAttribute('style');
+    }
+
+    /* ---------- hidden sections ----------
+       Hidden is the is-hidden-sec class and nothing else: the editor shows such a section as a slim bar that can be
+       clicked to bring it back (editor-canvas.css), and serialize() leaves it out of the page. Pages saved earlier
+       also carry an inline display:none, which would keep the bar from showing; it is taken off wherever it is met. */
+    function setHidden(sec, hide) {
+      sec.classList.toggle('is-hidden-sec', !!hide);
+      if (!sec.getAttribute('class')) sec.removeAttribute('class');
+      if (sec.style.display === 'none') {
+        sec.style.display = '';
+        if (!sec.getAttribute('style')) sec.removeAttribute('style');
+      }
+    }
+
+    /* ---------- where a section may be ----------
+       template.json → layout.pinStart / pinEnd name the sections that open and close every page of this design
+       (the banner; contact and the publisher's block). The one instance that is the template's own (its key is its
+       type) stays where it is, and no other section moves across it. */
+    var layout = template.layout || {};
+    function pinned(sec) {
+      var type = sec.getAttribute('data-rv-section');
+      if (sec.getAttribute('data-rv-key') !== type) return '';
+      if ((layout.pinStart || []).indexOf(type) !== -1) return 'start';
+      if ((layout.pinEnd || []).indexOf(type) !== -1) return 'end';
+      return '';
+    }
+    /* the CSS that travels with a section: its template CSS and the rules copied for its renamed ids, when they
+       follow it directly */
+    function ownStyle(n, sec) {
+      if (!n || n.tagName !== 'STYLE') return false;
+      if (n.hasAttribute('data-rv-style')) return n.getAttribute('data-rv-style') === sec.getAttribute('data-rv-section');
+      var owner = n.getAttribute('data-rv-copy-for');
+      return owner !== null && (owner === sec.getAttribute('data-rv-key') || (!!sec.id && owner === sec.id));
+    }
+    function withStyles(sec) {
+      var run = [sec];
+      for (var n = sec.nextElementSibling; ownStyle(n, sec); n = n.nextElementSibling) run.push(n);
+      return run;
+    }
+    function placeAfter(nodes, sec) {
+      var ref = withStyles(sec).pop();
+      nodes.forEach(function (n) { ref.after(n); ref = n; });
+    }
+    function placeBefore(nodes, sec) {
+      nodes.forEach(function (n) { sec.parentNode.insertBefore(n, sec); });
+    }
+    function canMoveSection(sec, before) {
+      var secs = sectionsOf(doc), from = secs.indexOf(sec), to = before ? secs.indexOf(before) : secs.length;
+      if (from === -1 || to === -1 || pinned(sec)) return false;
+      if (to === from || to === from + 1) return false;                       // it is there already
+      var crossed = to > from ? secs.slice(from + 1, to) : secs.slice(to, from);
+      return !crossed.some(pinned);
+    }
+    function moveSection(sec, before) {
+      if (!canMoveSection(sec, before)) return false;
+      var nodes = withStyles(sec);
+      if (before) placeBefore(nodes, before);
+      else placeAfter(nodes, sectionsOf(doc).filter(function (s) { return s !== sec; }).pop());
+      return true;
+    }
+    /* A new section goes after afterSec, pulled inside the stretch between the pinned sections: never above what
+       opens the page or below what closes it. One that is itself the template's pinned section (the banner put
+       back after it was deleted) returns to its end of the page, next to its neighbour in the template's order. */
+    function insertSection(el, afterSec) {
+      var secs = sectionsOf(doc).filter(function (s) { return s !== el; });
+      var type = el.getAttribute('data-rv-section');
+      var own = sectionByKey(type);
+      var end = own && own !== el ? '' : (layout.pinStart || []).indexOf(type) !== -1 ? 'start' : (layout.pinEnd || []).indexOf(type) !== -1 ? 'end' : '';
+      if (end) {
+        var order = library.map(function (s) { return s.id; }), at = order.indexOf(type), prev = null, next = null;
+        secs.forEach(function (s) {
+          if (s.getAttribute('data-rv-key') !== s.getAttribute('data-rv-section')) return;
+          var i = order.indexOf(s.getAttribute('data-rv-section'));
+          if (i !== -1 && i < at) prev = s;
+          if (i > at && !next) next = s;
+        });
+        if (end === 'start' && prev) placeAfter([el], prev);
+        else if (end === 'start' && secs.length) placeBefore([el], secs[0]);
+        else if (end === 'end' && next) placeBefore([el], next);
+        else if (secs.length) placeAfter([el], secs[secs.length - 1]);
+        else api.contentRoot().appendChild(el);
+        return adopt(el);
+      }
+      var lo = -1, hi = secs.length;
+      secs.forEach(function (s, i) {
+        var pin = pinned(s);
+        if (pin === 'start') lo = i;
+        if (pin === 'end' && hi === secs.length) hi = i;
+      });
+      var to = afterSec && secs.indexOf(afterSec) !== -1 ? secs.indexOf(afterSec) + 1 : hi;
+      to = Math.max(lo + 1, Math.min(to, hi));
+      if (to > 0) placeAfter([el], secs[to - 1]);
+      else if (secs.length) placeBefore([el], secs[0]);
+      else api.contentRoot().appendChild(el);
+      return adopt(el);
     }
 
     function fit() {
@@ -648,11 +1063,18 @@
       root.removeAttribute('data-rv-editing');
       // hidden (and not-yet-live scheduled) sections aren't on the published page
       root.querySelectorAll('[data-rv-section].is-hidden-sec').forEach(function (sec) {
-        root.querySelectorAll('style[data-rv-copy-for="' + sec.id + '"]').forEach(function (s) { s.remove(); });
+        copiedStyles(root, sec).forEach(function (s) { s.remove(); });
         sec.remove();
       });
       root.querySelectorAll('[data-rv-editor]').forEach(function (n) { n.remove(); });
-      var EDITOR_ATTRS = ['data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown', 'data-date-format'];
+      /* The AI-review pills and marks (editor-template-ui.js, renderAiProvenanceBadges) are the editor's working
+         notes. Only the editor's stylesheet keeps the pills out of sight, so on a page without it they would print
+         as text at the top of each section. */
+      root.querySelectorAll('.ai-prov-badge, .ai-skip-badge, .ai-media-skip-badge').forEach(function (n) { n.remove(); });
+      root.classList.remove('show-ai-markers');
+      if (!root.getAttribute('class')) root.removeAttribute('class');
+      var EDITOR_ATTRS = ['data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown', 'data-date-format',
+        'data-ed', 'data-rv-cur-item', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped'];
       root.querySelectorAll(EDITOR_ATTRS.map(function (a) { return '[' + a + ']'; }).join(', ')).forEach(function (n) {
         EDITOR_ATTRS.forEach(function (a) { n.removeAttribute(a); });
       });
@@ -664,6 +1086,23 @@
       root.querySelectorAll('[data-rv-section]').forEach(closeStray);
       dropLegacyHref(root);
       return '<!DOCTYPE html>\n' + root.outerHTML;
+    }
+
+    /* the CSS made for a section's renamed ids: kept under its key, and under its id on pages saved earlier */
+    function copiedStyles(root, sec) {
+      var key = sec.getAttribute('data-rv-key');
+      return Array.prototype.filter.call(root.querySelectorAll('style[data-rv-copy-for]'), function (st) {
+        var owner = st.getAttribute('data-rv-copy-for');
+        return (!!key && owner === key) || (!!sec.id && owner === sec.id);
+      });
+    }
+
+    function ensureBlockStyle() {
+      if (doc.querySelector('style[data-rv-blocks]')) return;
+      var st = doc.createElement('style');
+      st.setAttribute('data-rv-blocks', '');
+      st.textContent = blockCss((template.design && template.design.headingFontVar) || '--heading-font-family');
+      doc.head.appendChild(st);
     }
 
     function ensureGenericStyle(siteCss) {
@@ -679,26 +1118,34 @@
          html, body   the inline styles of <html> and <body> — the theme variables the design controls set
          design       the design rules (canvas.design.state())
          generic      whether the page has the editor's generic-section CSS (rebuilt from the editor's, not stored)
+         blocks       whether it has the CSS of the Add panel's blocks (rebuilt, not stored)
          nodes        the content column, one HTML string per element: sections (hidden and scheduled ones too, with
-                      their names and editable markers) and the CSS copied for duplicates. A template section's own
-                      <style data-rv-style> is kept as an empty placeholder and refilled from the template's file, so a
-                      fix to the template's CSS reaches pages saved before it.
+                      their names and editable markers) and the CSS copied for duplicates. A file-based template
+                      section's own <style data-rv-style> is kept as an empty placeholder and refilled from the
+                      template's file, so a fix to the template's CSS reaches pages saved before it; an AI-designed
+                      or imported site's is kept whole (see ownsCss).
        Selection, in-place editing and items the editor opened are left out. The shared header and footer aren't the
        page's to change. */
-    var TRANSIENT = '.ed-selected, .sec-active, [contenteditable], [data-text-original], [data-rv-open], [data-rv-aria]';
+    var TRANSIENT = '.ed-selected, .sec-active, [contenteditable], [data-text-original], [data-rv-open], [data-rv-aria], [data-rv-cur-item]';
 
-    function nodeHtml(n) {
-      if (n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
-      var isSection = n.hasAttribute('data-rv-section');
-      if (!n.matches(TRANSIENT) && !n.querySelector(TRANSIENT) && !(isSection && hasStray(n))) return n.outerHTML;
-      var c = n.cloneNode(true);
+    /* takes the editor's selection and editing marks off a copy */
+    function stripTransient(c) {
       [c].concat(Array.prototype.slice.call(c.querySelectorAll(TRANSIENT))).forEach(function (m) {
         m.classList.remove('ed-selected', 'sec-active');
         if (!m.getAttribute('class')) m.removeAttribute('class');
         m.removeAttribute('contenteditable');
         m.removeAttribute('data-text-original');
+        m.removeAttribute('data-rv-cur-item');
       });
       unopen(c);
+      return c;
+    }
+
+    function nodeHtml(n) {
+      if (ownsCss && n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
+      var isSection = n.hasAttribute('data-rv-section');
+      if (!n.matches(TRANSIENT) && !n.querySelector(TRANSIENT) && !(isSection && hasStray(n))) return n.outerHTML;
+      var c = stripTransient(n.cloneNode(true));
       if (isSection) closeStray(c);
       return c.outerHTML;
     }
@@ -714,12 +1161,13 @@
         body: doc.body.getAttribute('style') || '',
         design: api.design.state(),
         generic: !!doc.querySelector('style[data-rv-generic]'),
+        blocks: !!doc.querySelector('style[data-rv-blocks]'),
         nodes: nodes
       };
     }
 
     function sameSnapshot(a, b) {
-      if (!a || !b || a.html !== b.html || a.body !== b.body || a.design !== b.design || a.generic !== b.generic || a.nodes.length !== b.nodes.length) return false;
+      if (!a || !b || a.html !== b.html || a.body !== b.body || a.design !== b.design || a.generic !== b.generic || !a.blocks !== !b.blocks || a.nodes.length !== b.nodes.length) return false;
       for (var i = 0; i < a.nodes.length; i++) if (a.nodes[i] !== b.nodes[i]) return false;
       return true;
     }
@@ -736,6 +1184,13 @@
       setStyleAttr(doc.body, snap.body);
       api.design.load(snap.design);
       if (snap.generic) ensureGenericStyle(opts.siteCss);
+      if (snap.blocks) ensureBlockStyle();
+
+      // the saved page's own section types: an AI design made again since may no longer have them
+      snap.nodes.forEach(function (h) {
+        var st = /^<style data-rv-style="([^"]*)"/.exec(h);
+        if (st) types[st[1]] = 1;
+      });
 
       var root = api.contentRoot();
       var pool = new Map();
@@ -751,7 +1206,8 @@
         var t = doc.createElement('template');
         t.innerHTML = h;
         var n = doc.importNode(t.content.firstElementChild, true);
-        if (n.matches('style[data-rv-style]')) n.textContent = ownCss[n.getAttribute('data-rv-style')] || '';
+        // a site that keeps its own CSS gets the template's only where the save holds none (a page saved earlier)
+        if (n.matches('style[data-rv-style]') && (ownsCss || !n.textContent)) n.textContent = ownCss[n.getAttribute('data-rv-style')] || '';
         built.push(n);
         return n;
       });
@@ -759,8 +1215,18 @@
       next.forEach(function (n, i) {
         if (root.children[i] !== n) root.insertBefore(n, root.children[i] || null);
       });
+      api.design.syncFonts();           // again now that the content is back: a single text may have a font of its own
 
       return built.filter(function (n) { return n.hasAttribute('data-rv-section'); }).map(function (sec) {
+        /* Pages saved earlier named a copy "<type>-2" in data-rv-section itself, which cut it off from its type's
+           script, CSS and settings: the type goes back there and the old value becomes the copy's key. */
+        var named = sec.getAttribute('data-rv-section'), m = /^(.+)-\d+$/.exec(named);
+        if (!types[named] && m && types[m[1]]) {
+          sec.setAttribute('data-rv-section', m[1]);
+          if (!sec.hasAttribute('data-rv-key')) sec.setAttribute('data-rv-key', named);
+        }
+        ensureKey(sec);
+        if (sec.classList.contains('is-hidden-sec')) setHidden(sec, true);
         closeStray(sec);
         dropLegacyHref(sec);
         descend(sec, false);             // no-op for what was saved marked; picks up anything new in the rules
@@ -799,30 +1265,38 @@
         sec.innerHTML = html;
         return prepare(sec, name);
       },
+      insertSection: insertSection,
       adopt: adopt,
       adoptElement: adoptElement,
+      copyOf: function (el) { return stripTransient(el.cloneNode(true)); },
+      sectionByKey: sectionByKey,
+      pinned: pinned,
+      canMoveSection: canMoveSection,
+      moveSection: moveSection,
+      setHidden: setHidden,
+      ensureBlockStyle: ensureBlockStyle,
       anchorFor: function (sec) {
         if (!sec.id) {
-          var own = sec.getAttribute('data-rv-section') || 'section';
+          var own = ensureKey(sec);
           sec.id = doc.getElementById(own) ? uniqueId(own) : own;
         }
         return sec.id;
       },
       retag: function (el) { descend(el, false); },       // after changing a section's markup: new text becomes editable
       openItem: openItem,                                 // an accordion item around el opened for editing; true if it did
+      itemAround: itemAround,
       setPicture: setPicture,                             // a new picture in an <img>, an <svg> icon or an image box
       pictureOf: pictureOf,
       duplicateSection: function (sec, name) {
         var copy = sec.cloneNode(true);
         cleanCopy(copy);
         copy.setAttribute('data-sec-name', name);
-        var origSectionId = copy.getAttribute('data-rv-section');
-        if (origSectionId) copy.setAttribute('data-rv-section', uniqueSectionId(origSectionId));
-        sec.after(copy);
+        copy.removeAttribute('data-rv-key');
+        placeAfter([copy], sec);
         return adopt(copy);
       },
       removeSection: function (sec) {
-        doc.querySelectorAll('style[data-rv-copy-for="' + sec.id + '"]').forEach(function (s) { s.remove(); });
+        copiedStyles(doc, sec).forEach(function (s) { s.remove(); });
         sec.remove();
       },
       contentRoot: function () { return doc.querySelector('#content .col-md-12.no-padding') || doc.body; },

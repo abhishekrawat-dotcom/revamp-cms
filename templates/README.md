@@ -14,14 +14,17 @@ templates/
     et-global.css          ET's microsite bundle (the global.css) — relative url()s made absolute, nothing else changed
     et-animate.css         ET's scroll-animation classes (.animated … .go)
     et-platform.css        page-level rules ET prints into every microsite <head>
-    et-runtime.js          site-side runtime: per-section init (RevampSections.register) + scroll reveal
+    et-runtime.js          site-side runtime: per-section init (RevampSections.register), accordions, scroll reveal
+    widgets/<name>/        script.js — behaviour several templates share (et-banner: the banner's background media)
+    rv-data.js             RevampData: puts the event's records (speakers, FAQs, sponsors, gallery, contacts) on a site
+    img/                   neutral pictures: rv-avatar.svg (a speaker without a photo), rv-image.svg (a model photo tile)
     template-loader.js     RevampTemplates.build(id) → the complete HTML document
-    header.html            shared header  (placeholder until the design arrives)
-    footer.html            shared footer  (placeholder until the design arrives)
+    none.html              empty: the header / footer file older imported sites name
   <id>/
     template.json          name, fonts, <body> id/class/CSS variables, section order
     theme.css              the event's own CSS from the live page <head>
-    sections/<section>/    index.html · style.css · script.js (only when the section has behaviour)
+    sections/<section>/    index.html · style.css · script.js (only when the section has behaviour of its own;
+                           shared behaviour is named in template.json: sections[].widget)
   preview.html             ?t=<id> — the template on its own, exactly as the editor and export assemble it
 ```
 
@@ -33,8 +36,8 @@ while editing (everything revealed, outlines) and never saved. Editable elements
 `<img>` → image, an inline `<svg>` that draws something (ET's icons) → image, `<a>` with text → button (label + link),
 an element with its own text → text. Replace image (upload or URL) keeps an icon's `<svg>` — its classes, viewBox and
 the section's CSS for it — and swaps only its drawing for the picture. Override one with
-`data-ed="text|image|button|none"` in the section's `index.html`. Anything inside `[data-rv-locked]` (the shared
-header/footer) can't be selected.
+`data-ed="text|image|button|none"` in the section's `index.html`. Anything inside `[data-rv-locked]` (a shared
+header or footer, when `template.json` names one in `"header"` / `"footer"`) can't be selected.
 
 Section tools work on the real page in the iframe:
 - **Duplicate** gives the copy new ids and copies every CSS rule that names the old ones — from the section's own
@@ -48,7 +51,10 @@ Section tools work on the real page in the iframe:
 - **Accordions** (an FAQ): the editor keeps clicks from the site's scripts, so answers would stay shut. With
   `template.json → sections[].toggle: { item, open, expanded }` (TECH500's FAQ: `.faq-item`, `active`,
   `.faq-question`) a click inside an item opens it in the editor, one at a time, so its answer can be edited. That
-  open state is the editor's own (`data-rv-open`): it is never saved, undone or published.
+  open state is the editor's own (`data-rv-open`): it is never saved, undone or published. On the site an accordion
+  is `RevampSections.accordion(section, { item, trigger, panel })` in the section's script — it does nothing while
+  editing. The trigger is a real `<button aria-expanded>` (keyboard, screen readers) with the question's words in
+  a `<span>` inside it: text typed straight into a button loses its spaces.
 - Hidden sections are left out of Preview (and will be out of export).
 
 Theme controls (Design panel, global toolbar) set ET's own variables on `<body>` — `--theme-color`,
@@ -103,10 +109,52 @@ before `intro`, so a template can set a default (e.g. "About {event.name}") that
 
 - Card lists grow or shrink to match the data. Extra cards are copies of the template's own cards, cycling through
   them, so icons vary.
-- Anything the draft doesn't provide keeps the template's sample content, including a list the user left empty.
+- Every list rule says `"empty": "hide"`: a list with nothing in it shows no cards, never the template's own.
+  A section the draft doesn't have at all is left as the template wrote it.
 - A section the user switched off in the wizard is hidden, not deleted.
 - A Create Event section with no entry in the map (speakers, agenda, partners, …) is left out, and the editor says
   which.
+
+**Sections that show the event's records.** Speakers, FAQs, sponsors, the gallery and contacts are managed in the
+event console's Content tabs, and `rv-data.js` draws them through the same `content.map` list rules (from
+`speakers`, `faq`, `partners`, `glimpses`, `contact`). Such a section:
+
+- carries `data-rv-bound="<kind>"` on its root element in `index.html` (`speakers | faq | partners | glimpses |
+  contact`), so the editor knows from the first moment that its cards are records, not text to type over;
+- holds ONE neutral model card per list, marked `data-rv-item="<kind>"` like the cards drawn from it (so it too is
+  a record's place, not text to edit, while the records are still loading) — "Speaker name", "Question" / "Answer", "Partner name", "Name" /
+  name@company.com — never a real person, logo, photo, address or phone number, and no `href` on a model's links.
+  A model picture is `/templates/_shared/img/rv-avatar.svg` or `rv-image.svg`, written from the site root (the
+  loader turns it into a full address);
+- has rules for everything a record carries: a speaker's photo (`"empty": "keep"` leaves the model's avatar) and
+  `alt`; a sponsor's logo, link and name (`{ "show": …, "if" | "unless": "{logo}" }`; an attribute that depends on
+  another value takes `"if"`); a photo's own link, `alt` and caption; `"empty": "remove"` on a line that may be
+  missing (a speaker's "role, company", a contact's label, e-mail or phone).
+
+With no records the section is not on the live site; in the editor it says where to add them.
+
+**The banner.** All four banners are built the same way:
+
+- the event's name as `<h1 class="banner-title" data-rv-bind="event.name">`, straight after `<img class="logo"
+  data-rv-bind="event.logo">` (no `src` in the section file), then `<p class="banner-tagline">`. An event with a logo
+  shows the logo and keeps the title for search engines and screen readers; without one the title is what visitors
+  read (`et-platform.css` does this from whether the logo is showing — nothing to keep in step). The hero rule
+  `{ "text": ".banner-title", "value": "{hero.title|event.name}", "bind": "event.name" }` leaves the title following
+  Basics unless the owner wrote a headline of their own;
+- date and venue are `data-rv-bind="event.date"` / `"event.venue"` (also listed in `content.bind`, for pages saved
+  before the attributes existed), so they follow Basics on every visit; a line with no value is not shown;
+- ONE picture, `<img class="banner-bg-image" data-rv-media="bg-image">`, which the event's own banner replaces, and
+  an empty `<div class="bnr-bg-video" data-rv-media="bg-video">` that gets a video only when the event supplies a
+  video file (`{ "bgvideo": … }`); `widgets/et-banner/script.js` loads it — never on a phone — and takes the
+  source event's own footage out of pages saved before this;
+- `<div class="overlay-lyr">` between the media and the text, in the colour the section's CSS gives
+  `--rv-banner-scrim`: banner text must stay readable over any picture an owner uploads.
+No real template has an agenda section of its own: sessions (kind `sessions`, `"from": "agenda"` in a map) need a
+section shared by all sites, which RevampData reports as `unplaced` until a site has one.
+
+Registration buttons are `<a href="#register" data-register-cta>` (the live site opens the registration form for
+them); a "become a partner" button links to the contact section, `href="#contact-us"`. No `<a>` without an `href`:
+it cannot be reached from the keyboard.
 
 Dates are written the way ET's sites print them: `{event.date}` gives "27th November, 2026" and `{event.date:day}`
 gives "27 November, 2026", with ranges and month / quarter / to-be-announced handled.
@@ -124,9 +172,12 @@ the default pixel for pixel after such a change.
 
 1. Put each section of ET's export in `sections/<section>/` — the markup's root element keeps ET's `id`, and the CSS stays
    scoped to it (`#power-chain …`). Take markup from the **server HTML** of the live page, not a "Save page as"/export
-   captured after scripts ran (e.g. the banner video is lazy: `data-src`, not `src`).
+   captured after scripts ran. The source event's own logo, banner video, dates and venue do not come along: see
+   "The banner" above.
 2. A section script becomes `RevampSections.register('<section>', function (section) { … })` working inside `section`
    only — never `document.querySelector` / `DOMContentLoaded` — so duplicated sections get their own behaviour.
+   Behaviour another template already has is not copied: the section names it (`"widget": "et-banner"`) and the
+   shared script registers itself with `RevampSections.widget('<name>', function (section) { … })`.
 3. `theme.css` = the event custom `<style>` in the live `<head>` + the rules ET generates from the event design settings.
    `template.json → body` = the live `<body>` id, class and inline CSS variables (check the rendered DOM too: ET's header
    script adds classes at runtime, e.g. `single-header`).

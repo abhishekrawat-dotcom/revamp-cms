@@ -1,10 +1,21 @@
-// Who may use the Revamp CMS: Google accounts on the company domain only (@timesinternet.in, or
-// ALLOWED_EMAIL_DOMAIN). One rule, used in three places so it can't drift:
-//   - requireAdmin() in api.js — every admin API call (Authorization: Bearer <ID token>)
+// Who may use the Revamp CMS, and what this server hands out at all.
+//
+// WHO: Google accounts on the company domain only (@timesinternet.in, or ALLOWED_EMAIL_DOMAIN). One rule,
+// used in three places so it can't drift:
+//   - requireAdmin() in http.js — every admin API call (Authorization: Bearer <ID token>)
 //   - gate() in server.js (App Hosting) and tools/serve.js (local dev) — the CMS pages and every other /api/*
 //     route, using the __session cookie auth.js keeps in step with the signed-in user's ID token
-// Public (no sign-in): the sign-in page itself (/, /index.html, /auth.js), scripts/styles/images/fonts (app code,
-// not data), and POST /api/register, which published microsites post sign-ups to.
+// Public (no sign-in): the sign-in page itself (/, /index.html, /auth.js), the app's own scripts, styles,
+// images and fonts (code, not data), and what a published event site needs from a visitor's browser:
+//   /e/<eventId>        the published site
+//   /api/public/*       the data a published site shows (speakers, agenda, …)
+//   /api/register       a visitor's registration
+//   /api/track          one count per page view
+// /preview/<eventId> is NOT public: it shows a site that has not been released.
+//
+// WHAT: isServableFile() is the one rule for which files of this repository a web server may send, used by
+// server.js and tools/serve.js. It is an allow-list, because the repository is also the deployment: a
+// directory or file added tomorrow is private until someone lists it here.
 const path = require('path');
 const admin = require('firebase-admin');
 
@@ -47,13 +58,58 @@ function readToken(req) {
   try { return decodeURIComponent(c[1]); } catch (e) { return ''; }
 }
 
+/* ---------- which files are served at all ----------
+   server.js used to refuse a list of known-private names and serve everything else, so each new thing in
+   the repository was public until somebody remembered to add it: the scraper service's source and deploy
+   notes, a backup of demo data and the template authors' notes were all downloadable while signed out.
+   The rule is now the other way round.
+     - Top level: only pages and their own scripts and styles (by extension), never the server itself.
+     - Below the top level: only inside the directories the browser loads from, and only web file types.
+     - Nowhere: dotfiles, node_modules, package manifests, backup copies, documents (.md, .docx, no
+       extension at all — a Dockerfile, a LICENSE).
+   Names are compared in lower case: on a case-insensitive filesystem /SERVER.JS is server.js. */
+const SERVED_DIRS = new Set(['assets', 'templates', 'payment', 'import-figma-design', 'template-previews']);
+const SERVED_TYPES = new Set(['.html', '.js', '.css', '.json', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif',
+  '.ico', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.pdf', '.txt']);
+const TOP_LEVEL_TYPES = new Set(['.html', '.js', '.css', '.ico', '.png', '.svg', '.txt']);
+const NEVER_SERVED = new Set(['server.js', 'package.json', 'package-lock.json']);
+
+/* rel: the decoded request path relative to the repository root, "/"-separated ("templates/x/y.css") */
+function isServableFile(rel) {
+  const parts = String(rel).toLowerCase().split('/').filter(Boolean);
+  if (!parts.length) return false;
+  if (parts.some(function (p) { return p.charAt(0) === '.' || p === 'node_modules'; })) return false;
+  const name = parts[parts.length - 1];
+  if (NEVER_SERVED.has(name) || /\.(backup|bak|orig|old|tmp)(\.|$)|~$/.test(name)) return false;
+  const ext = path.extname(name);
+  if (parts.length === 1) return TOP_LEVEL_TYPES.has(ext);
+  return SERVED_DIRS.has(parts[0]) && SERVED_TYPES.has(ext);
+}
+
+/* The request path as the file system and the router will see it, or null when it cannot be trusted to
+   mean one thing: it does not decode, it carries a NUL, or it is not already in its simplest form
+   ("/a/../b", "//x"). The gate used to judge the RAW path while server.js opened the DECODED one, so
+   "/Event_Listing.htm%6c" was waved through as a public asset and then served as the page. */
+function canonicalPath(urlPath) {
+  let decoded;
+  try { decoded = decodeURIComponent(urlPath); } catch (e) { return null; }
+  if (decoded.indexOf('\0') !== -1 || decoded.indexOf('\\') !== -1) return null;
+  return path.posix.normalize(decoded) === decoded ? decoded : null;
+}
+
+function isPublicApi(p) {
+  return p === '/api/register' || p === '/api/track' || p.indexOf('/api/public/') === 0;
+}
+
 function isPublic(req, urlPath) {
-  if (req.method === 'OPTIONS') return true;
-  if (urlPath === '/api/register') return true;
-  if (PUBLIC_PATHS.has(urlPath)) return true;
-  if (urlPath.indexOf('/api/') === 0) return false;
-  const ext = path.extname(urlPath).toLowerCase();
-  return ext !== '' && ext !== '.html';
+  const p = canonicalPath(urlPath);
+  if (p === null) return false;
+  if (p.indexOf('/e/') === 0 || isPublicApi(p)) return true;      // OPTIONS (a browser's preflight) included
+  if (p.indexOf('/api/') === 0 || p.indexOf('/preview/') === 0) return false;
+  if (PUBLIC_PATHS.has(p)) return true;
+  /* app code: any file this server would actually send, other than a page. Something it would not send
+     is not public either — a signed-out request for it is sent to sign-in, not told whether it exists. */
+  return path.extname(p).toLowerCase() !== '.html' && isServableFile(p.slice(1));
 }
 
 /* why: 'signin' (no or expired sign-in) | 'domain' (signed in, but not an allowed account) */
@@ -80,4 +136,4 @@ function gate(req, res, next) {
   }, function () { deny(req, res, urlPath, 'signin'); });
 }
 
-module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate };
+module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate, isServableFile, isPublic };

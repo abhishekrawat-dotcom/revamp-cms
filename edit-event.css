@@ -106,29 +106,6 @@
   /* .btn and .rail set their own display, which would otherwise beat the hidden attribute */
   .topbar [hidden], .rail[hidden]{ display:none; }
 
-  /* account: who is signed in, and the way out */
-  .acct{ position:relative; display:inline-flex; }
-  .acct-btn{
-    width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background: var(--surface-2);
-    color: var(--text); font-size:12px; font-weight:800; letter-spacing:.02em; cursor:pointer;
-    display:grid; place-items:center; transition: background .14s, border-color .14s;
-  }
-  .acct-btn:hover, .acct-btn[aria-expanded="true"]{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
-  .acct-btn:focus-visible, .acct-out:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
-  .acct-menu{
-    position:absolute; right:0; top: calc(100% + 8px); z-index:50; min-width:220px; max-width: min(300px, 86vw);
-    background: var(--surface); border:1px solid var(--border); border-radius:12px; padding:6px;
-    box-shadow: 0 12px 32px rgba(0,0,0,.16); display:flex; flex-direction:column; gap:2px;
-  }
-  .acct-who{ display:block; padding:8px 10px 9px; font-size:11.5px; color: var(--text-muted); border-bottom:1px solid var(--border); }
-  .acct-who b{ display:block; margin-top:2px; font-size:13px; color: var(--text); overflow-wrap:anywhere; }
-  .acct-out{
-    border:0; background:transparent; text-align:left; padding:9px 10px; border-radius:8px;
-    font-size:13px; font-weight:700; color: var(--text); cursor:pointer;
-  }
-  .acct-out:hover{ background: var(--surface-2); }
-  .acct-out:disabled{ opacity:.55; cursor:default; }
-
   /* at phone width "Back to events" + the title + Preview + Publish (all flex-shrink:0 or nowrap) no longer
      fit one row — collapse the two least essential labels (the back link's text, Preview's text) to icons
      only, so the event title and both actions all stay reachable without the row overflowing */
@@ -211,10 +188,12 @@
     transition: color .13s, border-color .13s;
   }
   .subtabs button:hover{ color: var(--text); }
-  .subtabs button[aria-pressed="true"]{ color: var(--accent-strong); border-bottom-color: var(--accent); }
+  .subtabs button[aria-pressed="true"], .subtabs button[aria-selected="true"]{ color: var(--accent-strong); border-bottom-color: var(--accent); }
+  .subtabs button:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; border-radius:6px; }
   .subtabs .cnt{
     font-size:10.5px; font-family: var(--font-mono); opacity:.7; margin-left:5px;
   }
+  .subtabs .cnt[hidden]{ display:none; }
 
   /* ============ VIEW HEADER ============ */
   .vhead{ margin-bottom: 18px; }
@@ -355,7 +334,10 @@
   }
   select.inp{ cursor:pointer; }
   textarea.inp{ height:auto; padding:9px 11px; resize:vertical; min-height:76px; line-height:1.55; }
-  .inp:focus{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  /* focus is neutral: red is kept for a field that has something wrong with it */
+  .inp:focus{ border-color: var(--text-muted); box-shadow: 0 0 0 3px var(--surface-3); }
+  .inp.invalid, .inp.invalid:focus{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .field-err{ margin:6px 0 0; font-size:11.5px; font-weight:600; color: var(--accent-strong); }
   .inp::placeholder{ color: var(--text-faint); }
 
   .field{ display:flex; flex-direction:column; min-width:0; }
@@ -488,6 +470,21 @@
     animation: tin .22s ease; display:flex; align-items:center; gap:9px;
   }
   @keyframes tin{ from{ opacity:0; transform: translateY(10px);} to{ opacity:1; transform:none; } }
+  /* A message must never sit on the Save bar it is reporting on. The bar is about 52px tall and
+     rests between 16px (mid-page) and 60px (end of the page, .main's bottom padding) above the edge. */
+  body:has(.savebar.on) .toast-host{ bottom:124px; }
+  /* something did not happen: unmistakably not a confirmation, and it stays until dismissed */
+  .toast-error{ background:#B3151B; color:#fff; align-items:flex-start; max-width:420px; padding-right:9px; }
+  .toast-error > svg{ flex-shrink:0; margin-top:1px; }
+  .toast-error .tt{ flex:1; min-width:0; line-height:1.45; overflow-wrap:anywhere; }
+  .toast-act, .toast-x{
+    flex-shrink:0; border:0; background:transparent; color:inherit; cursor:pointer; border-radius:7px;
+    font:inherit; font-weight:800;
+  }
+  .toast-act{ padding:3px 9px; border:1px solid rgba(255,255,255,.6); }
+  .toast-x{ display:grid; place-items:center; width:24px; height:24px; opacity:.85; }
+  .toast-act:hover, .toast-x:hover{ background: rgba(255,255,255,.18); opacity:1; }
+  .toast-act:focus-visible, .toast-x:focus-visible{ outline:2px solid #fff; outline-offset:1px; }
 
   /* ============ MODAL ============ */
   .modal-bg{
@@ -502,15 +499,63 @@
   .modal-head h3{ flex:1; font-size:16px; }
   .modal-body{ padding:18px; overflow-y:auto; }
   .modal-foot{ display:flex; gap:9px; justify-content:flex-end; padding:13px 18px; border-top:1px solid var(--border); }
+  .modal-foot[hidden]{ display:none; }
+  .modal:focus{ outline:0; }
+  /* waiting for the server: nothing in the dialog can be used until it has answered */
+  .modal.is-busy > *{ cursor:progress; }
+  .modal.is-busy .modal-body, .modal.is-busy .sp-wrap{ opacity:.6; }
+  .btn .spin{ margin-right:7px; vertical-align:-2px; }
+  /* body + footer of a dialog whose Enter key saves */
+  .modal-form{ display:flex; flex-direction:column; min-height:0; flex:1; margin:0; }
+  /* what is wrong with the form, between Remove (left) and Cancel / Save (right) */
+  .modal-err{ flex:1; min-width:0; align-self:center; font-size:12px; font-weight:600; color: var(--accent-strong); }
+  /* "Discard what you typed?" takes the footer's place while it is being asked */
+  .modal-ask{ align-items:center; background: var(--accent-soft); }
+  .modal-ask .mq{ flex:1; min-width:0; font-size:13px; font-weight:700; color: var(--text); }
+  /* a confirmation's own words, and the photo it is about */
+  .confirm-msg{ font-size:13px; color: var(--text-muted); line-height:1.55; }
+  .confirm-msg p{ margin:0; }
+  .confirm-msg p + p{ margin-top:6px; }
+  .confirm-msg b{ color: var(--text); }
+  .confirm-photo{ height:140px; margin-bottom:12px; border-radius:9px; overflow:hidden; background: var(--surface-3); }
+  .confirm-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+  /* deleting a group that has records in it: what happens to them has to be chosen */
+  .gd-lead{ margin:0 0 12px; font-size:13px; color: var(--text-muted); line-height:1.55; }
+  .gd-choices{ display:flex; flex-direction:column; gap:8px; }
+  .gd-choice{
+    display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer;
+    border:1px solid var(--border); border-radius:9px; font-size:13px; font-weight:600;
+  }
+  .gd-choice > span{ min-width:0; }
+  .gd-choice:has(input:checked){ border-color: var(--text-muted); background: var(--surface-2); }
+  .gd-choice input{ margin:0; flex-shrink:0; }
+  .gd-choice select.inp{ width:auto; flex:1 1 110px; min-width:110px; height:34px; }
+  .gd-choice em{ display:block; font-style:normal; font-weight:500; font-size:11.5px; color: var(--text-muted); margin-top:2px; }
+  @media (max-width:520px){ .modal-foot{ flex-wrap:wrap; } .modal-err, .modal-ask .mq{ flex-basis:100%; } }
+
+  /* the raw reason behind a "couldn't load" state, for whoever is asked to look into it */
+  .err-details{ margin-top:14px; font-size:11.5px; color: var(--text-muted); max-width:520px; overflow-wrap:anywhere; }
+  .err-details summary{ cursor:pointer; font-weight:700; }
+
+  /* a tab whose change is on its way to the server: its rows wait for the answer */
+  #view.is-saving > :not(.subtabs){ opacity:.62; cursor:progress; transition: opacity .15s .25s; }
 
   /* ============ MEDIA GRID ============ */
   .media-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:12px; }
   .media-card{
     border:1px solid var(--border); border-radius:11px; overflow:hidden; background: var(--surface-2);
-    cursor:pointer; transition: border-color .14s, transform .14s;
+    transition: border-color .14s, box-shadow .14s;
   }
-  .media-card:hover{ border-color: var(--accent); transform: translateY(-2px); }
-  .media-thumb{ height:96px; display:grid; place-items:center; color: var(--text-faint); background: var(--surface-3); }
+  .media-card:hover{ border-color: var(--text-muted); }
+  /* gallery photos are put in order by dragging one onto another */
+  .media-card[draggable="true"] .media-thumb{ cursor:grab; }
+  .media-card.drag{ opacity:.4; }
+  .media-card.over-before{ box-shadow: -3px 0 0 var(--accent); }
+  .media-card.over-after{ box-shadow: 3px 0 0 var(--accent); }
+  .media-acts{ display:flex; align-items:center; gap:2px; margin-top:6px; }
+  .media-acts .media-pos{ flex:1; font-size:10.5px; color: var(--text-faint); font-family: var(--font-mono); white-space:nowrap; }
+  .media-thumb{ height:96px; display:grid; place-items:center; color: var(--text-faint); background: var(--surface-3); overflow:hidden; }
+  .media-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
   .media-meta{ padding:8px 10px; background: var(--surface); }
   .media-meta b{ font-size:12px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .media-meta span{ font-size:10.5px; color: var(--text-faint); font-family: var(--font-mono); }
@@ -714,7 +759,9 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
   border:1px solid var(--border); border-radius:8px; overflow:hidden;
   transition: border-color .14s, box-shadow .14s;
 }
-.inp-grp:focus-within{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.inp-grp:focus-within{ border-color: var(--text-muted); box-shadow: 0 0 0 3px var(--surface-3); }
+.inp-grp.invalid, .inp-grp.invalid:focus-within{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.inp-grp .inp.invalid, .inp-grp .inp.invalid:focus{ box-shadow:none; }
 .inp-grp .pre{
   display:flex; align-items:center; padding:0 11px; flex-shrink:0;
   background: var(--surface-2); border-right:1px solid var(--border); color: var(--text-faint);
@@ -722,6 +769,7 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 }
 .inp-grp .inp{ border:0; border-radius:0; flex:1; min-width:0; }
 .inp-grp .inp:focus{ box-shadow:none; }
+.inp-grp .inp[readonly]{ background: var(--surface-2); color: var(--text-muted); cursor:default; }
 .inp-grp .gbtn{
   display:flex; align-items:center; gap:6px; padding:0 12px; flex-shrink:0; cursor:pointer;
   background: var(--surface-2); border:0; border-left:1px solid var(--border);
@@ -825,8 +873,11 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .rdy-bar i{ display:block; height:100%; background: var(--ok); width:0; transition: width .25s; }
 .rdy-item{
   display:flex; align-items:center; gap:9px; padding:9px 13px; font-size:12.5px;
-  border-top:1px solid var(--border);
+  width:100%; border:0; border-top:1px solid var(--border); background:transparent;
+  font-family:inherit; text-align:left; color:inherit; cursor:pointer;
 }
+.rdy-item:hover{ background: var(--surface-2); }
+.rdy-item:focus-visible{ outline:2px solid var(--text-muted); outline-offset:-2px; }
 .rdy-item .tick{
   width:17px; height:17px; border-radius:50%; flex-shrink:0; display:grid; place-items:center;
   background: var(--surface-3); color: var(--text-faint);
@@ -834,6 +885,7 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .rdy-item.on .tick{ background: var(--ok-soft); color: var(--ok); }
 .rdy-item .lb{ flex:1; min-width:0; color: var(--text-muted); }
 .rdy-item.on .lb{ color: var(--text); font-weight:600; }
+.rdy-item .why{ display:block; margin-top:1px; font-size:11.5px; font-weight:600; color: var(--accent-strong); }
 
 /* ---- danger zone: quieter than an alert, clearly not a normal action ---- */
 .danger-row{
@@ -863,7 +915,12 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
   font-size:12.5px; font-weight:700; padding:7px 11px; border-radius:8px;
 }
 .savebar .sb-ghost:hover{ opacity:1; background: rgba(127,127,127,.22); }
-@media (max-width:560px){ .savebar .sb-txt span{ display:none; } }
+.savebar .sb-txt b{ font-weight:inherit; }
+/* a save that did not go through: the reason stays readable at every width */
+.savebar.failed{ box-shadow: var(--shadow-lg), inset 4px 0 0 var(--accent); }
+.savebar.failed .sb-txt span{ opacity:.9; overflow-wrap:anywhere; }
+.savebar .btn:disabled, .savebar .sb-ghost:disabled{ opacity:.6; cursor:default; }
+@media (max-width:560px){ .savebar:not(.failed) .sb-txt span{ display:none; } }
 
 /* ============================================================
    SPEAKERS — groups, ordering, weighting, and the add dialog.
@@ -873,8 +930,43 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .spk{ display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:18px; align-items:start; }
 @media (max-width:1240px){ .spk{ grid-template-columns: minmax(0,1fr); } }
 .spk-main{ min-width:0; }
-.spk-side{ min-width:0; position:sticky; top: calc(var(--topbar-h) + 16px); display:flex; flex-direction:column; gap:14px; }
-@media (max-width:1240px){ .spk-side{ position:static; } }
+.spk-side{
+  min-width:0; position:sticky; top: calc(var(--topbar-h) + 16px); display:flex; flex-direction:column; gap:14px;
+  /* the whole column stays inside the window, also before the page is scrolled, when the tabs and
+     the heading (about 180px) still sit above it: the status card keeps its height, the list scrolls */
+  max-height: calc(100vh - var(--topbar-h) - 196px);
+}
+.spk-side > .pvc{ flex-shrink:0; }
+@media (max-width:1240px){ .spk-side{ position:static; max-height:none; } }
+/* a tab with nothing to summarise yet has no side column */
+.spk.one, .ag.one, .sp2.one{ grid-template-columns: minmax(0,1fr); }
+
+/* ---- "Order at a glance": one line per record, in the order the site lists them ---- */
+.spk-side > .oag{ display:flex; flex-direction:column; flex:0 1 auto; min-height:150px; }
+.oag-list{ flex:1 1 auto; min-height:0; overflow-y:auto; padding:10px 13px; background: var(--surface-2); }
+@media (max-width:1240px){ .oag-list{ max-height:420px; } }
+.oag-g{ margin-bottom:11px; }
+.oag-g:last-child{ margin-bottom:0; }
+.oag-h{
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color: var(--text-faint);
+  margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.oag-r{ display:flex; align-items:center; gap:8px; padding:3px 0; min-width:0; font-size:12.5px; }
+.oag-r .n{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; }
+.oag-r .n a{ color:inherit; text-decoration:none; }
+.oag-r .n a:hover{ text-decoration:underline; }
+.oag-r .a, .oag-r .lg{
+  width:22px; height:22px; flex-shrink:0; overflow:hidden; display:grid; place-items:center;
+  font-size:8.5px; font-weight:800; color:#fff; background: var(--surface-3);
+}
+.oag-r .a{ border-radius:50%; }
+.oag-r .lg{ border-radius:5px; background:#fff; border:1px solid var(--border); color:#5c5250; }
+.oag-r .a img{ width:100%; height:100%; object-fit:cover; display:block; }
+.oag-r .lg img{ width:100%; height:100%; object-fit:contain; display:block; }
+.oag-r .t{ font-family: var(--font-mono); font-size:10.5px; color: var(--text-muted); flex-shrink:0; width:38px; }
+.oag-r.quiet .n{ font-weight:500; color: var(--text-muted); }
+.oag-r .wdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; background: currentColor; }
+.oag-empty{ padding:14px 4px; text-align:center; font-size:12px; color: var(--text-muted); }
 
 /* ---- a group ---- */
 .grp{ background: var(--surface); border:1px solid var(--border); border-radius:13px; margin-bottom:14px; overflow:hidden; }
@@ -882,13 +974,20 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .grp-head{ display:flex; align-items:center; gap:10px; padding:11px 13px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
 .grp-head .gname{
   font-family: var(--font-display); font-size:15px; font-weight:600; letter-spacing:-0.015em;
-  border:1px solid transparent; border-radius:7px; padding:3px 7px; margin:-3px 0 -3px -7px;
-  background:transparent; min-width:80px; max-width:min(360px, 60vw); flex:0 1 auto;
-  transition: border-color .14s, background .14s;
+  border:1px solid var(--border); border-radius:7px; padding:3px 26px 3px 7px; margin:-3px 0 -3px -7px;
+  /* a pencil at the far end says the name can be typed over */
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%23989089' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'/%3E%3C/svg%3E") no-repeat right 7px center;
+  flex:1 1 220px; min-width:160px; max-width:none; text-overflow:ellipsis;
+  transition: border-color .14s, background-color .14s;
 }
-.grp-head .gname:hover{ border-color: var(--border); }
-.grp-head .gname:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); }
-.grp-head .gcount{ font-family: var(--font-mono); font-size:11px; color: var(--text-faint); flex:1; white-space:nowrap; }
+.grp-head .gname:hover{ border-color: var(--text-faint); }
+.grp-head .gname:focus{ outline:none; border-color: var(--text-muted); box-shadow: 0 0 0 3px var(--surface-3); background-color: var(--surface); }
+/* records whose group is gone: listed last, under a title that cannot be edited */
+.grp-head .gtitle{ font-family: var(--font-display); font-size:15px; font-weight:600; letter-spacing:-0.015em; }
+.grp-loose{ border-style:dashed; }
+.grp-note{ padding:9px 13px; font-size:12px; color: var(--text-muted); background: var(--warn-soft); border-bottom:1px solid var(--border); }
+.grp-head .gcount{ font-family: var(--font-mono); font-size:11px; color: var(--text-faint); flex:0 0 auto; white-space:nowrap; }
+.grp-loose .gcount{ flex:1; }
 .grp-acts{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
 .grp-empty{ padding:22px 16px; text-align:center; font-size:12.5px; color: var(--text-muted); }
 .grp-foot{ padding:9px 13px; border-top:1px solid var(--border); }
@@ -929,7 +1028,7 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 @media (max-width:720px){
   .spk-row{ flex-wrap:wrap; }
   .spk-id{ flex-basis:calc(100% - 100px); }
-  .spk-meta{ margin-left:54px; }
+  .spk-meta{ margin-left:54px; flex-wrap:wrap; flex-shrink:1; min-width:0; }
   .spk-logo{ display:none; }
 }
 
@@ -940,6 +1039,32 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
   border:1px solid transparent; cursor:pointer; background: var(--surface-3); color: var(--text-muted);
 }
 .wpill:hover{ border-color: var(--accent); color: var(--accent-strong); }
+.wpill svg, .spill svg{ flex-shrink:0; opacity:.7; }
+.wpill[aria-expanded="true"], .spill[aria-expanded="true"]{ border-color: currentColor; }
+/* the status of a row: the same kind of control as the weight beside it */
+.spill{ border:1px solid transparent; cursor:pointer; font-family:inherit; }
+.spill:hover{ border-color: currentColor; }
+.wpill:focus-visible, .spill:focus-visible{ outline:2px solid var(--text-muted); outline-offset:2px; }
+.offsite{ font-size:11px; font-weight:600; color: var(--text-faint); white-space:nowrap; }
+
+/* ---- the menu a weight or status pill opens ---- */
+.pmenu{
+  position:fixed; z-index:400; width:268px; max-width:calc(100vw - 16px); padding:5px;
+  background: var(--surface); border:1px solid var(--border); border-radius:11px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.18);
+}
+.pmenu-h{ padding:6px 9px 5px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color: var(--text-faint); }
+.pmenu-i{
+  display:flex; align-items:flex-start; gap:8px; width:100%; padding:7px 9px; border:0; border-radius:7px;
+  background:transparent; font-family:inherit; text-align:left; color: var(--text); cursor:pointer;
+}
+.pmenu-i:hover, .pmenu-i:focus{ background: var(--surface-2); outline:none; }
+.pmenu-i:focus-visible{ box-shadow: inset 0 0 0 2px var(--text-muted); }
+.pmenu-i .tk{ width:14px; height:16px; flex-shrink:0; display:grid; place-items:center; color: var(--ok); }
+.pmenu-i .tx{ min-width:0; }
+.pmenu-i .tx b{ display:block; font-size:13px; font-weight:700; }
+.pmenu-i .tx span{ display:block; font-size:11.5px; color: var(--text-muted); line-height:1.4; }
+.pmenu-f{ margin-top:4px; padding:8px 9px 5px; border-top:1px solid var(--border); font-size:11.5px; color: var(--text-muted); line-height:1.45; }
 .w-keynote{ background: var(--accent-soft); color: var(--accent-strong); }
 .w-headline{ background: var(--warn-soft); color: var(--warn); }
 .w-featured{ background: var(--info-soft); color: var(--info); }
@@ -948,6 +1073,8 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 /* ---- the add / edit dialog ---- */
 .modal.wide{ width:min(1060px, 100%); }
 .sp-wrap{ display:grid; grid-template-columns: 224px minmax(0,1fr); min-height:0; }
+/* editing one record: there is no queue column, so the form takes the whole dialog */
+.sp-wrap.solo{ grid-template-columns: minmax(0,1fr); }
 @media (max-width:860px){ .sp-wrap{ grid-template-columns: minmax(0,1fr); } }
 .sp-queue{
   border-right:1px solid var(--border); background: var(--surface-2);
@@ -976,18 +1103,11 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .qi .qn em{ font-style:normal; font-weight:500; color: var(--text-faint); }
 .qi .qx{ border:0; background:transparent; color: var(--text-faint); cursor:pointer; padding:2px; border-radius:5px; flex-shrink:0; }
 .qi .qx:hover{ color: var(--accent-strong); background: var(--accent-soft); }
+/* an entry the server did not store: still in the dialog, to be corrected or sent again */
+.qi.failed{ border-color: var(--accent); }
+.qi.failed .qn{ color: var(--accent-strong); }
 .sp-form{ padding:16px 18px; overflow-y:auto; max-height:66vh; min-width:0; }
 
-/* paste a profile link, get the fields filled in */
-.li-bar{
-  display:flex; align-items:center; gap:9px; padding:10px 12px; border-radius:11px;
-  background: var(--info-soft); flex-wrap:wrap; margin-bottom:16px;
-}
-.li-bar .lt{ flex:1; min-width:180px; }
-.li-bar .lt b{ display:block; font-size:12.5px; color: var(--info); }
-.li-bar .lt span{ font-size:11.5px; color: var(--info); opacity:.85; }
-.li-bar .inp{ flex:2; min-width:200px; background: var(--surface); }
-.li-note{ font-size:11.5px; margin:-10px 0 16px; }
 .spin{
   width:13px; height:13px; border-radius:50%; border:2px solid currentColor;
   border-right-color:transparent; display:inline-block; animation: spin .7s linear infinite;
@@ -1048,40 +1168,6 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .acc-body{ padding:14px 13px; border-top:1px solid var(--border); }
 .acc:not([data-open="true"]) .acc-body{ display:none; }
 
-/* ---- live preview of the published block ---- */
-.spv{ padding:14px; background: var(--surface-2); }
-.spv-g{ margin-bottom:14px; }
-.spv-g:last-child{ margin-bottom:0; }
-.spv-h{
-  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
-  color: var(--text-faint); margin-bottom:7px;
-}
-.spv-grid{ display:grid; grid-template-columns: repeat(6, 1fr); gap:7px; }
-.spv-c{
-  background: var(--surface); border:1px solid var(--border); border-radius:9px;
-  padding:8px 7px; text-align:center; min-width:0; grid-column: span 2;
-}
-.spv-c .p{
-  width:32px; height:32px; border-radius:50%; margin:0 auto 5px; overflow:hidden;
-  display:grid; place-items:center; font-size:11px; font-weight:800; color:#fff; background: var(--surface-3);
-}
-.spv-c .p img{ width:100%; height:100%; object-fit:cover; display:block; }
-.spv-c b{ font-size:10.5px; display:block; line-height:1.25; overflow-wrap:anywhere; }
-.spv-c span{ font-size:9px; color: var(--text-muted); display:block; line-height:1.3; overflow-wrap:anywhere; }
-/* weight decides how much room a speaker gets on the real page */
-.spv-c.w-k{ grid-column: span 6; display:flex; align-items:center; gap:11px; text-align:left; padding:11px 10px; }
-.spv-c.w-k .p{ width:48px; height:48px; margin:0; flex-shrink:0; font-size:15px; }
-.spv-c.w-k b{ font-size:13px; }
-.spv-c.w-k span{ font-size:10.5px; }
-.spv-c.w-h{ grid-column: span 3; display:flex; align-items:center; gap:9px; text-align:left; }
-.spv-c.w-h .p{ width:34px; height:34px; margin:0; flex-shrink:0; }
-.spv-c.w-h b{ font-size:11.5px; }
-.spv-c.w-f{ grid-column: span 2; }
-.spv-c.w-s{ grid-column: span 2; }
-.spv-c.w-s .p{ width:26px; height:26px; font-size:9.5px; }
-.spv-c.w-s b{ font-size:9.5px; }
-.spv-empty{ padding:24px 12px; text-align:center; font-size:12px; color: var(--text-muted); }
-
 /* ============================================================
    AGENDA — the same shape as Speakers: groups, order, weight.
    A group is a day or a stream; a row is a session. The clock
@@ -1135,7 +1221,7 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 @media (max-width:820px){
   .ses-row{ flex-wrap:wrap; }
   .ses-title{ flex-basis:calc(100% - 120px); }
-  .ses-meta{ margin-left:108px; }
+  .ses-meta{ margin-left:108px; flex-wrap:wrap; flex-shrink:1; min-width:0; }
   .faces{ display:none; }
 }
 
@@ -1172,32 +1258,6 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .pchip .pf img{ width:100%; height:100%; object-fit:cover; display:block; }
 .pchip .pn{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pchip .pt{ color: var(--text-faint); font-weight:500; }
-
-/* ---- live preview of the published agenda ---- */
-.agv{ padding:14px; background: var(--surface-2); }
-.agv-d{ margin-bottom:13px; }
-.agv-d:last-child{ margin-bottom:0; }
-.agv-h{
-  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
-  color: var(--text-faint); margin-bottom:7px;
-}
-.agv-s{
-  display:flex; gap:9px; padding:8px 9px; background: var(--surface); border:1px solid var(--border);
-  border-radius:9px; margin-bottom:5px; min-width:0;
-}
-.agv-s .t{ font-family: var(--font-mono); font-size:9.5px; color: var(--text-muted); flex-shrink:0; width:38px; padding-top:1px; }
-.agv-s .b{ min-width:0; flex:1; }
-.agv-s .b b{ font-size:10.5px; display:block; line-height:1.3; overflow-wrap:anywhere; }
-.agv-s .b span{ font-size:9px; color: var(--text-muted); display:block; line-height:1.35; overflow-wrap:anywhere; }
-.agv-s.quiet{ background: var(--surface-2); border-style:dashed; }
-.agv-s.quiet .b b{ font-weight:600; color: var(--text-muted); }
-/* weight decides how loud a session is on the page */
-.agv-s.w-k{ border-color: var(--accent); background: var(--accent-soft); }
-.agv-s.w-k .b b{ font-size:12px; }
-.agv-s.w-k .t{ color: var(--accent-strong); }
-.agv-s.w-h .b b{ font-size:11.5px; }
-.agv-s.w-s .b b{ font-size:9.5px; font-weight:600; }
-.agv-empty{ padding:24px 12px; text-align:center; font-size:12px; color: var(--text-muted); }
 
 /* ============================================================
    SPONSORS — tiers, order, weight. A tier is a group, a row is a
@@ -1237,7 +1297,7 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 @media (max-width:760px){
   .pt-row{ flex-wrap:wrap; }
   .pt-id{ flex-basis:calc(100% - 160px); }
-  .pt-meta{ margin-left:98px; }
+  .pt-meta{ margin-left:98px; flex-wrap:wrap; flex-shrink:1; min-width:0; }
 }
 
 /* logo upload inside the dialog: no crop, logos are whatever shape they are */
@@ -1258,27 +1318,3 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 }
 .lg-have img{ width:100%; height:100%; object-fit:contain; display:block; min-width:0; min-height:0; }
 .lg-acts{ display:flex; gap:7px; margin-top:8px; width:232px; }
-
-/* ---- live preview of the published wall ---- */
-.ptv{ padding:14px; background: var(--surface-2); }
-.ptv-t{ margin-bottom:14px; }
-.ptv-t:last-child{ margin-bottom:0; }
-.ptv-h{
-  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
-  color: var(--text-faint); margin-bottom:7px; text-align:center;
-}
-.ptv-wall{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
-.ptv-l{
-  background:#fff; border:1px solid var(--border); border-radius:7px; display:grid; place-items:center;
-  padding:5px; min-width:0; overflow:hidden; text-align:center;
-}
-.ptv-l img{ width:100%; height:100%; object-fit:contain; display:block; min-width:0; min-height:0; }
-.ptv-l span{ font-size:8.5px; font-weight:700; color:#5c5250; line-height:1.2; overflow-wrap:anywhere; }
-/* weight is the only thing that decides how big a logo gets on the wall */
-.ptv-l.w-k{ width:100%; height:62px; }
-.ptv-l.w-k span{ font-size:12px; }
-.ptv-l.w-h{ width:calc(50% - 3px); height:48px; }
-.ptv-l.w-h span{ font-size:10.5px; }
-.ptv-l.w-f{ width:calc(33.333% - 4px); height:40px; }
-.ptv-l.w-s{ width:calc(25% - 5px); height:32px; }
-.ptv-empty{ padding:24px 12px; text-align:center; font-size:12px; color: var(--text-muted); }

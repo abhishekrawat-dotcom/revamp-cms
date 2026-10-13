@@ -17,7 +17,8 @@
      ctx.statTile(...)  ctx.panel(...)  ctx.panelFlush(...)  ctx.vhead(...)
      ctx.$(id)       getElementById
      ctx.go(route)   navigate, e.g. 'audience/reg'
-     ctx.toast(msg)  transient confirmation
+     ctx.toast(msg)  transient confirmation of something that has happened
+     ctx.toastError(errOrMsg, { what })  something did not happen; stays until dismissed
      ctx.render()    re-render the current view
    =========================================================================== */
 
@@ -27,7 +28,7 @@ window.EditEventDashboard = (function(){
   var C = window.RevampCore;
 
   /* Which four numbers earn a tile.
-     Mailer / WhatsApp / SMS / dial counts deliberately live under Marketing,
+     Mailer / WhatsApp / SMS / dial counts deliberately live under Promotions,
      next to the controls that move them — a dashboard number you cannot act
      on from the dashboard is just decoration. */
   function tiles(ctx){
@@ -74,7 +75,7 @@ window.EditEventDashboard = (function(){
       var pct = i === 0 ? '100%' : Math.round(st.n / top * 1000) / 10 + '%';
       return '<div class="fstage" style="background:' + st.col + ';clip-path:polygon(' +
           in1 + '% 0, ' + (100 - in1) + '% 0, ' + (100 - in2) + '% 100%, ' + in2 + '% 100%)">' +
-          '<b>' + st.label + '</b><span>' + ctx.comma(st.n) + '</span>' +
+          '<b>' + st.label + '</b><span>' + ctx.esc(ctx.comma(st.n)) + '</span>' +
           '<span class="pct">' + pct + '</span>' +
         '</div>';
     }).join('');
@@ -117,11 +118,11 @@ window.EditEventDashboard = (function(){
   }
 
   var STEPS = [
-    ['basics',   'Basic details filled',         'content/basics'],
+    ['basics',   'Basics filled',                'content/basics'],
     ['sections', 'Page sections chosen',         'design/sections'],
     ['speakers', 'Speakers added',               'content/speakers'],
     ['agenda',   'Agenda published',             'content/agenda'],
-    ['sponsors', 'Sponsors and partners',        'content/sponsors'],
+    ['sponsors', 'Sponsors added',               'content/sponsors'],
     ['form',     'Registration form configured', 'settings/form'],
     ['seo',      'SEO and social preview',       'settings/seo']
   ];
@@ -170,7 +171,7 @@ window.EditEventDashboard = (function(){
       ctx.svg(ctx.IC.clock, 13) + ' Sync now</button>';
 
     return ctx.vhead('Dashboard',
-        'How this event is actually doing. Campaign and channel counts live under Marketing.', right) +
+        'How this event is actually doing. Campaign and channel counts live under Promotions.', right) +
 
       '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">' + tiles(ctx) + '</div>' +
 
@@ -217,7 +218,10 @@ window.EditEventDashboard = (function(){
           C.updateEvent(ctx.EV.id, { checklist: ctx.S.checklist }).then(function(){
             ctx.EV.checklist = ctx.S.checklist;
           }).catch(function(err){
-            ctx.toast('Could not save — ' + (err && err.message ? err.message : 'try again.'));
+            /* the tick goes back to what is stored */
+            ctx.S.checklist[k] = !ctx.S.checklist[k];
+            ctx.render();
+            ctx.toastError(err, { what: 'The checklist was not saved.' });
           });
           return;
         }

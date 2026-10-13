@@ -1,6 +1,7 @@
 /* Loaded into a template's iframe only while custom_editor.html has it open (see editor-canvas.js) — never part of a
    saved or exported page. Everything is scoped to html[data-rv-editing]. Only outlines and cursors: no position,
-   size or spacing changes, so the canvas lays out exactly like the live site. */
+   size or spacing changes, so the canvas lays out exactly like the live site — with one exception, a hidden
+   section, which the live site does not have at all (see below). */
 
 /* Show every scroll-reveal block at once and still (et-animate.css holds them at opacity 0 until they scroll in). */
 html[data-rv-editing] .animated{ opacity:1 !important; animation:none !important; }
@@ -11,6 +12,29 @@ html[data-rv-editing] [data-editable].ed-selected{ outline:2px solid #ED1C24 !im
 html[data-rv-editing] [data-editable][contenteditable="true"]{ cursor:text; outline:2px solid #B3151B !important; outline-offset:2px; }
 
 html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; outline-offset:-2px; }
+
+/* The repeated item (card, tile, question) the selected element belongs to: what "Add item" and "Remove item" act on. */
+html[data-rv-editing] [data-rv-cur-item]{ outline:1.5px dashed #ED1C24; outline-offset:3px; }
+
+/* A hidden section is not on the live site. Here it stays where it was as a slim bar, so it can be found and shown
+   again: its content is put away and the bar's label is a pseudo-element, so nothing extra is saved with the page. */
+html[data-rv-editing] [data-rv-section].is-hidden-sec{
+  display:block !important; position:relative !important; height:44px !important; min-height:0 !important;
+  max-height:44px !important; margin:0 !important; padding:0 !important; overflow:hidden !important;
+  border:0 !important; border-top:1px dashed #B9BCC2 !important; border-bottom:1px dashed #B9BCC2 !important;
+  background:repeating-linear-gradient(135deg, #F3F4F6 0 12px, #E9EBEF 12px 24px) !important;
+  transform:none !important; cursor:pointer;
+}
+html[data-rv-editing] [data-rv-section].is-hidden-sec > *{ display:none !important; }
+html[data-rv-editing] [data-rv-section].is-hidden-sec::after{ content:none !important; }
+html[data-rv-editing] [data-rv-section].is-hidden-sec::before{
+  content:"Hidden section: " attr(data-sec-name) " \2014  click to show" !important;
+  display:block !important; position:absolute !important; inset:0 !important; width:auto !important; height:auto !important;
+  padding:0 20px !important; margin:0 !important; background:none !important; border:0 !important; opacity:1 !important;
+  transform:none !important; font:600 13px/44px Arial, Helvetica, sans-serif !important; letter-spacing:0 !important;
+  text-transform:none !important; text-align:left !important; color:#4B4D50 !important;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+}
 
 /* Shared header/footer can't be edited per template. */
 html[data-rv-editing] [data-rv-locked]{ cursor:not-allowed; }

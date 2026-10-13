@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1, user-scalable=0">
 <title>Template preview</title>
 <!-- Standalone view of one template: preview.html?t=tech500 (a ported template — shows its own real
-     captured markup as-is, no fill applied) or preview.html?t=gen-<eventId> (a GENERATED template — the
-     library sections' own markup is generic placeholder text with nothing event-specific in it at all, so
-     unlike a ported template there is nothing meaningful to show without applying that event's latest
-     /api/generate-content draft first; this mounts via the same RevampCanvas + RevampFill pipeline the real
-     editor uses, just without any editing wired up — read-only, but the real content).
+     captured markup as-is, no fill applied) or preview.html?t=gen-<eventId> (a GENERATED template). An
+     AI-designed site carries its content in its own sections and is shown as it is. One built from the
+     section library is generic placeholder text until that event's latest /api/generate-content draft is
+     applied, so when the event has such a draft it is filled through the same RevampCanvas + RevampFill
+     pipeline the real editor uses, just without any editing wired up — read-only, but the real content.
      Needs the repo served over http — fetch() is blocked on file://. -->
 <script src="_shared/template-loader.js"></script>
 <script src="../editor-canvas.js"></script>
@@ -45,8 +45,12 @@
 
     RevampCanvas.mount(host, id, {}).then(function (canvas) {
       return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
-        .then(function (res) { return res.json().then(function (b) { if (!res.ok) throw new Error(b.error || 'request failed'); return b; }); })
+        .then(function (res) {
+          if (res.status === 404) return null;        // no draft: an AI-designed site, complete as mounted
+          return res.json().then(function (b) { if (!res.ok) throw new Error(b.error || 'The draft for this site could not be loaded.'); return b; });
+        })
         .then(function (draftResp) {
+          if (!draftResp) return;
           var ctx = RevampFill.fromHandoff(draftResp.handoff, null);
           RevampFill.apply(canvas, ctx);
         });

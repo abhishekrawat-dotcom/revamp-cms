@@ -92,7 +92,7 @@ section.mb-medium {
 }
 
 @media screen and (min-width: 1200px) {
-  .contacts .footer-content p, .page_hdng2 p, .page_hdng4 p, .page_hdng5 p {
+  .page_hdng2 p, .page_hdng4 p, .page_hdng5 p {
     max-width: 800px;
     margin: auto;
   }
@@ -113,3 +113,7 @@ body p { font-size: 14px; }
 
 :root { --theme-color: 7, 25, 18; }
 :root { --theme-color-hex: #071912; }
+
+/* ET's bundle turns a hovered outline button white and takes its label colour from --white-color, which is
+   white here as well: the label keeps the theme colour instead */
+a.book-btn.btn-outline:hover { color: var(--theme-color); }

@@ -6,8 +6,22 @@ section#faq-4 {
   padding: 0;
   display: none;
 }
+/* ET's bundle keeps every panel at max-height 0 and prints a "-" after anything open in an accordion */
 #faq-4 .accordion-wrapper .accordion-bx.active .panel {
   display: block;
+  max-height: none;
+  overflow: visible;
+  padding: 0 20px 10px;
+}
+#faq-4 .accordion-wrapper .accordion-bx.active:after {
+  content: none;
+}
+/* one list of cards, drawn two to a row; a card that opens does not stretch the one beside it */
+#faq-4 .accordion-wrapper {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 30px;
+  align-items: start;
 }
 #faq-4 .accordion-wrapper .text-style p {
   text-align: left;
@@ -24,6 +38,28 @@ section#faq-4 {
   position: relative;
   padding-right: 40px;
   cursor: pointer;
+  text-transform: none;
+}
+/* the question is a real button (keyboard, screen readers) that looks like the heading it sits in; its words are
+   in a span of their own, because a button being typed into takes the space bar as a press */
+#faq-4 .accordion-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+#faq-4 .accordion-btn:focus-visible {
+  outline: 2px solid #FF927A;
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 #faq-4 .accordion:after {
   content: '';
@@ -43,11 +79,13 @@ section#faq-4 {
   border-radius: 20px;
   border: 1px solid rgba(255, 146, 122, 0.38);
   background: rgba(0, 0, 0, 0.30);
-  margin-bottom: 16px;
   padding: 20px;
 }
 #faq-4 .accordion-wrapper .accordion-bx.active h3.accordion {
   margin-bottom: 10px;
+}
+@media (max-width: 991px) {
+  #faq-4 .accordion-wrapper { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 767px) {
   #faq-4 .accordion-wrapper h3.accordion { font-size: 16px !important; }

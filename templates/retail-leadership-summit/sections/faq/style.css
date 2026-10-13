@@ -3,8 +3,14 @@
   padding: 0;
   display: none;
 }
+/* ET's bundle keeps every panel at max-height 0 and prints a "-" after anything open in an accordion */
 #faq-5 .accordion-wrapper .accordion-bx.active .panel {
   display: block;
+  max-height: none;
+  overflow: visible;
+}
+#faq-5 .accordion-wrapper .accordion-bx.active:after {
+  content: none;
 }
 #faq-5 .accordion-wrapper .text-style p {
   text-align: left;
@@ -23,6 +29,29 @@
   position: relative;
   cursor: pointer;
   margin: 0;
+  text-transform: none;
+}
+/* the question is a real button (keyboard, screen readers) that looks like the heading it sits in; its words are
+   in a span of their own, because a button being typed into takes the space bar as a press */
+#faq-5 .accordion-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+/* the heading clips what sticks out of it, so the focus ring is drawn inside the button */
+#faq-5 .accordion-btn:focus-visible {
+  outline: 2px solid #FF927A;
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 #faq-5 .accordion:after {
   content: '';
@@ -38,7 +67,7 @@
 #faq-5 .accordion-bx.active .accordion:after {
   transform: rotate(-90deg);
 }
-#faq-5 .accordion-wrapper h3.active {
+#faq-5 .accordion-wrapper .accordion-bx.active h3.accordion {
   margin-bottom: 10px;
 }
 #faq-5 .accordion-wrapper .dec {

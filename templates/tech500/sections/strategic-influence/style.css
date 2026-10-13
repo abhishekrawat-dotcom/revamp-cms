@@ -49,6 +49,11 @@
   flex: 0 0 auto;
   background: rgba(25, 27, 31, 0.24);
 }
+/* the rule between date and venue has nothing to separate when either is not shown */
+#strategicInfluence .strategic-influence-meta > span[hidden] + .strategic-influence-divider,
+#strategicInfluence .strategic-influence-meta > .strategic-influence-divider:has(+ span[hidden]) {
+  display: none;
+}
 #strategicInfluence .strategic-influence-actions {
   display: grid;
   gap: 11px;

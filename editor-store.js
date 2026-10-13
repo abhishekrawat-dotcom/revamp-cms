@@ -1,16 +1,16 @@
-/* Where the site editor keeps work between visits: an IndexedDB database in this browser ("revamp-editor", one
-   object store, "sites"). Keys:
-     site:<event id>:<template id>   the editor's page for an event (a new one from Create Event is new-<slug>):
-       { eventId, templateId, savedAt, snapshot, handoff, event }   snapshot as made by canvas.snapshot()
-       (editor-canvas.js); handoff = the Create Event hand-off it was filled from; event = that draft's name/slug/…
-     create:logo                     the logo uploaded in Create Event step 1: { name, dataUrl, savedAt }
-   Nothing leaves the browser; publishing is what puts a site anywhere else.
+/* A copy of the site editor's work kept in this browser: an IndexedDB database ("revamp-editor", one object
+   store, "sites"). Keys:
+     site:<event id>:<template id>   the editor's page for an event:
+       { eventId, templateId, savedAt, snapshot, sourceDraftId, fillVersion }   snapshot as made by
+       canvas.snapshot() (editor-canvas.js); the record written when a Create Event hand-off is first filled in
+       also carries handoff and event
+     the keys Create Event writes for a draft's logo and banner picture: { name, dataUrl, savedAt }
 
    RevampStore.get(key)          -> Promise<value | undefined>
    RevampStore.put(key, value)   -> Promise
    RevampStore.remove(key)       -> Promise
-   Every call rejects when the browser won't give the page IndexedDB (some private modes); the editor then carries
-   on and says it can't save. */
+   Every call rejects when the browser won't give the page IndexedDB (some private modes, blocked site data).
+   Callers must handle that rejection: the page has to work without a local copy and say so. */
 (function () {
   'use strict';
 

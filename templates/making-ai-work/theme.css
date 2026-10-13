@@ -85,7 +85,7 @@ a.book-btn.btn-outline{
   background:#000;
   box-shadow:0 17.043px 20.452px -17.043px rgba(0, 0, 0, 0.25);
 }
-a.book-btn:hover{color:#000000;background:#9FCDFF;border:1px solid #9FCDFF}
+a.book-btn:hover,a.book-btn.btn-outline:hover{color:#000000;background:#9FCDFF;border:1px solid #9FCDFF}
 
 @media screen and (max-width:767px){
   .page_hdng5 h1,.page_hdng5 h2,.page_hdng2 h2,.page_hdng4 h1,.page_hdng4 h2{font-size:32px;line-height:1em}

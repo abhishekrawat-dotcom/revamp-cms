@@ -3,6 +3,12 @@
 #banner {
   overflow: hidden;
   padding: 110px 0px;
+  --rv-banner-scrim: rgba(7, 25, 18, 0.36);
+}
+
+/* the picture is cropped from its top edge, as the page's CSS background was */
+#banner .banner-bg-image {
+  object-position: center top;
 }
 
 #banner .cntnd,
@@ -38,13 +44,39 @@
   max-width: 420px;
 }
 
-#banner h3.hidden,
-#banner p.hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+/* white text over a photograph of any brightness: besides the scrim, the words carry a soft shadow of their own */
+#banner .cntnd .banner-title,
+#banner .cntnd .banner-tagline,
+#banner .cntnd .lcn {
+  text-shadow: 0 1px 14px rgba(7, 25, 18, 0.55);
+}
+
+#banner a.book-btn.btn-outline {
+  background: rgba(7, 25, 18, 0.4);
+}
+
+#banner a.book-btn.btn-outline:hover {
+  background: #fff;
+}
+
+/* the event's name and tagline */
+#banner .cntnd .banner-title {
+  margin: 0 0 14px;
+  color: #fff;
+  font-family: var(--heading-font-family);
+  font-size: clamp(30px, 4.2vw, 56px);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
+#banner .cntnd .banner-tagline {
+  margin: 0 0 24px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
 }
 
 @media screen and (max-width: 767px) {
@@ -62,5 +94,10 @@
     gap: 10px;
     font-size: 14px;
     margin-bottom: 20px;
+  }
+
+  #banner .cntnd .banner-tagline {
+    font-size: 16px;
+    margin-bottom: 16px;
   }
 }

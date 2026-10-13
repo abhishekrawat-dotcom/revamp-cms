@@ -1,9 +1,10 @@
-// The /api/* endpoint logic — the ONE place it's written. Runs identically in two places:
-//   - locally, called directly from tools/serve.js's raw http.createServer handler
-//   - deployed, called from functions/index.js's Cloud Function (an Express-based request/response)
-// Both req/res shapes are close enough (both are/extend Node's http.IncomingMessage / ServerResponse) that
+// The /api/*, /e/* and /preview/* endpoint logic — the ONE place it's routed. Runs identically in:
+//   - production, called from server.js (Firebase App Hosting)
+//   - locally, called from tools/serve.js
+//   - the legacy Cloud Function entry point, functions/index.js (an Express-based request/response)
+// The req/res shapes are close enough (all are/extend Node's http.IncomingMessage / ServerResponse) that
 // the same handlers work unmodified — the one real difference is how the request body arrives (see
-// readBody below), which is the only place that branches on environment.
+// readBody in lib/http.js), which is the only place that branches on environment.
 //
 //   POST /api/suggest-design   create-event.html's "Let AI design it" (step 2)
 //   POST /api/chat-edit        custom_editor.html's "Ask AI to edit" chat panel (template mode only)
@@ -43,41 +44,41 @@
 //                               generatedSections. The 5 data-bound kinds (speakers/faq/partners/contact/
 //                               glimpses) carry a data-rv-repeat-template/data-rv-field convention in that
 //                               markup for a client-side mechanism (built separately) to fill with real
-//                               per-event Firestore records.
+//                               per-event Firestore records. The css is confined to its own section on
+//                               the way out (lib/gen-markup.js).
+//   Every model call above goes through lib/gemini.js. When one fails the route answers
+//   { error, code, retryable } — code is ai-quota (429) | ai-config (503) | ai-rejected | ai-unavailable |
+//   ai-bad-output (502) | ai-timeout (504, with timeoutMs) | ai-blocked (422) — and error is a sentence
+//   that can be shown as it is.
 //
-//   -- Event console (edit-event.html and its sibling tabs) — real Firestore data, replacing what used to be
-//      window.RevampCore's hardcoded 8-event array + localStorage. See lib/firebase.js's header comment for
-//      the full schema. Admin-write routes (everything below except POST /api/register) require a verified
-//      Firebase Auth ID token — see requireAdmin().
-//   POST/GET/PATCH /api/event                     create / read / update the canonical event
-//   GET  /api/events                                list ALL events across the whole team (plural — distinct
-//                               from the singular GET /api/event?eventId=<id> above), for Event_Listing.html's
-//                               dashboard. No per-user/creator filter: this is a shared, team-wide CMS, every
-//                               signed-in admin sees every event, same access model as every other route here.
-//                               Ordered by updatedAt desc, capped at EVENTS_LIST_LIMIT docs (no pagination yet
-//                               — a deliberate first-version simplification). Excludes the Lovable-import
-//                               staging docs (events/import-<id>, written by POST /api/import-lovable below —
-//                               an unrelated staging mechanism, never a real event): those docs have no
-//                               `updatedAt` field at all, so Firestore's own orderBy('updatedAt') already
-//                               drops them, and the handler also filters any doc id starting with "import-"
-//                               as a second, explicit guard.
-//   GET/POST/PATCH/DELETE /api/event/<resource>    generic CRUD over one of the per-event subcollections —
-//                               speakers, speaker-groups, sessions, agenda-groups, partners, partner-tiers,
-//                               gallery, faqs, contacts — see subcollectionRoutes()/RESOURCES below.
-//   GET  /api/event/registrations                  list this event's real registrations
-//   GET  /api/event/dashboard-stats                 real aggregated counts (registrations/confirmed/
-//                               waitlist/attendees/revenue) computed server-side from the registrations
-//                               subcollection, not pulled client-side
-//   POST /api/event/publish                         the real Publish button (editor-template-ui.js) —
-//                               stores the editor's final canvas.serialize() output in Storage, public,
-//                               and marks the event published. Previously Publish did nothing server-side
-//                               at all ("Saved — not yet published" was the literal, honest truth).
-//   POST /api/event/stage                           the real Preview button — same mechanism as Publish,
-//                               a separate Storage folder, never touches published/publishedUrl. One
-//                               stable URL per event; Preview re-uploads to it every click, so an already-
-//                               open tab just needs a reload to see the latest change.
-//   POST /api/register                              PUBLIC, no auth — the one write path the published
-//                               microsite's own "Register Now" CTA calls; writes a registrations doc
+//   -- Event console, the saved site and the public site. Every route here except the public ones needs a
+//      verified Firebase ID token for a company account (requireAdmin in lib/http.js). An "event" is a
+//      document that was created as one (it has createdAt) and has not been deleted — see eventStateOf().
+//   POST  /api/event                        create; 409 { code:'slug-taken', suggestion } over an existing one
+//   GET   /api/event?eventId=               read one
+//   PATCH /api/event                        update details and `settings`; 404 if there is no such event
+//   GET   /api/events                       every live event, team-wide (this is a shared CMS: no per-user
+//                                           filter), newest-updated first, with published / publishedPath /
+//                                           counters. No deleted events, import records or leftover shells.
+//                                           ?deleted=1 lists the deleted ones instead (to restore them).
+//   POST/PATCH/DELETE /api/event/leads/bulk import, change or delete up to 500 leads in one request
+//   GET/POST/PATCH/DELETE /api/event/<resource>   the per-event content lists — speakers, speaker-groups,
+//                                           sessions, agenda-groups, partners, partner-tiers, gallery, faqs,
+//                                           contacts — and the Promotions pages' leads, promo-templates and
+//                                           promo-audiences. See subcollectionRoutes() / RESOURCES.
+//   GET / PUT /api/event/site               the site as the editor saved it (snapshot + page), versioned;
+//                                           a stale save answers 409.
+//   POST  /api/event/publish | unpublish    put the saved site live at /e/<id> / take it down.
+//   POST  /api/event/stage                  only for browsers still running the previous editor script.
+//   GET   /e/<eventId>                      PUBLIC — the published site, served from private Storage.
+//   GET   /preview/<eventId>                signed-in — what would be published right now.
+//
+//   Routed here, implemented elsewhere (loaded on demand; see inModule()):
+//     lib/api-events.js    POST /api/event/upload, GET /api/event/slug-available, DELETE /api/event,
+//                          POST /api/event/restore, POST /api/event/clone
+//     lib/api-audience.js  GET /api/public/site-data, POST /api/register, POST /api/track (all PUBLIC),
+//                          POST /api/event/seed, GET/PATCH/DELETE /api/event/registrations,
+//                          GET /api/event/dashboard-stats, GET /api/insights, GET /api/event/activity
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -110,38 +111,41 @@
 const fs = require('fs');
 const path = require('path');
 const dns = require('dns');
+const crypto = require('crypto');
+const zlib = require('zlib');
 const JSZip = require('jszip');
 const { getFirebase } = require('./firebase');
-const { isAllowedUser, deniedMessage } = require('./access');
 
-function sendJson(res, status, obj) {
-  var body = JSON.stringify(obj);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(body);
-}
+/* Request plumbing (JSON in/out, body size limits, who is calling) lives in ./http and is shared with
+   lib/api-events.js and lib/api-audience.js, so the three modules cannot drift apart on what a too-large
+   body, a non-object JSON body or an expired sign-in is answered with. */
+const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
+  isEmail, CONTENT_STATUSES, str } = require('./http');
+const { logActivity, actorOf } = require('./activity');
+const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
+const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
 
-// Firebase Functions (v2 HTTPS) buffers the request body itself before our handler ever runs, and exposes it
-// as req.rawBody — reading req.on('data') again at that point gets nothing, the stream is already consumed.
-// Locally, under plain http.createServer, there is no rawBody, so we read the stream ourselves as before.
-/* A request body that is valid JSON but not an object — `null`, `[]`, `7`, `"x"` — used to get past every
-   handler's own try/catch around JSON.parse, and the very next line (payload.eventId, body.slug, ...) then
-   threw inside the request stream's "end" callback, where nothing can catch it. That is an uncaught
-   exception, and in a plain Node http server an uncaught exception ends the process: one unauthenticated
-   POST /api/register with the body `null` took the whole production server down, along with every request
-   in flight on it. Throwing here instead lands in each caller's existing catch -> 400 "Invalid JSON body". */
-function parseJsonObject(raw) {
-  var v = JSON.parse(raw || '{}');
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('The JSON body must be an object.');
-  return v;
-}
+/* How much each route will read before answering 413. Nothing here used to bound a request body at all:
+   one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
+   legitimate body for that route with headroom, not a round number for its own sake. */
+var KB = 1024, MB = 1024 * 1024;
+var BODY_LIMITS = {
+  ai: 2 * MB,             // suggest-design / chat-edit / generate-content: the page's section texts as JSON
+  small: 256 * KB,        // ingest-source, plan-structure: ids and a URL
+  brief: 22 * MB,         // extract-brief: a 15 MB document, base64-encoded (x 4/3), plus the event basics
+  importZip: 56 * MB,     // import-lovable: a 40 MB ZIP, base64-encoded (the platform's own ceiling is lower)
+  event: 512 * KB,        // POST / PATCH /api/event: an event document is itself capped at 1 MiB by Firestore
+  record: 256 * KB,       // one speaker / session / sponsor / FAQ record; images are uploaded, never inline
+  site: 12 * MB,          // PUT /api/event/site, and a publish / stage request that still carries the page
+  tiny: 16 * KB           // { eventId } and nothing else
+};
 
-function readBody(req, cb) {
-  if (req.rawBody) return cb(req.rawBody.toString('utf8'));
-  var chunks = [];
-  req.on('data', function (c) { chunks.push(c); });
-  req.on('end', function () { cb(Buffer.concat(chunks).toString('utf8')); });
-  req.on('error', function () { cb(''); });
-}
+/* The most a model call may write, so an answer that runs away is cut off (and reported as unusable)
+   instead of being paid for to the end. The budget includes the model's own reasoning tokens. */
+var AI_OUTPUT_TOKENS = {
+  small: 16384,           // a design, a chat reply, a brief, a page summary, a structure plan
+  site: 65536             // the text or the HTML + CSS of a whole site in one answer
+};
 
 /* The real design fields create-event.html applies via canvas.design.set() (editor-canvas.js) on the
    mounted Gen-2 template — real ET CSS variables and rules, not CSS vars grafted onto a generic preview.
@@ -312,88 +316,21 @@ function sanitizeDesignField(key, v) {
   return undefined;
 }
 
-/* Shared Gemini call: prompt + schema in, the model's parsed JSON object out (or a {error, status} to proxy
-   straight back to the browser). Used by /api/suggest-design, /api/chat-edit and /api/extract-brief.
-   `inlineFile` is optional — {mimeType, data (base64)} — appended as a second part so the model can read an
-   uploaded document directly (Gemini accepts PDF/text inline the same way it accepts images). GEMINI_API_KEY
-   itself comes from tools/.env.local locally, or from Firebase Secret Manager when deployed (bound in
-   functions/index.js) — either way it lands in process.env the same way, so this code doesn't need to care. */
-// Worst-case latency for ONE callGeminiJson call, including its one retry (see below): 60s timeout on the
-// first attempt + 60s timeout on the retry = ~120000ms (~120s) in the worst case. create-event.html's
-// "Generate from a brief" checklist keys its own "still writing, hasn't stalled" reassurance line (shown
-// once the `generate` step has been running longer than this) off this exact number — if this changes,
-// that must change with it (see GEMINI_WORST_CASE_MS in create-event.html, right next to GENERATE_TEMPLATES).
-var GEMINI_WORST_CASE_MS = 120000;
-
-function callGeminiJson(prompt, schema, inlineFile, timeoutMs) {
-  var apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return Promise.resolve({ error: 'GEMINI_API_KEY is not set. Add it to tools/.env.local (GEMINI_API_KEY=...) locally, or `firebase functions:secrets:set GEMINI_API_KEY` when deployed.', status: 503 });
-  }
-  /* gemini-2.0-flash was retired by Google after this was first written; the API's own 404 names the
-     replacement. If this breaks again later, the error message from Gemini itself says what to use next. */
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' + encodeURIComponent(apiKey);
-  var parts = [{ text: prompt }];
-  if (inlineFile) parts.push({ inlineData: { mimeType: inlineFile.mimeType, data: inlineFile.data } });
-  var body = {
-    contents: [{ parts: parts }],
-    generationConfig: { responseMimeType: 'application/json', responseSchema: schema }
-  };
-
-  // 60s is generous for every call site this function originally served (small structured-JSON fills).
-  // One caller — the AI-DESIGNED GENERATED TEMPLATES pipeline's per-section HTML/CSS generation (real end-
-  // to-end testing found it routinely needs more: writing full bespoke markup/CSS for 6-8 sections in one
-  // response is a genuinely bigger job than any schema this function served before) — passes a larger
-  // timeoutMs explicitly; every other caller is unaffected by this parameter existing at all.
-  var effectiveTimeoutMs = timeoutMs || 60000;
-
-  /* One attempt at the actual call. Nothing here used to bound how long a call could take — a genuinely
-     slow or hung response from Google left the browser's "Thinking…" indicator spinning forever with no
-     way to know anything had gone wrong. 60s is generous for a structured-JSON generateContent call; past
-     that, fail loudly instead of silently. Pulled out into its own function so the retry below can just
-     call it again rather than duplicating the request/timeout plumbing. */
-  function attempt() {
-    var controller = new AbortController();
-    var timedOut = false;
-    var timer = setTimeout(function () { timedOut = true; controller.abort(); }, effectiveTimeoutMs);
-    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal })
-      .then(function (geminiRes) {
-        return geminiRes.text().then(function (text) { return { ok: geminiRes.ok, status: geminiRes.status, text: text }; });
-      })
-      .then(function (r) {
-        if (!r.ok) return { error: 'Gemini API error ' + r.status + ': ' + r.text.slice(0, 400), status: 502 };
-        var data;
-        try { data = JSON.parse(r.text); } catch (e) { return { error: 'Gemini returned a response that was not valid JSON.', status: 502 }; }
-        var modelText = data && data.candidates && data.candidates[0] && data.candidates[0].content &&
-          data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-        if (!modelText) return { error: 'Gemini response had no content (it may have been blocked by safety filters).', status: 502 };
-        try { return { parsed: JSON.parse(modelText) }; } catch (e) { return { error: 'Could not parse the AI suggestion as JSON.', status: 502 }; }
-      })
-      .catch(function (err) {
-        if (timedOut) return { error: 'Gemini took too long to respond (over ' + Math.round(effectiveTimeoutMs / 1000) + 's) — please try again.', status: 504 };
-        return { error: 'Could not reach Gemini: ' + err.message, status: 502 };
-      })
-      .finally(function () { clearTimeout(timer); });
-  }
-
-  /* Retry exactly once on a timeout (504) or any 5xx-class failure (502/503) — Google's own infrastructure
-     having a bad moment, or this one request happening to time out, is exactly what a single retry can
-     paper over. A 4xx would mean WE sent something Gemini rejected outright (never actually returned by
-     this function today, but the check is here on principle) — retrying an identical request wouldn't
-     change that, so it isn't retried. */
-  return attempt().then(function (r) {
-    if (r.error && r.status >= 500 && r.status <= 599) return attempt();
-    return r;
-  });
+/* Answers a failed model call: the sentence, the status and the machine-readable code from gemini.js
+   (plus timeoutMs on a timeout), so a page can say which failure it was without reading the wording. */
+function sendAiFailure(res, r) {
+  var body = { error: r.error, code: r.code, retryable: !!r.retryable };
+  if (r.timeoutMs) body.timeoutMs = r.timeoutMs;
+  sendJson(res, r.status, body);
 }
 
 function handleSuggestDesign(req, res) {
-  readBody(req, function (raw) {
+  readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
-    callGeminiJson(buildPrompt(payload), responseSchemaFor(payload)).then(function (r) {
-      if (r.error) return sendJson(res, r.status, { error: r.error });
+    callGeminiJson(buildPrompt(payload), responseSchemaFor(payload), { route: 'suggest-design', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+      if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
       var enhancements = {};
@@ -413,7 +350,7 @@ function handleSuggestDesign(req, res) {
         return { name: String(d.name || 'Untitled design').slice(0, 60), reason: String(d.reason || '').slice(0, 300), design: design };
       }).filter(Boolean);
 
-      if (!designs.length) return sendJson(res, 502, { error: 'Gemini did not return any usable designs.' });
+      if (!designs.length) return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
 
       /* valid only if it's a genuine permutation of the reorderable ids — a partial/garbled list reads as a
          model mistake, not a deliberate edit, so it's dropped entirely rather than passed on half-formed
@@ -424,7 +361,7 @@ function handleSuggestDesign(req, res) {
 
       sendJson(res, 200, { designs: designs, enhancements: enhancements, sectionOrder: sectionOrder });
     });
-  });
+  }, BODY_LIMITS.ai);
 }
 
 /* ---------- POST /api/chat-edit — custom_editor.html's "Ask AI to edit" chat panel (template mode) ----------
@@ -489,13 +426,13 @@ function chatResponseSchema(payload) {
 }
 
 function handleChatEdit(req, res) {
-  readBody(req, function (raw) {
+  readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
 
-    callGeminiJson(buildChatPrompt(payload), chatResponseSchema(payload)).then(function (r) {
-      if (r.error) return sendJson(res, r.status, { error: r.error });
+    callGeminiJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+      if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
       /* the prompt tells the model to only describe in `summary` what design/textEdits actually contain, but
@@ -523,12 +460,12 @@ function handleChatEdit(req, res) {
 
       var summary = String(parsed.summary || '').slice(0, 300);
       if (!summary && !Object.keys(design).length && !textEdits.length) {
-        return sendJson(res, 502, { error: 'Gemini did not return a usable change for that instruction.' });
+        return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
       }
       var kind = parsed.kind === 'reply' ? 'reply' : 'edit';
       sendJson(res, 200, { kind: kind, summary: summary || 'A change is ready to review.', design: design, textEdits: textEdits, skipped: skipped });
     });
-  });
+  }, BODY_LIMITS.ai);
 }
 
 /* ---------- POST /api/extract-brief — AI site-generation pipeline, step 1 ----------
@@ -581,7 +518,7 @@ function buildExtractBriefPrompt(eventMeta) {
 var MAX_BRIEF_BYTES = 15 * 1024 * 1024;
 
 function handleExtractBrief(req, res) {
-  readBody(req, function (raw) {
+  readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
@@ -591,6 +528,12 @@ function handleExtractBrief(req, res) {
     var docBase64 = String(payload.docBase64 || '');
     if (!eventId || !fileName || !mimeType || !docBase64) {
       return sendJson(res, 400, { error: 'eventId, fileName, mimeType and docBase64 are all required.' });
+    }
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    /* the model is only ever given a document to read as a PDF or as plain text */
+    mimeType = mimeType.split(';')[0].trim().toLowerCase();
+    if (mimeType !== 'application/pdf' && mimeType !== 'text/plain') {
+      return sendJson(res, 415, { error: 'Upload the brief as a PDF, or type the description instead.', code: 'unsupported-file' });
     }
 
     var buffer;
@@ -604,12 +547,14 @@ function handleExtractBrief(req, res) {
     var eventMeta = payload.eventMeta || {};
     var storagePath = 'events/' + eventId + '/briefs/' + fileName;
 
-    fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } })
+    var watch = null;
+    watchEvent(fb, eventId)
+      .then(function (w) { watch = w; return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } }); })
       .then(function () {
-        return callGeminiJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { mimeType: mimeType, data: docBase64 });
+        return callGeminiJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small });
       })
       .then(function (r) {
-        if (r.error) return sendJson(res, r.status, { error: r.error });
+        if (r.error) return sendAiFailure(res, r);
         var extracted = {
           theme: String(r.parsed.theme || '').slice(0, 500),
           audience: String(r.parsed.audience || '').slice(0, 300),
@@ -623,15 +568,19 @@ function handleExtractBrief(req, res) {
 
         var now = new Date().toISOString();
         var eventRef = fb.db.collection('events').doc(eventId);
-        return eventRef.set(Object.assign({}, eventMeta, { updatedAt: now }), { merge: true })
+        return watch.merge(Object.assign({}, eventMeta, { updatedAt: now }))
           .then(function () { return eventRef.collection('briefs').add({
             sourceFileName: fileName, mimeType: mimeType, storagePath: storagePath,
-            extracted: extracted, model: 'gemini-3.8-flash', createdAt: now
+            extracted: extracted, model: GEMINI_TEXT_MODEL, createdAt: now
           }); })
           .then(function (briefRef) { sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted }); });
       })
-      .catch(function (err) { sendJson(res, 500, { error: 'extract-brief failed: ' + err.message }); });
-  });
+      .catch(function (err) {
+        /* the document uploaded for an event that is no longer there must not be left behind */
+        if (err && err.body && err.body.code === 'event-gone') fb.bucket.file(storagePath).delete().catch(function () { /* already removed with the event */ });
+        sendStepFailure(res, err, 500, 'extract-brief failed: ' + err.message);
+      });
+  }, BODY_LIMITS.brief);
 }
 
 /* ---------- POST /api/ingest-source — AI site-generation pipeline, step 2 ----------
@@ -732,7 +681,7 @@ function buildIngestSourcePrompt(url, type, text) {
 }
 
 function handleIngestSource(req, res) {
-  readBody(req, function (raw) {
+  readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
@@ -740,6 +689,7 @@ function handleIngestSource(req, res) {
     var url = String(payload.url || '').trim();
     var type = Object.prototype.hasOwnProperty.call(SOURCE_TYPE_LABELS, payload.type) ? payload.type : 'previousEdition';
     if (!eventId || !url) return sendJson(res, 400, { error: 'eventId and url are required.' });
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
     if (!/^https?:\/\//i.test(url)) return sendJson(res, 400, { error: 'url must start with http:// or https://.' });
 
     var fb = getFirebase();
@@ -749,21 +699,25 @@ function handleIngestSource(req, res) {
     var timedOut = false;
     var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 20000);
 
-    fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' } })
+    var watch = null;
+    watchEvent(fb, eventId)
+      .then(function (w) { watch = w; return fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' } }); })
       .then(function (r) { if (!r.ok) throw new Error('page returned HTTP ' + r.status); return r.text(); })
       .then(function (html) {
         clearTimeout(timer);
         var colorSignals = extractColorSignals(html);
         var fontSignals = extractFontSignals(html);
         var text = stripToText(html).slice(0, MAX_SOURCE_TEXT_CHARS);
-        return callGeminiJson(buildIngestSourcePrompt(url, type, text), SOURCE_SECTIONS_SCHEMA).then(function (r) {
-          if (r.error) return sendJson(res, r.status, { error: r.error });
+        return callGeminiJson(buildIngestSourcePrompt(url, type, text), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+          if (r.error) return sendAiFailure(res, r);
           var sections = (r.parsed.sections || []).slice(0, 25).map(function (s) {
             return { heading: String(s.heading || '').slice(0, 120), body: String(s.body || '').slice(0, 500) };
           });
           var now = new Date().toISOString();
-          return fb.db.collection('events').doc(eventId).collection('sources').add({
-            type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, fetchedAt: now
+          return watch.stillThere().then(function () {
+            return fb.db.collection('events').doc(eventId).collection('sources').add({
+              type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, fetchedAt: now
+            });
           }).then(function (sourceRef) {
             sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals });
           });
@@ -772,9 +726,9 @@ function handleIngestSource(req, res) {
       .catch(function (err) {
         clearTimeout(timer);
         if (timedOut) return sendJson(res, 504, { error: 'Fetching ' + url + ' took too long (over 20s).' });
-        sendJson(res, 502, { error: 'Could not ingest ' + url + ': ' + err.message });
+        sendStepFailure(res, err, 502, 'Could not ingest ' + url + ': ' + err.message);
       });
-  });
+  }, BODY_LIMITS.small);
 }
 
 /* ---------- GENERATED TEMPLATES — theme extraction, hero image ----------
@@ -832,46 +786,6 @@ function googleFontUrl(family) {
   return 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800&display=swap';
 }
 
-/* ---- Hero background image: Gemini's image-generation endpoint ----
-   Model/endpoint researched at the time this was written (Oct 2026) but NOT verified against a live key in
-   this environment — Google's image-model names have moved fast. gemini-2.5-flash-image ("Nano Banana") is
-   the one this code targets, called the same way callGeminiJson calls its text model (v1beta/models/
-   <model>:generateContent, generationConfig.responseModalities), which is the pattern most consistently
-   corroborated across sources seen during research. Some documentation seen during research already points
-   at newer gemini-3.x-image model names and a separate, non-generateContent "Interactions" endpoint instead
-   — this code deliberately does NOT adopt that unverified shape. Exactly like callGeminiJson's own
-   gemini-3.8-flash retirement comment: if this model name is wrong or retired, Gemini's 404 names its
-   replacement, caught below and logged — never thrown, never allowed to block or crash structure planning.
-   Hero image generation is pure enhancement; its failure must always degrade to "no hero background image"
-   (hero/style.css's own fallback — see the gap noted in this function's caller, buildHeroImage, below). */
-function callGeminiImage(prompt) {
-  var apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return Promise.resolve({ error: 'GEMINI_API_KEY is not set.' });
-  var model = 'gemini-2.5-flash-image';
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey);
-  var body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } };
-
-  var controller = new AbortController();
-  var timedOut = false;
-  var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 60000);
-  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal })
-    .then(function (geminiRes) { return geminiRes.text().then(function (text) { return { ok: geminiRes.ok, status: geminiRes.status, text: text }; }); })
-    .then(function (r) {
-      if (!r.ok) return { error: 'Gemini image API error ' + r.status + ': ' + r.text.slice(0, 400) };
-      var data;
-      try { data = JSON.parse(r.text); } catch (e) { return { error: 'Gemini image response was not valid JSON.' }; }
-      var parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
-      var imagePart = (parts || []).filter(function (p) { return p && p.inlineData && p.inlineData.data; })[0];
-      if (!imagePart) return { error: 'Gemini image response had no image data (it may have been blocked by safety filters or the model/endpoint is wrong/retired).' };
-      return { mimeType: imagePart.inlineData.mimeType || 'image/png', base64: imagePart.inlineData.data };
-    })
-    .catch(function (err) {
-      if (timedOut) return { error: 'Gemini image generation took too long (over 60s).' };
-      return { error: 'Could not reach Gemini for image generation: ' + err.message };
-    })
-    .finally(function () { clearTimeout(timer); });
-}
-
 function buildHeroImagePrompt(brief, themeColor) {
   return [
     'Generate an abstract, editorial background image for a professional event website\'s hero banner.',
@@ -892,7 +806,7 @@ function buildHeroImagePrompt(brief, themeColor) {
 // only the dark overlay gradient ON TOP of whatever image is there. On image-generation failure, the hero
 // still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
 function buildHeroImage(fb, eventId, brief, themeColor) {
-  return callGeminiImage(buildHeroImagePrompt(brief, themeColor)).then(function (r) {
+  return callGeminiImage(buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     if (r.error) {
       console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
@@ -1048,23 +962,27 @@ function sanitizeDesignPlanDesign(parsed) {
 }
 
 function handlePlanStructure(req, res) {
-  readBody(req, function (raw) {
+  readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
     var eventId = String(payload.eventId || '').trim();
     if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-    if (!/^[a-z0-9-]+$/.test(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
 
     var eventRef = fb.db.collection('events').doc(eventId);
-    Promise.all([
-      eventRef.get(),
-      eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-      eventRef.collection('sources').get()
-    ]).then(function (results) {
+    var watch = null;
+    watchEvent(fb, eventId).then(function (w) {
+      watch = w;
+      return Promise.all([
+        eventRef.get(),
+        eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+        eventRef.collection('sources').get()
+      ]);
+    }).then(function (results) {
       var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
       var eventMeta = eventSnap.exists ? eventSnap.data() : {};
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
@@ -1072,8 +990,8 @@ function handlePlanStructure(req, res) {
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections }; });
       var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
 
-      return callGeminiJson(buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo }), DESIGN_PLAN_SCHEMA).then(function (r) {
-        if (r.error) return sendJson(res, r.status, { error: r.error });
+      return callGeminiJson(buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo }), DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+        if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed);
         var design = sanitizeDesignPlanDesign(r.parsed);
         var now = new Date().toISOString();
@@ -1086,12 +1004,12 @@ function handlePlanStructure(req, res) {
           design.heroImageError = heroImage.heroImageError;
 
           var designPlan = { sections: sections, design: design, generatedAt: now };
-          return eventRef.set({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null }, { merge: true })
+          return watch.merge({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null })
             .then(function () { sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan }); });
         });
       });
-    }).catch(function (err) { sendJson(res, 500, { error: 'plan-structure failed: ' + err.message }); });
-  });
+    }).catch(function (err) { sendStepFailure(res, err, 500, 'plan-structure failed: ' + err.message); });
+  }, BODY_LIMITS.small);
 }
 
 /* ---------- POST /api/generate-content — AI site-generation pipeline, step 3 ----------
@@ -1255,11 +1173,15 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
 
   var draftRef = fb.db.collection('events').doc(eventId);
   var sourceRef = fb.db.collection('events').doc(sourceEventId);
-  Promise.all([
-    sourceRef.get(),
-    sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-    sourceRef.collection('sources').get()
-  ]).then(function (results) {
+  var watch = null;
+  watchEvent(fb, eventId).then(function (w) {
+    watch = w;
+    return Promise.all([
+      sourceRef.get(),
+      sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+      sourceRef.collection('sources').get()
+    ]);
+  }).then(function (results) {
     var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
     // eventMeta.* from the request (e.g. {name:"ET Making AI Work 2027", date:"2027"}) wins over whatever
     // is stored for sourceEventId — that stored data describes the PAST edition being read for research,
@@ -1274,18 +1196,19 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
     var schema = buildGenerateSchema(needs);
     var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs, futureEdition: futureEdition });
 
-    return callGeminiJson(prompt, schema).then(function (r) {
-      if (r.error) return sendJson(res, r.status, { error: r.error });
+    return callGeminiJson(prompt, schema, { route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+      if (r.error) return sendAiFailure(res, r);
       var library = sanitizeGeneratedLibrary(r.parsed, needs);
       if (genTheme && genTheme.heroImageUrl && library.hero) {
         library.hero.psdBanner = { compositeImageData: genTheme.heroImageUrl };
       }
       var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
       var now = new Date().toISOString();
-      return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now, skippedLibraries: skippedLibraries })
+      return watch.stillThere()
+        .then(function () { return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: skippedLibraries }); })
         .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
     });
-  }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+  }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
 }
 
 /* ---------- POST /api/generate-content, 'gen-' branch — AI-DESIGNED GENERATED TEMPLATES PIPELINE, step 2 ----------
@@ -1307,7 +1230,7 @@ var SECTION_CODE_SCHEMA = {
         properties: {
           id: { type: 'STRING' },
           html: { type: 'STRING', description: 'Real, complete, semantic HTML for this section\'s inner content — ONE root element, no <html>/<body>/<head> wrapper, no <script> tags, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.' },
-          css: { type: 'STRING', description: 'Real CSS for this section only. MUST scope every selector under [data-rv-section="<this section\'s id>"] (or use a unique class prefix you also use in the html) so it can never leak into or be affected by any other section\'s styles. No @import, no url(javascript:...), no CSS behaviors.' }
+          css: { type: 'STRING', description: 'Real CSS for this section only, written as plain class selectors for the classes used in this section\'s html. Do NOT write [data-rv-section] in any selector and do not style html, body or :root: the server confines every rule to this section, and the section\'s root element is the positioning context for anything absolutely positioned inside it. No @import, no url(javascript:...), no CSS behaviors.' }
         },
         required: ['id', 'html', 'css']
       }
@@ -1371,7 +1294,7 @@ function buildSectionCodePrompt(payload) {
     'Example snippet (speakers): <div class="speaker-card" data-rv-repeat-template="speakers"><img data-rv-field="photo" src="..." alt=""><h4 data-rv-field="n">Speaker Name</h4><p data-rv-field="r">Role</p><p data-rv-field="c">Company</p></div>',
     '',
     'HTML rules, every section: ONE root element, no <html>/<body>/<head> wrapper, no <script> tags, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
-    'CSS rules, every section: scope every selector under [data-rv-section="<that section\'s id>"] (or a unique class prefix you also use in the html) so it can never leak into or be affected by any other section\'s styles. No @import, no url(javascript:...), no CSS behaviors.',
+    'CSS rules, every section: write plain class selectors for the classes you used in that section\'s html, including one for the root element itself (its background, padding and layout belong on the root\'s own class). Do NOT write [data-rv-section] in any selector and do not style html, body or :root — the server confines every rule to its section, and the root element is the positioning context for anything absolutely positioned inside it. No @import, no url(javascript:...), no CSS behaviors.',
     '',
     'positioningNotes: internal only, never shown on the site. Name the ONE specific thing you adapted FROM a competitor (or state "no competitor material was given" if none was provided) and the ONE specific thing you deliberately did NOT just carry over from this event\'s own previous edition. Be concrete (name the competitor/section), not generic.'
   );
@@ -1453,11 +1376,15 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
 function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan) {
   var draftRef = fb.db.collection('events').doc(eventId);
   var sourceRef = fb.db.collection('events').doc(sourceEventId);
-  Promise.all([
-    sourceRef.get(),
-    sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-    sourceRef.collection('sources').get()
-  ]).then(function (results) {
+  var watch = null;
+  watchEvent(fb, eventId).then(function (w) {
+    watch = w;
+    return Promise.all([
+      sourceRef.get(),
+      sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
+      sourceRef.collection('sources').get()
+    ]);
+  }).then(function (results) {
     var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
     var eventMeta = Object.assign({}, eventSnap.exists ? eventSnap.data() : {}, payload.eventMeta || {});
     var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
@@ -1470,21 +1397,20 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
 
     // 100s, not the 60s default — writing full bespoke HTML/CSS for every section in one response is a
     // genuinely bigger generation job than any other call this file makes; real testing against the live
-    // Gemini API hit the 60s default routinely. NOTE: the deployed Cloud Function itself still has
-    // functions/index.js's own timeoutSeconds:120 (out of scope here — a different file) — a slow 100s
-    // attempt plus this function's one 5xx/timeout retry can still exceed that deployed cap. Flagged in
-    // this task's report; not fixable from this file alone.
-    return callGeminiJson(prompt, SECTION_CODE_SCHEMA, null, 100000).then(function (r) {
-      if (r.error) return sendJson(res, r.status, { error: r.error });
+    // Gemini API hit the 60s default routinely. A timeout is never retried (gemini.js), so 100s is also the
+    // longest this request can spend on the model.
+    return callGeminiJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+      if (r.error) return sendAiFailure(res, r);
       var sections = sanitizeSectionCodeResult(r.parsed, designPlan);
       var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
       var now = new Date().toISOString();
 
-      return draftRef.set({ generatedSections: sections }, { merge: true })
+      /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
+      return watch.merge({ generatedSections: sections, generatedAt: now })
         .then(function () {
           return draftRef.collection('drafts').add({
             templateId: templateId, sourceEventId: sourceEventId, library: {},
-            positioningNotes: positioningNotes, model: 'gemini-3.8-flash', generatedAt: now, skippedLibraries: []
+            positioningNotes: positioningNotes, model: GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: []
           });
         })
         .then(function (docRef) {
@@ -1494,11 +1420,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
           });
         });
     });
-  }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+  }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
 }
 
 function handleGenerateContent(req, res) {
-  readBody(req, function (raw) {
+  readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
@@ -1511,7 +1437,8 @@ function handleGenerateContent(req, res) {
     var sourceEventId = String(payload.sourceEventId || eventId).trim();
     var futureEdition = !!payload.futureEdition;
     if (!eventId || !templateId) return sendJson(res, 400, { error: 'eventId and templateId are required.' });
-    if (!/^[a-z0-9-]+$/.test(templateId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
+    if (!isEventId(eventId) || !isEventId(sourceEventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(templateId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1522,7 +1449,7 @@ function handleGenerateContent(req, res) {
     // comment for why), reading the designPlan /api/plan-structure already saved on events/{genEventId}.
     if (/^gen-/.test(templateId)) {
       var genEventId = templateId.slice(4);
-      if (!genEventId || !/^[a-z0-9-]+$/.test(genEventId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
+      if (!isEventId(genEventId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
       return fb.db.collection('events').doc(genEventId).get().then(function (snap) {
         var data = snap.exists ? snap.data() : {};
         var designPlan = data.designPlan;
@@ -1560,7 +1487,7 @@ function handleGenerateContent(req, res) {
     var skippedLibraries = deliberatelySkippedLibraries((templateJson.content || {}).map);
 
     runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null);
-  });
+  }, BODY_LIMITS.ai);
 }
 
 /* ---------- GET /api/draft — fetches the latest generated draft, pre-shaped for the editor ----------
@@ -1594,6 +1521,7 @@ function handleGetDraft(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var eventId = String(qs.get('eventId') || '').trim();
   if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
+  if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
 
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1633,7 +1561,7 @@ function handleGeneratedTemplate(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var eventId = String(qs.get('eventId') || '').trim();
   if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-  if (!/^[a-z0-9-]+$/.test(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+  if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
 
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1710,7 +1638,7 @@ function handleGeneratedSection(req, res) {
   var eventId = String(qs.get('eventId') || '').trim();
   var sectionId = String(qs.get('id') || '').trim();
   if (!eventId || !sectionId) return sendJson(res, 400, { error: 'eventId and id are required.' });
-  if (!/^[a-z0-9-]+$/.test(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+  if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
 
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1721,7 +1649,10 @@ function handleGeneratedSection(req, res) {
     var sections = Array.isArray(data.generatedSections) ? data.generatedSections : [];
     var found = sections.filter(function (s) { return s && s.id === sectionId; })[0];
     if (!found) return sendJson(res, 404, { error: 'No generated section "' + sectionId + '" found for "' + eventId + '".' });
-    sendJson(res, 200, { html: found.html || '', css: found.css || '' });
+    /* scoped on the way out as well as when stored (it is idempotent), so sections stored before the
+       server did the scoping are served correctly too */
+    var html = String(found.html || '');
+    sendJson(res, 200, { html: html, css: scopeSectionCss(found.css, sectionId, sectionRootInfo(html)) });
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
 }
 
@@ -2200,7 +2131,7 @@ function handleImportLovable(req, res) {
   requireAdmin(req, res, function (fb) {
     parseJsonBody(req, res, function (body) {
       var importId = String(body.importId || '').trim();
-      if (!importId || !/^[a-z0-9-]+$/.test(importId)) {
+      if (!importId || !/^[a-z0-9][a-z0-9-]{0,59}$/.test(importId)) {
         return sendJson(res, 400, { error: 'A valid importId (lowercase letters, digits, hyphens) is required.' });
       }
       var zipBase64 = body.zipBase64 ? String(body.zipBase64) : '';
@@ -2216,7 +2147,7 @@ function handleImportLovable(req, res) {
         if (urlError) return sendJson(res, 400, { error: urlError });
         runImportLovableFromUrl(fb, res, importId, url);
       });
-    });
+    }, BODY_LIMITS.importZip);
   });
 }
 
@@ -2224,7 +2155,7 @@ function handleImportedTemplate(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var importId = String(qs.get('eventId') || '').trim();
   if (!importId) return sendJson(res, 400, { error: 'eventId is required.' });
-  if (!/^[a-z0-9-]+$/.test(importId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+  if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(importId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
 
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -2261,7 +2192,7 @@ function handleImportedSection(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var importId = String(qs.get('eventId') || '').trim();
   if (!importId) return sendJson(res, 400, { error: 'eventId is required.' });
-  if (!/^[a-z0-9-]+$/.test(importId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+  if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(importId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
 
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -2280,419 +2211,2322 @@ function handleImportedSection(req, res) {
 }
 
 /* =====================================================================================================
-   EVENT CONSOLE — real Firestore data for edit-event.html and its sibling tabs, replacing the hardcoded
-   window.RevampCore.EVENTS[] array + localStorage every tab used before. See lib/firebase.js's header
-   comment for the full schema this section implements.
+   EVENT CONSOLE — real Firestore data for edit-event.html and its sibling tabs. See lib/firebase.js's
+   header comment for the schema.
    ===================================================================================================== */
 
-/* ---------- auth gate ----------
-   Every admin-write/read route below (everything except the public POST /api/register) requires a
-   verified Firebase Auth ID token in `Authorization: Bearer <token>` — this is the first auth check
-   anywhere in this file; every endpoint above this point remains exactly as unauthenticated as it always
-   was (a known, separately-tracked gap, not something this change silently expands or narrows).
-   `cb(fb, decoded)` only runs once the token is confirmed real; `decoded.email`/`decoded.uid` is what gets
-   stamped as `createdBy` on anything this session creates. */
-function requireAdmin(req, res, cb) {
-  var header = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
-  var m = /^Bearer\s+(.+)$/.exec(header);
-  if (!m) return sendJson(res, 401, { error: 'Sign in required — missing Authorization: Bearer <token> header.' });
+/* ---------- shared by every handler below ---------- */
 
-  var fb = getFirebase();
-  if (fb.error) return sendJson(res, 503, { error: fb.error });
+/* An error that already knows what the caller should be told: `status` and a body fit to show a user.
+   Thrown inside promise chains and Firestore transactions and turned into the response by sendFailure().
+   (The Admin SDK retries a transaction only for its own retryable gRPC codes; an error without one, like
+   this, ends the transaction at once and rejects with the same object.) */
+function httpError(status, message, extra) {
+  var err = new Error(message);
+  err.status = status;
+  err.body = Object.assign({ error: message }, extra || {});
+  return err;
+}
 
-  fb.auth.verifyIdToken(m[1]).then(function (decoded) {
-    // a real sign-in isn't enough: only Google accounts on the company domain (access.js)
-    if (!isAllowedUser(decoded)) return sendJson(res, 403, { error: deniedMessage() });
-    cb(fb, decoded);
-  }).catch(function () {
-    sendJson(res, 401, { error: 'Your sign-in has expired or is invalid — please log in again.' });
+/* The single way a failed request is answered. An httpError goes out as written; anything else is a fault
+   on our side — it is logged in full for us and the user gets one plain sentence, never the raw Firestore
+   or Storage text (which used to leak document paths and gRPC codes into toasts). */
+function sendFailure(res, what, err, friendly) {
+  if (err && err.status && err.body) return sendJson(res, err.status, err.body);
+  console.error('api: ' + what + ' failed — ' + (err && err.stack || err));
+  sendJson(res, 500, { error: friendly || 'Something went wrong on the server. Please try again.' });
+}
+
+/* requireAdmin / parseJsonBody call back from inside a promise or a stream event, where a synchronous
+   throw is caught by nobody: the request would get no answer at all and hang until the client gave up.
+   Every handler below goes through these two, so a bug in a handler's own first lines costs that one
+   request a 500 instead. cb(fb, decoded[, body]). */
+function withAdmin(req, res, cb) {
+  requireAdmin(req, res, function (fb, decoded) {
+    try { cb(fb, decoded); } catch (err) { sendFailure(res, req.method + ' ' + req.url, err); }
+  });
+}
+function withAdminBody(req, res, maxBytes, cb) {
+  withAdmin(req, res, function (fb, decoded) {
+    parseJsonBody(req, res, function (body) {
+      try { cb(fb, decoded, body); } catch (err) { sendFailure(res, req.method + ' ' + req.url, err); }
+    }, maxBytes);
   });
 }
 
-function parseJsonBody(req, res, cb) {
-  readBody(req, function (raw) {
-    var body;
-    try { body = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
-    cb(body);
+function queryOf(req) { return new URLSearchParams(req.url.split('?')[1] || ''); }
+
+/* Event ids and record ids become Firestore document paths and Storage object names. Firestore's own
+   .doc() throws synchronously on "a/b", "." or "..", so an id is checked here before it is ever used —
+   and answered 400, which is what it is, instead of the 401 / raw 500 / no reply at all it used to get. */
+function eventIdOr400(res, value) {
+  var id = typeof value === 'string' ? value.trim() : '';
+  if (!id) { sendJson(res, 400, { error: 'eventId is required.' }); return ''; }
+  if (!isEventId(id)) { sendJson(res, 400, { error: 'Invalid eventId — lowercase letters, digits and hyphens only.' }); return ''; }
+  return id;
+}
+/* "__name__" is a form Firestore keeps for itself: .doc() accepts it and the request then fails. */
+function isRecordId(v) { return typeof v === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(v) && !/^__.*__$/.test(v); }
+
+function fieldDelete() { return require('firebase-admin').firestore.FieldValue.delete(); }
+
+/* ---------- "this event exists" ----------
+   One rule, the same one lib/api-events.js uses for the address check and for clone:
+
+     live     events/<id> carries `createdAt` — stamped only by POST /api/event and by clone — and no
+              `deletedAt`. Only a live event can be read, changed, given content, saved, published.
+     deleted  it carries `deletedAt` (soft delete). To every route here it is as if it did not exist
+              (404), but its address stays taken.
+     shell    the document exists without `createdAt`. The AI steps write { ...eventMeta, updatedAt },
+              `designPlan`, `theme` and so on with merge BEFORE the wizard creates the event, and older
+              versions of this file created such documents as a side effect of PATCH / publish / stage on
+              an id nobody had created. A shell is not an event: it is not listed, cannot be edited, and
+              does not stop the address being used for a real event (see handleEventCreate for what a
+              first creation over a shell keeps and what it throws away).
+     missing  no document. */
+function eventStateOf(snap) {
+  if (!snap || !snap.exists) return 'missing';
+  var d = snap.data() || {};
+  if (d.deletedAt) return 'deleted';
+  return d.createdAt ? 'live' : 'shell';
+}
+function notLiveError(state, eventId) {
+  if (state === 'deleted') return httpError(404, 'This event has been deleted.', { code: 'event-deleted' });
+  return httpError(404, 'No event found for "' + eventId + '".', { code: 'event-not-found' });
+}
+function eventDocRef(fb, eventId) { return fb.db.collection('events').doc(eventId); }
+
+/* Resolves the event's data, or rejects with the 404 above. */
+function loadLiveEvent(fb, eventId) {
+  return eventDocRef(fb, eventId).get().then(function (snap) {
+    var state = eventStateOf(snap);
+    if (state !== 'live') throw notLiveError(state, eventId);
+    return snap.data();
   });
+}
+
+/* The AI steps write onto the event, and under it, at the END of a model call that can run for over a
+   minute — long enough for the owner to cancel and for the wizard to discard the draft (DELETE
+   /api/event?discard=1) meanwhile. A late write would then bring the removed event back as a shell with
+   a brief or a generated site under it. So each step looks at the event before it starts and again just
+   before it stores anything:
+     - an event that has been deleted is refused at the start (404) — no model call is paid for;
+     - an event that was there at the start and is gone, or deleted, at the end answers
+       409 { code: 'event-gone' } and stores nothing.
+   An id with no event behind it at the start is left as it was: pages that run these steps before
+   creating the event still work. Resolves { stillThere(), merge(data) }. */
+function watchEvent(fb, eventId) {
+  var ref = eventDocRef(fb, eventId);
+  function check(snap, start) {
+    var now = eventStateOf(snap);
+    if (now === 'deleted' || (start === 'live' && now !== 'live')) {
+      throw httpError(409, 'This event was removed while this was running, so nothing was saved.', { code: 'event-gone' });
+    }
+  }
+  return ref.get().then(function (snap) {
+    var start = eventStateOf(snap);
+    if (start === 'deleted') throw notLiveError('deleted', eventId);
+    return {
+      stillThere: function () { return ref.get().then(function (now) { check(now, start); }); },
+      /* merges `data` into the event document, in the same transaction as the check */
+      merge: function (data) {
+        return fb.db.runTransaction(function (tx) {
+          return tx.get(ref).then(function (now) { check(now, start); tx.set(ref, data, { merge: true }); });
+        });
+      }
+    };
+  });
+}
+/* How an AI step answers a failure of its own chain: a refusal made on purpose (httpError) as written,
+   anything else as the route's existing message. */
+function sendStepFailure(res, err, status, message) {
+  if (err && err.status && err.body) return sendJson(res, err.status, err.body);
+  sendJson(res, status, { error: message });
+}
+
+function publicPathOf(eventId) { return '/e/' + eventId; }
+
+/* What a client is given for an event. The stored document plus the three things every list and console
+   needs in one agreed form: `published` as a real boolean, `publishedPath` ("/e/<id>" while published,
+   else null) and `counters`. Events published by the previous version of this file carry a
+   `publishedUrl` on storage.googleapis.com; that address must not be shown any more (it stops working
+   the next time the event is published), so it is replaced by the path here. Internal bookkeeping
+   (the site save lock) is not sent. */
+var EVENT_TIME_FIELDS = ['createdAt', 'updatedAt', 'publishedAt', 'unpublishedAt', 'deletedAt'];
+
+/* A stored moment as an ISO string. Everything this file writes already is one; a document written by
+   hand in the Firebase console, or by an import script, may hold a Firestore Timestamp instead, which
+   would reach a client as { _seconds, _nanoseconds } and compare equal to nothing. */
+function isoOf(v) {
+  if (v == null || typeof v === 'string') return v;
+  if (typeof v.toDate === 'function') { try { return v.toDate().toISOString(); } catch (e) { return null; } }
+  if (v instanceof Date) return isNaN(v) ? null : v.toISOString();
+  if (typeof v._seconds === 'number') return new Date(v._seconds * 1000).toISOString();
+  return null;
+}
+
+function eventForClient(eventId, data) {
+  var out = Object.assign({ eventId: eventId }, data);
+  delete out.siteLock;
+  EVENT_TIME_FIELDS.forEach(function (f) { if (has(out, f)) out[f] = isoOf(out[f]); });
+  out.published = data.published === true;
+  out.publishedPath = out.published ? publicPathOf(eventId) : null;
+  if (out.published) out.publishedUrl = out.publishedPath; else delete out.publishedUrl;
+  var c = data.counters || {};
+  out.counters = { registrations: +c.registrations || 0, views: +c.views || 0 };
+  /* Online payment is not available, so every event registers free — including the ones an earlier
+     wizard stored as "paid" without ever being able to collect anything. */
+  out.payment = { type: 'free' };
+  return out;
+}
+
+/* ---------- validation ----------
+   Every check returns '' when the value is fine, or a sentence that names the field. Nothing here
+   coerces: a number where text belongs is refused, not stored as "12345". */
+function isPlainObject(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+function has(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+
+var LIVE_RUNTIME_PRESENT = fs.existsSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'rv-live.js'));
+
+function checkText(label, v, max, required) {
+  if (v == null) return required ? label + ' is required.' : '';
+  if (typeof v !== 'string') return label + ' must be text.';
+  if (required && !v.trim()) return label + ' is required.';
+  if (v.length > max) return label + ' is too long (the limit is ' + max + ' characters).';
+  return '';
+}
+/* An address of something on the web or on this site. Never the picture itself: an image pasted in as a
+   data: URL is exactly what used to be written into the Firestore document, where anything over about
+   0.75 MB failed with a raw database error. Images go through POST /api/event/upload and arrive here as
+   the URL that returned. */
+var INLINE_IMAGE_MAX_CHARS = 700000;   // ~520 KB of image as base64; a Firestore document holds 1 MiB
+function checkUrl(label, v, max) {
+  if (v == null || v === '') return '';
+  if (typeof v !== 'string') return label + ' must be a web address.';
+  /* Until the console and the wizard upload every picture first, they still send small ones inline, and
+     refusing those would stop a speaker photo, a sponsor logo or a gallery picture being saved at all.
+     An inline image is therefore still accepted while it is small enough to fit a Firestore document
+     beside the record's other fields; anything larger gets the instruction that actually helps. */
+  if (/^\s*data:/i.test(v)) {
+    if (/^\s*data:image\/(png|jpe?g|webp|gif);base64,/i.test(v) && v.length <= INLINE_IMAGE_MAX_CHARS) return '';
+    return label + ' is too large to be saved with the record — use a smaller picture (under about 500 KB).';
+  }
+  if (v.length > (max || 2000)) return label + ' is too long.';
+  /* http(s), a path on this host ("/assets/…") or a bare "company.com/page" — the console stores web
+     addresses without their scheme. Any other scheme (javascript:, ftp:, mailto:) is not a web address;
+     "host:8080/…" is a port, not a scheme. */
+  var t = v.trim();
+  if (/\s/.test(t)) return label + ' is not a valid web address.';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t) && !/^https?:\/\/[^\/]/i.test(t) && !/^[a-z0-9.-]+:\d+(\/|$)/i.test(t)) return label + ' is not a valid web address.';
+  return '';
+}
+function checkHttpUrl(label, v, max) {
+  var e = checkUrl(label, v, max);
+  if (e || v == null || v === '') return e;
+  return /^https?:\/\/[^\s]+$/i.test(v.trim()) ? '' : label + ' must start with http:// or https://.';
+}
+function checkNumber(label, v, min, max) {
+  if (v == null) return '';
+  if (typeof v !== 'number' || !isFinite(v)) return label + ' must be a number.';
+  if ((min != null && v < min) || (max != null && v > max)) return label + ' is out of range.';
+  return '';
+}
+function checkDate(label, v) {
+  if (v == null || v === '') return '';
+  if (typeof v !== 'string' || v.length > 40 || isNaN(Date.parse(v))) return label + ' must be a date.';
+  return '';
 }
 
 /* ---------- generic per-event subcollection CRUD ----------
-   Nine of the console's tabs (speakers/speaker-groups/sessions/agenda-groups/partners/partner-tiers/
-   gallery/faqs/contacts) are structurally identical: a flat list of records under events/{eventId}/<name>,
-   each with a server-assigned id, created/updated by an admin, read back as a plain array. Rather than
-   hand-write the same list/create/update/remove four times over for each of the 9 (36 near-identical
-   handlers), this factory builds all four from just the collection name + its allowed field list — every
-   resource below is one line registering its own shape, not its own copy of this logic. `fields` is a
-   strict allow-list: only named fields are ever read off the request body, so a client can't smuggle an
-   arbitrary field (e.g. `createdBy`) into a write by just including it in the JSON. */
-function subcollectionRoutes(name, fields) {
-  function sanitize(body) {
-    var out = {};
-    fields.forEach(function (f) {
-      if (Object.prototype.hasOwnProperty.call(body, f)) out[f] = body[f];
-    });
-    return out;
+   The console's Content tabs (speakers/speaker-groups/sessions/agenda-groups/partners/partner-tiers/
+   gallery/faqs/contacts) and the Promotions pages' own records (leads, promo-templates, promo-audiences)
+   are structurally identical: a flat list of records under events/{eventId}/<name>, each with a
+   server-assigned id, created/updated by an admin, read back as a plain array. This factory builds
+   list/create/update/remove from the collection name and its field table — every resource below is one
+   entry registering its own shape, not its own copy of this logic.
+
+   `spec.fields` is both the allow-list (only named fields are ever read off the request body, so a client
+   cannot smuggle `createdBy` into a write) and the type of each one:
+     'text' short text (300)   'long' long text (5000)   'long20k' a message body (20,000)
+     'text:<n>'  short text of at most n characters
+     'url'    an address — http(s), a path on this host, or a bare "company.com/…"; never a data: URL
+     'email'  '' or an e-mail address          'phone'  '' or digits with + ( ) . - and spaces
+     'colour' '' or #rgb / #rrggbb             'status' '' or one of CONTENT_STATUSES
+     'enum:a|b|c'  one of the listed values ('' only when it is listed: 'enum:|hot|cold')
+     'bool'   true or false                    'num'    a finite number
+     'rank'   a short label or a number (the console's "weight")
+     'ymd'    '' or YYYY-MM-DD                 'iso'    a date-time, or null
+     'tags'   up to 20 short labels            'keys'   up to 5,000 "r:<id>" / "l:<id>" person keys
+     'ref'    the id of another record, or null             'refs' a list of such ids
+     a function (label, value) -> '' or the problem, for a field with a shape of its own
+   `spec.required` names what a record cannot exist without; `spec.anyOf` is "at least one of these".
+   A blank record (timestamps only) used to be accepted and then showed up as an empty card on the site.
+   `spec.fixed` names fields that are set when the record is created and cannot be changed afterwards;
+   `spec.defaults` fills fields a create left out; `spec.derive(data)` adds what the server works out
+   itself from what was sent; `spec.onRemove(fb, eventId, id, ref)` replaces the plain delete when other
+   records point at this one, and resolves what to add to the answer. */
+var FIELD_LIMITS = { text: 300, long: 5000, long20k: 20000 };
+var PERSON_KEY = /^[rl]:[A-Za-z0-9_-]{1,120}$/;
+
+function checkRecordField(label, type, v) {
+  if (typeof type === 'function') return type(label, v);
+  if (type === 'text' || type === 'long' || type === 'long20k') return checkText(label, v, FIELD_LIMITS[type], false);
+  if (type.indexOf('text:') === 0) return checkText(label, v, +type.slice(5), false);
+  if (type === 'url') return checkUrl(label, v);
+  if (type === 'num') return checkNumber(label, v, -1e9, 1e9);
+  if (type === 'bool') return (v == null || typeof v === 'boolean') ? '' : label + ' must be true or false.';
+  if (type === 'rank') {
+    if (v == null || (typeof v === 'number' && isFinite(v))) return '';
+    return typeof v === 'string' && v.length <= 40 ? '' : label + ' is not valid.';
   }
-  function col(fb, eventId) { return fb.db.collection('events').doc(eventId).collection(name); }
+  if (type === 'email') {
+    if (v == null || v === '') return '';
+    return typeof v === 'string' && isEmail(v.trim()) ? '' : label + ' is not a valid email address.';
+  }
+  if (type === 'phone') {
+    if (v == null || v === '') return '';
+    return typeof v === 'string' && v.length <= 40 && /^[\d\s+().-]+$/.test(v) ? '' : label + ' is not a valid phone number.';
+  }
+  if (type === 'colour') {
+    if (v == null || v === '') return '';
+    return typeof v === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? '' : label + ' must be a colour like #1a2b3c.';
+  }
+  if (type === 'status') {
+    if (v == null || v === '') return '';
+    return CONTENT_STATUSES.indexOf(v) !== -1 ? '' : label + ' must be one of: ' + CONTENT_STATUSES.join(', ') + '.';
+  }
+  if (type.indexOf('enum:') === 0) {
+    var allowed = type.slice(5).split('|');
+    if (v == null) return '';
+    return typeof v === 'string' && allowed.indexOf(v) !== -1 ? '' : label + ' must be one of: ' + allowed.filter(Boolean).join(', ') + '.';
+  }
+  if (type === 'ymd') {
+    if (v == null || v === '') return '';
+    return typeof v === 'string' && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v) ? '' : label + ' must be a date like 2026-11-30.';
+  }
+  if (type === 'iso') {
+    if (v == null) return '';
+    return typeof v === 'string' && v.length <= 40 && /^\d{4}-\d{2}-\d{2}T/.test(v) && !isNaN(Date.parse(v)) ? '' : label + ' must be a date and time.';
+  }
+  if (type === 'tags') {
+    if (v == null) return '';
+    if (!Array.isArray(v) || v.length > 20) return label + ' must be a list of at most 20 labels.';
+    return v.every(function (x) { return typeof x === 'string' && x.trim() && x.length <= 40; }) ? '' : label + ' has a label that is empty or longer than 40 characters.';
+  }
+  if (type === 'keys') {
+    if (v == null) return '';
+    if (!Array.isArray(v) || v.length > 5000) return label + ' must be a list of at most 5,000 people.';
+    return v.every(function (x) { return typeof x === 'string' && PERSON_KEY.test(x); }) ? '' : label + ' has an entry that is not a person.';
+  }
+  if (type === 'ref') return (v == null || v === '' || isRecordId(v)) ? '' : label + ' is not a valid id.';
+  if (type === 'refs') {
+    if (v == null) return '';
+    if (!Array.isArray(v) || v.length > 200 || !v.every(isRecordId)) return label + ' must be a list of ids.';
+    return '';
+  }
+  return label + ' is not accepted.';
+}
+
+/* The order every list of records is returned in: by `order` (records that have a number first, lowest
+   first), then oldest first, then by id so that two records made in the same millisecond never swap. */
+function byRecordOrder(a, b) {
+  var an = typeof a.order === 'number' && isFinite(a.order), bn = typeof b.order === 'number' && isFinite(b.order);
+  if (an !== bn) return an ? -1 : 1;
+  if (an && a.order !== b.order) return a.order - b.order;
+  var ac = String(a.createdAt || ''), bc = String(b.createdAt || '');
+  if (ac !== bc) return ac < bc ? -1 : 1;
+  return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+}
+
+/* "3:42 pm on 12 Oct" in India time, for a sentence about when somebody else saved. */
+function whenInIndia(iso) {
+  var t = Date.parse(iso);
+  if (isNaN(t)) return '';
+  var d = new Date(t + 330 * 60000), h = d.getUTCHours(), m = d.getUTCMinutes();
+  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' am' : ' pm') + ' on ' + d.getUTCDate() + ' ' + months[d.getUTCMonth()];
+}
+
+/* 409 for a save made on top of a version that somebody has since replaced. The caller passed the
+   `updatedAt` it last saw as `ifUpdatedAt`; without it a save is not checked (older pages). */
+function staleError(what, stored) {
+  var when = whenInIndia(stored.updatedAt);
+  return httpError(409, 'This ' + what + ' was changed by ' + (stored.updatedBy || 'someone else') + (when ? ' at ' + when : '') +
+    '. Reload to see the latest version.', { code: 'stale', current: { updatedAt: stored.updatedAt || null, updatedBy: stored.updatedBy || null } });
+}
+function checkIfUpdatedAt(body) {
+  return (body.ifUpdatedAt == null || (typeof body.ifUpdatedAt === 'string' && body.ifUpdatedAt.length <= 40)) ? '' : '"ifUpdatedAt" must be the updatedAt value you last received.';
+}
+function sameValue(a, b) { return a === b || JSON.stringify(a) === JSON.stringify(b); }
+
+function subcollectionRoutes(name, spec) {
+  var fields = spec.fields, label = spec.label;
+  var required = spec.required || [], anyOf = spec.anyOf || null, fixed = spec.fixed || [];
+
+  /* -> { data } or { error, field }. On create every required field must be present; on update a
+     required field may be left out (it keeps its value) but may not be blanked.
+     `stored` is the record as it is now (update only). A value that is sent back exactly as it is stored
+     is not judged again: the console sends the whole record on every save, and a phone number or status
+     written before a rule existed must not stop its owner from fixing a typo in the name. */
+  function sanitize(body, creating, stored) {
+    var out = {}, names = Object.keys(fields);
+    for (var i = 0; i < names.length; i++) {
+      var f = names[i];
+      if (!has(body, f)) continue;
+      var unchanged = !!stored && has(stored, f) && sameValue(stored[f], body[f]);
+      if (!unchanged) {
+        if (!creating && fixed.indexOf(f) !== -1) return { error: 'The "' + f + '" of a ' + label + ' cannot be changed after it is created.', field: f };
+        var problem = checkRecordField('"' + f + '"', fields[f], body[f]);
+        if (problem) return { error: problem, field: f };
+      }
+      out[f] = body[f];
+    }
+    function blank(f) { return out[f] == null || (typeof out[f] === 'string' && !out[f].trim()); }
+    for (var r = 0; r < required.length; r++) {
+      if (creating ? blank(required[r]) : (has(out, required[r]) && blank(required[r]))) {
+        return { error: 'A ' + label + ' needs a "' + required[r] + '".', field: required[r] };
+      }
+    }
+    if (anyOf && creating && anyOf.every(blank)) {
+      return { error: 'A ' + label + ' needs at least one of: ' + anyOf.join(', ') + '.', field: anyOf[0] };
+    }
+    if (creating && spec.defaults) Object.keys(spec.defaults).forEach(function (k) { if (out[k] == null) out[k] = spec.defaults[k]; });
+    if (spec.derive) spec.derive(out);
+    return { data: out };
+  }
+  function col(fb, eventId) { return eventDocRef(fb, eventId).collection(name); }
+  function gone() { return httpError(404, 'That ' + label + ' no longer exists — it may have been deleted.', { code: 'record-not-found' }); }
 
   function list(req, res) {
-    requireAdmin(req, res, function (fb) {
-      var qs = new URLSearchParams(req.url.split('?')[1] || '');
-      var eventId = String(qs.get('eventId') || '').trim();
-      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-      col(fb, eventId).get()
-        .then(function (snap) {
-          var items = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-          items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
-          sendJson(res, 200, { items: items });
-        })
-        .catch(function (err) { sendJson(res, 500, { error: name + ' list failed: ' + err.message }); });
+    withAdmin(req, res, function (fb) {
+      var eventId = eventIdOr400(res, queryOf(req).get('eventId'));
+      if (!eventId) return;
+      /* The event itself is read alongside, only to keep a deleted event's content out of sight. An id
+         with no event yet still answers an empty list, as it always has: the editor asks for a new
+         site's records before there are any. */
+      Promise.all([eventDocRef(fb, eventId).get(), col(fb, eventId).get()]).then(function (r) {
+        if (eventStateOf(r[0]) === 'deleted') throw notLiveError('deleted', eventId);
+        var items = r[1].docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        items.sort(byRecordOrder);
+        sendJson(res, 200, { items: items });
+      }).catch(function (err) { sendFailure(res, name + ' list', err, 'Could not load the ' + label + ' list. Please try again.'); });
     });
   }
+
+  /* Create, update and delete all refuse to act under an event that is not live, and update / delete
+     refuse an id that is not there. set(..., {merge:true}) and delete() used to succeed on anything:
+     a PATCH for a speaker deleted in another tab quietly brought back a half-empty ghost of it, and a
+     write under a mistyped event id created content (and a parent document) for an event nobody had. */
   function create(req, res) {
-    requireAdmin(req, res, function (fb, decoded) {
-      parseJsonBody(req, res, function (body) {
-        var eventId = String(body.eventId || '').trim();
-        if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-        var data = sanitize(body);
-        var now = new Date().toISOString();
-        data.createdAt = now; data.updatedAt = now; data.createdBy = decoded.email || decoded.uid;
-        col(fb, eventId).add(data)
-          .then(function (ref) { sendJson(res, 200, { id: ref.id }); })
-          .catch(function (err) { sendJson(res, 500, { error: name + ' create failed: ' + err.message }); });
-      });
+    withAdminBody(req, res, spec.maxBody || BODY_LIMITS.record, function (fb, decoded, body) {
+      var eventId = eventIdOr400(res, body.eventId);
+      if (!eventId) return;
+      var clean = sanitize(body, true, null);
+      if (clean.error) return sendJson(res, 400, { error: clean.error, field: clean.field });
+      var data = clean.data, now = new Date().toISOString();
+      data.createdAt = now; data.updatedAt = now; data.createdBy = actorOf(decoded); data.updatedBy = data.createdBy;
+      loadLiveEvent(fb, eventId)
+        .then(function () { return col(fb, eventId).add(data); })
+        .then(function (ref) { sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now }); })
+        .catch(function (err) { sendFailure(res, name + ' create', err, 'Could not save the ' + label + '. Please try again.'); });
     });
   }
+  /* Each field sent replaces the stored one as a whole. The read of the record, the checks and the write
+     are one transaction, so of two people saving the same record at the same moment the second is judged
+     against what the first one stored — and, when it sent `ifUpdatedAt`, told so (409) instead of
+     overwriting it. */
   function update(req, res) {
-    requireAdmin(req, res, function (fb) {
-      parseJsonBody(req, res, function (body) {
-        var eventId = String(body.eventId || '').trim();
-        var id = String(body.id || '').trim();
-        if (!eventId || !id) return sendJson(res, 400, { error: 'eventId and id are required.' });
-        var data = sanitize(body);
-        data.updatedAt = new Date().toISOString();
-        col(fb, eventId).doc(id).set(data, { merge: true })
-          .then(function () { sendJson(res, 200, { ok: true }); })
-          .catch(function (err) { sendJson(res, 500, { error: name + ' update failed: ' + err.message }); });
-      });
+    withAdminBody(req, res, spec.maxBody || BODY_LIMITS.record, function (fb, decoded, body) {
+      var eventId = eventIdOr400(res, body.eventId);
+      if (!eventId) return;
+      if (!isRecordId(body.id)) return sendJson(res, 400, { error: 'A valid id is required.' });
+      var bad = checkIfUpdatedAt(body);
+      if (bad) return sendJson(res, 400, { error: bad, field: 'ifUpdatedAt' });
+      var ref = col(fb, eventId).doc(body.id), now = new Date().toISOString();
+      /* the event is read outside the transaction: every registration writes to that document, and a
+         content save must not queue behind them */
+      loadLiveEvent(fb, eventId).then(function () {
+        return fb.db.runTransaction(function (tx) {
+          return tx.get(ref).then(function (snap) {
+            if (!snap.exists) throw gone();
+            var stored = snap.data() || {};
+            if (body.ifUpdatedAt != null && body.ifUpdatedAt !== stored.updatedAt) throw staleError(label, stored);
+            var clean = sanitize(body, false, stored);
+            if (clean.error) throw httpError(400, clean.error, { field: clean.field });
+            var data = clean.data;
+            data.updatedAt = now; data.updatedBy = actorOf(decoded);
+            tx.update(ref, data);
+          });
+        });
+      }).then(function () { sendJson(res, 200, { ok: true, updatedAt: now }); })
+        .catch(function (err) { sendFailure(res, name + ' update', err, 'Could not save the ' + label + '. Please try again.'); });
     });
   }
   function remove(req, res) {
-    requireAdmin(req, res, function (fb) {
-      var qs = new URLSearchParams(req.url.split('?')[1] || '');
-      var eventId = String(qs.get('eventId') || '').trim();
-      var id = String(qs.get('id') || '').trim();
-      if (!eventId || !id) return sendJson(res, 400, { error: 'eventId and id are required.' });
-      col(fb, eventId).doc(id).delete()
-        .then(function () { sendJson(res, 200, { ok: true }); })
-        .catch(function (err) { sendJson(res, 500, { error: name + ' delete failed: ' + err.message }); });
+    withAdmin(req, res, function (fb) {
+      var qs = queryOf(req);
+      var eventId = eventIdOr400(res, qs.get('eventId'));
+      if (!eventId) return;
+      var id = qs.get('id');
+      if (!isRecordId(id)) return sendJson(res, 400, { error: 'A valid id is required.' });
+      var ref = col(fb, eventId).doc(id);
+      Promise.all([loadLiveEvent(fb, eventId), ref.get()]).then(function (r) {
+        if (!r[1].exists) throw httpError(404, 'That ' + label + ' no longer exists — it may already have been deleted.', { code: 'record-not-found' });
+        return spec.onRemove ? spec.onRemove(fb, eventId, id, ref) : ref.delete();
+      }).then(function (extra) { sendJson(res, 200, Object.assign({ ok: true }, spec.onRemove ? extra : null)); })
+        .catch(function (err) { sendFailure(res, name + ' delete', err, 'Could not delete the ' + label + '. Please try again.'); });
     });
   }
-  return { list: list, create: create, update: update, remove: remove };
+  return { list: list, create: create, update: update, remove: remove, sanitize: sanitize, col: col, label: label };
 }
 
-// Field shapes taken directly from edit-event.html's own existing in-memory objects (S.speakers[]/
-// S.sessions[]/S.partners[] etc.) — the console UI itself barely changes, only its load/save calls move
-// from localStorage to these endpoints.
+/* Deleting a speaker also takes them off every session that lists them, in the same write: the console
+   can only tidy the sessions it happens to have loaded, and a session must never name a speaker who is
+   no longer there. -> { sessionsUpdated } */
+function removeSpeaker(fb, eventId, id, ref) {
+  var FieldValue = require('firebase-admin').firestore.FieldValue;
+  return eventDocRef(fb, eventId).collection('sessions').where('speakerIds', 'array-contains', id).get().then(function (snap) {
+    var docs = snap.docs, batches = [];
+    for (var i = 0; i === 0 || i < docs.length; i += 400) {
+      var batch = fb.db.batch();
+      if (i === 0) batch.delete(ref);
+      docs.slice(i, i + 400).forEach(function (d) { batch.update(d.ref, { speakerIds: FieldValue.arrayRemove(id) }); });
+      batches.push(batch);
+    }
+    return batches.reduce(function (chain, b) { return chain.then(function () { return b.commit(); }); }, Promise.resolve())
+      .then(function () { return { sessionsUpdated: docs.length }; });
+  });
+}
+
+// Field shapes taken directly from edit-event.html's own in-memory objects (S.speakers[] / S.sessions[] /
+// S.partners[] etc.); the Firestore collection name is the first argument, the URL segment is the key.
 var RESOURCES = {
-  'speakers': subcollectionRoutes('speakers', ['name', 'desig', 'comp', 'photoUrl', 'logoUrl', 'colour', 'weight', 'status', 'email', 'phone', 'li', 'bio', 'groupId', 'order']),
-  'speaker-groups': subcollectionRoutes('speakerGroups', ['name', 'order']),
-  'sessions': subcollectionRoutes('sessions', ['title', 'start', 'end', 'kind', 'speakerIds', 'desc', 'room', 'weight', 'groupId', 'order']),
-  'agenda-groups': subcollectionRoutes('agendaGroups', ['name', 'date', 'order']),
-  'partners': subcollectionRoutes('partners', ['name', 'url', 'logoUrl', 'weight', 'status', 'email', 'phone', 'contact', 'note', 'tierId', 'order']),
-  'partner-tiers': subcollectionRoutes('partnerTiers', ['name', 'weight', 'order']),
-  'gallery': subcollectionRoutes('gallery', ['imageUrl', 'caption', 'order']),
-  'faqs': subcollectionRoutes('faqs', ['question', 'answer', 'order']),
-  'contacts': subcollectionRoutes('contacts', ['label', 'name', 'email', 'phone', 'order'])
+  'speakers': subcollectionRoutes('speakers', { label: 'speaker', required: ['name'], onRemove: removeSpeaker, fields: {
+    name: 'text', desig: 'text', comp: 'text', photoUrl: 'url', logoUrl: 'url', colour: 'colour', weight: 'rank',
+    status: 'status', email: 'email', phone: 'phone', li: 'url', bio: 'long', groupId: 'ref', order: 'num' } }),
+  'speaker-groups': subcollectionRoutes('speakerGroups', { label: 'speaker group', required: ['name'], fields: { name: 'text', order: 'num' } }),
+  'sessions': subcollectionRoutes('sessions', { label: 'session', required: ['title'], fields: {
+    title: 'text', start: 'text', end: 'text', kind: 'text', speakerIds: 'refs', desc: 'long', room: 'text',
+    weight: 'rank', groupId: 'ref', order: 'num' } }),
+  'agenda-groups': subcollectionRoutes('agendaGroups', { label: 'agenda day', required: ['name'], fields: { name: 'text', date: 'text', order: 'num' } }),
+  'partners': subcollectionRoutes('partners', { label: 'partner', required: ['name'], fields: {
+    name: 'text', url: 'url', logoUrl: 'url', weight: 'rank', status: 'status', email: 'email', phone: 'phone',
+    contact: 'text', note: 'long', tierId: 'ref', order: 'num' } }),
+  'partner-tiers': subcollectionRoutes('partnerTiers', { label: 'partner tier', required: ['name'], fields: { name: 'text', weight: 'rank', order: 'num' } }),
+  'gallery': subcollectionRoutes('gallery', { label: 'gallery image', required: ['imageUrl'], fields: { imageUrl: 'url', caption: 'text', order: 'num' } }),
+  'faqs': subcollectionRoutes('faqs', { label: 'FAQ', required: ['question'], fields: { question: 'text', answer: 'long', order: 'num' } }),
+  'contacts': subcollectionRoutes('contacts', { label: 'contact', anyOf: ['label', 'name'], fields: {
+    label: 'text', name: 'text', email: 'email', phone: 'phone', order: 'num' } })
 };
 
-/* ---------- canonical Event: POST/GET/PATCH /api/event ----------
-   Formalizes events/{eventId} — previously only ever touched as a side effect of the AI brief/structure
-   pipeline (handleExtractBrief/handlePlanStructure's merge:true writes) — into a real, directly
-   create/read/update-able record. Both of create-event.html's creation paths (manual wizard and
-   Generate-from-Brief) call POST here now; before this, the manual path created no Firestore doc at all. */
-// Deliberately NOT 'theme': that field name is already owned by the GENERATED TEMPLATES pipeline
-// (handlePlanStructure writes {themeColor, headingFont, bodyFont, heroImageUrl, ...} there) — the
-// console's own Theme tab is an unrelated, simpler concept (one of 4 named colour presets, a plain
-// string). Letting the console PATCH 'theme' would silently overwrite/corrupt a generated event's real
-// theme object the next time someone opened that tab, breaking its actual rendered page. 'paletteTheme'
-// keeps the two completely separate until/unless they're deliberately unified.
-var EVENT_FIELDS = ['name', 'slug', 'category', 'status', 'start', 'end', 'venue', 'city', 'description',
-  'payment', 'sections', 'nav', 'templateId', 'checklist', 'published', 'paletteTheme'];
+/* ---------- Promotions: message / post / banner templates, saved audiences, leads ----------
+   The Promotions pages' own records. Templates and audiences are ordinary resources; leads are too,
+   with four additions further down: paging (an event can hold tens of thousands), one lead per person,
+   notes that two people can add to at once, and bulk import / change / delete. */
+function checkUtmCampaign(label, v) {
+  if (v == null || v === '') return '';
+  return typeof v === 'string' && v.length <= 60 && /^[a-z0-9_-]*$/.test(v) ? '' : label + ' can use lowercase letters, numbers, hyphens and underscores only (up to 60).';
+}
+var AUDIENCE_LISTS = ['regStatus', 'stage', 'level', 'owner', 'src', 'company', 'city', 'desig', 'seniority', 'industry', 'tags'];
+var AUDIENCE_CHOICES = ['registered', 'optOut'];
+function checkAudienceFilters(label, v) {
+  if (v == null) return '';
+  if (!isPlainObject(v)) return label + ' must be an object.';
+  var keys = Object.keys(v);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i], x = v[k];
+    if (k === 'q') { if (typeof x !== 'string' || x.length > 120) return label + ': the search text must be at most 120 characters.'; continue; }
+    if (AUDIENCE_CHOICES.indexOf(k) !== -1) { if (['any', 'yes', 'no'].indexOf(x) === -1) return label + ': "' + k + '" must be any, yes or no.'; continue; }
+    if (AUDIENCE_LISTS.indexOf(k) !== -1) {
+      if (!Array.isArray(x) || x.length > 50 || !x.every(function (s) { return typeof s === 'string' && s.length <= 120; })) return label + ': "' + k + '" must be a list of at most 50 values.';
+      continue;
+    }
+    return label + ': "' + k + '" is not a filter.';
+  }
+  return '';
+}
 
-function handleEventCreate(req, res) {
-  requireAdmin(req, res, function (fb, decoded) {
-    parseJsonBody(req, res, function (body) {
-      var eventId = String(body.eventId || body.slug || '').trim();
-      if (!eventId || !/^[a-z0-9-]+$/.test(eventId)) {
-        return sendJson(res, 400, { error: 'A valid eventId/slug (lowercase letters, digits, hyphens) is required.' });
+RESOURCES['promo-templates'] = subcollectionRoutes('promoTemplates', { label: 'promotion template', required: ['kind', 'name'], fixed: ['kind'],
+  defaults: { status: 'draft' }, fields: {
+    kind: 'enum:email|whatsapp|post|banner', name: 'text:120', subject: 'text:200', body: 'long20k', network: 'enum:|linkedin|x|facebook',
+    imageUrl: 'url', size: 'text:40', placement: 'text:200', linkUrl: 'url', utmCampaign: checkUtmCampaign,
+    status: 'enum:draft|posted', postedAt: 'iso', order: 'num' } });
+RESOURCES['promo-audiences'] = subcollectionRoutes('promoAudiences', { label: 'saved audience', required: ['name'], maxBody: MB, fields: {
+  name: 'text:120', note: 'text:500', filters: checkAudienceFilters, personKeys: 'keys', order: 'num' } });
+
+/* LEADS. What a client may send is the field table; `emailLower`, `dupKey`, `calls` and `notes` are the
+   server's (a client's value for them is never read).
+
+   One lead per person. A lead's key is its e-mail address in lower case, or — with no e-mail — its name
+   and company in lower case. A new lead is stored under an id made from that key, so the same person
+   imported twice, by two people at the same moment, is still one document; a single create answers
+   409 { code: 'duplicate', existingId }.
+
+   Notes belong to whoever wrote them, when they wrote them: a client sends appendNote { kind, text }
+   (or removeNoteAt) and the server adds { at, by, kind, text } inside a transaction, so two notes added
+   at once are both kept. `calls` is the number of notes of kind "call". */
+var LEAD_STAGES = 'new|contacted|interested|registered|won|lost';
+var LEAD_BULK_FIELDS = ['stage', 'level', 'owner', 'optOut', 'tags'];
+var LEAD_KEEP_ON_IMPORT = ['stage', 'level', 'owner', 'optOut'];       // an import never overrides somebody's work on a lead
+var MAX_LEAD_NOTES = 200, MAX_BULK_LEADS = 500;
+function leadKeyOf(d) {
+  var email = typeof d.email === 'string' ? d.email.trim().toLowerCase() : '';
+  if (email) return email;
+  return String(d.name || '').trim().toLowerCase() + '|' + String(d.comp || '').trim().toLowerCase();
+}
+function leadIdOf(key) { return 'ld-' + crypto.createHash('sha256').update(key).digest('hex').slice(0, 32); }
+var LEADS = subcollectionRoutes('leads', { label: 'lead', required: ['name'],
+  defaults: { stage: 'new', level: '', origin: 'manual', optOut: false },
+  fields: {
+    name: 'text:120', email: 'email', phone: 'phone', comp: 'text:120', desig: 'text:120', city: 'text:120', industry: 'text:120',
+    seniority: 'text:120', src: 'text:120', tags: 'tags', stage: 'enum:' + LEAD_STAGES, level: 'enum:|hot|warm|cold', owner: 'text:200',
+    next: 'ymd', optOut: 'bool', registrationId: 'ref', origin: 'enum:manual|import|registration', importId: 'text:60' } });
+function leadForClient(id, d) {
+  var out = Object.assign({ id: id }, d);
+  delete out.dupKey;
+  if (!Array.isArray(out.notes)) out.notes = [];
+  out.calls = +out.calls || 0;
+  return out;
+}
+function duplicateLead(existingId) {
+  return httpError(409, 'This person is already in your leads.', { code: 'duplicate', existingId: existingId });
+}
+function trimLead(data) {
+  ['name', 'email', 'comp'].forEach(function (f) { if (typeof data[f] === 'string') data[f] = data[f].trim(); });
+  return data;
+}
+
+/* GET /api/event/leads?eventId=&limit=&cursor= -> { items, total, nextCursor }, newest first. limit
+   defaults to 1,000 (at most 5,000); pass nextCursor back as cursor until it is null. */
+function handleLeadsList(req, res) {
+  withAdmin(req, res, function (fb) {
+    var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
+    if (!eventId) return;
+    var limit = Math.max(1, Math.min(5000, parseInt(qs.get('limit'), 10) || 1000)), cursor = qs.get('cursor') || '';
+    if (cursor && !isRecordId(cursor)) return sendJson(res, 400, { error: 'That page of leads could not be found. Reload the list.' });
+    var col = LEADS.col(fb, eventId);
+    Promise.all([loadLiveEvent(fb, eventId), cursor ? col.doc(cursor).get() : null]).then(function (r) {
+      if (cursor && !r[1].exists) throw httpError(400, 'That page of leads could not be found. Reload the list.');
+      var q = col.orderBy('createdAt', 'desc');
+      if (cursor) q = q.startAfter(r[1]);
+      return Promise.all([q.limit(limit + 1).get(), col.count().get()]);
+    }).then(function (out) {
+      var docs = out[0].docs, more = docs.length > limit;
+      if (more) docs = docs.slice(0, limit);
+      sendJson(res, 200, {
+        items: docs.map(function (d) { return leadForClient(d.id, d.data()); }),
+        total: out[1].data().count, nextCursor: more ? docs[docs.length - 1].id : null
+      });
+    }).catch(function (err) { sendFailure(res, 'leads list', err, 'Could not load the leads. Please try again.'); });
+  });
+}
+
+/* The lead that already has this key, whatever id it is stored under, or null. */
+function findLeadByKey(col, key) {
+  return col.where('dupKey', '==', key).limit(1).get().then(function (snap) { return snap.empty ? null : snap.docs[0]; });
+}
+
+function handleLeadCreate(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.record, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var clean = LEADS.sanitize(body, true, null);
+    if (clean.error) return sendJson(res, 400, { error: clean.error, field: clean.field });
+    var data = trimLead(clean.data), now = new Date().toISOString(), actor = actorOf(decoded), col = LEADS.col(fb, eventId);
+    data.dupKey = leadKeyOf(data); data.emailLower = (data.email || '').toLowerCase();
+    data.calls = 0; data.notes = [];
+    data.createdAt = now; data.updatedAt = now; data.createdBy = actor; data.updatedBy = actor;
+    var ref = col.doc(leadIdOf(data.dupKey));
+    loadLiveEvent(fb, eventId).then(function () { return findLeadByKey(col, data.dupKey); }).then(function (existing) {
+      if (existing) throw duplicateLead(existing.id);
+      /* create(), not set(): of two identical requests at the same instant exactly one stores the lead */
+      return ref.create(data).catch(function (err) {
+        if (!(err && err.code === 6)) throw err;
+        return ref.get().then(function (snap) {
+          if (snap.exists && snap.get('dupKey') === data.dupKey) throw duplicateLead(ref.id);
+          ref = col.doc();                 // that id belongs to a lead whose e-mail has since been changed
+          return ref.set(data);
+        });
+      });
+    }).then(function () { sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now }); })
+      .catch(function (err) { sendFailure(res, 'lead create', err, 'Could not save the lead. Please try again.'); });
+  });
+}
+
+/* PATCH /api/event/leads { eventId, id, <fields>?, appendNote?: { kind: 'note' | 'call', text },
+   removeNoteAt?: '<the note's at>', ifUpdatedAt? } -> { ok, updatedAt, lead, note? } */
+function handleLeadUpdate(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.record, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    if (!isRecordId(body.id)) return sendJson(res, 400, { error: 'A valid id is required.' });
+    var bad = checkIfUpdatedAt(body);
+    if (bad) return sendJson(res, 400, { error: bad, field: 'ifUpdatedAt' });
+    var add = body.appendNote, note = null;
+    if (add != null) {
+      if (!isPlainObject(add) || (add.kind !== 'note' && add.kind !== 'call')) return sendJson(res, 400, { error: 'A note needs a kind: note or call.', field: 'appendNote' });
+      if (typeof add.text !== 'string' || !add.text.trim()) return sendJson(res, 400, { error: 'Write the note first.', field: 'appendNote' });
+      if (add.text.length > 2000) return sendJson(res, 400, { error: 'A note can be at most 2,000 characters.', field: 'appendNote' });
+    }
+    if (body.removeNoteAt != null && typeof body.removeNoteAt !== 'string') return sendJson(res, 400, { error: '"removeNoteAt" must be the time of the note to remove.', field: 'removeNoteAt' });
+
+    var col = LEADS.col(fb, eventId), ref = col.doc(body.id), now = new Date().toISOString(), actor = actorOf(decoded), result = null;
+    loadLiveEvent(fb, eventId).then(function () {
+      return fb.db.runTransaction(function (tx) {
+        return tx.get(ref).then(function (snap) {
+          if (!snap.exists) throw httpError(404, 'That lead no longer exists — it may have been deleted.', { code: 'record-not-found' });
+          var stored = snap.data() || {};
+          if (body.ifUpdatedAt != null && body.ifUpdatedAt !== stored.updatedAt) throw staleError('lead', stored);
+          var clean = LEADS.sanitize(body, false, stored);
+          if (clean.error) throw httpError(400, clean.error, { field: clean.field });
+          var data = trimLead(clean.data);
+          if (!Object.keys(data).length && add == null && body.removeNoteAt == null) throw httpError(400, 'Nothing to update.');
+
+          var merged = Object.assign({}, stored, data), key = leadKeyOf(merged);
+          var moved = key !== stored.dupKey && (has(data, 'email') || has(data, 'name') || has(data, 'comp'));
+          var clash = moved ? tx.get(col.where('dupKey', '==', key).limit(1)) : Promise.resolve(null);
+          return clash.then(function (other) {
+            if (other && !other.empty && other.docs[0].id !== ref.id) throw duplicateLead(other.docs[0].id);
+            if (moved || stored.dupKey == null) { data.dupKey = key; data.emailLower = (merged.email || '').toLowerCase(); }
+            var notes = Array.isArray(stored.notes) ? stored.notes.slice() : [];
+            if (body.removeNoteAt != null) {
+              var at = notes.map(function (n) { return n && n.at; }).indexOf(body.removeNoteAt);
+              if (at === -1) throw httpError(404, 'That note is no longer there.', { code: 'note-not-found' });
+              notes.splice(at, 1);
+            }
+            if (add != null) {
+              if (notes.length >= MAX_LEAD_NOTES) throw httpError(400, 'This lead already has ' + MAX_LEAD_NOTES + ' notes. Remove an old one first.', { field: 'appendNote' });
+              /* `at` identifies the note: two added within the same millisecond must not share it */
+              var stamp = now, n = 1;
+              while (notes.some(function (x) { return x && x.at === stamp; })) stamp = new Date(Date.parse(now) + n++).toISOString();
+              note = { at: stamp, by: actor, kind: add.kind, text: add.text.trim() };
+              notes.push(note);
+            }
+            if (add != null || body.removeNoteAt != null) {
+              data.notes = notes;
+              data.calls = notes.filter(function (x) { return x && x.kind === 'call'; }).length;
+            }
+            data.updatedAt = now; data.updatedBy = actor;
+            tx.update(ref, data);
+            result = leadForClient(ref.id, Object.assign({}, stored, data));
+          });
+        });
+      });
+    }).then(function () {
+      var out = { ok: true, updatedAt: now, lead: result };
+      if (note) out.note = note;
+      sendJson(res, 200, out);
+    }).catch(function (err) { sendFailure(res, 'lead update', err, 'Could not save the lead. Please try again.'); });
+  });
+}
+
+/* Every lead's key and id — two small fields per lead, read once per bulk request. */
+function leadKeys(col) {
+  return col.select('dupKey').get().then(function (snap) {
+    var byKey = {}, ids = {};
+    snap.docs.forEach(function (d) { ids[d.id] = true; var k = d.get('dupKey'); if (typeof k === 'string' && !(k in byKey)) byKey[k] = d.id; });
+    return { byKey: byKey, ids: ids };
+  });
+}
+function commitInBatches(fb, writes) {
+  var chain = Promise.resolve();
+  for (var i = 0; i < writes.length; i += 400) (function (group) {
+    chain = chain.then(function () {
+      var batch = fb.db.batch();
+      group.forEach(function (w) { w(batch); });
+      return batch.commit();
+    });
+  })(writes.slice(i, i + 400));
+  return chain;
+}
+function bulkIds(res, body) {
+  if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > MAX_BULK_LEADS || !body.ids.every(isRecordId)) {
+    sendJson(res, 400, { error: 'Send between 1 and ' + MAX_BULK_LEADS + ' lead ids.', field: 'ids' });
+    return null;
+  }
+  return body.ids.filter(function (id, i, a) { return a.indexOf(id) === i; });
+}
+
+/* POST /api/event/leads/bulk { eventId, items: [lead fields] (at most 500), importId?, onDuplicate: 'skip' | 'update' }
+   -> { created, updated, skipped, ids }. A row whose person is already a lead — stored, or earlier in the
+   same request — is skipped, or with onDuplicate "update" fills in what the stored lead has empty and
+   changes nothing else (never its stage, level, owner, opt-out or notes). The whole request is checked
+   before anything is written: one bad row answers 400 naming the row, and nothing is imported. */
+function handleLeadsBulkCreate(req, res) {
+  withAdminBody(req, res, MB, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > MAX_BULK_LEADS) {
+      return sendJson(res, 400, { error: 'Send between 1 and ' + MAX_BULK_LEADS + ' leads at a time.', field: 'items' });
+    }
+    var mode = body.onDuplicate == null ? 'skip' : body.onDuplicate;
+    if (mode !== 'skip' && mode !== 'update') return sendJson(res, 400, { error: '"onDuplicate" must be skip or update.', field: 'onDuplicate' });
+    var importId = body.importId == null ? '' : body.importId;
+    if (typeof importId !== 'string' || importId.length > 60) return sendJson(res, 400, { error: '"importId" must be text of at most 60 characters.', field: 'importId' });
+
+    var rows = [];
+    for (var i = 0; i < body.items.length; i++) {
+      var item = body.items[i];
+      if (!isPlainObject(item)) return sendJson(res, 400, { error: 'Row ' + (i + 1) + ' is not a lead.', row: i + 1 });
+      var clean = LEADS.sanitize(Object.assign({ origin: 'import' }, item), true, null);
+      if (clean.error) return sendJson(res, 400, { error: 'Row ' + (i + 1) + ': ' + clean.error, field: clean.field, row: i + 1 });
+      rows.push(trimLead(clean.data));
+    }
+
+    var col = LEADS.col(fb, eventId), now = new Date().toISOString(), actor = actorOf(decoded);
+    var out = { created: 0, updated: 0, skipped: 0, ids: [] };
+    loadLiveEvent(fb, eventId).then(function () { return leadKeys(col); }).then(function (known) {
+      var writes = [], seen = {}, fill = [];
+      rows.forEach(function (data) {
+        var key = leadKeyOf(data);
+        if (seen[key]) { out.skipped++; return; }
+        seen[key] = true;
+        if (known.byKey[key]) {
+          if (mode === 'update') fill.push({ id: known.byKey[key], data: data }); else out.skipped++;
+          return;
+        }
+        var id = leadIdOf(key);
+        var ref = known.ids[id] ? col.doc() : col.doc(id);
+        data.dupKey = key; data.emailLower = (data.email || '').toLowerCase();
+        if (importId) data.importId = importId;
+        data.calls = 0; data.notes = [];
+        data.createdAt = now; data.updatedAt = now; data.createdBy = actor; data.updatedBy = actor;
+        writes.push(function (batch) { batch.set(ref, data); });
+        out.created++; out.ids.push(ref.id);
+      });
+      if (!fill.length) return commitInBatches(fb, writes);
+      return fb.db.getAll.apply(fb.db, fill.map(function (f) { return col.doc(f.id); })).then(function (snaps) {
+        snaps.forEach(function (snap, n) {
+          var stored = snap.exists ? (snap.data() || {}) : null, patch = {};
+          if (stored) Object.keys(fill[n].data).forEach(function (f) {
+            if (LEAD_KEEP_ON_IMPORT.indexOf(f) !== -1 || f === 'origin') return;
+            var have = stored[f], blank = have == null || have === '' || (Array.isArray(have) && !have.length);
+            var got = fill[n].data[f];
+            if (blank && got != null && got !== '' && !(Array.isArray(got) && !got.length)) patch[f] = got;
+          });
+          if (!stored || !Object.keys(patch).length) { out.skipped++; return; }
+          patch.updatedAt = now; patch.updatedBy = actor;
+          writes.push(function (batch) { batch.update(snap.ref, patch); });
+          out.updated++;
+        });
+        return commitInBatches(fb, writes);
+      });
+    }).then(function () {
+      sendJson(res, 200, out);
+      if (out.created || out.updated) logActivity(fb, eventId, decoded, 'leads-imported', out.created + ' added' + (out.updated ? ', ' + out.updated + ' updated' : '') + (out.skipped ? ', ' + out.skipped + ' already there' : ''));
+    }).catch(function (err) { sendFailure(res, 'leads import', err, 'The leads could not be imported. Please try again.'); });
+  });
+}
+
+/* PATCH /api/event/leads/bulk { eventId, ids (at most 500), patch: { stage?, level?, owner?, optOut?, tags? } }
+   -> { updated, missing: [ids that are no longer there] } */
+function handleLeadsBulkUpdate(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.record, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var ids = bulkIds(res, body);
+    if (!ids) return;
+    if (!isPlainObject(body.patch)) return sendJson(res, 400, { error: 'Say what to change.', field: 'patch' });
+    var extra = Object.keys(body.patch).filter(function (k) { return LEAD_BULK_FIELDS.indexOf(k) === -1; })[0];
+    if (extra) return sendJson(res, 400, { error: '"' + extra + '" cannot be changed for several leads at once — only ' + LEAD_BULK_FIELDS.join(', ') + '.', field: extra });
+    var clean = LEADS.sanitize(body.patch, false, null);
+    if (clean.error) return sendJson(res, 400, { error: clean.error, field: clean.field });
+    if (!Object.keys(clean.data).length) return sendJson(res, 400, { error: 'Nothing to update.' });
+    var col = LEADS.col(fb, eventId), now = new Date().toISOString();
+    var patch = Object.assign({}, clean.data, { updatedAt: now, updatedBy: actorOf(decoded) }), missing = [], updated = 0;
+    loadLiveEvent(fb, eventId).then(function () {
+      return fb.db.getAll.apply(fb.db, ids.map(function (id) { return col.doc(id); }));
+    }).then(function (snaps) {
+      var writes = [];
+      snaps.forEach(function (snap) {
+        if (!snap.exists) { missing.push(snap.id); return; }
+        writes.push(function (batch) { batch.update(snap.ref, patch); });
+        updated++;
+      });
+      return commitInBatches(fb, writes);
+    }).then(function () { sendJson(res, 200, { updated: updated, missing: missing, updatedAt: now }); })
+      .catch(function (err) { sendFailure(res, 'leads bulk update', err, 'The leads could not be updated. Please try again.'); });
+  });
+}
+
+/* DELETE /api/event/leads/bulk { eventId, ids (at most 500) } -> { deleted } */
+function handleLeadsBulkDelete(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.record, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var ids = bulkIds(res, body);
+    if (!ids) return;
+    var col = LEADS.col(fb, eventId), deleted = 0;
+    loadLiveEvent(fb, eventId).then(function () {
+      return fb.db.getAll.apply(fb.db, ids.map(function (id) { return col.doc(id); }));
+    }).then(function (snaps) {
+      var writes = [];
+      snaps.forEach(function (snap) {
+        if (!snap.exists) return;
+        writes.push(function (batch) { batch.delete(snap.ref); });
+        deleted++;
+      });
+      return commitInBatches(fb, writes);
+    }).then(function () {
+      sendJson(res, 200, { deleted: deleted });
+      if (deleted) logActivity(fb, eventId, decoded, 'leads-deleted', deleted + (deleted === 1 ? ' lead' : ' leads'));
+    }).catch(function (err) { sendFailure(res, 'leads bulk delete', err, 'The leads could not be deleted. Please try again.'); });
+  });
+}
+
+RESOURCES['leads'] = { list: handleLeadsList, create: handleLeadCreate, update: handleLeadUpdate, remove: LEADS.remove };
+
+/* ---------- canonical Event: POST/GET/PATCH /api/event ---------- */
+
+// Deliberately NOT 'theme': that field name is owned by the GENERATED TEMPLATES pipeline
+// (handlePlanStructure writes {themeColor, headingFont, bodyFont, heroImageUrl, ...} there).
+//
+// Deliberately NOT 'published' either. It used to be plain data that any PATCH could flip, so an event
+// could say "published" with no page behind it, or "unpublished" while its page was still up. It now
+// changes in exactly two places: POST /api/event/publish and POST /api/event/unpublish.
+var EVENT_STATUSES = ['draft', 'upcoming', 'active', 'live', 'completed', 'cancelled'];
+var SOCIAL_KINDS = ['linkedin', 'x', 'facebook', 'instagram', 'youtube', 'website'];
+var REGISTRATION_FIELD_KEYS = ['phone', 'company', 'designation', 'city'];
+var DATE_MODES = ['exact', 'month', 'quarter', 'tbd', 'none'];
+
+/* Free-form JSON a client sends to be stored as it is (the checklist, an audience's filters) must still
+   be something Firestore accepts: no empty or "__reserved__" field name, and not nested without end.
+   Otherwise the write fails as a database error instead of a 400 that says what is wrong. */
+function storableJson(v, depth) {
+  if (v == null || typeof v !== 'object') return true;
+  if ((depth || 0) > 12) return false;
+  if (Array.isArray(v)) return v.every(function (x) { return !Array.isArray(x) && storableJson(x, (depth || 0) + 1); });
+  return Object.keys(v).every(function (k) { return k !== '' && !/^__.*__$/.test(k) && storableJson(v[k], (depth || 0) + 1); });
+}
+
+var EVENT_FIELD_CHECKS = {
+  name: function (v) { return checkText('The event name', v, 200, true); },
+  category: function (v) { return checkText('"category"', v, 60, false); },
+  status: function (v) { return (v == null || EVENT_STATUSES.indexOf(v) !== -1) ? '' : '"status" must be one of: ' + EVENT_STATUSES.join(', ') + '.'; },
+  start: function (v) { return checkDate('The start date', v); },
+  end: function (v) { return checkDate('The end date', v); },
+  venue: function (v) { return checkText('The venue', v, 300, false); },
+  city: function (v) { return checkText('The city', v, 120, false); },
+  description: function (v) { return checkText('The description', v, 20000, false); },
+  dateLabel: function (v) { return checkText('"dateLabel"', v, 120, false); },
+  /* An event whose date is not fixed yet: which kind of date it has, and the parts that were picked. The
+     wording a visitor sees is `dateLabel`; `start` / `end` stay null until the date is exact. */
+  dateMode: function (v) { return (v == null || DATE_MODES.indexOf(v) !== -1) ? '' : '"dateMode" must be one of: ' + DATE_MODES.join(', ') + '.'; },
+  datePartial: function (v) {
+    if (v == null) return '';
+    if (!isPlainObject(v)) return '"datePartial" must be an object.';
+    var extra = Object.keys(v).filter(function (k) { return ['month', 'quarter', 'year', 'note'].indexOf(k) === -1; })[0];
+    if (extra) return '"datePartial.' + extra + '" is not accepted — it takes month, quarter, year and note.';
+    if (v.month != null && v.month !== '' && !(typeof v.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(v.month))) return 'The month must look like 2026-11.';
+    if (v.quarter != null && v.quarter !== '' && ['Q1', 'Q2', 'Q3', 'Q4'].indexOf(v.quarter) === -1) return 'The quarter must be Q1, Q2, Q3 or Q4.';
+    if (v.year != null && v.year !== '' && !/^\d{4}$/.test(String(v.year))) return 'The year must have four digits.';
+    return checkText('The date note', v.note, 120, false);
+  },
+  client: function (v) { return checkText('The client name', v, 200, false); },
+  nomination: function (v) {
+    if (v == null) return '';
+    if (!isPlainObject(v)) return '"nomination" must be an object.';
+    var dates = ['open', 'close', 'shortlist'], flags = ['openTbd', 'closeTbd', 'shortlistTbd'];
+    var extra = Object.keys(v).filter(function (k) { return dates.indexOf(k) === -1 && flags.indexOf(k) === -1; })[0];
+    if (extra) return '"nomination.' + extra + '" is not accepted — it takes ' + dates.concat(flags).join(', ') + '.';
+    for (var i = 0; i < dates.length; i++) {
+      var e = checkDate('The nomination ' + dates[i] + ' date', v[dates[i]]);
+      if (e) return e;
+      if (v[flags[i]] != null && typeof v[flags[i]] !== 'boolean') return '"nomination.' + flags[i] + '" must be true or false.';
+    }
+    return '';
+  },
+  logoUrl: function (v) { return checkUrl('The logo', v); },
+  bannerUrl: function (v) { return checkUrl('The banner', v); },
+  templateId: function (v) { return (v == null || v === '' || (typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,160}$/.test(v))) ? '' : '"templateId" is not valid.'; },
+  /* Accepted so that a page which still sends it is not refused, and never looked at: whatever arrives,
+     { type: 'free' } is what is stored (cleanEventBody) — no amount, no currency. */
+  payment: function (v) { return (v == null || isPlainObject(v)) ? '' : '"payment" must be an object.'; },
+  checklist: function (v) {
+    if (v == null) return '';
+    if (!isPlainObject(v) || Object.keys(v).length > 200) return '"checklist" must be an object.';
+    if (!storableJson(v)) return '"checklist" has a name that cannot be stored.';
+    return Object.keys(v).every(function (k) { return v[k] == null || typeof v[k] === 'boolean' || typeof v[k] === 'string' || typeof v[k] === 'number'; }) ? '' : '"checklist" has a value that is not valid.';
+  }
+};
+var EVENT_FIELDS = Object.keys(EVENT_FIELD_CHECKS);
+
+/* event.settings (contract section 9). The whole shape is checked and anything not in it is refused by
+   name, so a typo in a client ("registraton") fails loudly instead of being stored and ignored. Returns
+   { value } — only the keys that were sent, ready to be merged over what is stored — or { error }. */
+function cleanSettings(v) {
+  if (!isPlainObject(v)) return { error: '"settings" must be an object.' };
+  var out = {}, e;
+  function unknown(obj, allowed, where) {
+    var bad = Object.keys(obj).filter(function (k) { return allowed.indexOf(k) === -1; })[0];
+    return bad ? '"' + where + '.' + bad + '" is not a setting.' : '';
+  }
+  if ((e = unknown(v, ['registration', 'seo', 'social'], 'settings'))) return { error: e };
+
+  if (has(v, 'registration')) {
+    var r = v.registration;
+    if (!isPlainObject(r)) return { error: '"settings.registration" must be an object.' };
+    if ((e = unknown(r, ['open', 'duplicates', 'capacity', 'target', 'successMessage', 'fields'], 'settings.registration'))) return { error: e };
+    var reg = {};
+    if (has(r, 'open')) { if (typeof r.open !== 'boolean') return { error: '"Registration open" must be on or off.' }; reg.open = r.open; }
+    if (has(r, 'duplicates')) { if (r.duplicates !== 'reject' && r.duplicates !== 'allow') return { error: '"Duplicate registrations" must be "reject" or "allow".' }; reg.duplicates = r.duplicates; }
+    var counts = ['capacity', 'target'];
+    for (var i = 0; i < counts.length; i++) {
+      var k = counts[i];
+      if (!has(r, k)) continue;
+      if (r[k] !== null && !(typeof r[k] === 'number' && isFinite(r[k]) && r[k] >= 1 && r[k] <= 1000000 && Math.floor(r[k]) === r[k])) {
+        return { error: 'The registration ' + k + ' must be a whole number of 1 or more, or left empty.' };
       }
-      var data = {};
-      EVENT_FIELDS.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(body, f)) data[f] = body[f]; });
-      var now = new Date().toISOString();
-      data.createdAt = now; data.updatedAt = now; data.createdBy = decoded.email || decoded.uid;
-      if (data.status === undefined) data.status = 'draft';
-      if (data.published === undefined) data.published = false;
-      fb.db.collection('events').doc(eventId).set(data, { merge: true })
-        .then(function () { sendJson(res, 200, { eventId: eventId }); })
-        .catch(function (err) { sendJson(res, 500, { error: 'event create failed: ' + err.message }); });
+      reg[k] = r[k];
+    }
+    if (has(r, 'successMessage')) { if ((e = checkText('The success message', r.successMessage, 500, false))) return { error: e }; reg.successMessage = r.successMessage || ''; }
+    if (has(r, 'fields')) {
+      if (!isPlainObject(r.fields)) return { error: '"settings.registration.fields" must be an object.' };
+      if ((e = unknown(r.fields, REGISTRATION_FIELD_KEYS, 'settings.registration.fields'))) return { error: e };
+      reg.fields = {};
+      for (var j = 0; j < REGISTRATION_FIELD_KEYS.length; j++) {
+        var fk = REGISTRATION_FIELD_KEYS[j];
+        if (!has(r.fields, fk)) continue;
+        var f = r.fields[fk];
+        if (!isPlainObject(f) || (has(f, 'show') && typeof f.show !== 'boolean') || (has(f, 'required') && typeof f.required !== 'boolean')) {
+          return { error: 'The registration field "' + fk + '" needs show / required set to true or false.' };
+        }
+        if ((e = unknown(f, ['show', 'required'], 'settings.registration.fields.' + fk))) return { error: e };
+        /* a field that is not shown cannot be required: the visitor would have no way to fill it in */
+        reg.fields[fk] = { show: f.show !== false, required: f.show !== false && f.required === true };
+      }
+    }
+    out.registration = reg;
+  }
+
+  if (has(v, 'seo')) {
+    var s = v.seo;
+    if (!isPlainObject(s)) return { error: '"settings.seo" must be an object.' };
+    if ((e = unknown(s, ['canonicalUrl', 'description', 'shareImageUrl'], 'settings.seo'))) return { error: e };
+    var seo = {};
+    if (has(s, 'canonicalUrl')) { if ((e = checkHttpUrl('The canonical address', s.canonicalUrl, 500))) return { error: e }; seo.canonicalUrl = (s.canonicalUrl || '').trim(); }
+    if (has(s, 'description')) { if ((e = checkText('The search description', s.description, 320, false))) return { error: e }; seo.description = s.description || ''; }
+    if (has(s, 'shareImageUrl')) {
+      if ((e = checkUrl('The share image', s.shareImageUrl))) return { error: e };
+      var img = (s.shareImageUrl || '').trim();
+      if (img && !/^(https?:\/\/|\/(?!\/))/i.test(img)) return { error: 'The share image must be the address of an uploaded image.' };
+      seo.shareImageUrl = img;
+    }
+    out.seo = seo;
+  }
+
+  if (has(v, 'social')) {
+    if (!Array.isArray(v.social) || v.social.length > 12) return { error: '"settings.social" must be a list of at most 12 links.' };
+    var social = [];
+    for (var n = 0; n < v.social.length; n++) {
+      var link = v.social[n];
+      if (!isPlainObject(link) || SOCIAL_KINDS.indexOf(link.kind) === -1) return { error: 'A social link needs a kind: ' + SOCIAL_KINDS.join(', ') + '.' };
+      if (!link.url || (e = checkHttpUrl('The ' + link.kind + ' link', link.url, 500))) return { error: e || 'The ' + link.kind + ' link needs an address.' };
+      social.push({ kind: link.kind, url: link.url.trim() });
+    }
+    out.social = social;
+  }
+  return { value: out };
+}
+
+/* What is stored after a settings PATCH: registration and seo are merged key by key over what is there
+   (so sending { registration: { open: false } } closes registration without wiping the capacity), each
+   registration field is replaced as a whole, and the social list is replaced as a whole. */
+function mergeSettings(stored, patch) {
+  var cur = isPlainObject(stored) ? stored : {};
+  var out = Object.assign({}, cur);
+  if (patch.registration) {
+    var reg = Object.assign({}, isPlainObject(cur.registration) ? cur.registration : {}, patch.registration);
+    if (patch.registration.fields) {
+      reg.fields = Object.assign({}, isPlainObject(cur.registration) && isPlainObject(cur.registration.fields) ? cur.registration.fields : {}, patch.registration.fields);
+    }
+    out.registration = reg;
+  }
+  if (patch.seo) out.seo = Object.assign({}, isPlainObject(cur.seo) ? cur.seo : {}, patch.seo);
+  if (patch.social) out.social = patch.social;
+  return out;
+}
+
+/* Reads the event fields off a request body. -> { data, settings } or { error }. */
+function cleanEventBody(body, eventId, creating) {
+  if (has(body, 'published')) {
+    return { error: 'An event is published and unpublished with the Publish and Unpublish actions, not by editing it.' };
+  }
+  /* The address of an event IS its id: the site is served at /e/<id>, and nothing moves when a different
+     "slug" is stored. Accepting one used to leave the console showing an address that did not exist. */
+  if (has(body, 'slug') && body.slug != null && body.slug !== '' && body.slug !== eventId) {
+    return { error: 'The address of an event cannot be changed after it is created.', code: 'slug-fixed' };
+  }
+  var data = {};
+  for (var i = 0; i < EVENT_FIELDS.length; i++) {
+    var f = EVENT_FIELDS[i];
+    if (!has(body, f)) continue;
+    var problem = EVENT_FIELD_CHECKS[f](body[f]);
+    if (problem) return { error: problem };
+    data[f] = body[f];
+  }
+  if (creating && !has(data, 'name')) return { error: 'The event name is required.' };
+  if (typeof data.name === 'string') data.name = data.name.trim();
+  if (has(data, 'payment')) data.payment = { type: 'free' };        // whatever was sent: see eventForClient
+  if (data.start && data.end && Date.parse(data.end) < Date.parse(data.start)) return { error: 'The end date is before the start date.' };
+  var settings = null;
+  if (has(body, 'settings') && body.settings != null) {
+    var s = cleanSettings(body.settings);
+    if (s.error) return { error: s.error };
+    settings = s.value;
+  }
+  return { data: data, settings: settings };
+}
+
+/* A free address near the one asked for, for the 409 below. lib/api-events.js owns the real rule (it
+   answers GET /api/event/slug-available with it); it is used when that module can be loaded, so the
+   wizard's check and this answer can never suggest different things. The fallback is the same idea in
+   small: "<id>-2" … "<id>-20", first one that is not taken. Never rejects — a suggestion is a courtesy. */
+function suggestFreeEventId(fb, wanted) {
+  var shared = null;
+  try { shared = require('./api-events')._shared; } catch (e) { shared = null; }
+  var viaModule = shared && typeof shared.suggestFreeSlug === 'function'
+    ? Promise.resolve().then(function () { return shared.suggestFreeSlug(fb, wanted); })
+    : Promise.reject(new Error('unavailable'));
+  return viaModule.catch(function () {
+    var candidates = [];
+    for (var n = 2; n <= 20; n++) candidates.push(wanted.slice(0, 80 - ('-' + n).length).replace(/-+$/, '') + '-' + n);
+    candidates = candidates.filter(function (c) { return !isReservedEventId(c); });
+    if (!candidates.length) return '';
+    return fb.db.getAll.apply(fb.db, candidates.map(function (c) { return eventDocRef(fb, c); })).then(function (snaps) {
+      for (var i = 0; i < snaps.length; i++) {
+        var st = eventStateOf(snaps[i]);
+        if (st === 'missing' || st === 'shell') return candidates[i];
+      }
+      return '';
+    });
+  }).catch(function () { return ''; });
+}
+
+/* What a document that was never created as an event may still be carrying, written by older versions
+   of this file: a PATCH, publish or stage on an id nobody had created used to create the document. None
+   of it belongs to the event now being created under that address — least of all `published`, which
+   would put somebody's leftover page on the new event's public URL. A first creation over a shell
+   removes all of it and keeps only what the AI steps prepared for this very creation (designPlan,
+   theme, structurePlan, …), which the wizard runs BEFORE it creates the event. */
+var SHELL_STATE_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedVersion', 'publishedPath', 'publishedUrl',
+  'unpublishedAt', 'unpublishedBy', 'stagingUrl', 'site', 'siteLock', 'deletedAt', 'deletedBy', 'counters', 'settings',
+  'sections', 'nav', 'checklist', 'paletteTheme', 'cloningFrom', 'clonedFrom'];
+
+/* POST /api/event. 200 { ok, eventId, createdAt, updatedAt }; 409 { error, code: 'slug-taken', suggestion }
+   when the address belongs to an event (live or deleted); 400 { code: 'slug-reserved', suggestion } for an
+   address nothing may take (lib/http.js's isReservedEventId). Creating over an existing event used to merge the new
+   fields into it: the second event silently took over the first one's content, registrations and site.
+   The check and the write are one transaction, so two people creating the same address at the same
+   moment cannot both succeed. */
+function handleEventCreate(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.event, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId || body.slug);
+    if (!eventId) return;
+    if (isReservedEventId(eventId)) {
+      return suggestFreeEventId(fb, eventId).then(function (suggestion) {
+        sendJson(res, 400, { error: 'That address is reserved.' + (suggestion ? ' Try "' + suggestion + '".' : ' Choose another.'), code: 'slug-reserved', suggestion: suggestion });
+      });
+    }
+    var clean = cleanEventBody(body, eventId, true);
+    if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code });
+
+    var now = new Date().toISOString(), actor = actorOf(decoded);
+    var data = clean.data;
+    data.slug = eventId;
+    data.createdAt = now; data.updatedAt = now; data.detailsUpdatedAt = now; data.createdBy = actor; data.updatedBy = actor;
+    if (data.status == null) data.status = 'draft';
+    data.published = false;
+    data.counters = { registrations: 0, views: 0 };
+    if (clean.settings) data.settings = mergeSettings(null, clean.settings);
+
+    var ref = eventDocRef(fb, eventId);
+    fb.db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (snap) {
+        var state = eventStateOf(snap);
+        if (state === 'live' || state === 'deleted') throw httpError(409, 'taken');
+        if (state === 'missing') { tx.set(ref, data); return; }
+        var write = Object.assign({}, data);
+        SHELL_STATE_FIELDS.forEach(function (f) { if (!has(write, f)) write[f] = fieldDelete(); });
+        tx.set(ref, write, { merge: true });
+      });
+    }).then(function () {
+      sendJson(res, 200, { ok: true, eventId: eventId, createdAt: now, updatedAt: now });
+      logActivity(fb, eventId, decoded, 'created', data.name);
+    }).catch(function (err) {
+      if (!(err && err.status === 409)) return sendFailure(res, 'event create', err, 'The event could not be created. Please try again.');
+      suggestFreeEventId(fb, eventId).then(function (suggestion) {
+        sendJson(res, 409, {
+          error: 'The address "' + eventId + '" is already used by another event.' + (suggestion ? ' Try "' + suggestion + '".' : ''),
+          code: 'slug-taken', suggestion: suggestion
+        });
+      });
     });
   });
 }
 
 function handleEventGet(req, res) {
-  requireAdmin(req, res, function (fb) {
-    var qs = new URLSearchParams(req.url.split('?')[1] || '');
-    var eventId = String(qs.get('eventId') || '').trim();
-    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-    fb.db.collection('events').doc(eventId).get().then(function (snap) {
-      if (!snap.exists) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
-      sendJson(res, 200, Object.assign({ eventId: eventId }, snap.data()));
-    }).catch(function (err) { sendJson(res, 500, { error: 'event get failed: ' + err.message }); });
+  withAdmin(req, res, function (fb) {
+    var eventId = eventIdOr400(res, queryOf(req).get('eventId'));
+    if (!eventId) return;
+    loadLiveEvent(fb, eventId)
+      .then(function (data) { sendJson(res, 200, eventForClient(eventId, data)); })
+      .catch(function (err) { sendFailure(res, 'event get', err, 'Could not load the event. Please try again.'); });
   });
 }
 
+/* PATCH /api/event. 200 { ok, updatedAt }; 404 for an id that is not a live event (it used to create the
+   document). Each field sent replaces the stored one as a whole — a `checklist` or `nomination` object is
+   not deep-merged, so a key the client stops sending really goes. `settings` is the one deliberate
+   exception: see mergeSettings.
+
+   Two people with the same event open. A page that sends `ifUpdatedAt` — the `updatedAt` it was last
+   given, by GET /api/event or by its own last save — is refused with 409 { code: 'stale', current:
+   { updatedAt, updatedBy } } when somebody has changed the event's details since then, instead of
+   quietly putting its older copy of every field back. What it is compared with is `detailsUpdatedAt`,
+   which only this route and create stamp: saving the site in the editor moves the event's `updatedAt`
+   every few seconds and is not a change to its details. A request without `ifUpdatedAt` is not checked. */
 function handleEventUpdate(req, res) {
-  requireAdmin(req, res, function (fb) {
-    parseJsonBody(req, res, function (body) {
-      var eventId = String(body.eventId || '').trim();
-      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-      var data = {};
-      EVENT_FIELDS.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(body, f)) data[f] = body[f]; });
-      data.updatedAt = new Date().toISOString();
-      fb.db.collection('events').doc(eventId).set(data, { merge: true })
-        .then(function () { sendJson(res, 200, { ok: true }); })
-        .catch(function (err) { sendJson(res, 500, { error: 'event update failed: ' + err.message }); });
-    });
+  withAdminBody(req, res, BODY_LIMITS.event, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var clean = cleanEventBody(body, eventId, false);
+    if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code });
+    var bad = checkIfUpdatedAt(body);
+    if (bad) return sendJson(res, 400, { error: bad });
+    var changed = Object.keys(clean.data);
+    if (!changed.length && !clean.settings) return sendJson(res, 400, { error: 'Nothing to update.' });
+
+    var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), statusChange = null;
+    fb.db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (snap) {
+        var state = eventStateOf(snap);
+        if (state !== 'live') throw notLiveError(state, eventId);
+        var stored = snap.data();
+        if (body.ifUpdatedAt != null && isoOf(stored.detailsUpdatedAt) && isoOf(stored.detailsUpdatedAt) > body.ifUpdatedAt) {
+          throw staleError('event', { updatedAt: isoOf(stored.updatedAt), updatedBy: stored.updatedBy });
+        }
+        var write = Object.assign({}, clean.data, { updatedAt: now, detailsUpdatedAt: now, updatedBy: actorOf(decoded) });
+        if (clean.settings) write.settings = mergeSettings(stored.settings, clean.settings);
+        statusChange = has(clean.data, 'status') && clean.data.status != null && clean.data.status !== stored.status
+          ? (stored.status || 'no status') + ' → ' + clean.data.status : null;
+        tx.update(ref, write);
+      });
+    }).then(function () {
+      sendJson(res, 200, { ok: true, updatedAt: now });
+      if (clean.settings) logActivity(fb, eventId, decoded, 'settings-changed', Object.keys(clean.settings).join(', '));
+      if (statusChange) logActivity(fb, eventId, decoded, 'status-changed', statusChange);
+      var other = changed.filter(function (f) { return f !== 'status'; });
+      if (other.length) logActivity(fb, eventId, decoded, 'updated', other.join(', '));
+    }).catch(function (err) { sendFailure(res, 'event update', err, 'The event could not be saved. Please try again.'); });
   });
 }
 
 /* ---------- GET /api/events — list ALL events, team-wide ----------
-   Event_Listing.html's dashboard used to have no real, shared source for "what events exist" at all: it
-   only ever showed a static mock seed (since removed) plus whatever THIS browser's own localStorage had
-   recorded for events created locally (create-event.html's registerLiveEvent()) — invisible to every other
-   teammate. This is the real, shared, backend-driven replacement: every event any admin has created, for
-   every admin to see, same no-owner-filter access model requireAdmin() already uses everywhere else in this
-   file (there is no concept of per-user event scoping anywhere in this app).
+   Every event any admin has created, for every admin to see — there is no per-user event scoping
+   anywhere in this app. Most recently changed first (no pagination yet; see EVENTS_LIST_LIMIT).
 
-   Capped at EVENTS_LIST_LIMIT, newest-updated first — a sane bound for a dashboard list, not a real
-   pagination scheme; fine for a first version at this app's current scale.
+   "Event" here means a live event and nothing else: not a deleted one and not a shell — a document an AI
+   step, an import or an old stray write left behind under an id nobody created an event for (it has no
+   createdAt, usually no name, and opening it led nowhere). The Lovable import pipeline's staging records
+   (events/import-…) are shells by that rule, so nothing here needs to know their prefix.
 
-   Excludes events/import-<id> docs (POST /api/import-lovable's staging docs for an in-progress Lovable
-   import — see that handler below — never a real event). Those docs are never given an `updatedAt` field,
-   so ordering by it already excludes them from the query entirely (Firestore only returns documents that
-   have the field you order by); the explicit id-prefix filter below is a second, explicit guard against
-   that relying on an implicit Firestore behavior alone. */
-var EVENTS_LIST_LIMIT = 500;
+   ?deleted=1 lists the deleted events instead, most recently deleted first, each with deletedAt and
+   deletedBy: the only place a deleted event can be found again to restore it.
+
+   What a list needs is small and fixed, so only those fields are read (EVENT_LIST_FIELDS) and every item
+   has the same shape (eventListItem). An event document can also hold a whole generated site — close to
+   1 MiB of markup — and the listing used to download all of it, for every event, on every open. The
+   query has no orderBy on purpose: Firestore leaves a document without the ordered field out of the
+   result, so an event whose `updatedAt` was missing simply never appeared. They are sorted here. */
+var EVENTS_LIST_LIMIT = 1000;
+var EVENT_LIST_FIELDS = ['name', 'category', 'status', 'start', 'end', 'dateLabel', 'dateMode', 'venue', 'city', 'client',
+  'templateId', 'logoUrl', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'published', 'publishedAt',
+  'publishedVersion', 'counters', 'site', 'generatedAt', 'deletedAt', 'deletedBy', 'discardingAt'];
+
+function eventListItem(id, d) {
+  var c = isPlainObject(d.counters) ? d.counters : {}, site = isPlainObject(d.site) ? d.site : null;
+  var published = d.published === true, deleted = !!d.deletedAt;
+  var text = function (v) { return typeof v === 'string' ? v : ''; };
+  var item = {
+    id: id, eventId: id, slug: id,
+    name: text(d.name), category: text(d.category), status: text(d.status) || 'draft',
+    start: text(d.start) || null, end: text(d.end) || null, dateLabel: text(d.dateLabel), dateMode: text(d.dateMode),
+    venue: text(d.venue), city: text(d.city), client: text(d.client),
+    templateId: text(d.templateId) || null, logoUrl: /^(https?:\/\/|\/(?!\/))/i.test(text(d.logoUrl)) ? d.logoUrl : '',
+    createdAt: isoOf(d.createdAt) || null, createdBy: text(d.createdBy),
+    updatedAt: isoOf(d.updatedAt) || isoOf(d.createdAt) || null, updatedBy: text(d.updatedBy),
+    published: published, publishedAt: isoOf(d.publishedAt) || null,
+    /* a deleted event's page is not served; `published` still says whether Restore brings it back */
+    publishedPath: published && !deleted ? publicPathOf(id) : null,
+    publishedVersion: +d.publishedVersion || 0,
+    counters: { registrations: +c.registrations || 0, views: +c.views || 0 },
+    site: site ? { version: +site.version || 0, templateId: site.templateId || null, updatedAt: site.updatedAt || null, updatedBy: site.updatedBy || null } : null,
+    /* an AI-designed site exists from the moment it is generated, before the editor has saved anything */
+    hasGeneratedSite: !!d.generatedAt,
+    payment: { type: 'free' }
+  };
+  item.hasSite = (!!site && +site.version > 0) || item.hasGeneratedSite;
+  if (deleted) { item.deletedAt = isoOf(d.deletedAt); item.deletedBy = text(d.deletedBy); }
+  return item;
+}
 
 function handleEventsList(req, res) {
-  requireAdmin(req, res, function (fb) {
-    fb.db.collection('events').orderBy('updatedAt', 'desc').limit(EVENTS_LIST_LIMIT).get()
+  withAdmin(req, res, function (fb) {
+    var wanted = queryOf(req).get('deleted') === '1' ? 'deleted' : 'live';
+    var query = fb.db.collection('events');
+    query.select.apply(query, EVENT_LIST_FIELDS).limit(EVENTS_LIST_LIMIT).get()
       .then(function (snap) {
-        var items = snap.docs
-          .filter(function (d) { return d.id.indexOf('import-') !== 0; })
-          .map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        var items = snap.docs.filter(function (d) {
+          var data = d.data();
+          /* a draft that is being removed for good is in neither list (lib/api-events.js) */
+          if (eventStateOf(d) !== wanted || data.discardingAt) return false;
+          return typeof data.name === 'string' && data.name.trim() !== '';
+        }).map(function (d) { return eventListItem(d.id, d.data()); });
+        var key = wanted === 'deleted' ? 'deletedAt' : 'updatedAt';
+        items.sort(function (a, b) {
+          var x = String(a[key] || ''), y = String(b[key] || '');
+          return x === y ? (a.id < b.id ? -1 : 1) : (x < y ? 1 : -1);
+        });
         sendJson(res, 200, { items: items });
       })
-      .catch(function (err) { sendJson(res, 500, { error: 'events list failed: ' + err.message }); });
+      .catch(function (err) { sendFailure(res, 'events list', err, 'Could not load your events. Please try again.'); });
   });
 }
 
-/* ---------- GET /api/event/registrations, GET /api/event/dashboard-stats ----------
-   dashboard-stats is a server-side aggregation (not a full-list pull the client reduces itself) — the
-   Dashboard tab's 4 stat tiles need exactly these numbers, nothing more, and an event with thousands of
-   registrations shouldn't ship its entire list to the browser just to show a count. */
-function handleEventRegistrationsList(req, res) {
-  requireAdmin(req, res, function (fb) {
-    var qs = new URLSearchParams(req.url.split('?')[1] || '');
-    var eventId = String(qs.get('eventId') || '').trim();
-    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-    fb.db.collection('events').doc(eventId).collection('registrations').orderBy('createdAt', 'desc').limit(1000).get()
-      .then(function (snap) { sendJson(res, 200, { items: snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }) }); })
-      .catch(function (err) { sendJson(res, 500, { error: 'registrations list failed: ' + err.message }); });
+/* =====================================================================================================
+   THE SITE, SAVED ON THE SERVER — GET / PUT /api/event/site, publish, unpublish, /e/<id>, /preview/<id>
+
+   Until now the editor's work existed in one browser's IndexedDB and nowhere else; the server only ever
+   saw the HTML somebody last pressed Publish on, from whichever browser they happened to be using. Now:
+
+     Storage (all private — only this file reads them)
+       events/<id>/site/snapshot.json    canvas.snapshot(): what the editor reopens. Opaque to the server.
+       events/<id>/site/page.html        canvas.serialize(): the page as it would be published.
+       events/<id>/published/index.html  the page visitors get at /e/<id>, already through the publish
+                                         transform. (Pages published by the previous version of this file
+                                         are public objects written as-is; /e/<id> serves those too.)
+       events/<id>/staging/index.html    only for editors still running the previous script: see
+                                         handleEventStage.
+     Firestore, on events/<id>
+       site { version, snapshotVersion, templateId, updatedAt, updatedBy }
+       published, publishedAt, publishedBy, publishedVersion, publishedPath
+       siteLock { token, at }            see below; never sent to a client.
+   ===================================================================================================== */
+function sitePath(eventId, file) { return 'events/' + eventId + '/site/' + file; }
+function publishedObjectPath(eventId) { return 'events/' + eventId + '/published/index.html'; }
+function stagingObjectPath(eventId) { return 'events/' + eventId + '/staging/index.html'; }
+function siteVersionOf(data) { return (data && data.site && +data.site.version) || 0; }
+
+/* Writes text to a private object. resumable:false sends it as one request, which is both faster for
+   files of this size and atomic: readers see the old object or the new one, never a partial one. Nothing
+   here calls makePublic(): the old two-step "save, then make public" is what took a live page down (403)
+   on every re-publish, and left it down when the second step failed. */
+function saveObject(fb, objectPath, text, contentType) {
+  return fb.bucket.file(objectPath).save(Buffer.from(text, 'utf8'), {
+    resumable: false, metadata: { contentType: contentType, cacheControl: 'private, no-store' }
+  });
+}
+/* Resolves the object's text, or null when there is no such object. */
+function readObject(fb, objectPath) {
+  return fb.bucket.file(objectPath).download().then(function (r) { return r[0].toString('utf8'); }, function (err) {
+    if (err && (err.code === 404 || err.code === '404')) return null;
+    throw err;
+  });
+}
+/* Puts an object back the way it was before a failed operation (its earlier text, or absent). Used only
+   on a path that is already failing, so it must not add a second failure on top: it resolves regardless. */
+function restoreObject(fb, objectPath, previousText, contentType) {
+  var p = previousText == null
+    ? fb.bucket.file(objectPath).delete({ ignoreNotFound: true })
+    : saveObject(fb, objectPath, previousText, contentType);
+  return p.then(function () {}, function (err) {
+    console.error('api: could not restore ' + objectPath + ' after a failed operation — ' + (err && err.message));
   });
 }
 
-function handleEventDashboardStats(req, res) {
-  requireAdmin(req, res, function (fb) {
-    var qs = new URLSearchParams(req.url.split('?')[1] || '');
-    var eventId = String(qs.get('eventId') || '').trim();
-    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-    fb.db.collection('events').doc(eventId).collection('registrations').get()
-      .then(function (snap) {
-        var regs = snap.docs.map(function (d) { return d.data(); });
-        sendJson(res, 200, {
-          registrations: regs.length,
-          confirmed: regs.filter(function (r) { return r.status === 'confirmed'; }).length,
-          waitlist: regs.filter(function (r) { return r.status === 'waitlist'; }).length,
-          attendees: regs.filter(function (r) { return !!r.checkedInAt; }).length,
-          revenue: regs.reduce(function (sum, r) { return sum + ((r.payment && r.payment.status === 'paid') ? (r.payment.amount || 0) : 0); }, 0)
-        });
-      })
-      .catch(function (err) { sendJson(res, 500, { error: 'dashboard-stats failed: ' + err.message }); });
-  });
-}
+/* ---------- one writer at a time per event ----------
+   A site save is two Storage objects plus the version number on the event document, and a publish is a
+   Storage object plus the published* fields. Storage cannot take part in a Firestore transaction, and
+   doing the uploads from inside one does not help either: two transactions would both upload before one
+   of them lost at commit, leaving the loser's files under the winner's version number.
 
-/* ---------- POST /api/register — PUBLIC, no auth ----------
-   The one write path a published event microsite itself calls — this is what "Register Now" finally does
-   for real (previously a dead href="#" on every template). Deliberately open: a real visitor registering
-   for a real event isn't signed in as an admin, there is no public-visitor identity system in this app at
-   all. Paid events are captured with payment.status:'pending' — there is no payment gateway wired up yet
-   (see the plan's deferred-scope note); this endpoint only ever records intent to pay, never a real charge. */
-function handleRegister(req, res) {
-  parseJsonBody(req, res, function (body) {
-    var eventId = String(body.eventId || '').trim();
-    var name = String(body.name || '').trim();
-    var email = String(body.email || '').trim();
-    if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-    if (!name) return sendJson(res, 400, { error: 'name is required.' });
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: 'A valid email is required.' });
+   So the event document carries a short lease. acquireSiteLock() takes it in a transaction — the same
+   transaction that checks the caller's precondition (the base version of a save, "has this site ever
+   been saved" for a publish) — the caller then writes its objects, and commitSiteLock() applies the
+   document changes and drops the lease in a second transaction, but only if the lease is still ours.
+   Two simultaneous saves therefore cannot both win: the second waits for the first to finish and is then
+   judged against the version the first one produced.
 
-    var fb = getFirebase();
-    if (fb.error) return sendJson(res, 503, { error: fb.error });
+   The lease expires on its own (an instance that dies mid-save must not freeze the event), and a writer
+   that finds it taken waits a little rather than failing at once, because the usual reason is the same
+   user's previous autosave still finishing. */
+var SITE_LOCK_TTL_MS = 45000;
+var SITE_LOCK_WAIT_MS = 20000;
+var SITE_LOCK_POLL_MS = 300;
 
-    var eventRef = fb.db.collection('events').doc(eventId);
-    eventRef.get().then(function (snap) {
-      if (!snap.exists) return sendJson(res, 404, { error: 'No such event.' });
-      var ev = snap.data();
-      var paymentType = (ev.payment && ev.payment.type) || 'free';
-      var data = {
-        name: name.slice(0, 120), email: email.slice(0, 200),
-        phone: String(body.phone || '').slice(0, 40), company: String(body.company || '').slice(0, 120),
-        designation: String(body.designation || '').slice(0, 120), city: String(body.city || '').slice(0, 80),
-        source: String(body.source || 'website').slice(0, 60),
-        status: 'confirmed',
-        payment: paymentType === 'paid'
-          ? { required: true, status: 'pending', amount: (ev.payment && ev.payment.amount) || 0, txnId: null }
-          : { required: false, status: 'n/a', amount: 0, txnId: null },
-        createdAt: new Date().toISOString(), checkedInAt: null
-      };
-      return eventRef.collection('registrations').add(data).then(function (ref) {
-        sendJson(res, 200, { id: ref.id, status: data.status, payment: data.payment });
+function acquireSiteLock(fb, eventId, token, precondition) {
+  var ref = eventDocRef(fb, eventId), deadline = Date.now() + SITE_LOCK_WAIT_MS;
+  function attempt() {
+    return fb.db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (snap) {
+        var state = eventStateOf(snap);
+        if (state !== 'live') throw notLiveError(state, eventId);
+        var data = snap.data(), lock = data.siteLock;
+        var heldAt = lock && lock.token !== token ? Date.parse(lock.at) : NaN;
+        if (!isNaN(heldAt) && Date.now() - heldAt < SITE_LOCK_TTL_MS) return null;      // someone else is writing
+        var refusal = precondition ? precondition(data) : null;
+        if (refusal) throw refusal;
+        tx.update(ref, { siteLock: { token: token, at: new Date().toISOString() } });
+        return data;
       });
-    }).catch(function (err) { sendJson(res, 500, { error: 'register failed: ' + err.message }); });
-  });
-}
-
-/* ---------- POST /api/event/publish — admin-gated ----------
-   custom_editor.html's Publish button used to be purely cosmetic (a setTimeout + a modal literally titled
-   "Saved — not yet published", by its own code comment) — nothing the user edits in the canvas was ever
-   sent anywhere outside their own browser's IndexedDB (editor-store.js's RevampStore), so there was
-   genuinely nothing to serve from a real URL even if one existed. This makes Publish real: the browser
-   sends canvas.serialize()'s own final HTML (the exact same string the Preview button already opens in a
-   new tab — no new serialization logic needed), stored in Firebase Storage (never inline in Firestore —
-   a serialized page is easily well over the 1MiB document cap; same reasoning as buildHeroImage's own
-   Storage-not-Firestore fix) and made public, same pattern as every other generated asset in this file. */
-var MAX_PUBLISHED_HTML_BYTES = 10 * 1024 * 1024;
-
-// Shared by handleEventPublish and handleEventStage below — both just write canvas.serialize()'s output to
-// a public Storage file, the only real difference is the folder and whether the event doc's own
-// published/publishedUrl fields move. `folder` is 'published' or 'staging'.
-//
-// cacheControl is NOT optional here: a public GCS object with no cache-control metadata is served with
-// Google's own default (`public, max-age=3600`, confirmed by direct testing) — real server-side edge
-// caching, not something a client-side `fetch(url, {cache:'no-store'})` or even a hard browser refresh can
-// bypass. Left at the default, re-staging after an edit and reloading the SAME already-open tab could keep
-// showing up-to-an-hour-old content — exactly the "reload doesn't reflect the change" bug this whole
-// mechanism exists to fix. no-cache (not no-store) still lets a client cache the response, but forces it to
-// revalidate with the server first — paired with a fresh ETag on every save(), that revalidation always
-// finds the new content, so a plain reload is guaranteed to show it.
-function storeRenderedPage(fb, eventId, html, folder) {
-  if (Buffer.byteLength(html, 'utf8') > MAX_PUBLISHED_HTML_BYTES) {
-    return Promise.reject(Object.assign(new Error('This page is larger than the publish size limit.'), { status: 413 }));
+    }).then(function (data) {
+      if (data) return data;
+      if (Date.now() > deadline) {
+        throw httpError(503, 'Another save of this site is still in progress. Please try again in a moment.', { code: 'site-busy' });
+      }
+      return new Promise(function (resolve) { setTimeout(resolve, SITE_LOCK_POLL_MS); }).then(attempt);
+    });
   }
-  var storagePath = 'events/' + eventId + '/' + folder + '/index.html';
-  var file = fb.bucket.file(storagePath);
-  return file.save(Buffer.from(html, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8', cacheControl: 'no-cache, max-age=0, must-revalidate' } })
-    .then(function () { return file.makePublic(); })
-    .then(function () { return 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath; });
+  return attempt();
 }
 
+/* Applies `changes` to the event and releases the lease, if and only if the lease is still ours. */
+function commitSiteLock(fb, eventId, token, changes) {
+  var ref = eventDocRef(fb, eventId);
+  return fb.db.runTransaction(function (tx) {
+    return tx.get(ref).then(function (snap) {
+      var lock = snap.exists ? snap.data().siteLock : null;
+      if (!lock || lock.token !== token) {
+        throw httpError(409, 'This took too long and someone else has saved the site in the meantime. Reload to see the latest version.', { code: 'site-conflict' });
+      }
+      tx.update(ref, Object.assign({}, changes, { siteLock: fieldDelete() }));
+    });
+  });
+}
+
+/* Drops the lease after a failure. Best effort: if this fails too, the lease simply expires. */
+function releaseSiteLock(fb, eventId, token) {
+  var ref = eventDocRef(fb, eventId);
+  return fb.db.runTransaction(function (tx) {
+    return tx.get(ref).then(function (snap) {
+      var lock = snap.exists ? snap.data().siteLock : null;
+      if (lock && lock.token === token) tx.update(ref, { siteLock: fieldDelete() });
+    });
+  }).then(function () {}, function (err) {
+    console.error('api: could not release the site lock on ' + eventId + ' — ' + (err && err.message));
+  });
+}
+
+/* "http://localhost:8123", "https://cms.example.com" — nothing else (no path, no credentials). */
+function cleanOrigin(v) {
+  if (typeof v !== 'string') return '';
+  var m = /^(https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?)\/?$/.exec(v.trim());
+  return m ? m[1] : '';
+}
+
+/* The address this server is reached at, for the absolute URLs a page needs (canonical link, og:url) and
+   for the publishedUrl a client is handed. PUBLIC_BASE_URL wins when it is set; otherwise it is the
+   address the signed-in user's own browser is using right now, which for an admin request is the CMS. */
+function requestOrigin(req) {
+  var h = req.headers || {};
+  var host = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim();
+  if (!/^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(host)) return '';
+  var proto = String(h['x-forwarded-proto'] || '').split(',')[0].trim();
+  if (proto !== 'http' && proto !== 'https') proto = /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https';
+  return proto + '://' + host;
+}
+function publicBaseFor(req, bodyOrigin) {
+  return cleanOrigin(process.env.PUBLIC_BASE_URL || '') || cleanOrigin(bodyOrigin) || requestOrigin(req);
+}
+
+/* ---------- GET /api/event/site?eventId= ----------
+   200 { eventId, version, snapshotVersion, templateId, updatedAt, updatedBy, eventCreatedAt, snapshot }
+   404 { code: 'site-not-saved' } when the site has never been saved.
+   `snapshot` is null and `snapshotVersion` is lower than `version` only when the newest page came from an
+   editor still running the previous script (it publishes a page without a snapshot; see
+   handleEventPublish) — the editor then has a page it cannot reopen and should say so rather than treat
+   an older snapshot as current. `eventCreatedAt` is what the editor's local copy must match (contract
+   section 3): a new event that reuses an old address must never open the old event's site. */
+function handleSiteGet(req, res) {
+  withAdmin(req, res, function (fb) {
+    var eventId = eventIdOr400(res, queryOf(req).get('eventId'));
+    if (!eventId) return;
+    loadLiveEvent(fb, eventId).then(function (data) {
+      var version = siteVersionOf(data);
+      if (!version) throw httpError(404, 'This site has not been saved yet.', { code: 'site-not-saved' });
+      return readObject(fb, sitePath(eventId, 'snapshot.json')).then(function (text) {
+        var snapshot = null;
+        if (text != null) { try { snapshot = JSON.parse(text); } catch (e) { snapshot = null; } }
+        var site = data.site;
+        sendJson(res, 200, {
+          eventId: eventId, version: version,
+          snapshotVersion: snapshot == null ? 0 : (site.snapshotVersion != null ? +site.snapshotVersion : version),
+          templateId: site.templateId || data.templateId || null,
+          updatedAt: site.updatedAt || null, updatedBy: site.updatedBy || null,
+          eventCreatedAt: data.createdAt || null, snapshot: snapshot
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'site get', err, 'Could not load the saved site. Please try again.'); });
+  });
+}
+
+/* ---------- PUT /api/event/site ----------
+   Body { eventId, templateId, baseVersion, snapshot, html, origin, force? } -> 200 { version, updatedAt }.
+   `baseVersion` is the version the editor loaded (0 for a first save). If the stored version is different
+   and `force` is not true: 409 { error, code: 'site-conflict', current: { version, updatedAt, updatedBy } }
+   and nothing is written — the editor asks its user which copy to keep.
+
+   The page is stored with the saving origin already made root-relative (see rewriteOrigins), so what is
+   kept does not depend on which host the editor happened to be opened on. */
+function handleSitePut(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    if (typeof body.html !== 'string' || !body.html.trim()) return sendJson(res, 400, { error: 'The page to save ("html") is missing.' });
+    if (!isPlainObject(body.snapshot)) return sendJson(res, 400, { error: 'The editor state to save ("snapshot") is missing.' });
+    var baseVersion = body.baseVersion == null ? 0 : body.baseVersion;
+    if (typeof baseVersion !== 'number' || !isFinite(baseVersion) || baseVersion < 0 || Math.floor(baseVersion) !== baseVersion) {
+      return sendJson(res, 400, { error: '"baseVersion" must be the version number this site was loaded at (0 for a first save).' });
+    }
+    var templateProblem = EVENT_FIELD_CHECKS.templateId(body.templateId);
+    if (templateProblem) return sendJson(res, 400, { error: templateProblem });
+    if (body.origin != null && body.origin !== '' && !cleanOrigin(body.origin)) return sendJson(res, 400, { error: '"origin" must be the address of the editor (location.origin).' });
+    if (body.force != null && typeof body.force !== 'boolean') return sendJson(res, 400, { error: '"force" must be true or false.' });
+
+    var snapshotText;
+    try { snapshotText = JSON.stringify(body.snapshot); } catch (e) { return sendJson(res, 400, { error: 'The editor state could not be read.' }); }
+    var pageHtml = rewriteOrigins(body.html, [cleanOrigin(body.origin)]);
+
+    var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
+    acquireSiteLock(fb, eventId, token, function (data) {
+      var current = siteVersionOf(data);
+      if (body.force === true || baseVersion === current) return null;
+      var site = data.site || {};
+      return httpError(409, current
+        ? 'This site was changed' + (site.updatedBy ? ' by ' + site.updatedBy : '') + ' after you opened it.'
+        : 'This site has no saved version yet — reload the editor.', {
+        code: 'site-conflict',
+        current: { version: current, updatedAt: site.updatedAt || null, updatedBy: site.updatedBy || null }
+      });
+    }).then(function (data) {
+      var previous = data.site || {}, version = siteVersionOf(data) + 1;
+      var templateId = body.templateId || previous.templateId || data.templateId || null;
+      return Promise.all([
+        saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8'),
+        saveObject(fb, sitePath(eventId, 'page.html'), pageHtml, 'text/html; charset=utf-8')
+      ]).then(function () {
+        return commitSiteLock(fb, eventId, token, {
+          site: { version: version, snapshotVersion: version, templateId: templateId, updatedAt: now, updatedBy: actor },
+          updatedAt: now
+        });
+      }).then(function () {
+        sendJson(res, 200, { version: version, updatedAt: now });
+        /* The editor saves a couple of seconds after every change. One history line per editing session
+           is what a person reading the History wants: a new line when somebody else takes over, or when
+           the last recorded save is more than ten minutes old. */
+        var last = Date.parse(previous.updatedAt || '');
+        if (previous.updatedBy !== actor || isNaN(last) || Date.parse(now) - last > 600000) {
+          logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version);
+        }
+      }, function (err) {
+        return releaseSiteLock(fb, eventId, token).then(function () { throw err; });
+      });
+    }).catch(function (err) { sendFailure(res, 'site save', err, 'The site could not be saved. Please try again.'); });
+  });
+}
+
+/* =====================================================================================================
+   THE PUBLISH TRANSFORM — one function, used for /e/<id> (at publish) and /preview/<id> (on request)
+
+   Input: a serialized page (editor-canvas.js's serialize(): template-loader.js's document for a real
+   template, an AI-designed site "gen-<id>" or a Lovable import "imported-<id>", after editing). Output:
+   the page a visitor gets. In order, it
+     1. removes what only the editor or the AI review needs, what a browser extension left behind in
+        the page while it was being edited, and the markup authors' HTML comments;
+     2. makes the saving origin root-relative, so the page works at whatever host serves it;
+     3. sets <title> to the event's name and writes the description, Open Graph tags, canonical link and
+        favicon;
+     4. makes sure the live-site runtime and its config block are present exactly once;
+     5. in preview mode, adds a "Preview — not published" ribbon.
+
+   There is no HTML parser among this project's dependencies, and this is not one. It is a tokenizer that
+   knows only where tags, comments and raw-text elements (script, style, textarea, title) begin and end,
+   and the transform changes nothing but whole tags it has matched exactly and text it inserts itself.
+   Three rules keep it from damaging a page it does not fully understand:
+     - a tag that cannot be read to its end (an unclosed quote, a stray "<") is left as plain text;
+     - an element is removed only when its matching end tag is found; otherwise it stays, untouched;
+     - everything the transform adds carries a marker attribute (data-rv-head, data-rv-runtime,
+       data-rv-preview-ribbon) and is removed by that marker before being added again — which is what
+       makes running it on its own output change nothing.
+   Text inside <script> is never rewritten.
+   ===================================================================================================== */
+var VOID_TAGS = { area: 1, base: 1, br: 1, col: 1, embed: 1, hr: 1, img: 1, input: 1, link: 1, meta: 1, param: 1, source: 1, track: 1, wbr: 1 };
+var RAW_TEXT_TAGS = { script: 1, style: 1, textarea: 1, title: 1 };
+
+function escHtmlText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escHtmlAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/* Reads one start tag beginning at html[start] === '<'. Returns the token, or null when the tag does not
+   end properly (then the "<" is just text). Attribute values are kept exactly as written (`raw`), so a
+   tag that is not changed is written back byte for byte. */
+function readStartTag(html, start) {
+  var n = html.length, i = start + 1;
+  while (i < n && !/[\s\/>]/.test(html.charAt(i))) i++;
+  var rawName = html.slice(start + 1, i);
+  var tag = { t: 'open', s: start, e: 0, name: rawName.toLowerCase(), rawName: rawName, attrs: [], selfClosing: false };
+  for (;;) {
+    while (i < n && /\s/.test(html.charAt(i))) i++;
+    if (i >= n) return null;
+    var c = html.charAt(i);
+    if (c === '>') { tag.e = i + 1; return tag; }
+    if (c === '/') {
+      if (html.charAt(i + 1) === '>') { tag.selfClosing = true; tag.e = i + 2; return tag; }
+      i++; continue;
+    }
+    var nameStart = i;
+    while (i < n && !/[\s=>]/.test(html.charAt(i)) && !(html.charAt(i) === '/' && html.charAt(i + 1) === '>')) i++;
+    if (i === nameStart) { i++; continue; }                      // a stray "=": skip it
+    var attr = { name: html.slice(nameStart, i).toLowerCase(), value: null, raw: '' };
+    var j = i;
+    while (j < n && /\s/.test(html.charAt(j))) j++;
+    if (html.charAt(j) === '=') {
+      j++;
+      while (j < n && /\s/.test(html.charAt(j))) j++;
+      var q = html.charAt(j);
+      if (q === '"' || q === "'") {
+        var close = html.indexOf(q, j + 1);
+        if (close === -1) return null;
+        attr.value = html.slice(j + 1, close);
+        i = close + 1;
+      } else {
+        var k = j;
+        while (k < n && !/[\s>]/.test(html.charAt(k))) k++;
+        attr.value = html.slice(j, k);
+        i = k;
+      }
+    }
+    attr.raw = html.slice(nameStart, i);
+    tag.attrs.push(attr);
+  }
+}
+
+function tokenizeHtml(html) {
+  var tokens = [], n = html.length, i = 0, textStart = 0;
+  function flushText(end) { if (end > textStart) tokens.push({ t: 'text', s: textStart, e: end }); }
+  while (i < n) {
+    var lt = html.indexOf('<', i);
+    if (lt === -1) break;
+    var next = html.charAt(lt + 1), end;
+    if (html.substr(lt, 4) === '<!--') {
+      end = html.indexOf('-->', lt + 4);
+      end = end === -1 ? n : end + 3;
+      flushText(lt); tokens.push({ t: 'comment', s: lt, e: end }); i = textStart = end;
+    } else if (next === '!' || next === '?') {
+      end = html.indexOf('>', lt + 2);
+      if (end === -1) break;
+      flushText(lt); tokens.push({ t: 'decl', s: lt, e: end + 1 }); i = textStart = end + 1;
+    } else if (next === '/' && /[A-Za-z]/.test(html.charAt(lt + 2))) {
+      end = html.indexOf('>', lt + 2);
+      if (end === -1) break;
+      flushText(lt);
+      tokens.push({ t: 'close', s: lt, e: end + 1, name: html.slice(lt + 2, end).split(/[\s\/]/)[0].toLowerCase() });
+      i = textStart = end + 1;
+    } else if (/[A-Za-z]/.test(next)) {
+      var tag = readStartTag(html, lt);
+      if (!tag) { i = lt + 1; continue; }
+      flushText(lt); tokens.push(tag); i = textStart = tag.e;
+      if (RAW_TEXT_TAGS[tag.name] && !tag.selfClosing) {
+        var re = new RegExp('</' + tag.name + '(?=[\\s/>])', 'ig');
+        re.lastIndex = i;
+        var m = re.exec(html), stop = m ? m.index : n;
+        if (stop > i) tokens.push({ t: 'raw', s: i, e: stop, of: tag.name });
+        i = textStart = stop;
+      }
+    } else {
+      i = lt + 1;
+    }
+  }
+  flushText(n);
+  return tokens;
+}
+
+function attrOf(tag, name) {
+  for (var i = 0; i < tag.attrs.length; i++) if (tag.attrs[i].name === name) return tag.attrs[i];
+  return null;
+}
+function attrValue(tag, name) { var a = attrOf(tag, name); return a && a.value != null ? a.value : (a ? '' : null); }
+function classListOf(tag) { return (attrValue(tag, 'class') || '').split(/\s+/).filter(Boolean); }
+function writeTag(tag) {
+  return '<' + tag.rawName + tag.attrs.map(function (a) { return ' ' + a.raw; }).join('') + (tag.selfClosing ? ' />' : '>');
+}
+function setAttr(tag, name, value) {
+  var raw = name + '="' + escHtmlAttr(value) + '"', a = attrOf(tag, name);
+  if (a) { a.value = escHtmlAttr(value); a.raw = raw; } else tag.attrs.push({ name: name, value: escHtmlAttr(value), raw: raw });
+}
+function dropAttr(tag, name) {
+  var before = tag.attrs.length;
+  tag.attrs = tag.attrs.filter(function (a) { return a.name !== name; });
+  return tag.attrs.length !== before;
+}
+
+/* The index of the token that ends the element opened at tokens[i]: i itself for a void or self-closed
+   element, the matching end tag otherwise, or -1 when there is none (the element is then left alone). */
+function elementEnd(tokens, i) {
+  var tag = tokens[i];
+  if (VOID_TAGS[tag.name] || tag.selfClosing) return i;
+  var depth = 0;
+  for (var j = i + 1; j < tokens.length; j++) {
+    var t = tokens[j];
+    if (t.t === 'open' && t.name === tag.name && !t.selfClosing) depth++;
+    else if (t.t === 'close' && t.name === tag.name) { if (depth === 0) return j; depth--; }
+  }
+  return -1;
+}
+
+/* Every absolute URL that points at `origin` becomes root-relative. Only where a URL starts: at the
+   beginning of the value, or after whitespace, a comma, "(", a quote, "=" or ";" (the end of &quot;),
+   which covers href/src, srcset lists and url(...) in style attributes and stylesheets. "http://host:81"
+   is never mistaken for a prefix of "http://host:8123", because the "/" after the origin is required. */
+function originRewriter(origins) {
+  var list = (origins || []).filter(Boolean).filter(function (o, i, a) { return a.indexOf(o) === i; });
+  if (!list.length) return null;
+  var re = new RegExp('(^|[\\s,(\'"=;])(?:' + list.map(escRegExp).join('|') + ')(?=/)', 'g');
+  return function (value) {
+    if (list.indexOf(value) !== -1) return '/';
+    return value.indexOf('://') === -1 ? value : value.replace(re, '$1');
+  };
+}
+
+/* The origin a serialized page was saved from, read off the page itself: template-loader.js always links
+   its own et-runtime.js by absolute URL. Lets a page be made root-relative even when nobody told us where
+   it came from — which is the case for every page published before the site was saved on the server. */
+function detectSavingOrigins(tokens) {
+  var found = [];
+  tokens.forEach(function (t) {
+    if (t.t !== 'open' || (t.name !== 'script' && t.name !== 'link')) return;
+    var url = attrValue(t, t.name === 'script' ? 'src' : 'href') || '';
+    var m = /^(https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?)\/templates\/_shared\/et-[a-z-]+\.(?:js|css)(?:[?#].*)?$/.exec(url);
+    if (m && found.indexOf(m[1]) === -1) found.push(m[1]);
+  });
+  return found;
+}
+
+/* Applies the origin rewrite to a token list in place (out[] holds each token's text). */
+function rewriteOriginTokens(html, tokens, out, origins) {
+  var rewrite = originRewriter(origins);
+  if (!rewrite) return;
+  tokens.forEach(function (t, i) {
+    if (out[i] === '') return;
+    if (t.t === 'raw' && t.of === 'style') { out[i] = rewrite(out[i]); return; }
+    if (t.t !== 'open') return;
+    var changed = false;
+    t.attrs.forEach(function (a) {
+      if (a.value == null || a.value.indexOf('://') === -1) return;
+      var v = rewrite(a.value);
+      if (v === a.value) return;
+      var quote = a.raw.charAt(a.raw.length - 1);
+      quote = (quote === '"' || quote === "'") ? quote : '"';
+      a.raw = a.raw.slice(0, a.raw.indexOf('=')).trim() + '=' + quote + v + quote;
+      a.value = v; changed = true;
+    });
+    if (changed) out[i] = writeTag(t);
+  });
+}
+
+/* Step 2 on its own, for PUT /api/event/site: the stored page is root-relative from the start. */
+function rewriteOrigins(html, origins) {
+  var tokens = tokenizeHtml(html);
+  var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
+  rewriteOriginTokens(html, tokens, out, (origins || []).concat(detectSavingOrigins(tokens)));
+  return out.join('');
+}
+
+/* Attributes and classes that exist for the editor only. The first seven are the same list
+   editor-canvas.js's serialize() strips; the rest are the editor's own escape hatch (data-ed), its
+   AI-review markers (editor-fill.js / editor-template-ui.js), and what the Grammarly extension writes
+   into any page its user edits — two already-published pages carry it. */
+var EDITOR_ONLY_ATTRS = ['data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown',
+  'data-date-format', 'data-ed', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-editing',
+  'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded'];
+var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
+var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
+var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live)\.js|editor-fill\.js)$/;
+var RUNTIME_STYLE = /\/templates\/_shared\/rv-live\.css$/;
+var SITE_FAVICON = '/assets/et-b2b-logo.svg';
+
+function urlPathOnly(url) { return String(url || '').replace(/[?#].*$/, ''); }
+
+/* A real template's content.map (templates/<templateId>/template.json), which the live runtime needs to
+   put the event's records into that template's own markup. AI-designed sites and imports have none: they
+   bind by the data-rv-* convention instead. Read from disk once per file version; any problem — an id
+   that is not a real template, a file that is missing in this deployment or does not parse — means
+   "no map", and the page is still published. */
+var TEMPLATES_DIR = path.join(__dirname, '..', '..', 'templates');
+var contentMapCache = {};
+function contentMapFor(templateId) {
+  if (typeof templateId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,80}$/.test(templateId) || /^(gen|imported)-/.test(templateId)) return null;
+  try {
+    var file = path.join(TEMPLATES_DIR, templateId, 'template.json');
+    var mtime = fs.statSync(file).mtimeMs, hit = contentMapCache[templateId];
+    if (hit && hit.mtime === mtime) return hit.map;
+    var json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    var map = json && json.content && Array.isArray(json.content.map) ? json.content.map : null;
+    contentMapCache[templateId] = { mtime: mtime, map: map };
+    return map;
+  } catch (e) { return null; }
+}
+
+/* opts: { eventId, event (the event document), mode: 'live' | 'preview', templateId, origins: [],
+           publicBase: 'https://host' or '' } */
+function publishTransform(html, opts) {
+  var tokens = tokenizeHtml(html);
+  var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
+  var event = opts.event || {}, mode = opts.mode === 'preview' ? 'preview' : 'live';
+  var origins = (opts.origins || []).concat(detectSavingOrigins(tokens));
+
+  var headOpen = -1, headClose = -1, bodyOpen = -1, bodyClose = -1, htmlOpen = -1, i;
+  for (i = 0; i < tokens.length; i++) {
+    var tk = tokens[i];
+    if (tk.t === 'open' && tk.name === 'html' && htmlOpen === -1) htmlOpen = i;
+    if (tk.t === 'open' && tk.name === 'head' && headOpen === -1 && bodyOpen === -1) headOpen = i;
+    if (tk.t === 'close' && tk.name === 'head' && headClose === -1 && headOpen !== -1 && bodyOpen === -1) headClose = i;
+    if (tk.t === 'open' && tk.name === 'body' && bodyOpen === -1) bodyOpen = i;
+    if (tk.t === 'close' && tk.name === 'body') bodyClose = i;
+  }
+  var inHead = function (idx) { return headOpen !== -1 && idx > headOpen && (headClose === -1 ? (bodyOpen === -1 || idx < bodyOpen) : idx < headClose); };
+
+  /* Removes the element starting at tokens[idx]; returns the index of its last token, or idx when its
+     end could not be found (nothing removed). `ours` also takes the one newline we wrote after it. */
+  function removeElement(idx, ours) {
+    var end = elementEnd(tokens, idx);
+    if (end === -1) return idx;
+    for (var k = idx; k <= end; k++) out[k] = '';
+    var after = tokens[end + 1];
+    if (ours && after && after.t === 'text' && out[end + 1].charAt(0) === '\n') out[end + 1] = out[end + 1].slice(1);
+    return end;
+  }
+
+  /* ---- 1. what only the editor, the AI review or a browser extension put there ---- */
+  for (i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    /* HTML comments are notes from whoever wrote the markup to whoever maintains it — the shared
+       header/footer files and the section library open with paragraphs naming this server's source
+       files — and every published page carried them to the public. A comment never renders, so none
+       is needed on a live page; the one kind a browser acts on (a conditional comment) is kept. */
+    if (t.t === 'comment') { if (!/^<!--\[if\b|<!\[endif\]-->$/i.test(out[i])) out[i] = ''; continue; }
+    if (t.t !== 'open' || out[i] === '') continue;
+    var classes = classListOf(t);
+
+    if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon')) { i = removeElement(i, true); continue; }
+    if (attrOf(t, 'data-rv-editor') || attrOf(t, 'data-rv-empty-state') || attrOf(t, 'data-rv-bind-hint') || t.name === 'grammarly-desktop-integration' || attrOf(t, 'data-grammarly-shadow-root') ||
+        classes.some(function (c) { return AI_BADGE_CLASSES.indexOf(c) !== -1; })) { i = removeElement(i, false); continue; }
+    /* the "SHARED HEADER / FOOTER — DESIGN TO COME" strips the template loader used to put on every
+       page: scaffolding for the template authors, baked into pages saved before it was removed. They go
+       whatever they say — a strip whose text was edited or emptied is still a fixed bar across a live
+       site. There is no shared header or footer design; when there is one it must not reuse these marks. */
+    var locked = attrValue(t, 'data-rv-locked');
+    if (classes.indexOf('rv-slot-header') !== -1 || classes.indexOf('rv-slot-footer') !== -1 || locked === 'header' || locked === 'footer') { i = removeElement(i, false); continue; }
+    /* a section the owner switched off in the editor (its video could not be shown) */
+    if (attrOf(t, 'data-rv-video-off')) { i = removeElement(i, false); continue; }
+    /* an earlier copy of the runtime or of its config: step 4 writes the one that counts */
+    if (t.name === 'script' && (attrValue(t, 'id') === 'rv-site-config' || RUNTIME_SCRIPT.test(urlPathOnly(attrValue(t, 'src'))))) { i = removeElement(i, false); continue; }
+    if (t.name === 'link' && RUNTIME_STYLE.test(urlPathOnly(attrValue(t, 'href')))) { i = removeElement(i, false); continue; }
+    /* head tags step 3 is about to write: a page has one description, one canonical link, one icon */
+    if (inHead(i)) {
+      var metaName = (attrValue(t, 'name') || '').toLowerCase(), metaProp = (attrValue(t, 'property') || '').toLowerCase();
+      var rel = (attrValue(t, 'rel') || '').toLowerCase().split(/\s+/);
+      if ((t.name === 'meta' && (metaName === 'description' || /^twitter:/.test(metaName) || /^og:/.test(metaProp))) ||
+          (t.name === 'link' && (rel.indexOf('canonical') !== -1 || rel.indexOf('icon') !== -1))) { i = removeElement(i, false); continue; }
+    }
+
+    var changed = false;
+    EDITOR_ONLY_ATTRS.forEach(function (a) { if (dropAttr(t, a)) changed = true; });
+    /* every AI-review mark, including ones a later editor version adds */
+    if (t.attrs.some(function (a) { return a.name.indexOf('data-ai-') === 0; })) {
+      t.attrs = t.attrs.filter(function (a) { return a.name.indexOf('data-ai-') !== 0; });
+      changed = true;
+    }
+    /* items the editor opened for editing (an accordion, a tab): put them back as the site has them,
+       exactly as editor-canvas.js's unopen() does */
+    var opened = attrOf(t, 'data-rv-open');
+    if (opened) { classes = classes.filter(function (c) { return c !== opened.value; }); dropAttr(t, 'data-rv-open'); changed = true; }
+    var aria = attrOf(t, 'data-rv-aria');
+    if (aria) { setAttr(t, 'aria-expanded', aria.value || 'false'); dropAttr(t, 'data-rv-aria'); changed = true; }
+    var kept = classes.filter(function (c) { return EDITOR_ONLY_CLASSES.indexOf(c) === -1; });
+    if (opened || kept.length !== classes.length) {
+      if (kept.length) setAttr(t, 'class', kept.join(' ')); else dropAttr(t, 'class');
+      changed = true;
+    }
+    /* the page reports visits and registrations under THIS event, whatever the template or the event it
+       was copied from wrote there */
+    if (t.name === 'body' && opts.eventId && attrValue(t, 'data-rv-event-id') !== opts.eventId) { setAttr(t, 'data-rv-event-id', opts.eventId); changed = true; }
+    if (changed) out[i] = writeTag(t);
+  }
+
+  /* ---- 2. the saving origin becomes root-relative ---- */
+  rewriteOriginTokens(html, tokens, out, origins);
+
+  /* ---- 3. title, description, sharing tags, canonical link, favicon ---- */
+  var seo = (event.settings && event.settings.seo) || {};
+  var name = typeof event.name === 'string' ? event.name.trim() : '';
+  var description = String(seo.description || event.description || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!description && name) {
+    /* nothing written for it yet: say what is known (when and where), so a shared link is not a bare title */
+    var facts = [event.dateLabel, event.venue, event.city].map(function (v) { return typeof v === 'string' ? v.trim() : ''; }).filter(Boolean);
+    if (facts.length) description = (name + ' — ' + facts.join(', ')).slice(0, 300);
+  }
+  var pageUrl = mode === 'live' ? (cleanCanonical(seo.canonicalUrl) || (opts.publicBase ? opts.publicBase + publicPathOf(opts.eventId) : '')) : '';
+  var shareImage = String(seo.shareImageUrl || '').trim();
+  if (shareImage.charAt(0) === '/' && opts.publicBase) shareImage = opts.publicBase + shareImage;
+
+  var head = [], titleDone = !name;
+  if (name) {
+    for (i = 0; i < tokens.length && !titleDone; i++) {
+      if (!(inHead(i) || (bodyOpen !== -1 && i < bodyOpen))) continue;
+      if (tokens[i].t !== 'open' || tokens[i].name !== 'title' || out[i] === '') continue;
+      if (tokens[i + 1] && tokens[i + 1].t === 'raw') out[i + 1] = escHtmlText(name);
+      else out[i] += escHtmlText(name);
+      titleDone = true;
+    }
+    if (!titleDone) head.push('<title data-rv-head>' + escHtmlText(name) + '</title>');
+  }
+  function meta(attr, key, value) { if (value) head.push('<meta ' + attr + '="' + key + '" content="' + escHtmlAttr(value) + '" data-rv-head>'); }
+  meta('name', 'description', description);
+  if (pageUrl) head.push('<link rel="canonical" href="' + escHtmlAttr(pageUrl) + '" data-rv-head>');
+  meta('property', 'og:type', 'website');
+  meta('property', 'og:title', name);
+  meta('property', 'og:description', description);
+  meta('property', 'og:url', pageUrl);
+  meta('property', 'og:image', shareImage);
+  meta('name', 'twitter:card', shareImage ? 'summary_large_image' : 'summary');
+  if (mode === 'preview') meta('name', 'robots', 'noindex, nofollow');
+  /* the tab icon is the event's own logo when it has one (an uploaded picture, so a web address or a
+     path on this host), the ET mark otherwise */
+  var logo = typeof event.logoUrl === 'string' ? event.logoUrl.trim() : '';
+  if (/^(https?:\/\/[^\s"'<>]+|\/(?!\/)[^\s"'<>]*)$/i.test(logo)) head.push('<link rel="icon" href="' + escHtmlAttr(logo) + '" data-rv-head>');
+  else head.push('<link rel="icon" type="image/svg+xml" href="' + SITE_FAVICON + '" data-rv-head>');
+  head.push('<link rel="stylesheet" href="/templates/_shared/rv-live.css" data-rv-runtime>');
+
+  /* ---- 4. the live-site runtime and its config, exactly once ---- */
+  var contentMap = contentMapFor(opts.templateId);
+  var config = { eventId: opts.eventId, mode: mode, templateId: opts.templateId || null, contentMap: contentMap || [] };
+  /* "<" must not appear inside the block: "</script" in a field's text would end it early */
+  var configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/[\u2028\u2029]/g, function (c) { return c === '\u2028' ? '\\u2028' : '\\u2029'; });
+  var tail = ['<script id="rv-site-config" type="application/json" data-rv-runtime>' + configJson + '</script>'];
+  if (contentMap) tail.push('<script src="/editor-fill.js" data-rv-runtime></script>');
+  tail.push('<script src="/templates/_shared/rv-data.js" data-rv-runtime></script>');
+  /* the registration form and visit counting; left out while that file is not part of this release, so a
+     live page does not ask every visitor's browser for something that answers 404 */
+  if (LIVE_RUNTIME_PRESENT) tail.push('<script src="/templates/_shared/rv-live.js" data-rv-runtime></script>');
+
+  /* ---- 5. preview ribbon ---- */
+  var ribbon = mode === 'preview'
+    ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">Preview — not published</div>'
+    : '';
+
+  var headText = head.join('\n') + '\n', tailText = tail.join('\n') + '\n';
+  /* where each block goes; a page without <head> or </body> still gets everything, in the nearest
+     place a browser will accept it. Every inserted line ends with the one newline that removeElement()
+     takes away again with it — never a newline in front — so a second run leaves the same bytes. */
+  var prefix = '', suffix = '';
+  if (headClose !== -1) out[headClose] = headText + out[headClose];
+  else if (bodyOpen !== -1) out[bodyOpen] = headText + out[bodyOpen];
+  else if (htmlOpen !== -1) out[htmlOpen] = out[htmlOpen] + headText;
+  else prefix = headText;
+  if (ribbon) { if (bodyOpen !== -1) out[bodyOpen] = out[bodyOpen] + ribbon + '\n'; else tailText = ribbon + '\n' + tailText; }
+  if (bodyClose !== -1) out[bodyClose] = tailText + out[bodyClose];
+  else suffix = tailText;
+
+  return prefix + out.join('') + suffix;
+}
+
+function cleanCanonical(v) { return (typeof v === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(v.trim())) ? v.trim() : ''; }
+
+/* ---------- POST /api/event/publish ----------
+   Body { eventId } -> 200 { publishedPath, publishedUrl, publishedAt, publishedVersion }.
+   Publishes the site as last SAVED (PUT /api/event/site): 409 { code: 'site-not-saved' } when it never
+   was. Because it works from the saved copy, it does the same thing from the editor, from the console
+   and from any browser — the page that goes live no longer depends on whose IndexedDB the click came from.
+
+   For one release a body that still carries `html` is accepted, because browsers will keep running the
+   previous editor script for a while after this deploys: it is treated as "save this page, then publish
+   it". Such a save has no snapshot, so site.version moves on while site.snapshotVersion stays (see
+   handleSiteGet).
+
+   The live page is never taken down and a failure leaves no trace:
+     - the new page replaces the Storage object in ONE request (the old two-step "save, then make public"
+       is what made every re-publish answer 403 for a moment, and for good if the second step failed);
+     - /e/<id> does not read a public object at all any more, so there is no ACL to lose;
+     - if recording the publish on the event fails after the object was replaced, the previous object is
+       put back, so the page and the published* fields still describe the same publish. */
 function handleEventPublish(req, res) {
-  requireAdmin(req, res, function (fb) {
-    parseJsonBody(req, res, function (body) {
-      var eventId = String(body.eventId || '').trim();
-      var html = String(body.html || '');
-      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-      if (!html.trim()) return sendJson(res, 400, { error: 'html is required.' });
-      storeRenderedPage(fb, eventId, html, 'published').then(function (publishedUrl) {
-        var now = new Date().toISOString();
-        return fb.db.collection('events').doc(eventId)
-          .set({ published: true, publishedUrl: publishedUrl, publishedAt: now }, { merge: true })
-          .then(function () { sendJson(res, 200, { publishedUrl: publishedUrl, publishedAt: now }); });
-      }).catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('publish failed: ' + err.message) }); });
-    });
+  withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    if (body.html != null && typeof body.html !== 'string') return sendJson(res, 400, { error: '"html" must be the page as text.' });
+    var legacyHtml = typeof body.html === 'string' && body.html.trim() ? body.html : null;
+    var base = publicBaseFor(req, body.origin);
+    var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
+    var HTML = 'text/html; charset=utf-8';
+
+    acquireSiteLock(fb, eventId, token, function (data) {
+      if (legacyHtml || siteVersionOf(data)) return null;
+      return httpError(409, 'This site has not been saved yet. Open the site editor, make sure it says "Saved", then publish.', { code: 'site-not-saved' });
+    }).then(function (data) {
+      var undo = [];                                            // what to put back if a later step fails
+      var previousSite = data.site || {}, changes = {};
+      var version = siteVersionOf(data), page;
+
+      if (legacyHtml) {
+        version += 1;
+        var pagePath = sitePath(eventId, 'page.html');
+        var stored = rewriteOrigins(legacyHtml, [cleanOrigin(body.origin)]);
+        changes.site = {
+          version: version, snapshotVersion: previousSite.snapshotVersion != null ? previousSite.snapshotVersion : siteVersionOf(data),
+          templateId: previousSite.templateId || data.templateId || null, updatedAt: now, updatedBy: actor
+        };
+        page = readObject(fb, pagePath).then(function (before) {
+          /* registered before the write, not after it: an upload can reach Storage and still be
+             reported to us as failed, and the earlier object must come back in that case too */
+          undo.push(function () { return restoreObject(fb, pagePath, before, HTML); });
+          return saveObject(fb, pagePath, stored, HTML).then(function () { return stored; });
+        });
+      } else {
+        page = readObject(fb, sitePath(eventId, 'page.html')).then(function (text) {
+          if (text == null) throw httpError(409, 'The saved site could not be found. Open the site editor and save it again, then publish.', { code: 'site-not-saved' });
+          return text;
+        });
+      }
+
+      return page.then(function (pageHtml) {
+        var livePath = publishedObjectPath(eventId);
+        var live = publishTransform(pageHtml, {
+          eventId: eventId, event: data, mode: 'live', publicBase: base,
+          templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
+        });
+        return readObject(fb, livePath).then(function (before) {
+          undo.push(function () { return restoreObject(fb, livePath, before, HTML); });
+          return saveObject(fb, livePath, live, HTML);
+        });
+      }).then(function () {
+        return commitSiteLock(fb, eventId, token, Object.assign(changes, {
+          published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
+          publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now
+        }));
+      }).then(function () {
+        forgetCachedPage(eventId);
+        sendJson(res, 200, {
+          publishedPath: publicPathOf(eventId), publishedUrl: base + publicPathOf(eventId),
+          publishedAt: now, publishedVersion: version
+        });
+        logActivity(fb, eventId, decoded, 'published', 'version ' + version);
+      }, function (err) {
+        return Promise.all(undo.map(function (step) { return step(); }))
+          .then(function () { forgetCachedPage(eventId); return releaseSiteLock(fb, eventId, token); })
+          .then(function () { throw err; });
+      });
+    }).catch(function (err) { sendFailure(res, 'publish', err, 'The site could not be published. The page that was live before is unchanged. Please try again.'); });
   });
 }
 
-/* ---------- POST /api/event/stage — admin-gated ----------
-   The Preview button (editor-template-ui.js's openPreview()) used to open a BLANK new tab and
-   document.write() the serialized page straight into it — a one-off snapshot with no real URL, so
-   reloading that tab (or sharing it) showed nothing. This gives Preview a real, stable, reloadable URL
-   instead — same storeRenderedPage() mechanism as Publish, but to a separate 'staging' Storage folder, and
-   deliberately does NOT touch the event doc's published/publishedUrl fields at all: staging a preview must
-   never look like, or count as, actually publishing the page. Clicking Preview again re-uploads to the
-   SAME url (every event has exactly one staging URL, not one per click), so a tab already open on it just
-   needs a reload to see the latest change — which is the whole point. */
+/* ---------- POST /api/event/unpublish ----------
+   Body { eventId } -> 200 { ok, published: false }. /e/<id> reads the event on every request, so the page
+   stops being served at once, on every instance. The stored page is kept: publishing again replaces it. */
+function handleEventUnpublish(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), wasPublished = false;
+    fb.db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (snap) {
+        var state = eventStateOf(snap);
+        if (state !== 'live') throw notLiveError(state, eventId);
+        wasPublished = snap.data().published === true;
+        if (!wasPublished) return;
+        tx.update(ref, {
+          published: false, publishedPath: null, publishedUrl: fieldDelete(),
+          unpublishedAt: now, unpublishedBy: actorOf(decoded), updatedAt: now
+        });
+      });
+    }).then(function () {
+      forgetCachedPage(eventId);
+      sendJson(res, 200, { ok: true, published: false });
+      if (wasPublished) logActivity(fb, eventId, decoded, 'unpublished', '');
+    }).catch(function (err) { sendFailure(res, 'unpublish', err, 'The site could not be unpublished. Please try again.'); });
+  });
+}
+
+/* ---------- POST /api/event/stage — only for editors still running the previous script ----------
+   The previous Preview button sends the page it has in hand and opens whatever `stagingUrl` comes back.
+   It used to be written to a PUBLIC Storage object, so an unreleased site could be read by anyone who
+   guessed the event's address. It is now kept private and shown through /preview/<id>?staged=1, behind
+   the sign-in gate like every other preview. It does not touch the saved site: a page with no snapshot
+   must not become "the latest version" just because somebody looked at it. The current editor does not
+   call this at all — it saves, then opens /preview/<id>. */
 function handleEventStage(req, res) {
-  requireAdmin(req, res, function (fb) {
-    parseJsonBody(req, res, function (body) {
-      var eventId = String(body.eventId || '').trim();
-      var html = String(body.html || '');
-      if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
-      if (!html.trim()) return sendJson(res, 400, { error: 'html is required.' });
-      storeRenderedPage(fb, eventId, html, 'staging').then(function (stagingUrl) {
-        sendJson(res, 200, { stagingUrl: stagingUrl });
-      }).catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('stage failed: ' + err.message) }); });
-    });
+  withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    if (typeof body.html !== 'string' || !body.html.trim()) return sendJson(res, 400, { error: 'The page to preview ("html") is missing.' });
+    loadLiveEvent(fb, eventId).then(function () {
+      return saveObject(fb, stagingObjectPath(eventId), rewriteOrigins(body.html, [cleanOrigin(body.origin)]), 'text/html; charset=utf-8');
+    }).then(function () {
+      var previewPath = '/preview/' + eventId + '?staged=1';
+      sendJson(res, 200, { stagingUrl: publicBaseFor(req, body.origin) + previewPath, previewPath: previewPath });
+    }).catch(function (err) { sendFailure(res, 'stage', err, 'The preview could not be prepared. Please try again.'); });
   });
 }
 
-// Single entry point both tools/serve.js (local) and index.js (deployed) call into.
+/* =====================================================================================================
+   THE PAGES THEMSELVES — GET /e/<eventId> (public) and GET /preview/<eventId> (signed-in)
+   These answer HTML, not JSON, and are read by people who have never heard of this CMS: every failure
+   is a small plain page, never a JSON body or a stack trace.
+   ===================================================================================================== */
+function messagePage(title, message) {
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<meta name="robots" content="noindex"><title>' + escHtmlText(title) + '</title>' +
+    '<link rel="icon" type="image/svg+xml" href="' + SITE_FAVICON + '">' +
+    '<style>html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;background:#f6f7f9;color:#191b1f;' +
+    'font:16px/1.5 Inter,-apple-system,"Segoe UI",Arial,sans-serif}main{max-width:460px;padding:32px 24px;text-align:center}' +
+    'img{height:28px;margin-bottom:28px}h1{font-size:22px;margin:0 0 10px}p{margin:0;color:#5b616b}</style></head>' +
+    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p></main></body></html>\n';
+}
+
+function sendHtml(req, res, status, html, cacheControl, gzipped) {
+  if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+  var acceptsGzip = /\bgzip\b/.test(String((req.headers && req.headers['accept-encoding']) || ''));
+  var body = gzipped && acceptsGzip ? gzipped : Buffer.from(html, 'utf8');
+  var headers = {
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': cacheControl, 'Content-Length': body.length,
+    'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin'
+  };
+  if (gzipped && acceptsGzip) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(status, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+function sendNotAvailable(req, res) {
+  sendHtml(req, res, 404, messagePage('This event page is not available', 'It may not be published yet, or it may have been taken down.'), 'no-store');
+}
+
+/* The published pages this instance has served lately, so a busy page is not downloaded from Storage and
+   compressed again for every visitor. The key carries the publish it belongs to (version and time), so a
+   new publish is picked up on the very next request without anything having to be invalidated — the
+   event document, which says what is published, is read every time regardless. Entries also expire after
+   a minute, which bounds how long this instance could go on serving a page from a publish that was
+   rolled back at its last step. */
+var PAGE_CACHE = new Map(), PAGE_CACHE_MAX = 40, PAGE_CACHE_TTL_MS = 60000;
+function cachedPage(key) {
+  var hit = PAGE_CACHE.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PAGE_CACHE_TTL_MS) { PAGE_CACHE.delete(key); return null; }
+  return hit;
+}
+function cachePage(key, html) {
+  if (PAGE_CACHE.size >= PAGE_CACHE_MAX) PAGE_CACHE.delete(PAGE_CACHE.keys().next().value);     // oldest first
+  var entry = { at: Date.now(), html: html, gz: null };
+  try { entry.gz = zlib.gzipSync(Buffer.from(html, 'utf8')); } catch (e) { entry.gz = null; }
+  PAGE_CACHE.set(key, entry);
+  return entry;
+}
+function forgetCachedPage(eventId) {
+  PAGE_CACHE.forEach(function (v, k) { if (k.indexOf(eventId + '|') === 0) PAGE_CACHE.delete(k); });
+}
+
+/* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
+   anything else is the same plain 404, which gives nothing away about what exists. */
+function handlePublicPage(req, res, eventId) {
+  var fb = getFirebase();
+  if (fb.error) {
+    console.error('api: /e/' + eventId + ' — ' + fb.error);
+    return sendHtml(req, res, 503, messagePage('This page is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
+  }
+  eventDocRef(fb, eventId).get().then(function (snap) {
+    if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendNotAvailable(req, res);
+    var data = snap.data();
+    var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '');
+    var hit = cachedPage(key);
+    if (hit) return sendHtml(req, res, 200, hit.html, 'public, max-age=60', hit.gz);
+    return readObject(fb, publishedObjectPath(eventId)).then(function (html) {
+      if (html == null) return sendNotAvailable(req, res);
+      /* A page with no publishedVersion was published by the previous version of this file: the editor's
+         serialize() output, stored as it came, linking its CSS and scripts by the absolute address of
+         whichever host the editor ran on and carrying no runtime. It goes through the same transform
+         here, on its way out, so that it too is root-relative and can take registrations. */
+      if (!data.publishedVersion) {
+        html = publishTransform(html, {
+          eventId: eventId, event: data, mode: 'live', templateId: data.templateId,
+          publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
+        });
+      }
+      var entry = cachePage(key, html);
+      sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+    });
+  }).catch(function (err) {
+    console.error('api: /e/' + eventId + ' failed — ' + (err && err.stack || err));
+    sendHtml(req, res, 502, messagePage('This page is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
+  });
+}
+
+/* GET /preview/<eventId> — what would be published right now: the last saved site through the same
+   transform, in preview mode (the runtime then stores no registration and counts no visit), with a
+   ribbon. Signed-in only. server.js's gate already turns a signed-out visitor away before this runs; the
+   check is repeated here because this handler is also reachable where that gate is not in front of it
+   (the Cloud Function entry point, a local server with the gate switched off), and an unreleased site
+   must not depend on which door it is asked for at. ?staged=1 shows the page the previous editor
+   script's Preview button sent instead (handleEventStage). */
+function handlePreviewPage(req, res, eventId) {
+  adminFromRequest(req).then(function (user) {
+    if (!user) {
+      res.writeHead(302, { Location: '/?next=' + encodeURIComponent(req.url), 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+    var fb = getFirebase();
+    if (fb.error) return sendHtml(req, res, 503, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
+    var staged = queryOf(req).get('staged') === '1';
+    return eventDocRef(fb, eventId).get().then(function (snap) {
+      if (eventStateOf(snap) !== 'live') {
+        return sendHtml(req, res, 404, messagePage('This event does not exist', 'It may have been deleted, or the address may be wrong.'), 'no-store');
+      }
+      var data = snap.data();
+      if (!staged && !siteVersionOf(data)) {
+        return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
+      }
+      return readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html')).then(function (html) {
+        if (html == null) {
+          return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
+        }
+        sendHtml(req, res, 200, publishTransform(html, {
+          eventId: eventId, event: data, mode: 'preview', publicBase: '',
+          templateId: (data.site && data.site.templateId) || data.templateId
+        }), 'no-store');
+      });
+    });
+  }).catch(function (err) {
+    console.error('api: /preview/' + eventId + ' failed — ' + (err && err.stack || err));
+    sendHtml(req, res, 502, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
+  });
+}
+
+/* =====================================================================================================
+   ROUTING
+   ===================================================================================================== */
+
 /* The one entry point every server (server.js on App Hosting, tools/serve.js locally, the legacy Cloud
-   Function) calls. A synchronous throw anywhere in routing or in a handler's own first lines becomes a
-   500 for THAT request instead of an uncaught exception for the whole process (see parseJsonObject above
-   for what an uncaught one costs). Throws inside later stream/promise callbacks are each handler's own
-   .catch() to deal with; server.js adds a process-level net under all of it. */
+   Function) calls, for every path under /api/, /e/ and /preview/. A synchronous throw anywhere in routing
+   or in a handler's own first lines becomes a 500 for THAT request instead of an uncaught exception for
+   the whole process. Throws inside later stream/promise callbacks are each handler's own to deal with
+   (withAdmin / withAdminBody / sendFailure above); server.js adds a process-level net under all of it. */
 function handleApi(req, res) {
   try { return routeApi(req, res); }
   catch (err) {
     console.error('api: unhandled error on ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
     if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+    if (/^\/(e|preview)\//.test(String(req.url))) {
+      return sendHtml(req, res, 500, messagePage('Something went wrong', 'Please try again in a few minutes.'), 'no-store');
+    }
     sendJson(res, 500, { error: 'Something went wrong on the server. Please try again.' });
   }
 }
 
+/* Two groups of routes live in their own files (contract section 14): lib/api-events.js (uploads, the
+   address check, delete / restore / clone) and lib/api-audience.js (the public site data, registration,
+   visits, reports, history). They are loaded here, on the request that needs them, never at the top of
+   this file: a module that is missing from a deployment, or that fails to load, then costs its own
+   routes a clear 503 while the server still starts and every other route keeps working. (A failed
+   require() is not cached by Node, so the next request tries again.) */
+function inModule(moduleName, handlerName) {
+  return function (req, res) {
+    var mod;
+    try { mod = require('./' + moduleName); }
+    catch (err) {
+      console.error('api: could not load lib/' + moduleName + '.js for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+      return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+    }
+    if (!mod || typeof mod[handlerName] !== 'function') {
+      console.error('api: lib/' + moduleName + '.js has no ' + handlerName + '() for ' + req.method + ' ' + req.url);
+      return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+    }
+    return mod[handlerName](req, res);
+  };
+}
+var events = function (handler) { return inModule('api-events', handler); };
+var audience = function (handler) { return inModule('api-audience', handler); };
+
+/* "METHOD path" -> handler, for every route with a fixed path. */
+var ROUTES = {
+  'POST /api/suggest-design': handleSuggestDesign,
+  'POST /api/chat-edit': handleChatEdit,
+  'POST /api/extract-brief': handleExtractBrief,
+  'POST /api/ingest-source': handleIngestSource,
+  'POST /api/plan-structure': handlePlanStructure,
+  'POST /api/generate-content': handleGenerateContent,
+  'GET /api/draft': handleGetDraft,
+  'GET /api/generated-template': handleGeneratedTemplate,
+  'GET /api/generated-section': handleGeneratedSection,
+  'POST /api/import-lovable': handleImportLovable,
+  'GET /api/imported-template': handleImportedTemplate,
+  'GET /api/imported-section': handleImportedSection,
+
+  'POST /api/event': handleEventCreate,
+  'GET /api/event': handleEventGet,
+  'PATCH /api/event': handleEventUpdate,
+  'DELETE /api/event': events('handleEventDelete'),
+  'GET /api/events': handleEventsList,
+  'GET /api/event/slug-available': events('handleSlugAvailable'),
+  'POST /api/event/restore': events('handleEventRestore'),
+  'POST /api/event/clone': events('handleEventClone'),
+  'POST /api/event/upload': events('handleUpload'),
+
+  'GET /api/event/site': handleSiteGet,
+  'PUT /api/event/site': handleSitePut,
+  'POST /api/event/publish': handleEventPublish,
+  'POST /api/event/unpublish': handleEventUnpublish,
+  'POST /api/event/stage': handleEventStage,
+
+  'POST /api/event/seed': audience('handleSeed'),
+  'GET /api/event/registrations': audience('handleRegistrationsList'),
+  'PATCH /api/event/registrations': audience('handleRegistrationUpdate'),
+  'DELETE /api/event/registrations': audience('handleRegistrationDelete'),
+  'GET /api/event/dashboard-stats': audience('handleDashboardStats'),
+  'GET /api/event/activity': audience('handleActivity'),
+  'GET /api/insights': audience('handleInsights'),
+
+  'POST /api/event/leads/bulk': handleLeadsBulkCreate,
+  'PATCH /api/event/leads/bulk': handleLeadsBulkUpdate,
+  'DELETE /api/event/leads/bulk': handleLeadsBulkDelete,
+
+  'GET /api/public/site-data': audience('handlePublicSiteData'),
+  'POST /api/register': audience('handleRegister'),
+  'POST /api/track': audience('handleTrack')
+};
+
+/* The routes a published page calls from a visitor's browser — the same list lib/access.js lets through
+   the sign-in gate. A browser asks permission first (OPTIONS) when the page is on another host. */
+function isPublicApiPath(urlPath) {
+  return urlPath === '/api/register' || urlPath === '/api/track' || urlPath.indexOf('/api/public/') === 0;
+}
+
 function routeApi(req, res) {
-  var urlPath = req.url.split('?')[0];
+  var urlPath = String(req.url || '').split('?')[0];
 
-  if (req.method === 'POST' && urlPath === '/api/suggest-design') return handleSuggestDesign(req, res);
-  if (req.method === 'POST' && urlPath === '/api/chat-edit') return handleChatEdit(req, res);
-  if (req.method === 'POST' && urlPath === '/api/extract-brief') return handleExtractBrief(req, res);
-  if (req.method === 'POST' && urlPath === '/api/ingest-source') return handleIngestSource(req, res);
-  if (req.method === 'POST' && urlPath === '/api/plan-structure') return handlePlanStructure(req, res);
-  if (req.method === 'POST' && urlPath === '/api/generate-content') return handleGenerateContent(req, res);
-  if (req.method === 'GET' && urlPath === '/api/draft') return handleGetDraft(req, res);
-  if (req.method === 'GET' && urlPath === '/api/generated-template') return handleGeneratedTemplate(req, res);
-  if (req.method === 'GET' && urlPath === '/api/generated-section') return handleGeneratedSection(req, res);
+  var page = /^\/(e|preview)\/([^\/]*)\/?$/.exec(urlPath);
+  if (page || /^\/(e|preview)\//.test(urlPath)) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
+    var eventId = '';
+    if (page) { try { eventId = decodeURIComponent(page[2]); } catch (e) { eventId = ''; } }
+    if (!page || !isEventId(eventId)) return sendNotAvailable(req, res);
+    return page[1] === 'e' ? handlePublicPage(req, res, eventId) : handlePreviewPage(req, res, eventId);
+  }
 
-  if (req.method === 'POST' && urlPath === '/api/import-lovable') return handleImportLovable(req, res);
-  if (req.method === 'GET' && urlPath === '/api/imported-template') return handleImportedTemplate(req, res);
-  if (req.method === 'GET' && urlPath === '/api/imported-section') return handleImportedSection(req, res);
+  if (req.method === 'OPTIONS' && isPublicApiPath(urlPath)) return audience('handlePublicOptions')(req, res);
 
-  if (req.method === 'POST' && urlPath === '/api/event') return handleEventCreate(req, res);
-  if (req.method === 'GET' && urlPath === '/api/event') return handleEventGet(req, res);
-  if (req.method === 'PATCH' && urlPath === '/api/event') return handleEventUpdate(req, res);
-  if (req.method === 'GET' && urlPath === '/api/events') return handleEventsList(req, res);
-  if (req.method === 'GET' && urlPath === '/api/event/registrations') return handleEventRegistrationsList(req, res);
-  if (req.method === 'GET' && urlPath === '/api/event/dashboard-stats') return handleEventDashboardStats(req, res);
-  if (req.method === 'POST' && urlPath === '/api/event/publish') return handleEventPublish(req, res);
-  if (req.method === 'POST' && urlPath === '/api/event/stage') return handleEventStage(req, res);
-  if (req.method === 'POST' && urlPath === '/api/register') return handleRegister(req, res);
+  var handler = ROUTES[req.method + ' ' + urlPath];
+  if (handler) return handler(req, res);
 
   var resourceMatch = /^\/api\/event\/([a-z-]+)$/.exec(urlPath);
-  if (resourceMatch && RESOURCES[resourceMatch[1]]) {
+  if (resourceMatch && has(RESOURCES, resourceMatch[1])) {
     var R = RESOURCES[resourceMatch[1]];
     if (req.method === 'GET') return R.list(req, res);
     if (req.method === 'POST') return R.create(req, res);
@@ -2700,22 +4534,16 @@ function routeApi(req, res) {
     if (req.method === 'DELETE') return R.remove(req, res);
   }
 
-  sendJson(res, 404, { error: 'No such endpoint: ' + req.method + ' ' + req.url });
+  sendJson(res, 404, { error: 'No such endpoint: ' + req.method + ' ' + urlPath });
 }
 
 module.exports = { handleApi };
 
-// A handful of internal functions, exported ONLY so an integration test can call the real import-pipeline
-// logic in-process — same (fb, res, ...) functions handleImportLovable itself calls — without needing a real
-// Firebase Auth ID token to get past requireAdmin (which these intentionally skip; requireAdmin's own
-// correctness is exercised separately, same reasoning runGenerateContent's design already established
-// elsewhere in this file: pulling the real work out into a plain, directly-callable function is the
-// permanent fix, not a test-only shim). Nothing in this file imports from this property; it exists purely
-// for tooling under tools/.
+// A handful of internal functions, exported ONLY so a test can call the real logic in-process — the
+// import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
+// transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
-  // Same reasoning as the hooks above — direct, in-process access to the AI-DESIGNED GENERATED TEMPLATES
-  // pipeline's sanitizers, so a test can hand them deliberately malicious input without going through a
-  // live Gemini call.
-  sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss
+  sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
+  publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf
 };

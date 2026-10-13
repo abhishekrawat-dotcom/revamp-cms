@@ -1,23 +1,25 @@
 /* CX Leaders Forum — glimpses, adapted from the live page's .glimpses-carousel-newtheme-style marquee.
    The live page scrolls this via a CSS keyframe that depends on the track holding every photo twice (so a
    -50% translateX loops seamlessly) — that only works for a fixed, hand-authored set of tiles, and breaks the
-   moment the editor's list rule clones/removes tiles to match the wizard's real item count (see
-   editor-fill.js's fillList, which needs one unambiguous parent to operate on). Rebuilt as a plain responsive
-   grid instead, so the "glimpses" library's real items genuinely drive what's shown (content.map uses
-   "empty":"hide" — no items yet, no photos show, instead of this event's own stock gallery standing in). */
+   moment the list rule draws one tile per photo of the event (see editor-fill.js's fillList, which needs one
+   unambiguous parent to operate on). Rebuilt as a plain responsive wall instead: five photos to a row, a
+   shorter row centred, each photo a link to itself with its caption over it. */
 #glimpses_event .page_hdng4 {
   text-align: center;
   margin-bottom: 30px;
 }
 
 #glimpses_event .glimpses-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 14px;
 }
 
 #glimpses_event .glimpse-tile {
+  position: relative;
   display: block;
+  width: calc((100% - 56px) / 5);
   border-radius: 12px;
   overflow: hidden;
   aspect-ratio: 373 / 249;
@@ -30,8 +32,33 @@
   display: block;
 }
 
+#glimpses_event .glimpse-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 22px 12px 10px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.72) 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  /* two lines at most; the whole caption is the picture's alt text */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+@media (max-width: 991px) {
+  #glimpses_event .glimpse-tile {
+    width: calc((100% - 28px) / 3);
+  }
+}
+
 @media (max-width: 640px) {
-  #glimpses_event .glimpses-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  #glimpses_event .glimpse-tile {
+    width: calc((100% - 14px) / 2);
   }
 }

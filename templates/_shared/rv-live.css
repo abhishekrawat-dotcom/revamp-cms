@@ -1,0 +1,9 @@
+/* Styles of a published or previewed site that must hold before any script has run (the publish transform
+   links this file on every such page; the editor never loads it).
+
+   A section or list with no records, an element with no value and a single value with nothing to show are
+   marked by rv-data.js / editor-fill.js; a page saved from the editor carries the marks without being hidden,
+   because the editor shows those places with a notice instead. */
+[data-rv-empty],
+[data-rv-hidden-empty],
+[data-rv-bind-empty] { display: none !important; }

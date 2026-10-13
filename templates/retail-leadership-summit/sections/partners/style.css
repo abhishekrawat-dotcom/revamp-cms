@@ -20,7 +20,12 @@ section#brands-bnr {
   gap: 14px;
 }
 #brands-bnr .brand-logo {
-  min-width: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 200px;
+  min-height: 92px;
   text-align: center;
   padding: 18px 20px;
   border-radius: 12px;
@@ -29,8 +34,27 @@ section#brands-bnr {
   color: #fff;
   font-size: 14px;
   font-weight: 700;
+  text-decoration: none;
 }
+#brands-bnr a.brand-logo[href]:hover,
+#brands-bnr a.brand-logo[href]:focus-visible {
+  border-color: #FF927A;
+  color: #fff;
+}
+/* a logo is drawn for a light page: its tile is white, whatever the section's colour */
+#brands-bnr .brand-logo:has(> .brand-img[src]:not([hidden])) {
+  background: #fff;
+}
+#brands-bnr .brand-img {
+  display: block;
+  max-width: 100%;
+  max-height: 56px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+#brands-bnr .brand-img:not([src]) { display: none; }
 @media screen and (max-width: 767px) {
   section#brands-bnr { padding-top: 0px; }
-  #brands-bnr .brand-logo { min-width: 44%; }
+  #brands-bnr .brand-logo { width: calc((100% - 14px) / 2); }
 }

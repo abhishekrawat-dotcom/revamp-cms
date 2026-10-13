@@ -6,13 +6,26 @@
    RevampTemplates.load(id, opts)   -> Promise<{ template, html }>    the document plus template.json
      opts.editing    true when the editor opens it: <html data-rv-editing> (et-runtime.js holds motion back)
      opts.headExtra  extra markup for <head> (the editor's canvas stylesheet)
+     opts.title      the page's <title> (the event's name); the template's short name without it
+     opts.eventId    the event the page belongs to: <body data-rv-event-id>, which the live-site script falls back on
+
+   A load that fails rejects with an Error whose message is a sentence fit to show and which carries
+     status      the HTTP status; 0 when nothing answered
+     code        "template-not-found" (404) | "sign-in" (401, 403, or sent to the sign-in page) | "offline" | "server"
+     part        what could not be fetched: "template" | "section:<id>" | "header" | "footer"
+     templateId  the id load() was called with
+     url         the address that failed
 
    The same document is what templates/preview.html shows, what the editor loads into its iframe canvas, and what
    export will write out, so all three stay identical. Page structure mirrors the live ET microsite:
      body#… > .blur_bg + #container > [header] #content.full-width … .col-md-12.no-padding > sections  [footer]
-   Each section's root element gets data-rv-section="<section id>" (the handle et-runtime.js and the editor use);
+   A header or footer is there only when template.json names one ("header" / "footer": a file in this folder).
+   <body> carries data-rv-template-id. Each section's root element gets data-rv-section="<section id>" (the handle
+   et-runtime.js and the editor use) and, when it has no id of its own, id="<section id>" — see sectionIds();
    its CSS follows it in <style data-rv-style>, and its script (if any) runs after all sections in
-   <script data-rv-script>, as ET's inline scripts do.
+   <script data-rv-script>, as ET's inline scripts do. A section's script is its own sections/<id>/script.js
+   ("script": true), behaviour shared between templates from _shared/widgets/<name>/script.js
+   ("widget": "<name>"), or both, the shared one first.
 
    fetch() is blocked on file:// — serve the repo over http (node tools/serve.js). */
 (function (global) {
@@ -21,10 +34,49 @@
   var sharedBase = new URL('./', document.currentScript.src);
   var templatesBase = new URL('../', sharedBase);
 
+  function failure(message, status, code, url) {
+    var err = new Error(message);
+    err.status = status;
+    err.code = code;
+    err.url = url;
+    return err;
+  }
+
+  function apiError(body) {
+    try { var j = JSON.parse(body); return j && typeof j.error === 'string' ? j.error : ''; } catch (e) { return ''; }
+  }
+
+  /* Resolves with the body as text. Calls to this site's own /api/ go through RevampAuth.authedFetch where the
+     page has it (the editor, the wizard); templates/preview.html has no auth.js and relies on the session cookie.
+     authedFetch sends the user to the sign-in page itself when the session is over — its error is passed on. */
   function get(url) {
-    return fetch(url, { cache: 'no-cache' }).then(function (res) {
-      if (!res.ok) throw new Error(res.status + ' ' + url);
-      return res.text();
+    var u = new URL(url, location.href);
+    var api = u.origin === location.origin && /^\/api\//.test(u.pathname);
+    var authed = api && global.RevampAuth && typeof global.RevampAuth.authedFetch === 'function';
+    var opts = { cache: 'no-cache' };
+    if (api) opts.headers = { Accept: 'application/json' };
+    return (authed ? global.RevampAuth.authedFetch(u.href, opts) : fetch(u.href, opts)).then(function (res) {
+      return res.text().then(function (body) {
+        // a signed-out request for a file is answered with the sign-in page, not with the file
+        if (res.redirected && new URL(res.url).pathname !== u.pathname) throw failure('Please sign in again.', 401, 'sign-in', u.href);
+        if (res.ok) return body;
+        var signIn = res.status === 401 || res.status === 403;
+        throw failure(
+          apiError(body) || (res.status === 404 ? 'This site could not be found.' : signIn ? 'Please sign in again.' : 'The site could not be loaded - try again.'),
+          res.status, res.status === 404 ? 'template-not-found' : signIn ? 'sign-in' : 'server', u.href);
+      });
+    }, function (err) {
+      if (err && err.status === 401) throw failure(err.message, 401, 'sign-in', u.href);
+      if (err && err.status === 0) throw failure(err.message, 0, 'offline', u.href);
+      throw failure('The server could not be reached. Check your connection and try again.', 0, 'offline', u.href);
+    });
+  }
+
+  /* An answer that should be JSON and is not (a proxy's error page, half a file) is a failed load, not a
+     "Unexpected token" for the user to read. */
+  function json(url) {
+    return get(url).then(function (body) {
+      try { return JSON.parse(body); } catch (e) { throw failure('The site could not be loaded - try again.', 200, 'server', new URL(url, location.href).href); }
     });
   }
 
@@ -36,34 +88,65 @@
     return Object.keys(map || {}).map(function (k) { return k + ':' + map[k]; }).join(';');
   }
 
-  /* Every templates/_library/sections/<id>/index.html file opens with a leading documentation comment
-     (<!-- Generic hero/banner... -->) — real, confirmed bug this closes: the old regex (^\s*<[a-zA-Z]…)
-     anchors straight to the start of the string and has no way to look past that comment to the real tag,
-     so it silently failed to match at all for every single library section, meaning NO generated template's
-     section ever actually got data-rv-section — the one attribute RevampFill.apply()'s own section lookup
-     (canvas.doc.querySelector('[data-rv-section="…"]')) depends on. Every content.map rule for every
-     Generate-from-Brief event has therefore always hit that lookup's `if (!sec) return;` guard and silently
-     done nothing, leaving every generated site showing the library's own raw unfilled placeholder copy
-     ("Event name goes here") — not a caching or reopen-timing bug, the fill itself never ran, even on the
-     very first load right after generation. Ported templates' own section files have no such leading
-     comment, which is why those have always tagged and filled correctly.
-     Now skips zero or more leading <!-- ... --> blocks (each own optional surrounding whitespace) before
-     matching the real opening tag, so the attribute still lands on that real tag either way.
+  /* The opening tag of a section file's root element. A library section opens with a documentation comment and an
+     imported page with its inlined <style data-rv-imported-css> blocks: both are stepped over, so that the
+     attributes land on the element the section's content hangs from. m[1] ends with the tag name, m[2] is the
+     tag's own attributes. */
+  var ROOT_TAG = /^((?:\s*<!--[\s\S]*?-->|\s*<style[^>]*>[\s\S]*?<\/style>)*\s*<[a-zA-Z][^\s>\/]*)((?:[^>"']|"[^"]*"|'[^']*')*)/i;
+  var ID_ATTR = /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
 
-     Second, related, also-confirmed bug this same fix closes: the Lovable-import pipeline's own
-     /api/imported-section response (functions/lib/api.js's handleImportedTemplate/handleImportedSection —
-     see that handler's own CSS-inline-vs-linked comment) leads with one or more inlined <style
-     data-rv-imported-css="…"> blocks before the real <div class="rv-imported"> content, by design — the
-     same "first tag in the string wins" assumption that broke on a leading comment broke here too, just
-     tagging a <style> element as the section root instead of the real content div. Confirmed via a real
-     import + a real browser: editor-canvas.js's tagEditables()/descend() only ever walks DOWN from
-     whatever data-rv-section lands on, so tagging the wrong (empty, childless) <style> element meant ZERO
-     elements in the entire real imported page ever got data-editable — nothing was clickable at all, for
-     every Lovable import, confirmed on a real captured page (657 real elements, 0 tagged editable).
-     Now also skips zero or more leading <style>...</style> blocks, interleaved with comments in any
-     order/count, before matching the real tag — covering both known cases with one fix. */
-  function tagSection(html, id) {
-    return html.replace(/^((?:\s*<!--[\s\S]*?-->|\s*<style[^>]*>[\s\S]*?<\/style>)*\s*<[a-zA-Z][^\s>]*)/i, '$1 data-rv-section="' + esc(id) + '"');
+  function rootHasId(html) {
+    var m = ROOT_TAG.exec(html);
+    ID_ATTR.lastIndex = 0;
+    return !m || ID_ATTR.test(m[2]);
+  }
+
+  function tagSection(html, id, attrs) {
+    return html.replace(ROOT_TAG, function (all, open, rest) {
+      return open + ' data-rv-section="' + esc(id) + '"' + (attrs || '') + rest;
+    });
+  }
+
+  /* A section file names a picture of the shared layer from the site root ("/templates/_shared/img/…"). In the
+     document it becomes a full address, like the stylesheets in <head>, so a page finds it wherever it is
+     stored and publishing treats it as it treats them. */
+  function sharedAssets(html) {
+    return html.replace(/(\s(?:src|href)\s*=\s*["'])\/templates\/_shared\//g, function (all, lead) { return lead + sharedBase.href; });
+  }
+
+  function stripLeadingComments(html) {
+    return html.replace(/^(?:\s*<!--[\s\S]*?-->)+\s*/, '');
+  }
+
+  /* Every id the selectors of a stylesheet name. A "#" inside a declaration (a colour, url(#x)) is followed by
+     "}" before the next "{", a "#" inside a selector is not. */
+  function cssIds(css, into) {
+    css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/#(-?[_a-zA-Z][\w-]*)(?=[^{}]*\{)/g, function (all, name) { into[name] = 1; return all; });
+  }
+
+  /* Which sections can be given id="<section id>" so that a plain "#<section id>" link reaches them.
+     Only a root without an id is a candidate (the ported templates' roots keep ET's own ids, which their CSS is
+     written against). An id is not given where it would change the page: when the page's shared stylesheets
+     style that id (ET's bundle has #nav, #footer { display: none }, #speakers, #agenda …), when the page frame
+     uses it (#container, #content, the body's id) or when an element in some section already has it. Those
+     sections are still reached by their data-rv-section — et-runtime.js resolves "#<section id>" either way.
+     Resolves with { "<section id>": 1 } for the sections that get one. */
+  function sectionIds(t, htmls, sheets) {
+    var wanting = t.sections.filter(function (s, i) { return !rootHasId(htmls[i]) && /^[A-Za-z][\w-]*$/.test(s.id); });
+    if (!wanting.length) return Promise.resolve({});
+    return Promise.all(sheets.map(get)).then(function (texts) {
+      var taken = { container: 1, content: 1 };
+      if (t.body && t.body.id) taken[t.body.id] = 1;
+      texts.forEach(function (css) { cssIds(css, taken); });
+      htmls.forEach(function (html) {
+        var m;
+        ID_ATTR.lastIndex = 0;
+        while ((m = ID_ATTR.exec(html))) taken[m[1] || m[2] || m[3]] = 1;
+      });
+      var give = {};
+      wanting.forEach(function (s) { if (!taken[s.id]) { give[s.id] = 1; taken[s.id] = 1; } });
+      return give;
+    }, function () { return {}; });       // the stylesheets could not be read: no id is safer than a wrong one
   }
 
   /* opts.sectionOrder: a full id sequence (e.g. built by create-event.html from the template's own
@@ -99,18 +182,32 @@
     var generated = /^gen-/.test(id);
     var imported = /^imported-/.test(id);
     var base = new URL(id + '/', templatesBase);
+    // says which part of the site a failed fetch was for
+    function part(name, job) {
+      return job.catch(function (err) {
+        if (!err.part) err.part = name;
+        err.templateId = id;
+        throw err;
+      });
+    }
     var tplJson = generated
-      ? get('/api/generated-template?eventId=' + encodeURIComponent(id.slice(4)))
+      ? json('/api/generated-template?eventId=' + encodeURIComponent(id.slice(4)))
       : imported
-        ? get('/api/imported-template?eventId=' + encodeURIComponent(id.slice(9)))
-        : get(new URL('template.json', base));
-    return tplJson.then(JSON.parse).then(function (t) {
+        ? json('/api/imported-template?eventId=' + encodeURIComponent(id.slice(9)))
+        : json(new URL('template.json', base));
+    return part('template', tplJson).then(function (t) {
       if (opts.sectionOrder) t.sections = reorderSections(t.sections, opts.sectionOrder);
       var shared = function (p) { return new URL(p, sharedBase).href; };
-      var jobs = [get(shared(t.header || 'header.html')), get(shared(t.footer || 'footer.html'))];
+      var chrome = function (name, file) { return file ? part(name, get(shared(file)).then(stripLeadingComments)) : Promise.resolve(''); };
+      var jobs = [chrome('header', t.header), chrome('footer', t.footer)];
       t.sections.forEach(function (s) {
+        var sectionPart = function (job) { return part('section:' + s.id, job); };
         if (imported) {
-          jobs.push(get('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))), Promise.resolve(''), Promise.resolve(''));
+          // the page as HTML, or as JSON { html }
+          jobs.push(sectionPart(get('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))).then(function (body) {
+            if (!/^\s*\{/.test(body)) return body;
+            try { return String(JSON.parse(body).html || ''); } catch (e) { return body; }
+          })), Promise.resolve(''), Promise.resolve(''));
           return;
         }
         if (generated) {
@@ -121,21 +218,29 @@
              exists for a generated section under this pipeline, so that slot is always ''. Still pushes
              exactly 3 job slots (html, css, script) so the parts[2 + i*3 / 3 + i*3 / 4 + i*3] indexing in
              the assembly code below stays correct regardless of which branch filled them. */
-          var sectionJob = get('/api/generated-section?eventId=' + encodeURIComponent(id.slice(4)) + '&id=' + encodeURIComponent(s.id)).then(JSON.parse);
-          jobs.push(sectionJob.then(function (r) { return r.html; }), sectionJob.then(function (r) { return r.css; }), Promise.resolve(''));
+          var sectionJob = sectionPart(json('/api/generated-section?eventId=' + encodeURIComponent(id.slice(4)) + '&id=' + encodeURIComponent(s.id)));
+          jobs.push(sectionJob.then(function (r) { return String(r.html || ''); }), sectionJob.then(function (r) { return String(r.css || ''); }), Promise.resolve(''));
           return;
         }
         var dir = new URL('sections/' + s.id + '/', base);
-        jobs.push(get(new URL('index.html', dir)), get(new URL('style.css', dir)),
-          s.script ? get(new URL('script.js', dir)) : Promise.resolve(''));
+        var code = [];
+        if (s.widget) code.push(sectionPart(get(shared('widgets/' + encodeURIComponent(s.widget) + '/script.js'))));
+        if (s.script) code.push(sectionPart(get(new URL('script.js', dir))));
+        jobs.push(sectionPart(get(new URL('index.html', dir)).then(sharedAssets)), sectionPart(get(new URL('style.css', dir))),
+          Promise.all(code).then(function (texts) { return texts.join('\n'); }));
       });
 
-      return Promise.all(jobs).then(function (parts) {
+      function assemble(parts, ids) {
         var header = parts[0], footer = parts[1];
         var sectionsHtml = '', scripts = '';
+        /* An AI-designed site opened for editing: every section is the model's writing until its owner has
+           read it. The mark is saved with the page and comes off as each section is edited or approved, so
+           it is given here, on the first build, and nowhere else. */
+        var written = generated && opts.editing ? ' data-ai-generated="true"' : '';
         t.sections.forEach(function (s, i) {
           var html = parts[2 + i * 3], css = parts[3 + i * 3], js = parts[4 + i * 3];
-          sectionsHtml += tagSection(html, s.id) + '<style data-rv-style="' + esc(s.id) + '">\n' + css + '</style>\n';
+          sectionsHtml += tagSection(html, s.id, (ids[s.id] ? ' id="' + esc(s.id) + '"' : '') + written) +
+            '<style data-rv-style="' + esc(s.id) + '">\n' + css + '</style>\n';
           if (js) scripts += '<script data-rv-script="' + esc(s.id) + '">\n' + js + '</script>\n';
         });
 
@@ -143,7 +248,7 @@
           '<meta charset="utf-8">',
           // same as ET's: minimum-scale=1 stops phones zooming out to fit the few sections that run wider than the screen
           '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1, user-scalable=0">',
-          '<title>' + esc(t.title || t.name) + '</title>'
+          '<title>' + esc(opts.title || t.name || '') + '</title>'
         ];
         (t.shared || []).forEach(function (p) { head.push('<link rel="stylesheet" href="' + esc(shared(p)) + '">'); });
         (t.fonts || []).forEach(function (href) { head.push('<link rel="stylesheet" href="' + esc(href) + '">'); });
@@ -151,10 +256,11 @@
         if (opts.headExtra) head = head.concat(opts.headExtra);
         head.push('<script src="' + esc(shared('et-runtime.js')) + '"></script>');
 
-        var b = t.body || {};
+        var b = t.body || {}, eventId = opts.eventId || b.eventId;
         var html = '<!DOCTYPE html>\n<html lang="en"' + (opts.editing ? ' data-rv-editing' : '') + '>\n<head>\n' + head.join('\n') + '\n</head>\n' +
           '<body' + (b.id ? ' id="' + esc(b.id) + '"' : '') +
-          (b.eventId ? ' data-rv-event-id="' + esc(b.eventId) + '"' : '') +
+          ' data-rv-template-id="' + esc(id) + '"' +
+          (eventId ? ' data-rv-event-id="' + esc(eventId) + '"' : '') +
           ' class="' + esc(b.class || '') + '" style="' + esc(styleAttr(b.style)) + '">\n' +
           '<div class="blur_bg"></div><div id="container">\n' + header +
           '<div id="content" class="full-width"><div class="main-body"><div class="wrapper pd0 schemas"></div>' +
@@ -163,6 +269,14 @@
           '</div></div></div></div></div>\n' + footer + '</div>\n' +
           scripts + '</body>\n</html>\n';
         return { template: t, html: html };
+      }
+
+      return Promise.all(jobs).then(function (parts) {
+        var sheets = (t.shared || []).map(shared);
+        if (t.theme) sheets.push(new URL(t.theme, base).href);
+        return sectionIds(t, t.sections.map(function (s, i) { return parts[2 + i * 3]; }), sheets).then(function (ids) {
+          return assemble(parts, ids);
+        });
       });
     });
   }

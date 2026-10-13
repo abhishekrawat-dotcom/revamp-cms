@@ -32,10 +32,4 @@
   #overview .text-style p {
     text-align: center;
   }
-  #overview .page_hdng4 h2 img {
-    display: block;
-    max-width: 50%;
-    float: none;
-    margin: 5px auto 0px;
-  }
 }

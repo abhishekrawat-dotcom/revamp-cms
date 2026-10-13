@@ -6,3 +6,25 @@ body{
 .product_microsite #container #content {
 	padding-top: 0;
 }
+/* A link to "#<section>" stops with the section just below the top edge, and below a site's own fixed or sticky
+   bar: et-runtime.js measures that bar into --rv-top-bar before it scrolls. */
+[data-rv-section]{
+	scroll-margin-top:calc(var(--rv-top-bar, 0px) + 16px);
+}
+
+/* The banner's layers, bottom to top: its one picture, a video the event's owner supplied (loaded by
+   widgets/et-banner/script.js), a scrim in the template's own colour (--rv-banner-scrim) that keeps the text
+   readable over whatever picture is there, and the text. */
+#banner .banner-bg-image{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0}
+#banner .bnr-bg-video{position:absolute;inset:0;z-index:1;overflow:hidden}
+#banner .bnr-bg-video video{width:100%;max-width:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;will-change:opacity}
+#banner .bnr-bg-video video.loaded{opacity:1}
+#banner .overlay-lyr{position:absolute;inset:0;z-index:2;background:var(--rv-banner-scrim, transparent)}
+#banner .cntnd-bx{position:relative;z-index:3}
+@media(max-width:767px){#banner .bnr-bg-video video{display:none}}
+
+/* A banner names its event in words. Where the event has a logo, the logo stands in their place and the words
+   stay for search engines and screen readers; take the logo away and the words are back. */
+#banner .cntnd img.logo:not([src]){display:none}
+#banner .cntnd img.logo[src]:not([hidden]) + .banner-title{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+#banner .cntnd .banner-title{overflow-wrap:anywhere}

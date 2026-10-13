@@ -8,10 +8,33 @@
    library, repeat-item add/remove, accordion open-to-edit), persistence + undo/redo via RevampStore +
    canvas.snapshot()/restore(), device switching, preview and publish.
 
-   window.RevampTemplateUI = { boot(frameEl, templateId, host) }
-     host: { escHtml, showToast, showNotice, clearNotice, openDialog, EV, editorEventId } — the page's own
-           feedback helpers (custom_editor.html); EV/editorEventId are not used here.
+   window.RevampTemplateUI = { open(frameEl, where, host) }
+     where: { eventId, templateId } as the address bar has them. The event decides which site opens: it is
+            fetched first, and the template in the address only counts when the event has none of its own.
+            With no event id the template opens as a preview: nothing is saved and there is no Publish.
+     host:  { escHtml, showToast, showNotice, clearNotice, openDialog } — the page's own feedback helpers
+            (custom_editor.html) — and onEvent(event), called once the event is known to exist;
+            genericCss() — the CSS of the editor's generic section designs; pickSection(afterEl) — opens the
+            section picker; onSectionsChanged() — called whenever the list of sections, or which one is
+            selected, may have changed.
+     Resolves true once the site is on the canvas, false when a lasting message is shown in its place.
+   Sections, for the page's side panels (every change is one undo step):
+     listSections() -> [{ el, key, type, name, hidden, pinned, canMoveUp, canMoveDown, bound, current }] in page order
+     librarySections() -> [{ id, name, snippet, onPage }] the site's own sections that can be added again
+     selectSection(el), moveSection(el, toIndex), setHidden(el, hide), duplicateSection(el), deleteSection(el)
+     (asks first), renameSection(el, name), insertSection({ libraryId } | { name, html }, afterEl)
+     addBlock(kind) adds a heading / text / button / image / divider / spacer where the selection is.
+   Design, for the page's Design panel and style toolbar (every change is one undo step):
+     getDesign(key), setDesign(key, value) -> false (and says why) when the site has nothing for that setting
+     to act on; designOptions() -> { swatches, fonts: [{ label, stack }], unsupported: { key: reason } };
+     checkImageUrl(url) -> Promise<{ url } | { error }> for a picture given by its address.
+     selectedStyle() -> { fontFamily, fontSize, fontWeight, color } of the selected text or button, or null;
+     styleSelected({ fontFamily, fontSize, fontWeight, color }) restyles that one element.
+     host.onDesignChange() is called whenever the design shown by those may have changed, and
+     host.onSelectionChange({ kind, canStyle } | null) whenever another element, or none, is selected.
    flush() records an edit that is still pending (text being typed, a slider still moving).
+   leave(url) is how the page is left for another one: what is pending is recorded first.
+   handoffFor(eventId) is the Create Event hand-off waiting in this browser, when it belongs to that event.
    Also: hasAiProvenance(), aiProvenanceSections(), setAiMarkers(show) — custom_editor.html's AI-provenance
    badge toggle and publish-review gate read/drive these; see "AI-provenance badges" below. */
 (function () {
@@ -19,6 +42,7 @@
 
   var canvas = null, host = null, templateId = null, eventId = null, storeKey = null, sourceDraftId = null;
   var frame = null;
+  var urlTemplateId = '', currentEvent = null, pageWired = false;
   /* Bump this whenever a fix changes what "correctly filled" means for a generated template's local
      snapshot (e.g. the templates/_shared/template-loader.js tagSection() fix: every data-rv-section attr
      was silently never added for any library-section-based template, so RevampFill.apply() was a no-op on
@@ -40,46 +64,61 @@
   function showToast(msg, opts) { return host && host.showToast ? host.showToast(msg, opts) : null; }
   function showNotice(id, opts) { if (host && host.showNotice) host.showNotice(id, opts); }
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
+  function sectionsChanged() { if (host && host.onSectionsChanged) host.onSectionsChanged(); }
+  function designChanged() { if (host && host.onDesignChange) host.onDesignChange(); }
+  // what canvas.restore() and createGenericSection() build the generic sections' CSS from
+  function restoreOpts() { return { siteCss: host && host.genericCss ? host.genericCss() : '' }; }
 
-  /* ---------- key derivation ----------
-     site:<event>:<template> — ONE stable identity per real event (its own slug, the only identifier that
-     exists now that every event is real; the old numeric 1-8 RevampCore.EVENTS scheme this briefly keyed
-     off is gone). A fresh creation (`?from=create&slug=<slug>`) and a later plain reopen (`?event=<slug>`)
-     now resolve to the EXACT SAME storeKey — that identity used to differ (creation used `new-<slug>`,
-     reopen used the bare param), which meant NO reopen link anywhere in the app could ever actually find
-     a creation session's saved snapshot (confirmed by tracing every `custom_editor.html?event=` link in
-     the repo — none of them ever passed `new-<slug>`). `slug` wins over `event` when both are present
-     (every creation redirect sends `slug`; `event` is what older/other reopen links use).
+  /* ---------- opening ----------
+     The local copy is kept under site:<event id>:<template id> — the same key whichever link opened the
+     editor (a creation redirect carries ?slug=, every other link ?event=).
 
-     B1 (separate problem, still needs solving without reintroducing this one): a plain `from=create`
-     wizard visit is meant to be stable across repeat opens of the SAME event — that's what lets someone
-     leave and come back to keep editing. Generate-from-Brief's redirect additionally carries `&draft=
-     <draftId>` (the Firestore doc /api/generate-content just wrote); running it a SECOND time for the
-     same slug must NOT silently restore run #1's old snapshot. Previously this was "solved" by baking
-     draftId into the KEY ITSELF — which fixed run #2 but left run #1's snapshot permanently orphaned at
-     an unreachable key, and reintroduced the exact bug this comment opens with for any later reopen.
-     resolveInitialContent() below now does this the other way: the key stays this one stable identity
-     always, and a saved snapshot is only treated as stale (fresh draft wins) when this visit is a NEW
-     Generate-from-Brief run — fromCreate, carries a draftId, and that draftId doesn't match whichever
-     run last actually wrote this canonical key (tracked via sourceDraftId, see seedSnapshot/persist). */
-  function resolveKey(tplId) {
-    var qs = new URLSearchParams(location.search);
-    var id = qs.get('slug') || qs.get('event') || '1';
-    return { eventId: id, storeKey: 'site:' + id + ':' + tplId };
+     A second Generate-from-Brief run for the same event carries a new &draft=<id>; resolveInitialContent()
+     compares it with the run that last wrote the local copy (sourceDraftId) and lets the new draft win. */
+  var HANDOFF_KEY = 'revamp.editor.handoff.v1';
+  var LISTING_URL = 'Event_Listing.html';
+  function eventUrl() { return 'edit-event.html?event=' + encodeURIComponent(eventId); }
+  function fromCreate() { return new URLSearchParams(location.search).get('from') === 'create'; }
+
+  function open(frameEl, where, hostApi) {
+    host = hostApi; frame = frameEl;
+    eventId = (where && where.eventId) || '';
+    urlTemplateId = (where && where.templateId) || '';
+    return start();
   }
 
-  /* ---------- boot ---------- */
-  function boot(frameEl, tplId, hostApi) {
-    host = hostApi; templateId = tplId; frame = frameEl;
-    var k = resolveKey(tplId); eventId = k.eventId; storeKey = k.storeKey;
+  function start() {
+    clearLoadError();
+    if (!eventId) { currentEvent = null; return boot(urlTemplateId); }
+    return RevampCore.fetchEvent(eventId).then(function (ev) {
+      currentEvent = ev;
+      renderTopbar();
+      if (host.onEvent) host.onEvent(ev);
+      var tplId = (ev.site && ev.site.templateId) || ev.templateId || urlTemplateId;
+      if (!tplId) { showLoadError(noSiteError()); return false; }
+      if (tplId !== urlTemplateId) {
+        // the address names another site than the event's own (an old or hand-edited link, or none at all)
+        var url = new URL(location.href);
+        url.searchParams.set('template', tplId);
+        location.replace(url.href);
+        return new Promise(function () {});
+      }
+      return boot(tplId);
+    }, function (err) {
+      if (window.console) console.error(err);
+      renderTopbar();
+      showLoadError(eventLoadError(err));
+      return false;
+    });
+  }
 
-    /* a section order chosen in Create Event (create-event.html's S.sectionOrder — see
-       autoPersonalizeDesign()/requestAiDesign()) has to be known BEFORE mount(), since reordering is baked
-       into the iframe's DOM at load time, not something RevampFill.apply() can do to an already-mounted
-       canvas afterward. Reading the handoff draft here (rather than only later, in resolveInitialContent())
-       means it's read twice on a fresh "from=create" open — cheap (one localStorage.getItem), and simpler
-       than threading it through as a boot() parameter. */
-    var earlyDraft = new URLSearchParams(location.search).get('from') === 'create' ? readHandoffDraft() : null;
+  function boot(tplId) {
+    templateId = tplId;
+    storeKey = eventId ? 'site:' + eventId + ':' + tplId : null;      // a template preview keeps nothing
+
+    /* a section order chosen in Create Event has to be known before mount(): the order is part of the page
+       the iframe loads, not something RevampFill.apply() can change afterwards */
+    var earlyDraft = fromCreate() ? readHandoffDraft() : null;
 
     mountOpts = { sectionOrder: earlyDraft && earlyDraft.sectionOrder };
     return RevampCanvas.mount(frame, templateId, mountOpts).then(function (c) {
@@ -90,45 +129,164 @@
       // content resolveInitialContent() just settled on — see applySubcollectionOverlay()'s own comment.
       return applySubcollectionOverlay();
     }).then(function () {
-      buildToolbars();
+      if (!pageWired) {
+        buildToolbars();
+        wireGlobalKeys();
+        wireLeaving();
+        wireChatPanel();
+        pageWired = true;
+      }
       wireCanvasEvents();
-      wireGlobalKeys();
-      wireLeaving();
-      wireDesignBridge();
-      wireChatPanel();
       updateHistoryButtons();
-      showTopbar();
-      /* Publish/Preview start disabled (see the <button disabled> markup in custom_editor.html) and are
-         only enabled here, once mount() + resolveInitialContent()'s AI-content fill have BOTH genuinely
-         finished — real, confirmed bug this closes: RevampCanvas.mount() renders the template's raw,
-         UNFILLED library markup first, fill is a separate async step straight after, and neither button
-         was ever gated on either one completing. A user who clicked Publish in that window (exactly
-         "clicked Publish as soon as the site was created") captured and published the unfilled template
-         itself — "Event name goes here", "Card title" placeholders — not the real generated content,
-         which was sitting correctly in Firestore the whole time. Left disabled on the .catch() below: if
-         loading genuinely failed, there is nothing real to publish/preview either. */
-      document.getElementById('btn-publish').disabled = false;
+      renderTopbar();
+      sectionsChanged();
+      designChanged();
+      /* Preview and Publish stay disabled until the site is mounted AND filled: pressed any earlier they
+         would capture the template's own placeholder text. With no event there is nothing to publish to. */
+      document.getElementById('btn-publish').hidden = !eventId;
+      document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
+      return true;
     }).catch(function (err) {
-      showToast("Couldn't load this template");
       if (window.console) console.error(err);
+      if (canvas) { canvas.destroy(); canvas = null; }
+      showLoadError(siteLoadError(err));
+      return false;
     });
   }
 
-  function showTopbar() {
-    var nameEl = document.getElementById('ed-event-name');
-    var metaEl = document.getElementById('ed-event-meta');
-    var qs = new URLSearchParams(location.search);
-    var fromCreate = qs.get('from') === 'create';
-    var draft = fromCreate ? readHandoffDraft() : null;
-    var ev = draft && draft.event;
-    if (nameEl) nameEl.textContent = (ev ? ev.name : canvas.template.name || canvas.template.title) + (ev && ev.slug ? ' | etoneworld.com/' + ev.slug : '');
-    if (metaEl) metaEl.textContent = [ev && ev.dateLabel, ev && ev.location, canvas.template.name, 'Draft'].filter(Boolean).join('  |  ');
-    document.title = (ev ? ev.name : canvas.template.name) + ' — Site Editor';
+  /* ---------- when the site cannot be opened ----------
+     A lasting panel where the canvas would be, saying what happened in the owner's words and offering what can
+     be done about it. Nothing is mounted behind it, so Preview and Publish stay disabled and the tools that act
+     on a site are put away. */
+  function showLoadError(spec) {
+    clearLoadError();
+    document.getElementById('btn-publish').disabled = true;
+    document.getElementById('btn-preview').disabled = true;
+    document.body.classList.add('ed-load-failed');
+    var panel = document.createElement('div');
+    panel.className = 'tpl-load-error';
+    panel.setAttribute('role', 'alert');
+    var h = document.createElement('h2'); h.textContent = spec.title; panel.appendChild(h);
+    if (spec.text) { var p = document.createElement('p'); p.textContent = spec.text; panel.appendChild(p); }
+    var acts = document.createElement('div');
+    acts.className = 'tpl-load-error-acts';
+    (spec.actions || []).forEach(function (a, i) {
+      var el = document.createElement(a.href ? 'a' : 'button');
+      el.className = 'btn ' + (i === 0 ? 'btn-primary' : 'btn-secondary');
+      el.textContent = a.label;
+      if (a.href) el.href = a.href; else { el.type = 'button'; el.addEventListener('click', a.onClick); }
+      acts.appendChild(el);
+    });
+    if (acts.firstChild) panel.appendChild(acts);
+    frame.appendChild(panel);
+  }
+  function clearLoadError() {
+    var panel = frame && frame.querySelector('.tpl-load-error');
+    if (panel) panel.remove();
+    document.body.classList.remove('ed-load-failed');
   }
 
-  function readHandoffDraft() {
-    try { return JSON.parse(localStorage.getItem('revamp.editor.handoff.v1') || 'null'); } catch (e) { return null; }
+  var RETRY = { label: 'Try again', onClick: function () { start(); } };
+  function backToEvent() { return { label: 'Back to the event', href: eventUrl() }; }
+  var BACK_TO_EVENTS = { label: 'Back to events', href: LISTING_URL };
+  var SIGNING_IN = { title: 'Signing you in again…', text: 'Your sign-in has expired. This page will carry on once you are signed in.' };
+
+  // the loader's own errors carry the status only as the start of their message ("404 <address>")
+  function statusOf(err) {
+    if (err && typeof err.status === 'number') return err.status;
+    var m = /^(\d{3})\b/.exec((err && err.message) || '');
+    return m ? +m[1] : 0;
+  }
+
+  function eventLoadError(err) {
+    var status = statusOf(err);
+    if (status === 401) return SIGNING_IN;
+    if (status === 404) {
+      return { title: 'We could not find this event', text: 'It may have been deleted, or the link may be out of date.', actions: [BACK_TO_EVENTS] };
+    }
+    return { title: 'Could not load this event', text: 'Check your connection and try again. Nothing has been changed.', actions: [RETRY, BACK_TO_EVENTS] };
+  }
+
+  function noSiteError() {
+    var draft = fromCreate() ? readHandoffDraft() : null;
+    if (draft && draft.template && !draft.template.site) {
+      return {
+        title: 'This design is not available yet',
+        text: 'Your event is saved, but the design you picked cannot be opened in the site editor yet.',
+        actions: [backToEvent(), BACK_TO_EVENTS]
+      };
+    }
+    return {
+      title: 'This event does not have a site yet',
+      text: 'No design has been chosen for it, so there is nothing to edit here.',
+      actions: [backToEvent(), BACK_TO_EVENTS]
+    };
+  }
+
+  function siteLoadError(err) {
+    var status = statusOf(err);
+    var back = eventId ? backToEvent() : BACK_TO_EVENTS;
+    if (status === 401) return SIGNING_IN;
+    if (status === 404) {
+      return {
+        title: eventId ? 'This event’s site could not be found' : 'This design could not be found',
+        text: /^gen-/.test(templateId || '') ? 'The design that was generated for this event is no longer available.'
+          : /^imported-/.test(templateId || '') ? 'The design that was imported for this event is no longer available.'
+          : 'The design it was built with is not available.',
+        actions: [back]
+      };
+    }
+    return {
+      title: 'Could not load the site',
+      text: err && err.code === 'timeout' ? 'The page took too long to load. Check your connection and try again.'
+        : 'Check your connection and try again. Your work has not been changed.',
+      actions: [RETRY, back]
+    };
+  }
+
+  /* ---------- top bar ----------
+     Says which event this is, from the event itself — the same on every way into the editor. */
+  function renderTopbar() {
+    var nameEl = document.getElementById('ed-event-name');
+    var metaEl = document.getElementById('ed-event-meta');
+    var ev = currentEvent;
+    var name = '', meta = '';
+    if (ev) {
+      name = ev.name || 'Untitled event';
+      meta = [ev.published ? 'Published' : 'Not published', ev.start ? RevampCore.fmtDT(ev.start) : '', ev.venue].filter(Boolean).join(' · ');
+    } else if (!eventId && canvas) {
+      name = canvas.template.name || canvas.template.title || templateId;
+      meta = 'Template preview';
+    }
+    if (nameEl) { nameEl.textContent = name || '\u00a0'; nameEl.title = name; }
+    if (metaEl) metaEl.textContent = meta;
+    document.title = (name ? name + ' - ' : '') + 'Site editor';
+  }
+
+  /* The hand-off is one slot in this browser holding the newest Create Event result, whichever event that
+     was. It is only ever this event's when its own slug says so (and, for a generated draft, when it is the
+     run the address names). */
+  function handoffFor(forEventId) {
+    var draft = null;
+    try { draft = JSON.parse(localStorage.getItem(HANDOFF_KEY) || 'null'); } catch (e) { return null; }
+    if (!draft || !forEventId) return null;
+    if (!draft.event || draft.event.slug !== forEventId) {
+      if (window.console) console.warn('[RevampTemplateUI] Ignored a Create Event hand-off that belongs to another event:', draft.event && draft.event.slug);
+      return null;
+    }
+    var urlDraft = new URLSearchParams(location.search).get('draft');
+    if (urlDraft && draft.draftId && draft.draftId !== urlDraft) {
+      if (window.console) console.warn('[RevampTemplateUI] Ignored a Create Event hand-off from another run of this event:', draft.draftId);
+      return null;
+    }
+    return draft;
+  }
+  function readHandoffDraft() { return handoffFor(eventId); }
+  // once the filled site is kept, the hand-off has done its job: Back or a link from history must not fill again
+  function forgetHandoff() {
+    if (!readHandoffDraft()) return;
+    try { localStorage.removeItem(HANDOFF_KEY); } catch (e) { /* storage is blocked: nothing to remove */ }
   }
 
   /* Applies a handoff draft (the revamp.editor.handoff.v1 shape — from localStorage on a fresh fromCreate
@@ -136,7 +294,7 @@
      to the just-mounted canvas and seeds it as this device's first local snapshot. `draftId` is whichever
      run actually produced this content — the URL's own `?draft=` on a fresh run, or the server's own
      `draftId` field when fetched fresh from Firestore — recorded so a LATER fromCreate regeneration in this
-     same browser can still tell "stale" apart from "already current" (see resolveKey()'s own B1 comment). */
+     same browser can still tell "stale" apart from "already current" (see resolveInitialContent()). */
   function applyHandoffDraft(draft, draftIdForThisDraft) {
     /* create-event.html keys each draft's logo under its own per-session slot (S.logoSessionId, handed off
        as draft.event.logoKey) — deliberately NOT a fallback to the single fixed 'create:logo' key: that was
@@ -148,11 +306,9 @@
        server-side, so there is no real logo to recover on a stateless reopen (a different browser, or this
        one after local state is gone) either way. Falling back to the shared key here would silently show
        this browser's most recently cached OTHER event's logo instead — worse than no logo at all. Missing
-       logoKey now correctly means "nothing to show", not "guess" — note this must stay a no-op Promise
-       rather than RevampStore.get(undefined): IndexedDB's own get() throws synchronously on an invalid
-       key, which would reject this whole chain and fail the entire editor load over a missing logo. */
+       logoKey now correctly means "nothing to show", not "guess". */
     var logoKey = draft.event && draft.event.logoKey;
-    return (logoKey ? RevampStore.get(logoKey) : Promise.resolve(undefined)).then(function (logoRec) {
+    return localGet(logoKey).then(function (logoRec) {
       var ctx = RevampFill.fromHandoff(draft, logoRec && logoRec.dataUrl);
       var report = RevampFill.apply(canvas, ctx);
       renderAiProvenanceBadges();
@@ -163,6 +319,8 @@
       if (draft.aiDesign) applyAiDesignToCanvas(canvas, draft.aiDesign);
       sourceDraftId = draftIdForThisDraft;
       return seedSnapshot(draft);
+    }).then(function (kept) {
+      if (kept) forgetHandoff();
     });
   }
 
@@ -174,10 +332,9 @@
      goes here", the 1x1 grey logo placeholder) — even though the real generated content was sitting
      correctly in Firestore the whole time. Worse, seedSnapshot(null) then PERMANENTLY saves that blank
      render as this device's own local snapshot, so every later open on that device keeps finding it and
-     never checks again. GET /api/draft?eventId=<id> already exists for exactly this (same endpoint
-     preview-draft.html — a dev-only bridge — already uses, returning the exact revamp.editor.handoff.v1
-     shape) — a plain reopen now tries it before giving up, same as the fromCreate path, just sourced from
-     the server instead of localStorage. A 404 (not a Generate-from-Brief event / nothing ever generated)
+     never checks again. GET /api/draft?eventId=<id> already exists for exactly this (it returns the exact
+     revamp.editor.handoff.v1 shape) — a plain reopen now tries it before giving up, same as the fromCreate
+     path, just sourced from the server instead of localStorage. A 404 (not a Generate-from-Brief event / nothing ever generated)
      correctly falls through to the real blank-template case, unchanged. */
   function fetchServerDraft() {
     return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
@@ -187,16 +344,14 @@
   }
 
   function resolveInitialContent() {
-    return RevampStore.get(storeKey).then(function (saved) {
-      var qs = new URLSearchParams(location.search);
-      var fromCreate = qs.get('from') === 'create';
-      var draftId = qs.get('draft') || null;
+    return localGet(storeKey).then(function (saved) {
+      var arriving = fromCreate();
+      var draftId = new URLSearchParams(location.search).get('draft') || null;
 
-      // B1: see resolveKey()'s own comment. Only a NEW Generate-from-Brief run for this same event
-      // (fromCreate, carries a draftId that doesn't match whoever last actually saved this key) treats
-      // an existing snapshot as stale — a plain wizard open (fromCreate, no draftId ever) or a plain
-      // reopen (not fromCreate) always finds exactly what was last saved here, same as before.
-      var isStale = !!(saved && saved.snapshot && fromCreate && draftId && saved.sourceDraftId !== draftId);
+      // Only a NEW Generate-from-Brief run for this same event (arriving from Create Event with a draftId
+      // that doesn't match whoever last actually saved this key) treats an existing snapshot as stale — a
+      // plain wizard open (no draftId ever) or a plain reopen always finds exactly what was last saved here.
+      var isStale = !!(saved && saved.snapshot && arriving && draftId && saved.sourceDraftId !== draftId);
       // See FILL_LOGIC_VERSION's own comment: a snapshot seeded under an older fill-logic version can have
       // the exactly-right sourceDraftId and still be wrong, because what ran against it to fill it was
       // broken at the time. Gates every "trust this outright, no need to re-fetch" decision below for a
@@ -206,7 +361,7 @@
 
       function restoreLocal() {
         sourceDraftId = saved.sourceDraftId || null;
-        canvas.restore(saved.snapshot);
+        canvas.restore(saved.snapshot, restoreOpts());
         // read back rather than reused: restore() repairs what older saves got wrong, and the first undo step
         // must be the page as it stands, or opening the editor would itself count as a change
         undoStack = [canvas.snapshot(saved.snapshot)]; undoPtr = 0;
@@ -223,7 +378,7 @@
          server-side right now. A real local edit is still safe either way — it only changes section
          content, never sourceDraftId itself (see persist()'s own comment), so an edited-but-still-current
          draft keeps matching and is never silently discarded. */
-      if (fromCreate) {
+      if (arriving) {
         if (saved && saved.snapshot && !isStale && isCurrentVersion) { restoreLocal(); return; }
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
@@ -472,7 +627,7 @@
      competing for the same template. Same "couldn't fetch" vs "confirmed empty" null handling as
      fetchSubcollectionOverlay(). */
   function fetchGenericRepeatOverlay() {
-    if (!canvas || !eventId || eventId === '1') return Promise.resolve(null);
+    if (!canvas || !eventId) return Promise.resolve(null);
     var kinds = findRepeatKindsInDom(canvas);
     if (!kinds.length) return Promise.resolve(null);
     var resourceNames = [];
@@ -513,7 +668,7 @@
      array) is treated the same way for the same reason: "couldn't tell" must never look like "confirmed
      empty". */
   function fetchSubcollectionOverlay() {
-    if (!canvas || !eventId || eventId === '1') return Promise.resolve(null);
+    if (!canvas || !eventId) return Promise.resolve(null);
     var spec = (canvas.template.content || {}).map || [];
     var froms = Object.keys(SUBCOLLECTION_SOURCES).filter(function (from) {
       return spec.some(function (m) { return m.from === from; });
@@ -581,29 +736,48 @@
     });
   }
 
-  /* ---------- applying a Create Event AI design (kept in sync with create-event.html's own copy) ----------
-     canvas.design.set('headingFont'/'bodyFont', …) only ever writes a CSS variable — it never loads the font
-     file itself, so a family not already linked in the template's own <head> would silently fall back. */
-  function ensureFontsLoaded(canvas, families) {
-    var head = canvas.doc.head;
-    (families || []).filter(Boolean).forEach(function (family) {
-      var already = Array.prototype.some.call(head.querySelectorAll('link[rel="stylesheet"]'), function (l) {
-        return (l.href || '').indexOf(encodeURIComponent(family).replace(/%20/g, '+')) !== -1;
-      });
-      if (already) return;
-      var link = canvas.doc.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800&display=swap';
-      head.appendChild(link);
-    });
+  /* ---------- fonts on offer ----------
+     A font is set as a CSS stack: the family, then the kind of font the browser falls back to while the family
+     loads or when it cannot be had. The canvas loads the family's stylesheet itself (editor-canvas.js). */
+  var FONT_KINDS = { 'Inter': 'sans-serif', 'Manrope': 'sans-serif', 'Poppins': 'sans-serif', 'Montserrat': 'sans-serif',
+    'Fraunces': 'serif', 'Playfair Display': 'serif', 'Lora': 'serif', 'Noticia Text': 'serif', 'Merriweather': 'serif',
+    'IBM Plex Mono': 'monospace' };
+  var SHARED_FONTS = ['Inter', 'Manrope', 'Poppins', 'Fraunces', 'Playfair Display', 'Lora', 'Noticia Text', 'IBM Plex Mono'];
+  function firstFamily(stack) { return String(stack || '').split(',')[0].replace(/['"]/g, '').trim(); }
+  function fontStack(family) {
+    var kind = FONT_KINDS[family] ||
+      (/mono|code/i.test(family) ? 'monospace' : /sans/i.test(family) ? 'sans-serif' : /serif|slab|display|garamond|baskerville|bodoni|caslon|georgia|times/i.test(family) ? 'serif' : 'sans-serif');
+    return '"' + family.replace(/["\\]/g, '') + '", ' + kind;
   }
+  /* the template's own fonts (template.json -> editorFonts, with the stacks its CSS expects) and then the shared ones */
+  function fontChoices() {
+    var own = (canvas && canvas.template.editorFonts) || {}, list = [], seen = {};
+    Object.keys(own).forEach(function (label) {
+      list.push({ label: label, stack: own[label] });
+      seen[label.toLowerCase()] = seen[firstFamily(own[label]).toLowerCase()] = 1;
+    });
+    SHARED_FONTS.forEach(function (family) {
+      if (!seen[family.toLowerCase()]) list.push({ label: family, stack: fontStack(family) });
+    });
+    return list;
+  }
+  /* the stack for a family named on its own (by the AI assistant, or read back from the page) */
+  function stackFor(family) {
+    family = firstFamily(family);
+    var known = fontChoices().filter(function (f) { return f.label.toLowerCase() === family.toLowerCase() || firstFamily(f.stack).toLowerCase() === family.toLowerCase(); })[0];
+    return known ? known.stack : fontStack(family);
+  }
+
+  /* ---------- applying a design proposed by the AI (Create Event's "Let AI design it", the chat panel) ----------
+     Returns the settings that were left out because this site has nothing for them to act on. */
   function applyAiDesignToCanvas(canvas, design) {
-    if (!canvas || !design) return;
-    ensureFontsLoaded(canvas, [design.headingFont, design.bodyFont]);
+    var skipped = [];
+    if (!canvas || !design) return skipped;
     Object.keys(design).forEach(function (key) {
       var isFont = key === 'headingFont' || key === 'bodyFont';
-      canvas.design.set(key, isFont ? ('"' + design[key] + '", sans-serif') : design[key]);
+      if (!canvas.design.supports(key) || !canvas.design.set(key, isFont ? stackFor(design[key]) : design[key])) skipped.push(key);
     });
+    return skipped;
   }
 
   /* ---------- AI-provenance badges (Generate-from-Brief review gate) ----------
@@ -682,7 +856,7 @@
     if (!canvas) return { generated: [], skipped: [] };
     function list(attr) {
       return Array.prototype.map.call(canvas.doc.querySelectorAll('[' + attr + ']'), function (sec) {
-        var id = sec.getAttribute('data-rv-section');
+        var id = sec.getAttribute('data-rv-key') || sec.getAttribute('data-rv-section');
         return { id: id, name: sec.getAttribute('data-sec-name') || id };
       });
     }
@@ -697,7 +871,7 @@
   }
 
   /* C1 — "cleared once a human edits that section": called at each of this file's own actual content-edit
-     commit points below (never from the generic commit()/design bridges, which change layout/theme rather
+     commit points below (never from the generic commit() or the site-wide design settings, which change layout/theme rather
      than a specific section's own written content) with whatever element is in scope there. One-way: once
      removed, nothing in this file ever sets it back. */
   function clearAiGenerated(el) {
@@ -705,10 +879,11 @@
     if (sec) sec.removeAttribute('data-ai-generated');
   }
 
+  // resolves true when the page as first opened is kept in this browser
   function seedSnapshot(draft) {
     var snap = canvas.snapshot();
     undoStack = [snap]; undoPtr = 0;
-    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
+    return localPut(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
   }
 
   /* ---------- save / undo ----------
@@ -725,12 +900,14 @@
     // second Generate-from-Brief run later in the SAME browser would no longer be able to tell this apart
     // from a never-regenerated draft (see resolveInitialContent()'s staleness check), and a real manual
     // edit made just after a correct seed would look exactly like an old, pre-fix snapshot again.
-    return RevampStore.put(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
+    return localPut(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
   }
 
+  /* This browser's copy (RevampStore) through two calls that never reject: a browser that gives the page no
+     storage (some private modes, blocked site data) must still open and edit the site. It is told once. */
   var localStoreOk = true;
   function markLocalStoreUnavailable(err) {
-    if (window.console) console.warn('[RevampTemplateUI] Could not write the local copy:', err);
+    if (window.console) console.warn('[RevampTemplateUI] This browser gave the editor no local storage:', err);
     if (!localStoreOk) return;
     localStoreOk = false;
     showNotice('local-store', {
@@ -738,9 +915,16 @@
       text: 'This browser cannot keep a copy of your work. Your changes will be lost when you close this tab.'
     });
   }
-  function saveLocal(snap) {
-    try { persist(snap).catch(markLocalStoreUnavailable); } catch (err) { markLocalStoreUnavailable(err); }
+  // a key that is not set (a template preview, a draft without a logo) is simply "nothing kept"
+  function localGet(key) {
+    if (!key) return Promise.resolve(undefined);
+    return RevampStore.get(key).catch(function (err) { markLocalStoreUnavailable(err); return undefined; });
   }
+  function localPut(key, value) {
+    if (!key) return Promise.resolve(false);
+    return RevampStore.put(key, value).then(function () { return true; }, function (err) { markLocalStoreUnavailable(err); return false; });
+  }
+  function saveLocal(snap) { persist(snap); }
 
   /* The site lives in this browser's copy only; sending each committed change to the server starts here. */
   function scheduleServerSave() {}
@@ -768,6 +952,8 @@
     saveLocal(undoStack[undoPtr]);
     scheduleServerSave();
     repositionToolbars();
+    sectionsChanged();
+    designChanged();
     return true;
   }
   function commitNow() { return record(false); }
@@ -794,11 +980,13 @@
     typingPtr = -1;
     dismissUndoToast();
     undoPtr = ptr;
-    canvas.restore(undoStack[undoPtr]);
+    canvas.restore(undoStack[undoPtr], restoreOpts());
     updateHistoryButtons();
     saveLocal(undoStack[undoPtr]);
     scheduleServerSave();
     repositionToolbars();
+    sectionsChanged();
+    designChanged();
   }
   function undo() { step(-1); }
   function redo() { step(1); }
@@ -807,6 +995,7 @@
     var u = document.getElementById('btn-tpl-undo'), r = document.getElementById('btn-tpl-redo');
     if (u) u.disabled = undoPtr <= 0;
     if (r) r.disabled = undoPtr >= undoStack.length - 1;
+    syncAiUndo();
   }
 
   /* "Deleted — Undo": the button undoes the newest step, so the toast goes as soon as that step is no longer
@@ -846,6 +1035,8 @@
     secToolbar.addEventListener('click', onSecToolbarClick);
     document.addEventListener('mousedown', function (e) {
       if (frame.contains(e.target)) return;   // clicks inside the canvas/toolbars are handled on their own listeners
+      // a side panel that acts on what is selected (Add elements) is marked so that using it keeps the selection
+      if (e.target.nodeType === 1 && e.target.closest('[data-keep-selection]')) return;
       deselect();
     });
   }
@@ -857,24 +1048,37 @@
     if (!el.getAttribute('class')) el.removeAttribute('class');
   }
 
+  function selectionChanged() {
+    if (!host || !host.onSelectionChange) return;
+    var kind = selectedEl ? selectedEl.getAttribute('data-editable') : '';
+    host.onSelectionChange(selectedEl ? { kind: kind, canStyle: !!styleTarget() } : null);
+  }
+
   function clearElementSelection() {
     closeLinkPop();
+    var had = selectedEl;
     if (selectedEl) unmark(selectedEl, 'ed-selected');
+    markCurrentItem(null);
     selectedEl = null;
     if (selWatch) selWatch.disconnect();
     selToolbar.hidden = true;
+    if (had) selectionChanged();
   }
 
   function clearActiveSection() {
+    var had = activeSectionEl;
     if (activeSectionEl) unmark(activeSectionEl, 'sec-active');
     activeSectionEl = null;
     secToolbar.hidden = true;
+    if (had) sectionsChanged();
   }
 
   function setActiveSection(sec) {
+    var had = activeSectionEl;
     if (activeSectionEl && activeSectionEl !== sec) unmark(activeSectionEl, 'sec-active');
     activeSectionEl = sec; sec.classList.add('sec-active');
     buildSecToolbar(sec);
+    if (had !== sec) sectionsChanged();
   }
 
   function deselect() {
@@ -896,6 +1100,7 @@
     var sec = el.closest('[data-rv-section]');
     if (sec) setActiveSection(sec); else clearActiveSection();
     selectedEl = el; el.classList.add('ed-selected');
+    markCurrentItem(repeatItemOf(el));
     buildToolbar(el);
     // the element grows and shrinks as its text is typed; the pill follows it
     if (canvas.win.ResizeObserver) {
@@ -904,6 +1109,7 @@
       selWatch.observe(el);
     }
     positionToolbars();
+    selectionChanged();
   }
 
   var TEXT_FORMAT_ACTIONS = { bold: 1, italic: 1, underline: 1, strikethrough: 1 };
@@ -944,7 +1150,16 @@
       html += '<button data-action="replace-image" title="Replace image">Replace image</button>' +
         '<button data-action="alt-text" title="Alt text">Alt text</button>' + link;
     }
-    html += '<span class="tpl-tb-sep"></span>' +
+    var item = repeatItemOf(el);
+    if (item) {
+      var around = repeatItems(el.closest('[data-rv-section]')), at = around.indexOf(item);
+      html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
+        '<button data-action="item-add" title="Add another item like this one, right after it">+ Add item</button>' +
+        '<button class="icon-only" data-action="item-earlier" title="Move this item earlier"' + (at <= 0 ? ' disabled' : '') + '>&#8592;</button>' +
+        '<button class="icon-only" data-action="item-later" title="Move this item later"' + (at === around.length - 1 ? ' disabled' : '') + '>&#8594;</button>' +
+        '<button data-action="item-remove" title="Remove this item">Remove item</button>';
+    }
+    html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
       '<button class="icon-only" data-action="duplicate" title="Duplicate">&#10697;</button>' +
       '<button class="icon-only danger" data-action="delete" title="Delete">&#10005;</button>' +
       '<button class="icon-only" data-action="deselect" title="Close">&#10060;</button>';
@@ -996,18 +1211,14 @@
     }
 
     if (!activeSectionEl || !activeSectionEl.isConnected) { secToolbar.hidden = true; return; }
-    if (activeSectionEl.classList.contains('is-hidden-sec')) {
-      // a hidden section takes no room on the canvas; its pill (with Show) waits in the corner
-      secToolbar.hidden = false;
-      place(secToolbar, { left: 6, top: 4 });
-      return;
-    }
     var s = canvas.screenRect(activeSectionEl);
     if (s.bottom <= fr.top || s.top >= fr.bottom) { secToolbar.hidden = true; return; }
     secToolbar.hidden = false;
     var sw = secToolbar.offsetWidth, sh = secToolbar.offsetHeight;
     var secTop = Math.max(s.top - fr.top, 0) + 8;
     secTop = Math.max(4, Math.min(secTop, s.bottom - fr.top - sh - 8));
+    // a hidden section is only a slim bar: the pill sits level with it rather than above it
+    if (activeSectionEl.classList.contains('is-hidden-sec')) secTop = Math.max(4, Math.min(s.top - fr.top + (s.height - sh) / 2, fr.height - sh - 4));
     var rightEdge = Math.min(s.right - fr.left, fr.width), leftEdge = Math.max(s.left - fr.left, 0);
     var spots = [];
     // a phone-width canvas leaves the frame empty beside it: the pill goes there, off the page altogether
@@ -1033,15 +1244,22 @@
     var action = btn.getAttribute('data-action');
     if (action !== 'link') closeLinkPop();
     if (TEXT_FORMAT_ACTIONS[action]) {
-      if (editingEl !== selectedEl) {
-        // not being typed in, so there is no selection of the user's to keep: the whole text takes the format
-        enterEdit(selectedEl);
+      /* Words the owner has selected take the format. With no words selected — the text was only clicked, or
+         only the caret is in it — the whole text does; the caret is then left at its end, so that typing on
+         does not replace the text. */
+      var sel = canvas.win.getSelection();
+      var words = editingEl === selectedEl && sel.rangeCount && !sel.isCollapsed && selectedEl.contains(sel.anchorNode);
+      if (!words) {
+        if (editingEl !== selectedEl) enterEdit(selectedEl);
         var all = canvas.doc.createRange();
         all.selectNodeContents(selectedEl);
-        var sel = canvas.win.getSelection();
         sel.removeAllRanges(); sel.addRange(all);
       }
+      // the real templates' CSS reset gives <i> the font of the text around it, so italics are written as a style
+      if (action === 'italic') canvas.doc.execCommand('styleWithCSS', false, true);
       canvas.doc.execCommand(action === 'strikethrough' ? 'strikeThrough' : action);
+      if (action === 'italic') canvas.doc.execCommand('styleWithCSS', false, false);
+      if (!words) sel.collapseToEnd();
       clearAiGenerated(selectedEl);
       commitNow();
     } else if (action === 'align-left' || action === 'align-center' || action === 'align-right') {
@@ -1071,19 +1289,20 @@
       deleteElement(selectedEl);
     } else if (action === 'deselect') {
       deselect();
+    } else if (action.indexOf('item-') === 0) {
+      onItemAction(action.slice(5), selectedEl);
     }
   }
 
-  var KIND_NAMES = { text: 'Text', button: 'Button', image: 'Picture' };
+  var KIND_NAMES = { text: 'Text', button: 'Button', image: 'Picture', block: 'Block' };
 
   /* An element that is the label of a repeated item (a card's title, a tile's picture — template.json →
      sections[].repeat) stands for the whole item: deleting only the label would leave an empty card behind. */
   function repeatItemLabelled(el) {
-    var sec = el.closest('[data-rv-section]'), cfg = sec && repeatConfigFor(sec);
-    if (!cfg || !cfg.item) return null;
-    var item = el.closest(cfg.item);
-    if (!item || !sec.contains(item)) return null;
+    var item = repeatItemOf(el);
+    if (!item) return null;
     if (item === el) return item;
+    var cfg = repeatConfigFor(el.closest('[data-rv-section]'));
     return cfg.label && item.querySelector(cfg.label) === el ? item : null;
   }
 
@@ -1406,39 +1625,81 @@
     typingTimer = setTimeout(function () { typingTimer = null; commitTyping(); }, 600);
   }
 
-  /* ---------- section toolbar (duplicate/hide/delete/add-from-library) ---------- */
+  /* ---------- section toolbar (move / add / duplicate / hide / delete) ---------- */
   function buildSecToolbar(sec) {
     var hidden = sec.classList.contains('is-hidden-sec');
-    secToolbar.innerHTML =
-      '<button data-action="add-from-library" title="Add section below">+ Section</button>' +
-      '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
-      '<button data-action="toggle-hide" title="Hide/show section">' + (hidden ? 'Show' : 'Hide') + '</button>' +
-      '<button class="danger" data-action="delete-section" title="Delete section">Delete</button>';
+    var html =
+      '<button class="icon-only" data-action="move-up" title="Move this section up"' + (moveTarget(sec, -1) === undefined ? ' disabled' : '') + '>&#8593;</button>' +
+      '<button class="icon-only" data-action="move-down" title="Move this section down"' + (moveTarget(sec, 1) === undefined ? ' disabled' : '') + '>&#8595;</button>' +
+      '<span class="tpl-tb-sep"></span>';
+    if (hidden) {
+      html += '<button data-action="toggle-hide" title="Show this section on the site again">Show</button>';
+    } else {
+      html += '<button data-action="add-section" title="Add a section below this one">+ Section</button>' +
+        (repeatItems(sec).length ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
+        '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
+        '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
+    }
+    html += '<button class="danger" data-action="delete-section" title="Delete section">Delete</button>';
+    secToolbar.innerHTML = html;
   }
 
+  function isLive(sec) { return !!(canvas && !remounting && sec && sec.isConnected && sec.ownerDocument === canvas.doc); }
+
   function setSectionHidden(sec, hide) {
-    sec.classList.toggle('is-hidden-sec', hide);
-    sec.style.display = hide ? 'none' : '';
+    if (editingEl) exitEdit(editingEl);
+    if (hide && selectedEl && sec.contains(selectedEl)) clearElementSelection();
+    canvas.setHidden(sec, hide);
     commitNow();
+    if (activeSectionEl === sec) { buildSecToolbar(sec); positionToolbars(); }
+  }
+
+  /* where one step up or down takes a section: the section it lands in front of (null: the end of the page), or
+     undefined when it cannot go that way — it is first or last, it is pinned, or a pinned section is in the way */
+  function moveTarget(sec, dir) {
+    var secs = canvas.sections(), i = secs.indexOf(sec);
+    if (i === -1 || (dir < 0 && i === 0)) return undefined;
+    var before = dir < 0 ? secs[i - 1] : (secs[i + 2] || null);
+    return canvas.canMoveSection(sec, before) ? before : undefined;
+  }
+
+  function moveSectionBefore(sec, before) {
+    if (editingEl) exitEdit(editingEl);
+    if (!canvas.moveSection(sec, before)) return false;
+    commitNow();
+    if (activeSectionEl === sec) buildSecToolbar(sec);
+    canvas.scrollToSection(sec);
+    positionToolbars();
+    return true;
+  }
+
+  function duplicateSection(sec) {
+    if (!isLive(sec)) return null;
+    if (editingEl) exitEdit(editingEl);
+    var copy = canvas.duplicateSection(sec, (sec.getAttribute('data-sec-name') || 'Section') + ' copy');
+    commitNow();
+    selectSectionOnly(copy);
+    canvas.scrollToSection(copy);
+    return copy;
   }
 
   function onSecToolbarClick(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn || !activeSectionEl) return;
-    var action = btn.getAttribute('data-action');
+    var action = btn.getAttribute('data-action'), sec = activeSectionEl;
     if (action === 'duplicate-section') {
-      if (editingEl) exitEdit(editingEl);
-      var copy = canvas.duplicateSection(activeSectionEl, (activeSectionEl.getAttribute('data-sec-name') || 'Section') + ' copy');
-      commitNow();
-      selectSectionOnly(copy);
+      duplicateSection(sec);
     } else if (action === 'toggle-hide') {
-      setSectionHidden(activeSectionEl, !activeSectionEl.classList.contains('is-hidden-sec'));
-      buildSecToolbar(activeSectionEl);
-      positionToolbars();
+      setSectionHidden(sec, !sec.classList.contains('is-hidden-sec'));
     } else if (action === 'delete-section') {
-      confirmDeleteSection(activeSectionEl);
-    } else if (action === 'add-from-library') {
-      openLibraryPicker(activeSectionEl);
+      confirmDeleteSection(sec);
+    } else if (action === 'add-section') {
+      host.pickSection(sec);
+    } else if (action === 'add-item') {
+      selectNewItem(addRepeatItem(sec));
+    } else if (action === 'move-up' || action === 'move-down') {
+      var before = moveTarget(sec, action === 'move-up' ? -1 : 1);
+      if (before !== undefined) moveSectionBefore(sec, before);
     }
   }
 
@@ -1457,7 +1718,6 @@
     if (!sec.classList.contains('is-hidden-sec')) {
       actions.unshift({ label: 'Hide instead', kind: 'ghost', aside: true, onClick: function () {
         if (!sec.isConnected) return;
-        deselect();
         setSectionHidden(sec, true);
         offerUndo('"' + name + '" is hidden. It is not shown on the site.');
       } });
@@ -1469,51 +1729,251 @@
     });
   }
 
-  function openLibraryPicker(afterSec) {
-    var items = canvas.library();
-    if (!items.length) { showToast('No sections available'); return; }
-    var names = items.map(function (it, i) { return (i + 1) + '. ' + it.name; }).join('\n');
-    var pick = prompt('Add a section from this template — enter a number:\n' + names, '1');
-    if (pick === null) return;   // Cancel — no feedback needed, the user chose not to add anything
-    var idx = parseInt(pick, 10) - 1;
-    if (isNaN(idx) || !items[idx]) { showToast('"' + pick + '" isn’t one of the numbers above — nothing was added.'); return; }
-    var el = canvas.createLibrarySection(items[idx].id);
-    afterSec.after(el);
-    canvas.adopt(el);
-    commitNow();
-    selectSectionOnly(el);
+  /* ---------- sections, for the page's side panels ----------
+     The Layers panel, the section picker and the Add panel in custom_editor.html work on the site through these;
+     each one goes the same way as its button on the section pill. */
+  function boundSource(type, html) {
+    var map = (canvas.template.content || {}).map || [];
+    if (map.some(function (m) { return m.section === type && SUBCOLLECTION_SOURCES[m.from]; })) return true;
+    var m = /data-rv-repeat-template="([^"]+)"/.exec(html || '');
+    return !!(m && GENERIC_REPEAT_SOURCES[m[1]]);
   }
 
-  /* ---------- repeat items (template.json -> sections[].repeat) ---------- */
+  function listSections() {
+    if (!canvas || remounting) return [];
+    return canvas.sections().map(function (sec) {
+      var type = sec.getAttribute('data-rv-section');
+      var marker = sec.querySelector('[data-rv-repeat-template]');
+      return {
+        el: sec, key: sec.getAttribute('data-rv-key'), type: type,
+        name: sec.getAttribute('data-sec-name') || type,
+        hidden: sec.classList.contains('is-hidden-sec'),
+        pinned: !!canvas.pinned(sec),
+        canMoveUp: moveTarget(sec, -1) !== undefined, canMoveDown: moveTarget(sec, 1) !== undefined,
+        bound: boundSource(type, marker ? marker.outerHTML : ''),      // fed from the event's Content tabs
+        current: sec === activeSectionEl
+      };
+    });
+  }
+
+  /* The site's own sections that can be put on the page again. An imported page is one section holding the whole
+     design, which is not something to add twice. A section fed from the Content tabs that is already on the page
+     is marked onPage: a second one could only show the same records again. */
+  function librarySections() {
+    if (!canvas || remounting || /^imported-/.test(templateId || '')) return [];
+    var onPage = {};
+    canvas.sections().forEach(function (sec) { onPage[sec.getAttribute('data-rv-section')] = 1; });
+    return canvas.library().map(function (it) {
+      return { id: it.id, name: it.name, snippet: it.snippet, onPage: !!onPage[it.id] && boundSource(it.id, it.html) };
+    });
+  }
+
+  function selectSection(sec) {
+    if (!isLive(sec)) return;
+    selectSectionOnly(sec);
+    canvas.scrollToSection(sec);
+  }
+
+  // toIndex: the place the section should have in listSections() once it has moved
+  function moveSection(sec, toIndex) {
+    if (!isLive(sec)) return false;
+    var others = canvas.sections().filter(function (s) { return s !== sec; });
+    return moveSectionBefore(sec, others[toIndex] || null);
+  }
+
+  function setHidden(sec, hide) {
+    if (!isLive(sec) || sec.classList.contains('is-hidden-sec') === !!hide) return;
+    setSectionHidden(sec, !!hide);
+  }
+
+  function deleteSection(sec) { if (isLive(sec)) confirmDeleteSection(sec); }
+
+  function renameSection(sec, name) {
+    name = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!isLive(sec) || !name || name === sec.getAttribute('data-sec-name')) return false;
+    sec.setAttribute('data-sec-name', name);
+    commitNow();
+    return true;
+  }
+
+  /* spec: { libraryId } — one of the site's own sections — or { name, html } — one of the editor's generic
+     designs. Goes after afterEl, else after the active section, else at the end of the page. */
+  function insertSection(spec, afterEl) {
+    if (!canvas || remounting || !spec) return null;
+    if (editingEl) exitEdit(editingEl);
+    var el, name;
+    if (spec.libraryId) {
+      var item = canvas.library().filter(function (it) { return it.id === spec.libraryId; })[0];
+      if (!item) { showToast('That section is not part of this site’s design, so it could not be added.', { kind: 'error' }); return null; }
+      el = canvas.createLibrarySection(item.id);
+      name = item.name;
+    } else {
+      el = canvas.createGenericSection(spec.name, spec.html, restoreOpts().siteCss);
+      name = spec.name;
+    }
+    canvas.insertSection(el, isLive(afterEl) ? afterEl : activeSectionEl);
+    commitNow();
+    selectSectionOnly(el);
+    canvas.scrollToSection(el);
+    showToast('Added "' + name + '".');
+    return el;
+  }
+
+  /* ---------- Add elements (heading / text / button / image / divider / spacer) ----------
+     A block is a plain element of the page with the editor's marker and a neutral class; its CSS is the canvas's
+     (ensureBlockStyle). It goes right after the selected element, or at the end of the active section's content
+     when only a section is selected. */
+  var BLOCKS = {
+    heading: { tag: 'h3', cls: 'rv-block-heading', kind: 'text', text: 'New heading', name: 'heading' },
+    text: { tag: 'p', cls: 'rv-block-text', kind: 'text', text: 'Write your text here.', name: 'text' },
+    button: { tag: 'a', cls: 'rv-block-button', kind: 'button', text: 'Button', name: 'button' },
+    image: { tag: 'img', cls: 'rv-block-image', kind: 'image', name: 'image' },
+    divider: { tag: 'hr', cls: 'rv-block-divider', kind: 'block', name: 'divider' },
+    spacer: { tag: 'div', cls: 'rv-block-spacer', kind: 'block', name: 'spacer' }
+  };
+
+  /* the element a new block follows: the selected one — as a whole, when it sits inside another editable element
+     or inside a link or button */
+  function blockAnchor(sec) {
+    if (!selectedEl || !selectedEl.isConnected || !sec.contains(selectedEl) || selectedEl === sec) return null;
+    var at = selectedEl, up;
+    while ((up = at.parentElement && at.parentElement.closest('[data-editable], a, button, summary')) && up !== sec && sec.contains(up)) at = up;
+    return at;
+  }
+  // where a section's content sits: inside the wrappers that hold nothing else (container > row > column …)
+  function contentBox(sec) {
+    var box = sec;
+    for (;;) {
+      var kids = Array.prototype.filter.call(box.children, function (c) { return c.tagName !== 'STYLE' && c.tagName !== 'SCRIPT' && !/^ai-.*-badge$/.test(c.className); });
+      if (kids.length !== 1 || kids[0].hasAttribute('data-editable') || !/^(DIV|SECTION|ARTICLE|MAIN)$/.test(kids[0].tagName)) return box;
+      box = kids[0];
+    }
+  }
+
+  function addBlock(kind) {
+    var spec = BLOCKS[kind];
+    if (!canvas || remounting || !spec) return null;
+    var sec = activeSectionEl;
+    if (!sec || !sec.isConnected) { showToast('Click a section first, then choose what to add to it.'); return null; }
+    if (sec.classList.contains('is-hidden-sec')) { showToast('This section is hidden. Show it first, then add to it.'); return null; }
+    var src = '';
+    if (kind === 'image') {
+      src = (prompt('Image URL', 'https://') || '').trim();
+      if (!src || src === 'https://') return null;
+      if (!/^https?:\/\/[^\s"<>]+$/i.test(src)) { showToast('That is not a picture’s web address. It should start with https://', { kind: 'error' }); return null; }
+    }
+    if (editingEl) exitEdit(editingEl);
+    var node = canvas.doc.createElement(spec.tag);
+    node.className = spec.cls;
+    node.setAttribute('data-editable', spec.kind);
+    if (spec.text) node.textContent = spec.text;
+    if (kind === 'button') node.setAttribute('href', '#');
+    if (kind === 'image') { node.setAttribute('src', src); node.setAttribute('alt', ''); }
+    var anchor = blockAnchor(sec);
+    if (anchor) anchor.after(node); else contentBox(sec).appendChild(node);
+    canvas.ensureBlockStyle();
+    clearAiGenerated(node);
+    commitNow();
+    selectElement(node);
+    node.scrollIntoView({ block: 'nearest' });
+    repositionToolbars();
+    showToast('Added ' + (/^[aeiou]/.test(spec.name) ? 'an ' : 'a ') + spec.name + '.');
+    return node;
+  }
+
+  /* ---------- repeat items (template.json -> sections[].repeat) ----------
+     repeat: { item, label } — the selector of one repeated item (a card, a tile, a question) inside the section,
+     and of the element in it that names it. The item selectors of some templates start from an id inside the
+     section ("#stats-4 .stats-box > section"); a copy of the section has that id renamed, and inside one section
+     the id says nothing the rest of the selector does not, so it is read as "any element". */
   function repeatConfigFor(sec) {
     var id = sec.getAttribute('data-rv-section');
     var s = canvas.template.sections.filter(function (x) { return x.id === id; })[0];
     return s && s.repeat;
   }
+  function itemSelector(cfg) {
+    return cfg.item.replace(/(^|[\s>+~,])#[\w-]+(?=$|[\s>+~,])/g, '$1*');
+  }
+  function repeatItems(sec) {
+    var cfg = sec && repeatConfigFor(sec);
+    return cfg && cfg.item ? Array.prototype.slice.call(sec.querySelectorAll(itemSelector(cfg))) : [];
+  }
+  function repeatItemOf(el) {
+    var sec = el.closest('[data-rv-section]'), cfg = sec && repeatConfigFor(sec);
+    if (!cfg || !cfg.item) return null;
+    var item = el.closest(itemSelector(cfg));
+    return item && item !== sec && sec.contains(item) ? item : null;
+  }
 
-  function addRepeatItem(sec) {
-    var cfg = repeatConfigFor(sec);
-    if (!cfg) return false;
-    var items = sec.querySelectorAll(cfg.item);
-    if (!items.length) return false;
-    var last = items[items.length - 1];
-    var clone = last.cloneNode(true);
-    last.after(clone);
+  // the item the selection is in carries an editor-only mark, so it can be outlined (editor-canvas.css)
+  var currentItem = null;
+  function markCurrentItem(item) {
+    if (currentItem && currentItem !== item) currentItem.removeAttribute('data-rv-cur-item');
+    currentItem = item || null;
+    if (currentItem) currentItem.setAttribute('data-rv-cur-item', '');
+  }
+
+  /* A copy of `item` right after it; without one, of the section's last item. Returns the new item. */
+  function addRepeatItem(sec, item) {
+    var items = repeatItems(sec);
+    if (!items.length) return null;
+    var from = item && items.indexOf(item) !== -1 ? item : items[items.length - 1];
+    var clone = canvas.copyOf(from);
+    from.after(clone);
+    canvas.adoptElement(clone);
     canvas.retag(clone);
     clearAiGenerated(sec);
     commitNow();
-    return true;
+    return clone;
   }
 
   function removeRepeatItem(sec, item) {
-    var cfg = repeatConfigFor(sec);
-    if (!cfg) return false;
-    var items = sec.querySelectorAll(cfg.item);
+    var items = repeatItems(sec);
+    if (items.indexOf(item) === -1) return false;
     if (items.length <= 1) { showToast('At least one item is required'); return false; }
     item.remove();
     clearAiGenerated(sec);
     commitNow();
     return true;
+  }
+
+  function moveRepeatItem(sec, item, dir) {
+    var items = repeatItems(sec), i = items.indexOf(item), other = items[i + dir];
+    if (i === -1 || !other) return false;
+    if (dir < 0) other.parentNode.insertBefore(item, other); else other.after(item);
+    clearAiGenerated(sec);
+    commitNow();
+    return true;
+  }
+
+  // the new item's own label is what the owner will want to type over
+  function selectNewItem(item) {
+    if (!item) return;
+    var cfg = repeatConfigFor(item.closest('[data-rv-section]'));
+    var label = cfg.label && (item.matches(cfg.label) ? item : item.querySelector(cfg.label));
+    var pick = label && label.hasAttribute('data-editable') ? label
+      : item.hasAttribute('data-editable') ? item : item.querySelector('[data-editable]');
+    if (!pick) return;
+    selectElement(pick);
+    pick.scrollIntoView({ block: 'nearest' });
+    repositionToolbars();
+  }
+
+  function onItemAction(what, el) {
+    var sec = el.closest('[data-rv-section]'), item = repeatItemOf(el);
+    if (!item) return;
+    if (editingEl) exitEdit(editingEl);
+    if (what === 'add') {
+      selectNewItem(addRepeatItem(sec, item));
+    } else if (what === 'remove') {
+      deselect();
+      if (removeRepeatItem(sec, item)) offerUndo('Item removed.');
+    } else if (what === 'earlier' || what === 'later') {
+      if (!moveRepeatItem(sec, item, what === 'earlier' ? -1 : 1)) return;
+      buildToolbar(el);
+      el.scrollIntoView({ block: 'nearest' });
+      positionToolbars();
+    }
   }
 
   /* ---------- canvas (iframe document) event wiring ----------
@@ -1577,18 +2037,21 @@
     clearTimeout(commitTimer); commitTimer = null;
     clearTimeout(typingTimer); typingTimer = null;
     editingEl = null; editingBeforeText = null; typingPtr = -1;
-    selectedEl = null; activeSectionEl = null;
+    selectedEl = null; activeSectionEl = null; currentItem = null;
     if (selWatch) selWatch.disconnect();
     closeLinkPop();
     selToolbar.hidden = true; secToolbar.hidden = true;
+    selectionChanged();
     canvas.destroy();
     RevampCanvas.mount(frame, templateId, mountOpts).then(function (c) {
       canvas = c;
-      canvas.restore(undoStack[undoPtr]);
+      canvas.restore(undoStack[undoPtr], restoreOpts());
       canvas.setDevice(deviceName);
       setAiMarkers(aiMarkersOn);
       wireCanvasEvents();
       remounting = false;
+      sectionsChanged();
+      designChanged();
       showNotice('canvas-restored', { kind: 'info', dismissible: true, text: 'The page tried to open a link. Your work is restored.' });
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -1618,69 +2081,222 @@
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
   }
 
-  /* ---------- design bridge (theme color only for this pass; full Design panel is a fast-follow) ---------- */
-  function wireDesignBridge() {
-    var container = document.getElementById('theme-swatches');
-    if (!container) return;
-    container.addEventListener('click', function (e) {
-      var sw = e.target.closest('.swatch[data-theme-color]');
-      if (!sw) return;
-      canvas.design.set('themeColor', sw.getAttribute('data-theme-color'));
-      commitNow();
+  /* ---------- design: the Design panel and the style toolbar (custom_editor.html) ----------
+     Both read and write the site's design through these, never the page around the canvas. A setting the site
+     has nothing for (a theme colour on a design whose colours are fixed, corners where there are no buttons or
+     cards) is refused with the reason, so nothing reports a change that did not happen. */
+  var NOTHING_TO_CHANGE = {
+    themeColor: 'This design uses fixed colors, so there is no site-wide theme color to change. Select a text and use “Selected text” to change its color.',
+    textColor: 'This design sets the color of each text itself. Select a text and use “Selected text” to change its color.',
+    bodyFont: 'This design sets the font of each text itself. Select a text and use “Selected text” to change its font.',
+    sectionSpacing: 'This design sets the space between its sections itself, so this setting has nothing to change.',
+    radius: 'This design has no buttons or cards for the corner setting to round.',
+    reveals: 'This design has no scroll effects to switch off.'
+  };
+  var DESIGN_KEYS = ['themeColor', 'textColor', 'bgColor', 'bgImage', 'bgOpacity', 'bodyFont', 'bodySize', 'bodyWeight',
+    'sectionSpacing', 'divider', 'animation', 'headingFont', 'headingSize', 'headingWeight', 'headingColor',
+    'headingCase', 'headingAlign', 'radius', 'motion', 'reveals'];
+  function unsupportedReason(key) {
+    if (!canvas) return 'The site has not finished loading.';
+    if (canvas.design.supports(key)) return '';
+    return NOTHING_TO_CHANGE[key] || (/^heading/.test(key) ? 'This page has no headings for this setting to change.' : 'This setting has nothing to change on this design.');
+  }
+
+  function getDesign(key) {
+    if (!canvas) return '';
+    return key === 'headingColorShown' ? canvas.design.headingColorShown() : canvas.design.get(key);
+  }
+
+  function designOptions() {
+    var unsupported = {};
+    if (!canvas) return { swatches: [], fonts: [], unsupported: unsupported };
+    DESIGN_KEYS.forEach(function (key) { var why = unsupportedReason(key); if (why) unsupported[key] = why; });
+    return { swatches: canvas.design.swatches(), fonts: fontChoices(), unsupported: unsupported };
+  }
+
+  /* A font is given as its whole CSS stack (designOptions().fonts[].stack). Controls that fire continuously
+     (a slider, a colour being dragged) make one undo step once they have been still for a moment. */
+  function setDesign(key, value) {
+    if (!canvas || remounting) return false;
+    var why = unsupportedReason(key);
+    if (why) { showToast(why, { kind: 'error' }); return false; }
+    if (!canvas.design.set(key, value)) {
+      // tried, and nothing on the page looked different: the control is put away with the reason
+      designChanged();
+      showToast(unsupportedReason(key), { kind: 'error' });
+      return false;
+    }
+    commit();
+    designChanged();
+    return true;
+  }
+
+  /* A picture given by its address is only used once it has been seen to load. Embedded pictures (data:) are
+     refused: they would be saved inside the page. */
+  function checkImageUrl(raw) {
+    var url = String(raw == null ? '' : raw).trim();
+    if (/^data:/i.test(url)) return Promise.resolve({ error: 'Paste the web address of a picture that is already online (https://…), not the picture itself.' });
+    if (/^\/\//.test(url)) url = 'https:' + url;
+    if (!/^https?:\/\/\S+$/i.test(url)) return Promise.resolve({ error: 'Enter the web address of a picture, starting with https://' });
+    return new Promise(function (resolve) {
+      var img = new Image(), done = false;
+      function finish(result) { if (done) return; done = true; clearTimeout(timer); resolve(result); }
+      var timer = setTimeout(function () { finish({ error: 'That image could not be loaded. Check the address and try again.' }); }, 15000);
+      img.onload = function () { finish(img.naturalWidth ? { url: url } : { error: 'That image could not be loaded. Check the address and try again.' }); };
+      img.onerror = function () { finish({ error: 'That image could not be loaded. Check the address and try again.' }); };
+      img.src = url;
     });
   }
 
-  /* ---------- generic design-field bridge for the rest of the Design panel ----------
-     custom_editor.html's own controls (heading font, corner roundness, …) used to reach straight into the
-     demo site's DOM (frame.querySelectorAll(...)) — a no-op in template mode, since the real site lives
-     inside RevampCanvas's iframe, not in `frame` itself. This is the template-mode equivalent those controls
-     call instead (see TEMPLATE_MODE branches in custom_editor.html). `value` for a font field is a full CSS
-     stack (e.g. "'Fraunces', serif") already, same as headingFont/bodyFont expect — unlike the AI flows'
-     applyAiDesignToCanvas, which wraps a bare family name, this takes the stack as-is. */
-  function setDesign(key, value) {
-    if (!canvas) return;
-    if (key === 'headingFont' || key === 'bodyFont') {
-      var family = (value || '').split(',')[0].replace(/["']/g, '').trim();
-      ensureFontsLoaded(canvas, [family]);
-    }
-    canvas.design.set(key, value);
+  /* ---------- the look of one text ----------
+     For what the site-wide settings do not reach: one text or button gets its own font, size, weight or colour,
+     as inline styles marked important so they hold against the site-wide heading rules. */
+  function styleTarget() {
+    if (!canvas || !selectedEl || !selectedEl.isConnected) return null;
+    var kind = selectedEl.getAttribute('data-editable');
+    return kind === 'text' || kind === 'button' ? selectedEl : null;
+  }
+  function hexOf(color) {
+    var m = /(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(color || '');
+    return m ? '#' + [m[1], m[2], m[3]].map(function (n) { return ('0' + (+n).toString(16)).slice(-2); }).join('') : '';
+  }
+  function selectedStyle() {
+    var el = styleTarget();
+    if (!el) return null;
+    var cs = canvas.win.getComputedStyle(el);
+    return { fontFamily: firstFamily(cs.fontFamily), fontSize: Math.round(parseFloat(cs.fontSize)) || 16, fontWeight: cs.fontWeight, color: hexOf(cs.color) };
+  }
+  function styleSelected(props) {
+    var el = styleTarget();
+    if (!el || remounting) { showToast('Select a text on the page first.'); return false; }
+    props = props || {};
+    function put(name, value) { el.style.setProperty(name, value, 'important'); }
+    if (props.fontFamily) put('font-family', stackFor(props.fontFamily));
+    if (props.fontSize) put('font-size', parseInt(props.fontSize, 10) + 'px');
+    if (props.fontWeight) put('font-weight', String(props.fontWeight));
+    if (props.color) put('color', props.color);
+    if (props.fontFamily) canvas.design.syncFonts();
+    clearAiGenerated(el);
     commit();
+    repositionToolbars();
+    return true;
   }
 
   /* ---------- "Ask AI to edit" chat panel ---------- */
-  /* kept in sync with tools/serve.js's DESIGN_FIELDS (same canvas.design vocabulary as the design-swatches
-     bridge above and create-event.html's "Let AI design it") */
+  /* kept in sync with tools/serve.js's DESIGN_FIELDS (same canvas.design vocabulary as the Design panel
+     and create-event.html's "Let AI design it") */
   var CHAT_DESIGN_KEYS = ['themeColor', 'textColor', 'bgColor', 'headingColor', 'headingFont', 'bodyFont',
     'divider', 'animation', 'headingCase', 'headingAlign', 'headingWeight', 'bodyWeight', 'bodySize', 'headingSize', 'sectionSpacing', 'bgOpacity'];
+
+  /* What the owner is asked to approve is written in the words the Design panel and the style toolbar use,
+     never in the setting's internal name. */
+  var CHAT_DESIGN_LABELS = {
+    themeColor: 'Theme color', textColor: 'Text color', bgColor: 'Background color', headingColor: 'Heading color',
+    headingFont: 'Heading font', bodyFont: 'Body font', headingCase: 'Heading text case', headingAlign: 'Heading alignment',
+    headingWeight: 'Heading font weight', bodyWeight: 'Body font weight', bodySize: 'Body text size', headingSize: 'Heading size',
+    sectionSpacing: 'Space between sections', divider: 'Line between sections', animation: 'Section animation',
+    bgOpacity: 'Background opacity'
+  };
+  var CHAT_DESIGN_CHOICES = {
+    headingCase: { none: 'Headings as typed', uppercase: 'Headings in capitals', lowercase: 'Headings in lower case', capitalize: 'Headings with each word capitalized' },
+    headingAlign: { left: 'Headings aligned left', center: 'Headings centered', right: 'Headings aligned right', justify: 'Headings justified' },
+    divider: { none: 'No line between sections', line: 'A solid line between sections', dashed: 'A dashed line between sections', thick: 'A thick line between sections' },
+    animation: { none: 'No section animation', fade: 'Sections fade in', rise: 'Sections rise in', pulse: 'Sections pulse' }
+  };
+  var CHAT_DESIGN_UNITS = { bodySize: ' px', headingSize: ' px', sectionSpacing: ' px', bgOpacity: '%' };
+  function designLabel(key) {
+    if (CHAT_DESIGN_LABELS[key]) return CHAT_DESIGN_LABELS[key];
+    var words = String(key).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  function designChangeHtml(key, value) {
+    var v = String(value);
+    if (/Color$/.test(key)) {
+      var chip = /^#[0-9a-f]{3,8}$/i.test(v) ? ' <span class="cp-chip" style="background:' + v + '"></span>' : '';
+      return escHtml(designLabel(key)) + chip + ' ' + escHtml(v);
+    }
+    var choices = CHAT_DESIGN_CHOICES[key];
+    if (choices && choices[v]) return escHtml(choices[v]);
+    return escHtml(designLabel(key) + ': ' + v + (CHAT_DESIGN_UNITS[key] || ''));
+  }
+  // the server names a value it refused as: themeColor ("navy")
+  function skippedLabel(text) {
+    return String(text).replace(/^([A-Za-z]+)(?= \(")/, function (key) { return CHAT_DESIGN_KEYS.indexOf(key) !== -1 ? designLabel(key) : key; });
+  }
+  function sectionLabel(key) {
+    var sec = canvas.sectionByKey(key);
+    return (sec && sec.getAttribute('data-sec-name')) || designLabel(key);
+  }
 
   function currentDesignContext() {
     var out = {};
     CHAT_DESIGN_KEYS.forEach(function (k) { try { out[k] = canvas.design.get(k); } catch (e) {} });
     return out;
   }
-  /* each real section's own current text, verbatim and at TEXT-NODE granularity — one entry per actual DOM
-     text node, matching exactly what applyTextEdit() below searches. A data-editable element's .textContent
-     can span several text nodes (e.g. a heading plus a nested kicker <span>), so offering that combined
-     string as context would let the model propose a `find` that is verbatim-correct on the page but matches
-     no single node when applying it — this walks the same granularity apply uses, so every string offered
-     here is guaranteed findable. */
-  function sectionTextNodes(sec) {
-    var out = [];
-    Array.prototype.forEach.call(sec.querySelectorAll('[data-editable="text"]'), function (el) {
+
+  /* Only text a visitor can see is offered to the AI and changed by it. Templates keep some text out of sight
+     on purpose (a heading for search engines beside a headline that is a picture): an edit landing there would
+     be reported as done while the page looks the same. The answer of a closed accordion item counts as seen —
+     a visitor opens it. */
+  function isShown(el) {
+    var box = el.getBoundingClientRect();
+    return box.width > 0 && box.height > 0 && canvas.win.getComputedStyle(el).visibility !== 'hidden';
+  }
+  function isVisibleText(node) {
+    var el = node.parentElement, sec = el && el.closest('[data-rv-section]');
+    if (!sec || sec.classList.contains('is-hidden-sec')) return false;
+    if (canvas.win.getComputedStyle(el).visibility === 'hidden') return false;
+    var range = canvas.doc.createRange();
+    range.selectNodeContents(node);
+    if (range.getClientRects().length) return true;
+    var item = canvas.itemAround(el);
+    return !!item && item !== el && isShown(item);
+  }
+  /* A section's text, one entry per DOM text node, as visibleTextNodes() finds it. An editable element's
+     textContent can span several text nodes (a heading with a kicker <span>), and an edit replaces inside
+     one node — so every string offered to the AI is one applyTextEdit() can find again. Button labels come
+     separately: a label inside a text is already part of that text. */
+  function visibleTextNodes(sec, selector) {
+    var out = [], seen = [];
+    Array.prototype.forEach.call(sec.querySelectorAll(selector), function (el) {
       var walker = canvas.doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       var node;
       while ((node = walker.nextNode())) {
-        var t = node.nodeValue.replace(/\s+/g, ' ').trim();
-        if (t) out.push(t);
+        if (seen.indexOf(node) !== -1 || !/\S/.test(node.nodeValue) || !isVisibleText(node)) continue;
+        seen.push(node);
+        out.push(node);
       }
     });
     return out;
   }
+  function readable(node) { return node.nodeValue.replace(/\s+/g, ' ').trim(); }
+  function sectionTextNodes(sec) {
+    return visibleTextNodes(sec, '[data-editable="text"]').map(readable);
+  }
+  function sectionButtonLabels(sec) {
+    return visibleTextNodes(sec, '[data-editable="button"]').filter(function (node) {
+      return !node.parentElement.closest('[data-editable="text"]');
+    }).map(readable);
+  }
+  /* true when what a visitor reads as the section's headline is a picture: the first heading shown holds an
+     image and no text, or no heading is shown at all while the section keeps one out of sight beside a picture */
+  function hasImageHeadline(sec) {
+    var headings = Array.prototype.slice.call(sec.querySelectorAll('h1, h2, h3'));
+    var first = headings.filter(isShown)[0];
+    if (first) return !/\S/.test(first.textContent) && !!first.querySelector('img, svg');
+    return headings.some(function (h) { return /\S/.test(h.textContent); }) &&
+      Array.prototype.some.call(sec.querySelectorAll('[data-editable="image"]'), isShown);
+  }
   function sectionsContext() {
-    return canvas.sections().map(function (sec) {
-      var id = sec.getAttribute('data-rv-section');
-      var texts = sectionTextNodes(sec).slice(0, 14).map(function (t) { return t.slice(0, 200); });
-      return { id: id, name: sec.getAttribute('data-sec-name') || id, texts: texts };
+    return canvas.sections().filter(function (sec) { return !sec.classList.contains('is-hidden-sec'); }).map(function (sec) {
+      // the key, not the type: an edit must reach the one section it was proposed for, copies included
+      var id = sec.getAttribute('data-rv-key');
+      var short = function (t) { return t.slice(0, 200); };
+      var out = { id: id, name: sec.getAttribute('data-sec-name') || id, texts: sectionTextNodes(sec).slice(0, 14).map(short) };
+      var buttons = sectionButtonLabels(sec).slice(0, 8).map(short);
+      if (buttons.length) out.buttons = buttons;
+      if (hasImageHeadline(sec)) out.imageHeadline = true;
+      return out;
     });
   }
 
@@ -1693,9 +2309,9 @@
     return node;
   }
   /* a real messaging layout, not a flat list of divs: each turn gets an avatar + sender label + bubble, user
-     turns right-aligned, AI turns left-aligned — the same visual grammar as any chat app. Returns the BUBBLE
-     element (not the outer turn wrapper), since callers like the rotating "Thinking…" status update its text. */
-  function appendChatTurn(role, text, extraBubbleClass) {
+     turns right-aligned, AI turns left-aligned — the same visual grammar as any chat app. `bubble` is the
+     element shown as the message: a plain balloon, or a proposal card. */
+  function appendChatBubble(role, bubble) {
     var isUser = role === 'user';
     var turn = document.createElement('div');
     turn.className = 'chat-turn ' + (isUser ? 'user' : 'ai');
@@ -1707,9 +2323,6 @@
     var sender = document.createElement('span');
     sender.className = 'chat-sender';
     sender.textContent = isUser ? 'You' : 'AI editor';
-    var bubble = document.createElement('div');
-    bubble.className = 'chat-msg' + (extraBubbleClass ? ' ' + extraBubbleClass : '');
-    bubble.textContent = text;
     body.appendChild(sender);
     body.appendChild(bubble);
     turn.appendChild(avatar);
@@ -1717,116 +2330,205 @@
     appendChatNode(turn);
     return bubble;
   }
+  // returns the bubble, not the turn around it: the "Thinking…" status rewrites its text
   function appendChatMsg(role, text) {
     var parts = role.split(' ');   // 'ai' | 'user' | 'ai error'
-    return appendChatTurn(parts[0], text, parts[1]);
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-msg' + (parts[1] ? ' ' + parts[1] : '');
+    bubble.textContent = text;
+    return appendChatBubble(parts[0], bubble);
   }
 
-  /* applies one proposed text edit: finds the first text node (within this section's own data-editable
-     elements) whose value contains `find`, and replaces just that substring in place — mutating one text
-     node, never innerHTML, so any nested markup (a heading's kicker <span>, etc.) survives untouched.
-     `find` was matched against sectionTextNodes()'s WHITESPACE-COLLAPSED reading of each node (so the model
-     sees clean text to quote back), so matching here tolerates the same collapsing against the node's raw,
-     un-collapsed value — a plain indexOf would otherwise miss on a real newline/indentation inside the node. */
+  /* One proposed text edit: the first visible text node of the section (in its texts and button labels) that
+     contains `find`. Only that substring of that one node is replaced — as text, never as markup — so nested
+     markup (a heading's kicker <span>) is untouched. `find` was read from the whitespace-collapsed text the
+     AI was shown, so it is matched with the same tolerance against the node's raw value. */
   function findToRegex(find) {
     return new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
   }
-  function applyTextEdit(edit) {
-    var sec = canvas.doc.querySelector('[data-rv-section="' + edit.sectionId + '"]');
-    if (!sec || !edit.find) return false;
+  function locateTextEdit(edit) {
+    var sec = edit && canvas.sectionByKey(edit.sectionId);
+    if (!sec || !edit.find || edit.find === edit.replace) return null;
     var re = findToRegex(edit.find);
-    var editable = sec.querySelectorAll('[data-editable="text"]');
-    for (var i = 0; i < editable.length; i++) {
-      var walker = canvas.doc.createTreeWalker(editable[i], NodeFilter.SHOW_TEXT);
-      var node;
-      while ((node = walker.nextNode())) {
-        if (re.test(node.nodeValue)) {
-          node.nodeValue = node.nodeValue.replace(re, edit.replace);
-          return true;
-        }
-      }
-    }
-    return false;
+    var node = visibleTextNodes(sec, '[data-editable="text"], [data-editable="button"]').filter(function (n) { return re.test(n.nodeValue); })[0];
+    return node ? { node: node, re: re } : null;
+  }
+  // returns the element whose text changed, or null when the text is no longer there
+  function applyTextEdit(edit) {
+    var at = locateTextEdit(edit);
+    if (!at) return null;
+    var replacement = String(edit.replace == null ? '' : edit.replace);
+    at.node.nodeValue = at.node.nodeValue.replace(at.re, function () { return replacement; });
+    return at.node.parentElement;
+  }
+
+  /* The chat's own way back from an applied change. It undoes the newest step, so it is withdrawn as soon
+     as that step is no longer the AI's change (updateHistoryButtons runs after every recorded step and
+     every undo / redo). */
+  var aiUndo = null;
+  function syncAiUndo() {
+    if (!aiUndo || aiUndo.ptr === undoPtr) return;
+    aiUndo.button.disabled = true;
+    aiUndo.button.title = 'The site has changed since. Use Undo in the top bar to step back.';
+    aiUndo = null;
+  }
+  function offerAiUndo(bubble, histEntry, summary) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-sm chat-undo';
+    button.textContent = 'Undo this change';
+    bubble.appendChild(button);
+    var mine = aiUndo = { ptr: undoPtr, button: button };
+    button.addEventListener('click', function () {
+      deselect();
+      flush();                          // anything still pending becomes its own step, and withdraws this offer
+      if (aiUndo !== mine) return;
+      aiUndo = null;
+      undo();
+      bubble.textContent = 'Undone — the site is back to how it was.';
+      if (histEntry) histEntry.text = 'Proposed: ' + summary + ' (applied, then undone)';
+    });
+  }
+
+  /* Proposals still waiting for Apply / Discard. Only the newest can be applied: an older card applied after
+     a newer one would put its own values back over it without saying so. */
+  var openProposals = [];
+  function closeProposals(except) {
+    openProposals.slice().forEach(function (p) { if (p !== except) p.supersede(); });
   }
 
   function renderProposal(result, histEntry) {
-    /* same turn/avatar wrapper as a plain message (appendChatTurn), but the bubble itself is the richer
-       proposal card instead of a plain text balloon — keeps it visually part of the same conversation rather
-       than a floating, disconnected panel. */
-    var turn = document.createElement('div');
-    turn.className = 'chat-turn ai';
-    var avatar = document.createElement('div');
-    avatar.className = 'chat-avatar';
-    avatar.textContent = 'AI';
-    var body = document.createElement('div');
-    body.className = 'chat-turn-body';
-    var sender = document.createElement('span');
-    sender.className = 'chat-sender';
-    sender.textContent = 'AI editor';
+    var design = {}, notes = [];
+    Object.keys(result.design || {}).forEach(function (k) {
+      if (canvas.design.supports(k)) design[k] = result.design[k];
+      else notes.push(escHtml(designLabel(k) + ' — ' + unsupportedReason(k)));
+    });
+    var textEdits = [];
+    (result.textEdits || []).forEach(function (t) {
+      if (locateTextEdit(t)) textEdits.push(t);
+      else notes.push(escHtml(sectionLabel(t.sectionId)) + ' — &ldquo;' + escHtml(t.find) + '&rdquo; is not a text visitors can see in this section');
+    });
+    (result.skipped || []).forEach(function (s) { notes.push(escHtml(skippedLabel(s))); });
+
+    var items = Object.keys(design).map(function (k) { return designChangeHtml(k, design[k]); })
+      .concat(textEdits.map(function (t) {
+        var where = escHtml(sectionLabel(t.sectionId)) + ' — ';
+        return t.replace ? where + 'change &ldquo;' + escHtml(t.find) + '&rdquo; to &ldquo;' + escHtml(t.replace) + '&rdquo;'
+          : where + 'remove &ldquo;' + escHtml(t.find) + '&rdquo;';
+      }));
+    var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
+    var usable = items.length > 0;
+
+    /* The model's own sentence is not a promise of what Apply will do: it can describe a change that never
+       made it into the structured answer. The list is built from what will really be applied, and anything
+       that came back unusable is said beside it. With nothing usable the sentence is shown as the AI's
+       words, not as a statement of fact. */
     var card = document.createElement('div');
     card.className = 'chat-proposal';
-    body.appendChild(sender);
-    body.appendChild(card);
-    turn.appendChild(avatar);
-    turn.appendChild(body);
-    var items = [];
-    Object.keys(result.design || {}).forEach(function (k) { items.push(escHtml(k) + ' &rarr; ' + escHtml(String(result.design[k]))); });
-    (result.textEdits || []).forEach(function (t) { items.push(escHtml(t.sectionId) + ': &ldquo;' + escHtml(t.find) + '&rdquo; &rarr; &ldquo;' + escHtml(t.replace) + '&rdquo;'); });
-    /* The model's own prose `summary` is NOT trustworthy as a promise of what Apply will do — even with an
-       explicit prompt instruction not to, it can still describe a change (e.g. "enabled rise animations")
-       that never actually made it into design/textEdits. The bullet list below, built directly from that
-       real structured data, is the only part that's guaranteed accurate — label the two differently rather
-       than let a user assume the prose sentence is authoritative. The `skipped` list (fields the model tried
-       but failed validation on, e.g. a colour word instead of hex) is a narrower, explicit subset of this
-       same risk that the server can actually detect, so it gets its own, more specific note. */
-    var skippedNote = (result.skipped && result.skipped.length)
-      ? '<span class="cp-skipped">Couldn’t apply: ' + escHtml(result.skipped.join(', ')) + '.</span>' : '';
-    var nothingToApply = !items.length;
     card.innerHTML =
-      '<span class="cp-summary">' + escHtml(result.summary) + '</span>' +
-      '<span class="cp-will-change">This will actually change:</span>' +
-      (items.length ? '<ul>' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>'
-        : '<span class="cp-skipped">Nothing — the instruction didn’t produce a usable change.</span>') +
-      skippedNote +
+      (usable ? '<span class="cp-summary">' + escHtml(result.summary) + '</span>' : '') +
+      '<span class="cp-will-change">What will change</span>' +
+      (usable ? '<ul>' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>'
+        : '<span class="cp-skipped">Nothing — this request did not produce a change that can be applied.</span>') +
+      (notes.length ? '<span class="cp-skipped">Couldn’t apply:</span><ul class="cp-skipped">' + notes.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>' : '') +
+      (cannot.length ? '<span class="cp-note">I can’t do this here: ' + escHtml(cannot.join('; ')) +
+        '. Speakers, agenda, sponsors, FAQs and contacts are managed in the event’s Content tabs; sections are added, moved, hidden and deleted from the section toolbar or Layers.</span>' : '') +
+      (usable ? '' : '<span class="cp-note">The AI answered: &ldquo;' + escHtml(result.summary) + '&rdquo;</span>' +
+        '<span class="cp-note">The site is unchanged. Ask again in other words, or make the change yourself on the page or in Design.</span>') +
       '<div class="cp-actions">' +
-        '<button class="btn btn-primary btn-sm" type="button" data-cp="apply"' + (nothingToApply ? ' disabled title="Nothing valid came back for this instruction"' : '') + '>Apply</button>' +
+        '<button class="btn btn-primary btn-sm" type="button" data-cp="apply"' + (usable ? '' : ' disabled title="There is nothing to apply"') + '>Apply</button>' +
         '<button class="btn btn-ghost btn-sm" type="button" data-cp="discard">Discard</button>' +
-      '</div>';
-    appendChatNode(turn);
+      '</div>' +
+      '<span class="cp-note cp-state" hidden></span>';
+    var turn = appendChatBubble('ai', card).closest('.chat-turn');
+    if (histEntry && !usable) histEntry.text = 'Proposed: ' + result.summary + ' (nothing in it could be applied; the site is unchanged)';
+
+    var me = {
+      supersede: function () {
+        close('Replaced by a newer suggestion — not applied.');
+        if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (superseded, not applied)';
+      }
+    };
+    function close(state) {
+      var at = openProposals.indexOf(me);
+      if (at !== -1) openProposals.splice(at, 1);
+      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      card.classList.add('is-closed');
+      var line = card.querySelector('.cp-state');
+      if (state) { line.textContent = state; line.hidden = false; }
+    }
+    closeProposals(me);
+    if (usable) openProposals.push(me);
+
     card.querySelector('[data-cp="discard"]').addEventListener('click', function () {
+      close('');
       turn.remove();
       appendChatMsg('ai', 'Discarded — nothing on the site changed.');
       if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (discarded, not applied)';
     });
     card.querySelector('[data-cp="apply"]').addEventListener('click', function () {
-      if (result.design && Object.keys(result.design).length) applyAiDesignToCanvas(canvas, result.design);
-      var appliedText = 0;
-      (result.textEdits || []).forEach(function (t) {
-        if (applyTextEdit(t)) {
-          appliedText++;
-          clearAiGenerated(canvas.doc.querySelector('[data-rv-section="' + t.sectionId + '"]'));
-        }
+      if (!canvas || remounting || openProposals.indexOf(me) === -1) return;
+      deselect();
+      flush();                          // what was pending stays its own undo step
+      closeProposals(me);
+      var leftOut = applyAiDesignToCanvas(canvas, design);
+      var changedEls = [];
+      textEdits.forEach(function (t) {
+        var el = applyTextEdit(t);
+        if (!el) return;
+        changedEls.push(el);
+        clearAiGenerated(el);
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
-      commitNow();
-      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-      card.style.opacity = '.6';
-      var skipped = (result.textEdits || []).length - appliedText;
-      appendChatMsg('ai', 'Applied.' + (skipped > 0 ? ' (' + skipped + ' text change' + (skipped === 1 ? '' : 's') + ' skipped — that text wasn’t found, maybe already changed.)' : ''));
-      if (histEntry) histEntry.text = 'Proposed and applied: ' + result.summary + (Object.keys(result.design || {}).length ? ' (design: ' + JSON.stringify(result.design) + ')' : '') + (appliedText ? ' (' + appliedText + ' text edit' + (appliedText === 1 ? '' : 's') + ' applied)' : '');
+      var changed = commitNow();
+      close('');
+
+      var said = [];
+      // a setting this site has nothing for is said, not counted as applied
+      if (leftOut.length) {
+        said.push('Not changed: ' + leftOut.map(function (k) { return designLabel(k) + ' — ' + (unsupportedReason(k) || 'nothing on the page changed for it.'); }).join(' '));
+      }
+      var missed = textEdits.length - changedEls.length;
+      if (missed > 0) said.push(missed + ' text change' + (missed === 1 ? ' was' : 's were') + ' skipped — that text is no longer on the page.');
+      var appliedDesign = {};
+      Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) appliedDesign[k] = design[k]; });
+
+      if (!changed) {
+        designChanged();                // a setting that was tried and did nothing is put away in the Design panel
+        appendChatMsg('ai', ['Nothing could be applied — the site is unchanged.'].concat(said).join(' '));
+        if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (nothing could be applied; the site is unchanged)';
+        return;
+      }
+      if (changedEls.length) {
+        // the first change is brought into view; inside an accordion item, the whole item, opened
+        var first = changedEls[0], around = canvas.itemAround(first) || first;
+        canvas.openItem(first);
+        canvas.scrollToSection(isShown(around) ? around : first.closest('[data-rv-section]'));
+      }
+      var bubble = appendChatMsg('ai', ['Applied.'].concat(said).join(' '));
+      if (histEntry) {
+        histEntry.text = 'Proposed and applied: ' + result.summary +
+          (Object.keys(appliedDesign).length ? ' (design: ' + JSON.stringify(appliedDesign) + ')' : '') +
+          (changedEls.length ? ' (' + changedEls.length + ' text edit' + (changedEls.length === 1 ? '' : 's') + ' applied)' : '');
+      }
+      offerAiUndo(bubble, histEntry, result.summary);
+      chatThread().scrollTop = chatThread().scrollHeight;
     });
+    return usable;
   }
 
   /* A real back-and-forth, not a one-shot command box: chatHistory carries prior turns (what was asked, what
      the AI said, and — once known — whether it was applied or discarded) so a follow-up like "make it a bit
      darker instead" is understood against what was just proposed, and a plain question gets an actual answer
      instead of being forced through the edit-proposal pipeline. Capped so the prompt doesn't grow without
-     bound over a long session. */
+     bound over a long session. Entries are objects a proposal card goes on updating as its fate is decided. */
   var chatHistory = [];
   var CHAT_HISTORY_MAX = 16;
   function pushHistory(role, text) {
-    chatHistory.push({ role: role, text: text });
+    var entry = { role: role, text: text };
+    chatHistory.push(entry);
     if (chatHistory.length > CHAT_HISTORY_MAX) chatHistory.splice(0, chatHistory.length - CHAT_HISTORY_MAX);
+    return entry;
   }
 
   var CHAT_THINKING_LINES = ['Thinking…', 'Reading the page…', 'Working it out…', 'Almost there…'];
@@ -1841,50 +2543,69 @@
     if (chatHistory.length === 0) {
       appendChatMsg('ai', 'Hi — describe a change (colour, fonts, text…) or ask a question about this page. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
     }
+    // one request at a time: each is a paid call, and Enter must not start a second while one is running
+    var busy = false;
     function go() {
+      if (busy || !canvas || remounting) return;
       var instruction = input.value.trim();
       if (!instruction) return;
-      input.value = '';
+      busy = true;
       send.disabled = true;
+      input.value = '';
       appendChatMsg('user', instruction);
       var thinking = appendChatMsg('ai', CHAT_THINKING_LINES[0]);
       var lineIdx = 0;
       var thinkingTimer = setInterval(function () {
         lineIdx = (lineIdx + 1) % CHAT_THINKING_LINES.length;
-        if (thinking) thinking.textContent = CHAT_THINKING_LINES[lineIdx];
+        thinking.textContent = CHAT_THINKING_LINES[lineIdx];
       }, 2200);
+      function settle() {
+        clearInterval(thinkingTimer);
+        var turn = thinking.closest('.chat-turn');
+        if (turn) turn.remove();
+        busy = false;
+        send.disabled = false;
+      }
+      // the request was not answered: the instruction goes back into the box, in front of anything typed since
+      function failed(message) {
+        settle();
+        appendChatMsg('ai error', message);
+        var typed = input.value.trim();
+        input.value = instruction + (typed ? '\n' + typed : '');
+      }
       fetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext() })
       })
-        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+        .then(function (res) {
+          return res.text().then(function (text) {
+            var body = null;
+            try { body = JSON.parse(text); } catch (e) { /* not JSON: an error page from in front of the API */ }
+            return { ok: res.ok, status: res.status, body: body };
+          });
+        })
+        .then(null, function () { return null; })       // no answer at all
         .then(function (r) {
-          clearInterval(thinkingTimer);
-          if (thinking) thinking.remove();
-          send.disabled = false;
-          if (!r.ok || !r.body || r.body.error) {
-            appendChatMsg('ai error', (r.body && r.body.error) || 'That edit request failed.');
+          if (!r) {
+            failed('Could not reach the AI editor. Nothing on the site changed — check your connection and try again.');
             return;
           }
+          if (!r.ok || !r.body || r.body.error) {
+            failed((r.body && r.body.error) || 'The AI editor could not answer (error ' + r.status + '). Nothing on the site changed — try again.');
+            return;
+          }
+          settle();
           pushHistory('user', instruction);
           chatTurnCount++;
-          if (r.body.kind === 'reply' || (!Object.keys(r.body.design || {}).length && !(r.body.textEdits || []).length)) {
+          if (r.body.kind === 'reply') {
             appendChatMsg('ai', r.body.summary);
             pushHistory('assistant', r.body.summary);
-          } else {
-            var histEntry = { role: 'assistant', text: 'Proposed: ' + r.body.summary + ' (awaiting your Apply/Discard)' };
-            chatHistory.push(histEntry);
-            if (chatHistory.length > CHAT_HISTORY_MAX) chatHistory.splice(0, chatHistory.length - CHAT_HISTORY_MAX);
-            renderProposal(r.body, histEntry);
-            /* shown once, after the very first edit, so a user who only ever tries one instruction still
-               discovers the thing that makes this an actual chat rather than a prompt box */
-            if (chatTurnCount === 1) appendChatMsg('ai', 'You can also ask me to adjust this before deciding — e.g. "make it a bit darker instead" — and I’ll understand you mean this change.');
+            return;
           }
-        })
-        .catch(function (err) {
-          if (thinking) thinking.remove();
-          send.disabled = false;
-          appendChatMsg('ai error', 'Could not reach the AI edit service: ' + err.message);
+          var usable = renderProposal(r.body, pushHistory('assistant', 'Proposed: ' + r.body.summary + ' (awaiting your Apply/Discard)'));
+          /* shown once, after the very first edit, so a user who only ever tries one instruction still
+             discovers the thing that makes this an actual chat rather than a prompt box */
+          if (usable && chatTurnCount === 1) appendChatMsg('ai', 'You can also ask me to adjust this before deciding — e.g. "make it a bit darker instead" — and I’ll understand you mean this change.');
         });
     }
     send.addEventListener('click', go);
@@ -1894,6 +2615,7 @@
   /* ---------- device / preview / publish ---------- */
   function setDevice(name) {
     deviceName = name;
+    if (!canvas) return;
     canvas.setDevice(name);
     repositionToolbars();
     setTimeout(repositionToolbars, 120);      // again once the page has settled into its new width
@@ -1909,14 +2631,16 @@
      "Loading…" placeholder — opening it only after the stage() fetch resolves would lose the user-gesture
      context most browsers require to allow a new tab at all. */
   function openPreview() {
+    if (!canvas) return;
     deselect();
     flush();
-    if (!eventId || eventId === '1') {
-      // no real event context (e.g. a raw template-gallery preview) — nothing to stage server-side;
-      // fall back to the old one-off snapshot rather than fail outright.
-      var win0 = window.open('', '_blank');
-      if (!win0) { showToast('Allow pop-ups to open the preview in a new tab.'); return; }
-      win0.document.open(); win0.document.write(canvas.serialize()); win0.document.close();
+    if (!eventId) {
+      // a template preview belongs to no event, so there is nowhere to stage it: the page is opened as it is
+      // from this tab's memory, with the editor's address as the base its relative links resolve against
+      var page = canvas.serialize().replace(/<head([^>]*)>/i, function (m) { return m + '<base href="' + escHtml(location.href) + '">'; });
+      var blobUrl = URL.createObjectURL(new Blob([page], { type: 'text/html' }));
+      if (!window.open(blobUrl, '_blank')) showToast('Allow pop-ups to open the preview in a new tab.');
+      setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 60000);
       return;
     }
     var win = window.open('', 'revamp-staging-' + eventId);
@@ -1938,23 +2662,17 @@
      the event published — see functions/lib/api.js's handleEventPublish. Before this, Publish was purely
      cosmetic (a setTimeout + a modal literally titled "Saved — not yet published") — nothing the user
      edited ever left their own browser's IndexedDB, so there was genuinely nothing to serve from a real
-     URL even if one existed. `eventId` here is this session's resolved event identity (resolveKey()) — the
-     real slug for any genuine event; still falls back to '1' for a template opened with no event context
-     at all (e.g. a raw template-gallery preview), which is never publishable, so that case fails clearly
-     rather than silently publishing to a meaningless key. */
+     URL even if one existed. A template opened with no event has nothing to publish to (its Publish
+     button is not shown). */
   function publish() {
-    if (!eventId || eventId === '1') {
-      showToast('Nothing to publish — this page isn’t attached to a real event.');
-      return;
-    }
+    if (!canvas || !eventId) return;
     deselect();
     flush();
     showToast('Publishing…');
     var html = canvas.serialize();
     RevampCore.publishEvent(eventId, html).then(function (result) {
-      var draft = readHandoffDraft();
-      var ev = draft && draft.event;
-      var pubName = ev ? ev.name : canvas.template.name;
+      var pubName = (currentEvent && currentEvent.name) || 'Untitled event';
+      if (currentEvent) { currentEvent.published = true; renderTopbar(); }
       var scrim = document.createElement('div');
       scrim.className = 'scrim';
       scrim.innerHTML =
@@ -1975,9 +2693,22 @@
     });
   }
 
+  /* Every way out of the editor that this page starts itself (the event rail, Back to events) comes through
+     here, so what is still pending is recorded before the page goes. */
+  function leave(url) {
+    flush();
+    location.href = url;
+  }
+
   window.RevampTemplateUI = {
-    boot: boot, setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo, flush: flush,
-    addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem, setDesign: setDesign,
+    open: open, leave: leave, handoffFor: handoffFor,
+    setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo, flush: flush,
+    addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
+    getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl,
+    selectedStyle: selectedStyle, styleSelected: styleSelected,
+    listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
+    setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,
+    insertSection: insertSection, addBlock: addBlock,
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers
   };
 })();

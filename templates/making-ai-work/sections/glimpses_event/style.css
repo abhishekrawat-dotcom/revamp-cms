@@ -1,20 +1,18 @@
 /* The live page's glimpses grid loads through a skeleton-shimmer + viewport-triggered thumbnail-resizer script
    (justified-gallery sized srcset probes) that exists purely to lazy-load and crop thumbnails — no content of
-   its own. Dropped here in favour of the same 10 real "Previous Edition 2025" photos as plain, already-sized
-   <img>s; the column layout is kept so it still reads as the live design's 5-up photo wall. This section carries
-   its own real photos deliberately and has no content.map entry (see template.json "content.notes") — they're
-   from a past edition that already happened, not something this event's own wizard data could ever supply. */
+   its own — and lays the photos out in five columns of two. Here each photo is one tile under one parent, so
+   the list rule can draw one per photo of the event; five to a row gives the same 5-up wall, and a shorter
+   row is centred. */
 #glimpses_event{padding-top:70px}
 #glimpses_event .page_hdng4{margin-bottom:32px}
 #glimpses_event .page_hdng4 h2{color:#fff}
-#glimpses_event .glimpses_carousel_slider{display:flex;gap:16px}
-#glimpses_event .photo-carousel-col{flex:1;display:flex;flex-direction:column;gap:16px;min-width:0}
-#glimpses_event .images__link{display:block}
-#glimpses_event .images__link img{display:block;width:100%;height:auto;border-radius:8px;object-fit:cover;aspect-ratio:373/249}
+#glimpses_event .glimpses-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:16px}
+#glimpses_event .images__link{position:relative;display:block;width:calc((100% - 64px) / 5);border-radius:8px;overflow:hidden}
+#glimpses_event .images__link img{display:block;width:100%;height:auto;object-fit:cover;aspect-ratio:373/249}
+#glimpses_event .glimpse-caption{position:absolute;left:0;right:0;bottom:0;padding:22px 12px 10px;background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.72) 100%);color:#fff;font-size:13px;font-weight:500;line-height:1.35;text-align:left;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 @media(max-width:991px){
-  #glimpses_event .glimpses_carousel_slider{flex-wrap:wrap}
-  #glimpses_event .photo-carousel-col{flex:1 1 calc(50% - 8px)}
+  #glimpses_event .images__link{width:calc((100% - 16px) / 2)}
 }
 @media(max-width:575px){
-  #glimpses_event .photo-carousel-col{flex:1 1 100%}
+  #glimpses_event .images__link{width:100%}
 }

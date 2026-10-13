@@ -141,7 +141,7 @@ a.book-btn.btn-outline:hover {
   }
 
   @media screen and (min-width: 1200px) {
-    .contacts .footer-content p, #about_us_event .container, .page_hdng2 p, .page_hdng4 p, .page_hdng4 p, .page_hdng5 p {
+    #about_us_event .container, .page_hdng2 p, .page_hdng4 p, .page_hdng4 p, .page_hdng5 p {
       max-width: 800px;
       margin: auto;
     }
@@ -151,21 +151,6 @@ a.book-btn.btn-outline:hover {
 
   #banner {
     padding: 120px 0px;
-  }
-
-  #banner .cntnd p {
-    text-align: center;
-    font-family: var(--heading-font-family, var(--body-font-family));
-    font-size: 44px;
-    font-style: normal;
-    font-weight: 600;
-    line-height: 120%;
-    letter-spacing: -1.32px;
-    background: linear-gradient(89deg, #ff4052 21.51%, #fff 86.97%);
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 22px;
   }
 
   #banner .cntnd-bx .cntnd .lcn {
@@ -199,13 +184,6 @@ a.book-btn.btn-outline:hover {
     #banner .cntnd img.logo {
       max-width: 90%;
       margin: 0 auto 12px;
-    }
-
-    #banner .cntnd p {
-      font-size: 20px;
-      letter-spacing: normal;
-      margin-bottom: 10px;
-     line-height: 1.3em;
     }
 
     .btn-wrapper {

@@ -72,12 +72,6 @@
   margin-bottom: 30px !important;
 }
 
-#contact-us .footer-content p {
-  color: var(--body-color, var(--default-color));
-  font-size: 14px;
-  line-height: 1.7;
-}
-
 @media screen and (max-width: 767px) {
   .flex-width-auto .col-md-6, .flex-width-auto .col-md-12 {
     width: 100%;
@@ -94,12 +88,5 @@
 
   .contacts .row.flex-width-auto {
     display: block !important;
-  }
-}
-
-@media screen and (min-width: 1200px) {
-  #contact-us .footer-content p {
-    max-width: 800px;
-    margin: auto;
   }
 }

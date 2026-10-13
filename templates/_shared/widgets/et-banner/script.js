@@ -1,13 +1,29 @@
-/* ET banner widget: the background video — ET's platform loader, kept as it behaves live: the video only starts downloading after
-   the page has fully loaded plus a delay (longer on low-end devices) and an idle slot, or at once on the first
-   click/touch/scroll. It fades in over the poster image when it can play. Nothing loads while editing.
+/* ET banner widget — the banner's background media, for every template whose banner is ET's
+   (template.json → sections[].widget: "et-banner").
 
-   Shared by every template whose banner is ET's widget (template.json → sections[].widget: "et-banner").
-   Dropped from ET's inline script: the "color detect" snippet — it looks for #event_header_color, which ET's
-   microsite banners don't have, so it never did anything. */
+   A banner has one picture, img.banner-bg-image, and may have one video the event's owner supplied, inside
+   .bnr-bg-video. The video is written without a src (data-src) and is fetched here the way ET's platform does
+   it: after the page has fully loaded plus a delay (longer on low-end devices) and an idle slot, or at once on
+   the first click / touch / scroll; it fades in over the picture when it can play. It is never fetched on a
+   screen narrower than 768px, for a visitor who asked their browser to save data, or while editing.
+
+   A page saved before banners had one authoritative picture still carries the template's own footage of
+   another event (video.lazy-video) and repeats the picture as the section's CSS background: both are taken
+   out, so what the owner set as the banner is what shows. */
 RevampSections.widget('et-banner', function (section) {
-  var video = section.querySelector('video.lazy-video');
+  var host = section.querySelector('.bnr-bg-video');
+  var stale = host && host.querySelector('video.lazy-video');
+  if (stale) host.textContent = '';
+
+  var picture = section.querySelector('img.banner-bg-image');
+  if (picture && picture.getAttribute('src') && /url\(/.test(section.style.backgroundImage)) {
+    section.style.background = '';
+    if (!section.getAttribute('style')) section.removeAttribute('style');
+  }
+
+  var video = host && host.querySelector('video[data-src]');
   if (!video || RevampSections.editing()) return;
+  if (window.innerWidth < 768 || (navigator.connection && navigator.connection.saveData)) return;
 
   function isLowEnd() {
     var hc = navigator.hardwareConcurrency || 0, dm = navigator.deviceMemory || 0;
@@ -21,8 +37,7 @@ RevampSections.widget('et-banner', function (section) {
     if (video.dataset.loaded === '1') return;
     var src = video.getAttribute('data-src');
     if (!src) return;
-    var source = video.querySelector('source');
-    if (source) source.src = src;
+    video.muted = true;               // an attribute added by script does not mute, and an unmuted video may not start
     video.src = src;
     video.dataset.loaded = '1';
     video.load();
