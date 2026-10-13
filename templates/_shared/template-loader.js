@@ -200,8 +200,16 @@
       var shared = function (p) { return new URL(p, sharedBase).href; };
       var chrome = function (name, file) { return file ? part(name, get(shared(file)).then(stripLeadingComments)) : Promise.resolve(''); };
       var jobs = [chrome('header', t.header), chrome('footer', t.footer)];
+      var frameJob = null, frame = { frameOpen: '', frameClose: '' };
       t.sections.forEach(function (s) {
         var sectionPart = function (job) { return part('section:' + s.id, job); };
+        if (imported && t.frame) {
+          /* An import cut into sections: one request brings them all, with the page's own frame — the
+             wrappers the sections stood in, and the page's CSS — which goes around the whole content. */
+          if (!frameJob) frameJob = json('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9)) + '&all=1');
+          jobs.push(sectionPart(frameJob.then(function (r) { return String((r.sections || {})[s.id] || '<div></div>'); })), Promise.resolve(''), Promise.resolve(''));
+          return;
+        }
         if (imported) {
           // the page as HTML, or as JSON { html }
           jobs.push(sectionPart(get('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))).then(function (body) {
@@ -262,16 +270,16 @@
           ' data-rv-template-id="' + esc(id) + '"' +
           (eventId ? ' data-rv-event-id="' + esc(eventId) + '"' : '') +
           ' class="' + esc(b.class || '') + '" style="' + esc(styleAttr(b.style)) + '">\n' +
-          '<div class="blur_bg"></div><div id="container">\n' + header +
+          frame.frameOpen + '<div class="blur_bg"></div><div id="container">\n' + header +
           '<div id="content" class="full-width"><div class="main-body"><div class="wrapper pd0 schemas"></div>' +
           '<div class="container-fluid"><div class="row"><div class="col-md-12 no-padding">\n' +
           sectionsHtml +
-          '</div></div></div></div></div>\n' + footer + '</div>\n' +
+          '</div></div></div></div></div>\n' + footer + '</div>\n' + frame.frameClose +
           scripts + '</body>\n</html>\n';
         return { template: t, html: html };
       }
 
-      return Promise.all(jobs).then(function (parts) {
+      return Promise.all(jobs.concat(frameJob ? [frameJob.then(function (r) { frame = r; })] : [])).then(function (parts) {
         var sheets = (t.shared || []).map(shared);
         if (t.theme) sheets.push(new URL(t.theme, base).href);
         return sectionIds(t, t.sections.map(function (s, i) { return parts[2 + i * 3]; }), sheets).then(function (ids) {

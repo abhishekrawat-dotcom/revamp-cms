@@ -101,6 +101,13 @@
   var SHOWN_CSS = [
     '.rv-imported .rv-shown{opacity:1!important;transform:none!important;filter:none!important;visibility:visible!important;animation:none!important}',
     '.rv-imported .rv-gone{display:none!important}',
+    /* in the editor a jump to a section lands at once: a page that scrolls smoothly would still be on its way
+       when the editor measures where things are */
+    'html[data-rv-editing]{scroll-behavior:auto!important}',
+    /* the wrappers an imported page's sections each carry a copy of (import-split.js) add nothing of their
+       own: no height, no spacing, no flex share, no drawn layer — only what they pass on to what is inside */
+    '.rv-imported [data-rv-wrap]{min-height:0!important;height:auto!important;flex:none!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}',
+    '.rv-imported [data-rv-wrap]::before,.rv-imported [data-rv-wrap]::after{content:none!important}',
     '.rv-imported .rv-bar{opacity:1!important;visibility:visible!important;pointer-events:auto!important}',
     '.rv-imported .rv-bar.rv-bar-solid{background:var(--rv-bar-bg,#fff)!important;box-shadow:0 1px 0 rgba(128,128,128,.25)}',
     '.rv-imported .rv-menu{position:absolute;left:0;right:0;top:100%;display:flex;flex-direction:column;align-items:flex-start;gap:20px;padding:20px 24px 28px;background:var(--rv-bar-bg,#fff);max-height:calc(100vh - 100%);max-height:calc(100dvh - 100%);overflow:auto;box-shadow:0 14px 24px rgba(0,0,0,.14)}',

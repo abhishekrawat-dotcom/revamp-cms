@@ -125,6 +125,7 @@ const { logActivity, actorOf } = require('./activity');
 const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
 const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
 const genDesign = require('./gen-design');
+const { splitImportedPage } = require('./import-split');
 const { safeFetch } = require('./safe-fetch');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
@@ -749,7 +750,7 @@ function fetchSourceCss(pageUrl, html) {
   var hrefs = extractStylesheetLinks(html).cssHrefs.slice(0, SOURCE_CSS_MAX_FILES);
   return Promise.all(hrefs.map(function (href) {
     var abs;
-    try { abs = new URL(href, pageUrl).href; } catch (e) { return ''; }
+    try { abs = new URL(String(href).replace(/&amp;/g, '&'), pageUrl).href; } catch (e) { return ''; }
     return safeFetch(abs, { timeoutMs: 6000, maxBytes: SOURCE_CSS_MAX_BYTES })
       .then(function (r) { return r.status === 200 ? r.body.toString('utf8') : ''; })
       .catch(function () { return ''; });
@@ -2424,6 +2425,20 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
 
       var flattenedHtmlPath = 'events/import-' + importId + '/index.html';
       var sectionHtmlPath = 'events/import-' + importId + '/section.html';
+      /* The page cut into the sections it is made of (import-split.js), so that each can be edited, moved,
+         reworked by the AI and opened in the developer zone on its own. A page that cannot be cut stays the
+         one section above. The ET wrappers the page loader puts between the page's frame and its sections
+         are taken out of the layout, so the sections sit in the frame as they did in the original. */
+      var split = null;
+      try { split = splitImportedPage(bodyHtml); } catch (e) { console.error('import-lovable: could not cut the page into sections — ' + e.message); }
+      var sectionsPath = 'events/import-' + importId + '/sections.json';
+      var FRAME_CSS = '<style data-rv-imported-frame>body#imported #container,body#imported #content,body#imported .main-body,body#imported .container-fluid,body#imported .row,body#imported .col-md-12{display:contents}body#imported .blur_bg,body#imported .wrapper.schemas{display:none}</style>';
+      var sectionsDoc = split ? {
+        v: 2,
+        frameOpen: styleBlocks + '\n' + FRAME_CSS + '\n' + split.frameOpen + split.decor,
+        frameClose: split.frameClose,
+        sections: split.sections
+      } : null;
 
       return fb.bucket.file(flattenedHtmlPath)
         .save(Buffer.from(fullDoc, 'utf8'), { metadata: { contentType: 'text/html; charset=utf-8' } })
@@ -2434,9 +2449,16 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
         })
         .then(function () { return fb.bucket.file(sectionHtmlPath).makePublic(); })
         .then(function () {
+          if (!sectionsDoc) return null;
+          return fb.bucket.file(sectionsPath).save(Buffer.from(JSON.stringify(sectionsDoc), 'utf8'), { metadata: { contentType: 'application/json; charset=utf-8' } });
+        })
+        .then(function () {
           var now = new Date().toISOString();
           return fb.db.collection('events').doc('import-' + importId).set(Object.assign(
-            { importedAt: now, flattenedHtmlPath: flattenedHtmlPath, sectionHtmlPath: sectionHtmlPath },
+            { importedAt: now, flattenedHtmlPath: flattenedHtmlPath, sectionHtmlPath: sectionHtmlPath,
+              /* the list of sections, for the template; their markup is in Storage (sectionsPath) */
+              sectionsPath: sectionsDoc ? sectionsPath : null,
+              sections: sectionsDoc ? sectionsDoc.sections.map(function (x) { return { id: x.id, name: x.name }; }) : null },
             docFields || {}
           ), { merge: true });
         })
@@ -2628,10 +2650,13 @@ function runImportLovableFromUrl(fb, res, importId, url) {
          top-level guard covers. A rejected subresource just degrades to "missing" (null), same as any
          other fetch failure here — never worth failing the whole import over one bad asset reference. */
       var getCss = function (href) {
-        var abs; try { abs = new URL(href, url).href; } catch (e) { return Promise.resolve(null); }
+        /* The address is read out of markup, where "&" is written "&amp;": left like that, a fonts stylesheet
+           asked for several families answers with the first one only, and the page's other fonts are lost.
+           A browser's User-Agent gets the compact font files a browser would get. */
+        var abs; try { abs = new URL(String(href).replace(/&amp;/g, '&'), url).href; } catch (e) { return Promise.resolve(null); }
         return validateImportUrl(abs).then(function (badReason) {
           if (badReason) { console.error('import-lovable: refused to fetch CSS "' + abs + '": ' + badReason); return null; }
-          return fetch(abs).then(function (r) { return r.ok ? r.text() : null; }).catch(function (err) {
+          return fetch(abs, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' } }).then(function (r) { return r.ok ? r.text() : null; }).catch(function (err) {
             console.error('import-lovable: failed to fetch CSS "' + abs + '": ' + err.message);
             return null;
           });
@@ -2693,6 +2718,19 @@ function handleImportedTemplate(req, res) {
     if (!snap.exists) return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
     var data = snap.data();
     var name = data.sourceZipName || data.sourceUrl || importId;
+    /* an import cut into sections: the page's frame around them comes with their markup (imported-section) */
+    var cut = data.sectionsPath && Array.isArray(data.sections) && data.sections.length >= 2 ? data.sections : null;
+    if (cut) {
+      var ids = cut.map(function (x) { return x.id; });
+      return sendJson(res, 200, {
+        id: 'imported-' + importId, name: name, title: name, shared: [], fonts: [], design: {},
+        header: 'none.html', footer: 'none.html', frame: true,
+        body: { id: 'imported', class: 'microsite imported-microsite', style: {} },
+        content: { map: [] },
+        layout: { pinStart: ids.indexOf('nav') === 0 ? ['nav'] : [], pinEnd: ids[ids.length - 1] === 'footer' ? ['footer'] : [] },
+        sections: cut.map(function (x) { return { id: x.id, name: x.name, etId: null, script: false }; })
+      });
+    }
     sendJson(res, 200, {
       id: 'imported-' + importId,
       name: name,
@@ -2731,6 +2769,15 @@ function handleImportedSection(req, res) {
     var data = snap.exists ? snap.data() : null;
     if (!data || !data.sectionHtmlPath) {
       return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
+    }
+    /* ?all=1 — an import cut into sections: { frameOpen, frameClose, sections: { <id>: html } } */
+    if (qs.get('all') === '1') {
+      if (!data.sectionsPath) return sendJson(res, 404, { error: 'This import was not cut into sections.' });
+      return fb.bucket.file(data.sectionsPath).download().then(function (contents) {
+        var doc = JSON.parse(contents[0].toString('utf8')), byId = {};
+        (doc.sections || []).forEach(function (x) { byId[x.id] = x.html; });
+        sendJson(res, 200, { frameOpen: doc.frameOpen || '', frameClose: doc.frameClose || '', sections: byId });
+      });
     }
     return fb.bucket.file(data.sectionHtmlPath).download().then(function (contents) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
