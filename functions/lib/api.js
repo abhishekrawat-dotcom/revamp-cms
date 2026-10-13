@@ -1040,7 +1040,9 @@ function standardSectionFor(id) {
 var DESIGN_PLAN_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    reasoning: { type: 'STRING', description: 'Internal only, never shown on the site. Name the specific evidence behind each section and each design choice.' },
+    /* called "evidence", not "reasoning": Claude refuses an answer format that asks for a field of that
+       name (it reads it as a request for the model's own reasoning) */
+    evidence: { type: 'STRING', description: 'A note for the team, never shown on the site: the specific evidence (from the brief, the reference pages, the event\'s facts) behind each section and each design choice.' },
     design: {
       type: 'OBJECT',
       properties: {
@@ -1089,7 +1091,7 @@ var DESIGN_PLAN_SCHEMA = {
       }
     }
   },
-  required: ['reasoning', 'design', 'sections']
+  required: ['evidence', 'design', 'sections']
 };
 
 /* What a generated site is modelled on. The event's own previous edition comes first (a returning visitor
@@ -1186,7 +1188,7 @@ function buildDesignPlanPrompt(payload) {
   if (ti.usedFallback && ti.usedFallback.noPreviousEditionSource) {
     lines.push('No previous edition was given, so there is no brand colour or font to carry over. Choose a considered palette and font pairing that fit THIS event\'s subject and the direction above — a different event must get a visibly different palette.');
   } else {
-    lines.push('Found on this event\'s own previous edition — this is the event\'s existing brand, so carry it over unless it is plainly unusable (and say why in reasoning):',
+    lines.push('Found on this event\'s own previous edition — this is the event\'s existing brand, so carry it over unless it is plainly unusable (and say why in evidence):',
       'brand colour: ' + (ti.usedFallback && ti.usedFallback.color ? '(none found)' : ti.themeColor),
       'heading font: ' + (ti.usedFallback && ti.usedFallback.font ? '(none found)' : ti.headingFont),
       'body font: ' + (ti.usedFallback && ti.usedFallback.font ? '(none found)' : ti.bodyFont));
@@ -1195,7 +1197,7 @@ function buildDesignPlanPrompt(payload) {
 
   lines.push('',
     'Task — produce:',
-    '- reasoning: internal only, never shown on the site. Name the evidence behind each section and each design choice' + (ref.basis ? ', and say what you kept from the reference and what you changed.' : '.'),
+    '- evidence: a note for the team, never shown on the site. Name the evidence behind each section and each design choice' + (ref.basis ? ', and say what you kept from the reference and what you changed.' : '.'),
     '- design: mood, mode, the six colours, the two fonts (real Google Fonts family names), layout, imageStyle, heroImage.',
     '- sections: the middle sections, each with id, kind, purpose, layout and image.'
   );
@@ -5965,5 +5967,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, readLogoPicture, moveYearInPng, rasterTone, sectionCodeBatches
+  buildLogoUnit, readLogoPicture, moveYearInPng, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA
 };

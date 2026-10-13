@@ -105,7 +105,7 @@ No previous edition was given, so there is no brand colour or font to carry over
 Text must be easy to read: textColor against backgroundColor at a contrast of 7:1 or more, mutedColor at 4.5:1 or more.
 
 Task — produce:
-- reasoning: internal only, never shown on the site. Name the evidence behind each section and each design choice.
+- evidence: a note for the team, never shown on the site. Name the evidence behind each section and each design choice.
 - design: mood, mode, the six colours, the two fonts (real Google Fonts family names), layout, imageStyle, heroImage.
 - sections: the middle sections, each with id, kind, purpose, layout and image.
 ````
@@ -137,14 +137,14 @@ Follow it like this: keep its section order and the kind of layout each of its s
 
 COLOUR AND TYPE:
 The owner left light or dark to you: the reference page is light, so stay light unless that plainly does not suit this event.
-Found on this event's own previous edition — this is the event's existing brand, so carry it over unless it is plainly unusable (and say why in reasoning):
+Found on this event's own previous edition — this is the event's existing brand, so carry it over unless it is plainly unusable (and say why in evidence):
 brand colour: #00827b
 heading font: Cormorant Infant
 body font: Inter
 Text must be easy to read: textColor against backgroundColor at a contrast of 7:1 or more, mutedColor at 4.5:1 or more.
 
 Task — produce:
-- reasoning: internal only, never shown on the site. Name the evidence behind each section and each design choice, and say what you kept from the reference and what you changed.
+- evidence: a note for the team, never shown on the site. Name the evidence behind each section and each design choice, and say what you kept from the reference and what you changed.
 - design: mood, mode, the six colours, the two fonts (real Google Fonts family names), layout, imageStyle, heroImage.
 - sections: the middle sections, each with id, kind, purpose, layout and image.
 ````
