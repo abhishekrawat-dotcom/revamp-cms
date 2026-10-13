@@ -124,6 +124,8 @@ const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminF
 const { logActivity, actorOf } = require('./activity');
 const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
 const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
+const genDesign = require('./gen-design');
+const { safeFetch } = require('./safe-fetch');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
    one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
@@ -647,6 +649,19 @@ function stripToText(html) {
 var SOURCE_SECTIONS_SCHEMA = {
   type: 'OBJECT',
   properties: {
+    design: {
+      type: 'OBJECT',
+      description: 'How this page is DESIGNED, read from its markup skeleton: observations a designer could rebuild its look and structure from. Describe what is there; never guess at what the skeleton does not show.',
+      properties: {
+        layoutStyle: { type: 'STRING', description: '1-2 sentences: the overall layout character (e.g. "full-width colour bands with centred headings and 3-column card grids", "editorial two-column spreads").' },
+        heroStyle: { type: 'STRING', description: 'One sentence: how the top banner is built (full-bleed picture or video with text over it, split picture/text, text only on colour, a slider…) and what it carries (logo lock-up, date, venue, buttons, countdown).' },
+        sectionPattern: { type: 'ARRAY', items: { type: 'STRING' }, description: 'The page top to bottom, one entry per section: "<what it is> — <how it is laid out>", e.g. "Speakers — 4-column grid of round photos with name and role", "Stats — one dark band of 4 large numbers".' },
+        imageryStyle: { type: 'STRING', description: 'One sentence: how much imagery the page uses and of what kind (large photographs, icons, illustrations, logos only, almost none).' },
+        typography: { type: 'STRING', description: 'One sentence: heading and text character (serif/sans, heavy/light, uppercase labels, very large display type…).' },
+        density: { type: 'STRING', description: '"airy", "balanced" or "dense".' }
+      },
+      required: ['layoutStyle', 'heroStyle', 'sectionPattern', 'imageryStyle', 'typography', 'density']
+    },
     sections: {
       type: 'ARRAY',
       items: {
@@ -659,7 +674,7 @@ var SOURCE_SECTIONS_SCHEMA = {
       }
     }
   },
-  required: ['sections']
+  required: ['design', 'sections']
 };
 
 var SOURCE_TYPE_LABELS = {
@@ -668,16 +683,46 @@ var SOURCE_TYPE_LABELS = {
   competitor: 'a competitor\'s event'
 };
 
-function buildIngestSourcePrompt(url, type, text) {
+function buildIngestSourcePrompt(url, type, text, skeleton) {
   return [
-    'Below is the visible text of a real event microsite (' + SOURCE_TYPE_LABELS[type] + '), ' + url + '. The markup has been stripped; only text remains.',
+    'Below are two views of a real event microsite (' + SOURCE_TYPE_LABELS[type] + '), ' + url + ': first its visible text with the markup stripped, then its markup skeleton (tags and class names, the text cut to a few words).',
     '',
+    'From the SKELETON, fill in "design": how the page is laid out and styled, section by section, so that a designer who never saw the page could rebuild its structure and visual character. If the skeleton is empty or shows almost nothing (a page drawn by script), say so in layoutStyle and leave sectionPattern empty rather than inventing a layout.',
+    '',
+    'From the TEXT, fill in "sections" as follows.',
     'Extract its main CONTENT sections, in the order they appear on the page (e.g. hero/intro, about, agenda highlights, speaker/why-attend, stats, sponsors, FAQ — whatever this page actually has). Skip navigation links, footer boilerplate, cookie/legal notices, and ad/widget text.',
     '',
     'For each section, summarize its own text in your own words (1-3 sentences) — never quote or closely paraphrase its sentences, this is for structural inspiration only, not content to reuse.',
     '',
-    'Page text:', text
+    'Page text:', text,
+    '',
+    'Markup skeleton:', skeleton || '(none)'
   ].join('\n');
+}
+
+/* The page's own stylesheets, for what regular expressions can read from them (colours, fonts, the page
+   background): the first few only, each bounded, none of them able to fail the step. */
+var SOURCE_CSS_MAX_FILES = 4;
+var SOURCE_CSS_MAX_BYTES = 600 * 1024;
+function fetchSourceCss(pageUrl, html) {
+  var hrefs = extractStylesheetLinks(html).cssHrefs.slice(0, SOURCE_CSS_MAX_FILES);
+  return Promise.all(hrefs.map(function (href) {
+    var abs;
+    try { abs = new URL(href, pageUrl).href; } catch (e) { return ''; }
+    return safeFetch(abs, { timeoutMs: 6000, maxBytes: SOURCE_CSS_MAX_BYTES })
+      .then(function (r) { return r.status === 200 ? r.body.toString('utf8') : ''; })
+      .catch(function () { return ''; });
+  })).then(function (texts) { return texts.join('\n'); });
+}
+
+function sanitizeSourceDesign(d) {
+  d = d || {};
+  function line(v, max) { return String(v || '').trim().slice(0, max); }
+  return {
+    layoutStyle: line(d.layoutStyle, 400), heroStyle: line(d.heroStyle, 300),
+    sectionPattern: (Array.isArray(d.sectionPattern) ? d.sectionPattern : []).slice(0, 20).map(function (x) { return line(x, 200); }).filter(Boolean),
+    imageryStyle: line(d.imageryStyle, 300), typography: line(d.typography, 300), density: line(d.density, 20)
+  };
 }
 
 function handleIngestSource(req, res) {
@@ -705,21 +750,30 @@ function handleIngestSource(req, res) {
       .then(function (r) { if (!r.ok) throw new Error('page returned HTTP ' + r.status); return r.text(); })
       .then(function (html) {
         clearTimeout(timer);
-        var colorSignals = extractColorSignals(html);
-        var fontSignals = extractFontSignals(html);
+        return fetchSourceCss(url, html).then(function (css) { return { html: html, css: css }; });
+      })
+      .then(function (page) {
+        var html = page.html;
+        /* colours and fonts are read from the page AND its stylesheets: most sites keep them in the latter */
+        var colorSignals = extractColorSignals(html + '\n' + page.css);
+        var fontSignals = genDesign.fontFamilies(extractFontSignals(html + '\n' + page.css));
+        var tone = genDesign.pageTone(page.css, html);
         var text = stripToText(html).slice(0, MAX_SOURCE_TEXT_CHARS);
-        return callGeminiJson(buildIngestSourcePrompt(url, type, text), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+        var skeleton = genDesign.markupSkeleton(html);
+        return callGeminiJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
           if (r.error) return sendAiFailure(res, r);
           var sections = (r.parsed.sections || []).slice(0, 25).map(function (s) {
             return { heading: String(s.heading || '').slice(0, 120), body: String(s.body || '').slice(0, 500) };
           });
+          var design = sanitizeSourceDesign(r.parsed.design);
           var now = new Date().toISOString();
           return watch.stillThere().then(function () {
             return fb.db.collection('events').doc(eventId).collection('sources').add({
-              type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, fetchedAt: now
+              type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
+              design: design, tone: tone, fetchedAt: now
             });
           }).then(function (sourceRef) {
-            sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals });
+            sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone });
           });
         });
       })
@@ -767,7 +821,7 @@ function extractThemeFromPreviousEditionSources(sourceDocs) {
   // them as heading/body.
   var tally = {};
   prev.forEach(function (s) {
-    var signals = s.fontSignals || [];
+    var signals = genDesign.fontFamilies(s.fontSignals || []);
     signals.forEach(function (family, idx) { tally[family] = (tally[family] || 0) + (signals.length - idx); });
   });
   var ranked = Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a]; });
@@ -805,8 +859,8 @@ function buildHeroImagePrompt(brief, themeColor) {
 // has no theme-coloured gradient fallback on #hero itself when hero-bg-image fails/stays the placeholder —
 // only the dark overlay gradient ON TOP of whatever image is there. On image-generation failure, the hero
 // still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
-function buildHeroImage(fb, eventId, brief, themeColor) {
-  return callGeminiImage(buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
+  return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     if (r.error) {
       console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
@@ -831,6 +885,25 @@ function buildHeroImage(fb, eventId, brief, themeColor) {
   }).catch(function (err) {
     console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + err.message);
     return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: err.message };
+  });
+}
+
+/* One picture for one section of a generated site: made, stored under the event and answered as
+   { sectionId, url, subject } — or null when it could not be made, which costs the site that one picture
+   and nothing else. `stamp` keeps a re-run's pictures apart from the last run's (a cached old picture under
+   the same address would otherwise be shown for the new site). */
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp) {
+  return callGeminiImage(genDesign.imagePrompt(subject, design), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+    if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
+    var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
+    var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
+    var file = fb.bucket.file(storagePath);
+    return file.save(Buffer.from(r.base64, 'base64'), { metadata: { contentType: r.mimeType } })
+      .then(function () { return file.makePublic(); })
+      .then(function () { return { sectionId: sectionId, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath, subject: subject }; });
+  }).catch(function (err) {
+    console.error('plan-structure: picture for "' + sectionId + '" failed — ' + err.message);
+    return null;
   });
 }
 
@@ -873,12 +946,21 @@ var DESIGN_PLAN_SCHEMA = {
       type: 'OBJECT',
       properties: {
         mood: { type: 'STRING', description: '2-4 sentences: the specific visual identity for THIS event (tone, typographic character, layout character) — concrete and specific to this event, never generic conference boilerplate.' },
-        themeColor: { type: 'STRING', description: 'hex, e.g. #1a2b3c' },
-        accentColor: { type: 'STRING', description: 'hex' },
+        mode: { type: 'STRING', enum: ['light', 'dark'], description: 'Whether the page as a whole is light (dark text on a light background) or dark (light text on a dark background).' },
+        themeColor: { type: 'STRING', description: 'hex, e.g. #1a2b3c — the brand colour: buttons, links, highlights' },
+        accentColor: { type: 'STRING', description: 'hex — a second colour that works beside the theme colour' },
+        backgroundColor: { type: 'STRING', description: 'hex — the page background; light in light mode, dark in dark mode' },
+        surfaceColor: { type: 'STRING', description: 'hex — cards and alternating bands, a step away from the background' },
+        textColor: { type: 'STRING', description: 'hex — body text, strongly readable on the background' },
+        mutedColor: { type: 'STRING', description: 'hex — secondary text, still comfortably readable on the background' },
         headingFont: { type: 'STRING', description: 'a real Google Fonts family name' },
-        bodyFont: { type: 'STRING', description: 'a real Google Fonts family name' }
+        bodyFont: { type: 'STRING', description: 'a real Google Fonts family name' },
+        layout: { type: 'STRING', description: '2-3 sentences: the layout system of the whole page — the grid, how sections alternate, how pictures are placed, what the hero is built like. Specific enough that two designers would build the same page from it.' },
+        cornerRadius: { type: 'STRING', enum: ['0', '6', '12', '20'], description: 'Corner radius in px used for every card, picture and input on the site (buttons follow it too).' },
+        imageStyle: { type: 'STRING', description: 'One sentence: the single visual style every generated picture on this site shares (e.g. "moody long-exposure photographs of industrial interiors, teal and amber light").' },
+        heroImage: { type: 'STRING', description: 'One sentence: what the hero background picture shows — objects, spaces or abstract forms that evoke this event\'s subject. Never people, text or logos.' }
       },
-      required: ['mood', 'themeColor', 'accentColor', 'headingFont', 'bodyFont']
+      required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'heroImage']
     },
     sections: {
       type: 'ARRAY',
@@ -888,76 +970,146 @@ var DESIGN_PLAN_SCHEMA = {
         properties: {
           id: { type: 'STRING', description: 'short kebab-case id, unique, describing this section\'s actual role (e.g. "why-attend", "agenda-day-one", "speaker-lineup") — never a generic name like "section-1".' },
           kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the other 5 ONLY when this section is really that specific data-bound type (see below).' },
-          purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' }
+          purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' },
+          layout: { type: 'STRING', description: 'one sentence: how THIS section is laid out (e.g. "picture left, text right, three ticked points under the text", "one dark band of four large numbers", "three-column cards with an icon each", "a vertical timeline"). Neighbouring sections must not share a layout.' },
+          image: { type: 'STRING', description: 'What a picture in this section shows, in one sentence — objects, spaces or abstract forms that illustrate the section\'s subject, never people, text or logos. Empty string for a section that carries no generated picture.' }
         },
-        required: ['id', 'kind', 'purpose']
+        required: ['id', 'kind', 'purpose', 'layout', 'image']
       }
     }
   },
   required: ['reasoning', 'design', 'sections']
 };
 
+/* What a generated site is modelled on. The event's own previous edition comes first (a returning visitor
+   should recognise the event), then its current edition, then a competitor; a site with none of them starts
+   from an art direction fixed for that event (gen-design.js), so that two such sites do not look alike. */
+var REFERENCE_ORDER = ['previousEdition', 'currentEdition', 'competitor'];
+function usableDesign(s) {
+  var d = s && s.design;
+  return !!(d && (d.sectionPattern || []).length >= 2 && d.layoutStyle);
+}
+function designReference(sourceDocs) {
+  var basis = null;
+  REFERENCE_ORDER.forEach(function (type) {
+    if (basis) return;
+    basis = (sourceDocs || []).filter(function (s) { return s && s.type === type && usableDesign(s); })[0] || null;
+  });
+  var others = (sourceDocs || []).filter(function (s) { return s !== basis && usableDesign(s); });
+  return { basis: basis, others: others };
+}
+
+var MAX_SECTION_IMAGES = 4;
+
 function buildDesignPlanPrompt(payload) {
+  var ref = payload.reference || { basis: null, others: [] };
+  var mode = payload.themeMode || 'auto';
   var lines = [
-    'You are designing the SECTION STRUCTURE and the overall visual/creative DIRECTION of a bespoke event microsite, for ET Oneworld\'s event builder.',
-    '',
-    'Design this event\'s site INDEPENDENTLY — do not reuse the structure, section types, color choices, or visual style of any existing template or any other event. There is no fixed library to pick from. Think like a world-class web designer given a one-off creative brief for this specific event, grounded only in the real material below.',
+    'You are the lead designer of a bespoke event microsite, for ET Oneworld\'s event builder. You decide its SECTION STRUCTURE, the layout of every section, its colours and type, and which sections carry a picture. A second step writes the HTML and CSS from exactly what you decide here, so be specific.',
+    ''
+  ];
+
+  if (ref.basis) {
+    lines.push(
+      'THE REFERENCE THIS SITE IS MODELLED ON — ' + SOURCE_TYPE_LABELS[ref.basis.type] + ' (' + ref.basis.url + '). This is the core requirement: the new site must be recognisably built on this reference\'s structure and visual language, then improved — not an unrelated design.',
+      JSON.stringify(ref.basis.design, null, 2),
+      ref.basis.tone ? 'Its page background is ' + ref.basis.tone + '.' : '',
+      '',
+      'Follow it like this: keep its section order and the kind of layout each of its sections uses wherever this event has real content for that section (your sections[].layout should echo its sectionPattern entry); keep its hero construction; keep its typographic character and its density; keep its use of imagery. Then improve on it: fix what is weak, drop what this event has no content for, and add what the material below supports.'
+    );
+    if (ref.others.length) {
+      lines.push('', 'OTHER PAGES TO LEARN FROM — take the strongest idea from each (a section this event lacks, a better layout for one it has) and work it into the structure above. Never copy their branding:');
+      ref.others.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.design, null, 2)); });
+    }
+  } else {
+    var art = payload.artDirection;
+    lines.push(
+      'There is no previous edition or competitor page to model this site on, so its design starts from this art direction, chosen for this event — build the whole page on it, do not fall back on a generic dark-navy-and-gold conference look:',
+      art.label + ': ' + art.note
+    );
+  }
+
+  lines.push(
     '',
     'Ground every section in real content-shape evidence from the material below — never include a section that has nothing real to put in it, and never omit one the material clearly supports. A thin site with 3 well-grounded sections beats a padded one with 7 that have nothing real to say.',
     '',
-    'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours to invent: your own section ids, purposes, ordering and count. No menu, no fixed count, no required mix.',
+    'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
-    'Set each section\'s kind to "custom" unless it is really one of 5 specific data-bound types, each backed by a real per-event Firestore subcollection the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery). Only use one of those 5 when the material genuinely supports that this event will have real data of that kind — the same grounding discipline as every other section: a thin, honest site beats a padded one.',
+    'Set each section\'s kind to "custom" unless it is really one of 5 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery). Only use one of those 5 when the material genuinely supports that this event will have real data of that kind.',
+    '',
+    'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists.',
+    '',
+    'PICTURES: the site must not be text only. The hero has a background picture (design.heroImage). Besides it, give up to ' + MAX_SECTION_IMAGES + ' "custom" sections a picture (sections[].image) — the ones where a picture carries meaning, spread down the page — and design those sections around their picture (a split, a framed plate, a full-bleed band). Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture. Pictures show objects, spaces or abstract forms that evoke the subject: never people, never text or logos, never something that could pass for a photograph of this event.',
     '',
     'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
-  ];
+  );
   if (payload.brief) lines.push('', 'Extracted brief:', JSON.stringify(payload.brief, null, 2));
   if (payload.sources && payload.sources.length) {
-    lines.push('', 'Collected sources (previous/current edition, competitors):');
+    lines.push('', 'What the collected pages SAY (content, summarised):');
     payload.sources.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
   }
+
   var ti = payload.themeInfo || {};
-  if (ti.usedFallback && ti.usedFallback.noPreviousEditionSource) {
-    lines.push('', 'No previous-edition source at all was found for this event — there is no real color/font signal to weigh. You must still produce a considered, specific palette and font pairing appropriate to THIS event\'s own category/brief above — never a generic default; a different under-resourced event deserves a genuinely different-looking site from this one.');
+  lines.push('', 'COLOUR AND TYPE:');
+  if (mode === 'light' || mode === 'dark') {
+    lines.push('The owner asked for a ' + mode.toUpperCase() + ' site: design.mode must be "' + mode + '", with a ' + (mode === 'dark' ? 'dark background and light text' : 'light background and dark text') + '. This is not negotiable.');
+  } else if (ref.basis && ref.basis.tone) {
+    lines.push('The owner left light or dark to you: the reference page is ' + ref.basis.tone + ', so stay ' + ref.basis.tone + ' unless that plainly does not suit this event.');
   } else {
-    lines.push('', 'Colours/fonts found in this event\'s own previous edition — a real signal worth weighing, never a value to blindly copy:',
-      'themeColor seen: ' + (ti.usedFallback && ti.usedFallback.color ? '(none found)' : ti.themeColor),
-      'headingFont seen: ' + (ti.usedFallback && ti.usedFallback.font ? '(none found)' : ti.headingFont),
-      'bodyFont seen: ' + (ti.usedFallback && ti.usedFallback.font ? '(none found)' : ti.bodyFont));
+    lines.push('The owner left light or dark to you: choose what suits this event. Do not default to dark.');
   }
+  if (ti.usedFallback && ti.usedFallback.noPreviousEditionSource) {
+    lines.push('No previous edition was given, so there is no brand colour or font to carry over. Choose a considered palette and font pairing that fit THIS event\'s subject and the direction above — a different event must get a visibly different palette.');
+  } else {
+    lines.push('Found on this event\'s own previous edition — this is the event\'s existing brand, so carry it over unless it is plainly unusable (and say why in reasoning):',
+      'brand colour: ' + (ti.usedFallback && ti.usedFallback.color ? '(none found)' : ti.themeColor),
+      'heading font: ' + (ti.usedFallback && ti.usedFallback.font ? '(none found)' : ti.headingFont),
+      'body font: ' + (ti.usedFallback && ti.usedFallback.font ? '(none found)' : ti.bodyFont));
+  }
+  lines.push('Text must be easy to read: textColor against backgroundColor at a contrast of 7:1 or more, mutedColor at 4.5:1 or more.');
+
   lines.push('',
     'Task — produce:',
-    '- reasoning: internal only, never shown on the site. Name the specific evidence behind each section and each design choice.',
-    '- design.mood: 2-4 sentences, concrete and specific to THIS event — never generic conference boilerplate.',
-    '- design.themeColor/accentColor: real, considered hex colours that fit this event\'s own category/brief/mood.',
-    '- design.headingFont/bodyFont: real Google Fonts family names that fit the mood.',
-    '- sections: the middle section list — your own ids/kinds/purposes/ordering.'
+    '- reasoning: internal only, never shown on the site. Name the evidence behind each section and each design choice' + (ref.basis ? ', and say what you kept from the reference and what you changed.' : '.'),
+    '- design: mood, mode, the six colours, the two fonts (real Google Fonts family names), layout, imageStyle, heroImage.',
+    '- sections: the middle sections, each with id, kind, purpose, layout and image.'
   );
-  return lines.join('\n');
+  return lines.filter(function (l) { return l != null; }).join('\n');
 }
 
 var RESERVED_DESIGN_SECTION_IDS = ['nav', 'hero', 'footer'];
 function sanitizeDesignPlanSections(parsed) {
   var seen = {};
   var out = [];
+  var pictures = 0;
   (Array.isArray(parsed.sections) ? parsed.sections : []).forEach(function (s) {
     if (!s) return;
     var id = slugifyId(s.id);
     if (!id || RESERVED_DESIGN_SECTION_IDS.indexOf(id) !== -1 || seen[id]) return;
     seen[id] = true;
     var kind = DESIGN_SECTION_KINDS.indexOf(s.kind) !== -1 ? s.kind : 'custom';
-    out.push({ id: id, kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500) });
+    var image = kind === 'custom' ? String(s.image || '').trim().slice(0, 300) : '';
+    if (image && ++pictures > MAX_SECTION_IMAGES) image = '';
+    out.push({ id: id, kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image });
   });
   return out;
 }
-function sanitizeDesignPlanDesign(parsed) {
+function sanitizeDesignPlanDesign(parsed, themeMode) {
   var d = (parsed && parsed.design) || {};
+  var colours = genDesign.palette(d, themeMode);
   return {
     mood: String(d.mood || '').trim().slice(0, 600),
+    mode: colours.mode,
     themeColor: clampHexColor(d.themeColor, THEME_FALLBACK.themeColor),
     accentColor: clampHexColor(d.accentColor, DESIGN_FALLBACK_ACCENT),
+    backgroundColor: colours.backgroundColor, surfaceColor: colours.surfaceColor,
+    textColor: colours.textColor, mutedColor: colours.mutedColor,
     headingFont: clampFontName(d.headingFont, THEME_FALLBACK.headingFont),
-    bodyFont: clampFontName(d.bodyFont, THEME_FALLBACK.bodyFont)
+    bodyFont: clampFontName(d.bodyFont, THEME_FALLBACK.bodyFont),
+    layout: String(d.layout || '').trim().slice(0, 700),
+    cornerRadius: ['0', '6', '12', '20'].indexOf(String(d.cornerRadius)) !== -1 ? String(d.cornerRadius) : '12',
+    imageStyle: String(d.imageStyle || '').trim().slice(0, 300),
+    heroImage: String(d.heroImage || '').trim().slice(0, 300)
   };
 }
 
@@ -969,6 +1121,8 @@ function handlePlanStructure(req, res) {
     var eventId = String(payload.eventId || '').trim();
     if (!eventId) return sendJson(res, 400, { error: 'eventId is required.' });
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    /* 'light' | 'dark' as the owner chose in Create Event, else 'auto': the design decides */
+    var themeMode = genDesign.normaliseMode(payload.themeMode);
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -984,26 +1138,51 @@ function handlePlanStructure(req, res) {
       ]);
     }).then(function (results) {
       var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
-      var eventMeta = eventSnap.exists ? eventSnap.data() : {};
+      var stored = eventSnap.exists ? eventSnap.data() : {};
+      /* the facts of the event only: what earlier runs left on the record is not material for a new design */
+      var eventMeta = Object.assign({}, {
+        name: stored.name, category: stored.category, start: stored.start, end: stored.end,
+        venue: stored.venue, city: stored.city, description: stored.description
+      }, payload.eventMeta || {});
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
       var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections }; });
       var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
+      var reference = designReference(sourceDocs);
+      var artDirection = genDesign.artDirectionFor(eventId);
 
-      return callGeminiJson(buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo }), DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode });
+      return callGeminiJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed);
-        var design = sanitizeDesignPlanDesign(r.parsed);
+        var design = sanitizeDesignPlanDesign(r.parsed, themeMode);
         var now = new Date().toISOString();
+        var stamp = now.replace(/[^0-9]/g, '').slice(0, 14);
 
-        // Hero image generation is unchanged (buildHeroImage, same as the old pipeline) — only its colour
-        // input changes, from the mechanical previousEdition extraction to Gemini's own chosen themeColor.
-        return buildHeroImage(fb, eventId, brief, design.themeColor).then(function (heroImage) {
-          design.heroImageUrl = heroImage.heroImageUrl;
+        /* The pictures are made side by side: the hero's and one for each section the plan gave one. A
+           picture that fails costs the site that picture only. */
+        var heroPrompt = genDesign.imagePrompt(design.heroImage || (brief && brief.theme) || eventMeta.name, design, { hero: true });
+        var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt)].concat(
+          sections.filter(function (s) { return s.image; }).map(function (s) { return buildSectionImage(fb, eventId, s.id, s.image, design, stamp); })
+        );
+        return Promise.all(jobs).then(function (made) {
+          var heroImage = made[0];
+          /* the hero picture keeps one storage path, so its address carries the run to get past caches */
+          design.heroImageUrl = heroImage.heroImageUrl ? heroImage.heroImageUrl + '?v=' + stamp : null;
           design.heroImageStoragePath = heroImage.heroImageStoragePath;
           design.heroImageError = heroImage.heroImageError;
+          var images = made.slice(1).filter(Boolean);
+          sections.forEach(function (s) {
+            var img = images.filter(function (i) { return i.sectionId === s.id; })[0];
+            s.imageUrl = img ? img.url : '';
+          });
 
-          var designPlan = { sections: sections, design: design, generatedAt: now };
+          var designPlan = {
+            sections: sections, design: design, generatedAt: now, themeMode: themeMode,
+            reference: reference.basis
+              ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
+              : { type: 'none', artDirection: artDirection.id }
+          };
           return watch.merge({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null })
             .then(function () { sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan }); });
         });
@@ -1239,26 +1418,88 @@ var SECTION_CODE_SCHEMA = {
   required: ['positioningNotes', 'sections']
 };
 
+/* The facts of an event a prompt may see. The record also holds what earlier runs produced (designPlan,
+   generatedSections, the saved site…): shown to the model, a re-run would be anchored to the last result. */
+function eventFacts(stored, sent) {
+  stored = stored || {};
+  var facts = {};
+  ['name', 'category', 'categoryLabel', 'start', 'end', 'dateLabel', 'date', 'location', 'venue', 'city', 'client', 'description'].forEach(function (k) {
+    var v = (sent && sent[k] != null && sent[k] !== '') ? sent[k] : stored[k];
+    if (v != null && v !== '') facts[k] = v;
+  });
+  return facts;
+}
+
+function plannedSectionList(designPlan) {
+  var planned = (designPlan && designPlan.sections) || [];
+  return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site: the event\'s logo (or its name when there is no logo) and links to the sections below. Always present.', layout: 'One slim bar; logo left, links right; the links wrap onto a second line or scroll sideways on a phone (there is no script to open a menu).' }]
+    .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner: a strong, specific headline, a line under it, date and place when known, one or two buttons. Always present, right after nav.', layout: 'As the design\'s layout says for the hero.' }])
+    .concat(planned)
+    .concat([{ id: 'footer', kind: 'footer', purpose: 'Closing footer for this event site. Always present, last.', layout: 'A calm closing band: event name or logo, a short line, the section links again.' }]);
+}
+
+/* payload.write: the ids this call writes (the site is written in two calls side by side — see
+   runGenerateDesignedContent); every call is shown the whole page so that its part fits the rest. */
 function buildSectionCodePrompt(payload) {
-  var design = (payload.designPlan && payload.designPlan.design) || {};
-  var plannedSections = (payload.designPlan && payload.designPlan.sections) || [];
+  var designPlan = payload.designPlan || {};
+  var design = designPlan.design || {};
+  var reference = designPlan.reference || { type: 'none' };
+  var fullList = plannedSectionList(designPlan);
+  var write = payload.write || fullList.map(function (s) { return s.id; });
   var ownHistory = (payload.sources || []).filter(function (s) { return s.type !== 'competitor'; });
   var competitors = (payload.sources || []).filter(function (s) { return s.type === 'competitor'; });
+  var radius = (design.cornerRadius || '12') + 'px';
 
   var lines = [
-    'You are writing the REAL HTML and CSS for every section of a bespoke event microsite, for ET Oneworld\'s event builder — you are designing and coding this yourself, not filling a template. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. An empty string is correct when nothing grounded supports a field; never pad with generic filler just to fill it in.',
+    'You are writing the REAL HTML and CSS of a bespoke event microsite, for ET Oneworld\'s event builder — designing and coding it yourself to the standard of a top agency, not filling a template. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. Leave out what nothing supports; never pad with generic filler.',
     '',
-    'DESIGN DIRECTION — keep every section consistent with this (same palette/type system, cohesive, not each section inventing its own look):',
+    'THE DESIGN — decided already; every section follows it, so the page reads as one piece:',
     'Mood: ' + (design.mood || ''),
-    'Theme color: ' + (design.themeColor || ''),
-    'Accent color: ' + (design.accentColor || ''),
-    'Heading font (already loaded on the page, a real Google Fonts family): ' + (design.headingFont || ''),
-    'Body font (already loaded on the page, a real Google Fonts family): ' + (design.bodyFont || '')
+    'Layout system: ' + (design.layout || ''),
+    'Page is ' + (design.mode === 'dark' ? 'DARK (light text on a dark background)' : 'LIGHT (dark text on a light background)') + '.',
+    '',
+    'Colours and fonts are CSS variables already defined on the page — use the variables, never the raw values, so that the owner can restyle the site later:',
+    '  var(--theme-color)   ' + (design.themeColor || '') + '   brand colour: buttons, links, highlights',
+    '  var(--accent-color)  ' + (design.accentColor || '') + '   second colour',
+    '  var(--rv-bg)         ' + (design.backgroundColor || '') + '   page background',
+    '  var(--rv-surface)    ' + (design.surfaceColor || '') + '   cards, alternating bands',
+    '  var(--rv-text)       ' + (design.textColor || '') + '   body text',
+    '  var(--rv-muted)      ' + (design.mutedColor || '') + '   secondary text',
+    '  var(--heading-font-family)  ' + (design.headingFont || '') + '   headings (loaded)',
+    '  var(--body-font-family)     ' + (design.bodyFont || '') + '   everything else (loaded)',
+    'A band may invert (theme colour or a dark/light opposite as its background) for rhythm, as long as the text on it stays strongly readable.',
+    '',
+    'SHARED RULES — written identically in every section, because sections are styled separately:',
+    '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. Sections have vertical padding clamp(64px, 9vw, 128px).',
+    '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = var(--theme-color) background with a readable text colour; secondary = outlined.',
+    '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): clamp(2rem, 4.2vw, 3.25rem), line-height 1.1. Hero headline (h1): clamp(2.6rem, 6.5vw, 5rem). Card titles: 1.25rem or larger. Small labels and captions: never below 0.875rem. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
+    '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
+    '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.'
   ];
+
+  if (reference.type && reference.type !== 'none' && reference.design) {
+    lines.push('', 'THE REFERENCE this site is modelled on (' + SOURCE_TYPE_LABELS[reference.type] + ', ' + reference.url + ') — the plan below was built on it; keep its structure and character recognisable in what you write, improved, never copied word for word:',
+      JSON.stringify(reference.design, null, 2));
+  }
+
+  lines.push('', 'PICTURES — the site must not be text only:');
   if (design.heroImageUrl) {
-    lines.push('', 'A hero background image has already been generated for this event and is hosted at: ' + design.heroImageUrl + ' — use it as the hero section\'s own background (e.g. CSS background-image: url(\'' + design.heroImageUrl + '\')) rather than inventing a different background image.');
+    lines.push('- Hero background picture, already made: ' + design.heroImageUrl + ' — use it as the hero\'s background (background-image, cover, centred) under a gradient veil strong enough that the headline is easy to read.');
   } else {
-    lines.push('', 'No hero background image was generated for this event — design the hero section\'s background purely with CSS (gradient/colour/pattern), consistent with the design direction above.');
+    lines.push('- No hero picture could be made: build the hero\'s background from CSS alone (gradients, shapes) in the site\'s colours.');
+  }
+  var pictured = fullList.filter(function (s) { return s.imageUrl; });
+  pictured.forEach(function (s) {
+    lines.push('- Section "' + s.id + '" has a picture, already made: ' + s.imageUrl + ' (it shows: ' + s.image + '). Use it with <img src="…" alt="…" loading="lazy"> and give it real presence — at least 320px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
+  });
+  lines.push('- Use ONLY the picture addresses given above; never link to any other image address and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
+
+  if (payload.logoUrl) {
+    lines.push('', 'THE EVENT\'S LOGO: ' + payload.logoUrl + ' — it MUST appear in the nav, as <img data-rv-logo src="' + payload.logoUrl + '" alt="' + String((payload.eventMeta || {}).name || 'Event logo').replace(/"/g, '') + '"> linked to "#hero", 44–56px tall (height set in CSS, width auto), in place of the event name as text.' +
+      (design.mode === 'dark' ? ' The page is dark and the logo was most likely drawn for a light background: set it on a white chip (background #fff, padding 6px 12px, radius ' + radius + ').' : '') +
+      ' Show it again in the footer, smaller.');
+  } else {
+    lines.push('', 'No logo was supplied: the nav shows the event\'s name as text.');
   }
 
   lines.push('', 'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2));
@@ -1275,26 +1516,31 @@ function buildSectionCodePrompt(payload) {
     competitors.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
   }
 
-  var fullList = [{ id: 'nav', kind: 'nav', purpose: 'Top navigation for this event site. Always present — not your decision whether it exists, but its look/copy is fully yours to design.' }]
-    .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner: a strong, specific headline/tagline/date/location/CTAs for THIS event\'s real theme. Always present, pinned right after nav — not your decision whether it exists, grounded exactly like every other section: never invent a date, venue or speaker not given above.' }])
-    .concat(plannedSections)
-    .concat([{ id: 'footer', kind: 'footer', purpose: 'Closing footer for this event site. Always present, pinned last — not your decision whether it exists, but its look/copy is fully yours to design.' }]);
-
-  lines.push('', 'Write real HTML + CSS for EVERY one of these sections, in this exact id list:', JSON.stringify(fullList, null, 2));
+  lines.push('', 'THE WHOLE PAGE, in order (the nav links to these by href="#<id>"; every section\'s root element carries id="<id>"):',
+    JSON.stringify(fullList.map(function (s) { return { id: s.id, kind: s.kind, purpose: s.purpose, layout: s.layout }; }), null, 2));
+  if (write.length < fullList.length) {
+    lines.push('', 'In THIS answer write ONLY these sections, in this order — the others are being written at the same moment from this same brief, to the same rules: ' + JSON.stringify(write));
+  } else {
+    lines.push('', 'Write every one of these sections.');
+  }
 
   lines.push('',
+    'Make each section substantial: use the material fully — real headings, real explanatory text, real lists — and build it out with the care of a finished site. A heading with one line under it is not a section.',
+    '',
     'For each section with kind "custom" (including nav/hero/footer): write real, grounded text directly into the html — there is no separate content-fill step, content and markup are generated together.',
     '',
-    'For a section with one of the 5 data-bound kinds (speakers/faq/partners/contact/glimpses): design the section\'s own visual container and any intro/heading copy with real text, but the REPEATING list items are real records a human CMS editor manages elsewhere — never yours to invent. Write exactly ONE well-designed example item, marked with the attribute data-rv-repeat-template="<kind>" on its root element, with clearly-labeled placeholder values (e.g. "Speaker Name", "Role, Company") — that is the ONLY item you write; a client-side mechanism clones or replaces it once real records exist, or leaves this one placeholder item visible as-is when none do. Inside that one template element, put these EXACT, case-sensitive data-rv-field attributes on the right descendant elements, by kind — never invent other field names:',
+    'For a section with one of the 5 data-bound kinds (speakers/faq/partners/contact/glimpses): design the section\'s own visual container and any intro/heading copy with real text, but the REPEATING list items are real records a human CMS editor manages elsewhere — never yours to invent. Write exactly ONE well-designed example item, marked with the attribute data-rv-repeat-template="<kind>" on its root element, with clearly-labeled placeholder values (e.g. "Speaker Name", "Role, Company") — that is the ONLY item you write; a client-side mechanism clones or replaces it once real records exist, or leaves this one placeholder item visible as-is when none do. Its container must lay the clones out well however many there are (a responsive grid: repeat(auto-fill, minmax(…, 1fr))). Inside that one template element, put these EXACT, case-sensitive data-rv-field attributes on the right descendant elements, by kind — never invent other field names:',
     '  speakers: data-rv-field="n" (name, text), "r" (role/title, text), "c" (company, text), "photo" (headshot — on an <img>, or on a div meant to show a background-image photo)',
     '  faq: data-rv-field="t" (question, text), "d" (answer, text)',
     '  partners: data-rv-field="name" (text), "url" (the href target if the item is/contains a link — put this on the <a>), "logo" (on an <img>)',
     '  contact: data-rv-field="label" (e.g. department/role, text), "name" (text), "email" (text), "phone" (text)',
     '  glimpses: data-rv-field="imageUrl" (on an <img>), "caption" (text)',
-    'Example snippet (speakers): <div class="speaker-card" data-rv-repeat-template="speakers"><img data-rv-field="photo" src="..." alt=""><h4 data-rv-field="n">Speaker Name</h4><p data-rv-field="r">Role</p><p data-rv-field="c">Company</p></div>',
+    'In such a template item an <img> has no src attribute at all (its picture comes from the record).',
+    'Placeholder values must be unmistakably placeholders — "Contact name", "name@example.com", "+00 00000 00000", "Question goes here" — never a plausible-looking name, e-mail address, phone number or web domain. Anywhere on the site: never write an e-mail address, phone number, web address, street address, price, deadline or statistic that is not in the material above. Do not invent a domain name for the event.',
+    'Example snippet (speakers): <div class="speaker-card" data-rv-repeat-template="speakers"><img data-rv-field="photo" alt=""><h4 data-rv-field="n">Speaker Name</h4><p data-rv-field="r">Role</p><p data-rv-field="c">Company</p></div>',
     '',
-    'HTML rules, every section: ONE root element, no <html>/<body>/<head> wrapper, no <script> tags, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
-    'CSS rules, every section: write plain class selectors for the classes you used in that section\'s html, including one for the root element itself (its background, padding and layout belong on the root\'s own class). Do NOT write [data-rv-section] in any selector and do not style html, body or :root — the server confines every rule to its section, and the root element is the positioning context for anything absolutely positioned inside it. No @import, no url(javascript:...), no CSS behaviors.',
+    'HTML rules, every section: ONE root element carrying id="<section id>", no <html>/<body>/<head> wrapper, no <script> tags, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
+    'CSS rules, every section: write plain class selectors for the classes you used in that section\'s html, including one for the root element itself (its background, padding and layout belong on the root\'s own class). Prefix every class with the section id so that names never collide between sections. Do NOT write [data-rv-section] in any selector and do not style html, body or :root — the server confines every rule to its section, and the root element is the positioning context for anything absolutely positioned inside it. No @import, no url(javascript:...), no CSS behaviors.',
     '',
     'positioningNotes: internal only, never shown on the site. Name the ONE specific thing you adapted FROM a competitor (or state "no competitor material was given" if none was provided) and the ONE specific thing you deliberately did NOT just carry over from this event\'s own previous edition. Be concrete (name the competitor/section), not generic.'
   );
@@ -1360,10 +1606,22 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
       id: p.id,
       kind: p.kind,
       html: sanitizeGeneratedSectionHtml(String(found.html || '')),
-      css: sanitizeGeneratedSectionCss(String(found.css || ''))
+      /* no text below the smallest readable size, whatever was written */
+      css: genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(found.css || '')))
     });
   });
   return sections;
+}
+
+/* The site is written in two calls side by side once it has more than a few sections: each answer is
+   smaller, so neither runs into the time one call may take, and the page is ready sooner. Both are shown
+   the whole plan and the same rules. -> [[ids], [ids]] or [[ids]] */
+var SECTION_CODE_SPLIT_ABOVE = 5;
+function sectionCodeBatches(designPlan) {
+  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; });
+  if (ids.length <= SECTION_CODE_SPLIT_ABOVE) return [ids];
+  var cut = Math.ceil(ids.length / 2);
+  return [ids.slice(0, cut), ids.slice(cut)];
 }
 
 // The gen- branch's own tail, deliberately separate from runGenerateContent above (see this block's own
@@ -1386,23 +1644,31 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     ]);
   }).then(function (results) {
     var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
-    var eventMeta = Object.assign({}, eventSnap.exists ? eventSnap.data() : {}, payload.eventMeta || {});
+    var stored = eventSnap.exists ? eventSnap.data() : {};
+    var eventMeta = eventFacts(stored, payload.eventMeta);
+    var logoUrl = /^https:\/\//i.test(String(stored.logoUrl || '')) ? stored.logoUrl : '';
     var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
     var sources = sourcesSnap.docs.map(function (d) {
       var v = d.data();
       return { type: v.type, url: v.url, extractedSections: v.extractedSections };
     });
 
-    var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition });
-
-    // 100s, not the 60s default — writing full bespoke HTML/CSS for every section in one response is a
-    // genuinely bigger generation job than any other call this file makes; real testing against the live
-    // Gemini API hit the 60s default routinely. A timeout is never retried (gemini.js), so 100s is also the
-    // longest this request can spend on the model.
-    return callGeminiJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
-      if (r.error) return sendAiFailure(res, r);
-      var sections = sanitizeSectionCodeResult(r.parsed, designPlan);
-      var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
+    // 100s, not the 60s default — writing full bespoke HTML/CSS is a genuinely bigger generation job than
+    // any other call this file makes. A timeout is never retried (gemini.js), so 100s is also the longest
+    // this request can spend on the model: the calls of a split site run side by side, not one after another.
+    var batches = sectionCodeBatches(designPlan);
+    return Promise.all(batches.map(function (ids) {
+      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
+      return callGeminiJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site });
+    })).then(function (answers) {
+      var failed = answers.filter(function (r) { return r.error; })[0];
+      if (failed) return sendAiFailure(res, failed);
+      var written = [];
+      answers.forEach(function (r) { written = written.concat(Array.isArray(r.parsed.sections) ? r.parsed.sections : []); });
+      var sections = sanitizeSectionCodeResult({ sections: written }, designPlan);
+      /* the event's own logo is in the top bar whatever was written */
+      sections.forEach(function (sec) { if (sec.id === 'nav' && logoUrl) sec.html = genDesign.ensureLogo(sec.html, logoUrl, eventMeta.name); });
+      var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();
 
       /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
@@ -1581,6 +1847,8 @@ function handleGeneratedTemplate(req, res) {
     // always fills themeColor/headingFont/bodyFont itself, so this merge is normally a no-op.
     var design = Object.assign({}, THEME_FALLBACK, designPlan.design || {});
     if (!design.accentColor) design.accentColor = DESIGN_FALLBACK_ACCENT;
+    /* a site designed before the plan carried page colours gets the ones its own mode implies */
+    var colours = genDesign.palette(design, 'auto');
     var name = String(data.name || eventId);
     var fonts = [googleFontUrl(design.headingFont), googleFontUrl(design.bodyFont)]
       .filter(function (url, i, arr) { return arr.indexOf(url) === i; });
@@ -1596,12 +1864,13 @@ function handleGeneratedTemplate(req, res) {
       id: 'gen-' + eventId,
       name: name,
       title: name,
-      shared: ['et-global.css', 'et-animate.css', 'et-platform.css'],
+      /* its own base, not ET's global stylesheet (see gen-base.css for why) */
+      shared: ['gen-base.css', 'et-platform.css'],
       fonts: fonts,
       design: buildGeneratedDesign(design),
       body: {
         id: 'gen',
-        class: 'microsite product_microsite',
+        class: 'microsite rv-generated',
         // picked up by footer/script.js at runtime (document.body.dataset.rvEventId) so the real
         // registration POST knows which event it's for — a plain DOM attribute, so it rides through
         // canvas.serialize() into the actually-published static page the same as any other markup.
@@ -1611,8 +1880,18 @@ function handleGeneratedTemplate(req, res) {
           '--accent-color': design.accentColor,
           '--heading-font-family': fontStack(design.headingFont),
           '--body-font-family': fontStack(design.bodyFont),
-          '--default-color': 'rgb(25 27 31)',
-          '--body-color': 'rgba(0, 0, 0, 1)'
+          '--rv-bg': colours.backgroundColor,
+          '--rv-surface': colours.surfaceColor,
+          '--rv-text': colours.textColor,
+          '--rv-muted': colours.mutedColor,
+          '--default-color': colours.textColor,
+          '--body-color': colours.textColor,
+          /* text a section gives no size of its own is read at BASE_TEXT_PX */
+          'font-size': genDesign.BASE_TEXT_PX + 'px',
+          'line-height': '1.6',
+          'font-family': 'var(--body-font-family)',
+          'background-color': colours.backgroundColor,
+          'color': colours.textColor
         }
       },
       // No server-side fill step any more — the 5 data-bound kinds are filled client-side via the
@@ -1652,7 +1931,7 @@ function handleGeneratedSection(req, res) {
     /* scoped on the way out as well as when stored (it is idempotent), so sections stored before the
        server did the scoping are served correctly too */
     var html = String(found.html || '');
-    sendJson(res, 200, { html: html, css: scopeSectionCss(found.css, sectionId, sectionRootInfo(html)) });
+    sendJson(res, 200, { html: html, css: genDesign.clampFontSizes(scopeSectionCss(found.css, sectionId, sectionRootInfo(html))) });
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
 }
 

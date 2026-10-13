@@ -1891,7 +1891,7 @@
           <!-- shown for S.creationMethod === 'brief' — kept in S.brief (wireBriefInputs) -->
           <div class="grp" id="brief-grp" hidden>
             <div class="grp-h"><h4>Tell Gemini about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
-            <p class="hint" style="margin:6px 0 14px;">Gemini designs the section structure itself, writes the content, and benchmarks it against competitor material (used for structure and ideas only, never copied).</p>
+            <p class="hint" style="margin:6px 0 14px;">The site is modelled on the previous edition’s structure and look when you give its link (a competitor’s otherwise), then improved. Gemini writes the content, makes the pictures and places your logo. Nothing is copied word for word.</p>
             <div class="field"><label class="flabel" for="gb-brief-text">Describe the event</label>
               <textarea class="inp" id="gb-brief-text" rows="4" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
             </div>
@@ -1919,6 +1919,13 @@
             </div>
             <div class="field" style="margin-top:8px;">
               <input class="inp" id="gb-comp2" type="url" placeholder="https://… (a second competitor, optional)">
+            </div>
+            <div class="field" style="margin-top:12px;"><label class="flabel" for="gb-theme">Site theme</label>
+              <select class="inp" id="gb-theme">
+                <option value="auto">Match the previous edition (or let the design decide)</option>
+                <option value="light">Light — dark text on a light background</option>
+                <option value="dark">Dark — light text on a dark background</option>
+              </select>
             </div>
             <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--text-muted);">
               <input type="checkbox" id="gb-future" style="margin-top:2px;">
@@ -2494,7 +2501,7 @@
     imgSeq: 0,                  // the last img slot number this draft handed out (addImageFile)
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
-    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
+    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
@@ -2668,7 +2675,7 @@
       delete S.catPicked;
       /* what earlier versions of this page kept in the draft and nothing reads any more */
       ['path', 'templatePick', 'templateExcluded', 'sourceKind', 'sourceValue', 'detectPhase', 'detectDecisions', 'detectedBannerTheme'].forEach(function(k){ delete S[k]; });
-      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '' };
+      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto' };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
@@ -3343,16 +3350,18 @@
     $('client-wrap').hidden   = !C.client || briefMode;
     $('client-requirement').className = C.client === 'required' ? 'pill-req' : 'pill-opt';
     $('client-requirement').textContent = C.client === 'required' ? '*' : 'Optional';
-    $('logo-cell').hidden = briefMode;
-    var logoOptional = S.creationMethod === 'imported';
+    /* a generated site carries the event's logo in its top bar when one is given; it can also do without */
+    $('logo-cell').hidden = false;
+    var logoOptional = S.creationMethod === 'imported' || briefMode;
     $('logo-requirement').className = logoOptional ? 'pill-opt' : 'pill-req';
     $('logo-requirement').textContent = logoOptional ? 'Optional' : '*';
-    /* The first row contains identity and logo only. Brief mode drops client (above) and logo (below) —
-       only name+slug remain, so they split the row evenly instead of the usual 3-or-4-way share. */
-    $('name-cell').className     = 'field ' + (briefMode ? 'c6' : (C.client ? 'c3' : 'c4'));
+    /* The first row contains identity and logo only. Brief mode drops client (above), so name, address and
+       logo share the row three ways. */
+    var withClient = C.client && !briefMode;
+    $('name-cell').className     = 'field ' + (withClient ? 'c3' : 'c4');
     $('client-wrap').className   = 'field c3';
-    $('slug-cell').className     = 'field ' + (briefMode ? 'c6' : (C.client ? 'c3' : 'c4'));
-    $('logo-cell').className     = 'field ' + (C.client ? 'c3' : 'c4') + ' logo-field';
+    $('slug-cell').className     = 'field ' + (withClient ? 'c3' : 'c4');
+    $('logo-cell').className     = 'field ' + (withClient ? 'c3' : 'c4') + ' logo-field';
 
     $('cat-bar-ico').innerHTML     = svg(CAT_ICON[b.category], 19);
     $('cat-bar-name').textContent  = C.label;
@@ -3716,6 +3725,9 @@
     var future = $('gb-future'), doc = $('gb-doc'), note = $('gb-doc-note'), pick = $('gb-doc-pick'), remove = $('gb-doc-remove');
     future.checked = !!S.brief.future;
     future.onchange = function(){ S.brief.future = future.checked; save(); };
+    var theme = $('gb-theme');
+    theme.value = ['light', 'dark'].indexOf(S.brief.themeMode) !== -1 ? S.brief.themeMode : 'auto';
+    theme.onchange = function(){ S.brief.themeMode = theme.value; save(); };
     function showDoc(){
       pick.textContent = briefDoc ? briefDoc.name + ' · ' + fileSize(briefDoc.size) : 'Choose a PDF';
       remove.hidden = !briefDoc && !briefDocError;
@@ -4603,7 +4615,8 @@
     var runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
     /* What this run works from. Each row reads it when it runs, not when the run was set up, so a link,
        file or description corrected on a failed row is what its retry sends. */
-    var inputs = run.inputs = { text: String(S.brief.text || '').trim(), file: briefDoc, urls: {}, future: !!S.brief.future };
+    var inputs = run.inputs = { text: String(S.brief.text || '').trim(), file: briefDoc, urls: {}, future: !!S.brief.future,
+      themeMode: ['light', 'dark'].indexOf(S.brief.themeMode) !== -1 ? S.brief.themeMode : 'auto' };
     BRIEF_URL_FIELDS.forEach(function(f){ inputs.urls[f.key] = normalUrl(S.brief[f.key]); });
 
     var steps = [{ key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event' }];
@@ -4611,8 +4624,8 @@
     BRIEF_URL_FIELDS.forEach(function(f){
       if (inputs.urls[f.key]) steps.push({ key: 'source-' + f.key, field: f });
     });
-    steps.push({ key: 'plan', label: 'Designing the site structure' });
-    steps.push({ key: 'generate', label: 'Generating content' });
+    steps.push({ key: 'plan', label: 'Designing the site and making its pictures' });
+    steps.push({ key: 'generate', label: 'Writing the pages' });
     steps.push({ key: 'open', label: 'Opening your site' });
     steps.forEach(function(s){ s.status = 'pending'; });
     var startedAt = Date.now();
@@ -4654,7 +4667,24 @@
     }
 
     // one runner per row, keyed the same as steps[i].key — the actual request, no status bookkeeping
-    var runners = { create: createEventRecord };
+    /* The event's logo goes to the server with the event: a generated site shows it from its address, and
+       the browser's own copy is not something the server can read. A logo that cannot be stored stops the
+       run here, before any paid step, with the reason. */
+    function sendLogo(){
+      if (!S.basics.logo || !window.RevampStore) return Promise.resolve();
+      return Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
+        if (!rec || !rec.dataUrl) return;
+        return fetch(rec.dataUrl).then(function(r){ return r.blob(); }).then(function(blob){
+          var file = new File([blob], rec.name || 'logo.png', { type: blob.type });
+          return RevampCore.uploadImage(eventId, 'logo', file);
+        }).then(function(up){
+          return RevampCore.updateEvent(eventId, { logoUrl: up.url });
+        }).then(null, function(err){
+          throw new Error('The logo could not be uploaded: ' + plainError(err));
+        });
+      });
+    }
+    var runners = { create: function(){ return Promise.resolve(createEventRecord()).then(function(out){ return sendLogo().then(function(){ return out; }); }); } };
     /* The description always travels as text, also beside a document. Without a document it is also the
        document itself, which is what the route reads. */
     runners.brief = function(){
@@ -4674,7 +4704,7 @@
         return postJson('/api/ingest-source', { url: inputs.urls[s.field.key], type: s.field.type });
       };
     });
-    runners.plan = function(){ return postJson('/api/plan-structure', {}); };
+    runners.plan = function(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode }); };
     runners.generate = function(){
       return postJson('/api/generate-content', { templateId: 'gen-' + eventId }).then(function(resp){
         /* from here on this draft's event has a generated site: generating again replaces it (onNext asks first) */
