@@ -566,6 +566,22 @@
     }).observe(document.body, { childList: true, subtree: true });
   }
 
+  /* ---------- a section's own script ----------
+     What was written under JS in the editor's developer zone is kept in the section as
+     <script type="text/plain" data-rv-js>: text, so nothing runs it by accident. On the live page it is run
+     here, once, with `section` as the section's element. Never while editing: the editor shows the page as
+     it is saved, not as a script left it. A script that throws is reported and leaves the rest alone. */
+  function sectionScripts(root) {
+    if (editing()) return;
+    each((root && root.querySelectorAll ? root : document).querySelectorAll('script[data-rv-js]'), function (holder) {
+      if (holder.__rvRan) return;
+      holder.__rvRan = true;
+      var section = holder.closest('[data-rv-section]') || holder.parentElement;
+      try { new Function('section', holder.textContent).call(section, section); }
+      catch (err) { console.error('[revamp] section script failed:', section && section.getAttribute && section.getAttribute('data-rv-section'), err); }
+    });
+  }
+
   /* ---------- carousels ---------- */
   var CAROUSEL_STEP_MS = 4500;
 
@@ -687,6 +703,7 @@
     init: function (el) {
       initSection(el);
       reveal(el);
+      sectionScripts(el);
       easeIn(el);
       carousels(el);
       if (el.matches('.rv-imported') || el.querySelector('.rv-imported')) settleImported();
@@ -697,7 +714,7 @@
     goTo: goTo
   };
 
-  function start() { reveal(); settleImported(); carousels(); easeIn(document); watchForReveals(); arrive(); }
+  function start() { reveal(); settleImported(); carousels(); easeIn(document); watchForReveals(); sectionScripts(document); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

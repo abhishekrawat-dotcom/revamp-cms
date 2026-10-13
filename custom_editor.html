@@ -276,6 +276,20 @@
   .chat-launcher.is-quiet .chat-launcher-bubble{ display:none; }
   body.ed-load-failed .chat-launcher{ display:none; }
   @media (max-width: 720px){ .chat-launcher-bubble{ display:none; } }
+  /* ---------- developer zone: one section's HTML, CSS and JS ---------- */
+  .modal.dev-zone{ max-width: 1180px; width: 100%; height: min(86vh, 900px); display:flex; flex-direction:column; text-align:left; }
+  .dev-head{ display:flex; align-items:center; gap:16px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .dev-head h3{ font-size: 16px; margin-right:auto; }
+  .dev-pick{ display:flex; align-items:center; gap:8px; font-size:12.5px; color: var(--text-muted); }
+  .dev-pick select{ font: inherit; font-size:13px; padding: 6px 10px; border:1px solid var(--border); border-radius:8px; background: var(--surface); color: var(--text); max-width: 320px; }
+  .dev-tabs{ display:flex; align-items:center; gap:4px; padding: 8px 18px 0; border-bottom: 1px solid var(--border); }
+  .dev-tabs button{ font: inherit; font-size:13px; font-weight:700; padding: 8px 14px; border:0; background:none; color: var(--text-muted); border-bottom: 2px solid transparent; cursor:pointer; }
+  .dev-tabs button.active{ color: var(--accent-strong, #c8102e); border-bottom-color: var(--accent, #ED1C24); }
+  .dev-note{ margin-left:auto; font-size:11.5px; color: var(--text-muted); padding-bottom:6px; text-align:right; max-width: 62%; }
+  .dev-body{ flex:1; min-height:0; display:flex; background:#12141c; }
+  .dev-body textarea{ flex:1; width:100%; border:0; outline:0; resize:none; padding: 16px 18px; background:#12141c; color:#e6e9f2; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size:2; white-space:pre; }
+  .dev-foot{ display:flex; align-items:center; justify-content:flex-end; gap:10px; padding: 12px 18px; border-top: 1px solid var(--border); }
+  .dev-error{ margin-right:auto; font-size:12.5px; color: var(--crit, #c0392b); }
   #panel-chat .side-panel-body{ padding: 12px 0 0; overflow: hidden; }
   #panel-chat .side-panel-body > .hint{ padding: 0 14px; flex-shrink: 0; }
   .chat-thread{ flex: 1; min-height: 0; overflow-y: auto; display:flex; flex-direction:column; gap:12px; padding: 10px 14px; }
@@ -1102,6 +1116,7 @@
         <button class="rail-btn" data-panel="predefined" title="Add a section">Sections</button>
         <button class="rail-btn" data-panel="layers" title="Layers">Layers</button>
         <button class="rail-btn" data-panel="design" title="Design">Design</button>
+        <button class="rail-btn" id="rail-btn-dev" title="Developer zone: a section’s HTML, CSS and JS">Developer</button>
        </div>
        <div class="rail-fixed">
         <div class="device-toggle" role="group" aria-label="Device preview">
@@ -1554,6 +1569,8 @@
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
   var panels = { add: document.getElementById('panel-add'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+
+  document.getElementById('rail-btn-dev').addEventListener('click', function(){ window.RevampTemplateUI.openDevZone(); });
 
   /* ETB2B AI: the launcher at the bottom right opens the chat down the right side; the close button, or
      Escape while the chat has the focus, puts the launcher back. Once it has been opened the launcher stays

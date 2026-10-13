@@ -1024,7 +1024,7 @@
       var type = sec.getAttribute('data-rv-section');
       var st = doc.querySelector('style[data-rv-style="' + type.replace(/["\\]/g, '\\$&') + '"]');
       sec.replaceWith(fresh);
-      if (st) st.textContent = String(css || '');
+      if (st && css != null) st.textContent = String(css);       // null: the CSS is not this call's to change
       descend(fresh, false);
       if (win.RevampSections) win.RevampSections.init(fresh);
       return fresh;
@@ -1391,6 +1391,7 @@
       setPicture: setPicture,                             // a new picture in an <img>, an <svg> icon or an image box
       pictureOf: pictureOf,
       canRedesign: canRedesign,                           // whether "Redesign with AI" applies to this section
+      keepsOwnCss: !ownsCss,                              // a site whose section CSS is its own and saved with it
       sectionCss: sectionCss,
       replaceSection: replaceSection,
       backgroundHost: backgroundHost,                     // the element carrying a section's background picture, or null

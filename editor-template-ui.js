@@ -541,7 +541,29 @@
     return partners.slice().sort(byOrder).map(function (p) { return { name: p.name || '', url: p.url || '', logo: p.logoUrl || '' }; });
   }
 
+  /* agenda: in day order, then by start time; time as "9:30 AM – 10:15 AM"; speakers by name */
+  function clockLabel(v) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').trim());
+    if (!m || +m[1] > 23) return String(v || '').trim();
+    return ((+m[1] % 12) || 12) + ':' + m[2] + (+m[1] < 12 ? ' AM' : ' PM');
+  }
+  function translateSessionsFlat(sessions, days, speakers) {
+    if (!sessions || !sessions.length) return null;
+    var dayAt = {}, nameOf = {};
+    (days || []).slice().sort(byOrder).forEach(function (d, i) { dayAt[d.id] = i; });
+    (speakers || []).forEach(function (s) { nameOf[s.id] = s.name || ''; });
+    return sessions.slice().sort(function (a, b) {
+      var da = a.groupId in dayAt ? dayAt[a.groupId] : 999, db = b.groupId in dayAt ? dayAt[b.groupId] : 999;
+      return (da - db) || String(a.start || '').localeCompare(String(b.start || '')) || byOrder(a, b);
+    }).map(function (s) {
+      var time = [clockLabel(s.start), clockLabel(s.end)].filter(Boolean).join(' – ');
+      return { title: s.title || '', time: time, desc: s.desc || '', room: s.room || '',
+        speakers: (s.speakerIds || []).map(function (id) { return nameOf[id]; }).filter(Boolean).join(', ') };
+    });
+  }
+
   var GENERIC_REPEAT_SOURCES = {
+    sessions: { resources: ['sessions', 'agenda-groups', 'speakers'], translate: translateSessionsFlat },
     speakers: { resources: ['speakers'], translate: translateSpeakersFlat },
     faq: { resources: ['faqs'], translate: translateFaqsFlat },
     partners: { resources: ['partners'], translate: translatePartnersFlat },
@@ -639,6 +661,100 @@
     });
   }
 
+  /* ---------- sections the event's records bring with them ----------
+     What is entered in Content (speakers, agenda, partners, gallery, FAQs, contacts) shows on the site
+     without anyone designing a section for it: when the event has records of a kind and nothing on the page
+     shows that kind, a section for it is added when the editor opens — before the page's closing sections,
+     in the order below. It is an ordinary section from then on (moved, hidden, restyled, redesigned), drawn
+     in the site's own colours and fonts, and its items are the records (the same data-rv-repeat-template
+     convention an AI-designed section uses, so the live page keeps it current). A section the owner
+     deletes leaves a marker behind and is not added again.
+     Not on an imported site: that page is one captured block with its own way of showing these. */
+  var AUTO_KINDS = ['speakers', 'sessions', 'partners', 'glimpses', 'faq', 'contact'];
+  var AUTO_SECTIONS = {
+    speakers: { name: 'Speakers', title: 'Speakers', resource: 'speakers',
+      item: '<article class="rva-card" data-rv-repeat-template="speakers"><img class="rva-photo" data-rv-field="photo" alt=""><h3 class="rva-name" data-rv-field="n">Speaker name</h3><p class="rva-line" data-rv-field="r">Designation</p><p class="rva-line rva-strong" data-rv-field="c">Company</p></article>',
+      css: '.rva-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:28px}.rva-card{text-align:center}.rva-photo{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:14px;background:var(--rv-surface,#eef0f3);display:block;margin:0 0 14px}.rva-name{font-size:20px;line-height:1.25;margin:0 0 4px}.rva-line{font-size:15px;line-height:1.45;margin:0;opacity:.8}.rva-strong{font-weight:600;opacity:1}' },
+    sessions: { name: 'Agenda', title: 'Agenda', resource: 'sessions',
+      item: '<article class="rva-row" data-rv-repeat-template="sessions"><div class="rva-time" data-rv-field="time">Time</div><div class="rva-what"><h3 class="rva-name" data-rv-field="title">Session title</h3><p class="rva-line" data-rv-field="desc">What this session covers.</p><p class="rva-line rva-strong" data-rv-field="speakers">Speakers</p><p class="rva-line" data-rv-field="room">Room</p></div></article>',
+      css: '.rva-list{display:flex;flex-direction:column}.rva-row{display:grid;grid-template-columns:190px 1fr;gap:24px;padding:22px 0;border-top:1px solid rgba(128,128,128,.3)}.rva-row:last-child{border-bottom:1px solid rgba(128,128,128,.3)}.rva-time{font-size:16px;font-weight:700;letter-spacing:.04em;color:var(--theme-color,#186bf9)}.rva-name{font-size:21px;line-height:1.25;margin:0 0 6px}.rva-line{font-size:16px;line-height:1.55;margin:0 0 4px;opacity:.82}.rva-strong{font-weight:600;opacity:1}@media (max-width:720px){.rva-row{grid-template-columns:1fr;gap:6px}}' },
+    partners: { name: 'Partners', title: 'Our Partners', resource: 'partners',
+      item: '<div class="rva-logo" data-rv-repeat-template="partners"><a class="rva-logo-link" data-rv-field="url"><img data-rv-field="logo" alt=""><span class="rva-line" data-rv-field="name">Partner name</span></a></div>',
+      css: '.rva-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:22px}.rva-logo{background:#fff;border:1px solid rgba(128,128,128,.28);border-radius:12px;padding:22px 18px}.rva-logo-link{display:flex;flex-direction:column;align-items:center;gap:12px;text-decoration:none;color:#16181d}.rva-logo img{width:100%;height:76px;object-fit:contain}.rva-line{font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:0;text-align:center}' },
+    glimpses: { name: 'Gallery', title: 'Glimpses', resource: 'gallery',
+      item: '<figure class="rva-shot" data-rv-repeat-template="glimpses"><img data-rv-field="imageUrl" alt=""><figcaption class="rva-line" data-rv-field="caption">Caption</figcaption></figure>',
+      css: '.rva-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}.rva-shot{margin:0}.rva-shot img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;display:block;background:var(--rv-surface,#eef0f3)}.rva-line{font-size:14px;line-height:1.45;margin:8px 0 0;opacity:.8}' },
+    faq: { name: 'FAQs', title: 'Frequently Asked Questions', resource: 'faqs',
+      item: '<div class="rva-qa" data-rv-repeat-template="faq"><h3 class="rva-name" data-rv-field="t">Question goes here</h3><p class="rva-line" data-rv-field="d">Answer goes here.</p></div>',
+      css: '.rva-list{display:flex;flex-direction:column;max-width:860px}.rva-qa{padding:22px 0;border-top:1px solid rgba(128,128,128,.3)}.rva-qa:last-child{border-bottom:1px solid rgba(128,128,128,.3)}.rva-name{font-size:20px;line-height:1.3;margin:0 0 8px}.rva-line{font-size:17px;line-height:1.65;margin:0;opacity:.85}' },
+    contact: { name: 'Contact', title: 'Contact Us', resource: 'contacts',
+      item: '<div class="rva-contact" data-rv-repeat-template="contact"><p class="rva-label" data-rv-field="label">For queries</p><h3 class="rva-name" data-rv-field="name">Contact name</h3><p class="rva-line" data-rv-field="email">name@example.com</p><p class="rva-line" data-rv-field="phone">+00 00000 00000</p></div>',
+      css: '.rva-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:22px}.rva-contact{background:var(--rv-surface,#f5f6f8);border-radius:12px;padding:24px}.rva-label{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--theme-color,#186bf9);margin:0 0 8px}.rva-name{font-size:20px;line-height:1.25;margin:0 0 8px}.rva-line{font-size:16px;line-height:1.5;margin:0}' }
+  };
+  /* what a section picked from the gallery of designs is called -> the kind of record it is for */
+  function kindForName(name) {
+    var n = String(name || '').toLowerCase();
+    if (/speaker/.test(n)) return 'speakers';
+    if (/agenda|session|schedule/.test(n)) return 'sessions';
+    if (/sponsor|partner/.test(n)) return 'partners';
+    if (/glimpse|gallery/.test(n)) return 'glimpses';
+    if (/faq|question/.test(n)) return 'faq';
+    if (/contact/.test(n)) return 'contact';
+    return '';
+  }
+  var CONTENT_MAP_KIND = { speakers: ['speakers'], sessions: ['agenda', 'sessions'], partners: ['partners'], glimpses: ['glimpses'], faq: ['faq'], contact: ['contact'] };
+  /* whether the page already shows the kind somewhere — or the owner took its section away on purpose */
+  function kindPlaced(kind) {
+    var doc = canvas.doc;
+    if (doc.querySelector('[data-rv-repeat-template="' + kind + '"], [data-rv-auto="' + kind + '"], template[data-rv-auto-off="' + kind + '"]')) return true;
+    var map = ((canvas.template.content || {}).map) || [];
+    return map.some(function (m) {
+      return CONTENT_MAP_KIND[kind].indexOf(m.from) !== -1 && !!doc.querySelector('[data-rv-section="' + String(m.section || '').replace(/["\\]/g, '\\$&') + '"]');
+    });
+  }
+  function createAutoSection(kind) {
+    var spec = AUTO_SECTIONS[kind], doc = canvas.doc, type = 'auto-' + kind;
+    var scope = '[data-rv-auto="' + kind + '"]';
+    /* every rule is tied to this section, so the class names mean nothing anywhere else on the page */
+    var rules = '.rva-wrap{max-width:1200px;margin:0 auto}.rva-title{font-family:var(--heading-font-family,inherit);font-size:clamp(30px,4.2vw,48px);line-height:1.1;margin:0 0 36px}.rva-name{font-family:var(--heading-font-family,inherit)}' + spec.css;
+    var css = scope + '{padding:clamp(56px,8vw,112px) 24px;background:var(--rv-bg,transparent);color:var(--rv-text,inherit);font-family:var(--body-font-family,inherit)}' +
+      rules.replace(/(^|[{}])\s*([^{}@]+)\{/g, function (all, lead, sel) {
+        return lead + sel.split(',').map(function (x) { return scope + ' ' + x.trim(); }).join(',') + '{';
+      });
+    var el = doc.createElement('section');
+    el.setAttribute('data-rv-section', type);
+    el.setAttribute('data-rv-auto', kind);
+    el.setAttribute('data-sec-name', spec.name);
+    if (!doc.getElementById(kind)) el.id = kind;
+    el.innerHTML = '<div class="rva-wrap"><h2 class="rva-title">' + spec.title + '</h2><div class="rva-list">' + spec.item + '</div></div><style data-rv-auto-css>' + css + '</style>';
+    return el;
+  }
+  function addAutoSection(kind, afterSec) {
+    var el = createAutoSection(kind);
+    canvas.insertSection(el, afterSec || null);
+    canvas.retag(el);
+    return el;
+  }
+  /* resolves the kinds a section was added for (none, most of the time) */
+  function ensureAutoSections() {
+    if (!canvas || !eventId || /^imported-/.test(canvas.template.id || '')) return Promise.resolve([]);
+    var wanted = AUTO_KINDS.filter(function (kind) { return !kindPlaced(kind); });
+    if (!wanted.length) return Promise.resolve([]);
+    return Promise.all(wanted.map(function (kind) {
+      return RevampCore.fetchSub(AUTO_SECTIONS[kind].resource, eventId).then(function (rows) { return rows && rows.length ? kind : ''; }, function () { return ''; });
+    })).then(function (found) {
+      var added = [];
+      // each goes after the one before it, so they come in AUTO_KINDS order
+      var after = null;
+      found.filter(Boolean).forEach(function (kind) {
+        if (kindPlaced(kind)) return;
+        after = addAutoSection(kind, after);
+        added.push(kind);
+      });
+      return added;
+    });
+  }
+
   /* Mirrors fetchSubcollectionOverlay() below, one layer over: detection is findRepeatKindsInDom()
      (scans the mounted DOM for data-rv-repeat-template) instead of a content.map `from` scan, and
      translation goes through GENERIC_REPEAT_SOURCES (the *Flat translators) instead of
@@ -664,7 +780,7 @@
       kinds.forEach(function (kind) {
         var cfg = GENERIC_REPEAT_SOURCES[kind];
         var inputs = cfg.resources.map(function (r) { return byResource[r]; });
-        if (inputs.indexOf(null) !== -1) return;   // a needed fetch failed — leave this kind untouched
+        if (inputs[0] == null) return;   // the kind's own records could not be fetched — leave it untouched
         var items = cfg.translate.apply(null, inputs);
         if (items) overlay[kind] = items;
       });
@@ -727,12 +843,15 @@
      [] (never hides/shows a section — that's the user's own Hide toggle's business, not this overlay's),
      and ctx.generatedFromBrief is false (no AI-provenance badge should ever appear just because this ran). */
   function applySubcollectionOverlay() {
+    return ensureAutoSections().then(function (added) { return drawRecords(added.length > 0); });
+  }
+  function drawRecords(sectionsAdded) {
     // Both detection paths run together — content.map `from` (ported templates) and the DOM
     // data-rv-repeat-template convention (AI-bespoke `gen-` templates) — and contribute additively to
     // one merged apply pass; see fetchGenericRepeatOverlay()'s own comment on why they never compete.
     return Promise.all([fetchSubcollectionOverlay(), fetchGenericRepeatOverlay()]).then(function (results) {
       var content = results[0], repeatOverlay = results[1];
-      var changed = false;
+      var changed = !!sectionsAdded;
       if (content) {
         var report = RevampFill.apply(canvas, { content: content, names: {}, excluded: [], generatedFromBrief: false, aiSkippedLibraries: [] });
         if (report.filled.length) changed = true;
@@ -1411,6 +1530,183 @@
     }
   }
 
+  /* ---------- developer zone ----------
+     One section's own HTML, CSS and JS, for what the editor's controls do not reach. Apply puts the three back
+     on the page as ONE undo step.
+       HTML   the section as it is on the page, without the editor's marks. The event's records drawn into a
+              list (speakers, partners…) are shown as the one model item they are drawn from, and are drawn
+              again after Apply. It must stay ONE element.
+       CSS    on an AI-designed site, the section's own stylesheet (its rules begin with
+              [data-rv-section="<id>"]). On a site built from a template, whose CSS belongs to the template,
+              the rules written here are added to the section and win over the template's where they meet.
+       JS     runs on the published and previewed site, once, with `section` as this section's element
+              (et-runtime.js). It never runs inside the editor. */
+  var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-filled'];
+  function devSource(sec) {
+    var copy = sec.cloneNode(true);
+    [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('*'))).forEach(function (n) {
+      DEV_MARKS.forEach(function (a) { n.removeAttribute(a); });
+      n.classList.remove('ed-selected', 'sec-active', 'rv-in');
+      if (!n.getAttribute('class')) n.removeAttribute('class');
+    });
+    var lists = [];
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-repeat-template]'), function (item) {
+      if (!item.parentNode) return;
+      if (lists.indexOf(item.parentNode) !== -1) { item.remove(); return; }
+      lists.push(item.parentNode);
+      Array.prototype.forEach.call(item.querySelectorAll('img[data-rv-field]'), function (img) { img.removeAttribute('src'); });
+    });
+    var custom = copy.querySelector('style[data-rv-custom-css]'), holder = copy.querySelector('script[data-rv-js]');
+    var js = holder ? holder.textContent : '', customCss = custom ? custom.textContent : '';
+    if (custom) custom.remove();
+    if (holder) holder.remove();
+    var own = canvas.keepsOwnCss && canvas.sectionCss(sec);
+    return { html: copy.outerHTML, css: own ? canvas.sectionCss(sec) : customCss, cssIsOwn: !!own, js: js, records: lists.length > 0 };
+  }
+  /* Line breaks and indents at block-level tags only: space between inline things (a word and a link, a label
+     and its icon) is part of the text and is left exactly as it is. */
+  var BLOCK_TAGS = /^(section|div|article|header|footer|main|nav|aside|figure|figcaption|ul|ol|li|dl|dt|dd|p|h[1-6]|table|thead|tbody|tr|td|th|form|blockquote|details|summary|style|script|template|picture|video)$/i;
+  function prettyHtml(html) {
+    var out = '', open = [];                    // open[i]: whether block i has had a block inside it
+    function indent() { return new Array(open.length + 1).join('  '); }
+    String(html).replace(/<\/?([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*>|[^<]+|</g, function (piece, name) {
+      if (!name || !BLOCK_TAGS.test(name)) { out += piece; return ''; }
+      if (piece.charAt(1) === '/') {
+        var hadBlock = open.pop();
+        // a block holding only words keeps its end tag on the words' line: no stray space joins the text
+        if (hadBlock) out = out.replace(/[ \t]+$/, '') + (/\n$/.test(out) ? '' : '\n') + indent();
+        out += piece;
+      } else {
+        if (open.length) open[open.length - 1] = true;
+        out = out.replace(/[ \t]+$/, '');
+        out += (out && !/\n$/.test(out) ? '\n' : '') + indent() + piece;
+        if (!/\/>$/.test(piece)) open.push(false);
+      }
+      return '';
+    });
+    return out.trim();
+  }
+  function prettyCss(css) {
+    // already laid out by hand (more lines than rules): left as written
+    if ((css.match(/\n/g) || []).length > (css.match(/\{/g) || []).length) return css;
+    return String(css).replace(/\s*\{\s*/g, ' {\n  ').replace(/;\s*/g, ';\n  ').replace(/\s*\}\s*/g, '\n}\n').replace(/\n  \n/g, '\n').trim();
+  }
+
+  function openDevZone(startSec) {
+    if (!canvas || remounting) return;
+    if (editingEl) exitEdit(editingEl);
+    var secs = canvas.sections();
+    if (!secs.length) return;
+    var sec = isLive(startSec) ? startSec : (isLive(activeSectionEl) ? activeSectionEl : secs[0]);
+    var old = document.getElementById('rv-dev-zone');
+    if (old) old.remove();
+    var scrim = document.createElement('div');
+    scrim.className = 'scrim'; scrim.id = 'rv-dev-zone';
+    scrim.innerHTML =
+      '<div class="modal dev-zone" role="dialog" aria-modal="true" aria-labelledby="rv-dev-title">' +
+        '<div class="dev-head"><h3 id="rv-dev-title">Developer zone</h3>' +
+          '<label class="dev-pick">Section <select id="rv-dev-section"></select></label>' +
+          '<button class="icon-btn" id="rv-dev-close" title="Close" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>' +
+        '<div class="dev-tabs" role="tablist"><button data-dev-tab="html" class="active">HTML</button><button data-dev-tab="css">CSS</button><button data-dev-tab="js">JS</button><span class="dev-note" id="rv-dev-note"></span></div>' +
+        '<div class="dev-body"><textarea id="rv-dev-html" spellcheck="false" wrap="off"></textarea><textarea id="rv-dev-css" spellcheck="false" wrap="off" hidden></textarea><textarea id="rv-dev-js" spellcheck="false" wrap="off" hidden></textarea></div>' +
+        '<div class="dev-foot"><span class="dev-error" id="rv-dev-error" role="alert" hidden></span><button class="btn btn-secondary" id="rv-dev-cancel">Close</button><button class="btn btn-primary" id="rv-dev-apply">Apply to the page</button></div>' +
+      '</div>';
+    document.body.appendChild(scrim);
+    function $(id) { return document.getElementById(id); }
+    var pick = $('rv-dev-section'), boxes = { html: $('rv-dev-html'), css: $('rv-dev-css'), js: $('rv-dev-js') };
+    var note = $('rv-dev-note'), problem = $('rv-dev-error');
+    var tab = 'html', src = null, loaded = null;
+    var NOTES = {
+      html: function () { return 'One root element.' + (src.records ? ' Lists of the event’s records show the one item they are drawn from; the records come back after Apply.' : ''); },
+      css: function () { return src.cssIsOwn ? 'This section’s own stylesheet. Keep each rule starting with [data-rv-section="' + sec.getAttribute('data-rv-section') + '"].' : 'Added to this section, on top of the template’s CSS. Start rules with [data-rv-section="' + sec.getAttribute('data-rv-section') + '"] to keep them to it.'; },
+      js: function () { return 'Runs on the preview and the published site, not in the editor. `section` is this section’s element.'; }
+    };
+    function show(name) {
+      tab = name;
+      Object.keys(boxes).forEach(function (k) { boxes[k].hidden = k !== name; });
+      Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-tab]'), function (b) { b.classList.toggle('active', b.getAttribute('data-dev-tab') === name); });
+      note.textContent = NOTES[name]();
+      boxes[name].focus();
+    }
+    function load(target) {
+      sec = target;
+      src = devSource(sec);
+      boxes.html.value = prettyHtml(src.html);
+      boxes.css.value = prettyCss(src.css);
+      boxes.js.value = src.js;
+      loaded = { html: boxes.html.value, css: boxes.css.value, js: boxes.js.value };
+      problem.hidden = true;
+      show(tab);
+    }
+    function dirty() { return loaded && (boxes.html.value !== loaded.html || boxes.css.value !== loaded.css || boxes.js.value !== loaded.js); }
+    function close() { scrim.remove(); document.removeEventListener('keydown', onKey, true); }
+    function askClose() { if (!dirty() || window.confirm('Close without applying your changes?')) close(); }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); askClose(); }
+      // Tab types two spaces in a code box instead of leaving it
+      if (e.key === 'Tab' && !e.shiftKey && e.target && e.target.tagName === 'TEXTAREA' && scrim.contains(e.target)) {
+        e.preventDefault();
+        var t = e.target, at = t.selectionStart;
+        t.value = t.value.slice(0, at) + '  ' + t.value.slice(t.selectionEnd);
+        t.selectionStart = t.selectionEnd = at + 2;
+      }
+    }
+    document.addEventListener('keydown', onKey, true);
+    secs.forEach(function (s, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = (s.getAttribute('data-sec-name') || s.getAttribute('data-rv-section')) + (s.classList.contains('is-hidden-sec') ? ' (hidden)' : '');
+      pick.appendChild(o);
+    });
+    pick.value = String(secs.indexOf(sec));
+    pick.addEventListener('change', function () {
+      if (dirty() && !window.confirm('Switch section without applying your changes?')) { pick.value = String(secs.indexOf(sec)); return; }
+      load(secs[+pick.value]);
+    });
+    Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-tab]'), function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-dev-tab')); }); });
+    $('rv-dev-close').addEventListener('click', askClose);
+    $('rv-dev-cancel').addEventListener('click', askClose);
+    $('rv-dev-apply').addEventListener('click', function () {
+      problem.hidden = true;
+      function fail(text, where) { problem.textContent = text; problem.hidden = false; if (where) show(where); }
+      if (!isLive(sec)) return fail('This section is no longer on the page. Pick another one.');
+      var t = document.createElement('template');
+      t.innerHTML = boxes.html.value.trim();
+      var roots = t.content.children;
+      if (roots.length !== 1) return fail(roots.length ? 'The HTML must be ONE element: everything of the section inside a single root tag (now ' + roots.length + ').' : 'The HTML is empty. A section needs one root element.', 'html');
+      if (/^(SCRIPT|STYLE|TEMPLATE)$/.test(roots[0].tagName)) return fail('The root of a section must be an ordinary element such as <section> or <div>.', 'html');
+      var root = roots[0], css = boxes.css.value.trim(), js = boxes.js.value.trim();
+      if (js) { try { new Function('section', js); } catch (err) { return fail('The JS has a syntax error: ' + err.message, 'js'); } }
+      Array.prototype.forEach.call(root.querySelectorAll('style[data-rv-custom-css], script[data-rv-js]'), function (n) { n.remove(); });
+      if (!src.cssIsOwn && css) {
+        var st = document.createElement('style');
+        st.setAttribute('data-rv-custom-css', '');
+        st.textContent = css;
+        root.appendChild(st);
+      }
+      if (js) {
+        var holder = document.createElement('script');
+        holder.setAttribute('type', 'text/plain');
+        holder.setAttribute('data-rv-js', '');
+        holder.textContent = js;
+        root.appendChild(holder);
+      }
+      deselect();
+      flush();                          // what was pending stays its own undo step
+      var name = sec.getAttribute('data-sec-name') || 'section';
+      var fresh = canvas.replaceSection(sec, root.outerHTML, src.cssIsOwn ? css : null);
+      if (!fresh) return fail('The HTML could not be put on the page. Check that it is one well-formed element.', 'html');
+      commitNow();
+      secs[secs.indexOf(sec)] = fresh;
+      close();
+      selectSectionOnly(fresh);
+      canvas.scrollToSection(fresh);
+      offerUndo('“' + name + '” updated from the developer zone.');
+      if (fresh.querySelector('[data-rv-repeat-template]')) drawRecords(false);     // the event's records, drawn again
+    });
+    load(sec);
+  }
+
   /* ---------- choosing a picture ----------
      For a picture on the page and for a section's background: a file from the computer (stored with the event,
      RevampCore.uploadImage) or the web address of a picture that is already online. The picture is only set
@@ -1822,6 +2118,7 @@
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
     }
+    html += '<button class="icon-only" data-action="dev-section" title="Developer zone: this section’s HTML, CSS and JS" aria-label="Developer zone">&lt;/&gt;</button>';
     html += '<button class="danger" data-action="delete-section" title="Delete section">Delete</button>';
     secToolbar.innerHTML = html;
   }
@@ -1879,6 +2176,8 @@
       host.pickSection(sec);
     } else if (action === 'add-item') {
       selectNewItem(addRepeatItem(sec));
+    } else if (action === 'dev-section') {
+      openDevZone(sec);
     } else if (action === 'redesign-section') {
       openRedesignDialog(sec);
     } else if (action === 'section-background') {
@@ -1900,7 +2199,14 @@
       { label: 'Delete', kind: 'danger', onClick: function () {
         if (!sec.isConnected) return;
         deselect();
+        var autoKind = sec.getAttribute('data-rv-auto');
         canvas.removeSection(sec);
+        if (autoKind && !canvas.doc.querySelector('[data-rv-auto="' + autoKind + '"]')) {
+          // taken away on purpose: the records of this kind do not bring the section back (ensureAutoSections)
+          var off = canvas.doc.createElement('template');
+          off.setAttribute('data-rv-auto-off', autoKind);
+          canvas.contentRoot().appendChild(off);
+        }
         commitNow();
         offerUndo('"' + name + '" deleted.');
       } }
@@ -1998,6 +2304,23 @@
       el = canvas.createLibrarySection(item.id);
       name = item.name;
     } else {
+      /* A design for something the event keeps records of (speakers, agenda, partners…) is added as the
+         section that shows those records, unless the page has one already: a sample with invented people
+         in it would stay blank of the event's own. */
+      var recordKind = /^imported-/.test(canvas.template.id || '') ? '' : kindForName(spec.name);
+      if (recordKind && !canvas.doc.querySelector('[data-rv-repeat-template="' + recordKind + '"], [data-rv-auto="' + recordKind + '"]')) {
+        Array.prototype.forEach.call(canvas.doc.querySelectorAll('template[data-rv-auto-off="' + recordKind + '"]'), function (t) { t.remove(); });
+        el = createAutoSection(recordKind);
+        name = AUTO_SECTIONS[recordKind].name;
+        canvas.insertSection(el, isLive(afterEl) ? afterEl : activeSectionEl);
+        canvas.retag(el);
+        commitNow();
+        selectSectionOnly(el);
+        canvas.scrollToSection(el);
+        showToast('Added "' + name + '". It shows what is entered under Content.');
+        drawRecords(false);
+        return el;
+      }
       el = canvas.createGenericSection(spec.name, spec.html, restoreOpts().siteCss);
       name = spec.name;
     }
@@ -2945,6 +3268,7 @@
   }
 
   window.RevampTemplateUI = {
+    openDevZone: openDevZone,
     open: open, leave: leave, handoffFor: handoffFor,
     setDevice: setDevice, openPreview: openPreview, publish: publish, undo: undo, redo: redo, flush: flush,
     addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
