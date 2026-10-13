@@ -570,9 +570,18 @@
        glimpses: imageUrl (image), caption
      Missing/falsy values leave the clone's existing placeholder content alone rather than blanking it —
      same never-wipe-to-empty discipline used elsewhere in this file (see translate() comment above). */
-  function setGenericRepeatField(fieldEl, field, value, kind) {
-    if (!value) return;
+  function setGenericRepeatField(fieldEl, field, value, kind, refill) {
     var isImage = field === 'photo' || field === 'logo' || field === 'imageUrl';
+    if (!value) {
+      /* A model that was itself drawn from a record (refill) still holds that record's values: what this
+         record does not have is cleared, or it would show another partner's logo or link. The first fill,
+         from the design's own placeholder item, leaves the placeholder where the record has nothing. */
+      if (!refill) return;
+      if (isImage) { if (fieldEl.tagName === 'IMG') fieldEl.removeAttribute('src'); else fieldEl.style.backgroundImage = ''; }
+      else if (kind === 'partners' && field === 'url' && fieldEl.tagName === 'A') fieldEl.removeAttribute('href');
+      else if (!fieldEl.querySelector('[data-rv-field]')) fieldEl.textContent = '';
+      return;
+    }
     if (isImage) {
       if (fieldEl.tagName === 'IMG') fieldEl.src = value;
       else fieldEl.style.backgroundImage = 'url(' + value + ')';
@@ -587,13 +596,14 @@
     else fieldEl.textContent = value;
   }
 
-  function fillGenericRepeatClone(clone, item, kind) {
+  function fillGenericRepeatClone(clone, item, kind, refill) {
     var fields = clone.hasAttribute('data-rv-field') ? [clone] : [];
     fields = fields.concat(Array.prototype.slice.call(clone.querySelectorAll('[data-rv-field]')));
     fields.forEach(function (fieldEl) {
       var field = fieldEl.getAttribute('data-rv-field');
-      setGenericRepeatField(fieldEl, field, item[field], kind);
+      setGenericRepeatField(fieldEl, field, item[field], kind, refill);
     });
+    clone.setAttribute('data-rv-filled', '');
   }
 
   /* items null/empty -> do nothing, leave Gemini's own markup exactly as written (no template element to
@@ -603,19 +613,30 @@
      then drop the original template node once every clone is in — leaving only real, filled items.
      data-rv-repeat-template/data-rv-field are left on the clones: harmless, unrendered markers, not worth
      stripping. */
+  /* Every item of the kind standing in a list is what an earlier load drew (a saved page comes back with
+     them): they are all replaced by one item per record, so a list never grows from one load to the next.
+     The first of them is the model the new items are cloned from. */
   function applyGenericRepeat(canvas, kind, items) {
     if (!items || !items.length) return;
     if (!canvas || !canvas.doc) return;
-    var tpl = canvas.doc.querySelector('[data-rv-repeat-template="' + kind + '"]');
-    if (!tpl || !tpl.parentNode) return;
-    var ref = tpl;
-    items.forEach(function (item) {
-      var clone = tpl.cloneNode(true);
-      fillGenericRepeatClone(clone, item, kind);
-      ref.parentNode.insertBefore(clone, ref.nextSibling);
-      ref = clone;
+    var lists = [];
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
+      if (!el.parentNode) return;
+      var list = lists.filter(function (l) { return l.parent === el.parentNode; })[0];
+      if (list) list.standing.push(el); else lists.push({ parent: el.parentNode, standing: [el] });
     });
-    tpl.parentNode.removeChild(tpl);
+    lists.forEach(function (list) {
+      var tpl = list.standing[0], refill = tpl.hasAttribute('data-rv-filled');
+      var before = list.standing[list.standing.length - 1].nextSibling;
+      var drawn = items.map(function (item) {
+        var clone = tpl.cloneNode(true);
+        clone.classList.remove('ed-selected', 'sec-active');
+        fillGenericRepeatClone(clone, item, kind, refill);
+        return clone;
+      });
+      list.standing.forEach(function (el) { el.remove(); });
+      drawn.forEach(function (clone) { list.parent.insertBefore(clone, before); });
+    });
   }
 
   /* Mirrors fetchSubcollectionOverlay() below, one layer over: detection is findRepeatKindsInDom()
@@ -1338,6 +1359,18 @@
       var copy = sec.cloneNode(true);
       Array.prototype.forEach.call(copy.querySelectorAll('.ed-selected, .sec-active'), function (n) { n.classList.remove('ed-selected', 'sec-active'); });
       copy.classList.remove('ed-selected', 'sec-active');
+      /* The records drawn into the section (partners, speakers…) are not the design: one item of each list
+         goes to the AI, as the model it was, without the record's picture — a logo kept inline is hundreds
+         of kilobytes. The records are drawn into the new design again once it is on the page. */
+      var keptLists = [];
+      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-repeat-template]'), function (item) {
+        if (!item.parentNode) return;
+        if (keptLists.indexOf(item.parentNode) !== -1) { item.remove(); return; }
+        keptLists.push(item.parentNode);
+        item.removeAttribute('data-rv-filled');
+        Array.prototype.forEach.call(item.querySelectorAll('img[data-rv-field]'), function (img) { img.removeAttribute('src'); });
+        Array.prototype.forEach.call(item.querySelectorAll('[data-rv-field][style*="background-image"]'), function (el) { el.style.backgroundImage = ''; });
+      });
       RevampAuth.authedFetch('/api/redesign-section', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1369,6 +1402,7 @@
         if (!fresh) return fail('The AI did not return a usable section. It is unchanged — try again.');
         fresh.setAttribute('data-ai-generated', 'true');       // written by the AI: asked about before publishing
         commitNow();
+        if (keptLists.length) applySubcollectionOverlay();     // the event's records, drawn into the new design
         if (open && handle && handle.close) handle.close();
         selectSectionOnly(fresh);
         canvas.scrollToSection(fresh);

@@ -1769,7 +1769,7 @@ var REDESIGN_SCHEMA = {
   },
   required: ['summary', 'html', 'css']
 };
-var REDESIGN_MAX_CHARS = 60000;
+var REDESIGN_MAX_CHARS = 90000;
 
 /* what the editor adds to a section while it is being edited is no part of the section */
 function stripEditorMarks(html) {
@@ -1781,7 +1781,7 @@ function stripEditorMarks(html) {
     });
 }
 
-var PICTURE_URL = /https?:\/\/[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?[^\s"'()<>]*)?/gi;
+var PICTURE_URL = /https?:\/\/[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?[^\s"'()<>]*)?|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+\/=]+/gi;
 
 function buildRedesignPrompt(payload) {
   var design = payload.design || {};
@@ -1830,7 +1830,6 @@ function handleRedesignSection(req, res) {
     var html = stripEditorMarks(payload.html), css = String(payload.css || '');
     if (!eventId || !isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
     if (!sectionId || !html.trim()) return sendJson(res, 400, { error: 'The section to redesign is missing.' });
-    if (html.length + css.length > REDESIGN_MAX_CHARS) return sendJson(res, 413, { error: 'This section is too large to redesign in one go. Split it into two sections first.' });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1843,6 +1842,8 @@ function handleRedesignSection(req, res) {
       found = found.filter(function (u, i) { return found.indexOf(u) === i && !/^https?:\/\/[^/]+\/templates\/_shared\//i.test(u); });
       var pictures = {};
       found.forEach(function (u, i) { var token = genDesign.pictureToken('p' + (i + 1)); pictures[token] = u; html = html.split(u).join(token); css = css.split(u).join(token); });
+      /* measured once pictures are tokens: a picture kept inline in the page is not text the model reads */
+      if (html.length + css.length > REDESIGN_MAX_CHARS) return sendJson(res, 413, { error: 'This section has too much in it to redesign in one go. Move part of it into a second section, then redesign each.' });
       var prompt = buildRedesignPrompt({
         pictureTokens: Object.keys(pictures),
         sectionId: sectionId, html: html, css: css, design: design,
