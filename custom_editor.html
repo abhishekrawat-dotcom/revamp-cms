@@ -236,6 +236,42 @@
   /* ---------- "Ask AI to edit" chat panel — a real messaging layout: avatar + name per turn, asymmetric
      bubble corners (the "tail" points at who's speaking, like iMessage/WhatsApp), thread scrolls on its own
      with the composer pinned below it, rounded pill input + round send button instead of a plain textbox. */
+  /* ETB2B AI lives at the bottom right as a launcher (a speech bubble beside the bot's face); a click opens
+     the chat as a drawer down the whole right side, over the canvas. */
+  #panel-chat{
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 100vw); z-index: 70;
+    border-right: 0; border-left: 1px solid var(--border); box-shadow: -18px 0 48px -18px rgba(20,16,40,.35);
+    animation: rvChatIn .22s cubic-bezier(.2,.7,.2,1);
+  }
+  @keyframes rvChatIn{ from{ transform: translateX(28px); opacity: 0; } to{ transform: none; opacity: 1; } }
+  #panel-chat .side-panel-head{ background: linear-gradient(120deg, #1c2540, #3a2a6d); color:#fff; border-bottom: 0; padding: 14px 16px; }
+  #panel-chat .side-panel-head .icon-btn{ color:#fff; }
+  .chat-head-id{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .chat-head-face{ width:38px; height:38px; border-radius:50%; background:#fff; display:grid; place-items:center; flex-shrink:0; }
+  .chat-head-id h3{ font-size:15px; letter-spacing:.04em; color:#fff; }
+  .chat-head-id small{ display:flex; align-items:center; gap:6px; font-size:11px; opacity:.85; }
+  .chat-head-id small i{ width:7px; height:7px; border-radius:50%; background:#2fd27a; display:inline-block; }
+  .chat-launcher{
+    position: fixed; right: 22px; bottom: 22px; z-index: 60; display:flex; align-items:center; gap:0;
+    padding:0; border:0; background:none; cursor:pointer; font: inherit; text-align:left;
+    filter: drop-shadow(0 10px 22px rgba(20,16,40,.22)); transition: transform .18s ease;
+  }
+  .chat-launcher:hover{ transform: translateY(-2px); }
+  .chat-launcher:focus-visible{ outline: 2px solid var(--accent, #ED1C24); outline-offset: 4px; border-radius: 40px; }
+  .chat-launcher-bubble{
+    position:relative; background: var(--surface, #fff); color: var(--text, #1c1a2b); border:1px solid var(--border);
+    border-radius: 26px 26px 6px 26px; padding: 10px 22px 11px 20px; margin-right: 10px; white-space:nowrap;
+  }
+  .chat-launcher-bubble b{ display:block; font-size:10px; letter-spacing:.3em; color: var(--accent, #ED1C24); font-weight:800; margin-bottom:2px; }
+  .chat-launcher-bubble span{ font-size:14px; font-weight:500; }
+  .chat-launcher-face{
+    position:relative; width:62px; height:62px; border-radius:50%; background: var(--surface, #fff); border:1px solid var(--border);
+    display:grid; place-items:center; flex-shrink:0;
+  }
+  .chat-launcher-face::after{ content:''; position:absolute; right:4px; bottom:4px; width:11px; height:11px; border-radius:50%; background:#2fd27a; border:2px solid var(--surface, #fff); }
+  .chat-launcher.is-quiet .chat-launcher-bubble{ display:none; }
+  body.ed-load-failed .chat-launcher{ display:none; }
+  @media (max-width: 720px){ .chat-launcher-bubble{ display:none; } }
   #panel-chat .side-panel-body{ padding: 12px 0 0; overflow: hidden; }
   #panel-chat .side-panel-body > .hint{ padding: 0 14px; flex-shrink: 0; }
   .chat-thread{ flex: 1; min-height: 0; overflow-y: auto; display:flex; flex-direction:column; gap:12px; padding: 10px 14px; }
@@ -247,7 +283,7 @@
     font-size:11px; font-weight:800; color:#fff;
   }
   .chat-turn.user .chat-avatar{ background: var(--accent, #ED1C24); }
-  .chat-turn.ai .chat-avatar{ background: #6b5ce7; }
+  .chat-turn.ai .chat-avatar{ background: #fff; border:1px solid var(--border); overflow:hidden; }
   .chat-turn-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
   .chat-turn.user .chat-turn-body{ align-items:flex-end; }
   .chat-sender{ font-size:10px; font-weight:700; color: var(--text-faint); padding: 0 4px; }
@@ -1032,18 +1068,26 @@
     <!-- A free-text instruction interpreted into a design/content change, shown as a proposal the user must
          confirm before anything is applied. -->
     <aside class="side-panel" id="panel-chat" hidden>
-      <div class="side-panel-head"><h3>Ask AI to edit</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-head">
+        <div class="chat-head-id"><span class="chat-head-face"><svg viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><defs><linearGradient id="rvbh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbh)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbh)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg></span><div><h3>ETB2B AI</h3><small><i></i>Edits your site as you ask</small></div></div>
+        <button class="icon-btn" id="chat-close" title="Close" aria-label="Close ETB2B AI"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
       <div class="side-panel-body">
         <span class="hint">Describe a change in plain words — colour, fonts, heading style, or specific section text. Nothing on the site changes until you confirm.</span>
         <div class="chat-thread" id="chat-thread"></div>
         <div class="chat-compose">
-          <textarea id="chat-input" rows="1" placeholder="Message the AI editor…"></textarea>
+          <textarea id="chat-input" rows="1" placeholder="Message ETB2B AI…"></textarea>
           <button class="chat-send-btn" id="chat-send" type="button" title="Send" aria-label="Send">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 11.5l17.5-8.5-8.5 17.5-2-7-7-2z"/></svg>
           </button>
         </div>
       </div>
     </aside>
+
+    <button class="chat-launcher" id="chat-launcher" type="button" aria-label="Open ETB2B AI" aria-controls="panel-chat" aria-expanded="false" data-keep-selection>
+      <span class="chat-launcher-bubble"><b>ETB2B AI</b><span>Hi, I’m ETB2B AI. Need help?</span></span>
+      <span class="chat-launcher-face"><svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><defs><linearGradient id="rvbl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg></span>
+    </button>
 
     <!-- ============ CANVAS ============ -->
     <main class="ed-main">
@@ -1054,7 +1098,6 @@
         <button class="rail-btn" data-panel="predefined" title="Add a section">Sections</button>
         <button class="rail-btn" data-panel="layers" title="Layers">Layers</button>
         <button class="rail-btn" data-panel="design" title="Design">Design</button>
-        <button class="rail-btn" data-panel="chat" id="rail-btn-chat" title="Ask AI to edit">Chat</button>
        </div>
        <div class="rail-fixed">
         <div class="device-toggle" role="group" aria-label="Device preview">
@@ -1506,7 +1549,27 @@
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
-  var panels = { add: document.getElementById('panel-add'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design'), chat: document.getElementById('panel-chat') };
+  var panels = { add: document.getElementById('panel-add'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+
+  /* ETB2B AI: the launcher at the bottom right opens the chat down the right side; the close button, or
+     Escape while the chat has the focus, puts the launcher back. Once it has been opened the launcher stays
+     a face without its greeting. */
+  (function(){
+    var chat = document.getElementById('panel-chat'), launcher = document.getElementById('chat-launcher');
+    function setOpen(open){
+      chat.hidden = !open;
+      launcher.hidden = open;
+      launcher.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open){
+        launcher.classList.add('is-quiet');
+        var box = document.getElementById('chat-input');
+        if (box) box.focus();
+      } else launcher.focus();
+    }
+    launcher.addEventListener('click', function(){ setOpen(true); });
+    document.getElementById('chat-close').addEventListener('click', function(){ setOpen(false); });
+    chat.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ e.stopPropagation(); setOpen(false); } });
+  })();
   function openPanel(name){
     Object.keys(panels).forEach(function(k){ panels[k].hidden = (k !== name); });
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });

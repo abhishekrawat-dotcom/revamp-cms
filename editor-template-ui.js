@@ -1161,8 +1161,8 @@
     }
     html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
       '<button class="icon-only" data-action="duplicate" title="Duplicate">&#10697;</button>' +
-      '<button class="icon-only danger" data-action="delete" title="Delete">&#10005;</button>' +
-      '<button class="icon-only" data-action="deselect" title="Close">&#10060;</button>';
+      '<button class="icon-only danger" data-action="delete" title="Delete" aria-label="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
+      '<button class="icon-only" data-action="deselect" title="Close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
     selToolbar.innerHTML = html;
   }
 
@@ -2524,12 +2524,13 @@
     turn.className = 'chat-turn ' + (isUser ? 'user' : 'ai');
     var avatar = document.createElement('div');
     avatar.className = 'chat-avatar';
-    avatar.textContent = isUser ? 'Y' : 'AI';
+    if (isUser) avatar.textContent = 'Y';
+    else avatar.innerHTML = '<svg viewBox="0 0 64 64" width="20" height="20" aria-hidden="true"><defs><linearGradient id="rvbc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbc)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbc)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg>';
     var body = document.createElement('div');
     body.className = 'chat-turn-body';
     var sender = document.createElement('span');
     sender.className = 'chat-sender';
-    sender.textContent = isUser ? 'You' : 'AI editor';
+    sender.textContent = isUser ? 'You' : 'ETB2B AI';
     body.appendChild(sender);
     body.appendChild(bubble);
     turn.appendChild(avatar);
@@ -2750,7 +2751,7 @@
        that only becomes visible on a follow-up ("now make it darker instead"). Say so up front, so this
        reads as an actual chat from the first message, not a repaint of the old one-shot prompt box. */
     if (chatHistory.length === 0) {
-      appendChatMsg('ai', 'Hi — describe a change (colour, fonts, text…) or ask a question about this page. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
+      appendChatMsg('ai', 'Hi, I’m ETB2B AI. Describe a change (colour, fonts, text…) or ask a question about this page. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
     }
     // one request at a time: each is a paid call, and Enter must not start a second while one is running
     var busy = false;
@@ -2796,11 +2797,11 @@
         .then(null, function () { return null; })       // no answer at all
         .then(function (r) {
           if (!r) {
-            failed('Could not reach the AI editor. Nothing on the site changed — check your connection and try again.');
+            failed('Could not reach ETB2B AI. Nothing on the site changed — check your connection and try again.');
             return;
           }
           if (!r.ok || !r.body || r.body.error) {
-            failed((r.body && r.body.error) || 'The AI editor could not answer (error ' + r.status + '). Nothing on the site changed — try again.');
+            failed((r.body && r.body.error) || 'ETB2B AI could not answer (error ' + r.status + '). Nothing on the site changed — try again.');
             return;
           }
           settle();
