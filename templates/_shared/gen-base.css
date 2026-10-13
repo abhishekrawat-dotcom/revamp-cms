@@ -32,3 +32,11 @@ img[data-rv-field]:not([src]),img[data-rv-field][src=""]{visibility:hidden}
 .rv-carousel-next{right:8px}
 /* in the editor the whole strip can be reached: it wraps instead of hiding its later items off to the side */
 html[data-rv-editing] [data-rv-carousel-track]{flex-wrap:wrap;overflow:visible}
+
+/* Easing in (et-runtime.js). Hidden only once the script has switched motion on, and never in the editor. */
+html.rv-motion:not([data-rv-editing]) [data-rv-reveal]{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .8s cubic-bezier(.2,.7,.2,1);transition-delay:var(--rv-delay,0ms);will-change:opacity,transform}
+html.rv-motion:not([data-rv-editing]) [data-rv-reveal="left"]{transform:translateX(-36px)}
+html.rv-motion:not([data-rv-editing]) [data-rv-reveal="right"]{transform:translateX(36px)}
+html.rv-motion:not([data-rv-editing]) [data-rv-reveal="zoom"]{transform:scale(.94)}
+html.rv-motion:not([data-rv-editing]) [data-rv-reveal="fade"]{transform:none}
+html.rv-motion:not([data-rv-editing]) [data-rv-reveal].rv-in{opacity:1;transform:none}

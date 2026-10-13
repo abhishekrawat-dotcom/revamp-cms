@@ -995,6 +995,40 @@
       el.style.backgroundImage = /url\(/.test(now) ? now.replace(/url\(\s*(["']?).*?\1\s*\)/, next) : next;
     }
 
+    /* ---------- a section designed again ----------
+       Only where the section's CSS belongs to this one site and is saved with it (an AI-designed site), and
+       the section is the only one of its type: its CSS is kept by type, so a copy would change with it. */
+    function canRedesign(sec) {
+      if (!sec || !/^gen-/.test(template.id || '')) return false;
+      var type = sec.getAttribute('data-rv-section');
+      return doc.querySelectorAll('[data-rv-section="' + type.replace(/["\\]/g, '\\$&') + '"]').length === 1 &&
+        !!doc.querySelector('style[data-rv-style="' + type.replace(/["\\]/g, '\\$&') + '"]');
+    }
+    function sectionCss(sec) {
+      var st = doc.querySelector('style[data-rv-style="' + sec.getAttribute('data-rv-section').replace(/["\\]/g, '\\$&') + '"]');
+      return st ? st.textContent : '';
+    }
+    /* the new markup takes the section's place and keeps its identity (type, key, name, id, hidden state);
+       the new CSS takes the old one's. -> the new section element, or null when the markup has no element */
+    function replaceSection(sec, html, css) {
+      var t = doc.createElement('template');
+      t.innerHTML = String(html || '').trim();
+      var fresh = t.content.firstElementChild;
+      if (!fresh) return null;
+      fresh = doc.importNode(fresh, true);
+      Array.prototype.forEach.call(sec.attributes, function (a) {
+        if (a.name === 'id' || /^data-sec-/.test(a.name) || /^data-rv-(section|key)$/.test(a.name)) fresh.setAttribute(a.name, a.value);
+      });
+      if (sec.classList.contains('is-hidden-sec')) fresh.classList.add('is-hidden-sec');
+      var type = sec.getAttribute('data-rv-section');
+      var st = doc.querySelector('style[data-rv-style="' + type.replace(/["\\]/g, '\\$&') + '"]');
+      sec.replaceWith(fresh);
+      if (st) st.textContent = String(css || '');
+      descend(fresh, false);
+      if (win.RevampSections) win.RevampSections.init(fresh);
+      return fresh;
+    }
+
     function cleanCopy(root) {
       unopen(root);
       [root].concat(Array.prototype.slice.call(root.querySelectorAll('.ed-selected, .sec-active, [contenteditable]'))).forEach(function (n) {
@@ -1355,6 +1389,9 @@
       itemAround: itemAround,
       setPicture: setPicture,                             // a new picture in an <img>, an <svg> icon or an image box
       pictureOf: pictureOf,
+      canRedesign: canRedesign,                           // whether "Redesign with AI" applies to this section
+      sectionCss: sectionCss,
+      replaceSection: replaceSection,
       backgroundHost: backgroundHost,                     // the element carrying a section's background picture, or null
       backgroundOf: bgUrlOf,
       setBackgroundPicture: setBackgroundPicture,

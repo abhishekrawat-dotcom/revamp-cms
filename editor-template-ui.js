@@ -1297,6 +1297,86 @@
     }
   }
 
+  /* ---------- a section designed again by the AI ----------
+     The section as it stands (the owner's edits included) goes to POST /api/redesign-section with what the
+     owner asked for; the answer takes its place as ONE undo step. Nothing changes until the answer is there
+     and usable, and one request runs at a time — each is a paid call. */
+  var redesigning = false;
+  function sectionOutline(sec) {
+    if (!sec) return '';
+    var h = sec.querySelector('h1, h2, h3');
+    return (sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-section') || '') + (h ? ' ("' + h.textContent.replace(/\s+/g, ' ').trim().slice(0, 80) + '")' : '');
+  }
+  function openRedesignDialog(sec) {
+    if (!isLive(sec) || redesigning) return;
+    if (editingEl) exitEdit(editingEl);
+    var name = sec.getAttribute('data-sec-name') || 'this section';
+    var handle = host.openDialog({
+      title: 'Redesign “' + name + '” with AI',
+      bodyHtml:
+        '<p style="margin:0 0 10px;font-size:13px;opacity:.8;">The AI gives this section a new layout and keeps its content. You can undo it.</p>' +
+        '<textarea id="rv-redesign-ask" rows="3" maxlength="600" style="width:100%;resize:vertical;" placeholder="Optional — say what you want, e.g. “make it a timeline”, “put the picture on the right and make it bigger”, “more premium, less text”"></textarea>' +
+        '<p id="rv-redesign-error" role="alert" style="margin:8px 0 0;font-size:12px;color:var(--crit,#c0392b);" hidden></p>',
+      actions: [
+        { label: 'Cancel', kind: 'secondary' },
+        { label: 'Redesign', kind: 'primary', onClick: function () { run(); return false; } }
+      ]
+    });
+    var ask = document.getElementById('rv-redesign-ask'), problem = document.getElementById('rv-redesign-error');
+    if (!ask) return;
+    ask.focus();
+    function button() { return Array.prototype.filter.call(document.querySelectorAll('.ed-dialog .btn'), function (b) { return /Redesign|Designing/.test(b.textContent); })[0]; }
+    function run() {
+      if (redesigning) return;
+      if (!isLive(sec)) { if (handle && handle.close) handle.close(); return; }
+      problem.hidden = true;
+      redesigning = true;
+      var b = button();
+      if (b) { b.disabled = true; b.textContent = 'Designing… (about a minute)'; }
+      ask.disabled = true;
+      var secs = canvas.sections(), at = secs.indexOf(sec);
+      var copy = sec.cloneNode(true);
+      Array.prototype.forEach.call(copy.querySelectorAll('.ed-selected, .sec-active'), function (n) { n.classList.remove('ed-selected', 'sec-active'); });
+      copy.classList.remove('ed-selected', 'sec-active');
+      RevampAuth.authedFetch('/api/redesign-section', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: eventId, sectionId: sec.getAttribute('data-rv-section'), html: copy.outerHTML, css: canvas.sectionCss(sec),
+          instruction: ask.value.trim(), above: sectionOutline(secs[at - 1]), below: sectionOutline(secs[at + 1])
+        })
+      }).then(function (res) {
+        return res.text().then(function (text) {
+          var body = null;
+          try { body = JSON.parse(text); } catch (e) { /* an error page from in front of the API */ }
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      }).then(null, function () { return null; }).then(function (r) {
+        redesigning = false;
+        var open = document.contains(ask);
+        function fail(text) {
+          if (!open) { host.showToast(text, { kind: 'error' }); return; }
+          ask.disabled = false;
+          var again = button();
+          if (again) { again.disabled = false; again.textContent = 'Redesign'; }
+          problem.textContent = text; problem.hidden = false;
+        }
+        if (!r) return fail('Could not reach the AI. The section is unchanged — check your connection and try again.');
+        if (!r.ok || !r.body || r.body.error || !r.body.html) return fail((r.body && r.body.error) || 'The AI could not redesign this section (error ' + r.status + '). It is unchanged — try again.');
+        if (!isLive(sec)) return fail('The section was removed while the AI was working, so there was nothing to replace.');
+        deselect();
+        flush();                        // what was pending stays its own undo step
+        var fresh = canvas.replaceSection(sec, r.body.html, r.body.css);
+        if (!fresh) return fail('The AI did not return a usable section. It is unchanged — try again.');
+        fresh.setAttribute('data-ai-generated', 'true');       // written by the AI: asked about before publishing
+        commitNow();
+        if (open && handle && handle.close) handle.close();
+        selectSectionOnly(fresh);
+        canvas.scrollToSection(fresh);
+        offerUndo('“' + name + '” redesigned' + (r.body.summary ? ': ' + r.body.summary : '.'));
+      });
+    }
+  }
+
   /* ---------- choosing a picture ----------
      For a picture on the page and for a section's background: a file from the computer (stored with the event,
      RevampCore.uploadImage) or the web address of a picture that is already online. The picture is only set
@@ -1703,6 +1783,7 @@
     } else {
       html += '<button data-action="add-section" title="Add a section below this one">+ Section</button>' +
         (repeatItems(sec).length ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
+        (canvas.canRedesign(sec) ? '<button data-action="redesign-section" title="Have the AI design this section again, keeping its content">&#10024; Redesign with AI</button>' : '') +
         (canvas.backgroundHost(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
@@ -1764,6 +1845,8 @@
       host.pickSection(sec);
     } else if (action === 'add-item') {
       selectNewItem(addRepeatItem(sec));
+    } else if (action === 'redesign-section') {
+      openRedesignDialog(sec);
     } else if (action === 'section-background') {
       var bgEl = canvas.backgroundHost(sec);
       if (bgEl) openPictureDialog('Background picture', canvas.backgroundOf(bgEl), function (url) {
@@ -2363,12 +2446,30 @@
     return headings.some(function (h) { return /\S/.test(h.textContent); }) &&
       Array.prototype.some.call(sec.querySelectorAll('[data-editable="image"]'), isShown);
   }
-  function sectionsContext() {
-    return canvas.sections().filter(function (sec) { return !sec.classList.contains('is-hidden-sec'); }).map(function (sec) {
+  /* What the AI is shown of the page: each section's texts. A page can hold more than fits (an imported site
+     is one section of several hundred texts), so the texts that share a word or a number with what was
+     asked go first and the rest fill what room is left — an instruction about "2026" must be shown every
+     text with 2026 in it, wherever on the page it is. */
+  var CHAT_TEXTS_BUDGET = 60000;      // characters, over the whole page
+  function sectionsContext(instruction) {
+    var words = String(instruction || '').toLowerCase().match(/[a-z0-9][a-z0-9'’&.-]{2,}/g) || [];
+    var asked = function (t) { var low = t.toLowerCase(); return words.some(function (w) { return low.indexOf(w) !== -1; }); };
+    var secs = canvas.sections().filter(function (sec) { return !sec.classList.contains('is-hidden-sec'); });
+    var share = Math.max(1500, Math.floor(CHAT_TEXTS_BUDGET / Math.max(1, secs.length)));
+    return secs.map(function (sec) {
       // the key, not the type: an edit must reach the one section it was proposed for, copies included
       var id = sec.getAttribute('data-rv-key');
       var short = function (t) { return t.slice(0, 200); };
-      var out = { id: id, name: sec.getAttribute('data-sec-name') || id, texts: sectionTextNodes(sec).slice(0, 14).map(short) };
+      var all = sectionTextNodes(sec).map(short).filter(function (t, i, list) { return list.indexOf(t) === i; });
+      var room = share, texts = [];
+      all.filter(asked).concat(all.filter(function (t) { return !asked(t); })).forEach(function (t) {
+        if (room <= 0) return;
+        texts.push(t);
+        room -= t.length + 4;
+      });
+      // back in page order, which is how the section reads
+      texts.sort(function (a, b) { return all.indexOf(a) - all.indexOf(b); });
+      var out = { id: id, name: sec.getAttribute('data-sec-name') || id, texts: texts };
       var buttons = sectionButtonLabels(sec).slice(0, 8).map(short);
       if (buttons.length) out.buttons = buttons;
       if (hasImageHeadline(sec)) out.imageHeadline = true;
@@ -2422,19 +2523,21 @@
   function findToRegex(find) {
     return new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
   }
+  /* every text of the section that holds the words to change: "change 2026 to 2027" means all of them */
   function locateTextEdit(edit) {
     var sec = edit && canvas.sectionByKey(edit.sectionId);
     if (!sec || !edit.find || edit.find === edit.replace) return null;
     var re = findToRegex(edit.find);
-    var node = visibleTextNodes(sec, '[data-editable="text"], [data-editable="button"]').filter(function (n) { return re.test(n.nodeValue); })[0];
-    return node ? { node: node, re: re } : null;
+    var nodes = visibleTextNodes(sec, '[data-editable="text"], [data-editable="button"]').filter(function (n) { return re.test(n.nodeValue); });
+    return nodes.length ? { node: nodes[0], nodes: nodes, re: re } : null;
   }
-  // returns the element whose text changed, or null when the text is no longer there
+  // returns the first element whose text changed, or null when the text is no longer there
   function applyTextEdit(edit) {
     var at = locateTextEdit(edit);
     if (!at) return null;
     var replacement = String(edit.replace == null ? '' : edit.replace);
-    at.node.nodeValue = at.node.nodeValue.replace(at.re, function () { return replacement; });
+    var all = new RegExp(at.re.source, 'g');
+    at.nodes.forEach(function (node) { node.nodeValue = node.nodeValue.replace(all, function () { return replacement; }); });
     return at.node.parentElement;
   }
 
@@ -2651,7 +2754,7 @@
       }
       fetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext() })
+        body: JSON.stringify({ instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction) })
       })
         .then(function (res) {
           return res.text().then(function (text) {

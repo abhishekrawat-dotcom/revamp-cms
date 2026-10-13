@@ -49,6 +49,12 @@
        · a "menu" button on a narrow window opens the bar's own links as a list (never while editing);
        · the site builder's "Edit with …" badge is removed.
 
+   Easing in (data-rv-reveal)
+     A block marked data-rv-reveal (or ="left", "right", "zoom", "fade") eases into view the first time it is
+     scrolled to; marked siblings follow one another by a short delay. The hiding is only switched on by this
+     script (<html class="rv-motion">), so a page whose script did not run shows everything; nothing is hidden
+     while editing or for visitors who asked for no motion. The rules are in gen-base.css.
+
    Carousels
      A row with more items than fit: the wrapper carries data-rv-carousel and the element holding the items
      data-rv-carousel-track (the wrapper itself when there is none). The track scrolls sideways by its own CSS
@@ -521,6 +527,45 @@
     });
   }
 
+  /* ---------- easing in ---------- */
+  var revealWatch = null;
+
+  function easeIn(root) {
+    if (editing() || !('IntersectionObserver' in window)) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var marked = [];
+    if (root && root.nodeType === 1 && root.hasAttribute('data-rv-reveal')) marked.push(root);
+    each((root && root.querySelectorAll ? root : document).querySelectorAll('[data-rv-reveal]'), function (el) { marked.push(el); });
+    if (!marked.length) return;
+    if (!revealWatch) {
+      revealWatch = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          e.target.classList.add('rv-in');
+          revealWatch.unobserve(e.target);
+        });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+      document.documentElement.classList.add('rv-motion');
+    }
+    marked.forEach(function (el) {
+      if (el.__rvReveal) return;
+      el.__rvReveal = true;
+      // marked siblings follow one another
+      var nth = 0;
+      for (var p = el.previousElementSibling; p && nth < 5; p = p.previousElementSibling) if (p.hasAttribute('data-rv-reveal')) nth++;
+      if (nth) el.style.setProperty('--rv-delay', (nth * 90) + 'ms');
+      revealWatch.observe(el);
+    });
+  }
+
+  /* records arriving after the page (speakers, partners…) are eased in like what was there from the start */
+  function watchForReveals() {
+    if (editing() || !('MutationObserver' in window) || !document.body) return;
+    new MutationObserver(function (changes) {
+      changes.forEach(function (c) { each(c.addedNodes, function (n) { if (n.nodeType === 1) easeIn(n); }); });
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
   /* ---------- carousels ---------- */
   var CAROUSEL_STEP_MS = 4500;
 
@@ -590,6 +635,7 @@
     init: function (el) {
       initSection(el);
       reveal(el);
+      easeIn(el);
       carousels(el);
       if (el.matches('.rv-imported') || el.querySelector('.rv-imported')) settleImported();
     },
@@ -599,7 +645,7 @@
     goTo: goTo
   };
 
-  function start() { reveal(); settleImported(); carousels(); arrive(); }
+  function start() { reveal(); settleImported(); carousels(); easeIn(document); watchForReveals(); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

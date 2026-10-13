@@ -392,6 +392,7 @@ function buildChatPrompt(payload) {
     '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site, "reply" if it\'s a question, small talk, or anything else that doesn\'t call for one — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.',
     '2. If `kind` is "reply": leave `design` empty and `textEdits` empty, and put a natural, helpful, conversational answer in `summary` — reference the actual sections/design above if relevant, don\'t make things up.',
     '3. If `kind` is "edit": if it asks for a visual/design change (colour, font, spacing, heading style…), return a partial `design` object — ONLY the fields the instruction actually calls for, using these field names: ' + DESIGN_FIELDS.join(', ') + '. Leave out any field it didn\'t ask to change. A colour field MUST be a hex code ("#1c1c1c") — if it names a colour in words ("orange", "navy blue"), translate it to the closest real hex value yourself; never write the colour word into a colour field, it will be rejected. If it asks to change text, return `textEdits`: an array of {sectionId, find, replace}, where `find` is copied VERBATIM (exact substring, same spelling/punctuation) from that section\'s own text shown above — never invent or paraphrase the original. Never invent facts (dates, numbers, names) that aren\'t already present. A follow-up like "make it bigger instead" that refines a design mentioned earlier in the conversation should produce a fresh, complete replacement for the fields it\'s changing, not an incremental tweak instruction.',
+    'A text edit applies to EVERY place that exact `find` text appears in that section. To change a word, a year, a name or a number everywhere (e.g. "change 2026 to 2027"), give `find` as just that word or number and return one edit for each section whose texts contain it — check every section\'s texts, do not stop at the first. `find` must be copied exactly from the texts above.',
     '4. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`/`textEdits` actually contain, nothing more — never mention a change that isn\'t also a real field in `design` or a real entry in `textEdits`, the user sees both side by side so any mismatch is a bug.'
   ].join('\n');
 }
@@ -892,8 +893,8 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
    { sectionId, url, subject } — or null when it could not be made, which costs the site that one picture
    and nothing else. `stamp` keeps a re-run's pictures apart from the last run's (a cached old picture under
    the same address would otherwise be shown for the new site). */
-function buildSectionImage(fb, eventId, sectionId, subject, design, stamp) {
-  return callGeminiImage(genDesign.imagePrompt(subject, design), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context) {
+  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
     var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
     var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
@@ -972,7 +973,7 @@ var DESIGN_PLAN_SCHEMA = {
           kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the other 5 ONLY when this section is really that specific data-bound type (see below).' },
           purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' },
           layout: { type: 'STRING', description: 'one sentence: how THIS section is laid out (e.g. "picture left, text right, three ticked points under the text", "one dark band of four large numbers", "three-column cards with an icon each", "a vertical timeline"). Neighbouring sections must not share a layout.' },
-          image: { type: 'STRING', description: 'What a picture in this section shows, in one sentence — objects, spaces or abstract forms that illustrate the section\'s subject, never people, text or logos. Empty string for a section that carries no generated picture.' }
+          image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence: the specific objects, place or materials that THIS section is about (not a generic backdrop, and different from every other picture on the page) — never people, text or logos. Empty string only for a section that carries no generated picture.' }
         },
         required: ['id', 'kind', 'purpose', 'layout', 'image']
       }
@@ -999,7 +1000,9 @@ function designReference(sourceDocs) {
   return { basis: basis, others: others };
 }
 
-var MAX_SECTION_IMAGES = 4;
+/* About a third of a generated page is pictures: the hero's, and one for most of the sections the model
+   writes itself. Each is a paid image call, made side by side with the others. */
+var MAX_SECTION_IMAGES = 7;
 
 function buildDesignPlanPrompt(payload) {
   var ref = payload.reference || { basis: null, others: [] };
@@ -1039,7 +1042,8 @@ function buildDesignPlanPrompt(payload) {
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
     '',
-    'PICTURES: the site must not be text only. The hero has a background picture (design.heroImage). Besides it, give up to ' + MAX_SECTION_IMAGES + ' "custom" sections a picture (sections[].image) — the ones where a picture carries meaning, spread down the page — and design those sections around their picture (a split, a framed plate, a full-bleed band). Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture. Pictures show objects, spaces or abstract forms that evoke the subject: never people, never text or logos, never something that could pass for a photograph of this event.',
+    'PICTURES: aim for a page that is about 70% text and 30% pictures by area — a visitor scrolling it should never see two screens in a row without a picture. The hero has a background picture (design.heroImage). Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers or a short list — and design each of those sections around its picture, at a generous size: a half-width split, a framed plate, a full-bleed band, a wide picture above the text. Data-bound sections (speakers, partners, glimpses, faq, contact) show real records and get no generated picture.',
+    'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", and never the same subject twice on one page. Pictures show objects, places, materials, tools or abstract forms: never people, never text or logos, never something that could pass for a photograph of this event.',
     '',
     'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
   );
@@ -1163,7 +1167,11 @@ function handlePlanStructure(req, res) {
            picture that fails costs the site that picture only. */
         var heroPrompt = genDesign.imagePrompt(design.heroImage || (brief && brief.theme) || eventMeta.name, design, { hero: true });
         var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt)].concat(
-          sections.filter(function (s) { return s.image; }).map(function (s) { return buildSectionImage(fb, eventId, s.id, s.image, design, stamp); })
+          sections.filter(function (s) { return s.image; }).map(function (s) {
+            /* what the section is for, so the picture is about that section and not only the event at large */
+            var context = 'It illustrates the "' + s.id.replace(/-/g, ' ') + '" section of the website of ' + String(eventMeta.name || 'an event') + ': ' + s.purpose;
+            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context);
+          })
         );
         return Promise.all(jobs).then(function (made) {
           var heroImage = made[0];
@@ -1475,6 +1483,7 @@ function buildSectionCodePrompt(payload) {
     '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): clamp(2rem, 4.2vw, 3.25rem), line-height 1.1. Hero headline (h1): clamp(2.6rem, 6.5vw, 5rem). Card titles: 1.25rem or larger. Small labels and captions: never below 0.875rem. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
+    '- MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section\'s heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section\'s root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.',
     '- CAROUSELS: where a section\'s layout calls for a carousel or slider (a row with more cards, logos, quotes or photos than fit), mark the wrapper with data-rv-carousel (data-rv-carousel="auto" to make it advance by itself) and the element that directly holds the items with data-rv-carousel-track. Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
   ];
 
@@ -1491,8 +1500,9 @@ function buildSectionCodePrompt(payload) {
   }
   var pictured = fullList.filter(function (s) { return s.imageUrl; });
   pictured.forEach(function (s) {
-    lines.push('- Section "' + s.id + '" has a picture, already made: ' + s.imageUrl + ' (it shows: ' + s.image + '). Use it with <img src="…" alt="…" loading="lazy"> and give it real presence — at least 320px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
+    lines.push('- Section "' + s.id + '" has a picture, already made: ' + s.imageUrl + ' (it shows: ' + s.image + '). Use it with <img src="…" alt="…" loading="lazy"> and give it real presence — about half the section\'s width in a split or the full container width as a plate or band, at least 380px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
   });
+  lines.push('- Pictures should fill roughly 30% of the page: size them generously, never as thumbnails.');
   lines.push('- Use ONLY the picture addresses given above; never link to any other image address and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
 
   if (payload.logoUrl) {
@@ -1688,6 +1698,110 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         });
     });
   }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
+}
+
+/* ---------- POST /api/redesign-section — one section of an AI-designed site, designed again ----------
+   The editor's "Redesign with AI" on a section: the section as it stands on the page (the owner may have
+   edited it since it was generated), the site's design, and what the owner asked for, if anything. The
+   answer is that one section's new HTML and CSS, to the same rules the whole site was written to. Nothing
+   is stored here: the editor puts the answer on the page as one undoable step and saves it with the site. */
+var REDESIGN_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    summary: { type: 'STRING', description: 'One plain sentence for the site owner: what is different about the new version.' },
+    html: { type: 'STRING', description: 'The section\'s new HTML: ONE root element, no <script>, no inline event handlers.' },
+    css: { type: 'STRING', description: 'The section\'s new CSS as plain class selectors for the classes used in its html.' }
+  },
+  required: ['summary', 'html', 'css']
+};
+var REDESIGN_MAX_CHARS = 60000;
+
+/* what the editor adds to a section while it is being edited is no part of the section */
+function stripEditorMarks(html) {
+  return String(html || '')
+    .replace(/\s(?:data-editable|data-rv-key|data-sec-name|data-ai-generated|data-ai-skipped|data-rv-open|data-rv-aria|data-rv-cur-item|data-text-original|contenteditable)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '')
+    .replace(/\sclass="([^"]*)"/gi, function (full, cls) {
+      var kept = cls.split(/\s+/).filter(function (c) { return c && !/^(ed-selected|sec-active|is-hidden-sec|rv-in|rv-shown)$/.test(c); }).join(' ');
+      return kept ? ' class="' + kept + '"' : '';
+    });
+}
+
+var PICTURE_URL = /https?:\/\/[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?[^\s"'()<>]*)?/gi;
+
+function buildRedesignPrompt(payload) {
+  var design = payload.design || {};
+  var radius = (design.cornerRadius || '12') + 'px';
+  var urls = (String(payload.html).match(PICTURE_URL) || []).concat(String(payload.css).match(PICTURE_URL) || []);
+  urls = urls.filter(function (u, i) { return urls.indexOf(u) === i; });
+  var lines = [
+    'You are redesigning ONE section of an event microsite that is already built, for ET Oneworld\'s event builder. Return that section\'s new HTML and CSS — a visibly different, better design of the same section, to the standard of a top agency.',
+    '',
+    payload.instruction
+      ? 'WHAT THE OWNER ASKED FOR — this comes first: "' + String(payload.instruction).slice(0, 600) + '"'
+      : 'The owner gave no particular instruction: choose a clearly different layout for this content (if it is a card grid, try a picture/text split, a timeline, a band of large numbers, a carousel, an alternating list…) and make it more striking.',
+    '',
+    'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
+    'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it.',
+    urls.length ? 'PICTURES: these are the only pictures you may use, by exactly these addresses — keep using them, larger if anything: ' + urls.join(' , ') : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
+    '',
+    'THE SITE\'S DESIGN — the new section must sit naturally between its neighbours:',
+    'Mood: ' + (design.mood || ''),
+    'Layout system: ' + (design.layout || ''),
+    'Colours and fonts are CSS variables already on the page — use the variables, never raw values: var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).',
+    '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
+    '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
+    '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; h2 clamp(2rem, 4.2vw, 3.25rem); card titles 1.25rem or larger; nothing below 0.875rem. Set font-family, font-size, line-height and color explicitly.',
+    '- Responsive without script: grids and splits collapse to one column under 820px; nothing causes sideways scrolling.',
+    '- Light motion: data-rv-reveal (or ="left", "right", "zoom", "fade") on a few blocks that should ease in on scroll — the page animates them, write no opacity:0 or keyframes for it; a gentle hover lift on cards and buttons.',
+    '- A row with more items than fit may be a carousel: data-rv-carousel on the wrapper, data-rv-carousel-track on the element holding the items, a width on each item; the page adds the buttons — never draw arrows or dots.',
+    '',
+    'HTML rules: ONE root element carrying id="' + payload.sectionId + '", no <html>/<body>/<head>, no <script>, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
+    'CSS rules: plain class selectors for the classes you use, each class prefixed with "' + payload.sectionId + '-", including one for the root element. Do NOT write [data-rv-section] in any selector and do not style html, body or :root. No @import.',
+    '',
+    'Neighbouring sections, so that yours differs from them: above — ' + (payload.above || '(none)') + '; below — ' + (payload.below || '(none)') + '.',
+    '',
+    'THE SECTION AS IT IS NOW — its HTML:', String(payload.html),
+    '',
+    'Its CSS (shown as stored: the "[data-rv-section=…]" prefix on each rule is added by the server, do not write it):', String(payload.css)
+  ];
+  return lines.join('\n');
+}
+
+function handleRedesignSection(req, res) {
+  readBody(req, res, function (raw) {
+    var payload;
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    var eventId = String(payload.eventId || '').trim();
+    var sectionId = slugifyId(payload.sectionId);
+    var html = stripEditorMarks(payload.html), css = String(payload.css || '');
+    if (!eventId || !isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    if (!sectionId || !html.trim()) return sendJson(res, 400, { error: 'The section to redesign is missing.' });
+    if (html.length + css.length > REDESIGN_MAX_CHARS) return sendJson(res, 413, { error: 'This section is too large to redesign in one go. Split it into two sections first.' });
+
+    var fb = getFirebase();
+    if (fb.error) return sendJson(res, 503, { error: fb.error });
+
+    watchEvent(fb, eventId).then(function () { return fb.db.collection('events').doc(eventId).get(); }).then(function (snap) {
+      var data = snap.exists ? snap.data() : {};
+      var design = (data.designPlan && data.designPlan.design) || {};
+      var prompt = buildRedesignPrompt({
+        sectionId: sectionId, html: html, css: css, design: design,
+        instruction: String(payload.instruction || '').trim(),
+        above: String(payload.above || '').slice(0, 200), below: String(payload.below || '').slice(0, 200)
+      });
+      return callGeminiJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+        if (r.error) return sendAiFailure(res, r);
+        var newHtml = sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim();
+        if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' });
+        var newCss = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || '')));
+        sendJson(res, 200, {
+          sectionId: sectionId, html: newHtml,
+          css: scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml)),
+          summary: String(r.parsed.summary || '').trim().slice(0, 300)
+        });
+      });
+    }).catch(function (err) { sendStepFailure(res, err, 500, 'redesign-section failed: ' + err.message); });
+  }, BODY_LIMITS.ai);
 }
 
 function handleGenerateContent(req, res) {
@@ -4748,6 +4862,7 @@ var ROUTES = {
   'POST /api/ingest-source': handleIngestSource,
   'POST /api/plan-structure': handlePlanStructure,
   'POST /api/generate-content': handleGenerateContent,
+  'POST /api/redesign-section': handleRedesignSection,
   'GET /api/draft': handleGetDraft,
   'GET /api/generated-template': handleGeneratedTemplate,
   'GET /api/generated-section': handleGeneratedSection,
@@ -4831,6 +4946,7 @@ module.exports = { handleApi };
 module.exports._testHooks = {
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
+  buildRedesignPrompt, stripEditorMarks,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf
 };

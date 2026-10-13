@@ -240,13 +240,14 @@ function imagePrompt(subject, design, opts) {
       ? 'Create the wide background picture for the hero banner of a professional event website. Text and buttons will sit on top of it, so keep the composition calm, with open space and no strong detail in the centre.'
       : 'Create one picture for a section of a professional event website.',
     'Subject: ' + String(subject || 'the theme of a professional conference').slice(0, 400) + '.',
+    opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that, shown through concrete objects, places and materials — not a generic backdrop.' : '',
     design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial, natural light, shallow depth of field.',
     'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents.',
     'Every picture on this site shares this one style, so that they read as a set.',
     opts.hero ? 'Landscape, 16:9.' : 'Landscape, 4:3.',
     IMAGE_RULES
   ];
-  return lines.join(' ');
+  return lines.filter(Boolean).join(' ');
 }
 
 module.exports = {
