@@ -120,10 +120,42 @@ async function run() {
   try { img = await callGeminiImage('a background'); } finally { releaseLogs(); }
   ok(img.code === 'ai-bad-output' && seen.length === 1, 'image: an answer without a picture is ai-bad-output', JSON.stringify(img));
 
+  /* pictures for the text model, a picture to edit, and who answered */
+  script = [answerWith('{"a":"b"}')]; seen = []; captureLogs();
+  var withPics; try { withPics = await callGeminiJson('p', SCHEMA, { inlineFile: { mimeType: 'application/pdf', data: 'JVBERg==' }, images: [{ mimeType: 'image/png', data: 'iVBORw0KGgo=' }, { mimeType: 'IMAGE/JPEG; q=1', data: '/9j/4AAQ' }] }); } finally { releaseLogs(); }
+  var sentParts = seen[0].body.contents[0].parts;
+  ok(sentParts.length === 4 && sentParts[0].text === 'p' && sentParts[1].inlineData.mimeType === 'application/pdf' && sentParts[2].inlineData.mimeType === 'image/png' && sentParts[2].inlineData.data === 'iVBORw0KGgo=' && sentParts[3].inlineData.mimeType === 'image/jpeg',
+    'pictures travel as inlineData parts after the text and the file', JSON.stringify(sentParts));
+  ok(withPics.parsed.a === 'b' && withPics.provider === 'gemini' && withPics.model === GEMINI_TEXT_MODEL, 'a text answer says which provider and model gave it', JSON.stringify(withPics));
+  [[{ mimeType: 'image/svg+xml', data: 'AAAA' }], [{ mimeType: 'application/pdf', data: 'AAAA' }], [{ mimeType: 'image/png' }],
+    [1, 2, 3, 4, 5, 6, 7].map(function () { return { mimeType: 'image/png', data: 'AAAA' }; })].forEach(function (images, i) {
+    var threw = false; seen = [];
+    try { callGeminiJson('p', SCHEMA, { images: images }); } catch (e) { threw = true; }
+    ok(threw && seen.length === 0, 'pictures: bad set ' + (i + 1) + ' is refused before any request');
+  });
+  script = [answerWith('{"a":"b"}')]; seen = []; captureLogs();
+  try { await callGeminiJson('p', SCHEMA, { images: [1, 2, 3, 4, 5, 6].map(function () { return { mimeType: 'image/webp', data: 'AAAA' }; }) }); } finally { releaseLogs(); }
+  ok(seen.length === 1 && seen[0].body.contents[0].parts.length === 7, 'six pictures are allowed');
+
+  script = [{ status: 200, body: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'ZWRpdGVk' } }] }, finishReason: 'STOP' }] } }]; seen = []; captureLogs();
+  try { img = await callGeminiImage('make the sky darker', { image: { mimeType: 'image/jpeg', data: '/9j/4AAQ' } }); } finally { releaseLogs(); }
+  var editParts = seen[0].body.contents[0].parts;
+  ok(editParts.length === 2 && editParts[0].text === 'make the sky darker' && editParts[1].inlineData.mimeType === 'image/jpeg' && editParts[1].inlineData.data === '/9j/4AAQ',
+    'image: a picture to edit travels next to the words', JSON.stringify(editParts));
+  ok(img.base64 === 'ZWRpdGVk' && img.mimeType === 'image/png' && img.provider === 'gemini' && img.model === GEMINI_IMAGE_MODEL, 'image: same answer shape, with provider and model', JSON.stringify(img));
+  var threwEdit = false; seen = [];
+  try { callGeminiImage('p', { image: { mimeType: 'application/pdf', data: 'AAAA' } }); } catch (e) { threwEdit = true; }
+  ok(threwEdit && seen.length === 0, 'image: a file that is not a picture is refused before any request');
+  script = [{ status: 429, body: '{}' }]; seen = []; captureLogs();
+  var failed; try { failed = await callGeminiJson('p', SCHEMA, {}); } finally { releaseLogs(); }
+  ok(failed.code === 'ai-quota' && failed.provider === 'gemini' && !failed.model, 'a failure says which provider failed', JSON.stringify(failed));
+
   /* no key */
   delete process.env.GEMINI_API_KEY; seen = []; captureLogs();
   var nokey; try { nokey = await callGeminiJson('p', SCHEMA, {}); } finally { releaseLogs(); }
   ok(nokey.status === 503 && nokey.code === 'ai-config' && seen.length === 0 && !LEAKS.test(nokey.error) && /not set up on this server/.test(nokey.error), 'without a key: 503 ai-config, a plain sentence, no request', JSON.stringify(nokey));
+
+  ok(require('./gemini').DEFAULT_TIMEOUT_MS === 60000, 'the default timeout is exported (llm.js asks whether a fallback still fits)');
 
   stub.closeAllConnections && stub.closeAllConnections();
   stub.close();

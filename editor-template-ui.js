@@ -147,6 +147,7 @@
       document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
       loadSiteInfo();
+      logoUnitNotice();
       return true;
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -1411,6 +1412,13 @@
       var picEl = selectedEl;
       openPictureDialog('Replace image', canvas.pictureOf(picEl), function (url) {
         if (!picEl.isConnected) return;
+        /* a logo unit the owner has replaced no longer needs the note about the one it replaced */
+        var unit = picEl.closest ? picEl.closest('[data-rv-logo-note]') : null;
+        if (unit) {
+          unit.removeAttribute('data-rv-logo-note');
+          var shownNote = document.querySelector('#ed-notices [data-notice="logo-unit"]');
+          if (shownNote) shownNote.remove();
+        }
         canvas.setPicture(picEl, url); clearAiGenerated(picEl); commitNow(); repositionToolbars();
       });
     } else if (action === 'alt-text') {
@@ -3421,6 +3429,25 @@
     }
     send.addEventListener('click', go);
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } });
+  }
+
+  /* What the generator had to say about the logo unit it took from the previous edition (a year it could
+     not change, a sponsor's mark drawn into it): shown once the site is open, until the owner dismisses it
+     or replaces the picture. The note travels on the unit itself and is removed from a published page. */
+  function logoUnitNotice() {
+    if (!canvas || !canvas.doc) return;
+    var unit = canvas.doc.querySelector('[data-rv-logo-note]');
+    if (!unit) return;
+    showNotice('logo-unit', {
+      kind: 'warn', dismissible: true, text: 'Logo unit: ' + unit.getAttribute('data-rv-logo-note'),
+      /* checked and fine: the note comes off the unit, so it is not shown again the next time the site opens */
+      actions: [{ label: 'Looks right', onClick: function () {
+        Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { el.removeAttribute('data-rv-logo-note'); });
+        commitNow();
+        var shown = document.querySelector('#ed-notices [data-notice="logo-unit"]');
+        if (shown) shown.remove();
+      } }]
+    });
   }
 
   /* ---------- device / preview / publish ---------- */

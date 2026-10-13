@@ -5,6 +5,7 @@
 const h = require('../functions/lib/api.js')._testHooks;
 const g = require('../functions/lib/gen-design.js');
 const gemini = require('../functions/lib/gemini.js');
+const llm = require('../functions/lib/llm.js');
 
 const meta = { name: 'Sample CIO Leadership Awards 2027', category: 'ip', city: 'New Delhi',
   description: 'An awards night and leadership forum recognising India\'s top CIOs and technology leaders.' };
@@ -30,7 +31,8 @@ const open = '\n````text\n', close = '\n````\n';
 let md = '# The prompts behind an AI-designed site\n\n' +
   'Written out from the code by `node tools/print-ai-prompts.js > docs/ai-site-prompts.md`, with a sample event in place of a real one. ' +
   'The wording lives in `functions/lib/api.js` and `functions/lib/gen-design.js` — change it there and run the command again.\n\n' +
-  'A site is made in five steps; a sixth prompt redesigns one section from the editor. Text goes to `' + gemini.GEMINI_TEXT_MODEL + '`, pictures to `' + gemini.GEMINI_IMAGE_MODEL + '`.\n';
+  'A site is made in five steps; a sixth prompt redesigns one section from the editor. Text goes to Claude when its key is set on the server (`' + llm.PROFILES['plan-structure'].model + '` for the design and the section code, `' + llm.PROFILES['default'].model + '` for the rest), ' +
+  'with Gemini (`' + gemini.GEMINI_TEXT_MODEL + '`) as the automatic fallback and as the only model when no key is set; pictures always go to `' + gemini.GEMINI_IMAGE_MODEL + '` (see `functions/lib/llm.js`).\n';
 
 md += '\n## 1. Read the brief\n\nSent with the description and, when given, the PDF.\n' + open + h.buildExtractBriefPrompt(meta) + close;
 md += '\n## 2. Read each reference page\n\nOnce per link (previous edition, current edition, competitors).\n' + open +

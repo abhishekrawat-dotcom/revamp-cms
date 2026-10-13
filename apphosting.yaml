@@ -33,6 +33,17 @@ env:
     availability:
       - RUNTIME
 
+  # The Claude key. With it set, every text call (design plan, section code, redesign, chat, brief and page
+  # reading) goes to Claude first and falls back to Gemini on any failure; without it everything stays on
+  # Gemini (functions/lib/llm.js). Pictures are always Gemini's. This entry stays commented out until the
+  # secret exists: a rollout that names a secret which is not there FAILS. To switch Claude on:
+  #   1. firebase apphosting:secrets:set ANTHROPIC_API_KEY --project revamp-cms   (and grant the backend access when asked)
+  #   2. uncomment the four lines below and push.
+  # - variable: ANTHROPIC_API_KEY
+  #   secret: ANTHROPIC_API_KEY
+  #   availability:
+  #     - RUNTIME
+
   # Where functions/lib/api.js's scrapeLovableUrl() sends live-URL Lovable imports to actually be rendered
   # — the Cloud Run URL of the separate lovable-scraper-service/ (see its README.md for what it is, why it
   # exists, and the exact `gcloud run deploy` command that prints this URL). Not a secret, just an address;

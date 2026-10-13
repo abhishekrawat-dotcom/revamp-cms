@@ -1,11 +1,18 @@
 /* The one client for Google's Gemini API.
 
-     callGeminiJson(prompt, schema, opts)  ->  Promise<{ parsed } | failure>
-     callGeminiImage(prompt, opts)         ->  Promise<{ mimeType, base64 } | failure>
-     failure = { error, status, code, retryable, timeoutMs? }       (these never reject)
+     callGeminiJson(prompt, schema, opts)  ->  Promise<{ parsed, provider, model } | failure>
+     callGeminiImage(prompt, opts)         ->  Promise<{ mimeType, base64, provider, model } | failure>
+     failure = { error, status, code, retryable, timeoutMs?, provider }       (these never reject)
+   provider is always 'gemini' here; model is the model that answered.
 
    opts: { inlineFile: { mimeType, data (base64) }, timeoutMs = 60000, retry = true, deadlineAt (ms epoch),
            maxOutputTokens, route, eventId, user }      — route / eventId / user only label the log line.
+     callGeminiJson also takes  images: [{ mimeType, data (base64) }]  — up to 6 pictures for the model to look at.
+     callGeminiImage also takes image: { mimeType, data (base64) }     — a picture to EDIT rather than start from nothing.
+
+   FAILURES and failure(code, extra) are exported so the other provider's client (claude.js) answers with
+   the same codes, statuses and sentences: a page cannot tell, and need not know, which one failed.
+   DEFAULT_TIMEOUT_MS is exported so llm.js can tell whether a call here still fits before its deadline.
 
    `error` is a sentence fit to show an event owner; `status` is what the route should answer with; `code`
    tells the page which failure it was, so it never has to guess from the wording:
@@ -27,6 +34,8 @@ var GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-ima
 var DEFAULT_TIMEOUT_MS = 60000;
 var RETRY_PAUSE_MS = 1500;
 var INLINE_FILE_TYPES = ['application/pdf', 'text/plain'];
+var IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+var MAX_IMAGES = 6;
 
 var FAILURES = {
   'ai-quota': { status: 429, retryable: true, error: 'The AI service is at its limit right now. Try again in a few minutes.' },
@@ -41,6 +50,14 @@ var FAILURES = {
 function failure(code, extra) {
   var f = FAILURES[code];
   return Object.assign({ error: f.error, status: f.status, code: code, retryable: f.retryable }, extra || {});
+}
+
+/* One picture as a request part. A caller's mistake (a type the model cannot read, no data) throws. */
+function imagePart(image, who) {
+  var type = String((image && image.mimeType) || '').split(';')[0].trim().toLowerCase();
+  if (IMAGE_TYPES.indexOf(type) === -1) throw new Error(who + ': a picture must be PNG, JPEG, WebP or GIF, not "' + type + '".');
+  if (!image.data || typeof image.data !== 'string') throw new Error(who + ': a picture needs its base64 data.');
+  return { inlineData: { mimeType: type, data: image.data } };
 }
 
 function apiBase() { return (process.env.GEMINI_API_BASE || GEMINI_API_BASE).replace(/\/+$/, ''); }
@@ -109,13 +126,13 @@ function call(kind, model, body, promptChars, opts, read) {
   var apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     logCall(kind, opts, started, 0, promptChars, { code: 'ai-config', detail: 'GEMINI_API_KEY is not set' });
-    return Promise.resolve(failure('ai-config'));
+    return Promise.resolve(failure('ai-config', { provider: 'gemini' }));
   }
   var timeoutMs = opts.timeoutMs > 0 ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
   if (opts.deadlineAt) timeoutMs = Math.min(timeoutMs, opts.deadlineAt - Date.now());
   if (timeoutMs < 1000) {
     logCall(kind, opts, started, 0, promptChars, { code: 'ai-timeout', detail: 'no time left before the deadline' });
-    return Promise.resolve(failure('ai-timeout', { timeoutMs: opts.timeoutMs > 0 ? opts.timeoutMs : DEFAULT_TIMEOUT_MS }));
+    return Promise.resolve(failure('ai-timeout', { timeoutMs: opts.timeoutMs > 0 ? opts.timeoutMs : DEFAULT_TIMEOUT_MS, provider: 'gemini' }));
   }
 
   function attempt(n) {
@@ -127,10 +144,10 @@ function call(kind, model, body, promptChars, opts, read) {
       var outcome = result.code ? result : read(result.data);
       if (outcome.code) {
         logCall(kind, opts, started, n, promptChars, Object.assign({ usage: result.usage }, outcome));
-        return failure(outcome.code, outcome.code === 'ai-timeout' ? { timeoutMs: timeoutMs } : null);
+        return failure(outcome.code, outcome.code === 'ai-timeout' ? { timeoutMs: timeoutMs, provider: 'gemini' } : { provider: 'gemini' });
       }
       logCall(kind, opts, started, n, promptChars, { usage: result.usage });
-      return outcome;
+      return Object.assign(outcome, { provider: 'gemini', model: model });
     });
   }
   return attempt(1);
@@ -157,6 +174,10 @@ function callGeminiJson(prompt, schema, opts) {
     if (INLINE_FILE_TYPES.indexOf(type) === -1) throw new Error('callGeminiJson: inlineFile must be a PDF or plain text, not "' + type + '".');
     parts.push({ inlineData: { mimeType: type, data: opts.inlineFile.data } });
   }
+  if (opts.images && opts.images.length) {
+    if (opts.images.length > MAX_IMAGES) throw new Error('callGeminiJson: at most ' + MAX_IMAGES + ' pictures, not ' + opts.images.length + '.');
+    opts.images.forEach(function (image) { parts.push(imagePart(image, 'callGeminiJson')); });
+  }
   var generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
   if (opts.maxOutputTokens > 0) generationConfig.maxOutputTokens = opts.maxOutputTokens;
 
@@ -176,7 +197,10 @@ function callGeminiJson(prompt, schema, opts) {
 
 function callGeminiImage(prompt, opts) {
   opts = opts || {};
-  var body = { contents: [{ parts: [{ text: String(prompt) }] }], generationConfig: { responseModalities: ['IMAGE'] } };
+  var parts = [{ text: String(prompt) }];
+  /* a picture to change: the model gets it next to the words and answers with the edited picture */
+  if (opts.image) parts.push(imagePart(opts.image, 'callGeminiImage'));
+  var body = { contents: [{ parts: parts }], generationConfig: { responseModalities: ['IMAGE'] } };
   return call('image', GEMINI_IMAGE_MODEL, body, String(prompt).length, opts, function (data) {
     var bad = unusableReason(data);
     if (bad) return bad;
@@ -187,4 +211,4 @@ function callGeminiImage(prompt, opts) {
   });
 }
 
-module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL };
+module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES };

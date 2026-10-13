@@ -2,7 +2,7 @@
 
 Written out from the code by `node tools/print-ai-prompts.js > docs/ai-site-prompts.md`, with a sample event in place of a real one. The wording lives in `functions/lib/api.js` and `functions/lib/gen-design.js` — change it there and run the command again.
 
-A site is made in five steps; a sixth prompt redesigns one section from the editor. Text goes to `gemini-3.8-flash`, pictures to `gemini-2.5-flash-image`.
+A site is made in five steps; a sixth prompt redesigns one section from the editor. Text goes to Claude when its key is set on the server (`claude-opus-5-5` for the design and the section code, `claude-sonnet-5-5` for the rest), with Gemini (`gemini-3.8-flash`) as the automatic fallback and as the only model when no key is set; pictures always go to `gemini-2.5-flash-image` (see `functions/lib/llm.js`).
 
 ## 1. Read the brief
 

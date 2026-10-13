@@ -77,6 +77,15 @@ ok(g.ensureLogo(nav, '', 'E') === nav, 'no logo, no change');
 var ip = g.imagePrompt('server halls', { mode: 'dark', themeColor: '#123456', accentColor: '#abcdef', imageStyle: 'long exposure' }, { hero: true });
 ok(/no people/.test(ip) && /no text/.test(ip) && /16:9/.test(ip) && /server halls/.test(ip) && /long exposure/.test(ip), 'image prompt carries the subject, the style and the rules', ip);
 
+/* ---- the logo unit as one picture ---- */
+var lu = g.logoUnitImageHtml({ url: 'https://storage.googleapis.com/b/events/e/generated/1-logo-unit.svg', alt: 'A & B "Summit" 2027', width: 404.4, height: 308, mode: 'dark' });
+ok(/^<div class="rv-lu rv-lu-pic rv-lu-on-dark" data-rv-logo-unit><img class="rv-lu-img" src="https:\/\/storage[^"]+\.svg" alt="A &amp; B &quot;Summit&quot; 2027" width="404" height="308" decoding="async"><\/div>$/.test(lu), 'the unit is one picture, sized, with the name as its alt text', lu);
+ok(g.logoUnitImageHtml({ url: '' }) === '' && g.logoUnitImageHtml({}) === '' && g.logoUnitImageHtml() === '', 'no picture, no unit: the caller sets it in type');
+ok(g.logoUnitImageHtml({ url: 'javascript:alert(1)' }) === '' && g.logoUnitImageHtml({ url: 'http://x.example/a.png' }) === '' && g.logoUnitImageHtml({ url: '/templates/x.svg' }) === '', 'only an https address is a picture');
+var noted = g.logoUnitImageHtml({ url: 'https://x.example/u.png', mode: 'light', plate: 'dark', note: 'It still shows 2026 "as drawn" <b>' });
+ok(noted.indexOf('data-rv-logo-note="It still shows 2026 &quot;as drawn&quot; &lt;b&gt;"') !== -1 && noted.indexOf('<span class="rv-lu-plate rv-lu-plate-dark"><img') !== -1 && noted.indexOf('rv-lu-on-light') !== -1 && !/width=/.test(noted), 'the note travels on the unit, escaped; a plate when asked; no size when none is known', noted);
+ok(g.logoUnitImageHtml({ url: 'https://x.example/u.png', plate: 'purple' }).indexOf('rv-lu-plate') === -1, 'an unknown plate is no plate');
+
 if (failures.length) {
   console.log(failures.length + ' of ' + checks + ' checks FAILED:\n\n  - ' + failures.join('\n  - '));
   process.exit(1);

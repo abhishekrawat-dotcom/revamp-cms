@@ -274,12 +274,31 @@ function logoUnitHtml(parts, mode) {
     '</div>';
 }
 
+/* The unit as ONE picture: the previous edition's own lock-up, or the SVG drawn for a new event
+   (functions/lib/api.js, buildLogoUnit). '' when there is no picture — the caller then sets the unit in
+   type (logoUnitHtml).
+     o: { url, alt, width, height, mode, plate: '' | 'light' | 'dark', note }
+   plate: the lock-up was drawn for the other kind of background and stands on a plate of that tone.
+   note: what the owner should check about it; the editor shows it and it never reaches a published page. */
+function logoUnitImageHtml(o) {
+  o = o || {};
+  var url = String(o.url || '').trim();
+  if (!/^https:\/\//i.test(url)) return '';
+  var tone = o.mode === 'dark' ? 'dark' : 'light';
+  var w = Math.round(+o.width) || 0, h = Math.round(+o.height) || 0;
+  var img = '<img class="rv-lu-img" src="' + escAttr(url) + '" alt="' + escAttr(o.alt || '') + '"' + (w > 0 && h > 0 ? ' width="' + w + '" height="' + h + '"' : '') + ' decoding="async">';
+  if (o.plate === 'light' || o.plate === 'dark') img = '<span class="rv-lu-plate rv-lu-plate-' + o.plate + '">' + img + '</span>';
+  var note = String(o.note || '').replace(/\s+/g, ' ').trim();
+  return '<div class="rv-lu rv-lu-pic rv-lu-on-' + tone + '" data-rv-logo-unit' + (note ? ' data-rv-logo-note="' + escAttr(note) + '"' : '') + '>' + img + '</div>';
+}
+
 /* ---------- the hero ----------
    The banner that opens a generated site is built here, not written by the model, to the pattern of ET's own
    event sites: centred; the logo unit; one line about the event; its date and place; two buttons. Nothing
    else — the overview, numbers and tracks belong to the sections below it. What varies from site to site is
    what the design decided: the picture, the colours, the fonts, the corner radius, the line itself.
-     o: { unit, tagline, date, place, mode, image, primary: { label, href }, secondary: { label, href } | null } */
+     o: { unit, tagline, date, place, mode, image, banner, primary: { label, href }, secondary: { label, href } | null }
+     banner: a '#rrggbb' the hero is painted with when it has no picture and its tone is not the page's. */
 var HERO_ICONS = {
   date: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
   place: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>'
@@ -313,7 +332,7 @@ function heroCss(o) {
     : 'radial-gradient(ellipse 75% 80% at 50% 50%, rgba(255,255,255,.9) 0%, rgba(255,255,255,.66) 62%, rgba(255,255,255,.38) 100%)';
   var ink = dark ? '#ffffff' : '#14161b';
   return [
-    '.hero-root{position:relative;min-height:88vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:clamp(96px,12vw,150px) 24px clamp(64px,9vw,110px);color:' + ink + ';background-color:var(--rv-bg);' +
+    '.hero-root{position:relative;min-height:88vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:clamp(96px,12vw,150px) 24px clamp(64px,9vw,110px);color:' + ink + ';background-color:' + (/^#[0-9a-f]{6}$/i.test(String(o.banner || '')) ? o.banner : 'var(--rv-bg)') + ';' +
       (o.image ? 'background-image:url("' + o.image + '");background-size:cover;background-position:center;' : 'background-image:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--theme-color) 34%, transparent), transparent 70%);') + '}',
     '.hero-veil{position:absolute;inset:0;background:' + (o.image ? veil : 'none') + ';pointer-events:none}',
     '.hero-inner{position:relative;z-index:1;width:100%;max-width:980px;margin:0 auto;display:flex;flex-direction:column;align-items:center}',
@@ -398,5 +417,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
-  ensureLogo, imagePrompt, logoUnitParts, logoUnitHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, imagePrompt, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

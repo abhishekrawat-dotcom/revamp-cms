@@ -1757,7 +1757,7 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
               </span>
               <h3>Generate from a brief</h3>
-              <p>Give Gemini an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
+              <p>Give ETB2B AI an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
               <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
             </div>
             <div class="design-choice-card">
@@ -1910,7 +1910,7 @@
 
           <!-- shown for S.creationMethod === 'brief' — kept in S.brief (wireBriefInputs) -->
           <div class="grp" id="brief-grp" hidden>
-            <div class="grp-h"><h4>Tell Gemini about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
+            <div class="grp-h"><h4>Tell ETB2B AI about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
             <p class="hint" style="margin:6px 0 12px;">Modelled on the previous edition when you give its link, then improved. The AI writes the content, makes the pictures and places your logo.</p>
             <div class="gb-grid">
               <div class="field"><span class="flabel" id="gb-mode-label">Site type</span>
@@ -4575,7 +4575,7 @@
   function serverSentence(err){
     var said = (err && err.said) || '';
     if (!said || said.length > 140) return '';
-    if (/:\/\/|www\.|[{}<>\[\]\\]|\b(gemini|google\w*|vertex|firebase|firestore|puppeteer|chrom(e|ium)|json|unexpected token|stack|exception|undefined|E[A-Z]{4,}|ERR_\w+)\b|net::|failed:/i.test(said)) return '';
+    if (/:\/\/|www\.|[{}<>\[\]\\]|\b(gemini|google\w*|anthropic|claude|vertex|firebase|firestore|puppeteer|chrom(e|ium)|json|unexpected token|stack|exception|undefined|E[A-Z]{4,}|ERR_\w+)\b|net::|failed:/i.test(said)) return '';
     return said;
   }
   /* the failures any request can have, said the same way everywhere; '' when it is something else */

@@ -122,7 +122,11 @@ const { getFirebase } = require('./firebase');
 const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
 const { logActivity, actorOf } = require('./activity');
-const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
+const { callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
+/* every text call goes through llm.js: Claude first when its key is set, Gemini as the fallback */
+const llm = require('./llm');
+const logoUnit = require('./logo-unit');
+const pngLite = require('./png-lite');
 const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
@@ -333,7 +337,7 @@ function handleSuggestDesign(req, res) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
-    callGeminiJson(buildPrompt(payload), responseSchemaFor(payload), { route: 'suggest-design', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+    llm.callJson(buildPrompt(payload), responseSchemaFor(payload), { route: 'suggest-design', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
@@ -452,7 +456,7 @@ function handleChatEdit(req, res) {
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
 
-    callGeminiJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+    llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
@@ -596,7 +600,7 @@ function handleExtractBrief(req, res) {
     watchEvent(fb, eventId)
       .then(function (w) { watch = w; return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } }); })
       .then(function () {
-        return callGeminiJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small });
+        return llm.callJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small });
       })
       .then(function (r) {
         if (r.error) return sendAiFailure(res, r);
@@ -616,7 +620,7 @@ function handleExtractBrief(req, res) {
         return watch.merge(Object.assign({}, eventMeta, { updatedAt: now }))
           .then(function () { return eventRef.collection('briefs').add({
             sourceFileName: fileName, mimeType: mimeType, storagePath: storagePath,
-            extracted: extracted, model: GEMINI_TEXT_MODEL, createdAt: now
+            extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now
           }); })
           .then(function (briefRef) { sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted }); });
       })
@@ -786,11 +790,23 @@ function handleIngestSource(req, res) {
     var controller = new AbortController();
     var timedOut = false;
     var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 20000);
+    /* reading a page that had to be rendered can take two minutes: the model works in what is left */
+    var deadlineAt = Date.now() + 270000;
 
     var watch = null;
     watchEvent(fb, eventId)
       .then(function (w) { watch = w; return fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' } }); })
-      .then(function (r) { if (!r.ok) throw new Error('page returned HTTP ' + r.status); return r.text(); })
+      .then(function (r) {
+        if (r.ok) return r.text();
+        /* Some sites (several ET verticals among them) turn away anything that is not a browser. The page
+           is then read the way an imported one is: by the rendering service, in a real browser. */
+        if ([401, 403, 406, 429, 503].indexOf(r.status) === -1 || !process.env.LOVABLE_SCRAPER_URL) throw new Error('page returned HTTP ' + r.status);
+        clearTimeout(timer);
+        return validateImportUrl(url).then(function (problem) {
+          if (problem) throw new Error('page returned HTTP ' + r.status);
+          return scrapeLovableUrl(url).then(function (rendered) { return stripAllScriptTags(rendered); });
+        });
+      })
       .then(function (html) {
         clearTimeout(timer);
         return fetchSourceCss(url, html).then(function (css) { return { html: html, css: css }; });
@@ -803,7 +819,20 @@ function handleIngestSource(req, res) {
         var tone = genDesign.pageTone(page.css, html);
         var text = stripToText(html).slice(0, MAX_SOURCE_TEXT_CHARS);
         var skeleton = genDesign.markupSkeleton(html);
-        return callGeminiJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+        /* An edition of this same event: what could be its logo unit is kept (addresses, never pictures),
+           with what the page says about its year — plan-structure takes the unit from here. */
+        var ownEdition = type === 'previousEdition' || type === 'currentEdition';
+        var logoCandidates = !ownEdition ? [] : logoUnit.findLogoCandidates(html, url, String((payload.eventMeta || {}).name || '')).slice(0, 4).map(function (c) {
+          var kept = { url: String(c.url || '').slice(0, 1000), kind: c.kind, score: c.score, cls: String(c.cls || '').slice(0, 120), alt: String(c.alt || '').slice(0, 200) };
+          if (c.kind === 'inline-svg') kept.svg = String(c.svg || '');
+          return kept;
+        }).filter(function (c) { return c.kind !== 'inline-svg' || (c.svg && c.svg.length <= 120000); });
+        var hints = ownEdition ? logoUnit.editionHints(html, url) : null;
+        var editionHints = hints ? {
+          title: String(hints.title || '').slice(0, 200), headings: (hints.headings || []).slice(0, 6).map(function (h) { return String(h).slice(0, 200); }),
+          years: (hints.years || []).slice(0, 8), editionImage: String(hints.editionImage || '').slice(0, 1000)
+        } : null;
+        return llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt }).then(function (r) {
           if (r.error) return sendAiFailure(res, r);
           var sections = (r.parsed.sections || []).slice(0, 25).map(function (s) {
             return { heading: String(s.heading || '').slice(0, 120), body: String(s.body || '').slice(0, 500) };
@@ -813,7 +842,7 @@ function handleIngestSource(req, res) {
           return watch.stillThere().then(function () {
             return fb.db.collection('events').doc(eventId).collection('sources').add({
               type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
-              design: design, tone: tone, fetchedAt: now
+              design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now
             });
           }).then(function (sourceRef) {
             sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone });
@@ -1034,9 +1063,10 @@ var DESIGN_PLAN_SCHEMA = {
           properties: {
             before: { type: 'STRING', description: 'The words of the name before the keyword, or an empty string.' },
             keyword: { type: 'STRING', description: 'The one or two distinctive words.' },
-            after: { type: 'STRING', description: 'The words of the name after the keyword, or an empty string.' }
+            after: { type: 'STRING', description: 'The words of the name after the keyword, or an empty string.' },
+            style: { type: 'STRING', enum: ['stacked', 'inline', 'boxed', 'underline'], description: 'How the lock-up is set when it has to be drawn new: stacked (three centred lines, the classic), inline (one line, for a short name), boxed (the keyword reversed out of a theme-colour box), underline (stacked, with a theme-colour rule under the keyword). Choose what suits this design\'s mood.' }
           },
-          required: ['before', 'keyword', 'after']
+          required: ['before', 'keyword', 'after', 'style']
         },
         heroTagline: { type: 'STRING', description: 'The ONE line under the event\'s name in the hero banner: what this event is, or its promise, in at most 10 words, no full stop needed (e.g. "India\'s Most Influential Enterprise Technology Decision-Makers. One Room."). Not the event\'s name, not a paragraph.' },
         heroImage: { type: 'STRING', description: 'One sentence: what the hero background picture shows — objects, spaces or abstract forms that evoke this event\'s subject. Never people, text or logos.' }
@@ -1215,9 +1245,377 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
     cornerRadius: ['0', '6', '12', '20'].indexOf(String(d.cornerRadius)) !== -1 ? String(d.cornerRadius) : '12',
     imageStyle: String(d.imageStyle || '').trim().slice(0, 300),
     logoUnit: genDesign.logoUnitParts(eventName, d.logoUnit),
+    logoUnitStyle: /^(stacked|inline|boxed|underline)$/.test(String((d.logoUnit || {}).style)) ? d.logoUnit.style : 'stacked',
     heroTagline: String(d.heroTagline || '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 14).join(' ').slice(0, 120),
     heroImage: String(d.heroImage || '').trim().slice(0, 300)
   };
+}
+
+/* ---------- THE LOGO UNIT — the event's signature at the top of the hero ----------
+   One picture (design.logoUnitUrl), made while the plan's other pictures are made:
+
+     a previous (or this) edition's site was given  ->  ITS logo unit, as it is. ingest-source kept the
+       candidates it found on that page (logo-unit.js); here the best one that really is a picture is
+       fetched and stored for this event. Only the edition's year is moved on, and only where that can be
+       done without redrawing anything else:
+         - an SVG whose year is real text: that text is changed, nothing else;
+         - a PNG with the year drawn in: the picture is kept pixel for pixel, the old year's rectangle is
+           emptied and the new year set over it, as text (so the edition after this one is a text change);
+         - a picture in which the year was read but cannot be moved (a JPEG, a PNG inside an SVG, a year
+           standing on artwork): kept as it is, and the owner is told in the editor that the year in it
+           still has to be replaced;
+         - an SVG whose lettering is drawn as outlines cannot be read here at all: it is used as it is.
+       Most ET lock-ups carry no year at all: they are used untouched. The hero takes the tone the
+       lock-up was drawn for (white lettering -> a dark banner), so it always stands clear, on nothing.
+     no previous edition, or nothing usable on it   ->  a new unit is drawn as one SVG file: The Economic
+       Times Business Verticals logo exactly as supplied, and the event's name set in the design's own
+       heading font (embedded, so it is the same on every screen) with its keyword largest.
+
+   buildLogoUnit() never rejects and never fails the plan: with no picture the hero falls back to the unit
+   set in type (genDesign.logoUnitHtml). -> { url, storagePath, source, width, height, heroMode, plate, note } */
+var LOGO_UNIT_MAX_BYTES = 3 * 1024 * 1024;
+var LOGO_UNIT_TRIES = 3;
+var LOGO_UNIT_DECODE_PIXELS = 2500000;       // 10 MB as RGBA; the copies made of it stay well inside the instance
+var LOGO_READ_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    allText: { type: 'STRING', description: 'Every word and number drawn in the picture, in reading order.' },
+    year: { type: 'STRING', description: 'The 4-digit year of the edition if one is drawn in the picture (e.g. "2026"), else an empty string. A year that is part of a slogan (e.g. "@2047") is not the edition\'s year.' },
+    yearBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there is a year: [ymin, xmin, ymax, xmax] of its four digits ONLY, each 0-1000 relative to the picture. Else an empty list.' },
+    yearFont: { type: 'STRING', enum: ['serif', 'sans-serif'] },
+    yearWeight: { type: 'STRING', enum: ['regular', 'bold'] },
+    extras: { type: 'STRING', description: 'Anything drawn inside that belongs to one edition only: a sponsor\'s name or logo ("Powered by …"), a theme line, an edition number. Else an empty string.' }
+  },
+  required: ['allText', 'year', 'yearBox', 'yearFont', 'yearWeight', 'extras']
+};
+var LOGO_READ_PROMPT = 'This picture is the logo unit (lock-up) of an event, taken from its website. It is shown here on a plain grey background that is not part of it. Read it carefully and answer.';
+
+var etLogoText = {};
+/* the official file for that tone, as text ('' if it cannot be read: the unit is then drawn without it,
+   and the hero falls back to the unit set in type, which shows the logo as a file) */
+function etLogoSvg(tone) {
+  if (etLogoText[tone] == null) {
+    try { etLogoText[tone] = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'img', 'et-business-verticals-on-' + tone + '.svg'), 'utf8'); }
+    catch (e) { etLogoText[tone] = ''; }
+  }
+  return etLogoText[tone];
+}
+
+function storePublicPicture(fb, storagePath, buffer, contentType) {
+  var file = fb.bucket.file(storagePath);
+  var metadata = { contentType: contentType, cacheControl: 'public, max-age=31536000, immutable' };
+  /* An SVG is shown through <img>, where it cannot run anything. Opened on its own it is a document: it is
+     offered as a download instead, so that a drawing taken from somebody else's page never runs here. */
+  if (contentType === 'image/svg+xml') metadata.contentDisposition = 'attachment';
+  return file.save(buffer, { metadata: metadata })
+    .then(function () { return file.makePublic(); })
+    .then(function () { return 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath; });
+}
+
+/* A Google font cut down to the characters needed, as { family, ttfBase64, metrics } — or null: the unit
+   is then set in a system face. Google answers TrueType to a request that names no browser. */
+function fetchUnitFont(family, weight, text) {
+  family = String(family || '').replace(/[^A-Za-z0-9 ]/g, '').trim();
+  if (!family) return Promise.resolve(null);
+  return safeFetch(logoUnit.googleFontCssUrl(family, weight, text), { timeoutMs: 6000, maxBytes: 200 * 1024 }).then(function (r) {
+    var fontUrl = r.status === 200 ? logoUnit.fontUrlFromCss(r.body.toString('utf8')) : '';
+    if (!fontUrl) return null;
+    return safeFetch(fontUrl, { timeoutMs: 6000, maxBytes: 600 * 1024 }).then(function (f) {
+      var metrics = f.status === 200 ? logoUnit.fontMetrics(f.body) : null;
+      return metrics ? { family: family, ttfBase64: f.body.toString('base64'), metrics: metrics } : null;
+    });
+  }).then(null, function () { return null; });
+}
+
+/* the picture a candidate names: { bytes, info } — or null when it cannot be had or is not a logo unit */
+function fetchLogoCandidate(cand) {
+  if (cand.kind === 'inline-svg') {
+    var text = String(cand.svg || '');
+    if (!standsAlone(text)) return Promise.resolve(null);
+    if (!/\sxmlns=/.test(text.slice(0, 600))) text = text.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+    var inline = Buffer.from(text, 'utf8');
+    return Promise.resolve(usableLogoPicture(inline));
+  }
+  if (!/^https?:\/\//i.test(String(cand.url || ''))) return Promise.resolve(null);
+  /* the type is judged from the bytes: ET's own image host serves PNGs named .jpg as image/jpeg */
+  return safeFetch(cand.url, { timeoutMs: 8000, maxBytes: LOGO_UNIT_MAX_BYTES }).then(function (r) {
+    return r.status === 200 ? usableLogoPicture(r.body) : null;
+  }, function () { return null; });
+}
+/* An <svg> cut out of a page is only a picture by itself when it does not lean on that page: on a symbol
+   defined elsewhere (<use href="#…">), on the page's text colour (currentColor), on the page's style sheet
+   (classes with no <style> of its own) or on the page's fonts (<text>). Otherwise it would be stored blank
+   or black — the next candidate, or a unit drawn new, is better. */
+function standsAlone(svg) {
+  if (/currentColor/i.test(svg) || /<text[\s>]/i.test(svg)) return false;
+  if (/\sclass\s*=/.test(svg) && !/<style[\s>]/i.test(svg)) return false;
+  var refs = svg.match(/(?:href\s*=\s*["']#|url\(\s*["']?#)([\w:.-]+)/g) || [];
+  return refs.every(function (ref) {
+    var id = ref.replace(/^.*#/, '');
+    return new RegExp('\\sid\\s*=\\s*["\']' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\']').test(svg);
+  });
+}
+/* logo-unit.js's rules, and two things they read past: an element under a namespace prefix (<x:script>),
+   and a style sheet pulled in by a processing instruction */
+function svgCouldRun(text) {
+  return logoUnit.svgIsActive(text) || /<\s*[\w-]+:(script|foreignObject|iframe|embed|object|handler|listener|set|animate)\b/i.test(text) || /<\?xml-stylesheet/i.test(text);
+}
+/* An SVG with a viewBox and no size of its own has no natural size as a picture: in a centred column it
+   is laid out 0 by 0. Its size is written into its root tag from what imageInfo read (the viewBox). */
+function sizedSvg(text, info) {
+  var at = text.search(/<svg[\s>]/i);
+  if (at === -1 || !(info.width > 0) || !(info.height > 0)) return text;
+  var end = text.indexOf('>', at);
+  if (end === -1) return text;
+  var tag = text.slice(at, end);
+  var w = /\swidth\s*=\s*["']\s*[\d.]+(px)?\s*["']/i.test(tag), h = /\sheight\s*=\s*["']\s*[\d.]+(px)?\s*["']/i.test(tag);
+  if (w && h) return text;
+  tag = tag.replace(/\s(width|height)\s*=\s*("[^"]*"|'[^']*')/gi, '') + ' width="' + Math.round(info.width) + '" height="' + Math.round(info.height) + '"';
+  return text.slice(0, at) + tag + text.slice(end);
+}
+function usableLogoPicture(bytes) {
+  var info = logoUnit.imageInfo(bytes);
+  if (logoUnit.plausibleUnit(info)) return null;
+  if (info.type === 'svg') {
+    var text = bytes.toString('utf8');
+    if (svgCouldRun(text)) return null;
+    var sized = sizedSvg(text, info);
+    if (sized !== text) bytes = Buffer.from(sized, 'utf8');
+  }
+  return { bytes: bytes, info: info };
+}
+
+function hex2(v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }
+
+/* What a vision model reads in a raster unit: { year, box: {x,y,width,height} in pixels | null, serif,
+   bold, extras } — or null when it could not be asked. A see-through PNG is laid on grey first: a model
+   reads transparency as white, and white lettering would be invisible to it. */
+function readLogoPicture(eventId, picture, decoded, deadlineAt) {
+  /* reading it is worth a few seconds, not the plan: with little time left the picture is used unread */
+  if (deadlineAt && deadlineAt - Date.now() < 25000) return Promise.resolve(null);
+  var shown = decoded && pngLite.hasTransparency(decoded)
+    ? { mimeType: 'image/png', data: pngLite.encode(pngLite.flatten(decoded, [128, 128, 128])).toString('base64') }
+    : { mimeType: picture.info.mime, data: picture.bytes.toString('base64') };
+  if (['image/png', 'image/jpeg', 'image/webp', 'image/gif'].indexOf(shown.mimeType) === -1) return Promise.resolve(null);
+  if (shown.data.length > 4 * 1024 * 1024) return Promise.resolve(null);       // base64 of 3 MB: nothing a logo unit needs
+  var ask = { route: 'logo-unit', eventId: eventId, images: [shown], timeoutMs: 40000, maxOutputTokens: AI_OUTPUT_TOKENS.small };
+  if (deadlineAt) ask.deadlineAt = deadlineAt;
+  return llm.callJson(LOGO_READ_PROMPT, LOGO_READ_SCHEMA, ask).then(function (r) {
+    if (r.error) return null;
+    var p = r.parsed || {}, year = /^(19|20)\d\d$/.test(String(p.year || '').trim()) ? String(p.year).trim() : '';
+    var b = Array.isArray(p.yearBox) ? p.yearBox.map(Number) : [], box = null;
+    if (year && b.length === 4 && b.every(function (n) { return n >= 0 && n <= 1000; }) && b[2] > b[0] && b[3] > b[1]) {
+      box = { x: b[1] / 1000 * picture.info.width, y: b[0] / 1000 * picture.info.height, width: (b[3] - b[1]) / 1000 * picture.info.width, height: (b[2] - b[0]) / 1000 * picture.info.height };
+    }
+    return { year: year, box: box, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160) };
+  }, function () { return null; });
+}
+
+/* A PNG with the old year drawn in -> one SVG: the same picture with that year's rectangle emptied, and
+   the new year set over it as text. null when the year cannot be placed with confidence — the picture is
+   then left alone. `read`: readLogoPicture()'s answer. */
+function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
+  if (!decoded || !read || !read.box) return Promise.resolve(null);
+  var box = read.box;
+  /* the model's box is a little loose or a little tight: the digits are where the ink is */
+  var around = { x: box.x - box.width * 0.08, y: box.y - box.height * 0.22, width: box.width * 1.16, height: box.height * 1.44 };
+  /* See-through or solid is judged where the year is, not for the picture as a whole: a year on a badge
+     inside a transparent lock-up stands on that badge's colour. */
+  var covered = pngLite.inkOf(decoded, around).coverage;
+  var clear = pngLite.hasTransparency(decoded) && covered < 0.6, background = clear ? null : pngLite.edgeColour(decoded, around);
+  var ink = pngLite.inkBounds(decoded, around, background);
+  if (!ink || !ink.colour) return Promise.resolve(null);
+  var ratio = ink.width / ink.height;
+  /* four digits side by side; anything else is not (only) the year */
+  if (ink.height < 8 || ratio < 1.5 || ratio > 4.6) return Promise.resolve(null);
+  /* lettering that runs to the edge of where it was looked for is not the year alone: something else
+     (a word beside it, a frame, artwork behind it) is in the box, and emptying it would damage that */
+  var ax0 = Math.max(0, Math.floor(around.x)), ay0 = Math.max(0, Math.floor(around.y));
+  var ax1 = Math.min(decoded.width, Math.ceil(around.x + around.width)), ay1 = Math.min(decoded.height, Math.ceil(around.y + around.height));
+  if (ink.x <= ax0 || ink.y <= ay0 || ink.x + ink.width >= ax1 || ink.y + ink.height >= ay1) return Promise.resolve(null);
+  if (background && Math.abs(ink.colour[0] - background[0]) + Math.abs(ink.colour[1] - background[1]) + Math.abs(ink.colour[2] - background[2]) < 120) return Promise.resolve(null);
+  var hole = { x: ink.x - 2, y: ink.y - 2, width: ink.width + 4, height: ink.height + 4 };
+  var kept = pngLite.encode(clear ? pngLite.clearBox(decoded, hole) : pngLite.fillBox(decoded, hole, background));
+  /* written here without the row filters the original had, the picture can come out several times its
+     size: a hero picture that heavy is worse than last year's year, which the owner is told about */
+  if (kept.length * 4 / 3 > Math.min(LOGO_UNIT_MAX_BYTES, Math.max(2 * (sourceBytes || 0), 600 * 1024))) return Promise.resolve(null);
+  var colour = '#' + hex2(ink.colour[0]) + hex2(ink.colour[1]) + hex2(ink.colour[2]);
+
+  return fetchUnitFont(read.serif ? 'Source Serif 4' : 'Inter', read.bold ? 700 : 400, toYear).then(function (font) {
+    var W = decoded.width, H = decoded.height, text, style = '';
+    var at = 'x="' + ink.x + '" y="' + (ink.y + ink.height) + '" fill="' + colour + '"';
+    if (font) {
+      /* lining figures stand as tall as the capitals: the size that makes them as tall as the old ones */
+      var size = ink.height / (font.metrics.capHeight / font.metrics.unitsPerEm);
+      var natural = logoUnit.textWidth(font.metrics, toYear, size, 0);
+      if (natural > ink.width * 1.04) { size = size * ink.width / natural; natural = ink.width; }
+      var spacing = Math.min((ink.width - natural) / 3, size * 0.6);
+      style = '<style>@font-face{font-family:\'rvyear\';src:url(data:font/ttf;base64,' + font.ttfBase64 + ') format(\'truetype\')}</style>';
+      text = '<text ' + at + ' font-family="\'rvyear\', ' + (read.serif ? 'Georgia, serif' : 'Arial, sans-serif') + '" font-size="' + size.toFixed(2) + '" letter-spacing="' + spacing.toFixed(2) + '">' + toYear + '</text>';
+    } else {
+      text = '<text ' + at + ' font-family="' + (read.serif ? 'Georgia, \'Times New Roman\', serif' : 'Arial, Helvetica, sans-serif') + '" font-weight="' + (read.bold ? 700 : 400) +
+        '" font-size="' + (ink.height / 0.716).toFixed(2) + '" textLength="' + ink.width + '" lengthAdjust="spacing">' + toYear + '</text>';
+    }
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img">' +
+      '<title>' + escHtmlText(eventName || '') + '</title>' + style +
+      '<image width="' + W + '" height="' + H + '" href="data:image/png;base64,' + kept.toString('base64') + '"/>' + text + '</svg>';
+    if (svgCouldRun(svg)) return null;
+    return { bytes: Buffer.from(svg, 'utf8'), info: { type: 'svg', mime: 'image/svg+xml', width: W, height: H, alpha: null } };
+  });
+}
+
+/* What background a raster unit was drawn for, from its own lettering: 'for-dark' when it has white in it
+   and no black, 'for-light' the other way round, '' when it would read on either. */
+function rasterTone(decoded) {
+  if (!decoded) return '';
+  var light = 0, dark = 0, all = 0, d = decoded.data, step = Math.max(1, Math.floor(decoded.width * decoded.height / 60000)) * 4;
+  var opaque = !pngLite.hasTransparency(decoded);
+  if (opaque) return '';                                           // it brings its own background
+  for (var i = 0; i < d.length; i += step) {
+    if (d[i + 3] < 200) continue;
+    all++;
+    var lum = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+    if (lum > 0.86) light++; else if (lum < 0.16) dark++;
+  }
+  if (!all) return '';
+  /* a little white lettering and nothing black is already a unit that vanishes on a white page (the "Auto"
+     of an ET Auto lock-up is a twentieth of its ink) */
+  if (light / all > 0.035 && dark / all < 0.02) return 'for-dark';
+  if (dark / all > 0.035 && light / all < 0.02) return 'for-light';
+  if (light / all > 0.12 && dark / all < 0.04) return 'for-dark';
+  if (dark / all > 0.12 && light / all < 0.04) return 'for-light';
+  return '';
+}
+/* the same for an SVG: from its own inks, else from the one picture it wraps (many ET units are a PNG
+   exported inside an SVG) */
+function svgUnitTone(svgText) {
+  var tone = logoUnit.svgTone(svgText);
+  if (tone) return tone;
+  var nested = /href\s*=\s*["']data:image\/png;base64,([A-Za-z0-9+\/=\s]+)["']/.exec(svgText);
+  return nested ? rasterTone(pngLite.decode(Buffer.from(nested[1].replace(/\s+/g, ''), 'base64'))) : '';
+}
+
+function previousEditionUnit(fb, eventId, o) {
+  /* the newest reading of the previous edition first, then of this edition's own current site */
+  var docs = (o.sourceDocs || []).filter(function (s) { return (s.type === 'previousEdition' || s.type === 'currentEdition') && Array.isArray(s.logoCandidates) && s.logoCandidates.length; });
+  docs.sort(function (a, b) { return (a.type === b.type ? 0 : a.type === 'previousEdition' ? -1 : 1) || String(b.fetchedAt || '').localeCompare(String(a.fetchedAt || '')); });
+  var source = docs[0];
+  if (!source) return Promise.resolve(null);
+  var candidates = source.logoCandidates.slice(0, LOGO_UNIT_TRIES);
+
+  function pick(i) {
+    if (i >= candidates.length) return Promise.resolve(null);
+    return fetchLogoCandidate(candidates[i]).then(function (picture) { return picture || pick(i + 1); });
+  }
+  return pick(0).then(function (picture) {
+    if (!picture) return null;
+    var years = logoUnit.editionYears({ eventName: o.eventMeta.name, start: o.eventMeta.start, hints: source.editionHints || {}, pageUrl: source.url });
+    var notes = [], tone = '', movedYear = false;
+    /* a year the picture shows is the edition's only when the page said so, or it is a recent one: "Since
+       2015" is not a year to move */
+    function isOldEdition(year) { return !!year && !!years.to && +year < +years.to && (year === years.from || +year >= +years.to - 3); }
+    function done(pic) {
+      var ext = pic.info.type === 'jpeg' ? 'jpg' : pic.info.type;
+      return storePublicPicture(fb, 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit.' + ext, pic.bytes, pic.info.mime).then(function (url) {
+        return {
+          url: url, storagePath: 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit.' + ext, source: 'previous-edition', from: source.url,
+          width: pic.info.width || 0, height: pic.info.height || 0,
+          /* What the lock-up was drawn for. The hero takes that tone (a dark banner over a light site is how
+             ET's own sites carry a white lock-up), so the unit is never redrawn and never needs a plate. */
+          heroMode: tone === 'for-dark' ? 'dark' : tone === 'for-light' ? 'light' : '',
+          plate: '', note: notes.join(' ')
+        };
+      });
+    }
+    function stillShows(year) {
+      notes.push('The logo unit is the previous edition\'s and still shows ' + year + ', not ' + years.to + ': it could not be changed without redrawing it. Select it and use Replace image to put in this edition\'s artwork.');
+    }
+    function carries(extras) { if (extras) notes.push('It also carries “' + extras + '” from that edition — check that it still applies.'); }
+
+    if (picture.info.type === 'svg') {
+      var svgText = picture.bytes.toString('utf8');
+      tone = svgUnitTone(svgText);
+      /* the year it shows as text: the one the page gave, else one just before this edition's */
+      var shown = logoUnit.svgTexts(svgText).join(' ').match(/\b(?:19|20)\d\d\b/g) || [];
+      var from = years.from && shown.indexOf(years.from) !== -1 ? years.from
+        : shown.filter(function (y) { return isOldEdition(y); })[0] || '';
+      if (from && years.to) {
+        var moved = logoUnit.svgReplaceYear(svgText, from, years.to);
+        if (moved.changed && !svgCouldRun(moved.svg)) { picture = { bytes: Buffer.from(moved.svg, 'utf8'), info: picture.info }; movedYear = true; }
+        if (!movedYear) stillShows(from);
+        return done(picture);
+      }
+      /* No year in real text. Many ET units are one PNG exported inside an SVG: that picture is read, so
+         that an old year drawn in it is at least reported. Lettering drawn as outlines cannot be read
+         here at all (nothing on this server draws an SVG) — such a unit is used as it is. */
+      var wrapped = /href\s*=\s*["']data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+\/=\s]+)["']/.exec(svgText);
+      if (!wrapped) return done(picture);
+      var innerBytes = Buffer.from(wrapped[2].replace(/\s+/g, ''), 'base64'), innerInfo = logoUnit.imageInfo(innerBytes);
+      var innerDecoded = innerInfo.type === 'png' && innerInfo.width * innerInfo.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(innerBytes) : null;
+      return readLogoPicture(eventId, { bytes: innerBytes, info: innerInfo }, innerDecoded, o.deadlineAt).then(function (inner) {
+        if (inner) { if (isOldEdition(inner.year)) stillShows(inner.year); carries(inner.extras); }
+        return done(picture);
+      });
+    }
+
+    /* a logo unit is a small picture: one too large to be worth reading pixel by pixel is used as it is */
+    var decoded = picture.info.type === 'png' && picture.info.width * picture.info.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(picture.bytes) : null;
+    tone = rasterTone(decoded);
+    return readLogoPicture(eventId, picture, decoded, o.deadlineAt).then(function (read) {
+      if (!read) return done(picture);
+      carries(read.extras);
+      var old = isOldEdition(read.year) ? read.year : '';
+      if (!old) return done(picture);
+      return moveYearInPng(decoded, read, years.to, o.eventMeta.name, picture.bytes.length).then(function (patched) {
+        if (!patched) { stillShows(old); return done(picture); }
+        notes.unshift('The year in the logo unit was changed from ' + old + ' to ' + years.to + ' over the previous edition\'s artwork; everything else in it is untouched. Check how the new year sits, and replace the picture if you have this edition\'s artwork.');
+        return done(patched);
+      });
+    });
+  });
+}
+
+function drawnLogoUnit(fb, eventId, o) {
+  var design = o.design, tone = design.mode === 'dark' ? 'dark' : 'light';
+  var parts = design.logoUnit || genDesign.logoUnitParts(o.eventMeta.name);
+  var name = [parts.before, parts.keyword, parts.after].filter(Boolean).join(' ');
+  if (!name) return Promise.resolve(null);
+  var logo = etLogoSvg(tone);
+  if (!logo) return Promise.resolve(null);
+  return fetchUnitFont(design.headingFont, 700, name).then(function (font) {
+    var made = logoUnit.buildLogoUnitSvg({ parts: parts, style: design.logoUnitStyle, tone: tone, themeColor: design.themeColor, font: font || { family: design.headingFont }, etLogoSvg: logo });
+    if (!made.svg || svgCouldRun(made.svg)) return null;
+    var storagePath = 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit.svg';
+    return storePublicPicture(fb, storagePath, Buffer.from(made.svg, 'utf8'), 'image/svg+xml').then(function (url) {
+      return { url: url, storagePath: storagePath, source: 'generated', from: '', width: made.width, height: made.height, heroMode: '', plate: '', note: '' };
+    });
+  });
+}
+
+/* o: { eventMeta, design, sourceDocs, stamp } */
+function buildLogoUnit(fb, eventId, o) {
+  var none = { url: '', storagePath: '', source: '', from: '', width: 0, height: 0, heroMode: '', plate: '', note: '' };
+  return Promise.resolve().then(function () { return previousEditionUnit(fb, eventId, o); }).then(null, function (err) {
+    console.error('plan-structure: the previous edition\'s logo unit could not be used — ' + (err && err.message));
+    return null;
+  }).then(function (unit) {
+    return unit || drawnLogoUnit(fb, eventId, o);
+  }).then(function (unit) { return unit || none; }, function (err) {
+    console.error('plan-structure: the logo unit could not be made, the hero will set it in type — ' + (err && err.message));
+    return none;
+  }).then(function (unit) { return unit; });
+}
+/* the same, never later than the plan may be: past that the hero sets the unit in type */
+function logoUnitInTime(fb, eventId, o) {
+  if (!o.deadlineAt) return buildLogoUnit(fb, eventId, o);
+  var timer = null;
+  var late = new Promise(function (resolve) {
+    timer = setTimeout(function () {
+      console.error('plan-structure: the logo unit was not ready in time, the hero will set it in type');
+      resolve({ url: '', storagePath: '', source: '', from: '', width: 0, height: 0, heroMode: '', plate: '', note: '' });
+    }, Math.max(1000, o.deadlineAt - Date.now() - 8000));
+  });
+  return Promise.race([buildLogoUnit(fb, eventId, o), late]).then(function (unit) { clearTimeout(timer); return unit; });
 }
 
 function handlePlanStructure(req, res) {
@@ -1240,6 +1638,8 @@ function handlePlanStructure(req, res) {
 
     var eventRef = fb.db.collection('events').doc(eventId);
     var watch = null;
+    /* one time limit for everything this request asks a model: the plan, then reading the logo unit */
+    var deadlineAt = Date.now() + llm.LIMITS.budgetMs;
     watchEvent(fb, eventId).then(function (w) {
       watch = w;
       return Promise.all([
@@ -1263,7 +1663,7 @@ function handlePlanStructure(req, res) {
       var artDirection = genDesign.artDirectionFor(eventId);
 
       var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode });
-      return callGeminiJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+      return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
@@ -1280,7 +1680,13 @@ function handlePlanStructure(req, res) {
             return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context);
           })
         );
-        return Promise.all(jobs).then(function (made) {
+        /* the logo unit is made alongside them: the previous edition's own, or a new one drawn */
+        var unitJob = logoUnitInTime(fb, eventId, { eventMeta: eventMeta, design: design, sourceDocs: sourceDocs, stamp: stamp, deadlineAt: deadlineAt });
+        return Promise.all([Promise.all(jobs), unitJob]).then(function (both) {
+          var made = both[0], unit = both[1];
+          design.logoUnitUrl = unit.url; design.logoUnitStoragePath = unit.storagePath; design.logoUnitSource = unit.source;
+          design.logoUnitFrom = unit.from; design.logoUnitWidth = unit.width; design.logoUnitHeight = unit.height;
+          design.logoUnitPlate = unit.plate; design.logoUnitNote = unit.note; design.logoUnitHeroMode = unit.heroMode || '';
           var heroImage = made[0];
           /* the hero picture keeps one storage path, so its address carries the run to get past caches */
           design.heroImageUrl = heroImage.heroImageUrl ? heroImage.heroImageUrl + '?v=' + stamp : null;
@@ -1490,7 +1896,7 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
     var schema = buildGenerateSchema(needs);
     var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs, futureEdition: futureEdition });
 
-    return callGeminiJson(prompt, schema, { route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+    return llm.callJson(prompt, schema, { route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var library = sanitizeGeneratedLibrary(r.parsed, needs);
       if (genTheme && genTheme.heroImageUrl && library.hero) {
@@ -1499,7 +1905,7 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
       var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
       var now = new Date().toISOString();
       return watch.stillThere()
-        .then(function () { return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: skippedLibraries }); })
+        .then(function () { return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: r.model || GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: skippedLibraries }); })
         .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
     });
   }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
@@ -1739,9 +2145,17 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
    smaller, so neither runs into the time one call may take, and the page is ready sooner. Both are shown
    the whole plan and the same rules. -> [[ids], [ids]] or [[ids]] */
 var SECTION_CODE_SPLIT_ABOVE = 5;
+/* Claude writes at a steadier, slower pace than Gemini: asked first, it is given two sections a call, all
+   calls side by side, so that each answer is ready well inside its time. */
+var SECTION_CODE_CLAUDE_BATCH = 2;
 function sectionCodeBatches(designPlan) {
   /* every section but the hero, which is built here (genDesign.heroHtml) */
   var ids = plannedSectionList(designPlan).map(function (s) { return s.id; }).filter(function (id) { return id !== 'hero'; });
+  if (llm.activeProvider() === 'claude') {
+    var small = [];
+    for (var i = 0; i < ids.length; i += SECTION_CODE_CLAUDE_BATCH) small.push(ids.slice(i, i + SECTION_CODE_CLAUDE_BATCH));
+    return small.length ? small : [ids];
+  }
   if (ids.length <= SECTION_CODE_SPLIT_ABOVE) return [ids];
   var cut = Math.ceil(ids.length / 2);
   return [ids.slice(0, cut), ids.slice(cut)];
@@ -1782,7 +2196,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     var batches = sectionCodeBatches(designPlan);
     return Promise.all(batches.map(function (ids) {
       var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
-      return callGeminiJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site });
+      return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site });
     })).then(function (answers) {
       var failed = answers.filter(function (r) { return r.error; })[0];
       if (failed) return sendAiFailure(res, failed);
@@ -1796,10 +2210,17 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       function firstOf(kind) { return planned.filter(function (x) { return x.kind === kind; })[0]; }
       var contact = firstOf('contact'), partners = firstOf('partners');
       var place = [eventMeta.venue, eventMeta.city].filter(function (v, i, list) { return v && list.indexOf(v) === i; }).join(', ') || eventMeta.location || '';
+      /* a lock-up taken from the previous edition was drawn for a dark or a light banner: the hero is that */
+      var heroMode = design.logoUnitUrl && /^(dark|light)$/.test(String(design.logoUnitHeroMode)) ? design.logoUnitHeroMode : design.mode;
       var heroOpts = {
-        unit: genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode),
+        /* the unit as one picture (the previous edition's, or the one drawn for this event); set in type
+           only when no picture could be made */
+        unit: genDesign.logoUnitImageHtml({ url: design.logoUnitUrl, alt: eventMeta.name, width: design.logoUnitWidth, height: design.logoUnitHeight, plate: design.logoUnitPlate, note: design.logoUnitNote, mode: heroMode }) ||
+          genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode),
         tagline: design.heroTagline, date: eventMeta.dateLabel || eventMeta.date || genDesign.dateLabel(stored.start, stored.end), place: place,
-        mode: design.mode, cornerRadius: design.cornerRadius, themeColor: design.themeColor, image: design.heroImageUrl || '',
+        /* with no hero picture there is no veil to make that tone: the banner is painted in it */
+        banner: heroMode !== design.mode && !design.heroImageUrl ? (heroMode === 'dark' ? '#0d1017' : '#ffffff') : '',
+        mode: heroMode, cornerRadius: design.cornerRadius, themeColor: design.themeColor, image: design.heroImageUrl || '',
         primary: { label: 'Register Now', href: '#' + (contact ? contact.id : 'footer') },
         secondary: { label: 'Join as Partner', href: '#' + (partners ? partners.id : contact ? contact.id : 'footer') }
       };
@@ -1828,7 +2249,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         .then(function () {
           return draftRef.collection('drafts').add({
             templateId: templateId, sourceEventId: sourceEventId, library: {},
-            positioningNotes: positioningNotes, model: GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: []
+            positioningNotes: positioningNotes, model: (answers[0] && answers[0].model) || GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: []
           });
         })
         .then(function (docRef) {
@@ -1964,7 +2385,7 @@ function handleRedesignSection(req, res) {
         instruction: String(payload.instruction || '').trim(),
         above: String(payload.above || '').slice(0, 200), below: String(payload.below || '').slice(0, 200)
       });
-      return callGeminiJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+      return llm.callJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var newHtml = genDesign.restorePictures(sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim(), pictures, found[0] || '');
         if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' });
@@ -4596,7 +5017,7 @@ function rewriteOrigins(html, origins) {
    editor-canvas.js's serialize() strips; the rest are the editor's own escape hatch (data-ed), its
    AI-review markers (editor-fill.js / editor-template-ui.js), and what the Grammarly extension writes
    into any page its user edits — two already-published pages carry it. */
-var EDITOR_ONLY_ATTRS = ['data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown',
+var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown',
   'data-date-format', 'data-ed', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-editing',
   'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
@@ -5543,5 +5964,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf
+  publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  buildLogoUnit, readLogoPicture, moveYearInPng, rasterTone, sectionCodeBatches
 };
