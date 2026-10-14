@@ -183,7 +183,6 @@
     var e = eventOf(kit);
     return e.published ? (e.registerUrl || e.siteUrl || '') : '';
   }
-  function hostOf(url) { try { return new URL(url).host.replace(/^www\./, ''); } catch (e) { return ''; } }
   function speakersOf(kit) { return (contentOf(kit).speakers || []).filter(function (s) { return s && s.name; }); }
   function partnersOf(kit) { return (contentOf(kit).partners || []).filter(function (p) { return p && p.name; }); }
   function sessionsOf(kit) { return (contentOf(kit).sessions || []).filter(function (s) { return s && s.title; }); }
@@ -273,8 +272,8 @@
         ] }];
       },
       foot: function (D) {
-        var host = hostOf(linkOf(D.kit));
-        return { fields: [{ key: 'footNote', label: 'Footer line', def: host }], left: function () { return D.T('footNote') ? '<span class="pp-wi">' + ICON.web + '<span>' + esc(D.T('footNote')) + '</span></span>' : ''; } };
+        /* the site's address is the QR code in the footer now, not a line of text */
+        return { fields: [{ key: 'footNote', label: 'Footer line', def: '' }], left: function () { return D.T('footNote') ? '<span class="pp-wi">' + ICON.web + '<span>' + esc(D.T('footNote')) + '</span></span>' : ''; } };
       },
       mid: function (D) {
         var side = D.fmt.id === 'landscape';
@@ -699,6 +698,8 @@
       D.defs.place = placeOf(kit);
     }
     ff.push({ key: 'cta', label: 'Button', def: 'Register now' });
+    /* the site's address as a QR code to scan (only a live site has one) */
+    if (linkOf(kit)) ff.push({ key: 'qrLabel', label: 'QR code caption (clear it to leave the QR code out)', def: 'Scan to register' });
     ff.push({ key: 'hashtag', label: 'Hashtag', def: eventOf(kit).hashtag || '' });
     g.push({ title: 'Footer and hashtag', fields: ff });
     if (!D.look.logo || !pic(D.look.logo.url)) {
@@ -824,6 +825,28 @@
       (src ? '<img src="' + esc(src) + '" alt="">' : '<span class="pp-ini" style="font-size:calc(var(--d) * .34)">' + esc(initials(D.P(s, 'name') || s.name)) + '</span>') + '</div>';
   }
 
+  /* The site's address as a QR code: dark squares on a white tile (a code must be dark on light to scan, on
+     any background), with the quiet margin a reader needs, drawn as one SVG path so it stays sharp in the
+     PNG. Error correction M: still reads with a scuff or a glare. */
+  function qrSvg(url, px) {
+    var Q = window.qrcode;
+    if (!Q) return '';
+    try {
+      if (Q.stringToBytesFuncs && Q.stringToBytesFuncs['UTF-8']) Q.stringToBytes = Q.stringToBytesFuncs['UTF-8'];
+      var q = Q(0, 'M'); q.addData(url); q.make();
+      var n = q.getModuleCount(), quiet = 2, size = n + quiet * 2, d = '';
+      for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + quiet) + ' ' + (r + quiet) + 'h1v1h-1z';
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="' + px + '" height="' + px + '" viewBox="0 0 ' + size + ' ' + size + '" shape-rendering="crispEdges" role="img" aria-label="QR code: ' + esc(url) + '">' +
+        '<rect width="' + size + '" height="' + size + '" fill="#ffffff"/><path d="' + d + '" fill="#111111"/></svg>';
+    } catch (e) { return ''; }
+  }
+  function qrHtml(D, url, label) {
+    var px = D.u(D.fmt.id === 'story' ? 190 : D.fmt.id === 'landscape' ? 130 : 150);
+    var svg = qrSvg(url, px);
+    if (!svg) return '';
+    return '<div class="pp-qr"><span class="pp-qr-code">' + svg + '</span><span class="pp-qr-t">' + esc(label) + '</span></div>';
+  }
+
   function footHtml(D) {
     var foot = D.type.foot ? D.type.foot(D) : null;
     var left;
@@ -835,10 +858,14 @@
         (p ? '<span class="pp-wi">' + ICON.pin + '<span>' + esc(p) + '</span></span>' : '');
     }
     var cta = D.T('cta');
-    if (!left && !cta) return '';
-    return '<div class="pp-foot"' + (D.fmt.id === 'story' ? ' style="flex-direction:column;align-items:stretch;gap:' + D.u(30) + 'px;text-align:center"' : '') + '>' +
-      '<div class="pp-when" data-fitw="' + D.u(24) + ',' + D.u(18) + '"' + (D.fmt.id === 'story' ? ' style="justify-content:center"' : '') + '>' + left + '</div>' +
-      (cta ? '<span class="pp-cta"' + (D.fmt.id === 'story' ? ' style="align-self:center"' : '') + '>' + esc(cta) + '</span>' : '') + '</div>';
+    var link = linkOf(D.kit), qrLabel = D.T('qrLabel');
+    var qr = link && qrLabel ? qrHtml(D, link, qrLabel) : '';
+    if (!left && !cta && !qr) return '';
+    var story = D.fmt.id === 'story';
+    var right = (cta ? '<span class="pp-cta"' + (story ? ' style="align-self:center"' : '') + '>' + esc(cta) + '</span>' : '') + qr;
+    return '<div class="pp-foot"' + (story ? ' style="flex-direction:column;align-items:stretch;gap:' + D.u(30) + 'px;text-align:center"' : '') + '>' +
+      '<div class="pp-when" data-fitw="' + D.u(24) + ',' + D.u(18) + '"' + (story ? ' style="justify-content:center"' : '') + '>' + left + '</div>' +
+      (qr ? '<div class="pp-foot-r"' + (story ? ' style="justify-content:center"' : '') + '>' + right + '</div>' : right) + '</div>';
   }
 
   function topHtml(D) {

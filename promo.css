@@ -175,6 +175,11 @@
 .pp-when .pp-wi span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pp-when svg{ flex:0 0 auto; width: calc(var(--k) * 26px); height: calc(var(--k) * 26px); color: var(--pp-acc-text); }
 .pp-when .pp-bar{ flex:0 0 auto; width:1.5px; height: calc(var(--k) * 28px); background: var(--pp-line); }
+.pp-foot-r{ flex:0 0 auto; display:flex; align-items:center; gap: calc(var(--k) * 26px); }
+/* the site's address as a QR code: dark on a white tile whatever the post's colours, with its caption */
+.pp-qr{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap: calc(var(--k) * 8px); }
+.pp-qr-code{ display:block; line-height:0; background:#ffffff; padding: calc(var(--k) * 8px); border-radius: calc(var(--k) * 12px); box-shadow: 0 calc(var(--k) * 4px) calc(var(--k) * 18px) rgba(0,0,0,.18); }
+.pp-qr-t{ font-size: calc(var(--k) * 17px); font-weight:600; letter-spacing:.03em; color: var(--pp-ink); white-space:nowrap; }
 .pp-cta{
   flex:0 0 auto; display:inline-flex; align-items:center; font-size: calc(var(--k) * 23px); font-weight:800; letter-spacing:.1em; text-transform:uppercase;
   background: var(--pp-acc); color: var(--pp-acc-ink); border-radius: var(--pp-cta-r); padding: calc(var(--k) * 18px) calc(var(--k) * 32px); white-space:nowrap;
