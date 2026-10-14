@@ -698,6 +698,29 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8380' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 14px center; }
   .sheet .gb-stack{ justify-content: flex-start; gap: 20px; }
+
+  /* ---------- ET red: the brand's colour in the form — icons, focus, the chosen option ---------- */
+  .sheet{ border-top: 3px solid var(--accent); }
+  .sheet .grp-h h4{ display: flex; align-items: center; gap: 10px; }
+  .sheet .grp-ico{ display: inline-grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px;
+    background: var(--accent-soft); color: var(--accent); }
+  .sheet .grp-h > .grp-ico-out{ margin-right: 0; }
+  .sheet .inp:hover{ border-color: color-mix(in srgb, var(--accent) 35%, var(--f-edge)); }
+  .sheet .inp:focus{ border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
+  .sheet .inp[aria-invalid="true"]{ border-color: var(--crit); }
+  .sheet .inp[aria-invalid="true"]:focus{ box-shadow: 0 0 0 4px var(--crit-soft); }
+  .sheet #f-venue{ padding-left: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ED1C24' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 14px center; }
+  .sheet #gb-previous, .sheet #gb-comp1, .sheet #gb-comp2, .sheet #gb-current{ padding-left: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ED1C24' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7'/%3E%3Cpath d='M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 14px center; }
+  .sheet .logo-row:hover{ border-color: color-mix(in srgb, var(--accent) 35%, var(--f-edge)); }
+  .sheet .logo-row-icon{ background: var(--accent-soft); color: var(--accent); border-right-color: transparent; }
+  .sheet .gb-seg input:checked + span{ background: var(--surface); box-shadow: 0 1px 3px rgba(30,26,10,.12), inset 0 -2px 0 var(--accent); }
+  .sheet .gb-seg input:checked + span b{ color: var(--accent-strong); font-weight: 600; }
+  .sheet .gb-guide-btn{ color: var(--accent-strong); }
+  .sheet .gb-guide-btn:hover, .sheet .gb-guide-btn[aria-expanded="true"]{ background: var(--accent-soft); color: var(--accent-strong); }
+  .sheet .gb-more > summary::before{ border-color: var(--accent); color: var(--accent); }
+  .sheet .slug-prefix{ color: var(--accent-strong); }
+  .gb-guide{ border-top: 3px solid var(--accent); }
+  .gb-guide-list b{ color: var(--accent-strong); }
 </style>
 <style>
   /* ============ STEP 2 - PATH CHOICE ============ */
@@ -1961,7 +1984,7 @@
         <div class="sheet">
 
           <div class="grp">
-            <div class="grp-h"><h4>Event information</h4><span class="ln"></span></div>
+            <div class="grp-h"><h4><span class="grp-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10.5" r="2"/><path d="M14.5 9.5h3M14.5 13h3M6.5 16h11"/></svg></span>Event information</h4><span class="ln"></span></div>
             <div class="frow" id="identity-row">
               <div class="field c4" id="name-cell">
                 <div class="flabel-row"><label for="f-name">Event / Microsite name <span class="pill-req">*</span></label></div>
@@ -1998,19 +2021,19 @@
           </div>
 
           <div class="grp">
-            <div class="grp-h"><h4 id="sched-title">Event schedule</h4><span class="ln"></span><span class="grp-tag" id="sched-eyebrow"></span></div>
+            <div class="grp-h"><span class="grp-ico grp-ico-out" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><h4 id="sched-title">Event schedule</h4><span class="ln"></span><span class="grp-tag" id="sched-eyebrow"></span></div>
             <div id="sched-body"></div>
           </div>
 
           <div class="grp" id="cat-panel" hidden>
-            <div class="grp-h"><h4 id="cat-panel-title"></h4><span class="ln"></span><span class="grp-tag" id="cat-panel-eyebrow"></span></div>
+            <div class="grp-h"><span class="grp-ico grp-ico-out" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M8.6 14.2L7 22l5-3 5 3-1.6-7.8"/></svg></span><h4 id="cat-panel-title"></h4><span class="ln"></span><span class="grp-tag" id="cat-panel-eyebrow"></span></div>
             <div class="frow" id="cat-panel-body"></div>
           </div>
 
           <!-- shown for S.creationMethod === 'template' — the method choice already happened (see the
                'method' phase above), so there's no longer a reason for this to be collapsed/optional. -->
           <div class="grp" id="content-grp">
-            <div class="grp-h"><h4>Page content</h4><span class="ln"></span>
+            <div class="grp-h"><h4><span class="grp-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 21V9"/></svg></span>Page content</h4><span class="ln"></span>
               <span class="ai-entry" id="ai-entry" hidden>
                 <button class="btn btn-ai btn-sm" type="button" id="btn-ai-design">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
@@ -2025,7 +2048,7 @@
 
           <!-- shown for S.creationMethod === 'brief' — kept in S.brief (wireBriefInputs) -->
           <div class="grp" id="brief-grp" hidden>
-            <div class="grp-h"><h4>Tell ETB2B AI about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
+            <div class="grp-h"><h4><span class="grp-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>Tell ETB2B AI about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
             <p class="hint" style="margin:6px 0 12px;">Modelled on the previous edition when you give its link, then improved. The AI writes the content, makes the pictures and places your logo.</p>
             <div class="gb-grid">
               <div class="field"><span class="flabel" id="gb-mode-label">Site type</span>
@@ -3981,6 +4004,10 @@
   function wireBriefInputs(){
     /* a new description starts as the headings of the "Share these details" card */
     if (!String(S.brief.text || '').trim()) S.brief.text = BRIEF_TEMPLATE;
+    /* a draft started with an older set of headings: a retired heading left empty goes (an answered one stays) */
+    else S.brief.text = String(S.brief.text).split(/\r?\n/).filter(function(line){
+      return !/^\s*Format and city\b[^:]*:\s*$/i.test(line);
+    }).join('\n');
     Object.keys(BRIEF_INPUTS).forEach(function(id){
       var el = $(id), key = BRIEF_INPUTS[id];
       el.value = S.brief[key] || '';
