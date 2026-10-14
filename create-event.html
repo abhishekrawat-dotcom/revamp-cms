@@ -221,6 +221,17 @@
   .inp[aria-invalid="true"]:focus{ box-shadow: 0 0 0 3px var(--crit-soft); }
   .logo-row:has([aria-invalid="true"]){ border-color: var(--crit); }
   /* "Generate from a brief": two fields to a row, the rarely used ones folded under "More options" */
+  /* "Share these details" — the points that make an AI-made site exact, and a template to copy */
+  .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  .gb-guide{ border:1px solid var(--border); border-radius:12px; background: var(--surface-2); padding: 14px 16px 12px; margin: 0 0 16px; }
+  .gb-guide-h{ display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; }
+  .gb-guide-h h5{ margin:0; font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.35; }
+  .gb-guide-h p{ margin: 3px 0 0; font-size: 12.5px; color: var(--text-muted); }
+  .gb-guide-copy{ flex: none; display:inline-flex; align-items:center; gap: 6px; white-space: nowrap; }
+  .gb-guide-list{ list-style:none; margin: 12px 0 0; padding:0; display:grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  .gb-guide-list li{ font-size: 12.5px; line-height: 1.4; color: var(--text-muted); min-width: 0; }
+  .gb-guide-list b{ display:block; font-size: 12.5px; font-weight: 600; color: var(--text); }
+  @media (max-width: 760px){ .gb-guide-list{ grid-template-columns: 1fr; } .gb-guide-h{ flex-direction: column; } }
   .gb-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; align-items:start; }
   .gb-grid .gb-wide{ grid-column: 1 / -1; }
   .gb-grid textarea.inp{ resize: vertical; }
@@ -1912,6 +1923,28 @@
           <div class="grp" id="brief-grp" hidden>
             <div class="grp-h"><h4>Tell ETB2B AI about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
             <p class="hint" style="margin:6px 0 12px;">Modelled on the previous edition when you give its link, then improved. The AI writes the content, makes the pictures and places your logo.</p>
+            <div class="gb-guide" id="gb-guide" aria-labelledby="gb-guide-title">
+              <div class="gb-guide-h">
+                <div><h5 id="gb-guide-title">Share these details to get the exact website you want to create</h5>
+                  <p>Put them in the description below or in your deck. Anything you leave out, the AI decides as usual.</p></div>
+                <button class="btn btn-secondary gb-guide-copy" type="button" id="gb-guide-copy" aria-describedby="gb-guide-status">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1"/></svg>
+                  <span>Copy template</span></button>
+              </div>
+              <ul class="gb-guide-list">
+                <li><b>Tagline / theme</b>“Built for human decisions. Now run by agents.”</li>
+                <li><b>Why attend (what sets it apart)</b>Only summit on rolling out AI agents at enterprise scale</li>
+                <li><b>Audience</b>CIOs, CTOs, heads of AI at large enterprises</li>
+                <li><b>Industry</b>BFSI, manufacturing, IT services</li>
+                <li><b>Level</b>Pan-India, global or regional</li>
+                <li><b>Format and city</b>In-person in Mumbai, virtual or hybrid</li>
+                <li><b>Main action</b>Register, request an invite, apply, nominate or become a sponsor</li>
+                <li><b>Expected scale</b>500 delegates, 60 speakers, 25 partners</li>
+                <li><b>Look and tone</b>Event photos or graphics; boardroom, energetic or editorial</li>
+                <li><b>Must avoid</b>Competitor names, claims such as “largest in India”</li>
+              </ul>
+              <span class="sr-only" id="gb-guide-status" aria-live="polite"></span>
+            </div>
             <div class="gb-grid">
               <div class="field"><span class="flabel" id="gb-mode-label">Site type</span>
                 <div class="gb-seg" role="radiogroup" aria-labelledby="gb-mode-label">
@@ -3739,12 +3772,58 @@
     if (briefGrp) briefGrp.hidden = S.creationMethod !== 'brief';
     if (contentGrp) contentGrp.hidden = S.creationMethod !== 'template';
     wireBriefInputs();
+    wireBriefGuide();
   }
   /* The "Generate from a brief" inputs are part of the draft like every other field: shown from S.brief
      and written back as they change. The PDF is the exception — a page cannot hold on to a file across a
      reload — so it is held in briefDoc while the page lives, and the draft remembers its name and asks
      for it again. */
   var BRIEF_INPUTS = { 'gb-brief-text': 'text', 'gb-current': 'current', 'gb-previous': 'previous', 'gb-comp1': 'comp1', 'gb-comp2': 'comp2' };
+  /* "Share these details" card: the points as a fill-in template, copied to paste into the description
+     or a deck (the description travels to the AI beside any document) */
+  var BRIEF_TEMPLATE = [
+    'Tagline / theme: ',
+    'Why attend (what sets it apart): ',
+    'Audience: ',
+    'Industry: ',
+    'Level (pan-India / global / regional): ',
+    'Format and city (in-person / virtual / hybrid): ',
+    'Main action (register / request an invite / apply / nominate / become a sponsor): ',
+    'Expected scale (delegates, speakers, partners): ',
+    'Look and tone (photos or graphics; boardroom / energetic / editorial): ',
+    'Must avoid: '
+  ].join('\n');
+  function copyText(text){
+    /* the clipboard API where it is allowed; the older copy command where it is not (or refuses) */
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(null, function(){ return copyByCommand(text); });
+    return copyByCommand(text);
+  }
+  function copyByCommand(text){
+    return new Promise(function(resolve, reject){
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.remove();
+      ok ? resolve() : reject(new Error('copy'));
+    });
+  }
+  function wireBriefGuide(){
+    var btn = $('gb-guide-copy'), status = $('gb-guide-status');
+    if (!btn) return;
+    var label = btn.querySelector('span'), timer = null;
+    btn.onclick = function(){
+      copyText(BRIEF_TEMPLATE).then(function(){
+        label.textContent = 'Copied';
+        status.textContent = 'Template copied. Paste it into the description or your deck and fill in what you know.';
+      }, function(){
+        label.textContent = 'Could not copy';
+        status.textContent = 'The template could not be copied. Select the points on the card and copy them instead.';
+      });
+      clearTimeout(timer);
+      timer = setTimeout(function(){ label.textContent = 'Copy template'; }, 2500);
+    };
+  }
   function wireBriefInputs(){
     Object.keys(BRIEF_INPUTS).forEach(function(id){
       var el = $(id), key = BRIEF_INPUTS[id];
