@@ -365,6 +365,18 @@
   .chat-chip b{ position:absolute; left:3px; bottom:3px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:rgba(0,0,0,.7); color:#fff; font-size:10px; line-height:16px; text-align:center; }
   .chat-chip button{ position:absolute; top:2px; right:2px; width:17px; height:17px; border-radius:50%; border:0; background:rgba(0,0,0,.7); color:#fff; font-size:11px; line-height:17px; padding:0; cursor:pointer; }
   .chat-chip.is-loading{ display:grid; place-items:center; font-size:10px; color: var(--text-muted); }
+  /* what is selected on the page goes with the message (editor-template-ui.js, wireChatPanel) */
+  .chat-focus{ flex-shrink:0; display:flex; align-items:center; gap:7px; margin: 8px 14px 0; padding: 5px 6px 5px 9px; border-radius: 9px;
+    border: 1px solid color-mix(in srgb, var(--accent, #ED1C24) 28%, var(--border)); background: color-mix(in srgb, var(--accent, #ED1C24) 7%, var(--surface));
+    font-size: 12px; color: var(--text-muted); min-width: 0; }
+  .chat-focus[hidden]{ display:none; }
+  .chat-focus-ico{ display:inline-flex; color: var(--accent, #ED1C24); flex-shrink:0; }
+  .chat-focus-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat-focus-text b{ color: var(--text); font-weight:600; }
+  .chat-focus-rm{ flex-shrink:0; width:20px; height:20px; border-radius:50%; border:0; background:transparent; color: var(--text-muted); font-size:14px; line-height:20px; padding:0; cursor:pointer; }
+  .chat-focus-rm:hover{ background: var(--surface-2); color: var(--text); }
+  .chat-focus + .chat-compose, .chat-focus + .chat-attached{ border-top: 0; }
+  .chat-msg .chat-msg-focus{ font-size: 11px; opacity: .78; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-msg .chat-sent-pics{ display:flex; gap:5px; margin-top:6px; }
   .chat-msg .chat-sent-pics img{ width:42px; height:42px; object-fit:cover; border-radius:6px; }
   .chat-send-btn:hover:not(:disabled){ filter: brightness(1.08); }
@@ -1132,7 +1144,8 @@
 
     <!-- A free-text instruction interpreted into a design/content change, shown as a proposal the user must
          confirm before anything is applied. -->
-    <aside class="side-panel" id="panel-chat" hidden>
+    <!-- data-keep-selection: what is selected on the page stays selected while the owner writes about it (the chat's "Selected" chip) -->
+    <aside class="side-panel" id="panel-chat" data-keep-selection hidden>
       <div class="side-panel-head">
         <div class="chat-head-id"><span class="chat-head-face"><svg viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><defs><linearGradient id="rvbh" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbh)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbh)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg></span><div><h3>ETB2B AI</h3><small><i></i>Edits your site as you ask</small></div></div>
         <button class="icon-btn" id="chat-close" title="Close" aria-label="Close ETB2B AI"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
@@ -1154,7 +1167,7 @@
       </div>
     </aside>
 
-    <button class="chat-launcher" id="chat-launcher" type="button" aria-label="Open ETB2B AI" aria-controls="panel-chat" aria-expanded="false" data-keep-selection>
+    <button class="chat-launcher" id="chat-launcher" data-keep-selection type="button" aria-label="Open ETB2B AI" aria-controls="panel-chat" aria-expanded="false" data-keep-selection>
       <span class="chat-launcher-bubble"><b>ETB2B AI</b><span>Hi, I’m ETB2B AI. Need help?</span></span>
       <span class="chat-launcher-face"><svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><defs><linearGradient id="rvbl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbl)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg></span>
     </button>

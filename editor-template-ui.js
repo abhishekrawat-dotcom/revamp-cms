@@ -64,7 +64,7 @@
   function showToast(msg, opts) { return host && host.showToast ? host.showToast(msg, opts) : null; }
   function showNotice(id, opts) { if (host && host.showNotice) host.showNotice(id, opts); }
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
-  function sectionsChanged() { if (host && host.onSectionsChanged) host.onSectionsChanged(); }
+  function sectionsChanged() { if (chatFocusRedraw) chatFocusRedraw(); if (host && host.onSectionsChanged) host.onSectionsChanged(); }
   function designChanged() { if (host && host.onDesignChange) host.onDesignChange(); }
   // what canvas.restore() and createGenericSection() build the generic sections' CSS from
   function restoreOpts() { return { siteCss: host && host.genericCss ? host.genericCss() : '' }; }
@@ -1280,7 +1280,10 @@
     if (!el.getAttribute('class')) el.removeAttribute('class');
   }
 
+  /* the chat's "Selected" chip follows the selection (wireChatPanel sets it) */
+  var chatFocusRedraw = null;
   function selectionChanged() {
+    if (chatFocusRedraw) chatFocusRedraw();
     if (!host || !host.onSelectionChange) return;
     var kind = selectedEl ? selectedEl.getAttribute('data-editable') : '';
     host.onSelectionChange(selectedEl ? { kind: kind, canStyle: !!styleTarget() } : null);
@@ -2997,7 +3000,7 @@
      asked go first and the rest fill what room is left — an instruction about "2026" must be shown every
      text with 2026 in it, wherever on the page it is. */
   var CHAT_TEXTS_BUDGET = 60000;      // characters, over the whole page
-  function sectionsContext(instruction) {
+  function sectionsContext(instruction, focusId) {
     var words = String(instruction || '').toLowerCase().match(/[a-z0-9][a-z0-9'’&.-]{2,}/g) || [];
     var asked = function (t) { var low = t.toLowerCase(); return words.some(function (w) { return low.indexOf(w) !== -1; }); };
     var secs = canvas.sections();
@@ -3007,7 +3010,7 @@
       var id = sec.getAttribute('data-rv-key');
       var short = function (t) { return t.slice(0, 200); };
       var all = sectionTextNodes(sec).map(short).filter(function (t, i, list) { return list.indexOf(t) === i; });
-      var room = share, texts = [];
+      var room = id && id === focusId ? Math.max(share, 8000) : share, texts = [];   // the selected section in full
       all.filter(asked).concat(all.filter(function (t) { return !asked(t); })).forEach(function (t) {
         if (room <= 0) return;
         texts.push(t);
@@ -3394,6 +3397,50 @@
     if (chatHistory.length === 0) {
       appendChatMsg('ai', 'Hi, I’m ETB2B AI. Ask for any change to this site — wording, colours and fonts, a section’s layout or content, adding, moving, hiding or removing sections — or ask a question about the page. I show you what will change first; nothing happens until you press Apply. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
     }
+    /* What the owner has selected on the page goes with the message, so "make this shorter" needs no
+       section named: a chip above the box says what it is ("Selected: Why attend · “Six reasons…”"), and
+       its × sends without it until something else is selected. */
+    var focusBar = document.createElement('div'), focusOff = '';
+    focusBar.className = 'chat-focus'; focusBar.hidden = true;
+    var composeEl = input.closest('.chat-compose');
+    var trayEl = document.getElementById('chat-attached');
+    if (composeEl && composeEl.parentNode) composeEl.parentNode.insertBefore(focusBar, trayEl && trayEl.parentNode === composeEl.parentNode ? trayEl : composeEl);
+    function liveSection() { return activeSectionEl && activeSectionEl.isConnected && activeSectionEl.getAttribute('data-rv-key') ? activeSectionEl : null; }
+    function focusNow() {
+      var sec = liveSection();
+      if (!sec) return null;
+      var f = { sectionId: sec.getAttribute('data-rv-key'), name: sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-key') };
+      if (selectedEl && selectedEl.isConnected && sec.contains(selectedEl)) {
+        var text = String(selectedEl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        var kind = selectedEl.getAttribute('data-editable') || selectedEl.tagName.toLowerCase();
+        if (text || kind === 'image') f.element = { kind: kind, text: text };
+      }
+      return f;
+    }
+    function focusKey(f) { return f ? f.sectionId + '|' + (f.element ? f.element.kind + ':' + f.element.text : '') : ''; }
+    function chatFocus() { var f = focusNow(); return f && focusKey(f) !== focusOff ? f : null; }
+    function drawFocus() {
+      var f = focusNow();
+      if (f && focusOff && focusKey(f) !== focusOff) focusOff = '';          // something else was selected
+      var on = f && focusKey(f) !== focusOff;
+      focusBar.hidden = !on;
+      focusBar.textContent = '';
+      if (!on) return;
+      var ico = document.createElement('span'); ico.className = 'chat-focus-ico'; ico.setAttribute('aria-hidden', 'true');
+      ico.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>';
+      var label = document.createElement('span'); label.className = 'chat-focus-text';
+      label.appendChild(document.createTextNode('Selected: '));
+      var b = document.createElement('b'); b.textContent = f.name; label.appendChild(b);
+      if (f.element) label.appendChild(document.createTextNode(f.element.text ? ' · “' + (f.element.text.length > 48 ? f.element.text.slice(0, 47) + '…' : f.element.text) + '”' : ' · picture'));
+      label.title = 'ETB2B AI will take your message to be about this, unless you name another part of the page';
+      var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'chat-focus-rm'; rm.textContent = '×';
+      rm.title = 'Send without it'; rm.setAttribute('aria-label', 'Send without the selected section');
+      rm.addEventListener('click', function () { focusOff = focusKey(focusNow()); drawFocus(); input.focus(); });
+      focusBar.appendChild(ico); focusBar.appendChild(label); focusBar.appendChild(rm);
+    }
+    chatFocusRedraw = drawFocus;
+    drawFocus();
+
     /* Pictures for the AI to place: chosen with the paper-clip (or dropped on the message box), stored with
        the event at once (RevampCore.uploadImage), shown as numbered thumbnails above the box and sent with
        the next message. The AI is told how many there are and refers to them by number. */
@@ -3455,7 +3502,14 @@
       input.value = '';
       var sent = attachments.map(function (a) { return a.url; });
       attachments = []; drawTray();
+      var focus = chatFocus();
       var mine = appendChatMsg('user', instruction);
+      if (focus && mine) {
+        var tag = document.createElement('div');
+        tag.className = 'chat-msg-focus';
+        tag.textContent = '↳ ' + focus.name + (focus.element && focus.element.text ? ' · “' + (focus.element.text.length > 40 ? focus.element.text.slice(0, 39) + '…' : focus.element.text) + '”' : '');
+        mine.insertBefore(tag, mine.firstChild);
+      }
       if (sent.length && mine) {
         var strip = document.createElement('div');
         strip.className = 'chat-sent-pics';
@@ -3486,7 +3540,7 @@
       }
       fetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction), attachmentCount: sent.length, attachments: sent })
+        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent })
       })
         .then(function (res) {
           return res.text().then(function (text) {

@@ -487,6 +487,24 @@ function handleSuggestDesign(req, res) {
    text, sent as context below, so the model can't invent a replacement for text that was never there). Nothing
    is applied server-side; the browser shows the proposal and only calls canvas.design.set()/does the text
    replacement once the user confirms (see editor-template-ui.js's wireChatPanel). */
+/* What the owner had selected on the page when they wrote: the section (and the element in it, if one was
+   selected). Their words still win: a message that names another section or the whole site is about that. */
+function chatFocusLine(payload, sections) {
+  var f = payload.focus;
+  if (!f || typeof f !== 'object') return '';
+  var id = String(f.sectionId || '');
+  var sec = sections.filter(function (s) { return s.id === id; })[0];
+  if (!sec) return '';
+  var name = String(f.name || sec.name || id).replace(/\s+/g, ' ').slice(0, 80);
+  var el = f.element && typeof f.element === 'object' ? f.element : null;
+  var kind = el ? String(el.kind || '').replace(/[^a-z0-9-]/gi, '').slice(0, 20) : '';
+  var text = el ? String(el.text || '').replace(/\s+/g, ' ').trim().slice(0, 160) : '';
+  return 'WHAT THE OWNER HAS SELECTED: while writing this, the owner had the section "' + name + '" (sectionId ' + id + ') selected on the page' +
+    (el ? ', and inside it ' + (kind === 'image' ? 'a picture' : 'the ' + (kind || 'element') + (text ? ' that reads "' + text + '"' : '')) : '') + '. ' +
+    'Unless the message clearly names another section or the whole site, "this", "here", "it" and any change that does not say where it goes mean ' +
+    (el ? 'that ' + (kind === 'image' ? 'picture' : 'element') + ' in that section' : 'that section') + ': make the change there and only there. A question about "this" is about it too.\n';
+}
+
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
   var history = (payload.history || []).slice(-16);
@@ -496,6 +514,7 @@ function buildChatPrompt(payload) {
     (history.length ? 'Conversation so far (oldest first):\n' + history.map(function (h) { return (h.role === 'user' ? 'User: ' : 'You: ') + String(h.text || '').slice(0, 400); }).join('\n') + '\n' : ''),
     'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
     '',
+    chatFocusLine(payload, sections),
     (payload.attachmentCount
       ? 'The owner ATTACHED ' + payload.attachmentCount + ' picture' + (payload.attachmentCount === 1 ? '' : 's') + ' to this message, numbered 1' + (payload.attachmentCount > 1 ? ' to ' + payload.attachmentCount : '') + '. ' +
         (payload.seenPictures ? 'You can SEE ' + (payload.seenPictures === payload.attachmentCount ? 'them' : 'pictures ' + payload.seenNumbers.join(', ')) + ': they come with this message as images, in that order. Look at them properly. When the owner asks for the look of a picture (its colours, its mood, its layout), read it from the picture itself and give real values — colours as hex codes (e.g. "#0b1f3a deep navy, #c9a227 gold accent"). Never say you cannot see an attached picture you were given. ' : 'You cannot see them; the owner\'s words say what they are for. ') +
