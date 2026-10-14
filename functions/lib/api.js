@@ -1302,7 +1302,7 @@ function buildDesignPlanPrompt(payload) {
       deck.mode && deck.mode !== 'mixed' ? '- its pages are mostly ' + deck.mode + ': design.mode "' + deck.mode + '" unless the owner asked otherwise below.' : '- its pages mix light and dark: choose the mode that carries its primary colour best.',
       '- type: headings "' + deck.headingStyle + '", body "' + deck.bodyStyle + '" — pick the two real Google Fonts families that are closest to that.',
       '- imagery: ' + deck.imagery + ' — design.imageStyle and design.heroImage must come from this, so the pictures look like the deck\'s.',
-      '- graphic motifs to carry into the layout: ' + deck.motifs + '.',
+      '- graphic motifs to carry into the layout: ' + deck.motifs + ' (a deck\'s page numbers are not a motif: the site\'s sections are never numbered).',
       deck.ipName ? '- the deck brands the property as "' + deck.ipName + '"' + (deck.ipTagline ? ' with the line "' + deck.ipTagline + '"' : '') + ': use that line (or the strongest line of the deck) for design.heroTagline when it fits.' : '',
       (payload.brief.deckSections || []).length
         ? '- its content pages are listed in the brief as deckSections. Each one carries real content the owner put in front of you: carry EVERY one of them into the site with its points — as its own section, or inside the section it belongs to (' + (payload.siteMode === 'standard' ? 'this is a standard site, so inside the matching standard section: e.g. its benefits and "why" pages go into why-join-us, its thesis into overview, its questions and pillars into key-discussion-points, its audience groups — all of them — into who-should-attend' : 'its own section where it has substance') + '). Do not drop or merge away any of their points.'
@@ -2270,6 +2270,10 @@ function buildSectionCodePrompt(payload) {
     lines.push('', 'THE OWNER\'S OWN INSTRUCTIONS FOR THIS SITE — follow them in what you write (never by inventing facts):', '"' + designPlan.ownerNotes + '"');
   }
 
+  /* Numbering the sections ("01", "02" tabs before each heading) is not what an event site does, and when a
+     section without records is hidden the count jumps (04, then 07). Items inside a list may be numbered. */
+  lines.push('', 'NO SECTION NUMBERS: never number the sections themselves — no "01", "02" tabs, counters, badges or "Section 3" labels before or beside a section\'s heading, and no running count across the page' +
+    (payload.designPlan && payload.designPlan.ownerNotes ? ', unless the owner\'s own instructions above ask for numbered sections' : '') + '. Numbering the items inside one list (steps, questions, pillars) is fine.');
   lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section under it introduces the event properly.',
     'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.');
 
