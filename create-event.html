@@ -1926,7 +1926,7 @@
             <div class="gb-guide" id="gb-guide" aria-labelledby="gb-guide-title">
               <div class="gb-guide-h">
                 <div><h5 id="gb-guide-title">Share these details to get the exact website you want to create</h5>
-                  <p>Put them in the description below or in your deck. Anything you leave out, the AI decides as usual.</p></div>
+                  <p>The headings are already in the description below: fill in what you know there, or in your deck. Anything you leave out, the AI decides as usual.</p></div>
                 <button class="btn btn-secondary gb-guide-copy" type="button" id="gb-guide-copy" aria-describedby="gb-guide-status">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1"/></svg>
                   <span>Copy template</span></button>
@@ -1960,7 +1960,7 @@
                 </select>
               </div>
               <div class="field"><label class="flabel" for="gb-brief-text">Describe the event</label>
-                <textarea class="inp" id="gb-brief-text" rows="3" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
+                <textarea class="inp" id="gb-brief-text" rows="11" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
               </div>
               <div class="field"><span class="flabel" id="gb-doc-label">Overview document (PDF)</span>
                 <div class="logo-row" id="gb-doc-row">
@@ -3338,7 +3338,7 @@
       seen[same] = true;
     });
     /* a site generated from nothing but a name would be invented from start to finish */
-    if (!String(br.text || '').trim() && !briefDoc && !links)
+    if (!briefAnswers(br.text) && !briefDoc && !links)
       out.push({ field: 'gb-brief-text', message: 'Add a description, a document or a link so the site is built from real information.' });
     return out;
   }
@@ -3779,20 +3779,30 @@
      reload — so it is held in briefDoc while the page lives, and the draft remembers its name and asks
      for it again. */
   var BRIEF_INPUTS = { 'gb-brief-text': 'text', 'gb-current': 'current', 'gb-previous': 'previous', 'gb-comp1': 'comp1', 'gb-comp2': 'comp2' };
-  /* "Share these details" card: the points as a fill-in template, copied to paste into the description
-     or a deck (the description travels to the AI beside any document) */
-  var BRIEF_TEMPLATE = [
-    'Tagline / theme: ',
-    'Why attend (what sets it apart): ',
-    'Audience: ',
-    'Industry: ',
-    'Level (pan-India / global / regional): ',
-    'Format and city (in-person / virtual / hybrid): ',
-    'Main action (register / request an invite / apply / nominate / become a sponsor): ',
-    'Expected scale (delegates, speakers, partners): ',
-    'Look and tone (photos or graphics; boardroom / energetic / editorial): ',
-    'Must avoid: '
-  ].join('\n');
+  /* "Share these details" card: the points as headings, already in "Describe the event" for the owner to
+     fill in, and copied as a template for a deck. A heading left empty is no description: it never counts
+     as one (briefIssues) and is not sent to the AI (briefAnswers). */
+  var BRIEF_HEADINGS = [
+    'Tagline / theme',
+    'Why attend (what sets it apart)',
+    'Audience',
+    'Industry',
+    'Level (pan-India / global / regional)',
+    'Format and city (in-person / virtual / hybrid)',
+    'Main action (register / request an invite / apply / nominate / become a sponsor)',
+    'Expected scale (delegates, speakers, partners)',
+    'Look and tone (photos or graphics; boardroom / energetic / editorial)',
+    'Must avoid'
+  ];
+  var BRIEF_TEMPLATE = BRIEF_HEADINGS.map(function(h){ return h + ': '; }).join('\n');
+  function headingKey(s){ return String(s || '').replace(/\s+/g, ' ').replace(/\s*:\s*$/, '').trim().toLowerCase(); }
+  var BRIEF_HEADING_KEYS = BRIEF_HEADINGS.map(headingKey);
+  /* the description as the AI should read it: what the owner wrote, without the headings left empty */
+  function briefAnswers(text){
+    return String(text || '').split(/\r?\n/).filter(function(line){
+      return BRIEF_HEADING_KEYS.indexOf(headingKey(line)) === -1;
+    }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
   function copyText(text){
     /* the clipboard API where it is allowed; the older copy command where it is not (or refuses) */
     if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(null, function(){ return copyByCommand(text); });
@@ -3825,6 +3835,8 @@
     };
   }
   function wireBriefInputs(){
+    /* a new description starts as the headings of the "Share these details" card */
+    if (!String(S.brief.text || '').trim()) S.brief.text = BRIEF_TEMPLATE;
     Object.keys(BRIEF_INPUTS).forEach(function(id){
       var el = $(id), key = BRIEF_INPUTS[id];
       el.value = S.brief[key] || '';
@@ -4747,7 +4759,7 @@
     var runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
     /* What this run works from. Each row reads it when it runs, not when the run was set up, so a link,
        file or description corrected on a failed row is what its retry sends. */
-    var inputs = run.inputs = { text: String(S.brief.text || '').trim(), file: briefDoc, urls: {}, future: !!S.brief.future,
+    var inputs = run.inputs = { text: briefAnswers(S.brief.text), file: briefDoc, urls: {}, future: !!S.brief.future,
       themeMode: ['light', 'dark'].indexOf(S.brief.themeMode) !== -1 ? S.brief.themeMode : 'auto' };
     BRIEF_URL_FIELDS.forEach(function(f){ inputs.urls[f.key] = normalUrl(S.brief[f.key]); });
 
@@ -4930,7 +4942,7 @@
         inputs.urls[s.field.key] = S.brief[s.field.key] = url;
       } else if (s.key === 'brief'){
         var area = rowInput('data-step-text', s.key);
-        if (area) inputs.text = S.brief.text = area.value.trim();
+        if (area){ S.brief.text = area.value.trim(); inputs.text = briefAnswers(area.value); }
         if (!inputs.text && !inputs.file){ s.fixError = 'Add a description or choose a document.'; return false; }
       }
       s.fixError = '';
