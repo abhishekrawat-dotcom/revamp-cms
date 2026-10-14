@@ -77,5 +77,13 @@ check('copy lines: an invitation event never says Register', /never "Register"/.
 check('graphics turns pictures off in the plan', /sections\[\]\.image empty/.test(ob.planLines(ob.normalise({ look: 'graphics only' })).join('\n')));
 check('nothing given -> no lines', ob.planLines(null).length === 0 && ob.copyLines(null).length === 0);
 
+/* directions, not content */
+check('a scale without a number is no scale', !n('scale', 'delegates').scale && n('scale', '500 delegates').scale === '500 delegates');
+check('withoutHeadings keeps only the free text', ob.withoutHeadings(filled) === 'A closed-door summit for 300 leaders.', JSON.stringify(ob.withoutHeadings(filled)));
+check('withoutHeadings of only headings is empty', ob.withoutHeadings(TEMPLATE) === '' && ob.withoutHeadings('') === '' && ob.withoutHeadings(null) === '');
+check('withoutHeadings drops a heading\'s next lines too', ob.withoutHeadings('Audience:\nCIOs\nCTOs\n\nA forum.') === 'A forum.', JSON.stringify(ob.withoutHeadings('Audience:\nCIOs\nCTOs\n\nA forum.')));
+check('plan and copy lines say the points are never shown', /DIRECTIONS that steer your work, not content/.test(pl) && /DIRECTIONS that steer your work, not content/.test(cl) && /no "Reach", "Level", "Pan-India"/.test(pl));
+check('no rule asks for a band of the points', !/include a band/i.test(pl + cl));
+
 if (failed) { console.error('owner-brief: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('owner-brief: all ' + passed + ' checks passed');

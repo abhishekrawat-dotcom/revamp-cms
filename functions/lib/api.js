@@ -2071,6 +2071,9 @@ function handlePlanStructure(req, res) {
         name: stored.name, category: stored.category, start: stored.start, end: stored.end,
         venue: stored.venue, city: stored.city, description: stored.description
       }, payload.eventMeta || {});
+      /* the description's headings are the owner's brief — directions, not facts to show (owner-brief.js) */
+      eventMeta.description = ownerBrief.withoutHeadings(eventMeta.description);
+      if (!eventMeta.description) delete eventMeta.description;
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
       var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections }; });
@@ -2386,6 +2389,8 @@ function eventFacts(stored, sent) {
   var facts = {};
   ['name', 'category', 'categoryLabel', 'start', 'end', 'dateLabel', 'date', 'location', 'venue', 'city', 'client', 'description'].forEach(function (k) {
     var v = (sent && sent[k] != null && sent[k] !== '') ? sent[k] : stored[k];
+    /* the description's headings are the owner's brief — directions, not facts to show (owner-brief.js) */
+    if (k === 'description') v = ownerBrief.withoutHeadings(v);
     if (v != null && v !== '') facts[k] = v;
   });
   return facts;
@@ -5606,7 +5611,10 @@ function publishTransform(html, opts) {
   /* ---- 3. title, description, sharing tags, canonical link, favicon ---- */
   var seo = (event.settings && event.settings.seo) || {};
   var name = typeof event.name === 'string' ? event.name.trim() : '';
-  var description = String(seo.description || event.description || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  /* the description's headings are the owner's brief, not a summary to show (owner-brief.js): their free
+     text, else what the owner said sets the event apart */
+  var ownerUsp = event.designPlan && event.designPlan.owner && event.designPlan.owner.usp;
+  var description = String(seo.description || ownerBrief.withoutHeadings(event.description) || ownerUsp || '').replace(/\s+/g, ' ').trim().slice(0, 300);
   if (!description && name) {
     /* nothing written for it yet: say what is known (when and where), so a shared link is not a bare title */
     var facts = [event.dateLabel, event.venue, event.city].map(function (v) { return typeof v === 'string' ? v.trim() : ''; }).filter(Boolean);

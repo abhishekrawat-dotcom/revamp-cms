@@ -9,6 +9,7 @@
    Each point is optional. A point not given is simply absent, and the site is designed as it always was.
 
      fromText(text)                 -> { tagline: '…', mainAction: '…', … }   the filled-in headings, raw
+     withoutHeadings(text)          -> text   the description with the headings taken out (its free text)
      normalise(raw)                 -> owner | null   the points, cleaned and read (see OWNER below)
      merge(fromOwner, fromDeck)     -> owner | null   the owner's lines first, the deck's for the rest
      buttons(owner, targets)        -> { primary, secondary }   the hero's two buttons
@@ -69,6 +70,19 @@ function fromText(text) {
   });
   Object.keys(out).forEach(function (k) { out[k] = clean(out[k], 600); if (!out[k]) delete out[k]; });
   return out;
+}
+
+/* The description without its headings, filled or not (and a filled one's following lines): what is left is
+   the owner's free text about the event. The headings are directions (planLines, copyLines), never facts to
+   show, so they are not handed to a model as part of the event's description. */
+function withoutHeadings(text) {
+  var out = [], inHeading = false;
+  String(text || '').split(/\r?\n/).forEach(function (line) {
+    if (headingOf(line)) { inHeading = true; return; }
+    if (!line.trim()) { inHeading = false; out.push(''); return; }
+    if (!inHeading) out.push(line);
+  });
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /* ---------- reading a point ---------- */
@@ -154,6 +168,8 @@ function normalise(raw) {
   var o = {};
   ['tagline', 'usp', 'audience', 'industry', 'scale', 'mustAvoid'].forEach(function (k) {
     var v = clean(raw[k], k === 'tagline' ? 160 : 500);
+    /* a scale is numbers: "delegates" alone says nothing a page could show */
+    if (k === 'scale' && !/\d/.test(v)) v = '';
     if (v) o[k] = v;
   });
   var level = clean(raw.level, 200);
@@ -206,38 +222,42 @@ function buttons(owner, targets) {
   return { primary: primary, secondary: secondary };
 }
 
+/* How each point STEERS the site. None of them is content: a visitor never sees "Level: pan-India", "Tone:
+   energetic" or "Expected: delegates" as words on the page. Only three reach the page as such: the tagline
+   (the hero line), the main action (the wording of the buttons) and real numbers of the expected scale. */
 var LEVEL_NOTES = {
-  india: 'a pan-India event: Indian context, Indian companies and examples, Indian delegates in every picture.',
-  global: 'a GLOBAL event: international framing, global companies and examples, never India-only wording; the delegates in the pictures are an international mix, Indian professionals among them.',
-  regional: 'a regional event: keep its region and city in view in the wording and the pictures.'
+  india: 'a pan-India event — frame the whole site for India: Indian context, companies and examples, Indian people in every picture.',
+  global: 'a global event — frame the whole site internationally: global companies and examples, never India-only framing; the people in the pictures are an international mix, Indian professionals among them.',
+  regional: 'a regional event — keep its region and city in view in the framing and the pictures.'
 };
 var FORMAT_NOTES = {
-  'in-person': 'in person — the venue and city matter: show them.',
-  virtual: 'VIRTUAL — there is no venue: no venue or travel section, no map, no "see you in <city>"; the site speaks of joining online.',
-  hybrid: 'HYBRID — in person and online: say both, and say how to join either way.'
+  'in-person': 'held in person — the venue and the city matter.',
+  virtual: 'VIRTUAL — there is no venue: no venue or travel section, no map, no "see you in <city>"; joining is online.',
+  hybrid: 'HYBRID — in person and online: how to take part either way is clear.'
 };
 var TONE_NOTES = {
   boardroom: 'boardroom — formal, restrained and premium: measured wording, generous space, a classic type pairing, nothing loud.',
   energetic: 'energetic — bold and vivid: punchy short lines, strong colour, dynamic layouts.',
   editorial: 'editorial — magazine-like: considered typography, fewer and larger statements, thoughtful wording.'
 };
+var NOT_CONTENT = 'These are DIRECTIONS that steer your work, not content for the page. Never show them as labels, tags, chips, fact strips, cards, bands or footer notes — no "Reach", "Level", "Pan-India", "Format", "Tone", "Main action" or "Expected …" items anywhere. The only ones a visitor sees as such: the tagline (the hero line), the main action (the wording of the buttons) and the numbers of the expected scale when they are given.';
 
 /* the rules the PLAN is given (structure, design, pictures) */
 function planLines(o) {
   if (!o) return [];
-  var l = ['THE OWNER\'S BRIEF — the owner wrote these points themselves. They are decisions, not suggestions: they win over the reference page, the art direction and the document wherever they differ (never by inventing a fact to satisfy them).'];
+  var l = ['THE OWNER\'S BRIEF — the owner wrote these points themselves; they win over the reference page, the art direction and the document wherever they differ (never by inventing a fact). ' + NOT_CONTENT];
   if (o.tagline) l.push('- Tagline: "' + o.tagline + '" — design.heroTagline is exactly this, word for word.');
-  if (o.usp) l.push('- Why attend (what sets it apart): "' + o.usp + '" — the first section under the hero leads with this, and a why-attend section is built on it.');
-  if (o.audience) l.push('- Audience: "' + o.audience + '" — the site is designed for them (its mood, density and wording), and a who-should-attend section names them.');
+  if (o.usp) l.push('- What sets it apart: "' + o.usp + '" — the reason a visitor should come: plan the first section under the hero and a why-attend section around it.');
+  if (o.audience) l.push('- Audience: "' + o.audience + '" — design for them (mood, density, seriousness), and plan a who-should-attend section about them.');
   if (o.industry) l.push('- Industry: "' + o.industry + '" — the pictures and examples come from these industries.');
   if (o.level) l.push('- Level: ' + LEVEL_NOTES[o.level]);
-  if (o.format) l.push('- Format: ' + FORMAT_NOTES[o.format] + (o.formatText ? ' (as the owner put it: "' + o.formatText + '")' : ''));
-  if (o.action) l.push('- Main action: "' + o.action.label + '" — the whole site leads a visitor to this; the closing section asks for it.');
-  if (o.scale) l.push('- Expected scale: "' + o.scale + '" — include a band of these numbers, exactly as given, labelled as expected for this edition. No other headline number may be made up.');
+  if (o.format) l.push('- Format: ' + FORMAT_NOTES[o.format]);
+  if (o.action) l.push('- Main action: "' + o.action.label + '" — the site leads a visitor to this; plan a closing section that asks for it.');
+  if (o.scale) l.push('- Expected scale: "' + o.scale + '" — if the page shows headline numbers, these are they, exactly as given and labelled as expected for this edition; no other headline number may be made up.');
   if (o.pictures === 'graphics') l.push('- Look: GRAPHICS, NOT PHOTOGRAPHS — no section gets a generated picture (sections[].image empty), every section builds its interest from graphic shapes, icons and type, and design.heroImage describes a graphic composition from the event\'s subject (no people, no photograph).');
   else if (o.pictures === 'photos') l.push('- Look: photographs — real event and industry scenes, as set out under PICTURES.');
   if (o.tone) l.push('- Tone: ' + TONE_NOTES[o.tone] + ' Choose the mood, fonts and layout for it.');
-  else if (o.lookText && !o.pictures) l.push('- Look and tone, in the owner\'s words: "' + o.lookText + '".');
+  else if (o.lookText && !o.pictures) l.push('- Look and tone, in the owner\'s words: "' + o.lookText + '" — choose the mood, fonts and layout for it.');
   if (o.mustAvoid) l.push('- MUST AVOID: "' + o.mustAvoid + '" — none of this may appear anywhere on the site, in any wording or picture.');
   return l;
 }
@@ -245,18 +265,18 @@ function planLines(o) {
 /* the rules the WRITING is given (the copy and the calls to action of every section) */
 function copyLines(o) {
   if (!o) return [];
-  var l = ['THE OWNER\'S BRIEF — the owner wrote these points themselves; the copy follows them exactly (never by inventing a fact):'];
-  if (o.usp) l.push('- What sets it apart: "' + o.usp + '" — the overview opens with it and the why-attend copy is built on it.');
-  if (o.audience) l.push('- Audience: "' + o.audience + '" — write to them, in their language; who-should-attend names exactly them.');
+  var l = ['THE OWNER\'S BRIEF — the owner wrote these points themselves; follow them in what you write (never by inventing a fact). ' + NOT_CONTENT];
+  if (o.usp) l.push('- What sets it apart: "' + o.usp + '" — the overview opens on this and the why-attend copy is built on it, in well-written sentences (not the owner\'s note pasted as it is).');
+  if (o.audience) l.push('- Audience: "' + o.audience + '" — write to them, in their language; who-should-attend describes exactly these people.');
   if (o.industry) l.push('- Industry: "' + o.industry + '" — examples and wording come from these industries.');
   if (o.level) l.push('- Level: ' + LEVEL_NOTES[o.level]);
   if (o.format) l.push('- Format: ' + FORMAT_NOTES[o.format]);
   if (o.action) l.push('- Main action: every call to action on the site — the nav button, a closing band, any "join us" line — says "' + o.action.label + '" (or a close variant of it); never another main action' + (o.action.kind === 'request-invite' ? ': this event is by invitation, so never "Register" or "Buy a pass".' : '.'));
-  if (o.scale) l.push('- Expected scale: "' + o.scale + '" — wherever numbers are shown, these are the numbers, labelled as expected; no other headline number may be made up.');
+  if (o.scale) l.push('- Expected scale: "' + o.scale + '" — if you show headline numbers, these are they, exactly as given and labelled as expected; never a figure without its number, and no other headline number made up.');
   if (o.pictures === 'graphics') l.push('- Look: graphics, not photographs — sections without a picture build their interest from shapes, icons and type.');
   if (o.tone) l.push('- Tone of the writing: ' + TONE_NOTES[o.tone]);
   if (o.mustAvoid) l.push('- MUST AVOID, anywhere in what you write: "' + o.mustAvoid + '".');
   return l;
 }
 
-module.exports = { KEYS, fromText, normalise, merge, buttons, planLines, copyLines };
+module.exports = { KEYS, fromText, withoutHeadings, normalise, merge, buttons, planLines, copyLines };

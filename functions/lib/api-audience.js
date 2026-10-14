@@ -39,6 +39,7 @@
 // answers the request, and what a failure tells the caller is a sentence about what did not happen —
 // the underlying Firestore text goes to the log only.
 const crypto = require('crypto');
+const ownerBrief = require('./owner-brief');
 const admin = require('firebase-admin');
 const { getFirebase } = require('./firebase');
 const {
@@ -473,7 +474,8 @@ function buildSiteData(fb, eventId, ev) {
       event: {
         name: line(ev.name, 300), category: line(ev.category, 60), start: line(ev.start, 40), end: line(ev.end, 40),
         dateLabel: dateLabel(ev), venue: line(ev.venue, 300), city: line(ev.city, 120),
-        description: multiline(ev.description, 8000), logoUrl: imageUrl(ev.logoUrl, false)
+        /* the description's headings are the owner's brief for the AI, never shown (owner-brief.js) */
+        description: multiline(ownerBrief.withoutHeadings(ev.description), 8000), logoUrl: imageUrl(ev.logoUrl, false)
       },
       registration: {
         open: settings.open,

@@ -35,6 +35,7 @@ const logoUnitLib = require('./logo-unit');
 const { readPage } = require('./page-diff');
 const { safeFetch } = require('./safe-fetch');
 const { publicSiteData } = require('./api-audience');
+const ownerBrief = require('./owner-brief');
 const llm = require('./llm');
 
 /* lib/api.js's helpers (see wire() at the bottom) */
@@ -589,7 +590,8 @@ function contentFrom(site, brief, ev) {
   var social = (site.social || []).map(function (s) { return { kind: s.kind, url: s.url }; });
   ev = ev || {};
   return {
-    overview: String(ev.description || '').trim().slice(0, 8000) || oneLine(brief && brief.theme, 1200),
+    /* the description's headings are the owner's brief, not copy (owner-brief.js): its free text only */
+    overview: ownerBrief.withoutHeadings(ev.description).slice(0, 8000) || oneLine(brief && brief.theme, 1200),
     speakers: speakers, partners: partners, sessions: sessions,
     audience: audienceOf(brief && brief.audience),
     topics: topicsOf(brief),
@@ -611,7 +613,7 @@ function eventFrom(eventId, ev, siteUrl, anchor) {
     id: eventId, name: oneLine(ev.name, 300) || eventId, category: oneLine(ev.category, 60), categoryLabel: categoryLabelOf(ev), start: start, end: end,
     dateLabel: genDesign.dateLabel(start, end) || oneLine(ev.dateLabel, 120),
     place: placeOf(ev.venue, ev.city), venue: oneLine(ev.venue, 300), city: oneLine(ev.city, 120),
-    description: String(ev.description || '').trim().slice(0, 8000),
+    description: ownerBrief.withoutHeadings(ev.description).slice(0, 8000),
     siteUrl: siteUrl, registerUrl: siteUrl + (anchor || ''),
     published: ev.published === true,
     hashtag: hashtagOf(ev.name, start),
