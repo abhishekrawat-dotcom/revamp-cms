@@ -130,17 +130,73 @@ const llm = require('./llm');
 const logoUnit = require('./logo-unit');
 const pngLite = require('./png-lite');
 const svgYear = require('./svg-year');
-/* An SVG drawn as a PNG (resvg, a native module: loaded on first use, so a server without it still runs and
-   only that one step is skipped). -> { png, width, height } on a mid-grey ground, or null */
+/* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
+   and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
+   lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
+   fit in memory, is not drawn at all.
+   -> Promise<{ png, pixels (RGBA), width, height } on a mid-grey ground | null> */
 var resvgModule;
+var RASTER_MAX_SVG_BYTES = 1500 * 1024, RASTER_WIDTH = 1000, RASTER_MAX_HEIGHT = 3000;
 function rasterise(svgText) {
   try {
     if (resvgModule === undefined) { try { resvgModule = require('@resvg/resvg-js'); } catch (e) { resvgModule = null; console.error('api: SVGs cannot be drawn here (resvg) — ' + e.message); } }
-    if (!resvgModule) return null;
-    var r = new resvgModule.Resvg(svgText, { fitTo: { mode: 'width', value: 1000 }, background: '#808080', font: { loadSystemFonts: false } });
-    var img = r.render();
-    return { png: img.asPng(), width: img.width, height: img.height };
-  } catch (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return null; }
+    if (!resvgModule || Buffer.byteLength(String(svgText || '')) > RASTER_MAX_SVG_BYTES) return Promise.resolve(null);
+    var opts = { fitTo: { mode: 'width', value: RASTER_WIDTH }, background: '#808080', font: { loadSystemFonts: false } };
+    /* its own size, read before anything is drawn (units such as pt and mm are already in px here) */
+    var own = new resvgModule.Resvg(svgText, opts);
+    var w = own.width, h = own.height;
+    if (!(w > 0) || !(h > 0) || RASTER_WIDTH * h / w > RASTER_MAX_HEIGHT || w / h > 40) return Promise.resolve(null);
+    return resvgModule.renderAsync(svgText, opts).then(function (img) {
+      return { png: img.asPng(), pixels: img.pixels, width: img.width, height: img.height };
+    }, function (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return null; });
+  } catch (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return Promise.resolve(null); }
+}
+
+/* Taking a year's shapes out of a drawing is kept only when the pictures before and after show that exactly
+   the year went: what changed lies in the year's place (nothing else of the lock-up went with it), what
+   is left there is plain ground (no digit stayed behind), and what went was one colour — the colour the
+   new year is then set in. before/after: rasterise() results; box: the year as read, in their pixels;
+   digits: the extent of the shapes taken out, in the same pixels (the ground is judged there, so that a
+   mark the reader took in with the year — an apostrophe before it — and that stays, is no leftover).
+   -> '#rrggbb' or '' (do not change the drawing) */
+function yearCutColour(before, after, box, digits) {
+  digits = digits || box;
+  if (!before || !after || before.width !== after.width || before.height !== after.height) return '';
+  var W = before.width, H = before.height, a = before.pixels, b = after.pixels;
+  var padX = box.width * 0.08 + 3, padY = box.height * 0.25 + 3;
+  var x0 = Math.max(0, Math.floor(box.x - padX)), x1 = Math.min(W, Math.ceil(box.x + box.width + padX));
+  var y0 = Math.max(0, Math.floor(box.y - padY)), y1 = Math.min(H, Math.ceil(box.y + box.height + padY));
+  var changed = 0, outside = 0, strong = [];
+  for (var y = 0; y < H; y++) {
+    for (var x = 0; x < W; x++) {
+      var i = (y * W + x) * 4;
+      var dd = Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+      if (dd <= 60) continue;
+      changed++;
+      if (x < x0 || x >= x1 || y < y0 || y >= y1) outside++;
+      else if (dd > 150) strong.push(i);
+    }
+  }
+  if (changed < 20 || outside > Math.max(8, changed * 0.01) || strong.length < 10) return '';
+  /* the ground left where the year was: one colour, give or take the edges of what is around it */
+  var gx0 = Math.max(0, Math.floor(digits.x)), gx1 = Math.min(W, Math.ceil(digits.x + digits.width));
+  var gy0 = Math.max(0, Math.floor(digits.y)), gy1 = Math.min(H, Math.ceil(digits.y + digits.height));
+  var ground = [];
+  for (var gy = gy0; gy < gy1; gy++) for (var gx = gx0; gx < gx1; gx++) ground.push((gy * W + gx) * 4);
+  if (!ground.length || spreadOf(b, ground) > 0.03) return '';
+  /* the colour the old digits were drawn in, when they were all one */
+  if (spreadOf(a, strong) > 0.15) return '';
+  var m = medianColour(a, strong);
+  return '#' + m.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+}
+function medianColour(px, at) {
+  return [0, 1, 2].map(function (c) { var v = at.map(function (i) { return px[i + c]; }).sort(function (p, q) { return p - q; }); return v[v.length >> 1]; });
+}
+/* the share of those pixels plainly unlike their middle colour */
+function spreadOf(px, at) {
+  var m = medianColour(px, at), off = 0;
+  at.forEach(function (i) { if (Math.abs(px[i] - m[0]) + Math.abs(px[i + 1] - m[1]) + Math.abs(px[i + 2] - m[2]) > 80) off++; });
+  return off / at.length;
 }
 const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
 const genDesign = require('./gen-design');
@@ -1506,6 +1562,22 @@ function storePublicPicture(fb, storagePath, buffer, contentType) {
 
 /* A Google font cut down to the characters needed, as { family, ttfBase64, metrics } — or null: the unit
    is then set in a system face. Google answers TrueType to a request that names no browser. */
+/* The font for a lock-up's new year: the family the reader named at its weight, else at the weights every
+   family has, else the plain stand-in of its kind (Google answers 400 for a weight a family lacks). */
+function yearFont(family, weight, serif, text) {
+  var tries = [[family, weight], [family, 400], [family, 700], [serif ? 'Source Serif 4' : 'Inter', weight]], seen = {};
+  tries = tries.filter(function (t) { var k = t[0] + '@' + t[1]; return t[0] && !seen[k] && (seen[k] = 1); });
+  function next(i) {
+    if (i >= tries.length) return Promise.resolve(null);
+    return fetchUnitFont(tries[i][0], tries[i][1], text).then(function (f) { return f || next(i + 1); });
+  }
+  return next(0);
+}
+function colourDistance(p, q) {
+  var a = parseInt(p.slice(1), 16), b = parseInt(q.slice(1), 16);
+  return Math.abs((a >> 16) - (b >> 16)) + Math.abs(((a >> 8) & 255) - ((b >> 8) & 255)) + Math.abs((a & 255) - (b & 255));
+}
+
 function fetchUnitFont(family, weight, text) {
   family = String(family || '').replace(/[^A-Za-z0-9 ]/g, '').trim();
   if (!family) return Promise.resolve(null);
@@ -1783,9 +1855,12 @@ function previousEditionUnit(fb, eventId, o) {
        shapes are replaced by the new year set as text (svg-year.js). -> the picture to use */
     function outlinedYear(svgText) {
       var vb = svgYear.viewBoxOf(svgText);
-      var raster = vb ? rasterise(svgText) : null;
-      if (!raster) return Promise.resolve(picture);
-      return readLogoPicture(eventId, { bytes: raster.png, info: { type: 'png', mime: 'image/png', width: raster.width, height: raster.height } }, null, o.deadlineAt).then(function (read) {
+      if (!vb) return Promise.resolve(picture);
+      var raster = null;
+      return rasterise(svgText).then(function (r) {
+        raster = r;
+        return r ? readLogoPicture(eventId, { bytes: r.png, info: { type: 'png', mime: 'image/png', width: r.width, height: r.height } }, null, o.deadlineAt) : null;
+      }).then(function (read) {
         if (!read) return picture;
         carries(read.extras);
         if (!isOldEdition(read.year) || !read.box) return picture;
@@ -1793,15 +1868,27 @@ function previousEditionUnit(fb, eventId, o) {
         var box = { x: vb.x + read.box.x * sx, y: vb.y + read.box.y * sy, width: read.box.width * sx, height: read.box.height * sy };
         var found = svgYear.yearShapes(svgText, box);
         if (!found) { stillShows(read.year); return picture; }
-        var family = read.fontFamily || (read.serif ? 'Source Serif 4' : 'Inter');
-        var weight = read.fontWeight || (read.bold ? 700 : 400);
-        return fetchUnitFont(family, weight, years.to).then(function (font) {
-          var moved = svgYear.replaceYear(svgText, found, { toYear: years.to, font: font, serif: read.serif, bold: read.bold });
-          if (!moved || svgCouldRun(moved)) { stillShows(read.year); return picture; }
-          notes.unshift('The year in the logo unit was changed from ' + read.year + ' to ' + years.to + ': its old digits were taken out and the new year set in ' + (font ? font.family : 'a system font') + ', the closest match; everything else in it is untouched. Check how it sits, and replace the picture if you have this edition\'s artwork.');
-          return { bytes: Buffer.from(moved, 'utf8'), info: picture.info };
+        /* drawn again without them: the change is kept only when exactly the year went (yearCutColour) */
+        return rasterise(svgYear.cutShapes(svgText, found)).then(function (after) {
+          var digits = { x: (found.box.x - vb.x) / sx, y: (found.box.y - vb.y) / sy, width: found.box.width / sx, height: found.box.height / sy };
+          var colour = yearCutColour(raster, after, read.box, digits);
+          if (!colour) { stillShows(read.year); return picture; }
+          return withYear(svgText, read, found, colour);
         });
       }, function () { return picture; });
+    }
+    function withYear(svgText, read, found, colour) {
+      var family = read.fontFamily || (read.serif ? 'Source Serif 4' : 'Inter');
+      var weight = read.fontWeight || (read.bold ? 700 : 400);
+      /* the declared colour when it is the one seen (exactly as written), else the one seen */
+      var declared = /^#[0-9a-f]{6}$/i.test(found.fill) ? found.fill : /^#[0-9a-f]{3}$/i.test(found.fill) ? '#' + found.fill.slice(1).replace(/./g, '$&$&') : '';
+      var fill = declared && colourDistance(declared, colour) <= 60 ? found.fill : colour;
+      return yearFont(family, weight, read.serif, years.to).then(function (font) {
+        var moved = svgYear.replaceYear(svgText, found, { toYear: years.to, font: font, serif: read.serif, bold: read.bold, fill: fill });
+        if (!moved || svgCouldRun(moved)) { stillShows(read.year); return picture; }
+        notes.unshift('The year in the logo unit was changed from ' + read.year + ' to ' + years.to + ': its old digits were taken out and the new year set in ' + (font ? font.family : 'a system font') + ', the closest match; everything else in it is untouched. Check how it sits, and replace the picture if you have this edition\'s artwork.');
+        return { bytes: Buffer.from(moved, 'utf8'), info: picture.info };
+      });
     }
     function carries(extras) { if (extras) notes.push('The logo unit also carries “' + extras + '” from the previous edition, which could not be cropped out cleanly. Select it and use Replace image to put in artwork without it.'); }
 
@@ -6310,5 +6397,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA
+  buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };
