@@ -31,7 +31,7 @@
    CLAUDE_MODEL_PLAN_STRUCTURE (one route; it wins over CLAUDE_MODEL). */
 
 const { callGeminiJson, GEMINI_TEXT_MODEL, DEFAULT_TIMEOUT_MS: GEMINI_DEFAULT_TIMEOUT_MS } = require('./gemini');
-const { callClaudeJson, claudeConfigured, CLAUDE_OPUS, CLAUDE_SONNET } = require('./claude');
+const { callClaudeJson, claudeConfigured, CLAUDE_OPUS, CLAUDE_SONNET, CLAUDE_HAIKU } = require('./claude');
 
 /* budgetMs: 15 s under the function's 240 s, for what the route does before and after. An object, so a
    test can shorten it (as with PROFILES). */
@@ -42,12 +42,14 @@ var PROFILES = {
    90 s), so that a Claude call that runs out of time can still be answered by the fallback. The output
    allowances include the model's own thinking, which cannot be switched off: none of them is small. */
   'plan-structure': { model: CLAUDE_OPUS, effort: 'medium', timeoutMs: 120000, maxOutputTokens: 20000 },
-  'generate-content': { model: CLAUDE_OPUS, effort: 'medium', timeoutMs: 120000, maxOutputTokens: 28000 },
+  /* effort 'low': the section code is most of what a site costs, and most of that was Opus thinking */
+  'generate-content': { model: CLAUDE_OPUS, effort: 'low', timeoutMs: 120000, maxOutputTokens: 28000 },
   'redesign-section': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 120000, maxOutputTokens: 28000 },
   'chat-edit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
   'suggest-design': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
-  'extract-brief': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 90000, maxOutputTokens: 12000 },
-  'ingest-source': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
+  /* reading a brief or a page is extraction, not design: Haiku, at a twentieth of Sonnet's price */
+  'extract-brief': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 90000, maxOutputTokens: 12000 },
+  'ingest-source': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
   'logo-unit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 6000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
@@ -75,9 +77,17 @@ function describeModels() {
   return { text: 'Claude (' + models.join(', ') + '), with Gemini (' + GEMINI_TEXT_MODEL + ') as the fallback', provider: 'claude' };
 }
 
+/* opts.onUsage(usage), when given, is told what each provider asked was used — Claude's attempt and
+   Gemini's fallback each once — so a route can add it to the event's AI usage. It is never the reason a
+   call fails. */
+function report(opts, result) {
+  if (typeof opts.onUsage !== 'function' || !result || !result.usage) return;
+  try { opts.onUsage(result.usage); } catch (e) { console.error('llm: the usage could not be recorded — ' + (e && e.message)); }
+}
+
 function callJson(prompt, schema, opts) {
   opts = opts || {};
-  if (activeProvider() === 'gemini') return callGeminiJson(prompt, schema, opts);
+  if (activeProvider() === 'gemini') return callGeminiJson(prompt, schema, opts).then(function (r) { report(opts, r); return r; });
 
   var profile = profileFor(opts.route);
   var deadlineAt = opts.deadlineAt > 0 ? opts.deadlineAt : Date.now() + LIMITS.budgetMs;
@@ -86,11 +96,13 @@ function callJson(prompt, schema, opts) {
     inlineFile: opts.inlineFile, images: opts.images, deadlineAt: deadlineAt,
     route: opts.route, eventId: opts.eventId, user: opts.user
   }).then(function (first) {
+    report(opts, first);
     if (!first.code) return first;
     var left = deadlineAt - Date.now();
     if (left < LIMITS.fallbackNeedsMs) return first;
     if (first.code === 'ai-timeout' && left < (opts.timeoutMs > 0 ? opts.timeoutMs : GEMINI_DEFAULT_TIMEOUT_MS)) return first;
     return callGeminiJson(prompt, schema, Object.assign({}, opts, { deadlineAt: deadlineAt })).then(function (second) {
+      report(opts, second);
       console.log(JSON.stringify({ at: 'llm', route: opts.route || '', eventId: opts.eventId || '', provider: 'gemini', fellBack: true, firstCode: first.code, code: second.code || 'ok' }));
       return Object.assign(second, { fellBack: true, firstCode: first.code });
     });

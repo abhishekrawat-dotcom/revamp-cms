@@ -450,7 +450,7 @@ function handleEventRestore(req, res) {
        not break the copy's pictures)
    WHAT IS NEVER COPIED
      registrations, leads, saved audiences, statistics, activity, drafts, briefs and research sources; the published page and
-     every published* field; deletedAt; counters. The copy is an unpublished draft with new timestamps.
+     every published* field; deletedAt; counters; aiUsage (what the AI cost the source). The copy is an unpublished draft with new timestamps.
 
    A COPY OF AN AI-DESIGNED OR IMPORTED SITE MUST STILL OPEN IN THE EDITOR
      - AI-designed: templateId is 'gen-<eventId>', and lib/api.js builds that template on request from
@@ -480,7 +480,7 @@ var PEOPLE_COLLECTIONS = ['registrations', 'leads', 'promoAudiences'];
 
 /* Fields of the source document that describe ITS life, not the event's design or content. */
 var NOT_CLONED_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedVersion', 'publishedPath',
-  'publishedUrl', 'unpublishedAt', 'unpublishedBy', 'stagingUrl', 'deletedAt', 'deletedBy', 'counters',
+  'publishedUrl', 'unpublishedAt', 'unpublishedBy', 'stagingUrl', 'deletedAt', 'deletedBy', 'counters', 'aiUsage',
   'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'detailsUpdatedAt', 'site', 'siteLock', 'cloningFrom', 'clonedFrom',
   'eventId', 'id', 'slug', 'name', 'status'];
 

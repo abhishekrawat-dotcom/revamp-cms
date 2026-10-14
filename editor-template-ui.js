@@ -3394,7 +3394,7 @@
       }
       fetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction), attachmentCount: sent.length })
+        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction), attachmentCount: sent.length })
       })
         .then(function (res) {
           return res.text().then(function (text) {

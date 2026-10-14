@@ -135,6 +135,12 @@ function call(kind, model, body, promptChars, opts, read) {
     return Promise.resolve(failure('ai-timeout', { timeoutMs: opts.timeoutMs > 0 ? opts.timeoutMs : DEFAULT_TIMEOUT_MS, provider: 'gemini' }));
   }
 
+  /* what the call used, for the event's AI usage: Gemini's price is not tracked here, only its tokens
+     (thinking included) and, for a picture, that one was made */
+  function bill(u, made) {
+    u = u || {};
+    return { provider: 'gemini', model: model, inputTokens: u.promptTokenCount || 0, outputTokens: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0), usd: null, pictures: kind === 'image' && made ? 1 : 0 };
+  }
   function attempt(n) {
     return post(model, body, apiKey, timeoutMs).then(function (result) {
       if (result.code && n === 1 && mayRetry(result, opts, timeoutMs)) {
@@ -144,10 +150,10 @@ function call(kind, model, body, promptChars, opts, read) {
       var outcome = result.code ? result : read(result.data);
       if (outcome.code) {
         logCall(kind, opts, started, n, promptChars, Object.assign({ usage: result.usage }, outcome));
-        return failure(outcome.code, outcome.code === 'ai-timeout' ? { timeoutMs: timeoutMs, provider: 'gemini' } : { provider: 'gemini' });
+        return failure(outcome.code, outcome.code === 'ai-timeout' ? { timeoutMs: timeoutMs, provider: 'gemini', usage: bill(result.usage, false) } : { provider: 'gemini', usage: bill(result.usage, false) });
       }
       logCall(kind, opts, started, n, promptChars, { usage: result.usage });
-      return Object.assign(outcome, { provider: 'gemini', model: model });
+      return Object.assign(outcome, { provider: 'gemini', model: model, usage: bill(result.usage, true) });
     });
   }
   return attempt(1);

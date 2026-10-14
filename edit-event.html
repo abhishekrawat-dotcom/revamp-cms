@@ -4448,7 +4448,7 @@
   /* The event's real history (GET /api/event/history): every recorded action, newest first, with who did it
      and when; for a save or an approval request the changes section by section, before and after; for a
      Content record or a detail of the event the fields that changed; and who approved what went live. */
-  var HIST = { items: null, at: 0, loading: false, error: null };
+  var HIST = { items: null, usage: null, at: 0, loading: false, error: null };
   var HIST_AREA = {
     'created':'Event', 'updated':'Basic details', 'status-changed':'Status', 'settings-changed':'Settings', 'site-saved':'Site · saved to staging',
     'approval-requested':'Site · sent for approval', 'approved':'Site · approved', 'rejected':'Site · rejected', 'published':'Site · live',
@@ -4482,7 +4482,13 @@
   function loadHistory(){
     if (HIST.loading) return;
     HIST.loading = true;
-    C.fetchHistory(EV.id).then(function(items){ HIST.items = items; HIST.error = null; }, function(err){ HIST.error = (err && err.message) || 'The history could not be loaded.'; })
+    /* a browser may still hold the previous edit-event-core.js for a few minutes after a release */
+    var asked;
+    try {
+      asked = C.fetchHistoryAndUsage ? C.fetchHistoryAndUsage(EV.id)
+        : C.fetchHistory(EV.id).then(function(items){ return { items: items, aiUsage: null }; });
+    } catch (e) { asked = Promise.reject(e); }
+    asked.then(function(got){ HIST.items = got.items; HIST.usage = got.aiUsage; HIST.error = null; }, function(err){ HIST.error = (err && err.message) || 'The history could not be loaded.'; })
       .then(function(){ HIST.loading = false; HIST.at = Date.now(); if (routeId() === 'settings/history') render(); });
   }
   function exportHistory(){
@@ -4507,6 +4513,32 @@
     if (t.getAttribute('data-hist') === 'export') exportHistory();
     else { HIST.items = null; render(); }
   });
+
+  /* What the AI has cost this event, step by step (events/<id>.aiUsage, written by the server as each model
+     call is made). Claude's calls are priced from Anthropic's list prices; Gemini's are counted in calls and
+     tokens only, so the dollar figure is what Claude cost. */
+  var USAGE_STEPS = {
+    'extract-brief': 'Reading the brief', 'ingest-source': 'Reading reference pages', 'plan-structure': 'Designing the site',
+    'generate-content': 'Writing the sections', 'pictures': 'Pictures', 'logo-unit': 'Reading the logo unit',
+    'redesign-section': 'Redesign with AI', 'chat-edit': 'ETB2B AI chat', 'suggest-design': 'Design suggestions'
+  };
+  function money(v){ v = +v || 0; return '$' + (v >= 1 ? v.toFixed(2) : v.toFixed(3)); }
+  function usagePanel(){
+    var u = HIST.usage;
+    if (!u || !u.calls) return '';
+    var steps = Object.keys(u.byRoute || {}).map(function(k){ return [k, u.byRoute[k] || {}]; })
+      .sort(function(a, b){ return (+b[1].usd || 0) - (+a[1].usd || 0) || (+b[1].calls || 0) - (+a[1].calls || 0); });
+    var rows = steps.map(function(s){
+      var v = s[1], tokens = (+v.inputTokens || 0) + (+v.outputTokens || 0);
+      return '<tr><td class="td-strong">' + esc(USAGE_STEPS[s[0]] || s[0]) + '</td>' +
+        '<td class="num">' + esc(String(+v.calls || 0)) + (v.pictures ? ' <span style="color:var(--text-muted)">(' + esc(String(v.pictures)) + ' pictures)</span>' : '') + '</td>' +
+        '<td class="num">' + (tokens ? esc(Math.round((+v.inputTokens || 0) / 1000) + 'k in · ' + Math.round((+v.outputTokens || 0) / 1000) + 'k out') : '—') + '</td>' +
+        '<td class="num">' + (v.usd ? esc(money(v.usd)) : (v.geminiCalls && !v.claudeCalls ? '<span style="color:var(--text-muted)">Gemini</span>' : '—')) + '</td></tr>';
+    }).join('');
+    return panelFlush('AI usage', money(u.usd) + ' on Claude · ' + u.calls + ' AI calls',
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Step</th><th>Calls</th><th>Tokens</th><th>Claude cost</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p style="padding:10px 16px 14px;margin:0;font-size:12px;color:var(--text-muted)">Claude at Anthropic\'s list prices. Gemini (pictures, and any step Claude could not answer) is counted in calls and tokens, not priced here.</p>');
+  }
 
   function viewHistory(){
     if (!HIST.loading && (!HIST.items && !HIST.error || Date.now() - HIST.at > 20000)) loadHistory();
@@ -4533,7 +4565,7 @@
         '<td style="vertical-align:top">' + esc(h.detail || '—') + review + more + '</td>' +
         '<td style="vertical-align:top;white-space:nowrap">' + (a ? esc(histApprovedBy(h)) + (a.status === 'approved' ? '<div style="color:var(--text-muted);font-size:12px">' + esc(histWhen(a.decidedAt)) + '</div>' : '') : '—') + '</td></tr>';
     }).join('');
-    return head(HIST.items.length) +
+    return head(HIST.items.length) + usagePanel() +
       panelFlush('Audit trail', HIST.items.length + (HIST.items.length === 1 ? ' entry' : ' entries'),
         HIST.items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
         '<th>When</th><th>Who</th><th>Area</th><th>What changed</th><th>Approved by</th>' +

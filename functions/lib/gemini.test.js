@@ -119,6 +119,10 @@ async function run() {
   script = [{ status: 200, body: { candidates: [{ content: { parts: [{ text: 'no image for you' }] }, finishReason: 'STOP' }] } }]; seen = []; captureLogs();
   try { img = await callGeminiImage('a background'); } finally { releaseLogs(); }
   ok(img.code === 'ai-bad-output' && seen.length === 1, 'image: an answer without a picture is ai-bad-output', JSON.stringify(img));
+  ok(img.usage && img.usage.pictures === 0, 'usage: a picture that did not come back is not counted as one', JSON.stringify(img.usage));
+  script = [{ status: 200, body: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 30, candidatesTokenCount: 1290 } } }]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background'); } finally { releaseLogs(); }
+  ok(img.usage && img.usage.pictures === 1 && img.usage.provider === 'gemini' && img.usage.inputTokens === 30 && img.usage.outputTokens === 1290 && img.usage.usd === null, 'usage: a picture made is counted, with its tokens and no price', JSON.stringify(img.usage));
 
   /* pictures for the text model, a picture to edit, and who answered */
   script = [answerWith('{"a":"b"}')]; seen = []; captureLogs();

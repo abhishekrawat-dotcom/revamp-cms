@@ -42,6 +42,27 @@ var CLAUDE_API_BASE = 'https://api.anthropic.com';
 var CLAUDE_API_VERSION = '2023-06-01';
 var CLAUDE_OPUS = 'claude-opus-5-5';
 var CLAUDE_SONNET = 'claude-sonnet-5-5';
+var CLAUDE_HAIKU = 'claude-haiku-5-5';
+
+/* List prices in US dollars per million tokens (platform.claude.com/docs/en/about-claude/pricing, read
+   2026-10-14): base input, output, cache write (5 minutes), cache read. Thinking is billed as output.
+   Haiku 5.5 costs more once a prompt passes 100,000 tokens (`over`). Used only to REPORT what a call
+   cost — never to decide anything — so a price change makes a report stale, not a request wrong. */
+var PRICES = {
+  'claude-opus-5-5': { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01, over: { input: 0.5, output: 2.5, cacheWrite: 0.625, cacheRead: 0.05 } }
+};
+/* -> what tokens of that model cost, in dollars; null for a model with no price here */
+function costUsd(model, usage) {
+  var price = PRICES[model];
+  if (!price || !usage) return null;
+  var prompt = (usage.input || 0) + (usage.cacheWrite || 0) + (usage.cacheRead || 0);
+  if (price.over && prompt > 100000) price = price.over;
+  var usd = ((usage.input || 0) * price.input + (usage.output || 0) * price.output +
+    (usage.cacheWrite || 0) * price.cacheWrite + (usage.cacheRead || 0) * price.cacheRead) / 1e6;
+  return Math.round(usd * 1e6) / 1e6;
+}
 
 var DEFAULT_TIMEOUT_MS = 120000;
 var DEFAULT_MAX_OUTPUT_TOKENS = 16000;
@@ -126,11 +147,13 @@ function contentBlocks(promptText, opts) {
    says what it is. Events arrive cut anywhere, so nothing is read until its blank line has come.
    The answer is finished at the message_delta that carries stop_reason (the final token counts come with
    it): reading stops there, so a message_stop that never comes or an error after it changes nothing. */
-function readStream(res, apiKey) {
+/* `usage` is the caller's: an answer cut off (out of time, the connection dropped) has still been billed
+   for what had been counted when it stopped, and the caller reports that */
+function readStream(res, apiKey, usage) {
   var reader = res.body.getReader();
   var decoder = new TextDecoder();
   var buffer = '', text = '', stopReason = '', stopped = false, error = null;
-  var usage = { input: 0, output: 0 };
+  usage = usage || { input: 0, output: 0 };
 
   function take(block) {
     var data = [];
@@ -145,6 +168,8 @@ function readStream(res, apiKey) {
       var first = event.message && event.message.usage;
       if (first && first.input_tokens > 0) usage.input = first.input_tokens;
       if (first && first.output_tokens > 0) usage.output = first.output_tokens;
+      if (first && first.cache_creation_input_tokens > 0) usage.cacheWrite = first.cache_creation_input_tokens;
+      if (first && first.cache_read_input_tokens > 0) usage.cacheRead = first.cache_read_input_tokens;
     } else if (event.type === 'content_block_delta') {
       /* only the answer's own words: thinking, its signature and any other kind of block are not the answer */
       if (event.delta && event.delta.type === 'text_delta' && typeof event.delta.text === 'string') text += event.delta.text;
@@ -189,7 +214,8 @@ function readWhole(res) {
   return res.text().then(function (body) {
     var message;
     try { message = JSON.parse(body); } catch (e) { return { code: 'ai-bad-output', upstreamStatus: res.status, detail: 'the response body was neither a stream nor JSON' }; }
-    var usage = { input: (message && message.usage && message.usage.input_tokens) || 0, output: (message && message.usage && message.usage.output_tokens) || 0 };
+    var u = (message && message.usage) || {};
+    var usage = { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0, cacheRead: u.cache_read_input_tokens || 0 };
     var text = (message && Array.isArray(message.content) ? message.content : []).filter(function (b) { return b && b.type === 'text' && typeof b.text === 'string'; })
       .map(function (b) { return b.text; }).join('');
     return { text: text, stopReason: String((message && message.stop_reason) || ''), usage: usage };
@@ -201,7 +227,7 @@ function readWhole(res) {
    (so the provider did no billable work). */
 function post(body, apiKey, timeoutMs) {
   var controller = new AbortController();
-  var timedOut = false, answered = false;
+  var timedOut = false, answered = false, streamUsage = null;
   var timer = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs);
   return fetch(apiBase() + '/v1/messages', {
     method: 'POST',
@@ -214,10 +240,10 @@ function post(body, apiKey, timeoutMs) {
       return res.text().then(function (text) { return { code: failureForStatus(res.status), upstreamStatus: res.status, detail: scrub(text, apiKey).slice(0, 600) }; });
     }
     var type = String(res.headers.get('content-type') || '');
-    return (/json/i.test(type) || !res.body) ? readWhole(res) : readStream(res, apiKey);
+    return (/json/i.test(type) || !res.body) ? readWhole(res) : readStream(res, apiKey, streamUsage = { input: 0, output: 0 });
   }).catch(function (err) {
-    if (timedOut) return { code: 'ai-timeout', detail: 'no complete answer within ' + timeoutMs + ' ms' };
-    return { code: 'ai-unavailable', before: !answered, detail: scrub((err && err.cause && err.cause.code) || (err && err.message) || err, apiKey).slice(0, 200) };
+    if (timedOut) return { code: 'ai-timeout', detail: 'no complete answer within ' + timeoutMs + ' ms', usage: streamUsage || undefined };
+    return { code: 'ai-unavailable', before: !answered, detail: scrub((err && err.cause && err.cause.code) || (err && err.message) || err, apiKey).slice(0, 200), usage: streamUsage || undefined };
   }).finally(function () { clearTimeout(timer); });
 }
 
@@ -267,7 +293,7 @@ function logCall(opts, model, mode, started, attempts, promptChars, outcome, api
   var line = {
     at: 'claude', kind: 'json', route: opts.route || '', eventId: opts.eventId || '', user: opts.user || '',
     model: model, mode: mode, code: outcome.code || 'ok', ms: Date.now() - started, attempts: attempts, promptChars: promptChars,
-    promptTokens: usage.input || 0, outputTokens: usage.output || 0
+    promptTokens: usage.input || 0, outputTokens: usage.output || 0, costUsd: costUsd(model, usage)
   };
   function safe(detail, max) { return scrub(detail, apiKey).slice(0, max); }
   /* plain mode only: what the provider said when it refused the strict request, so the parameter at fault can be fixed */
@@ -316,10 +342,17 @@ function callClaudeJson(prompt, schema, opts) {
   }
 
   var attempts = 0, strictRefusal = '';
+  /* every attempt is billed, the refused and the retried ones too: what this call cost is their sum */
+  var spent = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+  function bill() {
+    return { provider: 'claude', model: model, inputTokens: spent.input + spent.cacheWrite + spent.cacheRead, outputTokens: spent.output, usd: costUsd(model, spent) };
+  }
   function attempt(mode, first) {
     var timeoutMs = timeLeft();
     attempts++;
     return post(bodyFor(mode), apiKey, timeoutMs).then(function (result) {
+      var u = result.usage || {};
+      spent.input += u.input || 0; spent.output += u.output || 0; spent.cacheWrite += u.cacheWrite || 0; spent.cacheRead += u.cacheRead || 0;
       if (result.code && first && mayRetry(result, opts, budgetMs, timeLeft())) {
         return new Promise(function (resolve) { setTimeout(resolve, RETRY_PAUSE_MS + Math.floor(Math.random() * RETRY_JITTER_MS)); })
           .then(function () { return attempt(mode, false); });
@@ -331,18 +364,18 @@ function callClaudeJson(prompt, schema, opts) {
       }
       var outcome = result.code ? result : readAnswer(result, mode === 'plain');
       if (outcome.code) {
-        logCall(opts, model, mode, started, attempts, promptText.length, Object.assign({ usage: result.usage, strictRefusal: strictRefusal }, outcome), apiKey);
-        return failure(outcome.code, outcome.code === 'ai-timeout' ? { timeoutMs: budgetMs, provider: 'claude' } : { provider: 'claude' });
+        logCall(opts, model, mode, started, attempts, promptText.length, Object.assign({ usage: spent, strictRefusal: strictRefusal }, outcome), apiKey);
+        return failure(outcome.code, outcome.code === 'ai-timeout' ? { timeoutMs: budgetMs, provider: 'claude', usage: bill() } : { provider: 'claude', usage: bill() });
       }
-      logCall(opts, model, mode, started, attempts, promptText.length, { usage: result.usage, strictRefusal: strictRefusal }, apiKey);
-      return { parsed: outcome.parsed, provider: 'claude', model: model };
+      logCall(opts, model, mode, started, attempts, promptText.length, { usage: spent, strictRefusal: strictRefusal }, apiKey);
+      return { parsed: outcome.parsed, provider: 'claude', model: model, usage: bill() };
     });
   }
   return attempt('strict', true).catch(function (err) {
     /* nothing above should throw; if it does, the caller still gets an answer it can show */
-    logCall(opts, model, 'strict', started, attempts, promptText.length, { code: 'ai-unavailable', detail: 'client error: ' + String((err && err.message) || err) }, apiKey);
-    return failure('ai-unavailable', { provider: 'claude' });
+    logCall(opts, model, 'strict', started, attempts, promptText.length, { code: 'ai-unavailable', detail: 'client error: ' + String((err && err.message) || err), usage: spent }, apiKey);
+    return failure('ai-unavailable', { provider: 'claude', usage: bill() });
   });
 }
 
-module.exports = { callClaudeJson, claudeConfigured, toJsonSchema, CLAUDE_OPUS, CLAUDE_SONNET };
+module.exports = { callClaudeJson, claudeConfigured, toJsonSchema, costUsd, PRICES, CLAUDE_OPUS, CLAUDE_SONNET, CLAUDE_HAIKU };

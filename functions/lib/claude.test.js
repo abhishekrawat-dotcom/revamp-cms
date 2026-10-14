@@ -97,7 +97,7 @@ async function run() {
       ok(!LEAKS.test(JSON.stringify(r)), label + ': nothing of the provider or the key in the result', JSON.stringify(r));
     } else {
       ok(r.parsed && r.parsed.a === 'b' && !r.error && !r.code, label + ': succeeds', JSON.stringify(r));
-      ok(r.provider === 'claude' && r.model === (expect.model || CLAUDE_SONNET) && Object.keys(r).sort().join() === 'model,parsed,provider', label + ': the answer is { parsed, provider, model }', JSON.stringify(r));
+      ok(r.provider === 'claude' && r.model === (expect.model || CLAUDE_SONNET) && Object.keys(r).sort().join() === 'model,parsed,provider,usage' && r.usage && r.usage.provider === 'claude' && r.usage.model === r.model && r.usage.outputTokens >= 0 && typeof r.usage.usd === 'number', label + ': the answer is { parsed, provider, model, usage }', JSON.stringify(r));
     }
     var lines = logged.filter(function (l) { return /"at":"claude"/.test(l); });
     ok(lines.length === 1 && logged.length === 1, label + ': one log line', logged.join(' || '));
@@ -305,6 +305,33 @@ async function run() {
   ok(JSON.stringify(toJsonSchema({ type: 'OBJECT' })) === '{"type":"object"}' && JSON.stringify(toJsonSchema({ type: 'OBJECT', properties: { any: { type: 'OBJECT', description: 'free' }, none: { type: 'OBJECT', properties: {} } } }))
     === '{"type":"object","properties":{"any":{"type":"object","description":"free"},"none":{"type":"object","properties":{},"additionalProperties":false}},"additionalProperties":false}',
   'toJsonSchema: an object with no properties stays free-form (closing it would allow only {})', JSON.stringify(toJsonSchema({ type: 'OBJECT' })));
+
+  /* what a call cost */
+  var claudeMod = require('./claude');
+  ok(claudeMod.costUsd('claude-opus-5-5', { input: 1000000, output: 1000000 }) === 24, 'Opus: $4 in + $20 out per million', String(claudeMod.costUsd('claude-opus-5-5', { input: 1000000, output: 1000000 })));
+  ok(claudeMod.costUsd('claude-sonnet-5-5', { input: 10000, output: 2000 }) === 0.04, 'Sonnet: 10k in + 2k out = $0.04');
+  ok(claudeMod.costUsd('claude-haiku-5-5', { input: 15000, output: 1500 }) === 0.00225, 'Haiku up to 100k prompt tokens: the lower price');
+  ok(claudeMod.costUsd('claude-haiku-5-5', { input: 150000, output: 1000 }) === 0.0775, 'Haiku over 100k prompt tokens: the higher price for the whole call');
+  ok(claudeMod.costUsd('claude-opus-5-5', { input: 0, output: 0, cacheWrite: 1000000, cacheRead: 1000000 }) === 5.2, 'cache writes and reads at their own prices');
+  ok(claudeMod.costUsd('some-other-model', { input: 5, output: 5 }) === null && claudeMod.costUsd('claude-opus-5-5', null) === null, 'no price known, no cost made up');
+
+  /* an answer cut off by the time limit has still been billed for what had arrived */
+  var realFetch = global.fetch;
+  global.fetch = function (url, init) {
+    var enc = new TextEncoder();
+    return Promise.resolve(new Response(new ReadableStream({
+      start: function (ctrl) {
+        ctrl.enqueue(enc.encode('event: message_start\ndata: ' + JSON.stringify({ type: 'message_start', message: { usage: { input_tokens: 8000, output_tokens: 1 } } }) + '\n\n'));
+        ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ type: 'message_delta', usage: { output_tokens: 500 }, delta: {} }) + '\n\n'));
+        init.signal.addEventListener('abort', function () { ctrl.error(new Error('aborted')); });
+      }
+    }), { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+  };
+  captureLogs();
+  var cutOff;
+  try { cutOff = await callClaudeJson('p', SCHEMA, { timeoutMs: 1200, retry: false, model: CLAUDE_OPUS }); } finally { releaseLogs(); global.fetch = realFetch; }
+  ok(cutOff.code === 'ai-timeout' && cutOff.usage && cutOff.usage.inputTokens === 8000 && cutOff.usage.outputTokens === 500 && cutOff.usage.usd === claudeMod.costUsd(CLAUDE_OPUS, { input: 8000, output: 500 }),
+    'a timed-out answer reports the tokens that had already been billed', JSON.stringify(cutOff));
 
   /* no key */
   delete process.env.ANTHROPIC_API_KEY; seen = []; logged = []; captureLogs();

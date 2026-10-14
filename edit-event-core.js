@@ -425,6 +425,11 @@ window.RevampCore = (function(){
     return need(eventId, 'fetchHistory: eventId') ||
       api('GET', '/api/event/history?eventId=' + q(eventId)).then(function(data){ return (data && data.items) || []; });
   }
+  /* the same, with what the AI has cost this event: { items, aiUsage: { usd, calls, pictures, byRoute } | null } */
+  function fetchHistoryAndUsage(eventId){
+    return need(eventId, 'fetchHistoryAndUsage: eventId') ||
+      api('GET', '/api/event/history?eventId=' + q(eventId)).then(function(data){ return { items: (data && data.items) || [], aiUsage: (data && data.aiUsage) || null }; });
+  }
   function fetchApprovalSettings(){ return api('GET', '/api/settings/approvals'); }
   function saveApprovalSettings(settings){ return api('PUT', '/api/settings/approvals', settings || {}); }
 
@@ -898,7 +903,7 @@ window.RevampCore = (function(){
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
     fetchSite: fetchSite, saveSite: saveSite, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
-    fetchHistory: fetchHistory, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
+    fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
     uploadImage: uploadImage, seedContent: seedContent,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,

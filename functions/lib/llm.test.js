@@ -58,7 +58,7 @@ async function run() {
   const { callJson, activeProvider, describeModels, PROFILES } = require('./llm');
   var LIMITS = require('./llm').LIMITS || {};
   const { GEMINI_TEXT_MODEL } = require('./gemini');
-  const { CLAUDE_OPUS, CLAUDE_SONNET } = require('./claude');
+  const { CLAUDE_OPUS, CLAUDE_SONNET, CLAUDE_HAIKU } = require('./claude');
 
   /* one call with the environment and the two scripts as given */
   async function ask(env, claudeSteps, geminiSteps, opts) {
@@ -75,9 +75,9 @@ async function run() {
 
   /* the profiles */
   var want = {
-    'plan-structure': [CLAUDE_OPUS, 'medium', 120000, 20000], 'generate-content': [CLAUDE_OPUS, 'medium', 120000, 28000], 'redesign-section': [CLAUDE_SONNET, 'low', 120000, 28000],
-    'chat-edit': [CLAUDE_SONNET, 'low', 75000, 12000], 'suggest-design': [CLAUDE_SONNET, 'low', 75000, 12000], 'extract-brief': [CLAUDE_SONNET, 'low', 90000, 12000],
-    'ingest-source': [CLAUDE_SONNET, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
+    'plan-structure': [CLAUDE_OPUS, 'medium', 120000, 20000], 'generate-content': [CLAUDE_OPUS, 'low', 120000, 28000], 'redesign-section': [CLAUDE_SONNET, 'low', 120000, 28000],
+    'chat-edit': [CLAUDE_SONNET, 'low', 75000, 12000], 'suggest-design': [CLAUDE_SONNET, 'low', 75000, 12000], 'extract-brief': [CLAUDE_HAIKU, 'low', 90000, 12000],
+    'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
   };
   ok(Object.keys(PROFILES).sort().join() === Object.keys(want).sort().join(), 'the profiles are the routes we know', Object.keys(PROFILES).join());
   Object.keys(want).forEach(function (route) {
@@ -213,6 +213,19 @@ async function run() {
     try { callJson('p', SCHEMA, { inlineFile: { mimeType: 'image/png', data: 'AAAA' } }); } catch (e) { threw = true; }
     ok(threw && claude.seen.length === 0 && gemini.seen.length === 0, 'a caller\'s mistake throws the same way with ' + who + ' first');
   });
+
+  /* onUsage: told once per provider asked, never the reason a call fails */
+  var told = [];
+  r = await ask(KEYED, [fromClaude()], [fromGemini()], { route: 'chat-edit', onUsage: function (u) { told.push(u); } });
+  ok(told.length === 1 && told[0].provider === 'claude' && typeof told[0].usd === 'number', 'onUsage: Claude answered, told once with its cost', JSON.stringify(told));
+  told = [];
+  r = await ask(KEYED, [{ status: 429 }], [fromGemini()], { route: 'chat-edit', timeoutMs: 30000, deadlineAt: Date.now() + 60000, onUsage: function (u) { told.push(u); } });
+  ok(!r.code && told.length === 2 && told[0].provider === 'claude' && told[1].provider === 'gemini' && told[1].usd === null, 'onUsage: Claude failed and Gemini answered, told once for each', JSON.stringify(told));
+  told = [];
+  r = await ask({}, [], [fromGemini()], { route: 'chat-edit', onUsage: function (u) { told.push(u); } });
+  ok(told.length === 1 && told[0].provider === 'gemini', 'onUsage: without a key, told about Gemini', JSON.stringify(told));
+  r = await ask(KEYED, [fromClaude()], [], { route: 'chat-edit', onUsage: function () { throw new Error('recorder broke'); } });
+  ok(!r.code && r.parsed && r.parsed.a === 'claude', 'onUsage throwing does not cost the answer', JSON.stringify(r));
 
   [claude, gemini].forEach(function (p) {
     p.held.forEach(function (res) { try { res.destroy(); } catch (e) {} });

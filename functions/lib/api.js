@@ -332,12 +332,48 @@ function sendAiFailure(res, r) {
   sendJson(res, r.status, body);
 }
 
+/* ---------- what the AI cost, per event ----------
+   Every model call made for an event adds what it used to the event's own record (events/<id>.aiUsage):
+   { usd, calls, pictures, updatedAt, byRoute: { 'generate-content': { calls, usd, inputTokens, outputTokens }, … } }.
+   Claude's calls carry their price (claude.js, from the published price list); Gemini's carry tokens only
+   (usd null), and a picture counts as a picture. The Event History shows it. Recording it is never the
+   reason a request fails. -> a function for opts.onUsage, or null when there is no event to add it to. */
+function aiUsageRecorder(fb, eventId, route) {
+  eventId = String(eventId || '').trim();
+  if (!eventId || !isEventId(eventId)) return null;
+  var key = String(route || 'other').replace(/[^a-z0-9-]/gi, '').slice(0, 40) || 'other';
+  return function (usage) {
+    if (!usage) return;
+    try {
+      var db = (fb && !fb.error ? fb : getFirebase());
+      if (!db || db.error) return;
+      var inc = require('firebase-admin').firestore.FieldValue.increment;
+      var step = 'aiUsage.byRoute.' + key + '.';
+      var write = { 'aiUsage.calls': inc(1), 'aiUsage.updatedAt': new Date().toISOString() };
+      write[step + 'calls'] = inc(1);
+      write[step + 'inputTokens'] = inc(+usage.inputTokens || 0);
+      write[step + 'outputTokens'] = inc(+usage.outputTokens || 0);
+      write[step + (usage.provider === 'claude' ? 'claudeCalls' : 'geminiCalls')] = inc(1);
+      if (typeof usage.usd === 'number' && usage.usd > 0) { write['aiUsage.usd'] = inc(usage.usd); write[step + 'usd'] = inc(usage.usd); }
+      if (usage.pictures > 0) { write['aiUsage.pictures'] = inc(usage.pictures); write[step + 'pictures'] = inc(usage.pictures); }
+      /* update(), never set(): it adds to an event that is there and creates nothing — not a draft that was
+         discarded while the model was answering, not a document for an id somebody typed */
+      db.db.collection('events').doc(eventId).update(write).catch(function (err) {
+        if (err && (err.code === 5 || /NOT_FOUND|No document to update/i.test(String(err.message)))) return;
+        console.error('api: the AI usage of ' + eventId + ' could not be recorded — ' + (err && err.message));
+      });
+    } catch (err) {
+      console.error('api: the AI usage of ' + eventId + ' could not be recorded — ' + (err && err.message));
+    }
+  };
+}
+
 function handleSuggestDesign(req, res) {
   readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
 
-    llm.callJson(buildPrompt(payload), responseSchemaFor(payload), { route: 'suggest-design', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+    llm.callJson(buildPrompt(payload), responseSchemaFor(payload), { route: 'suggest-design', maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(null, payload.eventId, 'suggest-design') }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
@@ -456,7 +492,7 @@ function handleChatEdit(req, res) {
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
 
-    llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', maxOutputTokens: AI_OUTPUT_TOKENS.small }).then(function (r) {
+    llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(null, payload.eventId, 'chat-edit') }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
@@ -600,7 +636,7 @@ function handleExtractBrief(req, res) {
     watchEvent(fb, eventId)
       .then(function (w) { watch = w; return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } }); })
       .then(function () {
-        return llm.callJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small });
+        return llm.callJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, onUsage: aiUsageRecorder(fb, eventId, 'extract-brief'), maxOutputTokens: AI_OUTPUT_TOKENS.small });
       })
       .then(function (r) {
         if (r.error) return sendAiFailure(res, r);
@@ -832,7 +868,7 @@ function handleIngestSource(req, res) {
           title: String(hints.title || '').slice(0, 200), headings: (hints.headings || []).slice(0, 6).map(function (h) { return String(h).slice(0, 200); }),
           years: (hints.years || []).slice(0, 8), editionImage: String(hints.editionImage || '').slice(0, 1000)
         } : null;
-        return llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt }).then(function (r) {
+        return llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'ingest-source') }).then(function (r) {
           if (r.error) return sendAiFailure(res, r);
           var sections = (r.parsed.sections || []).slice(0, 25).map(function (s) {
             return { heading: String(s.heading || '').slice(0, 120), body: String(s.body || '').slice(0, 500) };
@@ -933,6 +969,8 @@ function buildHeroImagePrompt(brief, themeColor) {
 // still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
 function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
   return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+    var record = aiUsageRecorder(fb, eventId, 'pictures');
+    if (record) record(r.usage);
     if (r.error) {
       console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
@@ -966,6 +1004,8 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
    the same address would otherwise be shown for the new site). */
 function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about) {
   return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+    var record = aiUsageRecorder(fb, eventId, 'pictures');
+    if (record) record(r.usage);
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
     var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
     var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
@@ -1407,6 +1447,8 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt) {
      the picture, and Gemini places a box to the pixel where Claude's boxes land beside the lettering
      (measured on the same lock-up: Gemini's box was the year's own, Claude's was 300 px off). */
   return callGeminiJson(LOGO_READ_PROMPT, LOGO_READ_SCHEMA, ask).then(function (r) {
+    var record = aiUsageRecorder(null, eventId, 'logo-unit');
+    if (record) record(r.usage);
     if (r.error) return null;
     var p = r.parsed || {}, year = /^(19|20)\d\d$/.test(String(p.year || '').trim()) ? String(p.year).trim() : '';
     var b = Array.isArray(p.yearBox) ? p.yearBox.map(Number) : [], box = null;
@@ -1738,7 +1780,7 @@ function handlePlanStructure(req, res) {
       var artDirection = genDesign.artDirectionFor(eventId);
 
       var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode });
-      return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt }).then(function (r) {
+      return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
@@ -1974,7 +2016,7 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
     var schema = buildGenerateSchema(needs);
     var prompt = buildGenerateContentPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, needs: needs, futureEdition: futureEdition });
 
-    return llm.callJson(prompt, schema, { route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+    return llm.callJson(prompt, schema, { route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var library = sanitizeGeneratedLibrary(r.parsed, needs);
       if (genTheme && genTheme.heroImageUrl && library.hero) {
@@ -2274,7 +2316,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     var batches = sectionCodeBatches(designPlan);
     return Promise.all(batches.map(function (ids) {
       var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
-      return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site });
+      return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') });
     })).then(function (answers) {
       var failed = answers.filter(function (r) { return r.error; })[0];
       if (failed) return sendAiFailure(res, failed);
@@ -2463,7 +2505,7 @@ function handleRedesignSection(req, res) {
         instruction: String(payload.instruction || '').trim(),
         above: String(payload.above || '').slice(0, 200), below: String(payload.below || '').slice(0, 200)
       });
-      return llm.callJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site }).then(function (r) {
+      return llm.callJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(null, eventId, 'redesign-section') }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var newHtml = genDesign.restorePictures(sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim(), pictures, found[0] || '');
         if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' });
@@ -3490,6 +3532,7 @@ function isoOf(v) {
 function eventForClient(eventId, data) {
   var out = Object.assign({ eventId: eventId }, data);
   delete out.siteLock;
+  delete out.aiUsage;                 // the History's own route answers it, with its labels
   EVENT_TIME_FIELDS.forEach(function (f) { if (has(out, f)) out[f] = isoOf(out[f]); });
   out.published = data.published === true;
   out.publishedPath = out.published ? publicPathOf(eventId) : null;
@@ -5664,8 +5707,10 @@ function handleEventHistory(req, res) {
         var changes = {}, approvals = {};
         r[1].docs.forEach(function (d) { changes[d.id] = d.data(); });
         r[2].docs.forEach(function (d) { approvals[d.id] = d.data(); });
+        var usage = isPlainObject(data.aiUsage) ? data.aiUsage : null;
         sendJson(res, 200, {
           eventId: eventId, name: data.name || eventId,
+          aiUsage: usage ? { usd: +usage.usd || 0, calls: +usage.calls || 0, pictures: +usage.pictures || 0, updatedAt: usage.updatedAt || null, byRoute: isPlainObject(usage.byRoute) ? usage.byRoute : {} } : null,
           items: r[0].docs.map(function (d) {
             var a = d.data(), out = { id: d.id, at: a.at || null, by: a.by || '', action: a.action || '', detail: a.detail || '', version: a.version || null };
             if (a.fields) out.fields = a.fields;
