@@ -11,6 +11,7 @@
     "dev": "node tools/serve.js"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "dom-serializer": "^2.0.0",
     "domutils": "^3.2.2",
     "firebase-admin": "^12.6.0",

@@ -129,6 +129,19 @@ const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini
 const llm = require('./llm');
 const logoUnit = require('./logo-unit');
 const pngLite = require('./png-lite');
+const svgYear = require('./svg-year');
+/* An SVG drawn as a PNG (resvg, a native module: loaded on first use, so a server without it still runs and
+   only that one step is skipped). -> { png, width, height } on a mid-grey ground, or null */
+var resvgModule;
+function rasterise(svgText) {
+  try {
+    if (resvgModule === undefined) { try { resvgModule = require('@resvg/resvg-js'); } catch (e) { resvgModule = null; console.error('api: SVGs cannot be drawn here (resvg) — ' + e.message); } }
+    if (!resvgModule) return null;
+    var r = new resvgModule.Resvg(svgText, { fitTo: { mode: 'width', value: 1000 }, background: '#808080', font: { loadSystemFonts: false } });
+    var img = r.render();
+    return { png: img.asPng(), width: img.width, height: img.height };
+  } catch (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return null; }
+}
 const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
@@ -1446,6 +1459,11 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
 var LOGO_UNIT_MAX_BYTES = 3 * 1024 * 1024;
 var LOGO_UNIT_TRIES = 3;
 var LOGO_UNIT_DECODE_PIXELS = 2500000;       // 10 MB as RGBA; the copies made of it stay well inside the instance
+/* the fonts the year of a lock-up drawn as outlines can be set in: geometric, grotesque, condensed and serif
+   faces, so the reader of the picture can name the nearest */
+var YEAR_FONT_CHOICES = ['Outfit', 'Lexend', 'Urbanist', 'Montserrat', 'Poppins', 'Manrope', 'Inter', 'Plus Jakarta Sans', 'Space Grotesk',
+  'Sora', 'Red Hat Display', 'Barlow', 'Josefin Sans', 'Raleway', 'Oswald', 'Bebas Neue', 'Roboto', 'Open Sans', 'Lato',
+  'Playfair Display', 'Source Serif 4', 'Merriweather', 'Libre Baskerville', 'DM Serif Display', 'Cormorant Garamond'];
 var LOGO_READ_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -1454,6 +1472,8 @@ var LOGO_READ_SCHEMA = {
     yearBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there is a year: [ymin, xmin, ymax, xmax] of its four digits ONLY, each 0-1000 relative to the picture. Else an empty list.' },
     yearFont: { type: 'STRING', enum: ['serif', 'sans-serif'] },
     yearWeight: { type: 'STRING', enum: ['regular', 'bold'] },
+    yearFontFamily: { type: 'STRING', enum: YEAR_FONT_CHOICES, description: 'When there is a year: of these Google Fonts, the one whose digits look most like the year\'s.' },
+    yearFontWeight: { type: 'STRING', enum: ['300', '400', '500', '600', '700', '800'], description: 'When there is a year: how heavy its digits are, as a font weight.' },
     extras: { type: 'STRING', description: 'Anything drawn inside that belongs to one edition only: a sponsor\'s or partner\'s name or logo ("Powered by …", "Presented by …", "In association with …"), a theme line of that edition, an edition number. Else an empty string. The publisher\'s own mark (ET, The Economic Times, an ET vertical such as ETAuto) is NOT an extra.' },
     unitBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there are extras: [ymin, xmin, ymax, xmax], each 0-1000 relative to the picture, of ONE box that encloses ALL the extras together (every sponsor mark, "Powered by" line and theme line) and nothing of the publisher\'s mark or of the event\'s name. Else an empty list.' }
   },
@@ -1587,7 +1607,8 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt) {
     if (u.length === 4 && u.every(function (n) { return n >= 0 && n <= 1000; }) && u[2] > u[0] && u[3] > u[1]) {
       unitBox = { x: u[1] / 1000 * picture.info.width, y: u[0] / 1000 * picture.info.height, width: (u[3] - u[1]) / 1000 * picture.info.width, height: (u[2] - u[0]) / 1000 * picture.info.height };
     }
-    return { year: year, box: box, unitBox: unitBox, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160) };
+    return { year: year, box: box, unitBox: unitBox, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+      fontFamily: YEAR_FONT_CHOICES.indexOf(p.yearFontFamily) !== -1 ? p.yearFontFamily : '', fontWeight: /^[3-8]00$/.test(String(p.yearFontWeight)) ? +p.yearFontWeight : 0 };
   }, function () { return null; });
 }
 
@@ -1756,6 +1777,31 @@ function previousEditionUnit(fb, eventId, o) {
     function stillShows(year) {
       notes.push('The logo unit is the previous edition\'s and still shows ' + year + ', not ' + years.to + ': it could not be changed without redrawing it. Select it and use Replace image to put in this edition\'s artwork.');
     }
+    /* A lock-up drawn as outlines: drawn here as a picture on grey (a reader takes transparency for white,
+       and white lettering would vanish), read, and — when it shows an earlier edition's year — that year's
+       shapes are replaced by the new year set as text (svg-year.js). -> the picture to use */
+    function outlinedYear(svgText) {
+      var vb = svgYear.viewBoxOf(svgText);
+      var raster = vb ? rasterise(svgText) : null;
+      if (!raster) return Promise.resolve(picture);
+      return readLogoPicture(eventId, { bytes: raster.png, info: { type: 'png', mime: 'image/png', width: raster.width, height: raster.height } }, null, o.deadlineAt).then(function (read) {
+        if (!read) return picture;
+        carries(read.extras);
+        if (!isOldEdition(read.year) || !read.box) return picture;
+        var sx = vb.width / raster.width, sy = vb.height / raster.height;
+        var box = { x: vb.x + read.box.x * sx, y: vb.y + read.box.y * sy, width: read.box.width * sx, height: read.box.height * sy };
+        var found = svgYear.yearShapes(svgText, box);
+        if (!found) { stillShows(read.year); return picture; }
+        var family = read.fontFamily || (read.serif ? 'Source Serif 4' : 'Inter');
+        var weight = read.fontWeight || (read.bold ? 700 : 400);
+        return fetchUnitFont(family, weight, years.to).then(function (font) {
+          var moved = svgYear.replaceYear(svgText, found, { toYear: years.to, font: font, serif: read.serif, bold: read.bold });
+          if (!moved || svgCouldRun(moved)) { stillShows(read.year); return picture; }
+          notes.unshift('The year in the logo unit was changed from ' + read.year + ' to ' + years.to + ': its old digits were taken out and the new year set in ' + (font ? font.family : 'a system font') + ', the closest match; everything else in it is untouched. Check how it sits, and replace the picture if you have this edition\'s artwork.');
+          return { bytes: Buffer.from(moved, 'utf8'), info: picture.info };
+        });
+      }, function () { return picture; });
+    }
     function carries(extras) { if (extras) notes.push('The logo unit also carries “' + extras + '” from the previous edition, which could not be cropped out cleanly. Select it and use Replace image to put in artwork without it.'); }
 
     if (picture.info.type === 'svg') {
@@ -1772,10 +1818,10 @@ function previousEditionUnit(fb, eventId, o) {
         return done(picture);
       }
       /* No year in real text. Many ET units are one PNG exported inside an SVG: that picture is read, so
-         that an old year drawn in it is at least reported. Lettering drawn as outlines cannot be read
-         here at all (nothing on this server draws an SVG) — such a unit is used as it is. */
+         that an old year drawn in it is at least reported. One whose lettering is drawn as outlines is drawn
+         here as a picture and read; its year's shapes are then replaced (outlinedYear). */
       var wrapped = /href\s*=\s*["']data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+\/=\s]+)["']/.exec(svgText);
-      if (!wrapped) return done(picture);
+      if (!wrapped) return outlinedYear(svgText).then(done);
       var innerBytes = Buffer.from(wrapped[2].replace(/\s+/g, ''), 'base64'), innerInfo = logoUnit.imageInfo(innerBytes);
       var innerDecoded = innerInfo.type === 'png' && innerInfo.width * innerInfo.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(innerBytes) : null;
       /* an SVG that is nothing but that one PNG is that PNG: it is taken out and handled as one, so that a
