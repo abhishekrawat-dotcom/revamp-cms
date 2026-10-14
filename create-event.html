@@ -223,7 +223,7 @@
   /* "Generate from a brief": two fields to a row, the rarely used ones folded under "More options" */
   /* the description beside its sources: both columns run the same height, edges level */
   .gb-desc{ align-self: stretch; display:flex; flex-direction:column; }
-  .gb-desc textarea.inp{ flex: 1; min-height: 236px; line-height: 1.6; }
+  .gb-desc textarea.inp{ flex: 1; min-height: 216px; line-height: 1.6; }
   .gb-desc-h{ display:flex; align-items:center; justify-content:space-between; gap: 8px; margin-bottom: 6px; }
   .gb-desc-h .flabel{ margin-bottom: 0; }
   .gb-stack{ align-self: stretch; display:flex; flex-direction:column; justify-content:space-between; gap: 12px; min-width: 0; }
@@ -613,6 +613,91 @@
     .wiz-foot .btn{ min-height: 44px; }
     .wiz-body{ padding: 22px 14px 32px; }
   }
+
+  /* ---------- THE DETAILS FORM — clean and light ----------
+     Every field plainly editable (white, a clear edge, a soft ring on focus), one height for every control
+     in a row, regular and medium weights only, quiet section titles. Scoped to the form sheet; colours are
+     the page's own tokens, so the dark theme follows. */
+  .b-head .ttl{ font-weight: 600; letter-spacing: -0.015em; }
+  .cat-chip b{ font-weight: 500; }
+  .cat-chip button{ font-weight: 500; }
+  .sheet{
+    --f-edge: color-mix(in srgb, var(--border) 65%, var(--text-faint));
+    --f-h: 44px; --f-r: 10px;
+    border-radius: 16px; padding: 4px 32px 28px;
+    box-shadow: 0 1px 2px rgba(30,26,10,.04), 0 16px 40px -28px rgba(30,26,10,.22);
+  }
+  .sheet .grp{ padding: 26px 0 6px; }
+  .sheet .grp-h{ margin-bottom: 18px; gap: 10px; }
+  .sheet .grp-h h4{ font-size: 15px; font-weight: 600; text-transform: none; letter-spacing: -0.01em; }
+  .sheet .grp-h h4::before, .sheet .grp-h .ln{ display: none; }
+  .sheet .grp-tag{ margin-left: auto; padding: 0; background: none; border-radius: 0; color: var(--text-muted);
+    font-size: 12.5px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .sheet .grp > .hint{ font-size: 13px !important; color: var(--text-muted); margin: -8px 0 18px !important; }
+  .sheet .frow{ gap: 20px 20px; }
+  .sheet .field label, .sheet .field .flabel{ font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--text); }
+  .sheet .frow > .field > label, .sheet .frow > .field > .flabel, .sheet .frow > .field > .flabel-row{ min-height: 20px; margin-bottom: 8px; }
+  .sheet .pill-req{ font-size: 13px; font-weight: 500; margin-left: 2px; }
+  .sheet .pill-opt{ padding: 0; background: none; border-radius: 0; color: var(--text-faint);
+    font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .sheet .field .hint{ font-size: 12px; color: var(--text-faint); margin-top: 7px; }
+
+  .sheet .inp, .sheet select.inp, .sheet textarea.inp{
+    height: var(--f-h); padding: 0 14px; border-radius: var(--f-r); border: 1px solid var(--f-edge);
+    background: var(--surface); color: var(--text); font-size: 14px; font-weight: 400;
+    box-shadow: 0 1px 2px rgba(30,26,10,.04); transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .sheet textarea.inp{ height: auto; padding: 12px 14px; line-height: 1.6; }
+  .sheet select.inp{ padding-right: 36px; cursor: pointer; }
+  .sheet .inp:hover{ border-color: var(--text-faint); }
+  .sheet .inp:focus{ border-color: var(--text-muted); box-shadow: 0 0 0 4px var(--surface-3); }
+  .sheet .inp[aria-invalid="true"]{ border-color: var(--crit); }
+  .sheet .inp[aria-invalid="true"]:focus{ box-shadow: 0 0 0 4px var(--crit-soft); }
+  .sheet .inp::placeholder{ color: var(--text-faint); font-weight: 400; }
+
+  /* the address: a fixed prefix, then what is typed */
+  .sheet .slug-row .inp{ height: var(--f-h); border-radius: 0 var(--f-r) var(--f-r) 0; font-family: var(--font-body); font-size: 14px; }
+  .sheet .slug-prefix{ border-color: var(--f-edge); border-radius: var(--f-r) 0 0 var(--f-r); background: var(--surface-2);
+    color: var(--text-muted); font-family: var(--font-body); font-size: 13.5px; padding: 0 12px; }
+  .sheet .slug-status{ font-weight: 500; }
+  @media (max-width: 680px){
+    .sheet .slug-prefix{ border-right: 1px solid var(--f-edge); border-bottom: none; border-radius: var(--f-r) var(--f-r) 0 0; padding: 8px 12px; }
+    .sheet .slug-row .inp{ border-radius: 0 0 var(--f-r) var(--f-r); }
+    .sheet{ padding: 4px 18px 22px; }
+  }
+
+  /* the logo and the brief's document: a field-shaped picker */
+  .sheet .logo-row{ height: var(--f-h); border-radius: var(--f-r); border-color: var(--f-edge); box-shadow: 0 1px 2px rgba(30,26,10,.04); }
+  .sheet .logo-row:hover{ border-color: var(--text-faint); }
+  .sheet .logo-row-icon{ width: var(--f-h); background: var(--surface); border-right-color: var(--border); color: var(--text-muted); }
+  .sheet .logo-row-cta{ font-size: 14px; font-weight: 500; color: var(--text); }
+  .sheet .logo-meta{ font-weight: 400; }
+
+  /* registration on this platform is free: a note, not a field */
+  .sheet #payment-note{ display: flex; align-items: center; min-height: var(--f-h); padding: 0 14px; border-radius: var(--f-r);
+    background: var(--surface-2); color: var(--text-muted) !important; font-size: 13px !important; }
+  .sheet .dt-preview .lb{ font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 12px; }
+
+  /* Site type: a segmented control the height of a field; the chosen one's meaning below it */
+  .sheet .gb-seg{ gap: 0; height: var(--f-h); padding: 3px; border-radius: var(--f-r); background: var(--surface-2); border: 1px solid var(--border); }
+  .sheet .gb-seg span{ display: flex; align-items: center; justify-content: center; height: 100%; min-height: 0; padding: 0 12px;
+    border: 0; border-radius: 8px; background: transparent; transition: background .15s ease, box-shadow .15s ease; }
+  .sheet .gb-seg b{ font-size: 13.5px; font-weight: 500; color: var(--text-muted); }
+  .sheet .gb-seg i{ display: none; }
+  .sheet .gb-seg input:checked + span{ background: var(--surface); box-shadow: 0 1px 3px rgba(30,26,10,.12); }
+  .sheet .gb-seg input:checked + span b{ color: var(--text); }
+  .sheet .gb-seg input:focus-visible + span{ outline: 2px solid var(--text-muted); outline-offset: 1px; }
+  .sheet .gb-grid{ gap: 20px 20px; }
+  .sheet .gb-guide-btn{ font-weight: 500; }
+  .sheet .gb-more{ margin-top: 20px; padding-top: 14px; }
+  .sheet .gb-more > summary{ font-weight: 500; }
+  .sheet .gb-more > summary::before{ font-weight: 400; }
+  .sheet .grp{ padding-bottom: 24px; }
+  .sheet .frow > .field > .flabel-row{ justify-content: flex-start; gap: 6px; }
+  .sheet select.inp{ appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8380' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; }
+  .sheet .gb-stack{ justify-content: flex-start; gap: 20px; }
 </style>
 <style>
   /* ============ STEP 2 - PATH CHOICE ============ */
@@ -1948,6 +2033,7 @@
                   <label><input type="radio" name="gb-mode" value="standard"><span><b>Standard</b><i>The usual ET sections, as the previous edition had them</i></span></label>
                   <label><input type="radio" name="gb-mode" value="advanced"><span><b>Advanced</b><i>The AI chooses the sections for this event</i></span></label>
                 </div>
+                <p class="hint" id="gb-mode-hint"></p>
               </div>
               <div class="field"><label class="flabel" for="gb-theme">Site theme</label>
                 <select class="inp" id="gb-theme">
@@ -1962,7 +2048,7 @@
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9.6 9.3a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
                     <span>Guide</span></button>
                 </div>
-                <textarea class="inp" id="gb-brief-text" rows="11" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
+                <textarea class="inp" id="gb-brief-text" rows="9" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
               </div>
               <div class="gb-stack">
               <div class="field"><span class="flabel" id="gb-doc-label">Overview document (PDF)</span>
@@ -2031,7 +2117,6 @@
       <li><b>Audience</b><span>CIOs, CTOs, heads of AI at large enterprises</span></li>
       <li><b>Industry</b><span>BFSI, manufacturing, IT services</span></li>
       <li><b>Level</b><span>Pan-India, global or regional</span></li>
-      <li><b>Format and city</b><span>In-person in Mumbai, virtual or hybrid</span></li>
       <li><b>Main action</b><span>Register, request an invite, apply, nominate or become a sponsor</span></li>
       <li><b>Expected scale</b><span>500 delegates, 60 speakers, 25 partners</span></li>
       <li><b>Look and tone</b><span>Event photos or graphics; boardroom, energetic or editorial</span></li>
@@ -3808,6 +3893,7 @@
     if (contentGrp) contentGrp.hidden = S.creationMethod !== 'template';
     wireBriefInputs();
     wireBriefGuide();
+    modeHint();
   }
   /* The "Generate from a brief" inputs are part of the draft like every other field: shown from S.brief
      and written back as they change. The PDF is the exception — a page cannot hold on to a file across a
@@ -3823,7 +3909,6 @@
     'Audience',
     'Industry',
     'Level (pan-India / global / regional)',
-    'Format and city (in-person / virtual / hybrid)',
     'Main action (register / request an invite / apply / nominate / become a sponsor)',
     'Expected scale (delegates, speakers, partners)',
     'Look and tone (photos or graphics; boardroom / energetic / editorial)',
@@ -3888,6 +3973,11 @@
         function(){ status.textContent = 'Could not copy. Select the headings above instead.'; });
     };
   }
+  /* what the chosen site type means, under the control */
+  function modeHint(){
+    var on = document.querySelector('input[name="gb-mode"]:checked'), el = $('gb-mode-hint');
+    if (el) el.textContent = on ? on.parentNode.querySelector('i').textContent + '.' : '';
+  }
   function wireBriefInputs(){
     /* a new description starts as the headings of the "Share these details" card */
     if (!String(S.brief.text || '').trim()) S.brief.text = BRIEF_TEMPLATE;
@@ -3915,7 +4005,7 @@
     /* Standard (the usual ET sections) or Advanced (the AI chooses) */
     Array.prototype.forEach.call(document.querySelectorAll('input[name="gb-mode"]'), function(radio){
       radio.checked = radio.value === (S.brief.siteMode === 'advanced' ? 'advanced' : 'standard');
-      radio.onchange = function(){ if (radio.checked){ S.brief.siteMode = radio.value; save(); } };
+      radio.onchange = function(){ if (radio.checked){ S.brief.siteMode = radio.value; save(); modeHint(); } };
     });
     /* what is filled in under "More options" is said on the closed fold, and the fold opens when it holds something */
     function moreNote(){
