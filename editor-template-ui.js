@@ -345,17 +345,29 @@
       .catch(function () { return null; });
   }
 
-  /* Has the site been generated again since this browser's copy was taken? Only a different version that is
-     also LATER than the copy's last save counts, so edits made on the current version are never thrown away. */
+  /* Has the site been generated again since this browser's copy was made? The copy records which generation
+     it was made from (sourceDraftId): a different one on the server is a newer run, and it wins — edits made
+     on the current generation keep matching it and are never thrown away. A copy too old to record its
+     generation is judged by time instead: replaced only by a run made after its last save. (Not by time
+     alone: every opening re-saves the copy, so an old copy opened once after a regeneration would look
+     newer than it.) */
   function newerOnServer(res, saved) {
+    if (!res.draftId || res.draftId === saved.sourceDraftId) return false;
+    if (saved.sourceDraftId) return true;
     var made = Date.parse(res.generatedAt || '');
-    return !!res.draftId && res.draftId !== saved.sourceDraftId && !isNaN(made) && made > (+saved.savedAt || 0);
+    return !isNaN(made) && made > (+saved.savedAt || 0);
   }
   /* the newer version: from its hand-off when it has one, else exactly as the canvas mounted it from the server */
   function takeServerVersion(res) {
     if (res.handoff && res.handoff.sections && res.handoff.sections.length) return applyHandoffDraft(res.handoff, res.draftId);
     sourceDraftId = res.draftId;
     return seedSnapshot(null);
+  }
+
+  /* A copy that never recorded its generation, kept because it is newer than the server's current one, is
+     from now on taken as that generation's — so the next regeneration is recognised by its id. */
+  function adoptGeneration(res, saved) {
+    if (!saved.sourceDraftId && res && res.draftId) sourceDraftId = res.draftId;
   }
 
   function resolveInitialContent() {
@@ -403,6 +415,7 @@
         return fetchServerDraft().then(function (res) {
           if (res && res.draftId && (newerOnServer(res, saved) || !isCurrentVersion)) return takeServerVersion(res);
           restoreLocal();
+          adoptGeneration(res, saved);
         });
       }
       if (arriving) {
@@ -427,6 +440,7 @@
         /* the site was made again after this browser's copy was taken: the page just mounted from the server is
            the new one, and it is what the editor shows */
         if (saved && saved.snapshot && res && newerOnServer(res, saved)) return takeServerVersion(res);
+        if (saved && saved.snapshot) { restoreLocal(); adoptGeneration(res, saved); return; }
         // Nothing current on the server — fall back to whatever's cached locally rather than re-seeding
         // blank, so a real edit (or a draft the server fetch itself just failed to reach) isn't discarded.
         if (saved && saved.snapshot) { restoreLocal(); return; }
