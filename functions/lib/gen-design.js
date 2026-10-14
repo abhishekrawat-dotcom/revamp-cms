@@ -396,9 +396,11 @@ function restorePictures(text, map, fallback) {
 
 /* What a generated picture may show. Pictures are scenes from the event's own world — the event (a hall, a
    stage, delegates) and its subject at work — because a picture of unrelated objects, however handsome,
-   tells a visitor nothing about the event. People are in them, never as anyone in particular: no face that
-   could be taken for a real person's, so that no picture passes for a photograph of who was there. */
-var IMAGE_RULES = 'STRICT: people only anonymously — seen from behind, in silhouette, out of focus or at a distance, or hands at work; never a clear, recognisable face and never a real, named person. No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
+   tells a visitor nothing about the event. These are ET's events, for an Indian audience: the people in them
+   are Indian, women as much as men, and seen as people are in event photography — faces included — but
+   always ordinary, made-up people, never anyone real or famous. */
+var PEOPLE_RULES = 'PEOPLE: the people are Indian (South Asian) professionals, as at a business event in India — if the event takes place outside India, Indian delegates alongside some local hosts. Women and men in about equal numbers, and women clearly present in leading roles (speaking on stage, leading a discussion, presenting), not only in the background. Faces may be seen naturally, as in real event photography, with professional Indian business attire (suits, blazers, sarees, kurtas); they are ordinary, made-up people — never a real, famous or named person.';
+var IMAGE_RULES = 'STRICT: ' + PEOPLE_RULES + ' No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
 
 function imagePrompt(subject, design, opts) {
   design = design || {};
@@ -407,7 +409,7 @@ function imagePrompt(subject, design, opts) {
     opts.hero
       ? 'Create the wide background photograph for the hero banner of a professional event website. It must say at a glance what this event is: show the scene described below, not an abstraction of it. The event\'s name and buttons will sit over the middle of it, so compose it with depth and atmosphere, the main elements towards the sides, the back and the lower third, and a calmer, darker or softer middle.'
       : 'Create one editorial photograph for a section of a professional event website.',
-    'Scene: ' + String(subject || 'a large business conference in session, the audience seen from behind facing a lit stage').slice(0, 500) + '.',
+    'Scene: ' + String(subject || 'a large business conference in session, an Indian audience of women and men facing a lit stage where a woman is speaking').slice(0, 500) + '.',
     opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting, the people at work and the objects in view.' : '',
     opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
     design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
@@ -422,5 +424,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
-  ensureLogo, imagePrompt, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };
