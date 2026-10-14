@@ -149,3 +149,15 @@
   .pm-sendnote{ text-align:left; }
   .pm-stage{ padding:8px; }
 }
+
+/* the section list: drag to reorder */
+.pm-sec[draggable="true"]{ cursor: grab; }
+.pm-grip{ flex-shrink:0; width:14px; margin-left:6px; color: var(--pm-muted); font-size:10px; letter-spacing:-3px; line-height:1; user-select:none; }
+.pm-sec.is-drag{ opacity:.45; }
+.pm-sec.drop-before{ box-shadow: inset 0 3px 0 var(--accent, #ED1C24); }
+.pm-sec.drop-after{ box-shadow: inset 0 -3px 0 var(--accent, #ED1C24); }
+/* the look: colour presets, button colour and corners */
+.pm-presets{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.pm-btnrow{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
+.pm-btnrow .pm-swatch{ flex:1 1 160px; }
+.pm-btnrow .pm-field{ flex:1 1 140px; margin:0; }

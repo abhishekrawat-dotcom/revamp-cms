@@ -708,6 +708,83 @@ function measureUnit(unit) {
    the other: each is a round trip to Firestore or Storage. The page is used only when the event says its
    site was saved (an address can be reused, and a page left from before must never be read as this
    event's), and only the live event's answer is sent. */
+/* ---------- the ET B2B portal an event belongs to ----------
+   Read from the address of the event's previous edition (cio.economictimes.indiatimes.com -> ETCIO). The
+   mailers sign off as the portal and put its wordmark in the logo bar, as ET's own sends do. Names and
+   wordmarks are the promotional platform's portal roster (templates/_shared/img/portals: <slug>.png is the
+   dark-ink wordmark, <slug>-light.png the light-ink one). */
+var PORTALS = {
+  brandequity: 'ET BrandEquity',
+  cio: 'ETCIO',
+  ciso: 'ETCISO',
+  infra: 'ET Infra',
+  cfo: 'ETCFO',
+  hr: 'ETHRWorld',
+  retail: 'ETRetail',
+  health: 'ETHealthworld',
+  auto: 'ETAuto',
+  telecom: 'ETTelecom',
+  bfsi: 'ETBFSI',
+  energy: 'ETEnergyworld',
+  government: 'ETGovernment',
+  legal: 'ETLegalWorld',
+  realty: 'ETRealty',
+  education: 'ET Education',
+  manufacturing: 'ET Manufacturing',
+  supplychain: 'ET Supply Chain',
+  travel: 'ETTravelWorld',
+  hospitality: 'ET HospitalityWorld',
+  b2b: 'ET B2B',
+  masterclass: 'ET Masterclass',
+  hrsea: 'ETHRWorld Southeast Asia',
+  hrme: 'ETHRWorld Middle East',
+  ciosea: 'ETCIO Southeast Asia',
+  ciome: 'ETCIO Middle East',
+  pharma: 'ETPharma',
+  gcc: 'ET GCC',
+  enterpriseai: 'ET EnterpriseAI',
+  techmonk: 'TechMonk',
+  entrepreneur: 'ET Entrepreneur',
+  datacenters: 'ET Data Centers',
+  electronics: 'ET Electronics',
+  energymea: 'ET EnergyWorld MEA',
+  sustainability: 'ET Sustainability',
+  workplace: 'ET Workplace',
+  agriculture: 'ET Agriculture',
+  chemicals: 'ET Chemicals',
+  climate: 'ET Climate',
+  construction: 'ET Construction',
+  crypto: 'ET Crypto',
+  defence: 'ET Defence',
+  drones: 'ET Drones',
+  facilities: 'ET Facilities',
+  food: 'ET Food',
+  geospatial: 'ET Geospatial',
+  jewellery: 'ET Jewellery',
+  machinetools: 'ET MachineTools',
+  packaging: 'ET Packaging',
+  rajasthan: 'ET Rajasthan',
+  safety: 'ET Safety',
+  salon: 'ET Salon',
+  shipping: 'ET Shipping',
+  sports: 'ET Sports',
+  startup: 'ET Startup',
+  textile: 'ETTextile',
+  wastemanagement: 'ET Waste Management'
+};
+var PORTAL_IMG = path.join(__dirname, '..', '..', 'templates', '_shared', 'img', 'portals');
+function portalOf(urls) {
+  for (var i = 0; i < urls.length; i++) {
+    var m = /^https?:\/\/([a-z0-9-]+)\.economictimes\.indiatimes\.com(?:[\/:?#]|$)/i.exec(String(urls[i] || ''));
+    var slug = m && m[1].toLowerCase();
+    if (slug && PORTALS[slug]) {
+      var file = function (f) { try { return fs.existsSync(path.join(PORTAL_IMG, f)) ? '/templates/_shared/img/portals/' + f : ''; } catch (e) { return ''; } };
+      return { slug: slug, name: PORTALS[slug], logo: file(slug + '.png'), logoLight: file(slug + '-light.png') };
+    }
+  }
+  return null;
+}
+
 function buildKit(fb, eventId, req, opts) {
   opts = opts || {};
   var ref = fb.db.collection('events').doc(eventId);
@@ -746,6 +823,8 @@ function buildKit(fb, eventId, req, opts) {
         brand.fonts.heading.cssUrl = c[0]; brand.fonts.body.cssUrl = c[1];
         brand.logoUnit = c[2];
         if (brand.logoUnit && !brand.logoUnit.tone) brand.logoUnit.tone = brand.mode;
+        var plan = r[0] || {}, design = plan.design || {};
+        brand.portal = portalOf([plan.reference && plan.reference.url, design.logoUnitFrom, ev.previousEditionUrl]);
         return { event: kit.event, brand: brand, content: kit.content };
       });
     });
