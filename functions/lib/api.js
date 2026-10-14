@@ -615,10 +615,62 @@ var BRIEF_SCHEMA = {
        label ("enterprise AI leadership", "retail / e-commerce"), not a fixed enum — the set of real-world
        event industries isn't closed, and forcing one here would mean inventing a category the document never
        actually supports. */
-    inferredCategory: { type: 'STRING', description: 'A short (2-4 word) industry/category label this document genuinely reads as, e.g. "enterprise AI leadership" or "retail / e-commerce" — empty string if the document gives no real signal, never a guess.' }
+    inferredCategory: { type: 'STRING', description: 'A short (2-4 word) industry/category label this document genuinely reads as, e.g. "enterprise AI leadership" or "retail / e-commerce" — empty string if the document gives no real signal, never a guess.' },
+    /* A DESIGNED PRESENTATION carries its own look (a brand deck, a concept note laid out as slides). Only
+       then is it read for that look and for its own sections — and only then do they shape the site; a plain
+       document leaves the design to the AI as before. designed: 'yes' is the switch. */
+    visualIdentity: {
+      type: 'OBJECT',
+      description: 'The document\'s own visual identity — ONLY when it is a designed presentation or brand deck with a consistent, deliberate look (set colours, type, imagery across its pages). For a plain text document, a memo or an unstyled PDF: designed "no" and everything else empty.',
+      properties: {
+        designed: { type: 'STRING', enum: ['yes', 'no'], description: '"yes" only when the pages share a deliberate brand look.' },
+        colours: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+          hex: { type: 'STRING', description: '#rrggbb as it appears on the pages' },
+          role: { type: 'STRING', enum: ['primary', 'accent', 'background', 'surface', 'text', 'highlight'] }
+        }, required: ['hex', 'role'] }, description: 'The 2-6 colours the deck is built on, each with its role: primary = the dominant brand colour (big panels, headings), accent = the second brand colour used for emphasis, background = the page colour, text = the main text colour.' },
+        mode: { type: 'STRING', enum: ['light', 'dark', 'mixed', ''], description: 'Whether most pages are light or dark.' },
+        headingStyle: { type: 'STRING', description: 'How headings are set, in plain words (e.g. "bold geometric sans, tight, two-tone with the last words in gold").' },
+        bodyStyle: { type: 'STRING', description: 'How body text is set (e.g. "clean neutral sans").' },
+        imagery: { type: 'STRING', description: 'What its pictures show and how (e.g. "sunset city skylines, a glowing rising arrow, warm golden light").' },
+        motifs: { type: 'STRING', description: 'Recurring graphic devices (e.g. "navy rounded panels, thin gold rules, circular icon badges, number tabs").' },
+        ipName: { type: 'STRING', description: 'The name the deck brands the property with, if it shows one as a logo/lock-up (e.g. "ET Next Billion Blueprint"), else empty.' },
+        ipTagline: { type: 'STRING', description: 'The line set with that name (e.g. "New markets. New models. New growth."), else empty.' }
+      },
+      required: ['designed', 'colours', 'mode', 'headingStyle', 'bodyStyle', 'imagery', 'motifs', 'ipName', 'ipTagline']
+    },
+    deckSections: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+      title: { type: 'STRING' }, items: { type: 'ARRAY', items: { type: 'STRING' } }
+    }, required: ['title', 'items'] }, description: 'ONLY for a designed presentation: its content pages in order, each with its own title and its points as written (short, verbatim where possible). Leave out cover, thank-you and pure-logo pages, and any page that only lists prospective sponsors. Empty list for a plain document.' }
   },
-  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory']
+  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory', 'visualIdentity', 'deckSections']
 };
+
+/* The visual identity of a brief, or null. It counts only when the brief is a PDF (a typed description
+   has no look), the model judged it a designed presentation, and at least two of its colours are real hex
+   codes with a primary among them. Anything less and the design stays the AI's to decide. */
+var DECK_ROLES = ['primary', 'accent', 'background', 'surface', 'text', 'highlight'];
+function deckIdentity(mimeType, v) {
+  if (mimeType !== 'application/pdf' || !v || v.designed !== 'yes') return null;
+  var colours = [];
+  (Array.isArray(v.colours) ? v.colours : []).forEach(function (c) {
+    var hex = String((c && c.hex) || '').trim().toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(hex)) hex = '#' + hex.slice(1).replace(/./g, function (x) { return x + x; });
+    if (!/^#[0-9a-f]{6}$/.test(hex) || DECK_ROLES.indexOf(c.role) === -1) return;
+    if (!colours.some(function (o) { return o.hex === hex; })) colours.push({ hex: hex, role: c.role });
+  });
+  if (colours.length < 2 || !colours.some(function (c) { return c.role === 'primary'; })) return null;
+  function line(x, n) { return String(x || '').replace(/\s+/g, ' ').trim().slice(0, n); }
+  return {
+    designed: 'yes', colours: colours.slice(0, 6), mode: ['light', 'dark', 'mixed'].indexOf(v.mode) !== -1 ? v.mode : '',
+    headingStyle: line(v.headingStyle, 200), bodyStyle: line(v.bodyStyle, 200), imagery: line(v.imagery, 300),
+    motifs: line(v.motifs, 300), ipName: line(v.ipName, 80), ipTagline: line(v.ipTagline, 120)
+  };
+}
+/* the deck's colour for a role, or '' */
+function deckColour(look, role) {
+  var c = look && (look.colours || []).filter(function (x) { return x.role === role; })[0];
+  return c ? c.hex : '';
+}
 
 function buildExtractBriefPrompt(eventMeta) {
   return [
@@ -634,7 +686,15 @@ function buildExtractBriefPrompt(eventMeta) {
     'inferredCategory specifically: name the short industry/category this event genuinely reads as (e.g.',
     '"enterprise AI leadership", "CIO technology leadership", "retail / e-commerce") — base it only on real',
     'signal in the document (its subject matter, audience, themes), never on the event basics above, and never',
-    'invent one if the document itself gives no real signal to go on — an empty string is the correct answer then.'
+    'invent one if the document itself gives no real signal to go on — an empty string is the correct answer then.',
+    '',
+    'tracks: every named track, theme, pillar, question or industry the document lists — all of them, not a selection.',
+    '',
+    'visualIdentity and deckSections: LOOK at the pages. Only when the document is a designed presentation with',
+    'its own deliberate look, set designed "yes", read its colours as hex codes from the pages with their roles,',
+    'and describe its type, imagery and graphic motifs; and list its content pages as deckSections. A plain or',
+    'unstyled document is designed "no" with empty colours and an empty deckSections list. Sponsor names shown as',
+    'a "potential" or "prospective" list are prospects, not partners: never put them in sponsorHints as confirmed.'
   ].join('\n');
 }
 
@@ -684,12 +744,20 @@ function handleExtractBrief(req, res) {
           theme: String(r.parsed.theme || '').slice(0, 500),
           audience: String(r.parsed.audience || '').slice(0, 300),
           tone: String(r.parsed.tone || '').slice(0, 200),
-          tracks: (r.parsed.tracks || []).slice(0, 20).map(function (s) { return String(s).slice(0, 200); }),
+          tracks: (r.parsed.tracks || []).slice(0, 40).map(function (s) { return String(s).slice(0, 200); }),
           speakerHints: (r.parsed.speakerHints || []).slice(0, 30).map(function (s) { return String(s).slice(0, 200); }),
           sponsorHints: (r.parsed.sponsorHints || []).slice(0, 30).map(function (s) { return String(s).slice(0, 200); }),
           keyMessages: (r.parsed.keyMessages || []).slice(0, 5).map(function (s) { return String(s).slice(0, 300); }),
           inferredCategory: String(r.parsed.inferredCategory || '').trim().slice(0, 60)
         };
+        /* the deck's look and its own sections, kept only when it really is a designed presentation */
+        var look = deckIdentity(mimeType, r.parsed.visualIdentity);
+        if (look) {
+          extracted.visualIdentity = look;
+          extracted.deckSections = (Array.isArray(r.parsed.deckSections) ? r.parsed.deckSections : []).slice(0, 16).map(function (d) {
+            return { title: String((d && d.title) || '').replace(/\s+/g, ' ').trim().slice(0, 120), items: (d && Array.isArray(d.items) ? d.items : []).slice(0, 12).map(function (t) { return String(t).replace(/\s+/g, ' ').trim().slice(0, 240); }).filter(Boolean) };
+          }).filter(function (d) { return d.title && d.items.length; });
+        }
 
         var now = new Date().toISOString();
         var eventRef = fb.db.collection('events').doc(eventId);
@@ -1198,6 +1266,8 @@ var MAX_SECTION_IMAGES = 8;
 
 function buildDesignPlanPrompt(payload) {
   var ref = payload.reference || { basis: null, others: [] };
+  /* a brief that is a designed presentation gives the site its look (deckIdentity); otherwise null */
+  var deck = payload.brief && payload.brief.visualIdentity && payload.brief.visualIdentity.designed === 'yes' ? payload.brief.visualIdentity : null;
   var mode = payload.themeMode || 'auto';
   var lines = [
     'You are the lead designer of a bespoke event microsite, for ET Oneworld\'s event builder. You decide its SECTION STRUCTURE, the layout of every section, its colours and type, and which sections carry a picture. A second step writes the HTML and CSS from exactly what you decide here, so be specific.',
@@ -1216,11 +1286,25 @@ function buildDesignPlanPrompt(payload) {
       lines.push('', 'OTHER PAGES TO LEARN FROM — take the strongest idea from each (a section this event lacks, a better layout for one it has) and work it into the structure above. Never copy their branding:');
       ref.others.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.design, null, 2)); });
     }
-  } else {
+  } else if (!deck) {
     var art = payload.artDirection;
     lines.push(
       'There is no previous edition or competitor page to model this site on, so its design starts from this art direction, chosen for this event — build the whole page on it, do not fall back on a generic dark-navy-and-gold conference look:',
       art.label + ': ' + art.note
+    );
+  }
+  if (deck) {
+    lines.push('',
+      'THE BRIEF IS A DESIGNED PRESENTATION WITH ITS OWN VISUAL IDENTITY — this site must look like it belongs to that deck. This is binding' + (ref.basis ? ' for colour, type and imagery (the reference page above still gives the structure)' : '') + ':',
+      '- colours (design.themeColor = its primary, design.accentColor = its accent or highlight, and the page background its background when it has one): ' + deck.colours.map(function (c) { return c.hex + ' ' + c.role; }).join(', '),
+      deck.mode && deck.mode !== 'mixed' ? '- its pages are mostly ' + deck.mode + ': design.mode "' + deck.mode + '" unless the owner asked otherwise below.' : '- its pages mix light and dark: choose the mode that carries its primary colour best.',
+      '- type: headings "' + deck.headingStyle + '", body "' + deck.bodyStyle + '" — pick the two real Google Fonts families that are closest to that.',
+      '- imagery: ' + deck.imagery + ' — design.imageStyle and design.heroImage must come from this, so the pictures look like the deck\'s.',
+      '- graphic motifs to carry into the layout: ' + deck.motifs + '.',
+      deck.ipName ? '- the deck brands the property as "' + deck.ipName + '"' + (deck.ipTagline ? ' with the line "' + deck.ipTagline + '"' : '') + ': use that line (or the strongest line of the deck) for design.heroTagline when it fits.' : '',
+      (payload.brief.deckSections || []).length
+        ? '- its content pages are listed in the brief as deckSections. Each one carries real content the owner put in front of you: carry EVERY one of them into the site with its points — as its own section, or inside the section it belongs to (' + (payload.siteMode === 'standard' ? 'this is a standard site, so inside the matching standard section: e.g. its benefits and "why" pages go into why-join-us, its thesis into overview, its questions and pillars into key-discussion-points, its audience groups — all of them — into who-should-attend' : 'its own section where it has substance') + '). Do not drop or merge away any of their points.'
+        : ''
     );
   }
 
@@ -1265,7 +1349,9 @@ function buildDesignPlanPrompt(payload) {
   } else {
     lines.push('The owner left light or dark to you: choose what suits this event. Do not default to dark.');
   }
-  if (ti.usedFallback && ti.usedFallback.noPreviousEditionSource) {
+  if (deck && ti.usedFallback && ti.usedFallback.noPreviousEditionSource) {
+    lines.push('The colours and type come from the presentation above — not from an art direction.');
+  } else if (ti.usedFallback && ti.usedFallback.noPreviousEditionSource) {
     lines.push('No previous edition was given, so there is no brand colour or font to carry over. Choose a considered palette and font pairing that fit THIS event\'s subject and the direction above — a different event must get a visibly different palette.');
   } else {
     lines.push('Found on this event\'s own previous edition — this is the event\'s existing brand, so carry it over unless it is plainly unusable (and say why in evidence):',
@@ -1823,6 +1909,19 @@ function handlePlanStructure(req, res) {
       return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
+        /* A designed presentation's own colours are not left to the model to remember: they are set here,
+           before the palette is checked for contrast. The owner's light/dark choice still wins. */
+        var look = brief && brief.visualIdentity && brief.visualIdentity.designed === 'yes' ? brief.visualIdentity : null;
+        if (look && r.parsed && r.parsed.design) {
+          var dd = r.parsed.design;
+          dd.themeColor = deckColour(look, 'primary') || dd.themeColor;
+          dd.accentColor = deckColour(look, 'accent') || deckColour(look, 'highlight') || dd.accentColor;
+          var deckBg = deckColour(look, 'background');
+          if (themeMode === 'auto' && (look.mode === 'light' || look.mode === 'dark')) dd.mode = look.mode;
+          if (deckBg && (themeMode === 'auto' || (genDesign.luminance(deckBg) < 0.2) === (themeMode === 'dark'))) dd.backgroundColor = deckBg;
+          var deckText = deckColour(look, 'text');
+          if (deckText) dd.textColor = deckText;
+        }
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
         var now = new Date().toISOString();
         var stamp = now.replace(/[^0-9]/g, '').slice(0, 14);

@@ -640,9 +640,57 @@
   /* Every item of the kind standing in a list is what an earlier load drew (a saved page comes back with
      them): they are all replaced by one item per record, so a list never grows from one load to the next.
      The first of them is the model the new items are cloned from. */
+  /* A list of a kind the event has NO records of still holds the designer's sample item ("Partner Name").
+     That is not this event's content, so the place is marked data-rv-empty: the published and previewed page
+     hide it (templates/_shared/rv-live.css), together with the links to it in the top bar; in the editor it
+     stays, under a notice that says why visitors do not see it and where to add the records. The section is
+     what is marked when the list is what it is about (nothing else in it but a heading and a line or two);
+     otherwise only the list. Records arriving later undo all of it (markFilled). */
+  var EMPTY_NOTES = {
+    partners: 'No partners yet: add them in Content › Partners.', speakers: 'No speakers yet: add them in Content › Speakers.',
+    sessions: 'No agenda yet: add sessions in Content › Agenda.', faq: 'No FAQs yet: add them in Content › FAQs.',
+    contact: 'No contacts yet: add them in Content › Contacts.', glimpses: 'No pictures yet: add them in Content › Gallery.'
+  };
+  function emptyPlaceOf(listParent) {
+    var sec = listParent.closest('[data-rv-section]');
+    if (!sec) return listParent;
+    var words = (sec.innerText || sec.textContent || '').replace(/\s+/g, ' ').trim().length;
+    var listWords = (listParent.innerText || listParent.textContent || '').replace(/\s+/g, ' ').trim().length;
+    return words - listWords <= 600 ? sec : listParent;
+  }
+  function markEmpty(doc, kind) {
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
+      var parent = el.parentNode;
+      if (!parent || parent.querySelector(':scope > [data-rv-empty-state]')) return;
+      var place = emptyPlaceOf(parent);
+      place.setAttribute('data-rv-empty', kind);
+      var note = doc.createElement('div');
+      note.setAttribute('data-rv-empty-state', kind);
+      note.setAttribute('data-rv-editor', '');
+      note.setAttribute('data-ed', 'none');
+      note.setAttribute('style', 'margin:12px 0;padding:10px 14px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;font:500 13px/1.5 Inter,Arial,sans-serif;color:inherit;opacity:.85');
+      note.textContent = (EMPTY_NOTES[kind] || 'Nothing to show yet.') + ' Until then visitors do not see ' + (place === parent ? 'this list' : 'this section') + '.';
+      parent.insertBefore(note, parent.firstChild);
+      if (place !== parent && place.id) {
+        Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + place.id + '"]'), function (a) {
+          /* the menu's links only: a button elsewhere ("Join as partner") still stands for something real */
+          if (a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
+        });
+      }
+    });
+  }
+  function markFilled(doc, kind) {
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-empty="' + kind + '"]'), function (place) {
+      place.removeAttribute('data-rv-empty');
+      if (place.id) Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + place.id + '"][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
+    });
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-empty-state="' + kind + '"]'), function (n) { n.remove(); });
+  }
+
   function applyGenericRepeat(canvas, kind, items) {
-    if (!items || !items.length) return;
-    if (!canvas || !canvas.doc) return;
+    if (!canvas || !canvas.doc || !items) return;
+    if (!items.length) { markEmpty(canvas.doc, kind); return; }
+    markFilled(canvas.doc, kind);
     var lists = [];
     Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
       if (!el.parentNode) return;
@@ -783,6 +831,8 @@
         var cfg = GENERIC_REPEAT_SOURCES[kind];
         var inputs = cfg.resources.map(function (r) { return byResource[r]; });
         if (inputs[0] == null) return;   // the kind's own records could not be fetched — leave it untouched
+        /* confirmed empty (the fetch worked and there are none): the list's sample item is not this event's */
+        if (Array.isArray(inputs[0]) && !inputs[0].length) { overlay[kind] = []; return; }
         var items = cfg.translate.apply(null, inputs);
         if (items) overlay[kind] = items;
       });

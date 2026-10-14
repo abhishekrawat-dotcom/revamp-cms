@@ -6,4 +6,5 @@
    because the editor shows those places with a notice instead. */
 [data-rv-empty],
 [data-rv-hidden-empty],
-[data-rv-bind-empty] { display: none !important; }
+[data-rv-bind-empty],
+[data-rv-nav-empty] { display: none !important; }
