@@ -2766,7 +2766,7 @@ function handleGetDraft(req, res) {
     .then(function (snap) {
       if (snap.empty) return sendJson(res, 404, { error: 'No generated draft found for "' + eventId + '" — run /api/generate-content first.' });
       var draftId = snap.docs[0].id, draft = snap.docs[0].data();
-      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, draftId: draftId, handoff: libraryToHandoffDraft(draft.library, eventId, draft.skippedLibraries) });
+      sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, draftId: draftId, generatedAt: draft.generatedAt || null, handoff: libraryToHandoffDraft(draft.library, eventId, draft.skippedLibraries) });
     })
     .catch(function (err) { sendJson(res, 500, { error: 'get-draft failed: ' + err.message }); });
 }

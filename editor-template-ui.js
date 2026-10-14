@@ -345,6 +345,19 @@
       .catch(function () { return null; });
   }
 
+  /* Has the site been generated again since this browser's copy was taken? Only a different version that is
+     also LATER than the copy's last save counts, so edits made on the current version are never thrown away. */
+  function newerOnServer(res, saved) {
+    var made = Date.parse(res.generatedAt || '');
+    return !!res.draftId && res.draftId !== saved.sourceDraftId && !isNaN(made) && made > (+saved.savedAt || 0);
+  }
+  /* the newer version: from its hand-off when it has one, else exactly as the canvas mounted it from the server */
+  function takeServerVersion(res) {
+    if (res.handoff && res.handoff.sections && res.handoff.sections.length) return applyHandoffDraft(res.handoff, res.draftId);
+    sourceDraftId = res.draftId;
+    return seedSnapshot(null);
+  }
+
   function resolveInitialContent() {
     return localGet(storeKey).then(function (saved) {
       var arriving = fromCreate();
@@ -380,6 +393,18 @@
          server-side right now. A real local edit is still safe either way — it only changes section
          content, never sourceDraftId itself (see persist()'s own comment), so an edited-but-still-current
          draft keeps matching and is never silently discarded. */
+      if (arriving && /^gen-/.test(templateId || '') && saved && saved.snapshot) {
+        /* An address from Create Event names the version that was made then. This browser's hand-off of a
+           newer run wins; failing that the server decides: a version generated after this copy was last saved
+           (on another device, or by regenerating the site) replaces it, and so does any current version when
+           this copy was filled by older fill logic. Otherwise this browser's copy, with its edits, stands. */
+        var handed = isStale ? readHandoffDraft() : null;
+        if (handed && handed.sections && handed.sections.length) return applyHandoffDraft(handed, draftId);
+        return fetchServerDraft().then(function (res) {
+          if (res && res.draftId && (newerOnServer(res, saved) || !isCurrentVersion)) return takeServerVersion(res);
+          restoreLocal();
+        });
+      }
       if (arriving) {
         if (saved && saved.snapshot && !isStale && isCurrentVersion) { restoreLocal(); return; }
         var draft = readHandoffDraft();
@@ -399,6 +424,9 @@
         if (res && res.handoff && res.handoff.sections && res.handoff.sections.length) {
           return applyHandoffDraft(res.handoff, serverDraftId || null);
         }
+        /* the site was made again after this browser's copy was taken: the page just mounted from the server is
+           the new one, and it is what the editor shows */
+        if (saved && saved.snapshot && res && newerOnServer(res, saved)) return takeServerVersion(res);
         // Nothing current on the server — fall back to whatever's cached locally rather than re-seeding
         // blank, so a real edit (or a draft the server fetch itself just failed to reach) isn't discarded.
         if (saved && saved.snapshot) { restoreLocal(); return; }
