@@ -2502,14 +2502,8 @@ function buildSectionCodePrompt(payload) {
   lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails.');
   lines.push('- Use ONLY the picture addresses given above, written exactly as given (they begin "rvimg://" — the server turns them into the real addresses); never write an http address for a picture and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
 
-  if (payload.logoUrl) {
-    var logoToken = genDesign.pictureToken('logo');
-    lines.push('', 'THE EVENT\'S LOGO has the address ' + logoToken + ' — it MUST appear in the nav, as <img data-rv-logo src="' + logoToken + '" alt="' + String((payload.eventMeta || {}).name || 'Event logo').replace(/"/g, '') + '"> linked to "#hero", 44–56px tall (height set in CSS, width auto), in place of the event name as text.' +
-      (design.mode === 'dark' ? ' The page is dark and the logo was most likely drawn for a light background: set it on a white chip (background #fff, padding 6px 12px, radius ' + radius + ').' : '') +
-      ' Show it again in the footer, smaller.');
-  } else {
-    lines.push('', 'No logo was supplied: the nav shows the event\'s name as text.');
-  }
+  /* the nav and the footer carry The Economic Times Business Verticals logo, placed by the server */
+  lines.push('', 'THE LOGO IN THE NAV AND THE FOOTER is The Economic Times Business Verticals logo — the same on every ET event site — and the server places it: at the far left of the nav bar, and at the top of the footer. Do not write any logo, wordmark or event name as a logo in either; keep the left of the nav bar free for it (about 220px; the section links sit on the right) and let the footer open with room for it.');
 
   lines.push('', 'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2));
   if (payload.brief) lines.push('', 'Extracted brief:', JSON.stringify(payload.brief, null, 2));
@@ -2723,7 +2717,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         var own = pictures[genDesign.pictureToken(sec.id)] || '';
         sec.html = genDesign.restorePictures(sec.html, pictures, own);
         sec.css = genDesign.restorePictures(sec.css, pictures, own);
-        if (sec.id === 'nav' && logoUrl) sec.html = genDesign.ensureLogo(sec.html, logoUrl, eventMeta.name);
+        /* The Economic Times Business Verticals logo, in the version for the site's tone */
+        if (sec.id === 'nav' || sec.id === 'footer') sec.html = genDesign.ensureEtLogo(sec.html, design.mode, sec.id);
       });
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();

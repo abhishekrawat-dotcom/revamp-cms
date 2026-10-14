@@ -137,6 +137,8 @@
         pageWired = true;
       }
       wireCanvasEvents();
+      /* a page saved before its look last changed carries the ET logo in the right version from now on */
+      if (syncEtLogos()) commit();
       updateHistoryButtons();
       renderTopbar();
       sectionsChanged();
@@ -1011,6 +1013,7 @@
       var isFont = key === 'headingFont' || key === 'bodyFont';
       if (!canvas.design.supports(key) || !canvas.design.set(key, isFont ? stackFor(design[key]) : design[key])) skipped.push(key);
     });
+    syncEtLogos();
     return skipped;
   }
 
@@ -2824,6 +2827,51 @@
 
   /* A font is given as its whole CSS stack (designOptions().fonts[].stack). Controls that fire continuously
      (a slider, a colour being dragged) make one undo step once they have been still for a moment. */
+  /* The Economic Times Business Verticals logo in the nav and the footer (data-rv-et-logo) is the version for
+     the colour it stands on: the one drawn for a dark background on a dark bar, else the one for a light
+     one. Kept in step whenever the look changes, so a site switched to dark gets the light-ink logo. */
+  var ET_LOGO_FILES = { dark: '/templates/_shared/img/et-business-verticals-on-dark.svg', light: '/templates/_shared/img/et-business-verticals-on-light.svg' };
+  function groundOf(el) {
+    var w = canvas.win;
+    for (var e = el; e && e.nodeType === 1; e = e.parentElement) {
+      var c = w.getComputedStyle(e).backgroundColor, m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(c || '');
+      if (m && (m[4] == null || +m[4] > 0.5)) return [+m[1], +m[2], +m[3]];
+    }
+    return [255, 255, 255];
+  }
+  function syncEtLogos() {
+    if (!canvas || !canvas.doc) return false;
+    var changed = false;
+    /* An AI-designed site built before the bars carried the ET logo has the event's own logo there: it
+       becomes the ET logo, in the same place (a white chip it sat on goes with it). Only the nav and the
+       footer, and only on a generated site — a ported template keeps its own header. */
+    if (/^gen-/.test(String(templateId || ''))) {
+      Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-section="nav"] img[data-rv-logo], [data-rv-section="footer"] img[data-rv-logo]'), function (img) {
+        var inFooter = !!img.closest('[data-rv-section="footer"]');
+        img.removeAttribute('data-rv-logo');
+        img.setAttribute('data-rv-et-logo', '');
+        img.setAttribute('alt', 'The Economic Times Business Verticals');
+        img.style.height = inFooter ? '34px' : '40px'; img.style.width = 'auto'; img.style.maxWidth = '100%';
+        /* the plate the event's logo sat on (a white chip, set inline or by the page's CSS on the picture or
+           the one or two boxes around it) is not wanted under the ET logo */
+        for (var k = 0, holder = img; k < 3 && holder && !holder.hasAttribute('data-rv-section'); k++, holder = holder.parentElement) {
+          var c = canvas.win.getComputedStyle(holder).backgroundColor, m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(c || '');
+          if (m && (m[4] == null || +m[4] > 0.5) && (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 > 0.85) {
+            ['background', 'box-shadow', 'border'].forEach(function (prop) { holder.style.setProperty(prop, 'none', 'important'); });
+            holder.style.setProperty('padding', '0', 'important');
+          }
+        }
+        changed = true;
+      });
+    }
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('img[data-rv-et-logo]'), function (img) {
+      var g = groundOf(img), lum = (0.2126 * g[0] + 0.7152 * g[1] + 0.0722 * g[2]) / 255;
+      var want = ET_LOGO_FILES[lum < 0.45 ? 'dark' : 'light'];
+      if (img.getAttribute('src') !== want) { img.setAttribute('src', want); changed = true; }
+    });
+    return changed;
+  }
+
   function setDesign(key, value) {
     if (!canvas || remounting) return false;
     var why = unsupportedReason(key);
@@ -2834,6 +2882,7 @@
       showToast(unsupportedReason(key), { kind: 'error' });
       return false;
     }
+    syncEtLogos();
     commit();
     designChanged();
     return true;

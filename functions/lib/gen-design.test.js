@@ -85,6 +85,13 @@ var heroSponsor = g.heroHtml({ unit: '', tagline: 't', primary: { label: 'Become
 ok(!/data-register-cta[^>]*>Become a Partner/.test(heroSponsor) && /Become a Partner/.test(heroSponsor), 'a partner button is not marked as registration', heroSponsor.slice(0, 300));
 var heroDefault = g.heroHtml({ unit: '', tagline: 't', primary: { label: 'Register Now', href: '#contact' } });
 ok(/data-register-cta/.test(heroDefault), 'a register button is marked as registration');
+var navEt = g.ensureEtLogo('<nav class="n"><div class="w"><ul><li>Overview</li></ul></div></nav>', 'dark', 'nav');
+ok(/<div class="w"><a href="#hero" data-rv-et-logo-link[^>]*><img data-rv-et-logo src="\/templates\/_shared\/img\/et-business-verticals-on-dark\.svg"/.test(navEt), 'the ET logo opens the nav bar, the dark-background version on a dark site', navEt);
+ok(g.ensureEtLogo(navEt, 'light', 'nav') === navEt, 'the ET logo is never added twice');
+ok(/on-light\.svg/.test(g.ensureEtLogo('<footer><p>x</p></footer>', 'light', 'footer')) && /margin:0 0 18px/.test(g.ensureEtLogo('<footer><p>x</p></footer>', 'light', 'footer')), 'the footer opens with the light-background version on a light site');
+ok(!/data-rv-logo[^-]/.test(navEt), 'it is not taken for the event\'s own logo (data-rv-logo)');
+var swapped = g.ensureEtLogo('<nav><div><a href="#hero"><img data-rv-logo src="https://x/logo.png" alt="Event"></a><ul></ul></div></nav>', 'dark', 'nav');
+ok(!/data-rv-logo[^-]/.test(swapped) && (swapped.match(/data-rv-et-logo\b/g) || []).length === 1 && /on-dark\.svg/.test(swapped) && !/logo\.png/.test(swapped), 'an event logo the model put in the nav becomes the ET logo, in its place', swapped);
 var ipAbout = g.imagePrompt('a panel on stage', {}, { about: 'MarTech Summit 2027, marketing technology, Gurugram' });
 ok(/The event: MarTech Summit 2027, marketing technology, Gurugram\./.test(ipAbout) && /4:3/.test(ipAbout), 'a picture is told which event it belongs to', ipAbout);
 
