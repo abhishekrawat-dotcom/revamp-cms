@@ -425,7 +425,10 @@ function buildChatPrompt(payload) {
     'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
     '',
     (payload.attachmentCount
-      ? 'The owner ATTACHED ' + payload.attachmentCount + ' picture' + (payload.attachmentCount === 1 ? '' : 's') + ' to this message, numbered 1' + (payload.attachmentCount > 1 ? ' to ' + payload.attachmentCount : '') + '. You cannot see them; the owner\'s words say what they are for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
+      ? 'The owner ATTACHED ' + payload.attachmentCount + ' picture' + (payload.attachmentCount === 1 ? '' : 's') + ' to this message, numbered 1' + (payload.attachmentCount > 1 ? ' to ' + payload.attachmentCount : '') + '. ' +
+        (payload.seenPictures ? 'You can SEE ' + (payload.seenPictures === payload.attachmentCount ? 'them' : 'pictures ' + payload.seenNumbers.join(', ')) + ': they come with this message as images, in that order. Look at them properly. When the owner asks for the look of a picture (its colours, its mood, its layout), read it from the picture itself and give real values — colours as hex codes (e.g. "#0b1f3a deep navy, #c9a227 gold accent"). Never say you cannot see an attached picture you were given. ' : 'You cannot see them; the owner\'s words say what they are for. ') +
+        (payload.unseenNote ? payload.unseenNote + ' ' : '') +
+        'To place a picture on the page, the owner\'s words say what it is for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
       : ''),
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
@@ -486,13 +489,50 @@ function chatResponseSchema(payload) {
   return schema;
 }
 
+/* The pictures attached to a chat message, as the model is shown them: { images: [{ mimeType, data }],
+   numbers: [n] (which attachments they are), skipped: [sentence] }. Only pictures uploaded for this event to
+   our own bucket (the editor's attach button puts them there) are fetched — never an address a request
+   names elsewhere. A picture the model cannot take (an SVG, one too large) is left out and the model is
+   told which, so it does not pretend to have seen it. */
+var CHAT_PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+var CHAT_PICTURE_MAX_BYTES = 3700000;          // base64 of it stays under the 5 MB a model takes per picture
+function chatPictures(eventId, urls) {
+  var fb = getFirebase();
+  var none = { images: [], numbers: [], skipped: [] };
+  if (fb.error || !isEventId(String(eventId || '')) || !Array.isArray(urls) || !urls.length) return Promise.resolve(none);
+  var own = 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/';
+  return Promise.all(urls.slice(0, 6).map(function (url, i) {
+    url = String(url || '');
+    if (url.indexOf(own) !== 0 || /[?#]/.test(url.slice(own.length).replace(/\?v=\d+$/, ''))) return Promise.resolve({ n: i + 1, why: 'was not uploaded here' });
+    return safeFetch(url, { timeoutMs: 8000, maxBytes: CHAT_PICTURE_MAX_BYTES }).then(function (r) {
+      var info = r.status === 200 ? logoUnit.imageInfo(r.body) : null;
+      if (!info || CHAT_PICTURE_TYPES.indexOf(info.mime) === -1) return { n: i + 1, why: info && info.type === 'svg' ? 'is an SVG drawing, which cannot be shown to you' : 'could not be read' };
+      return { n: i + 1, image: { mimeType: info.mime, data: r.body.toString('base64') } };
+    }, function (err) {
+      return { n: i + 1, why: err && err.code === 'too-large' ? 'is too large to be shown to you (over 3.7 MB)' : 'could not be fetched' };
+    });
+  })).then(function (got) {
+    var out = { images: [], numbers: [], skipped: [] };
+    got.forEach(function (g) {
+      if (g.image) { out.images.push(g.image); out.numbers.push(g.n); }
+      else out.skipped.push('Attached picture ' + g.n + ' ' + g.why + '.');
+    });
+    return out;
+  });
+}
+
 function handleChatEdit(req, res) {
   readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
 
-    llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(null, payload.eventId, 'chat-edit') }).then(function (r) {
+    chatPictures(payload.eventId, payload.attachments).then(function (seen) {
+      payload.seenPictures = seen.images.length;
+      payload.seenNumbers = seen.numbers;
+      payload.unseenNote = seen.skipped.length ? seen.skipped.join(' ') + ' Tell the owner so if it matters for the answer.' : '';
+      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: isEventId(String(payload.eventId || '')) ? payload.eventId : '', maxOutputTokens: AI_OUTPUT_TOKENS.small, images: seen.images.length ? seen.images : undefined, onUsage: aiUsageRecorder(null, payload.eventId, 'chat-edit') });
+    }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
 
@@ -549,7 +589,7 @@ function handleChatEdit(req, res) {
       var kind = parsed.kind === 'reply' ? 'reply' : 'edit';
       sendJson(res, 200, { kind: kind, summary: summary || 'A change is ready to review.', design: design, textEdits: textEdits,
         sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections, skipped: skipped });
-    });
+    }).catch(function (err) { sendStepFailure(res, err, 500, 'The chat could not answer. Please try again.'); });
   }, BODY_LIMITS.ai);
 }
 
