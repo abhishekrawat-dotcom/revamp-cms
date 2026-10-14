@@ -27,6 +27,14 @@ inferredCategory specifically: name the short industry/category this event genui
 "enterprise AI leadership", "CIO technology leadership", "retail / e-commerce") — base it only on real
 signal in the document (its subject matter, audience, themes), never on the event basics above, and never
 invent one if the document itself gives no real signal to go on — an empty string is the correct answer then.
+
+tracks: every named track, theme, pillar, question or industry the document lists — all of them, not a selection.
+
+visualIdentity and deckSections: LOOK at the pages. Only when the document is a designed presentation with
+its own deliberate look, set designed "yes", read its colours as hex codes from the pages with their roles,
+and describe its type, imagery and graphic motifs; and list its content pages as deckSections. A plain or
+unstyled document is designed "no" with empty colours and an empty deckSections list. Sponsor names shown as
+a "potential" or "prospective" list are prospects, not partners: never put them in sponsorHints as confirmed.
 ````
 
 ## 2. Read each reference page
@@ -190,6 +198,8 @@ SHARED RULES — written identically in every section, because sections are styl
 - Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section's own "layout" below exactly.
 - MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section's heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section's root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.
 - CAROUSELS: where a section's layout calls for a carousel or slider (a row with more cards, logos, quotes or photos than fit), mark the wrapper with data-rv-carousel (data-rv-carousel="auto" to make it advance by itself) and the element that directly holds the items with data-rv-carousel-track. Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.
+
+NO SECTION NUMBERS: never number the sections themselves — no "01", "02" tabs, counters, badges or "Section 3" labels before or beside a section's heading, and no running count across the page. Numbering the items inside one list (steps, questions, pillars) is fine.
 
 THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event's name as a wordmark, the line "", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section under it introduces the event properly.
 THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.
