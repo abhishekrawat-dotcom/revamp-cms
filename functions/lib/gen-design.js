@@ -310,7 +310,7 @@ function heroHtml(o) {
   if (o.date) facts += '<span class="hero-fact">' + HERO_ICONS.date + '<span>' + escAttr(o.date) + '</span></span>';
   if (o.place) facts += '<span class="hero-fact">' + HERO_ICONS.place + '<span>' + escAttr(o.place) + '</span></span>';
   var buttons = '';
-  if (o.primary && o.primary.label) buttons += '<a class="hero-btn hero-btn-primary" data-register-cta href="' + escAttr(o.primary.href || '#') + '">' + escAttr(o.primary.label) + '</a>';
+  if (o.primary && o.primary.label) buttons += '<a class="hero-btn hero-btn-primary"' + (o.primary.register === false ? '' : ' data-register-cta') + ' href="' + escAttr(o.primary.href || '#') + '">' + escAttr(o.primary.label) + '</a>';
   if (o.secondary && o.secondary.label) buttons += '<a class="hero-btn hero-btn-secondary" href="' + escAttr(o.secondary.href || '#') + '">' + escAttr(o.secondary.label) + '</a>';
   return '<section id="hero" class="hero-root hero-on-' + (o.mode === 'dark' ? 'dark' : 'light') + '">' +
     '<div class="hero-veil" aria-hidden="true"></div>' +
@@ -400,23 +400,36 @@ function restorePictures(text, map, fallback) {
    are Indian, women as much as men, and seen as people are in event photography — faces included — but
    always ordinary, made-up people, never anyone real or famous. */
 var PEOPLE_RULES = 'PEOPLE: the people are Indian (South Asian) professionals, as at a business event in India — if the event takes place outside India, Indian delegates alongside some local hosts. Women and men in about equal numbers, and women clearly present in leading roles (speaking on stage, leading a discussion, presenting), not only in the background. Faces may be seen naturally, as in real event photography, with professional Indian business attire (suits, blazers, sarees, kurtas); they are ordinary, made-up people — never a real, famous or named person.';
-var IMAGE_RULES = 'STRICT: ' + PEOPLE_RULES + ' No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
+/* a GLOBAL event (the owner said so) shows an international mix, Indian professionals among them */
+var PEOPLE_RULES_GLOBAL = PEOPLE_RULES
+  .replace(/the people are Indian \(South Asian\) professionals, as at a business event in India — if the event takes place outside India, Indian delegates alongside some local hosts\./, 'this is a GLOBAL event: the people are an international mix of professionals, Indian professionals among them.')
+  .replace('professional Indian business attire (suits, blazers, sarees, kurtas)', 'professional business attire');
+/* the owner asked for graphics, not photographs: a composition, with no people in it */
+var GRAPHIC_RULES = 'STRICT: a graphic composition, not a photograph — shapes, light, texture and forms drawn from the event\'s subject; no people, no faces.' + 
+ ' No readable text, letters or numbers anywhere, no logos, no brand names, no watermarks, no flags.';
+var IMAGE_TAIL = ' No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
+var IMAGE_RULES = 'STRICT: ' + PEOPLE_RULES + IMAGE_TAIL;
 
+/* opts: { hero, about, context, level: 'global'|…  (an owner's "global" event shows an international mix),
+   graphic: true (the owner asked for graphics, not photographs) } */
 function imagePrompt(subject, design, opts) {
   design = design || {};
   opts = opts || {};
+  var graphic = !!opts.graphic;
   var lines = [
     opts.hero
-      ? 'Create the wide background photograph for the hero banner of a professional event website. It must say at a glance what this event is: show the scene described below, not an abstraction of it. The event\'s name and buttons will sit over the middle of it, so compose it with depth and atmosphere, the main elements towards the sides, the back and the lower third, and a calmer, darker or softer middle.'
+      ? (graphic
+        ? 'Create the wide background artwork for the hero banner of a professional event website: a refined graphic composition (not a photograph) drawn from what this event is about. The event\'s name and buttons will sit over the middle of it, so keep the main forms towards the sides and the lower third, and the middle calmer.'
+        : 'Create the wide background photograph for the hero banner of a professional event website. It must say at a glance what this event is: show the scene described below, not an abstraction of it. The event\'s name and buttons will sit over the middle of it, so compose it with depth and atmosphere, the main elements towards the sides, the back and the lower third, and a calmer, darker or softer middle.')
       : 'Create one editorial photograph for a section of a professional event website.',
     'Scene: ' + String(subject || 'a large business conference in session, an Indian audience of women and men facing a lit stage where a woman is speaking').slice(0, 500) + '.',
-    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting, the people at work and the objects in view.' : '',
+    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic ? ' and the forms in it.' : ', the people at work and the objects in view.') : '',
     opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
-    design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
-    'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents in the lighting.',
+    graphic ? '' : design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
+    'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents' + (graphic ? '.' : ' in the lighting.'),
     'Every picture on this site shares this one style, so that they read as a set.',
     opts.hero ? 'Landscape, 16:9.' : 'Landscape, 4:3.',
-    IMAGE_RULES
+    graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) + IMAGE_TAIL
   ];
   return lines.filter(Boolean).join(' ');
 }

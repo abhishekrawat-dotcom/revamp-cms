@@ -130,6 +130,7 @@ const llm = require('./llm');
 const logoUnit = require('./logo-unit');
 const pngLite = require('./png-lite');
 const svgYear = require('./svg-year');
+const ownerBrief = require('./owner-brief');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
    lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
@@ -711,9 +712,28 @@ var BRIEF_SCHEMA = {
     },
     deckSections: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
       title: { type: 'STRING' }, items: { type: 'ARRAY', items: { type: 'STRING' } }
-    }, required: ['title', 'items'] }, description: 'ONLY for a designed presentation: its content pages in order, each with its own title and its points as written (short, verbatim where possible). Leave out cover, thank-you and pure-logo pages, and any page that only lists prospective sponsors. Empty list for a plain document.' }
+    }, required: ['title', 'items'] }, description: 'ONLY for a designed presentation: its content pages in order, each with its own title and its points as written (short, verbatim where possible). Leave out cover, thank-you and pure-logo pages, and any page that only lists prospective sponsors. Empty list for a plain document.' },
+    /* The ten points of Create Event's "Describe the event" (owner-brief.js), as the material STATES them.
+       The owner's own filled-in headings are read on the server, word for word, and win over these. */
+    ownerPoints: {
+      type: 'OBJECT',
+      description: 'Ten points the site is built to, ONLY as the material explicitly states each one — copied in its own words. An empty string for every point it does not state: never infer or guess one.',
+      properties: {
+        tagline: { type: 'STRING', description: 'The event\'s own tagline or edition theme line, verbatim.' },
+        usp: { type: 'STRING', description: 'What it says sets this event apart, or why to attend it rather than another.' },
+        audience: { type: 'STRING', description: 'Who it says the event is for (titles, seniority).' },
+        industry: { type: 'STRING', description: 'The industries it names.' },
+        level: { type: 'STRING', description: 'Pan-India, global or regional — only if stated.' },
+        format: { type: 'STRING', description: 'In person, virtual or hybrid, with the city — only if stated.' },
+        mainAction: { type: 'STRING', description: 'What visitors are asked to do: register, request an invite, apply, nominate, become a sponsor — only if stated.' },
+        scale: { type: 'STRING', description: 'Expected numbers of delegates, speakers or partners for THIS edition, exactly as stated.' },
+        look: { type: 'STRING', description: 'Any stated wish for photographs or graphics, and for the tone (boardroom, energetic, editorial).' },
+        mustAvoid: { type: 'STRING', description: 'Anything it says must not appear: names, claims, words.' }
+      },
+      required: ['tagline', 'usp', 'audience', 'industry', 'level', 'format', 'mainAction', 'scale', 'look', 'mustAvoid']
+    }
   },
-  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory', 'visualIdentity', 'deckSections']
+  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory', 'visualIdentity', 'deckSections', 'ownerPoints']
 };
 
 /* The visual identity of a brief, or null. It counts only when the brief is a PDF (a typed description
@@ -743,13 +763,16 @@ function deckColour(look, role) {
   return c ? c.hex : '';
 }
 
-function buildExtractBriefPrompt(eventMeta) {
+function buildExtractBriefPrompt(eventMeta, ownerText) {
+  var meta = Object.assign({}, eventMeta || {});
+  if (ownerText) delete meta.description;                         // given below, as material
   return [
     'You are extracting a structured brief from an event overview document, for ET Oneworld\'s event microsite builder.',
     '',
     'Event basics (already known, given here only for context — do not repeat them back as extracted content):',
-    JSON.stringify(eventMeta || {}, null, 2),
+    JSON.stringify(meta, null, 2),
     '',
+    ownerText ? 'THE OWNER\'S OWN DESCRIPTION, typed beside the attached document — it is part of the material, and where it and the document differ, the owner\'s description is right:\n---\n' + ownerText + '\n---\n' : null,
     'The document is attached. Read it and extract ONLY what it actually says or clearly implies. Never invent a',
     'track, speaker, sponsor or claim that isn\'t in the document — an empty array/field is correct when the',
     'document simply doesn\'t cover that, better than a plausible-sounding guess.',
@@ -765,8 +788,10 @@ function buildExtractBriefPrompt(eventMeta) {
     'its own deliberate look, set designed "yes", read its colours as hex codes from the pages with their roles,',
     'and describe its type, imagery and graphic motifs; and list its content pages as deckSections. A plain or',
     'unstyled document is designed "no" with empty colours and an empty deckSections list. Sponsor names shown as',
-    'a "potential" or "prospective" list are prospects, not partners: never put them in sponsorHints as confirmed.'
-  ].join('\n');
+    'a "potential" or "prospective" list are prospects, not partners: never put them in sponsorHints as confirmed.',
+    '',
+    'ownerPoints: each one only as the material states it, in its own words; an empty string for any it does not state. Read them from everything you were given — the document as well as the owner\'s description: a heading the owner left blank (e.g. "Industry:" with nothing after it) is not a statement, so take that point from the document when the document states it.'
+  ].filter(function (l) { return l !== null; }).join('\n');
 }
 
 // 15MB cap on the decoded file — generous for a brief overview doc, small enough to keep one request fast
@@ -802,12 +827,15 @@ function handleExtractBrief(req, res) {
 
     var eventMeta = payload.eventMeta || {};
     var storagePath = 'events/' + eventId + '/briefs/' + fileName;
+    /* what the owner typed in "Describe the event": the document itself when there is no other, else sent
+       beside it (briefText). Its filled-in headings are the owner's brief (owner-brief.js). */
+    var ownerText = String(payload.briefText || (mimeType === 'text/plain' ? buffer.toString('utf8') : '') || eventMeta.description || '').slice(0, 8000);
 
     var watch = null;
     watchEvent(fb, eventId)
       .then(function (w) { watch = w; return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } }); })
       .then(function () {
-        return llm.callJson(buildExtractBriefPrompt(eventMeta), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, onUsage: aiUsageRecorder(fb, eventId, 'extract-brief'), maxOutputTokens: AI_OUTPUT_TOKENS.small });
+        return llm.callJson(buildExtractBriefPrompt(eventMeta, mimeType === 'application/pdf' ? ownerText : ''), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, onUsage: aiUsageRecorder(fb, eventId, 'extract-brief'), maxOutputTokens: AI_OUTPUT_TOKENS.small });
       })
       .then(function (r) {
         if (r.error) return sendAiFailure(res, r);
@@ -821,6 +849,12 @@ function handleExtractBrief(req, res) {
           keyMessages: (r.parsed.keyMessages || []).slice(0, 5).map(function (s) { return String(s).slice(0, 300); }),
           inferredCategory: String(r.parsed.inferredCategory || '').trim().slice(0, 60)
         };
+        /* the owner's brief: their own headings first, then what the material states */
+        var owner = ownerBrief.merge(ownerBrief.fromText(ownerText), r.parsed.ownerPoints);
+        if (owner) {
+          if (mimeType === 'text/plain') Object.keys(owner.from).forEach(function (k) { owner.from[k] = 'description'; });
+          extracted.owner = owner;
+        }
         /* the deck's look and its own sections, kept only when it really is a designed presentation */
         var look = deckIdentity(mimeType, r.parsed.visualIdentity);
         if (look) {
@@ -1181,8 +1215,8 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
    { sectionId, url, subject } — or null when it could not be made, which costs the site that one picture
    and nothing else. `stamp` keeps a re-run's pictures apart from the last run's (a cached old picture under
    the same address would otherwise be shown for the new site). */
-function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about) {
-  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level) {
+  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about, level: level }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
     if (record) record(r.usage);
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
@@ -1379,6 +1413,9 @@ function buildDesignPlanPrompt(payload) {
     );
   }
 
+  /* the owner's brief (owner-brief.js): what they said, binding */
+  var ownerLines = ownerBrief.planLines(payload.brief && payload.brief.owner);
+  if (ownerLines.length) { lines.push(''); lines.push.apply(lines, ownerLines); }
   if (payload.ownerNotes) {
     lines.push('', 'THE OWNER\'S OWN INSTRUCTIONS FOR THIS SITE — follow them. They override the reference and the art direction wherever they differ (never the facts: nothing may be invented to satisfy them):',
       '"' + payload.ownerNotes + '"');
@@ -2059,6 +2096,12 @@ function handlePlanStructure(req, res) {
           if (deckText) dd.textColor = deckText;
         }
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
+        /* What the owner said is not left to the model to remember (owner-brief.js): their tagline is the
+           hero's line, word for word, and "graphics, not photographs" means no generated photographs. */
+        var owner = brief && brief.owner ? brief.owner : null;
+        if (owner && owner.tagline) design.heroTagline = owner.tagline;
+        var graphic = !!(owner && owner.pictures === 'graphics');
+        if (graphic) sections.forEach(function (s) { s.image = ''; });
         var now = new Date().toISOString();
         var stamp = now.replace(/[^0-9]/g, '').slice(0, 14);
 
@@ -2067,12 +2110,13 @@ function handlePlanStructure(req, res) {
         /* what every picture is told about the event it belongs to: its name, its subject, its place */
         var about = [eventMeta.name, (brief && brief.theme) || eventMeta.description, [eventMeta.venue, eventMeta.city].filter(Boolean).join(', ')]
           .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
-        var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about });
+        var level = owner && owner.level ? owner.level : '';
+        var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about, level: level, graphic: graphic });
         var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt)].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
-            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about);
+            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level);
           })
         );
         /* the logo unit is made alongside them: the previous edition's own, or a new one drawn */
@@ -2095,6 +2139,7 @@ function handlePlanStructure(req, res) {
 
           var designPlan = {
             sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
+            owner: owner,
             reference: reference.basis
               ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
               : { type: 'none', artDirection: artDirection.id }
@@ -2411,6 +2456,12 @@ function buildSectionCodePrompt(payload) {
   if (designPlan.ownerNotes) {
     lines.push('', 'THE OWNER\'S OWN INSTRUCTIONS FOR THIS SITE — follow them in what you write (never by inventing facts):', '"' + designPlan.ownerNotes + '"');
   }
+  /* the owner's brief (owner-brief.js): binding on the copy and every call to action */
+  var ownerCopy = ownerBrief.copyLines(designPlan.owner || (payload.brief && payload.brief.owner));
+  if (ownerCopy.length) {
+    lines.push('');
+    lines.push.apply(lines, ownerCopy);
+  }
 
   /* Numbering the sections ("01", "02" tabs before each heading) is not what an event site does, and when a
      section without records is hidden the count jumps (04, then 07). Items inside a list may be numbered. */
@@ -2628,9 +2679,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         /* with no hero picture there is no veil to make that tone: the banner is painted in it */
         banner: heroMode !== design.mode && !design.heroImageUrl ? (heroMode === 'dark' ? '#0d1017' : '#ffffff') : '',
         mode: heroMode, cornerRadius: design.cornerRadius, themeColor: design.themeColor, image: design.heroImageUrl || '',
-        primary: { label: 'Register Now', href: '#' + (contact ? contact.id : 'footer') },
-        secondary: { label: 'Join as Partner', href: '#' + (partners ? partners.id : contact ? contact.id : 'footer') }
+        /* the owner's main action leads (owner-brief.js); with none, Register and Join as Partner as always */
+        primary: null, secondary: null
       };
+      var heroButtons = ownerBrief.buttons(designPlan.owner || (brief && brief.owner), { register: contact ? contact.id : 'footer', partner: partners ? partners.id : '' });
+      heroOpts.primary = heroButtons.primary; heroOpts.secondary = heroButtons.secondary;
       written.push({ id: 'hero', html: genDesign.heroHtml(heroOpts), css: genDesign.heroCss(heroOpts) });
 
       var sections = sanitizeSectionCodeResult({ sections: written }, designPlan);
@@ -2730,7 +2783,8 @@ function buildRedesignPrompt(payload) {
     'THE SITE\'S DESIGN — the section must sit naturally between its neighbours:',
     payload.generated === false
       ? 'This site is built on a fixed template: its CSS is not shown to you and stays as it is. Keep the section\'s existing class names wherever you keep its markup, so that the template\'s styling still applies. The CSS you return is ADDED for this section: write only the rules your change needs, with new class names for new things. Use var(--theme-color) for the brand colour and inherit fonts. Sizes in px only (never rem or em: this site\'s root font size is 10px).'
-      : 'Mood: ' + (design.mood || '') + '\nLayout system: ' + (design.layout || '') + '\nColours and fonts are CSS variables already on the page — use the variables for the site\'s own colours (a specific colour the owner asked for is written as asked): var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).\n' + toneRule(design) + ' (Only the owner can ask otherwise: a change they ask for in so many words, such as a dark band here, is made as asked.)',
+      : 'Mood: ' + (design.mood || '') + '\nLayout system: ' + (design.layout || '') + '\nColours and fonts are CSS variables already on the page — use the variables for the site\'s own colours (a specific colour the owner asked for is written as asked): var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).\n' + toneRule(design) + ' (Only the owner can ask otherwise: a change they ask for in so many words, such as a dark band here, is made as asked.)' +
+        (payload.owner ? '\n' + ownerBrief.copyLines(payload.owner).join('\n') + '\n(What the owner asks for in this change wins over these where the two differ.)' : ''),
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
     '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; h2 clamp(2rem, 4.2vw, 3.25rem); card titles 1.25rem or larger; nothing below 0.875rem. Set font-family, font-size, line-height and color explicitly.',
@@ -2788,7 +2842,7 @@ function handleRedesignSection(req, res) {
       var prompt = buildRedesignPrompt({
         mode: mode, generated: payload.generated !== false, supplied: supplied,
         pictureTokens: Object.keys(pictures).filter(function (t) { return !/^rvimg:\/\/attached-/.test(t); }),
-        sectionId: sectionId, html: html, css: css, design: design,
+        sectionId: sectionId, html: html, css: css, design: design, owner: (data.designPlan && data.designPlan.owner) || null,
         instruction: String(payload.instruction || '').trim(),
         above: String(payload.above || '').slice(0, 200), below: String(payload.below || '').slice(0, 200)
       });

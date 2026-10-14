@@ -77,6 +77,14 @@ ok(g.ensureLogo(nav, '', 'E') === nav, 'no logo, no change');
 var ip = g.imagePrompt('server halls', { mode: 'dark', themeColor: '#123456', accentColor: '#abcdef', imageStyle: 'long exposure' }, { hero: true });
 ok(/never a real, famous or named person/.test(ip) && /No readable text/.test(ip) && /16:9/.test(ip) && /Scene: server halls/.test(ip) && /long exposure/.test(ip), 'image prompt carries the scene, the style and the rules', ip);
 ok(!/no people/i.test(ip) && /Indian \(South Asian\) professionals/.test(ip) && /Women and men in about equal numbers/.test(ip) && /women clearly present in leading roles/.test(ip), 'people are Indian, women as much as men, never anyone real', ip);
+var ipGlobal = g.imagePrompt('a panel on stage', {}, { level: 'global' });
+ok(/GLOBAL event: the people are an international mix/.test(ipGlobal) && !/Indian \(South Asian\)/.test(ipGlobal) && /Women and men in about equal numbers/.test(ipGlobal), 'an owner\'s global event shows an international mix, women included', ipGlobal);
+var ipGraphic = g.imagePrompt('nodes and lines', { mode: 'light' }, { hero: true, graphic: true });
+ok(/graphic composition \(not a photograph\)/.test(ipGraphic) && /no people, no faces/.test(ipGraphic) && !/PEOPLE:/.test(ipGraphic), 'graphics, not photographs: no people in the picture', ipGraphic);
+var heroSponsor = g.heroHtml({ unit: '', tagline: 't', primary: { label: 'Become a Partner', href: '#sponsors', register: false }, secondary: { label: 'Register Now', href: '#contact' } });
+ok(!/data-register-cta[^>]*>Become a Partner/.test(heroSponsor) && /Become a Partner/.test(heroSponsor), 'a partner button is not marked as registration', heroSponsor.slice(0, 300));
+var heroDefault = g.heroHtml({ unit: '', tagline: 't', primary: { label: 'Register Now', href: '#contact' } });
+ok(/data-register-cta/.test(heroDefault), 'a register button is marked as registration');
 var ipAbout = g.imagePrompt('a panel on stage', {}, { about: 'MarTech Summit 2027, marketing technology, Gurugram' });
 ok(/The event: MarTech Summit 2027, marketing technology, Gurugram\./.test(ipAbout) && /4:3/.test(ipAbout), 'a picture is told which event it belongs to', ipAbout);
 
