@@ -862,10 +862,14 @@
     var qr = link && qrLabel ? qrHtml(D, link, qrLabel) : '';
     if (!left && !cta && !qr) return '';
     var story = D.fmt.id === 'story';
-    var right = (cta ? '<span class="pp-cta"' + (story ? ' style="align-self:center"' : '') + '>' + esc(cta) + '</span>' : '') + qr;
-    return '<div class="pp-foot"' + (story ? ' style="flex-direction:column;align-items:stretch;gap:' + D.u(30) + 'px;text-align:center"' : '') + '>' +
-      '<div class="pp-when" data-fitw="' + D.u(24) + ',' + D.u(18) + '"' + (story ? ' style="justify-content:center"' : '') + '>' + left + '</div>' +
-      (qr ? '<div class="pp-foot-r"' + (story ? ' style="justify-content:center"' : '') + '>' + right + '</div>' : right) + '</div>';
+    var when = left ? '<div class="pp-when" data-fitw="' + D.u(24) + ',' + D.u(18) + '"' + (story ? ' style="justify-content:center"' : '') + '>' + left + '</div>' : '';
+    var button = cta ? '<span class="pp-cta">' + esc(cta) + '</span>' : '';
+    /* the QR code on the left, the button on the right; on a story the date line sits above the two */
+    if (story) {
+      return '<div class="pp-foot" style="flex-direction:column;align-items:stretch;gap:' + D.u(30) + 'px;text-align:center">' + when +
+        (qr || button ? '<div class="pp-foot-r" style="justify-content:' + (qr && button ? 'space-between' : 'center') + '">' + qr + button + '</div>' : '') + '</div>';
+    }
+    return '<div class="pp-foot">' + qr + (when || '<div class="pp-when"></div>') + button + '</div>';
   }
 
   function topHtml(D) {
