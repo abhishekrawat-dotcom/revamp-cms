@@ -2417,7 +2417,7 @@ function eventFacts(stored, sent) {
 
 function plannedSectionList(designPlan) {
   var planned = (designPlan && designPlan.sections) || [];
-  return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site: the event\'s logo (or its name when there is no logo) and links to the sections below. Always present.', layout: 'One slim bar; logo left, links right; the links wrap onto a second line or scroll sideways on a phone (there is no script to open a menu).' }]
+  return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site: the event\'s logo (or its name when there is no logo) and links to the sections below. Always present.', layout: 'One slim bar on ONE row: the logo at the far left, then at most 5 section links (the ones a visitor most needs) and the button on the right of the same row — never a second row on a desktop. On a phone the links stay in that row and scroll sideways (there is no script to open a menu).' }]
     .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner, built by the server: the ET Business Verticals logo, the event\'s wordmark, one line, date and place, two buttons. Always present, right after nav. Not written by you.', layout: 'Centred, a full screen tall, over the hero picture.' }])
     .concat(planned)
     .concat([{ id: 'footer', kind: 'footer', purpose: 'Closing footer for this event site. Always present, last.', layout: 'A calm closing band: event name or logo, a short line, the section links again.' }]);
@@ -2719,6 +2719,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         sec.css = genDesign.restorePictures(sec.css, pictures, own);
         /* The Economic Times Business Verticals logo, in the version for the site's tone */
         if (sec.id === 'nav' || sec.id === 'footer') sec.html = genDesign.ensureEtLogo(sec.html, design.mode, sec.id);
+        if (sec.id === 'nav') sec.html = genDesign.capNavLinks(sec.html);
       });
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();

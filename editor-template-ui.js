@@ -137,8 +137,10 @@
         pageWired = true;
       }
       wireCanvasEvents();
-      /* a page saved before its look last changed carries the ET logo in the right version from now on */
+      /* a page saved before its look last changed carries the ET logo in the right version from now on —
+         checked again once the page has laid out (the nav's row is measured) */
       if (syncEtLogos()) commit();
+      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && syncEtLogos()) commit(); }, ms); });
       updateHistoryButtons();
       renderTopbar();
       sectionsChanged();
@@ -2851,7 +2853,7 @@
         img.removeAttribute('data-rv-logo');
         img.setAttribute('data-rv-et-logo', '');
         img.setAttribute('alt', 'The Economic Times Business Verticals');
-        img.style.height = inFooter ? '34px' : '40px'; img.style.width = 'auto'; img.style.maxWidth = '100%';
+        img.style.height = inFooter ? '24px' : '28px'; img.style.width = 'auto'; img.style.maxWidth = '100%';
         /* the plate the event's logo sat on (a white chip, set inline or by the page's CSS on the picture or
            the one or two boxes around it) is not wanted under the ET logo */
         for (var k = 0, holder = img; k < 3 && holder && !holder.hasAttribute('data-rv-section'); k++, holder = holder.parentElement) {
@@ -2868,8 +2870,69 @@
       var g = groundOf(img), lum = (0.2126 * g[0] + 0.7152 * g[1] + 0.0722 * g[2]) / 255;
       var want = ET_LOGO_FILES[lum < 0.45 ? 'dark' : 'light'];
       if (img.getAttribute('src') !== want) { img.setAttribute('src', want); changed = true; }
+      /* one size: 28 px tall in the nav, 24 px in the footer (the logo is wide; any taller crowds the bar) */
+      var h = img.closest('[data-rv-section="footer"]') ? '24px' : '28px';
+      if (img.style.height !== h) { img.style.height = h; img.style.width = 'auto'; changed = true; }
     });
+    if (/^gen-/.test(String(templateId || '')) && trimNav()) changed = true;
+    if (oneRowNav()) changed = true;
     return changed;
+  }
+
+  /* The nav is one row: the ET logo on the left, the links and the button on the right. A bar laid out with
+     the logo on a row of its own above the links is put on one row — the box holding both becomes a row,
+     the logo keeps its size and the links take the rest, scrolling sideways when there is no room. */
+  /* At most five section links in the nav besides its button (the same rule a new site is built with,
+     functions/lib/gen-design.js capNavLinks): the gallery, FAQs, "about" and who-should-attend entries go
+     first. Only the entries: the sections stay on the page. */
+  var NAV_DROP = [/glimps|gallery|photo/i, /faq/i, /about/i, /who|audience/i, /partner|sponsor/i, /why|join/i];
+  function trimNav() {
+    var nav = canvas.doc.querySelector('[data-rv-section="nav"]');
+    if (!nav) return false;
+    var links = Array.prototype.filter.call(nav.querySelectorAll('a[href^="#"]'), function (a) {
+      var href = a.getAttribute('href').slice(1), text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      return href && href !== 'hero' && href !== 'top' && !a.querySelector('img') && !a.hasAttribute('data-register-cta') &&
+        !/\b(btn|button|cta)\b/i.test(a.className || '') && !/^(register|book|request|apply|nominate|buy)/i.test(text);
+    });
+    var drop = [];
+    for (var r = 0; r < NAV_DROP.length && links.length - drop.length > 5; r++) {
+      links.forEach(function (a) { if (links.length - drop.length > 5 && drop.indexOf(a) === -1 && NAV_DROP[r].test(a.getAttribute('href') + ' ' + a.textContent)) drop.push(a); });
+    }
+    while (links.length - drop.length > 5) drop.push(links.filter(function (a) { return drop.indexOf(a) === -1; }).pop());
+    drop.forEach(function (a) { var li = a.parentElement && a.parentElement.tagName === 'LI' && a.parentElement.children.length === 1 ? a.parentElement : a; li.remove(); });
+    return drop.length > 0;
+  }
+
+  function oneRowNav() {
+    var nav = canvas.doc.querySelector('[data-rv-section="nav"]');
+    var img = nav && nav.querySelector('img[data-rv-et-logo]');
+    if (!img) return false;
+    var logo = img.closest('a') || img;
+    var links = Array.prototype.filter.call(nav.querySelectorAll('a, button'), function (a) { return !a.contains(img) && a.offsetWidth > 0; });
+    if (!links.length) return false;
+    /* a link or the button never breaks inside itself */
+    var fixed = false;
+    links.forEach(function (a) { if (canvas.win.getComputedStyle(a).whiteSpace !== 'nowrap') { a.style.whiteSpace = 'nowrap'; fixed = true; } });
+    var lr = logo.getBoundingClientRect(), first = links[0].getBoundingClientRect();
+    if (first.top < lr.bottom - 4) return fixed;                       // already beside it
+    /* the nearest box holding the logo and the links */
+    var box = logo.parentElement;
+    while (box && box !== nav && !links.every(function (a) { return box.contains(a); })) box = box.parentElement;
+    if (!box) return false;
+    var kids = Array.prototype.filter.call(box.children, function (c) { return c.contains(logo) || links.some(function (a) { return c.contains(a); }); });
+    box.style.display = 'flex'; box.style.flexDirection = 'row'; box.style.flexWrap = 'nowrap';
+    box.style.alignItems = 'center'; box.style.justifyContent = 'space-between'; box.style.gap = '24px';
+    kids.forEach(function (c) {
+      if (c.contains(logo)) { c.style.flex = '0 0 auto'; c.style.margin = '0'; }
+      else {
+        c.style.flex = '1 1 auto'; c.style.minWidth = '0'; c.style.margin = '0'; c.style.overflowX = 'auto';
+        if (canvas.win.getComputedStyle(c).display === 'flex') {
+          c.style.justifyContent = 'flex-end'; c.style.flexWrap = 'nowrap';
+          if (parseFloat(canvas.win.getComputedStyle(c).columnGap) > 18) c.style.gap = '18px';
+        }
+      }
+    });
+    return true;
   }
 
   function setDesign(key, value) {

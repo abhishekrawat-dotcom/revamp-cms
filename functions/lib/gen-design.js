@@ -222,13 +222,13 @@ function escAttr(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').r
 function etLogoHtml(mode, where) {
   var src = ET_LOGO[mode === 'dark' ? 'dark' : 'light'];
   return '<a href="#hero" data-rv-et-logo-link style="display:inline-block;line-height:0;text-decoration:none">' +
-    '<img data-rv-et-logo src="' + src + '" alt="The Economic Times Business Verticals" style="height:' + (where === 'footer' ? 34 : 40) + 'px;width:auto;max-width:100%;display:block"></a>';
+    '<img data-rv-et-logo src="' + src + '" alt="The Economic Times Business Verticals" style="height:' + (where === 'footer' ? 24 : 28) + 'px;width:auto;max-width:100%;display:block"></a>';
 }
 function ensureEtLogo(html, mode, where) {
   html = String(html || '');
   if (!html) return html;
   /* an event logo written into the bar anyway becomes the ET logo, in its place */
-  var src = ET_LOGO[mode === 'dark' ? 'dark' : 'light'], h = where === 'footer' ? 34 : 40;
+  var src = ET_LOGO[mode === 'dark' ? 'dark' : 'light'], h = where === 'footer' ? 24 : 28;
   html = html.replace(/<img\b(?=[^>]*\sdata-rv-logo(?:[\s=>\/]))[^>]*>/gi, function () {
     return '<img data-rv-et-logo src="' + src + '" alt="The Economic Times Business Verticals" style="height:' + h + 'px;width:auto;max-width:100%;display:block">';
   });
@@ -239,6 +239,31 @@ function ensureEtLogo(html, mode, where) {
   var m = /^(\s*<[a-zA-Z][^>]*>)(\s*<div\b[^>]*>)?/.exec(html);
   if (!m) return img + html;
   return html.slice(0, m[0].length) + img + html.slice(m[0].length);
+}
+
+/* The nav carries at most NAV_LINKS section links besides its button. Past that, the links that matter least
+   to a visitor deciding to come go first (the gallery, the FAQs, the "about" of the vertical, who should
+   attend); the sections stay on the page, only their entries leave the bar. */
+var NAV_LINKS = 5;
+var NAV_DROP = [/glimps|gallery|photo/i, /faq/i, /about/i, /who|audience/i, /partner|sponsor/i, /why|join/i];
+function isNavButton(tag, text) { return /\b(btn|button|cta)\b|data-register-cta/i.test(tag) || /^(register|book|request|apply|nominate|buy)/i.test(String(text).trim()); }
+function capNavLinks(html, max) {
+  html = String(html || '');
+  max = max || NAV_LINKS;
+  var links = [], re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi, m;
+  while ((m = re.exec(html))) {
+    var href = (/\shref\s*=\s*["']#([^"']*)["']/i.exec(m[1]) || [])[1];
+    var text = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (href == null || href === 'hero' || href === 'top' || /data-rv-(et-)?logo/.test(m[0]) || isNavButton(m[1], text)) continue;
+    links.push({ full: m[0], key: href + ' ' + text });
+  }
+  var drop = [];
+  for (var r = 0; r < NAV_DROP.length && links.length - drop.length > max; r++) {
+    links.forEach(function (l) { if (links.length - drop.length > max && drop.indexOf(l) === -1 && NAV_DROP[r].test(l.key)) drop.push(l); });
+  }
+  while (links.length - drop.length > max) { var last = links.filter(function (l) { return drop.indexOf(l) === -1; }).pop(); drop.push(last); }
+  drop.forEach(function (l) { html = html.replace(l.full, ''); });
+  return html;
 }
 
 function ensureLogo(navHtml, logoUrl, eventName) {
@@ -463,5 +488,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
-  ensureLogo, ensureEtLogo, etLogoHtml, ET_LOGO, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, ET_LOGO, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

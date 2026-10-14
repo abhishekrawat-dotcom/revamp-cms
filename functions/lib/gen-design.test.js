@@ -92,6 +92,10 @@ ok(/on-light\.svg/.test(g.ensureEtLogo('<footer><p>x</p></footer>', 'light', 'fo
 ok(!/data-rv-logo[^-]/.test(navEt), 'it is not taken for the event\'s own logo (data-rv-logo)');
 var swapped = g.ensureEtLogo('<nav><div><a href="#hero"><img data-rv-logo src="https://x/logo.png" alt="Event"></a><ul></ul></div></nav>', 'dark', 'nav');
 ok(!/data-rv-logo[^-]/.test(swapped) && (swapped.match(/data-rv-et-logo\b/g) || []).length === 1 && /on-dark\.svg/.test(swapped) && !/logo\.png/.test(swapped), 'an event logo the model put in the nav becomes the ET logo, in its place', swapped);
+var navMany = '<nav><a href="#hero"><img data-rv-et-logo src="x"></a><a href="#overview">Overview</a><a href="#key-discussion-points">Themes</a><a href="#speakers">Speakers</a><a href="#why-join-us">Why Attend</a><a href="#who-should-attend">Who Attends</a><a href="#past-edition-glimpses">Glimpses</a><a href="#contact-us">Contact</a><a href="#about-vertical" class="nav-btn">Register Now</a></nav>';
+var capped = g.capNavLinks(navMany);
+ok(/Overview/.test(capped) && /Themes/.test(capped) && /Speakers/.test(capped) && /Why Attend/.test(capped) && /Contact/.test(capped) && !/Glimpses/.test(capped) && !/Who Attends/.test(capped) && /Register Now/.test(capped) && /data-rv-et-logo/.test(capped), 'the nav keeps five links (gallery and who-should-attend go first), the button and the logo', capped);
+ok(g.capNavLinks(capped) === capped, 'a nav of five is left as it is');
 var ipAbout = g.imagePrompt('a panel on stage', {}, { about: 'MarTech Summit 2027, marketing technology, Gurugram' });
 ok(/The event: MarTech Summit 2027, marketing technology, Gurugram\./.test(ipAbout) && /4:3/.test(ipAbout), 'a picture is told which event it belongs to', ipAbout);
 
