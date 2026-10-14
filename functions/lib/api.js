@@ -79,6 +79,8 @@
 //     lib/api-audience.js  GET /api/public/site-data, POST /api/register, POST /api/track (all PUBLIC),
 //                          POST /api/event/seed, GET/PATCH/DELETE /api/event/registrations,
 //                          GET /api/event/dashboard-stats, GET /api/insights, GET /api/event/activity
+//     lib/promo.js         GET /api/promo/kit, GET /api/promo/image, POST /api/promo/write (the Promotions
+//                          pages: an event's brand and content, its pictures from our own address, AI copy)
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -4071,9 +4073,12 @@ function checkAudienceFilters(label, v) {
   return '';
 }
 
+/* `body` of a post or a mailer is its whole configuration as JSON (promo-kit.js): every text the owner
+   edited, section by section, so a mailer can pass 20,000 characters. 60,000 stays far inside a record. */
+function checkPromoBody(label, v) { return checkText(label, v, 60000, false); }
 RESOURCES['promo-templates'] = subcollectionRoutes('promoTemplates', { label: 'promotion template', required: ['kind', 'name'], fixed: ['kind'],
   defaults: { status: 'draft' }, fields: {
-    kind: 'enum:email|whatsapp|post|banner', name: 'text:120', subject: 'text:200', body: 'long20k', network: 'enum:|linkedin|x|facebook',
+    kind: 'enum:email|whatsapp|post|banner', name: 'text:120', subject: 'text:200', body: checkPromoBody, network: 'enum:|linkedin|x|facebook',
     imageUrl: 'url', size: 'text:40', placement: 'text:200', linkUrl: 'url', utmCampaign: checkUtmCampaign,
     status: 'enum:draft|posted', postedAt: 'iso', order: 'num' } });
 RESOURCES['promo-audiences'] = subcollectionRoutes('promoAudiences', { label: 'saved audience', required: ['name'], maxBody: MB, fields: {
@@ -6126,6 +6131,21 @@ function inModule(moduleName, handlerName) {
 var events = function (handler) { return inModule('api-events', handler); };
 var audience = function (handler) { return inModule('api-audience', handler); };
 
+/* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
+   it requiring this file, which would be a require cycle; a module that fails to load still costs only its
+   own routes the 503 inModule() answers. */
+function promoHelpers() {
+  return { withAdmin, withAdminBody, eventIdOr400, loadLiveEvent, readObject, sitePath, siteVersionOf, googleFontUrl,
+    publicBaseFor, aiUsageRecorder, sendAiFailure, sendFailure, httpError, BODY_LIMITS };
+}
+var promo = function (handler) {
+  var run = inModule('promo', handler);
+  return function (req, res) {
+    try { require('./promo').wire(promoHelpers()); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+};
+
 /* "METHOD path" -> handler, for every route with a fixed path. */
 var ROUTES = {
   'POST /api/suggest-design': handleSuggestDesign,
@@ -6171,6 +6191,10 @@ var ROUTES = {
   'GET /api/event/dashboard-stats': audience('handleDashboardStats'),
   'GET /api/event/activity': audience('handleActivity'),
   'GET /api/insights': audience('handleInsights'),
+
+  'GET /api/promo/kit': promo('handleKit'),
+  'GET /api/promo/image': promo('handleImage'),
+  'POST /api/promo/write': promo('handleWrite'),
 
   'POST /api/event/leads/bulk': handleLeadsBulkCreate,
   'PATCH /api/event/leads/bulk': handleLeadsBulkUpdate,

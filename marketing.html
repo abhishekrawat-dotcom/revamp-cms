@@ -1,72 +1,240 @@
 <!doctype html>
+<!-- ET Oneworld - Revamp CMS : one event's Promotions — social posts and mailers made from its own site -->
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Marketing - Revamp CMS</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="edit-event.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Promotions &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="promo.css">
+<link rel="stylesheet" href="promo-mailers.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
-  <style>
-    body{background:var(--bg);overflow-x:hidden}
-    .marketing-page{display:flex;min-height:calc(100vh - var(--topbar-h))}
-    .marketing-main{flex:1;min-width:0;padding:0 28px 60px}
-    .event-picker{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px;color:var(--text-muted)}
-    .event-picker select{min-width:210px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}
-    .marketing-tabs{display:flex;gap:28px;border-bottom:1px solid var(--border);margin:0 0 31px;white-space:nowrap;overflow-x:auto}
-    .marketing-tabs button{position:relative;border:0;background:none;padding:20px 0 14px;color:var(--text-muted);font-size:15px;font-weight:700;cursor:pointer}
-    .marketing-tabs button[aria-selected="true"]{color:var(--accent-strong)}
-    .marketing-tabs button[aria-selected="true"]:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--accent);border-radius:3px}
-    .marketing-tabs small{font-family:var(--font-mono);font-size:12px;color:var(--text-faint);margin-left:4px}
-    .marketing-view{max-width:1500px;margin:0 auto}
-    @media(max-width:760px){.marketing-main{padding:0 14px 40px}.topbar{height:auto;min-height:60px;flex-wrap:wrap;padding:10px 14px}.event-picker{width:100%;margin-left:0}.event-picker select{flex:1}.marketing-tabs{gap:20px}}
-  </style>
 </head>
 <body>
+
 <header class="topbar">
-  <a class="back-btn" href="Event_Listing.html"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>Back to events</a>
-  <span class="ev-title"><h1 id="event-name">&nbsp;</h1><span class="meta" id="event-meta"></span></span>
-  <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
-  <label class="event-picker" for="event-select">Event <select id="event-select"></select></label>
+  <a class="back-btn" href="Event_Listing.html">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    <span>Back to events</span>
+  </a>
+  <span class="ev-title">
+    <h1 id="ev-name">&nbsp;</h1>
+    <span class="meta" id="ev-meta"></span>
+  </span>
+  <span class="topbar-acts">
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span data-rv-account></span>
+  </span>
 </header>
-<div class="marketing-page">
+
+<div class="shell">
   <nav class="rail" id="rail" aria-label="Sections"></nav>
-  <main class="marketing-main"><div class="marketing-view" id="page"></div></main>
+  <main class="main"><div id="view"></div></main>
 </div>
+
 <div class="toast-host" id="toast-host"></div>
+
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
-<script src="edit-event-marketing.js"></script>
 <script src="sidebar.js"></script>
+<script src="assets/vendor/html-to-image.js"></script>
+<script src="assets/vendor/jszip.min.js"></script>
+<script src="promo-kit.js"></script>
+<script src="promo-posts.js"></script>
+
 <script>
 (function(){
   'use strict';
-  var C=window.RevampCore, MKT=window.EditEventMarketing, select=document.getElementById('event-select'), page=document.getElementById('page');
-  var query=new URLSearchParams(location.search), tab=query.get('tab')||'studio';
-  /* Built entirely around RevampCore.EVENTS/makePeople (both removed — see audience-registrations.html's
-     own, longer version of this same comment). Rewiring this to real data is separate, substantial work;
-     failing honestly beats letting the removed functions throw partway through rendering. */
-  if (!C.EVENTS) {
-    page.innerHTML = '<div style="max-width:420px;margin:80px auto;text-align:center;color:var(--text-muted)">' +
-      '<h2 style="color:var(--text);margin-bottom:8px">This page isn’t connected to real event data yet</h2>' +
-      '<a class="btn btn-primary" href="Event_Listing.html" style="display:inline-flex;margin-top:12px">Back to events</a></div>';
-    return;
+
+  /* The page is a shell: the top bar and rail of the event console, a heading and two tabs. Each tab's studio
+     is its own file (promo-posts.js, promo-mailers.js) and is handed the event's Kit — its brand and content,
+     from RevampPromo.load() — once, when the tab is first opened.
+
+     States, never a silent fallback: no event in the address, an event that does not exist, a Kit that did not
+     load (with Try again), and signed out (auth.js sends the user to sign in). The old Promotions screens
+     (edit-event-marketing.js, sample data) are not loaded here any more. */
+  var C = window.RevampCore;
+  var $ = C.$, esc = C.esc, svg = C.svg, IC = C.IC;
+  var eventId = (new URLSearchParams(location.search).get('event') || '').trim();
+
+  var TABS = [
+    { id: 'posts', label: 'Social posts', root: 'promo-posts-root' },
+    { id: 'mailers', label: 'Mailers', root: 'promo-mailers-root' }
+  ];
+  /* the old screens' tab names still arrive from bookmarks and links: they open the posts */
+  function tabFrom(v){ return v === 'mailers' ? 'mailers' : 'posts'; }
+  var tab = tabFrom(new URLSearchParams(location.search).get('tab'));
+
+  var KIT = null, mounted = {};
+
+  function toast(msg, opts){ C.toast(msg, opts); }
+
+  function errText(err){
+    var status = err && typeof err.status === 'number' ? err.status : 0;
+    if (status === 401) return 'Your sign-in has expired. Sign in again, then try once more.';
+    if (!status) return 'We couldn’t reach the server. Check your connection and try again.';
+    if (status >= 500) return 'Something went wrong on our side. Please try again.';
+    return (err && err.message) || 'That could not be done. Please try again.';
   }
-  select.innerHTML=C.EVENTS.map(function(e){return '<option value="'+e.id+'">'+C.esc(e.name)+'</option>';}).join('');
-  select.value=query.get('event')||C.EVENTS[0].id;
-  function event(){return C.eventById(select.value)||C.EVENTS[0];}
-  function ctx(ev){
-    return C.makeCtx({EV:ev,S:C.loadState('revamp-edit-event-'+ev.id),PEOPLE:C.makePeople(ev),vhead:function(title,sub,right){return '<div class="vhead"><div class="vhead-row"><div class="grow"><div class="crumb">Marketing › '+C.esc((MKT.TABS.filter(function(t){return t.id===tab;})[0]||MKT.TABS[0]).label)+'</div><h2>'+C.esc(title)+'</h2>'+(sub?'<div class="sub">'+C.esc(sub)+'</div>':'')+'</div>'+(right?'<div style="display:flex;gap:9px;flex-wrap:wrap">'+right+'</div>':'')+'</div></div>';},save:function(){ C.saveState('revamp-edit-event-'+ev.id, S); },go:function(route){location.href='marketing.html?event='+ev.id+'&tab='+route;}});
+  function isAuthError(err){
+    return !!((err && err.status === 401) || /not signed in/i.test((err && err.message) || ''));
   }
-  function header(ev){document.getElementById('event-name').textContent=ev.name+' | '+(C.PORTALS[ev.portal]||'');document.getElementById('event-meta').textContent=C.fmtDT(ev.start)+'  |  '+ev.eventNo+'  |  '+(C.TYPES[ev.type]||ev.type);}
-  function rail(){renderEventRail('rail',{activeSection:'marketing',onSection:function(section){if(section==='dashboard'){location.href='dashboard.html';return;}if(section==='audience'){location.href='audience-registrations.html?event='+encodeURIComponent(select.value);return;}if(section==='design'){location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#design/editor';return;}if(section==='payment'){location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#audience/payments';return;}if(section==='marketing')return;location.href='edit-event.html?event='+encodeURIComponent(select.value)+'#'+section;}});}
-  function tabs(){return '<div class="marketing-tabs">'+MKT.TABS.map(function(item){return '<button type="button" data-tab="'+item.id+'" aria-selected="'+(item.id===tab)+'">'+item.label+'</button>';}).join('')+'</div>';}
-  function render(){var ev=event();header(ev);rail();page.innerHTML=tabs()+'<div class="marketing-view-body">'+MKT.view(tab,ctx(ev))+'</div>';MKT.wire(tab,ctx(ev));document.querySelectorAll('[data-tab]').forEach(function(button){button.onclick=function(){tab=button.getAttribute('data-tab');history.replaceState(null,'','marketing.html?event='+select.value+'&tab='+tab);render();};});document.querySelectorAll('[data-save]').forEach(function(button){button.onclick=function(){C.toast(button.getAttribute('data-save'));};});}
-  select.onchange=function(){tab='studio';history.replaceState(null,'','marketing.html?event='+select.value+'&tab='+tab);render();};
-  render();
+  function toSignIn(){
+    if (window.RevampAuth && typeof RevampAuth.redirectToSignIn === 'function') return RevampAuth.redirectToSignIn();
+    location.replace('/?next=' + encodeURIComponent(location.pathname + location.search + location.hash));
+  }
+  /* a 401 is first answered by refreshing the session once; only a second one means signed out */
+  function withSession(call){
+    return call().catch(function(err){
+      if (!isAuthError(err) || !window.RevampAuth) throw err;
+      return RevampAuth.ensureSession().then(call);
+    }).catch(function(err){
+      if (isAuthError(err)) { toSignIn(); return new Promise(function(){}); }
+      throw err;
+    });
+  }
+
+  function paintHeader(ev){
+    var name = String(ev.name || '').trim() || 'Untitled event';
+    $('ev-name').textContent = name + (C.PORTALS[ev.portal] ? ' | ' + C.PORTALS[ev.portal] : '');
+    var bits = [];
+    if (ev.start) bits.push(C.fmtDT(ev.start));
+    if (ev.eventNo) bits.push(ev.eventNo);
+    var cat = C.TYPES[ev.category] || ev.category;
+    if (cat) bits.push(cat);
+    $('ev-meta').textContent = bits.join('  |  ');
+    document.title = 'Promotions — ' + name + ' — Revamp CMS';
+  }
+
+  function head(){
+    return '<div class="promo-head"><h2>Promotions</h2>' +
+      '<div class="sub">Social posts and mailers drawn in this event site’s own look — its pictures, logo unit, fonts and colours — from its real speakers, partners and agenda.</div></div>';
+  }
+  function tabsHtml(){
+    return '<div class="subtabs promo-tabs" role="tablist" aria-label="Promotions">' + TABS.map(function(t){
+      var on = t.id === tab;
+      return '<button type="button" role="tab" id="tab-' + t.id + '" aria-controls="pane-' + t.id + '" aria-selected="' + on + '" tabindex="' + (on ? '0' : '-1') + '" data-tab="' + t.id + '">' + t.label + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function renderLoading(){
+    $('view').innerHTML = head() + '<div class="promo-state" role="status"><span class="spin"></span><b>Loading this event’s promotions…</b></div>';
+  }
+  function renderEventError(err, kind){
+    var missing = kind === 'none' || (err && err.status === 404);
+    var title = kind === 'none' ? 'No event selected' : missing ? 'Event not found' : 'Couldn’t load this event';
+    var msg = kind === 'none' ? 'Use Back to events and open the event whose promotions you want to make.'
+      : missing ? 'This event doesn’t exist or was deleted. Use Back to events to open another one.'
+      : errText(err);
+    if (err && kind !== 'none') console.error('Event load failed:', err);
+    $('ev-name').textContent = title;
+    $('ev-meta').textContent = '';
+    $('rail').innerHTML = '';
+    $('view').innerHTML = '<div style="padding:60px 20px">' + C.emptyState(IC.info, title, msg,
+      missing ? '' : '<button class="btn btn-primary btn-sm" type="button" id="promo-retry">Try again</button>') + '</div>';
+    var again = $('promo-retry');
+    if (again) again.onclick = init;
+  }
+  function renderKitError(err){
+    console.error('Promotions kit failed to load:', err);
+    $('view').innerHTML = head() + '<div style="padding:40px 20px">' + C.emptyState(IC.info, 'The event’s look and content did not load',
+      errText(err) + ' Nothing has been lost.',
+      '<button class="btn btn-primary btn-sm" type="button" id="promo-retry">Try again</button>') + '</div>';
+    $('promo-retry').onclick = function(){ renderLoading(); loadKit(true); };
+  }
+
+  function renderTabs(){
+    $('view').innerHTML = head() + tabsHtml() + TABS.map(function(t){
+      return '<section class="promo-pane" role="tabpanel" id="pane-' + t.id + '" aria-labelledby="tab-' + t.id + '"' + (t.id === tab ? '' : ' hidden') + '>' +
+        '<div id="' + t.root + '"></div></section>';
+    }).join('');
+    var list = $('view').querySelector('[role="tablist"]');
+    list.addEventListener('click', function(e){
+      var b = e.target.closest('[data-tab]');
+      if (b) select(b.getAttribute('data-tab'), false);
+    });
+    /* one stop in the Tab order; the arrow keys move between the tabs */
+    list.addEventListener('keydown', function(e){
+      var i = TABS.map(function(t){ return t.id; }).indexOf(tab), to = -1;
+      if (e.key === 'ArrowRight') to = (i + 1) % TABS.length;
+      else if (e.key === 'ArrowLeft') to = (i - 1 + TABS.length) % TABS.length;
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = TABS.length - 1;
+      if (to < 0) return;
+      e.preventDefault();
+      select(TABS[to].id, true);
+    });
+    show();
+  }
+  function select(id, focus){
+    tab = tabFrom(id);
+    history.replaceState(null, '', 'marketing.html?event=' + encodeURIComponent(eventId) + '&tab=' + tab + location.hash);
+    TABS.forEach(function(t){
+      var b = $('tab-' + t.id), on = t.id === tab;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+      $('pane-' + t.id).hidden = !on;
+      if (on && focus) b.focus();
+    });
+    show();
+  }
+  /* each studio is mounted the first time its tab is shown, and kept: switching tabs loses nothing. A studio
+     shown again is told so (shown()): what it would have drawn while hidden — where every size reads 0 — it
+     draws now */
+  function show(){
+    if (mounted[tab]) {
+      var studio = tab === 'posts' ? window.RevampPromoPosts : window.RevampPromoMailers;
+      if (studio && typeof studio.shown === 'function') studio.shown();
+      return;
+    }
+    var t = TABS.filter(function(x){ return x.id === tab; })[0];
+    var host = $(t.root), ctx = { eventId: eventId, kit: KIT, toast: toast };
+    if (tab === 'posts') {
+      if (!window.RevampPromoPosts) { host.innerHTML = '<p class="promo-quiet">The posts studio did not load. Reload the page.</p>'; return; }
+      mounted.posts = true;
+      window.RevampPromoPosts.mount(host, ctx);
+      return;
+    }
+    /* the mailer studio is a separate file; until it is there, a quiet note — not an error */
+    if (window.RevampPromoMailers && typeof window.RevampPromoMailers.mount === 'function') {
+      mounted.mailers = true;
+      window.RevampPromoMailers.mount(host, ctx);
+    } else {
+      host.innerHTML = '<div class="promo-state" role="status"><span class="spin"></span><b>Mailers are loading…</b></div>';
+    }
+  }
+  /* promo-mailers.js comes after this script: once the page has loaded, try the Mailers tab again */
+  window.addEventListener('load', function(){ if (KIT && tab === 'mailers' && !mounted.mailers) show(); });
+
+  function loadKit(fresh){
+    return withSession(function(){ return window.RevampPromo.load(eventId, fresh); }).then(function(kit){
+      KIT = kit || {};
+      mounted = {};
+      renderTabs();
+    }, renderKitError);
+  }
+
+  function init(){
+    if (!eventId) { renderEventError(null, 'none'); return; }
+    $('ev-name').textContent = 'Loading…';
+    $('ev-meta').textContent = '';
+    renderEventRail('rail', { activeSection: 'marketing', eventId: eventId });
+    renderLoading();
+    window.RevampPromo.use(eventId);
+    var kitP = withSession(function(){ return window.RevampPromo.load(eventId); });
+    kitP.catch(function(){});
+    withSession(function(){ return C.fetchEvent(eventId); }).then(function(ev){
+      paintHeader(ev);
+      return kitP.then(function(kit){ KIT = kit || {}; mounted = {}; renderTabs(); }, renderKitError);
+    }, function(err){ renderEventError(err); });
+  }
+
+  init();
 })();
 </script>
+<script src="promo-mailers.js"></script>
 </body>
 </html>

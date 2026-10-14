@@ -211,4 +211,5 @@ function summarise(items) {
   return parts.join(', ') || 'no visible change';
 }
 
-module.exports = { diffPages, summarise };
+/* readPage is also how lib/promo.js reads a saved site's design (the body's variables and the editor's state) */
+module.exports = { diffPages, summarise, readPage };

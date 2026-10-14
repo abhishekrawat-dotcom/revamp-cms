@@ -51,6 +51,8 @@ var PROFILES = {
   'extract-brief': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 90000, maxOutputTokens: 12000 },
   'ingest-source': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
   'logo-unit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 6000 },
+  /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
+  'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 
