@@ -1,20 +1,15 @@
-/* node tools/repair-sponsors-first.js --event <eventId> [--dry] [--new-draft] [--previous-sponsors-too]
+/* node tools/repair-sponsors-first.js --event <eventId> [--dry] [--new-draft]
 
    Puts an AI-designed site that was planned before the rule into today's order (functions/lib/section-order.js):
-   this edition's sponsors section straight after the hero, every other section where it was, the "Previous
-   Edition Sponsors" section left with the other previous-edition sections. Writes, on events/<eventId>:
-     designPlan.sections   sponsors first (nothing else in the plan changes)
-     generatedSections     the same order, sponsors right after the hero; the nav's and the footer's links to
-                           sections put in that order (only their order: every link, word and attribute stays)
-   Nothing else on the event is written. A site with no sponsors section, or one already in order, is left alone.
+   the sponsors straight after the hero — this edition's sponsors section, then the "Previous Edition Sponsors"
+   section — and every other section where it was. Writes, on events/<eventId>:
+     designPlan.sections   the sponsors first (nothing else in the plan changes)
+     generatedSections     the same order, the sponsors right after the hero; the nav's and the footer's links
+                           to sections put in that order (only their order: every link, word and attribute stays)
+   Nothing else on the event is written. A site with no sponsors section of either edition, or one already in
+   order, is left alone.
 
    --dry        print what would change, write nothing
-   --previous-sponsors-too
-                also put the "Previous Edition Sponsors" section (previous-sponsors) directly under this
-                edition's sponsors. Not what the generation rule does: for a site whose own sponsors section has
-                no partner records yet (it is then hidden on the live page and in preview), the previous
-                edition's logos are the only sponsors a visitor sees, and this brings them up to the top too.
-                A regeneration puts previous-sponsors back with the other previous-edition sections.
    --new-draft  also add a drafts row and move generatedAt on (as a regeneration does), so an editor that has a
                 copy of the site in its browser (IndexedDB) takes this version on its next opening, and its
                 Preview then rebuilds the preview draft from it. Any edit the owner made in the editor since the
@@ -31,7 +26,6 @@ const path = require('path');
 const args = process.argv.slice(2);
 const dry = args.indexOf('--dry') !== -1;
 const newDraft = args.indexOf('--new-draft') !== -1;
-const prevToo = args.indexOf('--previous-sponsors-too') !== -1;
 const eventId = (args[args.indexOf('--event') + 1] || '').trim();
 if (args.indexOf('--event') === -1 || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(eventId)) {
   console.error('usage: node tools/repair-sponsors-first.js --event <eventId> [--dry] [--new-draft]');
@@ -64,22 +58,13 @@ function hrefs(html) { return (String(html || '').match(/href\s*=\s*["']#[^"']*[
   const gen = data.generatedSections;
   if (!plan || !Array.isArray(plan.sections) || !Array.isArray(gen) || !gen.length) throw new Error('"' + eventId + '" is not an AI-designed site (no designPlan.sections / generatedSections).');
 
-  const sponsors = so.sponsorsId(plan.sections);
+  const sponsors = [so.sponsorsId(plan.sections), so.previousSponsorsId(plan.sections)].filter(Boolean);
   console.log('event:            ' + eventId);
-  console.log('sponsors section: ' + (sponsors || '(none — nothing to do)'));
-  if (!sponsors) return;
+  console.log('sponsors sections: ' + (sponsors.join(', ') || '(none — nothing to do)'));
+  if (!sponsors.length) return;
 
-  let planAfter = so.sponsorsFirst(plan.sections);
-  if (prevToo) {
-    const prev = planAfter.filter(function (s) { return s && s.id === 'previous-sponsors'; })[0];
-    if (prev) { planAfter = planAfter.filter(function (s) { return s !== prev; }); planAfter.splice(planAfter.map(function (s) { return s.id; }).indexOf(sponsors) + 1, 0, prev); }
-    else console.log('(no previous-sponsors section: --previous-sponsors-too has nothing to move)');
-  }
-  let genAfter = so.sponsorsAfterHero(gen, planAfter).map(function (s) { return Object.assign({}, s); });
-  if (prevToo) {
-    const prevSec = genAfter.filter(function (s) { return s.id === 'previous-sponsors'; })[0];
-    if (prevSec) { genAfter = genAfter.filter(function (s) { return s !== prevSec; }); genAfter.splice(genAfter.map(function (s) { return s.id; }).indexOf(sponsors) + 1, 0, prevSec); }
-  }
+  const planAfter = so.sponsorsFirst(plan.sections);
+  const genAfter = so.sponsorsAfterHero(gen, plan.sections).map(function (s) { return Object.assign({}, s); });
   const pageIds = genAfter.map(function (s) { return s.id; });
   const linkChanges = [];
   genAfter.forEach(function (s) {
@@ -97,6 +82,13 @@ function hrefs(html) { return (String(html || '').match(/href\s*=\s*["']#[^"']*[
   genAfter.forEach(function (s) {
     const was = gen.filter(function (g) { return g.id === s.id; })[0];
     if (!was || (s.id !== 'nav' && s.id !== 'footer' && was.html !== s.html) || was.css !== s.css || was.kind !== s.kind) throw new Error('section ' + s.id + ' would change beyond its order — refusing');
+  });
+
+  /* two rows that move on their own never stand in neighbouring sections (genDesign.motionBudget): only
+     reported here, since this script changes no section's own markup */
+  genAfter.forEach(function (s, i) {
+    const auto = function (x) { return x && /data-rv-carousel\s*=\s*["']auto["']/i.test(String(x.html || '')); };
+    if (i && auto(s) && auto(genAfter[i - 1])) console.log('NOTE: ' + genAfter[i - 1].id + ' and ' + s.id + ' both have a self-scrolling row and now stand next to each other');
   });
 
   const planMoved = ids(planAfter) !== ids(plan.sections);

@@ -1,17 +1,25 @@
-/* Where the sections of an AI-designed site stand. One rule the model is not left to remember: this edition's
-   sponsors come straight after the hero banner, ahead of the overview. Every other section keeps the order the
-   plan gave it, and the "Previous Edition Sponsors" section (prev-sections.js) stays with the other previous-
-   edition sections. A site with no sponsors section keeps its order as it is.
+/* Where the sections of an AI-designed site stand. One rule the model is not left to remember: the sponsors
+   come straight after the hero banner, ahead of the overview — this edition's sponsors section, and directly
+   under it the "Previous Edition Sponsors" section (prev-sections.js). Every other section keeps the order the
+   plan gave it. A site with neither keeps its order as it is.
+
+   Why both: this edition's sponsors section is hidden until the ops team adds partner records (data-rv-empty),
+   which on a new site is most of its life — the previous edition's logos are then the only sponsors a visitor
+   sees, and the owner's "sponsors on top after the header banner" means them (brand-world-summit-2026).
+   WITH_PREVIOUS = false keeps "Previous Edition Sponsors" with the other previous-edition sections instead.
 
      sponsorsId(list)                 -> the id of this edition's sponsors section in a list of sections
                                          ({ id, kind, prebuilt? }), or ''
-     sponsorsFirst(planSections)      -> designPlan.sections (no nav/hero/footer) with that section first
-     sponsorsAfterHero(sections, plan)-> a page's sections (nav, hero, …, footer) with it right after the hero;
-                                         plan: designPlan.sections, which names the section when it is given
+     previousSponsorsId(list)         -> the id of the previous edition's sponsors section, or ''
+     sponsorsFirst(planSections)      -> designPlan.sections (no nav/hero/footer) with the sponsors first
+     sponsorsAfterHero(sections, plan)-> a page's sections (nav, hero, …, footer) with them right after the hero;
+                                         plan: designPlan.sections, which names the sections when it is given
      orderNavLinks(navHtml, ids)      -> the top bar's links to sections of the page, in the order of ids
                                          (the page's section ids, top to bottom)
 
    All return new arrays / strings and never drop or add a section. */
+
+var WITH_PREVIOUS = true;
 
 /* a sponsors / partners list under its usual names: "sponsors", "our-partners", "sponsors-and-partners", … */
 var SPONSORS_ID = /^(our-|event-|summit-|this-year-s-|this-years-)?(sponsors?|partners?)(-(and|&)-(sponsors?|partners?))?$/;
@@ -29,31 +37,47 @@ function sponsorsId(list) {
   return byName ? String(byName.id) : '';
 }
 
+/* the previous edition's sponsors: prebuilt "sponsors" in a plan, its fixed id on a stored page */
+function previousSponsorsId(list) {
+  list = Array.isArray(list) ? list.filter(function (s) { return s && s.id; }) : [];
+  var hit = list.filter(function (s) { return s.prebuilt === 'sponsors'; })[0] || list.filter(function (s) { return s.id === 'previous-sponsors'; })[0];
+  return hit ? String(hit.id) : '';
+}
+
+/* the ids that open the page, in order: this edition's sponsors, then the previous edition's */
+function groupIds(list, named) {
+  var have = (list || []).map(function (s) { return s && s.id; });
+  var cur = named && named.cur && have.indexOf(named.cur) !== -1 ? named.cur : sponsorsId(list);
+  var prev = WITH_PREVIOUS ? (named && named.prev && have.indexOf(named.prev) !== -1 ? named.prev : previousSponsorsId(list)) : '';
+  return [cur, prev].filter(function (id, i, a) { return id && a.indexOf(id) === i; });
+}
+
+/* list with the sections named by group taken out and put back as one run at index `at` (counted in the list
+   as it stands without them) */
+function placeRun(list, group, at) {
+  var run = group.map(function (id) { return list.filter(function (s) { return s && s.id === id; })[0]; });
+  var rest = list.filter(function (s) { return run.indexOf(s) === -1; });
+  return rest.slice(0, at).concat(run, rest.slice(at));
+}
+
 function sponsorsFirst(planSections) {
   var list = Array.isArray(planSections) ? planSections.slice() : [];
-  var id = sponsorsId(list);
-  if (!id) return list;
-  var at = list.map(function (s) { return s && s.id; }).indexOf(id);
-  if (at <= 0) return list;
-  var moved = list.splice(at, 1)[0];
-  list.unshift(moved);
-  return list;
+  var group = groupIds(list);
+  if (!group.length) return list;
+  return placeRun(list, group, 0);
 }
 
 function sponsorsAfterHero(sections, planSections) {
   var list = Array.isArray(sections) ? sections.slice() : [];
-  var ids = list.map(function (s) { return s && s.id; });
-  var id = sponsorsId(planSections);
-  if (!id || ids.indexOf(id) === -1) id = sponsorsId(list.filter(function (s) { return s && ['nav', 'hero', 'footer'].indexOf(s.id) === -1; }));
-  var at = ids.indexOf(id);
-  if (!id || at === -1) return list;
+  var body = list.filter(function (s) { return s && ['nav', 'hero', 'footer'].indexOf(s.id) === -1; });
+  /* the plan names them when it is given (a stored page carries no prebuilt flag); else they are found here */
+  var group = groupIds(body, { cur: sponsorsId(planSections), prev: previousSponsorsId(planSections) });
+  if (!group.length) return list;
+  var rest = list.filter(function (s) { return !s || group.indexOf(s.id) === -1; });
+  var ids = rest.map(function (s) { return s && s.id; });
   /* after the hero; with no hero, after the top bar; with neither, first */
   var after = ids.indexOf('hero') !== -1 ? ids.indexOf('hero') : ids.indexOf('nav');
-  if (at === after + 1) return list;
-  var moved = list.splice(at, 1)[0];
-  after = list.map(function (s) { return s && s.id; }).indexOf(after === -1 ? '' : ids[after]);
-  list.splice(after + 1, 0, moved);
-  return list;
+  return placeRun(list, group, after + 1);
 }
 
 /* ---------- the top bar's links, in page order ----------
@@ -61,7 +85,7 @@ function sponsorsAfterHero(sections, planSections) {
    (nothing but white space between them) form one row — the bar's list, or a separate mobile menu — and each
    row is put in order on its own: the links to sections of the page take the places such links had, sorted by
    where their section stands; anything else in the row (a link elsewhere, a button) stays where it is. */
-var ITEM = /<li\b[^>]*>\s*<a\b[^>]*>[\s\S]*?<\/a>\s*<\/li>|<a\b[^>]*>[\s\S]*?<\/a>/gi;
+var ITEM = /<li\b[^>]*>\s*<a\b[^>]*>(?:(?!<\/?(?:a|li|ul|ol)\b)[\s\S])*<\/a>\s*<\/li>|<a\b[^>]*>(?:(?!<\/?a\b)[\s\S])*<\/a>/gi;
 function hrefId(item) {
   var a = /<a\b([^>]*)>/i.exec(item);
   var m = a && /\shref\s*=\s*["']#([^"']+)["']/i.exec(' ' + a[1]);
@@ -108,4 +132,4 @@ function orderNavLinks(html, ids) {
   return out;
 }
 
-module.exports = { sponsorsId: sponsorsId, sponsorsFirst: sponsorsFirst, sponsorsAfterHero: sponsorsAfterHero, orderNavLinks: orderNavLinks };
+module.exports = { sponsorsId: sponsorsId, previousSponsorsId: previousSponsorsId, sponsorsFirst: sponsorsFirst, sponsorsAfterHero: sponsorsAfterHero, orderNavLinks: orderNavLinks };

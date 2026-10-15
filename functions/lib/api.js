@@ -1538,7 +1538,7 @@ function buildDesignPlanPrompt(payload) {
         'Which of them this site has: every one of these that the reference page above has, under whatever name it goes there (its "Partners" are sponsors, its "Gallery" or "Glimpses" are past-edition-glimpses, its "Why attend" is why-join-us, its "Themes" or "Tracks" are key-discussion-points…), is made again for this edition; add one the brief document or the owner\'s instructions ask for; leave out one they say this edition does not have. With no reference page, include the ones the material supports — Overview always. Order them as the reference page does; with none, in the order of the list. (nav, hero and footer are added automatically and are not in your list.)'
       : 'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
-    'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, and everything a visitor needs to understand the event lives in the sections. (When the site has this edition\'s sponsors section, the server places it directly under the hero, ahead of the overview; list it wherever you like — the other sections keep your order.)',
+    'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, and everything a visitor needs to understand the event lives in the sections. (The server places the sponsors directly under the hero, ahead of the overview: this edition\'s sponsors section when the site has one, then the previous edition\'s sponsors; list it wherever you like — the other sections keep your order.)',
     '',
     'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.'),
     '',
@@ -2337,8 +2337,8 @@ function handlePlanStructure(req, res) {
           if (at === -1) at = sections.length;
           sections.splice.apply(sections, [at, 0].concat(prevPlanned));
         }
-        /* this edition's sponsors open the page, straight after the hero; the rest keep the planned order
-           (section-order.js) */
+        /* the sponsors (this edition's, then the previous edition's) open the page, straight after the hero;
+           the rest keep the planned order (section-order.js) */
         sections = sectionOrder.sponsorsFirst(sections);
         /* A designed presentation's own colours are not left to the model to remember: they are set here,
            before the palette is checked for contrast. The owner's light/dark choice still wins. */
@@ -2728,7 +2728,7 @@ function buildSectionCodePrompt(payload) {
      section without records is hidden the count jumps (04, then 07). Items inside a list may be numbered. */
   lines.push('', 'NO SECTION NUMBERS: never number the sections themselves — no "01", "02" tabs, counters, badges or "Section 3" labels before or beside a section\'s heading, and no running count across the page' +
     (payload.designPlan && payload.designPlan.ownerNotes ? ', unless the owner\'s own instructions above ask for numbered sections' : '') + '. Numbering the items inside one list (steps, questions, pillars) is fine.');
-  lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section of the list below that is not the sponsors introduces the event properly. The sections stand on the page in the order listed below (this edition\'s sponsors, when there are any, come straight after the hero), and the nav\'s links follow that order.',
+  lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section of the list below that is not the sponsors introduces the event properly. The sections stand on the page in the order listed below (the sponsors, when there are any, come straight after the hero), and the nav\'s links follow that order.',
     'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.');
 
   lines.push('', 'PICTURES — the site must not be text only:');

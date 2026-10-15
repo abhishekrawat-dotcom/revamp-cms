@@ -18,14 +18,18 @@ var BWS = [
 
 /* ---- the plan ---- */
 var moved = so.sponsorsFirst(BWS);
-check('sponsors move to the top of the plan', ids(moved) === 'sponsors,overview,key-discussion-points,agenda,resources,why-join-us,who-should-attend,faqs,previous-speakers,previous-agenda,previous-sponsors,previous-glimpses,contact-us,about-vertical', ids(moved));
+check('sponsors, then the previous edition\'s sponsors, move to the top of the plan', ids(moved) === 'sponsors,previous-sponsors,overview,key-discussion-points,agenda,resources,why-join-us,who-should-attend,faqs,previous-speakers,previous-agenda,previous-glimpses,contact-us,about-vertical', ids(moved));
 check('the plan given is not changed', ids(BWS).indexOf('overview,sponsors') === 0);
 check('the same objects, none lost or added', moved.length === BWS.length && BWS.every(function (s) { return moved.indexOf(s) !== -1; }));
 check('applying the rule twice changes nothing', ids(so.sponsorsFirst(moved)) === ids(moved));
 check('already first: unchanged', ids(so.sponsorsFirst([{ id: 'sponsors', kind: 'partners' }, { id: 'overview' }])) === 'sponsors,overview');
 
 var noSponsors = BWS.filter(function (s) { return s.id !== 'sponsors'; });
-check('no sponsors section: nothing moves (the previous edition\'s sponsors stay put)', ids(so.sponsorsFirst(noSponsors)) === ids(noSponsors), ids(so.sponsorsFirst(noSponsors)));
+check('no sponsors section of this edition: the previous edition\'s sponsors open the page alone', ids(so.sponsorsFirst(noSponsors)) === 'previous-sponsors,' + ids(noSponsors.filter(function (s) { return s.id !== 'previous-sponsors'; })), ids(so.sponsorsFirst(noSponsors)));
+var noneAtAll = noSponsors.filter(function (s) { return s.id !== 'previous-sponsors'; });
+check('no sponsors of either edition: nothing moves', ids(so.sponsorsFirst(noneAtAll)) === ids(noneAtAll));
+check('the previous edition\'s sponsors are found by prebuilt, and by id on a stored page', so.previousSponsorsId(BWS) === 'previous-sponsors' && so.previousSponsorsId([{ id: 'previous-sponsors', kind: 'custom' }]) === 'previous-sponsors' && so.previousSponsorsId([{ id: 'sponsors', kind: 'partners' }]) === '');
+check('only the other sections keep their order', ids(moved.filter(function (s) { return !/sponsors/.test(s.id); })) === ids(BWS.filter(function (s) { return !/sponsors/.test(s.id); })));
 check('previous-sponsors is never taken for this edition\'s', so.sponsorsId(noSponsors) === '');
 check('a prebuilt section of kind partners is not taken either', so.sponsorsId([{ id: 'x', kind: 'partners', prebuilt: 'sponsors' }]) === '');
 check('past-partners by name is not taken', so.sponsorsId([{ id: 'past-partners', kind: 'custom' }]) === '');
@@ -43,10 +47,12 @@ var page = ['nav', 'hero'].concat(BWS.map(function (s) { return s.id; })).concat
   return { id: id, kind: p ? (p.prebuilt ? 'custom' : p.kind) : id, html: '<section id="' + id + '"></section>' };
 });
 var pageMoved = so.sponsorsAfterHero(page, BWS);
-check('on the page, sponsors right after the hero', ids(pageMoved) === 'nav,hero,sponsors,overview,key-discussion-points,agenda,resources,why-join-us,who-should-attend,faqs,previous-speakers,previous-agenda,previous-sponsors,previous-glimpses,contact-us,about-vertical,footer', ids(pageMoved));
+check('on the page, sponsors then the previous edition\'s right after the hero', ids(pageMoved) === 'nav,hero,sponsors,previous-sponsors,overview,key-discussion-points,agenda,resources,why-join-us,who-should-attend,faqs,previous-speakers,previous-agenda,previous-glimpses,contact-us,about-vertical,footer', ids(pageMoved));
 check('page: idempotent', ids(so.sponsorsAfterHero(pageMoved, BWS)) === ids(pageMoved));
 check('page: found without the plan too (stored sections carry no prebuilt flag)', ids(so.sponsorsAfterHero(page)) === ids(pageMoved), ids(so.sponsorsAfterHero(page)));
-check('page: no sponsors, nothing moves', ids(so.sponsorsAfterHero(page.filter(function (s) { return s.id !== 'sponsors'; }), noSponsors)) === ids(page.filter(function (s) { return s.id !== 'sponsors'; })));
+var pageNone = page.filter(function (s) { return !/sponsors/.test(s.id); });
+check('page: no sponsors of either edition, nothing moves', ids(so.sponsorsAfterHero(pageNone, noneAtAll)) === ids(pageNone));
+check('page: the previous edition\'s alone come under the hero', ids(so.sponsorsAfterHero(page.filter(function (s) { return s.id !== 'sponsors'; }), noSponsors)).indexOf('nav,hero,previous-sponsors,overview,') === 0);
 check('page with no hero: after the nav', ids(so.sponsorsAfterHero([{ id: 'nav' }, { id: 'overview' }, { id: 'sponsors', kind: 'partners' }, { id: 'footer' }])) === 'nav,sponsors,overview,footer');
 check('page with neither: first', ids(so.sponsorsAfterHero([{ id: 'overview' }, { id: 'sponsors', kind: 'partners' }])) === 'sponsors,overview');
 check('sponsors above the hero come down under it', ids(so.sponsorsAfterHero([{ id: 'nav' }, { id: 'sponsors', kind: 'partners' }, { id: 'hero' }, { id: 'overview' }])) === 'nav,hero,sponsors,overview');
@@ -71,11 +77,21 @@ check('nav: a link to a section the page does not have stays put', hrefs(so.orde
 check('nav: a Register button among the links is not moved', hrefs(so.orderNavLinks('<a href="#overview">Overview</a><a href="#contact-us">Register</a><a href="#sponsors">Sponsors</a>', ['sponsors', 'overview', 'contact-us'])) === 'sponsors,contact-us,overview');
 check('nav: nothing to order', so.orderNavLinks('', ['a']) === '' && so.orderNavLinks('<nav></nav>', []) === '<nav></nav>');
 
+
+/* a dropdown in the bar: its <li> holds a link and a nested list; it is never cut in two or merged with another */
+var DD = '<ul><li><a href="#agenda">Agenda</a></li><li class="dd"><a href="#overview">About</a><ul><li><a href="#faqs">FAQ</a></li></ul></li><li><a href="#sponsors">Partners</a></li></ul>';
+var ddOut = so.orderNavLinks(DD, ['hero', 'sponsors', 'overview', 'agenda', 'faqs']);
+check('nav: a dropdown keeps its nesting', (ddOut.match(/<ul>/g) || []).length === 2 && ddOut.indexOf('<a href="#overview">About</a><ul><li><a href="#faqs">FAQ</a></li></ul></li>') !== -1, ddOut);
+/* page-sized nav input with no closing tags stays fast (no backtracking blow-up) */
+var big = new Array(4000).join('<li><a href="#x">x ') + '<a href="#a">a</a><a href="#b">b</a>';
+var t0 = Date.now(); so.orderNavLinks(big, ['b', 'a']);
+check('nav: an unclosed 100 KB bar is read in well under a second', Date.now() - t0 < 1000, (Date.now() - t0) + ' ms');
+
 /* ---- as the server reads a stored site (api.js) ---- */
 var hooks = require('./api')._testHooks;
 var stored = page.map(function (s) { return { id: s.id, kind: s.kind }; });
 check('the editor\'s template lists sponsors after the hero for a plan stored in the old order', hooks.generatedPageIds({ sections: BWS }, stored).join(',') === ids(pageMoved), hooks.generatedPageIds({ sections: BWS }, stored).join(','));
-check('a section the site lacks is left out, nothing else moves', hooks.generatedPageIds({ sections: noSponsors }, stored.filter(function (s) { return s.id !== 'sponsors'; })).join(',') === ids(page.filter(function (s) { return s.id !== 'sponsors'; })));
+check('a section the site lacks is left out, nothing else moves', hooks.generatedPageIds({ sections: BWS }, stored.filter(function (s) { return s.id !== 'agenda'; })).join(',') === ids(pageMoved.filter(function (s) { return s.id !== 'agenda'; })));
 /* a standard plan as the model may write it: the server adds the overview first; the rule then puts sponsors above it */
 var std = hooks.sanitizeDesignPlanSections({ sections: [{ id: 'agenda' }, { id: 'sponsors' }, { id: 'faqs' }] }, 'standard');
 check('a standard plan: overview put first by the sanitiser, sponsors first by the rule', ids(so.sponsorsFirst(std)) === 'sponsors,overview,agenda,faqs', ids(so.sponsorsFirst(std)));
