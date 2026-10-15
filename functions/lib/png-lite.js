@@ -19,6 +19,9 @@
    inkBounds(img, box, background) -> the exact box and colour of the lettering inside a box, or null
    edgeColour(img, box) -> [r, g, b] the colour around a box;  hasTransparency(img) -> boolean
    crop(img, box) -> that part as its own picture;  inkProfile(img, 'x'|'y', background) -> lettering per column / row
+   inkRuns(profile) -> [{ from, to }] the runs of lettering in a profile, with empty lines between them
+   inkCount(img, box, background, within?) -> how many pixels of lettering a box holds (only those inside one
+                   of the `within` boxes, when given)
    No network, no Firebase: see png-lite.test.js. */
 
 const zlib = require('zlib');
@@ -254,4 +257,31 @@ function inkProfile(img, axis, background) {
   return counts;
 }
 
-module.exports = { decode, encode, flatten, clearBox, fillBox, crop, inkOf, inkBounds, inkProfile, edgeColour, hasTransparency, MAX_PIXELS };
+/* The runs of a profile that hold lettering, with the empty lines between them: [{ from, to }] (to is one
+   past the last line). A picture can be cut between two runs without cutting through anything. */
+function inkRuns(profile) {
+  var runs = [], from = -1;
+  for (var i = 0; i <= profile.length; i++) {
+    var inked = i < profile.length && profile[i] > 0;
+    if (inked && from === -1) from = i;
+    else if (!inked && from !== -1) { runs.push({ from: from, to: i }); from = -1; }
+  }
+  return runs;
+}
+
+/* How many pixels of lettering a box holds — all of them, or (with `within`, a list of boxes) only those
+   that also lie inside at least one of those boxes. */
+function inkCount(img, box, background, within) {
+  var b = clampBox(img, box), d = img.data, n = 0;
+  var areas = within ? within.map(function (w) { return clampBox(img, w); }) : null;
+  for (var y = b.y0; y < b.y1; y++) {
+    for (var x = b.x0; x < b.x1; x++) {
+      if (!isInk(d, (y * img.width + x) * 4, background)) continue;
+      if (areas && !areas.some(function (a) { return x >= a.x0 && x < a.x1 && y >= a.y0 && y < a.y1; })) continue;
+      n++;
+    }
+  }
+  return n;
+}
+
+module.exports = { decode, encode, flatten, clearBox, fillBox, crop, inkOf, inkBounds, inkProfile, inkRuns, inkCount, edgeColour, hasTransparency, MAX_PIXELS };

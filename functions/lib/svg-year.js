@@ -16,6 +16,8 @@
      cutShapes(svgText, found)        -> svgText   the drawing with those shapes taken out
      replaceYear(svgText, found, o)   -> svgText   o: { toYear, font: { ttfBase64, metrics, family } | null,
                                                        serif, bold, fill }
+     cropTo(svgText, box)             -> svgText | null   the drawing cut down to that box (a sponsor's mark cropped
+                                                       away), the shapes wholly outside it taken out
    No network, no Firebase: see svg-year.test.js. */
 
 /* ---------- the outline of one path ---------- */
@@ -238,4 +240,32 @@ function replaceYear(svg, found, o) {
   return out.slice(0, close) + style + text + out.slice(close);
 }
 
-module.exports = { pathBox, shapesIn, viewBoxOf, yearShapes, cutShapes, replaceYear };
+/* The drawing cut down to one part of it: its viewBox becomes that box (in the drawing's own units), its size
+   shrinks with it at the scale it was shown, and the shapes that now lie wholly outside are taken out of
+   the file, so a sponsor's mark cropped away is gone and not merely out of sight. Only a path that nothing
+   moves, that nothing can point to (no id) and whose whole outline is outside is taken out: anything less
+   certain stays, unseen beyond the edge. Nothing inside is touched. -> svgText, or null */
+function cropTo(svg, box) {
+  svg = String(svg || '');
+  var vb = viewBoxOf(svg), open = /<svg\b[^>]*>/i.exec(svg);
+  if (!vb || !open || !box || !(box.width > 0) || !(box.height > 0)) return null;
+  var tag = open[0], w = parseFloat(attr(tag, 'width')), h = parseFloat(attr(tag, 'height'));
+  /* the size it was shown at, per unit of the drawing ('100%' or no size at all: one to one) */
+  var sx = w > 0 && !/%/.test(attr(tag, 'width')) ? w / vb.width : 1, sy = h > 0 && !/%/.test(attr(tag, 'height')) ? h / vb.height : 1;
+  /* fitted whole (the default), it was shown at the smaller of the two: the part keeps its own shape */
+  if (!/^\s*none\b/.test(attr(tag, 'preserveAspectRatio') || '')) sx = sy = Math.min(sx, sy);
+  function n(v) { return String(Math.round(v * 1000) / 1000); }
+  var newTag = tag.replace(/\s(viewBox|width|height)\s*=\s*("[^"]*"|'[^']*')/gi, '').replace(/\s*\/?>$/, '') +
+    ' viewBox="' + [box.x, box.y, box.width, box.height].map(n).join(' ') + '" width="' + n(box.width * sx) + '" height="' + n(box.height * sy) + '">';
+  var x1 = box.x + box.width, y1 = box.y + box.height;
+  var gone = shapesIn(svg).filter(function (s) {
+    if (s.transformed || s.unsafe || !s.box || s.start < open.index + tag.length) return false;
+    if (/\sid\s*=/.test(svg.slice(s.start, svg.indexOf('>', s.start)))) return false;
+    var b = s.box;
+    return b.x >= x1 || b.y >= y1 || b.x + b.width <= box.x || b.y + b.height <= box.y;
+  });
+  var out = cutShapes(svg, { shapes: gone });
+  return out.slice(0, open.index) + newTag + out.slice(open.index + tag.length);
+}
+
+module.exports = { pathBox, shapesIn, viewBoxOf, yearShapes, cutShapes, replaceYear, cropTo };

@@ -103,5 +103,14 @@ var cut = png.crop(img, { x: 1, y: 1, width: 2, height: 2 });
 check('crop takes the box out as a picture', cut && cut.width === 2 && cut.height === 2 && cut.data.every(function (v) { return v === 255; }) && png.crop(img, { x: 40, y: 0, width: 2, height: 2 }) === null);
 check('inkProfile counts lettering per row and per column', png.inkProfile(img, 'y', null).join() === '0,2,3,0' && png.inkProfile(img, 'x', null).join() === '0,2,2,0,1,0');
 
+/* the runs of lettering, with the empty lines between them (where a picture can be cut) */
+check('inkRuns: the runs of a profile', JSON.stringify(png.inkRuns([0, 2, 2, 0, 1, 0])) === '[{"from":1,"to":3},{"from":4,"to":5}]');
+check('inkRuns: a run to the very edge, and none at all', JSON.stringify(png.inkRuns([3, 0, 0, 1])) === '[{"from":0,"to":1},{"from":3,"to":4}]' && png.inkRuns([0, 0]).length === 0);
+check('inkCount: every pixel of lettering in a box', png.inkCount(img, { x: 0, y: 0, width: 6, height: 4 }, null) === 5 && png.inkCount(img, { x: 3, y: 0, width: 3, height: 4 }, null) === 1);
+check('inkCount within boxes: only what is also inside one of them, counted once',
+  png.inkCount(img, { x: 0, y: 0, width: 6, height: 4 }, null, [{ x: 1, y: 1, width: 1, height: 2 }, { x: 1, y: 1, width: 2, height: 1 }]) === 3 &&
+  png.inkCount(img, { x: 0, y: 0, width: 6, height: 4 }, null, []) === 0);
+check('inkCount on an opaque picture: what is not its ground', png.inkCount(flat, { x: 0, y: 0, width: 6, height: 4 }, edge) === 5);
+
 if (failed) { console.error('png-lite: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('png-lite: all ' + passed + ' checks passed');
