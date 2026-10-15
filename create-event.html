@@ -756,8 +756,10 @@
   .et-chip[hidden]{ display: none; }
   .et-chip-ico{ display: inline-grid; place-items: center; flex-shrink: 0; color: var(--accent); }
   .et-chip-txt{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .et-chip-txt b{ font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .et-chip-txt small{ font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .et-chip-txt b{ font-size: 14px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+  .et-chip-txt small{ font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+  .et-pick-cancel{ align-self: flex-start; margin-top: 6px; }
+  .et-pick-cancel[hidden]{ display: none; }
   .et-chip-btn{ flex-shrink: 0; height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
     font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-strong); }
   .et-chip-btn:hover{ background: var(--accent-soft); }
@@ -2150,6 +2152,7 @@
                     <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ET events" hidden></ul>
                   </div>
                 </div>
+                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-cancel" hidden>Keep the event picked before</button>
                 <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
               </div>
               <div class="field"><label class="flabel" for="gb-previous">Previous edition URL</label>
@@ -4150,16 +4153,33 @@
     function isOpen(){ return !list.hidden; }
     function indexOfValue(v){ for (var i = 0; i < items.length; i++){ if (items[i].value === v) return i; } return -1; }
     /* the part of an option that matches what was typed, underlined */
-    function mark(text, q){
+    /* each word typed, underlined where it first appears ("south 2025" finds "… South - 2025") */
+    function mark(text, words){
       text = String(text);
-      var at = q ? text.toLowerCase().indexOf(q) : -1;
-      if (at === -1) return esc(text);
-      return esc(text.slice(0, at)) + '<mark>' + esc(text.slice(at, at + q.length)) + '</mark>' + esc(text.slice(at + q.length));
+      var low = text.toLowerCase(), hit = [];
+      (words || []).forEach(function(w){
+        var at = low.indexOf(w);
+        if (at !== -1) hit.push([at, at + w.length]);
+      });
+      if (!hit.length) return esc(text);
+      hit.sort(function(a, b){ return a[0] - b[0]; });
+      var out = '', from = 0;
+      hit.forEach(function(h){
+        if (h[0] < from) h[0] = from;
+        if (h[1] <= h[0]) return;
+        out += esc(text.slice(from, h[0])) + '<mark>' + esc(text.slice(h[0], h[1])) + '</mark>';
+        from = h[1];
+      });
+      return out + esc(text.slice(from));
     }
+    /* every word typed must be somewhere in the option, in any order */
     function filter(){
-      var q = typed ? input.value.trim().toLowerCase() : '';
-      shown = items.filter(function(it){ return !q || it.text.toLowerCase().indexOf(q) !== -1; });
-      return q;
+      var words = typed ? input.value.trim().toLowerCase().split(/\s+/).filter(Boolean) : [];
+      shown = items.filter(function(it){
+        var t = it.text.toLowerCase();
+        return words.every(function(w){ return t.indexOf(w) !== -1; });
+      });
+      return words;
     }
     function render(){
       var q = filter();
@@ -4221,7 +4241,8 @@
       render();
       list.scrollTop = 0;
     });
-    input.addEventListener('click', function(){ if (isOpen()) close(true); else open(); });
+    /* a click in the box opens it; a click while it is open keeps it open (to move the caret) */
+    input.addEventListener('click', function(){ if (!isOpen()) open(); });
     input.addEventListener('keydown', function(e){
       if (e.key === 'ArrowDown'){ e.preventDefault(); if (!isOpen()) open(); else move(active + 1); }
       else if (e.key === 'ArrowUp'){ e.preventDefault(); if (!isOpen()) open(); else move(active <= 0 ? 0 : active - 1); }
@@ -4263,7 +4284,7 @@
      Optional, beside the plain address: a portal, then one of that portal's own (IP) events. Picking one
      fills "Previous edition URL" with its page and keeps the event in S.brief.etEvent, so the run can tell
      the server which event it is (ingest-source); an address typed by hand drops it. */
-  var etPick = { portal: null, event: null, portals: null, portalsLoading: null, events: {}, eventsLoading: {}, slug: '', showPickers: false };
+  var etPick = { portal: null, event: null, portals: null, portalsLoading: null, events: {}, eventsLoading: {}, partial: {}, slug: '', showPickers: false };
   /* two addresses for the same page: scheme, www, query and a trailing slash aside */
   function sameLink(a, b){
     function key(v){ return normalUrl(v).replace(/^https?:\/\/(www\.)?/i, '').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase(); }
@@ -4317,13 +4338,16 @@
     var box = etPick.event;
     function show(events){
       if (etPick.slug !== slug) return;
-      box.setItems(events.map(function(ev){
-        return { value: String(ev.id), label: String(ev.title), sub: ev.dateLabel || '', tag: ev.upcoming ? 'Upcoming' : '', text: ev.title + ' ' + (ev.dateLabel || ''), ev: ev };
+      /* past editions first (newest on top); what is still to come last, marked, so Enter never picks it by chance */
+      var past = events.filter(function(ev){ return !ev.upcoming; }), coming = events.filter(function(ev){ return ev.upcoming; });
+      box.setItems(past.concat(coming).map(function(ev){
+        return { value: String(ev.id), label: String(ev.title), sub: ev.dateLabel || '', tag: ev.upcoming ? 'Upcoming — not a past edition' : '', text: ev.title + ' ' + (ev.dateLabel || ''), ev: ev };
       }));
       box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s events' : 'No events on this portal');
       var cur = S.brief.etEvent;
       box.setValue(cur && cur.portal === slug ? String(cur.id) : '');
-      etStatus(events.length ? '' : etPortalName(slug) + ' has no ET events to pick from. Paste the address below instead.');
+      etStatus(!events.length ? etPortalName(slug) + ' has no ET events to pick from. Paste the address below instead.'
+        : etPick.partial[slug] ? 'ET sent only part of ' + etPortalName(slug) + '’s older events. If yours is not listed, paste its address below.' : '');
     }
     if (etPick.events[slug]){ show(etPick.events[slug]); return Promise.resolve(etPick.events[slug]); }
     box.setItems([]); box.setValue('');
@@ -4332,6 +4356,7 @@
     if (!etPick.eventsLoading[slug]){
       etPick.eventsLoading[slug] = etGet('/api/et/events?portal=' + encodeURIComponent(slug)).then(function(body){
         delete etPick.eventsLoading[slug];
+        etPick.partial[slug] = !!body.partial;
         return (etPick.events[slug] = (body.events || []).filter(function(ev){ return ev && ev.id != null && ev.title && normalUrl(ev.link); }));
       }, function(err){ delete etPick.eventsLoading[slug]; throw err; });
     }
@@ -4349,6 +4374,8 @@
     if (!cur) etPick.event.setValue('');
     chip.hidden = !chipOn;
     pickers.hidden = chipOn;
+    /* "Change" can be taken back while the event picked before is still the one */
+    $('gb-et-cancel').hidden = chipOn || !cur;
     if (chipOn){
       $('gb-et-chip-title').textContent = cur.title;
       $('gb-et-chip-sub').textContent = [etPortalName(cur.portal), cur.dateLabel].filter(Boolean).join(' · ');
@@ -4382,6 +4409,12 @@
         renderFoot(); save();
         $('gb-et-change').focus();
       } });
+      $('gb-et-cancel').onclick = function(){
+        etPick.showPickers = false;
+        if (S.brief.etEvent){ etPick.slug = S.brief.etEvent.portal; etPick.portal.setValue(etPick.slug); }
+        showEtPick();
+        $('gb-et-change').focus();
+      };
       $('gb-et-change').onclick = function(){
         etPick.showPickers = true;
         if (S.brief.etEvent) etPick.slug = S.brief.etEvent.portal;
@@ -5442,6 +5475,8 @@
         var box = rowInput('data-step-url', s.key), url = normalUrl(box && box.value);
         if (!url){ s.fixError = URL_HINT; return false; }
         inputs.urls[s.field.key] = S.brief[s.field.key] = url;
+        /* a corrected address is no longer the event picked from ET's list */
+        if (s.field.key === 'previous' && S.brief.etEvent && !sameLink(S.brief.etEvent.link, url)) S.brief.etEvent = null;
       } else if (s.key === 'brief'){
         var area = rowInput('data-step-text', s.key);
         if (area){ S.brief.text = area.value.trim(); inputs.text = briefAnswers(area.value); }

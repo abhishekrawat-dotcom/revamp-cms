@@ -1060,6 +1060,23 @@ function readEtPrevious(url, html, pick) {
     .then(null, function (err) { console.error('ingest-source: previous edition records not read — ' + (err && err.message)); return null; });
 }
 
+/* A pick is taken only when it is one of that portal's own (IP) events in ET's list (et-events.js, cached) and its
+   page is the address being read — otherwise the address alone decides, as for a pasted link.
+   -> Promise<{ portal, id } | null>, never rejecting */
+function pageKey(u) {
+  var m = /^https?:\/\/([^\/?#]+)([^?#]*)/i.exec(String(u || '').trim());
+  return m ? m[1].toLowerCase().replace(/^www\./, '') + m[2].replace(/\/+$/, '').toLowerCase() : '';
+}
+function confirmEtPick(pick, url) {
+  if (!pick) return Promise.resolve(null);
+  return etEvents.listIpEvents(pick.portal, etJson).then(function (events) {
+    var ev = events.filter(function (e) { return String(e.id) === pick.id; })[0];
+    if (ev && pageKey(ev.link) && pageKey(ev.link) === pageKey(url)) return pick;
+    console.warn('ingest-source: etEvent ' + pick.portal + '/' + pick.id + (ev ? ' is not ' + url : ' is not an IP event of that portal') + ' — read by its address');
+    return null;
+  }, function () { return null; });
+}
+
 /* payload.etEvent { portal, id } -> { portal, id } | null when absent | false when it is not a real pick
    (a portal off the roster, an id that is not digits): neither ever reaches ET's header or address. */
 function etPickOf(v) {
@@ -1151,7 +1168,9 @@ function handleIngestSource(req, res) {
         var hints = ownEdition ? logoUnit.editionHints(html, url) : null;
         /* A previous edition on ET's own platform: its real speakers, sponsors, agenda and photos, read from
            ET's event API (et-previous.js) beside the summary below — shown as "Previous Edition …" sections. */
-        var previousRead = type === 'previousEdition' && (etPick || etPrevious.portalOf(url)) ? readEtPrevious(url, html, etPick) : Promise.resolve(null);
+        var previousRead = type !== 'previousEdition' ? Promise.resolve(null) : confirmEtPick(etPick, url).then(function (pick) {
+          return pick || etPrevious.portalOf(url) ? readEtPrevious(url, html, pick) : null;
+        });
         var editionHints = hints ? {
           title: String(hints.title || '').slice(0, 200), headings: (hints.headings || []).slice(0, 6).map(function (h) { return String(h).slice(0, 200); }),
           years: (hints.years || []).slice(0, 8), editionImage: String(hints.editionImage || '').slice(0, 1000)
@@ -6607,6 +6626,7 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
+  confirmEtPick: confirmEtPick, pageKey: pageKey,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks,
