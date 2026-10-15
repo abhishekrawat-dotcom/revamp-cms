@@ -62,6 +62,40 @@ ok(out.indexOf('.f{font-size:14px!important}') !== -1, '!important kept', out);
 ok(out.indexOf('.g{font-size:clamp(2rem,4vw,3rem)}') !== -1, 'a large clamp untouched', out);
 ok(g.clampFontSizes('') === '' && g.clampFontSizes(null) === '', 'empty css');
 
+/* ---- capHeadingSizes: section headings held to the site's type scale ---- */
+var S = '[data-rv-section="overview"] ';
+var loud = S + '.overview-title{font-family:var(--heading-font-family);font-size:clamp(2rem,4.2vw,3.25rem);line-height:1.1}' +
+  S + '.overview-h2{font-size:56px}' + S + 'h2{font-size: 3rem !important;color:red}' +
+  S + '.overview-sub{font-size:clamp(1.6rem, 3vw, 2.25rem)}' + S + '.overview-card-title{font-size:1.75rem}' +
+  S + '.overview-num{font-size:clamp(2.6rem,5vw,4rem)}' + S + '.overview-stat-value{font-size:4rem}' + S + '.overview-big-figure{font-size:72px}' +
+  S + 'h2.overview-count{font-size:4rem}' + S + '.overview-kicker{font-size:0.875rem}' + S + '.overview-lede{font-size:1.125rem}' + S + '.overview-quote{font-size:3rem}' +
+  S + '.overview-title::before{font-size:6rem}' + S + '.overview-title span{font-size:3rem}' +
+  '@media (max-width:820px){' + S + '.overview-title{font-size:2.75rem}}' + S + '.overview-title{font-size:2rem}';
+var html = '<section id="overview"><h2 class="overview-title">About</h2><h3 class="overview-sub">Why</h3><p class="overview-lede">x</p></section>';
+var calm = g.capHeadingSizes(loud, html);
+ok(calm.indexOf('.overview-title{font-family:var(--heading-font-family);font-size:clamp(1.75rem, 3.069vw, 2.375rem);line-height:1.1}') !== -1, 'a clamp is scaled down as a whole: 38px at most, a 28px floor on a phone', calm);
+ok(calm.indexOf('.overview-h2{font-size:38px}') !== -1, 'px: 56px -> 38px', calm);
+ok(calm.indexOf('h2{font-size: 2.375rem !important;color:red}') !== -1, 'rem, by tag: 3rem -> 2.375rem, !important kept', calm);
+ok(calm.indexOf('.overview-sub{font-size:clamp(1.25rem, 2.167vw, 1.625rem)}') !== -1, 'a class used on an h3 is a sub-heading: 26px at most', calm);
+ok(calm.indexOf('.overview-card-title{font-size:1.625rem}') !== -1, 'a card title is a sub-heading by its name', calm);
+ok(calm.indexOf('@media (max-width:820px){' + S + '.overview-title{font-size:2.375rem}}') !== -1, 'rules inside @media too', calm);
+ok(calm.indexOf(S + '.overview-title{font-size:2rem}') !== -1, 'a heading within the scale is left as it is', calm);
+['.overview-num{font-size:clamp(2.6rem,5vw,4rem)}', '.overview-stat-value{font-size:4rem}', '.overview-big-figure{font-size:72px}', 'h2.overview-count{font-size:4rem}']
+  .forEach(function (r) { ok(calm.indexOf(r) !== -1, 'big numerals in a stats band are left alone: ' + r, calm); });
+['.overview-kicker{font-size:0.875rem}', '.overview-lede{font-size:1.125rem}', '.overview-quote{font-size:3rem}', '.overview-title::before{font-size:6rem}', '.overview-title span{font-size:3rem}']
+  .forEach(function (r) { ok(calm.indexOf(r) !== -1, 'not a heading, left alone: ' + r, calm); });
+ok(g.capHeadingSizes(calm, html) === calm, 'idempotent: capping again changes nothing');
+var bare = g.capHeadingSizes(loud);
+ok(bare === g.capHeadingSizes(loud, {}) && bare.indexOf('.overview-title{font-family:var(--heading-font-family);font-size:clamp(1.75rem, 3.069vw, 2.375rem)') !== -1 && bare.indexOf('.overview-sub{font-size:clamp(1.6rem, 3vw, 2.25rem)}') !== -1,
+  'without the markup, tags and heading-like names are what count (a plain "-sub" class is then not a heading)', bare);
+ok(g.capHeadingSizes('.a-title{font-size:clamp(2rem,calc(1rem + 3vw),64px)}') === '.a-title{font-size:clamp(1.75rem, calc(0.594rem + 1.781vw), 38px)}', 'a calc() preferred value is scaled with it', g.capHeadingSizes('.a-title{font-size:clamp(2rem,calc(1rem + 3vw),64px)}'));
+ok(g.capHeadingSizes('.a-title{font-size:5vw}.b-title{font-size:2.4em}.c-title{font-size:var(--x)}.d-title{font-size:min(4rem,6vw)}') === '.a-title{font-size:5vw}.b-title{font-size:2.4em}.c-title{font-size:var(--x)}.d-title{font-size:min(4rem,6vw)}', 'sizes that cannot be read are left as they are');
+ok(g.capHeadingSizes('.a-title, .a-num{font-size:4rem}') === '.a-title, .a-num{font-size:4rem}', 'a rule shared with a numeral is left alone');
+ok(g.capHeadingSizes('.key-metrics-heading{font-size:3.25rem}.key-metrics-num{font-size:4rem}') === '.key-metrics-heading{font-size:2.375rem}.key-metrics-num{font-size:4rem}', 'the heading of a metrics section is a heading; its numerals are not');
+ok(g.capHeadingSizes('') === '' && g.capHeadingSizes(null) === '', 'empty css');
+ok(/clamp\(1\.75rem, 3vw, 2\.375rem\)/.test(g.HEADING_SCALE.section) && g.HEADING_SCALE.sectionMaxPx === 38, 'the scale the prompts ask for tops out at 38px');
+ok(g.capHeadingSizes('.x-title{font-size:' + g.HEADING_SCALE.section + '}') === '.x-title{font-size:' + g.HEADING_SCALE.section + '}', 'the scale the prompts ask for passes the cap untouched');
+
 /* ---- ensureLogo ---- */
 var URL_ = 'https://storage.googleapis.com/b/events/x/logo/l.png';
 var nav = '<nav id="nav" class="nav"><div class="nav-inner"><span class="brand">My Event</span><a href="#a">A</a></div></nav>';

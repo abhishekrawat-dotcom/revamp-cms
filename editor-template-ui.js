@@ -139,7 +139,9 @@
       wireCanvasEvents();
       /* a page saved before its look last changed carries the ET logo in the right version from now on —
          checked again once the page has laid out (the nav's row is measured) */
-      if (syncEtLogos()) commit();
+      var putRight = syncEtLogos();
+      if (calmHeadings()) putRight = true;
+      if (putRight) commit();
       [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && syncEtLogos()) commit(); }, ms); });
       /* opened from the preview's "Apply in editor": that theme */
       var askedTheme = new URLSearchParams(location.search).get('theme');
@@ -2937,6 +2939,25 @@
       }
     });
     return true;
+  }
+
+  /* An AI-designed site saved before its section headings were calmed keeps their old sizes in the page it
+     saved: they are brought to the site's type scale (templates/_shared/rv-type.js — the same rule the server
+     applies to a section when it is made and when it is served), in every section but the hero, which keeps
+     its own type. Stat numerals, eyebrows and body text are left as they are. -> true when anything changed */
+  function calmHeadings() {
+    if (!canvas || !canvas.doc || !window.RevampType || !/^gen-/.test(String(templateId || ''))) return false;
+    var headings = {}, changed = false;
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('h1[class], h2[class], h3[class], h4[class], h5[class], h6[class]'), function (h) {
+      var level = +h.tagName.charAt(1);
+      Array.prototype.forEach.call(h.classList, function (c) { if (!headings[c] || level < headings[c]) headings[c] = level; });
+    });
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('style[data-rv-style]'), function (st) {
+      if (st.getAttribute('data-rv-style') === 'hero') return;
+      var css = window.RevampType.capHeadingSizes(st.textContent, headings);
+      if (css !== st.textContent) { st.textContent = css; changed = true; }
+    });
+    return changed;
   }
 
   /* ---------- themes (an AI-designed site; templates/_shared/rv-theme.js) ----------
