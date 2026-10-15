@@ -721,6 +721,51 @@
   .sheet .slug-prefix{ color: var(--accent-strong); }
   .gb-guide{ border-top: 3px solid var(--accent); }
   .gb-guide-list b{ color: var(--accent-strong); }
+
+  /* ---------- the previous edition picked from ET's events: two searchable lists, then a chip ----------
+     The boxes are the form's own fields (.inp); both lists open under the whole row, so a long event
+     name has the room to be read. */
+  .et-pick-row{ position: relative; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+  .et-pick-row[hidden]{ display: none; }
+  @media (max-width: 480px){ .et-pick-row{ grid-template-columns: minmax(0, 1fr); } }
+  .cbx{ min-width: 0; }
+  .sheet .cbx-inp{ width: 100%; padding-right: 36px; text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8380' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; }
+  .sheet .cbx-inp[aria-expanded="true"]{ border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ED1C24' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E"); }
+  .sheet .cbx-inp:disabled{ background-color: var(--surface-2); color: var(--text-faint); cursor: not-allowed; box-shadow: none; }
+  .sheet .cbx-inp:disabled:hover{ border-color: var(--f-edge); }
+  .cbx-list{ position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40; margin: 0; padding: 4px; list-style: none;
+    max-height: min(320px, 50vh); overflow-y: auto; overscroll-behavior: contain;
+    background: var(--surface); border: 1px solid var(--f-edge, var(--border)); border-radius: var(--f-r, 10px); box-shadow: var(--shadow-md); }
+  .cbx-list[hidden]{ display: none; }
+  .cbx-opt{ display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 12px; border-radius: 7px; cursor: pointer;
+    font-size: 14px; line-height: 1.35; color: var(--text); }
+  .cbx-opt.is-active{ background: var(--accent-soft); }
+  .cbx-opt-txt{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+  .cbx-opt-txt small{ font-size: 12.5px; color: var(--text-muted); }
+  .cbx-opt.is-current .cbx-opt-txt > span{ font-weight: 600; color: var(--accent-strong); }
+  .cbx-opt-tag{ flex-shrink: 0; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong);
+    font-size: 11.5px; font-weight: 600; }
+  .cbx-opt.is-active .cbx-opt-tag{ background: var(--surface); }
+  .cbx-opt mark{ background: none; color: inherit; font-weight: 600; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 2px; }
+  .cbx-empty{ padding: 10px 12px; font-size: 13.5px; color: var(--text-faint); }
+  .et-chip{ display: flex; align-items: center; gap: 10px; min-height: var(--f-h, 44px); padding: 5px 5px 5px 12px; border-radius: var(--f-r, 10px);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--f-edge, var(--border))); background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); }
+  .et-chip[hidden]{ display: none; }
+  .et-chip-ico{ display: inline-grid; place-items: center; flex-shrink: 0; color: var(--accent); }
+  .et-chip-txt{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .et-chip-txt b{ font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .et-chip-txt small{ font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .et-chip-btn{ flex-shrink: 0; height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-strong); }
+  .et-chip-btn:hover{ background: var(--accent-soft); }
+  .et-chip-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sheet .et-pick-status{ margin-top: 7px; }
+  .sheet .et-pick-status.is-error{ color: var(--crit); }
+  .et-pick-status button{ margin-left: 4px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 600;
+    color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
 </style>
 <style>
   /* ============ STEP 2 - PATH CHOICE ============ */
@@ -2087,6 +2132,26 @@
                 <p class="hint" id="gb-doc-note"></p>
                 <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
               </div>
+              <!-- the previous edition picked from ET's own events (wireEtPicker); fills the address below -->
+              <div class="field et-pick" id="gb-et">
+                <span class="flabel" id="gb-et-label">Previous edition from ET’s events <span class="pill-opt">Optional</span></span>
+                <div class="et-chip" id="gb-et-chip" hidden>
+                  <span class="et-chip-ico" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+                  <span class="et-chip-txt"><b id="gb-et-chip-title"></b><small id="gb-et-chip-sub"></small></span>
+                  <button class="et-chip-btn" type="button" id="gb-et-change" aria-describedby="gb-et-chip-title">Change</button>
+                </div>
+                <div class="et-pick-row" id="gb-et-pickers">
+                  <div class="cbx">
+                    <input class="inp cbx-inp" id="gb-et-portal" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-portal-list" aria-label="Portal" placeholder="Portal" autocomplete="off" spellcheck="false">
+                    <ul class="cbx-list" id="gb-et-portal-list" role="listbox" aria-label="Portals" hidden></ul>
+                  </div>
+                  <div class="cbx">
+                    <input class="inp cbx-inp" id="gb-et-event" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-event-list" aria-label="Previous edition" placeholder="Choose a portal first" autocomplete="off" spellcheck="false" disabled>
+                    <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ET events" hidden></ul>
+                  </div>
+                </div>
+                <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
+              </div>
               <div class="field"><label class="flabel" for="gb-previous">Previous edition URL</label>
                 <input class="inp" id="gb-previous" type="url" placeholder="https://…">
               </div>
@@ -2713,7 +2778,7 @@
     imgSeq: 0,                  // the last img slot number this draft handed out (addImageFile)
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
-    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard' },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
+    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
@@ -2887,7 +2952,7 @@
       delete S.catPicked;
       /* what earlier versions of this page kept in the draft and nothing reads any more */
       ['path', 'templatePick', 'templateExcluded', 'sourceKind', 'sourceValue', 'detectPhase', 'detectDecisions', 'detectedBannerTheme'].forEach(function(k){ delete S[k]; });
-      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard' };
+      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
@@ -4011,7 +4076,12 @@
     Object.keys(BRIEF_INPUTS).forEach(function(id){
       var el = $(id), key = BRIEF_INPUTS[id];
       el.value = S.brief[key] || '';
-      el.oninput = function(){ S.brief[key] = el.value; renderFoot(); save(); };
+      el.oninput = function(){
+        S.brief[key] = el.value;
+        /* an address typed by hand is no longer the event picked from ET's list */
+        if (key === 'previous' && S.brief.etEvent && !sameLink(S.brief.etEvent.link, el.value)){ S.brief.etEvent = null; showEtPick(); }
+        renderFoot(); save();
+      };
       if (id === 'gb-brief-text') return;
       /* leaving a link box writes the address out in full, so what is sent is what is shown */
       el.onchange = function(){
@@ -4068,6 +4138,263 @@
       save(); showDoc(); renderFoot();
     };
     showDoc();
+    wireEtPicker();
+  }
+
+  /* ---------- a searchable list (ARIA combobox with a listbox popup) ----------
+     One box the owner types in to narrow a list: the text matches anywhere in an option, in any case.
+     Arrow keys move through what is shown, Enter picks, Escape or a click elsewhere closes and puts back
+     what was picked. o: { input, list, onPick(item), empty } — items are { value, label, sub, tag, text }. */
+  function makeCombobox(o){
+    var input = o.input, list = o.list, items = [], shown = [], active = -1, picked = null, typed = false;
+    function isOpen(){ return !list.hidden; }
+    function indexOfValue(v){ for (var i = 0; i < items.length; i++){ if (items[i].value === v) return i; } return -1; }
+    /* the part of an option that matches what was typed, underlined */
+    function mark(text, q){
+      text = String(text);
+      var at = q ? text.toLowerCase().indexOf(q) : -1;
+      if (at === -1) return esc(text);
+      return esc(text.slice(0, at)) + '<mark>' + esc(text.slice(at, at + q.length)) + '</mark>' + esc(text.slice(at + q.length));
+    }
+    function filter(){
+      var q = typed ? input.value.trim().toLowerCase() : '';
+      shown = items.filter(function(it){ return !q || it.text.toLowerCase().indexOf(q) !== -1; });
+      return q;
+    }
+    function render(){
+      var q = filter();
+      if (active >= shown.length) active = shown.length - 1;
+      if (!shown.length){
+        list.innerHTML = '<li class="cbx-empty" role="presentation">' + esc(items.length ? 'No matches' : (o.empty || 'Nothing to choose from')) + '</li>';
+        input.removeAttribute('aria-activedescendant');
+        return;
+      }
+      list.innerHTML = shown.map(function(it, i){
+        return '<li class="cbx-opt' + (i === active ? ' is-active' : '') + (picked && picked.value === it.value ? ' is-current' : '') + '" role="option" id="' + list.id + '-o' + i + '" data-i="' + i + '" aria-selected="' + (i === active) + '">' +
+          '<span class="cbx-opt-txt"><span>' + mark(it.label, q) + '</span>' + (it.sub ? '<small>' + mark(it.sub, q) + '</small>' : '') + '</span>' +
+          (it.tag ? '<span class="cbx-opt-tag">' + esc(it.tag) + '</span>' : '') + '</li>';
+      }).join('');
+      if (active >= 0) input.setAttribute('aria-activedescendant', list.id + '-o' + active);
+      else input.removeAttribute('aria-activedescendant');
+    }
+    function move(to){
+      if (!shown.length) return;
+      active = Math.max(0, Math.min(shown.length - 1, to));
+      render();
+      var el = $(list.id + '-o' + active);
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    }
+    function open(){
+      if (input.disabled) return;
+      if (isOpen()){ render(); return; }
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      /* what is typed next searches afresh instead of adding to the name already picked */
+      if (!typed && input.value) input.select();
+      filter();
+      /* opened on what was picked, so it is in view */
+      active = typed ? (shown.length ? 0 : -1) : (picked ? indexOfValue(picked.value) : -1);
+      if (active >= 0) move(active); else render();
+    }
+    function close(restore){
+      if (isOpen()){
+        list.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+      }
+      input.removeAttribute('aria-activedescendant');
+      if (restore){ input.value = picked ? picked.label : ''; typed = false; }
+      active = -1;
+    }
+    function choose(i){
+      var it = shown[i];
+      if (!it) return;
+      picked = it; typed = false;
+      input.value = it.label;
+      close(false);
+      o.onPick(it);
+    }
+    input.addEventListener('input', function(){
+      typed = true;
+      if (!isOpen()) open();
+      filter();
+      active = shown.length ? 0 : -1;
+      render();
+      list.scrollTop = 0;
+    });
+    input.addEventListener('click', function(){ if (isOpen()) close(true); else open(); });
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'ArrowDown'){ e.preventDefault(); if (!isOpen()) open(); else move(active + 1); }
+      else if (e.key === 'ArrowUp'){ e.preventDefault(); if (!isOpen()) open(); else move(active <= 0 ? 0 : active - 1); }
+      else if (e.key === 'Enter'){ if (isOpen()){ e.preventDefault(); if (active >= 0) choose(active); } }
+      else if (e.key === 'Escape'){ if (isOpen() || typed){ e.preventDefault(); e.stopPropagation(); close(true); } }
+      else if (e.key === 'Tab'){ close(true); }
+    });
+    /* the focus stays in the box while an option is clicked */
+    list.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    list.addEventListener('click', function(e){
+      var li = e.target.closest ? e.target.closest('.cbx-opt') : null;
+      if (li) choose(+li.getAttribute('data-i'));
+    });
+    document.addEventListener('mousedown', function(e){
+      if (isOpen() && e.target !== input && !list.contains(e.target)) close(true);
+    });
+    input.addEventListener('blur', function(){ if (isOpen()) close(true); });
+    return {
+      setItems: function(next){
+        items = next || [];
+        if (picked){ var i = indexOfValue(picked.value); picked = i === -1 ? null : items[i]; }
+        if (isOpen()) render();
+      },
+      setValue: function(value){
+        var i = indexOfValue(value);
+        picked = i === -1 ? null : items[i];
+        typed = false;
+        input.value = picked ? picked.label : '';
+      },
+      setDisabled: function(off, placeholder){
+        if (off) close(false);
+        input.disabled = !!off;
+        if (placeholder) input.placeholder = placeholder;
+      }
+    };
+  }
+
+  /* ---------- the previous edition picked from ET's own events ----------
+     Optional, beside the plain address: a portal, then one of that portal's own (IP) events. Picking one
+     fills "Previous edition URL" with its page and keeps the event in S.brief.etEvent, so the run can tell
+     the server which event it is (ingest-source); an address typed by hand drops it. */
+  var etPick = { portal: null, event: null, portals: null, portalsLoading: null, events: {}, eventsLoading: {}, slug: '', showPickers: false };
+  /* two addresses for the same page: scheme, www, query and a trailing slash aside */
+  function sameLink(a, b){
+    function key(v){ return normalUrl(v).replace(/^https?:\/\/(www\.)?/i, '').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase(); }
+    var ka = key(a);
+    return !!ka && ka === key(b);
+  }
+  function etGet(url){
+    var call = window.RevampCore && RevampCore.authedFetch ? RevampCore.authedFetch(url) : fetch(url);
+    return Promise.resolve(call).then(readJson);
+  }
+  function etPortalName(slug){
+    var list = etPick.portals || [];
+    for (var i = 0; i < list.length; i++){ if (list[i].slug === slug) return list[i].name; }
+    return slug;
+  }
+  function etStatus(text, retry){
+    var el = $('gb-et-status');
+    if (!el) return;
+    el.classList.toggle('is-error', !!retry);
+    el.textContent = text || '';
+    if (retry){
+      var b = document.createElement('button');
+      b.type = 'button'; b.textContent = 'Retry';
+      b.onclick = retry;
+      el.appendChild(document.createTextNode(' '));
+      el.appendChild(b);
+    }
+  }
+  function loadEtPortals(){
+    if (etPick.portals) return Promise.resolve(etPick.portals);
+    if (etPick.portalsLoading) return etPick.portalsLoading;
+    etPick.portal.setDisabled(true, 'Loading portals…');
+    etStatus('Loading ET’s portals…');
+    etPick.portalsLoading = etGet('/api/et/portals').then(function(body){
+      etPick.portalsLoading = null;
+      etPick.portals = (body.portals || []).filter(function(p){ return p && p.slug; }).map(function(p){ return { slug: String(p.slug), name: String(p.name || p.slug) }; });
+      etPick.portal.setItems(etPick.portals.map(function(p){ return { value: p.slug, label: p.name, text: p.name + ' ' + p.slug }; }));
+      etPick.portal.setDisabled(false, 'Portal');
+      if (etPick.slug) etPick.portal.setValue(etPick.slug);
+      etStatus('');
+      return etPick.portals;
+    }, function(err){
+      etPick.portalsLoading = null;
+      etPick.portal.setDisabled(true, 'Portal');
+      etStatus('ET’s portals could not be loaded. ' + plainError(err), function(){ loadEtPortals().then(showEtPick, function(){}); });
+      throw err;
+    });
+    return etPick.portalsLoading;
+  }
+  function loadEtEvents(slug){
+    var box = etPick.event;
+    function show(events){
+      if (etPick.slug !== slug) return;
+      box.setItems(events.map(function(ev){
+        return { value: String(ev.id), label: String(ev.title), sub: ev.dateLabel || '', tag: ev.upcoming ? 'Upcoming' : '', text: ev.title + ' ' + (ev.dateLabel || ''), ev: ev };
+      }));
+      box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s events' : 'No events on this portal');
+      var cur = S.brief.etEvent;
+      box.setValue(cur && cur.portal === slug ? String(cur.id) : '');
+      etStatus(events.length ? '' : etPortalName(slug) + ' has no ET events to pick from. Paste the address below instead.');
+    }
+    if (etPick.events[slug]){ show(etPick.events[slug]); return Promise.resolve(etPick.events[slug]); }
+    box.setItems([]); box.setValue('');
+    box.setDisabled(true, 'Loading events…');
+    etStatus('Loading ' + etPortalName(slug) + '’s events…');
+    if (!etPick.eventsLoading[slug]){
+      etPick.eventsLoading[slug] = etGet('/api/et/events?portal=' + encodeURIComponent(slug)).then(function(body){
+        delete etPick.eventsLoading[slug];
+        return (etPick.events[slug] = (body.events || []).filter(function(ev){ return ev && ev.id != null && ev.title && normalUrl(ev.link); }));
+      }, function(err){ delete etPick.eventsLoading[slug]; throw err; });
+    }
+    return etPick.eventsLoading[slug].then(show, function(err){
+      if (etPick.slug !== slug) return;
+      box.setDisabled(true, 'Previous edition');
+      etStatus(etPortalName(slug) + '’s events could not be loaded. ' + plainError(err), function(){ loadEtEvents(slug); });
+    });
+  }
+  /* the chip while an event is picked, the two lists otherwise (or after "Change") */
+  function showEtPick(){
+    var chip = $('gb-et-chip'), pickers = $('gb-et-pickers');
+    if (!chip || !etPick.portal) return;
+    var cur = S.brief.etEvent, chipOn = !!cur && !etPick.showPickers;
+    if (!cur) etPick.event.setValue('');
+    chip.hidden = !chipOn;
+    pickers.hidden = chipOn;
+    if (chipOn){
+      $('gb-et-chip-title').textContent = cur.title;
+      $('gb-et-chip-sub').textContent = [etPortalName(cur.portal), cur.dateLabel].filter(Boolean).join(' · ');
+      etStatus('');
+      return;
+    }
+    /* the lists load once they are on screen in the AI form, not before */
+    if (S.creationMethod === 'brief') loadEtPortals().then(function(){
+      if (etPick.slug && !etPick.events[etPick.slug] && !etPick.eventsLoading[etPick.slug]) loadEtEvents(etPick.slug);
+    }, function(){});
+  }
+  function wireEtPicker(){
+    var portalInp = $('gb-et-portal'), eventInp = $('gb-et-event');
+    if (!portalInp) return;
+    /* a pick whose page is no longer the address (corrected after a failed run, or an older draft) is dropped */
+    var cur = S.brief.etEvent;
+    if (cur && (typeof cur !== 'object' || !cur.link || !sameLink(cur.link, S.brief.previous))){ S.brief.etEvent = cur = null; save(); }
+    if (!etPick.portal){
+      etPick.portal = makeCombobox({ input: portalInp, list: $('gb-et-portal-list'), empty: 'No portals', onPick: function(it){
+        if (it.value === etPick.slug && etPick.events[it.value]) return;
+        etPick.slug = it.value;
+        loadEtEvents(it.value).then(function(){ if (etPick.slug === it.value && !eventInp.disabled) eventInp.focus(); });
+      } });
+      etPick.event = makeCombobox({ input: eventInp, list: $('gb-et-event-list'), empty: 'No events', onPick: function(it){
+        var ev = it.ev, link = normalUrl(ev.link);
+        S.brief.etEvent = { portal: etPick.slug, id: ev.id, title: String(ev.title), link: link, dateLabel: ev.dateLabel || '' };
+        S.brief.previous = link;
+        $('gb-previous').value = link;
+        etPick.showPickers = false;
+        showEtPick();
+        renderFoot(); save();
+        $('gb-et-change').focus();
+      } });
+      $('gb-et-change').onclick = function(){
+        etPick.showPickers = true;
+        if (S.brief.etEvent) etPick.slug = S.brief.etEvent.portal;
+        showEtPick();
+        loadEtPortals().then(function(){
+          if (!etPick.slug){ portalInp.focus(); return; }
+          etPick.portal.setValue(etPick.slug);
+          return loadEtEvents(etPick.slug).then(function(){ (eventInp.disabled ? portalInp : eventInp).focus(); });
+        }, function(){});
+      };
+    }
+    if (cur && !etPick.slug) etPick.slug = cur.portal;
+    showEtPick();
   }
 
   /* which of step 1's three phase containers is on screen — also how showStep2View() puts the form back
@@ -5020,7 +5347,11 @@
     };
     steps.filter(isSource).forEach(function(s){
       runners[s.key] = function(){
-        return postJson('/api/ingest-source', { url: inputs.urls[s.field.key], type: s.field.type });
+        var body = { url: inputs.urls[s.field.key], type: s.field.type };
+        /* the previous edition picked from ET's own events: the server reads that event's records by its id */
+        var et = S.brief.etEvent;
+        if (s.field.key === 'previous' && et && et.portal && et.id != null && sameLink(et.link, body.url)) body.etEvent = { portal: et.portal, id: et.id };
+        return postJson('/api/ingest-source', body);
       };
     });
     /* read when the row runs, like the other inputs: instructions corrected before a retry are what is sent */
