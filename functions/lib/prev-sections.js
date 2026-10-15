@@ -90,7 +90,7 @@ function sponsors(p, edition) {
     '.' + c + '-tile{width:220px;display:flex;flex-direction:column;gap:10px}' +
     '.' + c + '-tier{margin:0;height:2.9em;line-height:1.45;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-size:0.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--rv-muted)}' +
     /* logos are drawn for white: they sit on white tiles whatever the theme */
-    '.' + c + '-logo{height:120px;background:#ffffff;border-radius:var(--rv-radius,12px);display:grid;place-items:center;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:transform .3s ease}' +
+    '.' + c + '-logo{--rv-keep:1;height:120px;background:#ffffff;border-radius:var(--rv-radius,12px);display:grid;place-items:center;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:transform .3s ease}' +
     '.' + c + '-logo:hover{transform:translateY(-3px)}' +
     '.' + c + '-logo a{display:grid;place-items:center;width:100%;height:100%}' +
     '.' + c + '-logo img{max-width:100%;max-height:72px;width:auto;height:auto;object-fit:contain;display:block}' +

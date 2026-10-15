@@ -191,6 +191,8 @@
   /* one rule's declarations. A rule whose ground is the brand colour (a button, a badge) keeps the colour of
      its words as written: white words on a red button are not the page's text colour. */
   function swapDecls(decls, o) {
+    /* a rule marked --rv-keep (a white plate under partners' logos, drawn for white) keeps its colours in every theme */
+    if (/(^|;)\s*--rv-keep\s*:/i.test(decls)) return decls;
     var brandFill = false;
     decls.replace(/(?:^|;)\s*(background(?:-color)?)\s*:\s*([^;]+)/gi, function (m, prop, value) {
       if (/var\(--(theme|accent)-colou?r\)/i.test(value)) brandFill = true;

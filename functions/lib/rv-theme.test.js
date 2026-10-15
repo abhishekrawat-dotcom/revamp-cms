@@ -33,5 +33,6 @@ check('inside @media too', /@media \(max-width:820px\)\{\.y\{color:var\(--rv-tex
 check('converting twice changes nothing', T.themableCss(out, dark) === out);
 check('fonts: a Google Fonts stylesheet', T.fontUrl('Playfair Display') === 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&display=swap' && T.fontUrl('<x>') === 'https://fonts.googleapis.com/css2?family=x:wght@400;500;600;700;800&display=swap');
 
+check('a rule marked --rv-keep (a logo plate) keeps its colours', /\.plate\{--rv-keep:1;background:#ffffff\}/.test(T.themableCss('.plate{--rv-keep:1;background:#ffffff}', { colors: { bg: '#ffffff', surface: '#f4f4f4', text: '#111111', theme: '#e21b22' } })));
 if (failed) { console.error('rv-theme: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-theme: all ' + passed + ' checks passed');
