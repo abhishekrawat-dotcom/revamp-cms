@@ -133,6 +133,7 @@ const svgYear = require('./svg-year');
 const ownerBrief = require('./owner-brief');
 const etPrevious = require('./et-previous');
 const prevSections = require('./prev-sections');
+const rvTheme = require('../../templates/_shared/rv-theme.js');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
    lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
@@ -3090,8 +3091,13 @@ function handleGeneratedTemplate(req, res) {
     /* a site designed before the plan carried page colours gets the ones its own mode implies */
     var colours = genDesign.palette(design, 'auto');
     var name = String(data.name || eventId);
+    /* the site's themes (templates/_shared/rv-theme.js): the one chosen is on <body>; every theme's fonts are
+       loaded so that switching is immediate */
+    var themes = rvTheme.themesFor(Object.assign({}, design, { mode: colours.mode, backgroundColor: colours.backgroundColor, surfaceColor: colours.surfaceColor, textColor: colours.textColor, mutedColor: colours.mutedColor }));
+    var chosen = themes.filter(function (t) { return t.id === designPlan.themeId; })[0] || themes[0];
     var fonts = [googleFontUrl(design.headingFont), googleFontUrl(design.bodyFont)]
-      .filter(function (url, i, arr) { return arr.indexOf(url) === i; });
+      .concat([].concat.apply([], themes.map(function (t) { return [googleFontUrl(t.headingFont), googleFontUrl(t.bodyFont)]; })))
+      .filter(function (url, i, arr) { return url && arr.indexOf(url) === i; });
 
     // Ordered id list: nav, hero, designPlan.sections in planned order, footer — filtered down to whatever
     // generatedSections actually has (generate-content may have had to omit a planned section whose id was
@@ -3131,9 +3137,12 @@ function handleGeneratedTemplate(req, res) {
           'line-height': '1.6',
           'font-family': 'var(--body-font-family)',
           'background-color': colours.backgroundColor,
-          'color': colours.textColor
+          'color': colours.textColor,
+          '--rv-radius': (+design.cornerRadius || 0) + 'px'
         }
       },
+      themes: themes,
+      themeId: chosen.id,
       // No server-side fill step any more — the 5 data-bound kinds are filled client-side via the
       // data-rv-repeat-template/data-rv-field convention baked directly into Gemini's own HTML.
       content: { map: [] },
@@ -3145,6 +3154,7 @@ function handleGeneratedTemplate(req, res) {
         return { id: id, name: label, etId: null, script: false };
       })
     };
+    if (chosen.id !== 'original') Object.assign(template.body.style, rvTheme.varsOf(chosen));
     sendJson(res, 200, template);
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
 }
@@ -3173,7 +3183,11 @@ function handleGeneratedSection(req, res) {
     /* scoped on the way out as well as when stored (it is idempotent), so sections stored before the
        server did the scoping are served correctly too */
     var html = String(found.html || '');
-    sendJson(res, 200, { html: html, css: genDesign.clampFontSizes(scopeSectionCss(found.css, sectionId, sectionRootInfo(html))) });
+    var css = genDesign.clampFontSizes(scopeSectionCss(found.css, sectionId, sectionRootInfo(html)));
+    /* a colour of the design's palette written as a fixed value becomes its variable, so every theme reaches
+       it (templates/_shared/rv-theme.js); the hero banner keeps its own tone */
+    if (sectionId !== 'hero' && data.designPlan && data.designPlan.design) css = rvTheme.themableCss(css, data.designPlan.design);
+    sendJson(res, 200, { html: html, css: css });
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
 }
 
@@ -3819,6 +3833,23 @@ function withAdmin(req, res, cb) {
     try { cb(fb, decoded); } catch (err) { sendFailure(res, req.method + ' ' + req.url, err); }
   });
 }
+/* POST /api/event/theme { eventId, themeId } — the theme an AI-designed site opens in (the editor's Theme
+   chooser and the preview's "Apply in editor" set it; the page itself carries it once saved). */
+function handleEventTheme(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.small, function (fb, decoded, body) {
+    var eventId = String(body.eventId || '').trim(), themeId = String(body.themeId || '').trim();
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    var ref = fb.db.collection('events').doc(eventId);
+    ref.get().then(function (snap) {
+      var plan = snap.exists && snap.data().designPlan;
+      if (!plan || !plan.design) return sendJson(res, 404, { error: 'This site has no themes: it was not designed by the AI.' });
+      var ids = rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto'))).map(function (t) { return t.id; });
+      if (ids.indexOf(themeId) === -1) return sendJson(res, 400, { error: 'Unknown theme "' + themeId.slice(0, 40) + '".' });
+      return ref.update({ 'designPlan.themeId': themeId, updatedAt: new Date().toISOString() }).then(function () { sendJson(res, 200, { eventId: eventId, themeId: themeId }); });
+    }).catch(function (err) { sendFailure(res, 'theme', err, 'The theme could not be saved. Please try again.'); });
+  });
+}
+
 function withAdminBody(req, res, maxBytes, cb) {
   withAdmin(req, res, function (fb, decoded) {
     parseJsonBody(req, res, function (body) {
@@ -5742,6 +5773,9 @@ function publishTransform(html, opts) {
   else if (htmlOpen !== -1) out[htmlOpen] = out[htmlOpen] + headText;
   else prefix = headText;
   if (ribbon) { if (bodyOpen !== -1) out[bodyOpen] = out[bodyOpen] + ribbon + '\n'; else tailText = ribbon + '\n' + tailText; }
+  /* ---- 6. preview of an AI-designed site: its themes, to try on the page itself ---- */
+  var switcher = mode === 'preview' ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
+  if (switcher) tailText += switcher;
   if (bodyClose !== -1) out[bodyClose] = tailText + out[bodyClose];
   else suffix = tailText;
 
@@ -6314,6 +6348,24 @@ function handlePublicPage(req, res, eventId) {
    (the Cloud Function entry point, a local server with the gate switched off), and an unreleased site
    must not depend on which door it is asked for at. ?staged=1 shows the page the previous editor
    script's Preview button sent instead (handleEventStage). */
+/* The preview's theme switcher (only for an AI-designed site): the themes as buttons; picking one restyles the
+   page in place (templates/_shared/rv-theme.js — the colours a section wrote as fixed values are turned into
+   the variables first, the ET logo takes the version for its new ground), and "Apply in editor" opens the
+   editor in it, to save and publish. Nothing here is part of a published page. */
+function themeSwitcherHtml(event, eventId, templateId) {
+  var plan = event && event.designPlan;
+  /* an AI-designed site: its template id says so, or (a site not saved yet) its own design and sections do */
+  if (!templateId && plan && Array.isArray(event.generatedSections) && event.generatedSections.length) templateId = 'gen-' + eventId;
+  if (!plan || !plan.design || !/^gen-/.test(String(templateId || ''))) return '';
+  var themes = rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto')));
+  var data = JSON.stringify({ themes: themes, design: plan.design, current: plan.themeId || 'original',
+    editor: '/custom_editor.html?event=' + encodeURIComponent(eventId) + '&template=' + encodeURIComponent(templateId) + '&theme=' })
+    .replace(/</g, '\\u003c');
+  return '<script src="/templates/_shared/rv-theme.js" data-rv-runtime></script>\n' +
+    '<script type="application/json" id="rv-themes" data-rv-runtime>' + data + '</script>\n' +
+    '<script src="/templates/_shared/rv-theme-switcher.js" data-rv-runtime></script>\n';
+}
+
 function handlePreviewPage(req, res, eventId) {
   adminFromRequest(req).then(function (user) {
     if (!user) {
@@ -6447,6 +6499,7 @@ var ROUTES = {
   'PUT /api/event/site': handleSitePut,
   'POST /api/event/publish': handleEventPublish,
   'POST /api/event/approval/request': handleApprovalRequest,
+  'POST /api/event/theme': handleEventTheme,
   'POST /api/event/approval/decide': handleApprovalDecide,
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,

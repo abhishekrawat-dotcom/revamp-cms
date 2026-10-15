@@ -141,6 +141,10 @@
          checked again once the page has laid out (the nav's row is measured) */
       if (syncEtLogos()) commit();
       [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && syncEtLogos()) commit(); }, ms); });
+      /* opened from the preview's "Apply in editor": that theme */
+      var askedTheme = new URLSearchParams(location.search).get('theme');
+      var ti = themesInfo();
+      if (askedTheme && ti && ti.current !== askedTheme) setTimeout(function () { applyTheme(askedTheme); }, 600);
       updateHistoryButtons();
       renderTopbar();
       sectionsChanged();
@@ -2935,6 +2939,39 @@
     return true;
   }
 
+  /* ---------- themes (an AI-designed site; templates/_shared/rv-theme.js) ----------
+     The site's themes come with its template (the original design, its opposite mode, a third format). Applying
+     one: the colours a section wrote as fixed values become the page's variables (the hero keeps its own tone),
+     the theme's variables go on <body>, the ET logo takes the version for its ground — one undoable step — and
+     the choice is kept for the site, so it opens in it next time. */
+  function themesInfo() {
+    var list = canvas && canvas.template && canvas.template.themes;
+    if (!list || !list.length || !window.RevampTheme) return null;
+    return { themes: list, current: canvas.doc.body.getAttribute('data-rv-theme') || canvas.template.themeId || 'original' };
+  }
+  function applyTheme(id, quiet) {
+    var info = themesInfo();
+    if (!info || remounting) return false;
+    var t = info.themes.filter(function (x) { return x.id === id; })[0];
+    if (!t) return false;
+    var o = info.themes[0].colours;
+    var base = { mode: info.themes[0].mode, themeColor: o.theme, accentColor: o.accent, backgroundColor: o.bg, surfaceColor: o.surface, textColor: o.text, mutedColor: o.muted };
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('style[data-rv-style]'), function (st) {
+      if (st.getAttribute('data-rv-style') === 'hero') return;
+      var css = window.RevampTheme.themableCss(st.textContent, base);
+      if (css !== st.textContent) st.textContent = css;
+    });
+    window.RevampTheme.apply(canvas.doc, t);
+    syncEtLogos();
+    commit();
+    designChanged();
+    if (eventId && window.RevampAuth) {
+      RevampAuth.authedFetch('/api/event/theme', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventId: eventId, themeId: id }) }).catch(function () {});
+    }
+    if (!quiet) showToast('“' + t.label + '” applied to the whole site. Save to keep it, and publish to put it live.');
+    return true;
+  }
+
   function setDesign(key, value) {
     if (!canvas || remounting) return false;
     var why = unsupportedReason(key);
@@ -3963,7 +4000,7 @@
     open: open, leave: leave, handoffFor: handoffFor,
     setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty() }; }, undo: undo, redo: redo, flush: flush,
     addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
-    getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl,
+    getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: applyTheme,
     selectedStyle: selectedStyle, styleSelected: styleSelected,
     listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
     setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,

@@ -366,6 +366,17 @@
   .chat-chip button{ position:absolute; top:2px; right:2px; width:17px; height:17px; border-radius:50%; border:0; background:rgba(0,0,0,.7); color:#fff; font-size:11px; line-height:17px; padding:0; cursor:pointer; }
   .chat-chip.is-loading{ display:grid; place-items:center; font-size:10px; color: var(--text-muted); }
   /* what is selected on the page goes with the message (editor-template-ui.js, wireChatPanel) */
+  /* the Design panel's theme cards */
+  .dp-theme-list{ display:flex; flex-direction:column; gap:8px; }
+  .dp-theme{ display:flex; align-items:center; gap:12px; width:100%; padding:8px; border:1px solid var(--border); border-radius:10px; background: var(--surface); text-align:left; cursor:pointer; font:inherit; color: var(--text); }
+  .dp-theme:hover{ border-color: var(--text-muted); }
+  .dp-theme.on{ border-color: var(--accent, #ED1C24); box-shadow: 0 0 0 1px var(--accent, #ED1C24); }
+  .dp-theme-swatch{ position:relative; flex-shrink:0; width:64px; height:44px; border-radius:7px; border:1px solid; overflow:hidden; display:flex; align-items:flex-end; padding:5px; gap:3px; }
+  .dp-theme-swatch i{ width:12px; height:12px; border-radius:3px; }
+  .dp-theme-swatch b{ position:absolute; top:3px; right:6px; font-size:15px; font-weight:700; }
+  .dp-theme-t{ display:flex; flex-direction:column; min-width:0; }
+  .dp-theme-t strong{ font-size:13px; }
+  .dp-theme-t small{ font-size:11.5px; color: var(--text-muted); line-height:1.35; }
   .chat-focus{ flex-shrink:0; display:flex; align-items:center; gap:7px; margin: 8px 14px 0; padding: 5px 6px 5px 9px; border-radius: 9px;
     border: 1px solid color-mix(in srgb, var(--accent, #ED1C24) 28%, var(--border)); background: color-mix(in srgb, var(--accent, #ED1C24) 7%, var(--surface));
     font-size: 12px; color: var(--text-muted); min-width: 0; }
@@ -1084,6 +1095,12 @@
     <aside class="side-panel" id="panel-design" hidden>
       <div class="side-panel-head"><h3>Design</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
       <div class="side-panel-body">
+        <!-- an AI-designed site's themes (RevampTemplateUI.themesInfo / applyTheme) -->
+        <div class="field" id="dp-themes" hidden>
+          <label>Theme</label>
+          <div class="dp-theme-list" id="dp-theme-list" role="group" aria-label="Themes"></div>
+          <span class="hint">The same pictures and words in another look — the whole site changes.</span>
+        </div>
         <div class="field" data-design-key="themeColor">
           <label>Site theme color</label>
           <div class="design-swatches" data-dp-control>
@@ -1316,6 +1333,7 @@
 <script src="auth.js"></script>
 <script src="sidebar.js"></script>
 <script src="ag-psd.bundle.js"></script>
+<script src="templates/_shared/rv-theme.js"></script>
 <script src="editor-store.js"></script>
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
@@ -2258,8 +2276,36 @@
     });
   }
 
+  /* the site's themes: one card each, the one in use marked */
+  var themeBox = document.getElementById('dp-themes'), themeList = document.getElementById('dp-theme-list');
+  function syncThemes(){
+    var info = window.RevampTemplateUI.themesInfo && window.RevampTemplateUI.themesInfo();
+    themeBox.hidden = !info;
+    if (!info) return;
+    themeList.textContent = '';
+    info.themes.forEach(function(t){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dp-theme' + (t.id === info.current ? ' on' : '');
+      b.setAttribute('aria-pressed', t.id === info.current ? 'true' : 'false');
+      b.setAttribute('data-theme-id', t.id);
+      var c = t.colours;
+      b.innerHTML = '<span class="dp-theme-swatch" aria-hidden="true" style="background:' + c.bg + ';border-color:' + c.surface + '">' +
+        '<i style="background:' + c.surface + '"></i><i style="background:' + c.theme + '"></i><b style="color:' + c.text + ';font-family:' + window.RevampTheme.stack(t.headingFont).replace(/"/g, '') + '">Aa</b></span>' +
+        '<span class="dp-theme-t"><strong></strong><small></small></span>';
+      b.querySelector('strong').textContent = t.label;
+      b.querySelector('small').textContent = t.blurb || '';
+      themeList.appendChild(b);
+    });
+  }
+  themeList.addEventListener('click', function(e){
+    var b = e.target.closest('[data-theme-id]');
+    if (b && !b.classList.contains('on')) window.RevampTemplateUI.applyTheme(b.getAttribute('data-theme-id'));
+  });
+
   function syncDesignPanel(){
     var ui = window.RevampTemplateUI, opts = ui.designOptions();
+    syncThemes();
     // a setting the site has nothing for: its control makes way for the reason
     document.querySelectorAll('#panel-design [data-design-key]').forEach(function(row){
       var why = opts.unsupported[row.getAttribute('data-design-key')] || '';
