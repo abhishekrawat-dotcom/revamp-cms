@@ -26,6 +26,10 @@
   <span class="topbar-acts">
     <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
     <span data-rv-account></span>
+    <button class="btn btn-secondary" type="button" id="btn-preview" data-rv-preview hidden>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+      <span>Preview</span>
+    </button>
   </span>
 </header>
 
@@ -38,6 +42,15 @@
 
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
+<script>
+  /* Preview, as in the event console: the site as the Design editor's Preview shows it (/preview/<id>?draft=1) */
+  (function(){
+    var id = new URLSearchParams(location.search).get('event'), b = document.getElementById('btn-preview');
+    if (!b || !id) return;
+    b.hidden = false;
+    b.onclick = function(){ window.open(RevampCore.previewUrl(id) + '?draft=1', 'revamp-preview-' + id); };
+  })();
+</script>
 <script src="auth.js"></script>
 <script src="sidebar.js"></script>
 <script src="assets/vendor/html-to-image.js"></script>

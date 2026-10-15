@@ -1545,7 +1545,9 @@
     }).join('');
     var quickIcons = '';
     if (e.status === 'draft'){
-      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit');
+      /* a draft is previewed like any other event: its last editor preview, or its saved site */
+      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
+        quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view');
     } else if (e.status !== 'deleted'){
       quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
         quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view') +
@@ -1733,7 +1735,8 @@
       case 'edit': case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
       case 'view':
-        window.open(eventPublicUrl(e), '_blank'); break;
+        /* the same page the Design editor's Preview opens (and the event console's Preview) */
+        window.open('/preview/' + encodeURIComponent(e.id) + '?draft=1', 'revamp-preview-' + e.id); break;
       case 'reports':
         window.location.href = 'audience-registrations.html?event=' + id; break;
       case 'duplicate':

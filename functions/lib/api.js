@@ -6582,6 +6582,24 @@ function themeSwitcherHtml(event, eventId, templateId) {
     '<script src="/templates/_shared/rv-theme-switcher.js" data-rv-runtime></script>\n';
 }
 
+/* ?draft=1 — the page as this person last previewed it from the editor, or the site as last saved when that is
+   newer or they have never pressed Preview (the console's and the listing's Preview open this same address).
+   -> Promise<html | null> */
+function ownDraftOrSaved(fb, eventId, user) {
+  function updated(path) {
+    return fb.bucket.file(path).getMetadata().then(function (r) { return Date.parse(r[0] && r[0].updated) || 0; }, function (err) {
+      if (err && (err.code === 404 || err.code === '404')) return -1;
+      throw err;
+    });
+  }
+  var draft = draftObjectPath(eventId, user), saved = sitePath(eventId, 'page.html'), staging = stagingObjectPath(eventId);
+  return Promise.all([updated(draft), updated(saved)]).then(function (t) {
+    if (t[0] >= 0 && t[0] >= t[1]) return readObject(fb, draft);
+    if (t[1] >= 0) return readObject(fb, saved);
+    return readObject(fb, staging);
+  });
+}
+
 function handlePreviewPage(req, res, eventId) {
   adminFromRequest(req).then(function (user) {
     if (!user) {
@@ -6603,7 +6621,7 @@ function handlePreviewPage(req, res, eventId) {
       if (!staged && !ownDraft && !siteVersionOf(data)) {
         return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
       }
-      var source = ownDraft ? readObject(fb, draftObjectPath(eventId, user)) : wantVersion
+      var source = ownDraft ? ownDraftOrSaved(fb, eventId, user) : wantVersion
         ? readObject(fb, versionPath(eventId, wantVersion)).then(function (t) { return t == null && wantVersion === siteVersionOf(data) ? readObject(fb, sitePath(eventId, 'page.html')) : t; })
         : readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html'));
       return source.then(function (html) {

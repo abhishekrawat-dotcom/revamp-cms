@@ -5331,77 +5331,11 @@
   /* ============================================================
      PREVIEW + PUBLISH
      ============================================================ */
+  /* The site itself, as the Design editor's Preview shows it: /preview/<id>?draft=1 — this person's last preview
+     from the editor, or the site as last saved when that is newer (functions/lib/api.js ownDraftOrSaved). */
   function openPreview(){
-    var host = $('modal-host');
-    host.innerHTML =
-      '<div class="modal-bg" id="mbg"><div class="modal" style="width:min(1000px,100%)">' +
-        '<div class="modal-head">' +
-          '<h3>Preview — ' + esc(EV.name || 'Untitled event') + '</h3>' +
-          '<div class="tabs" id="pv-tabs">' +
-            '<button type="button" data-pv="desktop" aria-pressed="true">Desktop</button>' +
-            '<button type="button" data-pv="mobile" aria-pressed="false">Mobile</button>' +
-          '</div>' +
-          '<button class="btn btn-ghost btn-icon" type="button" id="mclose">' +
-            svg('<path d="M18 6L6 18M6 6l12 12"/>', 17) + '</button>' +
-        '</div>' +
-        '<div class="modal-body" style="background:var(--surface-2)">' +
-          '<div id="pv-frame" style="margin:0 auto;max-width:100%;transition:max-width .2s">' +
-            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">' +
-              '<div style="background:var(--accent);color:#fff;padding:28px 22px;text-align:center">' +
-                '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.85">' +
-                  esc(PORTALS[EV.portal] || '') + ' presents</div>' +
-                '<div style="font-family:var(--font-display);font-size:26px;font-weight:700;margin:6px 0 4px">' + esc(EV.name) + '</div>' +
-                '<div style="font-size:12.5px;opacity:.9">' + esc(fmtDT(EV.start)) + ' · ' + esc(EV.venue) + '</div>' +
-                '<div style="margin-top:14px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap">' +
-                  '<span style="background:#fff;color:var(--accent-strong);padding:8px 18px;border-radius:8px;font-size:12.5px;font-weight:800">Register now</span>' +
-                  '<span style="border:1.5px solid #fff;padding:8px 18px;border-radius:8px;font-size:12.5px;font-weight:800">Become a partner</span>' +
-                '</div>' +
-              '</div>' +
-              '<div style="padding:18px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;border-bottom:1px solid var(--border)">' +
-                [['Delegates', comma(EV.registrations)], ['Speakers', String(spkAll().length)], ['Sessions','7'], ['Partners','10']].map(function(s){
-                  return '<div><div style="font-family:var(--font-display);font-size:19px;font-weight:700">' + esc(s[1]) + '</div>' +
-                    '<div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700">' + esc(s[0]) + '</div></div>';
-                }).join('') +
-              '</div>' +
-              '<div style="padding:20px">' +
-                '<div class="eyebrow" style="margin-bottom:7px">About the event</div>' +
-                '<p style="font-size:13px;color:var(--text-muted);margin:0 0 16px;line-height:1.6">India’s decision-makers gather to set the agenda for the year ahead. Two days of keynotes, closed-door roundtables and the conversations that do not happen anywhere else.</p>' +
-                '<div class="eyebrow" style="margin-bottom:9px">Speakers</div>' +
-                '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' +
-                  spkAll().slice(0,3).map(function(p, i){
-                    var face = imgTag(p.photo)
-                      ? '<div style="width:40px;height:40px;border-radius:50%;margin:0 auto 7px;overflow:hidden">' +
-                          imgTag(p.photo, 'style="width:100%;height:100%;object-fit:cover;display:block"') + '</div>'
-                      : '<div class="avat" style="background:' + safeColour(p.colour, AV[i]) + ';width:40px;height:40px;margin:0 auto 7px;font-size:14px">' +
-                          esc(initials(p.name)) + '</div>';
-                    return '<div style="border:1px solid var(--border);border-radius:10px;padding:11px;text-align:center">' +
-                      face +
-                      '<div style="font-size:12.5px;font-weight:700">' + esc(p.name) + '</div>' +
-                      '<div style="font-size:10.5px;color:var(--text-muted)">' + esc(p.comp) + '</div></div>';
-                  }).join('') +
-                '</div>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="modal-foot">' +
-          '<span style="flex:1;font-size:12px;color:var(--text-muted);align-self:center">This is a rendering of the current draft. Publish to make it live.</span>' +
-          '<a class="btn btn-secondary" href="custom_editor.html?event=' + esc(EV.id) + (EV.templateId ? '&template=' + esc(EV.templateId) : '') + '">' + svg(IC.brush, 14) + ' Edit in editor</a>' +
-          '<button class="btn btn-primary" type="button" id="pv-publish">Publish</button>' +
-        '</div>' +
-      '</div></div>';
-
-    function close(){ host.innerHTML = ''; }
-    $('mclose').onclick = close;
-    $('mbg').addEventListener('click', function(e){ if (e.target.id === 'mbg') close(); });
-    $('pv-publish').onclick = function(){ close(); doPublish(); };
-    host.querySelectorAll('[data-pv]').forEach(function(b){
-      b.addEventListener('click', function(){
-        host.querySelectorAll('[data-pv]').forEach(function(x){ x.setAttribute('aria-pressed','false'); });
-        b.setAttribute('aria-pressed','true');
-        $('pv-frame').style.maxWidth = b.getAttribute('data-pv') === 'mobile' ? '380px' : '100%';
-      });
-    });
+    var url = C.previewUrl(EV.id);
+    if (url) window.open(url + '?draft=1', 'revamp-preview-' + EV.id);
   }
 
   /* Publishes the site as it was last saved in the site editor. Where changes need approval (the default)
