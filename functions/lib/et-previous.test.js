@@ -31,6 +31,38 @@ check('a speaker photo on ET\'s image host', p.speakers[0].photo === 'https://im
 check('sponsor logos under retail_files; a sponsor with no logo is left out', p.sponsors.length === 1 && p.sponsors[0].logo === 'https://img.etb2bimg.com/files/retail_files/file_n.svg' && p.sponsors[0].tier === 'Supported By');
 check('agenda in time order, with its speakers', p.agenda[0].title === 'First' && p.agenda[1].speakers[0] === 'A Name');
 
+/* a speaker's profile: what ET gives beyond the card (shapes as ET's speaker and agenda lists give them, October 2026) */
+var longBio = 'Leads <b>brand</b> strategy &amp; growth. ' + new Array(200).join('Builds teams across markets. ');
+var prof = ep.normalise({
+  speakers: [
+    { id: 88480, speaker_name: 'Mohit Joshi', speaker_desig: 'CEO', speaker_company: 'Havas Media Network India', speaker_picture: 'cp/data_file_1.jpg', speaker_weightage: 1, status: 1,
+      speaker_info: longBio, linkedin_url: ' linkedin.com/in/mohit-joshi-1 ', twitter_url: 'http://twitter.com/mohit', company_logo: 'file_1764397689416_logo.png',
+      speaker_email: 'private@example.com', speaker_phone: '+91 99999 99999' },
+    { id: 88654, speaker_name: 'Priyanka Nair', speaker_company: 'ET BrandEquity', speaker_weightage: 2, status: 1, linkedin_url: 'javascript:alert(1)//linkedin.com/in/x', company_logo: 'not-a-picture' },
+    { id: 9, speaker_name: 'Hidden Person', speaker_weightage: 3, status: 0 },
+    { speaker_name: 'By Name', speaker_weightage: 4, linkedin_url: 'https://evil.example/linkedin.com/in/x' },
+    { id: 11, speaker_name: 'Other Host', speaker_weightage: 5, linkedin_url: 'https://www.linkedin.com.evil.example/in/x' }
+  ],
+  agenda: [
+    { agenda_title: 'Fireside Chat: Evolving Expectations', agenda_start_datetime: '2025-12-05 18:00:00', agenda_end_datetime: '2025-12-05 18:30:00', speakers: [{ id: 88480, speaker_name: 'Mohit Joshi' }, { id: 88654, speaker_name: 'Priyanka Nair' }] },
+    { agenda_title: 'Opening Keynote', agenda_start_datetime: '2025-12-05 10:00:00', agenda_end_datetime: '2025-12-05 10:20:00', speakers: [{ id: 88480, speaker_name: 'Mohit Joshi' }, { speaker_name: 'By Name' }] },
+    { agenda_title: 'Opening Keynote', agenda_start_datetime: '2025-12-05 10:00:00', speakers: [{ id: 88480 }] }
+  ]
+});
+var mj = prof.speakers[0], pn = prof.speakers[1];
+check('a speaker ET does not show (status 0) is left out', prof.speakers.length === 4 && !prof.speakers.some(function (s) { return s.name === 'Hidden Person'; }), prof.speakers.map(function (s) { return s.name; }).join());
+check('bio: plain text, capped near 1,200 characters at a word', mj.bio.indexOf('<b>') === -1 && /^Leads brand strategy & growth\./.test(mj.bio) && mj.bio.length <= 1201 && /…$/.test(mj.bio) && !/\s…$/.test(mj.bio), mj.bio.length + ' ' + mj.bio.slice(-20));
+check('LinkedIn written without https:// becomes https://', mj.linkedin === 'https://linkedin.com/in/mohit-joshi-1', mj.linkedin);
+check('X: http becomes https', mj.x === 'https://twitter.com/mohit', mj.x);
+check('a LinkedIn field that is a script, or on another host, is dropped', pn.linkedin === '' && prof.speakers[2].linkedin === '' && prof.speakers[3].linkedin === '', [pn.linkedin, prof.speakers[2].linkedin, prof.speakers[3].linkedin].join('|'));
+check('the profile address forms ET writes', ep.profileLink('https://www.linkedin.com/in/balaji-sreenivasan-540b63/', /^linkedin\.com$/) === 'https://www.linkedin.com/in/balaji-sreenivasan-540b63/' &&
+  ep.profileLink('in.linkedin.com/in/x', /^(?:[a-z]{2}\.)?linkedin\.com$/) === 'https://in.linkedin.com/in/x' && ep.profileLink('linkedin.com', /^linkedin\.com$/) === '' && ep.profileLink('', /^linkedin\.com$/) === '');
+check('the company logo is a file under cp/', mj.logo === 'https://img.etb2bimg.com/files/cp/file_1764397689416_logo.png' && pn.logo === '', mj.logo + ' | ' + pn.logo);
+check('sessions from the agenda by the speaker\'s id, in time order, once each', mj.sessions.length === 2 && mj.sessions[0].title === 'Opening Keynote' && mj.sessions[1].title === 'Fireside Chat: Evolving Expectations' && mj.sessions[1].end === '2025-12-05 18:30:00', JSON.stringify(mj.sessions));
+check('…and by name where the agenda names a speaker without an id', prof.speakers[2].name === 'By Name' && prof.speakers[2].sessions.length === 1 && pn.sessions.length === 1);
+check('nothing invented: no bio, LinkedIn, logo or session is \'\' / []', pn.bio === '' && pn.x === '' && prof.speakers[3].sessions.length === 0 && prof.speakers[3].bio === '');
+check('a speaker\'s e-mail and phone are never read', JSON.stringify(prof).indexOf('private@example.com') === -1 && JSON.stringify(prof).indexOf('99999') === -1);
+
 /* reading. The pages below are cut down from real ET microsites (October 2026), keeping the places each names
    ids in and the markup of its gallery; the API answers are modelled on what ET's API gave for them. */
 var IMGF = 'https://img.etb2bimg.com/files/retail_files/';
@@ -248,6 +280,27 @@ reads.reduce(function (p, step) { return p.then(step); }, Promise.resolve()).the
   check('motion: headings ease in', /data-rv-reveal/.test(spk.html) && /data-rv-reveal/.test(agd.html));
   check('no script anywhere', [spk, spn, agd, glm].every(function (b) { return !/<script|on[a-z]+=/i.test(b.html); }));
   check('a photo address that is not https is left out', !/http:\/\//.test(ps.build('glimpses', { name: 'x', glimpses: ['http://img/x.jpg', 'javascript:alert(1)'] }, {}).html));
+
+  /* the profile a visitor opens from a speaker's card (templates/_shared/rv-popups.js) */
+  var withProfiles = ps.build('speakers', prof, {});
+  var cardsOf = function (h) { return h.split('<article ').slice(1); };
+  var mjCard = cardsOf(withProfiles.html)[0], pnCard = cardsOf(withProfiles.html)[1], bareCard = cardsOf(withProfiles.html)[3];
+  check('profile: in a <template> inside the card, never drawn on the page', /<template data-rv-profile>[\s\S]*<\/template><\/article>$/.test(mjCard) && (withProfiles.html.match(/<template data-rv-profile>/g) || []).length === 3, mjCard.slice(-200));
+  check('profile: the speaker\'s text, LinkedIn and X on https, the company logo', /<p data-rv-profile-bio>Leads brand strategy &amp; growth\./.test(mjCard) &&
+    mjCard.indexOf('<a data-rv-profile-li href="https://linkedin.com/in/mohit-joshi-1" target="_blank" rel="noopener">LinkedIn</a>') !== -1 &&
+    mjCard.indexOf('href="https://twitter.com/mohit"') !== -1 && mjCard.indexOf('<img data-rv-profile-logo src="https://img.etb2bimg.com/files/cp/file_1764397689416_logo.png" alt="Havas Media Network India logo">') !== -1);
+  check('profile: the sessions list is headed by the edition when it is known', mjCard.indexOf('<p data-rv-profile-sessions-title>Sessions</p>') !== -1 &&
+    ps.build('speakers', prof, { edition: 'Brand World Summit South - 2025' }).html.indexOf('<p data-rv-profile-sessions-title>Sessions at Brand World Summit South - 2025</p>') !== -1);
+  check('profile: a session\'s day and time as the agenda shows them', mjCard.indexOf('<span data-rv-profile-when>5 December 2025 · 10:00 AM – 10:20 AM</span><span data-rv-profile-title>Opening Keynote</span>') !== -1, mjCard.slice(mjCard.indexOf('data-rv-profile-sessions'), mjCard.indexOf('data-rv-profile-sessions') + 300));
+  check('profile: a speaker with nothing beyond the card has none (the card does not open)', bareCard.indexOf('data-rv-profile>') === -1 && /data-rv-profile-name/.test(bareCard), bareCard);
+  check('profile: the card\'s own text is marked for the pop-up', /<h3 class="pe-spk-name" data-rv-profile-name>Mohit Joshi<\/h3>/.test(mjCard) && /data-rv-profile-role>CEO</.test(mjCard) && /data-rv-profile-co>Havas Media Network India</.test(mjCard));
+  check('profile: a section built with profiles says so (the editor does not add them again)', /^<section class="pe-spk" data-rv-profiles>/.test(withProfiles.html));
+  check('profile: only a speaker with a session gets a sessions list', pnCard.indexOf('data-rv-profile-li') === -1 && pnCard.indexOf('Fireside Chat') !== -1);
+  var hostile = ps.build('speakers', { name: 'E"d<', speakers: [{ name: 'X <img src=x onerror=alert(1)>', bio: '</template><script>alert(1)</script>', linkedin: 'javascript:alert(1)', x: 'http://x.com/a', logo: 'data:image/png;base64,AA', sessions: [{ title: '<b>T</b>', start: 'bad' }] }] }, {});
+  check('profile: everything from ET escaped; a link or logo that is not https is left out', hostile.html.indexOf('<script') === -1 && hostile.html.indexOf('&lt;/template&gt;&lt;script&gt;') !== -1 &&
+    hostile.html.indexOf('javascript:') === -1 && hostile.html.indexOf('http://x.com') === -1 && hostile.html.indexOf('data:image') === -1 && hostile.html.indexOf('&lt;b&gt;T&lt;/b&gt;') !== -1 && (hostile.html.match(/<template/g) || []).length === 1, hostile.html);
+  check('profile: scoped like any other section, the <template> untouched', /\[data-rv-section="previous-speakers"\]/.test(scopeSectionCss(withProfiles.css, 'previous-speakers', sectionRootInfo(withProfiles.html))));
+  check('glimpses: the row opens its photos large (data-rv-lightbox)', /data-rv-carousel="auto" data-rv-lightbox/.test(glm.html));
 
   if (failed) { console.error('et-previous: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('et-previous: all ' + passed + ' checks passed');

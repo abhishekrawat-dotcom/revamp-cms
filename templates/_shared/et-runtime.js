@@ -60,7 +60,8 @@
      data-rv-carousel-track (the wrapper itself when there is none). The track scrolls sideways by its own CSS
      (overflow-x:auto, scroll-snap); this adds a previous and a next button, drag-free keyboard use (the
      buttons are real buttons) and, with data-rv-carousel="auto", a step every few seconds that pauses while
-     the visitor points at or focuses the row and never runs for visitors who asked for no motion. The
+     the visitor points at or focuses the row, or while a pop-up is open (<html data-rv-modal>, rv-popups.js),
+     and never runs for visitors who asked for no motion. The
      buttons are made on the live page each time and are never part of the saved site. While editing there
      are no buttons and nothing moves: the row is a strip the editor scrolls and edits item by item.
 
@@ -683,6 +684,7 @@
       ['mouseleave', 'focusout'].forEach(function (t) { box.addEventListener(t, function () { held = false; }); });
       setInterval(function () {
         if (held || document.hidden || !box.isConnected || track.scrollWidth <= track.clientWidth + 2) return;
+        if (document.documentElement.hasAttribute('data-rv-modal')) return;   // a pop-up is open (rv-popups.js)
         var r = box.getBoundingClientRect();
         if (r.bottom < 0 || r.top > window.innerHeight) return;          // not on screen: nothing to show moving
         go(1, true);

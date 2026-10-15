@@ -572,9 +572,69 @@
      edited for its own reasons later. Same "confirmed empty -> null, don't override" discipline as the
      existing translators: null tells the caller to leave Gemini's own placeholder example item alone
      rather than wiping it. */
-  function translateSpeakersFlat(items) {
+  function translateSpeakersFlat(items, sessions, days) {
     if (!items || !items.length) return null;
-    return items.map(function (p) { return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; });
+    var talks = speakerSessionsOf(sessions, days);
+    return items.map(function (p) {
+      var li = /^https:\/\/[^\s"'<>\\]+$/i.test(String(p.li || '').trim()) ? String(p.li).trim() : '';
+      return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '', bio: String(p.bio || '').trim(), li: li,
+        profile: { bio: String(p.bio || '').trim(), li: li, sessions: talks[p.id] || [] } };
+    });
+  }
+  /* each speaker's sessions (Content › Agenda), as the pop-up lists them: { when: "26 November 2026 · 9:30 AM – 10:15 AM", title } */
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function dayLabelOf(d) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String((d && d.date) || ''));
+    return m && +m[2] >= 1 && +m[2] <= 12 ? +m[3] + ' ' + MONTH_NAMES[+m[2] - 1] + ' ' + m[1] : String((d && d.name) || '').trim();
+  }
+  function speakerSessionsOf(sessions, days) {
+    var dayById = {}, dayAt = {}, out = {};
+    (days || []).slice().sort(byOrder).forEach(function (d, i) { dayById[d.id] = dayLabelOf(d); dayAt[d.id] = i; });
+    (sessions || []).slice().sort(function (a, b) {
+      var da = a.groupId in dayAt ? dayAt[a.groupId] : 999, db = b.groupId in dayAt ? dayAt[b.groupId] : 999;
+      return (da - db) || String(a.start || '').localeCompare(String(b.start || '')) || byOrder(a, b);
+    }).forEach(function (s) {
+      var title = String(s.title || '').trim();
+      if (!title) return;
+      var time = [clockLabel(s.start), clockLabel(s.end)].filter(Boolean).join(' – ');
+      var when = [dayById[s.groupId] || '', time].filter(Boolean).join(' · ');
+      (s.speakerIds || []).forEach(function (id) {
+        var list = out[id] || (out[id] = []);
+        if (list.length < 6) list.push({ when: when, title: title });
+      });
+    });
+    return out;
+  }
+  /* A speaker's profile, for the pop-up a visitor opens from the card on the published page (templates/_shared/
+     rv-popups.js): their text, LinkedIn and sessions, in a <template data-rv-profile> inside the card — never
+     drawn on the page, rewritten from the records on every open. Never the speaker's e-mail or phone. */
+  function setSpeakerProfile(card, profile) {
+    Array.prototype.forEach.call(card.querySelectorAll('template[data-rv-profile]'), function (t) { t.remove(); });
+    if (!profile || !(profile.bio || profile.li || (profile.sessions && profile.sessions.length))) return;
+    var d = card.ownerDocument, tpl = d.createElement('template');
+    tpl.setAttribute('data-rv-profile', '');
+    function add(parent, tag, attr, text) {
+      var n = d.createElement(tag);
+      n.setAttribute(attr, '');
+      if (text != null) n.textContent = text;
+      parent.appendChild(n);
+      return n;
+    }
+    if (profile.bio) add(tpl.content, 'p', 'data-rv-profile-bio', profile.bio);
+    if (profile.li) {
+      var a = add(tpl.content, 'a', 'data-rv-profile-li', 'LinkedIn');
+      a.setAttribute('href', profile.li); a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener');
+    }
+    if (profile.sessions && profile.sessions.length) {
+      add(tpl.content, 'p', 'data-rv-profile-sessions-title', profile.sessions.length > 1 ? 'Sessions' : 'Session');
+      var ul = add(tpl.content, 'ul', 'data-rv-profile-sessions');
+      profile.sessions.forEach(function (s) {
+        var li = add(ul, 'li', 'data-rv-profile-session');
+        if (s.when) add(li, 'span', 'data-rv-profile-when', s.when);
+        add(li, 'span', 'data-rv-profile-title', s.title);
+      });
+    }
+    card.appendChild(tpl);
   }
   function translateFaqsFlat(items) {
     if (!items || !items.length) return null;
@@ -618,7 +678,7 @@
 
   var GENERIC_REPEAT_SOURCES = {
     sessions: { resources: ['sessions', 'agenda-groups', 'speakers'], translate: translateSessionsFlat },
-    speakers: { resources: ['speakers'], translate: translateSpeakersFlat },
+    speakers: { resources: ['speakers', 'sessions', 'agenda-groups'], translate: translateSpeakersFlat },
     faq: { resources: ['faqs'], translate: translateFaqsFlat },
     partners: { resources: ['partners'], translate: translatePartnersFlat },
     contact: { resources: ['contacts'], translate: translateContactsFlat },
@@ -639,7 +699,8 @@
 
   /* Fixed per-kind field vocabulary (byte-for-byte contract with the backend task's Gemini prompt —
      do not rename):
-       speakers: n (name), r (role), c (company), photo (image)
+       speakers: n (name), r (role), c (company), photo (image); also bio, li (href on an <a>) — and every
+                 card gets the speaker's profile for the visitor's pop-up (setSpeakerProfile above)
        faq:      t (question), d (answer)
        partners: name, url (href on an <a>, else text), logo (image)
        contact:  label, name, email, phone
@@ -654,7 +715,7 @@
          from the design's own placeholder item, leaves the placeholder where the record has nothing. */
       if (!refill) return;
       if (isImage) { if (fieldEl.tagName === 'IMG') fieldEl.removeAttribute('src'); else fieldEl.style.backgroundImage = ''; }
-      else if (kind === 'partners' && field === 'url' && fieldEl.tagName === 'A') fieldEl.removeAttribute('href');
+      else if (((kind === 'partners' && field === 'url') || (kind === 'speakers' && field === 'li')) && fieldEl.tagName === 'A') fieldEl.removeAttribute('href');
       else if (!fieldEl.querySelector('[data-rv-field]')) fieldEl.textContent = '';
       return;
     }
@@ -663,7 +724,7 @@
       else fieldEl.style.backgroundImage = 'url(' + value + ')';
       return;
     }
-    if (kind === 'partners' && field === 'url') {
+    if ((kind === 'partners' && field === 'url') || (kind === 'speakers' && field === 'li')) {
       if (fieldEl.tagName === 'A') fieldEl.href = value;
       else fieldEl.textContent = value;
       return;
@@ -679,6 +740,7 @@
       var field = fieldEl.getAttribute('data-rv-field');
       setGenericRepeatField(fieldEl, field, item[field], kind, refill);
     });
+    if (kind === 'speakers') setSpeakerProfile(clone, item.profile);
     clone.setAttribute('data-rv-filled', '');
   }
 
@@ -949,13 +1011,56 @@
   function applySubcollectionOverlay() {
     return ensureAutoSections().then(function (added) { return drawRecords(added.length > 0); });
   }
+  /* The previous edition's speakers (built by the server, functions/lib/prev-sections.js) carry each speaker's
+     profile — their sessions at that edition, LinkedIn, text — for the visitor's pop-up. A page saved before
+     they did keeps its cards as they were; the profiles are added to them here from the server's current build
+     of the section, card by card by the speaker's name: nothing else of a card changes, a card the owner renamed
+     or added gets none, and a section that already has them is not asked about again. Resolves true when the
+     page changed; never rejects. */
+  function refreshPreviousProfiles() {
+    var doc = canvas && canvas.doc, id = canvas && canvas.template && canvas.template.id;
+    var sec = doc && /^gen-/.test(String(id || '')) ? doc.querySelector('[data-rv-section="previous-speakers"]') : null;
+    if (!sec || sec.hasAttribute('data-rv-profiles') || !sec.querySelector('.pe-spk-card') || sec.querySelector('template[data-rv-profile]')) return Promise.resolve(false);
+    function key(n) { return String((n && n.textContent) || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+    return fetch('/api/generated-section?eventId=' + encodeURIComponent(String(id).slice(4)) + '&id=previous-speakers')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        var built = res && typeof res.html === 'string' ? res.html : '';
+        if (built.indexOf('data-rv-profile') === -1) return false;
+        // parsed inert: a <template>'s content never runs or loads anything
+        var holder = doc.createElement('template');
+        holder.innerHTML = built;
+        var byName = {};
+        Array.prototype.forEach.call(holder.content.querySelectorAll('.pe-spk-card'), function (c) {
+          var k = key(c.querySelector('.pe-spk-name'));
+          if (k && !byName[k]) byName[k] = c;
+        });
+        Array.prototype.forEach.call(sec.querySelectorAll('.pe-spk-card'), function (card) {
+          var from = byName[key(card.querySelector('.pe-spk-name'))];
+          var tpl = from && from.querySelector('template[data-rv-profile]');
+          if (!tpl || card.querySelector('template[data-rv-profile]')) return;
+          // the parts the pop-up reads the card's own text from, by the class they share with the new build
+          ['group', 'name', 'role', 'co'].forEach(function (part) {
+            var mark = from.querySelector('[data-rv-profile-' + part + ']'), cls = mark && mark.classList[0];
+            var own = cls && card.querySelector('.' + cls);
+            if (own) own.setAttribute('data-rv-profile-' + part, '');
+          });
+          card.appendChild(doc.importNode(tpl, true));
+        });
+        sec.setAttribute('data-rv-profiles', '');
+        if (typeof canvas.retag === 'function') { try { canvas.retag(sec); } catch (e) { /* the editor's own tagging */ } }
+        return true;
+      })
+      .then(null, function () { return false; });
+  }
+
   function drawRecords(sectionsAdded) {
     // Both detection paths run together — content.map `from` (ported templates) and the DOM
     // data-rv-repeat-template convention (AI-bespoke `gen-` templates) — and contribute additively to
     // one merged apply pass; see fetchGenericRepeatOverlay()'s own comment on why they never compete.
-    return Promise.all([fetchSubcollectionOverlay(), fetchGenericRepeatOverlay()]).then(function (results) {
+    return Promise.all([fetchSubcollectionOverlay(), fetchGenericRepeatOverlay(), refreshPreviousProfiles()]).then(function (results) {
       var content = results[0], repeatOverlay = results[1];
-      var changed = !!sectionsAdded;
+      var changed = !!sectionsAdded || results[2] === true;
       if (content) {
         var report = RevampFill.apply(canvas, { content: content, names: {}, excluded: [], generatedFromBrief: false, aiSkippedLibraries: [] });
         if (report.filled.length) changed = true;
