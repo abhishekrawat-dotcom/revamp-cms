@@ -1043,17 +1043,22 @@ function sanitizeSourceDesign(d) {
   };
 }
 
-/* A previous edition's records from ET's event API. The page fetched for the summary may have lost the ids
-   it names (a page read by the rendering service has its scripts taken out), so it is fetched again as a
-   browser would when it names none. -> Promise<PREVIOUS | null>, never rejecting */
+/* A previous edition's records from ET's event API. The page fetched for the summary may have lost its own
+   id (a page read by the rendering service has its scripts taken out, and `var siteId` with them), so it is
+   fetched again as a browser would when it does not name it; the copy that names more ids is used.
+   -> Promise<PREVIOUS | null>, never rejecting */
 function readEtPrevious(url, html) {
   function fetchJson(u, headers) {
     return safeFetch(u, { timeoutMs: 15000, maxBytes: 6 * 1024 * 1024, headers: Object.assign({ accept: 'application/json' }, headers || {}) })
       .then(function (r) { return r.status === 200 ? JSON.parse(r.body.toString('utf8')) : null; });
   }
-  var page = etPrevious.idsIn(html).length ? Promise.resolve(html)
+  function namesItself(h) { return etPrevious.candidatesIn(h).some(function (c) { return c.from.indexOf('siteId') !== -1; }); }
+  var page = namesItself(html) ? Promise.resolve(html)
     : safeFetch(url, { timeoutMs: 15000, maxBytes: 4 * 1024 * 1024, headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129 Safari/537.36' } })
-        .then(function (r) { return r.status === 200 ? r.body.toString('utf8') : html; }, function () { return html; });
+        .then(function (r) {
+          var again = r.status === 200 ? r.body.toString('utf8') : '';
+          return again && etPrevious.idsIn(again).length >= etPrevious.idsIn(html).length ? again : html;
+        }, function () { return html; });
   return page.then(function (h) { return etPrevious.readPrevious(url, h, { fetchJson: fetchJson }); })
     .then(null, function (err) { console.error('ingest-source: previous edition records not read — ' + (err && err.message)); return null; });
 }
