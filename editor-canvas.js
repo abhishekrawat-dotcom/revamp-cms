@@ -1002,6 +1002,7 @@
       if (!sec || !/^gen-/.test(template.id || '')) return false;
       var type = sec.getAttribute('data-rv-section');
       if (type === 'hero') return false;       // the banner keeps the one pattern every ET event site has
+      if (sec.hasAttribute('data-rv-etnav')) return false;   // so does ET's own top bar (functions/lib/et-nav.js)
       return doc.querySelectorAll('[data-rv-section="' + type.replace(/["\\]/g, '\\$&') + '"]').length === 1 &&
         !!doc.querySelector('style[data-rv-style="' + type.replace(/["\\]/g, '\\$&') + '"]');
     }

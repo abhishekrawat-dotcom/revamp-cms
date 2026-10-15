@@ -134,6 +134,7 @@ const ownerBrief = require('./owner-brief');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
 const prevSections = require('./prev-sections');
+const etNav = require('./et-nav');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
@@ -2650,7 +2651,7 @@ function eventFacts(stored, sent) {
 function plannedSectionList(designPlan) {
   /* the sections the server builds itself (the previous edition's records) are not the model's to write */
   var planned = ((designPlan && designPlan.sections) || []).filter(function (s) { return !s.prebuilt; });
-  return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site: the event\'s logo (or its name when there is no logo) and links to the sections below. Always present.', layout: 'One slim bar on ONE row: the logo at the far left, then at most 5 section links (the ones a visitor most needs) and the button on the right of the same row — never a second row on a desktop. On a phone the links stay in that row and scroll sideways (there is no script to open a menu).' }]
+  return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site, built by the server (functions/lib/et-nav.js) as on ET\'s own event sites: the portal\'s logo, the event\'s name with its date and place, a link to every section, the main action. Always present, first. Not written by you.', layout: 'A full-width bar with a second row of section links; once the visitor scrolls, a rounded bar floating at the top centre.' }]
     .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner, built by the server: the ET Business Verticals logo, the event\'s wordmark, one line, date and place, two buttons. Always present, right after nav. Not written by you.', layout: 'Centred, a full screen tall, over the hero picture.' }])
     .concat(planned)
     .concat([{ id: 'footer', kind: 'footer', purpose: 'Closing footer for this event site. Always present, last.', layout: 'A calm closing band: event name or logo, a short line, the section links again.' }]);
@@ -2725,7 +2726,8 @@ function buildSectionCodePrompt(payload) {
   lines.push('', 'NO SECTION NUMBERS: never number the sections themselves — no "01", "02" tabs, counters, badges or "Section 3" labels before or beside a section\'s heading, and no running count across the page' +
     (payload.designPlan && payload.designPlan.ownerNotes ? ', unless the owner\'s own instructions above ask for numbered sections' : '') + '. Numbering the items inside one list (steps, questions, pillars) is fine.');
   lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section under it introduces the event properly.',
-    'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.');
+    'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero.',
+    'THE TOP BAR IS NOT YOURS TO WRITE EITHER: the server builds the nav as ET\'s own event sites have it (the portal\'s logo, the event\'s name, date and place, a link to every section, the main action). Do not return a "nav" section.');
 
   lines.push('', 'PICTURES — the site must not be text only:');
   var pictured = fullList.filter(function (s) { return s.imageUrl; });
@@ -2821,7 +2823,7 @@ function sanitizeGeneratedSectionCss(css) {
 // request over) any planned section Gemini's response left out, same "degrade, never crash" discipline as
 // every other best-effort AI step in this file.
 function sanitizeSectionCodeResult(parsed, designPlan) {
-  var plannedList = [{ id: 'nav', kind: 'nav' }, { id: 'hero', kind: 'hero' }]
+  var plannedList = [{ id: 'hero', kind: 'hero' }]   // the nav is built afterwards (et-nav.js), in the page's final order
     .concat((designPlan.sections || []).filter(function (s) { return !s.prebuilt; }).map(function (s) { return { id: s.id, kind: s.kind }; }))
     .concat([{ id: 'footer', kind: 'footer' }]);
 
@@ -2857,8 +2859,8 @@ var SECTION_CODE_SPLIT_ABOVE = 5;
    calls side by side, so that each answer is ready well inside its time. */
 var SECTION_CODE_CLAUDE_BATCH = 2;
 function sectionCodeBatches(designPlan) {
-  /* every section but the hero, which is built here (genDesign.heroHtml) */
-  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; }).filter(function (id) { return id !== 'hero'; });
+  /* every section but the hero and the nav, which are built here (genDesign.heroHtml, et-nav.js) */
+  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; }).filter(function (id) { return id !== 'hero' && id !== 'nav'; });
   if (llm.activeProvider() === 'claude') {
     var small = [];
     for (var i = 0; i < ids.length; i += SECTION_CODE_CLAUDE_BATCH) small.push(ids.slice(i, i + SECTION_CODE_CLAUDE_BATCH));
@@ -2964,6 +2966,14 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         for (var i = 0; i < sections.length; i++) { var o = order.indexOf(sections[i].id); if (o > mine) { at = i; break; } }
         sections.splice(at, 0, { id: x.id, kind: 'custom', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, x.id, sectionRootInfo(built.html))), built.html) });
       });
+      /* the top bar, built here as on ET's own event sites (et-nav.js): the portal's logo, the event's name,
+         date and place, a link to every section in the page's order, the owner's main action */
+      sections = sections.filter(function (s) { return s.id !== 'nav'; });
+      sections.unshift(etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: designPlan }), {
+        order: sections.map(function (s) { return s.id; }),
+        sources: sourcesSnap.docs.map(function (d) { return d.data(); }),
+        owner: designPlan.owner || (brief && brief.owner)
+      }));
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
       genDesign.motionBudget(sections);
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
