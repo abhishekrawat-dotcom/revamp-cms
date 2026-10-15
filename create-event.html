@@ -2134,13 +2134,14 @@
                 <p class="hint" id="gb-doc-note"></p>
                 <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
               </div>
-              <!-- the previous edition picked from ET's own events (wireEtPicker); fills the address below -->
+              <!-- the previous edition, picked from ET's own events (wireEtPicker); its address is kept in #gb-previous -->
               <div class="field et-pick" id="gb-et">
-                <span class="flabel" id="gb-et-label">Previous edition from ET’s events <span class="pill-opt">Optional</span></span>
+                <span class="flabel" id="gb-et-label">Select Previous edition</span>
                 <div class="et-chip" id="gb-et-chip" hidden>
                   <span class="et-chip-ico" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
                   <span class="et-chip-txt"><b id="gb-et-chip-title"></b><small id="gb-et-chip-sub"></small></span>
                   <button class="et-chip-btn" type="button" id="gb-et-change" aria-describedby="gb-et-chip-title">Change</button>
+                  <button class="et-chip-btn" type="button" id="gb-et-remove" aria-describedby="gb-et-chip-title">Remove</button>
                 </div>
                 <div class="et-pick-row" id="gb-et-pickers">
                   <div class="cbx">
@@ -2154,9 +2155,7 @@
                 </div>
                 <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-cancel" hidden>Keep the event picked before</button>
                 <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
-              </div>
-              <div class="field"><label class="flabel" for="gb-previous">Previous edition URL</label>
-                <input class="inp" id="gb-previous" type="url" placeholder="https://…">
+                <input type="hidden" id="gb-previous">
               </div>
               <div class="field"><label class="flabel" for="gb-comp1">Competitor event URL</label>
                 <input class="inp" id="gb-comp1" type="url" placeholder="https://…">
@@ -3606,6 +3605,13 @@
   function focusProblem(issue){
     var el = issue && $(issue.field);
     if (!el) return;
+    /* the previous edition's address is kept out of sight: its picker is what is shown and focused */
+    if (el.type === 'hidden'){
+      var cell = el.closest('.field'), box = cell && cell.querySelector('button:not([hidden]), input:not([type=hidden]):not([disabled])');
+      if (cell) cell.scrollIntoView({ block: 'center' });
+      if (box && box.offsetParent) box.focus({ preventScroll: true });
+      return;
+    }
     el.scrollIntoView({ block: 'center' });
     el.focus({ preventScroll: true });
   }
@@ -4346,8 +4352,8 @@
       box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s events' : 'No events on this portal');
       var cur = S.brief.etEvent;
       box.setValue(cur && cur.portal === slug ? String(cur.id) : '');
-      etStatus(!events.length ? etPortalName(slug) + ' has no ET events to pick from. Paste the address below instead.'
-        : etPick.partial[slug] ? 'ET sent only part of ' + etPortalName(slug) + '’s older events. If yours is not listed, paste its address below.' : '');
+      etStatus(!events.length ? etPortalName(slug) + ' has no ET events to pick from.'
+        : etPick.partial[slug] ? 'ET sent only part of ' + etPortalName(slug) + '’s older events. If yours is not listed, try again in a few minutes.' : '');
     }
     if (etPick.events[slug]){ show(etPick.events[slug]); return Promise.resolve(etPick.events[slug]); }
     box.setItems([]); box.setValue('');
@@ -4370,15 +4376,17 @@
   function showEtPick(){
     var chip = $('gb-et-chip'), pickers = $('gb-et-pickers');
     if (!chip || !etPick.portal) return;
-    var cur = S.brief.etEvent, chipOn = !!cur && !etPick.showPickers;
+    /* an address with no pick (an older draft, or one corrected after a failed read) is shown the same way,
+       so what the AI will read is never hidden and can always be changed or removed */
+    var cur = S.brief.etEvent, link = !cur && normalUrl(S.brief.previous), chipOn = !!(cur || link) && !etPick.showPickers;
     if (!cur) etPick.event.setValue('');
     chip.hidden = !chipOn;
     pickers.hidden = chipOn;
-    /* "Change" can be taken back while the event picked before is still the one */
-    $('gb-et-cancel').hidden = chipOn || !cur;
+    /* "Change" can be taken back while the edition chosen before is still the one */
+    $('gb-et-cancel').hidden = chipOn || !(cur || link);
     if (chipOn){
-      $('gb-et-chip-title').textContent = cur.title;
-      $('gb-et-chip-sub').textContent = [etPortalName(cur.portal), cur.dateLabel].filter(Boolean).join(' · ');
+      $('gb-et-chip-title').textContent = cur ? cur.title : link;
+      $('gb-et-chip-sub').textContent = cur ? [etPortalName(cur.portal), cur.dateLabel].filter(Boolean).join(' · ') : 'Previous edition link';
       etStatus('');
       return;
     }
@@ -4414,6 +4422,15 @@
         if (S.brief.etEvent){ etPick.slug = S.brief.etEvent.portal; etPick.portal.setValue(etPick.slug); }
         showEtPick();
         $('gb-et-change').focus();
+      };
+      $('gb-et-remove').onclick = function(){
+        S.brief.etEvent = null;
+        S.brief.previous = '';
+        $('gb-previous').value = '';
+        etPick.showPickers = false;
+        showEtPick();
+        renderFoot(); save();
+        loadEtPortals().then(function(){ portalInp.focus(); }, function(){ portalInp.focus(); });
       };
       $('gb-et-change').onclick = function(){
         etPick.showPickers = true;

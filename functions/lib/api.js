@@ -1112,7 +1112,7 @@ function handleEtEvents(req, res) {
       sendJson(res, 200, { portal: portal, events: events, partial: !!events.partial });
     }, function (err) {
       console.error('et/events: ' + portal + ' — ' + (err && err.message));
-      sendJson(res, 502, { error: 'ET\'s event list could not be read right now. Please try again in a few minutes, or paste the previous edition\'s link instead.', code: 'et-down' });
+      sendJson(res, 502, { error: 'ET\'s event list could not be read right now. Please try again in a few minutes.', code: 'et-down' });
     });
   });
 }
