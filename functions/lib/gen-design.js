@@ -504,8 +504,35 @@ var GRAPHIC_RULES = 'STRICT: a graphic composition, not a photograph — shapes,
 var IMAGE_TAIL = ' No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
 var IMAGE_RULES = 'STRICT: ' + PEOPLE_RULES + IMAGE_TAIL;
 
+/* text the model wrote, at most `max` characters, cut at the end of a sentence (else of a word), ending in a
+   full stop — so that the line after it in a prompt does not run on from half a word */
+function sentence(text, max) {
+  var t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length > max) {
+    t = t.slice(0, max);
+    var end = t.lastIndexOf('. ');
+    t = end > max / 2 ? t.slice(0, end + 1) : t.replace(/\s+\S*$/, '');
+  }
+  return t && !/[.!?]$/.test(t) ? t + '.' : t;
+}
+
+/* The city an event takes place in, in the picture: recognisably, as a local would know it — through the
+   setting, the décor, the textiles, the light — and never as a postcard (edition-look.js, placeOf).
+   place: { city, cues } — cues '' when the city is not on that list: the picture is then asked to find them. */
+function placeLine(place, hero) {
+  place = place || {};
+  var city = String(place.city || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!city) return '';
+  var cues = sentence(place.cues, 500).replace(/[.!]+$/, '');
+  var how = cues ? cues : 'its own architecture, landscape, light and crafts, as someone from ' + city + ' would recognise them';
+  return hero
+    ? 'Place: this event takes place in ' + city + ', and the picture must show it, recognisably: ' + how + '. Make the city part of the scene itself (the view beyond the hall, the décor, the attire, the light), tasteful and believable — never a postcard collage, never a landmark pasted on, never a caricature.'
+    : 'Place: the event is in ' + city + '. Where the scene allows, let the city show in its setting — ' + how + ' — subtly and believably, never as a postcard.';
+}
+
 /* opts: { hero, about, context, level: 'global'|…  (an owner's "global" event shows an international mix),
-   graphic: true (the owner asked for graphics, not photographs) } */
+   graphic: true (the owner asked for graphics, not photographs), place: { city, cues } (where it happens; else
+   design.place, which plan-structure sets) }; design.inspiredBy: the previous edition's banner artwork in words */
 function imagePrompt(subject, design, opts) {
   design = design || {};
   opts = opts || {};
@@ -519,6 +546,10 @@ function imagePrompt(subject, design, opts) {
     'Scene: ' + String(subject || 'a large business conference in session, an Indian audience of women and men facing a lit stage where a woman is speaking').slice(0, 500) + '.',
     opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic ? ' and the forms in it.' : ', the people at work and the objects in view.') : '',
     opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
+    placeLine(opts.place || design.place, opts.hero),
+    /* the previous edition's banner artwork, in words (plan-structure, design.inspiredBy): the hero is a new
+       picture inspired by it, never a copy */
+    opts.hero && !graphic && design.inspiredBy ? 'Inspiration: the previous edition\'s banner artwork was this — ' + sentence(design.inspiredBy, 600) + ' Make a NEW picture in that mood and palette family, with a composition and scene of its own; never a copy of it.' : '',
     graphic ? '' : design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
     'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents' + (graphic ? '.' : ' in the lighting.'),
     'Every picture on this site shares this one style, so that they read as a set.',
@@ -531,5 +562,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE,
-  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };
