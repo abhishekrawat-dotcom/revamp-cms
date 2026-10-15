@@ -10,9 +10,14 @@
                                       to follow starts from, so two such sites do not come out alike
      palette(design, mode)            the page colours a design ends up with, readable in the asked-for mode
      clampFontSizes(css)              no text smaller than MIN_LABEL_PX in model-written CSS
+     capHeadingSizes(css, html)       no section heading louder than the site's type scale (HEADING_SCALE), in
+                                      every section but the hero (templates/_shared/rv-type.js, which the
+                                      editor shares)
      ensureLogo(navHtml, url, name)   the event's own logo is in the top bar, whatever the model wrote
      imagePrompt(brief, design, art)  the prompt for one generated picture
      normaliseMode(v)                 'light' | 'dark' | 'auto' */
+
+var rvType = require('../../templates/_shared/rv-type.js');
 
 var MIN_LABEL_PX = 14;          // the smallest any text may be (labels, captions, legal lines)
 var BASE_TEXT_PX = 18;          // what a paragraph is set in on a generated page
@@ -207,6 +212,13 @@ function clampFontSizes(css) {
     return fixed === value ? full : head + fixed;
   });
 }
+
+/* No section heading louder than the site's type scale: a section heading at most SECTION_MAX_PX (38px), a
+   sub-heading or card title at most SUB_MAX_PX (26px); stat numerals, eyebrows and body text are left alone.
+   For every section but the hero, which has its own type (heroCss). html: the section's markup, which says
+   which classes sit on headings. The rule itself is rv-type.js, so the editor applies the very same one. */
+var capHeadingSizes = rvType.capHeadingSizes;
+var HEADING_SCALE = { section: rvType.SECTION_HEADING, sub: rvType.SUB_HEADING, sectionMaxPx: rvType.SECTION_MAX_PX, subMaxPx: rvType.SUB_MAX_PX };
 
 /* ---------- the event's logo ---------- */
 
@@ -518,6 +530,6 @@ function imagePrompt(subject, design, opts) {
 
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
-  markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
+  markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE,
   ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

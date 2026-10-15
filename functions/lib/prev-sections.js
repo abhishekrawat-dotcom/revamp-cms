@@ -11,6 +11,9 @@
    data-rv-carousel="auto" rows that step by themselves and pause when pointed at, and data-rv-reveal blocks
    that ease in on scroll; neither moves for visitors who asked for no motion, nor while editing. */
 
+/* the section heading's size: the generated site's own type scale (templates/_shared/rv-type.js) */
+var SECTION_HEADING = require('../../templates/_shared/rv-type.js').SECTION_HEADING.replace(/,\s+/g, ',');
+
 var LABELS = { speakers: 'Previous Edition Speakers', sponsors: 'Previous Edition Sponsors', agenda: 'Previous Edition Agenda', glimpses: 'Previous Edition Glimpses' };
 var IDS = { speakers: 'previous-speakers', sponsors: 'previous-sponsors', agenda: 'previous-agenda', glimpses: 'previous-glimpses' };
 var ORDER = ['speakers', 'agenda', 'sponsors', 'glimpses'];
@@ -40,7 +43,7 @@ var BASE_CSS = function (c) {
     '.' + c + '-in{max-width:1200px;margin:0 auto;padding:0 24px}' +
     '.' + c + '-head{text-align:center;margin:0 0 40px}' +
     '.' + c + '-eyebrow{margin:0 0 10px;font-size:0.875rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--theme-color)}' +
-    '.' + c + '-title{margin:0;font-family:var(--heading-font-family);font-size:clamp(2rem,4.2vw,3.25rem);line-height:1.1;color:var(--rv-text)}';
+    '.' + c + '-title{margin:0;font-family:var(--heading-font-family);font-size:' + SECTION_HEADING + ';line-height:1.15;color:var(--rv-text)}';
 };
 
 function speakers(p, edition) {

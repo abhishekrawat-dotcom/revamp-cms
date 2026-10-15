@@ -116,6 +116,21 @@ ok(gen.indexOf('data-rv-preview-ribbon') !== -1 && gen.indexOf('noindex') !== -1
   ok(o.indexOf('href="/assets/et-b2b-logo.svg"') !== -1 && o.indexOf('onerror="y"') === -1 && o.indexOf('evil.example') === -1, 'a logo that is not an uploaded picture is not used as the icon: ' + bad);
 });
 
+/* ---- an AI-designed site: section headings held to the type scale, the hero's own type kept ---- */
+var HERO_CSS = '[data-rv-section="hero"] .hero-tagline{font-size:clamp(2.6rem,6.5vw,5rem)}';
+var OVERVIEW_CSS = '[data-rv-section="overview"] .overview-title{font-size:clamp(2rem,4.2vw,3.25rem);line-height:1.1}[data-rv-section="overview"] .overview-num{font-size:4rem}';
+var GEN_PAGE = '<!DOCTYPE html><html><head><title>x</title><style data-rv-style="hero">' + HERO_CSS + '</style><style data-rv-style="overview">' + OVERVIEW_CSS + '</style><style data-rv-design>h2{color:red}</style></head>' +
+  '<body id="gen" data-rv-template-id="gen-qa-fixture" class="microsite rv-generated"><section data-rv-section="hero"><h1 class="hero-tagline">T</h1></section>' +
+  '<section data-rv-section="overview"><h2 class="overview-title">About</h2><b class="overview-num">40+</b></section></body></html>';
+var genOut = publishTransform(GEN_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture' });
+ok(genOut.indexOf('.overview-title{font-size:clamp(1.75rem, 3.069vw, 2.375rem);line-height:1.1}') !== -1, 'an AI-designed page: a section heading saved loud is calm', genOut.slice(0, 600));
+ok(genOut.indexOf(HERO_CSS) !== -1, 'the hero keeps its own type');
+ok(genOut.indexOf('.overview-num{font-size:4rem}') !== -1, 'stat numerals are left alone');
+ok(publishTransform(GEN_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: null }).indexOf('.overview-title{font-size:clamp(1.75rem, 3.069vw, 2.375rem)') !== -1, 'known as AI-designed by its own body when no template id is given');
+ok(publishTransform(genOut, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture' }) === genOut, 'running it again changes nothing');
+var fixed = GEN_PAGE.replace(' data-rv-template-id="gen-qa-fixture" class="microsite rv-generated"', ' class="home"');
+ok(publishTransform(fixed, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'tech500' }).indexOf(OVERVIEW_CSS) !== -1, 'a ported template\'s CSS is not touched');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

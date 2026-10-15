@@ -2555,7 +2555,7 @@ function buildSectionCodePrompt(payload) {
     'SHARED RULES — written identically in every section, because sections are styled separately:',
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. Sections have vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = var(--theme-color) background with a readable text colour; secondary = outlined.',
-    '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): clamp(2rem, 4.2vw, 3.25rem), line-height 1.1. Hero headline (h1): clamp(2.6rem, 6.5vw, 5rem). Card titles: 1.25rem or larger. Small labels and captions: never below 0.875rem. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
+    '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): exactly ' + genDesign.HEADING_SCALE.section + ', line-height 1.15 — calm and confident, never larger (not even in capitals or a heavy weight); the hero, which the server builds, holds the page\'s only h1. Sub-headings and card titles (h3): ' + genDesign.HEADING_SCALE.sub + '. Small labels and captions: never below 0.875rem. Only a band of big numbers may be set larger than a section heading. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
     '- MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section\'s heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section\'s root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.',
@@ -2696,13 +2696,12 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
       console.error('generate-content: planned section "' + p.id + '" is missing from Gemini\'s response, omitting it rather than failing the whole page.');
       return;
     }
-    sections.push({
-      id: p.id,
-      kind: p.kind,
-      html: sanitizeGeneratedSectionHtml(String(found.html || '')),
-      /* no text below the smallest readable size, whatever was written */
-      css: genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(found.css || '')))
-    });
+    var html = sanitizeGeneratedSectionHtml(String(found.html || ''));
+    /* no text below the smallest readable size, and no heading above the site's type scale, whatever was
+       written (the hero keeps its own type) */
+    var css = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(found.css || '')));
+    if (p.id !== 'hero') css = genDesign.capHeadingSizes(css, html);
+    sections.push({ id: p.id, kind: p.kind, html: html, css: css });
   });
   return sections;
 }
@@ -2820,7 +2819,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         var at = sections.length - (sections.length && sections[sections.length - 1].id === 'footer' ? 1 : 0);
         var order = planned.map(function (y) { return y.id; }), mine = order.indexOf(x.id);
         for (var i = 0; i < sections.length; i++) { var o = order.indexOf(sections[i].id); if (o > mine) { at = i; break; } }
-        sections.splice(at, 0, { id: x.id, kind: 'custom', html: built.html, css: genDesign.clampFontSizes(scopeSectionCss(built.css, x.id, sectionRootInfo(built.html))) });
+        sections.splice(at, 0, { id: x.id, kind: 'custom', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, x.id, sectionRootInfo(built.html))), built.html) });
       });
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
       genDesign.motionBudget(sections);
@@ -2910,7 +2909,7 @@ function buildRedesignPrompt(payload) {
         (payload.owner ? '\n' + ownerBrief.copyLines(payload.owner).join('\n') + '\n(What the owner asks for in this change wins over these where the two differ.)' : ''),
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
-    '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; h2 clamp(2rem, 4.2vw, 3.25rem); card titles 1.25rem or larger; nothing below 0.875rem. Set font-family, font-size, line-height and color explicitly.',
+    '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; ' + (payload.sectionId === 'hero' ? 'the hero keeps its own headline size' : 'section heading (h2) exactly ' + genDesign.HEADING_SCALE.section + ', never larger, and no h1') + '; sub-headings and card titles (h3) ' + genDesign.HEADING_SCALE.sub + '; nothing below 0.875rem; only a band of big numbers may be larger than the heading. Set font-family, font-size, line-height and color explicitly.',
     '- Responsive without script: grids and splits collapse to one column under 820px; nothing causes sideways scrolling.',
     '- Light motion: data-rv-reveal (or ="left", "right", "zoom", "fade") on a few blocks that should ease in on scroll — the page animates them, write no opacity:0 or keyframes for it; a gentle hover lift on cards and buttons.',
     '- A row with more items than fit may be a carousel: data-rv-carousel on the wrapper, data-rv-carousel-track on the element holding the items, a width on each item; the page adds the buttons — never draw arrows or dots.',
@@ -2973,7 +2972,10 @@ function handleRedesignSection(req, res) {
         if (r.error) return sendAiFailure(res, r);
         var newHtml = genDesign.restorePictures(sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim(), pictures, found[0] || '');
         if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' });
-        var newCss = genDesign.restorePictures(genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || ''))), pictures, found[0] || '');
+        var newCss = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || '')));
+        /* no heading above the site's type scale, as when the site was made (the hero keeps its own type) */
+        if (sectionId !== 'hero' && payload.generated !== false) newCss = genDesign.capHeadingSizes(newCss, newHtml);
+        newCss = genDesign.restorePictures(newCss, pictures, found[0] || '');
         sendJson(res, 200, {
           sectionId: sectionId, html: newHtml,
           css: scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml)),
@@ -3238,6 +3240,9 @@ function handleGeneratedSection(req, res) {
        server did the scoping are served correctly too */
     var html = String(found.html || '');
     var css = genDesign.clampFontSizes(scopeSectionCss(found.css, sectionId, sectionRootInfo(html)));
+    /* no heading louder than the site's type scale — a section stored before the scale was calmed is served
+       calm too (idempotent); the hero banner keeps its own type */
+    if (sectionId !== 'hero') css = genDesign.capHeadingSizes(css, html);
     /* a colour of the design's palette written as a fixed value becomes its variable, so every theme reaches
        it (templates/_shared/rv-theme.js); the hero banner keeps its own tone */
     if (sectionId !== 'hero' && data.designPlan && data.designPlan.design) css = rvTheme.themableCss(css, data.designPlan.design);
@@ -5432,7 +5437,8 @@ function handleSitePut(req, res) {
    the page a visitor gets. In order, it
      1. removes what only the editor or the AI review needs, what a browser extension left behind in
         the page while it was being edited, and the markup authors' HTML comments;
-     2. makes the saving origin root-relative, so the page works at whatever host serves it;
+     2. makes the saving origin root-relative, so the page works at whatever host serves it, and on an
+        AI-designed site holds every section heading but the hero's to the site's type scale;
      3. sets <title> to the event's name and writes the description, Open Graph tags, canonical link and
         favicon;
      4. makes sure the live-site runtime and its config block are present exactly once;
@@ -5755,6 +5761,19 @@ function publishTransform(html, opts) {
 
   /* ---- 2. the saving origin becomes root-relative ---- */
   rewriteOriginTokens(html, tokens, out, origins);
+  /* an AI-designed site: no section heading louder than the site's type scale (genDesign.capHeadingSizes —
+     idempotent), so a page saved before the scale was calmed is calm in the preview and when it is published.
+     Only the sections' own stylesheets; the hero banner keeps its own type. */
+  var bodyTag = bodyOpen !== -1 ? tokens[bodyOpen] : null;
+  if (/^gen-/.test(String(opts.templateId || '')) || (bodyTag && (/^gen-/.test(attrValue(bodyTag, 'data-rv-template-id') || '') || classListOf(bodyTag).indexOf('rv-generated') !== -1))) {
+    var headingMap = null;
+    for (i = 0; i < tokens.length - 1; i++) {
+      var sheet = tokens[i], sheetId = sheet.t === 'open' && sheet.name === 'style' ? attrValue(sheet, 'data-rv-style') : null;
+      if (sheetId == null || sheetId === 'hero' || out[i] === '' || tokens[i + 1].t !== 'raw') continue;
+      if (!headingMap) headingMap = genDesign.headingClasses(html);
+      out[i + 1] = genDesign.capHeadingSizes(out[i + 1], headingMap);
+    }
+  }
 
   /* ---- 3. title, description, sharing tags, canonical link, favicon ---- */
   var seo = (event.settings && event.settings.seo) || {};
