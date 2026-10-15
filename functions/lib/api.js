@@ -134,6 +134,7 @@ const ownerBrief = require('./owner-brief');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
 const prevSections = require('./prev-sections');
+const sectionOrder = require('./section-order');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
@@ -1537,7 +1538,7 @@ function buildDesignPlanPrompt(payload) {
         'Which of them this site has: every one of these that the reference page above has, under whatever name it goes there (its "Partners" are sponsors, its "Gallery" or "Glimpses" are past-edition-glimpses, its "Why attend" is why-join-us, its "Themes" or "Tracks" are key-discussion-points…), is made again for this edition; add one the brief document or the owner\'s instructions ask for; leave out one they say this edition does not have. With no reference page, include the ones the material supports — Overview always. Order them as the reference page does; with none, in the order of the list. (nav, hero and footer are added automatically and are not in your list.)'
       : 'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
-    'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, right under the hero, and everything a visitor needs to understand the event lives in the sections.',
+    'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, and everything a visitor needs to understand the event lives in the sections. (When the site has this edition\'s sponsors section, the server places it directly under the hero, ahead of the overview; list it wherever you like — the other sections keep your order.)',
     '',
     'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.'),
     '',
@@ -2336,6 +2337,9 @@ function handlePlanStructure(req, res) {
           if (at === -1) at = sections.length;
           sections.splice.apply(sections, [at, 0].concat(prevPlanned));
         }
+        /* this edition's sponsors open the page, straight after the hero; the rest keep the planned order
+           (section-order.js) */
+        sections = sectionOrder.sponsorsFirst(sections);
         /* A designed presentation's own colours are not left to the model to remember: they are set here,
            before the palette is checked for contrast. The owner's light/dark choice still wins. */
         var look = brief && brief.visualIdentity && brief.visualIdentity.designed === 'yes' ? brief.visualIdentity : null;
@@ -2724,7 +2728,7 @@ function buildSectionCodePrompt(payload) {
      section without records is hidden the count jumps (04, then 07). Items inside a list may be numbered. */
   lines.push('', 'NO SECTION NUMBERS: never number the sections themselves — no "01", "02" tabs, counters, badges or "Section 3" labels before or beside a section\'s heading, and no running count across the page' +
     (payload.designPlan && payload.designPlan.ownerNotes ? ', unless the owner\'s own instructions above ask for numbered sections' : '') + '. Numbering the items inside one list (steps, questions, pillars) is fine.');
-  lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section under it introduces the event properly.',
+  lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section of the list below that is not the sponsors introduces the event properly. The sections stand on the page in the order listed below (this edition\'s sponsors, when there are any, come straight after the hero), and the nav\'s links follow that order.',
     'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.');
 
   lines.push('', 'PICTURES — the site must not be text only:');
@@ -2877,6 +2881,8 @@ function sectionCodeBatches(designPlan) {
 // draftId/staleness-tracking machinery keeps working for this event — see this function's call site for the
 // full reasoning.
 function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan) {
+  /* a plan made before sponsors were put first is written in today's order (section-order.js) */
+  designPlan = Object.assign({}, designPlan, { sections: sectionOrder.sponsorsFirst(designPlan.sections) });
   var draftRef = fb.db.collection('events').doc(eventId);
   var sourceRef = fb.db.collection('events').doc(sourceEventId);
   var watch = null;
@@ -2964,6 +2970,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         for (var i = 0; i < sections.length; i++) { var o = order.indexOf(sections[i].id); if (o > mine) { at = i; break; } }
         sections.splice(at, 0, { id: x.id, kind: 'custom', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, x.id, sectionRootInfo(built.html))), built.html) });
       });
+      /* the sponsors right after the hero whatever came back, and the links of the top bar and the footer in
+         the page's order */
+      sections = sectionOrder.sponsorsAfterHero(sections, planned);
+      var pageIds = sections.map(function (s) { return s.id; });
+      sections.forEach(function (sec) { if (sec.id === 'nav' || sec.id === 'footer') sec.html = sectionOrder.orderNavLinks(sec.html, pageIds); });
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
       genDesign.motionBudget(sections);
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
@@ -3263,6 +3274,17 @@ function buildGeneratedDesign(design) {
 
 function fontStack(family) { return '"' + family + '", Arial, sans-serif'; }
 
+/* The page's section ids, top to bottom: nav, hero, designPlan.sections in planned order with this edition's
+   sponsors first (section-order.js), footer — filtered down to whatever generatedSections actually has
+   (generate-content may have had to omit a planned section whose id was missing from Gemini's response; see
+   sanitizeSectionCodeResult). */
+function generatedPageIds(designPlan, generatedSections) {
+  var have = {};
+  (generatedSections || []).forEach(function (s) { if (s && s.id) have[s.id] = 1; });
+  return ['nav', 'hero'].concat(sectionOrder.sponsorsFirst(designPlan.sections).map(function (s) { return s.id; })).concat(['footer'])
+    .filter(function (id) { return have[id]; });
+}
+
 function handleGeneratedTemplate(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var eventId = String(qs.get('eventId') || '').trim();
@@ -3298,12 +3320,9 @@ function handleGeneratedTemplate(req, res) {
       .concat([].concat.apply([], themes.map(function (t) { return [googleFontUrl(t.headingFont), googleFontUrl(t.bodyFont)]; })))
       .filter(function (url, i, arr) { return url && arr.indexOf(url) === i; });
 
-    // Ordered id list: nav, hero, designPlan.sections in planned order, footer — filtered down to whatever
-    // generatedSections actually has (generate-content may have had to omit a planned section whose id was
-    // missing from Gemini's response; see sanitizeSectionCodeResult).
-    var orderedIds = ['nav', 'hero'].concat(designPlan.sections.map(function (s) { return s.id; })).concat(['footer']);
     var byId = {};
     generatedSections.forEach(function (s) { if (s && s.id) byId[s.id] = s; });
+    var orderedIds = generatedPageIds(designPlan, generatedSections);
 
     var template = {
       id: 'gen-' + eventId,
@@ -3382,6 +3401,9 @@ function handleGeneratedSection(req, res) {
     /* scoped on the way out as well as when stored (it is idempotent), so sections stored before the
        server did the scoping are served correctly too */
     var html = String(found.html || '');
+    /* the links of the top bar and the footer follow the page's order (a site made before that was enforced
+       is served so too) */
+    if ((sectionId === 'nav' || sectionId === 'footer') && data.designPlan && Array.isArray(data.designPlan.sections)) html = sectionOrder.orderNavLinks(html, generatedPageIds(data.designPlan, sections));
     var css = genDesign.clampFontSizes(scopeSectionCss(found.css, sectionId, sectionRootInfo(html)));
     /* no heading louder than the site's type scale — a section stored before the scale was calmed is served
        calm too (idempotent); the hero banner keeps its own type */
@@ -6791,7 +6813,7 @@ module.exports._testHooks = {
   confirmEtPick: confirmEtPick, pageKey: pageKey,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
