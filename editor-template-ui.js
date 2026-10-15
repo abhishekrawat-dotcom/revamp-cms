@@ -818,7 +818,7 @@
     var spec = AUTO_SECTIONS[kind], doc = canvas.doc, type = 'auto-' + kind;
     var scope = '[data-rv-auto="' + kind + '"]';
     /* every rule is tied to this section, so the class names mean nothing anywhere else on the page */
-    var rules = '.rva-wrap{max-width:1200px;margin:0 auto}.rva-title{font-family:var(--heading-font-family,inherit);font-size:clamp(30px,4.2vw,48px);line-height:1.1;margin:0 0 36px}.rva-name{font-family:var(--heading-font-family,inherit)}' + spec.css;
+    var rules = '.rva-wrap{max-width:1200px;margin:0 auto}.rva-title{font-family:var(--heading-font-family,inherit);font-size:clamp(28px,3vw,38px);line-height:1.1;margin:0 0 36px}.rva-name{font-family:var(--heading-font-family,inherit)}' + spec.css;
     var css = scope + '{padding:clamp(56px,8vw,112px) 24px;background:var(--rv-bg,transparent);color:var(--rv-text,inherit);font-family:var(--body-font-family,inherit)}' +
       rules.replace(/(^|[{}])\s*([^{}@]+)\{/g, function (all, lead, sel) {
         return lead + sel.split(',').map(function (x) { return scope + ' ' + x.trim(); }).join(',') + '{';

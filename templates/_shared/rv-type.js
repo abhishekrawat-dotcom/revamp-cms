@@ -42,7 +42,7 @@
   var LEFT_ALONE = /(^|[-_])(stat|stats|num|nums|number|numbers|numeral|numerals|figure|figures|count|counts|counter|counters|big|metric|metrics|kpi|kpis|digit|digits|eyebrow|kicker|label|tag|badge)($|[-_])/i;
 
   function headingClasses(html) {
-    var map = {}, re = /<h([1-6])\b[^>]*?\sclass\s*=\s*("([^"]*)"|'([^']*)')/gi, m;
+    var map = Object.create(null), re = /<h([1-6])\b[^<>]*?\sclass\s*=\s*("([^"]*)"|'([^']*)')/gi, m;
     while ((m = re.exec(String(html || '')))) {
       var level = +m[1];
       String(m[3] != null ? m[3] : m[4] || '').split(/\s+/).forEach(function (c) {
@@ -79,7 +79,7 @@
     if (names.some(function (c) { return LEFT_ALONE.test(c) && !HEADING_END.test(c); })) return 'skip';
     var tag = /^[A-Za-z][A-Za-z0-9-]*/.exec(subject), level = 0;
     if (tag && /^h[1-6]$/i.test(tag[0])) level = +tag[0].charAt(1);
-    names.forEach(function (c) { if (classes[c] && (!level || classes[c] < level)) level = classes[c]; });
+    names.forEach(function (c) { if (Object.prototype.hasOwnProperty.call(classes, c) && classes[c] && (!level || classes[c] < level)) level = classes[c]; });
     if (level) return level <= 2 ? 'section' : 'sub';
     var named = names.filter(function (c) { return HEADING_NAME.test(c); });
     if (!named.length) return '';
@@ -112,9 +112,12 @@
   function capHeadingSizes(css, headings) {
     css = String(css || '');
     if (!css || !/font-size/i.test(css)) return css;
-    var classes = typeof headings === 'string' ? headingClasses(headings) : (headings || {});
-    /* rule by rule (an @media block's rules too: the innermost braces hold the declarations) */
-    return css.replace(/([^{}]*)\{([^{}]*)\}/g, function (all, prelude, decls) {
+    var classes = typeof headings === 'string' ? headingClasses(headings) : (headings || Object.create(null));
+    /* rule by rule (an @media block's rules too: the innermost braces hold the declarations). Only the block is
+       matched, its selector read back from the text before it: a selector-and-block pattern takes quadratic time
+       on a long run with a brace that never closes, and this runs on every preview and publish */
+    return css.replace(/\{([^{}]*)\}/g, function (all, decls, at, whole) {
+      var prelude = whole.slice(Math.max(whole.lastIndexOf('{', at - 1), whole.lastIndexOf('}', at - 1)) + 1, at);
       if (!/font-size/i.test(decls) || /^\s*@/.test(prelude)) return all;
       var kinds = splitTop(prelude.replace(/\/\*[\s\S]*?\*\//g, '')).map(function (sel) { return kindOf(subjectOf(sel), classes); });
       if (kinds.indexOf('skip') !== -1) return all;
@@ -125,7 +128,7 @@
         var calm = capValue(value, cap, floor);
         return calm === value ? d : sep + head + calm;
       });
-      return fixed === decls ? all : prelude + '{' + fixed + '}';
+      return fixed === decls ? all : '{' + fixed + '}';
     });
   }
 

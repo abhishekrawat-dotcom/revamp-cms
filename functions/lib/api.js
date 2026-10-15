@@ -1879,6 +1879,19 @@ function ownUnitBox(decoded, read) {
   });
   if (!extraBoxes.length || !(ownArea > 0)) return null;
   var W = decoded.width, H = decoded.height;
+  /* the model's boxes are a few pixels out at times ("IN ASSOCIATION WITH" began 1.4px past its box): each is
+     grown by 3% of the picture on every side but the one facing the event's own lock-up, and never into it */
+  var gx = W * 0.03, gy = H * 0.03, oR = own0.x + own0.width, oB = own0.y + own0.height;
+  extraBoxes = extraBoxes.map(function (b) {
+    var x0 = b.x, y0 = b.y, x1 = b.x + b.width, y1 = b.y + b.height;
+    if (y1 <= own0.y) { x0 -= gx; x1 += gx; y0 -= gy; y1 = Math.min(y1 + gy, own0.y); }
+    else if (y0 >= oB) { x0 -= gx; x1 += gx; y1 += gy; y0 = Math.max(y0 - gy, oB); }
+    else if (x1 <= own0.x) { y0 -= gy; y1 += gy; x0 -= gx; x1 = Math.min(x1 + gx, own0.x); }
+    else if (x0 >= oR) { y0 -= gy; y1 += gy; x1 += gx; x0 = Math.max(x0 - gx, oR); }
+    else return b;
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(W, x1); y1 = Math.min(H, y1);
+    return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  });
   var background = pngLite.hasTransparency(decoded) ? null : pngLite.edgeColour(decoded, { x: 1, y: 1, width: W - 2, height: H - 2 });
   var keep = { x0: 0, y0: 0, x1: W, y1: H }, taken = 0;
   var refused = ['y', 'x'].some(function (axis) {
@@ -3039,7 +3052,7 @@ function buildRedesignPrompt(payload) {
         (payload.owner ? '\n' + ownerBrief.copyLines(payload.owner).join('\n') + '\n(What the owner asks for in this change wins over these where the two differ.)' : ''),
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
-    '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; ' + (payload.sectionId === 'hero' ? 'the hero keeps its own headline size' : 'section heading (h2) exactly ' + genDesign.HEADING_SCALE.section + ', never larger, and no h1') + '; sub-headings and card titles (h3) ' + genDesign.HEADING_SCALE.sub + '; nothing below 0.875rem; only a band of big numbers may be larger than the heading. Set font-family, font-size, line-height and color explicitly.',
+    '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; ' + (payload.generated === false ? 'keep the template\'s existing heading sizes and heading levels (px only)' : payload.sectionId === 'hero' ? 'the hero keeps its own headline size' : 'section heading (h2) exactly ' + genDesign.HEADING_SCALE.section + ', never larger, and no h1') + (payload.generated === false ? '' : '; sub-headings and card titles (h3) ' + genDesign.HEADING_SCALE.sub) + '; nothing below 0.875rem; only a band of big numbers may be larger than the heading. Set font-family, font-size, line-height and color explicitly.',
     '- Responsive without script: grids and splits collapse to one column under 820px; nothing causes sideways scrolling.',
     '- Light motion: data-rv-reveal (or ="left", "right", "zoom", "fade") on a few blocks that should ease in on scroll — the page animates them, write no opacity:0 or keyframes for it; a gentle hover lift on cards and buttons.',
     '- A row with more items than fit may be a carousel: data-rv-carousel on the wrapper, data-rv-carousel-track on the element holding the items, a width on each item; the page adds the buttons — never draw arrows or dots.',
