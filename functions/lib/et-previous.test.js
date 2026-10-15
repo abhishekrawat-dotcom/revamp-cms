@@ -52,6 +52,20 @@ ep.readPrevious('https://enterpriseai.economictimes.indiatimes.com/agentic-ai-su
   return ep.readPrevious('https://cio.economictimes.indiatimes.com/x', '{"digital_month_id":"1"}', { fetchJson: function () { return Promise.reject(new Error('down')); } });
 }).then(function (r) {
   check('the API down: nothing, and no failure', r === null);
+  /* an edition picked from ET's list: exactly that portal and id, whatever the page names (or not) */
+  calls = [];
+  return ep.readPrevious('https://example.com/not-an-et-page', '{"digital_month_id":"4865"}', { fetchJson: fakeFetch, portal: 'brandequity', id: '3858' });
+}).then(function (r) {
+  check('picked: that id is read, and no other', r && r.id === '3858' && r.portal === 'brandequity' && r.speakers.length === 2 && calls.every(function (c) { return !/4865/.test(c); }), r && r.id);
+  check('picked: the picked portal goes with every request', calls.length > 0 && calls.every(function (c) { return / portal=brandequity$/.test(c); }));
+  calls = [];
+  return ep.readPrevious('https://enterpriseai.economictimes.indiatimes.com/x', '', { fetchJson: fakeFetch, id: '3858' });
+}).then(function (r) {
+  check('picked id, portal from the address: read though the page names no id', r && r.id === '3858' && calls.every(function (c) { return / portal=enterpriseai$/.test(c); }));
+  calls = [];
+  return ep.readPrevious('https://enterpriseai.economictimes.indiatimes.com/x', pageOtherFirst, { fetchJson: fakeFetch, id: '4865' });
+}).then(function (r) {
+  check('picked an id with no records and no photos: nothing (the page\'s other id is not tried)', r === null && calls.every(function (c) { return !/3858/.test(c); }));
 
   /* the sections */
   var planned = ps.plan(p);

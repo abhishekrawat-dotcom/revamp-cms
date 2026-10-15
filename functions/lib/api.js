@@ -132,6 +132,7 @@ const pngLite = require('./png-lite');
 const svgYear = require('./svg-year');
 const ownerBrief = require('./owner-brief');
 const etPrevious = require('./et-previous');
+const etEvents = require('./et-events');
 const prevSections = require('./prev-sections');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
@@ -1045,8 +1046,9 @@ function sanitizeSourceDesign(d) {
 
 /* A previous edition's records from ET's event API. The page fetched for the summary may have lost the ids
    it names (a page read by the rendering service has its scripts taken out), so it is fetched again as a
-   browser would when it names none. -> Promise<PREVIOUS | null>, never rejecting */
-function readEtPrevious(url, html) {
+   browser would when it names none. pick { portal, id }: an edition chosen from ET's own list (checked by
+   etPickOf below) — its records are read for exactly that portal and id. -> Promise<PREVIOUS | null>, never rejecting */
+function readEtPrevious(url, html, pick) {
   function fetchJson(u, headers) {
     return safeFetch(u, { timeoutMs: 15000, maxBytes: 6 * 1024 * 1024, headers: Object.assign({ accept: 'application/json' }, headers || {}) })
       .then(function (r) { return r.status === 200 ? JSON.parse(r.body.toString('utf8')) : null; });
@@ -1054,8 +1056,39 @@ function readEtPrevious(url, html) {
   var page = etPrevious.idsIn(html).length ? Promise.resolve(html)
     : safeFetch(url, { timeoutMs: 15000, maxBytes: 4 * 1024 * 1024, headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129 Safari/537.36' } })
         .then(function (r) { return r.status === 200 ? r.body.toString('utf8') : html; }, function () { return html; });
-  return page.then(function (h) { return etPrevious.readPrevious(url, h, { fetchJson: fetchJson }); })
+  return page.then(function (h) { return etPrevious.readPrevious(url, h, { fetchJson: fetchJson, portal: pick ? pick.portal : '', id: pick ? pick.id : '' }); })
     .then(null, function (err) { console.error('ingest-source: previous edition records not read — ' + (err && err.message)); return null; });
+}
+
+/* payload.etEvent { portal, id } -> { portal, id } | null when absent | false when it is not a real pick
+   (a portal off the roster, an id that is not digits): neither ever reaches ET's header or address. */
+function etPickOf(v) {
+  if (v == null) return null;
+  if (typeof v !== 'object') return false;
+  var portal = String(v.portal || '').trim(), id = String(v.id == null ? '' : v.id).trim();
+  return etEvents.isPortal(portal) && /^\d{1,9}$/.test(id) ? { portal: portal, id: id } : false;
+}
+
+/* ---------- GET /api/et/portals, GET /api/et/events?portal=<slug> — Create Event's previous-edition picker ----------
+   ET's B2B portals, and one portal's own (IP) events from ET's event API (et-events.js; kept 6 hours). */
+function etJson(u, headers) {
+  return safeFetch(u, { timeoutMs: 15000, maxBytes: 4 * 1024 * 1024, headers: Object.assign({ accept: 'application/json' }, headers || {}) })
+    .then(function (r) { return r.status === 200 ? JSON.parse(r.body.toString('utf8')) : null; });
+}
+function handleEtPortals(req, res) {
+  withAdmin(req, res, function () { sendJson(res, 200, { portals: etEvents.portalList() }); });
+}
+function handleEtEvents(req, res) {
+  withAdmin(req, res, function () {
+    var portal = String(queryOf(req).get('portal') || '').trim();
+    if (!etEvents.isPortal(portal)) return sendJson(res, 400, { error: 'Unknown portal "' + portal.slice(0, 40) + '".', code: 'unknown-portal' });
+    etEvents.listIpEvents(portal, etJson).then(function (events) {
+      sendJson(res, 200, { portal: portal, events: events, partial: !!events.partial });
+    }, function (err) {
+      console.error('et/events: ' + portal + ' — ' + (err && err.message));
+      sendJson(res, 502, { error: 'ET\'s event list could not be read right now. Please try again in a few minutes, or paste the previous edition\'s link instead.', code: 'et-down' });
+    });
+  });
 }
 
 function handleIngestSource(req, res) {
@@ -1069,6 +1102,8 @@ function handleIngestSource(req, res) {
     if (!eventId || !url) return sendJson(res, 400, { error: 'eventId and url are required.' });
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
     if (!/^https?:\/\//i.test(url)) return sendJson(res, 400, { error: 'url must start with http:// or https://.' });
+    var etPick = etPickOf(payload.etEvent);
+    if (etPick === false) return sendJson(res, 400, { error: 'etEvent must name a known portal and a numeric event id.' });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -1116,7 +1151,7 @@ function handleIngestSource(req, res) {
         var hints = ownEdition ? logoUnit.editionHints(html, url) : null;
         /* A previous edition on ET's own platform: its real speakers, sponsors, agenda and photos, read from
            ET's event API (et-previous.js) beside the summary below — shown as "Previous Edition …" sections. */
-        var previousRead = type === 'previousEdition' && etPrevious.portalOf(url) ? readEtPrevious(url, html) : Promise.resolve(null);
+        var previousRead = type === 'previousEdition' && (etPick || etPrevious.portalOf(url)) ? readEtPrevious(url, html, etPick) : Promise.resolve(null);
         var editionHints = hints ? {
           title: String(hints.title || '').slice(0, 200), headings: (hints.headings || []).slice(0, 6).map(function (h) { return String(h).slice(0, 200); }),
           years: (hints.years || []).slice(0, 8), editionImage: String(hints.editionImage || '').slice(0, 1000)
@@ -6475,6 +6510,8 @@ var ROUTES = {
   'POST /api/chat-edit': handleChatEdit,
   'POST /api/extract-brief': handleExtractBrief,
   'POST /api/ingest-source': handleIngestSource,
+  'GET /api/et/portals': handleEtPortals,
+  'GET /api/et/events': handleEtEvents,
   'POST /api/plan-structure': handlePlanStructure,
   'POST /api/generate-content': handleGenerateContent,
   'POST /api/redesign-section': handleRedesignSection,

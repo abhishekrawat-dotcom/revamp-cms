@@ -101,7 +101,8 @@ function allItems(fetchJson, path, id, portal) {
 /* -> Promise<PREVIOUS | null>. fetchJson(url, headers) -> Promise<json>, never throwing for a bad answer */
 function readPrevious(url, html, o) {
   o = o || {};
-  var portal = portalOf(url), ids = idsIn(html).slice(0, 4);
+  /* o.portal / o.id: an edition picked from ET's own list (et-events.js, checked by the caller) — neither is guessed */
+  var portal = o.portal || portalOf(url), ids = o.id ? [String(o.id)] : idsIn(html).slice(0, 4);
   if (!portal || !ids.length || typeof o.fetchJson !== 'function') return Promise.resolve(null);
   var fetchJson = o.fetchJson;
   /* each id the page names, as the API knows it: the edition is the one with records */
