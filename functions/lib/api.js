@@ -138,18 +138,22 @@ const rvTheme = require('../../templates/_shared/rv-theme.js');
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
    lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
    fit in memory, is not drawn at all.
-   -> Promise<{ png, pixels (RGBA), width, height } on a mid-grey ground | null> */
+   -> Promise<{ png, pixels (RGBA), width, height } on a mid-grey ground | null>
+   o.clear: drawn on nothing (transparent), to see where its lettering is; o.width: drawn that many pixels
+   wide (at most RASTER_WIDTH) instead of RASTER_WIDTH */
 var resvgModule;
 var RASTER_MAX_SVG_BYTES = 1500 * 1024, RASTER_WIDTH = 1000, RASTER_MAX_HEIGHT = 3000;
-function rasterise(svgText) {
+function rasterise(svgText, o) {
   try {
     if (resvgModule === undefined) { try { resvgModule = require('@resvg/resvg-js'); } catch (e) { resvgModule = null; console.error('api: SVGs cannot be drawn here (resvg) — ' + e.message); } }
     if (!resvgModule || Buffer.byteLength(String(svgText || '')) > RASTER_MAX_SVG_BYTES) return Promise.resolve(null);
-    var opts = { fitTo: { mode: 'width', value: RASTER_WIDTH }, background: '#808080', font: { loadSystemFonts: false } };
+    var width = o && o.width > 0 ? Math.min(RASTER_WIDTH, Math.round(o.width)) : RASTER_WIDTH;
+    var opts = { fitTo: { mode: 'width', value: width }, font: { loadSystemFonts: false } };
+    if (!(o && o.clear)) opts.background = '#808080';
     /* its own size, read before anything is drawn (units such as pt and mm are already in px here) */
     var own = new resvgModule.Resvg(svgText, opts);
     var w = own.width, h = own.height;
-    if (!(w > 0) || !(h > 0) || RASTER_WIDTH * h / w > RASTER_MAX_HEIGHT || w / h > 40) return Promise.resolve(null);
+    if (!(w > 0) || !(h > 0) || width * h / w > RASTER_MAX_HEIGHT || w / h > 40) return Promise.resolve(null);
     return resvgModule.renderAsync(svgText, opts).then(function (img) {
       return { png: img.asPng(), pixels: img.pixels, width: img.width, height: img.height };
     }, function (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return null; });
@@ -1584,7 +1588,11 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
          - a picture in which the year was read but cannot be moved (a JPEG, a PNG inside an SVG, a year
            standing on artwork): kept as it is, and the owner is told in the editor that the year in it
            still has to be replaced;
-         - an SVG whose lettering is drawn as outlines cannot be read here at all: it is used as it is.
+         - an SVG whose lettering is drawn as outlines is drawn as a picture to be read (outlinedYear).
+       A sponsor's mark, a "Presented by" / "In association with" line or that edition's theme line drawn
+       into it is cropped out — from a PNG (cropToOwnUnit) or from an outlined SVG, by its viewBox
+       (cropSvgToOwnUnit) — only across empty lines and only when a second reading finds none of it left;
+       otherwise it stays and the owner is told.
        Most ET lock-ups carry no year at all: they are used untouched. The hero takes the tone the
        lock-up was drawn for (white lettering -> a dark banner), so it always stands clear, on nothing.
      no previous edition, or nothing usable on it   ->  a new unit is drawn as one SVG file: The Economic
@@ -1612,9 +1620,25 @@ var LOGO_READ_SCHEMA = {
     yearFontFamily: { type: 'STRING', enum: YEAR_FONT_CHOICES, description: 'When there is a year: of these Google Fonts, the one whose digits look most like the year\'s.' },
     yearFontWeight: { type: 'STRING', enum: ['300', '400', '500', '600', '700', '800'], description: 'When there is a year: how heavy its digits are, as a font weight.' },
     extras: { type: 'STRING', description: 'Anything drawn inside that belongs to one edition only: a sponsor\'s or partner\'s name or logo ("Powered by …", "Presented by …", "In association with …"), a theme line of that edition, an edition number. Else an empty string. The publisher\'s own mark (ET, The Economic Times, an ET vertical such as ETAuto) is NOT an extra.' },
-    unitBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there are extras: [ymin, xmin, ymax, xmax], each 0-1000 relative to the picture, of ONE box that encloses ALL the extras together (every sponsor mark, "Powered by" line and theme line) and nothing of the publisher\'s mark or of the event\'s name. Else an empty list.' }
+    /* Where the extras are, and where the event's own lock-up is: extras often stand both above it ("X and Y
+       present") and below it ("In association with Z"), so no one box can hold them all and nothing else.
+       Which part is which is the model's to say; where exactly to cut is read from the pixels
+       (cropToOwnUnit). */
+    extraBoxes: {
+      type: 'ARRAY',
+      description: 'When there are extras: one entry for each group of them that stands apart (a row of sponsor logos, a "Presented by" or "In association with" line, a theme line). Else an empty list.',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          text: { type: 'STRING', description: 'The words of this group, as drawn.' },
+          box: { type: 'ARRAY', items: { type: 'INTEGER' }, description: '[ymin, xmin, ymax, xmax] of this group, each 0-1000 relative to the picture, tight round it.' }
+        },
+        required: ['text', 'box']
+      }
+    },
+    ownBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there are extras: [ymin, xmin, ymax, xmax], each 0-1000 relative to the picture, of the event\'s OWN lock-up — the publisher\'s mark, the event\'s name and the emblem or artwork drawn with it — enclosing all of that and none of the extras. Else an empty list.' }
   },
-  required: ['allText', 'year', 'yearBox', 'yearFont', 'yearWeight', 'extras', 'unitBox']
+  required: ['allText', 'year', 'yearBox', 'yearFont', 'yearWeight', 'extras', 'extraBoxes', 'ownBox']
 };
 var LOGO_READ_PROMPT = 'This picture is the logo unit (lock-up) of an event, taken from its website. It is shown here on a plain grey background that is not part of it. Read it carefully and answer.';
 
@@ -1732,7 +1756,8 @@ function usableLogoPicture(bytes) {
 function hex2(v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }
 
 /* What a vision model reads in a raster unit: { year, box: {x,y,width,height} in pixels | null, serif,
-   bold, extras } — or null when it could not be asked. A see-through PNG is laid on grey first: a model
+   bold, extras, extraBoxes: [box] where the extras are, ownBox: box | null where the event's own lock-up
+   is } — or null when it could not be asked. A see-through PNG is laid on grey first: a model
    reads transparency as white, and white lettering would be invisible to it. */
 function readLogoPicture(eventId, picture, decoded, deadlineAt) {
   /* reading it is worth a few seconds, not the plan: with little time left the picture is used unread */
@@ -1756,59 +1781,134 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt) {
     if (year && b.length === 4 && b.every(function (n) { return n >= 0 && n <= 1000; }) && b[2] > b[0] && b[3] > b[1]) {
       box = { x: b[1] / 1000 * picture.info.width, y: b[0] / 1000 * picture.info.height, width: (b[3] - b[1]) / 1000 * picture.info.width, height: (b[2] - b[0]) / 1000 * picture.info.height };
     }
-    var u = Array.isArray(p.unitBox) ? p.unitBox.map(Number) : [], unitBox = null;
-    if (u.length === 4 && u.every(function (n) { return n >= 0 && n <= 1000; }) && u[2] > u[0] && u[3] > u[1]) {
-      unitBox = { x: u[1] / 1000 * picture.info.width, y: u[0] / 1000 * picture.info.height, width: (u[3] - u[1]) / 1000 * picture.info.width, height: (u[2] - u[0]) / 1000 * picture.info.height };
+    /* [ymin, xmin, ymax, xmax] out of 1000 -> a box in the picture's pixels, or null */
+    function pixels(v) {
+      var u = Array.isArray(v) ? v.map(Number) : [];
+      if (u.length !== 4 || !u.every(function (n) { return n >= 0 && n <= 1000; }) || !(u[2] > u[0]) || !(u[3] > u[1])) return null;
+      return { x: u[1] / 1000 * picture.info.width, y: u[0] / 1000 * picture.info.height, width: (u[3] - u[1]) / 1000 * picture.info.width, height: (u[2] - u[0]) / 1000 * picture.info.height };
     }
-    return { year: year, box: box, unitBox: unitBox, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+    var extraBoxes = (Array.isArray(p.extraBoxes) ? p.extraBoxes : []).slice(0, 12).map(function (e) { return pixels(e && e.box); }).filter(Boolean);
+    return { year: year, box: box, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160),
       fontFamily: YEAR_FONT_CHOICES.indexOf(p.yearFontFamily) !== -1 ? p.yearFontFamily : '', fontWeight: /^[3-8]00$/.test(String(p.yearFontWeight)) ? +p.yearFontWeight : 0 };
   }, function () { return null; });
 }
 
 /* Last edition's sponsor is not this edition's. A lock-up that has a sponsor's mark, a "Powered by" line
-   or that edition's theme line drawn into it is cut down to the event's own part: the publisher's mark and
-   the event's name. Nothing is redrawn — the picture is cropped.
-     decoded: the PNG's pixels; extras: the one box the model drew round everything that has to go. What
-     is kept is the side of the picture away from it: above it when it sits at the bottom (the usual
-     place for a sponsor), below, left or right of it otherwise.
-   -> the cropped picture ({ width, height, data }), or null when there is no clean place to cut. The cut
-   is moved to the nearest empty row or column, so that it never runs through lettering, and the result is
-   trimmed to what is drawn in it. */
-function cropToOwnUnit(decoded, extras) {
-  if (!decoded || !extras) return null;
+   or that edition's theme line drawn into it is cut down to the event's own part: the publisher's mark, the
+   event's name and the artwork drawn with them. Nothing is redrawn — the picture is cropped.
+     decoded: the picture's pixels; read: readLogoPicture()'s answer — extraBoxes, where the model saw the
+     extras, and ownBox, where it saw the event's own lock-up. The extras may stand on more than one side
+     of it ("X and Y present" above, "In association with Z" below).
+   Which part is which is the model's to say; where to cut is read from the pixels, and the picture is cut
+   only across empty lines, never through lettering. Its rows are taken as the bands of lettering that
+   empty rows separate; the bands at the top and at the bottom that are extras (three quarters of their
+   lettering inside the extras' boxes and under a quarter inside the event's own) are taken away, each cut
+   made halfway across the empty lines before the first band kept. Then the same is done with the columns
+   of what is left, for a sponsor standing beside the lock-up. A band that holds a real part of the event's
+   own lock-up is always kept, whatever else is in it.
+   -> the box to keep ({ x, y, width, height } in pixels, trimmed to what is drawn in it), or null when there
+   is no clean way to cut: no own lock-up was read, an extra stands between two parts of the lock-up or
+   shares a line with it, nothing would be taken away, or too little would be left to be a lock-up. */
+function ownUnitBox(decoded, read) {
+  if (!decoded || !read || !read.ownBox || !read.extraBoxes) return null;
+  /* a box said to hold extras that also holds most of the event's own lock-up says nothing about where
+     they are (a box round the whole picture): it is not used */
+  var own0 = read.ownBox, ownArea = own0.width * own0.height;
+  var extraBoxes = read.extraBoxes.filter(function (b) {
+    var w = Math.min(b.x + b.width, own0.x + own0.width) - Math.max(b.x, own0.x), h = Math.min(b.y + b.height, own0.y + own0.height) - Math.max(b.y, own0.y);
+    return !(w > 0 && h > 0 && w * h > ownArea * 0.5);
+  });
+  if (!extraBoxes.length || !(ownArea > 0)) return null;
   var W = decoded.width, H = decoded.height;
-  var ex0 = extras.x / W, ex1 = (extras.x + extras.width) / W, ey0 = extras.y / H, ey1 = (extras.y + extras.height) / H;
-  var box = ey0 >= 0.3 ? { x: 0, y: 0, width: W, height: extras.y }
-    : ey1 <= 0.7 ? { x: 0, y: extras.y + extras.height, width: W, height: H - extras.y - extras.height }
-    : ex0 >= 0.3 ? { x: 0, y: 0, width: extras.x, height: H }
-    : ex1 <= 0.7 ? { x: extras.x + extras.width, y: 0, width: W - extras.x - extras.width, height: H }
-    : null;
-  if (!box) return null;
   var background = pngLite.hasTransparency(decoded) ? null : pngLite.edgeColour(decoded, { x: 1, y: 1, width: W - 2, height: H - 2 });
-  var rows = pngLite.inkProfile(decoded, 'y', background), cols = pngLite.inkProfile(decoded, 'x', background);
-  /* the empty line nearest to where the model put the edge, looking a twelfth of the picture either way */
-  function settle(profile, at, reach) {
-    at = Math.max(0, Math.min(profile.length - 1, Math.round(at)));
-    for (var d = 0; d <= reach; d++) {
-      if (at + d < profile.length && profile[at + d] === 0) return at + d;
-      if (at - d >= 0 && profile[at - d] === 0) return at - d;
-    }
-    return -1;
-  }
-  var top = box.y <= H * 0.03 ? 0 : settle(rows, box.y, Math.ceil(H / 12));
-  var bottom = box.y + box.height >= H * 0.97 ? H : settle(rows, box.y + box.height, Math.ceil(H / 12));
-  var left = box.x <= W * 0.03 ? 0 : settle(cols, box.x, Math.ceil(W / 12));
-  var right = box.x + box.width >= W * 0.97 ? W : settle(cols, box.x + box.width, Math.ceil(W / 12));
-  if (top < 0 || bottom < 0 || left < 0 || right < 0 || bottom - top < 24 || right - left < 60) return null;
-  var cut = pngLite.crop(decoded, { x: left, y: top, width: right - left, height: bottom - top });
-  if (!cut) return null;
-  var ink = pngLite.inkBounds(cut, { x: 0, y: 0, width: cut.width, height: cut.height }, background);
+  var keep = { x0: 0, y0: 0, x1: W, y1: H }, taken = 0;
+  var refused = ['y', 'x'].some(function (axis) {
+    var part = pngLite.crop(decoded, { x: keep.x0, y: keep.y0, width: keep.x1 - keep.x0, height: keep.y1 - keep.y0 });
+    if (!part) return true;
+    var start = axis === 'y' ? keep.y0 : keep.x0, end = axis === 'y' ? keep.y1 : keep.x1;
+    var bands = pngLite.inkRuns(pngLite.inkProfile(part, axis, background)).map(function (run) {
+      var box = axis === 'y' ? { x: keep.x0, y: start + run.from, width: keep.x1 - keep.x0, height: run.to - run.from }
+        : { x: start + run.from, y: keep.y0, width: run.to - run.from, height: keep.y1 - keep.y0 };
+      var all = pngLite.inkCount(decoded, box, background) || 1;
+      var own = pngLite.inkCount(decoded, box, background, [read.ownBox]) / all;
+      var extra = pngLite.inkCount(decoded, box, background, extraBoxes) / all;
+      return { from: start + run.from, to: start + run.to, kind: own >= 0.25 ? 'own' : extra >= 0.75 ? 'extra' : '' };
+    });
+    var first = 0, last = bands.length - 1;
+    while (first <= last && bands[first].kind === 'extra') first++;
+    while (last >= first && bands[last].kind === 'extra') last--;
+    var kept = bands.slice(first, last + 1);
+    /* what stays must hold the event's own lock-up, and none of the extras */
+    if (!kept.some(function (band) { return band.kind === 'own'; })) return true;
+    if (kept.some(function (band) { return band.kind === 'extra'; })) return true;
+    var lo = first > 0 ? Math.round((bands[first - 1].to + bands[first].from) / 2) : start;
+    var hi = last < bands.length - 1 ? Math.round((bands[last].to + bands[last + 1].from) / 2) : end;
+    if (axis === 'y') { keep.y0 = lo; keep.y1 = hi; } else { keep.x0 = lo; keep.x1 = hi; }
+    taken += first + bands.length - 1 - last;
+    return false;
+  });
+  /* nothing taken away: the extras are not where they can be cut from (inside the lock-up's own lines) */
+  if (refused || !taken) return null;
+  var cut = pngLite.crop(decoded, { x: keep.x0, y: keep.y0, width: keep.x1 - keep.x0, height: keep.y1 - keep.y0 });
+  var ink = cut && pngLite.inkBounds(cut, { x: 0, y: 0, width: cut.width, height: cut.height }, background);
   if (!ink) return null;
+  /* trimmed to what is drawn, with a little room — never past the cuts */
   var pad = Math.round(Math.max(ink.width, ink.height) * 0.02) + 2;
-  var tight = pngLite.crop(cut, { x: ink.x - pad, y: ink.y - pad, width: ink.width + 2 * pad, height: ink.height + 2 * pad });
+  var x0 = Math.max(keep.x0, keep.x0 + ink.x - pad), y0 = Math.max(keep.y0, keep.y0 + ink.y - pad);
+  var x1 = Math.min(keep.x1, keep.x0 + ink.x + ink.width + pad), y1 = Math.min(keep.y1, keep.y0 + ink.y + ink.height + pad);
   /* cutting must have taken something away, and must have left a lock-up */
-  if (!tight || tight.width * tight.height > W * H * 0.94 || tight.width < 120 || tight.height < 30) return null;
-  return tight;
+  if ((x1 - x0) * (y1 - y0) > W * H * 0.94 || x1 - x0 < 120 || y1 - y0 < 30) return null;
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+/* the same, for a PNG: -> the cropped picture ({ width, height, data }) or null */
+function cropToOwnUnit(decoded, read) {
+  var box = ownUnitBox(decoded, read);
+  return box ? pngLite.crop(decoded, box) : null;
+}
+
+/* Two drawings of the same part of a lock-up are the same picture: of the pixels both have, all but a few
+   (the soft edges of a shape, drawn a hair differently) agree in how covered they are and in colour. */
+function sameDrawing(a, b) {
+  if (!a || !b || Math.abs(a.width - b.width) > 1 || Math.abs(a.height - b.height) > 1) return false;
+  var w = Math.min(a.width, b.width), h = Math.min(a.height, b.height), differ = 0;
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var i = (y * a.width + x) * 4, j = (y * b.width + x) * 4;
+      var da = Math.abs(a.data[i + 3] - b.data[j + 3]);
+      var dc = a.data[i + 3] > 200 && b.data[j + 3] > 200 ? Math.abs(a.data[i] - b.data[j]) + Math.abs(a.data[i + 1] - b.data[j + 1]) + Math.abs(a.data[i + 2] - b.data[j + 2]) : 0;
+      if (da > 64 || dc > 96) differ++;
+    }
+  }
+  return differ <= Math.max(12, w * h * 0.002);
+}
+
+/* The same for a lock-up drawn as an SVG: where to cut is found on the drawing drawn on nothing, and the
+   drawing itself is cut there (svgYear.cropTo: its viewBox), so it stays a drawing. The cut is kept only
+   when the cut drawing, drawn again, is exactly that part of the picture — nothing that stays in sight was
+   taken out with the extras. read: the reading of rasterise(svgText), its boxes in those pixels.
+   -> Promise<svgText | null> */
+function cropSvgToOwnUnit(svgText, read) {
+  var vb = svgYear.viewBoxOf(svgText), open = /<svg\b[^>]*>/i.exec(String(svgText || ''));
+  if (!vb || !open || !read || !read.extraBoxes || !read.extraBoxes.length) return Promise.resolve(null);
+  var fit = ((/\spreserveAspectRatio\s*=\s*["']\s*([^"']*)["']/i.exec(open[0]) || [])[1] || '').trim();
+  return rasterise(svgText, { clear: true }).then(function (r) {
+    var clear = r && pngLite.decode(r.png);
+    var keep = clear && ownUnitBox(clear, read);
+    if (!keep) return null;
+    /* the drawing's units per pixel, and where its viewBox lies in the picture: centred (the default) when
+       its size and its viewBox are not quite the same shape; any other placement is not worked out here */
+    var sx = vb.width / clear.width, sy = vb.height / clear.height, ox = 0, oy = 0;
+    if (!/^none\b/.test(fit)) {
+      var s = Math.max(sx, sy);
+      if (Math.abs(sx - sy) > s * 0.002 && fit && !/^xMidYMid(\s+meet)?$/.test(fit)) return null;
+      ox = (clear.width - vb.width / s) / 2; oy = (clear.height - vb.height / s) / 2; sx = sy = s;
+    }
+    var cut = svgYear.cropTo(svgText, { x: vb.x + (keep.x - ox) * sx, y: vb.y + (keep.y - oy) * sy, width: keep.width * sx, height: keep.height * sy });
+    if (!cut || svgCouldRun(cut)) return null;
+    return rasterise(cut, { clear: true, width: keep.width }).then(function (again) {
+      return again && sameDrawing(pngLite.decode(again.png), pngLite.crop(clear, keep)) ? cut : null;
+    });
+  }).then(null, function () { return null; });
 }
 
 /* A PNG with the old year drawn in -> one SVG: the same picture with that year's rectangle emptied, and
@@ -1932,17 +2032,42 @@ function previousEditionUnit(fb, eventId, o) {
     }
     /* A lock-up drawn as outlines: drawn here as a picture on grey (a reader takes transparency for white,
        and white lettering would vanish), read, and — when it shows an earlier edition's year — that year's
-       shapes are replaced by the new year set as text (svg-year.js). -> the picture to use */
+       shapes are replaced by the new year set as text (svg-year.js). A sponsor's mark or that edition's
+       theme line drawn into it is cropped out first (cropSvgToOwnUnit), the same way as from a PNG.
+       -> the picture to use */
     function outlinedYear(svgText) {
       var vb = svgYear.viewBoxOf(svgText);
       if (!vb) return Promise.resolve(picture);
       var raster = null;
+      function readDrawing(r) {
+        return r ? readLogoPicture(eventId, { bytes: r.png, info: { type: 'png', mime: 'image/png', width: r.width, height: r.height } }, null, o.deadlineAt) : Promise.resolve(null);
+      }
+      /* the drawing cut down to the event's own lock-up and read again: kept only if the second reading
+         finds nothing left of the extras -> { svg, raster, read } or null */
+      function withoutExtras(first) {
+        return cropSvgToOwnUnit(svgText, first).then(function (cut) {
+          if (!cut) return null;
+          return rasterise(cut).then(function (r) {
+            return readDrawing(r).then(function (second) { return second && !second.extras ? { svg: cut, raster: r, read: second } : null; });
+          });
+        }).then(null, function () { return null; });
+      }
       return rasterise(svgText).then(function (r) {
         raster = r;
-        return r ? readLogoPicture(eventId, { bytes: r.png, info: { type: 'png', mime: 'image/png', width: r.width, height: r.height } }, null, o.deadlineAt) : null;
+        return readDrawing(r);
+      }).then(function (read) {
+        if (!read || !read.extras) return read;
+        return withoutExtras(read).then(function (cut) {
+          var bytes = cut && Buffer.from(cut.svg, 'utf8'), info = bytes && logoUnit.imageInfo(bytes);
+          if (!cut || logoUnit.plausibleUnit(info)) { carries(read.extras); return read; }
+          svgText = cut.svg; vb = svgYear.viewBoxOf(cut.svg); raster = cut.raster;
+          picture = { bytes: bytes, info: info };
+          tone = svgUnitTone(cut.svg);                     // what is left decides what it stands on
+          notes.push('“' + read.extras + '” belonged to the previous edition and was cropped out of the logo unit; the rest of it is untouched.');
+          return cut.read;
+        });
       }).then(function (read) {
         if (!read) return picture;
-        carries(read.extras);
         if (!isOldEdition(read.year) || !read.box) return picture;
         var sx = vb.width / raster.width, sy = vb.height / raster.height;
         var box = { x: vb.x + read.box.x * sx, y: vb.y + read.box.y * sy, width: read.box.width * sx, height: read.box.height * sy };
@@ -2011,7 +2136,7 @@ function previousEditionUnit(fb, eventId, o) {
       if (!first || !first.extras) return first;
       /* A sponsor's mark or that edition's theme line is drawn in: the picture is cut down to the event's
          own lock-up, and read again — the cut is kept only if the second reading finds nothing left of it. */
-      var cut = cropToOwnUnit(decoded, first.unitBox);
+      var cut = cropToOwnUnit(decoded, first);
       if (!cut) { carries(first.extras); return first; }
       var cutBytes = pngLite.encode(cut), cutPicture = { bytes: cutBytes, info: logoUnit.imageInfo(cutBytes) };
       if (logoUnit.plausibleUnit(cutPicture.info)) { carries(first.extras); return first; }
@@ -6575,5 +6700,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
+  buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };
