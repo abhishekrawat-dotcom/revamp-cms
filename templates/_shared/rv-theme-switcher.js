@@ -2,7 +2,7 @@
    themeSwitcherHtml — never on a published page). Its data is <script id="rv-themes"> { themes, design, current,
    editor }. Picking a theme restyles the page in place with RevampTheme (rv-theme.js): the colours a section
    wrote as fixed values are first turned into the page's variables, then the theme's variables are set, and
-   the ET logo in the nav and the footer takes the version for its new ground. "Apply in editor" opens the editor
+   the ET logo in the nav (and the portal's wordmark in ET's footer) takes the version for its new ground. "Apply in editor" opens the editor
    in that theme, where it is saved and published. */
 (function () {
   'use strict';
@@ -36,6 +36,12 @@
     requestAnimationFrame(function () {
       Array.prototype.forEach.call(document.querySelectorAll('img[data-rv-et-logo]'), function (img) {
         img.src = ET_LOGO[groundLum(img) < 0.45 ? 'dark' : 'light'];
+      });
+      /* the portal's wordmark in ET's footer: the ink it names for the new ground (functions/lib/et-footer.js) */
+      Array.prototype.forEach.call(document.querySelectorAll('img[data-rv-portal-logo]'), function (img) {
+        var onLight = img.getAttribute('data-rv-on-light'), onDark = img.getAttribute('data-rv-on-dark'), src = img.getAttribute('src');
+        if (!onLight || !onDark || (src !== onLight && src !== onDark)) return;
+        img.setAttribute('src', groundLum(img) < 0.45 ? onDark : onLight);
       });
     });
     current = id;

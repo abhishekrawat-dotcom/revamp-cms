@@ -123,6 +123,35 @@ ee.fetchIpEvents('brandequity', fakeFetch).then(function (events) {
     });
   });
 }).then(function () {
+  /* listUpcoming: page 1 only, what is on now or coming, kept; the whole list's entry wins while fresh */
+  var t = 1000, clock = { now: function () { return t; } };
+  ee.clearCache(); reset();
+  return ee.listUpcoming('brandequity', fakeFetch, clock).then(function (ev) {
+    check('listUpcoming: one request, page 1 only', calls.length === 1 && /page=1 portal=brandequity$/.test(calls[0]), calls.join(' | '));
+    check('listUpcoming: our own events on now or coming, no past ones', ev.map(function (e) { return e.id; }).join(',') === '10,11', ev.map(function (e) { return e.id; }).join(','));
+    reset();
+    return ee.listUpcoming('brandequity', fakeFetch, clock);
+  }).then(function (ev) {
+    check('listUpcoming: kept (no second request)', calls.length === 0 && ev.length === 2);
+    reset(); t += ee.TTL_MS + 1;
+    return ee.listUpcoming('brandequity', fakeFetch, clock);
+  }).then(function () {
+    check('listUpcoming: read again after 6 hours', calls.length === 1);
+    ee.clearCache(); reset();
+    return ee.listIpEvents('brandequity', fakeFetch, clock).then(function () { reset(); return ee.listUpcoming('brandequity', fakeFetch, clock); });
+  }).then(function (ev) {
+    check('listUpcoming: the whole list, fresh, is used instead of asking', calls.length === 0 && ev.map(function (e) { return e.id; }).join(',') === '11,10', ev.map(function (e) { return e.id; }).join(','));
+    ee.clearCache(); reset(); failPages[1] = 1;
+    return ee.listUpcoming('brandequity', fakeFetch, clock).then(function () { check('listUpcoming failure rejects', false); }, function (err) { check('listUpcoming: ET down is et-down', err.code === 'et-down'); });
+  }).then(function () {
+    reset();
+    return ee.listUpcoming('brandequity', fakeFetch, clock);
+  }).then(function (ev) {
+    check('listUpcoming: a failure is not kept', calls.length === 1 && ev.length === 2);
+    reset();
+    return ee.listUpcoming('nope', fakeFetch, clock).then(function () { check('listUpcoming unknown portal', false); }, function (err) { check('listUpcoming: unknown portal refused, nothing asked', err.code === 'unknown-portal' && calls.length === 0); });
+  });
+}).then(function () {
   if (failed) { console.error('et-events: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('et-events: all ' + passed + ' checks passed');
 }, function (err) { console.error('et-events: crashed — ' + (err && err.stack)); process.exit(1); });
