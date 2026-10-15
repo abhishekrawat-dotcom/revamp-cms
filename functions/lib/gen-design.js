@@ -266,6 +266,37 @@ function capNavLinks(html, max) {
   return html;
 }
 
+/* MOTION, kept in check: a page has at most MAX_AUTO rows that move on their own (data-rv-carousel="auto"),
+   never two in neighbouring sections — several things moving at once tires a visitor. The rows that suit
+   motion best keep it (partner logos, then photos, then people, then the rest); every other carousel stays a
+   carousel the visitor moves (data-rv-carousel). sections: [{ id, html }] in page order, changed in place. */
+var MAX_AUTO = 2;
+var AUTO_RANK = [/sponsor|partner|logo/i, /glimps|gallery|photo|moment/i, /speaker|jury|people/i];
+function motionBudget(sections) {
+  var autos = [];
+  (sections || []).forEach(function (s, i) {
+    var n = (String(s.html || '').match(/data-rv-carousel\s*=\s*["']auto["']/gi) || []).length;
+    if (n) {
+      var r = AUTO_RANK.map(function (re) { return re.test(s.id); }).indexOf(true);
+      autos.push({ s: s, i: i, rank: r === -1 ? AUTO_RANK.length : r });
+    }
+  });
+  var kept = [];
+  autos.slice().sort(function (a, b) { return a.rank - b.rank || a.i - b.i; }).forEach(function (a) {
+    if (kept.length < MAX_AUTO && !kept.some(function (k) { return Math.abs(k.i - a.i) <= 1; })) kept.push(a);
+  });
+  autos.forEach(function (a) {
+    var html = String(a.s.html), first = true;
+    a.s.html = html.replace(/data-rv-carousel\s*=\s*["']auto["']/gi, function () {
+      /* one moving row in a section at most, and only in a section that keeps its motion */
+      var keep = first && kept.indexOf(a) !== -1;
+      first = false;
+      return keep ? 'data-rv-carousel="auto"' : 'data-rv-carousel';
+    });
+  });
+  return kept.map(function (k) { return k.s.id; });
+}
+
 function ensureLogo(navHtml, logoUrl, eventName) {
   var html = String(navHtml || '');
   if (!logoUrl || !html) return html;
@@ -488,5 +519,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes,
-  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, ET_LOGO, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

@@ -96,6 +96,12 @@ var navMany = '<nav><a href="#hero"><img data-rv-et-logo src="x"></a><a href="#o
 var capped = g.capNavLinks(navMany);
 ok(/Overview/.test(capped) && /Themes/.test(capped) && /Speakers/.test(capped) && /Why Attend/.test(capped) && /Contact/.test(capped) && !/Glimpses/.test(capped) && !/Who Attends/.test(capped) && /Register Now/.test(capped) && /data-rv-et-logo/.test(capped), 'the nav keeps five links (gallery and who-should-attend go first), the button and the logo', capped);
 ok(g.capNavLinks(capped) === capped, 'a nav of five is left as it is');
+var mv = [{ id: 'hero', html: '' }, { id: 'key-topics', html: '<div data-rv-carousel="auto"></div>' }, { id: 'previous-speakers', html: '<div data-rv-carousel="auto"></div>' },
+  { id: 'previous-sponsors', html: '<div data-rv-carousel="auto"></div><div data-rv-carousel="auto"></div>' }, { id: 'previous-glimpses', html: "<div data-rv-carousel='auto'></div>" }, { id: 'faq', html: '' }];
+var keptMv = g.motionBudget(mv);
+ok(JSON.stringify(keptMv) === '["previous-sponsors","key-topics"]', 'two moving rows at most, the logos first, never neighbours', JSON.stringify(keptMv));
+ok(/data-rv-carousel="auto"/.test(mv[3].html) && (mv[3].html.match(/="auto"/g) || []).length === 1, 'one moving row in a section');
+ok(!/auto/.test(mv[2].html) && /data-rv-carousel>/.test(mv[2].html) && !/auto/.test(mv[4].html), 'the others stay carousels the visitor moves');
 var ipAbout = g.imagePrompt('a panel on stage', {}, { about: 'MarTech Summit 2027, marketing technology, Gurugram' });
 ok(/The event: MarTech Summit 2027, marketing technology, Gurugram\./.test(ipAbout) && /4:3/.test(ipAbout), 'a picture is told which event it belongs to', ipAbout);
 

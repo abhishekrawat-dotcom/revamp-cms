@@ -131,6 +131,8 @@ const logoUnit = require('./logo-unit');
 const pngLite = require('./png-lite');
 const svgYear = require('./svg-year');
 const ownerBrief = require('./owner-brief');
+const etPrevious = require('./et-previous');
+const prevSections = require('./prev-sections');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
    lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
@@ -1040,6 +1042,21 @@ function sanitizeSourceDesign(d) {
   };
 }
 
+/* A previous edition's records from ET's event API. The page fetched for the summary may have lost the ids
+   it names (a page read by the rendering service has its scripts taken out), so it is fetched again as a
+   browser would when it names none. -> Promise<PREVIOUS | null>, never rejecting */
+function readEtPrevious(url, html) {
+  function fetchJson(u, headers) {
+    return safeFetch(u, { timeoutMs: 15000, maxBytes: 6 * 1024 * 1024, headers: Object.assign({ accept: 'application/json' }, headers || {}) })
+      .then(function (r) { return r.status === 200 ? JSON.parse(r.body.toString('utf8')) : null; });
+  }
+  var page = etPrevious.idsIn(html).length ? Promise.resolve(html)
+    : safeFetch(url, { timeoutMs: 15000, maxBytes: 4 * 1024 * 1024, headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129 Safari/537.36' } })
+        .then(function (r) { return r.status === 200 ? r.body.toString('utf8') : html; }, function () { return html; });
+  return page.then(function (h) { return etPrevious.readPrevious(url, h, { fetchJson: fetchJson }); })
+    .then(null, function (err) { console.error('ingest-source: previous edition records not read — ' + (err && err.message)); return null; });
+}
+
 function handleIngestSource(req, res) {
   readBody(req, res, function (raw) {
     var payload;
@@ -1096,11 +1113,15 @@ function handleIngestSource(req, res) {
           return kept;
         }).filter(function (c) { return c.kind !== 'inline-svg' || (c.svg && c.svg.length <= 120000); });
         var hints = ownEdition ? logoUnit.editionHints(html, url) : null;
+        /* A previous edition on ET's own platform: its real speakers, sponsors, agenda and photos, read from
+           ET's event API (et-previous.js) beside the summary below — shown as "Previous Edition …" sections. */
+        var previousRead = type === 'previousEdition' && etPrevious.portalOf(url) ? readEtPrevious(url, html) : Promise.resolve(null);
         var editionHints = hints ? {
           title: String(hints.title || '').slice(0, 200), headings: (hints.headings || []).slice(0, 6).map(function (h) { return String(h).slice(0, 200); }),
           years: (hints.years || []).slice(0, 8), editionImage: String(hints.editionImage || '').slice(0, 1000)
         } : null;
-        return llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'ingest-source') }).then(function (r) {
+        return Promise.all([llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton), SOURCE_SECTIONS_SCHEMA, { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'ingest-source') }), previousRead]).then(function (both) {
+          var r = both[0], previous = both[1];
           if (r.error) return sendAiFailure(res, r);
           var sections = (r.parsed.sections || []).slice(0, 25).map(function (s) {
             return { heading: String(s.heading || '').slice(0, 120), body: String(s.body || '').slice(0, 500) };
@@ -1110,10 +1131,12 @@ function handleIngestSource(req, res) {
           return watch.stillThere().then(function () {
             return fb.db.collection('events').doc(eventId).collection('sources').add({
               type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
-              design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now
+              design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
+              previous: previous || null
             });
           }).then(function (sourceRef) {
-            sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone });
+            sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone,
+              previous: previous ? { name: previous.name, speakers: previous.speakers.length, sponsors: previous.sponsors.length, agenda: previous.agenda.length, glimpses: previous.glimpses.length } : null });
           });
         });
       })
@@ -2104,6 +2127,17 @@ function handlePlanStructure(req, res) {
       return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
+        /* the previous edition's real records, as sections the server builds (prev-sections.js): placed before
+           the contact section, or at the end */
+        var prevDoc = sourceDocs.filter(function (d) { return d.type === 'previousEdition' && d.previous; })[0];
+        var prevPlanned = prevDoc ? prevSections.plan(prevDoc.previous).filter(function (x) { return !sections.some(function (y) { return y.id === x.id; }); }) : [];
+        /* the previous edition's real photos stand in for the standard "past edition glimpses" gallery */
+        if (prevPlanned.some(function (x) { return x.prebuilt === 'glimpses'; })) sections = sections.filter(function (x) { return x.id !== 'past-edition-glimpses'; });
+        if (prevPlanned.length) {
+          var at = sections.map(function (x) { return x.kind === 'contact' || /contact/.test(x.id) ? 1 : 0; }).indexOf(1);
+          if (at === -1) at = sections.length;
+          sections.splice.apply(sections, [at, 0].concat(prevPlanned));
+        }
         /* A designed presentation's own colours are not left to the model to remember: they are set here,
            before the palette is checked for contrast. The owner's light/dark choice still wins. */
         var look = brief && brief.visualIdentity && brief.visualIdentity.designed === 'yes' ? brief.visualIdentity : null;
@@ -2416,7 +2450,8 @@ function eventFacts(stored, sent) {
 }
 
 function plannedSectionList(designPlan) {
-  var planned = (designPlan && designPlan.sections) || [];
+  /* the sections the server builds itself (the previous edition's records) are not the model's to write */
+  var planned = ((designPlan && designPlan.sections) || []).filter(function (s) { return !s.prebuilt; });
   return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site: the event\'s logo (or its name when there is no logo) and links to the sections below. Always present.', layout: 'One slim bar on ONE row: the logo at the far left, then at most 5 section links (the ones a visitor most needs) and the button on the right of the same row — never a second row on a desktop. On a phone the links stay in that row and scroll sideways (there is no script to open a menu).' }]
     .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner, built by the server: the ET Business Verticals logo, the event\'s wordmark, one line, date and place, two buttons. Always present, right after nav. Not written by you.', layout: 'Centred, a full screen tall, over the hero picture.' }])
     .concat(planned)
@@ -2469,7 +2504,7 @@ function buildSectionCodePrompt(payload) {
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
     '- MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section\'s heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section\'s root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.',
-    '- CAROUSELS: where a section\'s layout calls for a carousel or slider (a row with more cards, logos, quotes or photos than fit), mark the wrapper with data-rv-carousel (data-rv-carousel="auto" to make it advance by itself) and the element that directly holds the items with data-rv-carousel-track. Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
+    '- CAROUSELS: any section with a row of more items than fit may be a carousel — speakers, partner logos, photos, testimonials, and also discussion topics, tracks or reasons to attend when there are many — but only where it suits the content; a short list is better laid out in full. Mark the wrapper with data-rv-carousel and the element that directly holds the items with data-rv-carousel-track. MOVING ON ITS OWN (data-rv-carousel="auto") is for logos and photos only, and at most one in what you write: many things moving at once tires a visitor (the server keeps no more than two on a page, never in neighbouring sections). Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
   ];
 
   if (reference.type && reference.type !== 'none' && reference.design) {
@@ -2589,7 +2624,7 @@ function sanitizeGeneratedSectionCss(css) {
 // every other best-effort AI step in this file.
 function sanitizeSectionCodeResult(parsed, designPlan) {
   var plannedList = [{ id: 'nav', kind: 'nav' }, { id: 'hero', kind: 'hero' }]
-    .concat((designPlan.sections || []).map(function (s) { return { id: s.id, kind: s.kind }; }))
+    .concat((designPlan.sections || []).filter(function (s) { return !s.prebuilt; }).map(function (s) { return { id: s.id, kind: s.kind }; }))
     .concat([{ id: 'footer', kind: 'footer' }]);
 
   var returnedMap = {};
@@ -2721,6 +2756,19 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         if (sec.id === 'nav' || sec.id === 'footer') sec.html = genDesign.ensureEtLogo(sec.html, design.mode, sec.id);
         if (sec.id === 'nav') sec.html = genDesign.capNavLinks(sec.html);
       });
+      /* the previous edition's sections, built here from its real records (prev-sections.js), each in its
+         planned place */
+      var prevDoc = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.previous; })[0];
+      planned.filter(function (x) { return x.prebuilt; }).forEach(function (x) {
+        var built = prevDoc ? prevSections.build(x.prebuilt, prevDoc.previous, {}) : null;
+        if (!built) return;
+        var at = sections.length - (sections.length && sections[sections.length - 1].id === 'footer' ? 1 : 0);
+        var order = planned.map(function (y) { return y.id; }), mine = order.indexOf(x.id);
+        for (var i = 0; i < sections.length; i++) { var o = order.indexOf(sections[i].id); if (o > mine) { at = i; break; } }
+        sections.splice(at, 0, { id: x.id, kind: 'custom', html: built.html, css: genDesign.clampFontSizes(scopeSectionCss(built.css, x.id, sectionRootInfo(built.html))) });
+      });
+      /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
+      genDesign.motionBudget(sections);
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();
 
