@@ -118,6 +118,9 @@ var VECTORS = [
   { field: PHONE, value: '123456789012345', expect: { value: '123456789012345' } },
   { field: PHONE, value: '1234567890123456', expect: { error: 'Please enter a valid phone number, with its country code.' } },
   { field: PHONE, value: '98765-abc-43', expect: { error: 'Please enter a valid phone number, with its country code.' } },
+  { field: PHONE, value: { country: 'DO', number: '829 555 1234' }, expect: { value: '+18295551234' } },
+  { field: PHONE, value: { country: 'DO', number: '709 555 1234' }, expect: { error: 'Please enter a valid phone number for Dominican Republic: 10 digits after +1.' } },
+  { field: PHONE, value: { country: 'IN', number: '\uFF19\uFF18\uFF17\uFF16\uFF15\uFF14\uFF13\uFF12\uFF11\uFF10' }, expect: { value: '+919876543210' } },
   // first and last names
   { field: FIRST, value: '', expect: { error: 'Please enter your first name.' } },
   { field: LAST, value: ' ', expect: { error: 'Please enter your last name.' } },

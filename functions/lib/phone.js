@@ -9,7 +9,7 @@
 //
 // The table: one country per entry, "CC|Name|dial|min|max|lead" — its ISO code, its name, its dialling code,
 // how many digits its own numbers have (the national significant number: no 0 in front, no country code)
-// and, when fixed, what they start with (a regular-expression fragment). India first, then A–Z. It is made by
+// and, when fixed, what they start with (a regular-expression fragment, which may itself hold "|": "809|829|849"). India first, then A–Z. It is made by
 // tools/build-places.js (from GeoNames' country list and the ITU numbering plans): edit it there.
 'use strict';
 
@@ -78,7 +78,7 @@ var LIST = [], BY_CC = {}, BY_DIAL = {};
 PHONE_DATA.split(';').forEach(function (e) {
   var p = e.split('|');
   if (p.length < 6) return;
-  var c = { cc: p[0], name: p[1], dial: p[2], min: +p[3], max: +p[4], lead: p[5] };
+  var c = { cc: p[0], name: p[1], dial: p[2], min: +p[3], max: +p[4], lead: p.slice(5).join('|') };
   c.leadRe = c.lead ? new RegExp('^(?:' + c.lead + ')') : null;
   LIST.push(c);
   BY_CC[c.cc] = c;
@@ -152,7 +152,8 @@ function cleanPhone(raw) {
     }
   } else text = raw;
   if (typeof text === 'number' && isFinite(text)) text = String(text);
-  text = typeof text === 'string' ? text.replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) : '';
+  text = typeof text === 'string' ? text.replace(/[\uFF10-\uFF19\uFF0B]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); })
+    .replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) : '';
   var digits = text.replace(/\D/g, '');
   if (!digits) return text ? { error: phoneMessage(picked) } : { empty: true };
   if (/[^\d\s().+\-\/]/.test(text)) return { error: phoneMessage(picked) };
