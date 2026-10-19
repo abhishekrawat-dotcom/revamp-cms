@@ -46,9 +46,16 @@ ok(core.clean(Object.assign({}, HV, { url: 'https://x/a.mp4" onload="x' })) === 
 ok(core.clean(Object.assign({}, HV, { contentType: 'video/quicktime' })) === null, 'only MP4 and WebM');
 ok(core.clean(Object.assign({}, HV, { posterUrl: 'data:image/png;base64,xx' })).posterUrl === '', 'a still picture that is not an https address is dropped');
 
+/* a colour that would need more than the strongest overlay an owner may set cannot be used at all */
+(function () {
+  var red = core.overlayFor({ mode: 'custom', color: '#ff0000', opacity: 0.9 }, { tone: 'light' });
+  ok(red.needed === null && !red.readable, 'dark words on red would need more than 90%: no strength is offered', JSON.stringify(red));
+  ok(core.minOpacity('#ffffff', 'dark') != null && core.minOpacity('#000000', 'light') != null, 'white under dark words and black under white words always work');
+})();
 var tag = core.videoTag(core.clean(HV));
 ok(/preload="none"/.test(tag) && /\smuted\s/.test(tag) && /\sloop\s/.test(tag) && /\splaysinline\s/.test(tag), 'the video tag waits, is silent and loops', tag);
 ok(!/\ssrc=/.test(tag) && /data-rv-src="https:\/\/storage/.test(tag) && !/data-src=/.test(tag), 'no src: nothing downloads with the page (and nothing the ET banner widget would load)');
+ok(!/\sposter=/.test(tag), 'no poster attribute: the still is its own picture (with its WebP copy), and a poster would be fetched again even where the video is hidden', tag);
 ok(!/autoplay|controls/.test(tag) && /aria-hidden="true"/.test(tag) && /tabindex="-1"/.test(tag), 'no autoplay attribute, no controls, out of the reading order');
 ok(/width="1350" height="600"/.test(core.heroLayer(core.clean(HV))) && /fetchpriority="high"/.test(core.heroLayer(core.clean(HV))), 'the AI hero\'s still has its size and loads first');
 
@@ -224,6 +231,7 @@ ok(published.indexOf('rv-hv-video') === -1, 'the stored published page does not 
   ok(/<img class="banner-bg-image" src="[^"]*p\.jpg"[^>]*srcset="[^"]*p\.jpg\.rv-11111111[^"]*w1350\.webp 1x"/.test(served), 'the still has its own copy', served);
   ok(served.indexOf('<link rel="preload" as="image" type="image/webp" href="' + stillWebp + '" fetchpriority="high" data-rv-hero-video>') !== -1 && served.indexOf('href="' + BASE + STILL + '" fetchpriority') === -1,
     'the still\'s preload names the copy the page shows (not the original as well)', served);
+  ok(!/<video\b[^>]*\sposter=/.test(served), 'the served video names no poster: the original still is not fetched beside its copy', served);
   ok(hooks.heroVideoPictures(served, pics) === served, 'twice: the same page');
   /* an AI hero whose background picture is preloaded: the still covers it, so its preload goes */
   var aiPage = P.rewriteHtml('<html><head></head><body><style data-rv-style="hero">.hero-root{background-image:url("' + BASE + HEROBG + '")}</style>' +

@@ -136,14 +136,18 @@
 
     /* ---------- rendering ---------- */
     function facts(v) {
-      var bits = [clock(v.duration)];
+      var bits = [v.duration > 0 && v.duration < 10 ? (Math.round(v.duration * 10) / 10) + ' s' : clock(v.duration)];
       if (v.width && v.height) bits.push(v.width + '×' + v.height);
       if (v.codec) bits.push(v.codec);
-      bits.push(mb(v.size));
+      bits.push(v.size < 1048576 ? Math.max(1, Math.round(v.size / 1024)) + ' KB' : mb(v.size));
       return bits.join(' · ');
     }
     function advice(v) {
       var L = (answer && answer.limits) || HV().LIMITS, out = [];
+      /* the banner is wide on every screen that plays the video (phones get the still): an upright or square
+         video is cut to a band across its middle */
+      if (v.width && v.height && v.width / v.height < 1.3) out.push('It is ' + (v.width < v.height ? 'upright' : 'nearly square') + ' (' + v.width + '×' + v.height + '). The banner is wide, so only a band across the middle of it shows. A landscape (16:9) video fills it better.');
+      if (v.duration > 0 && v.duration < 3) out.push('At ' + (Math.round(v.duration * 10) / 10) + ' seconds the loop repeats very often, which visitors notice. A loop of 10 to ' + L.adviseSeconds + ' seconds looks calmer.');
       if (v.hasAudio) out.push('It has a sound track, which is never played. Exporting it without sound makes the file smaller.');
       if (v.size > L.adviseBytes) out.push('At ' + mb(v.size) + ' it is large for a banner: under ' + mb(L.adviseBytes) + ' starts sooner for visitors.');
       if (v.duration > L.adviseSeconds) out.push('A loop of 10 to ' + L.adviseSeconds + ' seconds is usually enough, and makes a smaller file.');
@@ -534,7 +538,11 @@
     var st = doc.createElement('style');
     st.setAttribute('data-rv-editor', '');
     st.setAttribute('data-rv-hv-preview', '');
-    st.textContent = core.editorCss({ host: host ? 'banner' : 'hero', overlay: core.overlayFor(hv.overlay, look), poster: !!hv.posterUrl });
+    /* as the page has it (lib/api.js applyHeroVideo): a colour that leaves this banner's words unreadable (chosen
+       before a redesign changed their tone) is not used, the automatic overlay stands in */
+    var overlay = core.overlayFor(hv.overlay, look);
+    if (!overlay.readable) overlay = core.overlayFor({ mode: 'auto' }, look);
+    st.textContent = core.editorCss({ host: host ? 'banner' : 'hero', overlay: overlay, poster: !!hv.posterUrl });
     (doc.head || doc.documentElement).appendChild(st);
     return true;
   }

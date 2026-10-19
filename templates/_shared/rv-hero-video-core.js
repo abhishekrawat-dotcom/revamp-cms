@@ -24,10 +24,10 @@
      hexOf(c) -> '#rrggbb'
      luminance(c) -> 0–1                                 WCAG relative luminance of { r, g, b }
      contrast(a, b) -> ratio                             WCAG, of two { r, g, b }
-     minOpacity(colour, ink) -> 0–1 | null               the least overlay opacity that keeps text of `ink`
+     minOpacity(colour, ink) -> 0–LIMITS.maxOpacity | null   the least overlay opacity that keeps text of `ink`
                                                          ('light' | 'dark') at 4.5:1 over the worst frame a
                                                          video can show under it (white for light text, black
-                                                         for dark); null when no opacity of that colour can
+                                                         for dark); null when no opacity an owner may set can
      inkFor(tone) -> { r, g, b }                         the text a light / dark hero is set in
      overlayFor(overlay, look) -> { color, opacity, rgba, ink, readable, needed }
                                                          look: { tone: 'light'|'dark', scrim: 'rgba(…)'|'' }
@@ -101,7 +101,9 @@
     if (!c) return null;
     var text = ink === 'dark' ? INK.dark : INK.light;
     var worst = ink === 'dark' ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 };
-    for (var i = 0; i <= 100; i++) {
+    /* never above the strongest overlay an owner may set: a colour that needs more cannot be used at all (asking
+       for "at least 95%" next to a slider that stops at 90% would be a request nobody can meet) */
+    for (var i = 0; i <= Math.round(LIMITS.maxOpacity * 100); i++) {
       if (contrast(over(c, i / 100, worst), text) >= 4.5) return i / 100;
     }
     return null;
@@ -200,10 +202,14 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   /* Written without a src: nothing is downloaded with the page; rv-hero-video.js sets it when (and only when)
-     this visitor will see it play. No sound, ever: muted, and no controls. */
+     this visitor will see it play. No sound, ever: muted, and no controls.
+     No poster attribute either: the still is a picture of its own under the video (the AI hero's .rv-hv-poster,
+     the ET banner's img.banner-bg-image), which gets the WebP copy and the preload, and the video itself is
+     invisible until it plays. A browser fetches a poster even for a hidden video, so one here would download the
+     original of the still a second time on every visit, phones included. */
   function videoTag(hv, cls) {
     return '<video class="' + esc(cls || 'rv-hv-video') + '" data-rv-bg-video data-rv-hero-video muted loop playsinline disablepictureinpicture disableremoteplayback' +
-      ' preload="none" tabindex="-1" aria-hidden="true"' + (hv.posterUrl ? ' poster="' + esc(hv.posterUrl) + '"' : '') +
+      ' preload="none" tabindex="-1" aria-hidden="true"' +
       ' data-rv-src="' + esc(hv.url) + '" data-type="' + esc(hv.contentType) + '"></video>';
   }
 
