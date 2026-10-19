@@ -6,6 +6,7 @@
 //   GET    /api/event/registrations     handleRegistrationsList   admin
 //   PATCH  /api/event/registrations     handleRegistrationUpdate  admin
 //   DELETE /api/event/registrations     handleRegistrationDelete  admin
+//   GET    /api/event/registrations/export  handleRegistrationsExport  admin — CSV
 //   POST   /api/track                   handleTrack               public — one page view
 //   GET    /api/event/dashboard-stats   handleDashboardStats      admin
 //   GET    /api/insights                handleInsights            admin
@@ -20,19 +21,31 @@
 // would get slower and dearer with every sign-up, so nothing here counts on read. Every write that changes
 // a number changes the stored totals in the SAME transaction as the registration itself:
 //
-//   events/<id>.counters                    registrations, confirmed, waitlist, cancelled, checkedIn  (all-time)
-//                                           views, uniques, mobile, desktop                            (all-time)
-//                                           audienceV: 1   — "the registration totals above are maintained"
-//   events/<id>/stats/<YYYY-MM-DD>          views, uniques, mobile, desktop, registrations, ref{...}   (that day)
-//   events/<id>/aggregates/registrations    company / designation / city / source / device:
+//   events/<id>.counters                    registrations, confirmed, waitlist, pending, rejected,
+//                                           cancelled, checkedIn                       (all-time, counted forms only)
+//                                           submissions                                (all-time, every form)
+//                                           forms: { <formId>: { n, pending } }        (all-time, per form)
+//                                           views, uniques, mobile, desktop            (all-time)
+//                                           audienceV: 2   — "the registration totals above are maintained"
+//   events/<id>/stats/<YYYY-MM-DD>          views, uniques, mobile, desktop, registrations (counted forms),
+//                                           submissions (every form), ref{...}         (that day)
+//   events/<id>/aggregates/registrations    company / designation / city / source / device (counted forms):
 //                                           { <key>: { l: label, c: count } }
+//
+// A site has several FORMS (lib/forms.js, lib/api-forms.js): "Register now", "Express interest", "Join as
+// partner", "VIP delegates"… Every response to every form is a document under events/<id>/registrations
+// with its formId. Only the responses to a form that "counts as a registration" (its countsAsRegistration,
+// snapshotted on the response as `counts`) are registrations: they alone are in the registration totals,
+// the capacity and the breakdowns. Every response is a "submission". A form that "needs approval" stores
+// its responses as `pending` until the organiser approves (confirmed) or declines (rejected) them.
 //
 // so a stats request is the event document, one small aggregates document and at most `days` daily
 // documents, however many people registered. Days are India days (see dayKey).
 //
-// Events that collected registrations before this module existed have no `audienceV` marker. Their totals
-// are worked out from the registrations themselves: in memory for a read (a GET never writes), and written
-// down once — rebuildAudience() — just before the first write that needs them.
+// Events that collected registrations before these totals existed (no `audienceV` marker, or the first
+// version's 1, which had no forms) have their totals worked out from the registrations themselves: in
+// memory for a read (a GET never writes), and written down once — rebuildAudience() — just before the
+// first write that needs them.
 //
 // Nothing in here may throw into a stream or promise callback: an exception nobody catches ends the
 // server process. Every handler body runs inside guard(), every promise chain ends in a catch that
@@ -47,13 +60,16 @@ const {
   sendPublicNoContent, clientIp, rateLimit, isEventId, isEmail, CONTENT_STATUSES, str
 } = require('./http');
 const { logActivity, listActivity, actorOf } = require('./activity');
+const forms = require('./forms');
 
 const FieldValue = admin.firestore.FieldValue;
 const FieldPath = admin.firestore.FieldPath;
 
 var NOT_AVAILABLE = 'This event is not available.';
 var UNAVAILABLE = 'The service is temporarily unavailable. Please try again in a moment.';
-var REG_STATUSES = ['confirmed', 'waitlist', 'cancelled'];
+var REG_STATUSES = ['confirmed', 'waitlist', 'pending', 'rejected', 'cancelled'];
+var AUDIENCE_V = 2;
+var DEFAULT_FORM_ID = forms.DEFAULT_FORM_ID;
 
 /* ---------- small shared pieces ---------- */
 
@@ -88,6 +104,10 @@ function query(req) { return new URLSearchParams(String(req.url || '').split('?'
 function validEventId(v) { return isEventId(v) && v.indexOf('import-') !== 0; }
 
 function eventDoc(fb, eventId) { return fb.db.collection('events').doc(eventId); }
+
+/* lib/api-forms.js (an event's forms) builds on this module's helpers, so it is required where it is used,
+   never at the top: the two load in either order. */
+function formsApi() { return require('./api-forms'); }
 
 /* The event's data, or null when there is no such event as far as anybody outside is concerned — the
    same rule lib/api.js (eventStateOf) and lib/api-events.js (isTaken) use. A deleted event keeps its
@@ -248,51 +268,91 @@ function dateLabel(ev) {
 }
 
 /* ---------- registration settings ----------
-   event.settings.registration, read defensively (it is whatever a PATCH stored) into the one shape the
-   public form and POST /api/register both use — so the form can never ask for something the route then
-   ignores, or the other way round. Name and e-mail are always asked and always required. Until an event
-   owner chooses otherwise: phone, company and designation are asked but optional, city is not asked. */
-var OPTIONAL_FIELDS = [
-  { key: 'phone', label: 'Phone number', type: 'tel', show: true, ask: 'your phone number' },
-  { key: 'company', label: 'Company', type: 'text', show: true, ask: 'your company' },
-  { key: 'designation', label: 'Designation', type: 'text', show: true, ask: 'your designation' },
-  { key: 'city', label: 'City', type: 'text', show: false, ask: 'your city' }
-];
-var DEFAULT_SUCCESS = 'You are registered. We look forward to seeing you there.';
-var WAITLIST_MESSAGE = 'This event is full, so you have been added to the waitlist. We will be in touch if a place opens up.';
-
-function registrationSettings(ev) {
-  var r = isObj(ev.settings) && isObj(ev.settings.registration) ? ev.settings.registration : {};
-  var set = isObj(r.fields) ? r.fields : {};
-  var fields = [
-    { key: 'name', label: 'Full name', type: 'text', required: true },
-    { key: 'email', label: 'Email', type: 'email', required: true }
-  ];
-  OPTIONAL_FIELDS.forEach(function (f) {
-    var s = set[f.key], show = f.show, required = false;
-    if (typeof s === 'boolean') show = s;
-    else if (isObj(s)) {
-      if (typeof s.show === 'boolean') show = s.show;
-      required = s.required === true;
-    }
-    if (show) fields.push({ key: f.key, label: f.label, type: f.type, required: required });
-  });
-  var capacity = Number(r.capacity), target = Number(r.target);
-  return {
-    open: r.open !== false,
-    duplicates: r.duplicates === 'allow' ? 'allow' : 'reject',
-    capacity: isFinite(capacity) && capacity > 0 ? Math.floor(capacity) : null,
-    target: isFinite(target) && target > 0 ? Math.floor(target) : null,
-    successMessage: multiline(r.successMessage, 600) || DEFAULT_SUCCESS,
-    fields: fields
-  };
-}
+   The event-wide switches every form shares — settings.registration { open, capacity, target,
+   defaultFormId } — and the original single form's fields / successMessage / duplicates, which only the
+   lazy move to forms still reads (lib/forms.js legacyRegistration). Each form's own questions and
+   wording are its form document (lib/forms.js, lib/api-forms.js). */
+var DEFAULT_SUCCESS = forms.DEFAULT_SUCCESS;
+var WAITLIST_MESSAGE = forms.WAITLIST_MESSAGE;
+var CLOSED_MESSAGE = 'Registration for this event is closed.';
+var FORM_CLOSED_MESSAGE = 'This form is not taking responses at the moment.';
+var FORM_MISSING_MESSAGE = 'This form is no longer available.';
+var DUPLICATE_MESSAGE = 'This email has already been used for this form.';
+function registrationSettings(ev) { return forms.legacyRegistration(ev || {}); }
 
 /* ---------- counters ---------- */
 
-function hasAudienceCounters(ev) { return isObj(ev.counters) && ev.counters.audienceV === 1; }
+function hasAudienceCounters(ev) { return isObj(ev.counters) && ev.counters.audienceV === AUDIENCE_V; }
 function num(v) { var n = Number(v); return isFinite(n) && n > 0 ? Math.floor(n) : 0; }
 function normStatus(s) { return REG_STATUSES.indexOf(s) !== -1 ? s : 'confirmed'; }
+
+/* What one response adds to the event's totals: every response is a submission and one of its form's
+   responses; only a response to a counted form (counts !== false — so a response from before forms is
+   one) is a registration, in its status, checked in or not. */
+var COUNTED_KEYS = ['registrations', 'confirmed', 'waitlist', 'pending', 'rejected', 'cancelled', 'checkedIn'];
+function contribution(doc) {
+  if (!doc) return null;
+  var status = normStatus(doc.status), formId = doc.formId || DEFAULT_FORM_ID;
+  var c = { submissions: 1, forms: {} };
+  c.forms[formId] = { n: 1, pending: status === 'pending' ? 1 : 0 };
+  if (doc.counts !== false) {
+    c.registrations = 1;
+    c[status] = 1;
+    if (doc.checkedInAt) c.checkedIn = 1;
+  }
+  return c;
+}
+/* How the totals move when a response goes from oldDoc to newDoc (null: it did not exist / no longer
+   does): { registrations, <status>, checkedIn, submissions: ±n, forms: { <formId>: { n, pending: ±n } } },
+   leaving out whatever does not move. Create, change and delete all use it, so they cannot disagree. */
+function counterDelta(oldDoc, newDoc) {
+  var out = { forms: {} };
+  addDelta(out, contribution(oldDoc), -1);
+  addDelta(out, contribution(newDoc), 1);
+  return pruneDelta(out);
+}
+function addDelta(into, c, sign) {
+  if (!c) return into;
+  sign = sign || 1;
+  Object.keys(c).forEach(function (k) {
+    if (k !== 'forms') { into[k] = (into[k] || 0) + sign * c[k]; return; }
+    Object.keys(c.forms).forEach(function (id) {
+      var f = into.forms[id] || (into.forms[id] = { n: 0, pending: 0 });
+      f.n += sign * (c.forms[id].n || 0);
+      f.pending += sign * (c.forms[id].pending || 0);
+    });
+  });
+  return into;
+}
+function pruneDelta(d) {
+  Object.keys(d).forEach(function (k) { if (k !== 'forms' && !d[k]) delete d[k]; });
+  Object.keys(d.forms).forEach(function (id) {
+    var f = d.forms[id];
+    if (!f.n) delete f.n;
+    if (!f.pending) delete f.pending;
+    if (!Object.keys(f).length) delete d.forms[id];
+  });
+  return d;
+}
+/* A delta as the arguments of a Firestore update: [FieldPath, increment, …]. A form's own counters are
+   addressed by FieldPath, never by a dotted string (form ids have hyphens). `extra`: more [path, value]. */
+function counterWrites(delta, extra) {
+  var out = [];
+  Object.keys(delta).forEach(function (k) {
+    if (k !== 'forms' && delta[k]) out.push(new FieldPath('counters', k), FieldValue.increment(delta[k]));
+  });
+  Object.keys(delta.forms || {}).forEach(function (id) {
+    ['n', 'pending'].forEach(function (x) {
+      if (delta.forms[id][x]) out.push(new FieldPath('counters', 'forms', id, x), FieldValue.increment(delta.forms[id][x]));
+    });
+  });
+  (extra || []).forEach(function (pair) { out.push(pair[0], pair[1]); });
+  return out;
+}
+function applyCounters(tx, ref, delta, extra) {
+  var w = counterWrites(delta, extra);
+  if (w.length) tx.update.apply(tx, [ref].concat(w));
+}
 
 /* The breakdown lists (company, designation, city, source, device) are kept as maps in ONE document, so
    they have to stay well inside Firestore's 1 MiB per document whatever people type. Each list holds at
@@ -334,34 +394,35 @@ function topList(dim, n) {
     .slice(0, n || 10);
 }
 
-/* A registration made while its event rejects duplicate e-mails is stored under an id derived from the
-   e-mail (emailDocId), so "is this address registered?" is one document read. Registrations stored any
-   other way — while the event allowed duplicates, or by the route this module replaced — have other ids
-   and can only be found by a query; counters.looseIds records that an event has (or may have) some, so
-   that only those events pay for the query on every registration. */
-var EMAIL_ID_PREFIX = 'em-';
+/* A response made while its form rejects duplicate e-mails is stored under an id derived from the form and
+   the e-mail (forms.regDocId: "em-…" for the form "register", which keeps the original single form's ids,
+   "fm-…" for every other form), so "has this address answered this form?" is one document read.
+   Responses stored any other way — while their form allowed duplicates, or by the route this module
+   replaced — have other ids and can only be found by a query; counters.looseIds records that an event has
+   (or may have) some, so that only those events pay for the query on every registration. */
+var EMAIL_ID_PREFIX = 'em-', FORM_ID_PREFIX = 'fm-';
 
 function audienceRefs(fb, eventId) {
   var e = eventDoc(fb, eventId);
   return { event: e, regs: e.collection('registrations'), stats: e.collection('stats'), agg: e.collection('aggregates').doc('registrations') };
 }
 
-/* Totals worked out from the registrations themselves — for events from before the totals were kept.
-   Reads only the handful of fields it needs. */
+/* Totals worked out from the responses themselves — for events from before the totals were kept (or kept
+   without forms). Reads only the handful of fields it needs. */
 function scanAudience(fb, eventId) {
   return audienceRefs(fb, eventId).regs
-    .select('status', 'checkedInAt', 'createdAt', 'company', 'designation', 'city', 'source', 'utm', 'device').get()
+    .select('status', 'checkedInAt', 'createdAt', 'company', 'designation', 'city', 'source', 'utm', 'device', 'formId', 'counts').get()
     .then(function (snap) {
-      var counters = { registrations: 0, confirmed: 0, waitlist: 0, cancelled: 0, checkedIn: 0 };
-      var days = {}, agg = {}, looseIds = false;
+      var counters = { registrations: 0, confirmed: 0, waitlist: 0, pending: 0, rejected: 0, cancelled: 0, checkedIn: 0, submissions: 0, forms: {} };
+      var days = {}, subDays = {}, agg = {}, looseIds = false;
       AGG_DIMS.forEach(function (d) { agg[d] = {}; });
       snap.docs.forEach(function (doc) {
         var r = doc.data() || {};
-        if (doc.id.indexOf(EMAIL_ID_PREFIX) !== 0) looseIds = true;
-        counters.registrations++;
-        counters[normStatus(r.status)]++;
-        if (r.checkedInAt) counters.checkedIn++;
+        if (doc.id.indexOf(EMAIL_ID_PREFIX) !== 0 && doc.id.indexOf(FORM_ID_PREFIX) !== 0) looseIds = true;
+        addDelta(counters, contribution(r), 1);
         var day = dayOfIso(r.createdAt);
+        if (day) subDays[day] = (subDays[day] || 0) + 1;
+        if (r.counts === false) return;
         if (day) days[day] = (days[day] || 0) + 1;
         var vals = aggValues(r);
         AGG_DIMS.forEach(function (d) {
@@ -371,7 +432,7 @@ function scanAudience(fb, eventId) {
           agg[d][slot.key].c++;
         });
       });
-      return { counters: counters, days: days, agg: agg, looseIds: looseIds };
+      return { counters: counters, days: days, subDays: subDays, agg: agg, looseIds: looseIds };
     });
 }
 
@@ -387,14 +448,18 @@ function rebuildAudience(fb, eventId) {
       return tx.get(refs.event).then(function (snap) {
         if (!snap.exists) throw httpError(404, NOT_AVAILABLE);
         if (hasAudienceCounters(snap.data() || {})) return;
-        var patch = { 'counters.audienceV': 1, 'counters.looseIds': scan.looseIds };
-        Object.keys(scan.counters).forEach(function (k) { patch['counters.' + k] = scan.counters[k]; });
+        var patch = { 'counters.audienceV': AUDIENCE_V, 'counters.looseIds': scan.looseIds };
+        // every total is written, zeros included: a total from the version before must not survive
+        COUNTED_KEYS.concat(['submissions']).forEach(function (k) { patch['counters.' + k] = scan.counters[k] || 0; });
+        patch['counters.forms'] = scan.counters.forms;
         tx.update(refs.event, patch);
         tx.set(refs.agg, scan.agg);
         // a transaction has a ceiling on writes; an event old enough to have more registration days than
         // this keeps its most recent ones on the chart (its totals are exact either way)
-        Object.keys(scan.days).sort().slice(-400).forEach(function (day) {
-          tx.set(refs.stats.doc(day), { date: day, registrations: scan.days[day] }, { merge: true });
+        var dayKeys = Object.keys(scan.subDays);
+        Object.keys(scan.days).forEach(function (d) { if (dayKeys.indexOf(d) === -1) dayKeys.push(d); });
+        dayKeys.sort().slice(-400).forEach(function (day) {
+          tx.set(refs.stats.doc(day), { date: day, registrations: scan.days[day] || 0, submissions: scan.subDays[day] || 0 }, { merge: true });
         });
       });
     });
@@ -442,7 +507,16 @@ function weightOf(v) { return typeof v === 'number' && isFinite(v) ? v : line(v,
 
 function buildSiteData(fb, eventId, ev) {
   var ref = eventDoc(fb, eventId);
-  return Promise.all(CONTENT.map(function (name) { return ref.collection(name).get(); })).then(function (snaps) {
+  /* the event's default form, for the registration block below (its shape is the one from before forms;
+     the forms themselves are GET /api/public/forms). A failure there costs that block, never the page. */
+  var defaultForm = formsApi().loadForms(fb, eventId, ev).then(function (r) {
+    return r.forms.filter(function (f) { return f.id === r.defaultFormId; })[0] || r.forms[0];
+  }).catch(function (err) {
+    console.error('audience: the forms of ' + eventId + ' could not be read for its site data — ' + (err && err.message));
+    return forms.legacyDefaultForm(ev);
+  });
+  return Promise.all(CONTENT.map(function (name) { return ref.collection(name).get(); }).concat([defaultForm])).then(function (snaps) {
+    var mainForm = snaps[CONTENT.length] || forms.legacyDefaultForm(ev);
     var rec = {}, updatedAt = String(ev.updatedAt || ev.createdAt || '');
     CONTENT.forEach(function (name, i) {
       rec[name] = snaps[i].docs.map(function (d) {
@@ -463,7 +537,6 @@ function buildSiteData(fb, eventId, ev) {
     speakers.forEach(function (s) { visibleSpeaker[s.id] = true; });
 
     var settings = registrationSettings(ev);
-    var counters = isObj(ev.counters) ? ev.counters : {};
     var social = (isObj(ev.settings) && Array.isArray(ev.settings.social) ? ev.settings.social : []).map(function (s) {
       return isObj(s) ? { kind: line(s.kind, 20).toLowerCase(), url: linkUrl(s.url) } : null;
     }).filter(function (s) { return s && s.url && SOCIAL_KINDS.indexOf(s.kind) !== -1; });
@@ -477,13 +550,14 @@ function buildSiteData(fb, eventId, ev) {
         /* the description's headings are the owner's brief for the AI, never shown (owner-brief.js) */
         description: multiline(ownerBrief.withoutHeadings(ev.description), 8000), logoUrl: imageUrl(ev.logoUrl, false)
       },
+      /* kept in the shape it had before forms (nothing reads it now): the event's default form */
       registration: {
-        open: settings.open,
+        open: settings.open && mainForm.open !== false,
         paid: false,                 // online payment is not available; every event registers free
         // true once the confirmed places are all taken: the form still works, and says "waitlist"
-        waitlist: settings.capacity != null && hasAudienceCounters(ev) && num(counters.confirmed) >= settings.capacity,
-        fields: settings.fields,
-        successMessage: settings.successMessage
+        waitlist: forms.isFull(ev),
+        fields: mainForm.fields.map(function (f) { return { key: f.id, label: f.label, type: f.type, required: !!f.required }; }),
+        successMessage: mainForm.successMessage
       },
       speakers: speakers,
       speakerGroups: rec.speakerGroups.map(function (g) { return { id: g.id, name: line(g.name, 200), order: order(g) }; }),
@@ -824,17 +898,22 @@ function handleSeed(req, res) {
 
 /* =====================================================================================================
    REGISTER — POST /api/register
-   The one route anybody on the internet can write through. In order, cheapest check first, so that a
-   request that is going to be refused costs as little as possible:
-     per-address rate limit -> 32 KB body cap -> a JSON object -> honeypot -> what was typed is valid
-     -> the event exists and is published (or this is an admin's test from the preview) -> registration
-     is open -> the fields this event requires -> then ONE transaction that decides duplicate / capacity
-     and stores the registration together with every total it changes.
-   Errors are read by visitors, in the form, next to the field: { error, code, fields: { key: message } }.
+   The one route anybody on the internet can write through. Body { eventId, formId?, answers: { fieldId:
+   value }, website, source?, utm?, ref?, preview? }: a response to one of the event's forms (no formId: its
+   default form). A page from before forms sends name / email / phone / company / designation / city at the
+   top level and no `answers`; that is read as the answers it is. In order, cheapest check first, so that
+   a request that is going to be refused costs as little as possible:
+     per-address rate limit -> 32 KB body cap -> a JSON object -> honeypot -> per-event-and-address limit
+     -> the event exists and is published (or this is an admin's test from the preview) -> registration is
+     open -> the form exists and takes responses -> the answers are what the form asks for -> then ONE
+     transaction that decides duplicate / approval / capacity and stores the response together with every
+     total it changes.
+   Errors are read by visitors, in the form, next to the field: { error, code, fields: { fieldId: message } }.
    ===================================================================================================== */
 
 var MAX_REGISTER_BODY = 32 * 1024;
 var REGISTER_LIMIT = 30, REGISTER_WINDOW_MS = 5 * 60 * 1000;     // per address; an office behind one address can still sign up
+var REGISTER_EVENT_LIMIT = 10;                                    // per address and event, in the same window
 
 function deviceClass(req) {
   var ua = String((req.headers && req.headers['user-agent']) || '');
@@ -856,120 +935,124 @@ function referrerHost(req, given) {
   return h && h !== own ? h : '';
 }
 
-/* One registration per e-mail is enforced by the document's own id: the same address always maps to the
-   same document, so two identical requests at the same instant are two transactions on one document and
-   Firestore lets exactly one of them create it. */
-function emailDocId(email) { return EMAIL_ID_PREFIX + crypto.createHash('sha256').update(email).digest('hex').slice(0, 40); }
-
 function registerError(status, message, code, fields) {
   var extra = { code: code };
   if (fields) extra.fields = fields;
   return httpError(status, message, extra);
 }
-
-/* What was typed, cleaned, plus every problem with it (independent of the event's settings). */
-function readRegistration(body) {
-  var utm = isObj(body.utm) ? body.utm : {};
-  var reg = {
-    name: line(body.name, 120), email: line(body.email, 200).toLowerCase(), phone: line(body.phone, 40),
-    company: line(body.company, 120), designation: line(body.designation, 120), city: line(body.city, 80),
-    source: line(body.source, 60).toLowerCase() || 'website',
-    utm: { source: line(utm.source, 80), medium: line(utm.medium, 80), campaign: line(utm.campaign, 120) }
-  };
-  var errors = {};
-  if (!reg.name) errors.name = 'Please enter your name.';
-  if (!reg.email) errors.email = 'Please enter your email address.';
-  else if (!isEmail(reg.email)) errors.email = 'Please enter a valid email address.';
-  if (reg.phone && !isPhone(reg.phone)) errors.phone = 'Please enter a valid phone number.';
-  return { reg: reg, errors: errors };
-}
-
-function firstError(errors, fields) {
-  var order = ['name', 'email'].concat(OPTIONAL_FIELDS.map(function (f) { return f.key; }));
-  for (var i = 0; i < order.length; i++) if (errors[order[i]]) return registerError(400, errors[order[i]], 'invalid', errors);
-  return null;
-}
-
-/* The transaction, for every registration that was waiting for this event (see enqueue). Everything it
-   decides, it decides on what it has just read inside the transaction — the event's settings and totals
-   as they are at that instant, not as they were when each request arrived — and one registration's
-   refusal (a duplicate) never affects the others in the same write. Resolves one { value } or { error }
-   per registration; rejects (for all of them) when the event itself takes no registrations. */
-var REGISTER_BATCH = 50;
 function duplicateError() {
-  return registerError(409, 'This email is already registered for this event.', 'duplicate', { email: 'This email is already registered for this event.' });
+  return registerError(409, DUPLICATE_MESSAGE, 'duplicate', { email: DUPLICATE_MESSAGE });
 }
-function storeRegistrations(fb, eventId, regs) {
-  var refs = audienceRefs(fb, eventId);
+
+/* The transaction, for every response that was waiting for this event (see enqueue). Everything it
+   decides, it decides on what it has just read inside the transaction — the event's settings and totals
+   and each form as they are at that instant, not as they were when each request arrived — and one
+   response's refusal (a duplicate, a form closed meanwhile) never affects the others in the same write.
+   Resolves one { value } or { error } per item; rejects (for all of them) when the event itself takes no
+   registrations. An item is { reg, formId, answers, answerLabels }. */
+var REGISTER_BATCH = 50;
+function storeRegistrations(fb, eventId, items) {
+  var refs = audienceRefs(fb, eventId), formsCol = refs.event.collection('forms');
+  var formIds = [];
+  items.forEach(function (it) { if (formIds.indexOf(it.formId) === -1) formIds.push(it.formId); });
   return fb.db.runTransaction(function (tx) {
-    return Promise.all([tx.get(refs.event), tx.get(refs.agg)]).then(function (first) {
+    var reads = [tx.get(refs.event), tx.get(refs.agg)].concat(formIds.map(function (id) { return tx.get(formsCol.doc(id)); }));
+    return Promise.all(reads).then(function (first) {
       var ev = liveEvent(first[0]);
       if (!ev || ev.published !== true) throw registerError(404, NOT_AVAILABLE, 'unavailable');
       var settings = registrationSettings(ev);
-      if (!settings.open) throw registerError(403, 'Registration for this event is closed.', 'closed');
+      if (!settings.open) throw registerError(403, CLOSED_MESSAGE, 'closed');
       if (!hasAudienceCounters(ev)) throw NEEDS_COUNTERS;
 
-      // One registration per e-mail is the document's own id, which covers every registration made
-      // while duplicates were rejected; the query covers the rest, for the events that have any (see
-      // EMAIL_ID_PREFIX).
-      var reject = settings.duplicates === 'reject', loose = ev.counters.looseIds === true;
-      var plans = regs.map(function (reg) { return { reg: reg, ref: reject ? refs.regs.doc(emailDocId(reg.email)) : refs.regs.doc() }; });
-      var dupReads = !reject ? Promise.resolve([]) : Promise.all(plans.map(function (p) {
-        return Promise.all([tx.get(p.ref), loose ? tx.get(refs.regs.where('email', '==', p.reg.email).limit(1)) : null]);
-      }));
-      return dupReads.then(function (dups) {
-        var now = new Date(), nowIso = now.toISOString(), day = dayKey(now.getTime());
-        var confirmed = num(ev.counters.confirmed), added = { registrations: 0, confirmed: 0, waitlist: 0 };
-        var stored = first[1].exists ? (first[1].data() || {}) : {}, agg = {}, aggAdded = {}, seen = {};
-        AGG_DIMS.forEach(function (d) { agg[d] = Object.assign({}, isObj(stored[d]) ? stored[d] : {}); });
-
-        var results = plans.map(function (p, i) {
-          if (reject && (seen[p.reg.email] || dups[i][0].exists || (dups[i][1] && !dups[i][1].empty))) return { error: duplicateError() };
-          seen[p.reg.email] = true;
-          var status = settings.capacity != null && confirmed >= settings.capacity ? 'waitlist' : 'confirmed';
-          if (status === 'confirmed') confirmed++;
-          var doc = Object.assign({}, p.reg, {
-            status: status, notes: '',
-            // online payment is not available; kept so that older readers of this record find the field
-            payment: { required: false, status: 'n/a', amount: 0, txnId: null },
-            createdAt: nowIso, checkedInAt: null
-          });
-          tx.set(p.ref, doc);
-          added.registrations++; added[status]++;
-          var vals = aggValues(doc);
-          AGG_DIMS.forEach(function (d) {
-            var slot = aggSlot(agg[d], vals[d]);
-            if (!slot) return;
-            if (!agg[d][slot.key]) agg[d][slot.key] = { l: slot.label, c: 0 };      // so the list's size limit sees it
-            if (!aggAdded[d]) aggAdded[d] = {};
-            if (!aggAdded[d][slot.key]) aggAdded[d][slot.key] = { l: slot.label, n: 0 };
-            aggAdded[d][slot.key].n++;
-          });
-          return { value: { id: p.ref.id, status: status, successMessage: settings.successMessage } };
+      var formsById = {}, lazy = false;
+      formIds.forEach(function (id, i) {
+        var snap = first[2 + i];
+        if (snap.exists) formsById[id] = forms.storedForm(id, snap.data());
+        else if (id === DEFAULT_FORM_ID) lazy = true;
+      });
+      /* an event that never saved a form answers with the form its original settings describe */
+      var empty = lazy ? tx.get(formsCol.limit(1)).then(function (s) { return s.empty; }) : Promise.resolve(false);
+      return empty.then(function (isEmpty) {
+        if (isEmpty) formsById[DEFAULT_FORM_ID] = forms.legacyDefaultForm(ev);
+        // One response per e-mail and form is the document's own id, which covers every response made
+        // while its form rejected duplicates; the query covers the rest, for the events that have any (see
+        // EMAIL_ID_PREFIX).
+        var loose = ev.counters.looseIds === true;
+        var plans = items.map(function (it) {
+          var form = formsById[it.formId];
+          if (!form) return { error: registerError(404, FORM_MISSING_MESSAGE, 'form-missing') };
+          if (form.open === false) return { error: registerError(403, FORM_CLOSED_MESSAGE, 'form-closed') };
+          var reject = form.duplicates !== 'allow';
+          return { it: it, form: form, reject: reject, ref: reject ? refs.regs.doc(forms.regDocId(form.id, it.reg.email)) : refs.regs.doc() };
         });
+        return Promise.all(plans.map(function (p) {
+          if (p.error || !p.reject) return null;
+          return Promise.all([tx.get(p.ref), loose ? tx.get(refs.regs.where('email', '==', p.it.reg.email).limit(50)) : null]);
+        })).then(function (dups) {
+          var now = new Date(), nowIso = now.toISOString(), day = dayKey(now.getTime());
+          var confirmed = num(ev.counters.confirmed), delta = { forms: {} }, counted = 0, submitted = 0, newLoose = false;
+          var stored = first[1].exists ? (first[1].data() || {}) : {}, agg = {}, aggAdded = {}, seen = {};
+          AGG_DIMS.forEach(function (d) { agg[d] = Object.assign({}, isObj(stored[d]) ? stored[d] : {}); });
 
-        if (added.registrations) {
-          var patch = { 'counters.registrations': FieldValue.increment(added.registrations) };
-          if (added.confirmed) patch['counters.confirmed'] = FieldValue.increment(added.confirmed);
-          if (added.waitlist) patch['counters.waitlist'] = FieldValue.increment(added.waitlist);
-          if (!reject && !loose) patch['counters.looseIds'] = true;
-          tx.update(refs.event, patch);
-          tx.set(refs.stats.doc(day), { date: day, registrations: FieldValue.increment(added.registrations) }, { merge: true });
-          var aggPatch = {};
-          Object.keys(aggAdded).forEach(function (d) {
-            aggPatch[d] = {};
-            Object.keys(aggAdded[d]).forEach(function (k) { aggPatch[d][k] = { l: aggAdded[d][k].l, c: FieldValue.increment(aggAdded[d][k].n) }; });
+          var results = plans.map(function (p, i) {
+            if (p.error) return { error: p.error };
+            var key = p.form.id + '\n' + p.it.reg.email;
+            if (p.reject) {
+              var sameForm = function (d) { return (d.get('formId') || DEFAULT_FORM_ID) === p.form.id; };
+              if (seen[key] || dups[i][0].exists || (dups[i][1] && dups[i][1].docs.some(sameForm))) return { error: duplicateError() };
+            }
+            seen[key] = true;
+            var counts = p.form.countsAsRegistration === true;
+            var status = forms.planStatus({ counts: counts, needsApproval: p.form.needsApproval === true, capacity: settings.capacity, confirmed: confirmed });
+            if (counts && status === 'confirmed') confirmed++;
+            var doc = Object.assign({}, p.it.reg, {
+              formId: p.form.id, formName: p.form.name, counts: counts,
+              answers: p.it.answers, answerLabels: p.it.answerLabels,
+              status: status, notes: '',
+              // online payment is not available; kept so that older readers of this record find the field
+              payment: { required: false, status: 'n/a', amount: 0, txnId: null },
+              createdAt: nowIso, checkedInAt: null, decidedAt: null, decidedBy: null
+            });
+            tx.set(p.ref, doc);
+            addDelta(delta, contribution(doc), 1);
+            submitted++;
+            if (!p.reject) newLoose = true;
+            if (counts) {
+              counted++;
+              var vals = aggValues(doc);
+              AGG_DIMS.forEach(function (d) {
+                var slot = aggSlot(agg[d], vals[d]);
+                if (!slot) return;
+                if (!agg[d][slot.key]) agg[d][slot.key] = { l: slot.label, c: 0 };      // so the list's size limit sees it
+                if (!aggAdded[d]) aggAdded[d] = {};
+                if (!aggAdded[d][slot.key]) aggAdded[d][slot.key] = { l: slot.label, n: 0 };
+                aggAdded[d][slot.key].n++;
+              });
+            }
+            return { value: { id: p.ref.id, status: status, formId: p.form.id, successMessage: p.form.successMessage } };
           });
-          if (Object.keys(aggPatch).length) tx.set(refs.agg, aggPatch, { merge: true });
-        }
-        return results;
+
+          if (submitted) {
+            applyCounters(tx, refs.event, pruneDelta(delta), newLoose && !loose ? [[new FieldPath('counters', 'looseIds'), true]] : null);
+            var daily = { date: day, submissions: FieldValue.increment(submitted) };
+            if (counted) daily.registrations = FieldValue.increment(counted);
+            tx.set(refs.stats.doc(day), daily, { merge: true });
+            var aggPatch = {};
+            Object.keys(aggAdded).forEach(function (d) {
+              aggPatch[d] = {};
+              Object.keys(aggAdded[d]).forEach(function (k) { aggPatch[d][k] = { l: aggAdded[d][k].l, c: FieldValue.increment(aggAdded[d][k].n) }; });
+            });
+            if (Object.keys(aggPatch).length) tx.set(refs.agg, aggPatch, { merge: true });
+          }
+          return results;
+        });
       });
     });
   }, { maxAttempts: 8 });
 }
-function storeRegistration(fb, eventId, reg) {
-  return enqueue('register:' + eventId, reg, REGISTER_BATCH, function (regs) {
-    return withAudienceCounters(fb, eventId, function () { return storeRegistrations(fb, eventId, regs); });
+function storeRegistration(fb, eventId, item) {
+  return enqueue('register:' + eventId, item, REGISTER_BATCH, function (batch) {
+    return withAudienceCounters(fb, eventId, function () { return storeRegistrations(fb, eventId, batch); });
   });
 }
 
@@ -991,12 +1074,19 @@ function handleRegister(req, res) {
         if (!validEventId(eventId)) {
           return sendPublicJson(res, 400, { error: 'This registration form is not linked to an event. Please reload the page and try again.', code: 'invalid' });
         }
+        var formId = body.formId == null || body.formId === '' ? '' : body.formId;
+        if (formId && (typeof formId !== 'string' || !forms.FORM_ID_RE.test(formId))) {
+          return sendPublicJson(res, 400, { error: 'This form is not linked correctly. Please reload the page and try again.', code: 'invalid' });
+        }
         // A person never sees, so never fills, the "website" field; a form-filling script does. It is told
         // what a person would be told and nothing is stored — or even looked up.
         if (line(body.website, 500)) {
-          return sendPublicJson(res, 200, { ok: true, id: 'r' + crypto.randomBytes(10).toString('hex'), status: 'confirmed', message: DEFAULT_SUCCESS });
+          return sendPublicJson(res, 200, { ok: true, id: 'r' + crypto.randomBytes(10).toString('hex'), status: 'confirmed', formId: formId || DEFAULT_FORM_ID, message: DEFAULT_SUCCESS });
         }
-        var read = readRegistration(body), reg = read.reg, errors = read.errors;
+        if (!rateLimit('register-ev:' + eventId + ':' + clientIp(req), REGISTER_EVENT_LIMIT, REGISTER_WINDOW_MS)) {
+          return sendPublicJson(res, 429, { error: 'Too many registrations from this network. Please try again in a few minutes.', code: 'rate-limited' },
+            { 'Retry-After': String(REGISTER_WINDOW_MS / 1000) });
+        }
         var preview = body.preview === true;
 
         var fb = getFirebase();
@@ -1010,29 +1100,32 @@ function handleRegister(req, res) {
           return allowed.then(function (who) {
             if (preview && !who) throw registerError(401, 'Sign in to test registration from the preview.', 'sign-in');
             if (!preview && ev.published !== true) throw registerError(404, NOT_AVAILABLE, 'unavailable');
-
             var settings = registrationSettings(ev);
-            if (!settings.open) throw registerError(403, 'Registration for this event is closed.', 'closed');
+            if (!settings.open) throw registerError(403, CLOSED_MESSAGE, 'closed');
+            return formsApi().loadForm(fb, eventId, ev, formId).then(function (form) {
+              if (!form) throw registerError(404, FORM_MISSING_MESSAGE, 'form-missing');
+              if (form.open === false) throw registerError(403, FORM_CLOSED_MESSAGE, 'form-closed');
 
-            // only what this event asks for is kept; what it requires must be there
-            var asked = {};
-            settings.fields.forEach(function (f) { asked[f.key] = f; });
-            OPTIONAL_FIELDS.forEach(function (f) {
-              if (!asked[f.key]) { reg[f.key] = ''; delete errors[f.key]; return; }
-              if (asked[f.key].required && !reg[f.key]) errors[f.key] = 'Please enter ' + f.ask + '.';
-            });
-            var invalid = firstError(errors);
-            if (invalid) throw invalid;
+              // only what this form asks for is kept; what it requires must be there
+              var read = forms.validateAnswers(form, body);
+              var first = forms.firstFieldError(form, read.errors);
+              if (first) throw registerError(400, first.message, 'invalid', first.fields);
+              if (read.tooLong) throw registerError(400, 'Your answers are too long.', 'invalid');
 
-            if (preview) {
-              return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: 'confirmed',
-                message: settings.successMessage + ' (Preview — this test registration was not saved.)' });
-            }
-            reg.device = deviceClass(req);
-            reg.referrer = referrerHost(req, body.ref);
-            return storeRegistration(fb, eventId, reg).then(function (stored) {
-              sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status,
-                message: stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
+              if (preview) {
+                var counts = form.countsAsRegistration === true;
+                var status = forms.planStatus({ counts: counts, needsApproval: form.needsApproval === true, capacity: settings.capacity,
+                  confirmed: num(isObj(ev.counters) ? ev.counters.confirmed : 0) });
+                return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: status, formId: form.id,
+                  message: form.successMessage + forms.PREVIEW_NOTE });
+              }
+              var reg = read.reg;
+              reg.device = deviceClass(req);
+              reg.referrer = referrerHost(req, body.ref);
+              return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels }).then(function (stored) {
+                sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId,
+                  message: stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
+              });
             });
           });
         }).catch(function (err) { answerError(res, sendPublicJson, err, 'complete your registration'); });
@@ -1042,7 +1135,10 @@ function handleRegister(req, res) {
 }
 
 /* =====================================================================================================
-   REGISTRATIONS — list / update / delete (admin)
+   REGISTRATIONS — list / update / delete / export (admin)
+   Every response to every form. A response stored before forms existed has no formId, counts or answers:
+   it is read as a response to the form "register" that counts, with no further answers, and the list's
+   first page writes that down on it (repairFormIds) so that a query by form finds it.
    ===================================================================================================== */
 
 function publicRegistration(id, r) {
@@ -1053,9 +1149,14 @@ function publicRegistration(id, r) {
     designation: r.designation || '', city: r.city || '', source: r.source || '',
     utm: { source: utm.source || '', medium: utm.medium || '', campaign: utm.campaign || '' },
     device: r.device || '', referrer: r.referrer || '',
+    formId: typeof r.formId === 'string' && r.formId ? r.formId : DEFAULT_FORM_ID,
+    formName: typeof r.formName === 'string' ? r.formName : '',
+    counts: r.counts !== false,
+    answers: isObj(r.answers) ? r.answers : {}, answerLabels: isObj(r.answerLabels) ? r.answerLabels : {},
     status: normStatus(r.status), notes: r.notes || '',
     tags: Array.isArray(r.tags) ? r.tags.filter(function (t) { return typeof t === 'string'; }) : [],
-    createdAt: r.createdAt || null, checkedInAt: r.checkedInAt || null, updatedAt: r.updatedAt || null
+    createdAt: r.createdAt || null, checkedInAt: r.checkedInAt || null, updatedAt: r.updatedAt || null,
+    decidedAt: r.decidedAt || null, decidedBy: r.decidedBy || null
   };
 }
 
@@ -1087,38 +1188,121 @@ function dateUndatedRegistrations(fb, eventId) {
   });
 }
 
+/* Responses stored before forms have no formId, and a query by form would never find them. The same two-
+   count test as above says whether there are any (an ordered query leaves out a document without the
+   field); up to `max` of them are then given formId "register", that form's name and counts: true — what
+   every reader already took them to be, so no total moves. Resolves how many were written. */
+var LEGACY_REPAIR_MAX = 500;
+function repairFormIds(fb, eventId, max) {
+  var refs = audienceRefs(fb, eventId);
+  return Promise.all([refs.regs.count().get(), refs.regs.orderBy('formId').count().get()]).then(function (counts) {
+    if (counts[0].data().count === counts[1].data().count) return 0;
+    return Promise.all([refs.regs.select('formId').get(), refs.event.collection('forms').doc(DEFAULT_FORM_ID).get()]).then(function (r) {
+      var missing = r[0].docs.filter(function (d) { return d.get('formId') === undefined; }).slice(0, max || LEGACY_REPAIR_MAX);
+      var name = (r[1].exists && line(r[1].get('name'), 80)) || 'Register now';
+      var writes = [];
+      for (var i = 0; i < missing.length; i += 400) {
+        var batch = fb.db.batch();
+        missing.slice(i, i + 400).forEach(function (d) { batch.update(d.ref, { formId: DEFAULT_FORM_ID, formName: name, counts: true }); });
+        writes.push(batch.commit());
+      }
+      return Promise.all(writes).then(function () { return missing.length; });
+    });
+  });
+}
+
+/* Firestore answers FAILED_PRECONDITION while a composite index (firestore.indexes.json: registrations by
+   formId, newest first) has not been built yet. */
+function isMissingIndex(err) { return !!err && (err.code === 9 || err.code === 'failed-precondition' || /FAILED_PRECONDITION|requires an index/i.test(String(err.message || ''))); }
+function formOf(r) { return (r && typeof r.formId === 'string' && r.formId) || DEFAULT_FORM_ID; }
+
+/* One page of one form's responses, newest first, after the document `after` (a snapshot, or null):
+   -> { docs, more, partial, next }. By the index when it is there; otherwise by reading the event's
+   responses in order and keeping that form's, at most SCAN_MAX of them per page — `partial` then says the
+   page stopped early and `next` is where the next page starts reading. */
+var SCAN_CHUNK = 500, SCAN_MAX = 5000;
+function formPage(refs, formId, after, limit) {
+  var q = refs.regs.where('formId', '==', formId).orderBy('createdAt', 'desc');
+  if (after) q = q.startAfter(after);
+  return q.limit(limit + 1).get().then(function (snap) {
+    var docs = snap.docs, more = docs.length > limit;
+    if (more) docs = docs.slice(0, limit);
+    return { docs: docs, more: more, partial: false, next: more ? docs[docs.length - 1].id : null };
+  }, function (err) {
+    if (!isMissingIndex(err)) throw err;
+    console.warn('audience: the registrations-by-form index is not built yet; scanning instead');
+    var kept = [], scanned = 0, last = after, done = false;
+    function step() {
+      var sq = refs.regs.orderBy('createdAt', 'desc');
+      if (last) sq = sq.startAfter(last);
+      return sq.limit(SCAN_CHUNK).get().then(function (snap) {
+        snap.docs.forEach(function (d) {
+          if (kept.length > limit) return;
+          scanned++;
+          last = d;
+          if (formOf(d.data()) === formId) kept.push(d);
+        });
+        if (snap.docs.length < SCAN_CHUNK) done = true;
+        if (done || kept.length > limit || scanned >= SCAN_MAX) return null;
+        return step();
+      });
+    }
+    return step().then(function () {
+      var more = kept.length > limit, docs = more ? kept.slice(0, limit) : kept;
+      var partial = !more && !done;
+      return { docs: docs, more: more || partial, partial: partial, next: more ? docs[docs.length - 1].id : partial && last ? last.id : null };
+    });
+  });
+}
+
 /* Newest first. `limit` (default 1000, at most 5000) and `cursor` (the nextCursor of the page before)
-   page through an event of any size; `total` is the event's real number of registrations. */
+   page through an event of any size; `total` is the event's real number of responses (to the form
+   `formId`, when one is given). */
 function handleRegistrationsList(req, res) {
   requireAdmin(req, res, function (fb) {
     guard(res, sendJson, 'load the registrations', function () {
       var qs = query(req), eventId = str(qs.get('eventId'), 100);
       if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
-      var limit = intParam(qs.get('limit'), 1000, 1, 5000), cursor = str(qs.get('cursor'), 200);
+      var limit = intParam(qs.get('limit'), 1000, 1, 5000), cursor = str(qs.get('cursor'), 200), formId = str(qs.get('formId'), 60);
       var refs = audienceRefs(fb, eventId);
       if (cursor && !isDocId(cursor)) return sendJson(res, 400, { error: 'That page of registrations could not be found. Reload the list.' });
+      if (formId && !forms.FORM_ID_RE.test(formId)) return sendJson(res, 400, { error: 'That form could not be found.' });
 
       Promise.all([refs.event.get(), cursor ? refs.regs.doc(cursor).get() : null]).then(function (r) {
         var ev = liveEvent(r[0]);
         if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
         if (cursor && !r[1].exists) throw httpError(400, 'That page of registrations could not be found. Reload the list.');
         /* checked when the list is opened (its first page), not on every page of it */
-        var ready = cursor ? Promise.resolve(ev) : dateUndatedRegistrations(fb, eventId).then(function (changed) {
-          return changed ? refs.event.get().then(function (snap) { return liveEvent(snap) || ev; }) : ev;
+        var ready = cursor ? Promise.resolve(ev) : Promise.all([dateUndatedRegistrations(fb, eventId), repairFormIds(fb, eventId)]).then(function (changed) {
+          return changed[0] ? refs.event.get().then(function (snap) { return liveEvent(snap) || ev; }) : ev;
         });
         return ready.then(function (ev) {
-          var q = refs.regs.orderBy('createdAt', 'desc');
-          if (cursor) q = q.startAfter(r[1]);
-          var total = hasAudienceCounters(ev) ? Promise.resolve(num(ev.counters.registrations))
-            : refs.regs.count().get().then(function (c) { return c.data().count; });
-          return Promise.all([q.limit(limit + 1).get(), total]).then(function (out) {
-            var docs = out[0].docs, more = docs.length > limit;
-            if (more) docs = docs.slice(0, limit);
-            sendJson(res, 200, {
-              items: docs.map(function (d) { return publicRegistration(d.id, d.data()); }),
-              total: out[1],
-              nextCursor: more ? docs[docs.length - 1].id : null
+          var page;
+          if (formId) page = formPage(refs, formId, cursor ? r[1] : null, limit);
+          else {
+            var q = refs.regs.orderBy('createdAt', 'desc');
+            if (cursor) q = q.startAfter(r[1]);
+            page = q.limit(limit + 1).get().then(function (snap) {
+              var docs = snap.docs, more = docs.length > limit;
+              if (more) docs = docs.slice(0, limit);
+              return { docs: docs, more: more, partial: false, next: more ? docs[docs.length - 1].id : null };
             });
+          }
+          var total;
+          if (hasAudienceCounters(ev)) {
+            var c = ev.counters;
+            total = Promise.resolve(formId ? num(isObj(c.forms) && isObj(c.forms[formId]) ? c.forms[formId].n : 0) : num(c.submissions));
+          } else {
+            total = (formId ? refs.regs.where('formId', '==', formId) : refs.regs).count().get().then(function (x) { return x.data().count; });
+          }
+          return Promise.all([page, total]).then(function (out) {
+            var body = {
+              items: out[0].docs.map(function (d) { return publicRegistration(d.id, d.data()); }),
+              total: out[1],
+              nextCursor: out[0].next
+            };
+            if (out[0].partial) body.partial = true;
+            sendJson(res, 200, body);
           });
         });
       }).catch(function (err) { answerError(res, sendJson, err, 'load the registrations'); });
@@ -1128,9 +1312,12 @@ function handleRegistrationsList(req, res) {
 
 /* PATCH { eventId, id, status?, checkedIn?, notes?, tags? } -> 200 { ok, registration } — the record as it
    now is, so the row can be redrawn from the answer. For the pages that use it:
-     status      confirmed | waitlist | cancelled          checkedIn   true / false -> checkedInAt (ISO) / null
-     notes       text, at most 2,000 characters            tags        at most 20 labels of at most 40
-                                                           characters; trimmed, repeats dropped
+     status      confirmed | waitlist | pending | rejected | cancelled
+                 (waitlist only for a form that counts as a registration; moving a response out of
+                 "pending" is approving or declining it, and records who did it and when)
+     checkedIn   true / false -> checkedInAt (ISO) / null
+     notes       text, at most 2,000 characters
+     tags        at most 20 labels of at most 40 characters; trimmed, repeats dropped
    404 for an id that is not there. */
 function cleanTags(v) {
   if (!Array.isArray(v) || v.length > 20) return null;
@@ -1159,7 +1346,7 @@ function handleRegistrationUpdate(req, res) {
           var tags = has('tags') ? cleanTags(body.tags) : null;
           if (has('tags') && !tags) return sendJson(res, 400, { error: 'Tags must be a list of at most 20 labels, each up to 40 characters.', field: 'tags' });
           if (has('status') && REG_STATUSES.indexOf(body.status) === -1) {
-            return sendJson(res, 400, { error: 'Status must be one of: confirmed, waitlist, cancelled.' });
+            return sendJson(res, 400, { error: 'Status must be one of: ' + REG_STATUSES.join(', ') + '.' });
           }
           if (has('checkedIn') && typeof body.checkedIn !== 'boolean') {
             return sendJson(res, 400, { error: 'checkedIn must be true or false.' });
@@ -1175,33 +1362,34 @@ function handleRegistrationUpdate(req, res) {
                 if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
                 if (!r[1].exists) throw httpError(404, 'That registration no longer exists.');
                 if (!hasAudienceCounters(ev)) throw NEEDS_COUNTERS;
-                var old = r[1].data() || {}, oldStatus = normStatus(old.status), wasIn = !!old.checkedInAt;
+                var old = r[1].data() || {}, oldStatus = normStatus(old.status);
                 var status = has('status') ? body.status : oldStatus;
+                if (status === 'waitlist' && oldStatus !== 'waitlist' && old.counts === false) {
+                  throw httpError(400, 'Only forms that count as registrations have a waitlist.', { field: 'status' });
+                }
                 var checkedInAt = old.checkedInAt || null;
                 if (has('checkedIn')) checkedInAt = body.checkedIn ? (old.checkedInAt || new Date().toISOString()) : null;
-                if (status === 'cancelled' && has('checkedIn') && body.checkedIn) {
-                  throw httpError(409, 'A cancelled registration cannot be checked in. Change its status first.');
+                if ((status === 'cancelled' || status === 'rejected') && has('checkedIn') && body.checkedIn) {
+                  throw httpError(409, 'A ' + (status === 'rejected' ? 'declined' : 'cancelled') + ' registration cannot be checked in. Change its status first.');
                 }
-                var nowIso = new Date().toISOString();
-                var patch = { status: status, checkedInAt: checkedInAt, updatedAt: nowIso, updatedBy: actorOf(decoded) };
+                var nowIso = new Date().toISOString(), actor = actorOf(decoded);
+                var patch = { status: status, checkedInAt: checkedInAt, updatedAt: nowIso, updatedBy: actor };
+                if (oldStatus === 'pending' && status !== 'pending') { patch.decidedAt = nowIso; patch.decidedBy = actor; }
                 if (has('notes')) patch.notes = multiline(body.notes, 2000);
                 if (tags) patch.tags = tags;
                 tx.update(regRef, patch);
+                var now = Object.assign({}, old, patch);
+                applyCounters(tx, refs.event, counterDelta(old, now));
 
-                var counters = {}, changes = [];
+                var changes = [];
                 if (status !== oldStatus) {
-                  counters['counters.' + oldStatus] = FieldValue.increment(-1);
-                  counters['counters.' + status] = FieldValue.increment(1);
-                  changes.push('marked ' + status);
+                  changes.push(oldStatus === 'pending' && status === 'confirmed' ? 'approved'
+                    : status === 'rejected' ? 'declined' : 'marked ' + status);
                 }
-                if (!!checkedInAt !== wasIn) {
-                  counters['counters.checkedIn'] = FieldValue.increment(checkedInAt ? 1 : -1);
-                  changes.push(checkedInAt ? 'checked in' : 'check-in undone');
-                }
+                if (!!checkedInAt !== !!old.checkedInAt) changes.push(checkedInAt ? 'checked in' : 'check-in undone');
                 if (has('notes') && patch.notes !== (old.notes || '')) changes.push('note edited');
                 if (tags && JSON.stringify(tags) !== JSON.stringify(Array.isArray(old.tags) ? old.tags : [])) changes.push(tags.length ? 'tagged ' + tags.join(', ') : 'tags removed');
-                if (Object.keys(counters).length) tx.update(refs.event, counters);
-                return { registration: publicRegistration(id, Object.assign({}, old, patch)), changes: changes, name: old.name || old.email || id };
+                return { registration: publicRegistration(id, now), changes: changes, name: old.name || old.email || id };
               });
             });
           }).then(function (out) {
@@ -1231,33 +1419,133 @@ function handleRegistrationDelete(req, res) {
             if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
             if (!r[1].exists) throw httpError(404, 'That registration no longer exists.');
             if (!hasAudienceCounters(ev)) throw NEEDS_COUNTERS;
-            var old = r[1].data() || {};
+            var old = r[1].data() || {}, counted = old.counts !== false;
             tx.delete(regRef);
 
-            // every total this registration was counted in gives it back
-            var counters = { 'counters.registrations': FieldValue.increment(-1) };
-            counters['counters.' + normStatus(old.status)] = FieldValue.increment(-1);
-            if (old.checkedInAt) counters['counters.checkedIn'] = FieldValue.increment(-1);
-            tx.update(refs.event, counters);
+            // every total this response was counted in gives it back
+            applyCounters(tx, refs.event, counterDelta(old, null));
             var day = dayOfIso(old.createdAt);
-            if (day) tx.set(refs.stats.doc(day), { date: day, registrations: FieldValue.increment(-1) }, { merge: true });
-
-            var agg = r[2].exists ? (r[2].data() || {}) : {}, vals = aggValues(old), aggPatch = {};
-            AGG_DIMS.forEach(function (d) {
-              if (!vals[d] || !isObj(agg[d])) return;
-              var key = aggKeyOf(vals[d]);
-              if (!isObj(agg[d][key])) key = AGG_OTHER;
-              if (!isObj(agg[d][key]) || num(agg[d][key].c) < 1) return;
-              aggPatch[d] = {};
-              aggPatch[d][key] = { c: FieldValue.increment(-1) };
-            });
-            if (Object.keys(aggPatch).length) tx.set(refs.agg, aggPatch, { merge: true });
+            if (day) {
+              var daily = { date: day, submissions: FieldValue.increment(-1) };
+              if (counted) daily.registrations = FieldValue.increment(-1);
+              tx.set(refs.stats.doc(day), daily, { merge: true });
+            }
+            if (counted) {
+              var agg = r[2].exists ? (r[2].data() || {}) : {}, vals = aggValues(old), aggPatch = {};
+              AGG_DIMS.forEach(function (d) {
+                if (!vals[d] || !isObj(agg[d])) return;
+                var key = aggKeyOf(vals[d]);
+                if (!isObj(agg[d][key])) key = AGG_OTHER;
+                if (!isObj(agg[d][key]) || num(agg[d][key].c) < 1) return;
+                aggPatch[d] = {};
+                aggPatch[d][key] = { c: FieldValue.increment(-1) };
+              });
+              if (Object.keys(aggPatch).length) tx.set(refs.agg, aggPatch, { merge: true });
+            }
             return old.name || old.email || id;
           });
         });
       }).then(function (name) {
         return logActivity(fb, eventId, decoded, 'registration-deleted', name).then(function () { sendJson(res, 200, { ok: true }); });
       }).catch(function (err) { answerError(res, sendJson, err, 'delete this registration'); });
+    });
+  });
+}
+
+/* GET /api/event/registrations/export?eventId=&formId=&status= — the responses as a CSV file a spreadsheet
+   opens (UTF-8 with a byte-order mark, every cell quoted, nothing a spreadsheet would run as a formula),
+   newest first, at most EXPORT_MAX rows. The columns every response has, then one per answer: with a form,
+   that form's questions in its current order (and any answer to a question it no longer has); for every
+   form, each question in the order it is first met, headed by its label. */
+var EXPORT_MAX = 50000, EXPORT_SCAN_MAX = 200000, EXPORT_CHUNK = 1000;
+function istStamp(iso) {
+  var t = Date.parse(iso);
+  return isNaN(t) ? '' : new Date(t + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ');
+}
+function exportCell(v) {
+  if (v == null) return '';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (Array.isArray(v)) return v.map(function (x) { return x == null ? '' : String(x); }).join('; ');
+  if (typeof v === 'object') return '';
+  return String(v);
+}
+/* the event's responses, newest first, filtered — by the form index when it is there, else in memory */
+function exportRows(refs, formId, status) {
+  var rows = [];
+  function keep(d) {
+    var r = d.data() || {};
+    if (formId && formOf(r) !== formId) return;
+    if (status && normStatus(r.status) !== status) return;
+    if (rows.length < EXPORT_MAX) rows.push({ id: d.id, r: r });
+  }
+  function walk(base) {
+    var scanned = 0, last = null;
+    function step() {
+      var q = base;
+      if (last) q = q.startAfter(last);
+      return q.limit(EXPORT_CHUNK).get().then(function (snap) {
+        snap.docs.forEach(function (d) { scanned++; last = d; keep(d); });
+        if (snap.docs.length < EXPORT_CHUNK || rows.length >= EXPORT_MAX || scanned >= EXPORT_SCAN_MAX) return rows;
+        return step();
+      });
+    }
+    return step();
+  }
+  if (!formId) return walk(refs.regs.orderBy('createdAt', 'desc'));
+  return walk(refs.regs.where('formId', '==', formId).orderBy('createdAt', 'desc')).catch(function (err) {
+    if (!isMissingIndex(err)) throw err;
+    rows = [];
+    return walk(refs.regs.orderBy('createdAt', 'desc'));
+  });
+}
+function handleRegistrationsExport(req, res) {
+  requireAdmin(req, res, function (fb) {
+    guard(res, sendJson, 'export the registrations', function () {
+      var qs = query(req), eventId = str(qs.get('eventId'), 100), formId = str(qs.get('formId'), 60), status = str(qs.get('status'), 20);
+      if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+      if (formId && !forms.FORM_ID_RE.test(formId)) return sendJson(res, 400, { error: 'That form could not be found.' });
+      if (status && REG_STATUSES.indexOf(status) === -1) return sendJson(res, 400, { error: 'Status must be one of: ' + REG_STATUSES.join(', ') + '.' });
+      var refs = audienceRefs(fb, eventId);
+
+      refs.event.get().then(function (snap) {
+        var ev = liveEvent(snap);
+        if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
+        return Promise.all([dateUndatedRegistrations(fb, eventId), repairFormIds(fb, eventId)]).then(function () {
+          return Promise.all([formsApi().loadForms(fb, eventId, ev), exportRows(refs, formId, status)]);
+        }).then(function (r) {
+          var formList = r[0].forms, rows = r[1], byId = {};
+          formList.forEach(function (f) { byId[f.id] = f; });
+          /* the answer columns */
+          var cols = [], colIndex = {};
+          function addCol(key, label) { if (colIndex[key] == null) { colIndex[key] = cols.length; cols.push({ key: key, label: label || key }); } }
+          if (formId && byId[formId]) {
+            byId[formId].fields.forEach(function (f) { if (forms.MAPPED_FIELDS.indexOf(f.id) === -1) addCol(f.id, f.label); });
+          }
+          rows.forEach(function (row) {
+            var labels = isObj(row.r.answerLabels) ? row.r.answerLabels : {}, answers = isObj(row.r.answers) ? row.r.answers : {};
+            Object.keys(answers).forEach(function (k) { addCol(k, line(labels[k], 200) || k); });
+          });
+          var head = ['Submitted', 'Form', 'Status', 'Name', 'Email', 'Phone', 'Company', 'Designation', 'City', 'Source',
+            'UTM source', 'UTM medium', 'UTM campaign', 'Device', 'Referrer', 'Checked in', 'Notes', 'Tags']
+            .concat(cols.map(function (c) { return c.label; }));
+          var lines = [head.map(forms.csvEscape).join(',')];
+          rows.forEach(function (row) {
+            var d = row.r, utm = isObj(d.utm) ? d.utm : {}, fid = formOf(d), answers = isObj(d.answers) ? d.answers : {};
+            var cells = [istStamp(d.createdAt), d.formName || (byId[fid] && byId[fid].name) || fid,
+              forms.statusLabel({ status: normStatus(d.status), counts: d.counts, decidedAt: d.decidedAt }),
+              d.name, d.email, d.phone, d.company, d.designation, d.city, d.source, utm.source, utm.medium, utm.campaign,
+              d.device, d.referrer, d.checkedInAt ? istStamp(d.checkedInAt) : '', d.notes,
+              Array.isArray(d.tags) ? d.tags.join('; ') : ''];
+            cols.forEach(function (c) { cells.push(answers[c.key]); });
+            lines.push(cells.map(function (v) { return forms.csvEscape(exportCell(v)); }).join(','));
+          });
+          var name = eventId + '-registrations' + (formId ? '-' + formId : '') + '.csv';
+          if (res.headersSent) return;
+          res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + name + '"',
+            'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+          res.end('\ufeff' + lines.join('\r\n') + '\r\n');
+        });
+      }).catch(function (err) { answerError(res, sendJson, err, 'export the registrations'); });
     });
   });
 }
@@ -1403,17 +1691,26 @@ function readDays(fb, eventId, days) {
 
 /* An event's totals: its counters when they are maintained, a scan of its registrations when it predates
    them. Never writes. */
+/* The registration totals out of a counters object (stored or scanned). `pending` counts the counted forms'
+   responses awaiting approval, as every other total here does; `awaitingApproval` is every form's. */
+function totalsOf(c) {
+  var t = {};
+  COUNTED_KEYS.concat(['submissions']).forEach(function (k) { t[k] = num(c[k]); });
+  var waiting = 0;
+  if (isObj(c.forms)) Object.keys(c.forms).forEach(function (id) { if (isObj(c.forms[id])) waiting += num(c.forms[id].pending); });
+  t.awaitingApproval = waiting;
+  return t;
+}
 function audienceTotals(fb, eventId, ev, wantBreakdown) {
   var c = isObj(ev.counters) ? ev.counters : {};
   var visits = { visitors: num(c.views), uniques: num(c.uniques), mobile: num(c.mobile), desktop: num(c.desktop) };
   if (hasAudienceCounters(ev)) {
-    var totals = { registrations: num(c.registrations), confirmed: num(c.confirmed), waitlist: num(c.waitlist),
-      cancelled: num(c.cancelled), checkedIn: num(c.checkedIn) };
+    var totals = totalsOf(c);
     var agg = wantBreakdown ? audienceRefs(fb, eventId).agg.get().then(function (s) { return s.exists ? (s.data() || {}) : {}; }) : Promise.resolve({});
     return agg.then(function (a) { return { totals: totals, visits: visits, agg: a, legacyDays: null }; });
   }
   return scanAudience(fb, eventId).then(function (scan) {
-    return { totals: scan.counters, visits: visits, agg: scan.agg, legacyDays: scan.days };
+    return { totals: totalsOf(scan.counters), visits: visits, agg: scan.agg, legacyDays: scan.days };
   });
 }
 
@@ -1443,6 +1740,8 @@ function handleDashboardStats(req, res) {
             eventId: eventId, days: nDays, generatedAt: new Date().toISOString(),
             registrations: a.totals.registrations, confirmed: a.totals.confirmed, waitlist: a.totals.waitlist,
             cancelled: a.totals.cancelled, checkedIn: a.totals.checkedIn,
+            // every form's responses, and those waiting for an organiser's approval (counted forms / all forms)
+            submissions: a.totals.submissions, pending: a.totals.pending, awaitingApproval: a.totals.awaitingApproval,
             visitors: a.visits.visitors, uniques: a.visits.uniques,
             conversion: conversionOf(a.totals.registrations, a.visits.visitors),
             capacity: settings.capacity, target: settings.target,
@@ -1484,7 +1783,7 @@ function insightTotals(fb, eventId, ev) {
   });
   var c = isObj(ev.counters) ? ev.counters : {};
   return scan.then(function (s) {
-    return { totals: s.counters, agg: s.agg, legacyDays: s.days,
+    return { totals: totalsOf(s.counters), agg: s.agg, legacyDays: s.days,
       visits: { visitors: num(c.views), uniques: num(c.uniques), mobile: num(c.mobile), desktop: num(c.desktop) } };
   });
 }
@@ -1517,7 +1816,7 @@ function handleInsights(req, res) {
           });
           var events = rows.map(function (row) {
             var t = row.a.totals, v = row.a.visits;
-            Object.keys(t).forEach(function (k) { sum[k] += t[k]; });
+            ['registrations', 'confirmed', 'waitlist', 'cancelled', 'checkedIn'].forEach(function (k) { sum[k] += t[k]; });
             sum.visitors += v.visitors; sum.uniques += v.uniques;
             days.forEach(function (day) {
               var d = row.daily[day] || {};
@@ -1565,6 +1864,13 @@ function handleActivity(req, res) {
 
 module.exports = {
   handlePublicSiteData, handleSeed, handleRegister, handleRegistrationsList, handleRegistrationUpdate,
-  handleRegistrationDelete, handleTrack, handleDashboardStats, handleInsights, handleActivity,
-  handlePublicOptions, publicSiteData, seedContent
+  handleRegistrationDelete, handleRegistrationsExport, handleTrack, handleDashboardStats, handleInsights, handleActivity,
+  handlePublicOptions, publicSiteData, seedContent,
+  /* for tools/migrate-forms.js and the tests */
+  counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES
+};
+/* the small helpers lib/api-forms.js shares with this module, so the two answer alike */
+module.exports._shared = {
+  httpError, answerError, guard, query, validEventId, bodyId, liveEvent, eventDoc, isObj, num, line, multiline,
+  hasAudienceCounters, scanAudience, NOT_AVAILABLE, UNAVAILABLE
 };

@@ -1,0 +1,449 @@
+// An event's registration FORMS, as stored and as routed:
+//
+//   GET    /api/event/forms?eventId=                 handleFormsList     admin — the forms, and everything a
+//                                                                         builder needs (templates, field types,
+//                                                                         presets, countries, limits)
+//   POST   /api/event/forms                          handleFormsCreate   admin — { eventId, form | template | duplicateOf }
+//   PUT    /api/event/forms                          handleFormsUpdate   admin — { eventId, formId, form, ifUpdatedAt }
+//   DELETE /api/event/forms?eventId=&formId=[&force=1]  handleFormsDelete admin
+//   POST   /api/event/forms/default                  handleFormsDefault  admin — { eventId, formId }
+//   POST   /api/event/forms/order                    handleFormsOrder    admin — { eventId, ids }
+//   GET    /api/public/forms?eventId=                handlePublicForms   PUBLIC — what a visitor's page is told
+//
+// Both builders — the event console's Settings › Registration forms and the site editor's Forms panel —
+// use these routes and nothing else, so a form made in one is the same form in the other.
+//
+// WHERE A FORM LIVES. One document per form, events/<eventId>/forms/<formId> (lib/forms.js has its shape):
+// each form is saved, and checked for a newer copy (ifUpdatedAt), on its own, so two people editing two
+// forms never overwrite each other; the event document stays small; registering reads exactly one form.
+// An event that has never saved a form has none stored: it has the one form its original settings
+// describe (forms.legacyDefaultForm, id "register"), and the first write to its forms stores that form
+// first (ensureMaterialized), in the same transaction, so nothing an organiser set up is lost.
+//
+// Form definitions are live data: a saved change reaches the published page within the 30 s the public
+// answer is cached, without a republish. Which buttons open which form, and where a form is placed on the
+// page, is the page's markup and is published with the site as before.
+'use strict';
+const forms = require('./forms');
+const { sendJson, parseJsonBody, requireAdmin, adminFromRequest, sendPublicJson, clientIp, rateLimit, str } = require('./http');
+const { getFirebase } = require('./firebase');
+const { logActivity, actorOf } = require('./activity');
+const shared = require('./api-audience')._shared;
+
+var httpError = shared.httpError, answerError = shared.answerError, guard = shared.guard, query = shared.query;
+var validEventId = shared.validEventId, bodyId = shared.bodyId, liveEvent = shared.liveEvent, eventDoc = shared.eventDoc;
+var isObj = shared.isObj, num = shared.num;
+
+var LIMITS = forms.LIMITS;
+var MAX_FORMS_BODY = 256 * 1024;
+
+function formsCol(fb, eventId) { return eventDoc(fb, eventId).collection('forms'); }
+function sortForms(list) { return list.sort(forms.byOrder); }
+function fieldsWord(n) { return n + ' field' + (n === 1 ? '' : 's'); }
+function describe(form) { return '“' + form.name + '” — ' + fieldsWord(form.fields.length); }
+
+/* ---------- reading ---------- */
+
+/* The event's forms, in their order -> { forms, materialized, defaultFormId }. An event with none stored has
+   the one its original settings describe (materialized: false). */
+function formsFromSnap(snap, ev) {
+  var list = snap.docs.map(function (d) { return forms.storedForm(d.id, d.data()); });
+  if (!list.length) return { forms: [forms.legacyDefaultForm(ev)], materialized: false };
+  return { forms: sortForms(list), materialized: true };
+}
+function loadForms(fb, eventId, ev) {
+  return formsCol(fb, eventId).limit(LIMITS.maxForms + 1).get().then(function (snap) {
+    var r = formsFromSnap(snap, ev);
+    r.defaultFormId = forms.resolveDefaultFormId(ev, r.forms);
+    return r;
+  });
+}
+/* One form, for a response to it: the form `formId`, or the event's default form when formId is ''.
+   Resolves null when there is no such form. */
+function loadForm(fb, eventId, ev, formId) {
+  if (!formId) {
+    return loadForms(fb, eventId, ev).then(function (r) {
+      return r.forms.filter(function (f) { return f.id === r.defaultFormId; })[0] || null;
+    });
+  }
+  return formsCol(fb, eventId).doc(formId).get().then(function (snap) {
+    if (snap.exists) return forms.storedForm(formId, snap.data());
+    if (formId !== forms.DEFAULT_FORM_ID) return null;
+    return formsCol(fb, eventId).limit(1).get().then(function (s) { return s.empty ? forms.legacyDefaultForm(ev) : null; });
+  });
+}
+/* The definitions a visitor's page is given (GET /api/public/forms, and the #rv-forms block publishing writes). */
+function loadPublicForms(fb, eventId, ev) {
+  return loadForms(fb, eventId, ev).then(function (r) { return forms.publicFormsPayload(eventId, ev, r.forms); });
+}
+
+/* Inside a forms write transaction, after every other read it makes: reads the event's forms and, when it
+   has none stored yet, stores the form its original settings describe — and makes it the default — so
+   that this write and every later one work on real documents. -> { forms, created }. Nothing may be READ
+   in the transaction after this (Firestore: reads before writes). */
+function ensureMaterialized(tx, fb, eventId, ev) {
+  var col = formsCol(fb, eventId), ref = eventDoc(fb, eventId);
+  return tx.get(col.limit(LIMITS.maxForms + 1)).then(function (snap) {
+    var r = formsFromSnap(snap, ev);
+    if (r.materialized) return { forms: r.forms, created: false };
+    var legacy = r.forms[0];
+    tx.set(col.doc(legacy.id), legacy);
+    var settings = isObj(ev.settings) ? ev.settings : null;
+    if (!settings) tx.update(ref, { settings: { registration: { defaultFormId: legacy.id } } });
+    else if (!isObj(settings.registration)) tx.update(ref, { 'settings.registration': { defaultFormId: legacy.id } });
+    else if (settings.registration.defaultFormId !== legacy.id) tx.update(ref, { 'settings.registration.defaultFormId': legacy.id });
+    return { forms: r.forms, created: true };
+  });
+}
+
+/* Runs work(tx, ev, forms) in one transaction with the event read (it must be a live event) and its forms
+   made real. Resolves what work returns. */
+function formsWrite(fb, eventId, work) {
+  return fb.db.runTransaction(function (tx) {
+    return tx.get(eventDoc(fb, eventId)).then(function (snap) {
+      var ev = liveEvent(snap);
+      if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
+      return ensureMaterialized(tx, fb, eventId, ev).then(function (m) { return work(tx, ev, m.forms, m.created); });
+    });
+  });
+}
+
+/* How many responses each form has (and how many wait for approval): the event's counters when they are
+   kept (lib/api-audience.js), counted from the responses otherwise (an event that has taken none since
+   forms existed). Never writes. */
+function responseCounts(fb, eventId, ev) {
+  var c = isObj(ev.counters) ? ev.counters : {};
+  if (shared.hasAudienceCounters(ev)) return Promise.resolve(isObj(c.forms) ? c.forms : {});
+  return shared.scanAudience(fb, eventId).then(function (scan) { return scan.counters.forms; });
+}
+
+/* A form as an organiser's builder sees it. */
+function adminForm(f, counts) {
+  var out = {
+    id: f.id, name: f.name, title: f.title, intro: f.intro, purpose: f.purpose,
+    fields: f.fields.map(function (x) {
+      var o = { id: x.id, type: x.type, label: x.label, required: x.required, placeholder: x.placeholder, help: x.help };
+      if (forms.OPTION_TYPES.indexOf(x.type) !== -1) o.options = (x.options || []).slice();
+      return o;
+    }),
+    submitLabel: f.submitLabel, successMessage: f.successMessage, countsAsRegistration: f.countsAsRegistration,
+    needsApproval: f.needsApproval, open: f.open, duplicates: f.duplicates, order: f.order, template: f.template, rev: f.rev,
+    createdAt: f.createdAt, createdBy: f.createdBy, updatedAt: f.updatedAt, updatedBy: f.updatedBy
+  };
+  if (counts) {
+    var n = isObj(counts[f.id]) ? counts[f.id] : {};
+    out.submissions = num(n.n);
+    out.pending = num(n.pending);
+  }
+  return out;
+}
+/* what is stored for a form: its id, what the organiser set, and the server's own bookkeeping */
+function storedDoc(id, value, extra) {
+  var doc = { id: id };
+  ['name', 'title', 'intro', 'purpose', 'fields', 'submitLabel', 'successMessage', 'countsAsRegistration', 'needsApproval',
+    'open', 'duplicates', 'template'].forEach(function (k) { doc[k] = value[k]; });
+  return Object.assign(doc, extra);
+}
+/* the FormInput part of a stored form (what a duplicate copies) */
+function inputOf(f) {
+  var a = adminForm(f);
+  ['id', 'order', 'rev', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'].forEach(function (k) { delete a[k]; });
+  return a;
+}
+
+function badRequest(res, r) { return sendJson(res, 400, { error: r.error, field: r.field || undefined }); }
+function formIdOk(v) { return typeof v === 'string' && forms.FORM_ID_RE.test(v); }
+
+/* ---------- GET /api/event/forms ---------- */
+
+function handleFormsList(req, res) {
+  requireAdmin(req, res, function (fb) {
+    guard(res, sendJson, 'load the forms', function () {
+      var eventId = str(query(req).get('eventId'), 100);
+      if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+      eventDoc(fb, eventId).get().then(function (snap) {
+        var ev = liveEvent(snap);
+        if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
+        return Promise.all([loadForms(fb, eventId, ev), responseCounts(fb, eventId, ev)]).then(function (r) {
+          var reg = forms.legacyRegistration(ev);
+          sendJson(res, 200, {
+            forms: r[0].forms.map(function (f) { return adminForm(f, r[1]); }),
+            defaultFormId: r[0].defaultFormId,
+            materialized: r[0].materialized,
+            templates: forms.FORM_TEMPLATES,
+            fieldTypes: forms.FIELD_TYPES.map(function (t) { return { type: t, label: forms.FIELD_TYPE_LABELS[t] }; }),
+            presets: forms.FIELD_PRESETS,
+            countries: forms.COUNTRIES,
+            limits: { maxForms: LIMITS.maxForms, maxFields: LIMITS.maxFields, maxOptions: LIMITS.maxOptions },
+            registration: { open: reg.open, capacity: reg.capacity, target: reg.target },
+            published: ev.published === true,
+            /* the event's details version: what PATCH /api/event takes as ifUpdatedAt for the
+               Registration panel's open / capacity / target */
+            updatedAt: forms.isoOf(ev.detailsUpdatedAt) || forms.isoOf(ev.updatedAt) || forms.isoOf(ev.createdAt)
+          });
+        });
+      }).catch(function (err) { answerError(res, sendJson, err, 'load the forms'); });
+    });
+  });
+}
+
+/* ---------- POST /api/event/forms ---------- */
+
+function sameName(a, b) { return String(a || '').replace(/\s+/g, ' ').trim().toLowerCase() === String(b || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+/* a template's name when the event already has a form of that name: "VIP delegates 2" */
+function freeName(name, list) {
+  if (!list.some(function (f) { return sameName(f.name, name); })) return name;
+  for (var n = 2; n < 100; n++) {
+    var cand = name.slice(0, 80 - String(n).length - 1) + ' ' + n;
+    if (!list.some(function (f) { return sameName(f.name, cand); })) return cand;
+  }
+  return name;
+}
+
+function handleFormsCreate(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    guard(res, sendJson, 'create this form', function () {
+      parseJsonBody(req, res, function (body) {
+        guard(res, sendJson, 'create this form', function () {
+          var eventId = bodyId(body.eventId);
+          if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+          var modes = ['form', 'template', 'duplicateOf'].filter(function (k) { return body[k] != null && body[k] !== ''; });
+          if (modes.length !== 1) return sendJson(res, 400, { error: 'Send exactly one of "form", "template" or "duplicateOf".' });
+          var mode = modes[0], given = null;
+          if (mode === 'form') {
+            var c = forms.cleanFormInput(body.form, { creating: true });
+            if (c.error) return badRequest(res, c);
+            given = c.value;
+          }
+          if (mode === 'template' && !forms.TEMPLATE_BY_ID[body.template]) {
+            return sendJson(res, 400, { error: 'There is no form template "' + str(body.template, 40) + '".', field: 'template' });
+          }
+          if (mode === 'duplicateOf' && !formIdOk(body.duplicateOf)) return sendJson(res, 404, { error: 'That form no longer exists.', code: 'form-missing' });
+
+          var now = new Date().toISOString(), actor = actorOf(decoded);
+          formsWrite(fb, eventId, function (tx, ev, list) {
+            if (list.length >= LIMITS.maxForms) {
+              throw httpError(409, 'An event can have at most ' + LIMITS.maxForms + ' forms. Delete one you no longer need first.', { code: 'limit' });
+            }
+            var ids = list.map(function (f) { return f.id; }), value, suggestion, mayUseRegister = false;
+            if (mode === 'form') {
+              value = given;
+              suggestion = value.id || forms.slugify(value.name);
+            } else if (mode === 'template') {
+              var tpl = forms.TEMPLATE_BY_ID[body.template];
+              value = JSON.parse(JSON.stringify(tpl.form));
+              value.name = freeName(value.name, list);
+              if (value.title === tpl.form.name) value.title = value.name;
+              mayUseRegister = tpl.id === 'register';
+              suggestion = mayUseRegister && ids.indexOf(forms.DEFAULT_FORM_ID) === -1 ? forms.DEFAULT_FORM_ID : forms.slugify(value.name);
+            } else {
+              var src = list.filter(function (f) { return f.id === body.duplicateOf; })[0];
+              if (!src) throw httpError(404, 'That form no longer exists.', { code: 'form-missing' });
+              value = inputOf(src);
+              value.name = (src.name.slice(0, 80 - 7).trim() + ' (copy)');
+              suggestion = forms.slugify(value.name);
+            }
+            var checked = forms.cleanFormInput(value, { creating: true });
+            if (checked.error) throw httpError(400, checked.error, { field: checked.field || undefined });
+            /* "register" is the original form's id: only that form, or one made from its template while the
+               event has no form of that id, may have it */
+            var taken = mayUseRegister ? ids : ids.concat([forms.DEFAULT_FORM_ID]);
+            var id = forms.uniqueId(suggestion, taken, '-');
+            var order = list.reduce(function (m, f) { return Math.max(m, f.order); }, -1) + 1;
+            var doc = storedDoc(id, checked.value, { order: order, rev: 1, createdAt: now, createdBy: actor, updatedAt: now, updatedBy: actor });
+            tx.set(formsCol(fb, eventId).doc(id), doc);
+            return forms.storedForm(id, doc);
+          }).then(function (form) {
+            return logActivity(fb, eventId, decoded, 'form-created', describe(form)).then(function () {
+              sendJson(res, 201, { form: adminForm(form, {}) });
+            });
+          }).catch(function (err) { answerError(res, sendJson, err, 'create this form'); });
+        });
+      }, MAX_FORMS_BODY);
+    });
+  });
+}
+
+/* ---------- PUT /api/event/forms ---------- */
+
+function handleFormsUpdate(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    guard(res, sendJson, 'save this form', function () {
+      parseJsonBody(req, res, function (body) {
+        guard(res, sendJson, 'save this form', function () {
+          var eventId = bodyId(body.eventId), formId = body.formId;
+          if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+          if (!formIdOk(formId)) return sendJson(res, 400, { error: 'A valid formId is required.' });
+          if (body.ifUpdatedAt != null && typeof body.ifUpdatedAt !== 'string') return sendJson(res, 400, { error: '"ifUpdatedAt" must be the updatedAt you were given.' });
+          var c = forms.cleanFormInput(body.form, { creating: false, formId: formId });
+          if (c.error) return badRequest(res, c);
+
+          var now = new Date().toISOString(), actor = actorOf(decoded);
+          formsWrite(fb, eventId, function (tx, ev, list) {
+            var current = list.filter(function (f) { return f.id === formId; })[0];
+            if (!current) throw httpError(404, 'That form no longer exists. It may have been deleted.', { code: 'form-missing' });
+            if (body.ifUpdatedAt != null && body.ifUpdatedAt !== current.updatedAt) {
+              throw httpError(409, 'Someone else changed this form. Reload it to see their version.', { code: 'stale', form: adminForm(current) });
+            }
+            var doc = storedDoc(formId, c.value, { order: current.order, rev: (current.rev || 0) + 1,
+              createdAt: current.createdAt || now, createdBy: current.createdBy || actor, updatedAt: now, updatedBy: actor });
+            tx.set(formsCol(fb, eventId).doc(formId), doc);
+            return forms.storedForm(formId, doc);
+          }).then(function (form) {
+            return logActivity(fb, eventId, decoded, 'form-updated', describe(form)).then(function () {
+              sendJson(res, 200, { form: adminForm(form) });
+            });
+          }).catch(function (err) { answerError(res, sendJson, err, 'save this form'); });
+        });
+      }, MAX_FORMS_BODY);
+    });
+  });
+}
+
+/* ---------- DELETE /api/event/forms ---------- */
+
+/* the text of a Storage object, or null when there is none (the same rule as lib/api.js readObject) */
+function readObject(fb, objectPath) {
+  return fb.bucket.file(objectPath).download().then(function (r) { return r[0].toString('utf8'); }, function (err) {
+    if (err && (err.code === 404 || err.code === '404')) return null;
+    throw err;
+  });
+}
+/* where lib/api.js keeps the saved and the published page */
+function savedPagePath(eventId) { return 'events/' + eventId + '/site/page.html'; }
+function publishedPagePath(eventId) { return 'events/' + eventId + '/published/index.html'; }
+
+function handleFormsDelete(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    guard(res, sendJson, 'delete this form', function () {
+      var qs = query(req), eventId = str(qs.get('eventId'), 100), formId = str(qs.get('formId'), 60), force = qs.get('force') === '1';
+      if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+      if (!formIdOk(formId)) return sendJson(res, 400, { error: 'A valid formId is required.' });
+
+      eventDoc(fb, eventId).get().then(function (snap) {
+        var ev = liveEvent(snap);
+        if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
+        return loadForms(fb, eventId, ev).then(function (r) {
+          var form = r.forms.filter(function (f) { return f.id === formId; })[0];
+          if (!form) throw httpError(404, 'That form no longer exists.', { code: 'form-missing' });
+          if (r.defaultFormId === formId) throw httpError(409, 'This is the default form. Make another form the default first.', { code: 'default-form' });
+          if (force) return null;
+          /* the saved site and the live one: a button or an embedded copy still using it */
+          return Promise.all([readObject(fb, savedPagePath(eventId)), ev.published === true ? readObject(fb, publishedPagePath(eventId)) : null]).then(function (pages) {
+            var saved = forms.formUsage(pages[0], formId), published = forms.formUsage(pages[1], formId);
+            if (saved + published > 0) {
+              var places = Math.max(saved, published);
+              throw httpError(409, 'The ' + (saved ? 'saved' : 'published') + ' site uses this form in ' + places + ' place' + (places === 1 ? '' : 's') +
+                '. Open the site editor to change those buttons first, or delete anyway.', { code: 'form-in-use', saved: saved, published: published });
+            }
+          });
+        });
+      }).then(function () {
+        return formsWrite(fb, eventId, function (tx, ev, list) {
+          var form = list.filter(function (f) { return f.id === formId; })[0];
+          if (!form) throw httpError(404, 'That form no longer exists.', { code: 'form-missing' });
+          if (forms.resolveDefaultFormId(ev, list) === formId) throw httpError(409, 'This is the default form. Make another form the default first.', { code: 'default-form' });
+          // its responses stay, with the form's id and name on each of them
+          tx.delete(formsCol(fb, eventId).doc(formId));
+          return form;
+        });
+      }).then(function (form) {
+        return logActivity(fb, eventId, decoded, 'form-deleted', describe(form)).then(function () {
+          sendJson(res, 200, { ok: true, formId: formId });
+        });
+      }).catch(function (err) { answerError(res, sendJson, err, 'delete this form'); });
+    });
+  });
+}
+
+/* ---------- POST /api/event/forms/default and /order ---------- */
+
+function handleFormsDefault(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    guard(res, sendJson, 'change the default form', function () {
+      parseJsonBody(req, res, function (body) {
+        guard(res, sendJson, 'change the default form', function () {
+          var eventId = bodyId(body.eventId), formId = body.formId;
+          if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+          if (!formIdOk(formId)) return sendJson(res, 400, { error: 'A valid formId is required.' });
+          formsWrite(fb, eventId, function (tx, ev, list) {
+            var form = list.filter(function (f) { return f.id === formId; })[0];
+            if (!form) throw httpError(404, 'That form no longer exists.', { code: 'form-missing' });
+            tx.update(eventDoc(fb, eventId), { 'settings.registration.defaultFormId': formId });
+            return form;
+          }).then(function (form) {
+            return logActivity(fb, eventId, decoded, 'form-default', '“' + form.name + '”').then(function () {
+              sendJson(res, 200, { ok: true, defaultFormId: formId });
+            });
+          }).catch(function (err) { answerError(res, sendJson, err, 'change the default form'); });
+        });
+      }, 16 * 1024);
+    });
+  });
+}
+
+function handleFormsOrder(req, res) {
+  requireAdmin(req, res, function (fb) {
+    guard(res, sendJson, 'reorder the forms', function () {
+      parseJsonBody(req, res, function (body) {
+        guard(res, sendJson, 'reorder the forms', function () {
+          var eventId = bodyId(body.eventId), ids = body.ids;
+          if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+          if (!Array.isArray(ids) || !ids.length || ids.length > LIMITS.maxForms || !ids.every(formIdOk) ||
+              ids.some(function (id, i) { return ids.indexOf(id) !== i; })) {
+            return sendJson(res, 400, { error: '"ids" must list each of the event’s forms once.' });
+          }
+          formsWrite(fb, eventId, function (tx, ev, list) {
+            var have = list.map(function (f) { return f.id; });
+            if (have.length !== ids.length || have.some(function (id) { return ids.indexOf(id) === -1; })) {
+              throw httpError(409, 'The forms have changed since you opened them. Reload and try again.', { code: 'stale' });
+            }
+            var col = formsCol(fb, eventId);
+            list.forEach(function (f) {
+              var at = ids.indexOf(f.id);
+              if (f.order !== at) { tx.update(col.doc(f.id), { order: at }); f.order = at; }
+            });
+            return sortForms(list);
+          }).then(function (list) {
+            sendJson(res, 200, { ok: true, forms: list.map(function (f) { return adminForm(f); }) });
+          }).catch(function (err) { answerError(res, sendJson, err, 'reorder the forms'); });
+        });
+      }, 16 * 1024);
+    });
+  });
+}
+
+/* ---------- GET /api/public/forms ---------- */
+
+/* The same gate as GET /api/public/site-data: a published, live event's forms are public (and the same for
+   everybody, so cached for 30 s); a draft's only for a signed-in admin (its preview, the editor's live
+   view), never cached; anything else is one 404 that gives nothing away. */
+function handlePublicForms(req, res) {
+  guard(res, sendPublicJson, 'load this form', function () {
+    var eventId = str(query(req).get('eventId'), 100);
+    if (!validEventId(eventId)) return sendPublicJson(res, 404, { error: shared.NOT_AVAILABLE, code: 'unavailable' });
+    if (!rateLimit('forms:' + clientIp(req), 300, 60000)) {
+      return sendPublicJson(res, 429, { error: 'Too many requests. Please try again in a minute.', code: 'rate-limited' }, { 'Retry-After': '60' });
+    }
+    var fb = getFirebase();
+    if (fb.error) return sendPublicJson(res, 503, { error: shared.UNAVAILABLE, code: 'unavailable' });
+    eventDoc(fb, eventId).get().then(function (snap) {
+      var ev = liveEvent(snap);
+      if (!ev) return sendPublicJson(res, 404, { error: shared.NOT_AVAILABLE, code: 'unavailable' });
+      if (ev.published === true) {
+        return loadPublicForms(fb, eventId, ev).then(function (payload) {
+          sendPublicJson(res, 200, payload, { 'Cache-Control': 'public, max-age=30' });
+        });
+      }
+      return adminFromRequest(req).then(function (who) {
+        if (!who) return sendPublicJson(res, 404, { error: shared.NOT_AVAILABLE, code: 'unavailable' });
+        return loadPublicForms(fb, eventId, ev).then(function (payload) { sendPublicJson(res, 200, payload); });   // no-store
+      });
+    }).catch(function (err) { answerError(res, sendPublicJson, err, 'load this form'); });
+  });
+}
+
+module.exports = {
+  handleFormsList, handleFormsCreate, handleFormsUpdate, handleFormsDelete, handleFormsDefault, handleFormsOrder, handlePublicForms,
+  loadForms, loadForm, loadPublicForms, ensureMaterialized
+};

@@ -180,5 +180,5 @@ function str(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 
 module.exports = {
   sendJson, readBody, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin,
   adminFromRequest, CORS_HEADERS, sendPublicJson, sendPublicNoContent, clientIp, rateLimit, isEventId,
-  isReservedEventId, CONTENT_STATUSES, isEmail, str
+  isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str
 };

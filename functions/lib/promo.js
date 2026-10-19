@@ -267,16 +267,15 @@ function readSavedPage(html) {
   return { design: read.design, sections: read.sections, sectionCss: sectionCss, htmlStyle: htmlStyle, links: links, styles: styles, all: all, one: one };
 }
 
-/* The anchor of the registration form on the saved page: an element with id="register", else what the
-   page's own register button ([data-register-cta]) points at, when that element is really there. */
+/* The anchor of the registration form on the saved page. A page with a form on it — a register button
+   ([data-register-cta]), a button that opens a form ([data-rv-form]) or a form placed in it
+   ([data-rv-form-embed]) — has the forms runtime (templates/_shared/rv-forms.js), which opens the event's
+   default form for "#register": that is the anchor. So is an element with id="register"; a page with
+   neither has no anchor. */
 function registerAnchor(page) {
   if (!page) return '';
   if (page.one(function (e) { return attr(e, 'id') === 'register'; })) return '#register';
-  var ctas = page.all(function (e) { return e.attribs && 'data-register-cta' in e.attribs && /^#[A-Za-z][\w-]*$/.test(attr(e, 'href')); });
-  for (var i = 0; i < ctas.length; i++) {
-    var id = attr(ctas[i], 'href').slice(1);
-    if (page.one(function (e) { return attr(e, 'id') === id; })) return '#' + id;
-  }
+  if (page.one(function (e) { return !!e.attribs && ('data-register-cta' in e.attribs || 'data-rv-form' in e.attribs || 'data-rv-form-embed' in e.attribs); })) return '#register';
   return '';
 }
 

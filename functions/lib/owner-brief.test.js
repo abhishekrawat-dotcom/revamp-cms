@@ -69,6 +69,7 @@ check('buttons: request an invite', ob.buttons(o, t).primary.label === 'Request 
 var sp = ob.buttons(ob.normalise({ mainAction: 'Become a sponsor' }), t);
 check('buttons: sponsor first leads to partners, register second', sp.primary.href === '#sponsors' && sp.primary.register === false && sp.secondary.label === 'Register Now');
 check('buttons: no partners section -> the register target', ob.buttons(ob.normalise({ mainAction: 'Sponsor' }), { register: 'footer' }).primary.href === '#footer');
+check('buttons: no target at all -> the footer, never "#undefined"', ob.buttons(null, {}).primary.href === '#footer' && ob.buttons(null, {}).secondary.href === '#footer', JSON.stringify(ob.buttons(null, {})));
 
 /* prompt lines */
 var pl = ob.planLines(o).join('\n'), cl = ob.copyLines(o).join('\n');

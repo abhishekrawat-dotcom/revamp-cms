@@ -445,6 +445,8 @@ function handleEventRestore(req, res) {
      - the nine content subcollections, with the SAME document ids, so that the links between them
        (a speaker's groupId, a session's speakerIds, a partner's tierId) still point at the right record
      - the Promotions message / post / banner templates, each reset to a draft that was never posted
+     - the registration forms (events/<id>/forms), same ids, so the copy's buttons and embedded forms open
+       the same forms; settings.registration.defaultFormId comes with the settings
      - the event's files in Storage — uploads, generated imagery and the saved site — and every reference
        to them, so the copy never depends on the original's files (deleting or changing the original must
        not break the copy's pictures)
@@ -475,7 +477,9 @@ var CONTENT_COLLECTIONS = ['speakers', 'speakerGroups', 'sessions', 'agendaGroup
 /* The Promotions pages' message, post and banner templates are the event's own wording and are copied
    too, each back to an unsent draft. Its leads and saved audiences are lists of people and are not. */
 var PROMO_TEMPLATES = 'promoTemplates';
-var CLONED_COLLECTIONS = CONTENT_COLLECTIONS.concat([PROMO_TEMPLATES]);
+/* The registration forms (lib/api-forms.js) are the event's own too, and the copied site names them by id. */
+var FORMS = 'forms';
+var CLONED_COLLECTIONS = CONTENT_COLLECTIONS.concat([PROMO_TEMPLATES, FORMS]);
 var PEOPLE_COLLECTIONS = ['registrations', 'leads', 'promoAudiences'];
 
 /* Fields of the source document that describe ITS life, not the event's design or content. */
@@ -607,6 +611,7 @@ function copyContent(fb, src, dst, rewrite, actor, now) {
         data.createdAt = now; data.updatedAt = now; data.createdBy = actor;
         delete data.updatedBy;
         if (name === PROMO_TEMPLATES) { data.status = 'draft'; data.postedAt = null; }
+        if (name === FORMS) { data.createdBy = actor; data.updatedBy = actor; data.rev = 1; }
         writes.push({ ref: eventRef(fb, dst).collection(name).doc(d.id), data: data });
       });
     });

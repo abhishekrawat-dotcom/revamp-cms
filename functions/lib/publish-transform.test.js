@@ -162,6 +162,52 @@ ok(yearOut.indexOf('Copyright © <span data-rv-year>2027</span> ETCIO.com.') !==
 ok(yearOut.indexOf('<span data-rv-year>since 2019, proudly</span>') !== -1, 'a year the owner rewrote as text is kept');
 ok(publishTransform(YEAR_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'gen-qa-fixture' }).indexOf('<span data-rv-year>' + new Date().getFullYear() + '</span>') !== -1, 'this year by default');
 
+/* ---- registration forms: the runtime once, the definitions when given (lib/forms.js, spec section 1.4) ---- */
+var H = require('./api')._testHooks;
+var FORMS_SRC = '/templates/_shared/rv-forms.js?v=' + H.FORMS_RUNTIME_V;
+var FORMS = { v: 1, eventId: 'qa-fixture', open: true, defaultFormId: 'register', waitlist: false,
+  forms: [{ id: 'register', name: 'Register now', title: 'Say </script><b>hi</b>', intro: 'Line two', purpose: 'register', fields: [], submitLabel: 'Register', open: true, counts: true, rev: 1 }] };
+var withForms = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], forms: FORMS });
+ok(count(out, '/templates/_shared/rv-forms.js') === 1 && out.indexOf('<script src="' + FORMS_SRC + '" data-rv-runtime></script>') !== -1, 'exactly one rv-forms.js, versioned, without forms given');
+ok(out.indexOf('id="rv-forms"') === -1, 'no #rv-forms block when no forms are given');
+ok(out.indexOf('rv-popups.js') < out.indexOf('rv-forms.js'), 'rv-forms.js comes after rv-popups.js');
+ok(count(withForms, '/templates/_shared/rv-forms.js') === 1 && count(withForms, 'id="rv-forms"') === 1, 'with forms: one runtime, one #rv-forms block');
+var formsBlock = /<script id="rv-forms" type="application\/json" data-rv-runtime>([\s\S]*?)<\/script>/.exec(withForms);
+ok(!!formsBlock && formsBlock[1].indexOf('</script') === -1 && formsBlock[1].indexOf('<') === -1 && formsBlock[1].indexOf(' ') === -1, 'the block escapes "<" and U+2028 as rv-site-config does');
+ok(!!formsBlock && JSON.stringify(JSON.parse(formsBlock[1])) === JSON.stringify(FORMS), 'the block is the definitions, exactly');
+ok(withForms.indexOf('id="rv-site-config"') < withForms.indexOf('id="rv-forms"') && withForms.indexOf('id="rv-forms"') < withForms.indexOf('rv-data.js'), '#rv-forms right after rv-site-config');
+ok(publishTransform(withForms, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], forms: FORMS }) === withForms, 'running it again with forms changes nothing');
+var noForms = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] });
+ok(publishTransform(noForms, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }) === noForms, 'running it again without forms changes nothing');
+var FORMS2 = JSON.parse(JSON.stringify(FORMS)); FORMS2.forms[0].rev = 2;
+var replaced = publishTransform(withForms, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], forms: FORMS2 });
+ok(count(replaced, 'id="rv-forms"') === 1 && replaced.indexOf('"rev":2') !== -1 && replaced.indexOf('"rev":1') === -1, 'a page with an older #rv-forms gets the new one in its place');
+var dropped = publishTransform(withForms, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] });
+ok(dropped.indexOf('id="rv-forms"') === -1, 'transformed again without forms: the old block goes (the runtime fetches)');
+var untagged = PAGE.replace('</body>', '<script id="rv-forms" type="application/json">{"v":0}</script><script src="' + ORIGIN + '/templates/_shared/rv-forms.js?v=0"></script></body>');
+var cleaned = publishTransform(untagged, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] });
+ok(cleaned.indexOf('{"v":0}') === -1 && count(cleaned, 'rv-forms.js') === 1 && cleaned.indexOf('rv-forms.js?v=0') === -1, 'an untagged older copy of the block and the script are replaced');
+ok(count(withForms, '/templates/_shared/rv-live.js"') === (LIVE_RUNTIME ? 1 : 0), 'the rv-live.js rule is unchanged with forms');
+var previewForms = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'preview', templateId: 'tech500', origins: [ORIGIN], forms: FORMS });
+ok(count(previewForms, 'id="rv-forms"') === 1 && count(previewForms, 'rv-forms.js') === 1, 'the preview gets the definitions and the runtime too');
+var embedPage = PAGE.replace('</section>', '<div class="rv-block-form" data-rv-form-embed="register" data-rv-form-title="hide"><p class="rv-form-fallback" data-rv-form-fallback>This form needs JavaScript.</p>' +
+  '<div data-rv-form-preview data-rv-editor data-ed="none"><form>preview</form></div></div><a href="#rv-form-vip" data-rv-form="vip" data-register-cta>VIP</a></section>');
+var embedOut = publishTransform(embedPage, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] });
+ok(embedOut.indexOf('<div class="rv-block-form" data-rv-form-embed="register" data-rv-form-title="hide"><p class="rv-form-fallback" data-rv-form-fallback>This form needs JavaScript.</p></div>') !== -1,
+  'an embedded form keeps its markup and fallback; the editor\'s preview inside it is removed', embedOut.slice(embedOut.indexOf('rv-block-form') - 12, embedOut.indexOf('rv-block-form') + 300));
+ok(embedOut.indexOf('<a href="#rv-form-vip" data-rv-form="vip" data-register-cta>VIP</a>') !== -1, 'a button that opens a form keeps its marks');
+
+/* a page published before forms: the runtime goes in when it is served, once */
+var EF = H.ensureFormsRuntime;
+var oldPage = '<html><body><a data-register-cta href="#register">Register</a></body></html>';
+var served = EF(oldPage);
+ok(served === '<html><body><a data-register-cta href="#register">Register</a><script src="' + FORMS_SRC + '" data-rv-runtime></script>\n</body></html>', 'the runtime goes in before </body>', served);
+ok(EF(served) === served, 'and only once');
+ok(EF(withForms) === withForms, 'a page published with forms is left as it is');
+ok(EF('<p>no body</p>') === '<p>no body</p><script src="' + FORMS_SRC + '" data-rv-runtime></script>\n', 'a page without </body>: at the end');
+ok(EF('<body>a</body><!-- </BODY> -->x</BODY>').indexOf('a</body><!-- </BODY> -->x<script') !== -1, 'the LAST </body>, whatever its case');
+ok(publishTransform(served, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live' }).split('rv-forms.js').length === 2, 'a served page transformed again still has one runtime');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

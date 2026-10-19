@@ -7,7 +7,7 @@
 const ACTIONS = ['created', 'updated', 'status-changed', 'settings-changed', 'site-saved', 'published', 'unpublished',
   'deleted', 'restored', 'cloned', 'content-seeded', 'registration-updated', 'registration-deleted',
   'leads-imported', 'leads-deleted', 'approval-requested', 'approved', 'rejected',
-  'content-added', 'content-changed', 'content-removed'];
+  'content-added', 'content-changed', 'content-removed', 'form-created', 'form-updated', 'form-deleted', 'form-default'];
 
 function actorOf(decoded) {
   return (decoded && (decoded.email || decoded.uid)) || 'system';

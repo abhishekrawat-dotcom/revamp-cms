@@ -95,7 +95,7 @@ function hrefId(item) {
 function isButton(item) {
   var a = /<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(item) || ['', '', ''];
   var text = a[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  return /\b(btn|button|cta)\b|data-register-cta/i.test(a[1]) || /^(register|book|request|apply|nominate|buy)/i.test(text);
+  return /\b(btn|button|cta)\b|data-register-cta|data-rv-form/i.test(a[1]) || /^(register|book|request|apply|nominate|buy)/i.test(text);
 }
 function orderNavLinks(html, ids) {
   html = String(html || '');

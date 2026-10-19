@@ -80,7 +80,11 @@
 //                          POST /api/event/restore, POST /api/event/clone
 //     lib/api-audience.js  GET /api/public/site-data, POST /api/register, POST /api/track (all PUBLIC),
 //                          POST /api/event/seed, GET/PATCH/DELETE /api/event/registrations,
+//                          GET /api/event/registrations/export (CSV),
 //                          GET /api/event/dashboard-stats, GET /api/insights, GET /api/event/activity
+//     lib/api-forms.js     an event's registration forms: GET/POST/PUT/DELETE /api/event/forms,
+//                          POST /api/event/forms/default, POST /api/event/forms/order,
+//                          GET /api/public/forms (PUBLIC — what a visitor's page is told about them)
 //     lib/promo.js         GET /api/promo/kit, GET /api/promo/image, POST /api/promo/write (the Promotions
 //                          pages: an event's brand and content, its pictures from our own address, AI copy)
 //
@@ -138,6 +142,8 @@ const etEvents = require('./et-events');
 const prevSections = require('./prev-sections');
 const sectionOrder = require('./section-order');
 const etNav = require('./et-nav');
+/* registration forms: their shape, the public definitions, the AI chat's form changes (pure) */
+const formsLib = require('./forms');
 const etFooter = require('./et-footer');
 const editionLook = require('./edition-look');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
@@ -519,6 +525,22 @@ function chatFocusLine(payload, sections) {
     (el ? 'that ' + (kind === 'image' ? 'picture' : 'element') + ' in that section' : 'that section') + ': make the change there and only there. A question about "this" is about it too.\n';
 }
 
+/* The site's forms as the editor sent them ({ id, name, purpose, fields: [label] }), cleaned: at most the 20
+   an event can have, labels only. */
+function chatForms(payload) {
+  return (Array.isArray(payload.forms) ? payload.forms : []).filter(function (f) {
+    return f && typeof f === 'object' && formsLib.FORM_ID_RE.test(String(f.id || ''));
+  }).slice(0, formsLib.LIMITS.maxForms).map(function (f) {
+    return {
+      id: f.id, name: String(f.name || f.id).replace(/\s+/g, ' ').trim().slice(0, 80),
+      purpose: formsLib.PURPOSES.indexOf(f.purpose) !== -1 ? f.purpose : 'custom',
+      fields: (Array.isArray(f.fields) ? f.fields : []).map(function (l) {
+        return String(l && typeof l === 'object' ? l.label || '' : l || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      }).filter(Boolean).slice(0, formsLib.LIMITS.maxFields)
+    };
+  });
+}
+
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
   var history = (payload.history || []).slice(-16);
@@ -538,20 +560,30 @@ function buildChatPrompt(payload) {
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
     '',
-    'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it):',
-    JSON.stringify(sections.map(function (s) { return { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, texts: s.texts || [] }; }), null, 2),
+    'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it; buttons: the labels of the buttons in it):',
+    JSON.stringify(sections.map(function (s) {
+      var buttons = (Array.isArray(s.buttons) ? s.buttons : []).map(function (b) { return String(b || '').replace(/\s+/g, ' ').trim().slice(0, 80); }).filter(Boolean).slice(0, 8);
+      return { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, texts: s.texts || [], buttons: buttons.length ? buttons : undefined };
+    }), null, 2),
+    '',
+    'The site\'s forms right now (what visitors fill in — a button opens one in a pop-up, or it is placed in a section; formId -> its name, purpose and questions):',
+    JSON.stringify(chatForms(payload).map(function (f) { return { formId: f.id, name: f.name, purpose: f.purpose, questions: f.fields }; }), null, 2),
     '',
     'Task:',
     '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site, "reply" if it\'s a question, small talk, or anything else that doesn\'t call for one — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.',
     '2. If `kind` is "reply": leave `design` empty and `textEdits` empty, and put a natural, helpful, conversational answer in `summary` — reference the actual sections/design above if relevant, don\'t make things up.',
     '3. If `kind` is "edit": if it asks for a visual/design change (colour, font, spacing, heading style…), return a partial `design` object — ONLY the fields the instruction actually calls for, using these field names: ' + DESIGN_FIELDS.join(', ') + '. Leave out any field it didn\'t ask to change. A colour field MUST be a hex code ("#1c1c1c") — if it names a colour in words ("orange", "navy blue"), translate it to the closest real hex value yourself; never write the colour word into a colour field, it will be rejected. If it asks to change text, return `textEdits`: an array of {sectionId, find, replace}, where `find` is copied VERBATIM (exact substring, same spelling/punctuation) from that section\'s own text shown above — never invent or paraphrase the original. Never invent facts (dates, numbers, names) that aren\'t already present. A follow-up like "make it bigger instead" that refines a design mentioned earlier in the conversation should produce a fresh, complete replacement for the fields it\'s changing, not an incremental tweak instruction.',
     'A text edit applies to EVERY place that exact `find` text appears in that section. To change a word, a year, a name or a number everywhere (e.g. "change 2026 to 2027"), give `find` as just that word or number and return one edit for each section whose texts contain it — check every section\'s texts, do not stop at the first. `find` must be copied exactly from the texts above.',
-    '4. For everything those two cannot do, use the three tools that follow — choose the lightest tool that does the job, and combine tools freely:',
+    '4. For everything those two cannot do, use the tools that follow — choose the lightest tool that does the job, and combine tools freely:',
     '   - `sectionEdits`: [{sectionId, instruction}] — one section is reworked by a designer-developer who follows your instruction exactly: change its layout, add, remove or reorder cards and blocks, rewrite or extend its content, restyle only that section (colours, sizes, spacing, alignment, backgrounds), turn a grid into a carousel or a timeline, anything. Write `instruction` as a complete, specific brief in plain words, including every fact the owner gave (names, numbers, wording) — the designer sees the section and your brief, not this conversation. One entry per section that needs it. Do NOT use it for a change `textEdits` or `design` can make.',
     '   - `sectionOps`: [{op, sectionId, beforeSectionId}] — op "hide", "show" or "remove" a whole section; op "move" puts sectionId right before beforeSectionId (an empty beforeSectionId means the end of the page). The site\'s first and last sections (navigation, hero banner, footer) stay where they are.',
     '   - `newSections`: [{afterSectionId, name, instruction}] — a NEW section is designed and written from your brief and placed after afterSectionId. `name` is its short label (e.g. "Venue & Travel"); `instruction` is the complete brief: what it is for, what it must say (only facts the owner gave or that are on the page — never invented names, numbers or dates), and how it should look.',
-    '   What you still cannot do: make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above), and add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves. If the request needs one of these, say so in `summary` and do the rest.',
-    '5. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`, `textEdits`, `sectionEdits`, `sectionOps` and `newSections` actually contain, nothing more — the owner sees your summary beside the list of what will change, so any mismatch is a bug.'
+    '   FORMS — registration and enquiry forms ("Register now", "Express interest", "Join as partner", "VIP delegates", a speaker application…). Three tools:',
+    '   - `newForms`: [{ref, template, name, title, intro, fields, submitLabel, successMessage, countsAsRegistration, needsApproval}] — a NEW form. Only when the owner asks for a form or it is plainly implied ("add a VIP delegate form", "add an Express interest button" when no such form exists). If a form with that purpose or name already exists above, use it instead and do not make another. `ref` is a short id of your own ("new-1") that ctaLinks and formEmbeds use to point at it. `template` is the closest of: register (Register now — counts as a registration), interest (Express interest — an enquiry), partner (Join as partner), vip (VIP delegates — needs approval, counts as a registration), speaker (Speaker application — needs approval), blank (anything else). `fields` are its questions in order, each {label, type, required, options, placeholder, help}; type is one of ' + formsLib.FIELD_TYPES.join(', ') + '; a select, radio or multiselect question needs its `options`. Ask only what suits the purpose — a name and an email address are always asked (include them), then e.g. phone, company and designation, and the questions the purpose needs. Never invent facts (dates, prices, places, names) in the intro or the success message. countsAsRegistration: true only for forms that sign people up to attend; needsApproval: true when the organisers choose who gets in.',
+    '   - `ctaLinks`: [{sectionId, buttonText, newButtonLabel, form}] — make a button open a form (an existing formId, or a newForms ref). To link a button that is already there, give its label exactly as listed in that section\'s buttons as `buttonText` (newButtonLabel empty); to add a new button, give `newButtonLabel` (at most 40 characters; buttonText empty). "Add an Express interest button to the hero" means a newForms entry if no such form exists, plus a ctaLinks entry for the hero with newButtonLabel "Express interest". Only when asked.',
+    '   - `formEmbeds`: [{form, sectionId, afterSectionId, heading, intro}] — put a form IN the page instead of a pop-up. With `sectionId`, it goes at the end of that section ("embed the Express interest form in the contact section"). With sectionId empty, a new section holding the form is made after `afterSectionId` (empty: just before the footer), with `heading` (at most 80 characters) and a one-line `intro` (at most 300). Only when asked.',
+    '   What you still cannot do: make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above); add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves; and take payments, or send confirmation emails or WhatsApp messages — those are not available yet. If the request needs one of these, say so in `summary` and do the rest.',
+    '5. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` and `formEmbeds` actually contain, nothing more — the owner sees your summary beside the list of what will change, so any mismatch is a bug.'
   ].join('\n');
 }
 
@@ -581,8 +613,29 @@ function chatResponseSchema(payload) {
         }
       }
     },
-    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections']
+    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds']
   };
+  /* forms (lib/forms.js; the answer is checked by cleanAiFormOps) */
+  schema.properties.newForms = { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+    ref: { type: 'STRING' },
+    template: { type: 'STRING', enum: formsLib.FORM_TEMPLATES.map(function (t) { return t.id; }) },
+    name: { type: 'STRING' }, title: { type: 'STRING' }, intro: { type: 'STRING' },
+    fields: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+      label: { type: 'STRING' }, type: { type: 'STRING', enum: formsLib.FIELD_TYPES }, required: { type: 'BOOLEAN' },
+      options: { type: 'ARRAY', items: { type: 'STRING' } }, placeholder: { type: 'STRING' }, help: { type: 'STRING' }
+    }, required: ['label', 'type'] } },
+    submitLabel: { type: 'STRING' }, successMessage: { type: 'STRING' },
+    countsAsRegistration: { type: 'BOOLEAN' }, needsApproval: { type: 'BOOLEAN' }
+  }, required: ['ref', 'template', 'name', 'fields'] } };
+  schema.properties.ctaLinks = { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+    sectionId: { type: 'STRING' }, buttonText: { type: 'STRING' }, newButtonLabel: { type: 'STRING' },
+    form: { type: 'STRING', description: 'an existing formId, or the ref of one of newForms' }
+  }, required: ['sectionId', 'form'] } };
+  schema.properties.formEmbeds = { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+    form: { type: 'STRING', description: 'an existing formId, or the ref of one of newForms' },
+    sectionId: { type: 'STRING', description: 'the section to put it in, or empty for a new section' },
+    afterSectionId: { type: 'STRING' }, heading: { type: 'STRING' }, intro: { type: 'STRING' }
+  }, required: ['form'] } };
   schema.properties.sectionEdits = { type: 'ARRAY', items: { type: 'OBJECT', properties: { sectionId: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this edit uses' } }, required: ['sectionId', 'instruction'] } };
   schema.properties.sectionOps = { type: 'ARRAY', items: { type: 'OBJECT', properties: { op: { type: 'STRING', enum: CHAT_SECTION_OPS }, sectionId: { type: 'STRING' }, beforeSectionId: { type: 'STRING' } }, required: ['op', 'sectionId'] } };
   schema.properties.newSections = { type: 'ARRAY', items: { type: 'OBJECT', properties: { afterSectionId: { type: 'STRING' }, name: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this section uses' } }, required: ['afterSectionId', 'name', 'instruction'] } };
@@ -590,6 +643,7 @@ function chatResponseSchema(payload) {
     schema.properties.textEdits.items.properties.sectionId.enum = sectionIds;
     schema.properties.sectionEdits.items.properties.sectionId.enum = sectionIds;
     schema.properties.sectionOps.items.properties.sectionId.enum = sectionIds;
+    schema.properties.ctaLinks.items.properties.sectionId.enum = sectionIds;
   }
   return schema;
 }
@@ -687,13 +741,20 @@ function handleChatEdit(req, res) {
         return { afterSectionId: knownSectionIds.indexOf(n.afterSectionId) !== -1 ? n.afterSectionId : '', name: String(n.name || 'New section').trim().slice(0, 60) || 'New section', instruction: brief(n.instruction), pictures: picturesOf(n.pictures) };
       }).filter(Boolean).slice(0, 4);
 
+      /* forms: each new form checked as a form the routes would store, every link and placement checked
+         against the page and the forms it names (lib/forms.js cleanAiFormOps) */
+      var formOps = formsLib.cleanAiFormOps(parsed, { sections: payload.sections || [], forms: chatForms(payload) });
+      skipped = skipped.concat(formOps.skipped);
+
       var summary = String(parsed.summary || '').slice(0, 400);
-      if (!summary && !Object.keys(design).length && !textEdits.length && !sectionEdits.length && !sectionOps.length && !newSections.length) {
+      if (!summary && !Object.keys(design).length && !textEdits.length && !sectionEdits.length && !sectionOps.length && !newSections.length &&
+          !formOps.newForms.length && !formOps.ctaLinks.length && !formOps.formEmbeds.length) {
         return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
       }
       var kind = parsed.kind === 'reply' ? 'reply' : 'edit';
       sendJson(res, 200, { kind: kind, summary: summary || 'A change is ready to review.', design: design, textEdits: textEdits,
-        sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections, skipped: skipped });
+        sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections,
+        newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped });
     }).catch(function (err) { sendStepFailure(res, err, 500, 'The chat could not answer. Please try again.'); });
   }, BODY_LIMITS.ai);
 }
@@ -2915,6 +2976,8 @@ function buildSectionCodePrompt(payload) {
     lines.push('');
     lines.push.apply(lines, ownerCopy);
   }
+  /* the site's forms runtime opens the registration form from such a button (templates/_shared/rv-forms.js) */
+  lines.push('', 'Every button whose action is to register gets data-register-cta and href="#register".');
 
   /* Numbering the sections ("01", "02" tabs before each heading) is not what an event site does, and when a
      section without records is hidden the count jumps (04, then 07). Items inside a list may be numbered. */
@@ -3317,7 +3380,8 @@ function buildRedesignPrompt(payload) {
       : payload.mode === 'create'
         ? 'Write what the brief asks for. Facts come only from the brief: never invent a name, company, number, date, address, e-mail or phone number — where the brief gives no detail, write honest general copy.'
         : 'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
-    payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go.',
+    payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-form, data-rv-form-embed, data-rv-form-title, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go. An element with data-rv-form-embed stays exactly as it is, with its contents (it is a form the site draws in place); keep it in the section.',
+    'Every button whose action is to register gets data-register-cta and href="#register".',
     (payload.supplied || []).length
       ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) { return 'attached picture ' + p.n + ' = ' + p.token; }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
       : '',
@@ -5215,7 +5279,6 @@ RESOURCES['leads'] = { list: handleLeadsList, create: handleLeadCreate, update: 
 // changes in exactly two places: POST /api/event/publish and POST /api/event/unpublish.
 var EVENT_STATUSES = ['draft', 'upcoming', 'active', 'live', 'completed', 'cancelled'];
 var SOCIAL_KINDS = ['linkedin', 'x', 'facebook', 'instagram', 'youtube', 'website'];
-var REGISTRATION_FIELD_KEYS = ['phone', 'company', 'designation', 'city'];
 var DATE_MODES = ['exact', 'month', 'quarter', 'tbd', 'none'];
 
 /* Free-form JSON a client sends to be stored as it is (the checklist, an audience's filters) must still
@@ -5295,10 +5358,14 @@ function cleanSettings(v) {
   if (has(v, 'registration')) {
     var r = v.registration;
     if (!isPlainObject(r)) return { error: '"settings.registration" must be an object.' };
-    if ((e = unknown(r, ['open', 'duplicates', 'capacity', 'target', 'successMessage', 'fields'], 'settings.registration'))) return { error: e };
+    /* what the event's single registration form used to hold is now each form's own (lib/api-forms.js);
+       the stored values stay, read only to set up an event's first form */
+    var perForm = ['fields', 'successMessage', 'duplicates'].filter(function (k) { return has(r, k); })[0];
+    if (perForm) return { error: '"' + perForm + '" is now set per form: edit the form under Settings › Registration forms.', field: 'settings.registration.' + perForm };
+    if (has(r, 'defaultFormId')) return { error: 'The default form is changed with POST /api/event/forms/default.', field: 'settings.registration.defaultFormId' };
+    if ((e = unknown(r, ['open', 'capacity', 'target'], 'settings.registration'))) return { error: e };
     var reg = {};
     if (has(r, 'open')) { if (typeof r.open !== 'boolean') return { error: '"Registration open" must be on or off.' }; reg.open = r.open; }
-    if (has(r, 'duplicates')) { if (r.duplicates !== 'reject' && r.duplicates !== 'allow') return { error: '"Duplicate registrations" must be "reject" or "allow".' }; reg.duplicates = r.duplicates; }
     var counts = ['capacity', 'target'];
     for (var i = 0; i < counts.length; i++) {
       var k = counts[i];
@@ -5307,23 +5374,6 @@ function cleanSettings(v) {
         return { error: 'The registration ' + k + ' must be a whole number of 1 or more, or left empty.' };
       }
       reg[k] = r[k];
-    }
-    if (has(r, 'successMessage')) { if ((e = checkText('The success message', r.successMessage, 500, false))) return { error: e }; reg.successMessage = r.successMessage || ''; }
-    if (has(r, 'fields')) {
-      if (!isPlainObject(r.fields)) return { error: '"settings.registration.fields" must be an object.' };
-      if ((e = unknown(r.fields, REGISTRATION_FIELD_KEYS, 'settings.registration.fields'))) return { error: e };
-      reg.fields = {};
-      for (var j = 0; j < REGISTRATION_FIELD_KEYS.length; j++) {
-        var fk = REGISTRATION_FIELD_KEYS[j];
-        if (!has(r.fields, fk)) continue;
-        var f = r.fields[fk];
-        if (!isPlainObject(f) || (has(f, 'show') && typeof f.show !== 'boolean') || (has(f, 'required') && typeof f.required !== 'boolean')) {
-          return { error: 'The registration field "' + fk + '" needs show / required set to true or false.' };
-        }
-        if ((e = unknown(f, ['show', 'required'], 'settings.registration.fields.' + fk))) return { error: e };
-        /* a field that is not shown cannot be required: the visitor would have no way to fill it in */
-        reg.fields[fk] = { show: f.show !== false, required: f.show !== false && f.required === true };
-      }
     }
     out.registration = reg;
   }
@@ -5359,18 +5409,13 @@ function cleanSettings(v) {
 }
 
 /* What is stored after a settings PATCH: registration and seo are merged key by key over what is there
-   (so sending { registration: { open: false } } closes registration without wiping the capacity), each
-   registration field is replaced as a whole, and the social list is replaced as a whole. */
+   (so sending { registration: { open: false } } closes registration without wiping the capacity — or the
+   default form, or the original single form's settings an event's first form is made from), and the
+   social list is replaced as a whole. */
 function mergeSettings(stored, patch) {
   var cur = isPlainObject(stored) ? stored : {};
   var out = Object.assign({}, cur);
-  if (patch.registration) {
-    var reg = Object.assign({}, isPlainObject(cur.registration) ? cur.registration : {}, patch.registration);
-    if (patch.registration.fields) {
-      reg.fields = Object.assign({}, isPlainObject(cur.registration) && isPlainObject(cur.registration.fields) ? cur.registration.fields : {}, patch.registration.fields);
-    }
-    out.registration = reg;
-  }
+  if (patch.registration) out.registration = Object.assign({}, isPlainObject(cur.registration) ? cur.registration : {}, patch.registration);
   if (patch.seo) out.seo = Object.assign({}, isPlainObject(cur.seo) ? cur.seo : {}, patch.seo);
   if (patch.social) out.social = patch.social;
   return out;
@@ -5401,7 +5446,7 @@ function cleanEventBody(body, eventId, creating) {
   var settings = null;
   if (has(body, 'settings') && body.settings != null) {
     var s = cleanSettings(body.settings);
-    if (s.error) return { error: s.error };
+    if (s.error) return { error: s.error, field: s.field };
     settings = s.value;
   }
   return { data: data, settings: settings };
@@ -5458,7 +5503,7 @@ function handleEventCreate(req, res) {
       });
     }
     var clean = cleanEventBody(body, eventId, true);
-    if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code });
+    if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code, field: clean.field });
 
     var now = new Date().toISOString(), actor = actorOf(decoded);
     var data = clean.data;
@@ -5520,7 +5565,7 @@ function handleEventUpdate(req, res) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
     var clean = cleanEventBody(body, eventId, false);
-    if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code });
+    if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code, field: clean.field });
     var bad = checkIfUpdatedAt(body);
     if (bad) return sendJson(res, 400, { error: bad });
     var changed = Object.keys(clean.data);
@@ -6092,7 +6137,41 @@ var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable'
   'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
-var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live)\.js|editor-fill\.js)$/;
+var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms)\.js|editor-fill\.js)$/;
+/* The forms runtime (templates/_shared/rv-forms.js: a button's form in a pop-up, a form placed in the page,
+   validation and sending). Its address carries lib/forms.js FORMS_RUNTIME_V, bumped whenever the file
+   changes: static files are cached for five minutes under an unhashed name. */
+var FORMS_RUNTIME_V = formsLib.FORMS_RUNTIME_V;
+var FORMS_RUNTIME_SRC = '/templates/_shared/rv-forms.js?v=' + FORMS_RUNTIME_V;
+var FORMS_RUNTIME_TAG = '<script src="' + FORMS_RUNTIME_SRC + '" data-rv-runtime></script>';
+/* JSON inside a <script> block: "<" must not appear (a "</script" in some text would end the block early),
+   nor the two characters JavaScript reads as line ends */
+function scriptJson(v) {
+  return JSON.stringify(v).replace(/</g, '\\u003c').replace(/[\u2028\u2029]/g, function (c) { return c === '\u2028' ? '\\u2028' : '\\u2029'; });
+}
+
+/* A page published before forms existed is stored without the forms runtime and is not transformed again
+   when it is served (handlePublicPage): the runtime's tag goes in on the way out, once, before the last
+   </body> (at the end when there is none). Without a #rv-forms block the runtime fetches the event's forms
+   itself. */
+function ensureFormsRuntime(html) {
+  html = String(html == null ? '' : html);
+  if (html.indexOf('/templates/_shared/rv-forms.js') !== -1) return html;
+  var at = html.toLowerCase().lastIndexOf('</body');
+  return at === -1 ? html + FORMS_RUNTIME_TAG + '\n' : html.slice(0, at) + FORMS_RUNTIME_TAG + '\n' + html.slice(at);
+}
+
+/* The event's public form definitions for a page about to be transformed (opts.forms), or null when they
+   cannot be read — the failure is logged and the page goes out without them: its runtime fetches them.
+   lib/api-forms.js is loaded here, on use, like the other route modules (see inModule). Never rejects. */
+function publicFormsFor(fb, eventId, ev) {
+  return Promise.resolve().then(function () {
+    return require('./api-forms').loadPublicForms(fb, eventId, ev || {});
+  }).catch(function (err) {
+    console.error('api: the forms of ' + eventId + ' could not be read for its page — ' + ((err && err.message) || err));
+    return null;
+  });
+}
 var RUNTIME_STYLE = /\/templates\/_shared\/rv-live\.css$/;
 var SITE_FAVICON = '/assets/et-b2b-logo.svg';
 
@@ -6119,7 +6198,8 @@ function contentMapFor(templateId) {
 }
 
 /* opts: { eventId, event (the event document), mode: 'live' | 'preview', templateId, origins: [],
-           publicBase: 'https://host' or '' } */
+           publicBase: 'https://host' or '', forms: the event's public form definitions (lib/forms.js
+           publicFormsPayload; optional — without it the forms runtime fetches them) } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -6178,7 +6258,7 @@ function publishTransform(html, opts) {
     /* a section the owner switched off in the editor (its video could not be shown) */
     if (attrOf(t, 'data-rv-video-off')) { i = removeElement(i, false); continue; }
     /* an earlier copy of the runtime or of its config: step 4 writes the one that counts */
-    if (t.name === 'script' && (attrValue(t, 'id') === 'rv-site-config' || RUNTIME_SCRIPT.test(urlPathOnly(attrValue(t, 'src'))))) { i = removeElement(i, false); continue; }
+    if (t.name === 'script' && (attrValue(t, 'id') === 'rv-site-config' || attrValue(t, 'id') === 'rv-forms' || RUNTIME_SCRIPT.test(urlPathOnly(attrValue(t, 'src'))))) { i = removeElement(i, false); continue; }
     if (t.name === 'link' && RUNTIME_STYLE.test(urlPathOnly(attrValue(t, 'href')))) { i = removeElement(i, false); continue; }
     /* head tags step 3 is about to write: a page has one description, one canonical link, one icon */
     if (inHead(i)) {
@@ -6282,14 +6362,18 @@ function publishTransform(html, opts) {
   var contentMap = contentMapFor(opts.templateId);
   var config = { eventId: opts.eventId, mode: mode, templateId: opts.templateId || null, contentMap: contentMap || [] };
   /* "<" must not appear inside the block: "</script" in a field's text would end it early */
-  var configJson = JSON.stringify(config).replace(/</g, '\\u003c').replace(/[\u2028\u2029]/g, function (c) { return c === '\u2028' ? '\\u2028' : '\\u2029'; });
-  var tail = ['<script id="rv-site-config" type="application/json" data-rv-runtime>' + configJson + '</script>'];
+  var tail = ['<script id="rv-site-config" type="application/json" data-rv-runtime>' + scriptJson(config) + '</script>'];
+  /* the event's forms as they are now — a live page's runtime asks for them again anyway (they change
+     without a republish); the preview and the editor's live view use these */
+  if (opts.forms) tail.push('<script id="rv-forms" type="application/json" data-rv-runtime>' + scriptJson(opts.forms) + '</script>');
   if (contentMap) tail.push('<script src="/editor-fill.js" data-rv-runtime></script>');
   tail.push('<script src="/templates/_shared/rv-data.js" data-rv-runtime></script>');
   /* a speaker's profile and a gallery's photos, in a pop-up — on the visitor's page only, never in the editor */
   tail.push('<script src="/templates/_shared/rv-popups.js" data-rv-runtime></script>');
-  /* the registration form and visit counting; left out while that file is not part of this release, so a
-     live page does not ask every visitor's browser for something that answers 404 */
+  /* the forms: a button's form in a pop-up, a form placed in the page */
+  tail.push(FORMS_RUNTIME_TAG);
+  /* visit counting (rv-live.js) — the slot is kept; left out while that file is not part of this release, so
+     a live page does not ask every visitor's browser for something that answers 404 */
   if (LIVE_RUNTIME_PRESENT) tail.push('<script src="/templates/_shared/rv-live.js" data-rv-runtime></script>');
 
   /* ---- 5. preview ribbon ---- */
@@ -6394,10 +6478,10 @@ function handleEventPublish(req, res) {
         });
       }
 
-      return page.then(function (pageHtml) {
-        var livePath = publishedObjectPath(eventId);
+      return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(function (got) {
+        var pageHtml = got[0], livePath = publishedObjectPath(eventId);
         var live = publishTransform(pageHtml, {
-          eventId: eventId, event: data, mode: 'live', publicBase: base,
+          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1],
           templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
         });
         return readObject(fb, livePath).then(function (before) {
@@ -6589,13 +6673,15 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra) {
   var HTML = 'text/html; charset=utf-8', token = crypto.randomBytes(12).toString('hex'), now = new Date().toISOString();
   var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null;
   return acquireSiteLock(fb, eventId, token, null).then(function (data) {
-    return readObject(fb, versionPath(eventId, version)).then(function (text) {
+    var text = readObject(fb, versionPath(eventId, version)).then(function (text) {
       if (text != null) return text;
       return siteVersionOf(data) === version ? readObject(fb, sitePath(eventId, 'page.html')) : null;
-    }).then(function (pageHtml) {
+    });
+    return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(function (got) {
+      var pageHtml = got[0];
       if (pageHtml == null) throw httpError(409, 'Version ' + version + ' of this site is no longer stored. Save the site again and send a new request.', { code: 'version-missing' });
       var live = publishTransform(pageHtml, {
-        eventId: eventId, event: data, mode: 'live', publicBase: base,
+        eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1],
         templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
       });
       return readObject(fb, livePath).then(function (before) {
@@ -6805,11 +6891,13 @@ function handleEventLiveView(req, res) {
     if (!eventId) return;
     if (typeof body.html !== 'string' || !body.html.trim()) return sendJson(res, 400, { error: 'The page to show ("html") is missing.' });
     loadLiveEvent(fb, eventId).then(function (data) {
-      var html = publishTransform(body.html, {
-        eventId: eventId, event: data, mode: 'preview', publicBase: '', liveView: true,
-        templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(body.origin)]
+      return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
+        var html = publishTransform(body.html, {
+          eventId: eventId, event: data, mode: 'preview', publicBase: '', liveView: true, forms: formsPayload,
+          templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(body.origin)]
+        });
+        sendJson(res, 200, { html: html });
       });
-      sendJson(res, 200, { html: html });
     }).catch(function (err) { sendFailure(res, 'live view', err, 'The live view could not be prepared. Please try again.'); });
   });
 }
@@ -6890,12 +6978,17 @@ function handlePublicPage(req, res, eventId) {
          whichever host the editor ran on and carrying no runtime. It goes through the same transform
          here, on its way out, so that it too is root-relative and can take registrations. */
       if (!data.publishedVersion) {
-        html = publishTransform(html, {
-          eventId: eventId, event: data, mode: 'live', templateId: data.templateId,
-          publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
+        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
+          html = publishTransform(html, {
+            eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload,
+            publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
+          });
+          var entry = cachePage(key, html);
+          sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
         });
       }
-      var entry = cachePage(key, html);
+      /* a page published before forms existed: its Register buttons open the form from now on */
+      var entry = cachePage(key, ensureFormsRuntime(html));
       sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
     });
   }).catch(function (err) {
@@ -6979,10 +7072,12 @@ function handlePreviewPage(req, res, eventId) {
           return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
         }
         /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
-        sendHtml(req, res, 200, publishTransform(html, {
-          eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion,
-          templateId: (data.site && data.site.templateId) || data.templateId
-        }), 'no-store');
+        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
+          sendHtml(req, res, 200, publishTransform(html, {
+            eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload,
+            templateId: (data.site && data.site.templateId) || data.templateId
+          }), 'no-store');
+        });
       });
     });
   }).catch(function (err) {
@@ -7035,6 +7130,7 @@ function inModule(moduleName, handlerName) {
 }
 var events = function (handler) { return inModule('api-events', handler); };
 var audience = function (handler) { return inModule('api-audience', handler); };
+var formsRoute = function (handler) { return inModule('api-forms', handler); };
 
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
@@ -7097,6 +7193,15 @@ var ROUTES = {
   'GET /api/event/registrations': audience('handleRegistrationsList'),
   'PATCH /api/event/registrations': audience('handleRegistrationUpdate'),
   'DELETE /api/event/registrations': audience('handleRegistrationDelete'),
+  'GET /api/event/registrations/export': audience('handleRegistrationsExport'),
+
+  'GET /api/event/forms': formsRoute('handleFormsList'),
+  'POST /api/event/forms': formsRoute('handleFormsCreate'),
+  'PUT /api/event/forms': formsRoute('handleFormsUpdate'),
+  'DELETE /api/event/forms': formsRoute('handleFormsDelete'),
+  'POST /api/event/forms/default': formsRoute('handleFormsDefault'),
+  'POST /api/event/forms/order': formsRoute('handleFormsOrder'),
+  'GET /api/public/forms': formsRoute('handlePublicForms'),
   'GET /api/event/dashboard-stats': audience('handleDashboardStats'),
   'GET /api/event/activity': audience('handleActivity'),
   'GET /api/insights': audience('handleInsights'),
@@ -7161,6 +7266,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  publishTransform, ensureFormsRuntime, FORMS_RUNTIME_V, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

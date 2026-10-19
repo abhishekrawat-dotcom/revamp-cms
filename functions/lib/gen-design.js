@@ -275,7 +275,7 @@ function ensureEtLogo(html, mode, where) {
    attend); the sections stay on the page, only their entries leave the bar. */
 var NAV_LINKS = 5;
 var NAV_DROP = [/glimps|gallery|photo/i, /faq/i, /about/i, /who|audience/i, /partner|sponsor/i, /why|join/i];
-function isNavButton(tag, text) { return /\b(btn|button|cta)\b|data-register-cta/i.test(tag) || /^(register|book|request|apply|nominate|buy)/i.test(String(text).trim()); }
+function isNavButton(tag, text) { return /\b(btn|button|cta)\b|data-register-cta|data-rv-form/i.test(tag) || /^(register|book|request|apply|nominate|buy)/i.test(String(text).trim()); }
 function capNavLinks(html, max) {
   html = String(html || '');
   max = max || NAV_LINKS;

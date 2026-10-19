@@ -212,7 +212,7 @@ function merge(fromOwner, fromDeck) {
 /* The hero's two buttons. targets: { register, partner } — the section ids each kind of button leads to. */
 function buttons(owner, targets) {
   targets = targets || {};
-  function href(kind) { return '#' + (kind === 'sponsor' ? targets.partner || targets.register : targets.register) || '#footer'; }
+  function href(kind) { return '#' + ((kind === 'sponsor' ? targets.partner || targets.register : targets.register) || 'footer'); }
   var first = owner && owner.action, second = owner && owner.secondAction;
   if (!first) return { primary: { label: 'Register Now', href: href('register'), register: true }, secondary: { label: 'Join as Partner', href: href('sponsor') } };
   var primary = { label: first.label, href: href(first.kind), register: first.kind !== 'sponsor' };

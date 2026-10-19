@@ -46,8 +46,13 @@ ok(b.heroImageUrl === OWN + 'generated/hero-bg.png?v=2', 'generated: the hero pi
 ok(b.pictures.join() === [OWN + 'generated/1-floor.png', OWN + 'generated/1-tracks.png', OWN + 'gallery/g1.jpg'].join(),
   'generated: the page\'s own pictures, then the plan\'s, then the gallery; never another event\'s, the logo unit or the hero', JSON.stringify(b.pictures));
 ok(b.logoUnitParts.keyword === 'GCC' && b.logoUnitParts.after === 'Annual Conclave', 'generated: the name split for a unit set in type', JSON.stringify(b.logoUnitParts));
-ok(P.registerAnchor(P.readSavedPage(genPage)) === '#the-close', 'the register button\'s target, when it is on the page');
-ok(P.registerAnchor(P.readSavedPage(genPage.replace('id="the-close"', ''))) === '', 'a register button pointing at nothing: no anchor');
+/* a page with a register button, a button that opens a form or a form placed in it: the forms runtime opens
+   the event's default form for #register (templates/_shared/rv-forms.js) */
+ok(P.registerAnchor(P.readSavedPage(genPage)) === '#register', 'a page with a register button: #register opens the form');
+ok(P.registerAnchor(P.readSavedPage(genPage.replace('id="the-close"', ''))) === '#register', 'a register button pointing at nothing: still #register');
+ok(P.registerAnchor(P.readSavedPage('<body><a href="#rv-form-vip" data-rv-form="vip">VIP</a></body>')) === '#register', 'a button that opens a form: #register');
+ok(P.registerAnchor(P.readSavedPage('<body><div class="rv-block-form" data-rv-form-embed="interest"></div></body>')) === '#register', 'a form placed in the page: #register');
+ok(P.registerAnchor(P.readSavedPage('<body><a href="#about">About</a></body>')) === '', 'no form and no #register element: no anchor');
 ok(P.registerAnchor(P.readSavedPage('<body><div id="register"></div></body>')) === '#register', 'an element with id="register"');
 
 /* ---------- a generated site, never saved ---------- */
