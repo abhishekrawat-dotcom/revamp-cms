@@ -3,6 +3,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="forms-builder.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   :root{
@@ -295,7 +296,7 @@
   body.ed-mode-ai .rail-tools,
   body.ed-mode-ai .global-toolbar,
   body.ed-mode-ai #gt-body-more-menu,
-  body.ed-mode-ai #panel-add, body.ed-mode-ai #panel-layers, body.ed-mode-ai #panel-design, body.ed-mode-ai #lyr-ctx-menu,
+  body.ed-mode-ai #panel-add, body.ed-mode-ai #panel-layers, body.ed-mode-ai #panel-design, body.ed-mode-ai #panel-forms, body.ed-mode-ai #lyr-ctx-menu,
   body.ed-mode-ai .ed-workspace > .rail,
   body.ed-mode-ai #btn-ai-markers,
   body.ed-mode-ai .tpl-sel-toolbar, body.ed-mode-ai .tpl-sec-toolbar, body.ed-mode-ai .tpl-pop,
@@ -631,6 +632,14 @@
   .tpl-pop button.primary{ background:#fff; color:#241B1A; border-color:#fff; }
   .tpl-pop button.primary:hover{ background:#EDE6E4; }
   .tpl-pop button.danger:hover{ background:#ED1C24; border-color:#ED1C24; }
+  .tpl-pop select{ text-overflow:ellipsis; }
+  .tpl-pop button.tpl-pop-link{ height:auto; padding:0; border:0; background:none; color:#fff; text-decoration:underline; font-weight:600; }
+  .tpl-pop button.tpl-pop-link:hover{ background:none; color:#FFD2D0; }
+  /* the Forms panel holds the forms builder (forms-builder.js), a little wider than the other panels */
+  #panel-forms{ width: 340px; max-width: 100%; }
+  #panel-forms .side-panel-body{ gap: 0; padding-top: 8px; }
+  .forms-tab-list{ display:flex; flex-direction:column; gap:10px; }
+  .forms-tab-list .hint{ font-size:12.5px; color:var(--text-muted); }
   /* the frame stretches to the available stage height so .tpl-viewport gets a stable, non-circular size for
      editor-canvas.js's fit() to scale against — the page then scrolls inside the iframe, like a real browser window. */
   .frame.tpl-frame{ align-self:stretch; height:100%; display:flex; min-height:0; }
@@ -1124,6 +1133,7 @@
             <button class="blk-card" data-add-block="image"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5.5"/></svg></span><span class="lbl">Image</span></button>
             <button class="blk-card" data-add-block="divider"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16"/></svg></span><span class="lbl">Divider</span></button>
             <button class="blk-card" data-add-block="spacer"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/></svg></span><span class="lbl">Spacer</span></button>
+            <button class="blk-card" data-add-block="form" title="One of this event’s registration forms, filled in right on the page"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg></span><span class="lbl">Form</span></button>
           </div>
           <p class="blk-none" id="blk-none" hidden>No element matches that.</p>
         </div>
@@ -1222,6 +1232,15 @@
       </div>
     </aside>
 
+    <!-- ============ FORMS PANEL ============
+         The event's registration forms (editor-forms.js + forms-builder.js): the same forms, and the same builder,
+         as the console's Settings › Registration forms. data-keep-selection: "Place on page" can put a form inside
+         the section selected on the canvas. -->
+    <aside class="side-panel" id="panel-forms" data-keep-selection hidden aria-labelledby="panel-forms-title">
+      <div class="side-panel-head"><h3 id="panel-forms-title">Forms</h3><button class="icon-btn" data-close-panel aria-label="Close Forms"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-body" id="forms-panel-body"></div>
+    </aside>
+
     <!-- A free-text instruction interpreted into a design/content change, shown as a proposal the user must
          confirm before anything is applied. -->
     <!-- data-keep-selection: what is selected on the page stays selected while the owner writes about it (the chat's "Selected" chip) -->
@@ -1231,7 +1250,7 @@
         <button class="icon-btn" id="chat-close" title="Close" aria-label="Close ETB2B AI"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>
       <div class="side-panel-body">
-        <span class="hint">Ask for any change in plain words — text, design, a section’s layout or content, or adding, moving and removing sections. Nothing on the site changes until you press Apply.</span>
+        <span class="hint">Ask for any change in plain words — text, design, a section’s layout or content, adding, moving and removing sections, or registration forms and the buttons that open them. Nothing on the site changes until you press Apply.</span>
         <div class="chat-thread" id="chat-thread"></div>
         <div class="chat-attached" id="chat-attached" hidden></div>
         <div class="chat-compose">
@@ -1261,6 +1280,7 @@
         <button class="rail-btn" data-panel="predefined" title="Add a section">Sections</button>
         <button class="rail-btn" data-panel="layers" title="Layers">Layers</button>
         <button class="rail-btn" data-panel="design" title="Design">Design</button>
+        <button class="rail-btn" data-panel="forms" title="Registration forms: make them, and put them on the page">Forms</button>
         <button class="rail-btn" id="rail-btn-dev" title="Developer zone: a section’s HTML, CSS and JS">Developer</button>
        </div>
        <div class="rail-fixed">
@@ -1399,6 +1419,11 @@
 <script src="templates/_shared/rv-theme.js"></script>
 <script src="templates/_shared/rv-type.js"></script>
 <script src="editor-store.js"></script>
+<!-- registration forms: the runtime only draws previews here (RV_FORMS_NO_AUTO), the builder edits them -->
+<script>window.RV_FORMS_NO_AUTO = true;</script>
+<script src="templates/_shared/rv-forms.js"></script>
+<script src="forms-builder.js"></script>
+<script src="editor-forms.js"></script>
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
@@ -1716,7 +1741,21 @@
 
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
-  var panels = { add: document.getElementById('panel-add'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design') };
+  var panels = { add: document.getElementById('panel-add'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design'), forms: document.getElementById('panel-forms') };
+
+  /* ---------- registration forms (editor-forms.js) ----------
+     The event's forms are fetched as the editor opens: the link pop-over, the Add panel's Form, the section
+     picker's Form tab and the chat all need them. The Forms panel holds the builder. */
+  if (window.RevampEditorForms){
+    RevampEditorForms.init({ panelBody: document.getElementById('forms-panel-body'), openPanel: function(){ openPanel('forms'); } });
+    RevampEditorForms.load();
+    // a form still being edited in the Forms panel is lost with the page: the browser asks first
+    window.addEventListener('beforeunload', function(e){
+      if (!RevampEditorForms.panelDirty()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+  }
 
   document.getElementById('rail-btn-dev').addEventListener('click', function(){ window.RevampTemplateUI.openDevZone(); });
 
@@ -1746,6 +1785,7 @@
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
     if (name === 'layers') rebuildLayersPanel();
     if (name === 'design') syncDesignPanel();
+    if (name === 'forms' && window.RevampEditorForms) RevampEditorForms.panelShown();
   }
   railBtns.forEach(function(b){
     b.addEventListener('click', function(){
@@ -1905,12 +1945,32 @@
       tabsEl.appendChild(tab);
       tab.addEventListener('click', function(){ setActiveTab(key); });
     }
+    var FORMS = ':forms', formsApi = window.RevampEditorForms || null;
     if (own.length) addTab(OWN, 'From this site');
+    if (formsApi) addTab(FORMS, 'Form');
     categories.forEach(function(key){ addTab(key, sectionTemplates[key].name); });
 
     function use(spec){
       close();
       api.insertSection(spec, afterEl);
+    }
+    /* the Form tab: a section with a heading, a line and one of the event's forms, filled in on the page */
+    function drawFormCards(){
+      gridEl.innerHTML = '';
+      if (!formsApi.loaded()){
+        gridEl.innerHTML = '<p class="hint" style="grid-column:1/-1">Loading the forms…</p>';
+        formsApi.load().then(function(){ if (document.contains(gridEl) && tabsEl.querySelector('.variant-tab.active[data-tab-key="' + FORMS + '"]')) drawFormCards(); });
+        return;
+      }
+      formsApi.list().forEach(function(f){
+        var item = { name: f.name, snippet: (f.title && f.title !== f.name ? '“' + f.title + '” · ' : '') + (f.fields || []).length + ' fields — a heading, a line and the form, filled in right on the page.', onPage: false };
+        var card = buildLibraryCard(item, function(){ close(); api.placeFormSection(f.id, afterEl); });
+        card.querySelector('.variant-card-use').innerHTML = 'Add this form &rarr;';
+        gridEl.appendChild(card);
+      });
+      var make = buildLibraryCard({ name: 'Create a form…', snippet: 'Make a new form in the Forms panel, then come back and add it.', onPage: false }, function(){ close(); formsApi.openPanel(); });
+      make.querySelector('.variant-card-use').innerHTML = 'Open Forms &rarr;';
+      gridEl.appendChild(make);
     }
     function setActiveTab(key){
       tabsEl.querySelectorAll('.variant-tab').forEach(function(t){
@@ -1919,6 +1979,7 @@
         if (active) t.scrollIntoView({block:'nearest', inline:'nearest'});
       });
       gridEl.innerHTML = '';
+      if (key === FORMS){ drawFormCards(); return; }
       if (key === OWN){
         own.forEach(function(item){
           gridEl.appendChild(buildLibraryCard(item, function(){ use({ libraryId: item.id }); }));
