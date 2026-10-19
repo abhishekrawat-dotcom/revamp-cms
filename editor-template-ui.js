@@ -775,6 +775,8 @@
     return words - listWords <= 600 ? sec : listParent;
   }
   function markEmpty(doc, kind) {
+    /* a Register button is never hidden with an empty section (pages saved before this rule may carry the mark) */
+    Array.prototype.forEach.call(doc.querySelectorAll('a[data-register-cta][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
     Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
       var parent = el.parentNode;
       if (!parent || parent.querySelector(':scope > [data-rv-empty-state]')) return;
@@ -789,8 +791,9 @@
       parent.insertBefore(note, parent.firstChild);
       if (place !== parent && place.id) {
         Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + place.id + '"]'), function (a) {
-          /* the menu's links only: a button elsewhere ("Join as partner") still stands for something real */
-          if (a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
+          /* the menu's links only: a button elsewhere ("Join as partner") still stands for something real, and
+             a Register button opens the registration form wherever its address points */
+          if (!a.hasAttribute('data-register-cta') && a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
         });
       }
     });
