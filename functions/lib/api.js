@@ -6073,6 +6073,8 @@ function publishTransform(html, opts) {
   var tail = ['<script id="rv-site-config" type="application/json" data-rv-runtime>' + configJson + '</script>'];
   if (contentMap) tail.push('<script src="/editor-fill.js" data-rv-runtime></script>');
   tail.push('<script src="/templates/_shared/rv-data.js" data-rv-runtime></script>');
+  /* a speaker's profile and a gallery's photos, in a pop-up — on the visitor's page only, never in the editor */
+  tail.push('<script src="/templates/_shared/rv-popups.js" data-rv-runtime></script>');
   /* the registration form and visit counting; left out while that file is not part of this release, so a
      live page does not ask every visitor's browser for something that answers 404 */
   if (LIVE_RUNTIME_PRESENT) tail.push('<script src="/templates/_shared/rv-live.js" data-rv-runtime></script>');

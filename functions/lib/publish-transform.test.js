@@ -93,6 +93,7 @@ var LIVE_RUNTIME = require('fs').existsSync(require('path').join(__dirname, '..'
 ok(count(out, '/templates/_shared/rv-live.js"') === (LIVE_RUNTIME ? 1 : 0), LIVE_RUNTIME ? 'exactly one rv-live.js' : 'no rv-live.js while the file does not exist', String(count(out, 'rv-live.js')));
 ok(count(out, '/templates/_shared/rv-live.css"') === 1, 'exactly one rv-live.css');
 ok(count(out, '/templates/_shared/rv-data.js"') === 1, 'exactly one rv-data.js');
+ok(count(out, '/templates/_shared/rv-popups.js"') === 1 && require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-popups.js')), 'exactly one rv-popups.js (speaker profiles and photo pop-ups), and the file exists');
 ok(out.indexOf('href="/templates/_shared/rv-sections.css"') !== -1 && out.indexOf('href="/templates/_shared/et-global.css"') !== -1, 'shared stylesheets are root-relative');
 ok(out.indexOf('src="/templates/_shared/et-runtime.js"') !== -1 && out.indexOf('src="/assets/logo.png"') !== -1, 'scripts and images of the saving origin are root-relative');
 var cfg = JSON.parse(/<script id="rv-site-config"[^>]*>([\s\S]*?)<\/script>/.exec(out)[1]);

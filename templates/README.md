@@ -17,6 +17,7 @@ templates/
     et-runtime.js          site-side runtime: per-section init (RevampSections.register), accordions, scroll reveal
     widgets/<name>/        script.js — behaviour several templates share (et-banner: the banner's background media)
     rv-data.js             RevampData: puts the event's records (speakers, FAQs, sponsors, gallery, contacts) on a site
+    rv-popups.js           the visitor's pop-ups (preview and live page only): a speaker's profile, a gallery's photos large
     img/                   neutral pictures: rv-avatar.svg (a speaker without a photo), rv-image.svg (a model photo tile)
     template-loader.js     RevampTemplates.build(id) → the complete HTML document
     none.html              empty: the header / footer file older imported sites name

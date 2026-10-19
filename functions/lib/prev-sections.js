@@ -9,7 +9,10 @@
    --theme-color, --heading-font-family, --body-font-family, --rv-radius), so the sections take the site's
    theme and follow it when the theme changes. Motion uses the page runtime (templates/_shared/et-runtime.js):
    data-rv-carousel="auto" rows that step by themselves and pause when pointed at, and data-rv-reveal blocks
-   that ease in on scroll; neither moves for visitors who asked for no motion, nor while editing. */
+   that ease in on scroll; neither moves for visitors who asked for no motion, nor while editing.
+   Pop-ups use the published page's runtime (templates/_shared/rv-popups.js), never a script of the section's:
+   a speaker card carrying a <template data-rv-profile> opens that speaker's profile, and the glimpses row
+   (data-rv-lightbox) opens any photo large, with the others a step away. */
 
 /* the section heading's size: the generated site's own type scale (templates/_shared/rv-type.js) */
 var SECTION_HEADING = require('../../templates/_shared/rv-type.js').SECTION_HEADING.replace(/,\s+/g, ',');
@@ -46,6 +49,30 @@ var BASE_CSS = function (c) {
     '.' + c + '-title{margin:0;font-family:var(--heading-font-family);font-size:' + SECTION_HEADING + ';line-height:1.15;color:var(--rv-text)}';
 };
 
+/* What a visitor sees on clicking a speaker (the page runtime, templates/_shared/rv-popups.js): the card's own
+   photo, name, role and company, and — kept in a <template> inside the card, so it is never drawn on the page
+   but stays plain, editable markup — what ET has beyond them: the speaker's text, LinkedIn / X profile, the
+   company's logo and the sessions they spoke in at that edition. A speaker with none of these has no
+   <template>, and the card does not open. */
+function profileOf(s, edition) {
+  var li = httpsUrl(s.linkedin), x = httpsUrl(s.x), logo = httpsUrl(s.logo);
+  var sessions = (Array.isArray(s.sessions) ? s.sessions : []).filter(function (x) { return x && x.title; });
+  if (!s.bio && !li && !x && !sessions.length) return '';
+  /* data-rv-profile-for: whose profile this is — a card the owner copied and renamed in the editor does not
+     open another speaker's sessions under its new name (rv-popups.js compares it with the card's name) */
+  return '<template data-rv-profile><span data-rv-profile-for hidden>' + esc(s.name) + '</span>' +
+    (logo ? '<img data-rv-profile-logo src="' + esc(logo) + '" alt="' + esc(s.company ? s.company + ' logo' : 'Company logo') + '">' : '') +
+    (s.bio ? '<p data-rv-profile-bio>' + esc(s.bio) + '</p>' : '') +
+    (li ? '<a data-rv-profile-li href="' + esc(li) + '" target="_blank" rel="noopener">LinkedIn</a>' : '') +
+    (x ? '<a data-rv-profile-x href="' + esc(x) + '" target="_blank" rel="noopener">X</a>' : '') +
+    (sessions.length ? '<p data-rv-profile-sessions-title>' + esc(edition ? 'Sessions at ' + edition : 'Sessions') + '</p><ul data-rv-profile-sessions>' +
+      sessions.map(function (x) {
+        var when = [dayOf(x.start), [timeOf(x.start), timeOf(x.end)].filter(Boolean).join(' – ')].filter(Boolean).join(' · ');
+        return '<li data-rv-profile-session>' + (when ? '<span data-rv-profile-when>' + esc(when) + '</span>' : '') + '<span data-rv-profile-title>' + esc(x.title) + '</span></li>';
+      }).join('') + '</ul>' : '') +
+    '</template>';
+}
+
 function speakers(p, edition) {
   var c = 'pe-spk';
   var cards = p.speakers.map(function (s) {
@@ -53,12 +80,12 @@ function speakers(p, edition) {
     var initials = s.name.split(/\s+/).filter(Boolean).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();
     return '<article class="' + c + '-card">' +
       '<div class="' + c + '-ph">' + (photo ? '<img src="' + esc(photo) + '" alt="' + esc(s.name) + '" loading="lazy">' : '<span>' + esc(initials) + '</span>') + '</div>' +
-      (s.group ? '<p class="' + c + '-group">' + esc(s.group) + '</p>' : '') +
-      '<h3 class="' + c + '-name">' + esc(s.name) + '</h3>' +
-      (s.designation ? '<p class="' + c + '-role">' + esc(s.designation) + '</p>' : '') +
-      (s.company ? '<p class="' + c + '-co">' + esc(s.company) + '</p>' : '') + '</article>';
+      (s.group ? '<p class="' + c + '-group" data-rv-profile-group>' + esc(s.group) + '</p>' : '') +
+      '<h3 class="' + c + '-name" data-rv-profile-name>' + esc(s.name) + '</h3>' +
+      (s.designation ? '<p class="' + c + '-role" data-rv-profile-role>' + esc(s.designation) + '</p>' : '') +
+      (s.company ? '<p class="' + c + '-co" data-rv-profile-co>' + esc(s.company) + '</p>' : '') + profileOf(s, edition) + '</article>';
   }).join('');
-  var html = '<section class="' + c + '"><div class="' + c + '-in">' + head(c, 'speakers', edition) +
+  var html = '<section class="' + c + '" data-rv-profiles><div class="' + c + '-in">' + head(c, 'speakers', edition) +
     '<div class="' + c + '-row" data-rv-carousel="auto"><div class="' + c + '-track" data-rv-carousel-track>' + cards + '</div></div></div></section>';
   var css = BASE_CSS(c) +
     '.' + c + '-row{position:relative}.' + c + '-track{gap:24px;padding:4px 2px 12px}' +
@@ -100,7 +127,7 @@ function sponsors(p, edition) {
 }
 
 var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-function dayOf(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? +m[3] + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : ''; }
+function dayOf(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m && MONTHS[+m[2] - 1] && +m[3] ? +m[3] + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : ''; }
 function timeOf(v) {
   var m = /[ T](\d{2}):(\d{2})/.exec(String(v || ''));
   if (!m) return '';
@@ -141,7 +168,7 @@ function glimpses(p, edition) {
     return src ? '<figure class="' + c + '-ph"><img src="' + esc(src) + '" alt="' + esc((edition || 'Previous edition') + ' — photo ' + (i + 1)) + '" loading="lazy"></figure>' : '';
   }).join('');
   var html = '<section class="' + c + '"><div class="' + c + '-in">' + head(c, 'glimpses', edition) +
-    '<div class="' + c + '-row" data-rv-carousel="auto"><div class="' + c + '-track" data-rv-carousel-track>' + photos + '</div></div></div></section>';
+    '<div class="' + c + '-row" data-rv-carousel="auto" data-rv-lightbox><div class="' + c + '-track" data-rv-carousel-track>' + photos + '</div></div></div></section>';
   var css = BASE_CSS(c) +
     '.' + c + '-row{position:relative}.' + c + '-track{gap:18px;padding:4px 2px 12px}' +
     '.' + c + '-ph{margin:0;width:420px;aspect-ratio:3/2;border-radius:var(--rv-radius,12px);overflow:hidden;background:var(--rv-surface)}' +

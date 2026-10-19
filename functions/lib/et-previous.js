@@ -35,11 +35,22 @@
      readPrevious(url, html, o)  -> Promise<PREVIOUS | null>   o: { fetchJson(url, headers), now } for tests
 
    PREVIOUS = { portal, id, name, url, start, end, venue,
-                speakers: [{ name, designation, company, photo, group }],
+                speakers: [{ name, designation, company, photo, group, bio, linkedin, x, logo, sessions: [{ title, start, end }] }],
                 sponsors: [{ name, logo, tier, url }],
                 agenda:   [{ title, start, end, speakers: [name], description }],
                 glimpses: [url] }
-   Nothing is invented: a list the edition has nothing for is empty. */
+   Nothing is invented: a list the edition has nothing for is empty, and a speaker's field ET has nothing for
+   is '' (or [] for sessions).
+
+   A speaker, as ET's speaker list gives it (asked in October 2026: 2,095 speakers of 72 past editions on 12 portals):
+     speaker_name, speaker_desig, speaker_company, speaker_picture (cp/…)   nearly always
+     company_logo      the company's logo, a file under cp/                   nearly always
+     linkedin_url      about one speaker in seven, written any way (with or without https://, www., a space)
+     speaker_info      the speaker's own text: almost never filled (2 of 2,095)
+     twitter_url, speaker_specialization, speaker_thumb                    never filled
+     speaker_email, speaker_phone                                          private: never read
+     status            0 is a speaker the edition's own page does not show: left out here too
+   The agenda's sessions name their speakers by the same id; a speaker's sessions come from there. */
 
 var API = 'https://api.economictimes.indiatimes.com';
 var IMG = 'https://img.etb2bimg.com/files/';
@@ -157,13 +168,69 @@ function photosOf(items) {
   return out.slice(0, MAX.glimpses);
 }
 
+/* ---------- a speaker's profile ---------- */
+var MAX_BIO = 1200, MAX_SESSIONS = 6;
+var LINKEDIN_HOST = /^(?:[a-z]{2}\.)?linkedin\.com$/i, X_HOST = /^(?:x|twitter)\.com$/i;
+/* the speaker's own text, as plain text — a paragraph per line, what a script or style block holds dropped — cut
+   at a word near MAX_BIO. ET's field is the CMS's HTML (<p>, <br>) or plain text with line breaks. */
+function bioOf(v) {
+  // read no more than a long biography can use: the patterns below rescan what follows an unclosed '<'
+  var t = str(v).slice(0, MAX_BIO * 6).replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<br\s*\/?>|<\/(?:p|div|li|h[1-6])\s*>/gi, '\n')
+    .split(/\r?\n/).map(text).filter(Boolean).join('\n');
+  if (t.length <= MAX_BIO) return t;
+  var cut = t.slice(0, MAX_BIO), at = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('\n'));
+  return (at > MAX_BIO * 0.8 ? cut.slice(0, at) : cut).replace(/[\s,;:.\-–—]+$/, '') + '…';
+}
+/* a profile's address on one of the given hosts, on https, however it was written ("linkedin.com/in/x",
+   " http://www.linkedin.com/in/x "); anything else (another host, a bare host, a script) is '' */
+function profileLink(v, host) {
+  var u = str(v).replace(/\s+/g, '');
+  if (!u) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u.replace(/^\/+/, '');
+  var m = /^https?:\/\/(www\.)?([a-z0-9.-]+)(\/[^\s"'<>\\]+)$/i.exec(u);
+  if (!m || !host.test(m[2])) return '';
+  return 'https://' + (m[1] || '').toLowerCase() + m[2].toLowerCase() + m[3];
+}
+/* the company's logo: a file under cp/ (where the speaker's picture is), or an address */
+function companyLogo(v) {
+  var p = str(v).trim();
+  if (!p || !/\.(?:png|jpe?g|webp|svg|gif|avif)$/i.test(p.replace(/[?#].*$/, ''))) return '';
+  return /^https?:\/\//i.test(p) || p.indexOf('/') !== -1 ? picture(p) : picture('cp/' + p);
+}
+/* the sessions each speaker spoke in, from the agenda — by the speaker's id, or by name where an agenda entry
+   names its speaker without one — in time order, once each */
+function speakerSessions(agenda) {
+  var byId = {}, byName = {};
+  (agenda || []).filter(function (a) { return a && text(a.agenda_title); }).slice().sort(function (a, b) {
+    var x = str(a.agenda_start_datetime), y = str(b.agenda_start_datetime);
+    return x < y ? -1 : x > y ? 1 : 0;
+  }).forEach(function (a) {
+    var session = { title: text(a.agenda_title).slice(0, 300), start: str(a.agenda_start_datetime), end: str(a.agenda_end_datetime) };
+    (Array.isArray(a.speakers) ? a.speakers : []).forEach(function (s) {
+      if (!s) return;
+      var byIdToo = s.id != null && str(s.id) !== '';
+      var into = byIdToo ? byId : byName, key = '#' + (byIdToo ? str(s.id) : text(s.speaker_name).toLowerCase());
+      if (key === '#') return;
+      var list = into[key] || (into[key] = []);
+      if (list.length < MAX_SESSIONS && !list.some(function (x) { return x.title === session.title && x.start === session.start; })) list.push(session);
+    });
+  });
+  return { byId: byId, byName: byName };
+}
+
 function byWeight(a, b) { return (a.w || 0) - (b.w || 0); }
 function normalise(raw) {
   raw = raw || {};
   var d = raw.details || {};
-  var speakers = (raw.speakers || []).filter(function (s) { return s && text(s.speaker_name); }).map(function (s) {
-    return { name: text(s.speaker_name), designation: text(s.speaker_desig), company: text(s.speaker_company),
-      photo: picture(s.speaker_picture), group: s.group && s.group.group_name ? text(s.group.group_name) : '', w: +(s.speaker_weightage || s.weightage || 0) };
+  var sessionsOf = speakerSessions(raw.agenda);
+  var speakers = (raw.speakers || []).filter(function (s) { return s && text(s.speaker_name) && str(s.status) !== '0'; }).map(function (s) {
+    var name = text(s.speaker_name);
+    return { name: name, designation: text(s.speaker_desig), company: text(s.speaker_company),
+      photo: picture(s.speaker_picture), group: s.group && s.group.group_name ? text(s.group.group_name) : '',
+      bio: bioOf(s.speaker_info), linkedin: profileLink(s.linkedin_url, LINKEDIN_HOST), x: profileLink(s.twitter_url, X_HOST),
+      logo: companyLogo(s.company_logo),
+      sessions: ((s.id != null && sessionsOf.byId['#' + s.id]) || sessionsOf.byName['#' + name.toLowerCase()] || []).slice(),
+      w: +(s.speaker_weightage || s.weightage || 0) };
   }).sort(byWeight).slice(0, MAX.speakers).map(function (s) { delete s.w; return s; });
   var sponsors = (raw.sponsors || []).filter(function (s) { return s && (s.sponsor_logo || s.sponsor_log_png); }).map(function (s) {
     return { name: text(s.sponsor_title), logo: picture(s.sponsor_logo || s.sponsor_log_png, true),
@@ -253,4 +320,4 @@ function readPrevious(url, html, o) {
   }).then(null, function () { return null; });
 }
 
-module.exports = { portalOf, slugOf, seriesOf, candidatesIn, idsIn, relationOf, glimpsesIn, photosOf, normalise, readPrevious, API };
+module.exports = { portalOf, slugOf, seriesOf, candidatesIn, idsIn, relationOf, glimpsesIn, photosOf, normalise, readPrevious, profileLink, API };
