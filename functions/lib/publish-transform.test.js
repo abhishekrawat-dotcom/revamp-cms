@@ -208,6 +208,18 @@ ok(EF('<p>no body</p>') === '<p>no body</p><script src="' + FORMS_SRC + '" data-
 ok(EF('<body>a</body><!-- </BODY> -->x</BODY>').indexOf('a</body><!-- </BODY> -->x<script') !== -1, 'the LAST </body>, whatever its case');
 ok(publishTransform(served, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live' }).split('rv-forms.js').length === 2, 'a served page transformed again still has one runtime');
 
+/* pictures: the WebP copies the caller looked up (lib/pictures.js), written into the page once */
+var PIC = require('./pictures');
+var md5 = Buffer.from('a1b2c3d4'.padEnd(32, '0'), 'hex').toString('base64');
+var PICS = PIC.indexFromListing('b', [{ name: 'events/qa-fixture/generated/1-x.png', md5Hash: md5 }, { name: PIC.variantName('events/qa-fixture/generated/1-x.png', 'a1b2c3d4', 1024, 768, 1024) }]);
+var picPage = PAGE.replace('<section id="faq"', '<section id="pics"><img src="https://storage.googleapis.com/b/events/qa-fixture/generated/1-x.png" alt="x"></section><section id="faq"');
+var picOut = publishTransform(picPage, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], pictures: PICS });
+ok(picOut.indexOf('<img src="https://storage.googleapis.com/b/events/qa-fixture/generated/1-x.png" alt="x" srcset="https://storage.googleapis.com/b/events/qa-fixture/generated/1-x.png.rv-a1b2c3d4.1024x768.w1024.webp 1x" width="1024" height="768" data-rv-sized>') !== -1,
+  'a picture with a WebP copy gets it, and its size');
+ok(count(picOut, '<style data-rv-pictures>') === 1 && picOut.indexOf('<style data-rv-pictures>') < picOut.indexOf('</head>'), 'the rule for sized pictures, once, in the head');
+ok(publishTransform(picOut, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], pictures: PICS }) === picOut, 'running it again changes nothing (pictures)');
+ok(publishTransform(picPage, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }).indexOf('.rv-a1b2c3d4.') === -1, 'without pictures looked up, pictures are as they were');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });
