@@ -118,6 +118,15 @@ function deny(req, res, urlPath, why) {
     res.writeHead(why === 'domain' ? 403 : 401, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ error: why === 'domain' ? deniedMessage() : 'Sign in required — please sign in again.' }));
   }
+  /* A file that is not a page (a picture, a video, a .json or .xml — "/x/clip.mp4", "/sitemap.xml") is never
+     sent to anyone unless isPublic() already let it through, so signing in would not help: it is a plain
+     404, the same answer a signed-in user gets. Sending the browser to the sign-in page instead made every
+     such reference on a published page download that page as its "picture" or "video". */
+  const ext = path.extname(urlPath).toLowerCase();
+  if (ext && ext !== '.html' && urlPath.indexOf('/preview/') !== 0) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return res.end('Not found');
+  }
   const back = '/?' + (why === 'domain' ? 'denied=1&' : '') + 'next=' + encodeURIComponent(req.url);
   res.writeHead(302, { Location: back, 'Cache-Control': 'no-store' });
   res.end();

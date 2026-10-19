@@ -145,7 +145,8 @@
     doc.body.setAttribute('data-rv-theme', t.id);
     [t.headingFont, t.bodyFont].forEach(function (f) {
       var url = fontUrl(f);
-      if (!url || doc.querySelector('link[href="' + url + '"]')) return;
+      /* a served page may carry the font's stylesheet written in (style[data-rv-remote], lib/delivery.js) */
+      if (!url || doc.querySelector('link[href="' + url + '"], style[data-rv-remote="' + url + '"]')) return;
       var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = url; doc.head.appendChild(l);
     });
     return true;
