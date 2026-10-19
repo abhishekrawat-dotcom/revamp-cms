@@ -145,6 +145,7 @@ const etNav = require('./et-nav');
 /* registration forms: their shape, the public definitions, the AI chat's form changes (pure) */
 const formsLib = require('./forms');
 const etFooter = require('./et-footer');
+const pictures = require('./pictures');
 const editionLook = require('./edition-look');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
@@ -1450,7 +1451,7 @@ function buildHeroImagePrompt(brief, themeColor) {
 // has no theme-coloured gradient fallback on #hero itself when hero-bg-image fails/stays the placeholder —
 // only the dark overlay gradient ON TOP of whatever image is there. On image-generation failure, the hero
 // still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
-function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
+function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
   return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
     if (record) record(r.usage);
@@ -1459,14 +1460,18 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
     }
     var buffer = Buffer.from(r.base64, 'base64');
-    var storagePath = 'events/' + eventId + '/generated/hero-bg.png';
+    /* named after the run (stamp), like every other generated picture: what one name holds never changes,
+       so it can be cached for a year and get WebP copies (pictures.js) */
+    var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
+    var storagePath = 'events/' + eventId + '/generated/' + (stamp ? stamp + '-' : '') + 'hero-bg.' + ext;
     var file = fb.bucket.file(storagePath);
     /* The raw base64 (often several hundred KB-plus) must never go into Firestore directly — a single
        document is capped at 1MiB total, and an inline data: URI that size blew right through it the first
        time this ran ("Property theme contains an invalid nested entity"). The image already lives in
        Storage; Firestore only needs a real URL to it, same as any other image reference in this app. */
-    return file.save(buffer, { metadata: { contentType: r.mimeType } })
+    return file.save(buffer, { metadata: { contentType: r.mimeType, cacheControl: stamp ? pictures.CACHE : 'public, max-age=3600' } })
       .then(function () { return file.makePublic(); })
+      .then(function () { return pictures.storeVariants(fb, storagePath, buffer); })
       .then(function () {
         var heroImageUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
         return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null };
@@ -1492,9 +1497,11 @@ function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, conte
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
     var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
     var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
-    var file = fb.bucket.file(storagePath);
-    return file.save(Buffer.from(r.base64, 'base64'), { metadata: { contentType: r.mimeType } })
+    var file = fb.bucket.file(storagePath), bytes = Buffer.from(r.base64, 'base64');
+    /* the run's stamp makes the name unique: cached for a year, with WebP copies (pictures.js) */
+    return file.save(bytes, { metadata: { contentType: r.mimeType, cacheControl: pictures.CACHE } })
       .then(function () { return file.makePublic(); })
+      .then(function () { return pictures.storeVariants(fb, storagePath, bytes); })
       .then(function () { return { sectionId: sectionId, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath, subject: subject }; });
   }).catch(function (err) {
     console.error('plan-structure: picture for "' + sectionId + '" failed — ' + err.message);
@@ -2608,7 +2615,7 @@ function handlePlanStructure(req, res) {
           .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
         var level = owner && owner.level ? owner.level : '';
         var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about, level: level, graphic: graphic });
-        var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt)].concat(
+        var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp)].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
@@ -2623,8 +2630,8 @@ function handlePlanStructure(req, res) {
           design.logoUnitFrom = unit.from; design.logoUnitWidth = unit.width; design.logoUnitHeight = unit.height;
           design.logoUnitPlate = unit.plate; design.logoUnitNote = unit.note; design.logoUnitHeroMode = unit.heroMode || '';
           var heroImage = made[0];
-          /* the hero picture keeps one storage path, so its address carries the run to get past caches */
-          design.heroImageUrl = heroImage.heroImageUrl ? heroImage.heroImageUrl + '?v=' + stamp : null;
+          /* the hero picture's name carries the run (buildHeroImage) */
+          design.heroImageUrl = heroImage.heroImageUrl || null;
           design.heroImageStoragePath = heroImage.heroImageStoragePath;
           design.heroImageError = heroImage.heroImageError;
           var images = made.slice(1).filter(Boolean);
@@ -3971,8 +3978,11 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
         var sanitized = basename.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 120) || 'image';
         var storagePath = 'events/import-' + importId + '/images/' + sanitized;
         var file = fb.bucket.file(storagePath);
-        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized) } })
+        /* an import's folder is its own (import-<id>) and written once: cached for a year, with WebP copies
+           of each raster picture (pictures.js) — a Lovable export's pictures are often megabyte PNGs */
+        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized), cacheControl: 'public, max-age=31536000' } })
           .then(function () { return file.makePublic(); })
+          .then(function () { return pictures.storeVariants(fb, storagePath, imgBuffer); })
           .then(function () { return { ref: ref, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath }; });
       }).catch(function (err) {
         console.error('import-lovable: failed to re-host image "' + ref + '": ' + err.message);
@@ -6172,6 +6182,13 @@ function publicFormsFor(fb, eventId, ev) {
     return null;
   });
 }
+/* [page, …] -> [page, …, the WebP copies of the page's pictures] (pictures.prepare, which never rejects:
+   a failure leaves the pictures as they are) */
+function withPictures(fb) {
+  return function (got) {
+    return pictures.prepare(fb, got[0]).then(function (pics) { return got.concat([pics]); });
+  };
+}
 var RUNTIME_STYLE = /\/templates\/_shared\/rv-live\.css$/;
 var SITE_FAVICON = '/assets/et-b2b-logo.svg';
 
@@ -6199,7 +6216,9 @@ function contentMapFor(templateId) {
 
 /* opts: { eventId, event (the event document), mode: 'live' | 'preview', templateId, origins: [],
            publicBase: 'https://host' or '', forms: the event's public form definitions (lib/forms.js
-           publicFormsPayload; optional — without it the forms runtime fetches them) } */
+           publicFormsPayload; optional — without it the forms runtime fetches them),
+           pictures: the WebP copies of the page's pictures (pictures.prepare; optional — without it the
+           pictures are left as they are) } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -6405,7 +6424,9 @@ function publishTransform(html, opts) {
   if (bodyClose !== -1) out[bodyClose] = tailText + out[bodyClose];
   else suffix = tailText;
 
-  return prefix + out.join('') + suffix;
+  /* ---- 7. pictures: each one's WebP copies, its size, the hero's first (pictures.js) ---- */
+  var page = prefix + out.join('') + suffix;
+  return opts.pictures ? pictures.rewriteHtml(page, opts.pictures) : page;
 }
 
 function cleanCanonical(v) { return (typeof v === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(v.trim())) ? v.trim() : ''; }
@@ -6475,10 +6496,10 @@ function handleEventPublish(req, res) {
         });
       }
 
-      return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(function (got) {
+      return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
         var pageHtml = got[0], livePath = publishedObjectPath(eventId);
         var live = publishTransform(pageHtml, {
-          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1],
+          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
           templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
         });
         return readObject(fb, livePath).then(function (before) {
@@ -6674,11 +6695,11 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra) {
       if (text != null) return text;
       return siteVersionOf(data) === version ? readObject(fb, sitePath(eventId, 'page.html')) : null;
     });
-    return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(function (got) {
+    return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
       var pageHtml = got[0];
       if (pageHtml == null) throw httpError(409, 'Version ' + version + ' of this site is no longer stored. Save the site again and send a new request.', { code: 'version-missing' });
       var live = publishTransform(pageHtml, {
-        eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1],
+        eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
         templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
       });
       return readObject(fb, livePath).then(function (before) {
@@ -6975,18 +6996,23 @@ function handlePublicPage(req, res, eventId) {
          whichever host the editor ran on and carrying no runtime. It goes through the same transform
          here, on its way out, so that it too is root-relative and can take registrations. */
       if (!data.publishedVersion) {
-        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
+        return Promise.all([html, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
+          var formsPayload = got[1];
           html = publishTransform(html, {
-            eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload,
+            eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload, pictures: got[2],
             publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
           });
           var entry = cachePage(key, html);
           sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
         });
       }
-      /* a page published before forms existed: its Register buttons open the form from now on */
-      var entry = cachePage(key, ensureFormsRuntime(html));
-      sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+      /* a page published before forms existed: its Register buttons open the form from now on; one
+         published before its pictures had WebP copies gets them on the way out (pictures.js — a picture
+         that already has them is left alone) */
+      return pictures.prepare(fb, html).then(function (pics) {
+        var entry = cachePage(key, pictures.rewriteHtml(ensureFormsRuntime(html), pics));
+        sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+      });
     });
   }).catch(function (err) {
     console.error('api: /e/' + eventId + ' failed — ' + (err && err.stack || err));
@@ -7069,9 +7095,10 @@ function handlePreviewPage(req, res, eventId) {
           return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
         }
         /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
-        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
+        return Promise.all([html, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
+          var formsPayload = got[1];
           sendHtml(req, res, 200, publishTransform(html, {
-            eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload,
+            eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload, pictures: got[2],
             templateId: (data.site && data.site.templateId) || data.templateId
           }), 'no-store');
         });
