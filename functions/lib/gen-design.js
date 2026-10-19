@@ -549,7 +549,8 @@ function imagePrompt(subject, design, opts) {
     placeLine(opts.place || design.place, opts.hero),
     /* the previous edition's banner artwork, in words (plan-structure, design.inspiredBy): the hero is a new
        picture inspired by it, never a copy */
-    opts.hero && !graphic && design.inspiredBy ? 'Inspiration: the previous edition\'s banner artwork was this — ' + sentence(design.inspiredBy, 600) + ' Make a NEW picture in that mood and palette family, with a composition and scene of its own; never a copy of it.' : '',
+    opts.hero && !graphic && design.inspiredBy ? 'Inspiration: the previous edition\'s banner artwork was this — ' + sentence(design.inspiredBy, 600) + ' Make a NEW picture in that mood and palette family, with a composition and scene of its own; never a copy of it.' +
+      (placeLine(opts.place || design.place, true) ? ' Take no place from it: any city or landmark it shows is not this edition\'s — the place is the one named above.' : '') : '',
     graphic ? '' : design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
     'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents' + (graphic ? '.' : ' in the lighting.'),
     'Every picture on this site shares this one style, so that they read as a set.',

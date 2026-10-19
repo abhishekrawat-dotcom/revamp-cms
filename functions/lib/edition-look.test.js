@@ -70,10 +70,11 @@ ok(el.venueForDesign({}, null, null).source === '', 'neither: no place');
 /* ---- inspired by, never a copy (rule 1) ---- */
 var model = { mode: 'light', themeColor: '#1f6feb', accentColor: '#22c55e', backgroundColor: '#ffffff', surfaceColor: '#f3f4f6', textColor: '#111827', mutedColor: '#4b5563', headingFont: 'Inter', bodyFont: 'Inter' };
 var inspired = Object.assign({}, model, el.inspiredDesign(withLogo, model, 'auto'));
-function apart(a, b) { var p = el.parseColour(a).hex, q = el.parseColour(b).hex, d = 0; for (var i = 1; i < 7; i += 2) d += Math.pow(parseInt(p.substr(i, 2), 16) - parseInt(q.substr(i, 2), 16), 2); return Math.sqrt(d) >= 10; }
+/* a shade apart is still a copy of the brand or second colour (20); grounds, cards and text: 6 */
+function apart(a, b, min) { var p = el.parseColour(a).hex, q = el.parseColour(b).hex, d = 0; for (var i = 1; i < 7; i += 2) d += Math.pow(parseInt(p.substr(i, 2), 16) - parseInt(q.substr(i, 2), 16), 2); return Math.sqrt(d) >= (min || 6); }
 var editionColours = [look.brand, withLogo.accent, look.background, look.surface, look.text, look.muted].concat(withLogo.logoColours || []);
 ['themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor'].forEach(function (k) {
-  ok(editionColours.every(function (c) { return apart(inspired[k], c); }), k + ' is none of the edition\'s own colours', inspired[k]);
+  ok(editionColours.every(function (c) { return apart(inspired[k], c, /^(themeColor|accentColor)$/.test(k) ? 20 : 6); }), k + ' is none of the edition\'s own colours', inspired[k]);
 });
 ok(gd.luminance(inspired.backgroundColor) > 0.6 && inspired.mode === 'light' && inspired.backgroundColor !== '#ffffff', 'the edition\'s light, tinted tone', inspired.backgroundColor);
 ok(el.fontKind(inspired.headingFont) === 'serif' && inspired.headingFont !== look.headingFont && inspired.bodyFont !== look.bodyFont, 'type of the same feel (serif headings), never the edition\'s families', inspired.headingFont + ' / ' + inspired.bodyFont);
@@ -140,6 +141,72 @@ ok(!/THE PLACE/.test(api.buildSectionCodePrompt({ designPlan: { design: { mode: 
 ok(api.ingestSchemaFor(false).properties.keyVisual === undefined && api.ingestSchemaFor(true).required.indexOf('keyVisual') !== -1, 'the schema asks about the picture only when one is attached');
 var kept = api.keptKeyVisual({ url: 'https://a/b.jpg', width: 1400, height: 804, mime: 'image/jpeg' }, { description: 'x', place: 'y' });
 ok(kept.url === 'https://a/b.jpg' && kept.description === 'x' && kept.place === 'y' && api.keptKeyVisual(null, {}) === null, 'kept in words, with its address');
+
+/* ---- review: recolour moves only colours, never words, white plates or "white-space" ---- */
+var rFrom = { themeColor: '#ed1c24', backgroundColor: '#ffffff', surfaceColor: '#fff3ea', textColor: '#1a1414' };
+var rTo = { themeColor: '#f42a58', backgroundColor: '#f5f3ee', surfaceColor: '#f7e9e8', textColor: '#141414' };
+var rCss = '.n{white-space:nowrap;color:#ed1c24;background:rgba(237,28,36,.12)}.tile{--rv-keep:1;background:#ffffff;border:1px solid #ed1c24}.b{background:#fff3ea;color:white}';
+var rc = el.recolour(rCss, rFrom, rTo, 'css');
+ok(/white-space:nowrap/.test(rc) && !/#f5f3ee-space/.test(rc), 'recolour: "white-space" is not a colour', rc);
+ok(/\.tile\{--rv-keep:1;background:#ffffff;border:1px solid #ed1c24\}/.test(rc), 'recolour: a --rv-keep rule (a logo\'s white plate) keeps its colours', rc);
+ok(/color:#f42a58/.test(rc) && /rgba\(244,42,88,0\.12\)/.test(rc) && /background:#f7e9e8/.test(rc), 'recolour: brand, its tint and the surface move', rc);
+ok(/color:white/.test(rc), 'recolour: pure white is never moved (a label on the brand colour)', rc);
+var rHtml = '<div class="text-white" style="color:#ed1c24"><a href="#add">Download the white paper &#8217;s #ed1c24 note</a><svg><path fill="#ed1c24"/></svg><style>.x{color:#ed1c24}</style></div>';
+var rh = el.recolour(rHtml, rFrom, rTo, 'html');
+ok(/class="text-white"/.test(rh) && /white paper &#8217;s #ed1c24 note/.test(rh) && /href="#add"/.test(rh), 'recolour html: words, classes and links untouched', rh);
+ok(/style="color:#f42a58"/.test(rh) && /fill="#f42a58"/.test(rh) && /\.x\{color:#f42a58\}/.test(rh), 'recolour html: style attributes, SVG fills and <style> move', rh);
+ok(el.recolour(rHtml, rFrom, rTo) === rh, 'recolour: markup is read as html without a kind');
+
+/* ---- review: no quadratic reading of odd stylesheets ---- */
+var t0 = Date.now();
+el.readLook('<style>' + new Array(200001).join('a') + '}</style>', new Array(200001).join('x') + '}' + new Array(20001).join('rgb('));
+el.keyVisualOf(new Array(5001).join('<div class="hero banner">') + '<style>' + new Array(3001).join('.b{background:url(x.jpg)}') + '</style>', 'https://x.in/');
+ok(Date.now() - t0 < 1500, 'a 200 KB run without braces, unclosed rgb( and 5000 "hero" blocks read in linear time', (Date.now() - t0) + ' ms');
+ok(el.readLook(null, null) && el.keyVisualOf(null) === '' && el.recolour(null, rFrom, rTo) === '', 'nothing given, nothing thrown');
+var t1 = Date.now(), unclosed = el.recolour(new Array(40001).join('<style>x') + '<p style="color:#ed1c24">', rFrom, rTo, 'html');
+ok(Date.now() - t1 < 300 && /color:#f42a58/.test(unclosed), 'recolour: 40 000 unclosed <style> tags read in linear time', (Date.now() - t1) + ' ms');
+
+/* ---- review: owner words that are not about the look ---- */
+ok(!el.ownerSetsLook('The theme of this year is regional growth') && !el.ownerSetsLook('Serve light refreshments') && el.ownerSetsLook('dark mode please') && el.ownerSetsLook('use the brand font Gotham'),
+  'ownerSetsLook: "theme of the summit" and "light refreshments" do not switch the edition\'s look off');
+
+/* ---- review: a redesigned section may carry the city; an edit does only what was asked ---- */
+var rd = api.buildRedesignPrompt({ mode: 'redesign', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light', place: { city: 'Chennai', motif: 'a kolam border' } } });
+var ed = api.buildRedesignPrompt({ mode: 'edit', instruction: 'bigger title', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light', place: { city: 'Chennai', motif: 'a kolam border' } } });
+ok(/THE PLACE: this edition takes place in Chennai/.test(rd) && /kolam border/.test(rd) && !/THE PLACE/.test(ed), 'redesign carries the city, edit does not');
+
+/* ---- review: a card colour never walks off into grey (the stored BWS design gave #bebdb9 on #f5f3ee) ---- */
+var stored = { mode: 'light', themeColor: '#ed1c24', accentColor: '#f5a300', backgroundColor: '#ffffff', surfaceColor: '#fff3ea', textColor: '#1a1414', mutedColor: '#574e4e', headingFont: 'Montserrat', bodyFont: 'Work Sans' };
+[withLogo, Object.assign({}, withLogo, { surface: '#e4e2d9' })].forEach(function (lk, i) {
+  [stored, Object.assign({}, stored, { surfaceColor: lk.surface, backgroundColor: lk.background, textColor: lk.text })].forEach(function (ch, j) {
+    var o = Object.assign({}, ch, el.inspiredDesign(lk, ch, 'auto'));
+    var d = Math.sqrt([1, 3, 5].reduce(function (s, k) { return s + Math.pow(parseInt(o.surfaceColor.substr(k, 2), 16) - parseInt(o.backgroundColor.substr(k, 2), 16), 2); }, 0));
+    ok(gd.luminance(o.surfaceColor) > 0.7 && d <= 30 && d >= 3, 'BWS ' + i + '/' + j + ': the card is a light step from the ground, never grey', o.surfaceColor + ' on ' + o.backgroundColor + ' (' + d.toFixed(1) + ')');
+    ok(editionColours.every(function (c) { return apart(o.surfaceColor, c); }), 'BWS ' + i + '/' + j + ': and none of the edition\'s own colours', o.surfaceColor);
+  });
+});
+/* a dark edition's card: a step lighter than its ground, of the same dark */
+var dOut = Object.assign({}, omodel, el.inspiredDesign(olook, omodel, 'auto'));
+ok(gd.luminance(dOut.surfaceColor) < 0.2 && gd.luminance(dOut.surfaceColor) > gd.luminance(dOut.backgroundColor), 'a dark site\'s card stays dark, a step above its ground', dOut.surfaceColor + ' on ' + dOut.backgroundColor);
+/* a near-copy moves only a little: never compounded, at most 40% of the way */
+var near = el.inspiredDesign(withLogo, Object.assign({}, model, { themeColor: '#eb405d' }), 'auto');
+ok(near.themeColor && gd.luminance(near.themeColor) > 0.1 && Math.abs(gd.luminance(near.themeColor) - gd.luminance(look.brand)) < 0.15, 'a copied brand is moved a little, not off into black', near.themeColor);
+
+/* ---- review: the old banner's city never mixes with this edition's (rule 3) ---- */
+var kvChennai = { url: 'https://img.example.com/kv.jpg', description: 'An illustrated coastline with temple towers at dawn.', place: 'Chennai — the Marina and a gopuram' };
+var lk2 = api.editionLookLines(withLogo, kvChennai).join('\n');
+ok(!/Chennai/.test(lk2) && /not carried over/.test(lk2), 'the plan is not told the old banner\'s city; the place is THE PLACE\'s', lk2);
+var heroPune = gd.imagePrompt('a summit hall', { inspiredBy: kvChennai.description, place: { city: 'Pune', cues: 'stone wadas' } }, { hero: true });
+ok(/takes place in Pune/.test(heroPune) && /Take no place from it/.test(heroPune), 'hero with a place: inspired by the banner, the place is this edition\'s', heroPune);
+ok(!/Take no place/.test(gd.imagePrompt('a summit hall', { inspiredBy: kvChennai.description }, { hero: true })), 'no place given: no place sentence');
+ok(/Name no city/.test(api.ingestSchemaFor(true).properties.keyVisual.properties.description.description), 'the banner is described without its city');
+
+/* ---- review: rule 4 — a reference page that is not a previous edition is followed as before ---- */
+var refDesign = { layoutStyle: 'cards', sectionPattern: ['hero: split', 'speakers: grid'] };
+var comp = api.buildDesignPlanPrompt(Object.assign({}, base, { themeInfo: api.extractThemeFromPreviousEditionSources([]), reference: { basis: { type: 'competitor', url: 'https://x.example/e', design: refDesign }, others: [] } }));
+ok(/THE REFERENCE THIS SITE IS MODELLED ON/.test(comp) && /keep its hero construction/.test(comp) && !/INSPIRED BY/.test(comp), 'a competitor reference: the wording as before');
+var prevRef = api.buildDesignPlanPrompt(Object.assign({}, base, { themeInfo: ti, reference: { basis: { type: 'previousEdition', url: BWS_URL, design: refDesign }, others: [] } }));
+ok(/THE REFERENCE THIS SITE IS INSPIRED BY/.test(prevRef) && /never the same layout copied/.test(prevRef) && !/keep its hero construction/.test(prevRef), 'the previous edition: inspired by, no layout copied');
 
 if (failures.length) {
   console.log('FAIL edition-look: ' + failures.length + ' of ' + checks + ' checks');

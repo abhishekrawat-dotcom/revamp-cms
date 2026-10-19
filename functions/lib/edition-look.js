@@ -56,7 +56,9 @@ function parseColour(v) {
   return null;
 }
 
-var COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|\b(?:white|black)\b/g;
+/* "#ab12" after "&" is an HTML entity, not a colour; "white" in "white-space" or "text-white" is not one either;
+   an rgb( is read only as far as a colour can run (an unclosed one never scans the rest of the page) */
+var COLOUR_LITERAL = /(?<![&\w])#[0-9a-fA-F]{3,8}\b|rgba?\([^()]{0,80}\)|(?<![-\w])(?:white|black)(?![-\w])/gi;
 function coloursIn(text) {
   var out = [];
   (String(text || '').match(COLOUR_LITERAL) || []).forEach(function (lit) { var c = parseColour(lit); if (c) out.push(c); });
@@ -76,11 +78,41 @@ function saturated(h) { var l = lum(h); return chroma(h) >= 60 && l > 0.02 && l 
 
 /* ---------- reading CSS ---------- */
 
-function stripComments(css) { return String(css || '').replace(/\/\*[\s\S]*?\*\//g, ' '); }
+function stripComments(css) {
+  css = String(css || '');
+  var out = [], at = 0, i;
+  while ((i = css.indexOf('/*', at)) !== -1) {
+    out.push(css.slice(at, i));
+    var end = css.indexOf('*/', i + 2);
+    if (end === -1) { at = css.length; break; }
+    out.push(' '); at = end + 2;
+  }
+  out.push(css.slice(at));
+  return out.join('');
+}
 /* the page's own <style> blocks and style="" attributes, and the rest of it */
+/* Blocks of a page found by their own end, in one pass: an opening with no end closes the reading (a regex
+   with a lazy body rescans the rest of the page for each unclosed one). each(open, inner) gets every block. */
+function blocks(html, openRe, each) {
+  html = String(html || '');
+  var low = html.toLowerCase(), re = new RegExp(openRe.source, 'gi'), m, plain = [], at = 0;
+  while ((m = re.exec(low))) {
+    var name = m[1] ? m[1].toLowerCase() : '';
+    var close = name ? '</' + name : '-->', bodyAt = name ? low.indexOf('>', m.index) + 1 : m.index + 4;
+    plain.push(html.slice(at, m.index));
+    if (name && bodyAt === 0) { at = html.length; break; }
+    var end = low.indexOf(close, bodyAt);
+    if (end === -1) { at = html.length; break; }
+    if (each) each(name, html.slice(bodyAt, end));
+    at = name ? (low.indexOf('>', end) + 1 || html.length) : end + 3;
+    re.lastIndex = at;
+  }
+  if (at < html.length) plain.push(html.slice(at));
+  return plain.join('');
+}
 function ownCss(html) {
-  var out = [], re = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, m;
-  while ((m = re.exec(String(html || '')))) out.push(m[1]);
+  var out = [];
+  blocks(html, /<(style)\b/, function (name, inner) { out.push(inner); });
   return stripComments(out.join('\n'));
 }
 function styleAttrs(html) {
@@ -88,10 +120,19 @@ function styleAttrs(html) {
   while ((m = re.exec(String(html || '')))) out.push(m[2] != null ? m[2] : m[3]);
   return out.join(';\n');
 }
-/* innermost rules: { sel, decls } — an @media block's own rules come out as rules of their own */
+/* innermost rules: { sel, decls } — an @media block's own rules come out as rules of their own. One pass over
+   the text (a regex here was quadratic on a long run without braces before a stray "}": 30 s on 80 KB). */
 function rulesOf(css) {
-  var out = [], re = /([^{}]*)\{([^{}]*)\}/g, m;
-  while ((m = re.exec(css))) out.push({ sel: m[1].trim(), decls: m[2] });
+  css = String(css || '');
+  var out = [], prev = -1, open = -1, selStart = 0;   // the last brace seen; the "{" of the rule being read
+  for (var i = 0; i < css.length; i++) {
+    var ch = css.charCodeAt(i);
+    if (ch === 123) { selStart = prev + 1; open = i; prev = i; }                          // {
+    else if (ch === 125) {                                                               // }
+      if (open !== -1) out.push({ sel: css.slice(selStart, open).trim(), decls: css.slice(open + 1, i) });
+      open = -1; prev = i;
+    }
+  }
   return out;
 }
 function declsOf(decls, prop) {
@@ -301,14 +342,15 @@ function absolute(u, pageUrl) {
    or hero (inline, a data- attribute, or a rule in its own styles), else the first large picture inside it
    that is not a logo. */
 function keyVisualOf(html, pageUrl) {
-  html = String(html || '').replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, '');
-  var own = ownCss(html), re = /<(section|div|header|figure|main)\b[^>]*>/gi, m;
+  html = blocks(html, /<!--|<(script|noscript|template)\b/);
+  var ownRules = rulesOf(ownCss(html)), re = /<(section|div|header|figure|main)\b[^>]*>/gi, m, tried = 0;
   while ((m = re.exec(html))) {
     var tag = m[0], id = attrOf(tag, 'id'), cls = attrOf(tag, 'class');
     if (!BANNER_NAME.test(' ' + id + ' ' + cls + ' ') || NOT_A_BANNER.test(' ' + id + ' ' + cls + ' ')) continue;
+    if (++tried > 40) break;                        // the banner is near the top: a page of "hero" cards ends here
     var candidates = [urlIn(attrOf(tag, 'style')), attrOf(tag, 'data-bg'), attrOf(tag, 'data-background'), attrOf(tag, 'data-bg-src'), attrOf(tag, 'data-background-image')];
     /* a rule of the page's own for this element */
-    rulesOf(own).forEach(function (r) {
+    ownRules.forEach(function (r) {
       var names = (id ? ['#' + id] : []).concat(cls.split(/\s+/).filter(Boolean).map(function (c) { return '.' + c; }));
       if (names.some(function (n) { return r.sel.split(',').some(function (p) { return p.trim() === n || p.trim().slice(-n.length - 1) === ' ' + n; }); })) {
         declsOf(r.decls, 'background(?:-image)?').forEach(function (d) { candidates.push(urlIn(d.value)); });
@@ -389,30 +431,34 @@ var FONT_CHOICES = {
 };
 function dist(a, b) { var p = rgbOf(a), q = rgbOf(b); return Math.sqrt(p.reduce(function (s, v, i) { return s + Math.pow(v - q[i], 2); }, 0)); }
 function hexOk(v) { var c = parseColour(v); return c ? c.hex : ''; }
-var COPY_DIST = 10;                     // closer than this to one of the edition's colours is that colour, copied
+/* closer than this to one of the edition's colours is that colour, copied: for its brand and second colour a
+   shade apart is still a copy; grounds, cards and text sit near white or black, where all light (or dark)
+   colours are close, and only one nobody could tell from the edition's is its copy */
+var COPY_DIST = 20, COPY_DIST_NEUTRAL = 6;
 
 function inspiredDesign(look, chosen, mode) {
   look = look || {}; chosen = chosen || {};
   var out = {}, logo = (look.logoColours || []).filter(saturated);
   var own = [look.brand, look.accent, look.background, look.surface, look.text, look.muted].concat(logo, look.colours || []).filter(Boolean);
-  function copied(h) { return own.some(function (o) { return dist(h, o) < COPY_DIST; }); }
-  /* a colour of the family that is not one of the edition's own: moved along in small steps, only as far as
-     it takes to be new (a big step would take a card colour to grey) */
-  function fresh(h, toward) {
-    for (var i = 0; i < 12 && copied(h); i++) h = mix(h, toward, 0.06);
+  function copied(h, min) { return own.some(function (o) { return dist(h, o) < (min || COPY_DIST_NEUTRAL); }); }
+  /* a colour of the family that is not one of the edition's own: moved toward `toward` only as far as it takes
+     to be new, each try measured from the colour itself (steps of 4%, never compounded, at most 40% of the
+     way), so a near-copy moves a little and nothing is walked off into grey */
+  function fresh(h, toward, min) {
+    for (var i = 1, h0 = h; i <= 10 && copied(h, min); i++) h = mix(h0, toward, 0.04 * i);
     return h;
   }
 
   /* brand: the model's own while it is of the edition's hue and not its very value */
   var brand = hexOk(chosen.themeColor);
-  if (look.brand && !(brand && saturated(brand) && hueGap(brand, look.brand) <= 20 && !copied(brand))) {
+  if (look.brand && !(brand && saturated(brand) && hueGap(brand, look.brand) <= 20 && !copied(brand, COPY_DIST))) {
     var toward = logo.filter(function (h) { return hueGap(h, look.brand) <= 30 && dist(h, look.brand) >= COPY_DIST; })[0];
-    out.themeColor = fresh(toward ? mix(look.brand, toward, 0.5) : look.brand, lum(look.brand) > 0.25 ? '#000000' : '#ffffff');
+    out.themeColor = fresh(toward ? mix(look.brand, toward, 0.5) : look.brand, lum(look.brand) > 0.25 ? '#000000' : '#ffffff', COPY_DIST);
   }
   var family = [look.brand, look.accent].concat(logo).filter(Boolean);
   var accent = hexOk(chosen.accentColor);
-  var accentOk = accent && saturated(accent) && family.some(function (f) { return hueGap(accent, f) <= 20; }) && !copied(accent);
-  if (look.accent && !accentOk) out.accentColor = fresh(mix(look.accent, out.themeColor || brand || look.accent, 0.2), '#000000');
+  var accentOk = accent && saturated(accent) && family.some(function (f) { return hueGap(accent, f) <= 20; }) && !copied(accent, COPY_DIST);
+  if (look.accent && !accentOk) out.accentColor = fresh(mix(look.accent, out.themeColor || brand || look.accent, 0.2), '#000000', COPY_DIST);
 
   /* type: the same feel (serif where the edition set serifs), never the edition's own family */
   var theirs = [look.headingFont, look.bodyFont, look.headingFontRaw, look.bodyFontRaw].filter(Boolean).map(function (f) { return String(f).toLowerCase(); });
@@ -450,36 +496,69 @@ function inspiredDesign(look, chosen, mode) {
     }
     var surface = hexOk(chosen.surfaceColor);
     if (!keeps || !(surface && dist(surface, ground) <= 40 && !copied(surface))) {
-      /* cards and bands: the ground warmed by the brand, a step of its own */
-      /* moved, where it must be, towards white: a lighter card on a light ground, never a grey one */
-      out.surfaceColor = fresh(mix(ground, out.themeColor || brand || look.brand || ink, tone === 'light' ? 0.06 : 0.1), '#ffffff');
+      /* cards and bands: the ground warmed by the brand, a step of its own. Where that lands on one of the
+         edition's own colours, a little more or a little less of the brand is tried — every try a small step
+         from the ground itself, never compounded — and the ground's own tint is the last resort: a card
+         never walks off into grey (a light page's card stays within a few shades of its ground) */
+      var warm = out.themeColor || brand || look.brand || ink, base = tone === 'light' ? 0.06 : 0.1;
+      var tries = [base, base + 0.02, base - 0.02, base + 0.04, base - 0.04, 0.01];
+      var card = tries.map(function (t) { return mix(ground, warm, t); }).filter(function (h) { return !copied(h); })[0];
+      out.surfaceColor = card || ground;
     }
   }
   return out;
 }
 
 /* the owner's own words on the look win over the edition's */
+/* only words about the LOOK: "the theme of the summit is regional growth" or "light refreshments" are not */
 function ownerSetsLook(notes) {
-  return /colou?r|palette|font|typeface|serif|\bdark\b|\blight\b|#[0-9a-f]{3,6}\b|\btheme\b|\bshade/i.test(String(notes || ''));
+  return /colou?r|palette|\bfonts?\b|typeface|\bserif|sans[- ]serif|\bshades?\b|#[0-9a-f]{3,6}\b|\b(?:dark|light|black|white)(?:[- ](?:mode|theme|background|ground|look|design|page|site|version))\b|\b(?:dark|light)[- ]?(?:coloured|colored|toned)\b|\b(?:in|on|use|make it|keep it|go)\s+(?:dark|light|black|white)\b|\b(?:colou?r\s+)?theme\s+colou?r|\b(?:dark|light)\s+theme/i.test(String(notes || ''));
 }
 
 /* Literal colours of one design moved to another's: a section written for the old palette (a tint written as
-   rgba() of the brand colour, a band in the old surface) follows the new one. Alpha is kept. */
-function recolour(text, from, to) {
+   rgba() of the brand colour, a band in the old surface) follows the new one. Alpha is kept.
+     kind 'css': the declarations of a stylesheet; 'html': only what styles the markup (style="" attributes,
+     <style> blocks, an SVG's fill / stroke / stop-color) — never its words, its links or its class names.
+     Without kind, text holding a "<" is read as html.
+   Never moved: pure white and black (on a page they are more than its ground and its ink: the white of a
+   label on the brand colour, of a logo's plate), and any rule that carries --rv-keep (rv-theme.js: a partner
+   logo's white plate keeps its colours under every theme, and under this repair). */
+function recolour(text, from, to, kind) {
   from = from || {}; to = to || {};
+  text = String(text == null ? '' : text);
   var map = {};
   ['themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor'].forEach(function (k) {
     var a = parseColour(from[k]), b = parseColour(to[k]);
-    if (a && b && a.hex !== b.hex && !map[a.hex]) map[a.hex] = b.hex;
+    if (a && b && a.hex !== b.hex && a.hex !== '#ffffff' && a.hex !== '#000000' && !map[a.hex]) map[a.hex] = b.hex;
   });
-  if (!Object.keys(map).length) return String(text || '');
-  return String(text || '').replace(COLOUR_LITERAL, function (lit) {
-    var c = parseColour(lit);
-    if (!c || !map[c.hex]) return lit;
-    var n = rgbOf(map[c.hex]);
-    if (/^rgba?\(/i.test(lit)) return c.a < 1 ? 'rgba(' + n.join(',') + ',' + (+c.a.toFixed(3)) + ')' : 'rgb(' + n.join(',') + ')';
-    return map[c.hex] + (c.a < 1 ? hex2(c.a * 255) : '');
-  });
+  if (!Object.keys(map).length) return text;
+  function values(v) {
+    return v.replace(COLOUR_LITERAL, function (lit) {
+      var c = parseColour(lit);
+      if (!c || !map[c.hex]) return lit;
+      var n = rgbOf(map[c.hex]);
+      if (/^rgba?\(/i.test(lit)) return c.a < 1 ? 'rgba(' + n.join(',') + ',' + (+c.a.toFixed(3)) + ')' : 'rgb(' + n.join(',') + ')';
+      return map[c.hex] + (c.a < 1 ? hex2(c.a * 255) : '');
+    });
+  }
+  /* each declaration block on its own (one pass: "{" up to the next brace) */
+  function css(t) {
+    return t.replace(/\{([^{}]*)\}/g, function (all, decls) { return /--rv-keep\b/.test(decls) ? all : '{' + values(decls) + '}'; });
+  }
+  if ((kind || (text.indexOf('<') !== -1 ? 'html' : 'css')) === 'css') return css(text);
+  /* each <style> block, found by its own end in one pass (an unclosed one ends the reading) */
+  var low = text.toLowerCase(), parts = [], at = 0, open;
+  while ((open = low.indexOf('<style', at)) !== -1) {
+    var bodyAt = low.indexOf('>', open) + 1, end = bodyAt ? low.indexOf('</style', bodyAt) : -1;
+    if (!bodyAt || end === -1) break;
+    parts.push(text.slice(at, bodyAt), css(text.slice(bodyAt, end)));
+    at = end;
+  }
+  parts.push(text.slice(at));
+  return parts.join('')
+    .replace(/(\s(?:style|fill|stroke|stop-color|flood-color|color|bgcolor)\s*=\s*)("[^"]*"|'[^']*')/gi, function (all, a, v) {
+      return /--rv-keep\b/.test(v) ? all : a + values(v);
+    });
 }
 
 module.exports = {

@@ -1014,7 +1014,7 @@ var KEY_VISUAL_SCHEMA = {
   type: 'OBJECT',
   description: 'About the ONE PICTURE attached: the artwork the page\'s top banner is built on.',
   properties: {
-    description: { type: 'STRING', description: 'One or two sentences a designer could brief a matching picture from: what it shows, how it is made (photograph, illustration, 3D render, collage), its palette and its light.' },
+    description: { type: 'STRING', description: 'One or two sentences a designer could brief a picture in the same spirit from: what kind of scene or composition it is, how it is made (photograph, illustration, 3D render, collage), its palette and its light. Name no city, region or landmark here (that goes in "place").' },
     place: { type: 'STRING', description: 'The city or region it shows, when it is recognisable (the city or region and what in the picture shows it), else an empty string.' }
   },
   required: ['description', 'place']
@@ -1143,24 +1143,27 @@ function handleEtEvents(req, res) {
    its lock-up's colours, and the banner picture it is built on (read by the model, described in words). What
    is read here inspires the new design; none of it is copied into it. Each read is bounded and none can
    fail the step. -> Promise<{ look, keyVisual: { url, width, height, mime } | null, picture: { mimeType, data } | null }> */
-var KEY_VISUAL_MAX_BYTES = 4 * 1024 * 1024;
+/* 3.5 MB: its base64 stays under the 5 MB a picture may be for either provider */
+var KEY_VISUAL_MAX_BYTES = 3.5 * 1024 * 1024;
 function readEditionLook(url, html, css, logoCandidates) {
-  var look = editionLook.readLook(html, css);
+  var look = {}, kvUrl = '';
+  try { look = editionLook.readLook(html, css); kvUrl = editionLook.keyVisualOf(html, url); }
+  catch (e) { console.error('ingest-source: the edition\'s look was not read — ' + (e && e.message)); }
   var first = (logoCandidates || [])[0];
   var logoSvg = !first ? Promise.resolve('')
     : first.kind === 'inline-svg' ? Promise.resolve(first.svg || '')
     : safeFetch(first.url, { timeoutMs: 6000, maxBytes: 1024 * 1024 }).then(function (r) {
       return r.status === 200 && logoUnit.imageInfo(r.body).type === 'svg' ? r.body.toString('utf8') : '';
     }).catch(function () { return ''; });
-  var kvUrl = editionLook.keyVisualOf(html, url);
   var kv = !kvUrl ? Promise.resolve(null) : safeFetch(kvUrl, { timeoutMs: 8000, maxBytes: KEY_VISUAL_MAX_BYTES }).then(function (r) {
     var info = r.status === 200 ? logoUnit.imageInfo(r.body) : null;
     /* a banner: a wide raster picture of some size, not a strip or an icon */
-    if (!info || ['image/jpeg', 'image/png', 'image/webp'].indexOf(info.mime) === -1 || !(info.width >= 800) || !(info.width / info.height >= 1.2) || info.width / info.height > 4.5) return null;
+    if (!info || ['image/jpeg', 'image/png', 'image/webp'].indexOf(info.mime) === -1 || !(info.width >= 800) || info.width > 8000 || info.height > 8000 || !(info.width / info.height >= 1.2) || info.width / info.height > 4.5) return null;
     return { url: kvUrl, width: info.width, height: info.height, mime: info.mime, data: r.body.toString('base64') };
   }).catch(function () { return null; });
   return Promise.all([logoSvg, kv]).then(function (both) {
-    var full = editionLook.withLogo(look, editionLook.logoColours(both[0]));
+    var full = look;
+    try { full = editionLook.withLogo(look, editionLook.logoColours(both[0])); } catch (e) { /* the page's own look stands */ }
     var k = both[1];
     return { look: full, keyVisual: k ? { url: k.url, width: k.width, height: k.height, mime: k.mime } : null, picture: k ? { mimeType: k.mime, data: k.data } : null };
   });
@@ -1169,7 +1172,14 @@ function readEditionLook(url, html, css, logoCandidates) {
 function keptKeyVisual(kv, read) {
   if (!kv) return null;
   read = read || {};
-  function line(v, max) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, max); }
+  /* at most `max` characters, ending at a sentence (else a word): never half a word in a prompt */
+  function line(v, max) {
+    var t = String(v || '').replace(/\s+/g, ' ').trim();
+    if (t.length <= max) return t;
+    t = t.slice(0, max);
+    var end = t.lastIndexOf('. ');
+    return end > max / 2 ? t.slice(0, end + 1) : t.replace(/\s+\S*$/, '') + '.';
+  }
   return {
     url: kv.url, width: kv.width, height: kv.height, mime: kv.mime,
     description: line(read.description, 400), place: line(read.place, 200)
@@ -1249,7 +1259,13 @@ function handleIngestSource(req, res) {
           var picture = edition && edition.picture;
           var ask = { route: 'ingest-source', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'ingest-source') };
           if (picture) ask.images = [picture];
-          return Promise.all([llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton, !!picture), ingestSchemaFor(!!picture), ask), previousRead, edition]);
+          /* a picture the model turned away is not a reason to lose the page: it is read again without it */
+          var read = llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton, !!picture), ingestSchemaFor(!!picture), ask).then(function (r) {
+            if (!picture || !r.error || r.code !== 'ai-rejected') return r;
+            edition.keyVisual = null;
+            return llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton, false), ingestSchemaFor(false), Object.assign({}, ask, { images: undefined }));
+          });
+          return Promise.all([read, previousRead, edition]);
         }).then(function (both) {
           var r = both[0], previous = both[1], edition = both[2];
           if (r.error) return sendAiFailure(res, r);
@@ -1581,8 +1597,10 @@ function editionLookLines(look, keyVisual) {
     if (page.length || type.length) out.push('The new edition is INSPIRED BY this, not a copy of it: choose your OWN palette in the same colour family and tone (derive it — never reuse these hex values one for one) and your OWN two Google Fonts families with the same feel (never the same families). A returning visitor should sense the same event; nobody should see last year\'s page.');
   }
   if (keyVisual && keyVisual.description) {
-    out.push('ITS BANNER ARTWORK, in words: ' + keyVisual.description + (keyVisual.place ? ' It shows ' + keyVisual.place + '.' : '') +
-      ' The new hero picture is newly made, inspired by it (its mood, palette family and sense of place) — never a copy of it: describe a scene of your own in design.heroImage, and let design.imageStyle sit in the same mood so that every picture on the site reads as one set.');
+    /* its place is not passed on: the city this site shows is THE PLACE's (this edition's venue, else the last
+       one's), never the one the old banner happens to show */
+    out.push('ITS BANNER ARTWORK, in words: ' + keyVisual.description +
+      ' The new hero picture is newly made, inspired by it (its mood, palette family and the way it is made) — never a copy of it: describe a scene of your own in design.heroImage, and let design.imageStyle sit in the same mood so that every picture on the site reads as one set. Any city or landmark that artwork shows is not carried over: the only place this site shows is THE PLACE, when one is given.');
   }
   return out;
 }
@@ -1598,12 +1616,19 @@ function buildDesignPlanPrompt(payload) {
   ];
 
   if (ref.basis) {
+    /* a previous edition INSPIRES the new one (a fresh design, nothing of it copied); any other reference
+       page is followed as it always was */
+    var inspiredByEdition = ref.basis.type === 'previousEdition';
     lines.push(
-      'THE REFERENCE THIS SITE IS INSPIRED BY — ' + SOURCE_TYPE_LABELS[ref.basis.type] + ' (' + ref.basis.url + '). This is the core requirement: the new site must be recognisably inspired by this reference\'s structure and visual character, then improved — a fresh design of its own, not an unrelated one and not a copy.',
+      inspiredByEdition
+        ? 'THE REFERENCE THIS SITE IS INSPIRED BY — ' + SOURCE_TYPE_LABELS[ref.basis.type] + ' (' + ref.basis.url + '). This is the core requirement: the new site must be recognisably inspired by this reference\'s structure and visual character, then improved — a fresh design of its own, not an unrelated one and not a copy.'
+        : 'THE REFERENCE THIS SITE IS MODELLED ON — ' + SOURCE_TYPE_LABELS[ref.basis.type] + ' (' + ref.basis.url + '). This is the core requirement: the new site must be recognisably built on this reference\'s structure and visual language, then improved — not an unrelated design.',
       JSON.stringify(ref.basis.design, null, 2),
       ref.basis.tone ? 'Its page background is ' + ref.basis.tone + '.' : '',
       '',
-      'Follow it like this: keep its section order wherever this event has real content for that section; give each section a fresh layout of your own in the spirit of its sectionPattern entry (never the same layout copied); keep the feel of its typography, its density and its use of imagery. Then improve on it: fix what is weak, drop what this event has no content for, and add what the material below supports.'
+      inspiredByEdition
+        ? 'Follow it like this: keep its section order wherever this event has real content for that section; give each section a fresh layout of your own in the spirit of its sectionPattern entry (never the same layout copied); keep the feel of its typography, its density and its use of imagery. Then improve on it: fix what is weak, drop what this event has no content for, and add what the material below supports.'
+        : 'Follow it like this: keep its section order and the kind of layout each of its sections uses wherever this event has real content for that section (your sections[].layout should echo its sectionPattern entry); keep its hero construction; keep its typographic character and its density; keep its use of imagery. Then improve on it: fix what is weak, drop what this event has no content for, and add what the material below supports.'
     );
     if (ref.others.length) {
       lines.push('', 'OTHER PAGES TO LEARN FROM — take the strongest idea from each (a section this event lacks, a better layout for one it has) and work it into the structure above. Never copy their branding:');
@@ -2814,6 +2839,20 @@ function toneRule(design) {
   return 'ONE TONE FOR THE WHOLE PAGE: this site is ' + (dark ? 'DARK' : 'LIGHT') + ' and every section below the hero — the footer included — stays ' + (dark ? 'dark' : 'light') + ': its background is var(--rv-bg) or var(--rv-surface) (or a soft tint of the brand colour that is just as ' + (dark ? 'dark' : 'light') + '), its text var(--rv-text) and var(--rv-muted). Never invert a section to the opposite (' + (dark ? 'a white or light band' : 'a black, navy or dark-brand band') + ') — sections differ by layout, pictures and surface, not by flipping between light and dark. Text set over a picture sits on a ' + (dark ? 'dark' : 'light') + ' veil, in the page\'s own text colour. Brand colour is for buttons, accents, rules and highlights, not for whole ' + (dark ? 'light' : 'dark') + ' bands.';
 }
 
+/* The city an edition takes place in (design.place, set by plan-structure), for the model writing sections:
+   shown subtly, beyond the hero's address line. oneSection: the prompt writes a single section (Redesign
+   section), which may carry the motif when it suits it. '' when no city is known. */
+function placeDirection(place, oneSection) {
+  if (!place || !place.city) return '';
+  var city = String(place.city).replace(/\s+/g, ' ').trim().slice(0, 60);
+  var motif = String(place.motif || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return 'THE PLACE: this edition takes place in ' + city + ', and the page shows it beyond the hero\'s address line — subtly: ' +
+    (motif ? 'one graphic motif drawn from it (' + motif + ')' : 'one graphic detail drawn from its own architecture or crafts') +
+    ', drawn by you in CSS or inline SVG in the brand colours at low opacity, as a divider, a corner ornament or a faint pattern ' +
+    (oneSection ? 'in this section where it suits it' : 'in one or two sections') + ' — never behind running text' + (oneSection ? '' : ', never in every section') +
+    '; and, where the words naturally speak of the venue or the region, ' + city + ' by name. These are directions for you: never write them, or any instruction, on the site.';
+}
+
 function buildSectionCodePrompt(payload) {
   var designPlan = payload.designPlan || {};
   var design = designPlan.design || {};
@@ -2873,12 +2912,8 @@ function buildSectionCodePrompt(payload) {
   lines.push('', 'NO SECTION NUMBERS: never number the sections themselves — no "01", "02" tabs, counters, badges or "Section 3" labels before or beside a section\'s heading, and no running count across the page' +
     (payload.designPlan && payload.designPlan.ownerNotes ? ', unless the owner\'s own instructions above ask for numbered sections' : '') + '. Numbering the items inside one list (steps, questions, pillars) is fine.');
   /* the city, in creative terms (plan-structure set design.place from edition-look.js) */
-  var place = design.place;
-  if (place && place.city) {
-    lines.push('', 'THE PLACE: this edition takes place in ' + place.city + ', and the page shows it beyond the hero\'s address line — subtly: ' +
-      (place.motif ? 'one graphic motif drawn from it (' + place.motif + ')' : 'one graphic detail drawn from its own architecture or crafts') +
-      ', drawn by you in CSS or inline SVG in the brand colours at low opacity, as a divider, a corner ornament or a faint pattern in one or two sections — never behind running text, never in every section; and, where the words naturally speak of the venue or the region, ' + place.city + ' by name. These are directions for you: never write them, or any instruction, on the site.');
-  }
+  var placeLine = placeDirection(design.place, false);
+  if (placeLine) lines.push('', placeLine);
   lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section under it introduces the event properly.',
     'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero. In the nav the event is named by its own logo when one is supplied, else by its name as plain text.');
 
@@ -3204,7 +3239,9 @@ function buildRedesignPrompt(payload) {
     payload.generated === false
       ? 'This site is built on a fixed template: its CSS is not shown to you and stays as it is. Keep the section\'s existing class names wherever you keep its markup, so that the template\'s styling still applies. The CSS you return is ADDED for this section: write only the rules your change needs, with new class names for new things. Use var(--theme-color) for the brand colour and inherit fonts. Sizes in px only (never rem or em: this site\'s root font size is 10px).'
       : 'Mood: ' + (design.mood || '') + '\nLayout system: ' + (design.layout || '') + '\nColours and fonts are CSS variables already on the page — use the variables for the site\'s own colours (a specific colour the owner asked for is written as asked): var(--theme-color) brand, var(--accent-color) second colour, var(--rv-bg) page background, var(--rv-surface) cards and bands, var(--rv-text) body text, var(--rv-muted) secondary text, var(--heading-font-family), var(--body-font-family).\n' + toneRule(design) + ' (Only the owner can ask otherwise: a change they ask for in so many words, such as a dark band here, is made as asked.)' +
-        (payload.owner ? '\n' + ownerBrief.copyLines(payload.owner).join('\n') + '\n(What the owner asks for in this change wins over these where the two differ.)' : ''),
+        (payload.owner ? '\n' + ownerBrief.copyLines(payload.owner).join('\n') + '\n(What the owner asks for in this change wins over these where the two differ.)' : '') +
+        /* a redesign may carry the city too; an edit does only what was asked */
+        (payload.mode !== 'edit' && placeDirection(design.place, true) ? '\n' + placeDirection(design.place, true) : ''),
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
     '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; ' + (payload.generated === false ? 'keep the template\'s existing heading sizes and heading levels (px only)' : payload.sectionId === 'hero' ? 'the hero keeps its own headline size' : 'section heading (h2) exactly ' + genDesign.HEADING_SCALE.section + ', never larger, and no h1') + (payload.generated === false ? '' : '; sub-headings and card titles (h3) ' + genDesign.HEADING_SCALE.sub) + '; nothing below 0.875rem; only a band of big numbers may be larger than the heading. Set font-family, font-size, line-height and color explicitly.',
@@ -6944,7 +6981,7 @@ module.exports = { handleApi };
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
   confirmEtPick: confirmEtPick, pageKey: pageKey,
-  extractThemeFromPreviousEditionSources, editionLookLines, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
+  extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks,
