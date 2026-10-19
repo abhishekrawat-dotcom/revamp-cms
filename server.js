@@ -110,6 +110,7 @@ http.createServer(function(req, res){
 function serve(req, res){
   const url = req.url.split('?')[0];
   if (/^\/(api|e|preview)\//.test(url)) return handleApi(req, res);
+  if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
   if (url === '/favicon.ico'){
     return fs.readFile(FAVICON.path, function(err, buf){

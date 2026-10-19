@@ -220,7 +220,8 @@ function gateAnswer(url) {
   return passed ? 'next' : res.status + (res.headers && res.headers.Location ? ' ' + res.headers.Location : '');
 }
 ok(gateAnswer('/__l5e/assets-v1/x/film.mp4') === '404', 'signed out, a file that is not a page: 404, not the sign-in page', gateAnswer('/__l5e/assets-v1/x/film.mp4'));
-ok(gateAnswer('/sitemap.xml') === '404' && gateAnswer('/.well-known/ai-catalog.json') === '404', '…a sitemap or .well-known file the same');
+ok(gateAnswer('/.well-known/ai-catalog.json') === '404' && gateAnswer('/sitemap-old.xml') === '404', '…a .well-known or other .xml file the same');
+ok(gateAnswer('/sitemap.xml') === 'next' && gateAnswer('/robots.txt') === 'next', '/sitemap.xml and /robots.txt are public (lib/site-seo.js)');
 ok(/^302 \/\?next=/.test(gateAnswer('/Event_Listing.html')) && /^302 /.test(gateAnswer('/dashboard')) && /^302 /.test(gateAnswer('/preview/x.y')), 'pages still go to sign-in');
 ok(gateAnswer('/api/events') === '401', 'the API still answers 401');
 ok(gateAnswer('/templates/_shared/et-runtime.js?v=abc') === 'next' && gateAnswer('/e/some-event') === 'next', 'public files and published pages pass');

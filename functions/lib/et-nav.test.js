@@ -60,7 +60,10 @@ check('the event\'s words are escaped', !/<img src=x/.test(evil) && !/<script>/.
 var unsafe = nav.build({ name: 'X', tabs: [{ label: 'Bad', href: 'javascript:alert(1)' }, { label: 'Plain', href: 'http://example.com' }, { label: 'Ok', href: '#awards' }], cta: { label: 'Go', href: 'javascript:alert(1)' } }).html;
 check('only a place on the page or an https page is linked: no javascript:, no http:', !/javascript:|http:/i.test(unsafe) && /href="#awards">Ok</.test(unsafe) && /rv-etnav-cta" data-register-cta href="#hero">Go</.test(unsafe), unsafe);
 check('nothing in the bar runs: no script, no inline handler', !/<script|\son[a-z]+=/i.test(h));
-check('a white CTA word on a dark brand colour, a dark one on a light brand colour', /rv-etnav-cta\{[^}]*color:#ffffff/.test(built.css) && /rv-etnav-cta\{[^}]*color:#14161b/.test(nav.build({ themeColor: '#f5d000' }).css));
+check('the CTA reads (4.5:1): the page\'s button ground and words, with white on a dark brand colour and dark words on a light one as the fallback',
+  /rv-etnav-cta\{[^}]*background:var\(--rv-theme-fill,var\(--theme-color\)\);color:var\(--rv-on-theme,#ffffff\)/.test(nav.build({ themeColor: '#0a3d91' }).css) &&
+  /rv-etnav-cta\{[^}]*color:var\(--rv-on-theme,#14161b\)/.test(nav.build({ themeColor: '#f5d000' }).css) &&
+  /rv-etnav-cta\{[^}]*color:var\(--rv-on-theme,#000000\)/.test(built.css), built.css.match(/rv-etnav-cta\{[^}]*\}/)[0]);
 
 var css = built.css;
 check('every colour and font of the bar is one of the page\'s variables', !/#[0-9a-f]{3,8}\b/i.test(css.replace(/rv-etnav-cta\{[^}]*\}/, '').replace(/rgba\([^)]*\)/g, '')) && /var\(--rv-bg\)/.test(css) && /var\(--rv-text\)/.test(css) && /var\(--theme-color\)/.test(css) && /var\(--body-font-family\)/.test(css));
