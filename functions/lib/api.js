@@ -3682,8 +3682,9 @@ function handleGeneratedSection(req, res) {
     /* a colour of the design's palette written as a fixed value becomes its variable, so every theme reaches
        it (templates/_shared/rv-theme.js); the hero banner keeps its own tone */
     if (sectionId !== 'hero' && data.designPlan && data.designPlan.design) css = rvTheme.themableCss(css, data.designPlan.design);
-    /* held to a phone's width (gen-markup.js; idempotent), as on the published page */
-    css = mobileSafeCss(css);
+    /* held to a phone's width (gen-markup.js; idempotent), as on the published page — not the top bar and the
+       footer, which the server builds for phones itself (et-nav.js, et-footer.js: their one-line texts stay one line) */
+    if (sectionId !== 'nav' && sectionId !== 'footer') css = mobileSafeCss(css);
     sendJson(res, 200, { html: html, css: css });
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
 }
@@ -6209,7 +6210,8 @@ function publishTransform(html, opts) {
   /* an AI-designed site: no section heading louder than the site's type scale (genDesign.capHeadingSizes —
      idempotent), so a page saved before the scale was calmed is calm in the preview and when it is published.
      Only the sections' own stylesheets; the hero banner keeps its own type. Every section, the hero too, is held
-     to a phone's width (mobileSafeCss — idempotent): a page saved before that is put right the same way. */
+     to a phone's width (mobileSafeCss — idempotent): a page saved before that is put right the same way; the top bar
+     and the footer are left as the server built them for phones. */
   var bodyTag = bodyOpen !== -1 ? tokens[bodyOpen] : null;
   if (/^gen-/.test(String(opts.templateId || '')) || (bodyTag && (/^gen-/.test(attrValue(bodyTag, 'data-rv-template-id') || '') || classListOf(bodyTag).indexOf('rv-generated') !== -1))) {
     var headingMap = null;
@@ -6220,7 +6222,8 @@ function publishTransform(html, opts) {
         if (!headingMap) headingMap = genDesign.headingClasses(html);
         out[i + 1] = genDesign.capHeadingSizes(out[i + 1], headingMap);
       }
-      out[i + 1] = mobileSafeCss(out[i + 1]);
+      /* the top bar and the footer are built for phones by the server (et-nav.js, et-footer.js) */
+      if (sheetId !== 'nav' && sheetId !== 'footer') out[i + 1] = mobileSafeCss(out[i + 1]);
     }
   }
 
