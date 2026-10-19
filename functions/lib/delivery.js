@@ -410,6 +410,9 @@ function deadLocalPath(u) {
 function escAttr(s) { return String(s).replace(/&(?!amp;|#\d+;|#x[0-9a-f]+;|[a-z]+;)/gi, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
 module.exports = { deliverPage: deliverPage, assetVersion: assetVersion, versioned: versioned, fontFamilies: fontFamilies,
-  addFontDisplay: addFontDisplay, absoluteUrls: absoluteUrls, RUNTIME_STUB: RUNTIME_STUB };
+  addFontDisplay: addFontDisplay, absoluteUrls: absoluteUrls, RUNTIME_STUB: RUNTIME_STUB,
+  /* moves on each time another host's stylesheet arrives: a page delivered before it (still linking that sheet)
+     is to be delivered again (lib/api.js cachedPage) */
+  generation: function () { return remoteGeneration; } };
 /* for delivery.test.js only: fetch other hosts' stylesheets with `fn(url, done)` instead of the network */
 module.exports._testFetch = function (fn) { fetchCss = fn; REMOTE_CSS.clear(); pageCache.clear(); remoteGeneration++; };

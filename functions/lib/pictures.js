@@ -431,6 +431,17 @@ function rewriteHtml(html, index) {
   return out.slice(0, at) + '\n' + head.join('\n') + out.slice(at);
 }
 
+/* An SVG is text, and Cloud Storage sends an object exactly as it was stored: an imported or uploaded SVG logo
+   (often 80–170 KB of path data) went to every visitor uncompressed. Stored gzipped (Content-Encoding: gzip),
+   it is sent compressed to a browser — about a third of the size — and Storage unzips it for any reader that
+   does not accept gzip (decompressive transcoding); the Storage client's download() unzips it too.
+   -> true when an object of this type and these bytes is worth storing gzipped (file.save's `gzip` option). */
+var SVG_TYPE = /^image\/svg\+xml\b/i, SVG_PATH = /\.svgz?$/i;
+function gzipWorthIt(contentType, buffer, path) {
+  var svg = SVG_TYPE.test(String(contentType || '')) || (!contentType && SVG_PATH.test(String(path || '')));
+  return svg && Buffer.isBuffer(buffer) && buffer.length > 1024 && !(buffer[0] === 0x1f && buffer[1] === 0x8b);
+}
+
 /* the WebP copy rewriteImg gives a picture shown near the top (its full-size copy), or '' when it has none —
    for a preload that must name the very file the page will use (lib/api.js heroVideoPictures) */
 function fullCopyUrl(index, url) {
@@ -452,7 +463,7 @@ function siteDataMap(index) {
 
 module.exports = {
   makeVariants: makeVariants, storeVariants: storeVariants, prepare: prepare, lookupUrls: lookupUrls, lookupPaths: lookupPaths,
-  rewriteHtml: rewriteHtml, fullCopyUrl: fullCopyUrl, siteDataMap: siteDataMap, indexFromListing: indexFromListing, urlsIn: urlsIn,
+  rewriteHtml: rewriteHtml, fullCopyUrl: fullCopyUrl, gzipWorthIt: gzipWorthIt, siteDataMap: siteDataMap, indexFromListing: indexFromListing, urlsIn: urlsIn,
   variantName: variantName, parseVariant: parseVariant, isVariant: isVariant, widthsFor: widthsFor, pathOfUrl: pathOfUrl,
   publicUrl: publicUrl, wanted: wanted, isLogoPath: isLogoPath, hex8OfMd5Base64: hex8OfMd5Base64, md5Hex8: md5Hex8,
   available: function () { return !!loadSharp(); },

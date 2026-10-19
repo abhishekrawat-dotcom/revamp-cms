@@ -13,8 +13,11 @@
 
    Which pictures: PNG, JPEG and WebP files in an event's generated/, speakers/, partners/, gallery/,
    banner/, media/ and logo/ folders, and in the import folders (events/import-<id>/images/) its saved or
-   published page uses. SVG and GIF are left as they are. A picture whose copies were made from what it
-   holds now is skipped, so the script can be run again at any time.
+   published page uses. GIF is left as it is. An SVG in those folders that is stored as plain text is stored
+   again gzipped — the same drawing, name and headers (Content-Encoding: gzip; Storage then sends it compressed,
+   about a third of the size, and unzips it for any reader that does not take gzip). A picture whose copies
+   were made from what it holds now, and an SVG already gzipped, are skipped, so the script can be run again
+   at any time.
 
    --event <id>  that event (and the import folders its pages use)
    --all         every event in the bucket
@@ -57,6 +60,13 @@ var YEAR = 'public, max-age=31536000';
 function inScope(name) {
   var parts = name.split('/');
   if (parts[0] !== 'events' || parts.length !== 4 || !pictures.wanted(name)) return false;
+  if (/^import-/.test(parts[1])) return parts[2] === 'images';
+  return FOLDERS.indexOf(parts[2]) !== -1;
+}
+/* an SVG in the same folders (stored gzipped by this script when it is not) */
+function svgInScope(name) {
+  var parts = name.split('/');
+  if (parts[0] !== 'events' || parts.length !== 4 || !/\.svg$/i.test(name)) return false;
   if (/^import-/.test(parts[1])) return parts[2] === 'images';
   return FOLDERS.indexOf(parts[2]) !== -1;
 }
@@ -110,14 +120,40 @@ function main() {
     console.log(originals.length + ' picture(s); ' + (originals.length - todo.length) + ' already have their WebP copies; ' +
       todo.length + ' need them (' + kb(bytes) + ' of originals); ' + noCache.length + ' have no cache header and can be cached for a year.');
 
+    /* SVGs stored as plain text: stored again gzipped, the same drawing with the same name and headers
+       (pictures.js gzipWorthIt) — Storage then sends them compressed */
+    var svgs = files.filter(function (f) {
+      var m = f.metadata || {};
+      return svgInScope(f.name) && m.contentEncoding !== 'gzip' && (+m.size || 0) > 1024;
+    });
+    var svgBytes = svgs.reduce(function (n, f) { return n + (+(f.metadata && f.metadata.size) || 0); }, 0);
+    console.log(svgs.length + ' SVG(s) stored uncompressed (' + kb(svgBytes) + '): to be stored gzipped.');
+
     var made = 0, failed = [], before = 0, after = 0;
-    var steps = noCache.reduce(function (chain, f) {
+    var steps = svgs.reduce(function (chain, f) {
+      return chain.then(function () {
+        var m = f.metadata || {};
+        if (dry) { console.log('  gzip   ' + f.name + '  (' + kb(+m.size || 0) + ')'); return; }
+        return f.download().then(function (r) {
+          var buffer = r[0];
+          if (!pictures.gzipWorthIt(m.contentType || 'image/svg+xml', buffer, f.name)) return;
+          var metadata = { contentType: m.contentType || 'image/svg+xml' };
+          ['cacheControl', 'contentDisposition', 'contentLanguage'].forEach(function (k) { if (m[k]) metadata[k] = m[k]; });
+          if (m.metadata) metadata.metadata = m.metadata;
+          return f.save(buffer, { resumable: false, gzip: true, metadata: metadata })
+            .then(function () { return f.makePublic(); })
+            .then(function () { return f.getMetadata(); })
+            .then(function (got) { console.log('  gzip   ' + f.name + '  ' + kb(buffer.length) + ' -> ' + kb(+(got[0] && got[0].size) || 0)); });
+        }).catch(function (err) { failed.push(f.name + ' (gzip) — ' + (err && err.message)); });
+      });
+    }, Promise.resolve());
+    steps = noCache.reduce(function (chain, f) {
       return chain.then(function () {
         if (dry) { console.log('  cache  ' + f.name); return; }
         return f.setMetadata({ cacheControl: YEAR }).then(function () { console.log('  cache  ' + f.name + '  -> ' + YEAR); },
           function (err) { failed.push(f.name + ' (cache) — ' + (err && err.message)); });
       });
-    }, Promise.resolve());
+    }, steps);
     return todo.reduce(function (chain, f) {
       return chain.then(function () {
         if (made >= limit) return;

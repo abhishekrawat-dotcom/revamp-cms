@@ -123,6 +123,12 @@ ok(P.rewriteHtml('<img src="' + BASE + PART + '" width="10" height="10">', parti
 ok(P.urlsIn(PAGE).length >= 6 && P.urlsIn(PAGE).every(function (u) { return /storage\.googleapis\.com/.test(u); }), 'every picture of ours a page names is found');
 
 /* ---- making them (when the picture library is here) ---- */
+/* SVGs stored gzipped (Storage sends them compressed) */
+var BIG_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg">' + new Array(200).join('<path d="M0 0L10 10"/>') + '</svg>');
+ok(P.gzipWorthIt('image/svg+xml', BIG_SVG) && P.gzipWorthIt('', BIG_SVG, 'events/e/logo/a.svg'), 'an SVG of some size is stored gzipped');
+ok(!P.gzipWorthIt('image/svg+xml', Buffer.from('<svg/>')) && !P.gzipWorthIt('image/png', BIG_SVG) && !P.gzipWorthIt('image/jpeg', Buffer.alloc(5000)), 'a tiny SVG, or a picture already compressed, is not');
+ok(!P.gzipWorthIt('image/svg+xml', require('zlib').gzipSync(BIG_SVG)), 'bytes already gzipped are not gzipped again');
+
 function finish() {
   if (failures.length) {
     console.error('pictures: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));

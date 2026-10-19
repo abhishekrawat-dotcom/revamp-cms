@@ -1944,7 +1944,8 @@ function storePublicPicture(fb, storagePath, buffer, contentType) {
   /* An SVG is shown through <img>, where it cannot run anything. Opened on its own it is a document: it is
      offered as a download instead, so that a drawing taken from somebody else's page never runs here. */
   if (contentType === 'image/svg+xml') metadata.contentDisposition = 'attachment';
-  return file.save(buffer, { metadata: metadata })
+  /* an SVG is stored gzipped: sent compressed (pictures.js gzipWorthIt) */
+  return file.save(buffer, { metadata: metadata, gzip: pictures.gzipWorthIt(contentType, buffer) })
     .then(function () { return file.makePublic(); })
     .then(function () { return 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath; });
 }
@@ -3991,7 +3992,8 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
         var file = fb.bucket.file(storagePath);
         /* an import's folder is its own (import-<id>) and written once: cached for a year, with WebP copies
            of each raster picture (pictures.js) — a Lovable export's pictures are often megabyte PNGs */
-        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized), cacheControl: 'public, max-age=31536000' } })
+        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized), cacheControl: 'public, max-age=31536000' },
+            gzip: pictures.gzipWorthIt(guessImageContentType(sanitized), imgBuffer) })   // an SVG stored gzipped (pictures.js)
           .then(function () { return file.makePublic(); })
           .then(function () { return pictures.storeVariants(fb, storagePath, imgBuffer); })
           .then(function () { return { ref: ref, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath }; });
@@ -7163,14 +7165,26 @@ function cachedPage(key) {
   var hit = PAGE_CACHE.get(key);
   if (!hit) return null;
   if (Date.now() - hit.at > PAGE_CACHE_TTL_MS) { PAGE_CACHE.delete(key); return null; }
+  /* delivered before a font stylesheet it links had arrived (lib/delivery.js writes one in only once this
+     server holds it): delivered again from the same page, so the next visitor gets the sheet written in rather
+     than this instance going on sending the link — the slowest request of the first paint — for a minute */
+  if (hit.gen !== deliveryLib.generation()) packPage(hit);
   return hit;
+}
+function packPage(entry) {
+  entry.gen = deliveryLib.generation();
+  var html = deliverPage(entry.source);
+  if (entry.packed && html === entry.html) return entry;           // a sheet another page links: this one is as it was
+  entry.html = html;
+  entry.packed = {};
+  var buf = Buffer.from(entry.html, 'utf8');
+  ['br', 'gzip'].forEach(function (enc) { try { entry.packed[enc] = compressHtml(buf, enc, true); } catch (e) { /* compressed per request instead */ } });
+  return entry;
 }
 /* html: the page as stored; the entry holds it as delivered (lib/delivery.js) and compressed both ways */
 function cachePage(key, html) {
   if (PAGE_CACHE.size >= PAGE_CACHE_MAX) PAGE_CACHE.delete(PAGE_CACHE.keys().next().value);     // oldest first
-  var entry = { at: Date.now(), html: deliverPage(html), packed: {} };
-  var buf = Buffer.from(entry.html, 'utf8');
-  ['br', 'gzip'].forEach(function (enc) { try { entry.packed[enc] = compressHtml(buf, enc, true); } catch (e) { /* compressed per request instead */ } });
+  var entry = packPage({ at: Date.now(), source: html });
   PAGE_CACHE.set(key, entry);
   return entry;
 }
@@ -7380,6 +7394,8 @@ function handleSitemapXml(req, res) {
     snap.docs.forEach(function (d) {
       var e = d.data() || {};
       if (eventStateOf(d) !== 'live' || !isEventId(d.id)) return;
+      /* the QA harness's short-lived test copies (always "qa-…", deleted after each run) are no site to list */
+      if (/^qa-/.test(d.id)) return;
       if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return;
       entries.push({ loc: base + publicPathOf(d.id), lastmod: typeof e.publishedAt === 'string' ? e.publishedAt : '' });
     });
@@ -7583,6 +7599,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, ensureFormsRuntime, deliverPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

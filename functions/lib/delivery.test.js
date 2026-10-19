@@ -169,6 +169,19 @@ var during = deliver(ICON_PAGE);
 ok(during.indexOf('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter') !== -1 && typeof pending === 'function', 'nothing waits for a fetch: the page goes out with the <link>');
 pending(REMOTE[INTER]);
 ok(deliver(ICON_PAGE).indexOf('src:url(https://fonts.gstatic.com/s/i2.woff2)') !== -1, '…and the next page served after it arrives has it written in');
+/* /e/'s page cache (lib/api.js): a page cached while its sheet was still on its way is delivered again once it is here */
+var LATE = 'https://fonts.googleapis.com/css2?family=Fraunces:wght@400;700&display=swap', latePending = null;
+var LATE_PAGE = ICON_PAGE.replace('family=Inter:wght@400;700', 'family=Fraunces:wght@400;700');
+delivery._testFetch(function (url, done) { if (url === LATE) latePending = done; else done(REMOTE[url] == null ? null : REMOTE[url]); });
+var cachedEntry = hooks.cachePage('qa-late|1|t|v:off', LATE_PAGE);
+ok(cachedEntry.html.indexOf('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces') !== -1 && typeof latePending === 'function', 'cached while the sheet is on its way: with its <link>');
+var packedBefore = cachedEntry.packed.gzip;
+ok(hooks.cachedPage('qa-late|1|t|v:off').packed.gzip === packedBefore, 'nothing new arrived: the cached page as it was (not compressed again)');
+latePending('@font-face{font-family:Fraunces;src:url(https://fonts.gstatic.com/s/f1.woff2)}');
+var relivered = hooks.cachedPage('qa-late|1|t|v:off');
+ok(relivered && relivered.html.indexOf('src:url(https://fonts.gstatic.com/s/f1.woff2)') !== -1 && relivered.html.indexOf('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces') === -1 &&
+   require('zlib').gunzipSync(relivered.packed.gzip).toString('utf8') === relivered.html, '…and once it arrives, the cached page has it written in (compressed copies redone)');
+delivery._testFetch(function (url, done) { done(REMOTE[url] == null ? null : REMOTE[url]); });
 ok(delivery.absoluteUrls('a{b:url(x.png)}c{d:url("data:x")}e{f:url(\'/y\')}', 'https://h.example/p/q.css') === 'a{b:url(https://h.example/p/x.png)}c{d:url("data:x")}e{f:url(\'https://h.example/y\')}',
   'relative addresses in a fetched sheet resolve against it');
 delivery._testFetch(function (url, done) { done(null); });

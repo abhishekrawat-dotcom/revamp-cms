@@ -287,6 +287,7 @@ function handleUpload(req, res) {
              it for a year without asking again. (Replacing a picture means a new upload and a new URL.) */
           return file.save(buffer, {
             resumable: false,
+            gzip: pictures.gzipWorthIt(contentType, buffer),     // an SVG is stored gzipped: sent compressed (pictures.js)
             metadata: {
               contentType: contentType,
               cacheControl: 'public, max-age=31536000, immutable',
