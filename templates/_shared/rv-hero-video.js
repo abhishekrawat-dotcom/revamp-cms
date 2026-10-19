@@ -117,8 +117,9 @@
     b.innerHTML = PAUSE;
     b.addEventListener('click', function () {
       self.userPaused = !self.userPaused;
+      /* one name, and its pressed state says whether it is paused (a toggle whose name also flipped would be
+         read as "Play background video, pressed" — the opposite of what it does) */
       b.setAttribute('aria-pressed', self.userPaused ? 'true' : 'false');
-      b.setAttribute('aria-label', self.userPaused ? 'Play background video' : 'Pause background video');
       b.innerHTML = self.userPaused ? PLAY : PAUSE;
       if (self.userPaused) self.pause(); else self.play();
     });

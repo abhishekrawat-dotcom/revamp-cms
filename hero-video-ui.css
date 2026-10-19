@@ -47,12 +47,14 @@
 .hvu .hvu-radio input{ accent-color:var(--accent, #ED1C24); }
 .hvu .hvu-radio{ font-weight:600; font-size:13px; color:var(--text, #241B1A); }
 .hvu .hvu-radio .hvu-hint{ display:block; flex-basis:100%; padding-left:22px; margin-top:-2px; font-weight:400; }
-.hvu-ovrow{ display:flex; align-items:center; gap:12px; padding-left:22px; }
+.hvu-ovrow{ display:flex; align-items:center; gap:12px; padding-left:22px; min-width:0; }
+.hvu .hvu-colour{ flex:0 0 auto; }
 .hvu-ovrow[hidden]{ display:none; }
 .hvu .hvu-colour input{ width:34px; height:28px; padding:0; border:1px solid var(--border, #E0D7D5); border-radius:6px; background:none; cursor:pointer; }
-.hvu .hvu-range{ flex:1; display:flex; align-items:center; gap:8px; font-size:12px; font-weight:500; color:var(--text-muted, #756865); }
-.hvu .hvu-range input{ flex:1; min-width:60px; accent-color:var(--accent, #ED1C24); }
-.hvu .hvu-range output{ min-width:34px; text-align:right; font-family:var(--font-mono, ui-monospace, monospace); color:var(--text, #241B1A); }
+.hvu .hvu-range{ flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:8px; font-size:12px; font-weight:500; color:var(--text-muted, #756865); }
+/* the editor's Design panel sizes its inputs at 100%: here the slider gives way, so its percentage stays in view */
+.hvu .hvu-range input{ flex:1 1 auto; width:auto; min-width:0; accent-color:var(--accent, #ED1C24); }
+.hvu .hvu-range output{ flex:0 0 auto; min-width:34px; text-align:right; font-family:var(--font-mono, ui-monospace, monospace); color:var(--text, #241B1A); }
 .hvu-read{ font-size:12px; line-height:1.45; padding-left:22px; }
 .hvu-read.ok{ color:var(--ok, #2F8F5B); }
 .hvu-read.bad{ color:var(--warn, #9C6B14); }
