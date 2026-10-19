@@ -276,6 +276,56 @@
   .chat-launcher.is-quiet .chat-launcher-bubble{ display:none; }
   body.ed-load-failed .chat-launcher{ display:none; }
   @media (max-width: 720px){ .chat-launcher-bubble{ display:none; } }
+  /* ============ EDITOR MODES (editor-ai-mode.js) ============
+     The toggle in the top bar, and "Edit with AI": the site full width as its draft preview shows it (the live
+     view, #ai-live, over the canvas — which stays laid out underneath, out of sight, so every tool that measures
+     it still works), the editing tools put away, ETB2B AI floating at the bottom right. "Edit myself" is
+     everything above, untouched. */
+  .mode-toggle{ display:inline-flex; align-items:center; gap:2px; padding:3px; border-radius:10px; background: var(--surface-2); border:1px solid var(--border); flex-shrink:0; }
+  .mode-toggle button{ display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 11px; border:0; border-radius:7px; background:transparent;
+    color: var(--text-muted); font: inherit; font-size:12.5px; font-weight:700; white-space:nowrap; cursor:pointer; }
+  .mode-toggle button:hover{ color: var(--text); }
+  .mode-toggle button[aria-checked="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+  .mode-toggle button[data-mode="ai"][aria-checked="true"]{ color: var(--review); }
+  .mode-toggle button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+  @media (max-width: 1180px){ .mode-toggle button span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; } .mode-toggle button{ padding:0 9px; } }
+
+  .ai-mode-hint{ display:none; align-self:center; flex:1; min-width:0; font-size:12.5px; font-weight:600; color: var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  body.ed-mode-ai .ai-mode-hint{ display:block; }
+  body.ed-mode-ai .rail-tools,
+  body.ed-mode-ai .global-toolbar,
+  body.ed-mode-ai #gt-body-more-menu,
+  body.ed-mode-ai #panel-add, body.ed-mode-ai #panel-layers, body.ed-mode-ai #panel-design, body.ed-mode-ai #lyr-ctx-menu,
+  body.ed-mode-ai .ed-workspace > .rail,
+  body.ed-mode-ai #btn-ai-markers,
+  body.ed-mode-ai .tpl-sel-toolbar, body.ed-mode-ai .tpl-sec-toolbar, body.ed-mode-ai .tpl-pop,
+  body.ed-mode-ai #gt-style-pop{ display:none !important; }
+  body.ed-mode-ai .stage{ padding:0; }
+  body.ed-mode-ai #stage.stage .frame{ width:100%; max-width:none; border-radius:0; box-shadow:none; outline:0; background:transparent; }
+  body.ed-mode-ai #frame > .tpl-viewport{ visibility:hidden; }
+  /* the room around a narrower page (the Mobile width) is the stage's own, in either editor theme */
+  .ai-live{ position:absolute; inset:0; z-index:30; overflow:hidden; background:transparent; }
+  .ai-live-viewport{ position:absolute; inset:0; overflow:hidden; }
+  .ai-live-frame{ position:absolute; top:0; left:0; display:block; border:0; transform-origin: top left; background:#fff; }
+  /* these lie over the site, not the CMS, so they keep the same colours in both editor themes */
+  .ai-live-hover, .ai-live-pick{ position:absolute; pointer-events:none; border-radius:3px; }
+  .ai-live-hover{ outline: 2px dashed rgba(138,90,158,.75); outline-offset:-2px; background: rgba(138,90,158,.05); }
+  .ai-live-pick{ outline: 2px solid #8A5A9E; outline-offset:-2px; }
+  .ai-live-tag{ position:absolute; right:10px; top:8px; display:inline-flex; align-items:center; gap:6px; max-width:calc(100% - 20px);
+    padding:5px 10px; border-radius:999px; background:#241B1A; color:#fff; font:700 12px/1.3 Inter, Arial, sans-serif; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; box-shadow:0 6px 18px rgba(0,0,0,.25); }
+  .ai-live-pick .ai-live-tag{ background:#8A5A9E; }
+  .ai-live-status{ position:absolute; left:50%; top:12px; transform:translateX(-50%); padding:6px 12px; border-radius:999px; background:#241B1A; color:#fff;
+    font:600 12px/1.3 Inter, Arial, sans-serif; box-shadow:0 6px 18px rgba(0,0,0,.25); pointer-events:none; }
+  /* ETB2B AI as a floating widget over the live view; the launcher (its face) is how it is folded away and back */
+  body.ed-mode-ai #panel-chat{ position:fixed; top:auto; right:20px; bottom:20px; width:min(380px, calc(100vw - 40px)); height:min(620px, calc(100vh - 150px));
+    z-index:80; border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow: 0 24px 60px -18px rgba(20,16,40,.45); }
+  @media (max-width: 720px){
+    /* a phone: the chat is a sheet along the bottom and the live view keeps the window above it, uncovered */
+    body.ed-mode-ai #panel-chat{ left:0; right:0; bottom:0; width:auto; height:56vh; border-radius:16px 16px 0 0; }
+    body.ed-mode-ai.ai-chat-open .stage{ padding-bottom:56vh; }
+    body.ed-mode-ai .ai-mode-hint{ display:none; }
+  }
   /* ---------- developer zone: one section's HTML, CSS and JS ---------- */
   .modal.dev-zone{ max-width: 1180px; width: 100%; height: min(86vh, 900px); display:flex; flex-direction:column; text-align:left; }
   .dev-head{ display:flex; align-items:center; gap:16px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
@@ -1017,6 +1067,19 @@
       <button class="icon-btn" type="button" id="btn-ai-markers" title="Show/hide AI markers" aria-pressed="false" hidden>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
       </button>
+      <!-- the editor's two modes (editor-ai-mode.js): "Edit with AI" shows the site as its draft preview does,
+           with ETB2B AI floating over it; "Edit myself" is the canvas with every editing tool. Shown once the
+           site is on the canvas. data-keep-selection: switching keeps the selected section (the chat's reference). -->
+      <div class="mode-toggle" id="ed-mode-toggle" role="radiogroup" aria-label="Editor mode" data-keep-selection hidden>
+        <button type="button" role="radio" aria-checked="false" tabindex="-1" data-mode="ai" title="See the site as its preview does and change it by asking ETB2B AI">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+          <span>Edit with AI</span>
+        </button>
+        <button type="button" role="radio" aria-checked="true" tabindex="0" data-mode="manual" title="Click any text, picture or section on the page to change it yourself">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          <span>Edit myself</span>
+        </button>
+      </div>
       <!-- start disabled: only enabled once the canvas has actually mounted AND (template mode) its AI
            content fill has finished — see editor-template-ui.js's boot(). Publishing/previewing before
            that captures the template's raw, unfilled placeholder markup, not the real content. -->
@@ -1340,6 +1403,7 @@
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
 <script src="editor-template-ui.js"></script>
+<script src="editor-ai-mode.js"></script>
 <script>
 (function(){
     var qsEarly = new URLSearchParams(location.search);
@@ -2750,6 +2814,10 @@
     { escHtml: escHtml, showToast: showToast, showNotice: showNotice, clearNotice: clearNotice, openDialog: openDialog, onEvent: wireEventRail,
       genericCss: genericCss, pickSection: openSectionPicker, onSectionsChanged: rebuildLayersPanel,
       onDesignChange: function(){ syncDesignPanel(); syncGtTools(); }, onSelectionChange: onCanvasSelection })
-    .then(function(ready){ if (ready) initAiProvenanceToggle(); });
+    .then(function(ready){
+      if (!ready) return;
+      initAiProvenanceToggle();
+      if (window.RevampEditorMode) window.RevampEditorMode.ready();
+    });
 })();
 </script>

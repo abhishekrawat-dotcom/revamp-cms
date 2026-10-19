@@ -70,6 +70,8 @@
 //                                           a stale save answers 409.
 //   POST  /api/event/publish | unpublish    put the saved site live at /e/<id> / take it down.
 //   POST  /api/event/stage                  only for browsers still running the previous editor script.
+//   POST  /api/event/live-view              the editor's "Edit with AI" live view: the page through the
+//                                           preview transform, answered, never stored.
 //   GET   /e/<eventId>                      PUBLIC — the published site, served from private Storage.
 //   GET   /preview/<eventId>                signed-in — what would be published right now.
 //
@@ -5881,7 +5883,12 @@ function handleSitePut(req, res) {
      3. sets <title> to the event's name and writes the description, Open Graph tags, canonical link and
         favicon;
      4. makes sure the live-site runtime and its config block are present exactly once;
-     5. in preview mode, adds a "Preview — not published" ribbon.
+     5. in preview mode, adds a "Preview — not published" ribbon;
+     6. in preview mode, adds the theme switcher of an AI-designed site and (opts.editButton) the
+        "Edit with AI" button (templates/_shared/rv-preview-edit.js) that opens the editor at the section in
+        view. opts.liveView instead marks the page as the site editor's live view (<html
+        data-rv-editor-mode="ai">, see et-runtime.js) and adds none of 5 and 6: the editor shows the page as
+        the preview does, without the preview's own controls.
 
    There is no HTML parser among this project's dependencies, and this is not one. It is a tokenizer that
    knows only where tags, comments and raw-text elements (script, style, textarea, title) begin and end,
@@ -6082,7 +6089,7 @@ function rewriteOrigins(html, origins) {
    into any page its user edits — two already-published pages carry it. */
 var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown',
   'data-date-format', 'data-ed', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-editing',
-  'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded'];
+  'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
 var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live)\.js|editor-fill\.js)$/;
@@ -6286,7 +6293,8 @@ function publishTransform(html, opts) {
   if (LIVE_RUNTIME_PRESENT) tail.push('<script src="/templates/_shared/rv-live.js" data-rv-runtime></script>');
 
   /* ---- 5. preview ribbon ---- */
-  var ribbon = mode === 'preview'
+  var liveView = mode === 'preview' && opts.liveView === true;
+  var ribbon = mode === 'preview' && !liveView
     ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">Preview — not published</div>'
     : '';
 
@@ -6300,9 +6308,16 @@ function publishTransform(html, opts) {
   else if (htmlOpen !== -1) out[htmlOpen] = out[htmlOpen] + headText;
   else prefix = headText;
   if (ribbon) { if (bodyOpen !== -1) out[bodyOpen] = out[bodyOpen] + ribbon + '\n'; else tailText = ribbon + '\n' + tailText; }
-  /* ---- 6. preview of an AI-designed site: its themes, to try on the page itself ---- */
-  var switcher = mode === 'preview' ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
+  /* ---- 6. preview of an AI-designed site: its themes, to try on the page itself; and the way back into the
+     editor, at the section in view. Neither is on a published page, nor in the editor's own live view. ---- */
+  var switcher = mode === 'preview' && !liveView ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
   if (switcher) tailText += switcher;
+  if (mode === 'preview' && !liveView && opts.editButton === true) tailText += '<script src="/templates/_shared/rv-preview-edit.js" data-rv-runtime></script>\n';
+  /* the editor's live view: the one signal runtime code reads to know it is there (et-runtime.js) */
+  if (liveView && htmlOpen !== -1) {
+    setAttr(tokens[htmlOpen], 'data-rv-editor-mode', 'ai');
+    out[htmlOpen] = writeTag(tokens[htmlOpen]);
+  }
   if (bodyClose !== -1) out[bodyClose] = tailText + out[bodyClose];
   else suffix = tailText;
 
@@ -6778,6 +6793,27 @@ function handleEventStage(req, res) {
   });
 }
 
+/* ---------- POST /api/event/live-view — the site editor's "Edit with AI" live view ----------
+   Body { eventId, html, origin } -> 200 { html }: the page the editor has in hand (its serialize()), put
+   through the same transform as /preview/<id>?draft=1 — so the live view looks and behaves exactly like
+   the draft preview — but marked as the editor's live view (opts.liveView: <html data-rv-editor-mode="ai">,
+   no ribbon, no theme switcher, no "Edit with AI" button). Nothing is stored: the editor shows the answer
+   in a frame of its own and asks again after every change. */
+function handleEventLiveView(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    if (typeof body.html !== 'string' || !body.html.trim()) return sendJson(res, 400, { error: 'The page to show ("html") is missing.' });
+    loadLiveEvent(fb, eventId).then(function (data) {
+      var html = publishTransform(body.html, {
+        eventId: eventId, event: data, mode: 'preview', publicBase: '', liveView: true,
+        templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(body.origin)]
+      });
+      sendJson(res, 200, { html: html });
+    }).catch(function (err) { sendFailure(res, 'live view', err, 'The live view could not be prepared. Please try again.'); });
+  });
+}
+
 /* =====================================================================================================
    THE PAGES THEMSELVES — GET /e/<eventId> (public) and GET /preview/<eventId> (signed-in)
    These answer HTML, not JSON, and are read by people who have never heard of this CMS: every failure
@@ -6942,8 +6978,9 @@ function handlePreviewPage(req, res, eventId) {
         if (html == null) {
           return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
         }
+        /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
         sendHtml(req, res, 200, publishTransform(html, {
-          eventId: eventId, event: data, mode: 'preview', publicBase: '',
+          eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion,
           templateId: (data.site && data.site.templateId) || data.templateId
         }), 'no-store');
       });
@@ -7054,6 +7091,7 @@ var ROUTES = {
   'PUT /api/settings/approvals': handleApprovalSettingsPut,
   'POST /api/event/unpublish': handleEventUnpublish,
   'POST /api/event/stage': handleEventStage,
+  'POST /api/event/live-view': handleEventLiveView,
 
   'POST /api/event/seed': audience('handleSeed'),
   'GET /api/event/registrations': audience('handleRegistrationsList'),

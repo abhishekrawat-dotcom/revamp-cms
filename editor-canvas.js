@@ -1165,6 +1165,7 @@
     function serialize() {
       var root = doc.documentElement.cloneNode(true);
       root.removeAttribute('data-rv-editing');
+      root.removeAttribute('data-rv-editor-mode');
       // hidden (and not-yet-live scheduled) sections aren't on the published page
       root.querySelectorAll('[data-rv-section].is-hidden-sec').forEach(function (sec) {
         copiedStyles(root, sec).forEach(function (s) { s.remove(); });
