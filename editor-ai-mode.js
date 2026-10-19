@@ -45,6 +45,9 @@
   var current = null;                 // the live view's iframe on show
   var renderSeq = 0, renderTimer = null, scale = 1, fallbackSaid = false;
   var hoverKey = '', overlayFrame = 0;
+  var leaving = false;                // the editor itself is being closed or reloaded
+  window.addEventListener('pagehide', function () { leaving = true; });
+  window.addEventListener('pageshow', function () { leaving = false; });
   var MOBILE_MAX = 720;
 
   var qs = new URLSearchParams(location.search);
@@ -195,6 +198,13 @@
     });
   }
 
+  /* a live view frame taken away by this script (its page going then is expected, not a navigation) */
+  function drop(ifr) {
+    if (!ifr || ifr.rvDropped) return;
+    ifr.rvDropped = true;
+    if (ifr.parentNode) ifr.parentNode.removeChild(ifr);
+  }
+
   function fit(ifr) {
     if (!ifr || !viewport) return;
     var w = device(), vw = viewport.clientWidth, vh = viewport.clientHeight;
@@ -275,12 +285,15 @@
       if (shown) return;
       shown = true;
       clearTimeout(early);
-      if (seq !== renderSeq || mode !== 'ai') { ifr.remove(); return; }
+      if (seq !== renderSeq || mode !== 'ai') { drop(ifr); return; }
       wire(ifr, function () { touched = true; });
       goToPlace(ifr.contentWindow, place);
       ifr.style.visibility = '';
-      if (current && current !== ifr) current.remove();
+      // keyboard focus moves on with the page, so Undo / Redo / Save keys keep working after each redraw
+      var hadFocus = !!current && document.activeElement === current;
+      if (current && current !== ifr) drop(current);
       current = ifr;
+      if (hadFocus) { try { ifr.contentWindow.focus(); } catch (e) { /* the browser decides */ } }
       setStatus('');
       hoverKey = '';
       drawOverlay();
@@ -333,6 +346,25 @@
       if (sec) pick(keyOf(sec), e.clientY);
     }, true);
     doc.addEventListener('auxclick', guard, true);
+    /* A link within the page ("#name") is followed here, last of all, when the site's own code has not done it
+       (a Register button, a name the runtime cannot find, a hidden section). The browser must never follow
+       it: the live view's address is about:srcdoc, whose links resolve against the editor's own address, so
+       "#name" would load the whole editor inside the live view. */
+    win.addEventListener('click', function (e) {
+      if (e.defaultPrevented) return;
+      var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+      var a = t && t.closest ? t.closest('a[href], area[href]') : null;
+      if (!a) return;
+      var href = a.getAttribute('href') || '';
+      e.preventDefault();
+      if (href.charAt(0) !== '#' || href.length < 2) return;
+      // the site's own way there first (it clears the site's bar at the top), then a plain jump
+      try { if (win.RevampSections && win.RevampSections.goTo && win.RevampSections.goTo(href)) return; } catch (err) { /* below */ }
+      var name = href.slice(1);
+      try { name = decodeURIComponent(name); } catch (err) { /* taken as written */ }
+      var el = doc.getElementById(name) || doc.getElementsByName(name)[0];
+      if (el) el.scrollIntoView({ block: 'start' });
+    });
     doc.addEventListener('submit', function (e) { e.preventDefault(); }, true);
     doc.addEventListener('mousemove', function (e) {
       var sec = sectionAt(e.target), key = sec ? keyOf(sec) : '';
@@ -350,6 +382,23 @@
       var k = String(e.key || '').toLowerCase();
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); UI.undo(); }
       else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); UI.redo(); }
+      else if (k === 's' && !e.shiftKey && !e.altKey) {
+        // Save, as everywhere else in the editor — never the browser's "Save page as" of the live view
+        e.preventDefault();
+        var save = document.getElementById('btn-save');
+        if (save && !save.hidden && !save.disabled) save.click();
+      }
+    });
+    /* Should the live view still be about to load another document (a script setting location, a handler
+       that stopped the click above from being seen), the frame is taken away the moment its page goes —
+       before anything that page would load could run — and the site drawn again. */
+    win.addEventListener('pagehide', function () {
+      if (leaving || ifr.rvDropped || mode !== 'ai' || current !== ifr || !ifr.isConnected) return;
+      var place = null;
+      try { place = placeIn(doc); } catch (err) { place = null; }
+      current = null;
+      drop(ifr);
+      render(place);
     });
     win.addEventListener('scroll', function () { drawOverlay(); }, { passive: true });
     ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (type) { win.addEventListener(type, onTouch, { passive: true, once: true }); });
@@ -463,8 +512,8 @@
       clearTimeout(renderTimer);
       document.body.classList.remove('ed-mode-ai');
       layer.hidden = true;
-      if (current) { current.remove(); current = null; }
-      Array.prototype.forEach.call(viewport.querySelectorAll('iframe'), function (f) { f.remove(); });
+      if (current) { drop(current); current = null; }
+      Array.prototype.forEach.call(viewport.querySelectorAll('iframe'), drop);
       setStatus('');
       hoverKey = '';
       // once the canvas has its room back and has been fitted to it
