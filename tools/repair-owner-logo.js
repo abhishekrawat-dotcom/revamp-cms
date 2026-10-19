@@ -100,10 +100,10 @@ function short(url) { return String(url || '').replace(/^https:\/\/storage\.goog
       inputs.stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
       inputs.deadlineAt = Date.now() + 150000;
       const unit = await api.ownerLogoUnit(fb, ev.id, inputs);
-      if (!unit) { failed++; console.log('  FAILED: the uploaded logo could not be read as a picture; nothing written.'); continue; }
+      if (!unit || unit.refused) { failed++; console.log('  FAILED: ' + ((unit && unit.note) || 'the uploaded logo could not be read as a picture') + ' Nothing written.'); continue; }
       const done = await api.saveOwnerUnit(fb, ev.id, unit, { heroNote: false });
       console.log('  written:         ' + short(unit.url) + ' ' + unit.width + '×' + unit.height + (unit.url === ev.state.logoUrl ? ' (the logo as uploaded)' : ' (examined copy)') +
-        (done.heroUpdated ? '; generated hero swapped' : '; generated hero unchanged'));
+        (done.heroUpdated ? '; generated hero swapped' : done.toneClash ? '; generated hero NOT swapped: the logo is drawn for a ' + done.toneClash + ' ground and the hero is not' : '; generated hero unchanged'));
       if (unit.note) console.log('  note:            ' + unit.note);
     } catch (err) {
       failed++;

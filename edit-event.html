@@ -1324,6 +1324,9 @@
           return C.refreshLogoUnit(EV.id).then(function(r){
             var said = r && r.unit && r.unit.note ? ' ' + r.unit.note : '';
             if (!r || !r.aiDesigned) { logoState('Saved.'); notify('Logo saved'); return; }
+            /* drawn for the other ground than the site's hero: it would vanish there, so it was not put in */
+            var clash = r.toneClash ? ' It is drawn for a ' + r.toneClash + ' background and the site’s hero is ' + (r.toneClash === 'dark' ? 'light' : 'dark') + ', where it would not show, so the hero was not changed. Upload a version of the logo made for a ' + (r.toneClash === 'dark' ? 'light' : 'dark') + ' background.' : '';
+            if (clash) { logoState('Saved.' + said + clash); notify('Logo saved'); return; }
             if (r.savedSite) {
               logoState('Saved.' + said + ' Open the site in the editor to put it into the hero: it goes in by itself where the hero still shows the logo made for it, and is offered where you put in a picture of your own. Then save the site.');
             } else {

@@ -218,7 +218,7 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   check('owner: no reading to be had — used as uploaded, and said so', unit.source === 'owner' && /could not be read/.test(unit.note) && unit.width === 562, unit);
   fb = fakeFb();
   unit = await build(fb, { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/missing.png', sourceDocs: PREV_SOURCE });
-  check('owner: an upload that cannot be had leaves the previous edition\'s unit to be examined', unit.source === 'previous-edition' || unit.source === 'generated', unit);
+  check('owner: an upload that cannot be had leaves the previous edition\'s unit to be examined — and the owner is told why their logo is not there', (unit.source === 'previous-edition' || unit.source === 'generated') && /Your uploaded logo could not be used here \(the file could not be read\)/.test(unit.note), unit);
 
   /* an owner's SVG that wraps a picture showing an earlier year: the picture inside is moved on */
   const wrapped26 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 417 209" width="417" height="209"><defs><image width="417" height="209" id="i" href="data:image/png;base64,' + PREV.toString('base64') + '"/></defs><use href="#i"/></svg>';
@@ -252,6 +252,55 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   check('saveOwnerUnit: the design\'s unit is the owner\'s', written && written['designPlan.design.logoUnitUrl'] === OWNER_URL && written['designPlan.design.logoUnitSource'] === 'owner' && written['designPlan.design.logoUnitNote'] === 'checked' && written['designPlan.design.logoUnitWidth'] === 562, written);
   check('saveOwnerUnit: the generated hero shows it (src, width, height) and no note', res.heroUpdated && res.savedSite && /src="https:\/\/storage\.googleapis\.com\/b\/events\/autotech-summit-2027\/logo\/owner\.svg" alt="AutoTech Summit 2027" width="562" height="280"/.test(newHero) && !/data-rv-logo-note/.test(newHero), newHero);
   check('saveOwnerUnit: nothing but the design and the generated sections is written (never the saved site)', written && Object.keys(written).every(function (k) { return /^designPlan\.design\.logoUnit|^generatedSections$|^updatedAt$/.test(k); }), Object.keys(written || {}));
+
+  /* ---------- 8. review: the owner's logo is never passed over silently, and never collapses ---------- */
+  /* an SVG that could run code is not used; the owner is told, on whatever stands in its place */
+  fb = fakeFb(); fb.stored['events/x/logo/active.svg'] = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="400" height="200"><script>alert(1)</script><text>Summit 2027</text></svg>');
+  answer = null;
+  unit = await build(fb, { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/active.svg' });
+  check('owner: an SVG that could run code is never the unit, and the note says why', unit.source !== 'owner' && unit.url !== 'https://storage.googleapis.com/b/events/x/logo/active.svg' && /contains scripts or embedded content/.test(unit.note), unit);
+
+  /* a logo over 3 MB (an upload may be 8 MB): used as uploaded, unexamined, and said so — not dropped for the previous edition's */
+  const BW = 1100, BH = 1000, big = { width: BW, height: BH, data: require('crypto').randomBytes(BW * BH * 4) };
+  const bigBytes = png.encode(big);
+  fb = fakeFb(); fb.stored['events/x/logo/big.png'] = bigBytes; answer = function () { return READ_27; }; asked = [];
+  unit = await build(fb, { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/big.png', sourceDocs: PREV_SOURCE });
+  check('owner: a ' + (bigBytes.length / 1048576).toFixed(1) + ' MB logo still wins, as uploaded, at its own size, with a note', bigBytes.length > 3 * 1048576 && unit.source === 'owner' && unit.url === 'https://storage.googleapis.com/b/events/x/logo/big.png' && unit.width === BW && unit.height === BH && /too large a file/.test(unit.note) && asked.length === 0, [unit.source, unit.note, asked.length]);
+
+  /* an SVG with a viewBox and no size of its own: stored once with its size written in, nothing else changed */
+  const unsized = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200"><text x="10" y="100" fill="#e4002b">Summit</text></svg>';
+  fb = fakeFb(); fb.stored['events/x/logo/unsized.svg'] = Buffer.from(unsized);
+  answer = function () { return reading({ allText: 'Summit' }); };
+  unit = await build(fb, { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/unsized.svg' });
+  const sizedOut = fb.stored[unit.storagePath] ? fb.stored[unit.storagePath].toString('utf8') : '';
+  check('owner: an unsized SVG is given its own size (it would collapse in the hero), its drawing untouched', unit.source === 'owner' && /generated\/t-logo-unit\.svg$/.test(unit.storagePath) && /<svg [^>]*width="400" height="200"/.test(sizedOut) && sizedOut.indexOf('<text x="10" y="100" fill="#e4002b">Summit</text>') !== -1 && unit.width === 400, [unit.storagePath, sizedOut.slice(0, 120)]);
+
+  /* the note says what was found, not "this edition's year" for any year */
+  fb = fakeFb(); fb.stored['events/x/logo/old.png'] = PREV;
+  answer = function () { return Object.assign({}, READ_26, { allText: 'ET Autotech summit \'19 ' + TAG, year: '\'19', yearFull: '2019' }); };
+  unit = await build(fb, { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/old.png' });
+  check('owner: a year that is not a recent edition\'s is left, and not called this edition\'s', unit.url === 'https://storage.googleapis.com/b/events/x/logo/old.png' && /shows '19, which was left as it is/.test(unit.note) && !/this edition's year/.test(unit.note), unit.note);
+  fb = fakeFb(); fb.stored['events/x/logo/old.png'] = PREV; answer = function () { return READ_26; };
+  unit = await build(fb, { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/old.png', eventMeta: { name: 'AutoTech Summit', start: null } });
+  check('owner: no event year to compare with — left as it is, and said so', unit.url === 'https://storage.googleapis.com/b/events/x/logo/old.png' && /event's own year could not be told/.test(unit.note), unit.note);
+
+  /* the generated hero is not given a logo drawn for the other ground (it would vanish); a retried transaction reports its last run */
+  const darkHeroDoc = JSON.parse(JSON.stringify(doc)); written = null;
+  let runs = 0;
+  const retryFb = { db: { collection: function () { return { doc: function () { return {}; } }; },
+    runTransaction: function (fn) {
+      const tx = { get: function () { return Promise.resolve({ exists: true, data: function () { return runs === 1 ? darkHeroDoc : Object.assign({}, darkHeroDoc, { generatedSections: [{ id: 'nav', html: '' }] }); } }); }, update: function (ref, patch) { written = patch; } };
+      runs++;
+      return fn(tx).then(function () { runs++; return fn(tx); });
+    } } };
+  const clashRes = await hooks.saveOwnerUnit(retryFb, 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: '', heroMode: 'dark' }, { heroNote: false });
+  const runsSeen = runs;
+  runs = 0; written = null;
+  const clashFb = { db: { collection: function () { return { doc: function () { return {}; } }; },
+    runTransaction: function (fn) { return fn({ get: function () { return Promise.resolve({ exists: true, data: function () { return darkHeroDoc; } }); }, update: function (ref, patch) { written = patch; } }); } } };
+  const clash = await hooks.saveOwnerUnit(clashFb, 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: '', heroMode: 'dark' }, { heroNote: false });
+  check('saveOwnerUnit: tone clash — design written, generated hero left, toneClash "dark"', clash.toneClash === 'dark' && !clash.heroUpdated && written && !written.generatedSections && written['designPlan.design.logoUnitHeroMode'] === 'dark', [clash, Object.keys(written || {})]);
+  check('saveOwnerUnit: a transaction run twice reports only its last run (the first saw a clash, the second no hero)', runsSeen === 2 && clashRes.heroUpdated === false && clashRes.toneClash === '', clashRes);
 
   finish();
 })().catch(function (e) { check('the checks ran', false, e && e.stack); finish(); });
