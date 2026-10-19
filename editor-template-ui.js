@@ -2884,6 +2884,14 @@
       var h = img.closest('[data-rv-section="footer"]') ? '24px' : '28px';
       if (img.style.height !== h) { img.style.height = h; img.style.width = 'auto'; changed = true; }
     });
+    /* The portal's wordmark in ET's common footer (functions/lib/et-footer.js) names its two inks: the one for
+       the colour behind it is shown. A picture the owner put in its place is left alone. */
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('img[data-rv-portal-logo]'), function (img) {
+      var onLight = img.getAttribute('data-rv-on-light'), onDark = img.getAttribute('data-rv-on-dark'), src = img.getAttribute('src');
+      if (!onLight || !onDark || (src !== onLight && src !== onDark)) return;
+      var g = groundOf(img), want = (0.2126 * g[0] + 0.7152 * g[1] + 0.0722 * g[2]) / 255 < 0.45 ? onDark : onLight;
+      if (src !== want) { img.setAttribute('src', want); changed = true; }
+    });
     if (/^gen-/.test(String(templateId || '')) && trimNav()) changed = true;
     if (oneRowNav()) changed = true;
     return changed;

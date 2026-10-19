@@ -13,6 +13,10 @@
      fetchIpEvents(portal, fetchJson) -> Promise<[EVENT]>   no cache: every page, every time
      listIpEvents(portal, fetchJson, o) -> Promise<[EVENT]> the same through a cache (6 hours a portal);
                                      callers asking while a read is under way share it. o.now() for tests.
+     listUpcoming(portal, fetchJson, o) -> Promise<[EVENT]> what is on now or coming (not past), from page 1
+                                     alone (active and upcoming come whole on it) — one request, kept 6 hours;
+                                     the whole list's entry is used instead while it is fresh. For the ET
+                                     footer's "What's Happening" (et-footer.js). o.now() for tests.
      clearCache()
 
    EVENT = { id, title, start, end, dateLabel, link, logo, speakers, past, upcoming }
@@ -175,7 +179,8 @@ function fetchIpEvents(portal, fetchJson) {
 
 /* ---------- the cache: one entry a portal ---------- */
 var cache = {}; // portal -> { at, ttl, events } | { pending: Promise }
-function clearCache() { cache = {}; }
+var soonCache = {}; // portal -> { at, events } | { pending: Promise }   (listUpcoming)
+function clearCache() { cache = {}; soonCache = {}; }
 
 function listIpEvents(portal, fetchJson, o) {
   o = o || {};
@@ -196,4 +201,36 @@ function listIpEvents(portal, fetchJson, o) {
   return pending;
 }
 
-module.exports = { PORTALS, portalList, isPortal, compact, fetchIpEvents, listIpEvents, clearCache, API, TTL_MS, PARTIAL_TTL_MS };
+/* What is on now or coming, from the listing's first page only: the footer of every site of a portal shows it,
+   and reading all of a portal's past pages for it (thirty for ET BrandEquity) would be wasted. */
+function listUpcoming(portal, fetchJson, o) {
+  o = o || {};
+  var now = typeof o.now === 'function' ? o.now : Date.now;
+  if (!isPortal(portal)) { var bad = new Error('Unknown portal.'); bad.code = 'unknown-portal'; return Promise.reject(bad); }
+  if (typeof fetchJson !== 'function') return Promise.reject(new Error('fetchJson is required.'));
+  function coming(list) { return list.filter(function (e) { return !e.past; }); }
+  var whole = cache[portal];
+  if (whole && whole.events && now() - whole.at < whole.ttl) return Promise.resolve(coming(whole.events));
+  var hit = soonCache[portal];
+  if (hit && hit.pending) return hit.pending;
+  if (hit && hit.events && now() - hit.at < TTL_MS) return Promise.resolve(hit.events);
+  var pending = Promise.resolve().then(function () { return fetchJson(API + '/v1/event-listing?page=1', { portal: portal, accept: 'application/json' }); })
+    .then(function (j) {
+      if (!j || j.status === false || !j.data || typeof j.data !== 'object') throw etDown('page 1 had no events');
+      var d = j.data, seen = {}, out = [];
+      (Array.isArray(d.active) ? d.active : []).concat(Array.isArray(d.upcoming) ? d.upcoming : []).forEach(function (r) {
+        var e = compact(r, false);
+        if (e && !e.past && !seen[e.id]) { seen[e.id] = 1; out.push(e); }
+      });
+      soonCache[portal] = { at: now(), events: out };
+      return out;
+    }, function (err) { throw err && err.code === 'et-down' ? err : etDown(err && err.message || 'no answer'); })
+    .then(null, function (err) {
+      if (soonCache[portal] && soonCache[portal].pending === pending) delete soonCache[portal];
+      throw err;
+    });
+  soonCache[portal] = { pending: pending };
+  return pending;
+}
+
+module.exports = { PORTALS, portalList, isPortal, compact, fetchIpEvents, listIpEvents, listUpcoming, clearCache, API, TTL_MS, PARTIAL_TTL_MS };

@@ -136,6 +136,7 @@ const etEvents = require('./et-events');
 const prevSections = require('./prev-sections');
 const sectionOrder = require('./section-order');
 const etNav = require('./et-nav');
+const etFooter = require('./et-footer');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
@@ -2657,8 +2658,8 @@ function plannedSectionList(designPlan) {
   var planned = ((designPlan && designPlan.sections) || []).filter(function (s) { return !s.prebuilt; });
   return [{ id: 'nav', kind: 'nav', purpose: 'Top bar of the site, built by the server (functions/lib/et-nav.js) as on ET\'s own event sites: the portal\'s logo, the event\'s name with its date and place, a link to every section, the main action. Always present, first. Not written by you.', layout: 'A full-width bar with a second row of section links; once the visitor scrolls, a rounded bar floating at the top centre.' }]
     .concat([{ id: 'hero', kind: 'hero', purpose: 'Hero banner, built by the server: the ET Business Verticals logo, the event\'s wordmark, one line, date and place, two buttons. Always present, right after nav. Not written by you.', layout: 'Centred, a full screen tall, over the hero picture.' }])
-    .concat(planned)
-    .concat([{ id: 'footer', kind: 'footer', purpose: 'Closing footer for this event site. Always present, last.', layout: 'A calm closing band: event name or logo, a short line, the section links again.' }]);
+    .concat(planned);
+  /* the footer is ET's common footer, built by the server (et-footer.js, siteFooter below): not the model's */
 }
 
 /* payload.write: the ids this call writes (the site is written in two calls side by side — see
@@ -2827,9 +2828,9 @@ function sanitizeGeneratedSectionCss(css) {
 // request over) any planned section Gemini's response left out, same "degrade, never crash" discipline as
 // every other best-effort AI step in this file.
 function sanitizeSectionCodeResult(parsed, designPlan) {
-  var plannedList = [{ id: 'hero', kind: 'hero' }]   // the nav is built afterwards (et-nav.js), in the page's final order
-    .concat((designPlan.sections || []).filter(function (s) { return !s.prebuilt; }).map(function (s) { return { id: s.id, kind: s.kind }; }))
-    .concat([{ id: 'footer', kind: 'footer' }]);
+  /* the nav and the footer are built by the server afterwards (et-nav.js, et-footer.js), in the page's final order */
+  var plannedList = [{ id: 'hero', kind: 'hero' }]
+    .concat((designPlan.sections || []).filter(function (s) { return !s.prebuilt; }).map(function (s) { return { id: s.id, kind: s.kind }; }));
 
   var returnedMap = {};
   (Array.isArray(parsed.sections) ? parsed.sections : []).forEach(function (s) {
@@ -2875,6 +2876,56 @@ function sectionCodeBatches(designPlan) {
   return [ids.slice(0, cut), ids.slice(cut)];
 }
 
+/* ---------- ET's common footer on an AI-designed site (et-footer.js) ----------
+   The portal a site belongs to: the one its previous edition (or this edition's own page) was read from — the
+   portal the records came from, else the address. series: that address's event series
+   (brand-world-summit-south2025 -> brand-world-summit-south), so "What's Happening" never lists this very
+   event's own ET page. -> { portal: slug | '', series } */
+function sitePortal(sourceDocs) {
+  var own = (sourceDocs || []).filter(function (v) { return v && (v.type === 'previousEdition' || v.type === 'currentEdition'); });
+  own.sort(function (a, b) { return (a.type === b.type ? 0 : a.type === 'previousEdition' ? -1 : 1) || (b.previous ? 1 : 0) - (a.previous ? 1 : 0); });
+  for (var i = 0; i < own.length; i++) {
+    var v = own[i], url = (v.previous && v.previous.url) || v.url;
+    var portal = v.previous && etEvents.isPortal(v.previous.portal) ? v.previous.portal : etPrevious.portalOf(url);
+    if (etEvents.isPortal(portal)) return { portal: portal, series: etPrevious.seriesOf(etPrevious.slugOf(url)) };
+  }
+  return { portal: '', series: '' };
+}
+/* What is on now or coming on that portal, from ET's event list (kept 6 hours). Never rejects and never holds
+   generation up: ET not answering, or slow, leaves the footer without its "What's Happening" column. */
+var FOOTER_EVENTS_WAIT_MS = 20000;
+function footerEvents(portal, fetchJson) {
+  if (!etEvents.isPortal(portal)) return Promise.resolve([]);
+  var timer = null;
+  var late = new Promise(function (resolve) { timer = setTimeout(function () { resolve(null); }, FOOTER_EVENTS_WAIT_MS); if (timer.unref) timer.unref(); });
+  return Promise.race([etEvents.listUpcoming(portal, fetchJson || etJson), late]).then(function (list) {
+    clearTimeout(timer);
+    if (!list) console.warn('footer: ET\'s event list for ' + portal + ' did not come in time — no "What\'s Happening"');
+    return Array.isArray(list) ? list : [];
+  }, function (err) {
+    clearTimeout(timer);
+    console.warn('footer: ET\'s event list for ' + portal + ' was not read — ' + (err && err.message));
+    return [];
+  });
+}
+/* The footer section itself, scoped and to the site's type scale as every other section is.
+   o = { portal, series, events, design, eventName, date, place, button, year, mode } — mode: the tone of the
+   theme the site is shown in when it is not the design's own (the portal logo's ink follows it) */
+function siteFooter(o) {
+  o = o || {};
+  var design = o.design || {};
+  /* with no contact section the main button leads to the footer itself (ownerBrief.buttons): in the footer's
+     own band it would go nowhere, so the band then shows the event's name, date and place without it */
+  var button = o.button && String(o.button.href || '').trim() !== '#footer' ? o.button : null;
+  var built = etFooter.build({
+    portal: o.portal, mode: (o.mode || design.mode) === 'dark' ? 'dark' : 'light', year: o.year || new Date().getFullYear(),
+    events: etFooter.happening(o.events, { name: o.eventName, series: o.series }),
+    event: o.eventName ? { name: o.eventName, date: o.date, place: o.place, button: button } : null,
+    buttonInk: genDesign.luminance(/^#[0-9a-f]{6}$/i.test(String(design.themeColor || '')) ? design.themeColor : '#186bf9') > 0.5 ? '#14161b' : '#ffffff'
+  });
+  return { id: 'footer', kind: 'footer', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, 'footer', sectionRootInfo(built.html))), built.html) };
+}
+
 // The gen- branch's own tail, deliberately separate from runGenerateContent above (see this block's own
 // header comment for why) — reads brief/sources for sourceEventId exactly like runGenerateContent does,
 // builds the prompt from designPlan, calls Gemini, sanitizes, and persists {generatedSections} directly on
@@ -2905,6 +2956,9 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var v = d.data();
       return { type: v.type, url: v.url, extractedSections: v.extractedSections };
     });
+    /* the footer's "What's Happening" is read from ET while the site is being written */
+    var footerOf = sitePortal(sourcesSnap.docs.map(function (d) { return d.data(); }));
+    var footerRead = footerEvents(footerOf.portal);
 
     // 100s, not the 60s default — writing full bespoke HTML/CSS is a genuinely bigger generation job than
     // any other call this file makes. A timeout is never retried (gemini.js), so 100s is also the longest
@@ -2914,6 +2968,9 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
       return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') });
     })).then(function (answers) {
+      return footerRead.then(function (footerList) { return { answers: answers, footerList: footerList }; });
+    }).then(function (got) {
+      var answers = got.answers;
       var failed = answers.filter(function (r) { return r.error; })[0];
       if (failed) return sendAiFailure(res, failed);
       var written = [];
@@ -2958,7 +3015,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         sec.html = genDesign.restorePictures(sec.html, pictures, own);
         sec.css = genDesign.restorePictures(sec.css, pictures, own);
         /* The Economic Times Business Verticals logo, in the version for the site's tone */
-        if (sec.id === 'nav' || sec.id === 'footer') sec.html = genDesign.ensureEtLogo(sec.html, design.mode, sec.id);
+        if (sec.id === 'nav') sec.html = genDesign.ensureEtLogo(sec.html, design.mode, sec.id);
         if (sec.id === 'nav') sec.html = genDesign.capNavLinks(sec.html);
       });
       /* the previous edition's sections, built here from its real records (prev-sections.js), each in its
@@ -2974,6 +3031,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       });
       /* the sponsors right after the hero whatever came back (section-order.js) */
       sections = sectionOrder.sponsorsAfterHero(sections, planned);
+      /* ET's common footer, last: the portal's links and its events coming up, under a band for this event
+         with its main button (et-footer.js) */
+      sections = sections.filter(function (s) { return s.id !== 'footer'; });
+      sections.push(siteFooter({ portal: footerOf.portal, series: footerOf.series, events: got.footerList, design: design,
+        eventName: eventMeta.name, date: heroOpts.date, place: place, button: heroButtons.primary }));
       /* the top bar, built here as on ET's own event sites (et-nav.js): the portal's logo, the event's name,
          date and place, a link to every section in the page's order, the owner's main action */
       sections = sections.filter(function (s) { return s.id !== 'nav'; });
@@ -2987,9 +3049,6 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         navSection = etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: { sections: [] } }), { order: navFor.order });
       }
       sections.unshift(navSection);
-      /* the footer's links in the page's order */
-      var pageIds = sections.map(function (s) { return s.id; });
-      sections.forEach(function (sec) { if (sec.id === 'footer') sec.html = sectionOrder.orderNavLinks(sec.html, pageIds); });
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
       genDesign.motionBudget(sections);
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
@@ -5892,6 +5951,13 @@ function publishTransform(html, opts) {
     if (t.t === 'comment') { if (!/^<!--\[if\b|<!\[endif\]-->$/i.test(out[i])) out[i] = ''; continue; }
     if (t.t !== 'open' || out[i] === '') continue;
     var classes = classListOf(t);
+    /* a copyright year (ET's common footer, et-footer.js: <span data-rv-year>2026</span>) is this year's on
+       every publish, so a site made in one year and published in the next does not show the old one. Only a
+       bare year is replaced: anything else the owner wrote there stays. */
+    if (attrOf(t, 'data-rv-year') && tokens[i + 1] && tokens[i + 1].t === 'text' && /^\s*(?:19|20)\d{2}\s*$/.test(out[i + 1]) &&
+        tokens[i + 2] && tokens[i + 2].t === 'close' && tokens[i + 2].name === t.name) {
+      out[i + 1] = String(+opts.year > 2000 ? +opts.year : new Date().getFullYear());
+    }
 
     if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon')) { i = removeElement(i, true); continue; }
     if (attrOf(t, 'data-rv-editor') || attrOf(t, 'data-rv-empty-state') || attrOf(t, 'data-rv-bind-hint') || t.name === 'grammarly-desktop-integration' || attrOf(t, 'data-grammarly-shadow-root') ||
@@ -6843,7 +6909,7 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
-  confirmEtPick: confirmEtPick, pageKey: pageKey,
+  confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
