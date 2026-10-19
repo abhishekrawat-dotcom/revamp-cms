@@ -36,6 +36,7 @@ var fs = require('fs');
 var path = require('path');
 var etEvents = require('./et-events');
 var etPrevious = require('./et-previous');
+var rvTheme = require('../../templates/_shared/rv-theme.js');
 
 var IMG_DIR = path.join(__dirname, '..', '..', 'templates', '_shared', 'img');
 var ET_BV = {
@@ -149,12 +150,11 @@ function linksOf(sections) {
 
 var BURGER = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2 4.5h16M2 10h10M2 15.5h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 
-function textOn(hex) {
-  var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
-  if (!m) return '#ffffff';
-  var n = parseInt(m[1], 16), c = [n >> 16 & 255, n >> 8 & 255, n & 255].map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
-  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.5 ? '#14161b' : '#ffffff';
-}
+/* the call to action's ground and words: the page's --rv-theme-fill and --rv-on-theme (set with the theme, rv-theme.js
+   derivedVars: words that read at 4.5:1 — white on the brand colour, or on a shade of it a little deeper where white
+   nearly reads, dark words on a light brand colour), with this colour's own reading ink as the fallback */
+function textOn(hex) { return 'var(--rv-on-theme,' + rvTheme.inkOn(hex) + ')'; }
+var CTA_FILL = 'var(--rv-theme-fill,var(--theme-color))';
 
 function build(o) {
   o = o || {};
@@ -203,7 +203,7 @@ function build(o) {
     '.' + c + '-tab{position:relative;display:block;padding:4px 0 6px;font-size:15px;font-weight:600;line-height:1.2;color:' + soft + ';text-decoration:none;white-space:nowrap}',
     '.' + c + '-tab.is-current{color:var(--rv-text)}',
     '.' + c + '-tab.is-current::after{content:"";position:absolute;left:50%;bottom:0;width:22px;height:2px;margin-left:-11px;border-radius:2px;background:currentColor}',
-    '.' + c + '-cta{grid-area:cta;justify-self:end;display:inline-block;padding:9px 20px;border-radius:999px;background:var(--theme-color);color:' + textOn(o.themeColor) + ';font-size:14px;font-weight:600;line-height:1.2;text-decoration:none;white-space:nowrap;transition:transform .2s ease,box-shadow .2s ease}',
+    '.' + c + '-cta{grid-area:cta;justify-self:end;display:inline-block;padding:9px 20px;border-radius:999px;background:' + CTA_FILL + ';color:' + textOn(o.themeColor) + ';font-size:14px;font-weight:600;line-height:1.2;text-decoration:none;white-space:nowrap;transition:transform .2s ease,box-shadow .2s ease}',
     '.' + c + '-cta:hover{transform:translateY(-1px);box-shadow:0 6px 16px color-mix(in srgb,var(--theme-color) 35%,transparent)}',
     /* the row of section links; on the live page the ones that do not fit go under "More" */
     '.' + c + '-links{grid-area:links;min-width:0;margin:10px -24px 0;padding:6px 12px;border-top:1px solid ' + line + ';display:flex;align-items:center}',

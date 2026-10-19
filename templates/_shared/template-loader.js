@@ -255,8 +255,9 @@
 
         var head = [
           '<meta charset="utf-8">',
-          // same as ET's: minimum-scale=1 stops phones zooming out to fit the few sections that run wider than the screen
-          '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1, user-scalable=0">',
+          // minimum-scale=1 (as ET's) stops phones zooming out to fit the few sections that run wider than the screen;
+          // zooming IN stays allowed (no user-scalable=0): a visitor who needs larger text must be able to pinch (WCAG 1.4.4)
+          '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">',
           '<title>' + esc(opts.title || t.name || '') + '</title>'
         ];
         (t.shared || []).forEach(function (p) { head.push('<link rel="stylesheet" href="' + esc(shared(p)) + '">'); });

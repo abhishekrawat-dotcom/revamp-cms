@@ -46,6 +46,62 @@
     return pole;
   }
 
+  /* ---------- reading colours derived from a palette (accessibility: WCAG AA, 4.5:1 for text) ----------
+     fillFor(brand)           the ground of a button in that brand colour. The colour itself where white words read on
+                              it (4.5:1) or where it is light enough for dark words; a mid-tone that white words nearly
+                              read on (a pink, ET's red: luminance up to MID_TONE) is taken a little deeper instead, so
+                              its button keeps its white words — the least visible change that reads.
+     inkOn(ground)            the words on that ground: white where white reads, else near-black, else black (one of
+                              white and black always reaches 4.58:1)
+     readableOn(fg, grounds)  fg itself where it reads on every ground, else fg taken towards the pole until it does
+     derivedVars(colours)     the variables the page's own CSS reads for these: --rv-theme-fill / --rv-accent-fill (a
+                              brand-coloured button's ground), --rv-on-theme / --rv-on-accent (its words),
+                              --rv-theme-ink / --rv-accent-ink (the brand colour as text on the page and its panels), and
+                              --rv-muted held to 4.5:1 on the panels as well as on the ground.
+                              colours = { theme, accent, bg, surface, muted } (any missing one is left out). */
+  var INK_DARK = '#14161b', MID_TONE = 0.26;
+  function fillFor(brand) {
+    var b = hex(brand, '');
+    if (!b || contrast('#ffffff', b) >= 4.5 || lum(b) > MID_TONE) return b;
+    for (var t = 0.02; t <= 0.6001; t += 0.02) { var d = mix(b, '#000000', t); if (contrast('#ffffff', d) >= 4.5) return d; }
+    return b;
+  }
+  function inkOn(ground) {
+    var g = hex(ground, '');
+    if (!g) return '#ffffff';
+    var best = '#ffffff';
+    ['#ffffff', INK_DARK, '#000000'].some(function (ink) {
+      if (contrast(ink, g) >= 4.5) { best = ink; return true; }
+      if (contrast(ink, g) > contrast(best, g)) best = ink;
+      return false;
+    });
+    return best;
+  }
+  function readableOn(fg, grounds, min) {
+    var c = hex(fg, ''), list = (grounds || []).map(function (g) { return hex(g, ''); }).filter(Boolean);
+    if (!c || !list.length) return c;
+    min = min || 4.5;
+    function worst(x) { return Math.min.apply(null, list.map(function (g) { return contrast(x, g); })); }
+    if (worst(c) >= min) return c;
+    /* the pole the grounds read best against: dark words on light grounds, light words on dark ones */
+    var pole = worst('#000000') >= worst('#ffffff') ? '#000000' : '#ffffff';
+    for (var t = 0.04; t <= 1.0001; t += 0.04) { var m = mix(c, pole, t); if (worst(m) >= min) return m; }
+    return pole;
+  }
+  function derivedVars(c) {
+    c = c || {};
+    var out = {}, grounds = [c.bg, c.surface].filter(function (g) { return hex(g, ''); });
+    [['theme', c.theme], ['accent', c.accent]].forEach(function (p) {
+      if (!hex(p[1], '')) return;
+      var fill = fillFor(p[1]);
+      out['--rv-' + p[0] + '-fill'] = fill;
+      out['--rv-on-' + p[0]] = inkOn(fill);
+      if (grounds.length) out['--rv-' + p[0] + '-ink'] = readableOn(p[1], grounds, 4.5);
+    });
+    if (hex(c.muted, '') && grounds.length) out['--rv-muted'] = readableOn(c.muted, grounds, 4.5);
+    return out;
+  }
+
   /* ---------- type ---------- */
   var SERIF = /serif|playfair|merriweather|lora|fraunces|garamond|baskerville|crimson|libre caslon|dm serif|spectral|cormorant|bodoni|georgia/i;
   function stack(family) {
@@ -128,7 +184,7 @@
 
   function varsOf(t) {
     var c = t.colours;
-    return {
+    var v = {
       '--theme-color': c.theme, '--accent-color': c.accent,
       '--rv-bg': c.bg, '--rv-surface': c.surface, '--rv-text': c.text, '--rv-muted': c.muted,
       '--default-color': c.text, '--body-color': c.text,
@@ -136,6 +192,10 @@
       '--rv-radius': (+t.radius || 0) + 'px',
       'background-color': c.bg, 'color': c.text
     };
+    /* the reading colours for this theme's own palette (derivedVars): a button's words, the brand colour as text */
+    var d = derivedVars(c);
+    Object.keys(d).forEach(function (k) { v[k] = d[k]; });
+    return v;
   }
 
   function apply(doc, t) {
@@ -217,5 +277,6 @@
     return String(css || '').replace(/\{([^{}]*)\}/g, function (m, decls) { return '{' + swapDecls(decls, o) + '}'; });
   }
 
-  return { themesFor: themesFor, varsOf: varsOf, apply: apply, themableCss: themableCss, fontUrl: fontUrl, stack: stack, contrast: contrast };
+  return { themesFor: themesFor, varsOf: varsOf, apply: apply, themableCss: themableCss, fontUrl: fontUrl, stack: stack, contrast: contrast,
+    inkOn: inkOn, fillFor: fillFor, readableOn: readableOn, derivedVars: derivedVars, mix: mix, lum: lum, hex: hex };
 });

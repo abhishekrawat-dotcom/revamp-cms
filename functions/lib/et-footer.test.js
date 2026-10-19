@@ -96,7 +96,8 @@ check('the CSS uses the page\'s variables, no fixed colours (but the kept button
 check('the ground is the page\'s own with a tint of its text', /\.etf\{background-color:var\(--rv-bg\);background-image:linear-gradient\(color-mix\(in srgb,var\(--rv-text\) 4%,transparent\)/.test(C));
 check('the button rule is kept in every theme', /\.etf-event-btn\{--rv-keep:1;/.test(C));
 check('columns stack on a phone', /@media \(max-width:820px\)\{\.etf-grid\{grid-template-columns:1fr 1fr\}\.etf-happening\{grid-column:1\/-1\}\}/.test(C));
-check('a light button ink when the theme colour is light', /color:#14161b/.test(ef.build({ portal: 'cio', buttonInk: '#14161b' }).css));
+check('a light button ink when the theme colour is light (the fallback to the page\'s --rv-on-theme)', /color:var\(--rv-on-theme,#14161b\)/.test(ef.build({ portal: 'cio', buttonInk: '#14161b' }).css));
+check('the button\'s ground is the page\'s readable button ground', /\.etf-event-btn\{[^}]*background:var\(--rv-theme-fill,var\(--theme-color\)\)/.test(ef.build({ portal: 'cio' }).css));
 
 /* it scopes and passes the site's own rules unchanged in meaning */
 var scope = require('./gen-markup');
@@ -104,7 +105,7 @@ var scoped = scope.scopeSectionCss(C, 'footer', scope.sectionRootInfo(H));
 check('scoped to the footer section', /\[data-rv-section="footer"\]\.etf\{background-color:var\(--rv-bg\)/.test(scoped), scoped.slice(0, 300));
 var theme = require('../../templates/_shared/rv-theme.js');
 var themed = theme.themableCss(C, { themeColor: '#ed1c24', accentColor: '#f5a300', backgroundColor: '#ffffff', textColor: '#1a1414', mutedColor: '#574e4e', surfaceColor: '#fff3ea' });
-check('a theme leaves the button ink alone', /\.etf-event-btn\{--rv-keep:1;[^}]*color:#ffffff/.test(themed), themed.slice(0, 200));
+check('a theme leaves the button ink alone', /\.etf-event-btn\{--rv-keep:1;[^}]*color:var\(--rv-on-theme,#ffffff\)/.test(themed), themed.slice(0, 200));
 
 /* the portals checked one by one */
 check('hospitality: privacy and terms without .php (ET\'s own .php links there are 404s)', /\/privacy_policy$/.test(ef.info('hospitality').links[1][0][1]));
@@ -130,7 +131,10 @@ var sec = api.siteFooter({ portal: 'brandequity', series: 'brand-world-summit-so
   events: list, eventName: 'Brand World Summit 2026', date: '5 Dec 2026 – 7 Dec 2026', place: 'Taj Wellington Mews, Chennai', button: { label: 'Register Now', href: '#contact-us', register: true } });
 check('siteFooter: the footer section, scoped', sec.id === 'footer' && sec.kind === 'footer' && /^<footer id="footer" class="etf"/.test(sec.html) && /^\[data-rv-section="footer"\]\{position:relative/.test(sec.css));
 check('siteFooter: never this event in What\'s Happening', sec.html.indexOf('Brand World Summit South 2026') === -1 && sec.html.indexOf('>Brand World Summit 2026 |') === -1 && sec.html.indexOf('CX Annual Symposium 2026 |') !== -1);
-check('siteFooter: white ink on a red button, dark ink on a light one', /color:#ffffff/.test(sec.css) && /color:#14161b/.test(api.siteFooter({ portal: 'cio', design: { themeColor: '#ffd200' }, eventName: 'X', button: { label: 'Go', href: '#x' } }).css));
+check('siteFooter: the button\'s words read (4.5:1) on its own colour: white on a deep red, black on ET red, dark on a light one',
+  /color:var\(--rv-on-theme,#ffffff\)/.test(api.siteFooter({ portal: 'cio', design: { themeColor: '#a3001b' }, eventName: 'X', button: { label: 'Go', href: '#x' } }).css) &&
+  /color:var\(--rv-on-theme,#000000\)/.test(sec.css) &&
+  /color:var\(--rv-on-theme,#14161b\)/.test(api.siteFooter({ portal: 'cio', design: { themeColor: '#ffd200' }, eventName: 'X', button: { label: 'Go', href: '#x' } }).css));
 var self = api.siteFooter({ portal: 'cio', design: {}, eventName: 'X Summit', date: 'd', place: 'p', button: { label: 'Register Now', href: '#footer', register: true } });
 check('siteFooter: a button that would lead to the footer itself is left out, the event band stays', self.html.indexOf('etf-event-btn') === -1 && self.html.indexOf('<p class="etf-event-name">X Summit</p>') !== -1);
 check('siteFooter: a dark site gets the light-ink wordmark', /src="\/templates\/_shared\/img\/portals\/cio-light\.png"/.test(api.siteFooter({ portal: 'cio', design: { mode: 'dark' } }).html));

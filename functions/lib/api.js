@@ -224,6 +224,9 @@ const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
 const { diffPages, summarise } = require('./page-diff');
 const { safeFetch } = require('./safe-fetch');
+/* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
+const siteA11y = require('./site-a11y');
+const siteSeo = require('./site-seo');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
    one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
@@ -2943,6 +2946,9 @@ function buildSectionCodePrompt(payload) {
     'Colours and fonts are CSS variables already defined on the page — use the variables, never the raw values, so that the owner can restyle the site later:',
     '  var(--theme-color)   ' + (design.themeColor || '') + '   brand colour: buttons, links, highlights',
     '  var(--accent-color)  ' + (design.accentColor || '') + '   second colour',
+    /* accessibility (rv-theme.js derivedVars): colours worked out from these to read at 4.5:1 */
+    '  var(--rv-theme-fill,var(--theme-color)) with var(--rv-on-theme,#ffffff)   the ground and the words of a brand-coloured button or badge (always readable together; write them exactly so)',
+    '  var(--rv-theme-ink,var(--theme-color))   the brand colour for small text — labels, eyebrows, links — on the page or a card (always readable)',
     '  var(--rv-bg)         ' + (design.backgroundColor || '') + '   page background',
     '  var(--rv-surface)    ' + (design.surfaceColor || '') + '   cards, alternating bands',
     '  var(--rv-text)       ' + (design.textColor || '') + '   body text',
@@ -2953,7 +2959,7 @@ function buildSectionCodePrompt(payload) {
     '',
     'SHARED RULES — written identically in every section, because sections are styled separately:',
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. Sections have vertical padding clamp(64px, 9vw, 128px).',
-    '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = var(--theme-color) background with a readable text colour; secondary = outlined.',
+    '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = background var(--rv-theme-fill,var(--theme-color)) with color var(--rv-on-theme,#ffffff); secondary = outlined.',
     '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): exactly ' + genDesign.HEADING_SCALE.section + ', line-height 1.15 — calm and confident, never larger (not even in capitals or a heavy weight); the hero, which the server builds, holds the page\'s only h1. Sub-headings and card titles (h3): ' + genDesign.HEADING_SCALE.sub + '. Small labels and captions: never below 0.875rem. Only a band of big numbers may be set larger than a section heading. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     genDesign.MOBILE_RULES,
@@ -3177,7 +3183,7 @@ function siteFooter(o) {
     portal: o.portal, mode: (o.mode || design.mode) === 'dark' ? 'dark' : 'light', year: o.year || new Date().getFullYear(),
     events: etFooter.happening(o.events, { name: o.eventName, series: o.series }),
     event: o.eventName ? { name: o.eventName, date: o.date, place: o.place, button: button } : null,
-    buttonInk: genDesign.luminance(/^#[0-9a-f]{6}$/i.test(String(design.themeColor || '')) ? design.themeColor : '#186bf9') > 0.5 ? '#14161b' : '#ffffff'
+    buttonInk: rvTheme.inkOn(/^#[0-9a-f]{6}$/i.test(String(design.themeColor || '')) ? design.themeColor : '#186bf9')
   });
   return { id: 'footer', kind: 'footer', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, 'footer', sectionRootInfo(built.html))), built.html) };
 }
@@ -3709,6 +3715,10 @@ function handleGeneratedTemplate(req, res) {
         return { id: id, name: label, etId: null, script: false };
       })
     };
+    /* accessibility: the reading colours of this palette (a brand-coloured button's ground and words, the brand colour as
+       text, quiet text that reads on the panels too) — rv-theme.js derivedVars; a theme's own come with varsOf */
+    Object.assign(template.body.style, rvTheme.derivedVars({ theme: design.themeColor, accent: design.accentColor,
+      bg: colours.backgroundColor, surface: colours.surfaceColor, muted: colours.mutedColor }));
     if (chosen.id !== 'original') Object.assign(template.body.style, rvTheme.varsOf(chosen));
     sendJson(res, 200, template);
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
@@ -6246,7 +6256,8 @@ function publishTransform(html, opts) {
       out[i + 1] = String(+opts.year > 2000 ? +opts.year : new Date().getFullYear());
     }
 
-    if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon')) { i = removeElement(i, true); continue; }
+    /* data-rv-seo: the search and sharing tags of step 7 (site-a11y.js), written afresh there */
+    if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon') || attrOf(t, 'data-rv-seo')) { i = removeElement(i, true); continue; }
     if (attrOf(t, 'data-rv-editor') || attrOf(t, 'data-rv-empty-state') || attrOf(t, 'data-rv-bind-hint') || t.name === 'grammarly-desktop-integration' || attrOf(t, 'data-grammarly-shadow-root') ||
         classes.some(function (c) { return AI_BADGE_CLASSES.indexOf(c) !== -1; })) { i = removeElement(i, false); continue; }
     /* the "SHARED HEADER / FOOTER — DESIGN TO COME" strips the template loader used to put on every
@@ -6405,8 +6416,13 @@ function publishTransform(html, opts) {
   if (bodyClose !== -1) out[bodyClose] = tailText + out[bodyClose];
   else suffix = tailText;
 
-  return prefix + out.join('') + suffix;
+  /* ---- 7. accessibility and search (site-a11y.js pagePass): zoom, readable colours on an AI-designed site,
+     alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
+  return siteA11y.pagePass(prefix + out.join('') + suffix, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
 }
+/* the tokenizer above, for site-a11y.js's page pass */
+var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrValue, classListOf: classListOf, writeTag: writeTag,
+  setAttr: setAttr, dropAttr: dropAttr, elementEnd: elementEnd };
 
 function cleanCanonical(v) { return (typeof v === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(v.trim())) ? v.trim() : ''; }
 
@@ -6984,8 +7000,10 @@ function handlePublicPage(req, res, eventId) {
           sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
         });
       }
-      /* a page published before forms existed: its Register buttons open the form from now on */
-      var entry = cachePage(key, ensureFormsRuntime(html));
+      /* a page published before forms existed: its Register buttons open the form from now on; and one published
+         before the accessibility and search pass gets it on its way out (site-a11y.js pagePass: idempotent, so a
+         page that already had it comes out the same, its schema.org Event following the event as it is now) */
+      var entry = cachePage(key, siteA11y.pagePass(ensureFormsRuntime(html), { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId }, TOKEN_KIT));
       sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
     });
   }).catch(function (err) {
@@ -7080,6 +7098,50 @@ function handlePreviewPage(req, res, eventId) {
   }).catch(function (err) {
     console.error('api: /preview/' + eventId + ' failed — ' + (err && err.stack || err));
     sendHtml(req, res, 502, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
+  });
+}
+
+/* =====================================================================================================
+   GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
+   published event's /e/<id> at the address this server is reached at (PUBLIC_BASE_URL when set), except one
+   whose owner gave it a canonical address elsewhere (that address is the one to list, and it is not ours).
+   Built at most every 10 minutes per instance; a failure to read the events is a 503, never an empty list
+   a crawler would believe.
+   ===================================================================================================== */
+var SITEMAP_TTL_MS = 10 * 60 * 1000, sitemapCache = null;
+function sendText(req, res, status, type, text, cacheControl) {
+  var body = Buffer.from(text, 'utf8');
+  var gz = /\bgzip\b/.test(String((req.headers && req.headers['accept-encoding']) || '')) && body.length > 1024;
+  if (gz) body = zlib.gzipSync(body);
+  var headers = { 'Content-Type': type, 'Cache-Control': cacheControl, 'Content-Length': body.length, 'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff' };
+  if (gz) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(status, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+function handleRobotsTxt(req, res) {
+  sendText(req, res, 200, 'text/plain; charset=utf-8', siteSeo.robotsTxt(publicBaseFor(req, '')), 'public, max-age=3600');
+}
+function handleSitemapXml(req, res) {
+  var base = publicBaseFor(req, '');
+  if (sitemapCache && sitemapCache.base === base && Date.now() - sitemapCache.at < SITEMAP_TTL_MS) {
+    return sendText(req, res, 200, 'application/xml; charset=utf-8', sitemapCache.xml, 'public, max-age=600');
+  }
+  var fb = getFirebase();
+  if (fb.error) return sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
+  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'settings').get().then(function (snap) {
+    var entries = [];
+    snap.docs.forEach(function (d) {
+      var e = d.data() || {};
+      if (eventStateOf(d) !== 'live' || !isEventId(d.id)) return;
+      if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return;
+      entries.push({ loc: base + publicPathOf(d.id), lastmod: typeof e.publishedAt === 'string' ? e.publishedAt : '' });
+    });
+    entries.sort(function (a, b) { return a.loc < b.loc ? -1 : a.loc > b.loc ? 1 : 0; });
+    sitemapCache = { at: Date.now(), base: base, xml: siteSeo.sitemapXml(entries) };
+    sendText(req, res, 200, 'application/xml; charset=utf-8', sitemapCache.xml, 'public, max-age=600');
+  }).catch(function (err) {
+    console.error('api: /sitemap.xml failed — ' + (err && err.stack || err));
+    sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
   });
 }
 
@@ -7234,6 +7296,11 @@ function routeApi(req, res) {
     return page[1] === 'e' ? handlePublicPage(req, res, eventId) : handlePreviewPage(req, res, eventId);
   }
 
+  if (urlPath === '/robots.txt' || urlPath === '/sitemap.xml') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
+    return urlPath === '/robots.txt' ? handleRobotsTxt(req, res) : handleSitemapXml(req, res);
+  }
+
   if (req.method === 'OPTIONS' && isPublicApiPath(urlPath)) return audience('handlePublicOptions')(req, res);
 
   var handler = ROUTES[req.method + ' ' + urlPath];
@@ -7263,6 +7330,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, ensureFormsRuntime, FORMS_RUNTIME_V, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  publishTransform, ensureFormsRuntime, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

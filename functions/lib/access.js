@@ -22,7 +22,8 @@ const admin = require('firebase-admin');
 const ALLOWED_DOMAIN = String(process.env.ALLOWED_EMAIL_DOMAIN || 'timesinternet.in').toLowerCase();
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'revamp-cms';
 const SESSION_COOKIE = '__session';   // the one cookie name every Firebase hosting product passes through
-const PUBLIC_PATHS = new Set(['/', '/index.html', '/auth.js', '/favicon.ico']);
+// /robots.txt and /sitemap.xml: for search engines, about the published sites only (lib/site-seo.js)
+const PUBLIC_PATHS = new Set(['/', '/index.html', '/auth.js', '/favicon.ico', '/robots.txt', '/sitemap.xml']);
 
 /* a Google sign-in (not email/password) with a verified address on the company domain */
 function isAllowedUser(decoded) {
