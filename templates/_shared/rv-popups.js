@@ -352,9 +352,10 @@
       card.setAttribute('role', 'button');
       card.setAttribute('tabindex', '0');
       card.setAttribute('aria-haspopup', 'dialog');
-      card.setAttribute('aria-label', p.name + (p.role ? ', ' + p.role : '') + (p.company ? ', ' + p.company : '') + ': view profile');
+      /* its name is what it shows — the person's name, role and company, then "View profile" — so a visitor who
+         speaks to their screen ("click Asha Rao") reaches it (WCAG 2.5.3); an aria-label of other words would hide it */
+      card.removeAttribute('aria-label');
       var cue = el('span', 'rv-profile-cue', 'View profile');
-      cue.setAttribute('aria-hidden', 'true');
       cue.appendChild(svg(ICON.next, 14));
       card.appendChild(cue);
     });

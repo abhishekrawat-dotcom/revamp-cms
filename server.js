@@ -8,6 +8,8 @@ const http = require('http'), fs = require('fs'), path = require('path'), zlib =
 const { handleApi } = require('./functions/lib/api');
 // gate: @timesinternet.in Google sign-in for pages and /api/*; isServableFile: which files are served at all
 const { gate, isServableFile } = require('./functions/lib/access');
+// assetVersion: the content hash a page's ?v= names for one of these files (functions/lib/delivery.js)
+const { assetVersion } = require('./functions/lib/delivery');
 
 const root = __dirname;
 const port = +process.env.PORT || 8080;
@@ -29,17 +31,46 @@ const COMPRESSIBLE = /^(text\/|application\/json|image\/svg)/;
    for it. (Published event sites name the same file in their own <link rel="icon">.) */
 const FAVICON = { path: path.join(root, 'assets', 'et-b2b-logo.svg'), type: 'image/svg+xml' };
 
-function cacheFor(ext){
+/* versioned: the request names the file's current content hash (?v=…, written by functions/lib/delivery.js
+   into every page it serves) — that address can never mean other bytes, so it is kept for a year. */
+function cacheFor(ext, versioned){
   if (ext === '.html') return 'no-store';                          // signed-in only (gate): never cached, so Back after sign-out asks the gate again
-  if (ext === '.js' || ext === '.css' || ext === '.json') return 'public, max-age=300';   // file names aren't hashed
+  if (versioned) return 'public, max-age=31536000, immutable';
+  if (ext === '.js' || ext === '.css' || ext === '.json') return 'public, max-age=300';   // an unversioned name may change on the next deploy
   return 'public, max-age=86400';
 }
 
-function send(req, res, status, headers, body){
+/* Compressed copies of the files served lately (brotli and gzip), made once per file version instead of on
+   every request. Bounded by size; a file that changes on disk is compressed again. */
+const PACKED = new Map(); let packedBytes = 0;
+const PACKED_MAX_BYTES = 24 * 1024 * 1024;
+function packedBody(key, body, encoding){
+  const k = key + '|' + encoding;
+  const hit = PACKED.get(k);
+  if (hit) return hit;
+  const out = encoding === 'br'
+    ? zlib.brotliCompressSync(body, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: body.length } })
+    : zlib.gzipSync(body, { level: 9 });
+  if (packedBytes + out.length > PACKED_MAX_BYTES){ PACKED.clear(); packedBytes = 0; }
+  PACKED.set(k, out); packedBytes += out.length;
+  return out;
+}
+function acceptedEncoding(req){
+  const ae = String(req.headers['accept-encoding'] || '').toLowerCase();
+  const ok = function(name){
+    const m = new RegExp('(?:^|,)\\s*' + name + '\\s*(?:;\\s*q\\s*=\\s*([0-9.]+))?\\s*(?=,|$)').exec(ae);
+    return !!m && !(m[1] != null && +m[1] === 0);
+  };
+  return ok('br') ? 'br' : ok('gzip') ? 'gzip' : '';
+}
+
+/* packKey: a key naming this exact body (path + mtime + size) when it may be kept compressed */
+function send(req, res, status, headers, body, packKey){
   const type = headers['Content-Type'] || '';
-  if (body.length > 1024 && COMPRESSIBLE.test(type) && /\bgzip\b/.test(req.headers['accept-encoding'] || '')){
-    body = zlib.gzipSync(body);
-    headers['Content-Encoding'] = 'gzip';
+  const encoding = body.length > 1024 && COMPRESSIBLE.test(type) ? acceptedEncoding(req) : '';
+  if (encoding){
+    body = packKey ? packedBody(packKey, body, encoding) : (encoding === 'br' ? zlib.brotliCompressSync(body) : zlib.gzipSync(body));
+    headers['Content-Encoding'] = encoding;
   }
   headers['Vary'] = 'Accept-Encoding';
   headers['Content-Length'] = body.length;
@@ -79,6 +110,7 @@ http.createServer(function(req, res){
 function serve(req, res){
   const url = req.url.split('?')[0];
   if (/^\/(api|e|preview)\//.test(url)) return handleApi(req, res);
+  if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
   if (url === '/favicon.ico'){
     return fs.readFile(FAVICON.path, function(err, buf){
@@ -104,7 +136,10 @@ function serve(req, res){
     fs.readFile(file, function(err2, buf){
       if (err2) return notFound(req, res);
       const ext = path.extname(file).toLowerCase();
-      send(req, res, 200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': cacheFor(ext) }, buf);
+      const v = /(?:^|&)v=([A-Za-z0-9._-]+)(?:&|#|$)/.exec(req.url.split('?')[1] || '');
+      const versioned = !!v && ext !== '.html' && v[1] === assetVersion(url);
+      send(req, res, 200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': cacheFor(ext, versioned) }, buf,
+        file + '|' + st.mtimeMs + '|' + st.size);
     });
   });
 }

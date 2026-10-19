@@ -440,6 +440,14 @@
         body.style.setProperty('--theme-color', hex);
         html.style.setProperty('--theme-color', rgbTriplet(hex));      // ET also keeps an "r, g, b" copy on :root
         html.style.setProperty('--theme-color-hex', hex);
+        /* a page that carries the reading colours of its brand colour (an AI-designed site: rv-theme.js derivedVars —
+           a brand button's ground and words, the brand colour as small text) gets them for the new one, so what the
+           editor shows is what publishing makes readable */
+        var T = window.RevampTheme;
+        if (T && T.derivedVars && body.style.getPropertyValue('--rv-on-theme')) {
+          var d = T.derivedVars({ theme: hex, bg: toHex(cssVar('--rv-bg')), surface: toHex(cssVar('--rv-surface')) });
+          ['--rv-theme-fill', '--rv-on-theme', '--rv-theme-ink'].forEach(function (k) { if (d[k]) body.style.setProperty(k, d[k]); });
+        }
       },
       /* the variable, for everything that reads it, and a rule on the headings themselves: not every design's
          headings read the variable */
@@ -1258,7 +1266,9 @@
     /* An embedded form's preview (editor-forms.js) is the editor's own drawing, redrawn whenever the form
        changes: it is never part of a snapshot, so drawing it is not an undo step and does not make the page
        "unsaved". */
-    var FORM_PREVIEW = '[data-rv-form-preview]';
+    /* drawn by the editor over the page and never part of it: a form's preview (editor-forms.js) and the banner
+       video's still with its badge (hero-video-ui.js) */
+    var FORM_PREVIEW = '[data-rv-form-preview], [data-rv-hv-preview]';
     function nodeHtml(n) {
       if (ownsCss && n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
       var isSection = n.hasAttribute('data-rv-section');

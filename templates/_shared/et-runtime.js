@@ -1040,6 +1040,9 @@
     each(scope.querySelectorAll('[data-rv-etnav]'), etNav);
   }
 
+  /* A served page loads this file with `defer` (functions/lib/delivery.js): until it arrives a stand-in
+     keeps each section's register/widget call as [section type, init]. They are taken over here. */
+  var waiting = window.RevampSections && window.RevampSections.q;
   window.RevampSections = {
     register: register,
     widget: function (name, init) {
@@ -1064,6 +1067,8 @@
     resolveHash: resolveHash,
     goTo: goTo
   };
+
+  if (waiting && waiting.splice) waiting.splice(0).forEach(function (call) { register(call[0], call[1]); });
 
   function start() { reveal(); settleImported(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); arrive(); }
 

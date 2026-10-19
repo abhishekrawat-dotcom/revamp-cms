@@ -441,15 +441,75 @@
     else if (el.style.whiteSpace === 'pre-line') { el.style.whiteSpace = ''; if (!el.getAttribute('style')) el.removeAttribute('style'); }
   }
 
+  /* ---------- a record's picture in the WebP copies the server keeps of it (functions/lib/pictures.js) ----------
+     On the live page only (never in the editor, whose page is saved): siteData.pictures, when present, is
+     { url: 'hash.WxH:640,1280' }. An <img> gets every copy as a "w" candidate, and as sizes the width it is
+     shown at (its box or its parent's, measured now — a crop to fill a box needs no more); and the original's
+     width and height when it has neither, so its box is known before it loads (data-rv-sized, with the rule
+     that lets the page's own CSS decide its height). A background gets image-set(webp, original): a browser
+     that does not read that keeps the plain url() set first. A picture without copies is shown as it is. */
+  var pictureMap = {};
+  var VARIANT_SPEC = /^([0-9a-f]{8})\.(\d{1,5})x(\d{1,5}):(\d{1,5}(?:,\d{1,5})*)$/;
+  function variantsOf(url) {
+    var m = url && Object.prototype.hasOwnProperty.call(pictureMap, url) ? VARIANT_SPEC.exec(String(pictureMap[url])) : null;
+    if (!m) return null;
+    var base = url.split(/[?#]/)[0], w = +m[2], h = +m[3];
+    var list = m[4].split(',').map(function (x) {
+      return { width: +x, url: base + '.rv-' + m[1] + '.' + w + 'x' + h + '.w' + x + '.webp' };
+    });
+    /* no copy at full size (it came out no smaller than the original): the original is the widest candidate */
+    var whole = list[list.length - 1].width >= Math.min(w, 1920);
+    if (!whole && !/[\s,]/.test(url)) list.push({ width: w, url: url });
+    return { w: w, h: h, whole: whole, list: list };
+  }
+  function sizedRule(doc) {
+    if (doc.querySelector('style[data-rv-pictures]')) return;
+    var style = doc.createElement('style');
+    style.setAttribute('data-rv-pictures', '');
+    style.textContent = ':where(img[data-rv-sized]){height:auto}';
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+  /* With "w" candidates a picture's natural width becomes its sizes, so sizes is never more than the
+     original's width (data-rv-w): a picture whose CSS leaves its width to its natural size does not grow. */
+  function setSizes(img) {
+    var w = +img.getAttribute('data-rv-w') || 0;
+    var shown = img.isConnected ? Math.max(img.clientWidth || 0, (img.parentNode && img.parentNode.clientWidth) || 0) : 0;
+    /* not laid out (a hidden section): as wide as the screen, up to the original's width */
+    img.setAttribute('sizes', shown > 0 ? Math.ceil(w ? Math.min(shown, w) : shown) + 'px' : '(max-width: ' + w + 'px) 100vw, ' + w + 'px');
+    return shown > 0;
+  }
+  function offerVariants(img, url) {
+    var v = variantsOf(url);
+    if (!v) return;
+    img.setAttribute('srcset', v.list.map(function (x) { return x.url + ' ' + x.width + 'w'; }).join(', '));
+    img.setAttribute('data-rv-w', String(v.w));
+    if (!setSizes(img) && !img.isConnected) img.setAttribute('data-rv-sizes-pending', '');
+    if (!img.hasAttribute('width') && !img.hasAttribute('height')) {
+      img.setAttribute('width', String(v.w));
+      img.setAttribute('height', String(v.h));
+      img.setAttribute('data-rv-sized', '');
+      sizedRule(img.ownerDocument);
+    }
+  }
+
   function setField(el, type, value, kind, record, card) {
     if (type === 'image') {
       var url = safeImage(value) || (kind === 'speakers' ? avatarUrl : '');
       if (el.tagName === 'IMG') {
         el.removeAttribute('srcset');                              // a model's srcset would win over the record's picture
-        if (url) { showSlot(el); el.setAttribute('src', url); } else { el.removeAttribute('src'); hideSlot(el); }
+        el.removeAttribute('sizes');
+        el.removeAttribute('data-rv-w');
+        // the size this file gave the previous picture is not this one's
+        if (el.hasAttribute('data-rv-sized')) { el.removeAttribute('width'); el.removeAttribute('height'); el.removeAttribute('data-rv-sized'); }
+        if (url) { showSlot(el); el.setAttribute('src', url); offerVariants(el, url); } else { el.removeAttribute('src'); hideSlot(el); }
         el.setAttribute('alt', str(record[ALT[kind]]));
       } else {
         el.style.backgroundImage = url ? 'url("' + url.replace(/"/g, '%22') + '")' : 'none';
+        var bg = url && variantsOf(url);
+        if (bg && bg.whole) {
+          var full = bg.list[bg.list.length - 1].url;
+          el.style.backgroundImage = 'image-set(url("' + full.replace(/"/g, '%22') + '") type("image/webp"), url("' + url.replace(/"/g, '%22') + '"))';
+        }
       }
       return;
     }
@@ -774,6 +834,7 @@
     }
     var mode = opts.mode === 'live' ? 'live' : 'editor';
     avatarUrl = avatarFor(doc);
+    pictureMap = mode === 'live' && opts.data.pictures && typeof opts.data.pictures === 'object' ? opts.data.pictures : {};
     var map = opts.contentMap, binds = opts.binds;
     if (map && !Array.isArray(map)) { binds = binds || map.bind; map = map.map; }
     map = list(map);
@@ -858,6 +919,10 @@
         [card].concat(qsa(card, '.animated')).forEach(function (n) { if (n.classList.contains('animated')) n.classList.add('go'); });
       });
     }
+
+    /* the record pictures given their copies while their card was not on the page yet: now that it is, the
+       width they are shown at (still in this task — the browser picks a copy only after it) */
+    if (mode === 'live') qsa(doc, 'img[data-rv-sizes-pending]').forEach(function (img) { img.removeAttribute('data-rv-sizes-pending'); setSizes(img); });
 
     watched.forEach(function (root, i) {
       if (!root.isConnected || root.outerHTML === before[i]) return;

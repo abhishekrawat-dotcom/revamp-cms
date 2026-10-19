@@ -18,6 +18,7 @@
      normaliseMode(v)                 'light' | 'dark' | 'auto' */
 
 var rvType = require('../../templates/_shared/rv-type.js');
+var rvTheme = require('../../templates/_shared/rv-theme.js');
 
 var MIN_LABEL_PX = 14;          // the smallest any text may be (labels, captions, legal lines)
 var BASE_TEXT_PX = 18;          // what a paragraph is set in on a generated page
@@ -458,7 +459,8 @@ function heroCss(o) {
     '.hero-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:14px}',
     '.hero-btn{display:inline-flex;align-items:center;justify-content:center;min-width:190px;padding:15px 30px;border-radius:' + radius + ';font-family:var(--body-font-family);font-size:1rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;line-height:1.2;text-decoration:none;border:2px solid transparent;transition:transform .25s ease,box-shadow .25s ease}',
     '.hero-btn:hover{transform:translateY(-3px);box-shadow:0 14px 30px -14px rgba(0,0,0,.55)}',
-    '.hero-btn-primary{background:var(--theme-color);border-color:var(--theme-color);color:' + (luminance(o.themeColor || '#186bf9') > 0.5 ? '#14161b' : '#ffffff') + '}',
+    /* the page's readable button ground and words (rv-theme.js derivedVars, 4.5:1), this colour's own ink as the fallback */
+    '.hero-btn-primary{background:var(--rv-theme-fill,var(--theme-color));border-color:var(--rv-theme-fill,var(--theme-color));color:var(--rv-on-theme,' + rvTheme.inkOn(o.themeColor || '#186bf9') + ')}',
     '.hero-btn-secondary{background:' + (dark ? 'transparent' : 'rgba(255,255,255,.7)') + ';border-color:' + ink + ';color:' + ink + '}',
     '@media (max-width:820px){.hero-root{min-height:76vh}.hero-btn{min-width:0;width:100%;max-width:340px}.hero-facts{font-size:.9375rem;letter-spacing:.1em}}'
   ].join(' ');

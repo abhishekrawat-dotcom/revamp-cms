@@ -74,6 +74,7 @@
   var changeListeners = [];
   function pageChanged() {
     drawFormPreviews(true);
+    drawHeroVideo();
     changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
   /* An embedded form shows a preview of its fields on the canvas (editor-forms.js). A page put back from an undo
@@ -82,6 +83,21 @@
   function drawFormPreviews(missingOnly) {
     if (!canvas || remounting || !window.RevampEditorForms) return;
     try { RevampEditorForms.drawPreviews(canvas.doc, missingOnly ? { missingOnly: true } : null); } catch (err) { if (window.console) console.error(err); }
+  }
+  /* The event's banner video (Design › Banner video, hero-video-ui.js): its still picture with a "Video
+     background" badge on the canvas's banner. Like a form's preview it is the editor's own (data-rv-editor, never
+     saved, never in a snapshot), so drawing it again after every change records nothing; nothing plays while
+     editing. heroVideoChanged(hv) is called by the Design panel after each save: the canvas and the "Edit with
+     AI" live view (which asks the server, where the video is put on the page) show it at once. */
+  var heroVideo = null;
+  function drawHeroVideo() {
+    if (!canvas || remounting || !window.RevampHeroVideoUI) return;
+    try { RevampHeroVideoUI.drawCanvas(canvas.doc, heroVideo); } catch (err) { if (window.console) console.error(err); }
+  }
+  function heroVideoChanged(hv) {
+    heroVideo = hv || null;
+    drawHeroVideo();
+    changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
   /* the event's forms changed (made, edited, deleted — in the Forms panel or by the AI): the live view of
      "Edit with AI" draws the page again with them (editor-ai-mode.js) */
@@ -118,6 +134,7 @@
     if (!eventId) { currentEvent = null; return boot(urlTemplateId); }
     return RevampCore.fetchEvent(eventId).then(function (ev) {
       currentEvent = ev;
+      heroVideo = ev.heroVideo || null;
       renderTopbar();
       if (host.onEvent) host.onEvent(ev);
       var tplId = (ev.site && ev.site.templateId) || ev.templateId || urlTemplateId;
@@ -178,6 +195,7 @@
       sectionsChanged();
       designChanged();
       drawFormPreviews(false);
+      drawHeroVideo();
       /* Preview and Publish stay disabled until the site is mounted AND filled: pressed any earlier they
          would capture the template's own placeholder text. With no event there is nothing to publish to. */
       document.getElementById('btn-publish').hidden = !eventId;
@@ -1791,7 +1809,7 @@
         Array.prototype.forEach.call(item.querySelectorAll('[data-rv-field][style*="background-image"]'), function (el) { el.style.backgroundImage = ''; });
       });
       // an embedded form's preview is the editor's drawing, not the section's markup
-      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview]'), function (n) { n.remove(); });
+      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview]'), function (n) { n.remove(); });
       RevampAuth.authedFetch('/api/redesign-section', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1847,7 +1865,7 @@
   function devSource(sec) {
     var copy = sec.cloneNode(true);
     // an embedded form's preview is the editor's drawing, not the section's markup
-    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview]'), function (n) { n.remove(); });
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview]'), function (n) { n.remove(); });
     [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('*'))).forEach(function (n) {
       DEV_MARKS.forEach(function (a) { n.removeAttribute(a); });
       n.classList.remove('ed-selected', 'sec-active', 'rv-in');
@@ -4677,6 +4695,7 @@
        live view told (onFormsChange(fn)); unlinkForm(id) before a form is deleted; placeFormSection(id, afterEl);
        revealElement(el) selects and shows a button or embed */
     formsChanged: formsChanged,
+    heroVideoChanged: heroVideoChanged,
     onFormsChange: function (fn) { if (typeof fn === 'function') formsListeners.push(fn); },
     unlinkForm: unlinkForm, placeFormSection: placeFormSection, revealElement: revealElement,
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers,

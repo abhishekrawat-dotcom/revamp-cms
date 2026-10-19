@@ -45,6 +45,7 @@ function notFound(res) { res.writeHead(404, { 'Content-Type': 'text/plain; chars
 function serve(req, res) {
   const url = req.url.split('?')[0];
   if (/^\/(api|e|preview)\//.test(url)) return handleApi(req, res);
+  if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
 
   // a path that does not decode ("%E0%A4%A") or carries a NUL would throw below, and an exception nobody

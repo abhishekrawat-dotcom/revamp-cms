@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="forms-builder.css">
+<link rel="stylesheet" href="hero-video-ui.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   :root{
@@ -1229,6 +1230,14 @@
           </div>
         </div>
 
+        <!-- the event's banner video (hero-video-ui.js): the same settings as the console's Content › Basics, saved
+             as they change and shown on the site as it is served — not part of the page, so not part of Undo -->
+        <div class="dp-divider" data-hero-video-row hidden></div>
+        <div class="field" id="dp-hero-video" data-hero-video-row hidden>
+          <span class="dp-section-title">Banner video</span>
+          <div id="dp-hero-video-body"></div>
+        </div>
+
       </div>
     </aside>
 
@@ -1424,6 +1433,8 @@
 <script src="templates/_shared/rv-forms.js"></script>
 <script src="forms-builder.js"></script>
 <script src="editor-forms.js"></script>
+<script src="templates/_shared/rv-hero-video-core.js"></script>
+<script src="hero-video-ui.js"></script>
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
@@ -2869,10 +2880,21 @@
       try { localStorage.setItem(key, show ? '1' : '0'); } catch(e){}
     });
   }
+  /* Design › Banner video: only for an event's site (a template opened on its own has no event to keep it on) */
+  var heroVideoUi = null;
+  function mountHeroVideo(){
+    if (heroVideoUi || !editorEventId || !window.RevampHeroVideoUI) return;
+    document.querySelectorAll('[data-hero-video-row]').forEach(function(n){ n.hidden = false; });
+    heroVideoUi = RevampHeroVideoUI.mount(document.getElementById('dp-hero-video-body'), {
+      eventId: editorEventId, core: window.RevampCore, layout: 'compact', toast: function(msg){ showToast(msg); },
+      onChange: function(hv){ if (window.RevampTemplateUI.heroVideoChanged) window.RevampTemplateUI.heroVideoChanged(hv); }
+    });
+  }
   document.getElementById('btn-tpl-undo').addEventListener('click', function(){ window.RevampTemplateUI.undo(); });
   document.getElementById('btn-tpl-redo').addEventListener('click', function(){ window.RevampTemplateUI.redo(); });
   window.RevampTemplateUI.open(frame, { eventId: editorEventId, templateId: URL_TEMPLATE },
-    { escHtml: escHtml, showToast: showToast, showNotice: showNotice, clearNotice: clearNotice, openDialog: openDialog, onEvent: wireEventRail,
+    { escHtml: escHtml, showToast: showToast, showNotice: showNotice, clearNotice: clearNotice, openDialog: openDialog,
+      onEvent: function(ev){ wireEventRail(ev); mountHeroVideo(); },
       genericCss: genericCss, pickSection: openSectionPicker, onSectionsChanged: rebuildLayersPanel,
       onDesignChange: function(){ syncDesignPanel(); syncGtTools(); }, onSelectionChange: onCanvasSelection })
     .then(function(ready){

@@ -50,7 +50,12 @@ html.rv-motion:not([data-rv-editing]) [data-rv-reveal].rv-in{opacity:1;transform
 /* the unit's box takes the hero's width, so that a picture with no size of its own has one to fill
    (an SVG saved with a viewBox only) */
 .rv-lu-pic{align-self:stretch}
-.rv-lu-img{display:block;margin:0 auto;width:auto;height:auto;max-width:min(100%,680px);max-height:min(300px,36vh)}
+/* Its width is its width attribute (the picture's own size, written by the server) and its height follows,
+   so its box is known before it loads and nothing under it moves when it arrives. When the height cap
+   bites, the picture is drawn whole in the middle of its box (object-fit), where it was before. On a plate
+   the box is the plate's, so there it keeps its loaded size. */
+.rv-lu-img{display:block;margin:0 auto;height:auto;max-width:min(100%,680px);max-height:min(300px,36vh);object-fit:contain}
+.rv-lu-plate .rv-lu-img{width:auto}
 .rv-lu-plate{display:inline-block;max-width:100%;padding:clamp(14px,2.2vw,24px) clamp(18px,3vw,36px);border-radius:14px}
 .rv-lu-plate-light{background:rgba(255,255,255,.95);box-shadow:0 10px 40px rgba(0,0,0,.18)}
 .rv-lu-plate-dark{background:rgba(13,16,23,.9);box-shadow:0 10px 40px rgba(0,0,0,.25)}

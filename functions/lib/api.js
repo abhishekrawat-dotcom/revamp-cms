@@ -145,8 +145,10 @@ const etNav = require('./et-nav');
 /* registration forms: their shape, the public definitions, the AI chat's form changes (pure) */
 const formsLib = require('./forms');
 const etFooter = require('./et-footer');
+const pictures = require('./pictures');
 const editionLook = require('./edition-look');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
+const deliveryLib = require('./delivery');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
    lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
@@ -236,6 +238,9 @@ const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
 const { diffPages, summarise } = require('./page-diff');
 const { safeFetch } = require('./safe-fetch');
+/* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
+const siteA11y = require('./site-a11y');
+const siteSeo = require('./site-seo');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
    one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
@@ -1462,7 +1467,7 @@ function buildHeroImagePrompt(brief, themeColor) {
 // has no theme-coloured gradient fallback on #hero itself when hero-bg-image fails/stays the placeholder —
 // only the dark overlay gradient ON TOP of whatever image is there. On image-generation failure, the hero
 // still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
-function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
+function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
   return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
     if (record) record(r.usage);
@@ -1471,14 +1476,18 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt) {
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
     }
     var buffer = Buffer.from(r.base64, 'base64');
-    var storagePath = 'events/' + eventId + '/generated/hero-bg.png';
+    /* named after the run (stamp), like every other generated picture: what one name holds never changes,
+       so it can be cached for a year and get WebP copies (pictures.js) */
+    var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
+    var storagePath = 'events/' + eventId + '/generated/' + (stamp ? stamp + '-' : '') + 'hero-bg.' + ext;
     var file = fb.bucket.file(storagePath);
     /* The raw base64 (often several hundred KB-plus) must never go into Firestore directly — a single
        document is capped at 1MiB total, and an inline data: URI that size blew right through it the first
        time this ran ("Property theme contains an invalid nested entity"). The image already lives in
        Storage; Firestore only needs a real URL to it, same as any other image reference in this app. */
-    return file.save(buffer, { metadata: { contentType: r.mimeType } })
+    return file.save(buffer, { metadata: { contentType: r.mimeType, cacheControl: stamp ? pictures.CACHE : 'public, max-age=3600' } })
       .then(function () { return file.makePublic(); })
+      .then(function () { return pictures.storeVariants(fb, storagePath, buffer); })
       .then(function () {
         var heroImageUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
         return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null };
@@ -1504,9 +1513,11 @@ function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, conte
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
     var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
     var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
-    var file = fb.bucket.file(storagePath);
-    return file.save(Buffer.from(r.base64, 'base64'), { metadata: { contentType: r.mimeType } })
+    var file = fb.bucket.file(storagePath), bytes = Buffer.from(r.base64, 'base64');
+    /* the run's stamp makes the name unique: cached for a year, with WebP copies (pictures.js) */
+    return file.save(bytes, { metadata: { contentType: r.mimeType, cacheControl: pictures.CACHE } })
       .then(function () { return file.makePublic(); })
+      .then(function () { return pictures.storeVariants(fb, storagePath, bytes); })
       .then(function () { return { sectionId: sectionId, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath, subject: subject }; });
   }).catch(function (err) {
     console.error('plan-structure: picture for "' + sectionId + '" failed — ' + err.message);
@@ -1965,7 +1976,8 @@ function storePublicPicture(fb, storagePath, buffer, contentType) {
   /* An SVG is shown through <img>, where it cannot run anything. Opened on its own it is a document: it is
      offered as a download instead, so that a drawing taken from somebody else's page never runs here. */
   if (contentType === 'image/svg+xml') metadata.contentDisposition = 'attachment';
-  return file.save(buffer, { metadata: metadata })
+  /* an SVG is stored gzipped: sent compressed (pictures.js gzipWorthIt) */
+  return file.save(buffer, { metadata: metadata, gzip: pictures.gzipWorthIt(contentType, buffer) })
     .then(function () { return file.makePublic(); })
     .then(function () { return 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath; });
 }
@@ -3074,7 +3086,7 @@ function handlePlanStructure(req, res) {
           .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
         var level = owner && owner.level ? owner.level : '';
         var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about, level: level, graphic: graphic });
-        var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt)].concat(
+        var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp)].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
@@ -3091,8 +3103,8 @@ function handlePlanStructure(req, res) {
           design.logoUnitFrom = unit.from; design.logoUnitWidth = unit.width; design.logoUnitHeight = unit.height;
           design.logoUnitPlate = unit.plate; design.logoUnitNote = unit.note; design.logoUnitHeroMode = unit.heroMode || '';
           var heroImage = made[0];
-          /* the hero picture keeps one storage path, so its address carries the run to get past caches */
-          design.heroImageUrl = heroImage.heroImageUrl ? heroImage.heroImageUrl + '?v=' + stamp : null;
+          /* the hero picture's name carries the run (buildHeroImage) */
+          design.heroImageUrl = heroImage.heroImageUrl || null;
           design.heroImageStoragePath = heroImage.heroImageStoragePath;
           design.heroImageError = heroImage.heroImageError;
           var images = made.slice(1).filter(Boolean);
@@ -3411,6 +3423,9 @@ function buildSectionCodePrompt(payload) {
     'Colours and fonts are CSS variables already defined on the page — use the variables, never the raw values, so that the owner can restyle the site later:',
     '  var(--theme-color)   ' + (design.themeColor || '') + '   brand colour: buttons, links, highlights',
     '  var(--accent-color)  ' + (design.accentColor || '') + '   second colour',
+    /* accessibility (rv-theme.js derivedVars): colours worked out from these to read at 4.5:1 */
+    '  var(--rv-theme-fill,var(--theme-color)) with var(--rv-on-theme,#ffffff)   the ground and the words of a brand-coloured button or badge (always readable together; write them exactly so)',
+    '  var(--rv-theme-ink,var(--theme-color))   the brand colour for small text — labels, eyebrows, links — on the page or a card (always readable)',
     '  var(--rv-bg)         ' + (design.backgroundColor || '') + '   page background',
     '  var(--rv-surface)    ' + (design.surfaceColor || '') + '   cards, alternating bands',
     '  var(--rv-text)       ' + (design.textColor || '') + '   body text',
@@ -3421,7 +3436,7 @@ function buildSectionCodePrompt(payload) {
     '',
     'SHARED RULES — written identically in every section, because sections are styled separately:',
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. Sections have vertical padding clamp(64px, 9vw, 128px).',
-    '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = var(--theme-color) background with a readable text colour; secondary = outlined.',
+    '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = background var(--rv-theme-fill,var(--theme-color)) with color var(--rv-on-theme,#ffffff); secondary = outlined.',
     '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): exactly ' + genDesign.HEADING_SCALE.section + ', line-height 1.15 — calm and confident, never larger (not even in capitals or a heavy weight); the hero, which the server builds, holds the page\'s only h1. Sub-headings and card titles (h3): ' + genDesign.HEADING_SCALE.sub + '. Small labels and captions: never below 0.875rem. Only a band of big numbers may be set larger than a section heading. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     genDesign.MOBILE_RULES,
@@ -3645,7 +3660,7 @@ function siteFooter(o) {
     portal: o.portal, mode: (o.mode || design.mode) === 'dark' ? 'dark' : 'light', year: o.year || new Date().getFullYear(),
     events: etFooter.happening(o.events, { name: o.eventName, series: o.series }),
     event: o.eventName ? { name: o.eventName, date: o.date, place: o.place, button: button } : null,
-    buttonInk: genDesign.luminance(/^#[0-9a-f]{6}$/i.test(String(design.themeColor || '')) ? design.themeColor : '#186bf9') > 0.5 ? '#14161b' : '#ffffff'
+    buttonInk: rvTheme.inkOn(/^#[0-9a-f]{6}$/i.test(String(design.themeColor || '')) ? design.themeColor : '#186bf9')
   });
   return { id: 'footer', kind: 'footer', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, 'footer', sectionRootInfo(built.html))), built.html) };
 }
@@ -4177,6 +4192,10 @@ function handleGeneratedTemplate(req, res) {
         return { id: id, name: label, etId: null, script: false };
       })
     };
+    /* accessibility: the reading colours of this palette (a brand-coloured button's ground and words, the brand colour as
+       text, quiet text that reads on the panels too) — rv-theme.js derivedVars; a theme's own come with varsOf */
+    Object.assign(template.body.style, rvTheme.derivedVars({ theme: design.themeColor, accent: design.accentColor,
+      bg: colours.backgroundColor, surface: colours.surfaceColor, muted: colours.mutedColor }));
     if (chosen.id !== 'original') Object.assign(template.body.style, rvTheme.varsOf(chosen));
     sendJson(res, 200, template);
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
@@ -4439,8 +4458,12 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
         var sanitized = basename.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 120) || 'image';
         var storagePath = 'events/import-' + importId + '/images/' + sanitized;
         var file = fb.bucket.file(storagePath);
-        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized) } })
+        /* an import's folder is its own (import-<id>) and written once: cached for a year, with WebP copies
+           of each raster picture (pictures.js) — a Lovable export's pictures are often megabyte PNGs */
+        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized), cacheControl: 'public, max-age=31536000' },
+            gzip: pictures.gzipWorthIt(guessImageContentType(sanitized), imgBuffer) })   // an SVG stored gzipped (pictures.js)
           .then(function () { return file.makePublic(); })
+          .then(function () { return pictures.storeVariants(fb, storagePath, imgBuffer); })
           .then(function () { return { ref: ref, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath }; });
       }).catch(function (err) {
         console.error('import-lovable: failed to re-host image "' + ref + '": ' + err.message);
@@ -6629,6 +6652,158 @@ function ensureFormsRuntime(html) {
   return at === -1 ? html + FORMS_RUNTIME_TAG + '\n' : html.slice(0, at) + FORMS_RUNTIME_TAG + '\n' + html.slice(at);
 }
 
+/* ===== BANNER VIDEO (lib/api-hero-video.js stores it; templates/_shared/rv-hero-video-core.js has the markup) =====
+   applyHeroVideo(html, event) -> html. The event's banner video (event.heroVideo), put on a page as it is SERVED —
+   /e/<id>, /preview/<id> and the editor's live view — never into what is stored, so turning it on, off or changing
+   its overlay in the console reaches the live site within a minute without a publish. Idempotent: what an
+   earlier run wrote (data-rv-hero-video) is taken out first.
+     - a real template's ET banner: the video goes into its .bnr-bg-video layer (cleared first), the banner's
+       picture becomes the video's still (the page's largest picture, so it loads first), its overlay layer takes
+       the overlay colour;
+     - an AI-designed hero (section#hero.hero-root): a layer of its own goes in first — the still, the video, the
+       overlay — in place of the hero's picture and veil;
+     - anything else: nothing (the console says such a site has no place for one).
+   A video an AI edit wrote into the hero to play by itself (<video autoplay src>) is made to wait the same way
+   (data-rv-bg-video, its address in data-rv-src): it used to be downloaded in full on every visit, phones
+   included, before the page had finished. With the event's own video on, it is replaced. rv-hero-video.js,
+   added once, starts and stops them all. */
+var heroVideoCore = require('../../templates/_shared/rv-hero-video-core.js');
+var HERO_VIDEO_TAG = '<script src="/templates/_shared/rv-hero-video.js" defer data-rv-hero-video></script>';
+/* an attribute whose value is already as the page had it (entities and all): only a quote is made safe */
+function rawAttr(name, value) {
+  var v = String(value == null ? '' : value).replace(/"/g, '&quot;');
+  return { name: name, value: v, raw: name + '="' + v + '"' };
+}
+function heroVideoStamp(event) {
+  var hv = heroVideoCore.clean(event && event.heroVideo);
+  return hv ? 'v:' + (hv.stamp || 'on') : 'v:off';
+}
+function applyHeroVideo(html, event) {
+  html = String(html == null ? '' : html);
+  var hv = heroVideoCore.clean(event && event.heroVideo);
+  if (!hv && !/<video\b/i.test(html) && html.indexOf('data-rv-hero-video') === -1) return html;
+  var tokens = tokenizeHtml(html);
+  var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
+  var headOpen = -1, headClose = -1, bodyClose = -1, banner = -1, still = -1, hero = -1, i;
+  for (i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t === 'open' && t.name === 'head' && headOpen === -1) headOpen = i;
+    if (t.t === 'close' && t.name === 'head' && headClose === -1) headClose = i;
+    if (t.t === 'close' && t.name === 'body') bodyClose = i;
+    if (t.t !== 'open' || out[i] === '') continue;
+    if (attrOf(t, 'data-rv-hero-video')) {
+      var end = elementEnd(tokens, i);
+      if (end !== -1) {
+        for (var k = i; k <= end; k++) out[k] = '';
+        /* with the one newline this wrote after it, so a second run leaves the same bytes */
+        var after = tokens[end + 1];
+        if (after && after.t === 'text' && out[end + 1].charAt(0) === '\n') out[end + 1] = out[end + 1].slice(1);
+        i = end;
+      }
+      continue;
+    }
+    var cls = classListOf(t);
+    if (banner === -1 && (attrValue(t, 'data-rv-media') === 'bg-video' || cls.indexOf('bnr-bg-video') !== -1)) banner = i;
+    if (still === -1 && t.name === 'img' && cls.indexOf('banner-bg-image') !== -1) still = i;
+    if (hero === -1 && t.name === 'section' && (attrValue(t, 'id') === 'hero' || cls.indexOf('hero-root') !== -1)) hero = i;
+  }
+  var look = heroVideoCore.looksAt(html), place = banner !== -1 ? 'banner' : hero !== -1 ? 'hero' : '';
+  var lazyfied = false;
+
+  /* videos an AI edit wrote into the hero */
+  if (hero !== -1 && place === 'hero') {
+    var heroEnd = elementEnd(tokens, hero);
+    for (i = hero + 1; heroEnd !== -1 && i < heroEnd; i++) {
+      var v = tokens[i];
+      if (v.t !== 'open' || v.name !== 'video' || out[i] === '') continue;
+      var vEnd = elementEnd(tokens, i);
+      if (hv) { if (vEnd !== -1) { for (var r = i; r <= vEnd; r++) out[r] = ''; i = vEnd; } continue; }
+      /* one made to wait already (a page this ran on before) still needs its loader */
+      if (attrOf(v, 'data-rv-bg-video')) { if (attrOf(v, 'data-rv-src')) lazyfied = true; continue; }
+      if (!attrOf(v, 'autoplay')) continue;
+      var src = attrValue(v, 'src') || '', type = '';
+      for (var s = i + 1; vEnd !== -1 && s < vEnd; s++) {
+        var so = tokens[s];
+        if (so.t !== 'open' || so.name !== 'source' || !attrOf(so, 'src')) continue;
+        if (!src) { src = attrValue(so, 'src'); type = attrValue(so, 'type') || ''; }
+        var sv = attrValue(so, 'src') || '';
+        dropAttr(so, 'src');
+        so.attrs.push(rawAttr('data-rv-src', sv));
+        out[s] = writeTag(so);
+      }
+      if (!src) continue;
+      ['autoplay', 'src', 'preload', 'data-rv-src'].forEach(function (a) { dropAttr(v, a); });
+      v.attrs.push(rawAttr('data-rv-src', src));
+      if (type && !attrOf(v, 'data-type')) setAttr(v, 'data-type', type);
+      ['muted', 'playsinline', 'data-rv-bg-video'].forEach(function (a) { if (!attrOf(v, a)) v.attrs.push({ name: a, value: null, raw: a }); });
+      /* it has no still picture of its own, so its first frame is the page's largest picture: where it plays at
+         all it starts at once, as it did (started late, it would make the page's largest paint late) */
+      if (!attrValue(v, 'poster')) v.attrs.push(rawAttr('data-rv-bg-start', 'early'));
+      setAttr(v, 'preload', 'none');
+      out[i] = writeTag(v);
+      lazyfied = true;
+    }
+  }
+
+  var head = [];
+  if (hv && place) {
+    var overlay = heroVideoCore.overlayFor(hv.overlay, look);
+    /* a colour chosen for the site as it was (another tone since, after a redesign) never makes its words
+       unreadable: the automatic overlay stands in, and the console says the colour is not used */
+    if (!overlay.readable) overlay = heroVideoCore.overlayFor({ mode: 'auto' }, look);
+    if (place === 'banner') {
+      var bannerEnd = elementEnd(tokens, banner);
+      if (bannerEnd !== -1) for (i = banner + 1; i < bannerEnd; i++) out[i] = '';
+      out[banner] = out[banner] + heroVideoCore.videoTag(hv);
+      if (hv.posterUrl && still !== -1) {
+        var img = tokens[still];
+        setAttr(img, 'src', hv.posterUrl);
+        dropAttr(img, 'srcset'); dropAttr(img, 'sizes');
+        setAttr(img, 'fetchpriority', 'high'); setAttr(img, 'loading', 'eager');
+        out[still] = writeTag(img);
+      }
+    } else {
+      setAttr(tokens[hero], 'data-rv-hv', '');
+      out[hero] = writeTag(tokens[hero]) + heroVideoCore.heroLayer(hv);
+    }
+    if (hv.posterUrl) head.push('<link rel="preload" as="image" href="' + escHtmlAttr(hv.posterUrl) + '" fetchpriority="high" data-rv-hero-video>');
+    head.push('<style data-rv-hero-video>' + heroVideoCore.pageCss({ host: place, overlay: overlay, poster: !!hv.posterUrl }) + '</style>');
+  } else if (lazyfied) {
+    head.push('<style data-rv-hero-video>@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}</style>');
+  }
+  if (!head.length) return out.join('');
+  var headText = head.join('\n') + '\n';
+  if (headClose !== -1) out[headClose] = headText + out[headClose];
+  else if (headOpen !== -1) out[headOpen] = out[headOpen] + headText;
+  else out.unshift(headText);
+  if (bodyClose !== -1) out[bodyClose] = HERO_VIDEO_TAG + '\n' + out[bodyClose];
+  else out.push(HERO_VIDEO_TAG + '\n');
+  return out.join('');
+}
+/* ===== END BANNER VIDEO ===== */
+/* A served page (/e/, /preview/) with the event's banner video as it is now (applyHeroVideo), and then its
+   pictures' WebP copies once more (heroVideoPictures): the video's still is a picture the stored page never
+   named, and a banner picture the still replaced lost its copies. Never rejects (pictures.prepare does not). */
+function withHeroVideo(fb, page, event) {
+  var withVideo = applyHeroVideo(page, event);
+  if (withVideo === page) return Promise.resolve(page);
+  return pictures.prepare(fb, withVideo).then(function (pics) { return heroVideoPictures(withVideo, pics); });
+}
+/* (pure) page with the banner video -> the same with the still's WebP copy, the still's preload naming the
+   very file the page will show (not the original as well), and an AI hero's own background preload taken out
+   where the still covers it (its background is not drawn then: rv-hero-video-core.js pageCss) */
+function heroVideoPictures(page, pics) {
+  var out = pictures.rewriteHtml(page, pics);
+  if (out.indexOf('<section') !== -1 && /<section\b[^>]*\sdata-rv-hv(?:[\s=>])/i.test(out) && /<link\b[^>]*\bdata-rv-hero-video\b/i.test(out)) {
+    out = out.replace(/\n?<link\b[^>]*\bdata-rv-pictures-preload\b[^>]*>/i, '');
+  }
+  return out.replace(/<link rel="preload" as="image" href="([^"]*)" fetchpriority="high" data-rv-hero-video>/, function (tag, href) {
+    var url = href.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    var webp = pictures.fullCopyUrl(pics, url);
+    return webp ? '<link rel="preload" as="image" type="image/webp" href="' + escHtmlAttr(webp) + '" fetchpriority="high" data-rv-hero-video>' : tag;
+  });
+}
+
 /* The event's public form definitions for a page about to be transformed (opts.forms), or null when they
    cannot be read — the failure is logged and the page goes out without them: its runtime fetches them.
    lib/api-forms.js is loaded here, on use, like the other route modules (see inModule). Never rejects. */
@@ -6639,6 +6814,13 @@ function publicFormsFor(fb, eventId, ev) {
     console.error('api: the forms of ' + eventId + ' could not be read for its page — ' + ((err && err.message) || err));
     return null;
   });
+}
+/* [page, …] -> [page, …, the WebP copies of the page's pictures] (pictures.prepare, which never rejects:
+   a failure leaves the pictures as they are) */
+function withPictures(fb) {
+  return function (got) {
+    return pictures.prepare(fb, got[0]).then(function (pics) { return got.concat([pics]); });
+  };
 }
 var RUNTIME_STYLE = /\/templates\/_shared\/rv-live\.css$/;
 var SITE_FAVICON = '/assets/et-b2b-logo.svg';
@@ -6667,7 +6849,9 @@ function contentMapFor(templateId) {
 
 /* opts: { eventId, event (the event document), mode: 'live' | 'preview', templateId, origins: [],
            publicBase: 'https://host' or '', forms: the event's public form definitions (lib/forms.js
-           publicFormsPayload; optional — without it the forms runtime fetches them) } */
+           publicFormsPayload; optional — without it the forms runtime fetches them),
+           pictures: the WebP copies of the page's pictures (pictures.prepare; optional — without it the
+           pictures are left as they are) } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -6714,7 +6898,8 @@ function publishTransform(html, opts) {
       out[i + 1] = String(+opts.year > 2000 ? +opts.year : new Date().getFullYear());
     }
 
-    if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon')) { i = removeElement(i, true); continue; }
+    /* data-rv-seo: the search and sharing tags of step 7 (site-a11y.js), written afresh there */
+    if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon') || attrOf(t, 'data-rv-seo')) { i = removeElement(i, true); continue; }
     if (attrOf(t, 'data-rv-editor') || attrOf(t, 'data-rv-empty-state') || attrOf(t, 'data-rv-bind-hint') || t.name === 'grammarly-desktop-integration' || attrOf(t, 'data-grammarly-shadow-root') ||
         classes.some(function (c) { return AI_BADGE_CLASSES.indexOf(c) !== -1; })) { i = removeElement(i, false); continue; }
     /* the "SHARED HEADER / FOOTER — DESIGN TO COME" strips the template loader used to put on every
@@ -6873,8 +7058,16 @@ function publishTransform(html, opts) {
   if (bodyClose !== -1) out[bodyClose] = tailText + out[bodyClose];
   else suffix = tailText;
 
-  return prefix + out.join('') + suffix;
+  /* ---- 7. pictures: each one's WebP copies, its size, the hero's first (pictures.js) ---- */
+  var page = prefix + out.join('') + suffix;
+  if (opts.pictures) page = pictures.rewriteHtml(page, opts.pictures);
+  /* ---- 8. accessibility and search (site-a11y.js pagePass): zoom, readable colours on an AI-designed site,
+     alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
+  return siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
 }
+/* the tokenizer above, for site-a11y.js's page pass */
+var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrValue, classListOf: classListOf, writeTag: writeTag,
+  setAttr: setAttr, dropAttr: dropAttr, elementEnd: elementEnd };
 
 function cleanCanonical(v) { return (typeof v === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(v.trim())) ? v.trim() : ''; }
 
@@ -6943,10 +7136,10 @@ function handleEventPublish(req, res) {
         });
       }
 
-      return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(function (got) {
+      return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
         var pageHtml = got[0], livePath = publishedObjectPath(eventId);
         var live = publishTransform(pageHtml, {
-          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1],
+          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
           templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
         });
         return readObject(fb, livePath).then(function (before) {
@@ -7142,11 +7335,11 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra) {
       if (text != null) return text;
       return siteVersionOf(data) === version ? readObject(fb, sitePath(eventId, 'page.html')) : null;
     });
-    return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(function (got) {
+    return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
       var pageHtml = got[0];
       if (pageHtml == null) throw httpError(409, 'Version ' + version + ' of this site is no longer stored. Save the site again and send a new request.', { code: 'version-missing' });
       var live = publishTransform(pageHtml, {
-        eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1],
+        eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
         templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
       });
       return readObject(fb, livePath).then(function (before) {
@@ -7361,7 +7554,7 @@ function handleEventLiveView(req, res) {
           eventId: eventId, event: data, mode: 'preview', publicBase: '', liveView: true, forms: formsPayload,
           templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(body.origin)]
         });
-        sendJson(res, 200, { html: html });
+        sendJson(res, 200, { html: applyHeroVideo(html, data) });
       });
     }).catch(function (err) { sendFailure(res, 'live view', err, 'The live view could not be prepared. Please try again.'); });
   });
@@ -7382,15 +7575,46 @@ function messagePage(title, message) {
     '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p></main></body></html>\n';
 }
 
-function sendHtml(req, res, status, html, cacheControl, gzipped) {
+/* ---- delivery (lib/delivery.js): compression, and what the browser is given to show a page sooner ----
+   Every page answers compressed when the browser accepts it — brotli, else gzip — whether or not it comes
+   pre-compressed (`packed`: { br, gzip } Buffers of the same html; a bare Buffer is gzip). The preview used to
+   go out uncompressed: 238 KB where 38 KB would do. */
+function acceptedEncoding(req) {
+  var ae = String((req.headers && req.headers['accept-encoding']) || '').toLowerCase();
+  function ok(name) {
+    var m = new RegExp('(?:^|,)\\s*' + name + '\\s*(?:;\\s*q\\s*=\\s*([0-9.]+))?\\s*(?=,|$)').exec(ae);
+    return !!m && !(m[1] != null && +m[1] === 0);
+  }
+  return ok('br') ? 'br' : ok('gzip') ? 'gzip' : '';
+}
+function compressHtml(buf, encoding, best) {
+  if (encoding === 'br') {
+    var params = {};
+    params[zlib.constants.BROTLI_PARAM_QUALITY] = best ? 9 : 5;
+    params[zlib.constants.BROTLI_PARAM_MODE] = zlib.constants.BROTLI_MODE_TEXT;
+    params[zlib.constants.BROTLI_PARAM_SIZE_HINT] = buf.length;
+    return zlib.brotliCompressSync(buf, { params: params });
+  }
+  return zlib.gzipSync(buf, { level: best ? 9 : 6 });
+}
+/* this file's own HTML reader, lent to lib/delivery.js */
+var HTML_TOOLS = { tokenizeHtml: tokenizeHtml, attrValue: attrValue, setAttr: setAttr, dropAttr: dropAttr, writeTag: writeTag };
+function deliverPage(html) { return deliveryLib.deliverPage(html, { tools: HTML_TOOLS }); }
+
+function sendHtml(req, res, status, html, cacheControl, packed) {
   if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
-  var acceptsGzip = /\bgzip\b/.test(String((req.headers && req.headers['accept-encoding']) || ''));
-  var body = gzipped && acceptsGzip ? gzipped : Buffer.from(html, 'utf8');
+  if (Buffer.isBuffer(packed)) packed = { gzip: packed };
+  var raw = Buffer.from(html, 'utf8'), body = raw, encoding = acceptedEncoding(req);
+  if (encoding && raw.length > 1024) {
+    try { body = (packed && packed[encoding]) || compressHtml(raw, encoding, false); }
+    catch (e) { body = raw; }
+  }
+  if (body === raw) encoding = '';
   var headers = {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': cacheControl, 'Content-Length': body.length,
     'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin'
   };
-  if (gzipped && acceptsGzip) headers['Content-Encoding'] = 'gzip';
+  if (encoding) headers['Content-Encoding'] = encoding;
   res.writeHead(status, headers);
   res.end(req.method === 'HEAD' ? undefined : body);
 }
@@ -7409,17 +7633,49 @@ function cachedPage(key) {
   var hit = PAGE_CACHE.get(key);
   if (!hit) return null;
   if (Date.now() - hit.at > PAGE_CACHE_TTL_MS) { PAGE_CACHE.delete(key); return null; }
+  /* delivered before a font stylesheet it links had arrived (lib/delivery.js writes one in only once this
+     server holds it): delivered again from the same page, so the next visitor gets the sheet written in rather
+     than this instance going on sending the link — the slowest request of the first paint — for a minute */
+  if (hit.gen !== deliveryLib.generation()) packPage(hit);
   return hit;
 }
+function packPage(entry) {
+  entry.gen = deliveryLib.generation();
+  var html = deliverPage(entry.source);
+  if (entry.packed && html === entry.html) return entry;           // a sheet another page links: this one is as it was
+  entry.html = html;
+  entry.packed = {};
+  var buf = Buffer.from(entry.html, 'utf8');
+  ['br', 'gzip'].forEach(function (enc) { try { entry.packed[enc] = compressHtml(buf, enc, true); } catch (e) { /* compressed per request instead */ } });
+  return entry;
+}
+/* html: the page as stored; the entry holds it as delivered (lib/delivery.js) and compressed both ways */
 function cachePage(key, html) {
   if (PAGE_CACHE.size >= PAGE_CACHE_MAX) PAGE_CACHE.delete(PAGE_CACHE.keys().next().value);     // oldest first
-  var entry = { at: Date.now(), html: html, gz: null };
-  try { entry.gz = zlib.gzipSync(Buffer.from(html, 'utf8')); } catch (e) { entry.gz = null; }
+  var entry = packPage({ at: Date.now(), source: html });
   PAGE_CACHE.set(key, entry);
   return entry;
 }
 function forgetCachedPage(eventId) {
   PAGE_CACHE.forEach(function (v, k) { if (k.indexOf(eventId + '|') === 0) PAGE_CACHE.delete(k); });
+  LIVE_DOC_CACHE.delete(eventId);
+}
+/* A published page may be kept by the hosting's CDN and by browsers for a minute, and served a little
+   longer while a fresh copy is fetched in the background (stale-while-revalidate): a visitor then almost
+   never waits for this server. Taking a page down or publishing again shows within about a minute. */
+var LIVE_PAGE_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=600';
+/* The event document behind /e/<id>, shared by the requests of a few seconds (and by concurrent ones): a
+   busy page is not one database read per visitor. This instance forgets it at once on publish/unpublish. */
+var LIVE_DOC_CACHE = new Map(), LIVE_DOC_TTL_MS = 5000;
+function liveEventSnap(fb, eventId) {
+  var hit = LIVE_DOC_CACHE.get(eventId);
+  if (hit && Date.now() - hit.at < LIVE_DOC_TTL_MS) return hit.p;
+  if (LIVE_DOC_CACHE.size > 500) LIVE_DOC_CACHE.clear();
+  var p = eventDocRef(fb, eventId).get();
+  var entry = { at: Date.now(), p: p };
+  LIVE_DOC_CACHE.set(eventId, entry);
+  p.catch(function () { if (LIVE_DOC_CACHE.get(eventId) === entry) LIVE_DOC_CACHE.delete(eventId); });
+  return p;
 }
 
 /* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
@@ -7430,12 +7686,13 @@ function handlePublicPage(req, res, eventId) {
     console.error('api: /e/' + eventId + ' — ' + fb.error);
     return sendHtml(req, res, 503, messagePage('This page is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
   }
-  eventDocRef(fb, eventId).get().then(function (snap) {
+  liveEventSnap(fb, eventId).then(function (snap) {
     if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendNotAvailable(req, res);
     var data = snap.data();
-    var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '');
+    /* the banner video is put on the page as it is served (applyHeroVideo): a change to it is a new page */
+    var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '') + '|' + heroVideoStamp(data);
     var hit = cachedPage(key);
-    if (hit) return sendHtml(req, res, 200, hit.html, 'public, max-age=60', hit.gz);
+    if (hit) return sendHtml(req, res, 200, hit.html, LIVE_PAGE_CACHE_CONTROL, hit.packed);
     return readObject(fb, publishedObjectPath(eventId)).then(function (html) {
       if (html == null) return sendNotAvailable(req, res);
       /* A page with no publishedVersion was published by the previous version of this file: the editor's
@@ -7443,18 +7700,32 @@ function handlePublicPage(req, res, eventId) {
          whichever host the editor ran on and carrying no runtime. It goes through the same transform
          here, on its way out, so that it too is root-relative and can take registrations. */
       if (!data.publishedVersion) {
-        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
+        return Promise.all([html, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
+          var formsPayload = got[1];
           html = publishTransform(html, {
-            eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload,
+            eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload, pictures: got[2],
             publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
           });
-          var entry = cachePage(key, html);
-          sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+          return withHeroVideo(fb, html, data).then(function (page) {
+            var entry = cachePage(key, page);
+            sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+          });
         });
       }
-      /* a page published before forms existed: its Register buttons open the form from now on */
-      var entry = cachePage(key, ensureFormsRuntime(html));
-      sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+      /* a page published before forms existed: its Register buttons open the form from now on; one
+         published before its pictures had WebP copies gets them on the way out (pictures.js — a picture
+         that already has them is left alone); and one published before the accessibility and search pass
+         gets it on its way out (site-a11y.js pagePass: idempotent, so a page that already had it comes out
+         the same, its schema.org Event following the event as it is now). Same order as publishTransform,
+         then the banner video as the event has it now (withHeroVideo). */
+      return pictures.prepare(fb, html).then(function (pics) {
+        var page = pictures.rewriteHtml(ensureFormsRuntime(html), pics);
+        page = siteA11y.pagePass(page, { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId }, TOKEN_KIT);
+        return withHeroVideo(fb, page, data);
+      }).then(function (page) {
+        var entry = cachePage(key, page);
+        sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+      });
     });
   }).catch(function (err) {
     console.error('api: /e/' + eventId + ' failed — ' + (err && err.stack || err));
@@ -7506,19 +7777,23 @@ function ownDraftOrSaved(fb, eventId, user) {
 }
 
 function handlePreviewPage(req, res, eventId) {
+  /* who is asking and the event document are read at the same time (they were one after the other);
+     nothing about the event is sent before the sign-in has been checked */
+  var fb = getFirebase();
+  var eventRead = fb.error ? null : eventDocRef(fb, eventId).get();
+  if (eventRead) eventRead.catch(function () { /* answered below, or not needed */ });
   adminFromRequest(req).then(function (user) {
     if (!user) {
       res.writeHead(302, { Location: '/?next=' + encodeURIComponent(req.url), 'Cache-Control': 'no-store' });
       return res.end();
     }
-    var fb = getFirebase();
     if (fb.error) return sendHtml(req, res, 503, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
     var staged = queryOf(req).get('staged') === '1';
     /* ?version=N: that saved version exactly — what a reviewer is shown, and what approving makes live */
     var wantVersion = parseInt(queryOf(req).get('version'), 10);
     if (!(wantVersion > 0)) wantVersion = 0;
     var ownDraft = queryOf(req).get('draft') === '1';
-    return eventDocRef(fb, eventId).get().then(function (snap) {
+    return eventRead.then(function (snap) {
       if (eventStateOf(snap) !== 'live') {
         return sendHtml(req, res, 404, messagePage('This event does not exist', 'It may have been deleted, or the address may be wrong.'), 'no-store');
       }
@@ -7529,6 +7804,7 @@ function handlePreviewPage(req, res, eventId) {
       var source = ownDraft ? ownDraftOrSaved(fb, eventId, user) : wantVersion
         ? readObject(fb, versionPath(eventId, wantVersion)).then(function (t) { return t == null && wantVersion === siteVersionOf(data) ? readObject(fb, sitePath(eventId, 'page.html')) : t; })
         : readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html'));
+      var formsRead = publicFormsFor(fb, eventId, data);         // alongside the page (never rejects)
       return source.then(function (html) {
         if (html == null && wantVersion) {
           return sendHtml(req, res, 404, messagePage('That version is not stored', 'Version ' + wantVersion + ' of this site was saved before versions were kept, or does not exist.'), 'no-store');
@@ -7537,17 +7813,66 @@ function handlePreviewPage(req, res, eventId) {
           return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
         }
         /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
-        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
-          sendHtml(req, res, 200, publishTransform(html, {
-            eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload,
+        return Promise.all([formsRead, pictures.prepare(fb, html)]).then(function (got) {
+          var formsPayload = got[0];
+          return withHeroVideo(fb, publishTransform(html, {
+            eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload, pictures: got[1],
             templateId: (data.site && data.site.templateId) || data.templateId
-          }), 'no-store');
+          }), data);
+        }).then(function (page) {
+          sendHtml(req, res, 200, deliverPage(page), 'no-store');
         });
       });
     });
   }).catch(function (err) {
     console.error('api: /preview/' + eventId + ' failed — ' + (err && err.stack || err));
     sendHtml(req, res, 502, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
+  });
+}
+
+/* =====================================================================================================
+   GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
+   published event's /e/<id> at the address this server is reached at (PUBLIC_BASE_URL when set), except one
+   whose owner gave it a canonical address elsewhere (that address is the one to list, and it is not ours).
+   Built at most every 10 minutes per instance; a failure to read the events is a 503, never an empty list
+   a crawler would believe.
+   ===================================================================================================== */
+var SITEMAP_TTL_MS = 10 * 60 * 1000, sitemapCache = null;
+function sendText(req, res, status, type, text, cacheControl) {
+  var body = Buffer.from(text, 'utf8');
+  var gz = /\bgzip\b/.test(String((req.headers && req.headers['accept-encoding']) || '')) && body.length > 1024;
+  if (gz) body = zlib.gzipSync(body);
+  var headers = { 'Content-Type': type, 'Cache-Control': cacheControl, 'Content-Length': body.length, 'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff' };
+  if (gz) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(status, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+function handleRobotsTxt(req, res) {
+  sendText(req, res, 200, 'text/plain; charset=utf-8', siteSeo.robotsTxt(publicBaseFor(req, '')), 'public, max-age=3600');
+}
+function handleSitemapXml(req, res) {
+  var base = publicBaseFor(req, '');
+  if (sitemapCache && sitemapCache.base === base && Date.now() - sitemapCache.at < SITEMAP_TTL_MS) {
+    return sendText(req, res, 200, 'application/xml; charset=utf-8', sitemapCache.xml, 'public, max-age=600');
+  }
+  var fb = getFirebase();
+  if (fb.error) return sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
+  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'settings').get().then(function (snap) {
+    var entries = [];
+    snap.docs.forEach(function (d) {
+      var e = d.data() || {};
+      if (eventStateOf(d) !== 'live' || !isEventId(d.id)) return;
+      /* the QA harness's short-lived test copies (always "qa-…", deleted after each run) are no site to list */
+      if (/^qa-/.test(d.id)) return;
+      if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return;
+      entries.push({ loc: base + publicPathOf(d.id), lastmod: typeof e.publishedAt === 'string' ? e.publishedAt : '' });
+    });
+    entries.sort(function (a, b) { return a.loc < b.loc ? -1 : a.loc > b.loc ? 1 : 0; });
+    sitemapCache = { at: Date.now(), base: base, xml: siteSeo.sitemapXml(entries) };
+    sendText(req, res, 200, 'application/xml; charset=utf-8', sitemapCache.xml, 'public, max-age=600');
+  }).catch(function (err) {
+    console.error('api: /sitemap.xml failed — ' + (err && err.stack || err));
+    sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
   });
 }
 
@@ -7596,6 +7921,7 @@ function inModule(moduleName, handlerName) {
 var events = function (handler) { return inModule('api-events', handler); };
 var audience = function (handler) { return inModule('api-audience', handler); };
 var formsRoute = function (handler) { return inModule('api-forms', handler); };
+var heroVideo = function (handler) { return inModule('api-hero-video', handler); };
 
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
@@ -7639,6 +7965,11 @@ var ROUTES = {
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),
   'POST /api/event/upload': events('handleUpload'),
+  'GET /api/event/hero-video': heroVideo('handleHeroVideoGet'),
+  'PUT /api/event/hero-video': heroVideo('handleHeroVideoSave'),
+  'DELETE /api/event/hero-video': heroVideo('handleHeroVideoRemove'),
+  'POST /api/event/hero-video/upload': heroVideo('handleHeroVideoUpload'),
+  'POST /api/event/hero-video/check': heroVideo('handleHeroVideoCheck'),
 
   'GET /api/event/site': handleSiteGet,
   'PUT /api/event/site': handleSitePut,
@@ -7704,6 +8035,11 @@ function routeApi(req, res) {
     return page[1] === 'e' ? handlePublicPage(req, res, eventId) : handlePreviewPage(req, res, eventId);
   }
 
+  if (urlPath === '/robots.txt' || urlPath === '/sitemap.xml') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
+    return urlPath === '/robots.txt' ? handleRobotsTxt(req, res) : handleSitemapXml(req, res);
+  }
+
   if (req.method === 'OPTIONS' && isPublicApiPath(urlPath)) return audience('handlePublicOptions')(req, res);
 
   var handler = ROUTES[req.method + ' ' + urlPath];
@@ -7733,6 +8069,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, ensureFormsRuntime, FORMS_RUNTIME_V, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

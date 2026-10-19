@@ -62,6 +62,7 @@ const {
 const { logActivity, listActivity, actorOf } = require('./activity');
 const forms = require('./forms');
 const phone = require('./phone');
+const pictures = require('./pictures');
 
 const FieldValue = admin.firestore.FieldValue;
 const FieldPath = admin.firestore.FieldPath;
@@ -545,7 +546,7 @@ function buildSiteData(fb, eventId, ev) {
       return isObj(s) ? { kind: line(s.kind, 20).toLowerCase(), url: linkUrl(s.url) } : null;
     }).filter(function (s) { return s && s.url && SOCIAL_KINDS.indexOf(s.kind) !== -1; });
 
-    return {
+    var siteData = {
       eventId: eventId,
       updatedAt: updatedAt,
       event: {
@@ -588,6 +589,17 @@ function buildSiteData(fb, eventId, ev) {
       }),
       social: social
     };
+    /* the WebP copies of the records' pictures that have them (lib/pictures.js), for rv-data.js to offer
+       the visitor's browser: { url: 'hash.WxH:640,1280' }. Present only when there are some. */
+    var urls = [].concat(
+      siteData.speakers.map(function (x) { return x.photoUrl; }),
+      siteData.partners.map(function (x) { return x.logoUrl; }),
+      siteData.gallery.map(function (x) { return x.imageUrl; }));
+    return pictures.lookupUrls(fb, urls.filter(Boolean)).then(function (index) {
+      var map = pictures.siteDataMap(index);
+      if (Object.keys(map).length) siteData.pictures = map;
+      return siteData;
+    }, function () { return siteData; });
   });
 }
 

@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const admin = require('firebase-admin');
 const { sendJson, parseJsonBody, requireAdmin, isEventId, isReservedEventId, str } = require('./http');
 const { logActivity, actorOf } = require('./activity');
+const pictures = require('./pictures');
 
 /* Runs fn; a synchronous throw becomes a 500 for this request instead of an uncaught exception. */
 function guard(res, where, fn) {
@@ -286,6 +287,7 @@ function handleUpload(req, res) {
              it for a year without asking again. (Replacing a picture means a new upload and a new URL.) */
           return file.save(buffer, {
             resumable: false,
+            gzip: pictures.gzipWorthIt(contentType, buffer),     // an SVG is stored gzipped: sent compressed (pictures.js)
             metadata: {
               contentType: contentType,
               cacheControl: 'public, max-age=31536000, immutable',
@@ -298,7 +300,13 @@ function handleUpload(req, res) {
             return file.delete().catch(function () { /* best effort */ }).then(function () { throw err; });
           });
         }).then(function () {
-          sendJson(res, 200, { url: publicUrl(fb, storagePath), path: storagePath, contentType: contentType, size: buffer.length });
+          /* WebP copies at a few widths, next to the original (lib/pictures.js): the page a visitor sees
+             loads those. A picture that gets none (an SVG, a GIF, a failure, too slow) is shown as it is. */
+          return kind === 'brief' ? null : pictures.storeVariants(fb, storagePath, buffer, { budgetMs: 20000 });
+        }).then(function (made) {
+          var answer = { url: publicUrl(fb, storagePath), path: storagePath, contentType: contentType, size: buffer.length };
+          if (made) { answer.width = made.width; answer.height = made.height; }
+          sendJson(res, 200, answer);
         }).catch(function (err) { fail(res, 'upload', err, 'The image could not be stored. Please try again.'); });
       });
     }, MAX_UPLOAD_BODY, 'That file is too large. Images can be up to 8 MB.');
@@ -576,6 +584,9 @@ function copyFiles(fb, src, dst, rewrite, written) {
   return fb.bucket.getFiles({ prefix: prefix }).then(function (r) {
     var files = (r[0] || []).filter(function (f) {
       var rest = f.name.slice(prefix.length), folder = rest.split('/')[0];
+      /* a banner video uploaded but not yet checked (lib/api-hero-video.js) is private until its bytes are
+         read: a copy, made public below, must not skip that check */
+      if (((f.metadata || {}).metadata || {}).rvPending === '1') return false;
       return rest && rest.indexOf('/') !== -1 && !/\/$/.test(rest) && NOT_CLONED_FOLDERS.indexOf(folder) === -1;
     });
     return eachLimit(files, CLONE_CONCURRENCY, function (f) {

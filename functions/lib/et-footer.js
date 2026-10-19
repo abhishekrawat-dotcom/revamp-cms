@@ -13,7 +13,8 @@
         data = { portal: slug, mode: 'light' | 'dark' (the logo's version), year: 2026,
                  events: [EVENT] (from et-events.js listUpcoming, already passed through happening()),
                  event: { name, date, place, button: { label, href, register } } | null,
-                 buttonInk: '#ffffff' | '#14161b' (the button's text on the theme colour) }
+                 buttonInk: '#ffffff' | '#14161b' | '#000000' (the button's text on the theme colour, when the page
+                 does not set --rv-on-theme) }
 
    PORTAL = { slug, site, home, logo: { onLight, onDark }, logoAlt, links: [ [[label, href]], [[label, href]] ] (columns),
               social: [{ kind: 'x'|'facebook'|'linkedin', href }], escalation: { email, who },
@@ -243,8 +244,9 @@ function build(data) {
     '.' + c + '-event-text{min-width:0;flex:1 1 320px}',
     '.' + c + '-event-name{margin:0;font-family:var(--heading-font-family);font-size:1.375rem;font-weight:700;line-height:1.25;color:var(--rv-text);overflow-wrap:anywhere}',
     '.' + c + '-event-meta{margin:6px 0 0;font-size:0.9375rem;line-height:1.5;color:var(--rv-muted)}',
-    /* the button keeps its ink in every theme (its ground is the theme colour) */
-    '.' + c + '-event-btn{--rv-keep:1;display:inline-flex;align-items:center;justify-content:center;text-align:center;padding:14px 30px;border-radius:var(--rv-radius,8px);background:var(--theme-color);color:' + ink + ';font-family:var(--body-font-family);font-size:0.9375rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;text-decoration:none;transition:transform .25s ease,box-shadow .25s ease}',
+    /* the button keeps its ink in every theme (its ground is the theme colour): the page's button ground and words
+       (--rv-theme-fill, --rv-on-theme: rv-theme.js derivedVars, 4.5:1), this colour's own ink as the fallback */
+    '.' + c + '-event-btn{--rv-keep:1;display:inline-flex;align-items:center;justify-content:center;text-align:center;padding:14px 30px;border-radius:var(--rv-radius,8px);background:var(--rv-theme-fill,var(--theme-color));color:var(--rv-on-theme,' + ink + ');font-family:var(--body-font-family);font-size:0.9375rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;text-decoration:none;transition:transform .25s ease,box-shadow .25s ease}',
     '.' + c + '-event-btn:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(0,0,0,.5)}',
     '.' + c + '-top{border-bottom:1px solid ' + rule + '}',
     '.' + c + '-top-in{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px 24px;padding-top:20px;padding-bottom:20px}',
