@@ -571,7 +571,8 @@ function imagePrompt(subject, design, opts) {
     graphic ? '' : design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
     'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents' + (graphic ? '.' : ' in the lighting.'),
     'Every picture on this site shares this one style, so that they read as a set.',
-    opts.hero ? 'Landscape, 16:9.' : 'Landscape, 4:3.',
+    /* the model paints the event's name into a hero it is told the name will sit over: said outright */
+    opts.hero ? 'The picture itself carries no words at all — never the event\'s name, its date or its place, no title card, no lettering on stage screens or banners: the site sets the name and the buttons over it. Landscape, 16:9.' : 'Landscape, 4:3.',
     graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) + IMAGE_TAIL
   ];
   return lines.filter(Boolean).join(' ');
