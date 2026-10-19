@@ -587,6 +587,50 @@
     }).observe(document.body, { childList: true, subtree: true });
   }
 
+  /* ---------- headings that fit ----------
+     On an AI-designed site (body.rv-generated) a heading whose longest word is wider than its place — a web
+     address set in capitals, a long surname on a speaker's card, on a 360px phone — is set smaller until it fits,
+     down to 60% of its size (never under 16px), and only then allowed to break inside the word. Its size comes
+     back whenever the window is wide enough again. Only on the live page and the preview: never while editing, so
+     a size set here is never saved with the page. */
+  var fitTimer = 0;
+  var FIT_HEADINGS = '[data-rv-section] h1, [data-rv-section] h2, [data-rv-section] h3, [data-rv-section] h4';
+  /* a big numeral of a band of numbers ("300+", "₹50,000 Cr"): fitted the same way, never broken */
+  var FIT_NUMERALS = '[data-rv-section] [class*="num"], [data-rv-section] [class*="stat"], [data-rv-section] [class*="count"], [data-rv-section] [class*="figure"], [data-rv-section] [class*="metric"]';
+  function fitHeading(h, heading) {
+    if (!Object.prototype.hasOwnProperty.call(h, '__rvFitFrom')) h.__rvFitFrom = h.style.fontSize;
+    if (h.__rvFitted) { h.style.fontSize = h.__rvFitFrom; h.style.overflowWrap = ''; h.__rvFitted = false; }
+    var box = h.parentElement, hs = getComputedStyle(h);
+    if (!box || !h.offsetWidth || hs.display === 'inline') return;
+    /* a decorative figure placed out of the flow (a large "2026" behind a section) is meant to be cut off */
+    if (hs.position === 'absolute' || hs.position === 'fixed' || h.closest('[aria-hidden="true"]')) return;
+    var bs = getComputedStyle(box);
+    var room = box.clientWidth - (parseFloat(bs.paddingLeft) || 0) - (parseFloat(bs.paddingRight) || 0);
+    function over() { return h.scrollWidth > h.clientWidth + 1 || (room > 0 && h.offsetWidth > room + 1); }
+    if (!over()) return;
+    var size = parseFloat(getComputedStyle(h).fontSize), floor = Math.max(16, size * 0.6);
+    h.__rvFitted = true;
+    while (over() && size - 1 >= floor) { size -= 1; h.style.fontSize = size + 'px'; }
+    if (!over()) return;
+    /* smaller type did not help (the box itself is too wide): its own size back; a heading may then break */
+    h.style.fontSize = h.__rvFitFrom;
+    if (heading) h.style.overflowWrap = 'anywhere';
+  }
+  function fitHeadings() {
+    if (editing() || !document.body || !document.body.classList.contains('rv-generated')) return;
+    each(document.querySelectorAll(FIT_HEADINGS), function (h) { fitHeading(h, true); });
+    each(document.querySelectorAll(FIT_NUMERALS), function (n) { if (!n.children.length && !/^H[1-6]$/.test(n.tagName)) fitHeading(n, false); });
+  }
+  function watchHeadings() {
+    if (editing() || !document.body || !document.body.classList.contains('rv-generated')) return;
+    fitHeadings();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHeadings);
+    window.addEventListener('load', fitHeadings);
+    window.addEventListener('resize', function () { clearTimeout(fitTimer); fitTimer = setTimeout(fitHeadings, 150); });
+    /* records filled in after the page (speakers' names) */
+    setTimeout(fitHeadings, 1500);
+  }
+
   /* ---------- a section's own script ----------
      What was written under JS in the editor's developer zone is kept in the section as
      <script type="text/plain" data-rv-js>: text, so nothing runs it by accident. On the live page it is run
@@ -617,11 +661,19 @@
     '[data-rv-carousel] button:disabled{opacity:.35;cursor:default}',
     '.rv-carousel-prev{left:8px}',
     '.rv-carousel-next{right:8px}',
+    /* on a phone the buttons would sit over the photos and names of the cards: they go under the row, side by side */
+    '@media (max-width:640px){[data-rv-carousel]:has(> .rv-carousel-btn:not([hidden])){padding-bottom:60px}' +
+      '[data-rv-carousel] > .rv-carousel-btn{top:auto;bottom:0;transform:none}' +
+      '[data-rv-carousel] > .rv-carousel-prev{left:calc(50% - 52px)}[data-rv-carousel] > .rv-carousel-next{right:calc(50% - 52px)}}',
     'html[data-rv-editing] [data-rv-carousel-track]{flex-wrap:wrap!important;overflow:visible!important;height:auto!important}',
     'html[data-rv-editing] [data-rv-carousel] :has(> [data-rv-carousel-track]){height:auto!important;overflow:visible!important}'
   ].join('\n');
   function carouselCss() {
-    if (document.querySelector('style[data-rv-carousel-css]') || !document.head) return;
+    /* a page saved from the editor carries the copy this script wrote then: it is brought up to date, so a
+       change to these rules reaches pages saved before it */
+    var had = document.querySelector('style[data-rv-carousel-css]');
+    if (had) { if (had.textContent !== CAROUSEL_CSS) had.textContent = CAROUSEL_CSS; return; }
+    if (!document.head) return;
     var st = document.createElement('style');
     st.setAttribute('data-rv-carousel-css', '');
     st.textContent = CAROUSEL_CSS;
@@ -975,7 +1027,7 @@
     goTo: goTo
   };
 
-  function start() { reveal(); settleImported(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); arrive(); }
+  function start() { reveal(); settleImported(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

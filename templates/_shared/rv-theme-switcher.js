@@ -56,32 +56,31 @@
   box.setAttribute('aria-label', 'Try a theme');
   box.style.cssText = 'position:fixed;right:16px;bottom:44px;z-index:2147483001;display:flex;flex-direction:column;gap:8px;padding:12px;' +
     'border-radius:14px;background:#191b1f;color:#fff;box-shadow:0 12px 32px rgba(0,0,0,.35);font:500 13px/1.3 Inter,Arial,sans-serif;max-width:min(320px,calc(100vw - 32px))';
-  /* on a phone the box would cover much of the page: it starts as a small "Theme" pill that opens on a tap */
-  var folded = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+  /* on a phone the open panel would cover the hero's buttons: it starts as one small "Theme" button, opened by a tap
+     and folded again by its × */
+  var narrow = !!(window.matchMedia && window.matchMedia('(max-width: 640px)').matches);
+  var open = !narrow;
   function draw() {
     box.innerHTML = '';
-    if (folded) {
+    box.style.padding = open ? '12px' : '0';
+    if (!open) {
       var pill = document.createElement('button');
       pill.type = 'button';
-      pill.textContent = 'Theme';
       pill.setAttribute('aria-expanded', 'false');
       pill.setAttribute('aria-label', 'Try a theme');
-      pill.style.cssText = 'border:0;background:transparent;color:#ffffff;font:inherit;font-weight:700;cursor:pointer;padding:2px 4px';
-      pill.onclick = function () { folded = false; draw(); };
-      box.style.padding = '8px 12px';
-      box.style.borderRadius = '999px';
+      pill.textContent = 'Theme';
+      pill.style.cssText = 'border:0;border-radius:999px;background:#191b1f;color:#fff;font:600 13px/1 Inter,Arial,sans-serif;letter-spacing:.04em;padding:12px 16px;min-height:44px;cursor:pointer';
+      pill.onclick = function () { open = true; draw(); };
       box.appendChild(pill);
       return;
     }
-    box.style.padding = '12px';
-    box.style.borderRadius = '14px';
     var head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px';
     head.innerHTML = '<b style="font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:11px;color:#c9cdd6">Theme</b>';
     var hide = document.createElement('button');
-    hide.type = 'button'; hide.textContent = '×'; hide.setAttribute('aria-label', 'Hide the theme switcher');
+    hide.type = 'button'; hide.textContent = '×'; hide.setAttribute('aria-label', narrow ? 'Fold the theme switcher' : 'Hide the theme switcher');
     hide.style.cssText = 'border:0;background:transparent;color:#c9cdd6;font-size:18px;line-height:1;cursor:pointer;padding:0 2px';
-    hide.onclick = function () { if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) { folded = true; draw(); } else box.remove(); };
+    hide.onclick = function () { if (narrow) { open = false; draw(); } else box.remove(); };
     head.appendChild(hide);
     box.appendChild(head);
     var row = document.createElement('div');

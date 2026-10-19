@@ -220,6 +220,23 @@ function clampFontSizes(css) {
 var capHeadingSizes = rvType.capHeadingSizes;
 var HEADING_SCALE = { section: rvType.SECTION_HEADING, sub: rvType.SUB_HEADING, sectionMaxPx: rvType.SECTION_MAX_PX, subMaxPx: rvType.SUB_MAX_PX };
 
+/* ---------- phones ----------
+   What a section the model writes must do at a phone's width, in the prompts that write a site and that remake a
+   section (functions/lib/api.js). Most of ET's visitors read on a phone; the page is checked at 360px. The page
+   itself holds every section to the same floor whatever the model wrote (templates/_shared/gen-base.css, the
+   "Phones" rules; gen-markup.js mobileSafeCss; et-runtime.js fits a heading too wide for the screen), so these
+   ask for a section that needs none of that. */
+var MOBILE_RULES = [
+  '- PHONES (most visitors read on a phone; every section is checked at 360px wide, where the container leaves 312px for content):',
+  '  · Under 820px every grid, split and row of cards is ONE column in reading order (a band of numbers may keep two per row). A picture beside text goes above or below it at full width with a fixed height (aspect-ratio 16/10, or 220–320px) — never a min-height over 340px on a phone.',
+  '  · Under 640px: the section\'s vertical padding is 56–64px; the container keeps padding 0 24px; cards have padding 20–24px; gaps 16–24px.',
+  '  · Calls to action under 640px: every button is the full width of the container (display:flex; width:100%; justify-content:center; text-align:center), at least 48px tall, its label free to wrap; two buttons stack with a 12px gap. Give each button a class that ends in -btn.',
+  '  · Alignment: a section is either centred or left-aligned throughout — its heading, its text and its buttons the same way; never a centred heading over left-aligned buttons.',
+  '  · Nothing wider than its place: no fixed width, min-width or flex-basis over 300px without max-width:100% (write width:min(420px,100%)); grid columns as repeat(auto-fit, minmax(min(260px,100%), 1fr)); grid and flex children that hold text get min-width:0; no white-space:nowrap on text longer than three words; no negative margins or absolute positioning that reaches past the screen.',
+  '  · Headings: no letter-spacing over .02em on a heading; its longest word must fit 312px at its phone size (a web address or a long name in capitals: write it in a smaller size or not in capitals).',
+  '  · Tap targets at least 44px; text never below 0.875rem.'
+].join('\n');
+
 /* ---------- the event's logo ---------- */
 
 function escAttr(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -562,6 +579,6 @@ function imagePrompt(subject, design, opts) {
 
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
-  markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE,
+  markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE, MOBILE_RULES,
   ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

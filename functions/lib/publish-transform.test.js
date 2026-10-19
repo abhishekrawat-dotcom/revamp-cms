@@ -129,6 +129,14 @@ ok(genOut.indexOf(HERO_CSS) !== -1, 'the hero keeps its own type');
 ok(genOut.indexOf('.overview-num{font-size:4rem}') !== -1, 'stat numerals are left alone');
 ok(publishTransform(GEN_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: null }).indexOf('.overview-title{font-size:clamp(1.75rem, 3.069vw, 2.375rem)') !== -1, 'known as AI-designed by its own body when no template id is given');
 ok(publishTransform(genOut, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture' }) === genOut, 'running it again changes nothing');
+/* ---- an AI-designed site held to a phone's width: a grid's cells may shrink, no fixed width wider than its place ---- */
+var WIDE_CSS = '[data-rv-section="about"] .about-wrap{display:grid;grid-template-columns:2fr 1fr}[data-rv-section="about"] .about-card{width:480px}';
+var WIDE_PAGE = GEN_PAGE.replace('<style data-rv-design>', '<style data-rv-style="about">' + WIDE_CSS + '</style><style data-rv-design>');
+var wideOut = publishTransform(WIDE_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture' });
+ok(wideOut.indexOf(':where([data-rv-section="about"] .about-wrap) > *') !== -1 && wideOut.indexOf('.about-card{width:min(480px, 100%)}') !== -1, 'an AI-designed page: its sections are held to a phone\'s width', wideOut.slice(0, 900));
+ok(publishTransform(wideOut, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture' }) === wideOut, 'and running it again changes nothing');
+ok(publishTransform(WIDE_PAGE.replace(' data-rv-template-id="gen-qa-fixture" class="microsite rv-generated"', ' class="home"'), { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'tech500' }).indexOf(WIDE_CSS) !== -1, 'a ported template\'s widths are not touched');
+
 var fixed = GEN_PAGE.replace(' data-rv-template-id="gen-qa-fixture" class="microsite rv-generated"', ' class="home"');
 ok(publishTransform(fixed, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'tech500' }).indexOf(OVERVIEW_CSS) !== -1, 'a ported template\'s CSS is not touched');
 

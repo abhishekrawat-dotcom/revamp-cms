@@ -211,7 +211,7 @@ function spreadOf(px, at) {
   at.forEach(function (i) { if (Math.abs(px[i] - m[0]) + Math.abs(px[i + 1] - m[1]) + Math.abs(px[i + 2] - m[2]) > 80) off++; });
   return off / at.length;
 }
-const { scopeSectionCss, sectionRootInfo } = require('./gen-markup');
+const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
 const { diffPages, summarise } = require('./page-diff');
@@ -2893,6 +2893,7 @@ function buildSectionCodePrompt(payload) {
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem; primary = var(--theme-color) background with a readable text colour; secondary = outlined.',
     '- TYPE MUST BE EASY TO READ. Use rem or px for every font-size — never em or %. Paragraph and list text: 1.125rem (18px) or larger, line-height 1.65, in var(--rv-text) or var(--rv-muted), lines no longer than about 70 characters (max-width: 68ch). Section headings (h2): exactly ' + genDesign.HEADING_SCALE.section + ', line-height 1.15 — calm and confident, never larger (not even in capitals or a heavy weight); the hero, which the server builds, holds the page\'s only h1. Sub-headings and card titles (h3): ' + genDesign.HEADING_SCALE.sub + '. Small labels and captions: never below 0.875rem. Only a band of big numbers may be set larger than a section heading. Set font-family, font-size, line-height and color explicitly on the text you write; do not rely on inherited values.',
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
+    genDesign.MOBILE_RULES,
     '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
     '- MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section\'s heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section\'s root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.',
     '- CAROUSELS: any section with a row of more items than fit may be a carousel — speakers, partner logos, photos, testimonials, and also discussion topics, tracks or reasons to attend when there are many — but only where it suits the content; a short list is better laid out in full. Mark the wrapper with data-rv-carousel and the element that directly holds the items with data-rv-carousel-track. MOVING ON ITS OWN (data-rv-carousel="auto") is for logos and photos only, and at most one in what you write: many things moving at once tires a visitor (the server keeps no more than two on a page, never in neighbouring sections). Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
@@ -3330,7 +3331,7 @@ function buildRedesignPrompt(payload) {
     '- Content sits in a container: max-width 1200px, margin 0 auto, padding 0 24px. The section has vertical padding clamp(64px, 9vw, 128px).',
     '- Corner radius ' + radius + ' on cards, pictures and inputs. Buttons: padding 15px 30px, radius ' + radius + ', font-weight 600, font-size 1rem.',
     '- Type: rem or px only. Paragraph and list text 1.125rem or larger with line-height 1.65 and lines no longer than 68ch; ' + (payload.generated === false ? 'keep the template\'s existing heading sizes and heading levels (px only)' : payload.sectionId === 'hero' ? 'the hero keeps its own headline size' : 'section heading (h2) exactly ' + genDesign.HEADING_SCALE.section + ', never larger, and no h1') + (payload.generated === false ? '' : '; sub-headings and card titles (h3) ' + genDesign.HEADING_SCALE.sub) + '; nothing below 0.875rem; only a band of big numbers may be larger than the heading. Set font-family, font-size, line-height and color explicitly.',
-    '- Responsive without script: grids and splits collapse to one column under 820px; nothing causes sideways scrolling.',
+    '- Responsive without script: grids and splits collapse to one column under 820px; nothing causes sideways scrolling.' + (payload.generated === false ? '' : '\n' + genDesign.MOBILE_RULES),
     '- Light motion: data-rv-reveal (or ="left", "right", "zoom", "fade") on a few blocks that should ease in on scroll — the page animates them, write no opacity:0 or keyframes for it; a gentle hover lift on cards and buttons.',
     '- A row with more items than fit may be a carousel: data-rv-carousel on the wrapper, data-rv-carousel-track on the element holding the items, a width on each item; the page adds the buttons — never draw arrows or dots.',
     '',
@@ -3396,9 +3397,13 @@ function handleRedesignSection(req, res) {
         /* no heading above the site's type scale, as when the site was made (the hero keeps its own type) */
         if (sectionId !== 'hero' && payload.generated !== false) newCss = genDesign.capHeadingSizes(newCss, newHtml);
         newCss = genDesign.restorePictures(newCss, pictures, found[0] || '');
+        var scopedCss = scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml));
+        /* an AI-designed site's section is held to a phone's width as soon as it is remade, as on the published
+           page (gen-markup.js mobileSafeCss; idempotent); a fixed template's CSS is left as it was written */
+        if (payload.generated !== false) scopedCss = mobileSafeCss(scopedCss);
         sendJson(res, 200, {
           sectionId: sectionId, html: newHtml,
-          css: scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml)),
+          css: scopedCss,
           summary: String(r.parsed.summary || '').trim().slice(0, 300)
         });
       });
@@ -3677,6 +3682,8 @@ function handleGeneratedSection(req, res) {
     /* a colour of the design's palette written as a fixed value becomes its variable, so every theme reaches
        it (templates/_shared/rv-theme.js); the hero banner keeps its own tone */
     if (sectionId !== 'hero' && data.designPlan && data.designPlan.design) css = rvTheme.themableCss(css, data.designPlan.design);
+    /* held to a phone's width (gen-markup.js; idempotent), as on the published page */
+    css = mobileSafeCss(css);
     sendJson(res, 200, { html: html, css: css });
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
 }
@@ -6201,15 +6208,19 @@ function publishTransform(html, opts) {
   rewriteOriginTokens(html, tokens, out, origins);
   /* an AI-designed site: no section heading louder than the site's type scale (genDesign.capHeadingSizes —
      idempotent), so a page saved before the scale was calmed is calm in the preview and when it is published.
-     Only the sections' own stylesheets; the hero banner keeps its own type. */
+     Only the sections' own stylesheets; the hero banner keeps its own type. Every section, the hero too, is held
+     to a phone's width (mobileSafeCss — idempotent): a page saved before that is put right the same way. */
   var bodyTag = bodyOpen !== -1 ? tokens[bodyOpen] : null;
   if (/^gen-/.test(String(opts.templateId || '')) || (bodyTag && (/^gen-/.test(attrValue(bodyTag, 'data-rv-template-id') || '') || classListOf(bodyTag).indexOf('rv-generated') !== -1))) {
     var headingMap = null;
     for (i = 0; i < tokens.length - 1; i++) {
       var sheet = tokens[i], sheetId = sheet.t === 'open' && sheet.name === 'style' ? attrValue(sheet, 'data-rv-style') : null;
-      if (sheetId == null || sheetId === 'hero' || out[i] === '' || tokens[i + 1].t !== 'raw') continue;
-      if (!headingMap) headingMap = genDesign.headingClasses(html);
-      out[i + 1] = genDesign.capHeadingSizes(out[i + 1], headingMap);
+      if (sheetId == null || out[i] === '' || tokens[i + 1].t !== 'raw') continue;
+      if (sheetId !== 'hero') {
+        if (!headingMap) headingMap = genDesign.headingClasses(html);
+        out[i + 1] = genDesign.capHeadingSizes(out[i + 1], headingMap);
+      }
+      out[i + 1] = mobileSafeCss(out[i + 1]);
     }
   }
 
