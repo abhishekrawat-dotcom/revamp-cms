@@ -1,6 +1,6 @@
 /* node functions/lib/gen-markup.test.js — exits 1 on the first failure it lists. */
 
-const { scopeSectionCss, sectionRootInfo, rootIsStyled } = require('./gen-markup');
+const { scopeSectionCss, sectionRootInfo, rootIsStyled, mobileSafeCss } = require('./gen-markup');
 
 var failures = [], checks = 0;
 function ok(cond, label, detail) { checks++; if (!cond) failures.push(label + (detail ? '\n      ' + detail : '')); }
@@ -102,6 +102,35 @@ out = scopeSectionCss('.a{color:red}', 'my-section_2');
 has(out, '[data-rv-section="my-section_2"] .a,[data-rv-section="my-section_2"].a{color:red}', 'ids with hyphens and underscores');
 ok(sectionRootInfo('') === null && sectionRootInfo('just text') === null && sectionRootInfo(null) === null, 'sectionRootInfo: no element, no info');
 ok(sectionRootInfo('<!-- c -->\n <SECTION CLASS="a  b">x</SECTION><div></div>').tag === 'section', 'sectionRootInfo: the first element, whatever comes before it');
+
+/* ---- mobileSafeCss: a section held to a phone's width ---- */
+var AV = '[data-rv-section="about"]';
+var SHEET = AV + ' .wrap,' + AV + '.wrap{display:grid;grid-template-columns:2fr 1fr;gap:56px}' +
+  AV + ' .card{width:420px;min-width:320px;flex:0 0 360px}' + AV + ' .icon{width:40px;flex:0 0 40px}' +
+  '@media (max-width:820px){' + AV + ' .wrap{grid-template-columns:1fr}' + AV + ' .list{display:inline-grid}}' +
+  AV + ' .row{display:flex;width:100%}@keyframes rv-about-x{from{width:600px}to{width:0}}';
+var safe = mobileSafeCss(SHEET);
+has(safe, AV + ' .card{width:min(420px, 100%);min-width:min(320px, 100%);flex:0 0 min(360px, 100%)}', 'a fixed width over 240px may not be wider than its place');
+has(safe, AV + ' .icon{width:40px;flex:0 0 40px}', 'a small fixed width is left alone');
+has(safe, ':where(' + AV + ' .wrap,' + AV + '.wrap) > *{min-width:0}', 'the cells of a grid may shrink below their widest word');
+has(safe, '@media (max-width:820px){' + AV + ' .wrap{grid-template-columns:1fr}' + AV + ' .list{display:inline-grid}/* rv-grid-cells */:where(' + AV + ' .list) > *{min-width:0}}', 'a grid made inside @media gets its rule in that @media');
+has(safe, 'from{width:600px}', 'keyframes are not touched');
+lacks(safe, ':where(' + AV + ' .row)', 'a flex row is not a grid');
+ok(mobileSafeCss(safe) === safe, 'mobileSafeCss is idempotent', flat(mobileSafeCss(safe)));
+ok(mobileSafeCss('.a{color:red}') === '.a{color:red}', 'a sheet with nothing to change comes back byte for byte');
+ok(mobileSafeCss('') === '' && mobileSafeCss(null) === '' && mobileSafeCss('}}} {{{ <<<') === '}}} {{{ <<<', 'empty and unreadable sheets come back as they were');
+has(mobileSafeCss('.a::before{display:grid}.b{width:min(500px,100%)}'), '.a::before{display:grid}.b{width:min(500px,100%)}', 'a pseudo-element grid and a width already in min() are left alone');
+lacks(mobileSafeCss('.a::before{display:grid}'), ':where(', 'no cell rule for a pseudo-element');
+var NW = '[data-rv-section="p"] .note{white-space:nowrap;letter-spacing:.08em}[data-rv-section="p"] .row{display:flex;white-space:nowrap}' +
+  '[data-rv-section="p"] .scroll{overflow-x:auto;white-space:nowrap}[data-rv-section="nav"] .links{white-space:nowrap}[data-rv-section="p"] .ell{white-space:nowrap;text-overflow:ellipsis}';
+var nw = mobileSafeCss(NW);
+has(nw, '/* rv-phone-wrap */@media (max-width:640px){[data-rv-section="p"] .note{white-space:normal}}', 'one-line text wraps on a phone');
+ok(flat(nw).indexOf(flat(NW)) === 0, 'the section\'s own rules are kept as they were');
+ok(mobileSafeCss(nw) === nw, 'the wrap rule is added once');
+lacks(nw, '.row{white-space:normal', 'a flex row is spared');
+lacks(nw, '.scroll{white-space:normal', 'a box that scrolls its own line is spared');
+lacks(nw, '.links{white-space:normal', 'the top bar is spared');
+lacks(nw, '.ell{white-space:normal', 'text cut with an ellipsis is spared');
 
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');

@@ -148,6 +148,9 @@ var noted = g.logoUnitImageHtml({ url: 'https://x.example/u.png', mode: 'light',
 ok(noted.indexOf('data-rv-logo-note="It still shows 2026 &quot;as drawn&quot; &lt;b&gt;"') !== -1 && noted.indexOf('<span class="rv-lu-plate rv-lu-plate-dark"><img') !== -1 && noted.indexOf('rv-lu-on-light') !== -1 && !/width=/.test(noted), 'the note travels on the unit, escaped; a plate when asked; no size when none is known', noted);
 ok(g.logoUnitImageHtml({ url: 'https://x.example/u.png', plate: 'purple' }).indexOf('rv-lu-plate') === -1, 'an unknown plate is no plate');
 
+/* the phone rules the prompts carry: what gen-base.css's "Phones" floor relies on (buttons named -btn, one column) */
+ok(typeof g.MOBILE_RULES === 'string' && /360px/.test(g.MOBILE_RULES) && /-btn/.test(g.MOBILE_RULES) && /ONE column/.test(g.MOBILE_RULES) && /min-width:0/.test(g.MOBILE_RULES), 'the phone rules name the checked width, the button class, one column and shrinkable cells');
+
 if (failures.length) {
   console.log(failures.length + ' of ' + checks + ' checks FAILED:\n\n  - ' + failures.join('\n  - '));
   process.exit(1);

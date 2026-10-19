@@ -218,6 +218,103 @@ function scopeSectionCss(css, sectionId, rootInfo) {
   return containment + (body ? '\n' + body : '');
 }
 
+/* ---------- holding a section to a phone's width ----------
+   mobileSafeCss(css) -> the section's stylesheet with the two things that most often push a model's section past
+   the edge of a 360px screen made safe, whatever breakpoints the model wrote:
+     · a box given a fixed width (or min-width, or flex-basis) of WIDE_PX or more may not be wider than its place:
+       width: 420px  ->  width: min(420px, 100%). Below that width nothing changes, so a desktop is untouched.
+     · the cells of a grid may shrink below their content's widest word (CSS gives every grid cell min-width:auto,
+       so one long word or a wide picture widens its whole column past the screen): a rule
+       :where(<the grid's selectors>) > *{min-width:0}, which every rule of the section's own outweighs.
+     · text set white-space:nowrap wraps under 640px (one @media block at the end; see below for what is spared).
+   Idempotent: a value already in min() is left alone, and the grid and wrap rules are added once. A sheet that
+   cannot be read comes back as it was. */
+var WIDE_PX = 240;
+var GRID_MARK = '/*rv-grid-cells*/';
+var WRAP_MARK = '/*rv-phone-wrap*/';
+
+function mobileSafeCss(css) {
+  var text = String(css == null ? '' : css);
+  if (!text.trim()) return text;
+  var root;
+  try { root = postcss.parse(text); } catch (e) { return text; }
+  var changed = false;
+
+  root.walkDecls(/^(width|min-width|flex-basis|flex)$/i, function (decl) {
+    if (isKeyframes(decl.parent && decl.parent.parent) || /^@?font-face$/i.test((decl.parent && decl.parent.name) || '')) return;
+    var prop = decl.prop.toLowerCase(), value = decl.value;
+    var fixed;
+    if (prop === 'flex') {
+      /* flex: <grow> <shrink> <basis> — only the basis */
+      var parts = value.trim().split(/\s+/);
+      if (parts.length !== 3 || !/^\d+(\.\d+)?px$/i.test(parts[2]) || parseFloat(parts[2]) < WIDE_PX) return;
+      parts[2] = 'min(' + parts[2] + ', 100%)';
+      fixed = parts.join(' ');
+    } else {
+      var m = /^\s*(\d+(?:\.\d+)?)px\s*$/i.exec(value);
+      if (!m || +m[1] < WIDE_PX) return;
+      fixed = 'min(' + m[1] + 'px, 100%)';
+    }
+    decl.value = fixed;
+    changed = true;
+  });
+
+  /* grids: every selector of a rule that makes a grid (in the same @media as that rule) */
+  var grids = [];
+  root.walkRules(function (rule) {
+    if (isKeyframes(rule.parent)) return;
+    var isGrid = false;
+    if (!rule.nodes || /::|:(before|after)\b/i.test(rule.selector)) return;
+    rule.each(function (n) { if (n.type === 'decl' && /^display$/i.test(n.prop) && /^\s*(inline-)?grid\s*$/i.test(n.value)) isGrid = true; });
+    if (isGrid) grids.push(rule);
+  });
+  var have = {};
+  root.walkComments(function (c) { if ('/*' + c.text + '*/' === GRID_MARK && c.next() && c.next().type === 'rule') have[c.next().selector] = true; });
+  grids.forEach(function (rule) {
+    var sel = ':where(' + rule.selector.replace(/\s+/g, ' ').trim() + ') > *';
+    if (have[sel]) return;
+    have[sel] = true;
+    var cells = postcss.rule({ selector: sel });
+    cells.append(postcss.decl({ prop: 'min-width', value: '0' }));
+    rule.after(cells);
+    rule.after(postcss.comment({ text: GRID_MARK.slice(2, -2) }));
+    changed = true;
+  });
+
+  /* text kept on one line (white-space:nowrap) wraps on a phone, where a line of 40 capitals runs past the edge.
+     Not the top bar's (its links scroll sideways on one line), nor a box that scrolls or clips its own content,
+     nor a flex row (the setting is for the words, not the row). One @media block at the end of the sheet, added
+     once. */
+  var hasWrap = false;
+  root.walkComments(function (c) { if ('/*' + c.text + '*/' === WRAP_MARK) hasWrap = true; });
+  if (!hasWrap) {
+    var wraps = [];
+    root.walkRules(function (rule) {
+      if (isKeyframes(rule.parent) || !rule.nodes || /data-rv-section="nav"/.test(rule.selector) || /::|:(before|after)\b/i.test(rule.selector)) return;
+      var nowrap = false, keeps = false;
+      rule.each(function (n) {
+        if (n.type !== 'decl') return;
+        var p = n.prop.toLowerCase(), v = String(n.value).toLowerCase();
+        if (p === 'white-space' && /^\s*nowrap\s*$/.test(v)) nowrap = true;
+        if ((p === 'overflow' || p === 'overflow-x') && /(auto|scroll|hidden|clip)/.test(v)) keeps = true;
+        if (p === 'text-overflow' || /^animation/.test(p)) keeps = true;
+        if (p === 'display' && /flex|grid/.test(v)) keeps = true;
+      });
+      if (nowrap && !keeps) wraps.push(rule.selector.replace(/\s+/g, ' ').trim());
+    });
+    if (wraps.length) {
+      var phone = postcss.atRule({ name: 'media', params: '(max-width:640px)' });
+      var w = postcss.rule({ selector: wraps.join(',') });
+      w.append(postcss.decl({ prop: 'white-space', value: 'normal' }));
+      phone.append(w);
+      root.append(postcss.comment({ text: WRAP_MARK.slice(2, -2) }));
+      root.append(phone);
+      changed = true;
+    }
+  }
+  return changed ? root.toString() : text;
+}
+
 /* After scoping: does any rule apply to the root itself (and give it at least one declaration)? */
 function rootIsStyled(scopedCss, sectionId, rootInfo) {
   var S = scopeOf(String(sectionId).replace(/[^A-Za-z0-9_-]/g, '')), containment = containmentRule(sectionId);
@@ -244,4 +341,4 @@ function rootIsStyled(scopedCss, sectionId, rootInfo) {
   return styled;
 }
 
-module.exports = { scopeSectionCss, sectionRootInfo, rootIsStyled };
+module.exports = { scopeSectionCss, sectionRootInfo, rootIsStyled, mobileSafeCss };

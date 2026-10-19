@@ -55,3 +55,43 @@ html.rv-motion:not([data-rv-editing]) [data-rv-reveal].rv-in{opacity:1;transform
 .rv-lu-plate-light{background:rgba(255,255,255,.95);box-shadow:0 10px 40px rgba(0,0,0,.18)}
 .rv-lu-plate-dark{background:rgba(13,16,23,.9);box-shadow:0 10px 40px rgba(0,0,0,.25)}
 @media (max-width:640px){.rv-lu-img{max-height:min(220px,32vh)}}
+
+/* ---------- Phones ----------
+   Each section of an AI-designed site is written by the model with its own breakpoints. These rules are the
+   floor every one of them stands on at a phone's width, whatever its own CSS says, so that the page reads as one
+   piece there: no text past the screen's edge, every call to action the same full-width button, the hero's date
+   and place kept with their icons. They hold on the published page and the preview, and in the editor's canvas
+   only when it is shown at a phone's width. The server does the rest on each section's own CSS
+   (functions/lib/gen-markup.js, mobileSafeCss: a grid's cells may shrink, no box is wider than its place), and
+   et-runtime.js fits a heading whose longest word is wider than the screen. */
+/* a long word or address in running text wraps instead of running past the edge (the links and words inside
+   inherit it). Not headings (et-runtime.js sets those smaller instead), and not a lone span or link: a big
+   numeral such as "300+" is never cut in two. */
+:where(.rv-generated [data-rv-section]) :where(p,li,dd,dt,td,th,figcaption,blockquote,address){overflow-wrap:break-word}
+:where(.rv-generated [data-rv-section]) :where(iframe,video,embed,object,canvas){max-width:100%}
+@media (max-width:640px){
+  /* a call to action: one full-width button, its label centred and free to wrap, an easy tap; the same in every
+     section (the hero's, the overview's, the footer's). Not the top bar's (it has its own), not an icon or a logo
+     that happens to be a link, not a tab. */
+  body.rv-generated [data-rv-section]:not([data-rv-section="nav"]) a:is([class*="btn"],[class*="button"],[class$="-cta"],[class*="-cta "],[class~="cta"],[data-register-cta]):not(nav a):not([role="tab"]):not(:has(img)):not(:has(> svg:only-child)){
+    display:flex;align-items:center;justify-content:center;width:100%;max-width:none;min-width:0;min-height:48px;
+    box-sizing:border-box;text-align:center;white-space:normal;margin-left:0;margin-right:0
+  }
+  /* two buttons side by side stack, with an even gap */
+  body.rv-generated [data-rv-section]:not([data-rv-section="nav"]) :has(> a:is([class*="btn"],[class*="button"],[data-register-cta]) ~ a:is([class*="btn"],[class*="button"])):not(nav){flex-wrap:wrap;row-gap:12px}
+  /* a table scrolls inside its own box */
+  body.rv-generated [data-rv-section] table{display:block;max-width:100%;overflow-x:auto}
+
+  /* the hero (functions/lib/gen-design.js, heroHtml): the date and the place each a centred line with its icon in
+     front of the first word, never an icon stranded at the edge when the place takes two lines */
+  body.rv-generated [data-rv-section="hero"] .hero-facts{flex-direction:column;align-items:center;gap:10px;letter-spacing:.06em}
+  body.rv-generated [data-rv-section="hero"] .hero-fact{display:block;max-width:100%;text-align:center}
+  body.rv-generated [data-rv-section="hero"] .hero-fact > svg{display:inline-block;vertical-align:-3px;margin-right:8px}
+  body.rv-generated [data-rv-section="hero"] .hero-fact > span{display:inline}
+
+  /* the previous edition's rows (functions/lib/prev-sections.js): one card or photo and a glimpse of the next,
+     so the row reads as one that moves on */
+  body.rv-generated [data-rv-section] .pe-spk-card{width:72%;max-width:260px}
+  body.rv-generated [data-rv-section] .pe-spn-tile{width:62%;max-width:220px}
+  body.rv-generated [data-rv-section] .pe-glm-ph{width:88%}
+}

@@ -9,7 +9,10 @@
    --theme-color, --heading-font-family, --body-font-family, --rv-radius), so the sections take the site's
    theme and follow it when the theme changes. Motion uses the page runtime (templates/_shared/et-runtime.js):
    data-rv-carousel="auto" rows that step by themselves and pause when pointed at, and data-rv-reveal blocks
-   that ease in on scroll; neither moves for visitors who asked for no motion, nor while editing. */
+   that ease in on scroll; neither moves for visitors who asked for no motion, nor while editing.
+   On a phone (640px and under) the rows' card and photo widths are set by templates/_shared/gen-base.css (its
+   "Phones" rules name the pe-… classes), so that sections already saved follow them too; the carousel's buttons
+   go under the row there (et-runtime.js). */
 
 /* the section heading's size: the generated site's own type scale (templates/_shared/rv-type.js) */
 var SECTION_HEADING = require('../../templates/_shared/rv-type.js').SECTION_HEADING.replace(/,\s+/g, ',');
