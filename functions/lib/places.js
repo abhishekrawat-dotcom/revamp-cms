@@ -15,15 +15,25 @@
 // Matching: what was typed is folded (lower case, accents and punctuation dropped: "sao p" finds São Paulo),
 // and matches the start of a place's name ("noi" -> Noida), the start of a later word of it ("york" -> New
 // York City), or a name it is also known by ("bombay" -> Mumbai). Text after a comma narrows by state or
-// country ("aurangabad, bihar"). Results: names that start with it first, then names it is also known by
-// that start with it, then the rest; within each, the larger place first, with places in the visitor's own
-// country counted 20 times their size.
+// country ("aurangabad, bihar"). Results: the larger place first, with places in the visitor's own country
+// counted 20 times their size, a match at the start of the name counted more than one on a later word or on a
+// name it is also known by (TIER_WEIGHT), and the name typed in full four times — so an Indian visitor typing
+// "noi" sees Noida and Greater Noida before the suburbs of Paris, and "san" never brings up Shanghai.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
 const FILE = path.join(__dirname, 'data', 'places.json');
 const HOME_WEIGHT = 20;
+/* How much a match counts, by where it is (the "tier" of a word in the index): 0 the start of the place's
+   name, 1 the start of a name it is also known by ("bombay" -> Mumbai), 2 the start of a later word of its name
+   ("noida" -> Greater Noida), 3 a later word of a name it is also known by. GeoNames' other names are mostly
+   the city's name in other languages ("Sangaj" for Shanghai, "New York Van Java" for Jakarta): one counts for
+   little, except for a place in the visitor's own country, where it is usually the name people still use
+   (Bombay, Bangalore, Gurgaon, Cochin). A name typed in full ("delhi") counts four times. */
+const TIER_WEIGHT = [1, 0.01, 0.25, 0.0025];
+const HOME_TIER_WEIGHT = [1, 0.5, 0.25, 0.125];
+const EXACT_WEIGHT = 4;
 const MAX_LIMIT = 8;
 
 let D = null;          // { countries, states, rows, keys: [string], refs: Int32Array (row * 4 + tier), byLabel: Map }
@@ -52,7 +62,7 @@ function load() {
   data.rows.forEach(function (row, i) {
     function add(name, alt) {
       const words = fold(name).split(' ').filter(Boolean);
-      for (let w = 0; w < words.length; w++) entries.push([words.slice(w).join(' '), i * 4 + (w > 0 ? 2 : (alt ? 1 : 0))]);
+      for (let w = 0; w < words.length; w++) entries.push([words.slice(w).join(' '), i * 4 + (w > 0 ? 2 : 0) + (alt ? 1 : 0)]);
     }
     add(row[0], false);
     if (row[4]) row[4].split('|').forEach(function (a) { add(a, true); });
@@ -90,16 +100,17 @@ function search(q, opts) {
   for (let j = lowerBound(D.keys, head); j < D.keys.length && D.keys[j].lastIndexOf(head, 0) === 0; j++) {
     const ref = D.refs[j], row = ref >> 2, tier = ref & 3;
     const had = best.get(row);
-    if (had === undefined || tier < had) best.set(row, tier);
+    if (had === undefined || TIER_WEIGHT[tier] > TIER_WEIGHT[had]) best.set(row, tier);
   }
   const found = [];
   best.forEach(function (tier, i) {
     const row = D.rows[i];
     if (!narrows(row, extra)) return;
-    const exact = fold(row[0]) === head ? 1 : 0;
-    found.push({ i: i, tier: tier, exact: exact, weight: (row[3] || 0) * (row[1] === home ? HOME_WEIGHT : 1) });
+    const exact = fold(row[0]) === head;
+    const mine = row[1] === home;
+    found.push({ i: i, score: Math.max(1, row[3] || 0) * (mine ? HOME_WEIGHT : 1) * (mine ? HOME_TIER_WEIGHT : TIER_WEIGHT)[tier] * (exact ? EXACT_WEIGHT : 1) });
   });
-  found.sort(function (a, b) { return a.tier - b.tier || b.exact - a.exact || b.weight - a.weight || a.i - b.i; });
+  found.sort(function (a, b) { return b.score - a.score || a.i - b.i; });
   const out = [], seen = {};
   for (let k = 0; k < found.length && out.length < limit; k++) {
     const p = partsOf(D.rows[found[k].i]);

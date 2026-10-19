@@ -84,6 +84,16 @@ v('9876543210', '+919876543210', 'IN');
 v('+44 20 7946 0958', '+442079460958', 'GB');
 var legacy = P.cleanPhone('020 7946 0958');
 ok(legacy.value === '020 7946 0958' && legacy.legacy === true && legacy.country === '', 'an older page\'s number without a code: kept as typed', JSON.stringify(legacy));
+/* a country whose numbers start one of several ways: the Dominican Republic's 809, 829 and 849 */
+v({ country: 'DO', number: '809 555 1234' }, '+18095551234', 'DO');
+v({ country: 'DO', number: '829 555 1234' }, '+18295551234', 'DO');
+v({ country: 'DO', number: '849 555 1234' }, '+18495551234', 'DO');
+bad({ country: 'DO', number: '709 555 1234' });
+v({ country: 'PR', number: '939 555 1234' }, '+19395551234', 'PR');
+v('+1 829 555 1234', '+18295551234', 'DO');
+/* digits typed on a full-width keyboard */
+v({ country: 'IN', number: '\uFF19\uFF18\uFF17\uFF16\uFF15 \uFF14\uFF13\uFF12\uFF11\uFF10' }, '+919876543210', 'IN');
+v({ country: 'IN', number: '\uFF0B91 98765 43210' }, '+919876543210', 'IN');
 bad('12345');
 
 /* ---------- shown to people ---------- */
@@ -117,6 +127,12 @@ ok(labels('delhi', 'IN')[0] === 'Delhi, India' && labels('delhi', 'IN').indexOf(
 ok(labels('singapore', 'SG')[0] === 'Singapore', 'a city-state is one word');
 ok(labels('lon', 'GB')[0] === 'London, England, United Kingdom', '"lon" in the UK: London');
 ok(labels('lon', 'IN').indexOf('London, England, United Kingdom') !== -1, '"lon" in India: London is still offered');
+/* the visitor's own country first among names alike; other languages' names of a city count for little */
+var noiL = labels('noi', 'IN', 3);
+ok(noiL[0] === 'Noida, Uttar Pradesh, India' && noiL[1] === 'Greater Noida, Uttar Pradesh, India', '"noi" in India: Noida, then Greater Noida (before the suburbs of Paris)', noiL.join(' | '));
+ok(labels('san', 'IN').concat(labels('san', 'US')).every(function (l) { return !/Shanghai|Chengdu|Philadelphia/.test(l); }), '"san": never Shanghai ("Sanghaj"), Chengdu or Philadelphia by another language\'s name', labels('san', 'IN').join(' | '));
+ok(labels('ban', 'IN', 1)[0] === 'Bengaluru, Karnataka, India' && labels('gurg', 'IN', 1)[0] === 'Gurugram, Haryana, India' && labels('calcutta', 'IN', 1)[0] === 'Kolkata, West Bengal, India', 'an Indian city\'s other name still finds it first in India (Bangalore, Gurgaon, Calcutta)');
+ok(labels('new y', 'IN', 1)[0] === 'New York City, New York, United States', '"new y": New York City first');
 ok(PL.search('a', { country: 'IN' }).length === 8 && PL.search('pune', { country: 'IN', limit: 3 }).length <= 3, 'at most 8, or fewer when asked');
 ok(PL.search('', {}).length === 0 && PL.search('  ,  ', {}).length === 0 && PL.search('qqqxz', {}).length === 0, 'nothing, punctuation, no match: none');
 ok(PL.search('<script>', {}).length === 0, 'markup finds nothing');

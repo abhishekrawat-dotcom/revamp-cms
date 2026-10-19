@@ -251,7 +251,7 @@
   PHONE_DATA.split(';').forEach(function (e) {
     var p = e.split('|');
     if (p.length < 6) return;
-    var c = { cc: p[0], name: p[1], dial: p[2], min: +p[3], max: +p[4], lead: p[5] };
+    var c = { cc: p[0], name: p[1], dial: p[2], min: +p[3], max: +p[4], lead: p.slice(5).join('|') };
     c.leadRe = c.lead ? new RegExp('^(?:' + c.lead + ')') : null;
     PHONES.push(c);
     BY_CC[c.cc] = c;
@@ -305,7 +305,8 @@
       }
     } else text = raw;
     if (typeof text === 'number' && isFinite(text)) text = String(text);
-    text = typeof text === 'string' ? text.replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) : '';
+    text = typeof text === 'string' ? text.replace(/[\uFF10-\uFF19\uFF0B]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); })
+    .replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) : '';
     var digits = text.replace(/\D/g, '');
     if (!digits) return text ? { error: phoneMessage(picked) } : { empty: true };
     if (/[^\d\s().+\-\/]/.test(text)) return { error: phoneMessage(picked) };
@@ -773,13 +774,33 @@
         el.dispatchEvent(ev);
       } catch (e) { /* an old browser: the next keystroke tells it */ }
     }
-    /* a pop-up list opens below its field, or above it when the window has no room below */
+    /* A pop-up list opens below its field, or above it when there is more room there. The room is the window's,
+       narrowed by every box around the field that cuts off what overflows it (a site's section often does,
+       with overflow: hidden, and the pop-up window scrolls): a list that would not fit is made shorter (it
+       scrolls) rather than cut off. */
     function placePop(popEl, anchor) {
       popEl.classList.remove('rv-form-pop--up');
+      var list = popEl.classList.contains('rv-form-list') ? popEl : popEl.querySelector('.rv-form-list');
+      if (list) list.style.maxHeight = '';
       try {
-        var r = anchor.getBoundingClientRect(), vh = win.innerHeight || doc.documentElement.clientHeight;
-        if (vh - r.bottom < 290 && r.top > vh - r.bottom) popEl.classList.add('rv-form-pop--up');
-      } catch (e) { /* no layout: below */ }
+        var r = anchor.getBoundingClientRect(), top = 0, bottom = win.innerHeight || doc.documentElement.clientHeight;
+        for (var el = anchor.parentNode; el && el.nodeType === 1 && el !== doc.body && el !== doc.documentElement; el = el.parentNode) {
+          var oy = win.getComputedStyle(el).overflowY;
+          if (oy && oy !== 'visible') {
+            var er = el.getBoundingClientRect();
+            if (er.top > top) top = er.top;
+            if (er.bottom < bottom) bottom = er.bottom;
+          }
+        }
+        var below = bottom - r.bottom - 8, above = r.top - top - 8, full = popEl.offsetHeight || 290;
+        var up = below < Math.min(full, 290) && above > below;
+        if (up) popEl.classList.add('rv-form-pop--up');
+        var room = up ? above : below;
+        if (list && room < full) {
+          /* the search box and the padding stay; the list itself gets what is left (never under three rows) */
+          list.style.maxHeight = Math.max(132, Math.floor(room - (full - (list.offsetHeight || 0)))) + 'px';
+        }
+      } catch (e) { /* no layout: below, as drawn */ }
     }
     function optionRow(li, flagText, name, extra) {
       if (flagText) { var f = mk(doc, 'span', 'rv-form-opt-flag', flagText); f.setAttribute('aria-hidden', 'true'); li.appendChild(f); }
@@ -923,6 +944,7 @@
         doc.addEventListener('mousedown', outside, true);
         doc.addEventListener('touchstart', outside, true);
         fill();
+        placePop(pop, box);       // again, now that the list has its countries (and its height)
         focusNode(search);
       }
       btn.addEventListener('click', function () { if (pop) closePop(true); else openPop(); });
