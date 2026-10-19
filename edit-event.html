@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="forms-builder.css">
+<link rel="stylesheet" href="hero-video-ui.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 
 <header class="topbar">
@@ -44,6 +45,9 @@
 <script>window.RV_FORMS_NO_AUTO = true;</script>
 <script src="templates/_shared/rv-forms.js"></script>
 <script src="forms-builder.js"></script>
+<!-- the banner video: its rules (shared with the server) and its settings (shared with the site editor) -->
+<script src="templates/_shared/rv-hero-video-core.js"></script>
+<script src="hero-video-ui.js"></script>
 
 <script>
 (function(){
@@ -1030,6 +1034,10 @@
       fgroup(2, 'Date & place', 'When it runs and where', when) +
       fgroup(3, 'How it reads', 'The copy a visitor meets first', reads));
 
+    /* the banner video (hero-video-ui.js, mounted by mountHeroVideo): saved on its own, as it is changed —
+       it is not part of this form's Save */
+    if (window.RevampHeroVideoUI) form += panel('Banner video', 'A silent loop behind the top of the site', '<div id="b-herovideo"></div>');
+
     var side =
       '<div class="pvc">' +
         '<div class="pvc-head"><span class="eyebrow">Live preview</span>' +
@@ -1070,6 +1078,22 @@
         '<button class="sb-ghost" type="button" id="b-discard">Discard</button>' +
         '<button class="btn btn-primary btn-sm" type="button" id="b-save">Save changes</button>' +
       '</div>';
+  }
+
+  /* The banner video's settings. An upload keeps going when the owner moves to another tab (the component it
+     started in saves it and says so); the settings shown when they come back are then brought up to date. */
+  var HERO_VIDEO_UI = null;
+  function mountHeroVideo(){
+    var box = $('b-herovideo');
+    if (!box || !window.RevampHeroVideoUI) return;
+    var mine = null;
+    mine = HERO_VIDEO_UI = RevampHeroVideoUI.mount(box, {
+      eventId: EV.id, core: C, layout: 'wide', toast: notify,
+      onChange: function(hv){
+        EV.heroVideo = hv;
+        if (HERO_VIDEO_UI && HERO_VIDEO_UI !== mine && mine && !HERO_VIDEO_UI.busy()) HERO_VIDEO_UI.reload();
+      }
+    });
   }
 
   /* ---------- the live parts of the basics form ---------- */
@@ -5432,7 +5456,7 @@
 
     /* per-view wiring */
     if (r === 'dashboard') DASH.wire(CTX);
-    if (r === 'content/basics') wireBasics();
+    if (r === 'content/basics'){ wireBasics(); mountHeroVideo(); }
     if (r === 'content/speakers') wireSpeakers();
     if (r === 'content/agenda') wireAgenda();
     if (r === 'content/sponsors') wireSponsors();

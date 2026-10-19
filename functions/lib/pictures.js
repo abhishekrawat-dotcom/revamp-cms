@@ -431,6 +431,13 @@ function rewriteHtml(html, index) {
   return out.slice(0, at) + '\n' + head.join('\n') + out.slice(at);
 }
 
+/* the WebP copy rewriteImg gives a picture shown near the top (its full-size copy), or '' when it has none —
+   for a preload that must name the very file the page will use (lib/api.js heroVideoPictures) */
+function fullCopyUrl(index, url) {
+  var hit = url && entryFor(index, url);
+  return hit && hasFull(hit.e) ? variantUrl(index, hit.path, hit.e, fullWidth(hit.e)) : '';
+}
+
 /* For the page runtime (rv-data.js), which shows records' pictures in the visitor's browser: each picture
    with variants as "<hash>.<W>x<H>:<width>,<width>" — enough to name every variant of it. */
 function siteDataMap(index) {
@@ -445,7 +452,7 @@ function siteDataMap(index) {
 
 module.exports = {
   makeVariants: makeVariants, storeVariants: storeVariants, prepare: prepare, lookupUrls: lookupUrls, lookupPaths: lookupPaths,
-  rewriteHtml: rewriteHtml, siteDataMap: siteDataMap, indexFromListing: indexFromListing, urlsIn: urlsIn,
+  rewriteHtml: rewriteHtml, fullCopyUrl: fullCopyUrl, siteDataMap: siteDataMap, indexFromListing: indexFromListing, urlsIn: urlsIn,
   variantName: variantName, parseVariant: parseVariant, isVariant: isVariant, widthsFor: widthsFor, pathOfUrl: pathOfUrl,
   publicUrl: publicUrl, wanted: wanted, isLogoPath: isLogoPath, hex8OfMd5Base64: hex8OfMd5Base64, md5Hex8: md5Hex8,
   available: function () { return !!loadSharp(); },

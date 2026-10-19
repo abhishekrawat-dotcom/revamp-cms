@@ -583,6 +583,9 @@ function copyFiles(fb, src, dst, rewrite, written) {
   return fb.bucket.getFiles({ prefix: prefix }).then(function (r) {
     var files = (r[0] || []).filter(function (f) {
       var rest = f.name.slice(prefix.length), folder = rest.split('/')[0];
+      /* a banner video uploaded but not yet checked (lib/api-hero-video.js) is private until its bytes are
+         read: a copy, made public below, must not skip that check */
+      if (((f.metadata || {}).metadata || {}).rvPending === '1') return false;
       return rest && rest.indexOf('/') !== -1 && !/\/$/.test(rest) && NOT_CLONED_FOLDERS.indexOf(folder) === -1;
     });
     return eachLimit(files, CLONE_CONCURRENCY, function (f) {

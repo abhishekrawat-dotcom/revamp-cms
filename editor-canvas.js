@@ -1266,7 +1266,9 @@
     /* An embedded form's preview (editor-forms.js) is the editor's own drawing, redrawn whenever the form
        changes: it is never part of a snapshot, so drawing it is not an undo step and does not make the page
        "unsaved". */
-    var FORM_PREVIEW = '[data-rv-form-preview]';
+    /* drawn by the editor over the page and never part of it: a form's preview (editor-forms.js) and the banner
+       video's still with its badge (hero-video-ui.js) */
+    var FORM_PREVIEW = '[data-rv-form-preview], [data-rv-hv-preview]';
     function nodeHtml(n) {
       if (ownsCss && n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
       var isSection = n.hasAttribute('data-rv-section');

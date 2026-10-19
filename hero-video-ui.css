@@ -1,0 +1,71 @@
+/* The banner video's settings (hero-video-ui.js), in the event console and in the site editor's Design panel.
+   Both pages define the same colour tokens (--surface, --border, --text, …); the fallbacks are for neither. */
+.hvu{ font-size:13px; color:var(--text, #241B1A); }
+.hvu p{ margin:0; }
+.hvu-hint{ display:block; font-size:12px; line-height:1.5; color:var(--text-muted, #756865); }
+.hvu-intro{ margin-bottom:12px !important; }
+.hvu-note{ padding:9px 11px; border-radius:8px; background:var(--surface-2, #F3EEED); color:var(--text-muted, #756865); font-size:12px; line-height:1.5; margin-bottom:10px !important; }
+.hvu-err{ padding:9px 11px; border-radius:8px; background:var(--accent-soft, #FBDBDC); color:var(--accent-strong, #B3151B); font-size:12px; line-height:1.5; margin:8px 0 !important; }
+.hvu-sr{ position:absolute !important; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
+
+.hvu-drop{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:14px; border:1.5px dashed var(--border, #E0D7D5); border-radius:10px; background:var(--surface, #fff); }
+.hvu-drop.is-over{ border-color:var(--accent, #ED1C24); background:var(--accent-soft, #FBDBDC); }
+.hvu-drop > .hvu-hint:last-child{ flex-basis:100%; }
+
+.hvu-busy{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:10px 0; font-size:12.5px; font-weight:600; }
+.hvu-bar{ flex:1 1 160px; height:6px; border-radius:6px; background:var(--surface-2, #F3EEED); overflow:hidden; }
+.hvu-bar i{ display:block; height:100%; background:var(--accent, #ED1C24); transition:width .2s ease; }
+
+.hvu-main{ display:flex; flex-direction:column; gap:14px; }
+.hvu-wide .hvu-main{ flex-direction:row; align-items:flex-start; gap:22px; }
+.hvu-wide .hvu-left{ flex:0 0 46%; min-width:0; }
+.hvu-wide .hvu-right{ flex:1 1 auto; min-width:0; }
+.hvu-right{ display:flex; flex-direction:column; gap:14px; }
+
+.hvu-stage{ position:relative; aspect-ratio:16/9; border-radius:10px; overflow:hidden; background:#111318; }
+.hvu-stage > .hvu-still, .hvu-stage > .hvu-play{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.hvu-stage > .hvu-play{ opacity:0; }
+.hvu-stage > .hvu-play[data-on]{ opacity:1; }
+.hvu-nostill{ position:absolute; inset:0; display:grid; place-items:center; color:#c9cdd6; font-size:12px; }
+.hvu-ov{ position:absolute; inset:0; pointer-events:none; }
+.hvu-sample{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; text-align:center; pointer-events:none; }
+.hvu-sample b{ font-size:17px; font-weight:700; letter-spacing:-.01em; }
+.hvu-compact .hvu-sample b{ font-size:14px; }
+.hvu-sample span{ font-size:10.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+.hvu-playbtn{ position:absolute; right:8px; bottom:8px; padding:5px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.6); background:rgba(0,0,0,.55); color:#fff; font:600 11.5px/1.2 inherit; cursor:pointer; }
+.hvu-playbtn:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+.hvu-offtag{ position:absolute; left:8px; top:8px; padding:3px 8px; border-radius:999px; background:rgba(0,0,0,.65); color:#fff; font-size:11px; font-weight:700; }
+.hvu-facts{ margin-top:8px !important; font-size:11.5px; color:var(--text-muted, #756865); font-family:var(--font-mono, ui-monospace, monospace); }
+.hvu-advice{ margin:8px 0 0; padding:0 0 0 16px; font-size:12px; line-height:1.5; color:var(--warn, #9C6B14); }
+.hvu-advice li + li{ margin-top:4px; }
+
+.hvu .hvu-switch{ display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--text, #241B1A); cursor:pointer; }
+.hvu .hvu-switch input{ width:16px; height:16px; accent-color:var(--accent, #ED1C24); }
+.hvu-group{ margin:0; padding:0; border:0; min-width:0; display:flex; flex-direction:column; gap:7px; }
+.hvu-group legend{ padding:0; margin:0 0 4px; font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--text-faint, #A0908C); }
+.hvu .hvu-radio{ display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 7px; cursor:pointer; }
+.hvu .hvu-radio input{ accent-color:var(--accent, #ED1C24); }
+.hvu .hvu-radio{ font-weight:600; font-size:13px; color:var(--text, #241B1A); }
+.hvu .hvu-radio .hvu-hint{ display:block; flex-basis:100%; padding-left:22px; margin-top:-2px; font-weight:400; }
+.hvu-ovrow{ display:flex; align-items:center; gap:12px; padding-left:22px; }
+.hvu-ovrow[hidden]{ display:none; }
+.hvu .hvu-colour input{ width:34px; height:28px; padding:0; border:1px solid var(--border, #E0D7D5); border-radius:6px; background:none; cursor:pointer; }
+.hvu .hvu-range{ flex:1; display:flex; align-items:center; gap:8px; font-size:12px; font-weight:500; color:var(--text-muted, #756865); }
+.hvu .hvu-range input{ flex:1; min-width:60px; accent-color:var(--accent, #ED1C24); }
+.hvu .hvu-range output{ min-width:34px; text-align:right; font-family:var(--font-mono, ui-monospace, monospace); color:var(--text, #241B1A); }
+.hvu-read{ font-size:12px; line-height:1.45; padding-left:22px; }
+.hvu-read.ok{ color:var(--ok, #2F8F5B); }
+.hvu-read.bad{ color:var(--warn, #9C6B14); }
+.hvu-scrub{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; }
+.hvu .hvu-scrub label{ font-size:12px; font-weight:500; color:var(--text-muted, #756865); }
+.hvu-scrub input{ flex:1 1 120px; accent-color:var(--accent, #ED1C24); }
+.hvu-row{ display:flex; flex-wrap:wrap; gap:8px; }
+.hvu-confirm{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px; border-radius:8px; background:var(--surface-2, #F3EEED); font-size:12.5px; }
+.hvu-confirm span{ flex-basis:100%; }
+.hvu-remove{ align-self:flex-start; color:var(--accent-strong, #B3151B) !important; }
+.hvu .btn-danger{ background:var(--accent, #ED1C24); color:var(--accent-contrast, #fff); border-color:var(--accent, #ED1C24); }
+
+@media (max-width:760px){
+  .hvu-wide .hvu-main{ flex-direction:column; }
+  .hvu-wide .hvu-left{ flex-basis:auto; width:100%; }
+}

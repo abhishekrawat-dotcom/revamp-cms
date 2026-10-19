@@ -6182,6 +6182,158 @@ function ensureFormsRuntime(html) {
   return at === -1 ? html + FORMS_RUNTIME_TAG + '\n' : html.slice(0, at) + FORMS_RUNTIME_TAG + '\n' + html.slice(at);
 }
 
+/* ===== BANNER VIDEO (lib/api-hero-video.js stores it; templates/_shared/rv-hero-video-core.js has the markup) =====
+   applyHeroVideo(html, event) -> html. The event's banner video (event.heroVideo), put on a page as it is SERVED —
+   /e/<id>, /preview/<id> and the editor's live view — never into what is stored, so turning it on, off or changing
+   its overlay in the console reaches the live site within a minute without a publish. Idempotent: what an
+   earlier run wrote (data-rv-hero-video) is taken out first.
+     - a real template's ET banner: the video goes into its .bnr-bg-video layer (cleared first), the banner's
+       picture becomes the video's still (the page's largest picture, so it loads first), its overlay layer takes
+       the overlay colour;
+     - an AI-designed hero (section#hero.hero-root): a layer of its own goes in first — the still, the video, the
+       overlay — in place of the hero's picture and veil;
+     - anything else: nothing (the console says such a site has no place for one).
+   A video an AI edit wrote into the hero to play by itself (<video autoplay src>) is made to wait the same way
+   (data-rv-bg-video, its address in data-rv-src): it used to be downloaded in full on every visit, phones
+   included, before the page had finished. With the event's own video on, it is replaced. rv-hero-video.js,
+   added once, starts and stops them all. */
+var heroVideoCore = require('../../templates/_shared/rv-hero-video-core.js');
+var HERO_VIDEO_TAG = '<script src="/templates/_shared/rv-hero-video.js" defer data-rv-hero-video></script>';
+/* an attribute whose value is already as the page had it (entities and all): only a quote is made safe */
+function rawAttr(name, value) {
+  var v = String(value == null ? '' : value).replace(/"/g, '&quot;');
+  return { name: name, value: v, raw: name + '="' + v + '"' };
+}
+function heroVideoStamp(event) {
+  var hv = heroVideoCore.clean(event && event.heroVideo);
+  return hv ? 'v:' + (hv.stamp || 'on') : 'v:off';
+}
+function applyHeroVideo(html, event) {
+  html = String(html == null ? '' : html);
+  var hv = heroVideoCore.clean(event && event.heroVideo);
+  if (!hv && !/<video\b/i.test(html) && html.indexOf('data-rv-hero-video') === -1) return html;
+  var tokens = tokenizeHtml(html);
+  var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
+  var headOpen = -1, headClose = -1, bodyClose = -1, banner = -1, still = -1, hero = -1, i;
+  for (i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t === 'open' && t.name === 'head' && headOpen === -1) headOpen = i;
+    if (t.t === 'close' && t.name === 'head' && headClose === -1) headClose = i;
+    if (t.t === 'close' && t.name === 'body') bodyClose = i;
+    if (t.t !== 'open' || out[i] === '') continue;
+    if (attrOf(t, 'data-rv-hero-video')) {
+      var end = elementEnd(tokens, i);
+      if (end !== -1) {
+        for (var k = i; k <= end; k++) out[k] = '';
+        /* with the one newline this wrote after it, so a second run leaves the same bytes */
+        var after = tokens[end + 1];
+        if (after && after.t === 'text' && out[end + 1].charAt(0) === '\n') out[end + 1] = out[end + 1].slice(1);
+        i = end;
+      }
+      continue;
+    }
+    var cls = classListOf(t);
+    if (banner === -1 && (attrValue(t, 'data-rv-media') === 'bg-video' || cls.indexOf('bnr-bg-video') !== -1)) banner = i;
+    if (still === -1 && t.name === 'img' && cls.indexOf('banner-bg-image') !== -1) still = i;
+    if (hero === -1 && t.name === 'section' && (attrValue(t, 'id') === 'hero' || cls.indexOf('hero-root') !== -1)) hero = i;
+  }
+  var look = heroVideoCore.looksAt(html), place = banner !== -1 ? 'banner' : hero !== -1 ? 'hero' : '';
+  var lazyfied = false;
+
+  /* videos an AI edit wrote into the hero */
+  if (hero !== -1 && place === 'hero') {
+    var heroEnd = elementEnd(tokens, hero);
+    for (i = hero + 1; heroEnd !== -1 && i < heroEnd; i++) {
+      var v = tokens[i];
+      if (v.t !== 'open' || v.name !== 'video' || out[i] === '') continue;
+      var vEnd = elementEnd(tokens, i);
+      if (hv) { if (vEnd !== -1) { for (var r = i; r <= vEnd; r++) out[r] = ''; i = vEnd; } continue; }
+      /* one made to wait already (a page this ran on before) still needs its loader */
+      if (attrOf(v, 'data-rv-bg-video')) { if (attrOf(v, 'data-rv-src')) lazyfied = true; continue; }
+      if (!attrOf(v, 'autoplay')) continue;
+      var src = attrValue(v, 'src') || '', type = '';
+      for (var s = i + 1; vEnd !== -1 && s < vEnd; s++) {
+        var so = tokens[s];
+        if (so.t !== 'open' || so.name !== 'source' || !attrOf(so, 'src')) continue;
+        if (!src) { src = attrValue(so, 'src'); type = attrValue(so, 'type') || ''; }
+        var sv = attrValue(so, 'src') || '';
+        dropAttr(so, 'src');
+        so.attrs.push(rawAttr('data-rv-src', sv));
+        out[s] = writeTag(so);
+      }
+      if (!src) continue;
+      ['autoplay', 'src', 'preload', 'data-rv-src'].forEach(function (a) { dropAttr(v, a); });
+      v.attrs.push(rawAttr('data-rv-src', src));
+      if (type && !attrOf(v, 'data-type')) setAttr(v, 'data-type', type);
+      ['muted', 'playsinline', 'data-rv-bg-video'].forEach(function (a) { if (!attrOf(v, a)) v.attrs.push({ name: a, value: null, raw: a }); });
+      /* it has no still picture of its own, so its first frame is the page's largest picture: where it plays at
+         all it starts at once, as it did (started late, it would make the page's largest paint late) */
+      if (!attrValue(v, 'poster')) v.attrs.push(rawAttr('data-rv-bg-start', 'early'));
+      setAttr(v, 'preload', 'none');
+      out[i] = writeTag(v);
+      lazyfied = true;
+    }
+  }
+
+  var head = [];
+  if (hv && place) {
+    var overlay = heroVideoCore.overlayFor(hv.overlay, look);
+    /* a colour chosen for the site as it was (another tone since, after a redesign) never makes its words
+       unreadable: the automatic overlay stands in, and the console says the colour is not used */
+    if (!overlay.readable) overlay = heroVideoCore.overlayFor({ mode: 'auto' }, look);
+    if (place === 'banner') {
+      var bannerEnd = elementEnd(tokens, banner);
+      if (bannerEnd !== -1) for (i = banner + 1; i < bannerEnd; i++) out[i] = '';
+      out[banner] = out[banner] + heroVideoCore.videoTag(hv);
+      if (hv.posterUrl && still !== -1) {
+        var img = tokens[still];
+        setAttr(img, 'src', hv.posterUrl);
+        dropAttr(img, 'srcset'); dropAttr(img, 'sizes');
+        setAttr(img, 'fetchpriority', 'high'); setAttr(img, 'loading', 'eager');
+        out[still] = writeTag(img);
+      }
+    } else {
+      setAttr(tokens[hero], 'data-rv-hv', '');
+      out[hero] = writeTag(tokens[hero]) + heroVideoCore.heroLayer(hv);
+    }
+    if (hv.posterUrl) head.push('<link rel="preload" as="image" href="' + escHtmlAttr(hv.posterUrl) + '" fetchpriority="high" data-rv-hero-video>');
+    head.push('<style data-rv-hero-video>' + heroVideoCore.pageCss({ host: place, overlay: overlay, poster: !!hv.posterUrl }) + '</style>');
+  } else if (lazyfied) {
+    head.push('<style data-rv-hero-video>@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}</style>');
+  }
+  if (!head.length) return out.join('');
+  var headText = head.join('\n') + '\n';
+  if (headClose !== -1) out[headClose] = headText + out[headClose];
+  else if (headOpen !== -1) out[headOpen] = out[headOpen] + headText;
+  else out.unshift(headText);
+  if (bodyClose !== -1) out[bodyClose] = HERO_VIDEO_TAG + '\n' + out[bodyClose];
+  else out.push(HERO_VIDEO_TAG + '\n');
+  return out.join('');
+}
+/* ===== END BANNER VIDEO ===== */
+/* A served page (/e/, /preview/) with the event's banner video as it is now (applyHeroVideo), and then its
+   pictures' WebP copies once more (heroVideoPictures): the video's still is a picture the stored page never
+   named, and a banner picture the still replaced lost its copies. Never rejects (pictures.prepare does not). */
+function withHeroVideo(fb, page, event) {
+  var withVideo = applyHeroVideo(page, event);
+  if (withVideo === page) return Promise.resolve(page);
+  return pictures.prepare(fb, withVideo).then(function (pics) { return heroVideoPictures(withVideo, pics); });
+}
+/* (pure) page with the banner video -> the same with the still's WebP copy, the still's preload naming the
+   very file the page will show (not the original as well), and an AI hero's own background preload taken out
+   where the still covers it (its background is not drawn then: rv-hero-video-core.js pageCss) */
+function heroVideoPictures(page, pics) {
+  var out = pictures.rewriteHtml(page, pics);
+  if (out.indexOf('<section') !== -1 && /<section\b[^>]*\sdata-rv-hv(?:[\s=>])/i.test(out) && /<link\b[^>]*\bdata-rv-hero-video\b/i.test(out)) {
+    out = out.replace(/\n?<link\b[^>]*\bdata-rv-pictures-preload\b[^>]*>/i, '');
+  }
+  return out.replace(/<link rel="preload" as="image" href="([^"]*)" fetchpriority="high" data-rv-hero-video>/, function (tag, href) {
+    var url = href.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    var webp = pictures.fullCopyUrl(pics, url);
+    return webp ? '<link rel="preload" as="image" type="image/webp" href="' + escHtmlAttr(webp) + '" fetchpriority="high" data-rv-hero-video>' : tag;
+  });
+}
+
 /* The event's public form definitions for a page about to be transformed (opts.forms), or null when they
    cannot be read — the failure is logged and the page goes out without them: its runtime fetches them.
    lib/api-forms.js is loaded here, on use, like the other route modules (see inModule). Never rejects. */
@@ -6932,7 +7084,7 @@ function handleEventLiveView(req, res) {
           eventId: eventId, event: data, mode: 'preview', publicBase: '', liveView: true, forms: formsPayload,
           templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(body.origin)]
         });
-        sendJson(res, 200, { html: html });
+        sendJson(res, 200, { html: applyHeroVideo(html, data) });
       });
     }).catch(function (err) { sendFailure(res, 'live view', err, 'The live view could not be prepared. Please try again.'); });
   });
@@ -7055,7 +7207,8 @@ function handlePublicPage(req, res, eventId) {
   liveEventSnap(fb, eventId).then(function (snap) {
     if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendNotAvailable(req, res);
     var data = snap.data();
-    var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '');
+    /* the banner video is put on the page as it is served (applyHeroVideo): a change to it is a new page */
+    var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '') + '|' + heroVideoStamp(data);
     var hit = cachedPage(key);
     if (hit) return sendHtml(req, res, 200, hit.html, LIVE_PAGE_CACHE_CONTROL, hit.packed);
     return readObject(fb, publishedObjectPath(eventId)).then(function (html) {
@@ -7071,18 +7224,23 @@ function handlePublicPage(req, res, eventId) {
             eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload, pictures: got[2],
             publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
           });
-          var entry = cachePage(key, html);
-          sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+          return withHeroVideo(fb, html, data).then(function (page) {
+            var entry = cachePage(key, page);
+            sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+          });
         });
       }
       /* a page published before forms existed: its Register buttons open the form from now on; one
          published before its pictures had WebP copies gets them on the way out (pictures.js — a picture
          that already has them is left alone); and one published before the accessibility and search pass
          gets it on its way out (site-a11y.js pagePass: idempotent, so a page that already had it comes out
-         the same, its schema.org Event following the event as it is now). Same order as publishTransform. */
+         the same, its schema.org Event following the event as it is now). Same order as publishTransform,
+         then the banner video as the event has it now (withHeroVideo). */
       return pictures.prepare(fb, html).then(function (pics) {
         var page = pictures.rewriteHtml(ensureFormsRuntime(html), pics);
         page = siteA11y.pagePass(page, { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId }, TOKEN_KIT);
+        return withHeroVideo(fb, page, data);
+      }).then(function (page) {
         var entry = cachePage(key, page);
         sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
       });
@@ -7175,10 +7333,12 @@ function handlePreviewPage(req, res, eventId) {
         /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
         return Promise.all([formsRead, pictures.prepare(fb, html)]).then(function (got) {
           var formsPayload = got[0];
-          sendHtml(req, res, 200, deliverPage(publishTransform(html, {
+          return withHeroVideo(fb, publishTransform(html, {
             eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload, pictures: got[1],
             templateId: (data.site && data.site.templateId) || data.templateId
-          })), 'no-store');
+          }), data);
+        }).then(function (page) {
+          sendHtml(req, res, 200, deliverPage(page), 'no-store');
         });
       });
     });
@@ -7277,6 +7437,7 @@ function inModule(moduleName, handlerName) {
 var events = function (handler) { return inModule('api-events', handler); };
 var audience = function (handler) { return inModule('api-audience', handler); };
 var formsRoute = function (handler) { return inModule('api-forms', handler); };
+var heroVideo = function (handler) { return inModule('api-hero-video', handler); };
 
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
@@ -7320,6 +7481,11 @@ var ROUTES = {
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),
   'POST /api/event/upload': events('handleUpload'),
+  'GET /api/event/hero-video': heroVideo('handleHeroVideoGet'),
+  'PUT /api/event/hero-video': heroVideo('handleHeroVideoSave'),
+  'DELETE /api/event/hero-video': heroVideo('handleHeroVideoRemove'),
+  'POST /api/event/hero-video/upload': heroVideo('handleHeroVideoUpload'),
+  'POST /api/event/hero-video/check': heroVideo('handleHeroVideoCheck'),
 
   'GET /api/event/site': handleSiteGet,
   'PUT /api/event/site': handleSitePut,
@@ -7417,6 +7583,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, ensureFormsRuntime, deliverPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  publishTransform, ensureFormsRuntime, deliverPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };
