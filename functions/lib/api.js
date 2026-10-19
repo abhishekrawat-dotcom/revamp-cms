@@ -2629,6 +2629,12 @@ function examineUnit(fb, eventId, picture, ctx) {
 function heroModeOf(tone) { return tone === 'for-dark' ? 'dark' : tone === 'for-light' ? 'light' : ''; }
 function storeLogoUnit(fb, eventId, stamp, pic) {
   var ext = pic.info.type === 'jpeg' ? 'jpg' : pic.info.type;
+  /* an SVG with a viewBox and no size of its own is laid out 0 by 0 in the hero's centred column: its size
+     is written into its root tag (sizedSvg), nothing else in it changes */
+  if (pic.info.type === 'svg') {
+    var text = pic.bytes.toString('utf8'), sized = sizedSvg(text, pic.info);
+    if (sized !== text) pic = { bytes: Buffer.from(sized, 'utf8'), info: pic.info };
+  }
   var storagePath = 'events/' + eventId + '/generated/' + stamp + '-logo-unit.' + ext;
   return storePublicPicture(fb, storagePath, pic.bytes, pic.info.mime).then(function (url) { return { url: url, storagePath: storagePath }; });
 }
@@ -2679,7 +2685,9 @@ function previousEditionUnit(fb, eventId, o) {
 }
 
 /* The logo the owner uploaded (events/<id>.logoUrl), as bytes: read from this project's own bucket when it
-   is there, else fetched like any other picture. -> Promise<Buffer | null> */
+   is there, else fetched like any other picture. Up to what an upload may be (8 MB, api-events.js); one
+   over LOGO_UNIT_MAX_BYTES is used as uploaded, unexamined (ownerLogoUnit). -> Promise<Buffer | null> */
+var OWNER_LOGO_MAX_BYTES = 8 * 1024 * 1024;
 function fetchOwnerLogo(fb, url) {
   var own = null, m;
   var bucket = fb && fb.bucket && fb.bucket.name;
@@ -2688,11 +2696,11 @@ function fetchOwnerLogo(fb, url) {
   var direct = own ? Promise.resolve().then(function () {
     var file = fb.bucket.file(decodeURIComponent(own));
     if (!file || typeof file.download !== 'function') return null;
-    return file.download().then(function (r) { var b = r && r[0]; return Buffer.isBuffer(b) && b.length <= LOGO_UNIT_MAX_BYTES ? b : null; });
+    return file.download().then(function (r) { var b = r && r[0]; return Buffer.isBuffer(b) && b.length <= OWNER_LOGO_MAX_BYTES ? b : null; });
   }).then(null, function () { return null; }) : Promise.resolve(null);
   return direct.then(function (bytes) {
     if (bytes) return bytes;
-    return safeFetch(url, { timeoutMs: 8000, maxBytes: LOGO_UNIT_MAX_BYTES }).then(function (r) { return r.status === 200 ? r.body : null; }, function () { return null; });
+    return safeFetch(url, { timeoutMs: 8000, maxBytes: OWNER_LOGO_MAX_BYTES }).then(function (r) { return r.status === 200 ? r.body : null; }, function () { return null; });
   });
 }
 function storagePathOf(fb, url) {
@@ -2703,28 +2711,51 @@ function storagePathOf(fb, url) {
 /* The logo the owner uploaded wins over anything derived: it is the hero's unit, examined like any other
    (examineUnit) — its year set to the event's if it shows an earlier one, a sponsor's mark cropped out —
    and used exactly as uploaded when the examination finds nothing to change.
-   o: { ownerLogoUrl, eventMeta, briefTexts, stamp, deadlineAt } -> unit | null (no usable upload) */
+   o: { ownerLogoUrl, eventMeta, briefTexts, stamp, deadlineAt }
+   -> unit | null (no upload) | { refused: true, note } — an upload that could not be used at all (not to be
+   had, not a picture, an SVG that could run code): the hero falls back to the previous edition's unit or the
+   event's name, and the owner is told why, never silently (the bug this was written for). */
 function ownerLogoUnit(fb, eventId, o) {
   var url = String(o.ownerLogoUrl || '').trim();
   if (!/^https:\/\//i.test(url)) return Promise.resolve(null);
+  function refused(why) {
+    console.error('logo unit: the uploaded logo of ' + eventId + ' was not used (' + why + ') — ' + url);
+    return { refused: true, note: 'Your uploaded logo could not be used here (' + why + '), so the hero does not show it. Upload it again under Event logo in the event\'s Basics as a PNG, WEBP or plain SVG, or select this and use Replace image.' };
+  }
   return fetchOwnerLogo(fb, url).then(function (bytes) {
-    if (!bytes) { console.error('logo unit: the uploaded logo of ' + eventId + ' could not be read — ' + url); return null; }
+    if (!bytes) return refused('the file could not be read');
     var info = logoUnit.imageInfo(bytes);
-    if (!info.type || !(info.width > 0) || !(info.height > 0)) return null;
-    if (info.type === 'svg' && svgCouldRun(bytes.toString('utf8'))) return null;
+    if (!info.type || !(info.width > 0) || !(info.height > 0)) return refused('it is not a picture this site can show');
+    if (info.type === 'svg' && svgCouldRun(bytes.toString('utf8'))) return refused('the SVG contains scripts or embedded content');
     var name = (o.eventMeta || {}).name;
     var years = { from: '', to: logoUnit.eventYear({ eventName: name, start: (o.eventMeta || {}).start, briefTexts: o.briefTexts }) };
-    return examineUnit(fb, eventId, { bytes: bytes, info: info }, { years: years, origin: 'owner', eventName: name, deadlineAt: o.deadlineAt }).then(function (ex) {
+    /* a logo unit is a small picture: one larger than that is used as uploaded, unexamined, and said so */
+    var examined = bytes.length <= LOGO_UNIT_MAX_BYTES
+      ? examineUnit(fb, eventId, { bytes: bytes, info: info }, { years: years, origin: 'owner', eventName: name, deadlineAt: o.deadlineAt })
+      : Promise.resolve({ picture: { bytes: bytes, info: info }, changed: false, notes: [], tone: '', stuck: '', unread: true, seen: '', tooBig: true });
+    return examined.then(function (ex) {
       var notes = ex.notes.slice();
+      var seen = ex.seen && logoUnit.shownYear(ex.seen);
       if (ex.stuck) {
         notes.push('Your logo shows ' + ex.stuck + ', not ' + logoUnit.yearAs(ex.stuck, years.to) + ', and that could not be changed without redrawing it. Upload this year\'s logo under Event logo in the event\'s Basics, or select it here and use Replace image.');
+      } else if (ex.tooBig) {
+        notes.push('Your logo is too large a file (' + (bytes.length / 1048576).toFixed(1) + ' MB) to be checked, so it is used exactly as you uploaded it. Check that it shows this edition\'s year; a smaller file (under 3 MB) is checked for you.');
       } else if (ex.unread) {
         notes.push('Your logo could not be read to check its year and its contents, so it is used exactly as you uploaded it.');
       } else if (!ex.changed && !notes.length) {
-        notes.push('Your logo was checked: it shows ' + (ex.seen ? ex.seen + ', this edition\'s year,' : 'no edition year') + ' and nothing from another edition, so it is used exactly as you uploaded it.');
+        /* what was found, said as it is: this edition's year, no year, a year that is not an edition's to
+           move, or no event year to compare it with */
+        var found = !seen ? 'no edition year'
+          : !years.to ? ex.seen + ' (the event\'s own year could not be told from its name, dates or brief, so it was left as it is)'
+          : seen.full === years.to ? ex.seen + ', this edition\'s year,'
+          : ex.seen + ', which was left as it is (not a recent edition\'s year),';
+        notes.push('Your logo was checked: it shows ' + found + ' and nothing from another edition, so it is used exactly as you uploaded it.');
       }
       var unit = { source: 'owner', from: url, heroMode: heroModeOf(ex.tone), plate: '', note: notes.join(' ') };
-      if (!ex.changed) return Object.assign(unit, { url: url, storagePath: storagePathOf(fb, url), width: info.width, height: info.height });
+      /* used as uploaded: its own file — unless it is an SVG with no size of its own, which is stored once
+         with its size written in (storeLogoUnit) so that it does not collapse in the hero */
+      var unsized = info.type === 'svg' && sizedSvg(bytes.toString('utf8'), info) !== bytes.toString('utf8');
+      if (!ex.changed && !unsized) return Object.assign(unit, { url: url, storagePath: storagePathOf(fb, url), width: info.width, height: info.height });
       return storeLogoUnit(fb, eventId, o.stamp, ex.picture).then(function (stored) {
         return Object.assign(unit, { url: stored.url, storagePath: stored.storagePath, width: ex.picture.info.width || 0, height: ex.picture.info.height || 0 });
       });
@@ -2763,15 +2794,22 @@ function buildLogoUnit(fb, eventId, o) {
       return null;
     });
   }
+  /* an upload that could not be used at all is said so on whatever stands in its place */
+  var ownerNote = '';
+  function withOwnerNote(unit) {
+    if (unit && ownerNote) unit.note = (ownerNote + ' ' + (unit.note || '')).trim();
+    return unit;
+  }
   return step(function () { return ownerLogoUnit(fb, eventId, o); }, 'the uploaded logo').then(function (unit) {
-    if (unit) return unit;
+    if (unit && !unit.refused) return unit;
+    if (unit && unit.refused) ownerNote = unit.note;
     return step(function () { return previousEditionUnit(fb, eventId, o); }, 'the previous edition\'s logo unit').then(function (prev) {
-      if (prev && !prev.stuck) return prev;
+      if (prev && !prev.stuck) return withOwnerNote(prev);
       var note = prev && prev.stuck ? prev.note : '';
       return step(function () { return drawnLogoUnit(fb, eventId, o); }, 'a drawn logo unit').then(function (drawn) {
         drawn = drawn || Object.assign({}, none);
         if (note) drawn.note = note;
-        return drawn;
+        return withOwnerNote(drawn);
       });
     });
   }).then(function (unit) { return unit || none; }, function (err) {
@@ -2806,7 +2844,7 @@ function logoUnitInTime(fb, eventId, o) {
                               unit is not made from it
      swapHeroUnit(html, unitHtml) -> the hero's markup with its logo unit (the [data-rv-logo-unit] block)
                               replaced by unitHtml, or null when it has none
-     saveOwnerUnit(fb, eventId, unit, { heroNote }) -> Promise<{ heroUpdated, savedSite }>: the unit written to the design
+     saveOwnerUnit(fb, eventId, unit, { heroNote }) -> Promise<{ heroUpdated, savedSite, toneClash }>: the unit written to the design
                               and to the generated hero, in one transaction */
 function ownerLogoState(data) {
   data = data || {};
@@ -2841,8 +2879,10 @@ function unitFields(unit) {
 function saveOwnerUnit(fb, eventId, unit, opts) {
   /* opts.heroNote false: the hero's unit carries no note (the design keeps it) */
   var heroNote = !(opts && opts.heroNote === false);
-  var ref = fb.db.collection('events').doc(eventId), out = { heroUpdated: false, savedSite: false };
+  var ref = fb.db.collection('events').doc(eventId), out = null;
   return fb.db.runTransaction(function (tx) {
+    /* a transaction can run more than once: what it found is the last run's */
+    out = { heroUpdated: false, savedSite: false, toneClash: '' };
     return tx.get(ref).then(function (snap) {
       if (eventStateOf(snap) !== 'live') throw httpError(404, 'No event found for "' + eventId + '".', { code: 'event-missing' });
       var data = snap.data(), design = (data.designPlan && data.designPlan.design) || {};
@@ -2855,6 +2895,12 @@ function saveOwnerUnit(fb, eventId, unit, opts) {
         var unitHtml = genDesign.logoUnitImageHtml({ url: unit.url, alt: data.name || eventId, width: unit.width, height: unit.height, plate: unit.plate, note: heroNote ? unit.note : '', mode: mode });
         var next = sections.map(function (s) {
           if (!s || s.id !== 'hero') return s;
+          /* A logo drawn for a dark ground (white lettering) would vanish on a light hero, and the other way
+             round: the hero's own tone is not changed here (its colours and veil are the design's), so such a
+             logo is not swapped in — the owner is told (toneClash), and the design's unit takes effect when
+             the site is next generated. */
+          var heroTone = (/\bhero-on-(dark|light)\b/.exec(String(s.html || '')) || [])[1] || '';
+          if (heroTone && /^(dark|light)$/.test(String(unit.heroMode)) && unit.heroMode !== heroTone) { out.toneClash = unit.heroMode; return s; }
           var html = swapHeroUnit(s.html, unitHtml);
           if (html === null || html === s.html) return s;
           out.heroUpdated = true;
@@ -2880,7 +2926,9 @@ function ownerUnitInputs(fb, eventId, data) {
    examines it (ownerLogoUnit: its year brought to the event's, another edition's marks cropped, never
    redrawn) and becomes the design's logo unit and the generated hero's. A saved site is not touched: the
    answer says so, and the editor offers the new unit when the site is next opened.
-   -> 200 { aiDesigned, unit: { url, width, height, source, note } | null, heroUpdated, savedSite } */
+   -> 200 { aiDesigned, unit: { url, width, height, source, note, heroMode } | null, heroUpdated, savedSite,
+            toneClash: 'dark' | 'light' | '' — the logo is drawn for that ground and the generated hero is the
+            other, so it was not swapped into the hero } */
 function handleEventLogoUnit(req, res) {
   withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
@@ -2898,9 +2946,9 @@ function handleEventLogoUnit(req, res) {
         o.deadlineAt = Date.now() + 100000;
         return ownerLogoUnit(fb, eventId, o);
       }).then(function (unit) {
-        if (!unit) return sendJson(res, 422, { error: 'The logo could not be read as a picture. Upload it again as a PNG, WEBP or SVG.', code: 'logo-unreadable' });
+        if (!unit || unit.refused) return sendJson(res, 422, { error: (unit && unit.note) || 'The logo could not be read as a picture. Upload it again as a PNG, WEBP or SVG.', code: 'logo-unreadable' });
         return saveOwnerUnit(fb, eventId, unit).then(function (done) {
-          sendJson(res, 200, { aiDesigned: true, unit: { url: unit.url, width: unit.width, height: unit.height, source: unit.source, note: unit.note }, heroUpdated: done.heroUpdated, savedSite: done.savedSite });
+          sendJson(res, 200, { aiDesigned: true, unit: { url: unit.url, width: unit.width, height: unit.height, source: unit.source, note: unit.note, heroMode: unit.heroMode }, heroUpdated: done.heroUpdated, savedSite: done.savedSite, toneClash: done.toneClash });
         });
       });
     }).catch(function (err) { sendFailure(res, 'logo-unit', err, 'The logo could not be put into the site. Please try again.'); });

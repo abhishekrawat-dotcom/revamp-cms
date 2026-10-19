@@ -4331,7 +4331,9 @@
      made with. Where the hero still shows that automatic unit (the previous edition's lock-up, or one drawn
      for the event), the owner's logo is put in its place here, as an ordinary change: one Undo step, kept
      only once the owner saves. Where the owner has put a picture of their own there, it is only offered. */
-  var AUTO_UNIT = /\/events\/[^\/]+\/generated\/\d+-logo-unit\.(png|svg|jpe?g|webp)(\?|$)/i;
+  /* made automatically: a unit the server made (generated/…-logo-unit), or an earlier logo the owner
+     uploaded in Basics (logo/…) that was used as uploaded — a picture put in with Replace image is media/… */
+  var AUTO_UNIT = /\/events\/[^\/]+\/(generated\/\d+-logo-unit\.(png|svg|jpe?g|webp)|logo\/[^\/?#]+)(\?|$)/i;
   function ownerLogoOffer() {
     var design = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
     if (!canvas || !canvas.doc || !design || design.logoUnitSource !== 'owner' || !/^https:\/\//i.test(String(design.logoUnitUrl || ''))) return;
@@ -4342,9 +4344,16 @@
     if (shown === design.logoUnitUrl) return;
     var automatic = img ? AUTO_UNIT.test(shown) : !!unit.querySelector('.rv-lu-name');
     var key = 'rv.ownerLogoOffer:' + eventId + ':' + design.logoUnitUrl;
+    /* a logo drawn for the other ground than this hero's would vanish on it: it is only offered, and said so */
+    var hero = unit.closest('.hero-root');
+    var heroTone = hero ? (hero.classList.contains('hero-on-dark') ? 'dark' : hero.classList.contains('hero-on-light') ? 'light' : '') : '';
+    var clash = heroTone && /^(dark|light)$/.test(String(design.logoUnitHeroMode || '')) && design.logoUnitHeroMode !== heroTone;
+    var before = null, putAt = -1;
     function noticeGone() { var n = document.querySelector('#ed-notices [data-notice="owner-logo"]'); if (n) n.remove(); }
     function putIn() {
-      if (!unit.isConnected) return;
+      /* an Undo or a reload of the canvas since the offer was made puts new elements in: found again */
+      if (!unit.isConnected) unit = canvas && canvas.doc && canvas.doc.querySelector('[data-rv-logo-unit]');
+      if (!unit) return;
       var pic = unit.querySelector('img.rv-lu-img');
       if (!pic) {
         /* a unit set in type becomes the picture */
@@ -4367,23 +4376,36 @@
       if (old) old.remove();
       clearAiGenerated(pic);
       commitNow();
+      putAt = undoPtr;
+    }
+    /* Undo on the notice takes back the logo, not whatever was done last: the editor's own Undo when that
+       is still the newest step, else the unit as it was put back, as a step of its own */
+    function takeBack() {
+      if (putAt !== -1 && putAt === undoPtr) { undo(); return; }
+      var now = canvas && canvas.doc && canvas.doc.querySelector('[data-rv-logo-unit]');
+      if (!now || !before) return;
+      now.parentNode.replaceChild(before.cloneNode(true), now);
+      commitNow();
     }
     var about = String(design.logoUnitNote || '').replace(/\s+/g, ' ').trim();
     /* the owner said no to this logo here (Keep this picture, or Undo): not again for this logo */
     function keepOld() { try { localStorage.setItem(key, '1'); } catch (e) { /* asked again next time */ } }
     try { if (localStorage.getItem(key)) return; } catch (e) { /* storage blocked: asked as if new */ }
-    if (automatic) {
+    before = unit.cloneNode(true);
+    if (automatic && !clash) {
       putIn();
       showNotice('owner-logo', {
         kind: 'info', dismissible: true,
         text: 'The hero now shows the event logo you uploaded, in place of the one made automatically. ' + (about ? about + ' ' : '') + 'Save to keep it.',
-        actions: [{ label: 'Undo', onClick: function () { undo(); keepOld(); noticeGone(); } }]
+        actions: [{ label: 'Undo', onClick: function () { takeBack(); keepOld(); noticeGone(); } }]
       });
       return;
     }
     showNotice('owner-logo', {
       kind: 'info', dismissible: true,
-      text: 'The event has a new logo. ' + (about ? about + ' ' : '') + 'Use it in the hero in place of the picture there now?',
+      text: 'The event has a new logo. ' + (about ? about + ' ' : '') +
+        (clash ? 'It is drawn for a ' + design.logoUnitHeroMode + ' background and this hero is ' + heroTone + ', so it may not show here. ' : '') +
+        'Use it in the hero in place of the picture there now?',
       actions: [
         { label: 'Use the new logo', onClick: function () { putIn(); noticeGone(); } },
         { label: 'Keep this picture', onClick: function () { keepOld(); noticeGone(); } }
