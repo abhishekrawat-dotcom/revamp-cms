@@ -327,10 +327,12 @@
     var doc = ifr.contentDocument, win = ifr.contentWindow;
     if (!doc || !win) return;
     try { win.open = function () { return null; }; } catch (e) { /* the sandbox stops it anyway */ }
-    function guard(e) {
+    /* links: a click is left to the site's own code first (a photo in a link to its file opens the site's
+       pop-up, as on the preview) and stopped last of all, below; a middle click is stopped here */
+    function guard(e, links) {
       var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
       if (!t || !t.closest) return;
-      var a = t.closest('a[href], area[href]');
+      var a = links ? t.closest('a[href], area[href]') : null;
       if (a) {
         var href = a.getAttribute('href') || '';
         // only a jump within this page stays a link; everything else would leave the editor
@@ -340,16 +342,17 @@
       if (control && control.form && (control.type === 'submit' || control.type === 'image')) e.preventDefault();
     }
     doc.addEventListener('click', function (e) {
-      guard(e);
+      guard(e, false);
       if (e.button) return;
       var sec = sectionAt(e.target);
       if (sec) pick(keyOf(sec), e.clientY);
     }, true);
-    doc.addEventListener('auxclick', guard, true);
-    /* A link within the page ("#name") is followed here, last of all, when the site's own code has not done it
-       (a Register button, a name the runtime cannot find, a hidden section). The browser must never follow
-       it: the live view's address is about:srcdoc, whose links resolve against the editor's own address, so
-       "#name" would load the whole editor inside the live view. */
+    doc.addEventListener('auxclick', function (e) { guard(e, true); }, true);
+    /* Last of all, every link the site's own code has not dealt with is stopped: one to another page would take
+       the live view away, and the browser must not follow even "#name" itself — the live view's address is
+       about:srcdoc, whose links resolve against the editor's own address, so it would load the whole editor
+       inside the live view. A link within the page is followed here instead (a Register button, a name the
+       runtime cannot find, a hidden section). */
     win.addEventListener('click', function (e) {
       if (e.defaultPrevented) return;
       var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
