@@ -170,7 +170,16 @@
   var page = $('page'), layer = $('layer'), select = $('event-select');
 
   var PAGE = 2000, MAX_ROWS = 20000, SHOW_STEP = 200;
-  var MAPPED = ['name', 'email', 'phone', 'company', 'designation', 'city'];
+  /* the questions whose answers are a response's own columns (functions/lib/forms.js MAPPED_FIELDS) */
+  var MAPPED = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location'];
+  /* +919876543210 as people read it (the server sends phoneDisplay); a number from before the country code
+     picker as it was typed */
+  function phoneOf(r){ return r.phoneDisplay || r.phone || ''; }
+  /* the place as chosen from the suggestions, or as typed (said so) */
+  function placeOf(r){
+    if (!r.location) return '';
+    return r.location + (r.locationParts && r.locationParts.verified === false ? ' (typed, not from the list)' : '');
+  }
   var STATUSES = [
     { v: '', label: 'All statuses' },
     { v: 'confirmed', label: 'Confirmed or Received' },
@@ -254,7 +263,7 @@
     if (S.filter.form && formIdOf(r) !== S.filter.form) return false;
     if (S.filter.status && r.status !== S.filter.status) return false;
     var q = S.filter.q.trim().toLowerCase();
-    if (q && [r.name, r.email, r.company].join(' ').toLowerCase().indexOf(q) === -1) return false;
+    if (q && [r.name, r.email, r.company, r.phone, phoneOf(r), r.location].join(' ').toLowerCase().indexOf(q) === -1) return false;
     return true;
   }
   function filtered(){
@@ -298,7 +307,7 @@
         '<div class="toolbar">' +
           '<label class="tf tf-form">Form<select id="f-form"></select></label>' +
           '<label class="tf">Status<select id="f-status">' + STATUSES.map(function(s){ return '<option value="' + s.v + '"' + (s.v === S.filter.status ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('') + '</select></label>' +
-          '<label class="tf tf-q">Search<input type="search" id="f-q" placeholder="Name, email or company" value="' + esc(S.filter.q) + '"></label>' +
+          '<label class="tf tf-q">Search<input type="search" id="f-q" placeholder="Name, email, company or phone" value="' + esc(S.filter.q) + '"></label>' +
           '<label class="tf">Sort by<select id="f-sort"><option value="new"' + (S.sort === 'new' ? ' selected' : '') + '>Submitted (newest first)</option><option value="name"' + (S.sort === 'name' ? ' selected' : '') + '>Name</option></select></label>' +
           '<span class="acts"><button class="btn btn-secondary btn-sm" type="button" id="btn-export">' + C.svg(C.IC.download || '<path d="M12 4v12M6 11l6 6 6-6"/><path d="M4 20h16"/>', 13) + ' <span>Export CSV</span></button></span>' +
         '</div>' +
@@ -403,7 +412,7 @@
       return;
     }
     var extra = extraColumns();
-    var cols = [['Name'], ['Email'], ['Company'], ['Designation'], ['Form'], ['Status'], ['Submitted (IST)'], ['Checked in']]
+    var cols = [['Name'], ['Email'], ['Phone'], ['Company'], ['Designation'], ['Location'], ['Form'], ['Status'], ['Submitted (IST)'], ['Checked in']]
       .concat(extra.map(function(x){ return [x.label]; }));
     var shown = rows.slice(0, S.shown);
     box.innerHTML = '<div class="rep-wrap"><table class="rep-tbl"><thead><tr>' + cols.map(function(c){ return '<th scope="col">' + esc(c[0]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
@@ -412,8 +421,10 @@
         return '<tr tabindex="0" data-id="' + esc(r.id) + '" aria-label="' + esc((r.name || r.email) + ', ' + statusLabel(r)) + '">' +
           '<td class="nm" data-label="Name"><b>' + esc(r.name || '—') + '</b></td>' +
           '<td data-label="Email"><span class="clip">' + esc(r.email) + '</span></td>' +
+          '<td data-label="Phone" style="white-space:nowrap">' + esc(phoneOf(r) || '—') + '</td>' +
           '<td data-label="Company"><span class="clip">' + esc(r.company || '—') + '</span></td>' +
           '<td data-label="Designation"><span class="clip">' + esc(r.designation || '—') + '</span></td>' +
+          '<td data-label="Location"><span class="clip" title="' + esc(placeOf(r)) + '">' + esc(r.location || r.city || '—') + '</span></td>' +
           '<td data-label="Form"><span class="clip">' + esc(formNameOf(fid, r)) + '</span></td>' +
           '<td data-label="Status">' + statusBadge(r) + '</td>' +
           '<td data-label="Submitted (IST)" style="white-space:nowrap">' + esc(ist(r.createdAt)) + '</td>' +
@@ -503,7 +514,8 @@
               (full ? '<p class="dwarn">Capacity is full — approving will exceed it.</p>' : '') +
               '<div class="dact"><button class="btn btn-primary btn-sm" type="button" id="dr-approve">Approve</button><button class="btn btn-secondary btn-sm" type="button" id="dr-decline">Decline</button></div></div>' : '') +
           '<div class="dsec"><h4>Contact</h4>' +
-            row('Name', r.name) + row('Email', r.email) + row('Phone', r.phone) + row('Company', r.company) + row('Designation', r.designation) + row('City', r.city) +
+            row('Name', r.name) + row('First name', r.firstName) + row('Last name', r.lastName) + row('Email', r.email) + row('Phone', phoneOf(r)) +
+            row('Company', r.company) + row('Designation', r.designation) + row('Location', placeOf(r)) + row('City', r.city) +
           '</div>' +
           (answers ? '<div class="dsec"><h4>Answers</h4>' + answers + '</div>' : '') +
           '<div class="dsec"><h4>Where it came from</h4>' +

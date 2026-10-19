@@ -8,7 +8,13 @@
         formName, counts: true) — otherwise done, 500 at a time, when Reporting first lists them;
      3. its registration totals are worked out again in the form-aware shape (counters.audienceV 2:
         submissions, pending, rejected, per-form counts) — otherwise done just before its next
-        registration, change or delete.
+        registration, change or delete;
+     4. its "Register now", when it was made for the event automatically and nobody has edited it since
+        (forms.isUntouchedDefault: never saved, rev 0, still the original questions — name, email and the
+        optional phone / company / designation), is given the seven standard questions every new form starts
+        with (First name, Last name, Email, Mobile, Company, Designation, Location; all required) and rev 1,
+        so a published page holding the old definition draws the new one. A form anyone has saved is left as
+        it is. This step is the only one that does not also happen by itself.
 
    node tools/migrate-forms.js [--dry | --apply] [--event <id> | --prefix <p>]
      --dry (default)   a dry run: reads everything, writes nothing, prints what it would do
@@ -51,7 +57,7 @@ function isLive(d) { return !!d && !d.deletedAt && !!d.createdAt; }
 
 async function migrateEvent(fb, id, ev) {
   const ref = fb.db.collection('events').doc(id);
-  const out = { id: id, form: 'kept', backfilled: 0, totals: 'kept' };
+  const out = { id: id, form: 'kept', backfilled: 0, totals: 'kept', questions: 'none stored' };
 
   /* 1. the first form */
   const stored = await ref.collection('forms').limit(1).get();
@@ -82,6 +88,27 @@ async function migrateEvent(fb, id, ev) {
     }
   }
 
+  /* 4. the seven standard questions, for a "Register now" nobody has touched (decided again inside the
+     transaction, on what is stored at that moment: an organiser saving it meanwhile wins) */
+  const formRef = ref.collection('forms').doc(forms.DEFAULT_FORM_ID);
+  const stored4 = await formRef.get();
+  if (stored4.exists) {
+    const f = forms.storedForm(stored4.id, stored4.data());
+    const hasStd = forms.DEFAULT_FIELD_IDS.every(function (fid) { return f.fields.some(function (x) { return x.id === fid; }); });
+    if (!forms.isUntouchedDefault(f, ev)) out.questions = hasStd ? 'already has the standard questions' : f.rev ? 'edited by the organiser, kept' : 'kept (not the original questions)';
+    else if (!APPLY) out.questions = 'would get the standard seven';
+    else {
+      out.questions = await fb.db.runTransaction(function (tx) {
+        return Promise.all([tx.get(ref), tx.get(formRef)]).then(function (snaps) {
+          const evNow = snaps[0].data() || {}, fNow = snaps[1].exists ? forms.storedForm(snaps[1].id, snaps[1].data()) : null;
+          if (!isLive(evNow) || !fNow || !forms.isUntouchedDefault(fNow, evNow)) return 'changed meanwhile, kept';
+          tx.update(formRef, { fields: forms.defaultFields(), rev: 1, updatedAt: new Date().toISOString(), updatedBy: 'migration: standard questions' });
+          return 'given the standard seven';
+        });
+      });
+    }
+  }
+
   /* 3. the totals */
   const counters = ev.counters && typeof ev.counters === 'object' ? ev.counters : {};
   if (counters.audienceV !== audience.AUDIENCE_V) {
@@ -107,21 +134,23 @@ async function migrateEvent(fb, id, ev) {
     return isLive(d.data());
   });
   console.log((APPLY ? 'APPLYING' : 'DRY RUN (add --apply to write)') + ' — ' + targets.length + ' event' + (targets.length === 1 ? '' : 's'));
-  const sum = { created: 0, backfilled: 0, rebuilt: 0, failed: 0 };
+  const sum = { created: 0, backfilled: 0, rebuilt: 0, questions: 0, failed: 0 };
   for (const d of targets) {
     try {
       const r = await migrateEvent(fb, d.id, d.data());
       if (/create/.test(r.form)) sum.created++;
+      if (/seven/.test(r.questions)) sum.questions++;
       if (/rebuil/.test(r.totals)) sum.rebuilt++;
       sum.backfilled += r.backfilled;
       console.log('  ' + r.id + ': form ' + r.form + ', ' + r.backfilled + ' registration' + (r.backfilled === 1 ? '' : 's') +
-        (APPLY ? ' marked' : ' to mark') + ', totals ' + r.totals);
+        (APPLY ? ' marked' : ' to mark') + ', totals ' + r.totals + ', Register now: ' + r.questions);
     } catch (err) {
       sum.failed++;
       console.error('  ' + d.id + ': FAILED — ' + ((err && err.message) || err));
     }
   }
   console.log('Forms ' + (APPLY ? 'created' : 'to create') + ': ' + sum.created + ' · registrations ' + (APPLY ? 'marked' : 'to mark') + ': ' + sum.backfilled +
-    ' · totals ' + (APPLY ? 'rebuilt' : 'to rebuild') + ': ' + sum.rebuilt + (sum.failed ? ' · FAILED: ' + sum.failed : ''));
+    ' · totals ' + (APPLY ? 'rebuilt' : 'to rebuild') + ': ' + sum.rebuilt + ' · Register now forms ' + (APPLY ? 'given' : 'to give') + ' the standard seven: ' + sum.questions +
+    (sum.failed ? ' · FAILED: ' + sum.failed : ''));
   process.exit(sum.failed ? 1 : 0);
 })().catch(function (err) { console.error((err && err.stack) || err); process.exit(1); });

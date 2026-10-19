@@ -62,6 +62,11 @@ var CONSENT = F('consent', 'checkbox', 'I agree to the terms', true);
 var NEWS = F('news', 'checkbox', 'Send me news', false);
 var COUNTRY = F('country', 'country', 'Country', true, { options: ['India', 'Afghanistan', 'United Kingdom'] });
 var ALT_EMAIL = F('assistant_email', 'email', 'Assistant email', true);
+var FIRST = F('first_name', 'text', 'First name', true);
+var LAST = F('last_name', 'text', 'Last name', true);
+var LOCATION = F('location', 'location', 'Location', true);
+var EMAIL_BAD = 'Please enter a valid email address, like name@company.com.';
+var IN_BAD = 'Please enter a valid phone number for India: 10 digits after +91, starting with 6, 7, 8 or 9.';
 
 var long201 = new Array(202).join('a');
 var VECTORS = [
@@ -89,17 +94,37 @@ var VECTORS = [
   { field: MSG, value: ' line one\r\nline two ', expect: { value: 'line one\nline two' } },
   // email: casing, shape
   { field: EMAIL, value: '  Asha.Rao@Example.COM ', expect: { value: 'asha.rao@example.com' } },
-  { field: EMAIL, value: 'asha@example', expect: { error: 'Please enter a valid email address.' } },
-  { field: EMAIL, value: 'asha rao@example.com', expect: { error: 'Please enter a valid email address.' } },
-  { field: EMAIL, value: 'asha@example.c', expect: { error: 'Please enter a valid email address.' } },
-  { field: ALT_EMAIL, value: 'not-an-email', expect: { error: 'Please enter a valid email address.' } },
-  // phone: 7 to 15 digits
-  { field: PHONE, value: '123456', expect: { error: 'Please enter a valid phone number.' } },
+  { field: EMAIL, value: 'asha@example', expect: { error: EMAIL_BAD } },
+  { field: EMAIL, value: 'asha rao@example.com', expect: { error: EMAIL_BAD } },
+  { field: EMAIL, value: 'asha@example.c', expect: { error: EMAIL_BAD } },
+  { field: EMAIL, value: 'asha..rao@example.com', expect: { error: EMAIL_BAD } },
+  { field: EMAIL, value: 'asha@exa_mple.com', expect: { error: EMAIL_BAD } },
+  { field: EMAIL, value: 'first.last+tag@sub.example.co.in', expect: { value: 'first.last+tag@sub.example.co.in' } },
+  { field: ALT_EMAIL, value: 'not-an-email', expect: { error: EMAIL_BAD } },
+  // phone: { country, number } from the picker, checked for that country; text from an older page
+  { field: PHONE, value: { country: 'IN', number: '98765 43210' }, expect: { value: '+919876543210' } },
+  { field: PHONE, value: { country: 'IN', number: '09876543210' }, expect: { value: '+919876543210' } },
+  { field: PHONE, value: { country: 'IN', number: '4876543210' }, expect: { error: IN_BAD } },
+  { field: PHONE, value: { country: 'US', number: '212-555-0123' }, expect: { value: '+12125550123' } },
+  { field: PHONE, value: { country: 'GB', number: '07911 123456' }, expect: { value: '+447911123456' } },
+  { field: PHONE, value: { country: 'AE', number: '050 123 4567' }, expect: { value: '+971501234567' } },
+  { field: PHONE, value: { country: 'SG', number: '8123 4567' }, expect: { value: '+6581234567' } },
+  { field: PHONE, value: { country: 'SG', number: '8123 456' }, expect: { error: 'Please enter a valid phone number for Singapore: 8 digits after +65.' } },
+  { field: PHONE, value: { country: 'IN', number: '+1 212 555 0123' }, expect: { value: '+12125550123' } },
+  { field: PHONE, value: { country: 'IN', number: '' }, expect: { error: 'Please fill in Mobile number.' } },
+  { field: PHONE, value: '123456', expect: { error: 'Please enter a valid phone number, with its country code.' } },
   { field: PHONE, value: '1234567', expect: { value: '1234567' } },
-  { field: PHONE, value: '+91 98765 43210', expect: { value: '+91 98765 43210' } },
+  { field: PHONE, value: '+91 98765 43210', expect: { value: '+919876543210' } },
   { field: PHONE, value: '123456789012345', expect: { value: '123456789012345' } },
-  { field: PHONE, value: '1234567890123456', expect: { error: 'Please enter a valid phone number.' } },
-  { field: PHONE, value: '98765-abc-43', expect: { error: 'Please enter a valid phone number.' } },
+  { field: PHONE, value: '1234567890123456', expect: { error: 'Please enter a valid phone number, with its country code.' } },
+  { field: PHONE, value: '98765-abc-43', expect: { error: 'Please enter a valid phone number, with its country code.' } },
+  // first and last names
+  { field: FIRST, value: '', expect: { error: 'Please enter your first name.' } },
+  { field: LAST, value: ' ', expect: { error: 'Please enter your last name.' } },
+  { field: FIRST, value: long201, expect: { value: long201.slice(0, 60) } },
+  // location: the text as chosen or typed (the server marks whether it is one of its places)
+  { field: LOCATION, value: '', expect: { error: 'Please fill in Location.' } },
+  { field: LOCATION, value: ' Noida,  Uttar Pradesh, India ', expect: { value: 'Noida, Uttar Pradesh, India' } },
   { field: PHONE, value: '', expect: { error: 'Please fill in Mobile number.' } },
   { field: PHONE_OPT, value: '', expect: { value: undefined } },
   // number
@@ -197,7 +222,7 @@ check('no class syntax', !/(^|\s)class\s+[A-Z]/.test(code));
   'Untitled field',
   'no longer exists. Choose another form in the editor.'
 ].forEach(function (s) { check('says "' + s + '"', SRC.indexOf(s) !== -1); });
-check('the email pattern is http.js\'s, verbatim', SRC.indexOf(String(/^[^@\s<>"',;]+@[^@\s<>"',;]+\.[^@\s<>"',;.]{2,}$/)) !== -1);
+check('the email pattern is functions/lib/forms.js\'s, verbatim', SRC.indexOf(String(require('./forms.js').EMAIL_RE)) !== -1);
 check('the honeypot is named "website"', /name = 'website'/.test(SRC));
 check('posts to /api/register', SRC.indexOf("'/api/register'") !== -1);
 check('fetches /api/public/forms', SRC.indexOf("'/api/public/forms?eventId='") !== -1);
@@ -229,9 +254,41 @@ VECTORS.forEach(function (v, i) {
   var name = 'runtime vector ' + i + ' on the server (' + f.type + ' ' + JSON.stringify(v.value === undefined ? null : v.value).slice(0, 40) + ')';
   if (v.expect.error) { check(name + ': same message', r.errors[f.id] === v.expect.error, JSON.stringify(r.errors)); return; }
   check(name + ': no error', !Object.keys(r.errors).length, JSON.stringify(r.errors));
-  var stored = SERVER.MAPPED_FIELDS.indexOf(f.id) !== -1 ? r.reg[f.id] : r.answers[f.id];
+  var stored = SERVER.MAPPED_FIELDS.indexOf(f.id) !== -1 ? r.reg[SERVER.MAPPED_KEY[f.id] || f.id] : r.answers[f.id];
   check(name + ': same cleaned value', JSON.stringify(stored) === JSON.stringify(v.expect.value) || (emptyish(stored) && emptyish(v.expect.value)), JSON.stringify(stored));
 });
+
+/* ---------- the Mobile field's table, the visitor's country, the email hint ---------- */
+function block(src, tag) {
+  var m = new RegExp('/\\* ' + tag + ':BEGIN[^\\n]*\\n([\\s\\S]*?)\\n[ ]*/\\* ' + tag + ':END').exec(src);
+  return m ? m[1].split('\n').map(function (l) { return l.trim(); }).join('\n') : null;
+}
+var PHONE_SRC = fs.readFileSync(path.join(__dirname, 'phone.js'), 'utf8');
+check('the page and the server have the same phone table', !!block(SRC, 'PHONE_DATA') && block(SRC, 'PHONE_DATA') === block(PHONE_SRC, 'PHONE_DATA'));
+check('the phone table lists 240+ countries, India first', require('./phone.js').COUNTRIES.length >= 240 && require('./phone.js').COUNTRIES[0].cc === 'IN');
+['fits', 'nationalOf', 'fromInternational', 'phoneMessage', 'cleanPhone', 'dialRank'].forEach(function (fn) {
+  var re = new RegExp('function ' + fn + '\\([^\\n]*}\\n|function ' + fn + '\\([\\s\\S]*?\\n\\s*}\\n');
+  var a = re.exec(SRC), b = re.exec(PHONE_SRC);
+  var norm = function (m) { return m ? m[0].split('\n').map(function (l) { return l.trim(); }).join('\n').replace(/\bphoneCountry\(/g, 'country(') : ''; };
+  check('phone rule ' + fn + '() is the server\'s, the same code', !!a && norm(a) === norm(b), norm(a).slice(0, 80));
+});
+function winWith(tz, langs) {
+  return { Intl: { DateTimeFormat: function () { return { resolvedOptions: function () { return { timeZone: tz }; } }; } }, navigator: { languages: langs || [], language: (langs || [])[0] || '' } };
+}
+[['Asia/Kolkata', 'IN'], ['Asia/Calcutta', 'IN'], ['America/New_York', 'US'], ['Europe/London', 'GB'], ['Asia/Dubai', 'AE'], ['Asia/Singapore', 'SG'], ['America/Toronto', 'CA'], ['Australia/Sydney', 'AU'], ['Asia/Muscat', 'OM']].forEach(function (t) {
+  check('time zone ' + t[0] + ' -> ' + t[1], RF.guessCountry(winWith(t[0], ['en-US'])) === t[1], RF.guessCountry(winWith(t[0], ['en-US'])));
+});
+check('no time zone: the language region (en-GB -> GB)', RF.guessCountry(winWith('UTC', ['en-GB', 'en'])) === 'GB');
+check('zh-Hant-TW -> TW', RF.guessCountry(winWith('Etc/UTC', ['zh-Hant-TW'])) === 'TW');
+check('nothing to go on: India', RF.guessCountry(winWith('', ['en'])) === 'IN' && RF.guessCountry({}) === 'IN');
+[['asha@gmial.com', 'asha@gmail.com'], ['asha@gmail.con', 'asha@gmail.com'], ['asha@yaho.com', 'asha@yahoo.com'], ['asha@hotmial.com', 'asha@hotmail.com'], ['asha@outlok.com', 'asha@outlook.com'],
+  ['asha@rediffmial.com', 'asha@rediffmail.com'], ['asha@gmail.com', ''], ['asha@ymail.com', ''], ['asha@company.co.in', ''], ['asha@tcs.com', ''], ['asha', ''], ['asha@acme.con', 'asha@acme.com']].forEach(function (t) {
+  check('email hint for ' + t[0] + ': ' + (t[1] || 'none'), RF.suggestEmail(t[0]) === t[1], RF.suggestEmail(t[0]));
+});
+var req = ['Mobile number', 'Location'];
+check('the visitor-facing words of the new fields', ['Country code', 'Search by country or code', 'No place by that name in our list. You can keep what you typed.',
+  'Not one of the suggested places: it will be sent as you typed it.', 'Did you mean '].every(function (s) { return SRC.indexOf(s) !== -1; }) && req.length === 2);
+check('suggestions come from /api/public/places', SRC.indexOf("'/api/public/places'") !== -1);
 
 if (failed) { console.error('rv-forms: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-forms: all ' + passed + ' checks passed');

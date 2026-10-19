@@ -31,14 +31,17 @@
   'use strict';
 
   /* ---------- rules shared with the server (functions/lib/forms.js) ---------- */
-  var MAPPED_TYPES = { name: 'text', email: 'email', phone: 'phone', company: 'text', designation: 'text', city: 'text' };
-  var MAPPED_COLUMN = { name: 'Name', email: 'Email', phone: 'Phone', company: 'Company', designation: 'Designation', city: 'City' };
-  var LOCKED = { name: 1, email: 1 };
+  var MAPPED_TYPES = { name: 'text', first_name: 'text', last_name: 'text', email: 'email', phone: 'phone', company: 'text', designation: 'text', city: 'text', location: 'location' };
+  var MAPPED_COLUMN = { name: 'Name', first_name: 'First name', last_name: 'Last name', email: 'Email', phone: 'Phone', company: 'Company', designation: 'Designation', city: 'City', location: 'Location' };
+  /* every form asks for an email address, always required: it is how one response is told from another (the
+     other standard questions — names, mobile, company, designation, location — can be made optional or removed) */
+  var LOCKED = { email: 1 };
   var OPTION_TYPES = { select: 1, radio: 1, multiselect: 1 };
-  var TEXT_LIKE = { text: 1, textarea: 1, email: 1, phone: 1, number: 1, url: 1 };   // types a placeholder shows on
+  var TEXT_LIKE = { text: 1, textarea: 1, email: 1, phone: 1, number: 1, url: 1, location: 1 };   // types a placeholder shows on
   var MAX = { name: 80, title: 120, intro: 600, label: 120, placeholder: 120, help: 300, submitLabel: 40, successMessage: 600, option: 120 };
   var DEFAULT_LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 100 };
-  var LOCK_NOTE = 'Every form asks for a name and an email address';
+  var LOCK_NOTE = 'Every form asks for an email address, always required: it is how one response is told from another';
+  var LOCK_BADGE = 'Always required';
   /* the words for a form's purpose (the server's PURPOSES); the choices themselves come from its templates */
   var PURPOSE_WORDS = { register: 'Registration', interest: 'Expression of interest', partner: 'Partnership enquiry', vip: 'VIP invitation request', speaker: 'Speaker application', custom: 'Other' };
 
@@ -642,7 +645,7 @@
           '<span class="fb-type">' + esc(typeLabel(f.type)) + '</span>' +
         '</button>' +
         '<label class="fb-req"' + (locked ? ' title="' + LOCK_NOTE + '"' : '') + '><input type="checkbox" data-fb-k="required" data-fk="rq-' + i + '" aria-label="' + esc(label) + ' is required"' + (f.required ? ' checked' : '') + (locked ? ' disabled aria-describedby="' + fid + '-lock"' : '') + '> Required' +
-          (locked ? '<span class="fb-lock" id="' + fid + '-lock" title="' + LOCK_NOTE + '">' + svg(IC.lock, 12) + '<span class="fb-sr">' + LOCK_NOTE + '</span></span>' : '') + '</label>' +
+          (locked ? '<span class="fb-lock" id="' + fid + '-lock" title="' + LOCK_NOTE + '">' + svg(IC.lock, 12) + '<span class="fb-lock-t">' + LOCK_BADGE + '</span><span class="fb-sr">: ' + LOCK_NOTE + '</span></span>' : '') + '</label>' +
         '<span class="fb-frow-acts">' +
           '<button type="button" class="fb-icon" data-fb-act="field-up" data-fk="fu-' + i + '" aria-label="Move ' + esc(label) + ' up" title="Move up"' + (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 13) + '</button>' +
           '<button type="button" class="fb-icon" data-fb-act="field-down" data-fk="fd-' + i + '" aria-label="Move ' + esc(label) + ' down" title="Move down"' + (i === n - 1 ? ' disabled' : '') + '>' + svg(IC.down, 13) + '</button>' +
@@ -668,6 +671,8 @@
       h += '<div class="fb-ctl"><label for="' + fid + '-help">Help text</label><input type="text" id="' + fid + '-help" data-fb-k="help" data-fk="fh-' + i + '" maxlength="' + MAX.help + '" value="' + esc(f.help) + '"><span class="fb-hint">Shown under the field. Optional.</span></div>';
       if (OPTION_TYPES[f.type]) h += optionsHtml(f, i, fid, optsErr);
       if (f.type === 'country') h += '<p class="fb-hint">Visitors choose from a list of ' + ((data.countries || []).length || 'all') + ' countries, India first.</p>';
+      if (f.type === 'phone') h += '<p class="fb-hint">Visitors choose their country code (it starts on the country they are in) and type their number. It is checked for that country (in India: 10 digits, starting 6–9) and kept in international form, like +91 98765 43210.</p>';
+      if (f.type === 'location') h += '<p class="fb-hint">As visitors type, cities are suggested as “City, State, Country” (e.g. “Noida, Uttar Pradesh, India”). They can also type a place that is not listed: Reporting marks it as not verified.</p>';
       h += '<details class="fb-adv"><summary>Advanced</summary><p class="fb-hint">Field id: ' + (f.id ? '<code>' + esc(f.id) + '</code> (it never changes, so Reporting keeps each answer under it)' : 'given when you save the form, from its label') + '</p></details>';
       return h + '</div>';
     }
@@ -787,10 +792,8 @@
         else f = { name: '', title: '', intro: '', purpose: 'custom', fields: [], submitLabel: 'Submit', successMessage: 'Thank you. Your response has been received.', countsAsRegistration: false, needsApproval: false, open: true, duplicates: 'reject', template: 'blank' };
         f.name = ''; f.title = '';
       }
-      // every form asks for a name and an email: a template that somehow lacks them gets them back
-      ['email', 'name'].forEach(function (id) {
-        if (!f.fields.some(function (x) { return x.id === id; })) f.fields.unshift({ id: id, type: MAPPED_TYPES[id], label: id === 'name' ? 'Full name' : 'Email', required: true, placeholder: '', help: '' });
-      });
+      // every form asks for an email address: a template that somehow lacks it gets it back
+      if (!f.fields.some(function (x) { return x.id === 'email'; })) f.fields.unshift({ id: 'email', type: 'email', label: 'Email', required: true, placeholder: '', help: '' });
       openEditor(f, true);
     }
 
@@ -1280,7 +1283,7 @@
     _pure: {
       formInput: formInput, draftOf: draftOf, sameDraft: sameDraft, validateDraft: validateDraft, parseOptionList: parseOptionList,
       moveItem: moveItem, templateForm: templateForm, describeTemplate: describeTemplate, serverFieldOf: serverFieldOf,
-      previewForm: previewForm, MAPPED_TYPES: MAPPED_TYPES
+      previewForm: previewForm, MAPPED_TYPES: MAPPED_TYPES, LOCKED: LOCKED
     }
   };
 })();

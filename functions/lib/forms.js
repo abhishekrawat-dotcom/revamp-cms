@@ -12,9 +12,18 @@
 //
 //   A form id is /^[a-z][a-z0-9-]{0,39}$/ and never changes. "register" is the form an event's original
 //   single registration form becomes (legacyDefaultForm). A field id is /^[a-z][a-z0-9_]{0,39}$/ and never
-//   changes either; six of them (MAPPED_FIELDS) are the registration's own columns rather than an answer.
-//   Every form asks for a name and an email address: those two fields can be relabelled and moved, never
-//   removed, made optional or given another type.
+//   changes either; nine of them (MAPPED_FIELDS) are the registration's own columns rather than an answer.
+//
+// THE STANDARD QUESTIONS. Every new form — a custom one, every template, the default "Register now", one the
+//   AI makes — starts with seven, in this order, all required (defaultFields): First name, Last name, Email,
+//   Mobile (a country code picker and the number, kept as +919876543210 — lib/phone.js), Company,
+//   Designation, Location (city, state and country, suggested as it is typed — lib/places.js). An organiser
+//   may make any of them optional, remove it, relabel it or give it a placeholder — except the email: every
+//   form asks for one, always required (it is how "one response per email" tells responses apart), though
+//   it too can be relabelled and moved. A form saved before first and last names (one "name" field, "Full
+//   name") keeps working as it is, everywhere.
+//   A registration's name is its "name" answer on such a form, and "First Last" on a form with the two: every
+//   reader of a registration (Reporting, the export, the totals, the activity log) finds it in `name`.
 //
 // The validation messages below are part of the contract: the page runtime (templates/_shared/rv-forms.js)
 // says exactly the same sentences, so an answer the server refuses reads the same as one the browser did.
@@ -23,36 +32,47 @@ var crypto = require('crypto');
 
 /* ---------- the vocabulary ---------- */
 
-var FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'url', 'date', 'select', 'radio', 'multiselect', 'checkbox', 'country'];
+var phone = require('./phone');
+var places = require('./places');
+
+var FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'url', 'date', 'select', 'radio', 'multiselect', 'checkbox', 'country', 'location'];
 var FIELD_TYPE_LABELS = {
-  text: 'Short text', textarea: 'Long text', email: 'Email', phone: 'Phone', number: 'Number', url: 'Web address',
+  text: 'Short text', textarea: 'Long text', email: 'Email', phone: 'Mobile (with country code)', number: 'Number', url: 'Web address',
   date: 'Date', select: 'Dropdown', radio: 'Single choice', multiselect: 'Multiple choice', checkbox: 'Tick box (yes/no)',
-  country: 'Country'
+  country: 'Country', location: 'Location (city, state, country)'
 };
 var OPTION_TYPES = ['select', 'radio', 'multiselect'];
 var PURPOSES = ['register', 'interest', 'partner', 'vip', 'speaker', 'custom'];
-/* a registration's own columns: their values are stored as reg.<id>, every other answer under answers.<id> */
-var MAPPED_FIELDS = ['name', 'email', 'phone', 'company', 'designation', 'city'];
-var MAPPED_TYPES = { name: 'text', email: 'email', phone: 'phone', company: 'text', designation: 'text', city: 'text' };
-var MAPPED_MAX = { name: 120, company: 120, designation: 120, city: 80 };
-var LOCKED_FIELDS = ['name', 'email'];
+/* a registration's own columns: their values are stored as reg[MAPPED_KEY[id] || id], every other answer
+   under answers.<id> */
+var MAPPED_FIELDS = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location'];
+var MAPPED_TYPES = { name: 'text', first_name: 'text', last_name: 'text', email: 'email', phone: 'phone', company: 'text',
+  designation: 'text', city: 'text', location: 'location' };
+var MAPPED_KEY = { first_name: 'firstName', last_name: 'lastName' };
+var MAPPED_MAX = { name: 120, first_name: 60, last_name: 60, company: 120, designation: 120, city: 80 };
+var LOCATION_MAX = 200;
+var LOCKED_FIELDS = ['email'];
 
 var FORM_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
 var FIELD_ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
 var DEFAULT_FORM_ID = 'register';
 
 var LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 100 };
-var MIN_FIELDS = 2;
+var MIN_FIELDS = 1;
 var MAX_ANSWERS_BYTES = 16 * 1024;
 var TEXT = { name: 80, title: 120, intro: 600, submitLabel: 40, successMessage: 600, label: 200, placeholder: 120, help: 300, option: 120 };
 
 /* bumped whenever templates/_shared/rv-forms.js changes, so a browser holding the old copy (static files are
    cached for five minutes, under an unhashed name) asks for the new one */
-var FORMS_RUNTIME_V = 1;
+var FORMS_RUNTIME_V = 2;
 
-/* lib/http.js EMAIL_RE, copied verbatim (this module stays free of anything that touches Firebase);
-   forms.test.js checks the two are the same */
-var EMAIL_RE = /^[^@\s<>"',;]+@[^@\s<>"',;]+\.[^@\s<>"',;.]{2,}$/;
+/* An email address as a form takes it: name@domain.tld — the name of the letters, digits and signs an address
+   may have, no two dots in a row and none at either end; the domain of labels of letters, digits and hyphens,
+   ending in a real top-level domain (2–24 letters, or xn--… for one in another script). Stricter than lib/
+   http.js's rule for the console, on purpose: an address a visitor mistypes is refused while they can still
+   fix it. templates/_shared/rv-forms.js has the same expression, verbatim (forms.test.js checks). */
+var EMAIL_RE = /^[A-Za-z0-9!#$%&'*+\/=?^_\x60{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+\/=?^_\x60{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,24}|xn--[A-Za-z0-9-]{1,59})$/;
+var EMAIL_MESSAGE = 'Please enter a valid email address, like name@company.com.';
 var URL_RE = /^https?:\/\/[^\s<>"]+\.[^\s<>"]+/i;
 var SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -111,8 +131,7 @@ function multiline(v, max) {
   if (typeof v !== 'string') return '';
   return v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max || 4000);
 }
-function isPhone(v) { return /^\+?[\d\s().-]{7,24}$/.test(v) && v.replace(/\D/g, '').length >= 7 && v.replace(/\D/g, '').length <= 15; }
-function isEmail(v) { return typeof v === 'string' && v.length <= 200 && EMAIL_RE.test(v); }
+function isEmail(v) { return typeof v === 'string' && v.length <= 200 && v.indexOf('@') <= 64 && EMAIL_RE.test(v); }
 function clone(v) { return JSON.parse(JSON.stringify(v)); }
 function isoOf(v) {
   if (typeof v === 'string') return v;
@@ -154,10 +173,23 @@ function uniqueId(base, taken, sep) {
 function F(id, type, label, required, extra) {
   return Object.assign({ id: id, type: type, label: label, required: !!required, placeholder: '', help: '' }, extra || {});
 }
+/* The seven questions every new form starts with, in this order, all required. */
+var DEFAULT_FIELD_IDS = ['first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'location'];
+function defaultFields(emailLabel) {
+  return [
+    F('first_name', 'text', 'First name', true),
+    F('last_name', 'text', 'Last name', true),
+    F('email', 'email', emailLabel || 'Email', true),
+    F('phone', 'phone', 'Mobile number', true),
+    F('company', 'text', 'Company', true),
+    F('designation', 'text', 'Designation', true),
+    F('location', 'location', 'Location', true, { placeholder: 'Start typing your city' })
+  ];
+}
 function templateForm(t) {
   return {
     name: t.name, title: t.name, intro: '', purpose: t.purpose,
-    fields: [F('name', 'text', 'Full name', true), F('email', 'email', t.emailLabel || 'Email', true)].concat(t.fields),
+    fields: defaultFields(t.emailLabel).concat(t.fields),
     submitLabel: t.submitLabel, successMessage: t.successMessage,
     countsAsRegistration: t.counts, needsApproval: t.approval, open: true, duplicates: 'reject', template: t.id
   };
@@ -165,33 +197,29 @@ function templateForm(t) {
 var TEMPLATE_SOURCE = [
   { id: 'register', name: 'Register now', purpose: 'register', counts: true, approval: false,
     description: 'Counts as a registration',
-    fields: [F('phone', 'phone', 'Mobile number', true), F('company', 'text', 'Company', true), F('designation', 'text', 'Designation', true), F('city', 'text', 'City', false)],
+    fields: [],
     submitLabel: 'Register', successMessage: DEFAULT_SUCCESS },
   { id: 'interest', name: 'Express interest', purpose: 'interest', counts: false, approval: false,
     description: 'An enquiry: does not count as a registration',
-    fields: [F('phone', 'phone', 'Mobile number', false), F('company', 'text', 'Company', true), F('designation', 'text', 'Designation', true),
-      F('message', 'textarea', 'Anything you would like us to know?', false)],
+    fields: [F('message', 'textarea', 'Anything you would like us to know?', false)],
     submitLabel: 'Express interest', successMessage: 'Thank you for your interest. The organisers will be in touch.' },
   { id: 'partner', name: 'Join as partner', purpose: 'partner', counts: false, approval: false,
     description: 'A partnership enquiry: does not count as a registration',
-    fields: [F('phone', 'phone', 'Mobile number', true), F('company', 'text', 'Company', true), F('designation', 'text', 'Designation', true),
-      F('partnership', 'select', 'Partnership interest', true, { options: ['Presenting partner', 'Associate partner', 'Exhibitor', 'Knowledge partner', 'Other'] }),
+    fields: [F('partnership', 'select', 'Partnership interest', true, { options: ['Presenting partner', 'Associate partner', 'Exhibitor', 'Knowledge partner', 'Other'] }),
       F('message', 'textarea', 'Tell us about your goals', false)],
     submitLabel: 'Send enquiry', successMessage: 'Thank you. The partnerships team will get back to you.' },
   { id: 'vip', name: 'VIP delegates', purpose: 'vip', counts: true, approval: true, emailLabel: 'Work email',
     description: 'Needs approval, counts as a registration',
-    fields: [F('phone', 'phone', 'Mobile number', true), F('company', 'text', 'Company', true), F('designation', 'text', 'Designation', true),
-      F('linkedin', 'url', 'LinkedIn profile', false, { placeholder: 'https://www.linkedin.com/in/…' }),
+    fields: [F('linkedin', 'url', 'LinkedIn profile', false, { placeholder: 'https://www.linkedin.com/in/…' }),
       F('why_attend', 'textarea', 'Why would you like to attend?', false)],
     submitLabel: 'Request an invitation', successMessage: 'Thank you. The organisers will review your request.' },
   { id: 'speaker', name: 'Speaker application', purpose: 'speaker', counts: false, approval: true,
     description: 'Needs approval, does not count as a registration',
-    fields: [F('phone', 'phone', 'Mobile number', true), F('company', 'text', 'Company', true), F('designation', 'text', 'Designation', true),
-      F('linkedin', 'url', 'LinkedIn profile', true, { placeholder: 'https://www.linkedin.com/in/…' }),
+    fields: [F('linkedin', 'url', 'LinkedIn profile', true, { placeholder: 'https://www.linkedin.com/in/…' }),
       F('topic', 'text', 'Proposed topic', true), F('abstract', 'textarea', 'Short abstract', true)],
     submitLabel: 'Apply to speak', successMessage: 'Thank you for applying. The programme team will review your application.' },
   { id: 'blank', name: 'Custom form', purpose: 'custom', counts: false, approval: false,
-    description: 'Start from a name and an email address and add your own questions',
+    description: 'Starts with the standard questions (name, email, mobile, company, designation, location); add your own',
     fields: [], submitLabel: 'Submit', successMessage: 'Thank you. Your response has been received.' }
 ];
 /* [{ id, name, description, purpose, countsAsRegistration, needsApproval, form: FormInput (no id) }] */
@@ -206,9 +234,12 @@ var TEMPLATE_IDS = FORM_TEMPLATES.map(function (t) { return t.id; });
 /* The builder's "Add field" quick picks: { presetId, label, field }. A preset's id is a suggestion: when the
    form already has a field with that id, the builder sends the new one without an id and is given one. */
 var FIELD_PRESETS = [
-  { presetId: 'phone', label: 'Phone', field: F('phone', 'phone', 'Mobile number', false) },
+  { presetId: 'first_name', label: 'First name', field: F('first_name', 'text', 'First name', false) },
+  { presetId: 'last_name', label: 'Last name', field: F('last_name', 'text', 'Last name', false) },
+  { presetId: 'phone', label: 'Mobile (with country code)', field: F('phone', 'phone', 'Mobile number', false) },
   { presetId: 'company', label: 'Company', field: F('company', 'text', 'Company', false) },
   { presetId: 'designation', label: 'Designation', field: F('designation', 'text', 'Designation', false) },
+  { presetId: 'location', label: 'Location (city, state, country)', field: F('location', 'location', 'Location', false, { placeholder: 'Start typing your city' }) },
   { presetId: 'city', label: 'City', field: F('city', 'text', 'City', false) },
   { presetId: 'country', label: 'Country', field: F('country', 'country', 'Country', false) },
   { presetId: 'linkedin', label: 'LinkedIn profile', field: F('linkedin', 'url', 'LinkedIn profile', false, { placeholder: 'https://www.linkedin.com/in/…' }) },
@@ -365,15 +396,15 @@ function cleanFields(list) {
   for (i = 0; i < fields.length; i++) {
     var fd = fields[i], want = MAPPED_TYPES[fd.id];
     if (want && fd.type !== want) {
-      if (fd.id === 'name' || fd.id === 'email') return fail('The ' + fd.id + ' field is always a ' + FIELD_TYPE_LABELS[want] + ' field.', 'fields.' + i + '.type');
-      return fail('“' + fd.label + '” holds the registration’s ' + fd.id + ', so it must be a ' + FIELD_TYPE_LABELS[want] + ' field.', 'fields.' + i + '.type');
+      if (fd.id === 'email') return fail('The email field is always an Email field.', 'fields.' + i + '.type');
+      return fail('“' + fd.label + '” holds the registration’s ' + fd.id.replace(/_/g, ' ') + ', so it must be a ' + FIELD_TYPE_LABELS[want] + ' field.', 'fields.' + i + '.type');
     }
   }
   for (i = 0; i < LOCKED_FIELDS.length; i++) {
     var id = LOCKED_FIELDS[i], at = -1;
     fields.forEach(function (fd, x) { if (fd.id === id) at = x; });
-    if (at === -1) return fail('Every form asks for a name and an email address: the "' + id + '" field is missing.', 'fields');
-    if (!fields[at].required) return fail('The ' + id + ' field is always required.', 'fields.' + at + '.required');
+    if (at === -1) return fail('Every form asks for an email address: the "' + id + '" field is missing.', 'fields');
+    if (!fields[at].required) return fail('The ' + id + ' field is always required: it is how one response is told from another.', 'fields.' + at + '.required');
   }
   if (fields.length < MIN_FIELDS) return fail('A form needs at least ' + MIN_FIELDS + ' fields.', 'fields');
   return { value: fields };
@@ -418,19 +449,43 @@ function legacyRegistration(ev) {
   };
 }
 
-/* The form "register", made from the event's original settings: what an event has until a form is saved. */
+/* The questions the event's original single form asked (settings.registration.fields): a name, an email and
+   the optional ones the organiser chose. Until the seven standard questions, also what every event's
+   "Register now" was made with — how tools/migrate-forms.js tells one nobody has edited (isUntouchedDefault). */
+function legacyFields(ev) {
+  return legacyRegistration(ev || {}).fields.map(function (f) {
+    return F(f.key, f.type === 'tel' ? 'phone' : f.type, f.label, f.key === 'name' || f.key === 'email' || f.required);
+  });
+}
+/* the organiser chose the original single form's questions themselves, before forms existed: those are kept */
+function hasLegacyFieldChoice(ev) {
+  var r = ev && isObj(ev.settings) && isObj(ev.settings.registration) ? ev.settings.registration : null;
+  return !!r && isObj(r.fields) && Object.keys(r.fields).length > 0;
+}
+
+/* The form "register": what an event has until a form is saved — the seven standard questions, or, for an
+   event whose organiser chose the original single form's questions, those. */
 function legacyDefaultForm(ev) {
   var legacy = legacyRegistration(ev || {});
   var at = isoOf(ev && ev.createdAt) || '', by = (ev && typeof ev.createdBy === 'string' && ev.createdBy) || 'system';
   return {
     id: DEFAULT_FORM_ID, name: 'Register now', title: 'Register now', intro: '', purpose: 'register',
-    fields: legacy.fields.map(function (f) {
-      return F(f.key, f.type === 'tel' ? 'phone' : f.type, f.label, f.key === 'name' || f.key === 'email' || f.required);
-    }),
+    fields: hasLegacyFieldChoice(ev) ? legacyFields(ev) : defaultFields(),
     submitLabel: 'Register', successMessage: legacy.successMessage,
     countsAsRegistration: true, needsApproval: false, open: true, duplicates: legacy.duplicates,
     order: 0, template: 'register', rev: 0, createdAt: at, createdBy: by, updatedAt: at, updatedBy: by
   };
+}
+
+/* A stored "Register now" made for the event automatically and never edited since: it is the original form,
+   nobody ever saved it (rev 0) and its questions are still the ones it was made with, from before the seven
+   standard questions. tools/migrate-forms.js gives such a form the seven; a form anyone saved stays as it is. */
+function isUntouchedDefault(form, ev) {
+  if (!form || form.id !== DEFAULT_FORM_ID || Number(form.rev) !== 0 || hasLegacyFieldChoice(ev)) return false;
+  function sig(list) {
+    return JSON.stringify((list || []).map(function (f) { return [f.id, f.type, f.label, f.required === true, f.placeholder || '', f.help || '']; }));
+  }
+  return sig(form.fields) === sig(legacyFields(ev));
 }
 
 /* A stored form document as every reader sees it: defaults filled in, never a missing list. */
@@ -498,6 +553,8 @@ function publicFormsPayload(eventId, ev, forms) {
 
 function requiredMessage(f) {
   if (f.id === 'name') return 'Please enter your name.';
+  if (f.id === 'first_name') return 'Please enter your first name.';
+  if (f.id === 'last_name') return 'Please enter your last name.';
   if (f.id === 'email') return 'Please enter your email address.';
   if (f.type === 'checkbox') return 'Please tick ' + f.label + ' to continue.';
   if (f.type === 'select' || f.type === 'radio' || f.type === 'country') return 'Please choose ' + f.label + '.';
@@ -515,7 +572,11 @@ function isRealDate(s) {
 }
 function isTicked(v) { return v === true || v === 1 || v === '1' || v === 'true' || v === 'on' || v === 'yes'; }
 
-/* One field's value -> { value, empty } or { error }. The rules of spec section 1.2. */
+/* One field's value -> { value, empty } or { error }. The rules of spec section 1.2, and:
+     phone     { country: 'IN', number: '98765 43210' } (or text) -> { value: '+919876543210', country: 'IN' }
+               (lib/phone.js: checked for that country; text from an older page as before)
+     location  the text -> { value, place }: place is the place's parts when it is one of lib/places.js's
+               (value is then its own spelling, "Noida, Uttar Pradesh, India"), null when typed by hand */
 function cleanAnswer(f, raw) {
   var s, n;
   switch (f.type) {
@@ -525,11 +586,17 @@ function cleanAnswer(f, raw) {
     case 'email':
       s = line(raw, 200).toLowerCase();
       if (!s) return { value: '', empty: true };
-      return isEmail(s) ? { value: s } : { error: 'Please enter a valid email address.' };
+      return isEmail(s) ? { value: s } : { error: EMAIL_MESSAGE };
     case 'phone':
-      s = line(raw, 40);
+      var p = phone.cleanPhone(raw);
+      if (p.error) return { error: p.error };
+      if (p.empty) return { value: '', empty: true };
+      return { value: p.value, country: p.country };
+    case 'location':
+      s = line(raw, LOCATION_MAX);
       if (!s) return { value: '', empty: true };
-      return isPhone(s) ? { value: s } : { error: 'Please enter a valid phone number.' };
+      var place = places.lookup(s);
+      return place ? { value: place.label, place: place } : { value: s, place: null };
     case 'number':
       if (typeof raw === 'number') {
         if (!isFinite(raw) || Math.abs(raw) > 1e12) return { error: 'Please enter a number for ' + f.label + '.' };
@@ -582,7 +649,12 @@ function cleanAnswer(f, raw) {
 /* What a visitor sent for `form` -> { reg, answers, answerLabels, errors, tooLong }.
    body.answers ({ fieldId: value }) is what the forms runtime sends; a request without it (a page from
    before forms) is read from the top-level name / email / phone / company / designation / city.
-   reg: the registration's own columns (mapped fields; '' when the form does not ask) plus source and utm;
+   reg: the registration's own columns (mapped fields; '' when the form does not ask) plus source and utm —
+     name           the "name" answer, else "First Last" (so every reader of a registration finds a name)
+     firstName, lastName
+     phone          E.164 (+919876543210); phoneCountry its country ('IN'), '' for a number from an older page
+     location       "Noida, Uttar Pradesh, India" as chosen, or as typed; locationParts { city, state, country,
+                    countryCode, verified } — verified: it is one of the places the field suggests
    answers / answerLabels: every other field that was answered, with its label at the time; errors:
    { fieldId: message } in the form's field order. Keys the form does not have are dropped. */
 function validateAnswers(form, body) {
@@ -590,20 +662,32 @@ function validateAnswers(form, body) {
   var src = isObj(body.answers) ? body.answers : {};
   if (!isObj(body.answers)) MAPPED_FIELDS.forEach(function (k) { if (has(body, k)) src[k] = body[k]; });
   var utm = isObj(body.utm) ? body.utm : {};
-  var reg = { name: '', email: '', phone: '', company: '', designation: '', city: '',
-    source: line(body.source, 60).toLowerCase() || 'website',
+  var reg = { name: '', firstName: '', lastName: '', email: '', phone: '', phoneCountry: '', company: '', designation: '', city: '',
+    location: '', source: line(body.source, 60).toLowerCase() || 'website',
     utm: { source: line(utm.source, 80), medium: line(utm.medium, 80), campaign: line(utm.campaign, 120) } };
   var answers = {}, answerLabels = {}, errors = {};
   (form.fields || []).forEach(function (f) {
     var c = cleanAnswer(f, has(src, f.id) ? src[f.id] : undefined);
     if (c.error) { errors[f.id] = c.error; return; }
     if (c.empty && f.required) { errors[f.id] = requiredMessage(f); return; }
-    if (MAPPED_TYPES[f.id]) { reg[f.id] = c.empty ? '' : c.value; return; }
+    if (MAPPED_TYPES[f.id]) {
+      reg[MAPPED_KEY[f.id] || f.id] = c.empty ? '' : c.value;
+      if (f.id === 'phone' && !c.empty) reg.phoneCountry = c.country || '';
+      if (f.id === 'location' && !c.empty) {
+        var pl = c.place;
+        reg.locationParts = { city: pl ? pl.city : '', state: pl ? pl.state : '', country: pl ? pl.country : '',
+          countryCode: pl ? pl.countryCode : '', verified: !!pl };
+      }
+      return;
+    }
     /* a tick box that was left unticked is an answer ("No"); any other empty answer is left out */
     if (c.empty && f.type !== 'checkbox') return;
     answers[f.id] = c.value;
     answerLabels[f.id] = f.label;
   });
+  /* a form with first and last names (every form since the standard questions) still gives the registration
+     its one name */
+  if (!reg.name) reg.name = (reg.firstName + ' ' + reg.lastName).trim().slice(0, MAPPED_MAX.name);
   var big = Buffer.byteLength(JSON.stringify(answers), 'utf8') > MAX_ANSWERS_BYTES;
   return { reg: reg, answers: answers, answerLabels: answerLabels, errors: errors, tooLong: big };
 }
@@ -672,22 +756,29 @@ function aiOptions(v) {
   });
   return out;
 }
-/* which of the registration's columns a question the model wrote is, if any */
+/* which of the standard questions a question the model wrote is, if any: one of DEFAULT_FIELD_IDS, 'name'
+   for a full name (the first and last names already ask it), or '' */
 function aiMappedId(label, type, used) {
-  if (type === 'email' && !used.email) return 'email';
-  if (type === 'phone' && !used.phone) return 'phone';
+  if (type === 'email') return used.email ? '' : 'email';
+  if (type === 'phone') return used.phone ? '' : 'phone';
+  if (type === 'location') return used.location ? '' : 'location';
   if (type !== 'text') return '';
   var l = label.toLowerCase();
-  if (!used.name && /\bname\b/.test(l) && !/compan|organi[sz]ation|business|brand|event|firm|employer|school|college|university/.test(l)) return 'name';
+  var notPerson = /compan|organi[sz]ation|business|brand|event|firm|employer|school|college|university|session|talk|project|team/.test(l);
+  if (!used.first_name && /\b(first|given|fore)\s*name\b/.test(l)) return 'first_name';
+  if (!used.last_name && (/\b(last|family)\s*name\b/.test(l) || /\bsurname\b/.test(l))) return 'last_name';
+  if (/\bname\b/.test(l) && !notPerson) return 'name';
   if (!used.company && /\b(company|organi[sz]ation|employer)\b/.test(l)) return 'company';
   if (!used.designation && /\b(designation|job|title|role|position)\b/.test(l) && !/talk|session|topic|paper|abstract|presentation|book|article/.test(l)) return 'designation';
-  if (!used.city && /\bcity\b/.test(l)) return 'city';
+  if (!used.location && /\b(city|location|town|where are you based|based in)\b/.test(l)) return 'location';
+  if (!used.phone && /\b(phone|mobile|cell|contact number)\b/.test(l) && !/assistant|office|landline|alternate|secretary/.test(l)) return 'phone';
   return '';
 }
 
 /* One form the model proposed -> { form: FormInput with a proposed id, template, skipped: [sentence] } or
    { error }. It starts from its template; the model's fields replace the template's when it gave at least
-   two; questions are matched to the registration's columns; name and email are always there. */
+   two. Either way the form starts with the seven standard questions, in their order and required (the
+   model's wording of one is kept), and the model's other questions follow. */
 function cleanAiForm(raw, opts) {
   opts = opts || {};
   raw = isObj(raw) ? raw : {};
@@ -705,7 +796,8 @@ function cleanAiForm(raw, opts) {
   };
   var given = (Array.isArray(raw.fields) ? raw.fields : []).filter(function (f) { return isObj(f) && line(f.label, TEXT.label); });
   if (given.length >= 2) {
-    var used = {}, ids = [], fields = [];
+    var used = {}, ids = [], extra = [], std = {};
+    base.fields.forEach(function (f) { if (DEFAULT_FIELD_IDS.indexOf(f.id) !== -1) std[f.id] = f; });
     given.slice(0, LIMITS.maxFields).forEach(function (rf) {
       var label = line(rf.label, TEXT.label), type = FIELD_TYPES.indexOf(rf.type) !== -1 ? rf.type : 'text';
       var f = { id: '', type: type, label: label, required: rf.required === true, placeholder: line(rf.placeholder, TEXT.placeholder), help: line(rf.help, TEXT.help) };
@@ -714,19 +806,23 @@ function cleanAiForm(raw, opts) {
         if (!f.options.length) { skipped.push('The question “' + label + '” in “' + name + '” was left out: it had no options to choose from.'); return; }
       }
       var mapped = aiMappedId(label, type, used);
-      if (mapped) { used[mapped] = true; f.id = mapped; }
-      else {
-        var avoid = ids.concat(MAPPED_FIELDS);
-        f.id = uniqueId(slugify(label, '_'), avoid, '_');
+      if (mapped === 'name') return;        // a full name: the first and last names ask it
+      if (mapped) {
+        used[mapped] = true;
+        /* a standard question in the model's words; its type and its place are the standard one's */
+        std[mapped] = Object.assign({}, std[mapped] || defaultFields().filter(function (d) { return d.id === mapped; })[0], {
+          label: label, placeholder: f.placeholder || (std[mapped] && std[mapped].placeholder) || '', help: f.help
+        });
+        return;
       }
+      f.id = uniqueId(slugify(label, '_'), ids.concat(MAPPED_FIELDS), '_');
       ids.push(f.id);
-      fields.push(f);
+      extra.push(f);
     });
-    if (!used.email) fields.unshift(F('email', 'email', 'Email', true));
-    if (!used.name) fields.unshift(F('name', 'text', 'Full name', true));
-    fields.forEach(function (f) { if (f.id === 'name' || f.id === 'email') f.required = true; });
-    form.fields = fields;
+    form.fields = defaultFields().map(function (d) { return std[d.id] || d; }).concat(extra);
   }
+  /* the seven standard questions are always asked, and asked of everyone, in a form the AI makes */
+  form.fields.forEach(function (f) { if (DEFAULT_FIELD_IDS.indexOf(f.id) !== -1) f.required = true; });
   var c = cleanFormInput(form, { creating: true });
   if (c.error) return { error: c.error, skipped: skipped };
   var value = c.value;
@@ -837,9 +933,10 @@ function cleanAiFormOps(parsed, payload) {
 }
 
 module.exports = {
-  FIELD_TYPES, FIELD_TYPE_LABELS, OPTION_TYPES, PURPOSES, MAPPED_FIELDS, MAPPED_TYPES, LOCKED_FIELDS, COUNTRIES,
+  FIELD_TYPES, FIELD_TYPE_LABELS, OPTION_TYPES, PURPOSES, MAPPED_FIELDS, MAPPED_TYPES, MAPPED_KEY, LOCKED_FIELDS, COUNTRIES,
   FORM_TEMPLATES, TEMPLATE_BY_ID, FIELD_PRESETS, LIMITS, FORM_ID_RE, FIELD_ID_RE, DEFAULT_FORM_ID, FORMS_RUNTIME_V, EMAIL_RE,
-  DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, AI_LIMITS,
+  EMAIL_MESSAGE, DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, AI_LIMITS, DEFAULT_FIELD_IDS,
+  defaultFields, legacyFields, isUntouchedDefault, requiredMessage,
   slugify, uniqueId, isReservedId, cleanFormInput, legacyRegistration, legacyDefaultForm, storedForm, byOrder, resolveDefaultFormId,
   publicForm, publicFormsPayload, isFull, validateAnswers, cleanAnswer, firstFieldError, regDocId, planStatus, statusLabel,
   formUsage, csvEscape, cleanAiForm, cleanAiFormOps, line, multiline, isoOf

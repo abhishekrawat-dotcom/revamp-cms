@@ -9,6 +9,7 @@
 //   POST   /api/event/forms/default                  handleFormsDefault  admin — { eventId, formId }
 //   POST   /api/event/forms/order                    handleFormsOrder    admin — { eventId, ids }
 //   GET    /api/public/forms?eventId=                handlePublicForms   PUBLIC — what a visitor's page is told
+//   GET    /api/public/places?q=&cc=                 handlePublicPlaces  PUBLIC — a Location field's suggestions
 //
 // Both builders — the event console's Settings › Registration forms and the site editor's Forms panel —
 // use these routes and nothing else, so a form made in one is the same form in the other.
@@ -25,6 +26,8 @@
 // page, is the page's markup and is published with the site as before.
 'use strict';
 const forms = require('./forms');
+const phone = require('./phone');
+const places = require('./places');
 const { sendJson, parseJsonBody, requireAdmin, adminFromRequest, sendPublicJson, clientIp, rateLimit, str } = require('./http');
 const { getFirebase } = require('./firebase');
 const { logActivity, actorOf } = require('./activity');
@@ -435,9 +438,28 @@ function handleFormsOrder(req, res) {
 
 /* ---------- GET /api/public/forms ---------- */
 
+/* The visitor's country, when the hosting in front of this server says it in a request header — as Google
+   Cloud's load balancer does when it is set up to add one (X-Client-Geo-Location: "<region>,<city>"; the region
+   is the ISO country code), App Engine (X-AppEngine-Country) and Cloudflare (CF-IPCountry). Firebase App
+   Hosting is not known to add any of them; when none is there this is '' and the visitor's page guesses the
+   country itself (its time zone, then its language: templates/_shared/rv-forms.js). Never asked of a third
+   party. Only a country the phone table has counts ("XX", "T1" and the like are not countries). */
+var GEO_HEADERS = ['x-client-geo-location', 'x-appengine-country', 'cf-ipcountry'];
+function geoCountry(req) {
+  var h = (req && req.headers) || {};
+  for (var i = 0; i < GEO_HEADERS.length; i++) {
+    var v = String(h[GEO_HEADERS[i]] || '').split(',')[0].trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(v) && phone.country(v)) return v;
+  }
+  return '';
+}
+
 /* The same gate as GET /api/public/site-data: a published, live event's forms are public (and the same for
    everybody, so cached for 30 s); a draft's only for a signed-in admin (its preview, the editor's live
-   view), never cached; anything else is one 404 that gives nothing away. */
+   view), never cached; anything else is one 404 that gives nothing away.
+   With the visitor's country known from the hosting (geoCountry), the answer also says it — `country`, what
+   a Mobile field's country code starts on — and is then this visitor's own: cached by their browser only.
+   The #rv-forms block publishing writes into a page never has it (it is the same page for everyone). */
 function handlePublicForms(req, res) {
   guard(res, sendPublicJson, 'load this form', function () {
     var eventId = str(query(req).get('eventId'), 100);
@@ -450,20 +472,44 @@ function handlePublicForms(req, res) {
     eventDoc(fb, eventId).get().then(function (snap) {
       var ev = liveEvent(snap);
       if (!ev) return sendPublicJson(res, 404, { error: shared.NOT_AVAILABLE, code: 'unavailable' });
+      var country = geoCountry(req);
       if (ev.published === true) {
         return loadPublicForms(fb, eventId, ev).then(function (payload) {
-          sendPublicJson(res, 200, payload, { 'Cache-Control': 'public, max-age=30' });
+          if (country) payload.country = country;
+          sendPublicJson(res, 200, payload, { 'Cache-Control': country ? 'private, max-age=30' : 'public, max-age=30' });
         });
       }
       return adminFromRequest(req).then(function (who) {
         if (!who) return sendPublicJson(res, 404, { error: shared.NOT_AVAILABLE, code: 'unavailable' });
-        return loadPublicForms(fb, eventId, ev).then(function (payload) { sendPublicJson(res, 200, payload); });   // no-store
+        return loadPublicForms(fb, eventId, ev).then(function (payload) {
+          if (country) payload.country = country;
+          sendPublicJson(res, 200, payload);    // no-store
+        });
       });
     }).catch(function (err) { answerError(res, sendPublicJson, err, 'load this form'); });
   });
 }
 
+/* ---------- GET /api/public/places ---------- */
+
+/* What a form's Location field suggests as a visitor types: GET /api/public/places?q=noi&cc=IN ->
+   { places: [{ label: "Noida, Uttar Pradesh, India", city, state, country, countryCode }] } — at most 8,
+   places in `cc` (the visitor's country, as their page guessed it) first among those alike (lib/places.js).
+   Public and the same for everybody, so cached for a day (the list changes only with a deploy). Rate limited
+   per address like the forms themselves: a person typing asks a few times a second at most. */
+function handlePublicPlaces(req, res) {
+  guard(res, sendPublicJson, 'suggest places', function () {
+    if (!rateLimit('places:' + clientIp(req), 300, 60000)) {
+      return sendPublicJson(res, 429, { error: 'Too many requests. Please try again in a minute.', code: 'rate-limited' }, { 'Retry-After': '60' });
+    }
+    var qs = query(req), q = str(qs.get('q'), 120), cc = str(qs.get('cc'), 2).toUpperCase();
+    var limit = Math.max(1, Math.min(8, parseInt(qs.get('limit'), 10) || 8));
+    var list = places.fold(q).length >= 1 ? places.search(q, { country: /^[A-Z]{2}$/.test(cc) ? cc : '', limit: limit }) : [];
+    sendPublicJson(res, 200, { places: list }, { 'Cache-Control': 'public, max-age=86400' });
+  });
+}
+
 module.exports = {
   handleFormsList, handleFormsCreate, handleFormsUpdate, handleFormsDelete, handleFormsDefault, handleFormsOrder, handlePublicForms,
-  loadForms, loadForm, loadPublicForms, ensureMaterialized
+  handlePublicPlaces, loadForms, loadForm, loadPublicForms, ensureMaterialized, geoCountry
 };

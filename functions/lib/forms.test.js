@@ -25,9 +25,10 @@ function refused(input, label, wantField, opts) {
 }
 
 /* ---------- vocabulary ---------- */
-ok(eq(F.FIELD_TYPES, ['text', 'textarea', 'email', 'phone', 'number', 'url', 'date', 'select', 'radio', 'multiselect', 'checkbox', 'country']), 'the twelve field types, in order');
+ok(eq(F.FIELD_TYPES, ['text', 'textarea', 'email', 'phone', 'number', 'url', 'date', 'select', 'radio', 'multiselect', 'checkbox', 'country', 'location']), 'the thirteen field types, in order');
+ok(F.FIELD_TYPE_LABELS.phone === 'Mobile (with country code)' && F.FIELD_TYPE_LABELS.location === 'Location (city, state, country)', 'the builder names the Mobile and Location types');
 ok(F.FIELD_TYPES.every(function (t) { return typeof F.FIELD_TYPE_LABELS[t] === 'string' && F.FIELD_TYPE_LABELS[t]; }), 'every type has a builder label');
-ok(F.EMAIL_RE.source === require('./http').EMAIL_RE.source, 'the email rule is lib/http.js EMAIL_RE, verbatim');
+ok(fs.readFileSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'rv-forms.js'), 'utf8').indexOf(String(F.EMAIL_RE)) !== -1, 'the page runtime has the server\'s email rule, verbatim');
 ok(F.COUNTRIES[0] === 'India' && F.COUNTRIES.length >= 245 && F.COUNTRIES.lastIndexOf('India') === 0, 'countries: India first, once, ~249 of them', F.COUNTRIES.length);
 ok(F.COUNTRIES.slice(1).every(function (c, i, a) { return i === 0 || a[i - 1].localeCompare(c, 'en') < 0; }), 'countries after India are A–Z without repeats');
 ok(F.COUNTRIES.every(function (c) { return c.length <= 120; }), 'every country fits an option');
@@ -38,7 +39,8 @@ ok(eq(tplIds, ['register', 'interest', 'partner', 'vip', 'speaker', 'blank']), '
 F.FORM_TEMPLATES.forEach(function (t) {
   var r = F.cleanFormInput(t.form, { creating: true });
   ok(!r.error, 'template "' + t.id + '" is a valid form', r.error);
-  ok(t.form.fields[0].id === 'name' && t.form.fields[1].id === 'email', 'template "' + t.id + '" starts with name and email');
+  ok(eq(t.form.fields.slice(0, 7).map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), ['first_name:text:true', 'last_name:text:true', 'email:email:true', 'phone:phone:true', 'company:text:true', 'designation:text:true', 'location:location:true']),
+    'template "' + t.id + '" starts with the seven standard questions, all required', JSON.stringify(t.form.fields.map(function (f) { return f.id; })));
   ok(t.form.title === t.form.name && t.form.intro === '' && t.form.open === true && t.form.duplicates === 'reject', 'template "' + t.id + '": title = name, no intro, open, one per email');
   ok(typeof t.description === 'string' && t.description.indexOf(t.name) === 0, 'template "' + t.id + '" has a one-line description', t.description);
 });
@@ -47,10 +49,14 @@ ok(T.register.form.countsAsRegistration && !T.register.form.needsApproval, 'Regi
 ok(!T.interest.form.countsAsRegistration && !T.partner.form.countsAsRegistration, 'Express interest and Join as partner do not count');
 ok(T.vip.form.countsAsRegistration && T.vip.form.needsApproval, 'VIP delegates counts and needs approval');
 ok(!T.speaker.form.countsAsRegistration && T.speaker.form.needsApproval, 'Speaker application needs approval, does not count');
-ok(eq(T.vip.form.fields.map(function (f) { return f.id; }), ['name', 'email', 'phone', 'company', 'designation', 'linkedin', 'why_attend']), 'VIP fields as the spec example');
-ok(T.vip.form.fields[1].label === 'Work email' && T.vip.form.submitLabel === 'Request an invitation', 'VIP: work email, its own button');
-ok(eq(T.partner.form.fields[5].options, ['Presenting partner', 'Associate partner', 'Exhibitor', 'Knowledge partner', 'Other']) && T.partner.form.fields[5].required, 'Join as partner: the partnership choice');
-ok(eq(T.blank.form.fields.map(function (f) { return f.id; }), ['name', 'email']) && T.blank.form.submitLabel === 'Submit', 'Custom form: name and email only');
+var STD = ['first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'location'];
+ok(eq(T.vip.form.fields.map(function (f) { return f.id; }), STD.concat(['linkedin', 'why_attend'])), 'VIP fields: the standard seven, then its own');
+ok(T.vip.form.fields[2].label === 'Work email' && T.vip.form.submitLabel === 'Request an invitation', 'VIP: work email, its own button');
+ok(eq(T.partner.form.fields[7].options, ['Presenting partner', 'Associate partner', 'Exhibitor', 'Knowledge partner', 'Other']) && T.partner.form.fields[7].required, 'Join as partner: the partnership choice');
+ok(eq(T.blank.form.fields.map(function (f) { return f.id; }), STD) && T.blank.form.submitLabel === 'Submit', 'Custom form: the standard seven only');
+ok(eq(T.register.form.fields.map(function (f) { return f.id; }), STD), 'Register now: the standard seven');
+ok(T.register.form.fields[6].placeholder === 'Start typing your city' && T.register.form.fields[3].label === 'Mobile number', 'the standard labels and the location hint');
+ok(eq(F.defaultFields().map(function (f) { return f.id; }), STD) && eq(F.DEFAULT_FIELD_IDS, STD), 'defaultFields: the seven, in order');
 ok(T.speaker.form.fields.filter(function (f) { return f.id === 'linkedin'; })[0].required === true, 'Speaker application: LinkedIn required');
 F.FIELD_PRESETS.forEach(function (p) {
   var f = clone(p.field);
@@ -93,9 +99,20 @@ refused(Object.assign(form(), { id: 'Bad Id' }), 'a bad form id', 'id');
 refused(Object.assign(form(), { id: '1abc' }), 'a form id starting with a digit', 'id');
 refused(Object.assign(form(), { id: 'other' }), 'changing the id on update', 'id', { creating: false, formId: 'test' });
 refused(form([fld('Bad-Id', 'text', 'X', false)]), 'a bad field id', 'fields.2.id');
-refused({ name: 'X', fields: [EMAIL, fld('', 'text', 'Other', false)], submitLabel: 'Go', successMessage: 'Done' }, 'a form without the name field', 'fields');
+ok(!F.cleanFormInput({ name: 'X', fields: [EMAIL, fld('', 'text', 'Other', false)], submitLabel: 'Go', successMessage: 'Done' }, { creating: true }).error, 'a form without a name question is fine (only the email is locked)');
+ok(!F.cleanFormInput({ name: 'X', fields: [EMAIL], submitLabel: 'Go', successMessage: 'Done' }, { creating: true }).error, 'a form of the email alone is fine');
+var trimmed = clone(T.register.form); trimmed.fields = trimmed.fields.filter(function (f) { return f.id !== 'phone' && f.id !== 'location'; }); trimmed.fields[0].required = false; trimmed.fields[1].label = 'Surname';
+ok(!F.cleanFormInput(trimmed, { creating: true }).error, 'the organiser may remove Mobile and Location, make First name optional, relabel Last name');
 refused({ name: 'X', fields: [NAME, fld('other', 'text', 'Other', false)], submitLabel: 'Go', successMessage: 'Done' }, 'a form without the email field', 'fields');
-refused({ name: 'X', fields: [fld('name', 'text', 'Name', false), EMAIL], submitLabel: 'Go', successMessage: 'Done' }, 'an optional name', 'fields.0.required');
+ok(!F.cleanFormInput({ name: 'X', fields: [fld('name', 'text', 'Name', false), EMAIL], submitLabel: 'Go', successMessage: 'Done' }, { creating: true }).error, 'an optional name is fine');
+var noEmail = clone(T.register.form); noEmail.fields = noEmail.fields.filter(function (f) { return f.id !== 'email'; });
+refused(noEmail, 'the standard form without its email', 'fields');
+var optEmail = clone(T.register.form); optEmail.fields[2].required = false;
+refused(optEmail, 'the standard form with an optional email', 'fields.2.required');
+refused(form([fld('first_name', 'textarea', 'First name', true)]), 'first_name as another type', 'fields.2.type');
+refused(form([fld('location', 'text', 'Location', true)]), 'the location column as plain text', 'fields.2.type');
+var autoId = F.cleanFormInput(form([fld('', 'location', 'Where are you based?', true), fld('', 'text', 'First name', true)]), { creating: true });
+ok(!autoId.error && autoId.value.fields[2].id === 'where_are_you_based' && autoId.value.fields[3].id === 'first_name', 'new fields get ids from their labels; a text "First name" is the first-name column', JSON.stringify(autoId).slice(0, 300));
 refused({ name: 'X', fields: [NAME, fld('email', 'email', 'Email', false)], submitLabel: 'Go', successMessage: 'Done' }, 'an optional email', 'fields.1.required');
 refused({ name: 'X', fields: [fld('name', 'textarea', 'Name', true), EMAIL], submitLabel: 'Go', successMessage: 'Done' }, 'name as another type', 'fields.0.type');
 refused({ name: 'X', fields: [NAME, fld('email', 'text', 'Email', true)], submitLabel: 'Go', successMessage: 'Done' }, 'email as another type', 'fields.1.type');
@@ -134,8 +151,19 @@ refused('not a form', 'a form that is not an object', '');
 var EV = { createdAt: '2026-01-02T03:04:05.000Z', createdBy: 'a@b.in' };
 var legacy = F.legacyDefaultForm(EV);
 ok(legacy.id === 'register' && legacy.name === 'Register now' && legacy.countsAsRegistration && !legacy.needsApproval && legacy.open && legacy.order === 0 && legacy.rev === 0, 'the original form: register, counts, open', JSON.stringify(legacy).slice(0, 200));
-ok(eq(legacy.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), ['name:text:true', 'email:email:true', 'phone:phone:false', 'company:text:false', 'designation:text:false']), 'by default: phone, company, designation optional; city not asked', JSON.stringify(legacy.fields.map(function (f) { return f.id; })));
-ok(legacy.fields[2].label === 'Phone number' && legacy.fields[2].type === 'phone', 'the legacy "tel" field becomes a phone field with its label');
+ok(eq(legacy.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), STD.map(function (id) { return id + ':' + F.MAPPED_TYPES[id] + ':true'; })), 'an event that never set its form up: the seven standard questions', JSON.stringify(legacy.fields.map(function (f) { return f.id; })));
+var oldDefault = F.legacyFields(EV);
+ok(eq(oldDefault.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), ['name:text:true', 'email:email:true', 'phone:phone:false', 'company:text:false', 'designation:text:false']), 'the original form\'s questions: name, email, then phone, company, designation optional; city not asked');
+ok(oldDefault[2].label === 'Phone number' && oldDefault[2].type === 'phone', 'the legacy "tel" field becomes a phone field with its label');
+/* which stored forms tools/migrate-forms.js gives the seven standard questions */
+var untouched = Object.assign({}, legacy, { fields: oldDefault, rev: 0 });
+ok(F.isUntouchedDefault(untouched, EV) === true, 'a stored Register now nobody ever saved, with the original questions: untouched');
+ok(F.isUntouchedDefault(Object.assign({}, untouched, { rev: 1 }), EV) === false, 'once saved by anyone (rev 1): left alone');
+var relabelled = clone(untouched); relabelled.fields[0].label = 'Your name';
+ok(F.isUntouchedDefault(relabelled, EV) === false, 'questions that differ: left alone');
+ok(F.isUntouchedDefault(Object.assign({}, untouched, { id: 'vip' }), EV) === false, 'another form: left alone');
+ok(F.isUntouchedDefault(Object.assign({}, untouched, { fields: F.legacyFields({ settings: { registration: { fields: { city: true } } } }) }), { settings: { registration: { fields: { city: true } } } }) === false, 'an event whose organiser chose the original form\'s questions: left alone');
+ok(F.isUntouchedDefault(legacy, EV) === false, 'a form that already has the seven: nothing to do');
 ok(legacy.updatedAt === EV.createdAt && legacy.createdAt === EV.createdAt, 'its version token is the event\'s creation time');
 ok(legacy.successMessage === F.DEFAULT_SUCCESS && legacy.duplicates === 'reject', 'the default success message and one per email');
 ok(!F.cleanFormInput(legacy, { creating: false, formId: 'register' }).error, 'the original form is itself a valid form');
@@ -178,7 +206,7 @@ V.vectors.forEach(function (v, n) {
     ok(r.errors[f.id] === v.expect.error, label + ': "' + v.expect.error + '"', JSON.stringify(r.errors));
   } else {
     ok(!Object.keys(r.errors).length, label + ': no error', JSON.stringify(r.errors));
-    var got = F.MAPPED_FIELDS.indexOf(f.id) !== -1 ? r.reg[f.id] : r.answers[f.id];
+    var got = F.MAPPED_FIELDS.indexOf(f.id) !== -1 ? r.reg[F.MAPPED_KEY[f.id] || f.id] : r.answers[f.id];
     if (v.expect.omitted) ok(!(f.id in r.answers), label + ': nothing stored', JSON.stringify(r.answers));
     else ok(eq(got, v.expect.value), label + ': ' + JSON.stringify(v.expect.value).slice(0, 60), JSON.stringify(got));
   }
@@ -186,20 +214,37 @@ V.vectors.forEach(function (v, n) {
 ok(F.FIELD_TYPES.every(function (t) { return typesCovered[t]; }), 'the vectors cover every field type');
 
 /* ---------- answers: a whole form ---------- */
-var reg = F.validateAnswers(vip, { answers: { name: ' Asha Rao ', email: 'ASHA@ex.in', phone: '+91 98765 43210', company: 'Acme', designation: 'CIO',
-  linkedin: 'linkedin.com/in/asha', why_attend: '', stranger: 'dropped', country: 'India' }, utm: { source: 'li', medium: 'social' }, source: 'Website' });
+var reg = F.validateAnswers(vip, { answers: { first_name: ' Asha ', last_name: 'Rao', email: 'ASHA@ex.in', phone: { country: 'IN', number: '98765 43210' }, company: 'Acme', designation: 'CIO',
+  location: 'noida, UTTAR pradesh, india', linkedin: 'linkedin.com/in/asha', why_attend: '', stranger: 'dropped', country: 'India' }, utm: { source: 'li', medium: 'social' }, source: 'Website' });
 ok(!Object.keys(reg.errors).length, 'a complete VIP request is accepted', JSON.stringify(reg.errors));
-ok(reg.reg.name === 'Asha Rao' && reg.reg.email === 'asha@ex.in' && reg.reg.company === 'Acme' && reg.reg.city === '', 'the columns: mapped fields, cleaned; a column the form does not ask is empty');
+ok(reg.reg.name === 'Asha Rao' && reg.reg.firstName === 'Asha' && reg.reg.lastName === 'Rao' && reg.reg.email === 'asha@ex.in' && reg.reg.company === 'Acme' && reg.reg.city === '', 'the columns: first and last name, and the name they make; a column the form does not ask is empty', JSON.stringify(reg.reg));
+ok(reg.reg.phone === '+919876543210' && reg.reg.phoneCountry === 'IN', 'the mobile number in E.164, with its country');
+ok(reg.reg.location === 'Noida, Uttar Pradesh, India' && eq(reg.reg.locationParts, { city: 'Noida', state: 'Uttar Pradesh', country: 'India', countryCode: 'IN', verified: true }), 'a place from the list: its own spelling and its parts, verified', JSON.stringify(reg.reg.locationParts));
+var typedPlace = F.validateAnswers(vip, { answers: { first_name: 'A', last_name: 'B', email: 'a@b.in', phone: { country: 'SG', number: '8123 4567' }, company: 'C', designation: 'D', location: 'Sector 62, near the metro' } });
+ok(!Object.keys(typedPlace.errors).length && typedPlace.reg.location === 'Sector 62, near the metro' && typedPlace.reg.locationParts.verified === false && typedPlace.reg.locationParts.city === '', 'a place typed by hand: kept as typed, not verified', JSON.stringify(typedPlace.reg));
+ok(typedPlace.reg.phone === '+6581234567' && typedPlace.reg.phoneCountry === 'SG', 'a Singapore number');
+var oneName = F.validateAnswers(vip, { answers: { first_name: 'Asha', last_name: '', email: 'a@b.in', phone: { country: 'IN', number: '9876543210' }, company: 'C', designation: 'D', location: 'Pune' } });
+ok(oneName.errors.last_name === 'Please enter your last name.', 'a required last name');
+var optLast = clone(vip); optLast.fields[1].required = false;
+var onlyFirst = F.validateAnswers(optLast, { answers: { first_name: 'Asha', email: 'a@b.in', phone: { country: 'IN', number: '9876543210' }, company: 'C', designation: 'D', location: 'Pune' } });
+ok(!Object.keys(onlyFirst.errors).length && onlyFirst.reg.name === 'Asha' && onlyFirst.reg.lastName === '', 'last name made optional and left empty: the name is the first name', JSON.stringify(onlyFirst.reg));
 ok(eq(reg.answers, { linkedin: 'https://linkedin.com/in/asha', country: 'India' }), 'answers: only the other fields that were answered; unknown keys dropped', JSON.stringify(reg.answers));
 ok(eq(reg.answerLabels, { linkedin: 'LinkedIn profile', country: 'Country' }), 'each answer\'s label at the time');
 ok(reg.reg.source === 'website' && reg.reg.utm.source === 'li' && reg.reg.utm.campaign === '', 'source and utm');
 var bad = F.validateAnswers(vip, { answers: { email: 'nope', phone: '1' } });
-ok(eq(Object.keys(bad.errors), ['name', 'email', 'phone', 'company', 'designation']), 'errors in the form\'s field order', Object.keys(bad.errors).join());
+ok(eq(Object.keys(bad.errors), STD), 'errors in the form\'s field order', Object.keys(bad.errors).join());
 var first = F.firstFieldError(vip, bad.errors);
-ok(first.message === 'Please enter your name.' && first.fields === bad.errors, 'the first error is the 400\'s message, with every field\'s');
+ok(first.message === 'Please enter your first name.' && first.fields === bad.errors, 'the first error is the 400\'s message, with every field\'s');
+/* a form saved before first and last names: one name question, as before */
+var oldForm = { fields: F.legacyFields(EV) };
+var oldAnswer = F.validateAnswers(oldForm, { answers: { name: ' Ravi  Kumar ', email: 'ravi@x.in', phone: '+91 98765 43210' } });
+ok(!Object.keys(oldAnswer.errors).length && oldAnswer.reg.name === 'Ravi Kumar' && oldAnswer.reg.firstName === '' && oldAnswer.reg.phone === '+919876543210', 'an old single-name form: its name answer is the name', JSON.stringify(oldAnswer.reg));
+ok(F.validateAnswers(oldForm, { answers: { email: 'ravi@x.in' } }).errors.name === 'Please enter your name.', 'an old form still requires its name');
 ok(F.firstFieldError(vip, {}) === null, 'no errors: nothing');
-var legacyBody = F.validateAnswers(legacy, { name: 'Ravi', email: 'ravi@x.in', phone: '9876543210', company: 'X', city: 'Pune' });
-ok(!Object.keys(legacyBody.errors).length && legacyBody.reg.phone === '9876543210' && legacyBody.reg.city === '', 'a page from before forms: top-level keys are its answers; a field the form does not ask is not kept', JSON.stringify(legacyBody));
+var legacyBody = F.validateAnswers(oldForm, { name: 'Ravi', email: 'ravi@x.in', phone: '9876543210', company: 'X', city: 'Pune' });
+ok(!Object.keys(legacyBody.errors).length && legacyBody.reg.name === 'Ravi' && legacyBody.reg.phone === '+919876543210' && legacyBody.reg.city === '', 'a page from before forms: top-level keys are its answers; a field the form does not ask is not kept', JSON.stringify(legacyBody));
+var legacyAbroad = F.validateAnswers(oldForm, { name: 'Ravi', email: 'ravi@x.in', phone: '020 7946 0958' });
+ok(!Object.keys(legacyAbroad.errors).length && legacyAbroad.reg.phone === '020 7946 0958' && legacyAbroad.reg.phoneCountry === '', 'an older page\'s number without its country code is kept as typed, as before');
 var big = F.validateAnswers(form([fld('a', 'textarea', 'A', false), fld('b', 'textarea', 'B', false), fld('c', 'textarea', 'C', false), fld('d', 'textarea', 'D', false),
   fld('e', 'textarea', 'E', false), fld('f', 'textarea', 'F', false), fld('g', 'textarea', 'G', false), fld('h', 'textarea', 'H', false), fld('i', 'textarea', 'I', false)]),
   { answers: { name: 'N', email: 'n@x.in', a: new Array(2001).join('é'), b: new Array(2001).join('é'), c: new Array(2001).join('é'), d: new Array(2001).join('é'),
@@ -260,12 +305,17 @@ var nf = ops.newForms;
 ok(nf.length === 2 && nf[0].ref === 'new-1' && nf[1].ref === 'new-2', 'two new forms; the one named like an existing form is not made again', JSON.stringify(nf.map(function (x) { return x.ref; })));
 var vf = nf[0].form;
 ok(vf.id === 'vip-delegates' && vf.template === 'vip' && vf.needsApproval && vf.countsAsRegistration, 'the VIP form: its id and its template\'s switches', JSON.stringify(vf).slice(0, 200));
-ok(eq(vf.fields.map(function (f) { return f.id; }), ['name', 'email', 'phone', 'company', 'designation', 'sessions', 'your_name']), 'questions mapped to the columns; the dropdown without options left out', JSON.stringify(vf.fields.map(function (f) { return f.id; })));
-ok(vf.fields[1].required === true && vf.fields[1].label === 'Work email', 'the email question is always required, its label kept');
-ok(eq(vf.fields[5].options, ['Day 1', 'Day 2']), 'options cleaned');
+ok(eq(vf.fields.map(function (f) { return f.id; }), STD.concat(['sessions'])), 'the seven standard questions first; the model\'s full name covered by them; the dropdown without options left out', JSON.stringify(vf.fields.map(function (f) { return f.id; })));
+ok(vf.fields[2].required === true && vf.fields[2].label === 'Work email', 'the email question is always required, its label kept');
+ok(vf.fields[3].label === 'Mobile' && vf.fields[4].label === 'Organisation' && vf.fields[5].label === 'Job title', 'a standard question in the model\'s words keeps them');
+ok(vf.fields.slice(0, 7).every(function (f) { return f.required; }), 'the seven are required in a form the AI makes');
+ok(eq(vf.fields[7].options, ['Day 1', 'Day 2']), 'options cleaned');
+var named = F.cleanAiForm({ template: 'blank', name: 'Survey', fields: [{ label: 'Given name', type: 'text' }, { label: 'Surname', type: 'text' }, { label: 'City', type: 'text' }, { label: 'Phone', type: 'text' }, { label: 'Favourite session', type: 'text' }] });
+ok(!named.error && eq(named.form.fields.map(function (f) { return f.id + ':' + f.type; }), ['first_name:text', 'last_name:text', 'email:email', 'phone:phone', 'company:text', 'designation:text', 'location:location', 'favourite_session:text']),
+  'given name, surname, city and a phone typed as text are the standard questions (as a Location, a Mobile); the rest follow', JSON.stringify(named.form && named.form.fields.map(function (f) { return f.id + ':' + f.type; })));
 ok(ops.skipped.some(function (s) { return /Diet/.test(s); }), 'the dropped question is reported', ops.skipped.join(' | '));
 var ef = nf[1].form;
-ok(ef.id === 'express-interest' && eq(ef.fields.map(function (f) { return f.id; }), ['name', 'email', 'phone', 'company', 'designation', 'message']), 'one field given: the template\'s fields are kept', JSON.stringify(ef.fields.map(function (f) { return f.id; })));
+ok(ef.id === 'express-interest' && eq(ef.fields.map(function (f) { return f.id; }), STD.concat(['message'])), 'one field given: the template\'s fields are kept', JSON.stringify(ef.fields.map(function (f) { return f.id; })));
 ok(!F.cleanFormInput(vf, { creating: true }).error && !F.cleanFormInput(ef, { creating: true }).error, 'every new form is a form the routes accept');
 var links = ops.ctaLinks;
 ok(links.length === 3, 'three links survive', JSON.stringify(links));
@@ -302,6 +352,7 @@ var prompt = hooks.buildChatPrompt({ instruction: 'add a VIP delegate form', sec
 ok(/"buttons": \[\s*"Register Now"\s*\]/.test(prompt), 'the prompt shows each section\'s buttons');
 ok(prompt.indexOf('"formId": "register"') !== -1 && prompt.indexOf('"Full name"') !== -1, 'the prompt lists the site\'s forms and their questions');
 ok(/`newForms`/.test(prompt) && /`ctaLinks`/.test(prompt) && /`formEmbeds`/.test(prompt), 'the prompt documents the three form tools');
+ok(/seven standard questions/.test(prompt) && /First name \(text\), Last name \(text\), Email \(email\), Mobile number \(phone/.test(prompt), 'the prompt asks for the seven standard questions first');
 ok(!/add or edit [^.]*registration/i.test(prompt) && /payments, or send confirmation emails or WhatsApp messages/.test(prompt), 'registration is no longer "cannot do"; payment, email and WhatsApp still are');
 
 /* ---------- the gates: settings and access ---------- */
@@ -333,6 +384,8 @@ ok(ctorAi.ctaLinks.length === 0, 'an AI link to "toString" (inherited, not a for
 
 var access = require('./access');
 ok(access.isPublic({ method: 'GET', headers: {} }, '/api/public/forms') === true, '/api/public/forms is public');
+ok(access.isPublic({ method: 'GET', headers: {} }, '/api/public/places') === true, '/api/public/places is public');
+ok(F.FORMS_RUNTIME_V >= 2, 'the runtime version was bumped for the Mobile and Location fields');
 ok(access.isPublic({ method: 'GET', headers: {} }, '/api/event/forms') === false, '/api/event/forms is not');
 
 if (failures.length) {
