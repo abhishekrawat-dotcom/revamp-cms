@@ -64,6 +64,8 @@
                                    speakers | partners | gallery | logo | banner | media | brief. Refuses a
                                    non-image or anything over 8 MB before sending.
      .seedContent(eventId, payload) POST /api/event/seed -> {created}
+     .fetchHeroVideo / .uploadHeroVideo / .saveHeroVideo / .removeHeroVideo   the banner video
+                                  (/api/event/hero-video…; see the functions themselves)
      .fetchSub(resource, eventId)              GET    /api/event/<resource> — list, in `order`
      .createSub(resource, eventId, data)       POST   /api/event/<resource> — create, -> {id, createdAt, updatedAt}
      .updateSub(resource, eventId, id, patch, {ifUpdatedAt})
@@ -563,6 +565,57 @@ window.RevampCore = (function(){
     });
   }
 
+  /* ---------- the banner video (functions/lib/api-hero-video.js; the settings UI is hero-video-ui.js) ----------
+     fetchHeroVideo(eventId) -> { heroVideo | null, site: { host, tone, scrim }, auto, limits, types }
+     uploadHeroVideo(eventId, file, { onProgress(fraction), onXhr(xhr) }) -> the video as the server read it
+       { url, path, contentType, size, duration, width, height, codec, hasAudio, fastStart }. The file goes
+       straight to Cloud Storage (a session the server opens), then the server checks what it really is; a file
+       it refuses is deleted again and the Error says why (err.reason). onXhr gets the request, to abort it.
+     saveHeroVideo(eventId, patch) -> { heroVideo }     patch: { video: { path }, poster: { url } | null, posterAuto,
+                                                         overlay: { mode, color, opacity }, enabled }
+     removeHeroVideo(eventId) -> { heroVideo: null } */
+  function fetchHeroVideo(eventId){
+    var missing = need(eventId, 'fetchHeroVideo: eventId');
+    return missing || api('GET', '/api/event/hero-video?eventId=' + q(eventId));
+  }
+  function uploadHeroVideo(eventId, file, opts){
+    opts = opts || {};
+    var missing = need(eventId, 'uploadHeroVideo: eventId');
+    if (missing) return missing;
+    if (typeof Blob === 'undefined' || !(file instanceof Blob)) return Promise.reject(apiError('Choose a video file to upload.', 400));
+    var name = String(file.name || 'video').trim();
+    return api('POST', '/api/event/hero-video/upload', {
+      eventId: String(eventId).trim(), fileName: name, mimeType: file.type || '', size: file.size, origin: location.origin
+    }).then(function(session){
+      return new Promise(function(resolve, reject){
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', session.uploadUrl, true);
+        xhr.upload.onprogress = function(e){ if (e.lengthComputable && opts.onProgress) opts.onProgress(e.loaded / e.total); };
+        xhr.onload = function(){
+          if (xhr.status >= 200 && xhr.status < 300) return resolve(session);
+          reject(apiError('The video could not be sent (' + xhr.status + '). Please try again.', xhr.status));
+        };
+        xhr.onerror = function(){ reject(apiError('The video could not be sent. Check your connection and try again.', 0)); };
+        xhr.onabort = function(){ var e = apiError('The upload was cancelled.', 0); e.cancelled = true; reject(e); };
+        if (opts.onXhr) opts.onXhr(xhr);
+        xhr.send(file);
+      });
+    }).then(function(session){
+      return api('POST', '/api/event/hero-video/check', { eventId: String(eventId).trim(), path: session.path });
+    });
+  }
+  function saveHeroVideo(eventId, patch){
+    var missing = need(eventId, 'saveHeroVideo: eventId');
+    if (missing) return missing;
+    var body = { eventId: String(eventId).trim() };
+    for (var k in (patch || {})) if (patch.hasOwnProperty(k)) body[k] = patch[k];
+    return api('PUT', '/api/event/hero-video', body);
+  }
+  function removeHeroVideo(eventId){
+    var missing = need(eventId, 'removeHeroVideo: eventId');
+    return missing || api('DELETE', '/api/event/hero-video?eventId=' + q(eventId));
+  }
+
   /* Turns what the wizard collected (speakers, FAQs, sponsors, contacts, gallery …) into real Content
      records. The server only fills a list that is still empty. */
   function seedContent(eventId, payload){
@@ -991,6 +1044,7 @@ window.RevampCore = (function(){
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
     uploadImage: uploadImage, seedContent: seedContent,
+    fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, deleteRegistration: deleteRegistration,
     exportRegistrations: exportRegistrations,
