@@ -217,7 +217,7 @@ function build(data) {
     var link = httpsUrl(e.link), img = httpsUrl(e.logo), when = shortDate(e.start);
     if (!link || !e.title) return '';
     return '<li class="' + c + '-card"><a href="' + esc(link) + '"' + ext + '>' +
-      (img ? '<img src="' + esc(img) + '" alt="' + esc(e.title) + '" loading="lazy">' : '<span class="' + c + '-card-blank" aria-hidden="true"></span>') +
+      (img ? '<img src="' + esc(img) + '" alt="" loading="lazy">' : '<span class="' + c + '-card-blank" aria-hidden="true"></span>') +
       '<span class="' + c + '-cap">' + esc(e.title) + (when ? ' | ' + esc(when) : '') + '</span></a></li>';
   }).join('');
   var title = 'What\'s Happening in ' + esc(p.site);
@@ -229,7 +229,7 @@ function build(data) {
     '<div class="' + c + '-in ' + c + '-body">' +
     '<p class="' + c + '-esc">For any issues requiring immediate escalation, please write to <a href="mailto:' + esc(p.escalation.email) + '">' + esc(p.escalation.email) + '</a> - ' + esc(p.escalation.who) + '</p>' +
     '<div class="' + c + '-grid">' + cols + events + '</div>' +
-    '<p class="' + c + '-copy">Copyright © ' + year + ' ' + esc(p.site) + '. All Rights Reserved.</p>' +
+    '<p class="' + c + '-copy">Copyright © <span data-rv-year>' + year + '</span> ' + esc(p.site) + '. All Rights Reserved.</p>' +
     '</div></footer>';
 
   var ink = /^#[0-9a-f]{6}$/i.test(String(data.buttonInk || '')) ? data.buttonInk : '#ffffff';

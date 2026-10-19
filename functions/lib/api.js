@@ -2907,10 +2907,13 @@ function footerEvents(portal, fetchJson) {
 function siteFooter(o) {
   o = o || {};
   var design = o.design || {};
+  /* with no contact section the main button leads to the footer itself (ownerBrief.buttons): in the footer's
+     own band it would go nowhere, so the band then shows the event's name, date and place without it */
+  var button = o.button && String(o.button.href || '').trim() !== '#footer' ? o.button : null;
   var built = etFooter.build({
     portal: o.portal, mode: (o.mode || design.mode) === 'dark' ? 'dark' : 'light', year: o.year || new Date().getFullYear(),
     events: etFooter.happening(o.events, { name: o.eventName, series: o.series }),
-    event: o.eventName ? { name: o.eventName, date: o.date, place: o.place, button: o.button } : null,
+    event: o.eventName ? { name: o.eventName, date: o.date, place: o.place, button: button } : null,
     buttonInk: genDesign.luminance(/^#[0-9a-f]{6}$/i.test(String(design.themeColor || '')) ? design.themeColor : '#186bf9') > 0.5 ? '#14161b' : '#ffffff'
   });
   return { id: 'footer', kind: 'footer', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, 'footer', sectionRootInfo(built.html))), built.html) };
@@ -5912,6 +5915,13 @@ function publishTransform(html, opts) {
     if (t.t === 'comment') { if (!/^<!--\[if\b|<!\[endif\]-->$/i.test(out[i])) out[i] = ''; continue; }
     if (t.t !== 'open' || out[i] === '') continue;
     var classes = classListOf(t);
+    /* a copyright year (ET's common footer, et-footer.js: <span data-rv-year>2026</span>) is this year's on
+       every publish, so a site made in one year and published in the next does not show the old one. Only a
+       bare year is replaced: anything else the owner wrote there stays. */
+    if (attrOf(t, 'data-rv-year') && tokens[i + 1] && tokens[i + 1].t === 'text' && /^\s*(?:19|20)\d{2}\s*$/.test(out[i + 1]) &&
+        tokens[i + 2] && tokens[i + 2].t === 'close' && tokens[i + 2].name === t.name) {
+      out[i + 1] = String(+opts.year > 2000 ? +opts.year : new Date().getFullYear());
+    }
 
     if (attrOf(t, 'data-rv-head') || attrOf(t, 'data-rv-runtime') || attrOf(t, 'data-rv-preview-ribbon')) { i = removeElement(i, true); continue; }
     if (attrOf(t, 'data-rv-editor') || attrOf(t, 'data-rv-empty-state') || attrOf(t, 'data-rv-bind-hint') || t.name === 'grammarly-desktop-integration' || attrOf(t, 'data-grammarly-shadow-root') ||

@@ -131,6 +131,13 @@ ok(publishTransform(genOut, { eventId: 'qa-fixture', event: { name: 'G' }, mode:
 var fixed = GEN_PAGE.replace(' data-rv-template-id="gen-qa-fixture" class="microsite rv-generated"', ' class="home"');
 ok(publishTransform(fixed, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'tech500' }).indexOf(OVERVIEW_CSS) !== -1, 'a ported template\'s CSS is not touched');
 
+/* ET's common footer's copyright year is this year's on every publish; an edited one is left alone */
+var YEAR_PAGE = GEN_PAGE.replace('</body>', '<footer data-rv-section="footer"><p class="etf-copy">Copyright © <span data-rv-year>2026</span> ETCIO.com. All Rights Reserved.</p><p><span data-rv-year>since 2019, proudly</span></p></footer></body>');
+var yearOut = publishTransform(YEAR_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'gen-qa-fixture', year: 2027 });
+ok(yearOut.indexOf('Copyright © <span data-rv-year>2027</span> ETCIO.com.') !== -1, 'the footer\'s copyright year is the year it is published', yearOut.slice(yearOut.indexOf('<footer'), yearOut.indexOf('<footer') + 200));
+ok(yearOut.indexOf('<span data-rv-year>since 2019, proudly</span>') !== -1, 'a year the owner rewrote as text is kept');
+ok(publishTransform(YEAR_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'gen-qa-fixture' }).indexOf('<span data-rv-year>' + new Date().getFullYear() + '</span>') !== -1, 'this year by default');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

@@ -74,8 +74,8 @@ check('the escalation line', H.indexOf('For any issues requiring immediate escal
 check('the two link columns', (H.match(/<ul class="etf-links">/g) || []).length === 2 && H.indexOf('<a href="https://brandequity.economictimes.indiatimes.com/guest-post-guidelines" target="_blank" rel="noopener">Guest-Post Guidelines</a>') !== -1 &&
   H.indexOf('>Terms &amp; Conditions</a>') !== -1);
 check('What\'s Happening: heading to ET\'s events page, a card an event', H.indexOf('<h2 class="etf-h"><a href="https://brandequity.economictimes.indiatimes.com/events" target="_blank" rel="noopener">What\'s Happening in ETBrandEquity.com</a></h2>') !== -1 &&
-  (H.match(/<li class="etf-card">/g) || []).length === 4 && H.indexOf('<span class="etf-cap">CX Annual Symposium 2026 | 04 Dec &#39;26</span>') !== -1 && /<img src="https:\/\/img\.etb2bimg\.com\/l1\.jpg" alt="CX Annual Symposium 2026" loading="lazy">/.test(H));
-check('copyright, this year', H.indexOf('<p class="etf-copy">Copyright © 2026 ETBrandEquity.com. All Rights Reserved.</p>') !== -1);
+  (H.match(/<li class="etf-card">/g) || []).length === 4 && H.indexOf('<span class="etf-cap">CX Annual Symposium 2026 | 04 Dec &#39;26</span>') !== -1 && /<img src="https:\/\/img\.etb2bimg\.com\/l1\.jpg" alt="" loading="lazy">/.test(H));
+check('copyright, this year', H.indexOf('<p class="etf-copy">Copyright © <span data-rv-year>2026</span> ETBrandEquity.com. All Rights Reserved.</p>') !== -1);
 check('no script, no handler, no javascript:', !/<script|\son[a-z]+=|javascript:/i.test(H));
 
 var dark = ef.build({ portal: 'brandequity', mode: 'dark', year: 2026 });
@@ -88,7 +88,7 @@ var hostile = ef.build({ portal: 'cio', year: 2026, events: [ev(1, '<img src=x o
   event: { name: '<b>x</b>', date: '"q"', button: { label: 'Go', href: 'javascript:alert(1)' } } });
 check('hostile text is escaped, a bad address is dropped', !/<script|<b>|onerror=|javascript:/i.test(hostile.html) && hostile.html.indexOf('etf-event-btn') === -1, hostile.html.slice(0, 400));
 check('a button that is not registration carries no register mark', ef.build({ portal: 'cio', event: { name: 'X', button: { label: 'Partner', href: '#partners', register: false } } }).html.indexOf('data-register-cta') === -1);
-check('year defaults to this year', ef.build({ portal: 'cio' }).html.indexOf('Copyright © ' + new Date().getFullYear() + ' ETCIO.com.') !== -1);
+check('year defaults to this year', ef.build({ portal: 'cio' }).html.indexOf('Copyright © <span data-rv-year>' + new Date().getFullYear() + '</span> ETCIO.com.') !== -1);
 
 /* the CSS: the page's own colours (one tone), nothing fixed but the button's ink, which is kept */
 var fixed = C.replace(/\.etf-event-btn\{--rv-keep:1;[^}]*\}/, '').replace(/rgba\(0,0,0,\.5\)/g, '').match(/#[0-9a-f]{3,8}\b|rgba?\(/gi);
@@ -131,6 +131,8 @@ var sec = api.siteFooter({ portal: 'brandequity', series: 'brand-world-summit-so
 check('siteFooter: the footer section, scoped', sec.id === 'footer' && sec.kind === 'footer' && /^<footer id="footer" class="etf"/.test(sec.html) && /^\[data-rv-section="footer"\]\{position:relative/.test(sec.css));
 check('siteFooter: never this event in What\'s Happening', sec.html.indexOf('Brand World Summit South 2026') === -1 && sec.html.indexOf('>Brand World Summit 2026 |') === -1 && sec.html.indexOf('CX Annual Symposium 2026 |') !== -1);
 check('siteFooter: white ink on a red button, dark ink on a light one', /color:#ffffff/.test(sec.css) && /color:#14161b/.test(api.siteFooter({ portal: 'cio', design: { themeColor: '#ffd200' }, eventName: 'X', button: { label: 'Go', href: '#x' } }).css));
+var self = api.siteFooter({ portal: 'cio', design: {}, eventName: 'X Summit', date: 'd', place: 'p', button: { label: 'Register Now', href: '#footer', register: true } });
+check('siteFooter: a button that would lead to the footer itself is left out, the event band stays', self.html.indexOf('etf-event-btn') === -1 && self.html.indexOf('<p class="etf-event-name">X Summit</p>') !== -1);
 check('siteFooter: a dark site gets the light-ink wordmark', /src="\/templates\/_shared\/img\/portals\/cio-light\.png"/.test(api.siteFooter({ portal: 'cio', design: { mode: 'dark' } }).html));
 
 function later(ms, v, fail) { return new Promise(function (ok, no) { setTimeout(function () { fail ? no(new Error('socket hang up')) : ok(v); }, ms); }); }
