@@ -1,22 +1,9 @@
-Revamp CMS — third-party data
-==============================
+Revamp CMS — third-party data notices
 
-Places (a registration form's Location field: "Noida, Uttar Pradesh, India")
-  functions/lib/data/places.json is derived from GeoNames (https://www.geonames.org):
-  cities15000, the Indian places of cities1000, admin1CodesASCII and countryInfo
-  (https://download.geonames.org/export/dump/). Place names, states and populations by GeoNames,
-  licensed under the Creative Commons Attribution 4.0 License
-  (https://creativecommons.org/licenses/by/4.0/). Changes: the data was filtered (Indian places of
-  1,000 people or more, other places of 15,000 or more or capitals; no historical, abandoned or
-  destroyed places, and parts of cities only in India), reduced to name, state, country and population
-  with a few alternative names for large cities, and written in a compact form by tools/build-places.js.
-  The data is provided "as is" by GeoNames, without warranty.
-
-Countries and dialling codes (a registration form's Mobile field)
-  The country list and dialling codes in functions/lib/phone.js and templates/_shared/rv-forms.js are
-  derived from GeoNames' countryInfo.txt (same licence as above); the number lengths follow the ITU-T
-  E.164 national numbering plans as published by the ITU.
-
-Time zones (which country a visitor's browser time zone is in)
-  The time zone to country table in templates/_shared/rv-forms.js is derived from the IANA Time Zone
-  Database (zone.tab and the links of tzdata.zi), which is in the public domain.
+Place names (functions/lib/data/places.json, used for the "Location" field's suggestions)
+  Source: GeoNames (https://www.geonames.org/), files cities1000/cities15000, admin1CodesASCII.txt and
+  countryInfo.txt from https://download.geonames.org/export/dump/
+  Licence: Creative Commons Attribution 4.0 International (CC BY 4.0),
+  https://creativecommons.org/licenses/by/4.0/
+  Changes: reduced to Indian places of 1,000+ people and world places of 15,000+ people (or capitals), with
+  their state and country names, and indexed for prefix search (tools/build-places.js).
