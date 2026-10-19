@@ -64,6 +64,17 @@
      buttons are made on the live page each time and are never part of the saved site. While editing there
      are no buttons and nothing moves: the row is a strip the editor scrolls and edits item by item.
 
+   The ET event bar (data-rv-etnav, built by functions/lib/et-nav.js)
+     At the top of the page it is a full-width bar in the page's flow with a second row of section links; once
+     the visitor scrolls past it, it floats at the top centre as a rounded bar (rv-etnav--float) — on a phone a
+     compact bar across the top — holding the event's name, its date and place and the links. Links that do not
+     fit go under a "More" button, the ones a visitor needs least first (the gallery, the past agenda and
+     sponsors, resources, FAQs, about…); a link to a section that is not on the page, or not shown, is left
+     out. The link of the section being read is marked (is-active). The menu button opens every link and the
+     main action in a panel, closed by Escape, its close button or a click beside it. The More list, the panel
+     and these classes are made on the live page only and never saved; while editing the bar stays as it is
+     saved, in its top state and in the page's flow, with every link on view.
+
    Editing
      The editor sets data-rv-editing on <html> before this runs. Reveal is then left to the editor's canvas CSS
      (everything shown, no animation), so no .go classes end up in the saved page; sections check
@@ -461,6 +472,8 @@
         if (r.top <= 1 && r.bottom < window.innerHeight / 2) h = Math.max(h, r.bottom);
       }
     }
+    /* the ET event bar floats over the top of the page as soon as the visitor has scrolled */
+    if (document.querySelector('.rv-etnav--live')) h = Math.max(h, window.innerWidth > NAV_PHONE_PX ? 72 : 60);
     document.documentElement.style.setProperty('--rv-top-bar', Math.round(h) + 'px');
   }
 
@@ -698,6 +711,244 @@
     if (root && root.matches && root.matches('[data-rv-carousel]')) carousel(root);
   }
 
+  /* ---------- the ET event bar ---------- */
+  var NAV_PHONE_PX = 860;              // at and below this width the bar is the phone's (et-nav.js's @media)
+  var NAV_FLOAT_MAX = 6;               // links on view in the floating bar, at most; the rest are under "More"
+  /* the links that go under "More" first: what a visitor deciding to come needs least */
+  var NAV_DROP = [/^#previous-(agenda|sponsors)\b/i, /glimps|gallery|photo/i, /resource|download/i, /faq/i, /about/i,
+    /who|audience/i, /theme|topic|discussion|track/i, /partner|sponsor/i, /why|join/i];
+  var CHEVRON = '<svg width="10" height="7" viewBox="0 0 10 7" fill="none" aria-hidden="true"><path d="M1 1.5l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function etNav(root) {
+    if (root.__rvNav || editing()) return;
+    var bar = root.querySelector('.rv-etnav-bar');
+    if (!bar) return;
+    root.__rvNav = true;
+    bar.classList.add('rv-etnav--live');            // on the bar: a section's CSS reaches its root only by the classes it was saved with
+    var list = root.querySelector('.rv-etnav-list');
+    var burger = root.querySelector('[data-rv-etnav-burger]');
+    var floating = false, open = null, queued = false, active = null, targets = [];
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* "More", beside the list */
+    var more = null, moreBtn = null, moreList = null;
+    if (list) {
+      more = document.createElement('div');
+      more.className = 'rv-etnav-more';
+      more.hidden = true;
+      more.innerHTML = '<button type="button" class="rv-etnav-more-btn" aria-expanded="false" aria-haspopup="true">More ' + CHEVRON + '</button><ul class="rv-etnav-more-list" hidden></ul>';
+      list.parentNode.insertBefore(more, list.nextSibling);
+      moreBtn = more.firstChild; moreList = more.lastChild;
+      moreBtn.addEventListener('click', function (e) { e.stopPropagation(); setMore(moreList.hidden); });
+      moreList.addEventListener('click', function (e) { if (e.target.closest('a')) setMore(false); });
+      document.addEventListener('click', function (e) { if (!more.contains(e.target)) setMore(false); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !moreList.hidden) { setMore(false); moreBtn.focus(); } });
+    }
+    function setMore(show) {
+      if (!more) return;
+      moreList.hidden = !show;
+      moreBtn.setAttribute('aria-expanded', show ? 'true' : 'false');
+    }
+
+    function items() { return list ? Array.prototype.slice.call(list.children) : []; }
+    function linkOf(li) { return li.querySelector('a[href^="#"]'); }
+    function hiddenEl(el) { return !el || el.hidden || el.hasAttribute('data-rv-nav-empty') || el.style.display === 'none'; }
+    /* the section a link goes to, when it is on the page and shown (rv-data.js hides an empty one, and its links) */
+    function targetOf(li) {
+      var a = linkOf(li);
+      if (!a || a.getAttribute('href').length < 2 || hiddenEl(li) || hiddenEl(a)) return null;
+      var el = resolveHash(a.getAttribute('href'));
+      return el && !el.hidden && getComputedStyle(el).display !== 'none' ? el : null;
+    }
+    function rank(li) {
+      var a = linkOf(li), key = a ? a.getAttribute('href') + ' ' + a.textContent : '';
+      for (var r = 0; r < NAV_DROP.length; r++) if (NAV_DROP[r].test(key)) return r;
+      return NAV_DROP.length;
+    }
+
+    /* Which links are on view: as many as fit (in the floating bar NAV_FLOAT_MAX at most), the ones that
+       matter least going first; the rest are under More. A link to nothing on the page is left out. */
+    function layout() {
+      queued = false;
+      if (!list) return;
+      var lis = items();
+      lis.forEach(function (li) { li.classList.remove('is-over'); });
+      setMore(false);
+      more.hidden = true;
+      targets = [];
+      var live = lis.filter(function (li) {
+        var el = targetOf(li);
+        if (el) targets.push({ href: linkOf(li).getAttribute('href'), el: el, li: li });
+        else if (!hiddenEl(li)) li.classList.add('is-over');
+        return !!el;
+      });
+      /* the links in the order of their sections on the page (the owner may have moved a section) */
+      targets.sort(function (a, b) { return a.el.compareDocumentPosition(b.el) & 4 ? -1 : 1; });
+      targets.forEach(function (t, i) { t.li.style.order = i; });
+      live = targets.map(function (t) { return t.li; });
+      var over = [];
+      var max = floating ? NAV_FLOAT_MAX : Infinity;
+      /* on a phone the row is not shown: its links are in the menu */
+      if ((list.offsetWidth || list.offsetHeight) && (list.scrollWidth > list.clientWidth + 1 || live.length > max)) {
+        more.hidden = false;
+        var room = list.clientWidth, used = 0, keep = [];
+        var widths = live.map(function (li) { return li.offsetWidth; });
+        live.map(function (li, i) { return { li: li, i: i, r: rank(li) }; })
+          .sort(function (a, b) { return b.r - a.r || a.i - b.i; })
+          .forEach(function (x) { if (keep.length < max && used + widths[x.i] <= room) { keep.push(x.li); used += widths[x.i]; } });
+        over = live.filter(function (li) { return keep.indexOf(li) === -1; });
+        over.forEach(function (li) { li.classList.add('is-over'); });
+        more.hidden = !over.length;
+      }
+      moreList.innerHTML = '';
+      over.forEach(function (li) {
+        var a = linkOf(li), item = document.createElement('li'), copy = document.createElement('a');
+        copy.setAttribute('href', a.getAttribute('href'));
+        copy.textContent = a.textContent;
+        item.appendChild(copy);
+        moreList.appendChild(item);
+      });
+      active = undefined;
+      mark();
+    }
+    function relayout() { if (!queued) { queued = true; requestAnimationFrame(layout); } }
+
+    /* the section being read: the last one whose top has come up under the bar */
+    function mark() {
+      var line = (floating ? bar.getBoundingClientRect().bottom : 0) + Math.min(160, window.innerHeight * 0.3);
+      var atEnd = window.innerHeight + window.pageYOffset >= document.documentElement.scrollHeight - 2, best = null;
+      targets.forEach(function (t) {
+        var top = t.el.getBoundingClientRect().top;
+        if (top <= line || (atEnd && top < window.innerHeight)) best = t.href;
+      });
+      if (best === active) return;
+      active = best;
+      each(root.querySelectorAll('.rv-etnav-list a[href^="#"], .rv-etnav-more-list a, .rv-etnav-drawer a[href^="#"]'), function (a) {
+        a.classList.toggle('is-active', !!best && a.getAttribute('href') === best);
+      });
+      if (moreBtn) moreBtn.classList.toggle('is-active', !!moreList.querySelector('a.is-active'));
+    }
+
+    /* the two states: in the flow at the top, floating once the visitor has scrolled past it. While it floats
+       its place in the flow is kept at the height it had (so the page does not jump); back in the flow it takes
+       its own height again — measured afresh each time, never a height kept from before a resize or a font */
+    function hold(on) {
+      if (on) root.style.setProperty('--rv-etnav-h', root.offsetHeight + 'px');
+      else root.style.removeProperty('--rv-etnav-h');
+    }
+    function onScroll() {
+      var end = root.getBoundingClientRect().top + window.pageYOffset + root.offsetHeight, y = window.pageYOffset;
+      var want = floating ? y > end - 24 : y > end + 24;
+      if (want !== floating) {
+        if (want) hold(true);
+        floating = want;
+        bar.classList.toggle('rv-etnav--float', floating);
+        if (!floating) hold(false);
+        layout();
+      } else {
+        mark();
+      }
+    }
+    var ticking = false;
+    window.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; onScroll(); });
+    }, { passive: true });
+    window.addEventListener('resize', relayout);
+    /* records arriving later (rv-data.js) show or hide sections, and the links to them */
+    if ('MutationObserver' in window && document.body) {
+      new MutationObserver(function (changes) {
+        if (changes.some(function (c) { return !root.contains(c.target) || (list && list.contains(c.target)); })) relayout();
+      }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden', 'data-rv-nav-empty'] });
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
+    window.addEventListener('load', relayout);
+
+    /* the menu panel: every link and the main action */
+    function closeMenu() {
+      if (!open) return;
+      var was = open;
+      open = null;
+      was.scrim.remove(); was.panel.remove();
+      document.documentElement.style.overflow = was.overflow;
+      document.removeEventListener('keydown', was.key);
+      if (burger) { burger.setAttribute('aria-expanded', 'false'); if (was.refocus) burger.focus({ preventScroll: true }); }
+    }
+    function openMenu() {
+      if (open) { closeMenu(); return; }
+      var scrim = document.createElement('div'), panel = document.createElement('div');
+      scrim.className = 'rv-etnav-scrim';
+      panel.className = 'rv-etnav-drawer';
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-modal', 'true');
+      panel.setAttribute('aria-label', 'Menu');
+      var head = document.createElement('div'), close = document.createElement('button');
+      head.className = 'rv-etnav-drawer-head';
+      var logo = root.querySelector('.rv-etnav-logo img');
+      if (logo) head.appendChild(logo.cloneNode(false));
+      close.type = 'button'; close.className = 'rv-etnav-close'; close.setAttribute('aria-label', 'Close menu'); close.textContent = '×';
+      head.appendChild(close);
+      panel.appendChild(head);
+      var links = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab')).concat(targets.map(function (t) { return linkOf(t.li); }));
+      links.forEach(function (a) {
+        var copy = document.createElement('a');
+        copy.className = 'rv-etnav-drawer-link' + (a.getAttribute('href') === active ? ' is-active' : '');
+        copy.setAttribute('href', a.getAttribute('href'));
+        if (a.getAttribute('target')) { copy.setAttribute('target', a.getAttribute('target')); copy.setAttribute('rel', 'noopener'); }
+        copy.textContent = a.textContent;
+        panel.appendChild(copy);
+      });
+      var cta = bar.querySelector('.rv-etnav-cta');
+      if (cta) panel.appendChild(cta.cloneNode(true));
+      /* a link closes the panel first, so that the page can scroll to where it goes */
+      panel.addEventListener('click', function (e) {
+        if (e.target === close) closeMenu();
+        else if (e.target.closest('a')) { open.refocus = false; closeMenu(); }
+      });
+      scrim.addEventListener('click', closeMenu);
+      var key = function (e) {
+        if (e.key === 'Escape') { closeMenu(); return; }
+        if (e.key !== 'Tab') return;
+        var stops = panel.querySelectorAll('a[href], button');
+        var first = stops[0], last = stops[stops.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      };
+      document.addEventListener('keydown', key);
+      if (still) { scrim.style.animation = 'none'; panel.style.animation = 'none'; }
+      root.appendChild(scrim);
+      root.appendChild(panel);
+      open = { scrim: scrim, panel: panel, key: key, overflow: document.documentElement.style.overflow, refocus: true };
+      document.documentElement.style.overflow = 'hidden';
+      if (burger) burger.setAttribute('aria-expanded', 'true');
+      close.focus({ preventScroll: true });
+    }
+    if (burger) burger.addEventListener('click', function (e) { e.preventDefault(); openMenu(); });
+
+    /* the portal's logo in the version drawn for the ground it stands on (a page saved in another theme than
+       the one the bar was built for still shows the right one) */
+    each(bar.querySelectorAll('img[data-rv-on-light][data-rv-on-dark]'), function (img) {
+      var lum = 1;
+      for (var e = img; e && e.nodeType === 1; e = e.parentElement) {
+        var m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(getComputedStyle(e).backgroundColor || '');
+        if (m && (m[4] == null || +m[4] > 0.5)) { lum = (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255; break; }
+      }
+      var want = img.getAttribute(lum < 0.45 ? 'data-rv-on-dark' : 'data-rv-on-light');
+      if (want && img.getAttribute('src') !== want) img.setAttribute('src', want);
+    });
+
+    layout();
+    onScroll();
+  }
+
+  function etNavs(root) {
+    if (editing()) return;
+    var scope = root && root.querySelectorAll ? root : document;
+    if (scope.matches && scope.matches('[data-rv-etnav]')) etNav(scope);
+    each(scope.querySelectorAll('[data-rv-etnav]'), etNav);
+  }
+
   window.RevampSections = {
     register: register,
     widget: function (name, init) {
@@ -713,6 +964,7 @@
       sectionScripts(el);
       easeIn(el);
       carousels(el);
+      etNavs(el);
       if (el.matches('.rv-imported') || el.querySelector('.rv-imported')) settleImported();
     },
     reveal: reveal,
@@ -721,7 +973,7 @@
     goTo: goTo
   };
 
-  function start() { reveal(); settleImported(); carousels(); easeIn(document); watchForReveals(); sectionScripts(document); arrive(); }
+  function start() { reveal(); settleImported(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

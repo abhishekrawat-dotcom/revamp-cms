@@ -35,7 +35,9 @@
     T.apply(document, t);
     requestAnimationFrame(function () {
       Array.prototype.forEach.call(document.querySelectorAll('img[data-rv-et-logo]'), function (img) {
-        img.src = ET_LOGO[groundLum(img) < 0.45 ? 'dark' : 'light'];
+        var dark = groundLum(img) < 0.45;
+        /* the ET event bar's logo names its own two versions (the portal's wordmark, functions/lib/et-nav.js) */
+        img.src = img.getAttribute(dark ? 'data-rv-on-dark' : 'data-rv-on-light') || ET_LOGO[dark ? 'dark' : 'light'];
       });
     });
     current = id;

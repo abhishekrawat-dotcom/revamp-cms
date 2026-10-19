@@ -2874,8 +2874,12 @@
     }
     Array.prototype.forEach.call(canvas.doc.querySelectorAll('img[data-rv-et-logo]'), function (img) {
       var g = groundOf(img), lum = (0.2126 * g[0] + 0.7152 * g[1] + 0.0722 * g[2]) / 255;
-      var want = ET_LOGO_FILES[lum < 0.45 ? 'dark' : 'light'];
+      /* the ET event bar's logo (functions/lib/et-nav.js) names its own two versions — the event's portal's
+         wordmark, or this one — and has its own size */
+      var own = img.getAttribute(lum < 0.45 ? 'data-rv-on-dark' : 'data-rv-on-light');
+      var want = own || ET_LOGO_FILES[lum < 0.45 ? 'dark' : 'light'];
       if (img.getAttribute('src') !== want) { img.setAttribute('src', want); changed = true; }
+      if (own) return;
       /* one size: 28 px tall in the nav, 24 px in the footer (the logo is wide; any taller crowds the bar) */
       var h = img.closest('[data-rv-section="footer"]') ? '24px' : '28px';
       if (img.style.height !== h) { img.style.height = h; img.style.width = 'auto'; changed = true; }
@@ -2892,9 +2896,12 @@
      functions/lib/gen-design.js capNavLinks): the gallery, FAQs, "about" and who-should-attend entries go
      first. Only the entries: the sections stay on the page. */
   var NAV_DROP = [/glimps|gallery|photo/i, /faq/i, /about/i, /who|audience/i, /partner|sponsor/i, /why|join/i];
+  /* The ET event bar (functions/lib/et-nav.js, data-rv-etnav) is left as it is by both: it carries a link to
+     every section, the live page puts the ones that do not fit under "More", and its two rows are its design. */
+  function isEtNav(nav) { return !!(nav && (nav.hasAttribute('data-rv-etnav') || nav.querySelector('[data-rv-etnav]'))); }
   function trimNav() {
     var nav = canvas.doc.querySelector('[data-rv-section="nav"]');
-    if (!nav) return false;
+    if (!nav || isEtNav(nav)) return false;
     var links = Array.prototype.filter.call(nav.querySelectorAll('a[href^="#"]'), function (a) {
       var href = a.getAttribute('href').slice(1), text = (a.textContent || '').replace(/\s+/g, ' ').trim();
       return href && href !== 'hero' && href !== 'top' && !a.querySelector('img') && !a.hasAttribute('data-register-cta') &&
@@ -2911,7 +2918,7 @@
 
   function oneRowNav() {
     var nav = canvas.doc.querySelector('[data-rv-section="nav"]');
-    var img = nav && nav.querySelector('img[data-rv-et-logo]');
+    var img = nav && !isEtNav(nav) && nav.querySelector('img[data-rv-et-logo]');
     if (!img) return false;
     var logo = img.closest('a') || img;
     var links = Array.prototype.filter.call(nav.querySelectorAll('a, button'), function (a) { return !a.contains(img) && a.offsetWidth > 0; });
