@@ -102,6 +102,17 @@ ok(pf.fields[2].options.join('|') === 'India|Nepal', 'a country field gets the c
 ok(pf.fields[3].options.join('|') === 'a|b', 'empty options are not drawn');
 ok(pf.submitLabel === 'Submit' && pf.counts === true && pf.open === true, 'preview defaults');
 
+/* the standard questions: the builder's columns match the server's, and only the email is locked */
+var SERVER = require('./forms.js');
+ok(JSON.stringify(P.MAPPED_TYPES) === JSON.stringify(SERVER.MAPPED_TYPES), 'the builder knows the server\'s columns and their types', JSON.stringify(P.MAPPED_TYPES));
+ok(JSON.stringify(Object.keys(P.LOCKED)) === JSON.stringify(SERVER.LOCKED_FIELDS), 'only the email is locked, as on the server');
+ok(/Always required/.test(src), 'the email field carries an "Always required" badge');
+var std = P.previewForm(SERVER.TEMPLATE_BY_ID.blank.form, null, []);
+ok(std.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }).join() === 'first_name:text:true,last_name:text:true,email:email:true,phone:phone:true,company:text:true,designation:text:true,location:location:true', 'a new custom form previews the seven standard questions, all required');
+ok(!('options' in std.fields[6]) && !('options' in std.fields[3]), 'Mobile and Location fields carry no options');
+var loc = P.formInput({ name: 'L', fields: [{ id: 'location', type: 'location', label: 'Location', required: true, placeholder: 'Start typing your city' }], submitLabel: 'Go', successMessage: 'Done' });
+ok(loc.fields[0].placeholder === 'Start typing your city', 'a Location field keeps its placeholder');
+
 /* every piece of form data reaches the page escaped (no raw data in innerHTML) */
 ok(/function esc\(/.test(src) && !/innerHTML\s*=\s*[^;]*\b(f|form|field|d)\.(name|label|title|intro)\b(?![^;]*esc\()/.test(src), 'labels and names go through esc()');
 

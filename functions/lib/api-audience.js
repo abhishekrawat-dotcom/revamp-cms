@@ -61,6 +61,7 @@ const {
 } = require('./http');
 const { logActivity, listActivity, actorOf } = require('./activity');
 const forms = require('./forms');
+const phone = require('./phone');
 
 const FieldValue = admin.firestore.FieldValue;
 const FieldPath = admin.firestore.FieldPath;
@@ -374,7 +375,9 @@ function aggKeyOf(value) {
 function aggValues(reg) {
   var utm = isObj(reg.utm) ? reg.utm : {};
   return {
-    company: line(reg.company, 60), designation: line(reg.designation, 60), city: line(reg.city, 60),
+    company: line(reg.company, 60), designation: line(reg.designation, 60),
+    /* a form's City answer, else the city of its Location answer ("Noida" of "Noida, Uttar Pradesh, India") */
+    city: line(reg.city, 60) || line(isObj(reg.locationParts) ? reg.locationParts.city : '', 60),
     source: (line(utm.source, 60) || line(reg.source, 60) || 'website').toLowerCase(),
     device: line(reg.device, 20).toLowerCase()
   };
@@ -412,7 +415,7 @@ function audienceRefs(fb, eventId) {
    without forms). Reads only the handful of fields it needs. */
 function scanAudience(fb, eventId) {
   return audienceRefs(fb, eventId).regs
-    .select('status', 'checkedInAt', 'createdAt', 'company', 'designation', 'city', 'source', 'utm', 'device', 'formId', 'counts').get()
+    .select('status', 'checkedInAt', 'createdAt', 'company', 'designation', 'city', 'locationParts', 'source', 'utm', 'device', 'formId', 'counts').get()
     .then(function (snap) {
       var counters = { registrations: 0, confirmed: 0, waitlist: 0, pending: 0, rejected: 0, cancelled: 0, checkedIn: 0, submissions: 0, forms: {} };
       var days = {}, subDays = {}, agg = {}, looseIds = false;
@@ -1142,12 +1145,19 @@ function handleRegister(req, res) {
    first page writes that down on it (repairFormIds) so that a query by form finds it.
    ===================================================================================================== */
 
+/* A response as Reporting gets it. A response from before first and last names has only `name` (firstName and
+   lastName are ''); one from before the Mobile and Location fields has its phone as typed (phoneDisplay is
+   that, phoneCountry '') and no location. */
 function publicRegistration(id, r) {
   r = r || {};
-  var utm = isObj(r.utm) ? r.utm : {};
+  var utm = isObj(r.utm) ? r.utm : {}, lp = isObj(r.locationParts) ? r.locationParts : null;
   return {
-    id: id, name: r.name || '', email: r.email || '', phone: r.phone || '', company: r.company || '',
-    designation: r.designation || '', city: r.city || '', source: r.source || '',
+    id: id, name: r.name || '', firstName: r.firstName || '', lastName: r.lastName || '', email: r.email || '',
+    phone: r.phone || '', phoneCountry: r.phoneCountry || '', phoneDisplay: phone.formatPhone(r.phone || ''),
+    company: r.company || '', designation: r.designation || '', city: r.city || '',
+    location: r.location || '',
+    locationParts: lp ? { city: lp.city || '', state: lp.state || '', country: lp.country || '', countryCode: lp.countryCode || '', verified: lp.verified === true } : null,
+    source: r.source || '',
     utm: { source: utm.source || '', medium: utm.medium || '', campaign: utm.campaign || '' },
     device: r.device || '', referrer: r.referrer || '',
     formId: typeof r.formId === 'string' && r.formId ? r.formId : DEFAULT_FORM_ID,
@@ -1526,15 +1536,19 @@ function handleRegistrationsExport(req, res) {
             var labels = isObj(row.r.answerLabels) ? row.r.answerLabels : {}, answers = isObj(row.r.answers) ? row.r.answers : {};
             Object.keys(answers).forEach(function (k) { addCol(k, line(labels[k], 200) || k); });
           });
-          var head = ['Submitted', 'Form', 'Status', 'Name', 'Email', 'Phone', 'Company', 'Designation', 'City', 'Source',
+          var head = ['Submitted', 'Form', 'Status', 'Name', 'First name', 'Last name', 'Email', 'Phone', 'Phone country', 'Company', 'Designation',
+            'Location', 'Location verified', 'City', 'State', 'Country', 'Source',
             'UTM source', 'UTM medium', 'UTM campaign', 'Device', 'Referrer', 'Checked in', 'Notes', 'Tags']
             .concat(cols.map(function (c) { return c.label; }));
           var lines = [head.map(forms.csvEscape).join(',')];
           rows.forEach(function (row) {
             var d = row.r, utm = isObj(d.utm) ? d.utm : {}, fid = formOf(d), answers = isObj(d.answers) ? d.answers : {};
+            var lp = isObj(d.locationParts) ? d.locationParts : {};
             var cells = [istStamp(d.createdAt), d.formName || (byId[fid] && byId[fid].name) || fid,
               forms.statusLabel({ status: normStatus(d.status), counts: d.counts, decidedAt: d.decidedAt }),
-              d.name, d.email, d.phone, d.company, d.designation, d.city, d.source, utm.source, utm.medium, utm.campaign,
+              d.name, d.firstName, d.lastName, d.email, phone.formatPhone(d.phone || ''), d.phoneCountry, d.company, d.designation,
+              d.location, d.location ? (lp.verified === true ? 'Yes' : 'No') : '', d.city || lp.city, lp.state, lp.country,
+              d.source, utm.source, utm.medium, utm.campaign,
               d.device, d.referrer, d.checkedInAt ? istStamp(d.checkedInAt) : '', d.notes,
               Array.isArray(d.tags) ? d.tags.join('; ') : ''];
             cols.forEach(function (c) { cells.push(answers[c.key]); });
