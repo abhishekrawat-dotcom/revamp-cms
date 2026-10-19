@@ -17,7 +17,8 @@
        photo     [data-rv-field="photo"] | the card's first <img>
        template  [data-rv-profile-bio] (one or more), a[data-rv-profile-li], a[data-rv-profile-x],
                  img[data-rv-profile-logo], [data-rv-profile-sessions-title], [data-rv-profile-session] each with
-                 [data-rv-profile-when] and [data-rv-profile-title]
+                 [data-rv-profile-when] and [data-rv-profile-title]; [data-rv-profile-for] names whose profile it
+                 is, and a card whose own name is another (copied and renamed in the editor) does not open
      The card becomes a button (focusable, Enter / Space) with a small "View profile" line.
 
    Photo galleries
@@ -159,7 +160,7 @@
   var open = null;          // { layer, opener, onKey, inerted, scroll }
   function focusables(layer) {
     return Array.prototype.filter.call(layer.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'), function (n) {
-      return !n.hidden && n.offsetParent !== null;
+      return !n.hidden && n.getClientRects().length > 0;
     });
   }
   function show(layer, opener, onKey, focusFirst) {
@@ -242,6 +243,8 @@
     return pop;
   }
 
+  /* a name as compared: case, spacing and punctuation aside */
+  function sameName(s) { return String(s || '').toLowerCase().replace(/[\s.,;:'"\u2018\u2019\u201c\u201d()\-]+/g, ''); }
   /* what a card says about its speaker: its own visible text, and what its <template> holds */
   function profileOf(card) {
     var tpl = card.querySelector('template[data-rv-profile]');
@@ -274,6 +277,10 @@
       if (title) p.sessions.push({ when: textOf(s.querySelector('[data-rv-profile-when]')), title: title });
     });
     p.more = !!(p.bio.length || p.links.length || p.sessions.length);
+    // a profile names whose it is: a card copied and renamed in the editor keeps the <template> it was copied
+    // with, and must not show that speaker's sessions and links under another name
+    var owner = t.querySelector('[data-rv-profile-for]');
+    if (owner && sameName(textOf(owner)) !== sameName(p.name)) return null;
     return p.name ? p : null;
   }
 
@@ -365,17 +372,29 @@
     var r = img.getBoundingClientRect();
     return (r.width >= 80 && r.height >= 60) || (img.naturalWidth >= 200 && r.width > 0);
   }
-  function srcOf(img) { return pictureUrl(img.currentSrc || img.getAttribute('src') || img.getAttribute('data-src') || '', true); }
+  /* a photo's identity: its address as written, resolved against the page (img.src) — not currentSrc, which is
+     '' until a lazy picture loads and then the srcset candidate chosen, so a marquee's copy of a photo would not
+     match the one on screen; a placeholder src (data:) with the real address in data-src takes data-src */
+  function keyOf(img) {
+    var s = img.src || '', ds = img.getAttribute('data-src');
+    if (ds && (!s || /^data:/i.test(s))) { try { s = new URL(ds, doc.baseURI).href; } catch (e) { s = ds; } }
+    return pictureUrl(s, true);
+  }
+  /* the address to show it large from: what the browser picked for it, else its own */
+  function srcOf(img) {
+    var k = keyOf(img), cur = img.currentSrc || '';
+    return k && cur && (!/^data:/i.test(cur) || /^data:/i.test(k)) ? pictureUrl(cur, true) || k : k;
+  }
   function photosIn(box) {
     var list = [], seen = {};
     each(box.querySelectorAll('img'), function (img) {
       if (!isPhoto(img)) return;
-      var src = srcOf(img);
-      if (!src || seen[src]) return;
-      seen[src] = 1;
+      var key = keyOf(img);
+      if (!key || seen[key]) return;
+      seen[key] = 1;
       var fig = img.closest('figure');
       var cap = fig ? textOf(fig.querySelector('figcaption')) : '';
-      list.push({ src: src, alt: img.getAttribute('alt') || '', caption: cap });
+      list.push({ key: key, src: srcOf(img), alt: img.getAttribute('alt') || '', caption: cap });
     });
     return list;
   }
@@ -398,15 +417,15 @@
       var photos = photosIn(box), n = photos.length;
       if (!n) return;
       each(box.querySelectorAll('img'), function (img) {
-        if (img.hasAttribute('data-rv-lightbox-photo') || !isPhoto(img) || !srcOf(img)) return;
+        if (img.hasAttribute('data-rv-lightbox-photo') || !isPhoto(img) || !keyOf(img)) return;
         img.setAttribute('data-rv-lightbox-photo', '');
         // a photo inside a link to its own file: the link is what is focused, and it opens the photo here
         if (!img.closest('a[href]')) {
           img.setAttribute('tabindex', '0');
           img.setAttribute('role', 'button');
         }
-        var at = -1, src = srcOf(img);
-        for (var i = 0; i < n; i++) if (photos[i].src === src) { at = i; break; }
+        var at = -1, key = keyOf(img);
+        for (var i = 0; i < n; i++) if (photos[i].key === key) { at = i; break; }
         img.setAttribute('aria-label', 'Open photo ' + (at + 1) + ' of ' + n + ' larger' + (img.alt ? ': ' + img.alt : ''));
       });
     });
@@ -473,9 +492,9 @@
   function openPhoto(img) {
     var box = img.closest('[data-rv-gallery]');
     if (!box) return false;
-    var photos = photosIn(box), src = srcOf(img), at = 0;
+    var photos = photosIn(box), key = keyOf(img), at = 0;
     if (!photos.length) return false;
-    for (var i = 0; i < photos.length; i++) if (photos[i].src === src) { at = i; break; }
+    for (var i = 0; i < photos.length; i++) if (photos[i].key === key) { at = i; break; }
     var u = buildLightbox();
     u.photos = photos; u.at = at;
     render();

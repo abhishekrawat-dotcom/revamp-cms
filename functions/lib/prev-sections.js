@@ -58,7 +58,9 @@ function profileOf(s, edition) {
   var li = httpsUrl(s.linkedin), x = httpsUrl(s.x), logo = httpsUrl(s.logo);
   var sessions = (Array.isArray(s.sessions) ? s.sessions : []).filter(function (x) { return x && x.title; });
   if (!s.bio && !li && !x && !sessions.length) return '';
-  return '<template data-rv-profile>' +
+  /* data-rv-profile-for: whose profile this is — a card the owner copied and renamed in the editor does not
+     open another speaker's sessions under its new name (rv-popups.js compares it with the card's name) */
+  return '<template data-rv-profile><span data-rv-profile-for hidden>' + esc(s.name) + '</span>' +
     (logo ? '<img data-rv-profile-logo src="' + esc(logo) + '" alt="' + esc(s.company ? s.company + ' logo' : 'Company logo') + '">' : '') +
     (s.bio ? '<p data-rv-profile-bio>' + esc(s.bio) + '</p>' : '') +
     (li ? '<a data-rv-profile-li href="' + esc(li) + '" target="_blank" rel="noopener">LinkedIn</a>' : '') +
@@ -125,7 +127,7 @@ function sponsors(p, edition) {
 }
 
 var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-function dayOf(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? +m[3] + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : ''; }
+function dayOf(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m && MONTHS[+m[2] - 1] && +m[3] ? +m[3] + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : ''; }
 function timeOf(v) {
   var m = /[ T](\d{2}):(\d{2})/.exec(String(v || ''));
   if (!m) return '';

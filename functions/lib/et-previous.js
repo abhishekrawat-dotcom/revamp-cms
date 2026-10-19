@@ -171,11 +171,14 @@ function photosOf(items) {
 /* ---------- a speaker's profile ---------- */
 var MAX_BIO = 1200, MAX_SESSIONS = 6;
 var LINKEDIN_HOST = /^(?:[a-z]{2}\.)?linkedin\.com$/i, X_HOST = /^(?:x|twitter)\.com$/i;
-/* the speaker's own text, as plain text, cut at a word near MAX_BIO */
+/* the speaker's own text, as plain text — a paragraph per line, what a script or style block holds dropped — cut
+   at a word near MAX_BIO. ET's field is the CMS's HTML (<p>, <br>) or plain text with line breaks. */
 function bioOf(v) {
-  var t = text(v);
+  // read no more than a long biography can use: the patterns below rescan what follows an unclosed '<'
+  var t = str(v).slice(0, MAX_BIO * 6).replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<br\s*\/?>|<\/(?:p|div|li|h[1-6])\s*>/gi, '\n')
+    .split(/\r?\n/).map(text).filter(Boolean).join('\n');
   if (t.length <= MAX_BIO) return t;
-  var cut = t.slice(0, MAX_BIO), at = cut.lastIndexOf(' ');
+  var cut = t.slice(0, MAX_BIO), at = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('\n'));
   return (at > MAX_BIO * 0.8 ? cut.slice(0, at) : cut).replace(/[\s,;:.\-–—]+$/, '') + '…';
 }
 /* a profile's address on one of the given hosts, on https, however it was written ("linkedin.com/in/x",

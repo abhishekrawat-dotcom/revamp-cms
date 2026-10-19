@@ -61,6 +61,12 @@ check('the company logo is a file under cp/', mj.logo === 'https://img.etb2bimg.
 check('sessions from the agenda by the speaker\'s id, in time order, once each', mj.sessions.length === 2 && mj.sessions[0].title === 'Opening Keynote' && mj.sessions[1].title === 'Fireside Chat: Evolving Expectations' && mj.sessions[1].end === '2025-12-05 18:30:00', JSON.stringify(mj.sessions));
 check('…and by name where the agenda names a speaker without an id', prof.speakers[2].name === 'By Name' && prof.speakers[2].sessions.length === 1 && pn.sessions.length === 1);
 check('nothing invented: no bio, LinkedIn, logo or session is \'\' / []', pn.bio === '' && pn.x === '' && prof.speakers[3].sessions.length === 0 && prof.speakers[3].bio === '');
+var paras = ep.normalise({ speakers: [
+  { id: 1, speaker_name: 'P One', status: 1, speaker_info: '<p>First &amp; foremost.</p><p>Second<br>line</p><script>window.x=1</script><style>p{color:red}</style>' },
+  { id: 2, speaker_name: 'P Two', status: 1, speaker_info: 'Plain text.\r\n\r\nAnother   paragraph.' }] }).speakers;
+check('bio: a paragraph per line or <p>/<br>, what a script or style holds dropped', paras[0].bio === 'First & foremost.\nSecond\nline' && paras[1].bio === 'Plain text.\nAnother paragraph.', JSON.stringify(paras.map(function (x) { return x.bio; })));
+var t0 = Date.now(), huge = ep.normalise({ speakers: [{ id: 9, speaker_name: 'Huge', status: 1, speaker_info: '<script'.repeat(400000) + '<'.repeat(2000000) }] }).speakers[0];
+check('bio: a page-sized field with unclosed tags is read in a moment and still capped', Date.now() - t0 < 500 && huge.bio.length <= 1201, (Date.now() - t0) + ' ms');
 check('a speaker\'s e-mail and phone are never read', JSON.stringify(prof).indexOf('private@example.com') === -1 && JSON.stringify(prof).indexOf('99999') === -1);
 
 /* reading. The pages below are cut down from real ET microsites (October 2026), keeping the places each names
@@ -299,6 +305,10 @@ reads.reduce(function (p, step) { return p.then(step); }, Promise.resolve()).the
   var hostile = ps.build('speakers', { name: 'E"d<', speakers: [{ name: 'X <img src=x onerror=alert(1)>', bio: '</template><script>alert(1)</script>', linkedin: 'javascript:alert(1)', x: 'http://x.com/a', logo: 'data:image/png;base64,AA', sessions: [{ title: '<b>T</b>', start: 'bad' }] }] }, {});
   check('profile: everything from ET escaped; a link or logo that is not https is left out', hostile.html.indexOf('<script') === -1 && hostile.html.indexOf('&lt;/template&gt;&lt;script&gt;') !== -1 &&
     hostile.html.indexOf('javascript:') === -1 && hostile.html.indexOf('http://x.com') === -1 && hostile.html.indexOf('data:image') === -1 && hostile.html.indexOf('&lt;b&gt;T&lt;/b&gt;') !== -1 && (hostile.html.match(/<template/g) || []).length === 1, hostile.html);
+  check('profile: names whose it is (escaped), so a copied and renamed card does not open it', mjCard.indexOf('<template data-rv-profile><span data-rv-profile-for hidden>Mohit Joshi</span>') !== -1 &&
+    hostile.html.indexOf('<span data-rv-profile-for hidden>X &lt;img src=x onerror=alert(1)&gt;</span>') !== -1, hostile.html.slice(0, 400));
+  var badDay = ps.build('speakers', { name: 'E', speakers: [{ name: 'D', sessions: [{ title: 'T', start: '2025-13-05 10:00:00' }] }] }, {}).html;
+  check('profile: a session whose date is not a real month shows its time only, never "undefined"', badDay.indexOf('undefined') === -1 && badDay.indexOf('data-rv-profile-when>10:00 AM<') !== -1, badDay.slice(badDay.indexOf('<template')));
   check('profile: scoped like any other section, the <template> untouched', /\[data-rv-section="previous-speakers"\]/.test(scopeSectionCss(withProfiles.css, 'previous-speakers', sectionRootInfo(withProfiles.html))));
   check('glimpses: the row opens its photos large (data-rv-lightbox)', /data-rv-carousel="auto" data-rv-lightbox/.test(glm.html));
 

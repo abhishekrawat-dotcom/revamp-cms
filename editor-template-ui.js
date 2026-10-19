@@ -578,7 +578,7 @@
     return items.map(function (p) {
       var li = /^https:\/\/[^\s"'<>\\]+$/i.test(String(p.li || '').trim()) ? String(p.li).trim() : '';
       return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '', bio: String(p.bio || '').trim(), li: li,
-        profile: { bio: String(p.bio || '').trim(), li: li, sessions: talks[p.id] || [] } };
+        profile: { name: String(p.name || '').trim(), bio: String(p.bio || '').trim(), li: li, sessions: talks[p.id] || [] } };
     });
   }
   /* each speaker's sessions (Content › Agenda), as the pop-up lists them: { when: "26 November 2026 · 9:30 AM – 10:15 AM", title } */
@@ -620,6 +620,8 @@
       parent.appendChild(n);
       return n;
     }
+    // whose profile it is: a card copied and renamed on the page does not open this speaker's under its new name
+    if (profile.name) add(tpl.content, 'span', 'data-rv-profile-for', profile.name).setAttribute('hidden', '');
     if (profile.bio) add(tpl.content, 'p', 'data-rv-profile-bio', profile.bio);
     if (profile.li) {
       var a = add(tpl.content, 'a', 'data-rv-profile-li', 'LinkedIn');
@@ -1020,13 +1022,13 @@
   function refreshPreviousProfiles() {
     var doc = canvas && canvas.doc, id = canvas && canvas.template && canvas.template.id;
     var sec = doc && /^gen-/.test(String(id || '')) ? doc.querySelector('[data-rv-section="previous-speakers"]') : null;
-    if (!sec || sec.hasAttribute('data-rv-profiles') || !sec.querySelector('.pe-spk-card') || sec.querySelector('template[data-rv-profile]')) return Promise.resolve(false);
+    if (!sec || sec.hasAttribute('data-rv-profiles') || sec.querySelector('[data-rv-profiles]') || !sec.querySelector('.pe-spk-card') || sec.querySelector('template[data-rv-profile]')) return Promise.resolve(false);
     function key(n) { return String((n && n.textContent) || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
     return fetch('/api/generated-section?eventId=' + encodeURIComponent(String(id).slice(4)) + '&id=previous-speakers')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) {
         var built = res && typeof res.html === 'string' ? res.html : '';
-        if (built.indexOf('data-rv-profile') === -1) return false;
+        if (!/<template data-rv-profile>/.test(built)) return false;
         // parsed inert: a <template>'s content never runs or loads anything
         var holder = doc.createElement('template');
         holder.innerHTML = built;
@@ -1035,10 +1037,12 @@
           var k = key(c.querySelector('.pe-spk-name'));
           if (k && !byName[k]) byName[k] = c;
         });
+        var added = 0;
         Array.prototype.forEach.call(sec.querySelectorAll('.pe-spk-card'), function (card) {
           var from = byName[key(card.querySelector('.pe-spk-name'))];
           var tpl = from && from.querySelector('template[data-rv-profile]');
           if (!tpl || card.querySelector('template[data-rv-profile]')) return;
+          added++;
           // the parts the pop-up reads the card's own text from, by the class they share with the new build
           ['group', 'name', 'role', 'co'].forEach(function (part) {
             var mark = from.querySelector('[data-rv-profile-' + part + ']'), cls = mark && mark.classList[0];
@@ -1047,6 +1051,8 @@
           });
           card.appendChild(doc.importNode(tpl, true));
         });
+        // nothing matched (every card renamed, say): the page is left exactly as it was, and asked about again next time
+        if (!added) return false;
         sec.setAttribute('data-rv-profiles', '');
         if (typeof canvas.retag === 'function') { try { canvas.retag(sec); } catch (e) { /* the editor's own tagging */ } }
         return true;
