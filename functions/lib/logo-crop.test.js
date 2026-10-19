@@ -168,7 +168,7 @@ var READ = { extras: 'SAMSUNG Ads & ShareChat moj PRESENT IN ASSOCIATION WITH HA
   var noBoxes = await build(function () { return Object.assign({}, FIRST, { extraBoxes: [], ownBox: [] }); });
   check('end to end: a reading with no boxes leaves the lock-up whole, and the owner is told', noBoxes.svg === real && /could not be cropped out cleanly/.test(noBoxes.unit.note) && asked === 1, noBoxes.unit.note);
   var unread = await build(function () { return null; });
-  check('end to end: no reading at all: the lock-up as it is', unread.svg === real && unread.unit.note === '');
+  check('end to end: no reading at all: the lock-up as it is, and the owner told its year could not be checked (never silent)', unread.svg === real && /could not be read to check its year/.test(unread.unit.note) && /2025/.test(unread.unit.note), unread.unit.note);
   finish();
 })().catch(function (e) { check('the checks ran', false, e.stack); finish(); });
 

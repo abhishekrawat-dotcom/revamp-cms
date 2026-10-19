@@ -987,7 +987,16 @@
 
       '<div class="field c5"><label for="b-cat">Category</label>' +
         '<select class="inp" id="b-cat">' + catOptions + '</select>' +
-        '<p class="hint">Used to group and label this event in the events list.</p></div>';
+        '<p class="hint">Used to group and label this event in the events list.</p></div>' +
+
+      /* the event's own logo: an AI-designed site's hero opens with it (functions/lib/api.js, buildLogoUnit) */
+      '<div class="field c12"><div class="flabel-row"><span class="flabel" id="b-logo-l">Event logo</span></div>' +
+        '<div class="logo-box ev-logo" role="group" aria-labelledby="b-logo-l">' +
+          '<span class="lprev" id="b-logo-prev">' + (imgTag(e.logoUrl) || svg(IC.image, 18)) + '</span>' +
+          '<span class="lt" id="b-logo-state">' + (e.logoUrl ? 'Opens the site’s hero.' : 'No logo yet — the site shows the event’s name in its place.') + '</span>' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="b-logo-btn">' + (e.logoUrl ? 'Replace' : 'Upload') + '</button>' +
+        '</div>' +
+        '<p class="hint">A PNG, WEBP or SVG, ideally on a transparent background. It is read when you upload it: a year from another edition is changed to this edition’s, written the same way, and a sponsor’s mark from another edition is cropped out. Nothing else in it is changed, boxed or redrawn.</p></div>';
 
     var when =
       '<div class="field c6">' +
@@ -1287,6 +1296,49 @@
         });
         paintPreview();
       });
+    });
+
+    /* The event logo: stored with the event at once (it is a file, not a field of the form), then examined
+       on the server and put into an AI-designed site's hero (POST /api/event/logo-unit). A site already
+       saved is the owner's page: the editor offers the new logo there, and puts it in itself where the hero
+       still shows the unit that was made automatically. */
+    var logoBtn = $('b-logo-btn'), logoBusy = false;
+    function logoState(text){ var el = $('b-logo-state'); if (el) el.textContent = text; }
+    if (logoBtn) logoBtn.addEventListener('click', function(){
+      if (logoBusy) return;
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/png,image/webp,image/svg+xml,image/jpeg';
+      inp.onchange = function(){
+        var file = inp.files && inp.files[0];
+        if (!file) return;
+        logoBusy = true; logoBtn.disabled = true;
+        logoState('Uploading…');
+        C.uploadImage(EV.id, 'logo', file).then(function(up){
+          return C.updateEvent(EV.id, { logoUrl: up.url }).then(function(){ return up.url; });
+        }).then(function(url){
+          EV.logoUrl = url;
+          var prev = $('b-logo-prev');
+          if (prev) prev.innerHTML = imgTag(url) || svg(IC.image, 18);
+          logoBtn.textContent = 'Replace';
+          logoState('Reading the logo and putting it into the site…');
+          return C.refreshLogoUnit(EV.id).then(function(r){
+            var said = r && r.unit && r.unit.note ? ' ' + r.unit.note : '';
+            if (!r || !r.aiDesigned) { logoState('Saved.'); notify('Logo saved'); return; }
+            if (r.savedSite) {
+              logoState('Saved.' + said + ' Open the site in the editor to put it into the hero: it goes in by itself where the hero still shows the logo made for it, and is offered where you put in a picture of your own. Then save the site.');
+            } else {
+              logoState('Saved: the site’s hero now opens with it.' + said);
+            }
+            notify('Logo saved');
+          }, function(err){
+            logoState('The logo was saved, but it could not be put into the site: ' + ((err && err.message) || 'please try again') + '. Use Replace image on the hero logo in the editor.');
+          });
+        }, function(err){
+          logoState(EV.logoUrl ? 'Opens the site’s hero.' : 'No logo yet — the site shows the event’s name in its place.');
+          notify('The logo could not be uploaded: ' + ((err && err.message) || 'please try again'));
+        }).then(function(){ logoBusy = false; logoBtn.disabled = false; });
+      };
+      inp.click();
     });
 
     var copy = $('b-copy');

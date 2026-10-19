@@ -373,13 +373,16 @@ var ET_LOGO = { dark: '/templates/_shared/img/et-business-verticals-on-dark.svg'
 
 /* tone: 'dark' when the unit stands on a dark veil (light type), else 'light'. The Economic Times Business
    Verticals logo is shown exactly as supplied — the file for that tone, at its own proportions, never
-   recoloured, cropped or redrawn — above the event's wordmark, as on ET's own event sites. */
-function logoUnitHtml(parts, mode) {
+   recoloured, cropped or redrawn — above the event's wordmark, as on ET's own event sites.
+   note: what the owner should know about why the unit is set in type (the previous edition's logo could
+   not be brought up to this year), shown in the editor as logoUnitImageHtml's is. */
+function logoUnitHtml(parts, mode, note) {
   parts = parts || {};
   if (!String(parts.keyword || '').trim()) return '';
   var tone = mode === 'dark' ? 'dark' : 'light';
   function span(cls, text) { return text ? '<span class="' + cls + '">' + escAttr(text) + '</span>' : ''; }
-  return '<div class="rv-lu rv-lu-on-' + tone + '" data-rv-logo-unit>' +
+  note = String(note || '').replace(/\s+/g, ' ').trim();
+  return '<div class="rv-lu rv-lu-on-' + tone + '" data-rv-logo-unit' + (note ? ' data-rv-logo-note="' + escAttr(note) + '"' : '') + '>' +
     '<img class="rv-lu-et" src="' + ET_LOGO[tone] + '" alt="The Economic Times Business Verticals" width="' + (tone === 'dark' ? 401 : 365) + '" height="' + (tone === 'dark' ? 39 : 35) + '">' +
     '<div class="rv-lu-name">' + span('rv-lu-pre', parts.before) + span('rv-lu-key', parts.keyword) + span('rv-lu-post', parts.after) + '</div>' +
     '</div>';

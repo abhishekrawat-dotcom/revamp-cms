@@ -159,8 +159,11 @@ function inheritedFill(stack) { for (var i = stack.length - 1; i >= 0; i--) if (
 
 /* The shapes that are the year: inside the box the reader gave (with a little room), each a glyph-sized shape
    (never one that runs far outside it, a background or a frame), untransformed, and together a row of digits.
+   o.digits: how many digits the year is written with (4, or 2 for "'26": the apostrophe is not one of them
+   and stays); o.lead: true when a mark stands before the digits inside the box (the apostrophe of "'26").
    -> { shapes, box } or null when that is not what the box holds. */
-function yearShapes(svg, box) {
+function yearShapes(svg, box, o) {
+  var digits = o && o.digits > 0 ? Math.round(o.digits) : 4;
   if (!box || !(box.width > 0) || !(box.height > 0)) return null;
   var padX = box.width * 0.12, padY = box.height * 0.35;
   var room = { x0: box.x - padX, y0: box.y - padY, x1: box.x + box.width + padX, y1: box.y + box.height + padY };
@@ -190,12 +193,16 @@ function yearShapes(svg, box) {
   shapes.forEach(function (s) { var b = s.box; x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); });
   var found = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
   var ratio = found.width / found.height;
-  /* four digits side by side, and nothing much bigger or smaller than the box that was read */
-  if (ratio < 1.4 || ratio > 5 || found.width > box.width * 1.6 || found.width < box.width * 0.5) return null;
+  /* the digits side by side (four: 1.4 to 5 times as wide as tall), and nothing much bigger or smaller than
+     the box that was read */
+  var low = digits === 4 ? 1.4 : digits * 0.35, high = digits === 4 ? 5 : digits * 1.25;
+  if (ratio < low || ratio > high || found.width > box.width * 1.6 || found.width < box.width * 0.5) return null;
   /* they run the whole width that was read: a digit that is not a <path> of its own (a <polygon>, or one
      drawn in the same path as the letter beside it) would leave an end of the year uncovered */
   var edge = box.width * 0.15;
-  if (Math.abs(found.x - box.x) > edge || Math.abs(found.x + found.width - (box.x + box.width)) > edge) return null;
+  /* o.lead: the year is written with a mark before its digits ("'26") that the box takes in and that stays:
+     the digits start after it, so only that they run to the box's far end is asked */
+  if ((!(o && o.lead) && Math.abs(found.x - box.x) > edge) || Math.abs(found.x + found.width - (box.x + box.width)) > edge) return null;
   /* all one colour, and filled: the digits of a year are (one drawn only as an outline cannot be set as
      filled text) */
   var fills = shapes.map(function (s) { return String(s.fill || '').toLowerCase(); }).filter(function (f, i, l) { return l.indexOf(f) === i; });

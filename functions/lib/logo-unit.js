@@ -13,7 +13,13 @@
                                            guard: every address returned here is still the page's word, and
                                            must be fetched through safe-fetch.js.
      editionHints(html, pageUrl)        -> { title, headings: [..], years: [..], editionImage }
-     editionYears({ eventName, start, hints, pageUrl }) -> { from, to }   ('' where there is no evidence)
+     editionYears({ eventName, start, briefTexts, hints, pageUrl }) -> { from, to }   ('' where there is no evidence)
+     eventYear({ eventName, start, briefTexts }) -> '2027' | ''   the event's own year: its name, its start, its brief
+
+   A year as a lock-up writes it ("2026", "'26", "’26", "26", "FY26", "2026-27")
+     shownYear(written)                 -> { written, full, form } | null
+     yearAs(written, to)                -> `to` written the same way ("'26", "2027" -> "'27")
+     yearsShownIn(text)                 -> [ shownYear… ] every edition-like year written in a text
 
    Looking at the picture that was found
      imageInfo(buf)                     -> { type: 'png'|'jpeg'|'gif'|'webp'|'svg'|'', mime, width, height, alpha }
@@ -27,6 +33,8 @@
    Moving the year on
      svgReplaceYear(text, from, to)     -> { svg, changed }   only where the year is real text; every other
                                            byte stays as it was. changed 0 -> svg is the input itself.
+                                           from as written ("2026", "'26", "FY26", "2026-27"), to four digits;
+                                           the new year is written as the old one was ("'27").
      (svgTexts, svgTone and svgReplaceYear leave an SVG over 4,000,000 characters alone: [], '', changed 0.)
      bumpYear(text, from, to)           -> the text with that whole number replaced (alt text, names)
 
@@ -498,17 +506,93 @@ function editionHints(html, pageUrl) {
   return hints;
 }
 
+/* ---------- a year as a lock-up writes it ----------
+   A lock-up writes its edition's year in its own way: "2026", "'26" / "’26" (an apostrophe and two digits),
+   "26", "FY26", "2026-27". Reading, comparing and moving it on is done here, in code, from the year AS
+   WRITTEN; the new year is always written the same way ("'26" -> "'27", "2026-27" -> "2027-28").
+     shownYear(written)  -> { written, full: '2026', form: 'full'|'range'|'apos'|'fy'|'short' } | null
+     yearAs(written, to) -> the year `to` (four digits) written as `written` is: "'26", "2027" -> "'27"; '' when it cannot be
+     yearsShownIn(text)  -> [ shownYear… ] every edition-like year written in a text, in order. Two digits
+                            alone ("26") are not counted in running text — "26 March" is a date — only
+                            with an apostrophe or "FY" before them; "@2047" is a slogan, not a year. */
+var APOSTROPHES = '\'’‘`´';
+function shownYear(written) {
+  var s = String(written == null ? '' : written).replace(/\s+/g, ' ').trim(), m;
+  if (!s || s.length > 12) return null;
+  if ((m = /^(20\d\d)$/.exec(s))) return { written: s, full: m[1], form: 'full' };
+  if ((m = /^(20\d\d) ?[-–—\/] ?((?:20)?\d\d)$/.exec(s))) {
+    var second = m[2].length === 2 ? +('20' + m[2]) : +m[2];
+    return second === +m[1] + 1 ? { written: s, full: m[1], form: 'range' } : null;
+  }
+  if ((m = new RegExp('^[' + APOSTROPHES + '](\\d\\d)$').exec(s))) return { written: s, full: '20' + m[1], form: 'apos' };
+  if ((m = new RegExp('^FY ?[' + APOSTROPHES + ']?(\\d\\d)$', 'i').exec(s))) return { written: s, full: '20' + m[1], form: 'fy' };
+  if ((m = /^FY ?(20\d\d)$/i.exec(s))) return { written: s, full: m[1], form: 'fy' };
+  if ((m = /^(\d\d)$/.exec(s))) return { written: s, full: '20' + m[1], form: 'short' };
+  return null;
+}
+function yearAs(written, to) {
+  var y = shownYear(written);
+  to = String(to == null ? '' : to);
+  if (!y || !/^20\d\d$/.test(to)) return '';
+  var s = y.written;
+  if (y.form === 'full') return to;
+  if (y.form === 'range') {
+    return s.replace(/^(20\d\d)( ?[-–—\/] ?)((?:20)?\d\d)$/, function (all, a, sep, b) {
+      var next = String(+to + 1);
+      return to + sep + (b.length === 2 ? next.slice(2) : next);
+    });
+  }
+  /* "'26", "FY26", "26": the two digits; "FY2026": the four */
+  return /20\d\d$/.test(s) && y.form === 'fy' ? s.replace(/20\d\d$/, to) : s.replace(/\d\d$/, to.slice(2));
+}
+function yearsShownIn(text) {
+  var s = String(text == null ? '' : text).slice(0, 20000), found = [], m;
+  var full = /(^|[^0-9@#])(20\d\d(?: ?[-–—] ?(?:20)?\d\d)?)(?![0-9])/g;
+  while ((m = full.exec(s))) {
+    var at = m.index + m[1].length, y = shownYear(m[2]) || shownYear(m[2].slice(0, 4));
+    /* "FY2026": the prefix is part of how it is written */
+    var fy = /FY ?$/i.exec(s.slice(Math.max(0, at - 3), at));
+    if (fy && shownYear(fy[0] + m[2])) y = shownYear(fy[0] + m[2]);
+    if (y) found.push({ at: at, y: y });
+  }
+  var short = new RegExp('(FY ?[' + APOSTROPHES + ']?|[' + APOSTROPHES + '])(\\d\\d)(?![0-9])', 'gi');
+  while ((m = short.exec(s))) {
+    var before = s.charAt(m.index - 1);
+    if (/[0-9]/.test(before)) continue;
+    /* "FY" is a word of its own, not the end of one */
+    if (/^FY/i.test(m[1]) && /[A-Za-z]/.test(before)) continue;
+    var w = shownYear(m[1] + m[2]);
+    if (w) found.push({ at: m.index, y: w });
+  }
+  /* "Since 2015", "Est. 2019", "© 2024": a founding or copyright year is not an edition's */
+  return found.sort(function (a, b) { return a.at - b.at; }).filter(function (f) {
+    return !/(since|est\.?|estd\.?|established|founded|©|\(c\)|copyright)\s*$/i.test(s.slice(Math.max(0, f.at - 14), f.at));
+  }).map(function (f) { return f.y; });
+}
+
+/* The event's own year, from what the event says about itself, never from today's date: the year in its
+   name ("AutoTech Summit 2027", "Summit '27"), else the year it starts, else the year its brief names most
+   (ties: the latest). '' when nothing says. The name comes first: it is what the site shows as the event's
+   title, and a lock-up that disagreed with it would be the very mistake this guards against. */
+function eventYear(o) {
+  o = o || {};
+  var named = yearsShownIn(o.eventName);
+  if (named.length) return named[named.length - 1].full;
+  var iso = /^\s*(20\d\d)-\d\d/.exec(String(o.start || ''));
+  if (iso) return iso[1];
+  var tally = {};
+  (Array.isArray(o.briefTexts) ? o.briefTexts : [o.briefTexts]).forEach(function (t) {
+    yearsShownIn(t).forEach(function (y) { tally[y.full] = (tally[y.full] || 0) + 1; });
+  });
+  return Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a] || +b - +a; })[0] || '';
+}
+
 /* -> { from, to }: the year the previous edition's unit carries and the year the new one must carry.
-   `to` is the new event's own: the year in its name, else the year it starts. `from` is only ever a year the
-   previous page itself shows — never "to minus one" on a guess, never a year that is not earlier than to. */
+   `to` is the new event's own (eventYear). `from` is only ever a year the previous page itself shows —
+   never "to minus one" on a guess, never a year that is not earlier than to. */
 function editionYears(o) {
   o = o || {};
-  var named = yearsIn(o.eventName);
-  var to = named.length ? named[named.length - 1] : '';
-  if (!to) {
-    var iso = /^\s*(20\d\d)-\d\d/.exec(String(o.start || ''));
-    to = iso ? iso[1] : '';
-  }
+  var to = eventYear(o);
   if (!to) return { from: '', to: '' };
   var seen = ((o.hints && Array.isArray(o.hints.years)) ? o.hints.years : []).map(String).concat(yearsIn(pathOf(resolveUrl(o.pageUrl, ''))));
   var from = '';
@@ -520,6 +604,29 @@ function editionYears(o) {
 }
 
 function wholeYear(year) { return /^\d{4}$/.test(String(year)) ? new RegExp('(^|[^0-9])' + year + '(?![0-9])', 'g') : null; }
+
+/* How a year written one way is found in an SVG's own characters, and what it becomes: an apostrophe may be
+   written as itself or as a character reference (&#8217; &#x2019; &apos; &#39;), a dash likewise. Two digits
+   alone are never looked for in a file: "26" is too often something else.
+   -> { re, numeric, rewrite(groups) } | null. numeric: the match starts with the digits of a whole year
+   (so one inside a character reference such as "&#x2025;" is not it). */
+var APOS_RAW = '(?:[' + APOSTROPHES + ']|&#0*39;|&#[xX]0*27;|&apos;|&#0*821[67];|&#[xX]0*201[89];)';
+var DASH_RAW = '(?:[-–—\\/]|&#0*821[12];|&#[xX]0*201[34];)';
+function yearPattern(fromWritten, to) {
+  var y = shownYear(fromWritten), next = yearAs(fromWritten, to);
+  if (!y || !next || next === y.written || y.form === 'short') return null;
+  var d2 = y.full.slice(2), t2 = String(to).slice(2);
+  if (y.form === 'full') return { numeric: true, re: new RegExp('(^|[^0-9])' + y.full + '(?![0-9])', 'g'), rewrite: function (g) { return g[0] + to; } };
+  if (y.form === 'range') {
+    var second = /((?:20)?\d\d)$/.exec(y.written)[1], nextYear = String(+to + 1);
+    return { numeric: true, re: new RegExp('(^|[^0-9])' + y.full + '(\\s?' + DASH_RAW + '\\s?)' + second + '(?![0-9])', 'g'),
+      rewrite: function (g) { return g[0] + to + g[1] + (second.length === 2 ? nextYear.slice(2) : nextYear); } };
+  }
+  if (y.form === 'apos') return { re: new RegExp('(' + APOS_RAW + ')' + d2 + '(?![0-9])', 'g'), rewrite: function (g) { return g[0] + t2; } };
+  /* FY26 / FY'26 / FY2026 */
+  var four = /20\d\d$/.test(y.written);
+  return { re: new RegExp('(^|[^A-Za-z0-9])(FY\\s?' + APOS_RAW + '?)' + (four ? y.full : d2) + '(?![0-9])', 'gi'), rewrite: function (g) { return g[0] + g[1] + (four ? to : t2); } };
+}
 
 function bumpYear(text, from, to) {
   var re = wholeYear(from);
@@ -995,16 +1102,20 @@ function svgTone(text) {
    left exactly as it was. */
 function svgReplaceYear(text, fromYear, toYear) {
   var input = String(text == null ? '' : text);
-  var re = wholeYear(fromYear);
-  if (!re || !/^\d{4}$/.test(String(toYear)) || String(fromYear) === String(toYear) || input.length > MAX_SVG_CHARS) return { svg: input, changed: 0 };
+  /* fromYear as the lock-up writes it ("2026", "'26", "’26", "FY26", "2026-27"); toYear four digits: the
+     new year is written the same way ("'27") */
+  var pat = /^\d{4}$/.test(String(toYear)) ? yearPattern(fromYear, String(toYear)) : null;
+  if (!pat || input.length > MAX_SVG_CHARS) return { svg: input, changed: 0 };
 
   function swap(chars) {
     var n = 0;
-    var out = chars.replace(re, function (m, pre, at, whole) {
-      at += pre.length;
-      if (/&#x?[0-9a-f]*$/i.test(whole.slice(Math.max(0, at - 10), at))) return m;
+    var out = chars.replace(pat.re, function () {
+      var args = Array.prototype.slice.call(arguments), m = args[0], whole = args[args.length - 1], at = args[args.length - 2];
+      var groups = args.slice(1, args.length - 2);
+      at += String(groups[0] || '').length;
+      if (pat.numeric && /&#x?[0-9a-f]*$/i.test(whole.slice(Math.max(0, at - 10), at))) return m;
       n++;
-      return pre + toYear;
+      return pat.rewrite(groups);
     });
     return { text: out, n: n };
   }
@@ -1346,7 +1457,8 @@ function buildLogoUnitSvg(o) {
 }
 
 module.exports = {
-  findLogoCandidates, editionHints, editionYears, bumpYear,
+  findLogoCandidates, editionHints, editionYears, eventYear, bumpYear,
+  shownYear, yearAs, yearsShownIn,
   imageInfo, plausibleUnit,
   svgIsActive, svgLayers, svgTexts, svgTone, svgReplaceYear,
   fontMetrics, textWidth, googleFontCssUrl, fontUrlFromCss,

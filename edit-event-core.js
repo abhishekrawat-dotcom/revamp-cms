@@ -63,6 +63,9 @@
                                   POST   /api/event/upload -> {url, path}. file is a File or Blob; kind is
                                    speakers | partners | gallery | logo | banner | media | brief. Refuses a
                                    non-image or anything over 8 MB before sending.
+     .refreshLogoUnit(eventId)    POST   /api/event/logo-unit -> {aiDesigned, unit, heroUpdated, savedSite}: the
+                                   event's uploaded logo examined (its year brought to this edition's) and
+                                   made the AI-designed site's hero logo; a saved site is left to the editor
      .seedContent(eventId, payload) POST /api/event/seed -> {created}
      .fetchSub(resource, eventId)              GET    /api/event/<resource> — list, in `order`
      .createSub(resource, eventId, data)       POST   /api/event/<resource> — create, -> {id, createdAt, updatedAt}
@@ -538,6 +541,10 @@ window.RevampCore = (function(){
     });
   }
 
+  function refreshLogoUnit(eventId){
+    return need(eventId, 'refreshLogoUnit: eventId') || api('POST', '/api/event/logo-unit', { eventId: String(eventId).trim() });
+  }
+
   function uploadImage(eventId, kind, file){
     var missing = need(eventId, 'uploadImage: eventId');
     if (missing) return missing;
@@ -990,7 +997,7 @@ window.RevampCore = (function(){
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
-    uploadImage: uploadImage, seedContent: seedContent,
+    uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, seedContent: seedContent,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, deleteRegistration: deleteRegistration,
     exportRegistrations: exportRegistrations,

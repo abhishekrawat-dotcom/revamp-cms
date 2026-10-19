@@ -184,6 +184,7 @@
       document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
       loadSiteInfo();
+      ownerLogoOffer();
       logoUnitNotice();
       return true;
     }).catch(function (err) {
@@ -4321,6 +4322,72 @@
         var shown = document.querySelector('#ed-notices [data-notice="logo-unit"]');
         if (shown) shown.remove();
       } }]
+    });
+  }
+
+  /* The logo the owner uploaded is the hero's logo unit (functions/lib/api.js, buildLogoUnit and
+     POST /api/event/logo-unit), once examined: its year brought to this edition's, never redrawn. A site
+     opened from a copy made before that — saved, or kept in this browser — can still show the unit it was
+     made with. Where the hero still shows that automatic unit (the previous edition's lock-up, or one drawn
+     for the event), the owner's logo is put in its place here, as an ordinary change: one Undo step, kept
+     only once the owner saves. Where the owner has put a picture of their own there, it is only offered. */
+  var AUTO_UNIT = /\/events\/[^\/]+\/generated\/\d+-logo-unit\.(png|svg|jpe?g|webp)(\?|$)/i;
+  function ownerLogoOffer() {
+    var design = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
+    if (!canvas || !canvas.doc || !design || design.logoUnitSource !== 'owner' || !/^https:\/\//i.test(String(design.logoUnitUrl || ''))) return;
+    var unit = canvas.doc.querySelector('[data-rv-logo-unit]');
+    if (!unit) return;
+    var img = unit.querySelector('img.rv-lu-img');
+    var shown = img ? String(img.getAttribute('src') || '') : '';
+    if (shown === design.logoUnitUrl) return;
+    var automatic = img ? AUTO_UNIT.test(shown) : !!unit.querySelector('.rv-lu-name');
+    var key = 'rv.ownerLogoOffer:' + eventId + ':' + design.logoUnitUrl;
+    function noticeGone() { var n = document.querySelector('#ed-notices [data-notice="owner-logo"]'); if (n) n.remove(); }
+    function putIn() {
+      if (!unit.isConnected) return;
+      var pic = unit.querySelector('img.rv-lu-img');
+      if (!pic) {
+        /* a unit set in type becomes the picture */
+        while (unit.firstChild) unit.removeChild(unit.firstChild);
+        pic = canvas.doc.createElement('img');
+        pic.className = 'rv-lu-img';
+        pic.setAttribute('decoding', 'async');
+        unit.appendChild(pic);
+        unit.classList.add('rv-lu-pic');
+      } else if (pic.parentNode !== unit) {
+        unit.replaceChild(pic, pic.parentNode);                   // out of a plate: a logo is never boxed
+      }
+      canvas.setPicture(pic, design.logoUnitUrl);
+      pic.setAttribute('alt', (currentEvent && currentEvent.name) || pic.getAttribute('alt') || '');
+      if (+design.logoUnitWidth > 0 && +design.logoUnitHeight > 0) { pic.setAttribute('width', Math.round(design.logoUnitWidth)); pic.setAttribute('height', Math.round(design.logoUnitHeight)); }
+      else { pic.removeAttribute('width'); pic.removeAttribute('height'); }
+      /* the note was about the unit that is gone */
+      unit.removeAttribute('data-rv-logo-note');
+      var old = document.querySelector('#ed-notices [data-notice="logo-unit"]');
+      if (old) old.remove();
+      clearAiGenerated(pic);
+      commitNow();
+    }
+    var about = String(design.logoUnitNote || '').replace(/\s+/g, ' ').trim();
+    /* the owner said no to this logo here (Keep this picture, or Undo): not again for this logo */
+    function keepOld() { try { localStorage.setItem(key, '1'); } catch (e) { /* asked again next time */ } }
+    try { if (localStorage.getItem(key)) return; } catch (e) { /* storage blocked: asked as if new */ }
+    if (automatic) {
+      putIn();
+      showNotice('owner-logo', {
+        kind: 'info', dismissible: true,
+        text: 'The hero now shows the event logo you uploaded, in place of the one made automatically. ' + (about ? about + ' ' : '') + 'Save to keep it.',
+        actions: [{ label: 'Undo', onClick: function () { undo(); keepOld(); noticeGone(); } }]
+      });
+      return;
+    }
+    showNotice('owner-logo', {
+      kind: 'info', dismissible: true,
+      text: 'The event has a new logo. ' + (about ? about + ' ' : '') + 'Use it in the hero in place of the picture there now?',
+      actions: [
+        { label: 'Use the new logo', onClick: function () { putIn(); noticeGone(); } },
+        { label: 'Keep this picture', onClick: function () { keepOld(); noticeGone(); } }
+      ]
     });
   }
 

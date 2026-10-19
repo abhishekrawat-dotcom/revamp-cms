@@ -153,24 +153,36 @@ const rvTheme = require('../../templates/_shared/rv-theme.js');
    fit in memory, is not drawn at all.
    -> Promise<{ png, pixels (RGBA), width, height } on a mid-grey ground | null>
    o.clear: drawn on nothing (transparent), to see where its lettering is; o.width: drawn that many pixels
-   wide (at most RASTER_WIDTH) instead of RASTER_WIDTH */
+   wide (at most RASTER_WIDTH) instead of RASTER_WIDTH; o.font: { family, ttfBase64 } — its text is drawn
+   in that font (resvg reads no @font-face: the file is handed to it, and every family in the drawing
+   falls back to it) */
 var resvgModule;
 var RASTER_MAX_SVG_BYTES = 1500 * 1024, RASTER_WIDTH = 1000, RASTER_MAX_HEIGHT = 3000;
 function rasterise(svgText, o) {
+  var fontFile = '';
+  function drop() { if (fontFile) { try { fs.unlinkSync(fontFile); } catch (e) { /* already gone */ } fontFile = ''; } }
   try {
     if (resvgModule === undefined) { try { resvgModule = require('@resvg/resvg-js'); } catch (e) { resvgModule = null; console.error('api: SVGs cannot be drawn here (resvg) — ' + e.message); } }
     if (!resvgModule || Buffer.byteLength(String(svgText || '')) > RASTER_MAX_SVG_BYTES) return Promise.resolve(null);
     var width = o && o.width > 0 ? Math.min(RASTER_WIDTH, Math.round(o.width)) : RASTER_WIDTH;
     var opts = { fitTo: { mode: 'width', value: width }, font: { loadSystemFonts: false } };
     if (!(o && o.clear)) opts.background = '#808080';
+    if (o && o.font && o.font.ttfBase64) {
+      var family = String(o.font.family || '').replace(/[^A-Za-z0-9 ]/g, '').trim() || 'rvyear';
+      fontFile = path.join(require('os').tmpdir(), 'rv-font-' + crypto.randomBytes(8).toString('hex') + '.ttf');
+      fs.writeFileSync(fontFile, Buffer.from(o.font.ttfBase64, 'base64'));
+      opts.font = { loadSystemFonts: false, fontFiles: [fontFile], defaultFontFamily: family, sansSerifFamily: family, serifFamily: family };
+      svgText = String(svgText).replace(/font-family="'rvyear',[^"]*"/g, 'font-family="' + family + '"');
+    }
     /* its own size, read before anything is drawn (units such as pt and mm are already in px here) */
     var own = new resvgModule.Resvg(svgText, opts);
     var w = own.width, h = own.height;
-    if (!(w > 0) || !(h > 0) || width * h / w > RASTER_MAX_HEIGHT || w / h > 40) return Promise.resolve(null);
+    if (!(w > 0) || !(h > 0) || width * h / w > RASTER_MAX_HEIGHT || w / h > 40) { drop(); return Promise.resolve(null); }
     return resvgModule.renderAsync(svgText, opts).then(function (img) {
+      drop();
       return { png: img.asPng(), pixels: img.pixels, width: img.width, height: img.height };
-    }, function (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return null; });
-  } catch (e) { console.error('api: an SVG could not be drawn — ' + (e && e.message)); return Promise.resolve(null); }
+    }, function (e) { drop(); console.error('api: an SVG could not be drawn — ' + (e && e.message)); return null; });
+  } catch (e) { drop(); console.error('api: an SVG could not be drawn — ' + (e && e.message)); return Promise.resolve(null); }
 }
 
 /* Taking a year's shapes out of a drawing is kept only when the pictures before and after show that exactly
@@ -1850,31 +1862,40 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
 }
 
 /* ---------- THE LOGO UNIT — the event's signature at the top of the hero ----------
-   One picture (design.logoUnitUrl), made while the plan's other pictures are made:
+   One picture (design.logoUnitUrl), made while the plan's other pictures are made (buildLogoUnit):
 
-     a previous (or this) edition's site was given  ->  ITS logo unit, as it is. ingest-source kept the
+     the owner uploaded a logo (events/<id>.logoUrl)  ->  THAT logo. Owner-supplied content wins over anything
+       derived; it is examined exactly as a previous edition's unit is (below), and used as uploaded — its
+       own file, its own size — when the examination finds nothing to change (ownerLogoUnit).
+     else a previous (or this) edition's site was given  ->  ITS logo unit. ingest-source kept the
        candidates it found on that page (logo-unit.js); here the best one that really is a picture is
-       fetched and stored for this event. Only the edition's year is moved on, and only where that can be
-       done without redrawing anything else:
+       fetched and stored for this event (previousEditionUnit).
+     else, or when that unit's year could not be brought up to this edition's  ->  a new unit is drawn as
+       one SVG file: The Economic Times Business Verticals logo exactly as supplied, and the event's name set
+       in the design's own heading font (embedded, so it is the same on every screen) with its keyword
+       largest. A previous edition's lock-up still showing its own year is never used: the owner is told why
+       its name stands there instead, and how to put this year's logo in.
+
+   The examination (examineUnit), the same for both lock-ups:
+     - the year it shows is read as written ("2026", "'26", "’26", "26", "FY26", "2026-27") and compared
+       in code (logo-unit.js shownYear); another edition's is moved on to the event's year in the same
+       form ("'26" -> "'27"), and only where that can be done without redrawing anything else:
          - an SVG whose year is real text: that text is changed, nothing else;
-         - a PNG with the year drawn in: the picture is kept pixel for pixel, the old year's rectangle is
-           emptied and the new year set over it, as text (so the edition after this one is a text change);
-         - a picture in which the year was read but cannot be moved (a JPEG, a PNG inside an SVG, a year
-           standing on artwork): kept as it is, and the owner is told in the editor that the year in it
-           still has to be replaced;
-         - an SVG whose lettering is drawn as outlines is drawn as a picture to be read (outlinedYear).
-       A sponsor's mark, a "Presented by" / "In association with" line or that edition's theme line drawn
-       into it is cropped out — from a PNG (cropToOwnUnit) or from an outlined SVG, by its viewBox
+         - a PNG with the year drawn in: the picture is kept pixel for pixel, only the characters that
+           change are emptied and set again over it, as text, in the face closest to the lettering;
+         - an SVG whose lettering is drawn as outlines: drawn as a picture, read, the year's shapes
+           replaced (outlinedYear).
+       The change is kept only when a second reading finds the new year there and the old one gone.
+     - a sponsor's mark, a "Presented by" / "In association with" line or another edition's mark drawn into
+       it is cropped out — from a PNG (cropToOwnUnit) or from an outlined SVG, by its viewBox
        (cropSvgToOwnUnit) — only across empty lines and only when a second reading finds none of it left;
-       otherwise it stays and the owner is told.
-       Most ET lock-ups carry no year at all: they are used untouched. The hero takes the tone the
-       lock-up was drawn for (white lettering -> a dark banner), so it always stands clear, on nothing.
-     no previous edition, or nothing usable on it   ->  a new unit is drawn as one SVG file: The Economic
-       Times Business Verticals logo exactly as supplied, and the event's name set in the design's own
-       heading font (embedded, so it is the same on every screen) with its keyword largest.
+       otherwise it stays and the owner is told. The event's own tagline is part of it and always stays.
+     - nothing else: never boxed, never redrawn. Most ET lock-ups carry no year at all: they are used
+       untouched. The hero takes the tone the lock-up was drawn for (white lettering -> a dark banner), so
+       it always stands clear, on nothing.
 
    buildLogoUnit() never rejects and never fails the plan: with no picture the hero falls back to the unit
-   set in type (genDesign.logoUnitHtml). -> { url, storagePath, source, width, height, heroMode, plate, note } */
+   set in type (genDesign.logoUnitHtml). -> { url, storagePath, source, from, width, height, heroMode, plate, note } */
 var LOGO_UNIT_MAX_BYTES = 3 * 1024 * 1024;
 var LOGO_UNIT_TRIES = 3;
 var LOGO_UNIT_DECODE_PIXELS = 2500000;       // 10 MB as RGBA; the copies made of it stay well inside the instance
@@ -1886,21 +1907,29 @@ var YEAR_FONT_CHOICES = ['Outfit', 'Lexend', 'Urbanist', 'Montserrat', 'Poppins'
 var LOGO_READ_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    allText: { type: 'STRING', description: 'Every word and number drawn in the picture, in reading order.' },
-    year: { type: 'STRING', description: 'The 4-digit year of the edition if one is drawn in the picture (e.g. "2026"), else an empty string. A year that is part of a slogan (e.g. "@2047") is not the edition\'s year.' },
-    yearBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there is a year: [ymin, xmin, ymax, xmax] of its four digits ONLY, each 0-1000 relative to the picture. Else an empty list.' },
+    allText: { type: 'STRING', description: 'Every word and number drawn in the picture, in reading order, exactly as drawn (an apostrophe before a year included).' },
+    /* The year AS WRITTEN. A lock-up often writes it short ("summit '26"), and a reading that only had room
+       for "2026" gave nothing for it: the year was then never moved (AutoTech Summit 2027 shipped '26).
+       What the year is, and whether it is an earlier edition's, is worked out in code from what is written
+       (logo-unit.js shownYear), not left to the model. */
+    year: { type: 'STRING', description: 'The year of the edition exactly as it is drawn in the picture, with any apostrophe or prefix written with it: "2026", "\'26", "’26", "26", "FY26", "2026-27". Else an empty string. A year that is part of a slogan (e.g. "@2047") or a founding year ("Since 2015") is not the edition\'s year.' },
+    yearFull: { type: 'STRING', description: 'When there is a year: the same year as four digits ("2026" for "\'26", "’26", "26" or "FY26"; the first year of "2026-27"). Else an empty string.' },
+    yearBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there is a year: [ymin, xmin, ymax, xmax] of the year exactly as drawn — its digits together with the apostrophe, prefix or second year written with them, and nothing else — each 0-1000 relative to the picture. Else an empty list.' },
     yearFont: { type: 'STRING', enum: ['serif', 'sans-serif'] },
     yearWeight: { type: 'STRING', enum: ['regular', 'bold'] },
     yearFontFamily: { type: 'STRING', enum: YEAR_FONT_CHOICES, description: 'When there is a year: of these Google Fonts, the one whose digits look most like the year\'s.' },
     yearFontWeight: { type: 'STRING', enum: ['300', '400', '500', '600', '700', '800'], description: 'When there is a year: how heavy its digits are, as a font weight.' },
-    extras: { type: 'STRING', description: 'Anything drawn inside that belongs to one edition only: a sponsor\'s or partner\'s name or logo ("Powered by …", "Presented by …", "In association with …"), a theme line of that edition, an edition number. Else an empty string. The publisher\'s own mark (ET, The Economic Times, an ET vertical such as ETAuto) is NOT an extra.' },
+    /* The event's own line is part of its identity and stays in the lock-up: "DEFINING INDIA'S DECADE IN
+       AUTO TECHNOLOGY" was cut out of the AutoTech Summit's unit as if it were a sponsor's. */
+    tagline: { type: 'STRING', description: 'The event\'s OWN tagline, strapline or descriptor line when one is drawn as part of its lock-up (e.g. "DEFINING INDIA\'S DECADE IN AUTO TECHNOLOGY"), word for word. Else an empty string. It belongs to the event and is NOT an extra.' },
+    extras: { type: 'STRING', description: 'Anything drawn inside that is NOT the event\'s own identity: a sponsor\'s or partner\'s name or logo ("Powered by …", "Presented by …", "In association with …", "Title partner …"), the mark or name of another event, an edition number ("10th edition"), a date or a venue. Else an empty string. NOT extras: the publisher\'s own mark (ET, The Economic Times, an ET vertical such as ETAuto), the event\'s name, its emblem or artwork, its year, and the event\'s own tagline or descriptor line (that is tagline).' },
     /* Where the extras are, and where the event's own lock-up is: extras often stand both above it ("X and Y
        present") and below it ("In association with Z"), so no one box can hold them all and nothing else.
        Which part is which is the model's to say; where exactly to cut is read from the pixels
        (cropToOwnUnit). */
     extraBoxes: {
       type: 'ARRAY',
-      description: 'When there are extras: one entry for each group of them that stands apart (a row of sponsor logos, a "Presented by" or "In association with" line, a theme line). Else an empty list.',
+      description: 'When there are extras: one entry for each group of them that stands apart (a row of sponsor logos, a "Presented by" or "In association with" line). Never the event\'s own tagline. Else an empty list.',
       items: {
         type: 'OBJECT',
         properties: {
@@ -1910,11 +1939,14 @@ var LOGO_READ_SCHEMA = {
         required: ['text', 'box']
       }
     },
-    ownBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there are extras: [ymin, xmin, ymax, xmax], each 0-1000 relative to the picture, of the event\'s OWN lock-up — the publisher\'s mark, the event\'s name and the emblem or artwork drawn with it — enclosing all of that and none of the extras. Else an empty list.' }
+    ownBox: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'When there are extras: [ymin, xmin, ymax, xmax], each 0-1000 relative to the picture, of the event\'s OWN lock-up — the publisher\'s mark, the event\'s name, its own tagline and the emblem or artwork drawn with it — enclosing all of that and none of the extras. Else an empty list.' }
   },
-  required: ['allText', 'year', 'yearBox', 'yearFont', 'yearWeight', 'extras', 'extraBoxes', 'ownBox']
+  required: ['allText', 'year', 'yearFull', 'yearBox', 'yearFont', 'yearWeight', 'tagline', 'extras', 'extraBoxes', 'ownBox']
 };
-var LOGO_READ_PROMPT = 'This picture is the logo unit (lock-up) of an event, taken from its website. It is shown here on a plain grey background that is not part of it. Read it carefully and answer.';
+function logoReadPrompt(eventName) {
+  var name = String(eventName || '').replace(/\s+/g, ' ').replace(/"/g, '\'').trim().slice(0, 160);
+  return 'This picture is the logo unit (lock-up) of an event' + (name ? ', "' + name + '"' : '') + '. It is shown here on a plain grey background that is not part of it. Read it carefully and answer.';
+}
 
 var etLogoText = {};
 /* the official file for that tone, as text ('' if it cannot be read: the unit is then drawn without it,
@@ -2029,11 +2061,14 @@ function usableLogoPicture(bytes) {
 
 function hex2(v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }
 
-/* What a vision model reads in a raster unit: { year, box: {x,y,width,height} in pixels | null, serif,
-   bold, extras, extraBoxes: [box] where the extras are, ownBox: box | null where the event's own lock-up
-   is } — or null when it could not be asked. A see-through PNG is laid on grey first: a model
-   reads transparency as white, and white lettering would be invisible to it. */
-function readLogoPicture(eventId, picture, decoded, deadlineAt) {
+/* What a vision model reads in a raster unit: { year: as written ("'26"), full: '2026', box: {x,y,width,
+   height} in pixels | null (the year as written), shown: [every year written in it, logo-unit.js
+   shownYear], allText, tagline, serif, bold, extras, extraBoxes: [box] where the extras are, ownBox: box |
+   null where the event's own lock-up is } — or null when it could not be asked. A see-through PNG is laid on
+   grey first: a model reads transparency as white, and white lettering would be invisible to it.
+   The event's own tagline is never an extra: a group the model put with the extras that is that line is
+   taken out of them here. */
+function readLogoPicture(eventId, picture, decoded, deadlineAt, eventName) {
   /* reading it is worth a few seconds, not the plan: with little time left the picture is used unread */
   if (deadlineAt && deadlineAt - Date.now() < 25000) return Promise.resolve(null);
   var shown = decoded && pngLite.hasTransparency(decoded)
@@ -2046,11 +2081,22 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt) {
   /* This one reading goes to Gemini, not through llm.js: what is needed from it is WHERE things are in
      the picture, and Gemini places a box to the pixel where Claude's boxes land beside the lettering
      (measured on the same lock-up: Gemini's box was the year's own, Claude's was 300 px off). */
-  return callGeminiJson(LOGO_READ_PROMPT, LOGO_READ_SCHEMA, ask).then(function (r) {
+  return callGeminiJson(logoReadPrompt(eventName), LOGO_READ_SCHEMA, ask).then(function (r) {
     var record = aiUsageRecorder(null, eventId, 'logo-unit');
     if (record) record(r.usage);
     if (r.error) return null;
-    var p = r.parsed || {}, year = /^(19|20)\d\d$/.test(String(p.year || '').trim()) ? String(p.year).trim() : '';
+    var p = r.parsed || {};
+    var allText = String(p.allText || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    /* the year as written, read in code; a model that put it in four digits only ("2026" for "'26") is
+       taken at the form allText shows, so that the new year is written the same way */
+    var said = logoUnit.shownYear(p.year) || (logoUnit.shownYear(p.yearFull) && logoUnit.shownYear(p.yearFull).form === 'full' ? logoUnit.shownYear(p.yearFull) : null);
+    var shownYears = logoUnit.yearsShownIn(allText);
+    if (said && said.form === 'full') {
+      var written = shownYears.filter(function (y) { return y.full === said.full; })[0];
+      if (written && allText.indexOf(said.written) === -1) said = written;
+    }
+    if (said && !shownYears.some(function (y) { return y.written === said.written; })) shownYears.push(said);
+    var year = said ? said.written : '', full = said ? said.full : '';
     var b = Array.isArray(p.yearBox) ? p.yearBox.map(Number) : [], box = null;
     if (year && b.length === 4 && b.every(function (n) { return n >= 0 && n <= 1000; }) && b[2] > b[0] && b[3] > b[1]) {
       box = { x: b[1] / 1000 * picture.info.width, y: b[0] / 1000 * picture.info.height, width: (b[3] - b[1]) / 1000 * picture.info.width, height: (b[2] - b[0]) / 1000 * picture.info.height };
@@ -2061,11 +2107,27 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt) {
       if (u.length !== 4 || !u.every(function (n) { return n >= 0 && n <= 1000; }) || !(u[2] > u[0]) || !(u[3] > u[1])) return null;
       return { x: u[1] / 1000 * picture.info.width, y: u[0] / 1000 * picture.info.height, width: (u[3] - u[1]) / 1000 * picture.info.width, height: (u[2] - u[0]) / 1000 * picture.info.height };
     }
-    var extraBoxes = (Array.isArray(p.extraBoxes) ? p.extraBoxes : []).slice(0, 12).map(function (e) { return pixels(e && e.box); }).filter(Boolean);
-    return { year: year, box: box, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: String(p.extras || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+    var tagline = String(p.tagline || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    var own = wordsOf(tagline);
+    /* a group is the event's line when its words are that line, or a good part of it (a line drawn over two
+       rows can come back as two groups) — never a word or two that merely also occur in it */
+    function isTagline(text) { var w = wordsOf(text); return !!own && !!w && own.indexOf(w) !== -1 && w.length >= Math.min(own.length, 12); }
+    var groups = (Array.isArray(p.extraBoxes) ? p.extraBoxes : []).slice(0, 12).filter(function (e) { return e && !isTagline(e.text); });
+    var extraBoxes = groups.map(function (e) { return pixels(e.box); }).filter(Boolean);
+    var extras = String(p.extras || '').replace(/\s+/g, ' ').trim();
+    /* the extras named in words, less the event's own line: nothing else left, no extras; else, where the
+       groups were given, the groups that are left */
+    if (own && extras) {
+      var rest = (' ' + wordsOf(extras) + ' ').split(' ' + own + ' ').join(' ').trim();
+      if (!rest) extras = '';
+      else if (groups.length) extras = groups.map(function (e) { return String(e.text || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' · ') || extras;
+    }
+    return { year: year, full: full, box: box, shown: shownYears, allText: allText, tagline: tagline, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: extras.slice(0, 160),
       fontFamily: YEAR_FONT_CHOICES.indexOf(p.yearFontFamily) !== -1 ? p.yearFontFamily : '', fontWeight: /^[3-8]00$/.test(String(p.yearFontWeight)) ? +p.yearFontWeight : 0 };
   }, function () { return null; });
 }
+/* words only, lower case, one space between: how two readings of the same line are compared */
+function wordsOf(text) { return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
 
 /* Last edition's sponsor is not this edition's. A lock-up that has a sponsor's mark, a "Powered by" line
    or that edition's theme line drawn into it is cut down to the event's own part: the publisher's mark, the
@@ -2198,13 +2260,24 @@ function cropSvgToOwnUnit(svgText, read) {
   }).then(null, function () { return null; });
 }
 
-/* A PNG with the old year drawn in -> one SVG: the same picture with that year's rectangle emptied, and
-   the new year set over it as text. null when the year cannot be placed with confidence — the picture is
-   then left alone. `read`: readLogoPicture()'s answer. */
+/* A PNG with an earlier edition's year drawn in -> one SVG: the same picture, pixel for pixel, with the old
+   year's characters emptied and the new ones set in their place as text (so the edition after this one is a
+   text change). The year is moved on in the form the lock-up writes it: "'26" becomes "'27", "2026" becomes
+   "2027", "2026-27" becomes "2027-28" (logo-unit.js yearAs).
+   Character by character wherever the year's characters stand apart, one run of ink each, as in almost
+   every lock-up: only those that change are emptied and set again — the apostrophe and the "2" of "'26"
+   stay the artwork's own — each new digit as tall as the digits beside it, centred where the old one
+   stood, in that one's colour. Otherwise the year's whole rectangle is emptied and the new year set over it.
+   null when the year cannot be placed with confidence — the picture is then left alone. `read`:
+   readLogoPicture()'s answer; toYear four digits.
+   -> { bytes, info, font } — font: what the new characters are set in ({ family, ttfBase64 } | null), so
+   that a second reading can draw them (checkMovedYear). */
 function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
   if (!decoded || !read || !read.box) return Promise.resolve(null);
+  var oldText = String(read.year || '').replace(/\s+/g, ''), newText = logoUnit.yearAs(read.year, toYear).replace(/\s+/g, '');
+  if (!oldText || !newText || oldText === newText) return Promise.resolve(null);
   var box = read.box;
-  /* the model's box is a little loose or a little tight: the digits are where the ink is */
+  /* the model's box is a little loose or a little tight: the characters are where the ink is */
   var around = { x: box.x - box.width * 0.08, y: box.y - box.height * 0.22, width: box.width * 1.16, height: box.height * 1.44 };
   /* See-through or solid is judged where the year is, not for the picture as a whole: a year on a badge
      inside a transparent lock-up stands on that badge's colour. */
@@ -2213,41 +2286,83 @@ function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
   var ink = pngLite.inkBounds(decoded, around, background);
   if (!ink || !ink.colour) return Promise.resolve(null);
   var ratio = ink.width / ink.height;
-  /* four digits side by side; anything else is not (only) the year */
-  if (ink.height < 8 || ratio < 1.5 || ratio > 4.6) return Promise.resolve(null);
+  /* the year's characters side by side (four digits: 1.5 to 4.6 times as wide as tall; an apostrophe or a
+     dash counts half a digit); anything else is not (only) the year */
+  var digits = (oldText.match(/\d/g) || []).length, others = Array.from(oldText).length - digits, weight = digits + others * 0.5;
+  var low = digits === 4 && !others ? 1.5 : weight * 0.3, high = digits === 4 && !others ? 4.6 : weight * 1.25;
+  if (ink.height < 8 || ratio < low || ratio > high) return Promise.resolve(null);
   /* lettering that runs to the edge of where it was looked for is not the year alone: something else
      (a word beside it, a frame, artwork behind it) is in the box, and emptying it would damage that */
   var ax0 = Math.max(0, Math.floor(around.x)), ay0 = Math.max(0, Math.floor(around.y));
   var ax1 = Math.min(decoded.width, Math.ceil(around.x + around.width)), ay1 = Math.min(decoded.height, Math.ceil(around.y + around.height));
   if (ink.x <= ax0 || ink.y <= ay0 || ink.x + ink.width >= ax1 || ink.y + ink.height >= ay1) return Promise.resolve(null);
   if (background && Math.abs(ink.colour[0] - background[0]) + Math.abs(ink.colour[1] - background[1]) + Math.abs(ink.colour[2] - background[2]) < 120) return Promise.resolve(null);
-  var hole = { x: ink.x - 2, y: ink.y - 2, width: ink.width + 4, height: ink.height + 4 };
-  var kept = pngLite.encode(clear ? pngLite.clearBox(decoded, hole) : pngLite.fillBox(decoded, hole, background));
+
+  /* the year's characters: one run of ink across each, when they stand apart */
+  var oldChars = Array.from(oldText), newChars = Array.from(newText);
+  var part = pngLite.crop(decoded, ink);
+  var runs = part ? pngLite.inkRuns(pngLite.inkProfile(part, 'x', background)) : [];
+  var glyphs = runs.length === oldChars.length && oldChars.length === newChars.length ? runs.map(function (run, i) {
+    var b = pngLite.inkBounds(decoded, { x: ink.x + run.from, y: ink.y, width: run.to - run.from, height: ink.height }, background);
+    return { from: ink.x + run.from, to: ink.x + run.to, bounds: b, digit: /\d/.test(oldChars[i]) };
+  }) : null;
+  if (glyphs && glyphs.some(function (g) { return !g.bounds; })) glyphs = null;
+  var digitH = glyphs ? Math.max.apply(null, glyphs.filter(function (g) { return g.digit; }).map(function (g) { return g.bounds.height; }).concat([0])) : 0;
+  /* the digits of a year stand as tall as one another: runs that do not are not one character each */
+  if (glyphs && (!digitH || glyphs.some(function (g) { return g.digit && g.bounds.height < digitH * 0.85; }))) glyphs = null;
+  var sets = [];
+  if (glyphs) {
+    glyphs.forEach(function (g, i) {
+      if (oldChars[i] === newChars[i]) return;
+      var left = i > 0 ? Math.round((glyphs[i - 1].to + g.from) / 2) : g.from - 2;
+      var right = i < glyphs.length - 1 ? Math.round((g.to + glyphs[i + 1].from) / 2) : g.to + 2;
+      sets.push({ hole: { x: left, y: ink.y - 2, width: right - left, height: ink.height + 4 }, text: newChars[i], cx: (g.from + g.to) / 2,
+        baseline: g.bounds.y + g.bounds.height, height: digitH, width: g.to - g.from, colour: g.bounds.colour || ink.colour, digit: g.digit && /\d/.test(newChars[i]) });
+    });
+    /* only digits change between two years written the same way; anything else: the whole year */
+    if (!sets.length || sets.some(function (s) { return !s.digit; })) { glyphs = null; sets = []; }
+  }
+  if (!glyphs) sets = [{ whole: true, hole: { x: ink.x - 2, y: ink.y - 2, width: ink.width + 4, height: ink.height + 4 }, text: newText, x: ink.x, baseline: ink.y + ink.height, height: ink.height, width: ink.width, colour: ink.colour }];
+  var emptied = decoded;
+  sets.forEach(function (s) { emptied = clear ? pngLite.clearBox(emptied, s.hole) : pngLite.fillBox(emptied, s.hole, background); });
+  var kept = pngLite.encode(emptied);
   /* written here without the row filters the original had, the picture can come out several times its
      size: a hero picture that heavy is worse than last year's year, which the owner is told about */
   if (kept.length * 4 / 3 > Math.min(LOGO_UNIT_MAX_BYTES, Math.max(2 * (sourceBytes || 0), 600 * 1024))) return Promise.resolve(null);
-  var colour = '#' + hex2(ink.colour[0]) + hex2(ink.colour[1]) + hex2(ink.colour[2]);
 
-  return fetchUnitFont(read.serif ? 'Source Serif 4' : 'Inter', read.bold ? 700 : 400, toYear).then(function (font) {
-    var W = decoded.width, H = decoded.height, text, style = '';
-    var at = 'x="' + ink.x + '" y="' + (ink.y + ink.height) + '" fill="' + colour + '"';
-    if (font) {
-      /* lining figures stand as tall as the capitals: the size that makes them as tall as the old ones */
-      var size = ink.height / (font.metrics.capHeight / font.metrics.unitsPerEm);
-      var natural = logoUnit.textWidth(font.metrics, toYear, size, 0);
-      if (natural > ink.width * 1.04) { size = size * ink.width / natural; natural = ink.width; }
-      var spacing = Math.min((ink.width - natural) / 3, size * 0.6);
-      style = '<style>@font-face{font-family:\'rvyear\';src:url(data:font/ttf;base64,' + font.ttfBase64 + ') format(\'truetype\')}</style>';
-      text = '<text ' + at + ' font-family="\'rvyear\', ' + (read.serif ? 'Georgia, serif' : 'Arial, sans-serif') + '" font-size="' + size.toFixed(2) + '" letter-spacing="' + spacing.toFixed(2) + '">' + toYear + '</text>';
-    } else {
-      text = '<text ' + at + ' font-family="' + (read.serif ? 'Georgia, \'Times New Roman\', serif' : 'Arial, Helvetica, sans-serif') + '" font-weight="' + (read.bold ? 700 : 400) +
-        '" font-size="' + (ink.height / 0.716).toFixed(2) + '" textLength="' + ink.width + '" lengthAdjust="spacing">' + toYear + '</text>';
-    }
+  var family = read.fontFamily || (read.serif ? 'Source Serif 4' : 'Inter'), fontWeight = read.fontWeight || (read.bold ? 700 : 400);
+  return yearFont(family, fontWeight, read.serif, sets.map(function (s) { return s.text; }).join('')).then(function (font) {
+    var W = decoded.width, H = decoded.height, style = '', texts = '';
+    var fallback = read.serif ? 'Georgia, \'Times New Roman\', serif' : 'Arial, Helvetica, sans-serif';
+    if (font) style = '<style>@font-face{font-family:\'rvyear\';src:url(data:font/ttf;base64,' + font.ttfBase64 + ') format(\'truetype\')}</style>';
+    sets.forEach(function (s) {
+      var fill = '#' + hex2(s.colour[0]) + hex2(s.colour[1]) + hex2(s.colour[2]);
+      var family = font ? '\'rvyear\', ' + fallback : fallback;
+      var chars = Array.from(s.text).length;
+      if (font) {
+        /* lining figures stand as tall as the capitals: the size that makes them as tall as the old ones */
+        var size = s.height / (font.metrics.capHeight / font.metrics.unitsPerEm);
+        var natural = logoUnit.textWidth(font.metrics, s.text, size, 0);
+        if (s.whole) {
+          if (natural > s.width * 1.04) { size = size * s.width / natural; natural = s.width; }
+          var spacing = chars > 1 ? Math.min((s.width - natural) / (chars - 1), size * 0.6) : 0;
+          texts += '<text x="' + s.x + '" y="' + s.baseline + '" fill="' + fill + '" font-family="' + family + '" font-size="' + size.toFixed(2) + '" letter-spacing="' + spacing.toFixed(2) + '">' + escHtmlText(s.text) + '</text>';
+        } else {
+          /* one digit in the place of another: never much wider than the place it takes */
+          if (natural > s.width * 1.3) size = size * s.width * 1.3 / natural;
+          texts += '<text x="' + s.cx.toFixed(2) + '" y="' + s.baseline + '" text-anchor="middle" fill="' + fill + '" font-family="' + family + '" font-size="' + size.toFixed(2) + '">' + escHtmlText(s.text) + '</text>';
+        }
+      } else if (s.whole) {
+        texts += '<text x="' + s.x + '" y="' + s.baseline + '" fill="' + fill + '" font-family="' + family + '" font-weight="' + fontWeight + '" font-size="' + (s.height / 0.716).toFixed(2) + '" textLength="' + s.width + '" lengthAdjust="spacing">' + escHtmlText(s.text) + '</text>';
+      } else {
+        texts += '<text x="' + s.cx.toFixed(2) + '" y="' + s.baseline + '" text-anchor="middle" fill="' + fill + '" font-family="' + family + '" font-weight="' + fontWeight + '" font-size="' + (s.height / 0.716).toFixed(2) + '">' + escHtmlText(s.text) + '</text>';
+      }
+    });
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img">' +
       '<title>' + escHtmlText(eventName || '') + '</title>' + style +
-      '<image width="' + W + '" height="' + H + '" href="data:image/png;base64,' + kept.toString('base64') + '"/>' + text + '</svg>';
+      '<image width="' + W + '" height="' + H + '" href="data:image/png;base64,' + kept.toString('base64') + '"/>' + texts + '</svg>';
     if (svgCouldRun(svg)) return null;
-    return { bytes: Buffer.from(svg, 'utf8'), info: { type: 'svg', mime: 'image/svg+xml', width: W, height: H, alpha: null } };
+    return { bytes: Buffer.from(svg, 'utf8'), info: { type: 'svg', mime: 'image/svg+xml', width: W, height: H, alpha: null }, font: font, from: oldText, to: newText };
   });
 }
 
@@ -2282,6 +2397,250 @@ function svgUnitTone(svgText) {
   return nested ? rasterTone(pngLite.decode(Buffer.from(nested[1].replace(/\s+/g, ''), 'base64'))) : '';
 }
 
+/* ---------- examining a lock-up: the owner's own logo and the previous edition's unit alike ----------
+   Whichever lock-up opens the hero is looked at the same way before it is used:
+     its year   — the year it shows is read as written ("2026", "'26", "’26", "26", "FY26", "2026-27"); one
+                  of an earlier edition is moved on to the event's year IN THE SAME FORM ("'26" -> "'27"),
+                  matching the artwork's lettering, and the change is kept only when a second reading finds
+                  the new year there and the old one gone;
+     its extras — a sponsor's or partner's mark, a "Presented by" line, another edition's marks drawn into it
+                  are cropped out (never the event's own tagline, which is part of its identity);
+     and nothing else: never boxed, never redrawn, kept as the transparent picture it is.
+   examineUnit(fb, eventId, picture, ctx) -> Promise<{ picture, changed, notes: [..], tone, stuck, unread, seen }>
+     ctx: { years: { from, to }, origin: 'owner' | 'previous-edition', eventName, deadlineAt }
+     changed: the picture is not the one given; stuck: the other edition's year it still shows, as written,
+     when that could not be moved ('' otherwise); unread: it could not be read at all (no reading to be had);
+     seen: the edition's year the last reading named, as written. */
+function examineUnit(fb, eventId, picture, ctx) {
+  var years = ctx.years || { from: '', to: '' }, owner = ctx.origin === 'owner';
+  var notes = [], tone = '', changed = false, stuck = '', unread = false, seen = '';
+  var it = owner ? 'your logo' : 'the logo unit';
+  function read(pic, decoded) { return readLogoPicture(eventId, pic, decoded, ctx.deadlineAt, ctx.eventName); }
+  /* a year it shows is an earlier edition's when the page said so, or it is a recent one: "Since 2015" is not
+     a year to move. Compared in code, on the four-digit year, whatever form it is written in.
+     named: the reading named it as the edition's year — then a later one is not this edition's either (a
+     logo made for the next edition), where a later year only seen in its words ("Vision 2030") is left be. */
+  function isOldEdition(y, named) {
+    var s = typeof y === 'string' ? logoUnit.shownYear(y) : y;
+    if (!s || !/^20\d\d$/.test(String(years.to))) return false;
+    if (named === true && +s.full > +years.to) return +s.full <= +years.to + 3;
+    return +s.full < +years.to && (s.full === years.from || +s.full >= +years.to - 3);
+  }
+  /* the earlier edition's year a reading shows, as written: the edition's year it named; when it named none,
+     any year written in its words (a reading that had no room for "'26" said nothing, and the year then
+     stayed unmoved without a word — never again) */
+  function oldIn(r) {
+    if (!r) return '';
+    seen = r.year || '';
+    if (r.year) return isOldEdition(r.year, true) ? r.year : '';
+    var other = (r.shown || []).filter(function (y) { return isOldEdition(y); })[0];
+    return other ? other.written : '';
+  }
+  function stillShows(written) { if (!stuck) stuck = written; }
+  function cropped(extras) {
+    changed = true;
+    notes.push('“' + extras + '” ' + (owner ? 'is not part of this edition\'s own lock-up and was cropped out of your logo' : 'belonged to the previous edition and was cropped out of the logo unit') + '; the rest of it is untouched.');
+  }
+  function carries(extras) {
+    if (extras) notes.push((owner ? 'Your logo' : 'The logo unit') + ' also carries “' + extras + '”, which ' + (owner ? 'does not look like part of this edition\'s own lock-up' : 'came with the previous edition') + ' and could not be cropped out cleanly. Select it and use Replace image to put in artwork without it.');
+  }
+  function moved(from, to, how) {
+    changed = true;
+    notes.unshift('The year in ' + it + ' was changed from ' + from + ' to ' + to + how + '; everything else in it is untouched. Check how it sits, and replace the picture if you have this edition\'s artwork.');
+  }
+  /* The second reading: the moved picture drawn (in the font its new year is set in) and read again.
+     -> 'ok' (the new year is there, the old one gone) | 'failed' | 'unchecked' (it could not be read) */
+  function checkMovedYear(svgText, font, old) {
+    var oldFull = (logoUnit.shownYear(old) || {}).full;
+    return rasterise(svgText, { font: font }).then(function (r) {
+      if (!r) return 'unchecked';
+      return read({ bytes: r.png, info: { type: 'png', mime: 'image/png', width: r.width, height: r.height } }, null).then(function (again) {
+        if (!again) return 'unchecked';
+        var all = (again.shown || []).concat(again.full ? [{ full: again.full }] : []);
+        var showsNew = all.some(function (y) { return y.full === years.to; });
+        var showsOld = all.some(function (y) { return y.full === oldFull; });
+        return showsNew && !showsOld ? 'ok' : 'failed';
+      });
+    }).then(null, function () { return 'unchecked'; });
+  }
+  /* a moved picture is kept only as the second reading allows: -> the picture to use */
+  function keepMoved(movedPic, font, old, how, before) {
+    var now = logoUnit.yearAs(old, years.to);
+    /* without the font file (Google Fonts out of reach) the new year is set in a system face, which a
+       drawing made here cannot show: it is kept, and the owner is told it was not checked */
+    var check = font ? checkMovedYear(movedPic.bytes.toString('utf8'), font, old) : Promise.resolve('unchecked');
+    return check.then(function (verdict) {
+      if (verdict === 'failed') { stillShows(old); return before; }
+      moved(old, now, how);
+      if (verdict === 'unchecked') notes.push('The new year could not be checked by a second reading: look at it before you publish.');
+      return movedPic;
+    });
+  }
+
+  /* A lock-up drawn as outlines: drawn here as a picture on grey (a reader takes transparency for white,
+     and white lettering would vanish), read, and — when it shows an earlier edition's year — that year's
+     shapes are replaced by the new year set as text (svg-year.js). A sponsor's mark drawn into it is cropped
+     out first (cropSvgToOwnUnit), the same way as from a PNG. -> the picture to use */
+  function outlinedYear(svgText) {
+    var vb = svgYear.viewBoxOf(svgText);
+    if (!vb) return Promise.resolve(picture);
+    var raster = null;
+    function readDrawing(r) {
+      return r ? read({ bytes: r.png, info: { type: 'png', mime: 'image/png', width: r.width, height: r.height } }, null) : Promise.resolve(null);
+    }
+    /* the drawing cut down to the event's own lock-up and read again: kept only if the second reading
+       finds nothing left of the extras -> { svg, raster, read } or null */
+    function withoutExtras(first) {
+      return cropSvgToOwnUnit(svgText, first).then(function (cut) {
+        if (!cut) return null;
+        return rasterise(cut).then(function (r) {
+          return readDrawing(r).then(function (second) { return second && !second.extras ? { svg: cut, raster: r, read: second } : null; });
+        });
+      }).then(null, function () { return null; });
+    }
+    return rasterise(svgText).then(function (r) {
+      raster = r;
+      return readDrawing(r);
+    }).then(function (first) {
+      if (!first) { unread = true; return first; }
+      if (!first.extras) return first;
+      return withoutExtras(first).then(function (cut) {
+        var bytes = cut && Buffer.from(cut.svg, 'utf8'), info = bytes && logoUnit.imageInfo(bytes);
+        if (!cut || logoUnit.plausibleUnit(info)) { carries(first.extras); return first; }
+        svgText = cut.svg; vb = svgYear.viewBoxOf(cut.svg); raster = cut.raster;
+        picture = { bytes: bytes, info: info };
+        tone = svgUnitTone(cut.svg);                     // what is left decides what it stands on
+        cropped(first.extras);
+        return cut.read;
+      });
+    }).then(function (r) {
+      var old = oldIn(r);
+      if (!old) return picture;
+      var form = logoUnit.shownYear(old);
+      /* the digits are replaced, a mark written before them (the apostrophe of "'26") stays */
+      if (old !== r.year || !r.box || !form || ['full', 'apos', 'short'].indexOf(form.form) === -1) { stillShows(old); return picture; }
+      var digits = form.form === 'full' ? 4 : 2;
+      var sx = vb.width / raster.width, sy = vb.height / raster.height;
+      var box = { x: vb.x + r.box.x * sx, y: vb.y + r.box.y * sy, width: r.box.width * sx, height: r.box.height * sy };
+      var found = svgYear.yearShapes(svgText, box, { digits: digits, lead: form.form === 'apos' });
+      if (!found) { stillShows(old); return picture; }
+      /* drawn again without them: the change is kept only when exactly the year went (yearCutColour) */
+      return rasterise(svgYear.cutShapes(svgText, found)).then(function (after) {
+        var at = { x: (found.box.x - vb.x) / sx, y: (found.box.y - vb.y) / sy, width: found.box.width / sx, height: found.box.height / sy };
+        var colour = yearCutColour(raster, after, r.box, at);
+        if (!colour) { stillShows(old); return picture; }
+        return withYear(svgText, r, found, colour, old, digits);
+      });
+    }, function () { return picture; });
+  }
+  function withYear(svgText, r, found, colour, old, digits) {
+    var family = r.fontFamily || (r.serif ? 'Source Serif 4' : 'Inter');
+    var weight = r.fontWeight || (r.bold ? 700 : 400);
+    var newDigits = digits === 4 ? years.to : String(years.to).slice(2);
+    /* the declared colour when it is the one seen (exactly as written), else the one seen */
+    var declared = /^#[0-9a-f]{6}$/i.test(found.fill) ? found.fill : /^#[0-9a-f]{3}$/i.test(found.fill) ? '#' + found.fill.slice(1).replace(/./g, '$&$&') : '';
+    var fill = declared && colourDistance(declared, colour) <= 60 ? found.fill : colour;
+    return yearFont(family, weight, r.serif, newDigits).then(function (font) {
+      var text = svgYear.replaceYear(svgText, found, { toYear: newDigits, font: font, serif: r.serif, bold: r.bold, fill: fill });
+      if (!text || svgCouldRun(text)) { stillShows(old); return picture; }
+      var before = picture;
+      return keepMoved({ bytes: Buffer.from(text, 'utf8'), info: picture.info }, font, old,
+        ': its old digits were taken out and the new ones set in ' + (font ? font.family : 'a system font') + ', the closest match', before);
+    });
+  }
+
+  if (picture.info.type === 'svg') {
+    var svgText = picture.bytes.toString('utf8');
+    tone = svgUnitTone(svgText);
+    /* the year it shows as text: the one the page gave, else one just before this edition's, in whatever
+       form it is written ("2026", "’26") */
+    var shown = logoUnit.yearsShownIn(logoUnit.svgTexts(svgText).join(' '));
+    var inText = shown.filter(function (y) { return y.full === years.from && isOldEdition(y); })[0] || shown.filter(function (y) { return isOldEdition(y); })[0];
+    if (inText) {
+      var swapped = logoUnit.svgReplaceYear(svgText, inText.written, years.to);
+      /* the second reading, of its text: the new year there, the old one gone */
+      var after = swapped.changed ? logoUnit.yearsShownIn(logoUnit.svgTexts(swapped.svg).join(' ')) : [];
+      var ok = swapped.changed && !svgCouldRun(swapped.svg) && after.some(function (y) { return y.full === years.to; }) && !after.some(function (y) { return y.full === inText.full; });
+      if (ok) { picture = { bytes: Buffer.from(swapped.svg, 'utf8'), info: picture.info }; moved(inText.written, logoUnit.yearAs(inText.written, years.to), ' in its text'); }
+      else stillShows(inText.written);
+      return Promise.resolve(result());
+    }
+    /* No year in real text. Many ET units are one PNG exported inside an SVG: that picture is read, so
+       that an old year drawn in it is at least reported. One whose lettering is drawn as outlines is drawn
+       here as a picture and read; its year's shapes are then replaced (outlinedYear). */
+    var wrapped = /href\s*=\s*["']data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+\/=\s]+)["']/.exec(svgText);
+    if (!wrapped) return outlinedYear(svgText).then(function (pic) { picture = pic; return result(); });
+    var innerBytes = Buffer.from(wrapped[2].replace(/\s+/g, ''), 'base64'), innerInfo = logoUnit.imageInfo(innerBytes);
+    var innerDecoded = innerInfo.type === 'png' && innerInfo.width * innerInfo.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(innerBytes) : null;
+    /* an SVG that is nothing but that one PNG is that PNG: it is taken out and handled as one, so that a
+       sponsor's mark in it can be cropped and its year moved. Kept as the SVG it is when nothing needs to
+       change. */
+    var onlyWraps = !/<(path|text|rect|circle|ellipse|polygon|polyline|line|g|mask|clipPath|filter)[\s>]/i.test(svgText);
+    if (innerDecoded && onlyWraps && (owner ? innerInfo.width >= 16 && innerInfo.height >= 16 : !logoUnit.plausibleUnit(innerInfo))) {
+      var whole = picture;
+      return rasterExamined({ bytes: innerBytes, info: innerInfo }, innerDecoded).then(function (pic) {
+        picture = changed ? pic : whole;
+        return result();
+      });
+    }
+    return read({ bytes: innerBytes, info: innerInfo }, innerDecoded).then(function (inner) {
+      if (!inner) unread = true;
+      else { var old = oldIn(inner); if (old) stillShows(old); carries(inner.extras); }
+      return result();
+    });
+  }
+  /* a logo unit is a small picture: one too large to be worth reading pixel by pixel is used as it is */
+  var decoded = picture.info.type === 'png' && picture.info.width * picture.info.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(picture.bytes) : null;
+  return rasterExamined(picture, decoded).then(function (pic) { picture = pic; return result(); });
+
+  /* a raster lock-up: -> Promise<the picture to use> */
+  function rasterExamined(pic, decoded) {
+    tone = rasterTone(decoded) || tone;
+    return read(pic, decoded).then(function (first) {
+      if (!first) { unread = true; return null; }
+      if (!first.extras) return first;
+      /* A sponsor's mark is drawn in: the picture is cut down to the event's own lock-up, and read again —
+         the cut is kept only if the second reading finds nothing left of it. */
+      var cut = cropToOwnUnit(decoded, first);
+      if (!cut) { carries(first.extras); return first; }
+      var cutBytes = pngLite.encode(cut), cutPicture = { bytes: cutBytes, info: logoUnit.imageInfo(cutBytes) };
+      if (logoUnit.plausibleUnit(cutPicture.info)) { carries(first.extras); return first; }
+      return read(cutPicture, cut).then(function (second) {
+        if (!second || second.extras) { carries(first.extras); return first; }
+        pic = cutPicture; decoded = cut; tone = rasterTone(cut) || tone;
+        cropped(first.extras);
+        return second;
+      });
+    }).then(function (r) {
+      if (!r) return pic;
+      var old = oldIn(r);
+      if (!old) return pic;
+      /* a year seen in its words but not placed: it cannot be moved */
+      if (old !== r.year || !r.box) { stillShows(old); return pic; }
+      return moveYearInPng(decoded, r, years.to, ctx.eventName, pic.bytes.length).then(function (patched) {
+        if (!patched) { stillShows(old); return pic; }
+        return keepMoved(patched, patched.font, old, ' over ' + (owner ? 'your' : 'the previous edition\'s') + ' artwork, in the lettering closest to it', pic);
+      });
+    });
+  }
+  function result() { return { picture: picture, changed: changed, notes: notes, tone: tone, stuck: stuck, unread: unread, seen: seen }; }
+}
+
+function heroModeOf(tone) { return tone === 'for-dark' ? 'dark' : tone === 'for-light' ? 'light' : ''; }
+function storeLogoUnit(fb, eventId, stamp, pic) {
+  var ext = pic.info.type === 'jpeg' ? 'jpg' : pic.info.type;
+  var storagePath = 'events/' + eventId + '/generated/' + stamp + '-logo-unit.' + ext;
+  return storePublicPicture(fb, storagePath, pic.bytes, pic.info.mime).then(function (url) { return { url: url, storagePath: storagePath }; });
+}
+/* what the event says about its year beyond its name and dates: the brief's own words */
+function briefYearTexts(brief, eventMeta) {
+  brief = brief || {};
+  var vi = brief.visualIdentity || {}, owner = brief.owner || {}, points = brief.ownerPoints || {};
+  return [vi.ipName, vi.ipTagline, owner.tagline, points.tagline, brief.theme].concat(Array.isArray(brief.keyMessages) ? brief.keyMessages : [])
+    .concat([(eventMeta || {}).description]).map(function (t) { return String(t || ''); }).filter(Boolean);
+}
+
+/* The previous (or this) edition's own unit, examined. -> unit | { stuck: true, note } | null */
 function previousEditionUnit(fb, eventId, o) {
   /* the newest reading of the previous edition first, then of this edition's own current site */
   var docs = (o.sourceDocs || []).filter(function (s) { return (s.type === 'previousEdition' || s.type === 'currentEdition') && Array.isArray(s.logoCandidates) && s.logoCandidates.length; });
@@ -2296,151 +2655,78 @@ function previousEditionUnit(fb, eventId, o) {
   }
   return pick(0).then(function (picture) {
     if (!picture) return null;
-    var years = logoUnit.editionYears({ eventName: o.eventMeta.name, start: o.eventMeta.start, hints: source.editionHints || {}, pageUrl: source.url });
-    var notes = [], tone = '', movedYear = false;
-    /* a year the picture shows is the edition's only when the page said so, or it is a recent one: "Since
-       2015" is not a year to move */
-    function isOldEdition(year) { return !!year && !!years.to && +year < +years.to && (year === years.from || +year >= +years.to - 3); }
-    function done(pic) {
-      var ext = pic.info.type === 'jpeg' ? 'jpg' : pic.info.type;
-      return storePublicPicture(fb, 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit.' + ext, pic.bytes, pic.info.mime).then(function (url) {
+    var years = logoUnit.editionYears({ eventName: o.eventMeta.name, start: o.eventMeta.start, briefTexts: o.briefTexts, hints: source.editionHints || {}, pageUrl: source.url });
+    return examineUnit(fb, eventId, picture, { years: years, origin: 'previous-edition', eventName: o.eventMeta.name, deadlineAt: o.deadlineAt }).then(function (ex) {
+      /* never used showing an earlier edition's year: the event's name stands in its place, and the owner
+         is told why */
+      if (ex.stuck) {
+        return { stuck: true, note: 'The previous edition\'s logo shows ' + ex.stuck + ' and could not be updated to ' + logoUnit.yearAs(ex.stuck, years.to) +
+          ', so the event\'s name is shown here instead. Upload this year\'s logo under Event logo in the event\'s Basics, or select this and use Replace image.' };
+      }
+      var notes = ex.notes.slice();
+      if (ex.unread && years.from) notes.push('The previous edition\'s logo could not be read to check its year. If it still shows ' + years.from + ', upload this year\'s logo under Event logo in the event\'s Basics, or select it and use Replace image.');
+      return storeLogoUnit(fb, eventId, o.stamp, ex.picture).then(function (stored) {
         return {
-          url: url, storagePath: 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit.' + ext, source: 'previous-edition', from: source.url,
-          width: pic.info.width || 0, height: pic.info.height || 0,
+          url: stored.url, storagePath: stored.storagePath, source: 'previous-edition', from: source.url,
+          width: ex.picture.info.width || 0, height: ex.picture.info.height || 0,
           /* What the lock-up was drawn for. The hero takes that tone (a dark banner over a light site is how
              ET's own sites carry a white lock-up), so the unit is never redrawn and never needs a plate. */
-          heroMode: tone === 'for-dark' ? 'dark' : tone === 'for-light' ? 'light' : '',
-          plate: '', note: notes.join(' ')
+          heroMode: heroModeOf(ex.tone), plate: '', note: notes.join(' ')
         };
       });
-    }
-    function stillShows(year) {
-      notes.push('The logo unit is the previous edition\'s and still shows ' + year + ', not ' + years.to + ': it could not be changed without redrawing it. Select it and use Replace image to put in this edition\'s artwork.');
-    }
-    /* A lock-up drawn as outlines: drawn here as a picture on grey (a reader takes transparency for white,
-       and white lettering would vanish), read, and — when it shows an earlier edition's year — that year's
-       shapes are replaced by the new year set as text (svg-year.js). A sponsor's mark or that edition's
-       theme line drawn into it is cropped out first (cropSvgToOwnUnit), the same way as from a PNG.
-       -> the picture to use */
-    function outlinedYear(svgText) {
-      var vb = svgYear.viewBoxOf(svgText);
-      if (!vb) return Promise.resolve(picture);
-      var raster = null;
-      function readDrawing(r) {
-        return r ? readLogoPicture(eventId, { bytes: r.png, info: { type: 'png', mime: 'image/png', width: r.width, height: r.height } }, null, o.deadlineAt) : Promise.resolve(null);
-      }
-      /* the drawing cut down to the event's own lock-up and read again: kept only if the second reading
-         finds nothing left of the extras -> { svg, raster, read } or null */
-      function withoutExtras(first) {
-        return cropSvgToOwnUnit(svgText, first).then(function (cut) {
-          if (!cut) return null;
-          return rasterise(cut).then(function (r) {
-            return readDrawing(r).then(function (second) { return second && !second.extras ? { svg: cut, raster: r, read: second } : null; });
-          });
-        }).then(null, function () { return null; });
-      }
-      return rasterise(svgText).then(function (r) {
-        raster = r;
-        return readDrawing(r);
-      }).then(function (read) {
-        if (!read || !read.extras) return read;
-        return withoutExtras(read).then(function (cut) {
-          var bytes = cut && Buffer.from(cut.svg, 'utf8'), info = bytes && logoUnit.imageInfo(bytes);
-          if (!cut || logoUnit.plausibleUnit(info)) { carries(read.extras); return read; }
-          svgText = cut.svg; vb = svgYear.viewBoxOf(cut.svg); raster = cut.raster;
-          picture = { bytes: bytes, info: info };
-          tone = svgUnitTone(cut.svg);                     // what is left decides what it stands on
-          notes.push('“' + read.extras + '” belonged to the previous edition and was cropped out of the logo unit; the rest of it is untouched.');
-          return cut.read;
-        });
-      }).then(function (read) {
-        if (!read) return picture;
-        if (!isOldEdition(read.year) || !read.box) return picture;
-        var sx = vb.width / raster.width, sy = vb.height / raster.height;
-        var box = { x: vb.x + read.box.x * sx, y: vb.y + read.box.y * sy, width: read.box.width * sx, height: read.box.height * sy };
-        var found = svgYear.yearShapes(svgText, box);
-        if (!found) { stillShows(read.year); return picture; }
-        /* drawn again without them: the change is kept only when exactly the year went (yearCutColour) */
-        return rasterise(svgYear.cutShapes(svgText, found)).then(function (after) {
-          var digits = { x: (found.box.x - vb.x) / sx, y: (found.box.y - vb.y) / sy, width: found.box.width / sx, height: found.box.height / sy };
-          var colour = yearCutColour(raster, after, read.box, digits);
-          if (!colour) { stillShows(read.year); return picture; }
-          return withYear(svgText, read, found, colour);
-        });
-      }, function () { return picture; });
-    }
-    function withYear(svgText, read, found, colour) {
-      var family = read.fontFamily || (read.serif ? 'Source Serif 4' : 'Inter');
-      var weight = read.fontWeight || (read.bold ? 700 : 400);
-      /* the declared colour when it is the one seen (exactly as written), else the one seen */
-      var declared = /^#[0-9a-f]{6}$/i.test(found.fill) ? found.fill : /^#[0-9a-f]{3}$/i.test(found.fill) ? '#' + found.fill.slice(1).replace(/./g, '$&$&') : '';
-      var fill = declared && colourDistance(declared, colour) <= 60 ? found.fill : colour;
-      return yearFont(family, weight, read.serif, years.to).then(function (font) {
-        var moved = svgYear.replaceYear(svgText, found, { toYear: years.to, font: font, serif: read.serif, bold: read.bold, fill: fill });
-        if (!moved || svgCouldRun(moved)) { stillShows(read.year); return picture; }
-        notes.unshift('The year in the logo unit was changed from ' + read.year + ' to ' + years.to + ': its old digits were taken out and the new year set in ' + (font ? font.family : 'a system font') + ', the closest match; everything else in it is untouched. Check how it sits, and replace the picture if you have this edition\'s artwork.');
-        return { bytes: Buffer.from(moved, 'utf8'), info: picture.info };
-      });
-    }
-    function carries(extras) { if (extras) notes.push('The logo unit also carries “' + extras + '” from the previous edition, which could not be cropped out cleanly. Select it and use Replace image to put in artwork without it.'); }
+    });
+  });
+}
 
-    if (picture.info.type === 'svg') {
-      var svgText = picture.bytes.toString('utf8');
-      tone = svgUnitTone(svgText);
-      /* the year it shows as text: the one the page gave, else one just before this edition's */
-      var shown = logoUnit.svgTexts(svgText).join(' ').match(/\b(?:19|20)\d\d\b/g) || [];
-      var from = years.from && shown.indexOf(years.from) !== -1 ? years.from
-        : shown.filter(function (y) { return isOldEdition(y); })[0] || '';
-      if (from && years.to) {
-        var moved = logoUnit.svgReplaceYear(svgText, from, years.to);
-        if (moved.changed && !svgCouldRun(moved.svg)) { picture = { bytes: Buffer.from(moved.svg, 'utf8'), info: picture.info }; movedYear = true; }
-        if (!movedYear) stillShows(from);
-        return done(picture);
-      }
-      /* No year in real text. Many ET units are one PNG exported inside an SVG: that picture is read, so
-         that an old year drawn in it is at least reported. One whose lettering is drawn as outlines is drawn
-         here as a picture and read; its year's shapes are then replaced (outlinedYear). */
-      var wrapped = /href\s*=\s*["']data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+\/=\s]+)["']/.exec(svgText);
-      if (!wrapped) return outlinedYear(svgText).then(done);
-      var innerBytes = Buffer.from(wrapped[2].replace(/\s+/g, ''), 'base64'), innerInfo = logoUnit.imageInfo(innerBytes);
-      var innerDecoded = innerInfo.type === 'png' && innerInfo.width * innerInfo.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(innerBytes) : null;
-      /* an SVG that is nothing but that one PNG is that PNG: it is taken out and handled as one, so that a
-         sponsor's mark in it can be cropped and its year moved */
-      var onlyWraps = !/<(path|text|rect|circle|ellipse|polygon|polyline|line|g|mask|clipPath|filter)[\s>]/i.test(svgText);
-      if (innerDecoded && onlyWraps && !logoUnit.plausibleUnit(innerInfo)) picture = { bytes: innerBytes, info: innerInfo };
-      else {
-        return readLogoPicture(eventId, { bytes: innerBytes, info: innerInfo }, innerDecoded, o.deadlineAt).then(function (inner) {
-          if (inner) { if (isOldEdition(inner.year)) stillShows(inner.year); carries(inner.extras); }
-          return done(picture);
-        });
-      }
-    }
+/* The logo the owner uploaded (events/<id>.logoUrl), as bytes: read from this project's own bucket when it
+   is there, else fetched like any other picture. -> Promise<Buffer | null> */
+function fetchOwnerLogo(fb, url) {
+  var own = null, m;
+  var bucket = fb && fb.bucket && fb.bucket.name;
+  if (bucket && (m = /^https:\/\/storage\.googleapis\.com\/([^\/?#]+)\/([^?#]+)/.exec(url)) && m[1] === bucket) own = m[2];
+  else if (bucket && (m = /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/([^\/?#]+)\/o\/([^?#]+)/.exec(url)) && m[1] === bucket) own = m[2];
+  var direct = own ? Promise.resolve().then(function () {
+    var file = fb.bucket.file(decodeURIComponent(own));
+    if (!file || typeof file.download !== 'function') return null;
+    return file.download().then(function (r) { var b = r && r[0]; return Buffer.isBuffer(b) && b.length <= LOGO_UNIT_MAX_BYTES ? b : null; });
+  }).then(null, function () { return null; }) : Promise.resolve(null);
+  return direct.then(function (bytes) {
+    if (bytes) return bytes;
+    return safeFetch(url, { timeoutMs: 8000, maxBytes: LOGO_UNIT_MAX_BYTES }).then(function (r) { return r.status === 200 ? r.body : null; }, function () { return null; });
+  });
+}
+function storagePathOf(fb, url) {
+  var bucket = fb && fb.bucket && fb.bucket.name, m = /^https:\/\/storage\.googleapis\.com\/([^\/?#]+)\/([^?#]+)/.exec(String(url || ''));
+  try { return m && m[1] === bucket ? decodeURIComponent(m[2]) : ''; } catch (e) { return ''; }
+}
 
-    /* a logo unit is a small picture: one too large to be worth reading pixel by pixel is used as it is */
-    var decoded = picture.info.type === 'png' && picture.info.width * picture.info.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(picture.bytes) : null;
-    tone = rasterTone(decoded);
-    return readLogoPicture(eventId, picture, decoded, o.deadlineAt).then(function (first) {
-      if (!first || !first.extras) return first;
-      /* A sponsor's mark or that edition's theme line is drawn in: the picture is cut down to the event's
-         own lock-up, and read again — the cut is kept only if the second reading finds nothing left of it. */
-      var cut = cropToOwnUnit(decoded, first);
-      if (!cut) { carries(first.extras); return first; }
-      var cutBytes = pngLite.encode(cut), cutPicture = { bytes: cutBytes, info: logoUnit.imageInfo(cutBytes) };
-      if (logoUnit.plausibleUnit(cutPicture.info)) { carries(first.extras); return first; }
-      return readLogoPicture(eventId, cutPicture, cut, o.deadlineAt).then(function (second) {
-        if (!second || second.extras) { carries(first.extras); return first; }
-        picture = cutPicture; decoded = cut; tone = rasterTone(cut) || tone;
-        notes.push('“' + first.extras + '” belonged to the previous edition and was cropped out of the logo unit; the rest of it is untouched.');
-        return second;
-      });
-    }).then(function (read) {
-      if (!read) return done(picture);
-      var old = isOldEdition(read.year) ? read.year : '';
-      if (!old) return done(picture);
-      return moveYearInPng(decoded, read, years.to, o.eventMeta.name, picture.bytes.length).then(function (patched) {
-        if (!patched) { stillShows(old); return done(picture); }
-        notes.unshift('The year in the logo unit was changed from ' + old + ' to ' + years.to + ' over the previous edition\'s artwork; everything else in it is untouched. Check how the new year sits, and replace the picture if you have this edition\'s artwork.');
-        return done(patched);
+/* The logo the owner uploaded wins over anything derived: it is the hero's unit, examined like any other
+   (examineUnit) — its year set to the event's if it shows an earlier one, a sponsor's mark cropped out —
+   and used exactly as uploaded when the examination finds nothing to change.
+   o: { ownerLogoUrl, eventMeta, briefTexts, stamp, deadlineAt } -> unit | null (no usable upload) */
+function ownerLogoUnit(fb, eventId, o) {
+  var url = String(o.ownerLogoUrl || '').trim();
+  if (!/^https:\/\//i.test(url)) return Promise.resolve(null);
+  return fetchOwnerLogo(fb, url).then(function (bytes) {
+    if (!bytes) { console.error('logo unit: the uploaded logo of ' + eventId + ' could not be read — ' + url); return null; }
+    var info = logoUnit.imageInfo(bytes);
+    if (!info.type || !(info.width > 0) || !(info.height > 0)) return null;
+    if (info.type === 'svg' && svgCouldRun(bytes.toString('utf8'))) return null;
+    var name = (o.eventMeta || {}).name;
+    var years = { from: '', to: logoUnit.eventYear({ eventName: name, start: (o.eventMeta || {}).start, briefTexts: o.briefTexts }) };
+    return examineUnit(fb, eventId, { bytes: bytes, info: info }, { years: years, origin: 'owner', eventName: name, deadlineAt: o.deadlineAt }).then(function (ex) {
+      var notes = ex.notes.slice();
+      if (ex.stuck) {
+        notes.push('Your logo shows ' + ex.stuck + ', not ' + logoUnit.yearAs(ex.stuck, years.to) + ', and that could not be changed without redrawing it. Upload this year\'s logo under Event logo in the event\'s Basics, or select it here and use Replace image.');
+      } else if (ex.unread) {
+        notes.push('Your logo could not be read to check its year and its contents, so it is used exactly as you uploaded it.');
+      } else if (!ex.changed && !notes.length) {
+        notes.push('Your logo was checked: it shows ' + (ex.seen ? ex.seen + ', this edition\'s year,' : 'no edition year') + ' and nothing from another edition, so it is used exactly as you uploaded it.');
+      }
+      var unit = { source: 'owner', from: url, heroMode: heroModeOf(ex.tone), plate: '', note: notes.join(' ') };
+      if (!ex.changed) return Object.assign(unit, { url: url, storagePath: storagePathOf(fb, url), width: info.width, height: info.height });
+      return storeLogoUnit(fb, eventId, o.stamp, ex.picture).then(function (stored) {
+        return Object.assign(unit, { url: stored.url, storagePath: stored.storagePath, width: ex.picture.info.width || 0, height: ex.picture.info.height || 0 });
       });
     });
   });
@@ -2463,30 +2749,162 @@ function drawnLogoUnit(fb, eventId, o) {
   });
 }
 
-/* o: { eventMeta, design, sourceDocs, stamp } */
+/* The hero's logo unit, in this order:
+     1. the logo the owner uploaded, examined (ownerLogoUnit) — owner-supplied content wins;
+     2. else the previous (or this) edition's own unit, its year moved on (previousEditionUnit);
+     3. else, or when that unit's year could not be moved on, the event's name drawn as a unit (with the
+        owner told why, in the second case); the hero sets it in type when even that cannot be made.
+   o: { eventMeta, ownerLogoUrl, briefTexts, design, sourceDocs, stamp, deadlineAt }. Never rejects. */
 function buildLogoUnit(fb, eventId, o) {
   var none = { url: '', storagePath: '', source: '', from: '', width: 0, height: 0, heroMode: '', plate: '', note: '' };
-  return Promise.resolve().then(function () { return previousEditionUnit(fb, eventId, o); }).then(null, function (err) {
-    console.error('plan-structure: the previous edition\'s logo unit could not be used — ' + (err && err.message));
-    return null;
-  }).then(function (unit) {
-    return unit || drawnLogoUnit(fb, eventId, o);
+  function step(run, what) {
+    return Promise.resolve().then(run).then(null, function (err) {
+      console.error('plan-structure: ' + what + ' could not be used — ' + (err && err.message));
+      return null;
+    });
+  }
+  return step(function () { return ownerLogoUnit(fb, eventId, o); }, 'the uploaded logo').then(function (unit) {
+    if (unit) return unit;
+    return step(function () { return previousEditionUnit(fb, eventId, o); }, 'the previous edition\'s logo unit').then(function (prev) {
+      if (prev && !prev.stuck) return prev;
+      var note = prev && prev.stuck ? prev.note : '';
+      return step(function () { return drawnLogoUnit(fb, eventId, o); }, 'a drawn logo unit').then(function (drawn) {
+        drawn = drawn || Object.assign({}, none);
+        if (note) drawn.note = note;
+        return drawn;
+      });
+    });
   }).then(function (unit) { return unit || none; }, function (err) {
     console.error('plan-structure: the logo unit could not be made, the hero will set it in type — ' + (err && err.message));
     return none;
-  }).then(function (unit) { return unit; });
+  });
 }
-/* the same, never later than the plan may be: past that the hero sets the unit in type */
+/* the same, never later than the plan may be: past that the owner's logo is used as uploaded, else the hero
+   sets the unit in type */
 function logoUnitInTime(fb, eventId, o) {
   if (!o.deadlineAt) return buildLogoUnit(fb, eventId, o);
   var timer = null;
   var late = new Promise(function (resolve) {
     timer = setTimeout(function () {
-      console.error('plan-structure: the logo unit was not ready in time, the hero will set it in type');
-      resolve({ url: '', storagePath: '', source: '', from: '', width: 0, height: 0, heroMode: '', plate: '', note: '' });
+      console.error('plan-structure: the logo unit was not ready in time');
+      var url = /^https:\/\//i.test(String(o.ownerLogoUrl || '')) ? String(o.ownerLogoUrl).trim() : '';
+      resolve({ url: url, storagePath: url ? storagePathOf(fb, url) : '', source: url ? 'owner' : '', from: url, width: 0, height: 0, heroMode: '', plate: '',
+        note: url ? 'Your logo could not be checked in time, so it is used exactly as you uploaded it. Check that it shows this edition\'s year.' : '' });
     }, Math.max(1000, o.deadlineAt - Date.now() - 8000));
   });
   return Promise.race([buildLogoUnit(fb, eventId, o), late]).then(function (unit) { clearTimeout(timer); return unit; });
+}
+
+/* ---------- the owner's logo after the site was made ----------
+   An AI-designed site keeps its logo unit in two places the server writes: designPlan.design.logoUnit*
+   (what the hero is built from) and the hero in generatedSections (what the editor opens before the site
+   is first saved). A saved site (page.html, its versions) is the owner's: it is never written here — the
+   editor offers the new unit there, and puts it in itself where the hero still shows the unit that was
+   made automatically (editor-template-ui.js, ownerLogoOffer).
+     ownerLogoState(data)  -> what an event's logo unit is: { logoUrl, aiDesigned, source, unitUrl, savedSite,
+                              needsOwnerUnit } — needsOwnerUnit: the owner uploaded a logo and the design's
+                              unit is not made from it
+     swapHeroUnit(html, unitHtml) -> the hero's markup with its logo unit (the [data-rv-logo-unit] block)
+                              replaced by unitHtml, or null when it has none
+     saveOwnerUnit(fb, eventId, unit, { heroNote }) -> Promise<{ heroUpdated, savedSite }>: the unit written to the design
+                              and to the generated hero, in one transaction */
+function ownerLogoState(data) {
+  data = data || {};
+  var design = (data.designPlan && data.designPlan.design) || null;
+  var logoUrl = /^https:\/\//i.test(String(data.logoUrl || '')) ? String(data.logoUrl).trim() : '';
+  var site = data.site && typeof data.site === 'object' ? data.site : null;
+  var state = {
+    logoUrl: logoUrl, aiDesigned: !!design, source: design ? String(design.logoUnitSource || '') : '', unitUrl: design ? String(design.logoUnitUrl || '') : '',
+    savedSite: !!site && +site.version > 0
+  };
+  state.needsOwnerUnit = !!(logoUrl && design && !(state.source === 'owner' && (design.logoUnitFrom === logoUrl || state.unitUrl === logoUrl)));
+  return state;
+}
+function swapHeroUnit(html, unitHtml) {
+  html = String(html || '');
+  var at = html.search(/<div\b[^>]*\sdata-rv-logo-unit\b[^>]*>/i);
+  if (at === -1 || !unitHtml) return null;
+  var re = /<(\/?)div\b[^>]*>/gi, depth = 0, m;
+  re.lastIndex = at;
+  while ((m = re.exec(html))) {
+    depth += m[1] ? -1 : 1;
+    if (!depth) return html.slice(0, at) + unitHtml + html.slice(m.index + m[0].length);
+  }
+  return null;
+}
+function unitFields(unit) {
+  return {
+    logoUnitUrl: unit.url || '', logoUnitStoragePath: unit.storagePath || '', logoUnitSource: unit.source || '', logoUnitFrom: unit.from || '',
+    logoUnitWidth: unit.width || 0, logoUnitHeight: unit.height || 0, logoUnitPlate: unit.plate || '', logoUnitNote: unit.note || '', logoUnitHeroMode: unit.heroMode || ''
+  };
+}
+function saveOwnerUnit(fb, eventId, unit, opts) {
+  /* opts.heroNote false: the hero's unit carries no note (the design keeps it) */
+  var heroNote = !(opts && opts.heroNote === false);
+  var ref = fb.db.collection('events').doc(eventId), out = { heroUpdated: false, savedSite: false };
+  return fb.db.runTransaction(function (tx) {
+    return tx.get(ref).then(function (snap) {
+      if (eventStateOf(snap) !== 'live') throw httpError(404, 'No event found for "' + eventId + '".', { code: 'event-missing' });
+      var data = snap.data(), design = (data.designPlan && data.designPlan.design) || {};
+      var fields = unitFields(unit), patch = { updatedAt: new Date().toISOString() };
+      Object.keys(fields).forEach(function (k) { patch['designPlan.design.' + k] = fields[k]; });
+      out.savedSite = ownerLogoState(data).savedSite;
+      var sections = Array.isArray(data.generatedSections) ? data.generatedSections : null;
+      if (sections) {
+        var mode = /^(dark|light)$/.test(String(unit.heroMode)) ? unit.heroMode : (/^(dark|light)$/.test(String(design.logoUnitHeroMode)) ? design.logoUnitHeroMode : design.mode);
+        var unitHtml = genDesign.logoUnitImageHtml({ url: unit.url, alt: data.name || eventId, width: unit.width, height: unit.height, plate: unit.plate, note: heroNote ? unit.note : '', mode: mode });
+        var next = sections.map(function (s) {
+          if (!s || s.id !== 'hero') return s;
+          var html = swapHeroUnit(s.html, unitHtml);
+          if (html === null || html === s.html) return s;
+          out.heroUpdated = true;
+          return Object.assign({}, s, { html: html });
+        });
+        if (out.heroUpdated) patch.generatedSections = next;
+      }
+      tx.update(ref, patch);
+    });
+  }).then(function () { return out; });
+}
+/* the facts an examination of the owner's logo needs, from the event's document and its newest brief */
+function ownerUnitInputs(fb, eventId, data) {
+  return fb.db.collection('events').doc(eventId).collection('briefs').orderBy('createdAt', 'desc').limit(1).get().then(function (snap) {
+    var brief = snap.empty ? null : snap.docs[0].data().extracted;
+    var eventMeta = { name: data.name, start: data.start, description: data.description };
+    return { ownerLogoUrl: data.logoUrl, eventMeta: eventMeta, briefTexts: briefYearTexts(brief, eventMeta) };
+  });
+}
+
+/* POST /api/event/logo-unit  { eventId }
+   The event's logo was uploaded or changed after its site was designed: it is examined as plan-structure
+   examines it (ownerLogoUnit: its year brought to the event's, another edition's marks cropped, never
+   redrawn) and becomes the design's logo unit and the generated hero's. A saved site is not touched: the
+   answer says so, and the editor offers the new unit when the site is next opened.
+   -> 200 { aiDesigned, unit: { url, width, height, source, note } | null, heroUpdated, savedSite } */
+function handleEventLogoUnit(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var ref = fb.db.collection('events').doc(eventId);
+    ref.get().then(function (snap) {
+      var state = eventStateOf(snap);
+      if (state !== 'live') throw notLiveError(state, eventId);
+      var data = snap.data(), info = ownerLogoState(data);
+      if (!info.logoUrl) return sendJson(res, 400, { error: 'This event has no logo yet. Upload one first.', code: 'no-logo' });
+      /* a site that is not AI-designed shows the logo where its template puts it: nothing to examine */
+      if (!info.aiDesigned) return sendJson(res, 200, { aiDesigned: false, unit: null, heroUpdated: false, savedSite: info.savedSite });
+      return ownerUnitInputs(fb, eventId, data).then(function (o) {
+        o.stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        o.deadlineAt = Date.now() + 100000;
+        return ownerLogoUnit(fb, eventId, o);
+      }).then(function (unit) {
+        if (!unit) return sendJson(res, 422, { error: 'The logo could not be read as a picture. Upload it again as a PNG, WEBP or SVG.', code: 'logo-unreadable' });
+        return saveOwnerUnit(fb, eventId, unit).then(function (done) {
+          sendJson(res, 200, { aiDesigned: true, unit: { url: unit.url, width: unit.width, height: unit.height, source: unit.source, note: unit.note }, heroUpdated: done.heroUpdated, savedSite: done.savedSite });
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'logo-unit', err, 'The logo could not be put into the site. Please try again.'); });
+  });
 }
 
 function handlePlanStructure(req, res) {
@@ -2615,8 +3033,10 @@ function handlePlanStructure(req, res) {
             return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level);
           })
         );
-        /* the logo unit is made alongside them: the previous edition's own, or a new one drawn */
-        var unitJob = logoUnitInTime(fb, eventId, { eventMeta: eventMeta, design: design, sourceDocs: sourceDocs, stamp: stamp, deadlineAt: deadlineAt });
+        /* the logo unit is made alongside them: the logo the owner uploaded, else the previous edition's own,
+           else a new one drawn — each examined for its year and its extras (buildLogoUnit) */
+        var unitJob = logoUnitInTime(fb, eventId, { eventMeta: eventMeta, ownerLogoUrl: stored.logoUrl, briefTexts: briefYearTexts(brief, eventMeta),
+          design: design, sourceDocs: sourceDocs, stamp: stamp, deadlineAt: deadlineAt });
         return Promise.all([Promise.all(jobs), unitJob]).then(function (both) {
           var made = both[0], unit = both[1];
           design.logoUnitUrl = unit.url; design.logoUnitStoragePath = unit.storagePath; design.logoUnitSource = unit.source;
@@ -3242,10 +3662,10 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* a lock-up taken from the previous edition was drawn for a dark or a light banner: the hero is that */
       var heroMode = design.logoUnitUrl && /^(dark|light)$/.test(String(design.logoUnitHeroMode)) ? design.logoUnitHeroMode : design.mode;
       var heroOpts = {
-        /* the unit as one picture (the previous edition's, or the one drawn for this event); set in type
-           only when no picture could be made */
+        /* the unit as one picture (the logo the owner uploaded, the previous edition's, or the one drawn for
+           this event — buildLogoUnit); set in type only when no picture could be made */
         unit: genDesign.logoUnitImageHtml({ url: design.logoUnitUrl, alt: eventMeta.name, width: design.logoUnitWidth, height: design.logoUnitHeight, plate: design.logoUnitPlate, note: design.logoUnitNote, mode: heroMode }) ||
-          genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode),
+          genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode, design.logoUnitNote),
         tagline: design.heroTagline, date: eventMeta.dateLabel || eventMeta.date || genDesign.dateLabel(stored.start, stored.end), place: place,
         /* with no hero picture there is no veil to make that tone: the banner is painted in it */
         banner: heroMode !== design.mode && !design.heroImageUrl ? (heroMode === 'dark' ? '#0d1017' : '#ffffff') : '',
@@ -7177,6 +7597,7 @@ var ROUTES = {
   'POST /api/event/publish': handleEventPublish,
   'POST /api/event/approval/request': handleApprovalRequest,
   'POST /api/event/theme': handleEventTheme,
+  'POST /api/event/logo-unit': handleEventLogoUnit,
   'POST /api/event/approval/decide': handleApprovalDecide,
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,
@@ -7264,5 +7685,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, ensureFormsRuntime, FORMS_RUNTIME_V, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
+  buildLogoUnit, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };
