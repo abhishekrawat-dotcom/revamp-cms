@@ -123,7 +123,7 @@ check('the site\'s portal from the address when no records were read', api.siteP
 check('a competitor\'s portal is not the site\'s; none known gives none', api.sitePortal([{ type: 'competitor', url: 'https://cio.economictimes.indiatimes.com/x' }]).portal === '' && api.sitePortal(null).portal === '' &&
   api.sitePortal([{ type: 'previousEdition', url: 'https://example.com/x' }]).portal === '');
 var ids = api.sectionCodeBatches({ sections: [{ id: 'overview', kind: 'custom' }, { id: 'agenda', kind: 'custom' }] }).reduce(function (a, b) { return a.concat(b); }, []);
-check('the model is no longer asked for the footer', ids.indexOf('footer') === -1 && ids.indexOf('nav') !== -1, ids.join(','));
+check('the model is no longer asked for the footer (nor the nav: et-nav.js builds it)', ids.indexOf('footer') === -1 && ids.indexOf('nav') === -1 && ids.indexOf('overview') !== -1, ids.join(','));
 var prompt = api.buildSectionCodePrompt({ designPlan: { design: { mode: 'light' }, sections: [{ id: 'overview', kind: 'custom', purpose: 'p', layout: 'l' }] }, eventMeta: { name: 'X' } });
 check('nor is the footer in the list the model writes', !/"id":\s*"footer"|\bid: footer\b|- footer\b/.test(prompt), (prompt.match(/[^\n]*footer[^\n]*/g) || []).slice(0, 3).join(' / '));
 var sec = api.siteFooter({ portal: 'brandequity', series: 'brand-world-summit-south', design: { mode: 'light', themeColor: '#ed1c24' }, year: 2026,

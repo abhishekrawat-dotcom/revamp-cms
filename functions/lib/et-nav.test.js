@@ -22,7 +22,10 @@ check('its light-ink version for a dark ground', beDark.src === '/templates/_sha
 check('a long one-line wordmark is 20px tall, as on ET\'s pages', be.px === 20 && be.width === 560 && be.height === 59, be.px + ' ' + be.width + 'x' + be.height);
 check('a two-line wordmark is given more height so that it can be read', nav.logoOf('hr', 'light').px > 24 && nav.logoOf('hr', 'light').px <= 32);
 var noLight = nav.logoOf('masterclass', 'dark');
-check('a portal with no light-ink wordmark stands on a dark ground as The Economic Times Business Verticals', /et-business-verticals-on-dark\.svg$/.test(noLight.src) && /masterclass\.png$/.test(noLight.onLight), JSON.stringify(noLight));
+/* every portal now has a light-ink wordmark (templates/_shared/img/portals/<slug>-light.png, added with the footer) */
+check('a portal stands on a dark ground in its light-ink wordmark', /masterclass-light\.png$/.test(noLight.src) && /masterclass\.png$/.test(noLight.onLight), JSON.stringify(noLight));
+var unknown = nav.logoOf('no-such-portal', 'dark');
+check('an unknown portal stands on a dark ground as The Economic Times Business Verticals', /et-business-verticals-on-dark\.svg$/.test(unknown.src), JSON.stringify(unknown));
 var bv = nav.logoOf('', 'light');
 check('no portal: The Economic Times Business Verticals logo, linking to the top', /et-business-verticals-on-light\.svg$/.test(bv.src) && /on-dark\.svg$/.test(bv.onDark) && bv.href === '#hero' && /Business Verticals/.test(bv.alt));
 check('an unknown portal is no portal', nav.logoOf('../../etc', 'light').src === bv.src);
