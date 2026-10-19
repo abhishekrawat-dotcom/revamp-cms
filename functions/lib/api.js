@@ -147,6 +147,7 @@ const formsLib = require('./forms');
 const etFooter = require('./et-footer');
 const editionLook = require('./edition-look');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
+const deliveryLib = require('./delivery');
 /* An SVG drawn as a picture (resvg, a native module: loaded on first use, so a server without it still runs
    and only that one step is skipped). Drawn off the request thread (renderAsync), and only a drawing of a
    lock-up's size and shape: one too big a file, or so tall or so wide that the picture made of it would not
@@ -6914,15 +6915,46 @@ function messagePage(title, message) {
     '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p></main></body></html>\n';
 }
 
-function sendHtml(req, res, status, html, cacheControl, gzipped) {
+/* ---- delivery (lib/delivery.js): compression, and what the browser is given to show a page sooner ----
+   Every page answers compressed when the browser accepts it — brotli, else gzip — whether or not it comes
+   pre-compressed (`packed`: { br, gzip } Buffers of the same html; a bare Buffer is gzip). The preview used to
+   go out uncompressed: 238 KB where 38 KB would do. */
+function acceptedEncoding(req) {
+  var ae = String((req.headers && req.headers['accept-encoding']) || '').toLowerCase();
+  function ok(name) {
+    var m = new RegExp('(?:^|,)\\s*' + name + '\\s*(?:;\\s*q\\s*=\\s*([0-9.]+))?\\s*(?=,|$)').exec(ae);
+    return !!m && !(m[1] != null && +m[1] === 0);
+  }
+  return ok('br') ? 'br' : ok('gzip') ? 'gzip' : '';
+}
+function compressHtml(buf, encoding, best) {
+  if (encoding === 'br') {
+    var params = {};
+    params[zlib.constants.BROTLI_PARAM_QUALITY] = best ? 9 : 5;
+    params[zlib.constants.BROTLI_PARAM_MODE] = zlib.constants.BROTLI_MODE_TEXT;
+    params[zlib.constants.BROTLI_PARAM_SIZE_HINT] = buf.length;
+    return zlib.brotliCompressSync(buf, { params: params });
+  }
+  return zlib.gzipSync(buf, { level: best ? 9 : 6 });
+}
+/* this file's own HTML reader, lent to lib/delivery.js */
+var HTML_TOOLS = { tokenizeHtml: tokenizeHtml, attrValue: attrValue, setAttr: setAttr, dropAttr: dropAttr, writeTag: writeTag };
+function deliverPage(html) { return deliveryLib.deliverPage(html, { tools: HTML_TOOLS }); }
+
+function sendHtml(req, res, status, html, cacheControl, packed) {
   if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
-  var acceptsGzip = /\bgzip\b/.test(String((req.headers && req.headers['accept-encoding']) || ''));
-  var body = gzipped && acceptsGzip ? gzipped : Buffer.from(html, 'utf8');
+  if (Buffer.isBuffer(packed)) packed = { gzip: packed };
+  var raw = Buffer.from(html, 'utf8'), body = raw, encoding = acceptedEncoding(req);
+  if (encoding && raw.length > 1024) {
+    try { body = (packed && packed[encoding]) || compressHtml(raw, encoding, false); }
+    catch (e) { body = raw; }
+  }
+  if (body === raw) encoding = '';
   var headers = {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': cacheControl, 'Content-Length': body.length,
     'Vary': 'Accept-Encoding', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin'
   };
-  if (gzipped && acceptsGzip) headers['Content-Encoding'] = 'gzip';
+  if (encoding) headers['Content-Encoding'] = encoding;
   res.writeHead(status, headers);
   res.end(req.method === 'HEAD' ? undefined : body);
 }
@@ -6943,15 +6975,35 @@ function cachedPage(key) {
   if (Date.now() - hit.at > PAGE_CACHE_TTL_MS) { PAGE_CACHE.delete(key); return null; }
   return hit;
 }
+/* html: the page as stored; the entry holds it as delivered (lib/delivery.js) and compressed both ways */
 function cachePage(key, html) {
   if (PAGE_CACHE.size >= PAGE_CACHE_MAX) PAGE_CACHE.delete(PAGE_CACHE.keys().next().value);     // oldest first
-  var entry = { at: Date.now(), html: html, gz: null };
-  try { entry.gz = zlib.gzipSync(Buffer.from(html, 'utf8')); } catch (e) { entry.gz = null; }
+  var entry = { at: Date.now(), html: deliverPage(html), packed: {} };
+  var buf = Buffer.from(entry.html, 'utf8');
+  ['br', 'gzip'].forEach(function (enc) { try { entry.packed[enc] = compressHtml(buf, enc, true); } catch (e) { /* compressed per request instead */ } });
   PAGE_CACHE.set(key, entry);
   return entry;
 }
 function forgetCachedPage(eventId) {
   PAGE_CACHE.forEach(function (v, k) { if (k.indexOf(eventId + '|') === 0) PAGE_CACHE.delete(k); });
+  LIVE_DOC_CACHE.delete(eventId);
+}
+/* A published page may be kept by the hosting's CDN and by browsers for a minute, and served a little
+   longer while a fresh copy is fetched in the background (stale-while-revalidate): a visitor then almost
+   never waits for this server. Taking a page down or publishing again shows within about a minute. */
+var LIVE_PAGE_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=600';
+/* The event document behind /e/<id>, shared by the requests of a few seconds (and by concurrent ones): a
+   busy page is not one database read per visitor. This instance forgets it at once on publish/unpublish. */
+var LIVE_DOC_CACHE = new Map(), LIVE_DOC_TTL_MS = 5000;
+function liveEventSnap(fb, eventId) {
+  var hit = LIVE_DOC_CACHE.get(eventId);
+  if (hit && Date.now() - hit.at < LIVE_DOC_TTL_MS) return hit.p;
+  if (LIVE_DOC_CACHE.size > 500) LIVE_DOC_CACHE.clear();
+  var p = eventDocRef(fb, eventId).get();
+  var entry = { at: Date.now(), p: p };
+  LIVE_DOC_CACHE.set(eventId, entry);
+  p.catch(function () { if (LIVE_DOC_CACHE.get(eventId) === entry) LIVE_DOC_CACHE.delete(eventId); });
+  return p;
 }
 
 /* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
@@ -6962,12 +7014,12 @@ function handlePublicPage(req, res, eventId) {
     console.error('api: /e/' + eventId + ' — ' + fb.error);
     return sendHtml(req, res, 503, messagePage('This page is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
   }
-  eventDocRef(fb, eventId).get().then(function (snap) {
+  liveEventSnap(fb, eventId).then(function (snap) {
     if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendNotAvailable(req, res);
     var data = snap.data();
     var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '');
     var hit = cachedPage(key);
-    if (hit) return sendHtml(req, res, 200, hit.html, 'public, max-age=60', hit.gz);
+    if (hit) return sendHtml(req, res, 200, hit.html, LIVE_PAGE_CACHE_CONTROL, hit.packed);
     return readObject(fb, publishedObjectPath(eventId)).then(function (html) {
       if (html == null) return sendNotAvailable(req, res);
       /* A page with no publishedVersion was published by the previous version of this file: the editor's
@@ -6981,12 +7033,12 @@ function handlePublicPage(req, res, eventId) {
             publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
           });
           var entry = cachePage(key, html);
-          sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+          sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
         });
       }
       /* a page published before forms existed: its Register buttons open the form from now on */
       var entry = cachePage(key, ensureFormsRuntime(html));
-      sendHtml(req, res, 200, entry.html, 'public, max-age=60', entry.gz);
+      sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
     });
   }).catch(function (err) {
     console.error('api: /e/' + eventId + ' failed — ' + (err && err.stack || err));
@@ -7038,19 +7090,23 @@ function ownDraftOrSaved(fb, eventId, user) {
 }
 
 function handlePreviewPage(req, res, eventId) {
+  /* who is asking and the event document are read at the same time (they were one after the other);
+     nothing about the event is sent before the sign-in has been checked */
+  var fb = getFirebase();
+  var eventRead = fb.error ? null : eventDocRef(fb, eventId).get();
+  if (eventRead) eventRead.catch(function () { /* answered below, or not needed */ });
   adminFromRequest(req).then(function (user) {
     if (!user) {
       res.writeHead(302, { Location: '/?next=' + encodeURIComponent(req.url), 'Cache-Control': 'no-store' });
       return res.end();
     }
-    var fb = getFirebase();
     if (fb.error) return sendHtml(req, res, 503, messagePage('Preview is temporarily unavailable', 'Please try again in a few minutes.'), 'no-store');
     var staged = queryOf(req).get('staged') === '1';
     /* ?version=N: that saved version exactly — what a reviewer is shown, and what approving makes live */
     var wantVersion = parseInt(queryOf(req).get('version'), 10);
     if (!(wantVersion > 0)) wantVersion = 0;
     var ownDraft = queryOf(req).get('draft') === '1';
-    return eventDocRef(fb, eventId).get().then(function (snap) {
+    return eventRead.then(function (snap) {
       if (eventStateOf(snap) !== 'live') {
         return sendHtml(req, res, 404, messagePage('This event does not exist', 'It may have been deleted, or the address may be wrong.'), 'no-store');
       }
@@ -7061,6 +7117,7 @@ function handlePreviewPage(req, res, eventId) {
       var source = ownDraft ? ownDraftOrSaved(fb, eventId, user) : wantVersion
         ? readObject(fb, versionPath(eventId, wantVersion)).then(function (t) { return t == null && wantVersion === siteVersionOf(data) ? readObject(fb, sitePath(eventId, 'page.html')) : t; })
         : readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html'));
+      var formsRead = publicFormsFor(fb, eventId, data);         // alongside the page (never rejects)
       return source.then(function (html) {
         if (html == null && wantVersion) {
           return sendHtml(req, res, 404, messagePage('That version is not stored', 'Version ' + wantVersion + ' of this site was saved before versions were kept, or does not exist.'), 'no-store');
@@ -7069,11 +7126,11 @@ function handlePreviewPage(req, res, eventId) {
           return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
         }
         /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
-        return publicFormsFor(fb, eventId, data).then(function (formsPayload) {
-          sendHtml(req, res, 200, publishTransform(html, {
+        return formsRead.then(function (formsPayload) {
+          sendHtml(req, res, 200, deliverPage(publishTransform(html, {
             eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload,
             templateId: (data.site && data.site.templateId) || data.templateId
-          }), 'no-store');
+          })), 'no-store');
         });
       });
     });
@@ -7263,6 +7320,6 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
-  publishTransform, ensureFormsRuntime, FORMS_RUNTIME_V, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
+  publishTransform, ensureFormsRuntime, deliverPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };
