@@ -66,6 +66,12 @@
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
   function sectionsChanged() { if (chatFocusRedraw) chatFocusRedraw(); if (host && host.onSectionsChanged) host.onSectionsChanged(); }
   function designChanged() { if (host && host.onDesignChange) host.onDesignChange(); }
+  /* the page itself changed (a new undo step, an undo / redo, a canvas put back): editor-ai-mode.js redraws
+     its live view from it — see onChange() */
+  var changeListeners = [];
+  function pageChanged() {
+    changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
+  }
   // what canvas.restore() and createGenericSection() build the generic sections' CSS from
   function restoreOpts() { return { siteCss: host && host.genericCss ? host.genericCss() : '' }; }
 
@@ -1197,6 +1203,7 @@
     repositionToolbars();
     sectionsChanged();
     designChanged();
+    pageChanged();
     return true;
   }
   function commitNow() { return record(false); }
@@ -1230,6 +1237,7 @@
     repositionToolbars();
     sectionsChanged();
     designChanged();
+    pageChanged();
   }
   function undo() { step(-1); }
   function redo() { step(1); }
@@ -2768,6 +2776,7 @@
       remounting = false;
       sectionsChanged();
       designChanged();
+      pageChanged();
       showNotice('canvas-restored', { kind: 'info', dismissible: true, text: 'The page tried to open a link. Your work is restored.' });
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -4026,6 +4035,17 @@
     listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
     setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,
     insertSection: insertSection, addBlock: addBlock,
-    hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers
+    hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers,
+    /* for editor-ai-mode.js ("Edit with AI" live view): the mounted canvas (null while there is none),
+       onChange(fn) after every change to the page, and leaveEditing() — stops typing in place and lets go of the
+       selected element, keeping the selected section (the chat's reference) */
+    canvas: function () { return canvas && !remounting ? canvas : null; },
+    onChange: function (fn) { if (typeof fn === 'function') changeListeners.push(fn); },
+    leaveEditing: function () {
+      if (!canvas || remounting) return;
+      if (editingEl) exitEdit(editingEl);
+      clearElementSelection();
+      flush();
+    }
   };
 })();

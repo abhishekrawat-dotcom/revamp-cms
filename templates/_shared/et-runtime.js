@@ -67,7 +67,25 @@
    Editing
      The editor sets data-rv-editing on <html> before this runs. Reveal is then left to the editor's canvas CSS
      (everything shown, no animation), so no .go classes end up in the saved page; sections check
-     RevampSections.editing() to hold back motion of their own (e.g. the banner video). */
+     RevampSections.editing() to hold back motion of their own (e.g. the banner video).
+
+   Which editor mode a page is in — THE signal for runtime code (data-rv-editor-mode on <html>)
+     The site editor has two modes, and a page can be shown in it two ways:
+       "manual"  the editor's canvas ("Edit myself"): the page is being edited in place. It always carries
+                 data-rv-editing as well. Nothing may move, open or rewrite the DOM: no carousel steps, no
+                 reveal, no pop-up (speaker card, glimpse lightbox), no scrolling nav behaviour, no section
+                 script. Anything such code added would be saved with the page.
+       "ai"      the editor's live view ("Edit with AI"): a throw-away copy of the page as it looks on the
+                 draft preview (/preview/<id>?draft=1), rebuilt after every change. It does NOT carry
+                 data-rv-editing, so everything runs exactly as on the preview: carousels, reveals, nav,
+                 pop-ups. It must still never take the editor anywhere: the editor stops links to other
+                 pages and form posts itself, and code here should not store anything (it is a preview).
+       absent    a published or previewed page.
+     RevampSections.editorMode() -> "manual" | "ai" | "" reads it; RevampSections.editing() stays true only
+     for "manual" (and for any page with data-rv-editing). New behaviour that must not fire while editing
+     checks editing() — that is all it needs; editorMode() is for code that has to tell the live view from a
+     real visitor's page. The attribute never reaches a saved or published page (editor-canvas.js serialize(),
+     lib/api.js EDITOR_ONLY_ATTRS). */
 (function () {
   'use strict';
 
@@ -77,6 +95,11 @@
   function each(list, fn) { Array.prototype.forEach.call(list, fn); }
 
   function editing() { return document.documentElement.hasAttribute('data-rv-editing'); }
+  /* see "Which editor mode a page is in" above */
+  function editorMode() {
+    var m = document.documentElement.getAttribute('data-rv-editor-mode');
+    return m === 'manual' || m === 'ai' ? m : (editing() ? 'manual' : '');
+  }
 
   function initSection(el) {
     var fn = registry[el.getAttribute('data-rv-section')];
@@ -717,6 +740,7 @@
     },
     reveal: reveal,
     editing: editing,
+    editorMode: editorMode,
     resolveHash: resolveHash,
     goTo: goTo
   };

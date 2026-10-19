@@ -128,6 +128,22 @@ ok(genOut.indexOf(HERO_CSS) !== -1, 'the hero keeps its own type');
 ok(genOut.indexOf('.overview-num{font-size:4rem}') !== -1, 'stat numerals are left alone');
 ok(publishTransform(GEN_PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: null }).indexOf('.overview-title{font-size:clamp(1.75rem, 3.069vw, 2.375rem)') !== -1, 'known as AI-designed by its own body when no template id is given');
 ok(publishTransform(genOut, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture' }) === genOut, 'running it again changes nothing');
+/* ---- the editor's mode signal, the "Edit with AI" button and the editor's live view ---- */
+var EDITING = PAGE.replace('<html lang="en" data-rv-editing', '<html lang="en" data-rv-editing data-rv-editor-mode="manual"');
+var liveOut = publishTransform(EDITING, { eventId: 'qa-fixture', event: EVENT, mode: 'live', templateId: 'tech500', origins: [ORIGIN] });
+ok(liveOut.indexOf('data-rv-editor-mode') === -1 && liveOut.indexOf('rv-preview-edit.js') === -1, 'a published page carries no editor mode and no "Edit with AI" button');
+ok(publishTransform(EDITING, { eventId: 'qa-fixture', event: EVENT, mode: 'live', templateId: 'tech500', origins: [ORIGIN], editButton: true }).indexOf('rv-preview-edit.js') === -1, 'the button is never put on a published page, even when asked for');
+var withEdit = publishTransform(EDITING, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN], editButton: true });
+ok(count(withEdit, '/templates/_shared/rv-preview-edit.js') === 1 && withEdit.indexOf('data-rv-editor-mode') === -1, 'a preview gets the "Edit with AI" button once, and no editor mode');
+ok(publishTransform(withEdit, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN], editButton: true }) === withEdit, 'running it again changes nothing (button)');
+ok(publishTransform(EDITING, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN] }).indexOf('rv-preview-edit.js') === -1, 'no button unless asked for (a saved version opened for review)');
+var lv = publishTransform(EDITING, { eventId: 'qa-fixture', event: { name: 'G', designPlan: { design: { colours: {} } } }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN], liveView: true, editButton: true });
+ok(/<html lang="en"[^>]*\sdata-rv-editor-mode="ai"/.test(lv) && count(lv, 'data-rv-editor-mode') === 1, 'the live view\'s <html> says "ai", once', /<html[^>]*>/.exec(lv)[0]);
+ok(lv.indexOf('data-rv-editing') === -1, 'the live view is not the editing canvas (the runtime runs as on the preview)');
+ok(lv.indexOf('data-rv-preview-ribbon') === -1 && lv.indexOf('rv-preview-edit.js') === -1 && lv.indexOf('rv-theme-switcher.js') === -1, 'the live view has none of the preview\'s own controls');
+ok(lv.indexOf('/templates/_shared/rv-data.js') !== -1 && lv.indexOf('"mode":"preview"') !== -1 && lv.indexOf(ORIGIN) === -1, 'the live view is otherwise the preview: runtime, preview mode, root-relative');
+ok(publishTransform(lv, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture', liveView: true }) === lv, 'running it again changes nothing (live view)');
+
 var fixed = GEN_PAGE.replace(' data-rv-template-id="gen-qa-fixture" class="microsite rv-generated"', ' class="home"');
 ok(publishTransform(fixed, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'live', templateId: 'tech500' }).indexOf(OVERVIEW_CSS) !== -1, 'a ported template\'s CSS is not touched');
 

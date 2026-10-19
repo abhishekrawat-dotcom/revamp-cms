@@ -4,7 +4,8 @@
 
    RevampTemplates.build(id)        -> Promise<string>                the document
    RevampTemplates.load(id, opts)   -> Promise<{ template, html }>    the document plus template.json
-     opts.editing    true when the editor opens it: <html data-rv-editing> (et-runtime.js holds motion back)
+     opts.editing    true when the editor opens it: <html data-rv-editing data-rv-editor-mode="manual">
+                     (et-runtime.js holds motion back)
      opts.headExtra  extra markup for <head> (the editor's canvas stylesheet)
      opts.title      the page's <title> (the event's name); the template's short name without it
      opts.eventId    the event the page belongs to: <body data-rv-event-id>, which the live-site script falls back on
@@ -265,7 +266,8 @@
         head.push('<script src="' + esc(shared('et-runtime.js')) + '"></script>');
 
         var b = t.body || {}, eventId = opts.eventId || b.eventId;
-        var html = '<!DOCTYPE html>\n<html lang="en"' + (opts.editing ? ' data-rv-editing' : '') + '>\n<head>\n' + head.join('\n') + '\n</head>\n' +
+        // data-rv-editor-mode="manual": the editor's canvas ("Edit myself"); see et-runtime.js, "Which editor mode"
+        var html = '<!DOCTYPE html>\n<html lang="en"' + (opts.editing ? ' data-rv-editing data-rv-editor-mode="manual"' : '') + '>\n<head>\n' + head.join('\n') + '\n</head>\n' +
           '<body' + (b.id ? ' id="' + esc(b.id) + '"' : '') +
           ' data-rv-template-id="' + esc(id) + '"' +
           (eventId ? ' data-rv-event-id="' + esc(eventId) + '"' : '') +
