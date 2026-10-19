@@ -184,7 +184,14 @@
     '.rv-generic p{ margin: 0; }',
     '/* content lines up with the site\'s 1170px container; backgrounds stay full-bleed */',
     '.rv-generic > *{ padding-left: max(40px, calc((100% - 1140px) / 2)) !important; padding-right: max(40px, calc((100% - 1140px) / 2)) !important; }',
-    '@media (max-width: 767px){ .rv-generic > *{ padding-left: 22px !important; padding-right: 22px !important; } }'
+    '@media (max-width: 767px){ .rv-generic > *{ padding-left: 22px !important; padding-right: 22px !important; } }',
+    '/* a section made to hold one of the event\'s forms (heading, line, form) takes the page\'s own ground and text',
+    '   (a generated site\'s theme variables), so it never stands out as a white band on a dark or tinted page; a',
+    '   template without those variables keeps the light surface above */',
+    '.rv-generic:has(> .rv-block-form){ --site-text: var(--rv-text, #191B1F); --site-text-muted: var(--rv-muted, #4B4D50); --site-surface: var(--rv-bg, #fff); padding-top: 64px; padding-bottom: 72px; }',
+    '.rv-generic:has(> .rv-block-form) > h2{ margin-bottom: 12px; font-size: clamp(28px, 4vw, 40px); line-height: 1.15; }',
+    '.rv-generic:has(> .rv-block-form) > p{ margin-bottom: 28px; color: var(--site-text-muted); }',
+    '@media (max-width: 767px){ .rv-generic:has(> .rv-block-form){ padding-top: 44px; padding-bottom: 52px; } }'
   ].join('\n');
 
   function scopeGenericCss(css) {

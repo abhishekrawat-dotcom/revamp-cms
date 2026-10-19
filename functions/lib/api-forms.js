@@ -200,6 +200,13 @@ function freeName(name, list) {
   return name;
 }
 
+/* Two forms of one event never share a name: "Opens form", the Forms panel, Reporting's Form column and the AI
+   all tell forms apart by it. -> an httpError for the form `name` would clash with, or null */
+function nameTaken(name, list, exceptId) {
+  var other = list.filter(function (f) { return f.id !== exceptId && sameName(f.name, name); })[0];
+  return other ? httpError(409, 'This event already has a form called “' + other.name + '”. Give this one a different name.', { code: 'name-taken', field: 'name' }) : null;
+}
+
 function handleFormsCreate(req, res) {
   requireAdmin(req, res, function (fb, decoded) {
     guard(res, sendJson, 'create this form', function () {
@@ -228,6 +235,8 @@ function handleFormsCreate(req, res) {
             var ids = list.map(function (f) { return f.id; }), value, suggestion, mayUseRegister = false;
             if (mode === 'form') {
               value = given;
+              var clash = nameTaken(value.name, list, null);
+              if (clash) throw clash;
               suggestion = value.id || forms.slugify(value.name);
             } else if (mode === 'template') {
               var tpl = forms.TEMPLATE_BY_ID[body.template];
@@ -240,7 +249,7 @@ function handleFormsCreate(req, res) {
               var src = list.filter(function (f) { return f.id === body.duplicateOf; })[0];
               if (!src) throw httpError(404, 'That form no longer exists.', { code: 'form-missing' });
               value = inputOf(src);
-              value.name = (src.name.slice(0, 80 - 7).trim() + ' (copy)');
+              value.name = freeName(src.name.slice(0, 80 - 10).trim() + ' (copy)', list);
               suggestion = forms.slugify(value.name);
             }
             var checked = forms.cleanFormInput(value, { creating: true });
@@ -289,6 +298,12 @@ function handleFormsUpdate(req, res) {
             if (!current) throw httpError(404, 'That form no longer exists. It may have been deleted.', { code: 'form-missing' });
             if (body.ifUpdatedAt != null && body.ifUpdatedAt !== current.updatedAt) {
               throw httpError(409, 'Someone else changed this form. Reload it to see their version.', { code: 'stale', form: adminForm(current) });
+            }
+            /* a name another form already has is refused, unless this form had it before (an event saved
+               before names had to differ keeps working until it is renamed) */
+            if (!sameName(c.value.name, current.name)) {
+              var clash = nameTaken(c.value.name, list, formId);
+              if (clash) throw clash;
             }
             var doc = storedDoc(formId, c.value, { order: current.order, rev: (current.rev || 0) + 1,
               createdAt: current.createdAt || now, createdBy: current.createdBy || actor, updatedAt: now, updatedBy: actor });

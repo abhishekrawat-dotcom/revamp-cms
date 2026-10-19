@@ -882,6 +882,7 @@
     var el = e.el, fallback = el.querySelector('[data-rv-form-fallback]');
     clearEmbed(e);
     el.hidden = false;
+    if (e.hidSection) { e.hidSection.hidden = false; e.hidSection = null; }
     if (!page.payload) {
       if (page.failed) {
         if (fallback) fallback.hidden = true;
@@ -897,7 +898,16 @@
     if (fallback) fallback.hidden = true;
     var form = findForm(e.formId);
     if (!form) {
-      if (page.mode === 'live') { el.hidden = true; return; }
+      if (page.mode === 'live') {
+        el.hidden = true;
+        /* a section made only to hold this form (its heading, a line and the form) would be left as a heading
+           over nothing: it goes too */
+        var sec = el.parentElement;
+        if (sec && sec.classList && sec.classList.contains('rv-generic') && Array.prototype.every.call(sec.children, function (c) {
+          return c === el || /^(H[1-6]|P|STYLE|SCRIPT)$/.test(c.tagName);
+        })) { sec.hidden = true; e.hidSection = sec; }
+        return;
+      }
       e.status = statusLine(el, 'This form (“' + e.formId + '”) no longer exists. Choose another form in the editor.', false, null);
       return;
     }
@@ -1097,14 +1107,17 @@
     if (!quick && m.opener && m.opener.isConnected) { try { m.opener.focus({ preventScroll: true }); } catch (e) { /* not focusable */ } }
   }
 
+  /* A button whose form has since been deleted opens the default form, as the editor turns such buttons when
+     a form is deleted there (a form deleted from the event console with "Delete anyway" leaves them as they
+     were): a visitor never meets a dead button. */
   function open(formId, opener) {
     if (!page.started || editing()) return false;
     formId = str(formId);
+    var fromButton = !!(opener && opener.hasAttribute);
     if (page.payload && !findForm(formId)) {
-      var regCta = !!(opener && opener.hasAttribute && opener.hasAttribute('data-register-cta'));
-      return openModal(regCta ? defaultFormId() : formId, opener, regCta);
+      return openModal(fromButton ? defaultFormId() : formId, opener, fromButton);
     }
-    return openModal(formId, opener, !!(opener && opener.hasAttribute && opener.hasAttribute('data-register-cta')));
+    return openModal(formId, opener, fromButton);
   }
 
   /* ---------- buttons ---------- */

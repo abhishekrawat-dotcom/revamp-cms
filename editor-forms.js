@@ -303,6 +303,8 @@ window.RevampEditorForms = (function () {
             var after = secs.filter(function (s) { return s.key === key; })[0];
             ui.placeFormSection(form.id, after ? after.el : null);
           }
+          // the panel's list says where each form is used: this one is on the page now
+          if (builder) builder.redraw();
         } }
       ]
     });
@@ -354,6 +356,14 @@ window.RevampEditorForms = (function () {
     if (b && !fresh) b.reload();
   }
   function panelDirty() { return !!(builder && builder.isDirty()); }
+
+  /* Back from another tab (the event console, where a form may just have been made or renamed): the forms are
+     fetched again, so "Opens form", the Add panel's Form and the canvas previews offer it at once (the Forms
+     panel's builder fetches them again itself). */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible' || !eventId || state.forms === null) return;
+    load();
+  });
 
   /* ---------- the AI's forms ---------- */
   function createForms(newForms) {
@@ -416,6 +426,7 @@ window.RevampEditorForms = (function () {
     embedHtml: embedHtml, sectionHtml: sectionHtml, makeEmbed: makeEmbed,
     drawPreviews: drawPreviews, usage: usage, uses: uses, pickForm: pickForm, openPanel: openPanel, placeOnPage: placeOnPage,
     panelShown: panelShown, panelDirty: panelDirty, createForms: createForms, deleteCreated: deleteCreated, afterAiChange: afterAiChange,
-    loaded: function () { return state.forms !== null; }
+    loaded: function () { return state.forms !== null; },
+    panelRedraw: function () { if (builder) builder.redraw(); }
   };
 })();

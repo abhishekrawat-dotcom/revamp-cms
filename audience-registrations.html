@@ -320,7 +320,7 @@
     var ids = S.forms.map(function(f){ return f.id; });
     Object.keys(n).forEach(function(id){ if (ids.indexOf(id) === -1) ids.push(id); });
     if (S.filter.form && ids.indexOf(S.filter.form) === -1) ids.push(S.filter.form);
-    sel.innerHTML = '<option value="">All forms (' + comma(S.items.length) + (S.done ? '' : '…') + ')</option>' +
+    sel.innerHTML = '<option value="">All forms' + (!S.done && !S.items.length ? '' : ' (' + comma(S.items.length) + (S.done ? '' : '…') + ')') + '</option>' +
       ids.map(function(id){ return '<option value="' + esc(id) + '"' + (id === S.filter.form ? ' selected' : '') + '>' + esc(formNameOf(id)) + ' (' + comma(n[id] || 0) + ')</option>'; }).join('');
   }
 
@@ -335,7 +335,9 @@
     var more = S.done ? '' : '+';
     function tile(label, value, sub, attrs){
       var tag = attrs ? 'button' : 'div';
-      return '<' + tag + ' class="seg"' + (attrs || '') + '><span class="sl">' + esc(label) + '</span><span class="sv">' + comma(value) + more + '</span>' + (sub ? '<span class="ss">' + esc(sub) + '</span>' : '') + '</' + tag + '>';
+      /* before the first page of responses is here there is nothing to count yet: "…", never "0+" */
+      var shown = !S.done && !S.items.length ? '…' : comma(value) + more;
+      return '<' + tag + ' class="seg"' + (attrs || '') + '><span class="sl">' + esc(label) + '</span><span class="sv">' + shown + '</span>' + (sub ? '<span class="ss">' + esc(sub) + '</span>' : '') + '</' + tag + '>';
     }
     var cap = capacity();
     box.innerHTML =
@@ -356,7 +358,7 @@
     var box = $('rep-progress');
     if (!box) return;
     var bits = [];
-    if (S.loading) bits.push('Loaded ' + comma(S.items.length) + ' of ' + comma(Math.max(S.total, S.items.length)) + '…');
+    if (S.loading) bits.push(S.items.length ? 'Loaded ' + comma(S.items.length) + ' of ' + comma(Math.max(S.total, S.items.length)) + '…' : 'Loading the responses…');
     if (S.capped) bits.push('Showing the newest ' + comma(MAX_ROWS) + ' responses. Export CSV includes all of them.');
     if (S.partial) bits.push('Some older responses may be missing from this list while the database finishes an index. Export CSV includes them.');
     if (S.error && S.ev) bits.push('Not every response could be loaded: ' + S.error);

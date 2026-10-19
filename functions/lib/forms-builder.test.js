@@ -69,6 +69,11 @@ ok(/fields/.test(keys(P.validateDraft(d, { maxFields: 40, maxOptions: 100 }))), 
 d = P.draftOf(vip); d.fields[2].options = []; for (var i = 0; i < 101; i++) d.fields[2].options.push('o' + i);
 ok(/options@2/.test(keys(P.validateDraft(d, { maxFields: 40, maxOptions: 100 }))), 'more than 100 options is refused');
 
+d = P.draftOf(vip); d.name = '  vip   DELEGATES ';
+ok(keys(P.validateDraft(d, null, ['Register now', 'VIP delegates'])) === 'name', 'a name another form has is refused (case and spaces aside)');
+ok(/already called/.test(P.validateDraft(d, null, ['VIP delegates'])[0].msg), 'the clash is explained');
+ok(P.validateDraft(d, null, ['Register now']).length === 0, 'a name no other form has is fine');
+
 /* pasted options */
 ok(P.parseOptionList('One\n two \n\nONE\nThree', ['three']).join('|') === 'One|two', 'a pasted list: trimmed, empty lines and repeats (any case) dropped', P.parseOptionList('One\n two \n\nONE\nThree', ['three']).join('|'));
 ok(P.parseOptionList(new Array(200).join('x')).join('').length === 120, 'a pasted option is cut to 120 characters');

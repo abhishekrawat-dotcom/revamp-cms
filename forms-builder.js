@@ -131,10 +131,15 @@
 
   /* Everything that would make the server refuse the form, found first, in the order it is on screen.
      -> [{ key, field (index) , option (index), msg }] */
-  function validateDraft(d, limits) {
+  function nameKey(s) { return str(s).replace(/\s+/g, ' ').trim().toLowerCase(); }
+  /* otherNames: the names of the event's other forms (two forms never share a name, as the server says) */
+  function validateDraft(d, limits, otherNames) {
     limits = limits || DEFAULT_LIMITS;
     var errs = [];
     if (!str(d.name).trim()) errs.push({ key: 'name', msg: 'Give the form a name.' });
+    else if ((otherNames || []).some(function (n) { return nameKey(n) === nameKey(d.name); })) {
+      errs.push({ key: 'name', msg: 'Another form of this event is already called “' + str(d.name).trim() + '”. Give this one a different name.' });
+    }
     (d.fields || []).forEach(function (f, i) {
       if (!str(f.label).trim()) errs.push({ key: 'label', field: i, msg: 'Give this field a label.' });
       if (OPTION_TYPES[f.type]) {
@@ -220,7 +225,7 @@
       function done(v) {
         document.removeEventListener('keydown', onKey, true);
         scrim.remove();
-        if (opener && opener.focus && document.contains(opener)) { try { opener.focus(); } catch (e) { /* gone */ } }
+        if (opener && opener.focus && document.contains(opener)) { try { opener.focus({ preventScroll: true }); } catch (e) { /* gone */ } }
         resolve(v);
       }
       function onKey(e) {
@@ -309,6 +314,12 @@
       if (err.status >= 500) return fallback + ' Something went wrong on our side. Please try again.';
       return (err.message || fallback);
     }
+    /* the names of the event's other forms; a form whose saved name is the one being typed keeps it */
+    function otherNames() {
+      var keepOwn = base && nameKey(base.name);
+      return forms().filter(function (f) { return f.id !== formId; }).map(function (f) { return f.name; })
+        .filter(function (n) { return !keepOwn || nameKey(n) !== keepOwn; });
+    }
     function dirty() { return view === 'form' && !!draft && (isNew || !sameDraft(draft, base)); }
 
     /* ---------- loading ---------- */
@@ -395,6 +406,27 @@
         if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
       }
       return document.scrollingElement || document.documentElement;
+    }
+    /* Focus that never scrolls the page around the builder: the site editor's whole window would move (its top
+       bar out of sight) with a plain focus() or scrollIntoView(). Only the builder's own scrolling box moves, just
+       enough to show el (centred when asked). */
+    function focusEl(el, center) {
+      if (!el) return;
+      try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+      var box = null;
+      for (var n = el.parentElement; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+        var oy = window.getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) { box = n; break; }
+      }
+      if (!box) {
+        // the console: the window is the scroller and moving it is fine
+        if (center && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+        return;
+      }
+      var r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (center) box.scrollTop += (r.top + r.height / 2) - (b.top + b.height / 2);
+      else if (r.top < b.top) box.scrollTop -= b.top - r.top + 8;
+      else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 8;
     }
     function focusKey() {
       var a = document.activeElement;
@@ -540,7 +572,7 @@
       if (alertText) h += '<p class="fb-alert" role="alert">' + esc(alertText) + '</p>';
       h += '<div class="fb-notes">' +
         (data.published ? '<p class="fb-note">Saved changes to this form appear on the published site within a minute. Which buttons open it is published with the site.</p>' : '') +
-        '<p class="fb-note">Form changes save to the event straight away and are not part of the editor’s Undo.</p></div>';
+        (compact ? '<p class="fb-note">A saved form is stored with the event, not with the page, so the editor’s Undo does not change it.</p>' : '') + '</div>';
       if (compact) h += '<button type="button" class="fb-btn fb-btn-sm fb-prev-toggle" data-fb-act="toggle-preview" data-fk="toggle-preview" aria-expanded="' + showPreview + '" aria-controls="' + ctlId('preview') + '">' + (showPreview ? 'Hide preview' : 'Preview') + '</button>';
       h += '<div class="fb-cols' + (showPreview ? ' has-preview' : '') + '"><div class="fb-main">';
 
@@ -609,7 +641,7 @@
           '<span class="fb-fname-l">' + esc(label) + '</span>' +
           '<span class="fb-type">' + esc(typeLabel(f.type)) + '</span>' +
         '</button>' +
-        '<label class="fb-req"' + (locked ? ' title="' + LOCK_NOTE + '"' : '') + '><input type="checkbox" data-fb-k="required" data-fk="rq-' + i + '"' + (f.required ? ' checked' : '') + (locked ? ' disabled aria-describedby="' + fid + '-lock"' : '') + '> Required' +
+        '<label class="fb-req"' + (locked ? ' title="' + LOCK_NOTE + '"' : '') + '><input type="checkbox" data-fb-k="required" data-fk="rq-' + i + '" aria-label="' + esc(label) + ' is required"' + (f.required ? ' checked' : '') + (locked ? ' disabled aria-describedby="' + fid + '-lock"' : '') + '> Required' +
           (locked ? '<span class="fb-lock" id="' + fid + '-lock" title="' + LOCK_NOTE + '">' + svg(IC.lock, 12) + '<span class="fb-sr">' + LOCK_NOTE + '</span></span>' : '') + '</label>' +
         '<span class="fb-frow-acts">' +
           '<button type="button" class="fb-icon" data-fb-act="field-up" data-fk="fu-' + i + '" aria-label="Move ' + esc(label) + ' up" title="Move up"' + (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 13) + '</button>' +
@@ -736,7 +768,7 @@
       expanded = -1; errors = []; alertText = ''; savedFlash = false; menuOpen = null; pasteOpen = -1;
       render();
       var first = root.querySelector('[data-fk="k-name"]');
-      if (first) first.focus();
+      if (first) focusEl(first);
     }
     function toList() {
       view = 'list'; formId = null; base = null; draft = null; isNew = false; errors = []; alertText = ''; menuOpen = null;
@@ -771,14 +803,13 @@
       render();
       var bad = root.querySelector('[aria-invalid="true"]') || root.querySelector('.fb-err:not([hidden])');
       if (bad) {
-        if (bad.focus) bad.focus();
-        if (bad.scrollIntoView) bad.scrollIntoView({ block: 'center' });
+        focusEl(bad, true);
       }
     }
     function save(ifUpdatedAt) {
       if (view !== 'form' || !draft) return Promise.resolve();
       if (busy) return Promise.reject(new Error('A save is already under way.'));
-      var problems = validateDraft(draft, limits());
+      var problems = validateDraft(draft, limits(), otherNames());
       if (problems.length) {
         alertText = problems.length === 1 ? 'One thing to put right before saving.' : problems.length + ' things to put right before saving.';
         showErrors(problems);
@@ -907,7 +938,7 @@
           var n = Math.max(+err.saved || 0, +err.published || 0);
           return ask({
             title: '“' + f.name + '” is in use',
-            body: 'The saved site uses this form in ' + plural(n, 'place') + '. Open the site editor to change those buttons first, or delete anyway.',
+            body: 'The saved site uses this form in ' + plural(n, 'place') + '. Open the site editor to change those buttons first, or delete anyway: its buttons then open the default form, and where it sits in the page nothing is shown.',
             buttons: [{ label: 'Cancel', value: null }, { label: 'Delete anyway', value: 'force', kind: 'danger' }]
           }).then(function (v) { if (v === 'force') return removeForm(f, true); });
         }
@@ -925,7 +956,7 @@
     function afterEdit(structural) {
       if (errors.length) {
         // a mistake that has been put right stops being shown once the form is drawn again
-        errors = validateDraft(draft, limits()).filter(function (e) { return errors.some(function (x) { return x.key === e.key && x.field === e.field && x.option === e.option; }); });
+        errors = validateDraft(draft, limits(), otherNames()).filter(function (e) { return errors.some(function (x) { return x.key === e.key && x.field === e.field && x.option === e.option; }); });
         if (!errors.length) alertText = '';
       }
       savedFlash = false;
@@ -962,6 +993,13 @@
           f.label = t.value;
           var l = t.closest('.fb-field').querySelector('.fb-fname-l');
           if (l) l.textContent = t.value.trim() || 'Untitled field';
+          // the row's controls are named after the field: they follow the new label
+          var shown = t.value.trim() || 'Untitled field', row = t.closest('.fb-field');
+          [['[data-fb-k="required"]', shown + ' is required'], ['[data-fb-act="field-up"]', 'Move ' + shown + ' up'],
+            ['[data-fb-act="field-down"]', 'Move ' + shown + ' down'], ['[data-fb-act="field-del"]', 'Delete ' + shown]].forEach(function (p) {
+            var c = row.querySelector(p[0]);
+            if (c) c.setAttribute('aria-label', p[1]);
+          });
         } else if (k === 'placeholder' || k === 'help') f[k] = t.value;
         else if (k === 'required') { f.required = !!t.checked; }
         else if (k === 'type' && e.type === 'change') {
@@ -991,7 +1029,7 @@
       menuOpen = null;
       afterEdit(true);
       var input = root.querySelector('[data-fk="fl-' + expanded + '"]');
-      if (input) { input.focus(); if (!f.label) input.select(); }
+      if (input) { focusEl(input); if (!f.label) input.select(); }
     }
 
     function onClick(e) {
@@ -1008,7 +1046,7 @@
         menuOpen = menuOpen === m ? null : m;
         render();
         var first = menuOpen && root.querySelector('.fb-menu button:not([disabled])');
-        if (first) first.focus();
+        if (first) focusEl(first);
         return;
       }
       if (view === 'list') {
@@ -1049,7 +1087,7 @@
           var key = (act === 'field-up' ? 'fu-' : 'fd-') + to;
           afterEdit(true);
           var nb = root.querySelector('[data-fk="' + key + '"]');
-          if (nb && !nb.disabled) nb.focus(); else { nb = root.querySelector('[data-fk="tf-' + to + '"]'); if (nb) nb.focus(); }
+          if (nb && !nb.disabled) focusEl(nb); else { nb = root.querySelector('[data-fk="tf-' + to + '"]'); if (nb) focusEl(nb); }
         }
         return;
       }
@@ -1061,7 +1099,7 @@
         afterEdit(true);
         toast('Field “' + (str(gone.label).trim() || 'Untitled field') + '” removed.' + (isNew ? '' : ' Discard changes brings it back until you save.'));
         var next = root.querySelector('[data-fk="tf-' + Math.min(i, draft.fields.length - 1) + '"]');
-        if (next) next.focus();
+        if (next) focusEl(next);
         return;
       }
       if (act === 'add-preset') {
@@ -1076,7 +1114,7 @@
         opts.push('');
         afterEdit(true);
         var nIn = root.querySelector('[data-fk="o-' + i + '-' + (opts.length - 1) + '"]');
-        if (nIn) nIn.focus();
+        if (nIn) focusEl(nIn);
         return;
       }
       if ((act === 'opt-up' || act === 'opt-down') && opts) {
@@ -1084,12 +1122,12 @@
         if (moveItem(opts, oi, oto)) {
           afterEdit(true);
           var ob = root.querySelector('[data-fk="' + (act === 'opt-up' ? 'ou-' : 'od-') + i + '-' + oto + '"]');
-          if (ob && !ob.disabled) ob.focus();
+          if (ob && !ob.disabled) focusEl(ob);
         }
         return;
       }
       if (act === 'opt-del' && opts) { opts.splice(optIndexOf(b), 1); afterEdit(true); return; }
-      if (act === 'opt-paste') { pasteOpen = pasteOpen === i ? -1 : i; render(); var ta = root.querySelector('[data-fk="pt-' + i + '"]'); if (ta) ta.focus(); return; }
+      if (act === 'opt-paste') { pasteOpen = pasteOpen === i ? -1 : i; render(); var ta = root.querySelector('[data-fk="pt-' + i + '"]'); if (ta) focusEl(ta); return; }
       if (act === 'paste-cancel') { pasteOpen = -1; render(); return; }
       if (act === 'paste-add') {
         var box = root.querySelector('[data-fk="pt-' + pasteOpen + '"]');
@@ -1111,7 +1149,7 @@
         e.stopPropagation();
         var m = menuOpen; menuOpen = null; render();
         var btn = root.querySelector('[data-menu="' + m.replace(/"/g, '') + '"]');
-        if (btn) btn.focus();
+        if (btn) focusEl(btn);
         return;
       }
       if (menuOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -1119,7 +1157,7 @@
         if (!items.length) return;
         e.preventDefault();
         var at = items.indexOf(document.activeElement);
-        items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+        focusEl(items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]);
       }
     }
 
@@ -1196,6 +1234,10 @@
       render();
     }
     document.addEventListener('scroll', onAnyScroll, true);
+    /* back from another tab (the site editor's Forms panel, or the console): what was made or changed there is
+       shown; a form open here with changes of its own keeps them (fetchOnce) */
+    function onVisible() { if (document.visibilityState === 'visible' && data && !busy) load(); }
+    document.addEventListener('visibilitychange', onVisible);
 
     render();
     load();
@@ -1213,6 +1255,8 @@
         if (data) return Promise.resolve(go());
         return load().then(go);
       },
+      /* the host's page changed (a form placed on it, a button linked): the list's "Used by …" lines are drawn again */
+      redraw: function () { if (data && view === 'list' && !menuOpen) render(); },
       getForms: function () { return forms().slice(); },
       defaultFormId: defaultId,
       isDirty: dirty,
@@ -1223,6 +1267,7 @@
         clearTimeout(previewTimer);
         document.removeEventListener('mousedown', onDocDown, true);
         document.removeEventListener('scroll', onAnyScroll, true);
+        document.removeEventListener('visibilitychange', onVisible);
         if (previewCtl && previewCtl.destroy) { try { previewCtl.destroy(); } catch (e) { /* gone */ } }
         root.remove();
       }

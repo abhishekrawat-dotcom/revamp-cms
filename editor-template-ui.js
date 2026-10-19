@@ -2514,6 +2514,7 @@
     commitNow();
     if (reselect !== selectedEl) selectElement(reselect); else { buildToolbar(reselect); positionToolbars(); }
     var linkedForm = dest.form ? formName(dest.form) : dest.register ? ((formsApi() && formsApi().defaultForm()) || {}).name : '';
+    if (formsApi() && formsApi().panelRedraw) formsApi().panelRedraw();
     showToast(dest.form || dest.register ? (linkedForm ? 'Linked to the form “' + linkedForm + '”.' : 'Linked to the default form.') : 'Link set to ' + dest.href);
   }
 
@@ -2872,6 +2873,7 @@
       selectElement(embed);
       embed.scrollIntoView({ block: 'nearest' });
       repositionToolbars();
+      if (api.panelRedraw) api.panelRedraw();
       showToast('Added the form “' + (formName(opts.formId) || opts.formId) + '”. Visitors fill it in right here on the page.');
       return embed;
     }
