@@ -223,12 +223,14 @@ function scopeSectionCss(css, sectionId, rootInfo) {
    the edge of a 360px screen made safe, whatever breakpoints the model wrote:
      · a box given a fixed width (or min-width, or flex-basis) of WIDE_PX or more may not be wider than its place:
        width: 420px  ->  width: min(420px, 100%). Below that width nothing changes, so a desktop is untouched.
+       Not a box placed out of the flow (position absolute or fixed, a ::before): a decorative glow keeps its shape.
      · the cells of a grid may shrink below their content's widest word (CSS gives every grid cell min-width:auto,
        so one long word or a wide picture widens its whole column past the screen): a rule
        :where(<the grid's selectors>) > *{min-width:0}, which every rule of the section's own outweighs.
      · text set white-space:nowrap wraps under 640px (one @media block at the end; see below for what is spared).
-   Idempotent: a value already in min() is left alone, and the grid and wrap rules are added once. A sheet that
-   cannot be read comes back as it was. */
+   Idempotent: a value already in min() is left alone, and the grid and wrap rules are made once, even when the
+   sheet has been re-scoped since (scopeSectionCss) and its marks lost. A sheet that cannot be read comes back as
+   it was. */
 var WIDE_PX = 240;
 var GRID_MARK = '/*rv-grid-cells*/';
 var WRAP_MARK = '/*rv-phone-wrap*/';
@@ -239,9 +241,24 @@ function mobileSafeCss(css) {
   var root;
   try { root = postcss.parse(text); } catch (e) { return text; }
   var changed = false;
+  function flat(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+  function only(node, prop, value) {
+    return !!node.nodes && node.nodes.length === 1 && node.nodes[0].type === 'decl' && node.nodes[0].prop.toLowerCase() === prop &&
+      String(node.nodes[0].value).replace(/\s+/g, '') === value;
+  }
 
+  /* a box placed out of the flow (a decorative glow, a ::before) is left as drawn: it pushes nothing past the
+     screen (the section clips it), and held to 100% a round glow would turn oval on a phone */
+  function outOfFlow(rule) {
+    if (!rule || rule.type !== 'rule') return false;
+    if (/::|:(before|after)\b/i.test(rule.selector)) return true;
+    var out = false;
+    rule.each(function (n) { if (n.type === 'decl' && /^position$/i.test(n.prop) && /^\s*(absolute|fixed)\s*$/i.test(n.value)) out = true; });
+    return out;
+  }
   root.walkDecls(/^(width|min-width|flex-basis|flex)$/i, function (decl) {
     if (isKeyframes(decl.parent && decl.parent.parent) || /^@?font-face$/i.test((decl.parent && decl.parent.name) || '')) return;
+    if (outOfFlow(decl.parent)) return;
     var prop = decl.prop.toLowerCase(), value = decl.value;
     var fixed;
     if (prop === 'flex') {
@@ -259,19 +276,57 @@ function mobileSafeCss(css) {
     changed = true;
   });
 
-  /* grids: every selector of a rule that makes a grid (in the same @media as that rule) */
-  var grids = [];
+  /* What the sheet needs: the grids (every selector of a rule that makes one, in the same @media as that rule)
+     and the one-line text. Text kept on one line (white-space:nowrap) wraps on a phone, where a line of 40
+     capitals runs past the edge — not the top bar's (its links scroll sideways on one line), nor a box that
+     scrolls or clips its own content, nor a flex row (the setting is for the words, not the row). */
+  var grids = [], gridSel = {}, wraps = [], wrapSel = {};
   root.walkRules(function (rule) {
-    if (isKeyframes(rule.parent)) return;
-    var isGrid = false;
-    if (!rule.nodes || /::|:(before|after)\b/i.test(rule.selector)) return;
-    rule.each(function (n) { if (n.type === 'decl' && /^display$/i.test(n.prop) && /^\s*(inline-)?grid\s*$/i.test(n.value)) isGrid = true; });
-    if (isGrid) grids.push(rule);
+    if (isKeyframes(rule.parent) || !rule.nodes || /::|:(before|after)\b/i.test(rule.selector)) return;
+    var isGrid = false, nowrap = false, keeps = false;
+    rule.each(function (n) {
+      if (n.type !== 'decl') return;
+      var p = n.prop.toLowerCase(), v = String(n.value).toLowerCase();
+      if (p === 'display' && /^\s*(inline-)?grid\s*$/.test(v)) isGrid = true;
+      if (p === 'white-space' && /^\s*nowrap\s*$/.test(v)) nowrap = true;
+      if ((p === 'overflow' || p === 'overflow-x') && /(auto|scroll|hidden|clip)/.test(v)) keeps = true;
+      if (p === 'text-overflow' || /^animation/.test(p)) keeps = true;
+      if (p === 'display' && /flex|grid/.test(v)) keeps = true;
+    });
+    if (isGrid) { grids.push(rule); gridSel[flat(rule.selector)] = true; }
+    if (nowrap && !keeps && !/data-rv-section="nav"/.test(rule.selector)) {
+      wraps.push(flat(rule.selector));
+      rule.selectors.forEach(function (s) { wrapSel[flat(s)] = true; });
+    }
   });
+
+  /* What an earlier run added comes out and is made again below, so a sheet that went round once more —
+     re-scoped after the AI was shown it and wrote it back (api.js, remaking a section) — still carries each rule
+     once. Found by their marks, and by their shape when the marks were lost; a rule of the section's own is
+     taken out only where the same rule is made again: ":where(<a grid of this sheet>) > *{min-width:0}", and a
+     640px block that only sets white-space:normal on text this sheet keeps on one line. */
+  root.walkComments(function (c) {
+    var mark = '/*' + c.text + '*/';
+    if (mark === GRID_MARK || mark === WRAP_MARK) { c.remove(); changed = true; }
+  });
+  root.walkRules(function (rule) {
+    if (!only(rule, 'min-width', '0')) return;
+    var mine = rule.selectors.every(function (s) {
+      var m = /:where\(([\s\S]*)\)\s*>\s*\*\s*$/.exec(s);
+      return !!m && gridSel[flat(m[1])] === true;
+    });
+    if (mine) { rule.remove(); changed = true; }
+  });
+  root.walkAtRules(/^media$/i, function (at) {
+    if (!/^\(\s*max-width\s*:\s*640px\s*\)$/i.test(String(at.params).trim()) || !at.nodes || at.nodes.length !== 1) return;
+    var r = at.nodes[0];
+    if (r.type !== 'rule' || !only(r, 'white-space', 'normal')) return;
+    if (r.selectors.every(function (s) { return wrapSel[flat(s)] === true; })) { at.remove(); changed = true; }
+  });
+
   var have = {};
-  root.walkComments(function (c) { if ('/*' + c.text + '*/' === GRID_MARK && c.next() && c.next().type === 'rule') have[c.next().selector] = true; });
   grids.forEach(function (rule) {
-    var sel = ':where(' + rule.selector.replace(/\s+/g, ' ').trim() + ') > *';
+    var sel = ':where(' + flat(rule.selector) + ') > *';
     if (have[sel]) return;
     have[sel] = true;
     var cells = postcss.rule({ selector: sel });
@@ -280,39 +335,20 @@ function mobileSafeCss(css) {
     rule.after(postcss.comment({ text: GRID_MARK.slice(2, -2) }));
     changed = true;
   });
-
-  /* text kept on one line (white-space:nowrap) wraps on a phone, where a line of 40 capitals runs past the edge.
-     Not the top bar's (its links scroll sideways on one line), nor a box that scrolls or clips its own content,
-     nor a flex row (the setting is for the words, not the row). One @media block at the end of the sheet, added
-     once. */
-  var hasWrap = false;
-  root.walkComments(function (c) { if ('/*' + c.text + '*/' === WRAP_MARK) hasWrap = true; });
-  if (!hasWrap) {
-    var wraps = [];
-    root.walkRules(function (rule) {
-      if (isKeyframes(rule.parent) || !rule.nodes || /data-rv-section="nav"/.test(rule.selector) || /::|:(before|after)\b/i.test(rule.selector)) return;
-      var nowrap = false, keeps = false;
-      rule.each(function (n) {
-        if (n.type !== 'decl') return;
-        var p = n.prop.toLowerCase(), v = String(n.value).toLowerCase();
-        if (p === 'white-space' && /^\s*nowrap\s*$/.test(v)) nowrap = true;
-        if ((p === 'overflow' || p === 'overflow-x') && /(auto|scroll|hidden|clip)/.test(v)) keeps = true;
-        if (p === 'text-overflow' || /^animation/.test(p)) keeps = true;
-        if (p === 'display' && /flex|grid/.test(v)) keeps = true;
-      });
-      if (nowrap && !keeps) wraps.push(rule.selector.replace(/\s+/g, ' ').trim());
-    });
-    if (wraps.length) {
-      var phone = postcss.atRule({ name: 'media', params: '(max-width:640px)' });
-      var w = postcss.rule({ selector: wraps.join(',') });
-      w.append(postcss.decl({ prop: 'white-space', value: 'normal' }));
-      phone.append(w);
-      root.append(postcss.comment({ text: WRAP_MARK.slice(2, -2) }));
-      root.append(phone);
-      changed = true;
-    }
+  /* one @media block at the end of the sheet */
+  if (wraps.length) {
+    var phone = postcss.atRule({ name: 'media', params: '(max-width:640px)' });
+    var w = postcss.rule({ selector: wraps.join(',') });
+    w.append(postcss.decl({ prop: 'white-space', value: 'normal' }));
+    phone.append(w);
+    root.append(postcss.comment({ text: WRAP_MARK.slice(2, -2) }));
+    root.append(phone);
+    changed = true;
   }
-  return changed ? root.toString() : text;
+  if (!changed) return text;
+  /* a sheet this has been through already comes back as it was, byte for byte */
+  var result = root.toString();
+  return result.replace(/\s+/g, '') === text.replace(/\s+/g, '') ? text : result;
 }
 
 /* After scoping: does any rule apply to the root itself (and give it at least one declaration)? */

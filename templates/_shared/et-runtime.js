@@ -586,8 +586,10 @@
   function fitHeading(h, heading) {
     if (!Object.prototype.hasOwnProperty.call(h, '__rvFitFrom')) h.__rvFitFrom = h.style.fontSize;
     if (h.__rvFitted) { h.style.fontSize = h.__rvFitFrom; h.style.overflowWrap = ''; h.__rvFitted = false; }
-    var box = h.parentElement;
-    if (!box || !h.offsetWidth || getComputedStyle(h).display === 'inline') return;
+    var box = h.parentElement, hs = getComputedStyle(h);
+    if (!box || !h.offsetWidth || hs.display === 'inline') return;
+    /* a decorative figure placed out of the flow (a large "2026" behind a section) is meant to be cut off */
+    if (hs.position === 'absolute' || hs.position === 'fixed' || h.closest('[aria-hidden="true"]')) return;
     var bs = getComputedStyle(box);
     var room = box.clientWidth - (parseFloat(bs.paddingLeft) || 0) - (parseFloat(bs.paddingRight) || 0);
     function over() { return h.scrollWidth > h.clientWidth + 1 || (room > 0 && h.offsetWidth > room + 1); }

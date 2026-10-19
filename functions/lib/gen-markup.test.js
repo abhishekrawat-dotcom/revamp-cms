@@ -131,6 +131,20 @@ lacks(nw, '.row{white-space:normal', 'a flex row is spared');
 lacks(nw, '.scroll{white-space:normal', 'a box that scrolls its own line is spared');
 lacks(nw, '.links{white-space:normal', 'the top bar is spared');
 lacks(nw, '.ell{white-space:normal', 'text cut with an ellipsis is spared');
+/* out of the flow: a decorative glow keeps its shape */
+var GLOW = AV + ' .glow{position:absolute;width:520px;height:520px;border-radius:50%}' + AV + ' .x::before{content:"";width:600px}' + AV + ' .bar{position:fixed;width:400px}';
+ok(mobileSafeCss(GLOW) === GLOW, 'a box placed out of the flow keeps its width', mobileSafeCss(GLOW));
+/* a sheet re-scoped after the AI was shown it (with or without the marks) still carries each added rule once */
+var RS_HTML = '<section class="ov-root"><div class="ov-grid"></div></section>';
+var RS = mobileSafeCss(scopeSectionCss('.ov-root{padding:10px}.ov-grid{display:grid;grid-template-columns:1fr 1fr}.ov-t{white-space:nowrap}.ov-c{width:400px}', 'ov', sectionRootInfo(RS_HTML)));
+var rs = RS;
+for (var rsi = 0; rsi < 3; rsi++) rs = mobileSafeCss(scopeSectionCss(rs, 'ov', sectionRootInfo(RS_HTML)));
+ok(rs === RS, 're-scoped three times: the same sheet', flat(rs));
+var unmarked = mobileSafeCss(scopeSectionCss(RS.replace(/\/\* rv-[a-z-]+ \*\//g, ''), 'ov', sectionRootInfo(RS_HTML)));
+ok((unmarked.match(/min-width:0/g) || []).length === 1 && (unmarked.match(/white-space:normal/g) || []).length === 1, 'marks lost: each added rule still once', flat(unmarked));
+/* a rule of the section's own that looks like one of these is kept when it is not made again */
+var OWN = '.row{display:flex;white-space:nowrap}@media (max-width:640px){.row{white-space:normal}}:where(.row) > *{min-width:0}';
+ok(mobileSafeCss(OWN) === OWN, 'the section\'s own phone rule and cell rule are kept', mobileSafeCss(OWN));
 
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
