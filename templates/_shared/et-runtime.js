@@ -829,15 +829,21 @@
       if (moreBtn) moreBtn.classList.toggle('is-active', !!moreList.querySelector('a.is-active'));
     }
 
-    /* the two states: in the flow at the top, floating once the visitor has scrolled past it */
-    function hold() { if (!floating) root.style.setProperty('--rv-etnav-h', root.offsetHeight + 'px'); }
+    /* the two states: in the flow at the top, floating once the visitor has scrolled past it. While it floats
+       its place in the flow is kept at the height it had (so the page does not jump); back in the flow it takes
+       its own height again — measured afresh each time, never a height kept from before a resize or a font */
+    function hold(on) {
+      if (on) root.style.setProperty('--rv-etnav-h', root.offsetHeight + 'px');
+      else root.style.removeProperty('--rv-etnav-h');
+    }
     function onScroll() {
       var end = root.getBoundingClientRect().top + window.pageYOffset + root.offsetHeight, y = window.pageYOffset;
       var want = floating ? y > end - 24 : y > end + 24;
       if (want !== floating) {
-        if (want) hold();
+        if (want) hold(true);
         floating = want;
         bar.classList.toggle('rv-etnav--float', floating);
+        if (!floating) hold(false);
         layout();
       } else {
         mark();
@@ -849,18 +855,15 @@
       ticking = true;
       requestAnimationFrame(function () { ticking = false; onScroll(); });
     }, { passive: true });
-    window.addEventListener('resize', function () {
-      if (!floating) { root.style.removeProperty('--rv-etnav-h'); hold(); }
-      relayout();
-    });
+    window.addEventListener('resize', relayout);
     /* records arriving later (rv-data.js) show or hide sections, and the links to them */
     if ('MutationObserver' in window && document.body) {
       new MutationObserver(function (changes) {
         if (changes.some(function (c) { return !root.contains(c.target) || (list && list.contains(c.target)); })) relayout();
       }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden', 'data-rv-nav-empty'] });
     }
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { hold(); relayout(); });
-    window.addEventListener('load', function () { hold(); relayout(); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
+    window.addEventListener('load', relayout);
 
     /* the menu panel: every link and the main action */
     function closeMenu() {
@@ -935,7 +938,6 @@
       if (want && img.getAttribute('src') !== want) img.setAttribute('src', want);
     });
 
-    hold();
     layout();
     onScroll();
   }

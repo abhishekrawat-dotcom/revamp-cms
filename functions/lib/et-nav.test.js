@@ -54,6 +54,8 @@ check('tabs when given, the current one marked', /<ul class="rv-etnav-tabs"><li>
 check('a partnership action is not a registration button', !/data-register-cta/.test(nav.build({ name: 'X', cta: { label: 'Join as Partner', href: '#sponsors', register: false } }).html));
 var evil = nav.build({ name: '<img src=x onerror=alert(1)>', sub: { date: '"><b>', place: '' }, links: [{ id: 'a', label: '<script>x</script>' }] }).html;
 check('the event\'s words are escaped', !/<img src=x/.test(evil) && !/<script>/.test(evil) && !/"><b>/.test(evil));
+var unsafe = nav.build({ name: 'X', tabs: [{ label: 'Bad', href: 'javascript:alert(1)' }, { label: 'Plain', href: 'http://example.com' }, { label: 'Ok', href: '#awards' }], cta: { label: 'Go', href: 'javascript:alert(1)' } }).html;
+check('only a place on the page or an https page is linked: no javascript:, no http:', !/javascript:|http:/i.test(unsafe) && /href="#awards">Ok</.test(unsafe) && /rv-etnav-cta" data-register-cta href="#hero">Go</.test(unsafe), unsafe);
 check('nothing in the bar runs: no script, no inline handler', !/<script|\son[a-z]+=/i.test(h));
 check('a white CTA word on a dark brand colour, a dark one on a light brand colour', /rv-etnav-cta\{[^}]*color:#ffffff/.test(built.css) && /rv-etnav-cta\{[^}]*color:#14161b/.test(nav.build({ themeColor: '#f5d000' }).css));
 

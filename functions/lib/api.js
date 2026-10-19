@@ -2969,11 +2969,16 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* the top bar, built here as on ET's own event sites (et-nav.js): the portal's logo, the event's name,
          date and place, a link to every section in the page's order, the owner's main action */
       sections = sections.filter(function (s) { return s.id !== 'nav'; });
-      sections.unshift(etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: designPlan }), {
-        order: sections.map(function (s) { return s.id; }),
-        sources: sourcesSnap.docs.map(function (d) { return d.data(); }),
-        owner: designPlan.owner || (brief && brief.owner)
-      }));
+      var navFor = { order: sections.map(function (s) { return s.id; }), sources: sourcesSnap.docs.map(function (d) { return d.data(); }), owner: designPlan.owner || (brief && brief.owner) };
+      var navSection;
+      /* never a reason to lose a whole site: a bar that cannot be made from the stored records is made from
+         the event's facts alone (no portal, the default action) */
+      try { navSection = etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: designPlan }), navFor); }
+      catch (navErr) {
+        console.error('[generate-content] the ET bar for ' + eventId + ' fell back to the plain one: ' + (navErr && navErr.message));
+        navSection = etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: { sections: [] } }), { order: navFor.order });
+      }
+      sections.unshift(navSection);
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
       genDesign.motionBudget(sections);
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);

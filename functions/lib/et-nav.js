@@ -46,6 +46,8 @@ var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oc
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function clean(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+/* an address the bar may link to: a place on the page or an https page — never javascript:, data: or http: */
+function safeHref(h) { h = clean(h); return /^#[A-Za-z][\w-]*$/.test(h) || /^https:\/\/[^\s"'<>]+$/i.test(h) ? h : ''; }
 
 /* ---------- the portal and its logo ---------- */
 
@@ -162,7 +164,7 @@ function build(o) {
   var sub = o.sub || {};
   var date = clean(sub.date), place = clean(sub.place);
   var links = (o.links || []).filter(function (l) { return l && l.id && clean(l.label); });
-  var tabs = (o.tabs || []).filter(function (t) { return t && clean(t.label) && t.href; });
+  var tabs = (o.tabs || []).filter(function (t) { return t && clean(t.label) && safeHref(t.href); });
   var cta = o.cta && clean(o.cta.label) ? o.cta : null;
 
   var html = '<header class="' + c + '" id="nav" data-rv-etnav>' +
@@ -175,12 +177,12 @@ function build(o) {
         (date || place ? '<p class="' + c + '-sub">' + (date ? '<span class="' + c + '-date">' + esc(date) + '</span>' : '') + (place ? '<span class="' + c + '-place">' + esc(place) + '</span>' : '') + '</p>' : '') +
       '</div>' +
       (tabs.length ? '<ul class="' + c + '-tabs">' + tabs.map(function (t) {
-        return '<li><a class="' + c + '-tab' + (t.active ? ' is-current' : '') + '" href="' + esc(t.href) + '"' + (t.active ? ' aria-current="page"' : '') + '>' + esc(clean(t.label)) + '</a></li>';
+        return '<li><a class="' + c + '-tab' + (t.active ? ' is-current' : '') + '" href="' + esc(safeHref(t.href)) + '"' + (t.active ? ' aria-current="page"' : '') + '>' + esc(clean(t.label)) + '</a></li>';
       }).join('') + '</ul>' : '') +
       (links.length ? '<nav class="' + c + '-links" aria-label="Sections"><ul class="' + c + '-list">' + links.map(function (l) {
         return '<li><a href="#' + esc(l.id) + '">' + esc(clean(l.label)) + '</a></li>';
       }).join('') + '</ul></nav>' : '') +
-      (cta ? '<a class="' + c + '-cta"' + (cta.register === false ? '' : ' data-register-cta') + ' href="' + esc(cta.href || '#') + '">' + esc(clean(cta.label)) + '</a>' : '') +
+      (cta ? '<a class="' + c + '-cta"' + (cta.register === false ? '' : ' data-register-cta') + ' href="' + esc(safeHref(cta.href) || '#hero') + '">' + esc(clean(cta.label)) + '</a>' : '') +
     '</div></header>';
 
   var line = 'color-mix(in srgb,var(--rv-text) 14%,transparent)';
