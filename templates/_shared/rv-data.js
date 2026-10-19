@@ -662,12 +662,13 @@
   }
 
   /* What leaves the page when a list of an AI-designed page has no records: its whole section, unless the
-     section is also something else — it holds records of another kind, a registration button, navigation, a
-     footer or one of the event's own details — in which case only the list itself. */
+     section is also something else — it holds records of another kind, a registration button, a button that
+     opens a form or a form drawn in place (rv-forms.js), navigation, a footer or one of the event's own
+     details — in which case only the list itself. */
   function emptyScopeOf(parent) {
     var sec = parent.closest('[data-rv-section]');
     if (!sec || sec.matches('header, nav, footer') || parent.closest('header, nav, footer')) return parent;
-    if (sec.querySelector('[data-rv-item], [data-register-cta], nav, footer, [data-rv-bind]')) return parent;
+    if (sec.querySelector('[data-rv-item], [data-register-cta], [data-rv-form], [data-rv-form-embed], nav, footer, [data-rv-bind]')) return parent;
     return sec;
   }
 

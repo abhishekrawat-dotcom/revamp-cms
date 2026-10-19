@@ -514,7 +514,9 @@
   function ownLink(e) {
     var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
     var a = t && t.closest ? t.closest('a[href^="#"]') : null;
-    if (!a || a.closest('.rv-imported') || a.hasAttribute('data-register-cta')) return null;
+    /* a button that opens a form (data-register-cta: the default form; data-rv-form: the form it names) is
+       rv-forms.js's to handle — it opens the form in a pop-up — never a jump to a part of the page */
+    if (!a || a.closest('.rv-imported') || a.hasAttribute('data-register-cta') || a.hasAttribute('data-rv-form')) return null;
     return a.getAttribute('href').length > 1 ? a : null;
   }
 
