@@ -81,7 +81,10 @@
      Registrations and reporting
      .fetchRegistrations(eventId)             GET    /api/event/registrations -> [registration], ALL of them
                                                (it follows the pages), with .total
-     .fetchRegistrations(eventId, {limit, cursor})    -> {items, total, nextCursor} — one page of any size list
+     .fetchRegistrations(eventId, {limit, cursor, formId})    -> {items, total, nextCursor} — one page of any size
+                                               list; with formId only that form's responses (total is that form's)
+     .exportRegistrations(eventId, {formId, status})  GET /api/event/registrations/export -> {blob, filename}: the
+                                               CSV (UTF-8, a column per answer), for a download
      .updateRegistration(eventId, id, patch)  PATCH  /api/event/registrations ({status, checkedIn, notes, tags})
                                                -> {ok, registration}
      .deleteRegistration(eventId, id)         DELETE /api/event/registrations
@@ -90,6 +93,19 @@
                                    the window, as India days
      .fetchInsights(days)         GET    /api/insights — the same totals across all events
      .fetchActivity(eventId)      GET    /api/event/activity -> [{at, by, action, detail}], newest first
+     Registration forms (one event has several: Register now, Express interest, VIP delegates…)
+     .fetchForms(eventId)         GET    /api/event/forms -> {forms, defaultFormId, materialized, templates,
+                                   fieldTypes, presets, countries, limits, registration, published, updatedAt}
+     .createForm(eventId, {form} | {template} | {duplicateOf})
+                                  POST   /api/event/forms -> {form}; exactly one of the three
+     .updateForm(eventId, formId, form, ifUpdatedAt)
+                                  PUT    /api/event/forms -> {form}; the whole form. 409 -> err.code 'stale',
+                                   err.form (the stored form, whose updatedAt a second try sends)
+     .deleteForm(eventId, formId, {force})
+                                  DELETE /api/event/forms -> {ok, formId}; 409 -> err.code 'default-form', or
+                                   'form-in-use' with err.saved / err.published (places that use it) unless forced
+     .setDefaultForm(eventId, formId)  POST /api/event/forms/default -> {ok, defaultFormId}
+     .reorderForms(eventId, ids)  POST   /api/event/forms/order -> {ok, forms}; ids: every form id, in the new order
 
      .statTile .panel .panelFlush .emptyState
      .toast(msg)          a success message;  .toast(msg, { kind: 'error' }) a failure (no tick, stays
@@ -650,25 +666,32 @@ window.RevampCore = (function(){
      many there are (it asks for page after page); the array also carries .total, the event's own count.
      fetchRegistrations(eventId, { limit, cursor }) -> { items, total, nextCursor }: one page (limit up to
      5,000) for a page that pages itself; pass nextCursor back as cursor until it is null.
+     fetchRegistrations(eventId, { formId }) — no limit, no cursor — follows the pages of that one form's.
+     A page also says partial: true when the server could only look through part of the responses for it.
      A registration: id, name, email, phone, company, designation, city, source, utm {source, medium,
-     campaign}, device, referrer, status (confirmed | waitlist | cancelled), notes, tags [], createdAt,
-     checkedInAt (ISO string or null), updatedAt. */
+     campaign}, device, referrer, formId, formName, counts (false for a form that does not count as a
+     registration), answers {fieldId: value}, answerLabels {fieldId: label}, status (confirmed | waitlist |
+     pending | rejected | cancelled), notes, tags [], createdAt, checkedInAt (ISO string or null), decidedAt,
+     decidedBy, updatedAt. */
   function registrationsPage(eventId, page){
     var url = '/api/event/registrations?eventId=' + encodeURIComponent(eventId);
     if (page && page.limit) url += '&limit=' + q(page.limit);
     if (page && page.cursor) url += '&cursor=' + q(page.cursor);
+    if (page && page.formId) url += '&formId=' + q(page.formId);
     return api('GET', url).then(function(data){
       var items = (data && data.items) || [];
-      return { items: items, total: data && typeof data.total === 'number' ? data.total : items.length, nextCursor: (data && data.nextCursor) || null };
+      return { items: items, total: data && typeof data.total === 'number' ? data.total : items.length,
+        nextCursor: (data && data.nextCursor) || null, partial: !!(data && data.partial) };
     });
   }
   function fetchRegistrations(eventId, page){
     eventId = String(eventId || '').trim();
     if (!eventId) return Promise.reject(apiError('fetchRegistrations: eventId is required.', 400));
-    if (page) return registrationsPage(eventId, page);
+    if (page && (page.limit || page.cursor || !page.formId)) return registrationsPage(eventId, page);
+    var formId = page ? page.formId : '';
     var all = [];
     function next(cursor){
-      return registrationsPage(eventId, { limit: 1000, cursor: cursor }).then(function(p){
+      return registrationsPage(eventId, { limit: 1000, cursor: cursor, formId: formId }).then(function(p){
         all = all.concat(p.items);
         if (p.nextCursor && p.items.length) return next(p.nextCursor);
         all.total = Math.max(p.total, all.length);
@@ -676,6 +699,68 @@ window.RevampCore = (function(){
       });
     }
     return next(null);
+  }
+
+  /* The CSV of an event's responses as the server builds it (a column per answer; UTF-8 with a byte-order
+     mark, so a spreadsheet reads accents right). opts: { formId, status } narrow it. -> { blob, filename }.
+     A refusal rejects like every other call here. */
+  function exportRegistrations(eventId, opts){
+    eventId = String(eventId || '').trim();
+    if (!eventId) return Promise.reject(apiError('exportRegistrations: eventId is required.', 400));
+    opts = opts || {};
+    var url = '/api/event/registrations/export?eventId=' + encodeURIComponent(eventId);
+    if (opts.formId) url += '&formId=' + q(opts.formId);
+    if (opts.status) url += '&status=' + q(opts.status);
+    return authedFetch(url, { method: 'GET' }).then(function(res){
+      if (!res.ok) return readJsonResponse(res);          // rejects with the server's sentence
+      var cd = res.headers.get('Content-Disposition') || '';
+      var m = /filename="?([^";]+)"?/i.exec(cd);
+      var filename = m ? m[1] : eventId + '-registrations' + (opts.formId ? '-' + opts.formId : '') + '.csv';
+      return res.blob().then(function(blob){ return { blob: blob, filename: filename }; });
+    }, function(err){
+      if (err && typeof err.status === 'number') throw err;
+      throw apiError('Could not reach the server. Check your connection and try again.', 0);
+    });
+  }
+
+  /* ---- registration forms ----
+     An event's forms live in events/<id>/forms (functions/lib/api-forms.js). The console's Settings ›
+     Registration forms and the site editor's Forms panel both edit them through these, with the one builder
+     (forms-builder.js). A form is changed as a whole: updateForm sends every field of it with the updatedAt
+     the page last received, and someone else's newer save is a 409 'stale' that carries the stored form. */
+  function fetchForms(eventId){
+    return need(eventId, 'fetchForms: eventId') ||
+      api('GET', '/api/event/forms?eventId=' + q(eventId));
+  }
+  function createForm(eventId, what){
+    var missing = need(eventId, 'createForm: eventId');
+    if (missing) return missing;
+    what = what || {};
+    var body = { eventId: String(eventId).trim() };
+    if (what.form) body.form = what.form;
+    else if (what.template) body.template = String(what.template);
+    else if (what.duplicateOf) body.duplicateOf = String(what.duplicateOf);
+    else return Promise.reject(apiError('createForm: a form, a template or a form to duplicate is required.', 400));
+    return api('POST', '/api/event/forms', body);
+  }
+  function updateForm(eventId, formId, form, ifUpdatedAt){
+    var missing = need(eventId, 'updateForm: eventId') || need(formId, 'updateForm: formId');
+    if (missing) return missing;
+    var body = { eventId: String(eventId).trim(), formId: String(formId).trim(), form: form || {} };
+    if (ifUpdatedAt) body.ifUpdatedAt = String(ifUpdatedAt);
+    return api('PUT', '/api/event/forms', body);
+  }
+  function deleteForm(eventId, formId, opts){
+    return need(eventId, 'deleteForm: eventId') || need(formId, 'deleteForm: formId') ||
+      api('DELETE', '/api/event/forms?eventId=' + q(eventId) + '&formId=' + q(formId) + (opts && opts.force ? '&force=1' : ''));
+  }
+  function setDefaultForm(eventId, formId){
+    return need(eventId, 'setDefaultForm: eventId') || need(formId, 'setDefaultForm: formId') ||
+      api('POST', '/api/event/forms/default', { eventId: String(eventId).trim(), formId: String(formId).trim() });
+  }
+  function reorderForms(eventId, ids){
+    return need(eventId, 'reorderForms: eventId') ||
+      api('POST', '/api/event/forms/order', { eventId: String(eventId).trim(), ids: (ids || []).map(String) });
   }
 
   /* ---- generic per-event subcollection CRUD ----
@@ -908,6 +993,9 @@ window.RevampCore = (function(){
     uploadImage: uploadImage, seedContent: seedContent,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, deleteRegistration: deleteRegistration,
+    exportRegistrations: exportRegistrations,
+    fetchForms: fetchForms, createForm: createForm, updateForm: updateForm, deleteForm: deleteForm,
+    setDefaultForm: setDefaultForm, reorderForms: reorderForms,
     fetchStats: fetchStats, fetchInsights: fetchInsights, fetchActivity: fetchActivity,
     fetchLeads: fetchLeads, bulkCreateLeads: bulkCreateLeads, bulkUpdateLeads: bulkUpdateLeads, bulkDeleteLeads: bulkDeleteLeads,
     appendLeadNote: appendLeadNote, removeLeadNote: removeLeadNote,

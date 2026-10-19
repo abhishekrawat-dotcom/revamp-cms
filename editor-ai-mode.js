@@ -339,13 +339,25 @@
         if (!/^#./.test(href) || (a.getAttribute('target') && a.getAttribute('target') !== '_self')) e.preventDefault();
       }
       var control = t.closest('button, input');
-      if (control && control.form && (control.type === 'submit' || control.type === 'image')) e.preventDefault();
+      /* the site's registration forms (rv-forms.js) are left to their own runtime: in this view it checks what was
+         typed and says that submitting is turned off, and never sends anything */
+      if (control && control.form && (control.type === 'submit' || control.type === 'image') && !control.closest('[data-rv-form-root]')) e.preventDefault();
     }
     doc.addEventListener('click', function (e) {
       guard(e, false);
       if (e.button) return;
       var sec = sectionAt(e.target);
-      if (sec) pick(keyOf(sec), e.clientY);
+      if (!sec) return;
+      /* a button that opens a registration form, or a form in the page: its section becomes the chat's reference,
+         but the form keeps the keyboard (the chat is not opened over it) */
+      var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+      if (t && t.closest && t.closest('[data-rv-form-root], [data-rv-form-embed], a[data-rv-form], a[data-register-cta]')) {
+        var c = UI.canvas(), own = c ? c.sectionByKey(keyOf(sec)) : null;
+        if (own) UI.selectSection(own);
+        drawOverlay();
+        return;
+      }
+      pick(keyOf(sec), e.clientY);
     }, true);
     doc.addEventListener('auxclick', function (e) { guard(e, true); }, true);
     /* Last of all, every link the site's own code has not dealt with is stopped: one to another page would take
@@ -368,7 +380,11 @@
       var el = doc.getElementById(name) || doc.getElementsByName(name)[0];
       if (el) el.scrollIntoView({ block: 'start' });
     });
-    doc.addEventListener('submit', function (e) { e.preventDefault(); }, true);
+    doc.addEventListener('submit', function (e) {
+      // a registration form's own runtime handles (and never sends) its submit here; the frame cannot send forms anyway
+      if (e.target && e.target.closest && e.target.closest('[data-rv-form-root]')) return;
+      e.preventDefault();
+    }, true);
     doc.addEventListener('mousemove', function (e) {
       var sec = sectionAt(e.target), key = sec ? keyOf(sec) : '';
       if (key !== hoverKey) { hoverKey = key; drawOverlay(); }
@@ -538,6 +554,9 @@
     buildLayer();
     buildToggle();
     UI.onChange(function () { if (mode === 'ai') scheduleRender(); });
+    /* a form made or edited (the chat, the Forms panel): the live view is drawn again, with the forms as they are
+       now (POST /api/event/live-view puts the event's forms in the page) */
+    if (UI.onFormsChange) UI.onFormsChange(function () { if (mode === 'ai') scheduleRender(); });
     // the chat's selected section shown on the live view follows the chip (picked, dismissed, replaced)
     var chip = document.querySelector('#panel-chat .chat-focus');
     if (chip && window.MutationObserver) new MutationObserver(drawOverlay).observe(chip, { attributes: true, childList: true, subtree: true, characterData: true });

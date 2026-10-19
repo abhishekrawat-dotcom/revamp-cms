@@ -4,6 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="forms-builder.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 
 <header class="topbar">
@@ -39,6 +40,10 @@
 <script src="auth.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="sidebar.js"></script>
+<!-- the registration forms builder; the form runtime draws its preview (it does nothing else on this page) -->
+<script>window.RV_FORMS_NO_AUTO = true;</script>
+<script src="templates/_shared/rv-forms.js"></script>
+<script src="forms-builder.js"></script>
 
 <script>
 (function(){
@@ -730,7 +735,7 @@
     ]},
 
     { id:'settings', label:'Settings', icon:IC.gear, tabs:[
-        { id:'form',       label:'Registration form' },
+        { id:'form',       label:'Registration forms' },
         { id:'seo',        label:'URL & SEO' },
         { id:'links',      label:'Social links' },
         { id:'visibility', label:'Visibility' },
@@ -4454,7 +4459,9 @@
     'approval-requested':'Site · sent for approval', 'approved':'Site · approved', 'rejected':'Site · rejected', 'published':'Site · live',
     'unpublished':'Site · taken down', 'deleted':'Event', 'restored':'Event', 'cloned':'Event', 'content-seeded':'Content',
     'content-added':'Content · added', 'content-changed':'Content · changed', 'content-removed':'Content · removed',
-    'registration-updated':'Registrations', 'registration-deleted':'Registrations', 'leads-imported':'Leads', 'leads-deleted':'Leads'
+    'registration-updated':'Registrations', 'registration-deleted':'Registrations', 'leads-imported':'Leads', 'leads-deleted':'Leads',
+    'registration-approved':'Registrations · approved', 'registration-declined':'Registrations · declined',
+    'form-created':'Form created', 'form-updated':'Form edited', 'form-deleted':'Form deleted', 'form-default':'Default form changed'
   };
   var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
   function histWhen(iso){
@@ -5133,8 +5140,10 @@
             '<option>Allow indexing</option><option>Block indexing (noindex)</option></select></div>' +
           '<div class="field c6"><label>Take offline automatically</label><select class="inp">' +
             '<option>Never</option><option>7 days after the event</option><option>30 days after the event</option></select></div>' +
-          '<div class="field c6"><label>Registration cut-off</label><select class="inp">' +
-            '<option>When the event starts</option><option>24 hours before</option><option>When capacity is reached</option></select></div>' +
+          '<div class="field c6"><label for="vis-cutoff">Registration cut-off</label><select class="inp" id="vis-cutoff" disabled aria-describedby="vis-cutoff-na">' +
+            '<option>Not available yet</option></select>' +
+            '<span class="hint" id="vis-cutoff-na" style="font-size:12px;color:var(--text-muted)">Not available yet. To stop taking registrations, turn off “Registration open” in Settings › ' +
+            '<a href="#settings/form" data-goto="settings/form">Registration forms</a>.</span></div>' +
         '</div>');
   }
 
@@ -5166,43 +5175,149 @@
     });
   }
 
-  function viewSetForm(){
-    var fields = [
-      ['Full name','Text','Required', true],
-      ['Work email','Email','Required', true],
-      ['Mobile number','Phone','Required', true],
-      ['Company','Text','Required', true],
-      ['Designation','Text','Required', true],
-      ['City','Dropdown','Optional', true],
-      ['Industry','Dropdown','Optional', true],
-      ['How did you hear about us?','Dropdown','Optional', false],
-      ['Dietary preference','Radio','Optional', false]
-    ];
-    var rows = fields.map(function(f){
-      return '<div class="sec-row' + (f[3] ? '' : ' off') + '">' +
-        '<span class="grip">' + svg(IC.grip, 16) + '</span>' +
-        '<span class="sn"><b>' + esc(f[0]) + '</b><span>' + esc(f[1]) + '</span></span>' +
-        '<span class="badge ' + (f[2] === 'Required' ? 'b-accent' : 'b-mute') + '">' + esc(f[2]) + '</span>' +
-        '<button class="tgl" type="button" data-rem="f' + esc(f[0]) + '" aria-pressed="' + f[3] + '">' +
-          '<span class="track"><i></i></span>' + (f[3] ? 'On' : 'Off') + '</button>' +
-      '</div>';
-    }).join('');
+  /* ============================================================
+     VIEW : SETTINGS › REGISTRATION FORMS
 
-    return vhead('Registration form', 'What a visitor fills in to register. Fewer fields convert better — 7 is the sweet spot.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Field added">' + svg(IC.plus, 13) + ' Add field</button>') +
-      panelFlush('Form fields', '7 of 9 enabled', '<div>' + rows + '</div>') +
-      panel('Behaviour', '',
+     The event's master switch, capacity and target (settings.registration, saved with the event), and its
+     forms: the one builder (forms-builder.js) the site editor's Forms panel uses too, on the same forms
+     (events/<id>/forms). The builder and this panel are built once per page and put back into the view
+     each time it is drawn, so a form being edited survives anything else on the page redrawing.
+     ============================================================ */
+  var REGF = null;      // { node, builder, ... } once built
+
+  function regSettings(){
+    var r = (EV && EV.settings && EV.settings.registration) || {};
+    return { open: r.open !== false, capacity: r.capacity == null ? '' : String(r.capacity), target: r.target == null ? '' : String(r.target) };
+  }
+
+  function buildRegForms(){
+    var node = document.createElement('div');
+    node.className = 'regforms';
+    node.innerHTML =
+      '<div class="panel"><div class="panel-head"><h3>Registration</h3><span class="sub">For the whole event, every form included</span></div>' +
+      '<div class="panel-body">' +
         '<div class="frow">' +
-          '<div class="field c4"><label>After submitting</label><select class="inp"><option>Show thank-you message</option><option>Redirect to payment</option><option>Redirect to a URL</option></select></div>' +
-          '<div class="field c4"><label>Confirmation email</label><select class="inp"><option>Send immediately</option><option>Do not send</option></select></div>' +
-          '<div class="field c4"><label>Duplicate handling</label><select class="inp"><option>Block duplicate emails</option><option>Allow duplicates</option></select></div>' +
-        '</div>');
+          '<div class="field c12"><label class="fb-switch" for="rg-open">' +
+            '<input type="checkbox" role="switch" id="rg-open" aria-describedby="rg-open-hint">' +
+            '<span class="fb-track" aria-hidden="true"></span><span class="fb-switch-l">Registration open</span></label>' +
+            '<span class="hint" id="rg-open-hint">Turn off to close every form.</span></div>' +
+          '<div class="field c6"><label for="rg-capacity">Capacity</label><input class="inp" id="rg-capacity" type="text" inputmode="numeric" autocomplete="off" placeholder="No limit" aria-describedby="rg-capacity-hint">' +
+            '<span class="hint" id="rg-capacity-hint">When this many registrations are confirmed, new ones join the waitlist. Only forms that count as registrations use it.</span></div>' +
+          '<div class="field c6"><label for="rg-target">Target</label><input class="inp" id="rg-target" type="text" inputmode="numeric" autocomplete="off" placeholder="None" aria-describedby="rg-target-hint">' +
+            '<span class="hint" id="rg-target-hint">The number of registrations you are aiming for. Optional.</span></div>' +
+        '</div>' +
+        '<p class="rg-err" id="rg-err" role="alert" hidden></p>' +
+        '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
+          '<button class="btn btn-primary btn-sm" type="button" id="rg-save" disabled>Save</button>' +
+          '<button class="btn btn-secondary btn-sm" type="button" id="rg-discard" disabled>Discard changes</button>' +
+          '<span id="rg-state" style="font-size:12px;color:var(--text-muted)" role="status"></span>' +
+        '</div>' +
+      '</div></div>' +
+      /* not in a .panel: its overflow would stop the builder's bar and preview staying in view */
+      '<div class="rg-builder" id="rg-builder"></div>' +
+      '<p class="rg-honest">Confirmation emails, WhatsApp messages and paid registration are not available yet.</p>';
+
+    var stored = regSettings();
+    var token = (EV && typeof EV.detailsUpdatedAt === 'string' && EV.detailsUpdatedAt) || (EV && typeof EV.updatedAt === 'string' && EV.updatedAt) || '';
+    var saving = false;
+    function q(id){ return node.querySelector('#' + id); }
+    function current(){ return { open: q('rg-open').checked, capacity: q('rg-capacity').value.trim(), target: q('rg-target').value.trim() }; }
+    function regDirty(){ var c = current(); return c.open !== stored.open || c.capacity !== stored.capacity || c.target !== stored.target; }
+    function paint(){
+      var d = regDirty();
+      q('rg-save').disabled = !d || saving;
+      q('rg-discard').disabled = !d || saving;
+      q('rg-save').textContent = saving ? 'Saving…' : 'Save';
+      q('rg-state').textContent = d ? 'Unsaved changes' : '';
+    }
+    function fill(){
+      q('rg-open').checked = stored.open; q('rg-capacity').value = stored.capacity; q('rg-target').value = stored.target;
+      showErr('');
+      paint();
+    }
+    function showErr(msg, field){
+      var box = q('rg-err');
+      box.textContent = msg || ''; box.hidden = !msg;
+      ['rg-capacity', 'rg-target'].forEach(function(id){ q(id).removeAttribute('aria-invalid'); });
+      if (field) { q(field).setAttribute('aria-invalid', 'true'); q(field).focus(); }
+    }
+    function num(v, label, id){
+      if (v === '') return { value: null };
+      if (!/^\d+$/.test(v) || +v < 1 || +v > 10000000) return { error: label + ' must be a whole number of 1 or more, or left empty.', field: id };
+      return { value: +v };
+    }
+    function saveReg(){
+      if (!regDirty()) return Promise.resolve();
+      var c = current();
+      var cap = num(c.capacity, 'Capacity', 'rg-capacity'), tgt = num(c.target, 'Target', 'rg-target');
+      var bad = cap.error ? cap : tgt.error ? tgt : null;
+      if (bad){ showErr(bad.error, bad.field); return Promise.reject({ invalid: true }); }
+      saving = true; showErr(''); paint();
+      var reg = { open: c.open, capacity: cap.value, target: tgt.value };
+      return C.updateEvent(EV.id, { settings: { registration: reg } }, { ifUpdatedAt: token }).then(function(res){
+        saving = false;
+        token = (res && res.updatedAt) || token;
+        EV.settings = EV.settings || {};
+        EV.settings.registration = Object.assign({}, EV.settings.registration || {}, reg);
+        if (res && res.updatedAt){ EV.updatedAt = res.updatedAt; EV.detailsUpdatedAt = res.updatedAt; }
+        stored = { open: reg.open, capacity: reg.capacity == null ? '' : String(reg.capacity), target: reg.target == null ? '' : String(reg.target) };
+        paint();
+        notify(reg.open ? 'Registration settings saved' : 'Registration settings saved. Every form is now closed.');
+        if (REGF && REGF.builder) REGF.builder.reload();
+      }, function(err){
+        saving = false; paint();
+        if (err && err.status === 409 && err.code === 'stale'){
+          showErr('Someone else changed this event’s settings since this page was opened. Reload the page to see their changes, then make yours again.');
+        } else {
+          showErr(errText(err));
+        }
+        throw err;
+      });
+    }
+    function discardReg(){ fill(); }
+    q('rg-open').addEventListener('change', paint);
+    q('rg-capacity').addEventListener('input', function(){ q('rg-capacity').removeAttribute('aria-invalid'); paint(); });
+    q('rg-target').addEventListener('input', function(){ q('rg-target').removeAttribute('aria-invalid'); paint(); });
+    q('rg-save').addEventListener('click', function(){ saveReg().then(null, function(){ /* shown above */ }); });
+    q('rg-discard').addEventListener('click', function(){ discardReg(); notify('Changes discarded'); });
+    fill();
+
+    var builder = null;
+    if (window.RevampFormsBuilder){
+      builder = RevampFormsBuilder.mount(q('rg-builder'), { eventId: EV.id, core: C, layout: 'wide', usage: null, toast: notify });
+    } else {
+      q('rg-builder').innerHTML = '<p style="color:var(--text-muted)">The forms builder could not be loaded. Reload the page to try again.</p>';
+    }
+    return {
+      node: node, builder: builder, eventId: EV.id,
+      dirty: function(){ return regDirty() || !!(builder && builder.isDirty()); },
+      save: function(){
+        return saveReg().then(function(){ return builder && builder.isDirty() ? builder.save() : null; });
+      },
+      discard: function(){ discardReg(); if (builder) builder.discard(); }
+    };
+  }
+
+  function viewSetForm(){
+    return vhead('Registration forms', 'The forms visitors fill in on your site. Create as many as you need — Register now, Express interest, Join as partner, VIP delegates, or your own.') +
+      '<div id="regforms-slot"></div>';
+  }
+
+  function wireSetForm(){
+    if (!REGF || REGF.eventId !== EV.id) REGF = buildRegForms();
+    var slot = $('regforms-slot');
+    if (slot) slot.appendChild(REGF.node);
+    var formsNow = REGF;
+    LEAVE = {
+      label: 'Registration forms',
+      dirty: function(){ return formsNow.dirty(); },
+      save: function(){ return formsNow.save(); },
+      discard: function(){ formsNow.discard(); }
+    };
   }
 
   function viewSetAdv(){
     var opts = [
-      ['Require approval before registration counts','Every entry goes to a moderation queue first.', false],
-      ['Close registrations automatically at capacity','Stops accepting entries once the target is hit.', true],
       ['Show a live registration counter on the site','Social proof on the hero block.', false],
       ['Collect GST details at payment','Adds GSTIN and billing address to checkout.', true],
       ['Allow calendar download (.ics)','Adds an "Add to calendar" button after registering.', true],
@@ -5217,6 +5332,8 @@
     }).join('');
 
     return vhead('Advanced settings', 'Behaviour switches that change how the event runs, not how it looks.') +
+      '<p style="margin:0 0 14px;font-size:13px;color:var(--text-muted)">Approval, capacity and whether registration is open are set per form and for the event in ' +
+        '<a href="#settings/form" data-goto="settings/form">Settings › Registration forms</a>.</p>' +
       panelFlush('Registration & privacy', '', '<div>' + rows + '</div>');
   }
 
@@ -5323,7 +5440,8 @@
     if (r === 'content/faq') wireFaq();
     if (r === 'content/contact') wireContact();
     if (r === 'settings/visibility') wireVisibility();
-    if (['settings/form','settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
+    if (r === 'settings/form') wireSetForm();
+    if (['settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
 
     paintWriting();
   }

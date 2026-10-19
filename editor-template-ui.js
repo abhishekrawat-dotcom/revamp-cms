@@ -22,8 +22,11 @@
      listSections() -> [{ el, key, type, name, hidden, pinned, canMoveUp, canMoveDown, bound, current }] in page order
      librarySections() -> [{ id, name, snippet, onPage }] the site's own sections that can be added again
      selectSection(el), moveSection(el, toIndex), setHidden(el, hide), duplicateSection(el), deleteSection(el)
-     (asks first), renameSection(el, name), insertSection({ libraryId } | { name, html }, afterEl)
-     addBlock(kind) adds a heading / text / button / image / divider / spacer where the selection is.
+     (asks first), renameSection(el, name), insertSection({ libraryId } | { name, html, plain }, afterEl)
+     addBlock(kind, opts) adds a heading / text / button / image / divider / spacer / form where the selection is
+     (a form: opts.formId, else the owner picks one; opts.section to add to another section than the selected one).
+   Forms (editor-forms.js has the event's forms): formsChanged(), onFormsChange(fn), unlinkForm(formId),
+     placeFormSection(formId, afterEl), revealElement(el).
    Design, for the page's Design panel and style toolbar (every change is one undo step):
      getDesign(key), setDesign(key, value) -> false (and says why) when the site has nothing for that setting
      to act on; designOptions() -> { swatches, fonts: [{ label, stack }], unsupported: { key: reason } };
@@ -70,8 +73,25 @@
      its live view from it — see onChange() */
   var changeListeners = [];
   function pageChanged() {
+    drawFormPreviews(true);
     changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
+  /* An embedded form shows a preview of its fields on the canvas (editor-forms.js). A page put back from an undo
+     step, or a block just added, has none yet: missingOnly draws only those. The preview is never part of a
+     snapshot (editor-canvas.js nodeHtml), so drawing it changes nothing that is recorded. */
+  function drawFormPreviews(missingOnly) {
+    if (!canvas || remounting || !window.RevampEditorForms) return;
+    try { RevampEditorForms.drawPreviews(canvas.doc, missingOnly ? { missingOnly: true } : null); } catch (err) { if (window.console) console.error(err); }
+  }
+  /* the event's forms changed (made, edited, deleted — in the Forms panel or by the AI): the live view of
+     "Edit with AI" draws the page again with them (editor-ai-mode.js) */
+  var formsListeners = [];
+  function formsChanged() {
+    drawFormPreviews(false);
+    formsListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
+  }
+  function formsApi() { return window.RevampEditorForms || null; }
+  function formName(id) { var f = formsApi() && formsApi().get(id); return f ? f.name : ''; }
   // what canvas.restore() and createGenericSection() build the generic sections' CSS from
   function restoreOpts() { return { siteCss: host && host.genericCss ? host.genericCss() : '' }; }
 
@@ -157,6 +177,7 @@
       renderTopbar();
       sectionsChanged();
       designChanged();
+      drawFormPreviews(false);
       /* Preview and Publish stay disabled until the site is mounted AND filled: pressed any earlier they
          would capture the template's own placeholder text. With no event there is nothing to publish to. */
       document.getElementById('btn-publish').hidden = !eventId;
@@ -781,12 +802,15 @@
     return words - listWords <= 600 ? sec : listParent;
   }
   function markEmpty(doc, kind) {
-    /* a Register button is never hidden with an empty section (pages saved before this rule may carry the mark) */
-    Array.prototype.forEach.call(doc.querySelectorAll('a[data-register-cta][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
+    /* a button that opens a form (Register, or any other form) is never hidden with an empty section (pages
+       saved before this rule may carry the mark) */
+    Array.prototype.forEach.call(doc.querySelectorAll('a[data-register-cta][data-rv-nav-empty], a[data-rv-form][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
     Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
       var parent = el.parentNode;
       if (!parent || parent.querySelector(':scope > [data-rv-empty-state]')) return;
       var place = emptyPlaceOf(parent);
+      // a section with a form in it is never hidden as empty: only the empty list is
+      if (place !== parent && place.querySelector('[data-rv-form-embed]')) place = parent;
       place.setAttribute('data-rv-empty', kind);
       var note = doc.createElement('div');
       note.setAttribute('data-rv-empty-state', kind);
@@ -799,7 +823,7 @@
         Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + place.id + '"]'), function (a) {
           /* the menu's links only: a button elsewhere ("Join as partner") still stands for something real, and
              a Register button opens the registration form wherever its address points */
-          if (!a.hasAttribute('data-register-cta') && a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
+          if (!a.hasAttribute('data-register-cta') && !a.hasAttribute('data-rv-form') && a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
         });
       }
     });
@@ -1517,6 +1541,15 @@
     } else if (type === 'image') {
       html += '<button data-action="replace-image" title="Replace image">Replace image</button>' +
         '<button data-action="alt-text" title="Alt text">Alt text</button>' + link;
+    } else if (el.hasAttribute('data-rv-form-embed')) {
+      var hidesTitle = el.getAttribute('data-rv-form-title') === 'hide';
+      var around = formBlockSiblings(el), pos = around.indexOf(el);
+      html += '<button data-action="form-change" title="Show another of this event’s forms here">Change form</button>' +
+        '<button data-action="form-edit" title="Edit this form’s fields in the Forms panel">Edit form</button>' +
+        '<button data-action="form-title" title="' + (hidesTitle ? 'Show the form’s heading above its fields' : 'Leave out the form’s heading (the section has one)') + '">' + (hidesTitle ? 'Show title' : 'Hide title') + '</button>' +
+        '<span class="tpl-tb-sep"></span>' +
+        '<button class="icon-only" data-action="form-earlier" title="Move the form up"' + (pos <= 0 ? ' disabled' : '') + ' aria-label="Move the form up">&#8593;</button>' +
+        '<button class="icon-only" data-action="form-later" title="Move the form down"' + (pos === around.length - 1 ? ' disabled' : '') + ' aria-label="Move the form down">&#8595;</button>';
     }
     var item = repeatItemOf(el);
     if (item) {
@@ -1663,6 +1696,9 @@
       clearAiGenerated(selectedEl);
       commitNow();
       selectElement(clone);
+      if (clone.hasAttribute('data-rv-form-embed')) drawFormPreviews(false);
+    } else if (action === 'form-change' || action === 'form-edit' || action === 'form-title' || action === 'form-earlier' || action === 'form-later') {
+      onFormBlockAction(action.slice(5), selectedEl);
     } else if (action === 'delete') {
       deleteElement(selectedEl);
     } else if (action === 'deselect') {
@@ -1725,6 +1761,8 @@
         Array.prototype.forEach.call(item.querySelectorAll('img[data-rv-field]'), function (img) { img.removeAttribute('src'); });
         Array.prototype.forEach.call(item.querySelectorAll('[data-rv-field][style*="background-image"]'), function (el) { el.style.backgroundImage = ''; });
       });
+      // an embedded form's preview is the editor's drawing, not the section's markup
+      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview]'), function (n) { n.remove(); });
       RevampAuth.authedFetch('/api/redesign-section', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1779,6 +1817,8 @@
   var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-filled'];
   function devSource(sec) {
     var copy = sec.cloneNode(true);
+    // an embedded form's preview is the editor's drawing, not the section's markup
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview]'), function (n) { n.remove(); });
     [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('*'))).forEach(function (n) {
       DEV_MARKS.forEach(function (a) { n.removeAttribute(a); });
       n.classList.remove('ed-selected', 'sec-active', 'rv-in');
@@ -2065,7 +2105,92 @@
     }
   }
 
-  var KIND_NAMES = { text: 'Text', button: 'Button', image: 'Picture', block: 'Block' };
+  var KIND_NAMES = { text: 'Text', button: 'Button', image: 'Picture', block: 'Block', form: 'Form' };
+
+  /* ---------- an embedded form on the page (div.rv-block-form[data-rv-form-embed]) ----------
+     Its toolbar: another form in its place, the form itself in the Forms panel, its heading shown or left out,
+     and a move up or down among what stands beside it. Each is one undo step. */
+  function formBlockSiblings(el) {
+    return el.parentNode ? Array.prototype.filter.call(el.parentNode.children, function (c) {
+      return c.tagName !== 'STYLE' && c.tagName !== 'SCRIPT' && !c.hasAttribute('data-rv-editor') && !/^ai-.*-badge$/.test(c.className || '');
+    }) : [];
+  }
+  function onFormBlockAction(what, el) {
+    var api = formsApi();
+    if (what === 'edit') { if (api) api.openPanel(el.getAttribute('data-rv-form-embed')); return; }
+    if (what === 'change') {
+      if (!api) return;
+      api.pickForm({ title: 'Show another form here', current: el.getAttribute('data-rv-form-embed'), okLabel: 'Show this form' }).then(function (id) {
+        if (!id || !el.isConnected || id === el.getAttribute('data-rv-form-embed')) return;
+        el.setAttribute('data-rv-form-embed', id);
+        clearAiGenerated(el);
+        commitNow();
+        drawFormPreviews(false);
+        if (selectedEl === el) { buildToolbar(el); positionToolbars(); }
+        showToast('This block now shows the form “' + (formName(id) || id) + '”.');
+      });
+      return;
+    }
+    if (what === 'title') {
+      if (el.getAttribute('data-rv-form-title') === 'hide') el.removeAttribute('data-rv-form-title');
+      else el.setAttribute('data-rv-form-title', 'hide');
+      clearAiGenerated(el);
+      commitNow();
+      if (formsApi()) formsApi().drawPreviews(canvas.doc, { only: el.getAttribute('data-rv-form-embed') });
+      buildToolbar(el); positionToolbars();
+      return;
+    }
+    var around = formBlockSiblings(el), at = around.indexOf(el), other = around[at + (what === 'earlier' ? -1 : 1)];
+    if (at === -1 || !other) return;
+    if (what === 'earlier') other.parentNode.insertBefore(el, other); else other.after(el);
+    clearAiGenerated(el);
+    commitNow();
+    buildToolbar(el);
+    el.scrollIntoView({ block: 'nearest' });
+    positionToolbars();
+  }
+
+  /* Every place the page uses a form that is being deleted (forms-builder.js asks first): its buttons open the
+     default form instead, and its embedded copies are removed. One undo step. -> { buttons, embeds } */
+  function unlinkForm(formId) {
+    if (!canvas || remounting || !formId) return { buttons: 0, embeds: 0 };
+    var api = formsApi(), u = api ? api.uses(formId) : { buttons: [], embeds: [] };
+    var buttons = u.buttons.filter(function (a) { return a.getAttribute('data-rv-form') === formId; });
+    if (!buttons.length && !u.embeds.length) return { buttons: 0, embeds: 0 };
+    if (u.embeds.some(function (e) { return e === selectedEl || e.contains(selectedEl); })) deselect();
+    buttons.forEach(function (a) {
+      a.removeAttribute('data-rv-form');
+      a.setAttribute('data-register-cta', '');
+      a.setAttribute('href', '#register');
+    });
+    u.embeds.forEach(function (e) { e.remove(); });
+    commitNow();
+    return { buttons: buttons.length, embeds: u.embeds.length };
+  }
+
+  /* An embedded-form section (the forms spec, §1.5): a heading, a line and the form, after afterEl. */
+  function placeFormSection(formId, afterEl) {
+    var api = formsApi();
+    if (!api || !canvas || remounting) return null;
+    var form = api.get(formId);
+    if (!form) { showToast('That form no longer exists. Choose another.', { kind: 'error' }); return null; }
+    var heading = form.title || form.name;
+    // plain: a form named "Join as partner" is a form, not the section that lists the partners
+    var sec = insertSection({ name: heading, html: api.sectionHtml(form, heading, form.intro || 'Fill in your details below.'), plain: true }, afterEl);
+    if (sec) drawFormPreviews(false);
+    return sec;
+  }
+
+  /* an element the Forms panel points at ("Show on page"): selected and brought into view */
+  function revealElement(el) {
+    if (!canvas || remounting || !el || !el.isConnected || el.ownerDocument !== canvas.doc) return;
+    var editable = el.closest('[data-editable]') || el;
+    if (editable.closest('.is-hidden-sec')) { showToast('It is in a hidden section. Show that section first to see it.'); }
+    if (editable.hasAttribute('data-editable')) selectElement(editable);
+    else { var sec = editable.closest('[data-rv-section]'); if (sec) selectSectionOnly(sec); }
+    editable.scrollIntoView({ block: 'center' });
+    repositionToolbars();
+  }
 
   /* An element that is the label of a repeated item (a card's title, a tile's picture — template.json →
      sections[].repeat) stands for the whole item: deleting only the label would leave an empty card behind. */
@@ -2080,7 +2205,7 @@
   function deleteElement(el) {
     var sec = el.closest('[data-rv-section]');
     var item = repeatItemLabelled(el);
-    var what = item ? 'Item' : (KIND_NAMES[el.getAttribute('data-editable')] || 'Element');
+    var what = item ? 'Item' : el.hasAttribute('data-rv-form-embed') ? KIND_NAMES.form : (KIND_NAMES[el.getAttribute('data-editable')] || 'Element');
     deselect();
     if (item) {
       if (!removeRepeatItem(sec, item)) return;
@@ -2107,7 +2232,16 @@
   function describeLink(a) {
     if (!a) return 'No link yet.';
     var href = (a.getAttribute('href') || '').trim();
-    if (a.hasAttribute('data-register-cta')) return 'Opens the registration form.';
+    if (a.hasAttribute('data-rv-form')) {
+      var named = formName(a.getAttribute('data-rv-form'));
+      if (named) return 'Opens the form “' + named + '”.';
+      if (formsApi() && formsApi().loaded()) return 'Opens a form that no longer exists — choose another.';
+      return 'Opens a form.';
+    }
+    if (a.hasAttribute('data-register-cta')) {
+      var def = formsApi() && formsApi().defaultForm();
+      return def ? 'Opens the default form (“' + def.name + '”).' : 'Opens the default form.';
+    }
     if (!href || href === '#') return 'No link yet.';
     if (href.charAt(0) === '#') {
       var target = canvas.doc.getElementById(href.slice(1));
@@ -2143,7 +2277,7 @@
 
   function linkKindOf(a) {
     var href = a ? (a.getAttribute('href') || '').trim() : '';
-    if (a && a.hasAttribute('data-register-cta')) return 'register';
+    if (a && (a.hasAttribute('data-rv-form') || a.hasAttribute('data-register-cta'))) return 'form';
     if (/^mailto:/i.test(href)) return 'email';
     if (href.length > 1 && href.charAt(0) === '#' && canvas.doc.getElementById(href.slice(1))) return 'section';
     return 'web';
@@ -2161,7 +2295,15 @@
     linkCtx = { el: el, anchor: anchor, range: range, sections: sectionChoices() };
     var href = anchor ? (anchor.getAttribute('href') || '').trim() : '';
     var kind = linkKindOf(anchor);
-    var hasLink = !!(anchor && (href || anchor.hasAttribute('data-register-cta')));
+    var hasLink = !!(anchor && (href || anchor.hasAttribute('data-register-cta') || anchor.hasAttribute('data-rv-form')));
+    /* the event's forms: the default one (whatever it is at the time a visitor clicks), or one by name */
+    var api = formsApi(), forms = api ? api.list() : [], def = api ? api.defaultForm() : null;
+    var chosenForm = anchor && anchor.hasAttribute('data-rv-form') ? anchor.getAttribute('data-rv-form') : '__default';
+    var shortName = function (s) { s = String(s || ''); return s.length > 44 ? s.slice(0, 43) + '…' : s; };
+    var formOptions = '<option value="__default">The default form' + (def ? ' (now: ' + escHtml(shortName(def.name)) + ')' : '') + '</option>' +
+      forms.map(function (f) { return '<option value="' + escHtml(f.id) + '">' + escHtml(shortName(f.name)) + '</option>'; }).join('') +
+      (chosenForm !== '__default' && !forms.some(function (f) { return f.id === chosenForm; })
+        ? '<option value="' + escHtml(chosenForm) + '">' + (api && api.loaded() ? 'A form that no longer exists' : 'The form it opens now') + '</option>' : '');
     linkPop.innerHTML =
       '<h4>Link</h4>' +
       '<span class="tpl-pop-now">' + escHtml(range ? 'Links the selected words.' : describeLink(anchor)) + '</span>' +
@@ -2169,14 +2311,16 @@
         '<option value="web">A web address</option>' +
         '<option value="section">A section on this page</option>' +
         '<option value="email">An email address</option>' +
-        '<option value="register">The registration form</option>' +
+        '<option value="form">A form</option>' +
       '</select></label>' +
+      '<label data-link-row="form">Opens form<select data-link="form">' + formOptions + '</select></label>' +
+      '<span class="tpl-pop-now" data-link-row="form">Visitors who click it get this form in a pop-up on the published site. ' +
+        '<button type="button" class="tpl-pop-link" data-link="manage-forms">Manage forms…</button></span>' +
       '<label data-link-row="web">Web address<input type="text" data-link="web" placeholder="https://example.org/tickets" autocomplete="off" spellcheck="false"></label>' +
       '<label data-link-row="section">Section<select data-link="section">' +
         linkCtx.sections.map(function (c, i) { return '<option value="' + i + '">' + escHtml(c.name) + '</option>'; }).join('') +
       '</select></label>' +
       '<label data-link-row="email">Email address<input type="text" data-link="email" placeholder="name@example.org" autocomplete="off" spellcheck="false"></label>' +
-      '<span class="tpl-pop-now" data-link-row="register">Visitors who click it get the registration form.</span>' +
       '<label class="tpl-pop-check" data-link-row="web"><input type="checkbox" data-link="newtab"> Open in a new tab</label>' +
       '<span class="tpl-pop-error" data-link="error" role="alert" hidden></span>' +
       '<div class="tpl-pop-acts">' +
@@ -2187,6 +2331,7 @@
       '</div>';
     var f = linkField;
     f('kind').value = kind;
+    f('form').value = chosenForm;
     if (kind === 'web') f('web').value = href === '#' ? '' : href;
     if (kind === 'email') f('email').value = href.slice(7).split('?')[0];
     if (kind === 'section') {
@@ -2242,7 +2387,8 @@
     linkPop.addEventListener('input', function () { linkError(''); });
     linkPop.addEventListener('click', function (e) {
       var which = e.target.getAttribute('data-link');
-      if (which === 'cancel') closeLinkPop();
+      if (which === 'manage-forms') { closeLinkPop(); if (formsApi()) formsApi().openPanel(); }
+      else if (which === 'cancel') closeLinkPop();
       else if (which === 'apply') applyLink();
       else if (which === 'remove') removeLink();
     });
@@ -2256,7 +2402,14 @@
   /* the destination the form describes: { href, register, newTab } or { error } */
   function readLinkForm() {
     var kind = linkField('kind').value;
-    if (kind === 'register') return { href: '#register', register: true };
+    if (kind === 'form') {
+      var chosen = linkField('form').value;
+      if (chosen === '__default' || !chosen) return { href: '#register', register: true, form: null };
+      var api = formsApi(), form = api && api.get(chosen);
+      if (!form) return { error: api && api.loaded() ? 'That form no longer exists. Choose another.' : 'The forms are still loading. Try again in a moment.' };
+      // a form that counts as a registration is a Register button too (the nav keeps it, an empty section never hides it)
+      return { href: '#rv-form-' + form.id, register: !!form.countsAsRegistration, form: form.id };
+    }
     if (kind === 'section') {
       var choice = linkCtx.sections[+linkField('section').value];
       if (!choice || !choice.sec.isConnected) return { error: 'That section is no longer on the page. Choose another.' };
@@ -2272,8 +2425,11 @@
     return { href: res.href, newTab: linkField('newtab').checked && /^https?:/i.test(res.href) };
   }
 
+  /* dest: { href, register, form, newTab }. form: the form a click opens in a pop-up (data-rv-form); register: a
+     Register button (data-register-cta) — on its own, the event's default form. Any other link loses both. */
   function writeLink(a, dest) {
     a.setAttribute('href', dest.href);
+    if (dest.form) a.setAttribute('data-rv-form', dest.form); else a.removeAttribute('data-rv-form');
     if (dest.register) a.setAttribute('data-register-cta', ''); else a.removeAttribute('data-register-cta');
     if (dest.newTab) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
     else {
@@ -2329,7 +2485,8 @@
     closeLinkPop();
     commitNow();
     if (reselect !== selectedEl) selectElement(reselect); else { buildToolbar(reselect); positionToolbars(); }
-    showToast(dest.register ? 'It now opens the registration form.' : 'Link set to ' + dest.href);
+    var linkedForm = dest.form ? formName(dest.form) : dest.register ? ((formsApi() && formsApi().defaultForm()) || {}).name : '';
+    showToast(dest.form || dest.register ? (linkedForm ? 'Linked to the form “' + linkedForm + '”.' : 'Linked to the default form.') : 'Link set to ' + dest.href);
   }
 
   function removeLink() {
@@ -2348,6 +2505,7 @@
     } else {
       a.removeAttribute('href');
       a.removeAttribute('data-register-cta');
+      a.removeAttribute('data-rv-form');
       a.removeAttribute('target');
       if (a.getAttribute('rel') === 'noopener') a.removeAttribute('rel');
       commitNow();
@@ -2602,7 +2760,7 @@
       /* A design for something the event keeps records of (speakers, agenda, partners…) is added as the
          section that shows those records, unless the page has one already: a sample with invented people
          in it would stay blank of the event's own. */
-      var recordKind = /^imported-/.test(canvas.template.id || '') ? '' : kindForName(spec.name);
+      var recordKind = spec.plain || /^imported-/.test(canvas.template.id || '') ? '' : kindForName(spec.name);
       if (recordKind && !canvas.doc.querySelector('[data-rv-repeat-template="' + recordKind + '"], [data-rv-auto="' + recordKind + '"]')) {
         Array.prototype.forEach.call(canvas.doc.querySelectorAll('template[data-rv-auto-off="' + recordKind + '"]'), function (t) { t.remove(); });
         el = createAutoSection(recordKind);
@@ -2637,7 +2795,8 @@
     button: { tag: 'a', cls: 'rv-block-button', kind: 'button', text: 'Button', name: 'button' },
     image: { tag: 'img', cls: 'rv-block-image', kind: 'image', name: 'image' },
     divider: { tag: 'hr', cls: 'rv-block-divider', kind: 'block', name: 'divider' },
-    spacer: { tag: 'div', cls: 'rv-block-spacer', kind: 'block', name: 'spacer' }
+    spacer: { tag: 'div', cls: 'rv-block-spacer', kind: 'block', name: 'spacer' },
+    form: { tag: 'div', cls: 'rv-block-form', kind: 'block', name: 'form' }
   };
 
   /* the element a new block follows: the selected one — as a whole, when it sits inside another editable element
@@ -2658,12 +2817,36 @@
     }
   }
 
-  function addBlock(kind) {
+  /* opts (a form only): { formId } the form to embed — without it the owner is asked which; { section } the
+     section to add it to when it is not the one selected (the Forms panel's Place on page) */
+  function addBlock(kind, opts) {
+    opts = opts || {};
     var spec = BLOCKS[kind];
     if (!canvas || remounting || !spec) return null;
-    var sec = activeSectionEl;
+    var sec = opts.section && isLive(opts.section) ? opts.section : activeSectionEl;
     if (!sec || !sec.isConnected) { showToast('Click a section first, then choose what to add to it.'); return null; }
     if (sec.classList.contains('is-hidden-sec')) { showToast('This section is hidden. Show it first, then add to it.'); return null; }
+    if (kind === 'form') {
+      var api = formsApi();
+      if (!api) return null;
+      if (!opts.formId) {
+        api.pickForm({ title: 'Add a form to this section', okLabel: 'Add this form' }).then(function (id) {
+          if (id && isLive(sec)) addBlock('form', { formId: id, section: sec });
+        });
+        return null;
+      }
+      if (editingEl) exitEdit(editingEl);
+      var embed = api.makeEmbed(canvas.doc, opts.formId, !!opts.hideTitle);
+      var at = sec === activeSectionEl ? blockAnchor(sec) : null;
+      if (at) at.after(embed); else contentBox(sec).appendChild(embed);
+      clearAiGenerated(embed);
+      commitNow();
+      selectElement(embed);
+      embed.scrollIntoView({ block: 'nearest' });
+      repositionToolbars();
+      showToast('Added the form “' + (formName(opts.formId) || opts.formId) + '”. Visitors fill it in right here on the page.');
+      return embed;
+    }
     var src = '';
     if (kind === 'image') {
       src = (prompt('Image URL', 'https://') || '').trim();
@@ -3035,7 +3218,7 @@
     if (!nav || isEtNav(nav)) return false;
     var links = Array.prototype.filter.call(nav.querySelectorAll('a[href^="#"]'), function (a) {
       var href = a.getAttribute('href').slice(1), text = (a.textContent || '').replace(/\s+/g, ' ').trim();
-      return href && href !== 'hero' && href !== 'top' && !a.querySelector('img') && !a.hasAttribute('data-register-cta') &&
+      return href && href !== 'hero' && href !== 'top' && !a.querySelector('img') && !a.hasAttribute('data-register-cta') && !a.hasAttribute('data-rv-form') &&
         !/\b(btn|button|cta)\b/i.test(a.className || '') && !/^(register|book|request|apply|nominate|buy)/i.test(text);
     });
     var drop = [];
@@ -3403,28 +3586,146 @@
   /* The chat's own way back from an applied change. It undoes the newest step, so it is withdrawn as soon
      as that step is no longer the AI's change (updateHistoryButtons runs after every recorded step and
      every undo / redo). */
+  /* A change that made forms (the AI's newForms) takes them away again too: the page goes back one step and
+     each form it made is deleted — unless the site saved since uses it, when it is kept and the owner told.
+     A change that made forms and nothing on the page is not tied to the page's steps at all. Undo in the top
+     bar only ever steps the page back: forms are stored with the event, not in the page. */
   var aiUndo = null;
   function syncAiUndo() {
-    if (!aiUndo || aiUndo.ptr === undoPtr) return;
+    if (!aiUndo || aiUndo.formsOnly || aiUndo.ptr === undoPtr) return;
     aiUndo.button.disabled = true;
-    aiUndo.button.title = 'The site has changed since. Use Undo in the top bar to step back.';
+    aiUndo.button.title = 'The site has changed since. Use Undo in the top bar to step back' + (aiUndo.formIds.length ? ', and the Forms panel to delete the forms the AI made.' : '.');
     aiUndo = null;
   }
-  function offerAiUndo(bubble, histEntry, summary) {
+  function offerAiUndo(bubble, histEntry, summary, made) {
+    made = made || { formIds: [], pageChanged: true };
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn btn-secondary btn-sm chat-undo';
     button.textContent = 'Undo this change';
     bubble.appendChild(button);
-    var mine = aiUndo = { ptr: undoPtr, button: button };
+    if (aiUndo && aiUndo.button) {
+      aiUndo.button.disabled = true;
+      aiUndo.button.title = 'A newer change was applied since. Use Undo in the top bar, or the Forms panel.';
+    }
+    var mine = aiUndo = { ptr: undoPtr, button: button, formIds: made.formIds || [], formsOnly: !made.pageChanged };
     button.addEventListener('click', function () {
       deselect();
       flush();                          // anything still pending becomes its own step, and withdraws this offer
       if (aiUndo !== mine) return;
       aiUndo = null;
-      undo();
-      bubble.textContent = 'Undone — the site is back to how it was.';
-      if (histEntry) histEntry.text = 'Proposed: ' + summary + ' (applied, then undone)';
+      button.disabled = true;
+      if (!mine.formsOnly) undo();
+      var said = [mine.formsOnly ? 'Undone.' : 'Undone — the site is back to how it was.'];
+      if (!mine.formIds.length || !formsApi()) {
+        bubble.textContent = said.join(' ');
+        if (histEntry) histEntry.text = 'Proposed: ' + summary + ' (applied, then undone)';
+        return;
+      }
+      bubble.textContent = said.join(' ') + ' Deleting the forms it made…';
+      formsApi().deleteCreated(mine.formIds).then(function (results) {
+        results.forEach(function (r) {
+          if (!r.kept) said.push('The form “' + r.name + '” was deleted.');
+          else if (r.inUse) said.push('The form “' + r.name + '” was kept because the saved site uses it.');
+          else said.push('The form “' + r.name + '” could not be deleted (' + (r.error || 'please try again') + '); delete it in the Forms panel.');
+        });
+        bubble.textContent = said.join(' ');
+        if (histEntry) histEntry.text = 'Proposed: ' + summary + ' (applied, then undone)';
+      });
+    });
+  }
+
+  /* ---------- the AI's forms on the page (ctaLinks, formEmbeds of POST /api/chat-edit) ---------- */
+  /* the button of a section whose label is `text` (as the AI was shown it: whitespace collapsed, any case) */
+  function buttonByLabel(sec, text) {
+    if (!sec) return null;
+    var want = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!want) return null;
+    var hit = visibleTextNodes(sec, '[data-editable="button"]').filter(function (node) {
+      return !node.parentElement.closest('[data-editable="text"]') && readable(node).toLowerCase() === want;
+    })[0];
+    return hit ? hit.parentElement.closest('[data-editable="button"]') : null;
+  }
+  /* the words of a button replaced, keeping its markup (an icon beside the words stays) */
+  function setButtonWords(el, text) {
+    var walker = canvas.doc.createTreeWalker(el, 4), node, first = null;
+    while ((node = walker.nextNode())) {
+      if (!/\S/.test(node.nodeValue)) continue;
+      if (!first) { first = node; node.nodeValue = text; } else node.nodeValue = '';
+    }
+    if (!first) el.appendChild(canvas.doc.createTextNode(text));
+  }
+  /* A new button in a section, made like the section's main one (its Register button, else its first button)
+     and placed right after it; a section with no button gets the Add panel's plain button. */
+  function newButtonIn(sec, text) {
+    var primary = sec.querySelector('a[data-register-cta]') ||
+      Array.prototype.filter.call(sec.querySelectorAll('a.btn, a.button, a[class*="btn"], a.hero-btn'), isShown)[0] || null;
+    if (primary && !primary.closest('[data-rv-form-preview]')) {
+      var copy = canvas.copyOf(primary);
+      copy.removeAttribute('id');
+      Array.prototype.forEach.call(copy.querySelectorAll('[id]'), function (n) { n.removeAttribute('id'); });
+      setButtonWords(copy, text);
+      primary.after(copy);
+      primary.after(canvas.doc.createTextNode(' '));
+      canvas.adoptElement(copy);
+      canvas.retag(copy);
+      return copy;
+    }
+    var a = canvas.doc.createElement('a');
+    a.className = 'rv-block-button';
+    a.setAttribute('data-editable', 'button');
+    a.textContent = text;
+    contentBox(sec).appendChild(a);
+    canvas.ensureBlockStyle();
+    return a;
+  }
+  /* ids: the AI's refs -> the ids of the forms just made. Fills changedEls / done / said like the rest of Apply. */
+  function applyFormOps(ids, ctaLinks, formEmbeds, changedEls, done, said) {
+    var api = formsApi();
+    if (!api) return;
+    var idOf = function (ref) { return ids[ref] || ref; };
+    ctaLinks.forEach(function (c) {
+      var sec = canvas.sectionByKey(c.sectionId), form = api.get(idOf(c.form)), label = sectionLabel(c.sectionId);
+      if (!isLive(sec) || !form) { said.push('A button in “' + label + '” was not linked: ' + (form ? 'the section is no longer on the page.' : 'its form does not exist.')); return; }
+      var dest = { href: '#rv-form-' + form.id, register: !!form.countsAsRegistration, form: form.id };
+      if (c.buttonText) {
+        var el = buttonByLabel(sec, c.buttonText);
+        if (!el) { said.push('“' + c.buttonText + '” in “' + label + '” is no longer on the page, so it was not linked.'); return; }
+        var a = anchorOf(el) || (el.tagName === 'A' ? el : linkHost(el));
+        writeLink(a, dest);
+        clearAiGenerated(a);
+        changedEls.push(a);
+        done.push('“' + c.buttonText + '” in “' + label + '” opens “' + form.name + '”');
+      } else {
+        var text = String(c.newButtonLabel).replace(/\s+/g, ' ').trim().slice(0, 40);
+        var made = newButtonIn(sec, text);
+        writeLink(made, dest);
+        clearAiGenerated(made);
+        changedEls.push(made);
+        done.push('new button “' + text + '” in “' + label + '” opens “' + form.name + '”');
+      }
+    });
+    formEmbeds.forEach(function (e) {
+      var form = api.get(idOf(e.form));
+      if (!form) { said.push('A form was not put on the page: it does not exist.'); return; }
+      if (e.sectionId) {
+        var sec = canvas.sectionByKey(e.sectionId);
+        if (!isLive(sec)) { said.push('“' + form.name + '” was not put on the page: its section is no longer there.'); return; }
+        var embed = api.makeEmbed(canvas.doc, form.id, false);
+        contentBox(sec).appendChild(embed);
+        clearAiGenerated(embed);
+        changedEls.push(embed);
+        done.push('“' + form.name + '” put in “' + sectionLabel(e.sectionId) + '”');
+        return;
+      }
+      var after = e.afterSectionId ? canvas.sectionByKey(e.afterSectionId) : null;
+      var heading = String(e.heading || form.title || form.name).replace(/\s+/g, ' ').trim().slice(0, 80);
+      var intro = String(e.intro || form.intro || 'Fill in your details below.').trim().slice(0, 300);
+      var secEl = canvas.createGenericSection(heading, api.sectionHtml(form, heading, intro), restoreOpts().siteCss);
+      canvas.insertSection(secEl, isLive(after) ? after : null);
+      canvas.retag(secEl);
+      changedEls.push(secEl);
+      done.push('new section “' + heading + '” with the form “' + form.name + '”');
     });
   }
 
@@ -3471,6 +3772,50 @@
       }))
       .concat(edits.map(function (e) { return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction) + (picturesFor(e).length ? ' <em>(uses attached picture ' + picturesFor(e).map(function (x) { return x.n; }).join(', ') + ')</em>' : ''); }))
       .concat(additions.map(function (n) { return 'New section &ldquo;' + escHtml(n.name) + '&rdquo;' + (n.afterSectionId && known(n.afterSectionId) ? ' after ' + escHtml(sectionLabel(n.afterSectionId)) : '') + ' — ' + escHtml(n.instruction); }));
+
+    /* forms: new ones made first, then buttons that open them and forms put in the page (the server checked
+       the shapes; what this page can no longer find is said, never silently left out) */
+    var fApi = formsApi();
+    var newForms = fApi ? (result.newForms || []).filter(function (n) {
+      return n && n.ref && n.form && String(n.form.name || '').trim() && Array.isArray(n.form.fields) && n.form.fields.length;
+    }) : [];
+    var refNames = {};
+    newForms.forEach(function (n) { refNames[n.ref] = String(n.form.name).trim(); });
+    var nameOfForm = function (ref) { return refNames[ref] || (fApi && formName(ref)) || ''; };
+    var ctaLinks = [], formEmbeds = [];
+    (fApi ? result.ctaLinks || [] : []).forEach(function (c) {
+      if (!c || !known(c.sectionId)) { if (c) notes.push('A button for a form in a section that is no longer on the page'); return; }
+      if (!nameOfForm(c.form)) { notes.push(escHtml(sectionLabel(c.sectionId)) + ' — a button for a form that does not exist'); return; }
+      if (c.buttonText && !buttonByLabel(canvas.sectionByKey(c.sectionId), c.buttonText)) {
+        notes.push(escHtml(sectionLabel(c.sectionId)) + ' — there is no button &ldquo;' + escHtml(c.buttonText) + '&rdquo; to link');
+        return;
+      }
+      if (!c.buttonText && !String(c.newButtonLabel || '').trim()) return;
+      ctaLinks.push(c);
+    });
+    (fApi ? result.formEmbeds || [] : []).forEach(function (e) {
+      if (!e) return;
+      if (!nameOfForm(e.form)) { notes.push('A form to embed that does not exist'); return; }
+      if (e.sectionId && !known(e.sectionId)) { notes.push('The form &ldquo;' + escHtml(nameOfForm(e.form)) + '&rdquo; — the section to put it in is no longer on the page'); return; }
+      formEmbeds.push(e);
+    });
+    if (!fApi && ((result.newForms || []).length || (result.ctaLinks || []).length || (result.formEmbeds || []).length)) {
+      notes.push('Forms — this editor could not load the forms part, so forms were left out. Reload the editor and ask again');
+    }
+    items = items.concat(newForms.map(function (n) {
+      var f = n.form, bits = [(f.fields.length) + ' field' + (f.fields.length === 1 ? '' : 's')];
+      if (f.needsApproval) bits.push('needs approval');
+      if (f.countsAsRegistration) bits.push('counts as a registration');
+      return 'New form &ldquo;' + escHtml(f.name) + '&rdquo; — ' + escHtml(bits.join(', '));
+    })).concat(ctaLinks.map(function (c) {
+      var where = escHtml(sectionLabel(c.sectionId)) + ': ';
+      return c.buttonText ? where + '&ldquo;' + escHtml(c.buttonText) + '&rdquo; opens &ldquo;' + escHtml(nameOfForm(c.form)) + '&rdquo;'
+        : where + 'new button &ldquo;' + escHtml(String(c.newButtonLabel).trim().slice(0, 40)) + '&rdquo; opens &ldquo;' + escHtml(nameOfForm(c.form)) + '&rdquo;';
+    })).concat(formEmbeds.map(function (e) {
+      if (e.sectionId) return escHtml(sectionLabel(e.sectionId)) + ': embed the form &ldquo;' + escHtml(nameOfForm(e.form)) + '&rdquo;';
+      return 'New section ' + (e.afterSectionId && known(e.afterSectionId) ? 'after &ldquo;' + escHtml(sectionLabel(e.afterSectionId)) + '&rdquo;' : 'before the footer') +
+        ' with the form &ldquo;' + escHtml(nameOfForm(e.form)) + '&rdquo;';
+    }));
     var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
     var usable = items.length > 0;
 
@@ -3526,6 +3871,30 @@
       deselect();
       flush();                          // what was pending stays its own undo step
       closeProposals(me);
+      if (!newForms.length) { applyPage({ ids: {}, forms: [] }); return; }
+      /* the forms first: a button or an embed can only point at a form that exists. If one cannot be made,
+         those already made are deleted again and nothing on the page changes. */
+      var formState = card.querySelector('.cp-state');
+      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      aiWorking = true;
+      formState.textContent = newForms.length === 1 ? 'Creating the form “' + refNames[newForms[0].ref] + '”…' : 'Creating ' + newForms.length + ' forms…';
+      formState.hidden = false;
+      fApi.createForms(newForms).then(function (made) {
+        aiWorking = false;
+        if (!canvas || remounting) {
+          close('The forms were created, but the page was being reloaded, so nothing on it changed. Find them in the Forms panel.');
+          formsChanged();
+          return;
+        }
+        applyPage(made);
+      }, function (err) {
+        aiWorking = false;
+        close('Not applied: ' + ((err && err.message) || 'a form could not be created.') + ' Nothing on the site changed.');
+        if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (not applied: a form could not be created)';
+      });
+    });
+    function applyPage(made) {
+      var formIds = (made.forms || []).map(function (f) { return f.id; });
       var leftOut = applyAiDesignToCanvas(canvas, design);
       var changedEls = [];
       textEdits.forEach(function (t) {
@@ -3579,9 +3948,27 @@
       aiWorking = jobs.length > 0;
       step(0).then(function () {
         aiWorking = false;
+        // buttons that open a form, and forms put in the page: after the sections are written, in the same step
+        if (ctaLinks.length || formEmbeds.length) applyFormOps(made.ids || {}, ctaLinks, formEmbeds, changedEls, done, said);
         var redraw = changedEls.some(function (el) { return el.querySelector && el.querySelector('[data-rv-repeat-template]'); });
         var changed = commitNow();
         close('');
+        if (formIds.length || ctaLinks.length || formEmbeds.length) {
+          drawFormPreviews(false);
+          if (fApi) fApi.afterAiChange();
+          formsChanged();
+        }
+        if (formIds.length) {
+          done.unshift((formIds.length === 1 ? 'Form “' + made.forms[0].name + '” created' : formIds.length + ' forms created: ' + made.forms.map(function (f) { return '“' + f.name + '”'; }).join(', ')) +
+            (ctaLinks.length || formEmbeds.length ? '' : ' — it is not on the page yet: place it from the Forms panel, or link a button to it'));
+        }
+        if (!changed && formIds.length) {
+          var formsBubble = appendChatMsg('ai', ['Applied.'].concat([done.join('; ') + '.']).concat(said).join(' '));
+          if (histEntry) histEntry.text = 'Proposed and applied: ' + result.summary + ' (' + done.join('; ') + ')';
+          offerAiUndo(formsBubble, histEntry, result.summary, { formIds: formIds, pageChanged: false });
+          chatThread().scrollTop = chatThread().scrollHeight;
+          return;
+        }
         // a setting this site has nothing for is said, not counted as applied
         if (leftOut.length) {
           said.push('Not changed: ' + leftOut.map(function (k) { return designLabel(k) + ' — ' + (unsupportedReason(k) || 'nothing on the page changed for it.'); }).join(' '));
@@ -3602,17 +3989,18 @@
           canvas.openItem(first);
           canvas.scrollToSection(isShown(around) ? around : first.closest('[data-rv-section]'));
         }
-        var bubble = appendChatMsg('ai', ['Applied.'].concat(done.length ? [done.join('; ') + '.'] : []).concat(said).join(' '));
+        var bubble = appendChatMsg('ai', ['Applied.'].concat(done.length ? [done.join('; ') + '.'] : []).concat(said)
+          .concat(formIds.length ? ['Undo in the top bar does not remove forms the AI created; use ‘Undo this change’ or the Forms panel.'] : []).join(' '));
         if (histEntry) {
           histEntry.text = 'Proposed and applied: ' + result.summary +
             (Object.keys(appliedDesign).length ? ' (design: ' + JSON.stringify(appliedDesign) + ')' : '') +
             (done.length ? ' (' + done.join('; ') + ')' : '') + (said.length ? ' (not done: ' + said.join(' ') + ')' : '');
         }
-        offerAiUndo(bubble, histEntry, result.summary);
+        offerAiUndo(bubble, histEntry, result.summary, { formIds: formIds, pageChanged: true });
         chatThread().scrollTop = chatThread().scrollHeight;
         if (redraw) drawRecords(false);         // the event's records, drawn into what was rewritten
       });
-    });
+    }
     return usable;
   }
 
@@ -3848,7 +4236,9 @@
       }
       fetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent })
+        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
+          // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
+          forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [] })
       })
         .then(function (res) {
           return res.text().then(function (text) {
@@ -4164,6 +4554,12 @@
     listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
     setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,
     insertSection: insertSection, addBlock: addBlock,
+    /* forms (editor-forms.js): formsChanged() after the event's forms changed — previews drawn again and the
+       live view told (onFormsChange(fn)); unlinkForm(id) before a form is deleted; placeFormSection(id, afterEl);
+       revealElement(el) selects and shows a button or embed */
+    formsChanged: formsChanged,
+    onFormsChange: function (fn) { if (typeof fn === 'function') formsListeners.push(fn); },
+    unlinkForm: unlinkForm, placeFormSection: placeFormSection, revealElement: revealElement,
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers,
     /* for editor-ai-mode.js ("Edit with AI" live view): the mounted canvas (null while there is none),
        onChange(fn) after every change to the page, and leaveEditing() — stops typing in place and lets go of the

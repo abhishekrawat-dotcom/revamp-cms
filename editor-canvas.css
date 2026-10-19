@@ -73,3 +73,16 @@ html.show-ai-markers [data-ai-skipped] > .ai-skip-badge{ display:flex; }
   background:#E9E2E0; color:#756865;
 }
 html.show-ai-markers [data-ai-generated] .ai-media-skip-badge{ display:flex; }
+
+/* An embedded form (div.rv-block-form[data-rv-form-embed], editor-forms.js): in the editor it shows a preview of
+   its fields that cannot be filled in ([data-rv-form-preview], never saved). Its no-JavaScript line is for the
+   published page only, so it is kept out of sight here by this rule, never by an attribute that would be saved.
+   A click anywhere on the preview selects the block: its controls, which are disabled, would otherwise swallow it. */
+html[data-rv-editing] .rv-block-form [data-rv-form-fallback]{ display:none !important; }
+html[data-rv-editing] .rv-block-form{ display:block; min-height:56px; position:relative; }
+html[data-rv-editing] [data-rv-form-preview]{ pointer-events:none; user-select:none; }
+html[data-rv-editing] [data-rv-form-preview] *{ pointer-events:none !important; }
+html[data-rv-editing] .rv-form-missing{ margin:8px 0; padding:12px 14px; border:1px dashed rgba(128,128,128,.7); border-radius:8px; font:600 13px/1.5 Inter,Arial,sans-serif; color:inherit; opacity:.9; }
+html[data-rv-editing] .rv-form-plain{ margin:8px 0; padding:12px 14px; border:1px dashed rgba(128,128,128,.6); border-radius:8px; font:500 13px/1.5 Inter,Arial,sans-serif; color:inherit; }
+html[data-rv-editing] .rv-form-plain b{ display:block; margin-bottom:4px; }
+html[data-rv-editing] .rv-form-plain ul{ margin:0; padding-left:18px; }

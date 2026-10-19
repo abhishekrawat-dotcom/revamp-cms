@@ -106,6 +106,8 @@
     if (SKIP[el.tagName.toUpperCase()]) return;
     var forced = el.getAttribute('data-ed');
     if (forced === 'none') return;
+    /* an embedded form is one block: selected, moved and deleted whole; what it holds is not text to type in */
+    if (el.hasAttribute('data-rv-form-embed')) { mark(el, 'block'); return; }
     if (forced) { mark(el, forced); if (forced !== 'image') descend(el, true); return; }
     // already marked — a copy of a tagged section, or one of the editor's generic sections, which carry markers
     var marked = el.getAttribute('data-editable');
@@ -1246,11 +1248,17 @@
       return c;
     }
 
+    /* An embedded form's preview (editor-forms.js) is the editor's own drawing, redrawn whenever the form
+       changes: it is never part of a snapshot, so drawing it is not an undo step and does not make the page
+       "unsaved". */
+    var FORM_PREVIEW = '[data-rv-form-preview]';
     function nodeHtml(n) {
       if (ownsCss && n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
       var isSection = n.hasAttribute('data-rv-section');
-      if (!n.matches(TRANSIENT) && !n.querySelector(TRANSIENT) && !(isSection && hasStray(n))) return n.outerHTML;
+      var previews = !!n.querySelector(FORM_PREVIEW);
+      if (!previews && !n.matches(TRANSIENT) && !n.querySelector(TRANSIENT) && !(isSection && hasStray(n))) return n.outerHTML;
       var c = stripTransient(n.cloneNode(true));
+      if (previews) c.querySelectorAll(FORM_PREVIEW).forEach(function (p) { p.remove(); });
       if (isSection) closeStray(c);
       return c.outerHTML;
     }
