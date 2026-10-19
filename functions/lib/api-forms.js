@@ -246,8 +246,13 @@ function handleFormsCreate(req, res) {
             var checked = forms.cleanFormInput(value, { creating: true });
             if (checked.error) throw httpError(400, checked.error, { field: checked.field || undefined });
             /* "register" is the original form's id: only that form, or one made from its template while the
-               event has no form of that id, may have it */
-            var taken = mayUseRegister ? ids : ids.concat([forms.DEFAULT_FORM_ID]);
+               event has no form of that id, may have it. Nor is a new form given the id of a deleted one that
+               still has responses (the event's per-form totals name every form that ever had one): its
+               responses, its totals and "one response per email" would carry over to the new form. */
+            var taken = mayUseRegister ? ids.slice() : ids.concat([forms.DEFAULT_FORM_ID]);
+            var answered = isObj(ev.counters) && isObj(ev.counters.forms) ? Object.keys(ev.counters.forms) : [];
+            if (!shared.hasAudienceCounters(ev) && ids.indexOf(forms.DEFAULT_FORM_ID) === -1) answered.push(forms.DEFAULT_FORM_ID);
+            answered.forEach(function (k) { if (taken.indexOf(k) === -1) taken.push(k); });
             var id = forms.uniqueId(suggestion, taken, '-');
             var order = list.reduce(function (m, f) { return Math.max(m, f.order); }, -1) + 1;
             var doc = storedDoc(id, checked.value, { order: order, rev: 1, createdAt: now, createdBy: actor, updatedAt: now, updatedBy: actor });

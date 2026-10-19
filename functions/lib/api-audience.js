@@ -317,7 +317,8 @@ function addDelta(into, c, sign) {
   Object.keys(c).forEach(function (k) {
     if (k !== 'forms') { into[k] = (into[k] || 0) + sign * c[k]; return; }
     Object.keys(c.forms).forEach(function (id) {
-      var f = into.forms[id] || (into.forms[id] = { n: 0, pending: 0 });
+      // an own key only: a form id is never looked up on what every object inherits
+      var f = Object.prototype.hasOwnProperty.call(into.forms, id) ? into.forms[id] : (into.forms[id] = { n: 0, pending: 0 });
       f.n += sign * (c.forms[id].n || 0);
       f.pending += sign * (c.forms[id].pending || 0);
     });
@@ -964,7 +965,7 @@ function storeRegistrations(fb, eventId, items) {
       if (!settings.open) throw registerError(403, CLOSED_MESSAGE, 'closed');
       if (!hasAudienceCounters(ev)) throw NEEDS_COUNTERS;
 
-      var formsById = {}, lazy = false;
+      var formsById = Object.create(null), lazy = false;
       formIds.forEach(function (id, i) {
         var snap = first[2 + i];
         if (snap.exists) formsById[id] = forms.storedForm(id, snap.data());
@@ -991,7 +992,7 @@ function storeRegistrations(fb, eventId, items) {
         })).then(function (dups) {
           var now = new Date(), nowIso = now.toISOString(), day = dayKey(now.getTime());
           var confirmed = num(ev.counters.confirmed), delta = { forms: {} }, counted = 0, submitted = 0, newLoose = false;
-          var stored = first[1].exists ? (first[1].data() || {}) : {}, agg = {}, aggAdded = {}, seen = {};
+          var stored = first[1].exists ? (first[1].data() || {}) : {}, agg = {}, aggAdded = {}, seen = Object.create(null);
           AGG_DIMS.forEach(function (d) { agg[d] = Object.assign({}, isObj(stored[d]) ? stored[d] : {}); });
 
           var results = plans.map(function (p, i) {

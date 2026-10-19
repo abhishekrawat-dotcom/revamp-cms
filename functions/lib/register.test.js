@@ -57,6 +57,9 @@ ok(eq(d(counted, Object.assign({}, counted, { status: 'waitlist' })), { forms: {
 ok(eq(d(counted, Object.assign({}, counted, { checkedInAt: '2026-10-19T10:00:00.000Z' })), { forms: {}, checkedIn: 1 }), 'checked in');
 var inAndCancelled = Object.assign({}, counted, { checkedInAt: 'x' });
 ok(eq(d(inAndCancelled, Object.assign({}, counted, { status: 'cancelled', checkedInAt: null })), { forms: {}, confirmed: -1, checkedIn: -1, cancelled: 1 }), 'check-in undone and cancelled at once');
+var ctor = { formId: 'constructor', counts: false, status: 'confirmed' };
+ok(eq(d(null, ctor), { forms: { constructor: { n: 1 } }, submissions: 1 }), 'a form id that every object inherits ("constructor") is still counted', JSON.stringify(d(null, ctor)));
+ok(typeof Object.n === 'undefined', 'counting it touches nothing every object shares');
 ok(eq(d(Object.assign({}, interest, { checkedInAt: 'x' }), null), { forms: { 'express-interest': { n: -1 } }, submissions: -1 }), 'an uncounted response never moved checkedIn');
 ok(eq(d(counted, counted), { forms: {} }), 'no change: nothing moves');
 

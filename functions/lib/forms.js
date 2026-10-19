@@ -133,14 +133,18 @@ function slugify(text, sep) {
   return trimId(s.slice(0, 40), sep);
 }
 function trimId(s, sep) { while (s.length && s.charAt(s.length - 1) === sep) s = s.slice(0, -1); return s; }
-/* base, else base-2, base-3 … (base_2 … for a field), never longer than 40 characters */
+/* An id that is also the name of something every plain object already has ("constructor"): looked up in an
+   object built as a map ({}[id]) it finds that instead of nothing, so per-form totals, error maps and the
+   AI's references would silently go wrong. No form or field is given one. */
+function isReservedId(id) { return typeof id === 'string' && id in Object.prototype; }
+/* base, else base-2, base-3 … (base_2 … for a field), never longer than 40 characters, never a reserved id */
 function uniqueId(base, taken, sep) {
   sep = sep === '_' ? '_' : '-';
   var t = Array.isArray(taken) ? taken : Object.keys(taken || {});
-  if (t.indexOf(base) === -1) return base;
+  if (t.indexOf(base) === -1 && !isReservedId(base)) return base;
   for (var n = 2; n < 1000; n++) {
     var suffix = sep + n, cand = trimId(base.slice(0, 40 - suffix.length), sep) + suffix;
-    if (t.indexOf(cand) === -1) return cand;
+    if (t.indexOf(cand) === -1 && !isReservedId(cand)) return cand;
   }
   return trimId(base.slice(0, 30), sep) + sep + crypto.randomBytes(4).toString('hex');
 }
@@ -272,6 +276,7 @@ function cleanFormInput(input, opts) {
     if (typeof input.id !== 'string' || !FORM_ID_RE.test(input.id)) {
       return fail('A form id is lower-case letters, digits and hyphens, starting with a letter (at most 40).', 'id');
     }
+    if (opts.creating && isReservedId(input.id)) return fail('"' + input.id + '" cannot be a form id. Choose another.', 'id');
     if (!opts.creating && opts.formId && input.id !== opts.formId) return fail('A form’s id cannot be changed.', 'id');
     if (opts.creating) out.id = input.id;
   }
@@ -341,6 +346,7 @@ function cleanFields(list) {
       if (typeof f.id !== 'string' || !FIELD_ID_RE.test(f.id)) {
         return fail('The id of “' + label + '” must be lower-case letters, digits and underscores, starting with a letter (at most 40).', where + '.id');
       }
+      if (isReservedId(f.id)) return fail('"' + f.id + '" cannot be a field id. Choose another.', where + '.id');
       if (given.indexOf(f.id) !== -1) return fail('Two fields have the same id ("' + f.id + '").', where + '.id');
       given.push(f.id);
       out.id = f.id;
@@ -744,7 +750,7 @@ function cleanAiFormOps(parsed, payload) {
   var existing = (Array.isArray(payload.forms) ? payload.forms : []).filter(function (f) { return isObj(f) && FORM_ID_RE.test(String(f.id || '')); })
     .map(function (f) { return { id: f.id, name: line(f.name, TEXT.name) || f.id, title: '' }; });
   var existingIds = existing.map(function (f) { return f.id; });
-  var taken = existingIds.slice(), refs = {}, made = [];
+  var taken = existingIds.slice(), refs = Object.create(null), made = [];
 
   (Array.isArray(parsed.newForms) ? parsed.newForms : []).forEach(function (n, i) {
     if (!isObj(n)) return;
@@ -834,7 +840,7 @@ module.exports = {
   FIELD_TYPES, FIELD_TYPE_LABELS, OPTION_TYPES, PURPOSES, MAPPED_FIELDS, MAPPED_TYPES, LOCKED_FIELDS, COUNTRIES,
   FORM_TEMPLATES, TEMPLATE_BY_ID, FIELD_PRESETS, LIMITS, FORM_ID_RE, FIELD_ID_RE, DEFAULT_FORM_ID, FORMS_RUNTIME_V, EMAIL_RE,
   DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, AI_LIMITS,
-  slugify, uniqueId, cleanFormInput, legacyRegistration, legacyDefaultForm, storedForm, byOrder, resolveDefaultFormId,
+  slugify, uniqueId, isReservedId, cleanFormInput, legacyRegistration, legacyDefaultForm, storedForm, byOrder, resolveDefaultFormId,
   publicForm, publicFormsPayload, isFull, validateAnswers, cleanAnswer, firstFieldError, regDocId, planStatus, statusLabel,
   formUsage, csvEscape, cleanAiForm, cleanAiFormOps, line, multiline, isoOf
 };

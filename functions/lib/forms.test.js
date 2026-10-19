@@ -318,6 +318,19 @@ var okSettings = cs({ registration: { open: false, capacity: 100, target: null }
 ok(!okSettings.error && eq(okSettings.value.registration, { open: false, capacity: 100, target: null }), 'settings: open, capacity, target are accepted', JSON.stringify(okSettings));
 var merged = hooks.mergeSettings({ registration: { open: true, capacity: 5, defaultFormId: 'vip', fields: { city: { show: true } }, successMessage: 'Old' } }, { registration: { open: false } });
 ok(eq(merged.registration, { open: false, capacity: 5, defaultFormId: 'vip', fields: { city: { show: true } }, successMessage: 'Old' }), 'a settings PATCH keeps the default form and the original settings', JSON.stringify(merged));
+/* ---------- ids an object already has ("constructor") are never given out ---------- */
+ok(F.isReservedId('constructor') && !F.isReservedId('register') && !F.isReservedId('vip-delegates'), 'reserved ids: "constructor" only among valid ids');
+ok(F.uniqueId('constructor', [], '-') === 'constructor-2', 'uniqueId skips "constructor" for a form', F.uniqueId('constructor', [], '-'));
+ok(F.uniqueId('constructor', ['constructor_2'], '_') === 'constructor_3', 'uniqueId skips "constructor" for a field', F.uniqueId('constructor', ['constructor_2'], '_'));
+var ctorForm = F.cleanFormInput(form([fld('', 'text', 'Constructor')], { name: 'Constructor' }), { creating: true });
+ok(!ctorForm.error && ctorForm.value.fields[2].id === 'constructor_2', 'a field labelled "Constructor" gets "constructor_2"', JSON.stringify(ctorForm).slice(0, 300));
+refused(form([fld('constructor', 'text', 'Builder')]), 'a field id "constructor"', 'fields.2.id');
+refused(Object.assign(form(), { id: 'constructor' }), 'a form id "constructor"', 'id');
+var ctorAi = F.cleanAiFormOps({ newForms: [{ ref: 'constructor', name: 'Constructor', template: 'blank', fields: [] }],
+  ctaLinks: [{ sectionId: 'hero', buttonText: '', newButtonLabel: 'Go', form: 'toString' }] }, { sections: [{ id: 'hero', buttons: [] }], forms: [] });
+ok(ctorAi.newForms.length === 1 && ctorAi.newForms[0].form.id === 'constructor-2', 'an AI form named "Constructor" gets "constructor-2"', JSON.stringify(ctorAi.newForms.map(function (m) { return m.form.id; })));
+ok(ctorAi.ctaLinks.length === 0, 'an AI link to "toString" (inherited, not a form) is left out', JSON.stringify(ctorAi.ctaLinks));
+
 var access = require('./access');
 ok(access.isPublic({ method: 'GET', headers: {} }, '/api/public/forms') === true, '/api/public/forms is public');
 ok(access.isPublic({ method: 'GET', headers: {} }, '/api/event/forms') === false, '/api/event/forms is not');
