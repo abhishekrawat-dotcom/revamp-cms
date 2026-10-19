@@ -114,7 +114,12 @@ function main() {
     files = files.filter(function (f) { if (seen[f.name]) return false; seen[f.name] = 1; return true; });
     var index = pictures.indexFromListing(fb.bucket.name, files.map(function (f) { return { name: f.name, md5Hash: f.metadata && f.metadata.md5Hash }; }));
     var originals = files.filter(function (f) { return inScope(f.name); });
-    var todo = originals.filter(function (f) { return !index.entries[f.name]; });
+    /* a picture with no copies, or with only some of them (an upload of the others failed half-way: the
+       copies it has are used, but the full-size one a hero needs may be missing) */
+    var todo = originals.filter(function (f) {
+      var e = index.entries[f.name];
+      return !e || pictures.widthsFor(e.w).some(function (w) { return e.widths.indexOf(w) === -1; });
+    });
     var noCache = originals.filter(function (f) { return uniqueName(f.name) && !(f.metadata && f.metadata.cacheControl); });
     var bytes = todo.reduce(function (n, f) { return n + (+(f.metadata && f.metadata.size) || 0); }, 0);
     console.log(originals.length + ' picture(s); ' + (originals.length - todo.length) + ' already have their WebP copies; ' +
@@ -161,7 +166,7 @@ function main() {
         if (dry) { made++; console.log('  copies ' + f.name + '  (' + kb(size) + ')'); return; }
         return f.download().then(function (r) {
           var buffer = r[0];
-          return pictures.storeVariants(fb, f.name, buffer).then(function (out) {
+          return pictures.storeVariants(fb, f.name, buffer, { strict: true }).then(function (out) {
             made++;
             if (!out) { console.log('  none   ' + f.name + '  (' + kb(size) + ': no smaller copy can be made)'); return; }
             var full = pictures.variantName(f.name, pictures.md5Hex8(buffer), out.width, out.height, out.widths[out.widths.length - 1]);

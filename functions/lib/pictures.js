@@ -47,7 +47,7 @@
    pages are served as before. Nothing here ever fails an upload, a generation or a page.
 
      makeVariants(buffer, { lossless })  -> Promise<{ width, height, hash, variants: [{ width, buffer }] } | null>
-     storeVariants(fb, path, buffer, opts) -> Promise<{ width, height, widths } | null>   never rejects
+     storeVariants(fb, path, buffer, opts) -> Promise<{ width, height, widths } | null>   never rejects (unless opts.strict)
      prepare(fb, html)                    -> Promise<index>  the variants of every picture the page uses
      lookupUrls(fb, urls)                 -> Promise<index>
      rewriteHtml(html, index)             -> html
@@ -193,7 +193,8 @@ function pathOfUrl(url, bucket) {
 
 /* Makes and stores the variants of the picture just stored at `path`. Resolves what it stored, or null —
    never rejects: a picture without variants is shown as it is.
-   opts: { budgetMs } — past it the caller is answered without them (they may still arrive). */
+   opts: { budgetMs } — past it the caller is answered without them (they may still arrive);
+         { strict: true } — a picture that could not be read or stored rejects instead (never with budgetMs). */
 function storeVariants(fb, path, buffer, opts) {
   opts = opts || {};
   if (!fb || !fb.bucket || !wanted(path)) return Promise.resolve(null);
@@ -210,6 +211,9 @@ function storeVariants(fb, path, buffer, opts) {
       return { width: made.width, height: made.height, widths: made.variants.map(function (v) { return v.width; }) };
     });
   }).catch(function (err) {
+    /* opts.strict (tools/repair-pictures.js): the caller is told, so that a failed upload is not taken for a
+       picture no smaller copy can be made of */
+    if (opts.strict) throw err;
     console.error('pictures: variants of ' + path + ' could not be stored — ' + (err && err.message));
     return null;
   });

@@ -156,5 +156,18 @@ else {
     return sharp({ create: { width: 800, height: 400, channels: 3, background: '#888' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer().then(function (jpg) {
       return P.makeVariants(jpg).then(function (made) { ok(made === null || (made.width === 400 && made.height === 800), 'EXIF orientation applied', made && made.width + 'x' + made.height); });
     });
+  }).then(function () {
+    /* an upload that fails half-way: by default a null (nothing ever fails a page or an upload); with strict
+       (tools/repair-pictures.js) the failure itself, so it is not reported as "no smaller copy" */
+    var saves = 0;
+    var failingFb = { bucket: { name: BUCKET, file: function () { return { save: function () { saves++; return saves > 1 ? Promise.reject(new Error('socket hang up')) : Promise.resolve(); } }; } } };
+    return sharp({ create: { width: 1500, height: 900, channels: 3, background: '#aa3366' } }).png({ compressionLevel: 0 }).toBuffer().then(function (png) {
+      return P.storeVariants(failingFb, 'events/e/generated/x.png', png).then(function (r) {
+        ok(r === null, 'a failed store: null by default');
+        saves = 0;
+        return P.storeVariants(failingFb, 'events/e/generated/x.png', png, { strict: true }).then(function () { ok(false, 'strict: a failed store rejects'); },
+          function (err) { ok(/socket hang up/.test(err && err.message), 'strict: a failed store rejects with its reason'); });
+      });
+    });
   }).then(finish, function (err) { failures.push('threw: ' + (err && err.stack)); finish(); });
 }
