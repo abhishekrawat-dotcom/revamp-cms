@@ -202,5 +202,36 @@ check('the honeypot is named "website"', /name = 'website'/.test(SRC));
 check('posts to /api/register', SRC.indexOf("'/api/register'") !== -1);
 check('fetches /api/public/forms', SRC.indexOf("'/api/public/forms?eventId='") !== -1);
 
+/* ---------- cross-check with the server (functions/lib/forms.js): zero mismatch both ways ----------
+   The page and the server must say the same thing about the same answer, so a server error reads like the
+   page's own. Part A's shared vectors go through this runtime, and this file's vectors go through the server. */
+var SERVER = require('./forms.js');
+var SHARED = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'forms', 'validation-vectors.json'), 'utf8'));
+function withCountries(f) {
+  if (f.type !== 'country') return f;
+  var c = {}; Object.keys(f).forEach(function (k) { c[k] = f[k]; });
+  c.options = SERVER.COUNTRIES.slice();
+  return c;
+}
+function emptyish(v) { return v === undefined || v === ''; }
+SHARED.vectors.forEach(function (v, n) {
+  var f = withCountries(SHARED.fields[v.field]);
+  var got = RF.cleanValue(f, v.value);
+  var name = 'shared vector ' + (n + 1) + ' (' + v.field + ' ' + JSON.stringify(v.value === undefined ? null : v.value).slice(0, 40) + ')';
+  if (v.expect.error) check(name + ': runtime says the server\'s message', got.error === v.expect.error, JSON.stringify(got));
+  else if (v.expect.omitted) check(name + ': runtime stores nothing', !got.error && emptyish(got.value), JSON.stringify(got));
+  else check(name + ': runtime cleans it the same', !got.error && (JSON.stringify(got.value) === JSON.stringify(v.expect.value) || (emptyish(got.value) && emptyish(v.expect.value))), JSON.stringify(got));
+});
+VECTORS.forEach(function (v, i) {
+  var f = withCountries(v.field), answers = {};
+  answers[f.id] = v.value;
+  var r = SERVER.validateAnswers({ fields: [f] }, { answers: answers });
+  var name = 'runtime vector ' + i + ' on the server (' + f.type + ' ' + JSON.stringify(v.value === undefined ? null : v.value).slice(0, 40) + ')';
+  if (v.expect.error) { check(name + ': same message', r.errors[f.id] === v.expect.error, JSON.stringify(r.errors)); return; }
+  check(name + ': no error', !Object.keys(r.errors).length, JSON.stringify(r.errors));
+  var stored = SERVER.MAPPED_FIELDS.indexOf(f.id) !== -1 ? r.reg[f.id] : r.answers[f.id];
+  check(name + ': same cleaned value', JSON.stringify(stored) === JSON.stringify(v.expect.value) || (emptyish(stored) && emptyish(v.expect.value)), JSON.stringify(stored));
+});
+
 if (failed) { console.error('rv-forms: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-forms: all ' + passed + ' checks passed');

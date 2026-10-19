@@ -809,8 +809,8 @@
       var parent = el.parentNode;
       if (!parent || parent.querySelector(':scope > [data-rv-empty-state]')) return;
       var place = emptyPlaceOf(parent);
-      // a section with a form in it is never hidden as empty: only the empty list is
-      if (place !== parent && place.querySelector('[data-rv-form-embed]')) place = parent;
+      // a section with a form in it, or a button that opens one, is never hidden as empty: only the empty list is
+      if (place !== parent && holdsForm(place)) place = parent;
       place.setAttribute('data-rv-empty', kind);
       var note = doc.createElement('div');
       note.setAttribute('data-rv-empty-state', kind);
@@ -826,6 +826,33 @@
           if (!a.hasAttribute('data-register-cta') && !a.hasAttribute('data-rv-form') && a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
         });
       }
+    });
+  }
+  /* A section holding a form — one drawn in place, or a button that opens one (Register included) — is never
+     hidden as empty; the page's own runtime decides the same way (rv-data.js emptyScopeOf). A form or a
+     button can arrive after the section was marked as a whole (the Forms panel, the link pop-over, the AI):
+     before every recorded step the mark moves from such a section to its empty list, so the page that is
+     saved, previewed and published shows the button and the form. */
+  var FORM_HOLDERS = 'a[data-rv-form], a[data-register-cta], [data-rv-form-embed]';
+  function holdsForm(el) {
+    return Array.prototype.some.call(el.querySelectorAll(FORM_HOLDERS), function (n) { return !n.closest('[data-rv-editor]'); });
+  }
+  function keepFormSectionsShown(doc) {
+    /* a link that now opens a form (it may have been a menu link to an empty section) is never hidden */
+    Array.prototype.forEach.call(doc.querySelectorAll('a[data-rv-form][data-rv-nav-empty], a[data-register-cta][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-section][data-rv-empty]'), function (sec) {
+      if (!holdsForm(sec)) return;
+      var kind = sec.getAttribute('data-rv-empty');
+      sec.removeAttribute('data-rv-empty');
+      Array.prototype.forEach.call(sec.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
+        var parent = el.parentNode;
+        if (!parent || parent === sec || parent.nodeType !== 1) return;
+        parent.setAttribute('data-rv-empty', kind);
+        var note = parent.querySelector(':scope > [data-rv-empty-state]');
+        if (note) note.textContent = (EMPTY_NOTES[kind] || 'Nothing to show yet.') + ' Until then visitors do not see this list.';
+      });
+      // the menu's links to the section come back with it
+      if (sec.id) Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + sec.id + '"][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
     });
   }
   function markFilled(doc, kind) {
@@ -1319,6 +1346,7 @@
   function record(typing) {
     clearTimeout(commitTimer); commitTimer = null;
     if (!canvas || remounting) return false;
+    keepFormSectionsShown(canvas.doc);
     var replacing = typing && typingPtr === undoPtr && undoPtr > 0;
     if (!typing) typingPtr = -1;
     var snap = canvas.snapshot(undoStack[undoPtr]);

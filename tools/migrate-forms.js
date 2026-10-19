@@ -10,8 +10,9 @@
         submissions, pending, rejected, per-form counts) — otherwise done just before its next
         registration, change or delete.
 
-   node tools/migrate-forms.js [--apply] [--event <id> | --prefix <p>]
-     without --apply   a dry run: reads everything, writes nothing, prints what it would do
+   node tools/migrate-forms.js [--dry | --apply] [--event <id> | --prefix <p>]
+     --dry (default)   a dry run: reads everything, writes nothing, prints what it would do
+     --apply           writes
      --event <id>      that one event
      --prefix <p>      every event whose id starts with <p> (e.g. qa-)
      neither           every live event (deleted events and import records are skipped)
@@ -37,10 +38,12 @@ function arg(name) {
   const i = process.argv.indexOf(name);
   return i === -1 ? null : (process.argv[i + 1] || '');
 }
-const APPLY = process.argv.indexOf('--apply') !== -1;
+const APPLY = process.argv.indexOf('--apply') !== -1, DRY = process.argv.indexOf('--dry') !== -1;
 const ONE = arg('--event'), PREFIX = arg('--prefix');
-if ((ONE !== null && !ONE) || (PREFIX !== null && !PREFIX) || (ONE && PREFIX)) {
-  console.error('Usage: node tools/migrate-forms.js [--apply] [--event <id> | --prefix <p>]');
+const KNOWN = ['--apply', '--dry', '--event', '--prefix'];
+const unknown = process.argv.slice(2).filter(function (a, i, all) { return /^--/.test(a) ? KNOWN.indexOf(a) === -1 : !/^--(event|prefix)$/.test(all[i - 1] || ''); });
+if ((ONE !== null && !ONE) || (PREFIX !== null && !PREFIX) || (ONE && PREFIX) || (APPLY && DRY) || unknown.length) {
+  console.error('Usage: node tools/migrate-forms.js [--dry | --apply] [--event <id> | --prefix <p>]' + (unknown.length ? ' (not understood: ' + unknown.join(' ') + ')' : ''));
   process.exit(2);
 }
 

@@ -806,7 +806,7 @@
     bar.classList.add('rv-etnav--live');            // on the bar: a section's CSS reaches its root only by the classes it was saved with
     var list = root.querySelector('.rv-etnav-list');
     var burger = root.querySelector('[data-rv-etnav-burger]');
-    var floating = false, open = null, queued = false, active = null, targets = [];
+    var floating = false, open = null, queued = false, active = null, targets = [], formItems = [];
     var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     /* "More", beside the list */
@@ -855,16 +855,22 @@
       setMore(false);
       more.hidden = true;
       targets = [];
+      formItems = [];
       var live = lis.filter(function (li) {
+        /* a link the owner pointed at a form (rv-forms.js opens it in a pop-up) goes to no section, and is kept */
+        var a = linkOf(li);
+        if (a && a.hasAttribute('data-rv-form') && !hiddenEl(li) && !hiddenEl(a)) { formItems.push(li); return true; }
         var el = targetOf(li);
         if (el) targets.push({ href: linkOf(li).getAttribute('href'), el: el, li: li });
         else if (!hiddenEl(li)) li.classList.add('is-over');
         return !!el;
       });
-      /* the links in the order of their sections on the page (the owner may have moved a section) */
+      /* the links in the order of their sections on the page (the owner may have moved a section); links to
+         forms after them, in their own order */
       targets.sort(function (a, b) { return a.el.compareDocumentPosition(b.el) & 4 ? -1 : 1; });
       targets.forEach(function (t, i) { t.li.style.order = i; });
-      live = targets.map(function (t) { return t.li; });
+      formItems.forEach(function (li, i) { li.style.order = targets.length + i; });
+      live = targets.map(function (t) { return t.li; }).concat(formItems);
       var over = [];
       var max = floating ? NAV_FLOAT_MAX : Infinity;
       /* on a phone the row is not shown: its links are in the menu */
@@ -883,12 +889,17 @@
       over.forEach(function (li) {
         var a = linkOf(li), item = document.createElement('li'), copy = document.createElement('a');
         copy.setAttribute('href', a.getAttribute('href'));
+        copyFormMarks(a, copy);
         copy.textContent = a.textContent;
         item.appendChild(copy);
         moreList.appendChild(item);
       });
       active = undefined;
       mark();
+    }
+    /* a copy of a link (More, the phone menu) opens the same form as the link (rv-forms.js reads these) */
+    function copyFormMarks(from, to) {
+      ['data-rv-form', 'data-register-cta'].forEach(function (k) { if (from.hasAttribute(k)) to.setAttribute(k, from.getAttribute(k)); });
     }
     function relayout() { if (!queued) { queued = true; requestAnimationFrame(layout); } }
 
@@ -969,11 +980,12 @@
       close.type = 'button'; close.className = 'rv-etnav-close'; close.setAttribute('aria-label', 'Close menu'); close.textContent = '×';
       head.appendChild(close);
       panel.appendChild(head);
-      var links = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab')).concat(targets.map(function (t) { return linkOf(t.li); }));
+      var links = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab')).concat(targets.map(function (t) { return linkOf(t.li); }), formItems.map(linkOf));
       links.forEach(function (a) {
         var copy = document.createElement('a');
         copy.className = 'rv-etnav-drawer-link' + (a.getAttribute('href') === active ? ' is-active' : '');
         copy.setAttribute('href', a.getAttribute('href'));
+        copyFormMarks(a, copy);
         if (a.getAttribute('target')) { copy.setAttribute('target', a.getAttribute('target')); copy.setAttribute('rel', 'noopener'); }
         copy.textContent = a.textContent;
         panel.appendChild(copy);

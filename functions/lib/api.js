@@ -6434,17 +6434,14 @@ function handleEventPublish(req, res) {
     if (body.html != null && typeof body.html !== 'string') return sendJson(res, 400, { error: '"html" must be the page as text.' });
     var legacyHtml = typeof body.html === 'string' && body.html.trim() ? body.html : null;
     var base = publicBaseFor(req, body.origin);
-    if (!body.__approvalChecked) {
-      /* nothing goes live without an approval, unless approval has been switched off (config/approvals) */
-      return approvalsConfig(fb).then(function (cfg) {
-        if (cfg.required) {
-          return sendJson(res, 409, { error: 'Changes go live once they are approved. Save the site, then use “Publish changes” to send it for approval.', code: 'approval-required' });
-        }
-        body.__approvalChecked = true;
-        publishAfterCheck();
-      }).catch(function (err) { sendFailure(res, 'publish', err, 'The site could not be published. Please try again.'); });
-    }
-    publishAfterCheck();
+    /* nothing goes live without an approval, unless approval has been switched off (config/approvals). This
+       check is always made: nothing in the request can skip it (a body key "__approvalChecked" used to). */
+    return approvalsConfig(fb).then(function (cfg) {
+      if (cfg.required) {
+        return sendJson(res, 409, { error: 'Changes go live once they are approved. Save the site, then use “Publish changes” to send it for approval.', code: 'approval-required' });
+      }
+      publishAfterCheck();
+    }).catch(function (err) { sendFailure(res, 'publish', err, 'The site could not be published. Please try again.'); });
     function publishAfterCheck() {
     var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
     var HTML = 'text/html; charset=utf-8';
