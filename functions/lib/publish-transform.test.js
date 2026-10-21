@@ -220,6 +220,22 @@ ok(count(picOut, '<style data-rv-pictures>') === 1 && picOut.indexOf('<style dat
 ok(publishTransform(picOut, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], pictures: PICS }) === picOut, 'running it again changes nothing (pictures)');
 ok(publishTransform(picPage, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }).indexOf('.rv-a1b2c3d4.') === -1, 'without pictures looked up, pictures are as they were');
 
+/* section edges: designPlan.design.sectionEdges -> <html data-rv-edges>, and the blend runtime where it is needed */
+var SMOOTH = { name: 'S', designPlan: { design: { sectionEdges: 'smooth' } } };
+var BLEND = 'templates/_shared/rv-blend.js';
+var smoothLive = publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH, mode: 'live', templateId: 'gen-qa-fixture' });
+ok(/<html[^>]* data-rv-edges="smooth"/.test(smoothLive) && count(smoothLive, BLEND) === 1, 'a smooth site: data-rv-edges="smooth" on <html> and the blend runtime once');
+ok(publishTransform(smoothLive, { eventId: 'qa-fixture', event: SMOOTH, mode: 'live', templateId: 'gen-qa-fixture' }) === smoothLive, 'running it again changes nothing (section edges)');
+var sharpLive = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' });
+ok(/<html[^>]* data-rv-edges="sharp"/.test(sharpLive) && sharpLive.indexOf(BLEND) === -1, 'a site with no choice is sharp, and its published page does not load the blend runtime');
+ok(publishTransform(smoothLive, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' }) === sharpLive, 'switching back to sharp leaves exactly the sharp page');
+var sharpPreview = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'preview', templateId: 'gen-qa-fixture' });
+ok(/<html[^>]* data-rv-edges="sharp"/.test(sharpPreview) && count(sharpPreview, BLEND) === 1, 'a preview always has the blend runtime, so the choice can be tried there');
+var imported = publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH, mode: 'preview', templateId: 'imported-imp-abc' });
+ok(/<html[^>]* data-rv-edges="sharp"/.test(imported) && imported.indexOf(BLEND) === -1, 'an imported site is always sharp, with no blend runtime');
+ok(publishTransform(PAGE.replace('<section id="hero"', '<section data-rv-edge-host="pos" id="hero"').replace('</body>', '<div data-rv-edge="top" data-rv-runtime aria-hidden="true"></div></body>'),
+  { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' }) === sharpLive, 'a fade and its mark saved from a live page never reach a published one');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

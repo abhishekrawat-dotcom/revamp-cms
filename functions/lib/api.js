@@ -6676,16 +6676,18 @@ function rewriteOrigins(html, origins) {
    into any page its user edits — two already-published pages carry it. */
 var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown',
   'data-date-format', 'data-ed', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-editing',
-  'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded'];
+  'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded', 'data-rv-edge-host'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
-var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms)\.js|editor-fill\.js)$/;
+var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend)\.js|editor-fill\.js)$/;
 /* The forms runtime (templates/_shared/rv-forms.js: a button's form in a pop-up, a form placed in the page,
    validation and sending). Its address carries lib/forms.js FORMS_RUNTIME_V, bumped whenever the file
    changes: static files are cached for five minutes under an unhashed name. */
 var FORMS_RUNTIME_V = formsLib.FORMS_RUNTIME_V;
 var FORMS_RUNTIME_SRC = '/templates/_shared/rv-forms.js?v=' + FORMS_RUNTIME_V;
 var FORMS_RUNTIME_TAG = '<script src="' + FORMS_RUNTIME_SRC + '" data-rv-runtime></script>';
+/* section edges' runtime (templates/_shared/rv-blend.js): bumped whenever that file changes */
+var BLEND_RUNTIME_V = 1;
 /* JSON inside a <script> block: "<" must not appear (a "</script" in some text would end the block early),
    nor the two characters JavaScript reads as line ends */
 function scriptJson(v) {
@@ -7079,6 +7081,18 @@ function publishTransform(html, opts) {
   /* visit counting (rv-live.js) — the slot is kept; left out while that file is not part of this release, so
      a live page does not ask every visitor's browser for something that answers 404 */
   if (LIVE_RUNTIME_PRESENT) tail.push('<script src="/templates/_shared/rv-live.js" data-rv-runtime></script>');
+  /* ---- section edges (templates/_shared/rv-blend.js) ----
+     The site's choice, designPlan.design.sectionEdges: "smooth" fades a section's colour into the next one,
+     anything else (or nothing) keeps today's sharp edges. It is written on <html data-rv-edges>, which the
+     runtime reads (and the preview's "Section edges" choice changes in place). An imported site is always
+     sharp. The runtime is on every preview, so the choice can be tried there; on a published page only when
+     the site is smooth. */
+  var edgesDesign = event.designPlan && event.designPlan.design;
+  var edgesImported = /^import(?:ed)?-/.test(String(opts.templateId || event.templateId || ''));
+  var edges = !edgesImported && edgesDesign && edgesDesign.sectionEdges === 'smooth' ? 'smooth' : 'sharp';
+  if (htmlOpen !== -1) { setAttr(tokens[htmlOpen], 'data-rv-edges', edges); out[htmlOpen] = writeTag(tokens[htmlOpen]); }
+  if (!edgesImported && (mode === 'preview' || edges === 'smooth')) tail.push('<script src="/templates/_shared/rv-blend.js?v=' + BLEND_RUNTIME_V + '" data-rv-runtime></script>');
+  /* ---- end section edges ---- */
 
   /* ---- 5. preview ribbon ---- */
   var liveView = mode === 'preview' && opts.liveView === true;
