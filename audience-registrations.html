@@ -171,7 +171,10 @@
 
   var PAGE = 2000, MAX_ROWS = 20000, SHOW_STEP = 200;
   /* the questions whose answers are a response's own columns (functions/lib/forms.js MAPPED_FIELDS) */
-  var MAPPED = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location'];
+  var MAPPED = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location', 'consent'];
+  /* the consent box the visitor ticked (every response since 21 Oct 2026): "Yes · 2026-10-21 14:05" (IST); a response
+     from before the box has none ("—") */
+  function consentOf(r){ return r && r.consent && r.consent.given ? 'Yes' + (r.consent.at ? ' · ' + ist(r.consent.at) : '') : ''; }
   /* +919876543210 as people read it (the server sends phoneDisplay); a number from before the country code
      picker as it was typed */
   function phoneOf(r){ return r.phoneDisplay || r.phone || ''; }
@@ -412,7 +415,7 @@
       return;
     }
     var extra = extraColumns();
-    var cols = [['Name'], ['Email'], ['Phone'], ['Company'], ['Designation'], ['Location'], ['Form'], ['Status'], ['Submitted (IST)'], ['Checked in']]
+    var cols = [['Name'], ['Email'], ['Phone'], ['Company'], ['Designation'], ['Location'], ['Form'], ['Status'], ['Submitted (IST)'], ['Checked in'], ['Consent']]
       .concat(extra.map(function(x){ return [x.label]; }));
     var shown = rows.slice(0, S.shown);
     box.innerHTML = '<div class="rep-wrap"><table class="rep-tbl"><thead><tr>' + cols.map(function(c){ return '<th scope="col">' + esc(c[0]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
@@ -429,6 +432,7 @@
           '<td data-label="Status">' + statusBadge(r) + '</td>' +
           '<td data-label="Submitted (IST)" style="white-space:nowrap">' + esc(ist(r.createdAt)) + '</td>' +
           '<td data-label="Checked in">' + (counts(r) ? (r.checkedInAt ? 'Yes' : 'No') : '—') + '</td>' +
+          '<td data-label="Consent" style="white-space:nowrap"' + (r.consent && r.consent.version ? ' title="Wording ' + esc(r.consent.version) + '"' : '') + '>' + esc(consentOf(r) || '—') + '</td>' +
           extra.map(function(x){ return '<td data-label="' + esc(x.label) + '"><span class="clip">' + esc(answerValue(r.answers && r.answers[x.id]) || '—') + '</span></td>'; }).join('') +
         '</tr>';
       }).join('') + '</tbody></table></div>' +
@@ -522,6 +526,7 @@
             row('Form', formNameOf(fid, r) + (counts(r) ? ' · counts as a registration' : ' · does not count as a registration')) +
             row('Source', r.source) + row('UTM source', utm.source) + row('UTM medium', utm.medium) + row('UTM campaign', utm.campaign) +
             row('Device', r.device) + row('Referrer', r.referrer) +
+            row('Consent', consentOf(r) ? consentOf(r) + ' IST' : 'Not recorded (sent before the consent box)') +
             (r.decidedAt ? row('Decided', ist(r.decidedAt) + ' IST' + (r.decidedBy ? ' by ' + r.decidedBy : '')) : '') +
           '</div>' +
           '<div class="dsec"><h4>Manage</h4>' +

@@ -97,7 +97,8 @@ ok(/needs approval, counts as a registration/.test(P.describeTemplate({ id: 'vip
 /* the preview the runtime draws */
 var pf = P.previewForm({ name: 'X', title: '', fields: [{ type: 'text', label: 'A' }, { type: 'text', label: 'B' }, { id: 'c', type: 'country', label: 'Country' }, { type: 'select', label: 'S', options: ['a', '', 'b'] }], submitLabel: '', countsAsRegistration: true }, null, ['India', 'Nepal']);
 var ids = pf.fields.map(function (f) { return f.id; });
-ok(ids.length === 4 && ids.every(Boolean) && new Set(ids).size === 4, 'every preview field has an id of its own', ids.join(','));
+ok(ids.length === 5 && ids.every(Boolean) && new Set(ids).size === 5, 'every preview field has an id of its own', ids.join(','));
+ok(ids[4] === 'consent' && pf.fields[4].type === 'consent' && pf.fields[4].required === true, 'the preview ends with the locked consent box', JSON.stringify(pf.fields[4]));
 ok(pf.fields[2].options.join('|') === 'India|Nepal', 'a country field gets the country list');
 ok(pf.fields[3].options.join('|') === 'a|b', 'empty options are not drawn');
 ok(pf.submitLabel === 'Submit' && pf.counts === true && pf.open === true, 'preview defaults');
@@ -108,8 +109,27 @@ ok(JSON.stringify(P.MAPPED_TYPES) === JSON.stringify(SERVER.MAPPED_TYPES), 'the 
 ok(JSON.stringify(Object.keys(P.LOCKED)) === JSON.stringify(SERVER.LOCKED_FIELDS), 'only the email is locked, as on the server');
 ok(/Always required/.test(src), 'the email field carries an "Always required" badge');
 var std = P.previewForm(SERVER.TEMPLATE_BY_ID.blank.form, null, []);
-ok(std.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }).join() === 'first_name:text:true,last_name:text:true,email:email:true,phone:phone:true,company:text:true,designation:text:true,location:location:true', 'a new custom form previews the seven standard questions, all required');
+ok(std.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }).join() === 'email:email:true,first_name:text:true,last_name:text:true,phone:phone:true,company:text:true,designation:text:true,location:location:true,consent:consent:true', 'a new custom form previews the seven standard questions, all required, the email first, then the consent box', std.fields.map(function (f) { return f.id; }).join());
 ok(!('options' in std.fields[6]) && !('options' in std.fields[3]), 'Mobile and Location fields carry no options');
+
+/* the consent box: never one of the draft's fields, so nothing in the builder can change it */
+var CONSENT = SERVER.consentFor('hr');
+var stored = { id: 'register', name: 'Register now', fields: SERVER.TEMPLATE_BY_ID.register.form.fields, submitLabel: 'Register', successMessage: 'Done' };
+var dr = P.draftOf(stored);
+ok(dr.fields.length === 7 && dr.fields.every(function (f) { return f.type !== 'consent'; }), 'a stored form\'s draft holds its own fields only', dr.fields.map(function (f) { return f.id; }).join());
+ok(P.formInput(stored).fields.every(function (f) { return f.id !== 'consent'; }), 'what is sent never carries it (the server puts it back last)');
+ok(P.templateForm(SERVER.FORM_TEMPLATES[0]).fields.every(function (f) { return f.type !== 'consent'; }), 'a template\'s draft holds its own fields only');
+ok(P.sameDraft(stored, Object.assign({}, stored, { fields: P.ownFields(stored.fields) })), 'a form read with the box and one without are the same draft');
+var sentBack = SERVER.cleanFormInput(Object.assign(P.formInput(stored), { template: 'register' }), { creating: false, formId: 'register' });
+ok(!sentBack.error && sentBack.value.fields[sentBack.value.fields.length - 1].type === 'consent', 'the server stores what the builder sends with the box last', JSON.stringify(sentBack.error || ''));
+var pc = P.previewForm(dr, 'register', [], CONSENT);
+ok(JSON.stringify(pc.consent) === JSON.stringify(CONSENT) && pc.fields[pc.fields.length - 1].id === 'consent', 'the preview carries the event\'s wording and links');
+var row = P.consentHtml(CONSENT, 'x');
+ok(/Consent \(always required\)/.test(row) && /Locked/.test(row) && row.indexOf('href="https://hr.economictimes.indiatimes.com/privacy_policy.php"') !== -1 &&
+  row.indexOf('>T&amp;C</a>') !== -1 && row.indexOf('>Cookie Policy</a>') !== -1, 'the locked row: its title, the sentence with the portal\'s three links', row);
+ok(!/data-fb-act|<input|<button/.test(row), 'the locked row has no control to change it');
+ok(P.consentHtml({ text: 'a <b>', links: [{ label: 'a', href: 'javascript:alert(1)' }] }, 'y').indexOf('javascript:') === -1 && P.consentHtml({ text: '<b>x</b>' }, 'y').indexOf('<b>x') === -1, 'the row escapes its text and takes only https links');
+ok(/Consent \(always required\)/.test(P.consentHtml(null, 'z')), 'no wording from an older server: the title and the note still show');
 var loc = P.formInput({ name: 'L', fields: [{ id: 'location', type: 'location', label: 'Location', required: true, placeholder: 'Start typing your city' }], submitLabel: 'Go', successMessage: 'Done' });
 ok(loc.fields[0].placeholder === 'Start typing your city', 'a Location field keeps its placeholder');
 

@@ -31,8 +31,17 @@
   'use strict';
 
   /* ---------- rules shared with the server (functions/lib/forms.js) ---------- */
-  var MAPPED_TYPES = { name: 'text', first_name: 'text', last_name: 'text', email: 'email', phone: 'phone', company: 'text', designation: 'text', city: 'text', location: 'location' };
-  var MAPPED_COLUMN = { name: 'Name', first_name: 'First name', last_name: 'Last name', email: 'Email', phone: 'Phone', company: 'Company', designation: 'Designation', city: 'City', location: 'Location' };
+  var MAPPED_TYPES = { name: 'text', first_name: 'text', last_name: 'text', email: 'email', phone: 'phone', company: 'text', designation: 'text', city: 'text', location: 'location', consent: 'consent' };
+  var MAPPED_COLUMN = { name: 'Name', first_name: 'First name', last_name: 'Last name', email: 'Email', phone: 'Phone', company: 'Company', designation: 'Designation', city: 'City', location: 'Location', consent: 'Consent' };
+  /* THE CONSENT BOX: every form ends with it (functions/lib/forms.js: { id: 'consent', type: 'consent' }). It is
+     not one of the draft's fields — nothing here can remove, move, reword or loosen it: it is shown locked after
+     them, the server puts it back last on every save, and the preview draws it with the event's own wording and
+     links (GET /api/event/forms `consent`). */
+  var CONSENT_ID = 'consent', CONSENT_TYPE = 'consent';
+  var CONSENT_TITLE = 'Consent (always required)';
+  var CONSENT_NOTE = 'Every form ends with this box and visitors must tick it to submit. It cannot be removed, moved or changed. Its links are your event\u2019s ET portal\u2019s privacy, cookie and terms pages.';
+  function isConsent(f) { return !!f && (f.type === CONSENT_TYPE || f.id === CONSENT_ID); }
+  function ownFields(list) { return (list || []).filter(function (f) { return !isConsent(f); }); }
   /* every form asks for an email address, always required: it is how one response is told from another (the
      other standard questions — names, mobile, company, designation, location — can be made optional or removed) */
   var LOCKED = { email: 1 };
@@ -79,7 +88,7 @@
     return {
       name: str(f.name || t.name), title: str(f.title != null ? f.title : (f.name || t.name)), intro: str(f.intro),
       purpose: str(f.purpose || t.purpose || 'custom'),
-      fields: clone(f.fields || []),
+      fields: clone(ownFields(f.fields)),
       submitLabel: str(f.submitLabel), successMessage: str(f.successMessage),
       countsAsRegistration: !!f.countsAsRegistration, needsApproval: !!f.needsApproval,
       open: f.open !== false, duplicates: f.duplicates === 'allow' ? 'allow' : 'reject',
@@ -93,7 +102,7 @@
     var f = templateForm(t), bits = [];
     if (f.needsApproval) bits.push('needs approval');
     bits.push(f.countsAsRegistration ? 'counts as a registration' : 'does not count as a registration');
-    var extra = (f.fields || []).length;
+    var extra = ownFields(f.fields).length;
     if (extra) bits.push(plural(extra, 'field'));
     return f.name + ': ' + bits.join(', ');
   }
@@ -104,7 +113,7 @@
     return {
       name: str(d.name).trim(), title: str(d.title).trim(), intro: str(d.intro).replace(/\s+$/, ''),
       purpose: d.purpose || 'custom',
-      fields: (d.fields || []).map(function (f) {
+      fields: ownFields(d.fields).map(function (f) {
         var o = {};
         if (f.id) o.id = f.id;
         o.type = f.type; o.label = str(f.label).trim(); o.required = !!f.required;
@@ -120,7 +129,7 @@
   }
   function draftOf(form) {
     var d = formInput(form || {});
-    d.fields = (form && form.fields || []).map(function (f, i) {
+    d.fields = ownFields(form && form.fields).map(function (f, i) {
       var o = d.fields[i];
       o.label = str(f.label);
       if (OPTION_TYPES[f.type]) o.options = (f.options || []).slice();
@@ -173,9 +182,9 @@
 
   /* The form as a visitor's page gets it (§1.4 of the forms spec), for the preview: fields without an id
      yet get one for this drawing only; a country field gets the country list. */
-  function previewForm(d, formId, countries) {
+  function previewForm(d, formId, countries, consent) {
     var used = {};
-    var fields = (d.fields || []).map(function (f, i) {
+    var fields = ownFields(d.fields).map(function (f, i) {
       var id = f.id || ('new_field_' + (i + 1));
       while (used[id]) id += '_x';
       used[id] = 1;
@@ -184,11 +193,32 @@
       if (f.type === 'country') o.options = (countries || []).slice();
       return o;
     });
-    return {
+    /* the locked consent box, last, as visitors see it */
+    fields.push({ id: CONSENT_ID, type: CONSENT_TYPE, label: 'Consent', required: true, placeholder: '', help: '' });
+    var out = {
       id: formId || 'new-form', name: str(d.name).trim() || 'Untitled form', title: str(d.title).trim(), intro: str(d.intro),
       purpose: d.purpose, fields: fields, submitLabel: str(d.submitLabel).trim() || 'Submit',
       open: d.open !== false, counts: !!d.countsAsRegistration, rev: 0
     };
+    if (consent && typeof consent.text === 'string') out.consent = clone(consent);
+    return out;
+  }
+  /* The locked consent row shown after the fields: its sentence with the event's links (an older server that
+     sends no wording: the title and the note only). */
+  function consentHtml(consent, idBase) {
+    var text = '';
+    if (consent && typeof consent.text === 'string') {
+      text = esc(consent.text);
+      (consent.links || []).forEach(function (l) {
+        if (!l || !l.label || !/^https:\/\//.test(str(l.href))) return;
+        text = text.replace(esc(l.label), '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>');
+      });
+    }
+    return '<div class="fb-consent" role="group" aria-labelledby="' + idBase + '-t" aria-describedby="' + idBase + '-n">' +
+      '<div class="fb-consent-h"><span class="fb-consent-t" id="' + idBase + '-t">' + esc(CONSENT_TITLE) + '</span>' +
+      '<span class="fb-lock">' + svg(IC.lock, 12) + '<span class="fb-lock-t">Locked</span></span></div>' +
+      (text ? '<p class="fb-consent-x"><span class="fb-consent-box" aria-hidden="true"></span><span>' + text + '<span class="fb-consent-req" aria-hidden="true">*</span></span></p>' : '') +
+      '<p class="fb-hint" id="' + idBase + '-n">' + esc(CONSENT_NOTE) + '</p></div>';
   }
 
   /* ---------- icons ---------- */
@@ -519,7 +549,7 @@
         '<span class="fb-grip" data-fb-grip="form" title="Drag to reorder" aria-hidden="true">' + svg(IC.grip, 16) + '</span>' +
         '<div class="fb-row-main">' +
           '<div class="fb-row-name"><b>' + name + '</b>' + (isDefault ? ' <span class="fb-badge">Default</span>' : '') + '</div>' +
-          '<div class="fb-row-meta">' + esc(purposeLabel(f.purpose)) + ' · ' + esc(plural((f.fields || []).length, 'field')) + '</div>' +
+          '<div class="fb-row-meta">' + esc(purposeLabel(f.purpose)) + ' · ' + esc(plural(ownFields(f.fields).length, 'field')) + '</div>' +
           '<div class="fb-row-meta"><a href="' + esc(link) + '" class="fb-link">' + esc(plural(responses, 'response')) + (f.needsApproval || pending ? ' · ' + pending + ' awaiting approval' : '') + '</a></div>' +
           (flags.length ? '<div class="fb-flags">' + flags.join('') + '</div>' : '') +
           usageLine(f) +
@@ -594,6 +624,7 @@
       var nFields = d.fields.length, fullFields = nFields >= lim.maxFields;
       h += '<section class="fb-sec" aria-labelledby="' + ctlId('s2') + '"><h4 id="' + ctlId('s2') + '">Fields <span class="fb-count">' + nFields + ' of up to ' + lim.maxFields + '</span></h4>';
       h += '<ol class="fb-fields" aria-label="Fields, in order">' + d.fields.map(function (f, i) { return fieldHtml(f, i, nFields); }).join('') + '</ol>';
+      h += consentHtml(data && data.consent, ctlId('consent'));
       h += '<div class="fb-add"><span class="fb-menu-wrap"><button type="button" class="fb-btn" data-fb-act="menu" data-menu="add" data-fk="menu-add" aria-haspopup="true" aria-expanded="' + (menuOpen === 'add') + '"' + (fullFields ? ' disabled' : '') + '>' + svg(IC.plus, 14) + ' Add field</button>' +
         (menuOpen === 'add' ? addMenuHtml() : '') + '</span>' +
         (fullFields ? '<span class="fb-hint">A form can have up to ' + lim.maxFields + ' fields.</span>' : '') + '</div>' +
@@ -704,7 +735,7 @@
     /* ---------- the preview ---------- */
     function previewNow() {
       if (view !== 'form' || !draft) return null;
-      return previewForm(draft, isNew ? null : formId, data && data.countries);
+      return previewForm(draft, isNew ? null : formId, data && data.countries, data && data.consent);
     }
     function schedulePreview(now) {
       clearTimeout(previewTimer);
@@ -1283,7 +1314,7 @@
     _pure: {
       formInput: formInput, draftOf: draftOf, sameDraft: sameDraft, validateDraft: validateDraft, parseOptionList: parseOptionList,
       moveItem: moveItem, templateForm: templateForm, describeTemplate: describeTemplate, serverFieldOf: serverFieldOf,
-      previewForm: previewForm, MAPPED_TYPES: MAPPED_TYPES, LOCKED: LOCKED
+      previewForm: previewForm, MAPPED_TYPES: MAPPED_TYPES, LOCKED: LOCKED, ownFields: ownFields, consentHtml: consentHtml
     }
   };
 })();

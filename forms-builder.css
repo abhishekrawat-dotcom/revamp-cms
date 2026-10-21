@@ -154,6 +154,14 @@
 .fb-lock{ display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
   background: color-mix(in srgb, var(--fb-accent) 12%, transparent); color: var(--fb-text); font-size: 11px; font-weight: 700; }
 .fb-lock svg{ flex: 0 0 auto; }
+/* the locked consent box every form ends with (not a field the organiser edits) */
+.fb-consent{ margin-top: 8px; border: 1px dashed var(--fb-border); border-radius: 9px; padding: 9px 12px; background: var(--fb-surface-2); display: flex; flex-direction: column; gap: 6px; }
+.fb-consent-h{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fb-consent-t{ font-weight: 650; }
+.fb-consent-x{ display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--fb-text); }
+.fb-consent-x a{ color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.fb-consent-box{ flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; border: 1.5px solid var(--fb-muted); border-radius: 4px; }
+.fb-consent-req{ color: var(--fb-danger); margin-left: 1px; }
 .fb-frow-acts{ display: flex; gap: 0; }
 .fb-fedit{ padding: 4px 12px 14px 34px; display: flex; flex-direction: column; gap: 10px; }
 .fb-opts{ border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }

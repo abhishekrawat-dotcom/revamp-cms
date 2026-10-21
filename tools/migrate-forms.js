@@ -10,11 +10,17 @@
         submissions, pending, rejected, per-form counts) — otherwise done just before its next
         registration, change or delete;
      4. its "Register now", when it was made for the event automatically and nobody has edited it since
-        (forms.isUntouchedDefault: never saved, rev 0, still the original questions — name, email and the
-        optional phone / company / designation), is given the seven standard questions every new form starts
-        with (First name, Last name, Email, Mobile, Company, Designation, Location; all required) and rev 1,
-        so a published page holding the old definition draws the new one. A form anyone has saved is left as
-        it is. This step is the only one that does not also happen by itself.
+        (forms.isUntouchedDefault: never saved by anyone but this tool, still questions the platform gave it —
+        the original name, email and optional phone / company / designation, or the seven standard questions
+        in their old order, First name first), is given today's seven standard questions every new form
+        starts with (Official email, First name, Last name, Mobile, Company, Designation, Location; all
+        required), then the consent box, and its rev moves on, so a published page holding the old
+        definition draws the new one. A form an organiser has saved keeps its questions and their order.
+     5. every other stored form that does not end with the consent box (THE CONSENT BOX in
+        functions/lib/forms.js) has it stored, last, its own questions and their order untouched. Only the
+        form's fields are written — not its rev or who changed it last — so an organiser's open builder is
+        not told the form changed under them. Readers already add the box to a form stored without it
+        (forms.storedForm); this step writes it down.
 
    node tools/migrate-forms.js [--dry | --apply] [--event <id> | --prefix <p>]
      --dry (default)   a dry run: reads everything, writes nothing, prints what it would do
@@ -55,6 +61,15 @@ if ((ONE !== null && !ONE) || (PREFIX !== null && !PREFIX) || (ONE && PREFIX) ||
 
 function isLive(d) { return !!d && !d.deletedAt && !!d.createdAt; }
 
+/* What steps 4 and 5 do to one stored form (forms.migrationPlan) -> { action: 'standard' | 'consent' | 'none',
+   patch, say, done } */
+function planForm(snap, ev) {
+  const p = forms.migrationPlan(snap.id, snap.data() || {}, ev, new Date().toISOString());
+  if (p.action === 'standard') return Object.assign(p, { say: APPLY ? 'given the standard seven' : 'would get the standard seven (email first) and the consent box', done: 'given the standard seven' });
+  if (p.action === 'consent') return Object.assign(p, { say: p.kept + (APPLY ? '; consent box stored' : '; would store the consent box'), done: p.kept + '; consent box stored' });
+  return Object.assign(p, { say: p.kept });
+}
+
 async function migrateEvent(fb, id, ev) {
   const ref = fb.db.collection('events').doc(id);
   const out = { id: id, form: 'kept', backfilled: 0, totals: 'kept', questions: 'none stored' };
@@ -88,25 +103,28 @@ async function migrateEvent(fb, id, ev) {
     }
   }
 
-  /* 4. the seven standard questions, for a "Register now" nobody has touched (decided again inside the
-     transaction, on what is stored at that moment: an organiser saving it meanwhile wins) */
-  const formRef = ref.collection('forms').doc(forms.DEFAULT_FORM_ID);
-  const stored4 = await formRef.get();
-  if (stored4.exists) {
-    const f = forms.storedForm(stored4.id, stored4.data());
-    const hasStd = forms.DEFAULT_FIELD_IDS.every(function (fid) { return f.fields.some(function (x) { return x.id === fid; }); });
-    if (!forms.isUntouchedDefault(f, ev)) out.questions = hasStd ? 'already has the standard questions' : f.rev ? 'edited by the organiser, kept' : 'kept (not the original questions)';
-    else if (!APPLY) out.questions = 'would get the standard seven';
-    else {
-      out.questions = await fb.db.runTransaction(function (tx) {
-        return Promise.all([tx.get(ref), tx.get(formRef)]).then(function (snaps) {
-          const evNow = snaps[0].data() || {}, fNow = snaps[1].exists ? forms.storedForm(snaps[1].id, snaps[1].data()) : null;
-          if (!isLive(evNow) || !fNow || !forms.isUntouchedDefault(fNow, evNow)) return 'changed meanwhile, kept';
-          tx.update(formRef, { fields: forms.defaultFields(), rev: 1, updatedAt: new Date().toISOString(), updatedBy: 'migration: standard questions' });
-          return 'given the standard seven';
-        });
+  /* 4. today's standard questions, for a "Register now" nobody has touched; 5. the consent box, stored last on
+     every other form. Each is decided again inside a transaction, on what is stored at that moment: an
+     organiser saving the form meanwhile wins. */
+  const formDocs = await ref.collection('forms').limit(forms.LIMITS.maxForms + 1).get();
+  out.consent = 0;
+  for (const d of formDocs.docs) {
+    const plan = planForm(d, ev);
+    if (d.id === forms.DEFAULT_FORM_ID) out.questions = plan.say;
+    if (plan.action === 'none') continue;
+    if (!APPLY) { if (plan.action === 'consent') out.consent++; continue; }
+    const did = await fb.db.runTransaction(function (tx) {
+      return Promise.all([tx.get(ref), tx.get(d.ref)]).then(function (snaps) {
+        if (!isLive(snaps[0].data()) || !snaps[1].exists) return false;
+        const now = planForm(snaps[1], snaps[0].data() || {});
+        if (now.action !== plan.action) return false;
+        tx.update(d.ref, now.patch);
+        return true;
       });
-    }
+    });
+    if (!did) { if (d.id === forms.DEFAULT_FORM_ID) out.questions = 'changed meanwhile, kept'; continue; }
+    if (plan.action === 'consent') out.consent++;
+    if (d.id === forms.DEFAULT_FORM_ID) out.questions = plan.done;
   }
 
   /* 3. the totals */
@@ -119,7 +137,8 @@ async function migrateEvent(fb, id, ev) {
   const did = [];
   if (out.form === 'created') did.push('the first form (“Register now”) created');
   if (APPLY && out.backfilled) did.push(out.backfilled + ' earlier registration' + (out.backfilled === 1 ? '' : 's') + ' linked to it');
-  if (out.questions === 'given the standard seven') did.push('“Register now” given the seven standard questions');
+  if (out.questions === 'given the standard seven') did.push('“Register now” given the seven standard questions (email first) and the consent box');
+  if (APPLY && out.consent) did.push('the consent box stored on ' + out.consent + ' form' + (out.consent === 1 ? '' : 's') + ', their questions kept in their order');
   if (APPLY && did.length) await require(path.join(lib, 'activity.js')).logActivity(fb, id, 'platform', 'repaired', 'forms migration (tools/migrate-forms.js): ' + did.join('; '), { area: 'forms' });
   return out;
 }
@@ -140,7 +159,7 @@ async function migrateEvent(fb, id, ev) {
     return isLive(d.data());
   });
   console.log((APPLY ? 'APPLYING' : 'DRY RUN (add --apply to write)') + ' — ' + targets.length + ' event' + (targets.length === 1 ? '' : 's'));
-  const sum = { created: 0, backfilled: 0, rebuilt: 0, questions: 0, failed: 0 };
+  const sum = { created: 0, backfilled: 0, rebuilt: 0, questions: 0, consent: 0, failed: 0 };
   for (const d of targets) {
     try {
       const r = await migrateEvent(fb, d.id, d.data());
@@ -148,8 +167,9 @@ async function migrateEvent(fb, id, ev) {
       if (/seven/.test(r.questions)) sum.questions++;
       if (/rebuil/.test(r.totals)) sum.rebuilt++;
       sum.backfilled += r.backfilled;
+      sum.consent += r.consent;
       console.log('  ' + r.id + ': form ' + r.form + ', ' + r.backfilled + ' registration' + (r.backfilled === 1 ? '' : 's') +
-        (APPLY ? ' marked' : ' to mark') + ', totals ' + r.totals + ', Register now: ' + r.questions);
+        (APPLY ? ' marked' : ' to mark') + ', totals ' + r.totals + ', Register now: ' + r.questions + ', consent box ' + (APPLY ? 'stored on ' : 'to store on ') + r.consent + ' form' + (r.consent === 1 ? '' : 's'));
     } catch (err) {
       sum.failed++;
       console.error('  ' + d.id + ': FAILED — ' + ((err && err.message) || err));
@@ -157,6 +177,7 @@ async function migrateEvent(fb, id, ev) {
   }
   console.log('Forms ' + (APPLY ? 'created' : 'to create') + ': ' + sum.created + ' · registrations ' + (APPLY ? 'marked' : 'to mark') + ': ' + sum.backfilled +
     ' · totals ' + (APPLY ? 'rebuilt' : 'to rebuild') + ': ' + sum.rebuilt + ' · Register now forms ' + (APPLY ? 'given' : 'to give') + ' the standard seven: ' + sum.questions +
+    ' · forms ' + (APPLY ? 'given' : 'to give') + ' the consent box (order kept): ' + sum.consent +
     (sum.failed ? ' · FAILED: ' + sum.failed : ''));
   process.exit(sum.failed ? 1 : 0);
 })().catch(function (err) { console.error((err && err.stack) || err); process.exit(1); });

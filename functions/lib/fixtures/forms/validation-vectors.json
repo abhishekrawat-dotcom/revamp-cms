@@ -14,7 +14,7 @@
     "tier": { "id": "tier", "type": "select", "label": "Partnership interest", "required": true, "placeholder": "", "help": "", "options": ["Exhibitor", "Other"] },
     "meal": { "id": "meal", "type": "radio", "label": "Meal", "required": true, "placeholder": "", "help": "", "options": ["Veg", "Non-veg"] },
     "topics": { "id": "topics", "type": "multiselect", "label": "Topics", "required": true, "placeholder": "", "help": "", "options": ["AI", "Cloud", "Data"] },
-    "consent": { "id": "consent", "type": "checkbox", "label": "I agree to the terms", "required": true, "placeholder": "", "help": "" },
+    "consent": { "id": "agree_terms", "type": "checkbox", "label": "I agree to the terms", "required": true, "placeholder": "", "help": "" },
     "newsletter": { "id": "newsletter", "type": "checkbox", "label": "Newsletter", "required": false, "placeholder": "", "help": "" },
     "country": { "id": "country", "type": "country", "label": "Country", "required": true, "placeholder": "", "help": "" },
     "first": { "id": "first_name", "type": "text", "label": "First name", "required": true, "placeholder": "", "help": "" },
