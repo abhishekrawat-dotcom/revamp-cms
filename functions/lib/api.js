@@ -1910,8 +1910,13 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
        The change is kept only when a second reading finds the new year there and the old one gone.
      - a sponsor's mark, a "Presented by" / "In association with" line or another edition's mark drawn into
        it is cropped out — from a PNG (cropToOwnUnit) or from an outlined SVG, by its viewBox
-       (cropSvgToOwnUnit) — only across empty lines and only when a second reading finds none of it left;
-       otherwise it stays and the owner is told. The event's own tagline is part of it and always stays.
+       (cropSvgToOwnUnit) — only across empty lines, and an extra sharing its lines with the lock-up
+       ("PRESENTS" beside the top of an emblem) emptied by itself; kept only when a second reading finds
+       none of it left and the event's own words and tagline still there; otherwise it stays and the owner
+       is told. The event's own tagline is part of it and always stays.
+     - a lock-up stacked with its sponsors (taller than wide) is taken, and used only once they are cut away.
+     - whenever a previous edition's logo was named and is not what the hero shows, the owner is told why
+       (previousUnitNote) — in the editor and in the console — never silently replaced by the drawn name.
      - nothing else: never boxed, never redrawn. Most ET lock-ups carry no year at all: they are used
        untouched. The hero takes the tone the lock-up was drawn for (white lettering -> a dark banner), so
        it always stands clear, on nothing.
@@ -1920,6 +1925,7 @@ function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
    set in type (genDesign.logoUnitHtml). -> { url, storagePath, source, from, width, height, heroMode, plate, note } */
 var LOGO_UNIT_MAX_BYTES = 3 * 1024 * 1024;
 var LOGO_UNIT_TRIES = 3;
+var LOGO_READ_TIMEOUT_MS = 60000;
 var LOGO_UNIT_DECODE_PIXELS = 2500000;       // 10 MB as RGBA; the copies made of it stay well inside the instance
 /* the fonts the year of a lock-up drawn as outlines can be set in: geometric, grotesque, condensed and serif
    faces, so the reader of the picture can name the nearest */
@@ -2024,20 +2030,21 @@ function fetchUnitFont(family, weight, text) {
   }).then(null, function () { return null; });
 }
 
-/* the picture a candidate names: { bytes, info } — or null when it cannot be had or is not a logo unit */
+/* the picture a candidate names: { bytes, info, stacked } — or { refused: why } when it cannot be had or is
+   not a logo unit (why: a few words for the owner's note, never dropped: see previousEditionUnit) */
 function fetchLogoCandidate(cand) {
   if (cand.kind === 'inline-svg') {
     var text = String(cand.svg || '');
-    if (!standsAlone(text)) return Promise.resolve(null);
+    if (!standsAlone(text)) return Promise.resolve({ refused: 'it is drawn into the page and cannot be shown on its own' });
     if (!/\sxmlns=/.test(text.slice(0, 600))) text = text.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
     var inline = Buffer.from(text, 'utf8');
     return Promise.resolve(usableLogoPicture(inline));
   }
-  if (!/^https?:\/\//i.test(String(cand.url || ''))) return Promise.resolve(null);
+  if (!/^https?:\/\//i.test(String(cand.url || ''))) return Promise.resolve({ refused: 'its address could not be read' });
   /* the type is judged from the bytes: ET's own image host serves PNGs named .jpg as image/jpeg */
   return safeFetch(cand.url, { timeoutMs: 8000, maxBytes: LOGO_UNIT_MAX_BYTES }).then(function (r) {
-    return r.status === 200 ? usableLogoPicture(r.body) : null;
-  }, function () { return null; });
+    return r.status === 200 ? usableLogoPicture(r.body) : { refused: 'its picture could not be downloaded (the site answered ' + r.status + ')' };
+  }, function (err) { return { refused: 'its picture could not be downloaded (' + String((err && err.message) || 'no answer').slice(0, 80) + ')' }; });
 }
 /* An <svg> cut out of a page is only a picture by itself when it does not lean on that page: on a symbol
    defined elsewhere (<use href="#…">), on the page's text colour (currentColor), on the page's style sheet
@@ -2070,16 +2077,18 @@ function sizedSvg(text, info) {
   tag = tag.replace(/\s(width|height)\s*=\s*("[^"]*"|'[^']*')/gi, '') + ' width="' + Math.round(info.width) + '" height="' + Math.round(info.height) + '"';
   return text.slice(0, at) + tag + text.slice(end);
 }
+/* -> { bytes, info, stacked } | { refused: why }. A lock-up stacked with its sponsors (taller than wide,
+   logo-unit.js stackedUnit) is taken, marked stacked: it is used only once they are cropped out of it. */
 function usableLogoPicture(bytes) {
-  var info = logoUnit.imageInfo(bytes);
-  if (logoUnit.plausibleUnit(info)) return null;
+  var info = logoUnit.imageInfo(bytes), stacked = logoUnit.stackedUnit(info), why = logoUnit.plausibleUnit(info);
+  if (why && !stacked) return { refused: 'the picture found on its page ' + (/^its /.test(why) ? 'has a size that cannot be read' : 'is ' + why) };
   if (info.type === 'svg') {
     var text = bytes.toString('utf8');
-    if (svgCouldRun(text)) return null;
+    if (svgCouldRun(text)) return { refused: 'its SVG contains scripts or embedded content' };
     var sized = sizedSvg(text, info);
     if (sized !== text) bytes = Buffer.from(sized, 'utf8');
   }
-  return { bytes: bytes, info: info };
+  return { bytes: bytes, info: info, stacked: stacked };
 }
 
 function hex2(v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }
@@ -2099,15 +2108,27 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt, eventName) {
     : { mimeType: picture.info.mime, data: picture.bytes.toString('base64') };
   if (['image/png', 'image/jpeg', 'image/webp', 'image/gif'].indexOf(shown.mimeType) === -1) return Promise.resolve(null);
   if (shown.data.length > 4 * 1024 * 1024) return Promise.resolve(null);       // base64 of 3 MB: nothing a logo unit needs
-  var ask = { route: 'logo-unit', eventId: eventId, images: [shown], timeoutMs: 40000, maxOutputTokens: AI_OUTPUT_TOKENS.small };
+  /* Measured on ETCIO Annual Conclave 2026's tall lock-up: 30 s for the whole picture (2,500 thinking
+     tokens), 19 s for the cut — a 40 s limit left little room. A reading that runs out of time is asked once
+     more while the plan still has the time for it. */
+  var ask = { route: 'logo-unit', eventId: eventId, images: [shown], timeoutMs: LOGO_READ_TIMEOUT_MS, maxOutputTokens: AI_OUTPUT_TOKENS.small };
   if (deadlineAt) ask.deadlineAt = deadlineAt;
   /* This one reading goes to Gemini, not through llm.js: what is needed from it is WHERE things are in
      the picture, and Gemini places a box to the pixel where Claude's boxes land beside the lettering
      (measured on the same lock-up: Gemini's box was the year's own, Claude's was 300 px off). */
-  return callGeminiJson(logoReadPrompt(eventName), LOGO_READ_SCHEMA, ask).then(function (r) {
-    var record = aiUsageRecorder(null, eventId, 'logo-unit');
-    if (record) record(r.usage);
-    if (r.error) return null;
+  function asked(tries) {
+    return callGeminiJson(logoReadPrompt(eventName), LOGO_READ_SCHEMA, ask).then(function (r) {
+      var record = aiUsageRecorder(null, eventId, 'logo-unit');
+      if (record) record(r.usage);
+      if (r.error && r.code === 'ai-timeout' && tries < 2 && !(deadlineAt && deadlineAt - Date.now() < 25000)) {
+        console.error('logo unit: the reading of ' + eventId + '\'s logo ran out of time; asked once more');
+        return asked(tries + 1);
+      }
+      return r;
+    });
+  }
+  return asked(1).then(function (r) {
+    if (r.error) { console.error('logo unit: the reading of ' + eventId + '\'s logo failed — ' + (r.code || r.error)); return null; }
     var p = r.parsed || {};
     var allText = String(p.allText || '').replace(/\s+/g, ' ').trim().slice(0, 600);
     /* the year as written, read in code; a model that put it in four digits only ("2026" for "'26") is
@@ -2145,12 +2166,29 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt, eventName) {
       if (!rest) extras = '';
       else if (groups.length) extras = groups.map(function (e) { return String(e.text || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' · ') || extras;
     }
-    return { year: year, full: full, box: box, shown: shownYears, allText: allText, tagline: tagline, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: extras.slice(0, 160),
+    /* every word read as an extra, in full: what a cut may take away (keepsOwnLine) */
+    var extraWords = [String(p.extras || '')].concat(groups.map(function (e) { return String(e.text || ''); })).join(' ').replace(/\s+/g, ' ').trim().slice(0, 1000);
+    return { year: year, full: full, box: box, shown: shownYears, allText: allText, tagline: tagline, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: extras.slice(0, 160), extraWords: extras ? extraWords : '',
       fontFamily: YEAR_FONT_CHOICES.indexOf(p.yearFontFamily) !== -1 ? p.yearFontFamily : '', fontWeight: /^[3-8]00$/.test(String(p.yearFontWeight)) ? +p.yearFontWeight : 0 };
   }, function () { return null; });
 }
 /* words only, lower case, one space between: how two readings of the same line are compared */
 function wordsOf(text) { return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+/* A cut is kept only with the event's own lock-up still in it: the second reading must find (nearly) every
+   word of the tagline the first one read, and of the words it read that were not the extras' (the
+   publisher's mark, the event's name). Read again, a word can come back joined to its neighbour ("ET CIO"
+   as "ETCIO"): it counts as found. */
+function keepsOwnLine(first, second) {
+  var now = ' ' + wordsOf((second.allText || '') + ' ' + (second.tagline || '')) + ' ', joined = now.replace(/ /g, '');
+  function mostFound(words) {
+    if (!words.length) return true;
+    var found = words.filter(function (w) { return now.indexOf(' ' + w + ' ') !== -1 || joined.indexOf(w) !== -1; }).length;
+    return found >= Math.ceil(words.length * 0.8);
+  }
+  var extra = ' ' + wordsOf(first && (first.extraWords || first.extras)) + ' ';
+  var own = wordsOf(first && first.allText).split(' ').filter(function (w) { return w && extra.indexOf(' ' + w + ' ') === -1; });
+  return mostFound(wordsOf(first && first.tagline).split(' ').filter(Boolean)) && mostFound(own);
+}
 
 /* Last edition's sponsor is not this edition's. A lock-up that has a sponsor's mark, a "Powered by" line
    or that edition's theme line drawn into it is cut down to the event's own part: the publisher's mark, the
@@ -2178,7 +2216,7 @@ function ownUnitBox(decoded, read) {
     return !(w > 0 && h > 0 && w * h > ownArea * 0.5);
   });
   if (!extraBoxes.length || !(ownArea > 0)) return null;
-  var W = decoded.width, H = decoded.height;
+  var asDrawn = extraBoxes, W = decoded.width, H = decoded.height;
   /* the model's boxes are a few pixels out at times ("IN ASSOCIATION WITH" began 1.4px past its box): each is
      grown by 3% of the picture on every side but the one facing the event's own lock-up, and never into it */
   var gx = W * 0.03, gy = H * 0.03, oR = own0.x + own0.width, oB = own0.y + own0.height;
@@ -2204,7 +2242,11 @@ function ownUnitBox(decoded, read) {
       var all = pngLite.inkCount(decoded, box, background) || 1;
       var own = pngLite.inkCount(decoded, box, background, [read.ownBox]) / all;
       var extra = pngLite.inkCount(decoded, box, background, extraBoxes) / all;
-      return { from: start + run.from, to: start + run.to, kind: own >= 0.25 ? 'own' : extra >= 0.75 ? 'extra' : '' };
+      /* the room each box was given catches lettering a few pixels out of it, never a line wholly outside
+         it: the rule under ETCIO Annual Conclave's tagline, between the own box and the partners' box below,
+         was taken by that room alone and cut away. An extra is (a good part) inside a box as drawn. */
+      var drawn = extra >= 0.75 ? pngLite.inkCount(decoded, box, background, asDrawn) / all : 0;
+      return { from: start + run.from, to: start + run.to, kind: own >= 0.25 ? 'own' : extra >= 0.75 && drawn >= 0.25 ? 'extra' : '' };
     });
     var first = 0, last = bands.length - 1;
     while (first <= last && bands[first].kind === 'extra') first++;
@@ -2219,9 +2261,16 @@ function ownUnitBox(decoded, read) {
     taken += first + bands.length - 1 - last;
     return false;
   });
+  if (refused) return null;
+  /* What is left can still hold an extra that shares its lines with the lock-up: ETCIO Annual Conclave's
+     "PRESENTS" stands to the right of the top of its emblem, so no straight cut across the picture parts
+     them. The part kept is taken apart into its blocks of lettering (cut across empty lines, again and
+     again, rows then columns) and a block that lies inside the extras' boxes as the model drew them, with
+     none of the event's own lock-up outside them, is emptied. Kept only as the second reading allows. */
+  var erase = extraBlocks(decoded, { x: keep.x0, y: keep.y0, width: keep.x1 - keep.x0, height: keep.y1 - keep.y0 }, background, read.ownBox, read.extraBoxes);
   /* nothing taken away: the extras are not where they can be cut from (inside the lock-up's own lines) */
-  if (refused || !taken) return null;
-  var cut = pngLite.crop(decoded, { x: keep.x0, y: keep.y0, width: keep.x1 - keep.x0, height: keep.y1 - keep.y0 });
+  if (!taken && !erase.length) return null;
+  var cut = pngLite.crop(erase.length ? emptied(decoded, erase, background) : decoded, { x: keep.x0, y: keep.y0, width: keep.x1 - keep.x0, height: keep.y1 - keep.y0 });
   var ink = cut && pngLite.inkBounds(cut, { x: 0, y: 0, width: cut.width, height: cut.height }, background);
   if (!ink) return null;
   /* trimmed to what is drawn, with a little room — never past the cuts */
@@ -2229,13 +2278,63 @@ function ownUnitBox(decoded, read) {
   var x0 = Math.max(keep.x0, keep.x0 + ink.x - pad), y0 = Math.max(keep.y0, keep.y0 + ink.y - pad);
   var x1 = Math.min(keep.x1, keep.x0 + ink.x + ink.width + pad), y1 = Math.min(keep.y1, keep.y0 + ink.y + ink.height + pad);
   /* cutting must have taken something away, and must have left a lock-up */
-  if ((x1 - x0) * (y1 - y0) > W * H * 0.94 || x1 - x0 < 120 || y1 - y0 < 30) return null;
-  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  if (((x1 - x0) * (y1 - y0) > W * H * 0.94 && !erase.length) || x1 - x0 < 120 || y1 - y0 < 30) return null;
+  var out = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  if (erase.length) out.erase = erase;
+  return out;
+}
+/* The blocks of lettering inside `box` that are extras: -> [{ x, y, width, height }] in the picture's pixels.
+   A block is what is left when the part is cut across empty lines until it cannot be (rows, then columns,
+   up to six deep: a line of words falls into its letters, which is fine — each is judged by itself). One is
+   an extra when nine tenths of its lettering lies inside the extras' boxes as the model drew them (with
+   1% of room) and under a tenth inside the event's own box outside them. Whole rows and whole columns are
+   never judged here — that is the cut's to do (ownUnitBox), and it keeps a line the event's own box holds
+   a real part of: only a block sharing its line with the lock-up is, as "PRESENTS" shares the emblem's. */
+function extraBlocks(decoded, box, background, ownBox, rawExtras) {
+  if (!ownBox || !rawExtras || !rawExtras.length) return [];
+  var W = decoded.width, H = decoded.height, rx = W * 0.01, ry = H * 0.01;
+  var extras = rawExtras.map(function (b) { return { x: b.x - rx, y: b.y - ry, width: b.width + 2 * rx, height: b.height + 2 * ry }; });
+  /* only where an extra's box reaches into the part kept */
+  var near = extras.filter(function (b) { return b.x < box.x + box.width && b.x + b.width > box.x && b.y < box.y + box.height && b.y + b.height > box.y; });
+  if (!near.length) return [];
+  var out = [], blocks = 0;
+  (function split(b, depth, axis) {
+    if (++blocks > 4000) return;
+    var part = pngLite.crop(decoded, b);
+    if (!part) return;
+    var ink = pngLite.inkBounds(part, { x: 0, y: 0, width: part.width, height: part.height }, background);
+    if (!ink) return;
+    b = { x: b.x + ink.x, y: b.y + ink.y, width: ink.width, height: ink.height };
+    /* a block wholly outside every extra's box is the lock-up's: nothing to look at inside it */
+    if (!near.some(function (e) { return e.x < b.x + b.width && e.x + e.width > b.x && e.y < b.y + b.height && e.y + e.height > b.y; })) return;
+    var all = pngLite.inkCount(decoded, b, background) || 1;
+    /* a row (or column) is looked into only when the lock-up really is in it, outside the extras' boxes */
+    if (depth === 1 && pngLite.inkCount(decoded, b, background, [ownBox], near) / all < 0.25) return;
+    /* emptied with a pixel of room for its soft edges (the lines round a block are empty) */
+    if (depth >= 2 && pngLite.inkCount(decoded, b, background, near) / all >= 0.9 && pngLite.inkCount(decoded, b, background, [ownBox], near) / all < 0.1) { out.push({ x: b.x - 1, y: b.y - 1, width: b.width + 2, height: b.height + 2 }); return; }
+    if (depth >= 6) return;
+    var runs = [axis, axis === 'y' ? 'x' : 'y'].map(function (ax) {
+      var p = pngLite.crop(decoded, b);
+      return { axis: ax, runs: pngLite.inkRuns(pngLite.inkProfile(p, ax, background)) };
+    }).filter(function (r) { return r.runs.length > 1; })[0];
+    if (!runs) return;
+    runs.runs.forEach(function (run) {
+      var next = runs.axis === 'y' ? { x: b.x, y: b.y + run.from, width: b.width, height: run.to - run.from } : { x: b.x + run.from, y: b.y, width: run.to - run.from, height: b.height };
+      split(next, depth + 1, runs.axis === 'y' ? 'x' : 'y');
+    });
+  })({ x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) }, 0, 'y');
+  return out;
+}
+/* the picture with those blocks emptied: see-through where it is, else painted the colour round it */
+function emptied(decoded, boxes, background) {
+  return boxes.reduce(function (img, b) { return background ? pngLite.fillBox(img, b, background) : pngLite.clearBox(img, b); }, decoded);
 }
 /* the same, for a PNG: -> the cropped picture ({ width, height, data }) or null */
 function cropToOwnUnit(decoded, read) {
   var box = ownUnitBox(decoded, read);
-  return box ? pngLite.crop(decoded, box) : null;
+  if (!box) return null;
+  var background = pngLite.hasTransparency(decoded) ? null : pngLite.edgeColour(decoded, { x: 1, y: 1, width: decoded.width - 2, height: decoded.height - 2 });
+  return pngLite.crop(box.erase ? emptied(decoded, box.erase, background) : decoded, box);
 }
 
 /* Two drawings of the same part of a lock-up are the same picture: of the pixels both have, all but a few
@@ -2275,10 +2374,25 @@ function cropSvgToOwnUnit(svgText, read) {
       if (Math.abs(sx - sy) > s * 0.002 && fit && !/^xMidYMid(\s+meet)?$/.test(fit)) return null;
       ox = (clear.width - vb.width / s) / 2; oy = (clear.height - vb.height / s) / 2; sx = sy = s;
     }
-    var cut = svgYear.cropTo(svgText, { x: vb.x + (keep.x - ox) * sx, y: vb.y + (keep.y - oy) * sy, width: keep.width * sx, height: keep.height * sy });
+    function units(b) { return { x: vb.x + (b.x - ox) * sx, y: vb.y + (b.y - oy) * sy, width: b.width * sx, height: b.height * sy }; }
+    var source = svgText, expected = clear;
+    /* an extra sharing its lines with the lock-up (ownUnitBox: erase): its shapes are taken out of the
+       drawing — those that lie wholly inside the block, never one that is moved by a transform */
+    if (keep.erase) {
+      var blocks = keep.erase.map(units), shapes = svgYear.shapesIn(svgText).filter(function (sh) {
+        if (sh.transformed || sh.unsafe || !sh.box) return false;
+        return blocks.some(function (b) { return sh.box.x >= b.x && sh.box.y >= b.y && sh.box.x + sh.box.width <= b.x + b.width && sh.box.y + sh.box.height <= b.y + b.height; });
+      });
+      if (!shapes.length) return null;
+      source = svgYear.cutShapes(svgText, { shapes: shapes });
+      expected = emptied(clear, keep.erase, null);
+    }
+    var cut = svgYear.cropTo(source, units(keep));
     if (!cut || svgCouldRun(cut)) return null;
+    /* drawn again, it must be exactly that part of the picture, with the emptied blocks empty: nothing of
+       the extras left in them, and nothing else gone */
     return rasterise(cut, { clear: true, width: keep.width }).then(function (again) {
-      return again && sameDrawing(pngLite.decode(again.png), pngLite.crop(clear, keep)) ? cut : null;
+      return again && sameDrawing(pngLite.decode(again.png), pngLite.crop(expected, keep)) ? cut : null;
     });
   }).then(null, function () { return null; });
 }
@@ -2517,7 +2631,7 @@ function examineUnit(fb, eventId, picture, ctx) {
       return cropSvgToOwnUnit(svgText, first).then(function (cut) {
         if (!cut) return null;
         return rasterise(cut).then(function (r) {
-          return readDrawing(r).then(function (second) { return second && !second.extras ? { svg: cut, raster: r, read: second } : null; });
+          return readDrawing(r).then(function (second) { return second && !second.extras && keepsOwnLine(first, second) ? { svg: cut, raster: r, read: second } : null; });
         });
       }).then(null, function () { return null; });
     }
@@ -2599,7 +2713,7 @@ function examineUnit(fb, eventId, picture, ctx) {
        sponsor's mark in it can be cropped and its year moved. Kept as the SVG it is when nothing needs to
        change. */
     var onlyWraps = !/<(path|text|rect|circle|ellipse|polygon|polyline|line|g|mask|clipPath|filter)[\s>]/i.test(svgText);
-    if (innerDecoded && onlyWraps && (owner ? innerInfo.width >= 16 && innerInfo.height >= 16 : !logoUnit.plausibleUnit(innerInfo))) {
+    if (innerDecoded && onlyWraps && (owner ? innerInfo.width >= 16 && innerInfo.height >= 16 : !logoUnit.plausibleUnit(innerInfo) || logoUnit.stackedUnit(innerInfo))) {
       var whole = picture;
       return rasterExamined({ bytes: innerBytes, info: innerInfo }, innerDecoded).then(function (pic) {
         picture = changed ? pic : whole;
@@ -2629,7 +2743,7 @@ function examineUnit(fb, eventId, picture, ctx) {
       var cutBytes = pngLite.encode(cut), cutPicture = { bytes: cutBytes, info: logoUnit.imageInfo(cutBytes) };
       if (logoUnit.plausibleUnit(cutPicture.info)) { carries(first.extras); return first; }
       return read(cutPicture, cut).then(function (second) {
-        if (!second || second.extras) { carries(first.extras); return first; }
+        if (!second || second.extras || !keepsOwnLine(first, second)) { carries(first.extras); return first; }
         pic = cutPicture; decoded = cut; tone = rasterTone(cut) || tone;
         cropped(first.extras);
         return second;
@@ -2669,21 +2783,43 @@ function briefYearTexts(brief, eventMeta) {
     .concat([(eventMeta || {}).description]).map(function (t) { return String(t || ''); }).filter(Boolean);
 }
 
-/* The previous (or this) edition's own unit, examined. -> unit | { stuck: true, note } | null */
-function previousEditionUnit(fb, eventId, o) {
-  /* the newest reading of the previous edition first, then of this edition's own current site */
-  var docs = (o.sourceDocs || []).filter(function (s) { return (s.type === 'previousEdition' || s.type === 'currentEdition') && Array.isArray(s.logoCandidates) && s.logoCandidates.length; });
+/* The sources that name a previous (or this) edition's logo unit: the newest reading of the previous
+   edition first, then of this edition's own current site. */
+function unitSources(sourceDocs) {
+  var docs = (sourceDocs || []).filter(function (s) { return s && (s.type === 'previousEdition' || s.type === 'currentEdition') && Array.isArray(s.logoCandidates) && s.logoCandidates.length; });
   docs.sort(function (a, b) { return (a.type === b.type ? 0 : a.type === 'previousEdition' ? -1 : 1) || String(b.fetchedAt || '').localeCompare(String(a.fetchedAt || '')); });
-  var source = docs[0];
-  if (!source) return Promise.resolve(null);
-  var candidates = source.logoCandidates.slice(0, LOGO_UNIT_TRIES);
+  return docs;
+}
+/* What the owner is told when the previous edition's unit had to be passed over — never nothing. ETCIO
+   Annual Conclave 2027 got its name drawn in place of the 2026 lock-up without a word, because that
+   lock-up was taller than wide (its sponsors stacked under it) and was refused before it was looked at. */
+function previousUnitNote(why) {
+  return 'The previous edition\'s logo could not be used: ' + String(why || 'it could not be examined').replace(/[.\s]+$/, '') +
+    '. Upload this year\'s logo under Event logo in the event\'s Basics, or select this and use Replace image.';
+}
 
+/* The previous (or this) edition's own unit, examined.
+   -> unit | { stuck: true, note } | { failed: true, note } | null (no edition's page named a logo)
+   failed: a logo was named and could not be used; why is said in the note. */
+function previousEditionUnit(fb, eventId, o) {
+  var source = unitSources(o.sourceDocs)[0];
+  if (!source) return Promise.resolve(null);
+  var candidates = source.logoCandidates.slice(0, LOGO_UNIT_TRIES), refusals = [];
+  function failed(why) {
+    console.error('logo unit: the previous edition\'s logo of ' + eventId + ' was not used (' + why + ') — ' + source.url);
+    return { failed: true, note: previousUnitNote(why) };
+  }
   function pick(i) {
     if (i >= candidates.length) return Promise.resolve(null);
-    return fetchLogoCandidate(candidates[i]).then(function (picture) { return picture || pick(i + 1); });
+    return fetchLogoCandidate(candidates[i]).then(function (picture) {
+      if (picture && !picture.refused) return picture;
+      refusals.push((picture && picture.refused) || 'its picture could not be had');
+      return pick(i + 1);
+    });
   }
   return pick(0).then(function (picture) {
-    if (!picture) return null;
+    /* the reason the best candidate (the first) was refused is the one that matters */
+    if (!picture) return failed(refusals[0] || 'no picture was found on its page');
     var years = logoUnit.editionYears({ eventName: o.eventMeta.name, start: o.eventMeta.start, briefTexts: o.briefTexts, hints: source.editionHints || {}, pageUrl: source.url });
     return examineUnit(fb, eventId, picture, { years: years, origin: 'previous-edition', eventName: o.eventMeta.name, deadlineAt: o.deadlineAt }).then(function (ex) {
       /* never used showing an earlier edition's year: the event's name stands in its place, and the owner
@@ -2692,8 +2828,18 @@ function previousEditionUnit(fb, eventId, o) {
         return { stuck: true, note: 'The previous edition\'s logo shows ' + ex.stuck + ' and could not be updated to ' + logoUnit.yearAs(ex.stuck, years.to) +
           ', so the event\'s name is shown here instead. Upload this year\'s logo under Event logo in the event\'s Basics, or select this and use Replace image.' };
       }
+      /* a lock-up stacked with its sponsors is used only cut down to the event's own, never with them */
+      if (picture.stacked && logoUnit.plausibleUnit(ex.picture.info)) {
+        return failed(ex.unread ? 'it is stacked with its sponsors\' marks, and it could not be read in time to crop them out, so the event\'s name is shown here instead'
+          : !ex.notes.length ? 'it is taller than it is wide (' + Math.round(picture.info.width) + ' × ' + Math.round(picture.info.height) + ') and nothing in it could be told apart to crop away, so the event\'s name is shown here instead'
+          : 'it is stacked with its sponsors\' marks, and they could not be cropped out cleanly, so the event\'s name is shown here instead');
+      }
       var notes = ex.notes.slice();
-      if (ex.unread && years.from) notes.push('The previous edition\'s logo could not be read to check its year. If it still shows ' + years.from + ', upload this year\'s logo under Event logo in the event\'s Basics, or select it and use Replace image.');
+      /* used unread: its year and any sponsor's mark in it went unchecked, and the owner is told */
+      if (ex.unread) {
+        notes.push('The previous edition\'s logo could not be read to check ' + (years.from ? 'its year and ' : '') + 'whether a sponsor\'s mark is drawn into it. If it ' +
+          (years.from ? 'still shows ' + years.from + ' or a sponsor' : 'shows a sponsor') + ', upload this year\'s logo under Event logo in the event\'s Basics, or select it and use Replace image.');
+      }
       return storeLogoUnit(fb, eventId, o.stamp, ex.picture).then(function (stored) {
         return {
           url: stored.url, storagePath: stored.storagePath, source: 'previous-edition', from: source.url,
@@ -2805,43 +2951,74 @@ function drawnLogoUnit(fb, eventId, o) {
 
 /* The hero's logo unit, in this order:
      1. the logo the owner uploaded, examined (ownerLogoUnit) — owner-supplied content wins;
-     2. else the previous (or this) edition's own unit, its year moved on (previousEditionUnit);
-     3. else, or when that unit's year could not be moved on, the event's name drawn as a unit (with the
-        owner told why, in the second case); the hero sets it in type when even that cannot be made.
-   o: { eventMeta, ownerLogoUrl, briefTexts, design, sourceDocs, stamp, deadlineAt }. Never rejects. */
-function buildLogoUnit(fb, eventId, o) {
-  var none = { url: '', storagePath: '', source: '', from: '', width: 0, height: 0, heroMode: '', plate: '', note: '' };
+     2. else the previous (or this) edition's own unit, its year moved on, its sponsors cropped out
+        (previousEditionUnit);
+     3. else, or when that unit could not be used, the event's name drawn as a unit — the last resort, and
+        whenever a previous edition's logo was named, with the owner told why it is not that one; the hero
+        sets the name in type when even that cannot be made.
+   foundLogoUnit() is steps 1 and 2: they need nothing of the design, so plan-structure starts them while the
+   plan is being written (o.found), and the readings have the time they need.
+   o: { eventMeta, ownerLogoUrl, briefTexts, design, sourceDocs, stamp, deadlineAt, found }. Never rejects. */
+var NO_UNIT = { url: '', storagePath: '', source: '', from: '', width: 0, height: 0, heroMode: '', plate: '', note: '' };
+/* -> Promise<{ unit: the owner's or the previous edition's unit | null, note: why not, for what stands in
+   its place ('' when there is nothing to say) }>. Never rejects. */
+function foundLogoUnit(fb, eventId, o) {
+  var hadPrevious = unitSources(o.sourceDocs).length > 0;
   function step(run, what) {
     return Promise.resolve().then(run).then(null, function (err) {
       console.error('plan-structure: ' + what + ' could not be used — ' + (err && err.message));
-      return null;
+      return { error: err };
     });
   }
   /* an upload that could not be used at all is said so on whatever stands in its place */
   var ownerNote = '';
-  function withOwnerNote(unit) {
-    if (unit && ownerNote) unit.note = (ownerNote + ' ' + (unit.note || '')).trim();
-    return unit;
-  }
+  function withOwnerNote(note) { return [ownerNote, note].filter(Boolean).join(' '); }
   return step(function () { return ownerLogoUnit(fb, eventId, o); }, 'the uploaded logo').then(function (unit) {
-    if (unit && !unit.refused) return unit;
+    if (unit && !unit.refused && !unit.error) return { unit: unit, note: '' };
     if (unit && unit.refused) ownerNote = unit.note;
+    if (unit && unit.error) ownerNote = 'Your uploaded logo could not be checked (something went wrong while it was read), so the hero does not show it. Select this and use Replace image to put it in.';
     return step(function () { return previousEditionUnit(fb, eventId, o); }, 'the previous edition\'s logo unit').then(function (prev) {
-      if (prev && !prev.stuck) return withOwnerNote(prev);
-      var note = prev && prev.stuck ? prev.note : '';
-      return step(function () { return drawnLogoUnit(fb, eventId, o); }, 'a drawn logo unit').then(function (drawn) {
-        drawn = drawn || Object.assign({}, none);
-        if (note) drawn.note = note;
-        return withOwnerNote(drawn);
-      });
+      if (prev && !prev.stuck && !prev.failed && !prev.error) return { unit: withNote(prev, ownerNote), note: '' };
+      var note = prev && (prev.stuck || prev.failed) ? prev.note
+        : prev && prev.error && hadPrevious ? previousUnitNote('something went wrong while it was examined (' + String((prev.error && prev.error.message) || 'no detail').slice(0, 120) + ')')
+        : '';
+      return { unit: null, note: withOwnerNote(note) };
     });
-  }).then(function (unit) { return unit || none; }, function (err) {
-    console.error('plan-structure: the logo unit could not be made, the hero will set it in type — ' + (err && err.message));
-    return none;
   });
 }
+function withNote(unit, before) {
+  if (unit && before) unit.note = (before + ' ' + (unit.note || '')).trim();
+  return unit;
+}
+function buildLogoUnit(fb, eventId, o) {
+  var hadPrevious = unitSources(o.sourceDocs).length > 0;
+  var found = o.found ? Promise.resolve(o.found).then(null, function () { return foundLogoUnit(fb, eventId, o); }) : foundLogoUnit(fb, eventId, o);
+  return found.then(function (f) {
+    if (f && f.unit) return f.unit;
+    return Promise.resolve().then(function () { return drawnLogoUnit(fb, eventId, o); }).then(null, function (err) {
+      console.error('plan-structure: a drawn logo unit could not be used — ' + (err && err.message));
+      return null;
+    }).then(function (drawn) {
+      drawn = drawn || Object.assign({}, NO_UNIT);
+      if (f && f.note) drawn.note = f.note;
+      return drawn;
+    });
+  }).then(function (unit) { return guardedUnit(unit || Object.assign({}, NO_UNIT), hadPrevious); }, function (err) {
+    console.error('plan-structure: the logo unit could not be made, the hero will set it in type — ' + (err && err.message));
+    return guardedUnit(Object.assign({}, NO_UNIT), hadPrevious);
+  });
+}
+/* The last word: a previous edition's logo was named, and what stands in the hero is not it (nor the
+   owner's): the owner is told, whatever path led here. */
+function guardedUnit(unit, hadPrevious) {
+  if (hadPrevious && unit.source !== 'previous-edition' && unit.source !== 'owner' && !String(unit.note || '').trim()) {
+    console.error('logo unit: a previous edition\'s logo was named and not used, with no reason recorded');
+    unit.note = previousUnitNote('it could not be examined');
+  }
+  return unit;
+}
 /* the same, never later than the plan may be: past that the owner's logo is used as uploaded, else the hero
-   sets the unit in type */
+   sets the unit in type — and says why when a previous edition's logo was named */
 function logoUnitInTime(fb, eventId, o) {
   if (!o.deadlineAt) return buildLogoUnit(fb, eventId, o);
   var timer = null;
@@ -2849,8 +3026,9 @@ function logoUnitInTime(fb, eventId, o) {
     timer = setTimeout(function () {
       console.error('plan-structure: the logo unit was not ready in time');
       var url = /^https:\/\//i.test(String(o.ownerLogoUrl || '')) ? String(o.ownerLogoUrl).trim() : '';
-      resolve({ url: url, storagePath: url ? storagePathOf(fb, url) : '', source: url ? 'owner' : '', from: url, width: 0, height: 0, heroMode: '', plate: '',
-        note: url ? 'Your logo could not be checked in time, so it is used exactly as you uploaded it. Check that it shows this edition\'s year.' : '' });
+      resolve(guardedUnit({ url: url, storagePath: url ? storagePathOf(fb, url) : '', source: url ? 'owner' : '', from: url, width: 0, height: 0, heroMode: '', plate: '',
+        note: url ? 'Your logo could not be checked in time, so it is used exactly as you uploaded it. Check that it shows this edition\'s year.'
+          : unitSources(o.sourceDocs).length ? previousUnitNote('there was not enough time to examine it before the site was made') : '' }, unitSources(o.sourceDocs).length > 0));
     }, Math.max(1000, o.deadlineAt - Date.now() - 8000));
   });
   return Promise.race([buildLogoUnit(fb, eventId, o), late]).then(function (unit) { clearTimeout(timer); return unit; });
@@ -3034,6 +3212,12 @@ function handlePlanStructure(req, res) {
       var venue = prevSource ? editionLook.venueForDesign(eventMeta, brief, prevSource.previous) : null;
       var place = venue && venue.venue ? venue : null;
       var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode, place: place });
+      /* The logo unit — the owner's upload, else the previous edition's lock-up — needs nothing of the plan:
+         it is fetched and read while the plan is written, so that its readings (20 to 30 s each, measured)
+         have the time they need rather than what the plan leaves (foundLogoUnit). */
+      var logoInputs = { eventMeta: eventMeta, ownerLogoUrl: stored.logoUrl, briefTexts: briefYearTexts(brief, eventMeta), sourceDocs: sourceDocs,
+        stamp: new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14), deadlineAt: deadlineAt };
+      var logoFound = foundLogoUnit(fb, eventId, logoInputs);
       return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
@@ -3108,8 +3292,7 @@ function handlePlanStructure(req, res) {
         );
         /* the logo unit is made alongside them: the logo the owner uploaded, else the previous edition's own,
            else a new one drawn — each examined for its year and its extras (buildLogoUnit) */
-        var unitJob = logoUnitInTime(fb, eventId, { eventMeta: eventMeta, ownerLogoUrl: stored.logoUrl, briefTexts: briefYearTexts(brief, eventMeta),
-          design: design, sourceDocs: sourceDocs, stamp: stamp, deadlineAt: deadlineAt });
+        var unitJob = logoUnitInTime(fb, eventId, Object.assign({}, logoInputs, { design: design, found: logoFound }));
         return Promise.all([Promise.all(jobs), unitJob]).then(function (both) {
           var made = both[0], unit = both[1];
           design.logoUnitUrl = unit.url; design.logoUnitStoragePath = unit.storagePath; design.logoUnitSource = unit.source;
@@ -8191,5 +8374,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
+  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

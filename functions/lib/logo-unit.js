@@ -24,6 +24,7 @@
    Looking at the picture that was found
      imageInfo(buf)                     -> { type: 'png'|'jpeg'|'gif'|'webp'|'svg'|'', mime, width, height, alpha }
      plausibleUnit(info)                -> '' when it could be a logo unit, else the reason it is not
+     stackedUnit(info)                  -> true when it is only too tall: a lock-up stacked with sponsors' rows
      svgIsActive(text)                  -> true when an SVG could run code (the upload route's own rules)
      svgLayers(text)                    -> [ the SVG, then every SVG nested in it as a base64 picture ]
                                            (in a tag or a style sheet: where it is shown, not where it is quoted)
@@ -847,6 +848,16 @@ function plausibleUnit(info) {
   return '';
 }
 
+/* A lock-up stacked with its sponsors is taller than it is wide: ETCIO Annual Conclave 2026's was 251 x 400,
+   "kyndryl presents" above the event's own lock-up and seven rows of partners below it. Such a picture is
+   not a logo unit as it stands, but the event's own lock-up is in it: it is taken to be examined, and used
+   only once the sponsors are cropped out and what is left is a plausible unit (api.js previousEditionUnit).
+   -> true when being too tall is all that is wrong with it, up to four times as tall as wide */
+function stackedUnit(info) {
+  if (!info || plausibleUnit(info) !== 'taller than it is wide') return false;
+  return +info.width / +info.height >= 0.25;
+}
+
 /* ---------- SVG ---------- */
 
 /* The upload route's rule (api-events.js, SVG_ACTIVE / svgIsActive — not exported there, so repeated here):
@@ -1459,7 +1470,7 @@ function buildLogoUnitSvg(o) {
 module.exports = {
   findLogoCandidates, editionHints, editionYears, eventYear, bumpYear,
   shownYear, yearAs, yearsShownIn,
-  imageInfo, plausibleUnit,
+  imageInfo, plausibleUnit, stackedUnit,
   svgIsActive, svgLayers, svgTexts, svgTone, svgReplaceYear,
   fontMetrics, textWidth, googleFontCssUrl, fontUrlFromCss,
   buildLogoUnitSvg
