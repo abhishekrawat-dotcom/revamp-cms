@@ -743,7 +743,10 @@ function buildKit(fb, eventId, req, opts) {
     var templateId = String(ev.templateId || (ev.site && ev.site.templateId) || '');
     var planFrom = /^gen-/.test(templateId) ? templateId.slice(4) : '';
     /* an AI-designed site's plan is on its own event, unless the site was designed for another one */
-    var plan = ev.designPlan && typeof ev.designPlan === 'object' ? Promise.resolve(ev.designPlan)
+    /* (a plan that holds only the section edges — a setting saved on a site the AI did not design — is not one) */
+    var ownPlan = ev.designPlan && typeof ev.designPlan === 'object' &&
+      !(ev.designPlan.design && Object.keys(ev.designPlan).length === 1 && Object.keys(ev.designPlan.design).join() === 'sectionEdges');
+    var plan = ownPlan ? Promise.resolve(ev.designPlan)
       : (planFrom && planFrom !== eventId && /^[a-z0-9][a-z0-9-]*$/.test(planFrom)
         ? fb.db.collection('events').doc(planFrom).get().then(function (s) { return s.exists ? (s.data() || {}).designPlan || null : null; }, function () { return null; })
         : Promise.resolve(null));

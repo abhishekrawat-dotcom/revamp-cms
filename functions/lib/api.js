@@ -3078,7 +3078,7 @@ function logoUnitInTime(fb, eventId, o) {
                               and to the generated hero, in one transaction */
 function ownerLogoState(data) {
   data = data || {};
-  var design = (data.designPlan && data.designPlan.design) || null;
+  var design = aiDesignOf(data.designPlan);
   var logoUrl = /^https:\/\//i.test(String(data.logoUrl || '')) ? String(data.logoUrl).trim() : '';
   var site = data.site && typeof data.site === 'object' ? data.site : null;
   var state = {
@@ -5134,7 +5134,7 @@ function handleEventTheme(req, res) {
     var ref = fb.db.collection('events').doc(eventId);
     ref.get().then(function (snap) {
       var plan = snap.exists && snap.data().designPlan;
-      if (!plan || !plan.design) return sendJson(res, 404, { error: 'This site has no themes: it was not designed by the AI.' });
+      if (!plan || !aiDesignOf(plan)) return sendJson(res, 404, { error: 'This site has no themes: it was not designed by the AI.' });
       var themes = rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto')));
       var ids = themes.map(function (t) { return t.id; });
       if (ids.indexOf(themeId) === -1) return sendJson(res, 400, { error: 'Unknown theme "' + themeId.slice(0, 40) + '".' });
@@ -5153,6 +5153,14 @@ function handleEventTheme(req, res) {
    <html data-rv-edges>, which publishTransform writes from designPlan.design.sectionEdges). Kept with the site's
    theme, so it reaches a published page with the next publish. An imported (Lovable) site has no such choice. */
 var SECTION_EDGES = ['sharp', 'smooth'];
+/* The AI's design of a site (designPlan.design), or null. Saving the section edges on a site the AI did not
+   design (a ported template like tech500) leaves a designPlan.design that holds only { sectionEdges }: that
+   is a setting, not an AI design, and must not make the site count as AI-designed (the logo unit, themes). */
+function aiDesignOf(plan) {
+  var d = plan && typeof plan === 'object' && plan.design;
+  if (!d || typeof d !== 'object') return null;
+  return Object.keys(d).some(function (k) { return k !== 'sectionEdges'; }) ? d : null;
+}
 function sectionEdgesOf(event) {
   var v = event && event.designPlan && event.designPlan.design && event.designPlan.design.sectionEdges;
   return v === 'smooth' ? 'smooth' : 'sharp';
@@ -8395,6 +8403,7 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
+  aiDesignOf: aiDesignOf,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,

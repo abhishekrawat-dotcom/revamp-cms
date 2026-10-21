@@ -240,6 +240,11 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   check('ownerLogoState: the owner\'s own unit, or no upload, or no AI design, do not',
     !hooks.ownerLogoState({ logoUrl: OWNER_URL, designPlan: { design: { logoUnitSource: 'owner', logoUnitUrl: OWNER_URL } } }).needsOwnerUnit &&
     !hooks.ownerLogoState({ designPlan: { design: { logoUnitSource: 'previous-edition' } } }).needsOwnerUnit && !hooks.ownerLogoState({ logoUrl: OWNER_URL }).needsOwnerUnit);
+  /* a ported site (tech500) that only saved its section edges is not AI-designed: no logo unit is made for it */
+  const edgesOnly = hooks.ownerLogoState({ logoUrl: OWNER_URL, designPlan: { design: { sectionEdges: 'smooth' } }, site: { version: 2 } });
+  check('ownerLogoState: a design holding only the section edges is not an AI design', !edgesOnly.aiDesigned && !edgesOnly.needsOwnerUnit);
+  check('aiDesignOf: edges alone -> null; a real design -> the design', hooks.aiDesignOf({ design: { sectionEdges: 'smooth' } }) === null &&
+    !!hooks.aiDesignOf({ design: { sectionEdges: 'smooth', themeColor: '#123456' } }) && hooks.aiDesignOf(null) === null && hooks.aiDesignOf({}) === null);
 
   /* saveOwnerUnit: the design and the generated hero, in one transaction; never the saved site */
   const doc = { createdAt: 'x', name: 'AutoTech Summit 2027', logoUrl: OWNER_URL, site: { version: 3 }, designPlan: { design: { mode: 'light', logoUnitSource: 'previous-edition' } },

@@ -196,6 +196,9 @@ ok(/\+2$/.test(activity.sectionNames([1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
   FB.docs['events/qa-edges-ported'] = { name: 'QA ported', createdAt: now, updatedAt: now, status: 'draft', templateId: 'tech500' };
   var ported = await call('POST', '/api/event/section-edges', { eventId: 'qa-edges-ported', sectionEdges: 'smooth' });
   ok(ported.status === 200 && FB.docs['events/qa-edges-ported'].designPlan.design.sectionEdges === 'smooth', 'a ported template\'s site stores it as well', JSON.stringify(ported.body));
+  /* ...and still has no themes: its section edges alone do not make it AI-designed */
+  var portedTheme = await call('POST', '/api/event/theme', { eventId: 'qa-edges-ported', themeId: 'dark' });
+  ok(portedTheme.status === 404 && !FB.docs['events/qa-edges-ported'].designPlan.themeId, 'a ported site that saved its section edges still has no themes (404)', JSON.stringify(portedTheme.body));
   FB.docs['events/qa-edges-imported'] = { name: 'QA imported', createdAt: now, updatedAt: now, status: 'draft', site: { templateId: 'imported-abc123' } };
   var imp = await call('POST', '/api/event/section-edges', { eventId: 'qa-edges-imported', sectionEdges: 'smooth' });
   ok(imp.status === 400 && imp.body.code === 'imported-site' && !FB.docs['events/qa-edges-imported'].designPlan, 'an imported site is refused and keeps sharp', JSON.stringify(imp.body));
