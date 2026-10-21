@@ -99,6 +99,13 @@ ok(out.indexOf('style="background-image:url(&quot;' + BASE + OV + '&quot;);backg
 ok(count(out, '<style data-rv-pictures>') === 1 && out.indexOf('<head>\n' + P.SIZED_CSS + '\n<link rel="preload" as="image" type="image/webp" href="' + V(HERO, hero, 1344) + '" fetchpriority="high" data-rv-pictures-preload><title>') !== -1,
   'the rule for sized pictures and the hero background preload, once, in the head');
 ok(P.rewriteHtml(out, index) === out, 'running it again changes nothing');
+/* the rule is in a layer of its own, so a page whose classes are all in layers (Tailwind v4: a Lovable import)
+   keeps the heights its classes give a picture; a page that carries the old, unlayered rule gets the new one */
+ok(/^<style data-rv-pictures>@layer [\w-]+\{:where\(img\[data-rv-sized\]\)\{height:auto\}\}<\/style>$/.test(P.SIZED_CSS), 'the sized-picture rule sits in a cascade layer');
+var oldPage = '<html><head>\n' + P.SIZED_CSS_V1 + '\n<title>x</title></head><body><img src="' + BASE + OV + '"></body></html>';
+var upgraded = P.rewriteHtml(oldPage, index);
+ok(upgraded.indexOf(P.SIZED_CSS_V1) === -1 && count(upgraded, '<style data-rv-pictures>') === 1 && upgraded.indexOf(P.SIZED_CSS) !== -1, 'a page with the old rule gets the layered one, once', upgraded.slice(0, 200));
+ok(P.rewriteHtml(oldPage, null).indexOf(P.SIZED_CSS) !== -1, 'even with no variants to write');
 ok(P.rewriteHtml(PAGE, { bucket: BUCKET, entries: {} }) === PAGE && P.rewriteHtml(PAGE, null) === PAGE, 'no variants: the page as it was');
 
 /* only the first hero picture is loaded first, and nothing outside a hero */

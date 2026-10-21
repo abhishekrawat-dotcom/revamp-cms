@@ -4935,53 +4935,60 @@ function validateImportUrl(rawUrl) {
 /* ---------- live-URL adapter — same processLovableImport() core as the ZIP adapter above ---------- */
 function runImportLovableFromUrl(fb, res, importId, url) {
   scrapeLovableUrl(url)
-    .then(function (rawHtml) {
-      var html = stripAllScriptTags(rawHtml);
-      /* Both getCss/getImage resolve the (possibly relative, possibly already-absolute) ref against the
-         page's own URL, then fetch it directly — a public Lovable preview site's own CSS/images are public,
-         ordinary GETs, same as a browser loading them; no cookie/session/Puppeteer-request-interception
-         plumbing needed (confirmed against the real test site: both its stylesheet and its images are
-         fetchable with a plain, unauthenticated fetch()).
-
-         Each resolved URL is re-run through validateImportUrl() before fetching — this is NOT redundant
-         with the top-level URL's own check above. The page being scraped is fully attacker-controlled
-         (anyone can publish a Lovable site), so every CSS href / image src found IN that page's own
-         rendered markup is attacker-controlled too. Without this, a malicious page could embed e.g.
-         <img src="http://169.254.169.254/latest/meta-data/iam/security-credentials/"> and this server
-         would dutifully fetch its own cloud metadata endpoint on the attacker's behalf — a classic
-         confused-deputy SSRF via page content, a completely different request path from the one the
-         top-level guard covers. A rejected subresource just degrades to "missing" (null), same as any
-         other fetch failure here — never worth failing the whole import over one bad asset reference. */
-      var getCss = function (href) {
-        /* The address is read out of markup, where "&" is written "&amp;": left like that, a fonts stylesheet
-           asked for several families answers with the first one only, and the page's other fonts are lost.
-           A browser's User-Agent gets the compact font files a browser would get. */
-        var abs; try { abs = new URL(String(href).replace(/&amp;/g, '&'), url).href; } catch (e) { return Promise.resolve(null); }
-        return validateImportUrl(abs).then(function (badReason) {
-          if (badReason) { console.error('import-lovable: refused to fetch CSS "' + abs + '": ' + badReason); return null; }
-          return fetch(abs, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' } }).then(function (r) { return r.ok ? r.text() : null; }).catch(function (err) {
-            console.error('import-lovable: failed to fetch CSS "' + abs + '": ' + err.message);
-            return null;
-          });
-        });
-      };
-      var getImage = function (ref) {
-        var abs; try { abs = new URL(ref, url).href; } catch (e) { return Promise.resolve(null); }
-        return validateImportUrl(abs).then(function (badReason) {
-          if (badReason) { console.error('import-lovable: refused to fetch image "' + abs + '": ' + badReason); return null; }
-          return fetch(abs).then(function (r) {
-            if (!r.ok) return null;
-            return r.arrayBuffer().then(function (buf) { return Buffer.from(buf); });
-          }).catch(function (err) {
-            console.error('import-lovable: failed to fetch image "' + abs + '": ' + err.message);
-            return null;
-          });
-        });
-      };
-      return processLovableImport(fb, importId, html, getCss, getImage, findLiveImageRefs, { sourceUrl: url });
-    })
+    .then(function (rawHtml) { return importRenderedPage(fb, importId, url, rawHtml); })
     .then(function (result) { sendJson(res, 200, { templateId: result.templateId }); })
     .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
+}
+
+/* A page rendered and captured (lovable-scraper-service's capturePage) made into an import: its CSS and pictures
+   fetched from where the page has them, and everything written as processLovableImport does. Also called by
+   tools/reimport-lovable.js with a capture made on the operator's own Chrome. */
+function importRenderedPage(fb, importId, url, rawHtml) {
+  return Promise.resolve().then(function () {
+    var html = stripAllScriptTags(rawHtml);
+    /* Both getCss/getImage resolve the (possibly relative, possibly already-absolute) ref against the
+       page's own URL, then fetch it directly — a public Lovable preview site's own CSS/images are public,
+       ordinary GETs, same as a browser loading them; no cookie/session/Puppeteer-request-interception
+       plumbing needed (confirmed against the real test site: both its stylesheet and its images are
+       fetchable with a plain, unauthenticated fetch()).
+
+       Each resolved URL is re-run through validateImportUrl() before fetching — this is NOT redundant
+       with the top-level URL's own check above. The page being scraped is fully attacker-controlled
+       (anyone can publish a Lovable site), so every CSS href / image src found IN that page's own
+       rendered markup is attacker-controlled too. Without this, a malicious page could embed e.g.
+       <img src="http://169.254.169.254/latest/meta-data/iam/security-credentials/"> and this server
+       would dutifully fetch its own cloud metadata endpoint on the attacker's behalf — a classic
+       confused-deputy SSRF via page content, a completely different request path from the one the
+       top-level guard covers. A rejected subresource just degrades to "missing" (null), same as any
+       other fetch failure here — never worth failing the whole import over one bad asset reference. */
+    var getCss = function (href) {
+      /* The address is read out of markup, where "&" is written "&amp;": left like that, a fonts stylesheet
+         asked for several families answers with the first one only, and the page's other fonts are lost.
+         A browser's User-Agent gets the compact font files a browser would get. */
+      var abs; try { abs = new URL(String(href).replace(/&amp;/g, '&'), url).href; } catch (e) { return Promise.resolve(null); }
+      return validateImportUrl(abs).then(function (badReason) {
+        if (badReason) { console.error('import-lovable: refused to fetch CSS "' + abs + '": ' + badReason); return null; }
+        return fetch(abs, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' } }).then(function (r) { return r.ok ? r.text() : null; }).catch(function (err) {
+          console.error('import-lovable: failed to fetch CSS "' + abs + '": ' + err.message);
+          return null;
+        });
+      });
+    };
+    var getImage = function (ref) {
+      var abs; try { abs = new URL(ref, url).href; } catch (e) { return Promise.resolve(null); }
+      return validateImportUrl(abs).then(function (badReason) {
+        if (badReason) { console.error('import-lovable: refused to fetch image "' + abs + '": ' + badReason); return null; }
+        return fetch(abs).then(function (r) {
+          if (!r.ok) return null;
+          return r.arrayBuffer().then(function (buf) { return Buffer.from(buf); });
+        }).catch(function (err) {
+          console.error('import-lovable: failed to fetch image "' + abs + '": ' + err.message);
+          return null;
+        });
+      });
+    };
+    return processLovableImport(fb, importId, html, getCss, getImage, findLiveImageRefs, { sourceUrl: url });
+  });
 }
 
 function handleImportLovable(req, res) {
@@ -8407,7 +8414,7 @@ module.exports._testHooks = {
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
-  processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, validateImportUrl,
+  processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,

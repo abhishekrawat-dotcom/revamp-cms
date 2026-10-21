@@ -25,7 +25,6 @@
 
 var http = require('http');
 var dns = require('dns');
-var puppeteer = require('puppeteer');
 
 var PORT = process.env.PORT || 8080;
 var SECRET = process.env.SCRAPER_SECRET || '';
@@ -75,14 +74,41 @@ function validateUrl(rawUrl) {
 // for a visitor has to have happened before the capture:
 //   - content revealed when it scrolls into view, and lazy pictures: the page is scrolled through once,
 //     top to bottom, and put back at the top;
+//   - a top bar that changes once the visitor scrolls (a transparent bar turning into a floating, frosted
+//     one): the classes of the bar and of everything in it are read with the page scrolled, and each element
+//     whose classes differ there carries them as data-rv-scrolled-class (et-runtime.js swaps them);
+//   - tabs ([role=tablist] / [role=tab]) whose script keeps only the chosen tab's content in the page: each
+//     tab is chosen in turn and what it shows is kept — the panel it names (aria-controls), else everything
+//     after the tab list in its box — with the rows in it opened (below). The other tabs' panels are put in
+//     the page hidden (data-rv-tabpanel), the tabs marked data-rv-tab, every element around them whose
+//     classes change with the tab (the tab's own underline, a background picture faded in, a progress bar)
+//     carries its classes for each tab (data-rv-tab-classes), and a set that moves on by itself (a progress
+//     bar's animation) gets data-rv-tab-auto="<ms>". The page is put back on the tab it opened on;
 //   - rows that open on a click (button[aria-expanded]) whose panel only exists while open: each closed row
-//     is opened once, its panel copied, and the copies put back closed (height 0) after their buttons, so
-//     the imported page has every panel to open (templates/_shared/et-runtime.js does the opening).
-// Bounded: at most SETTLE_MAX_ROWS rows and SETTLE_MAX_SCROLL_STEPS scroll steps.
+//     is opened once, its panel (the one it names with aria-controls, else the one after it) copied, and the
+//     copies put back closed (height 0) where the page had put them, so the imported page has every panel to
+//     open (templates/_shared/et-runtime.js does the opening).
+// Bounded: at most SETTLE_MAX_ROWS rows, SETTLE_MAX_SCROLL_STEPS scroll steps, SETTLE_MAX_TABLISTS tab lists
+// of SETTLE_MAX_TABS tabs, and all of it within SETTLE_BUDGET_MS (what is left undone is captured as it is).
 var SETTLE_MAX_ROWS = 40;
 var SETTLE_MAX_SCROLL_STEPS = 80;
+var SETTLE_MAX_TABLISTS = 8;
+var SETTLE_MAX_TABS = 8;
+var SETTLE_BUDGET_MS = 60000;
 
 async function settlePage(page) {
+  var deadline = Date.now() + SETTLE_BUDGET_MS;
+
+  /* which tab each tab list opens on, before anything moves (a set that moves on by itself has drifted by the
+     time the page has been walked through) */
+  await page.evaluate(function () {
+    window.__rvTabStart = Array.prototype.map.call(document.querySelectorAll('[role="tablist"]'), function (l) {
+      var tabs = Array.prototype.slice.call(l.querySelectorAll('[role="tab"]'));
+      for (var i = 0; i < tabs.length; i++) if (tabs[i].getAttribute('aria-selected') === 'true') return i;
+      return -1;
+    });
+  });
+
   await page.evaluate(async function (maxSteps) {
     function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     var step = Math.max(300, Math.round(window.innerHeight * 0.7));
@@ -96,26 +122,231 @@ async function settlePage(page) {
     await wait(900);
   }, SETTLE_MAX_SCROLL_STEPS);
 
-  /* Carousels that keep only the cards on show in the page: a previous and a next button beside a region
-     holding one row. Next is pressed until no new card turns up, and the row is rebuilt with every card in
-     it, as a strip that scrolls sideways (data-rv-carousel / -track / -prev / -next: et-runtime.js moves it
-     on the live page, and the editor shows the whole strip). */
-  await page.evaluate(async function (maxPages) {
+  /* The top bar, at the top of the page and scrolled: the classes of the bar and everything in it, in both. */
+  await page.evaluate(async function () {
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function bar() {
+      var hs = document.querySelectorAll('header, nav, [role="banner"]');
+      for (var i = 0; i < hs.length; i++) {
+        var top = null;
+        for (var el = hs[i]; el && el !== document.body; el = el.parentElement) {
+          var p = getComputedStyle(el).position;
+          if (p === 'fixed' || p === 'sticky') top = el;
+        }
+        if (!top) continue;
+        var r = top.getBoundingClientRect();
+        if (r.top <= 40 && r.height > 0 && r.height < window.innerHeight / 2) return top;
+      }
+      return null;
+    }
+    function classes(el) {
+      return [el].concat(Array.prototype.slice.call(el.querySelectorAll('*'))).map(function (e) { return e.getAttribute('class') || ''; });
+    }
+    var atTop = bar();
+    if (!atTop) return;
+    var first = classes(atTop);
+    var room = document.documentElement.scrollHeight - window.innerHeight;
+    if (room < 200) return;
+    /* scrolled down in a few steps, as a visitor would, and given up to 3 s to change (a page's script may
+       wait for a frame, a timer or a transition before it does) */
+    var target = Math.min(window.innerHeight * 2, room), scrolled = null;
+    for (var s = 1; s <= 4; s++) { window.scrollTo(0, Math.round(target * s / 4)); await wait(150); }
+    for (var t = 0; t < 12 && !scrolled; t++) {
+      await wait(250);
+      if (bar() !== atTop) continue;
+      var now = classes(atTop);
+      if (now.length === first.length && now.some(function (c, i) { return c !== first[i]; })) scrolled = now;
+    }
+    window.scrollTo(0, 0);
+    await wait(700);
+    if (!scrolled || scrolled.length !== first.length) return;
+    if (!scrolled.some(function (c, i) { return c !== first[i]; })) return;
+    window.__rvBar = { el: atTop, scrolled: scrolled };
+  });
+
+  /* Tabs: each tab chosen in turn, and what it shows kept. */
+  await page.evaluate(async function (o) {
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function late() { return Date.now() > o.deadline; }
+    function arr(list) { return Array.prototype.slice.call(list); }
+    function scopeOf(list) { return list.closest('section, article, [aria-roledescription="carousel"]') || list.parentElement; }
+    function tabsOf(list) { return arr(list.querySelectorAll('[role="tab"]')).slice(0, o.maxTabs); }
+    /* the panel the tabs name, else everything after the tab list in its box */
+    function region(list, scope) {
+      var id = tabsOf(list)[0].getAttribute('aria-controls'), p = id && document.getElementById(id);
+      if (p && !p.contains(list) && scope.contains(p)) return [p];
+      var nodes = [];
+      for (var s = list.nextElementSibling; s; s = s.nextElementSibling) if (!/^(SCRIPT|STYLE|TEMPLATE)$/.test(s.tagName)) nodes.push(s);
+      return nodes;
+    }
+    function inside(nodes, el) { return nodes.some(function (n) { return n === el || n.contains(el); }); }
+    /* Everything around the panel, by where it stands (its place among its parent's children, the panel left
+       out, and its tag): { key: [class, parent key, place, markup] }. An element a tab has and another has not
+       (a progress bar drawn in the chosen tab only) keeps everything else where it was. */
+    function outside(scope, nodes) {
+      var out = {};
+      (function walk(el, key) {
+        var place = 0;
+        arr(el.children).forEach(function (c) {
+          if (inside(nodes, c)) return;
+          var k = key + '/' + (place++) + c.tagName;
+          out[k] = [c.getAttribute('class') || '', key, place - 1, c.outerHTML];
+          walk(c, k);
+        });
+      })(scope, '');
+      return out;
+    }
+    function pathOf(root, el) {
+      var p = [];
+      for (; el && el !== root; el = el.parentElement) p.unshift(Array.prototype.indexOf.call(el.parentElement.children, el));
+      return el === root ? p : null;
+    }
+    function atPath(root, p) {
+      var el = root;
+      for (var i = 0; i < p.length && el; i++) el = el.children[p[i]];
+      return el;
+    }
+    function subtree(el) { return [el].concat(arr(el.querySelectorAll('*'))); }
+    /* a row's button and what is in it: the classes of each element, and the text of each that holds only text */
+    function looks(b) {
+      return subtree(b).map(function (e) { return [e.getAttribute('class') || '', e.children.length ? null : e.textContent]; });
+    }
+    /* what changes once the row is open (its sign turned, "+" become "×"): [place, classes or null, text or null] */
+    function openLook(closed, b) {
+      var now = looks(b);
+      if (now.length !== closed.length) return [];
+      var out = [];
+      now.forEach(function (x, i) {
+        var cls = x[0] !== closed[i][0] ? x[0] : null, text = x[1] !== closed[i][1] ? x[1] : null;
+        if (cls !== null || text !== null) out.push([i, cls, text]);
+      });
+      return out;
+    }
+    /* The rows in a panel whose own panels only exist while open: opened and closed again, and where their
+       panel went noted (after the element it followed), with how the button looks open. The page's script
+       may draw the rows again on every click: they are found again by their place each time. */
+    async function openRows(getNodes) {
+      var out = [];
+      function btns() {
+        var all = [];
+        getNodes().forEach(function (n) { all = all.concat(arr(n.querySelectorAll('button[aria-expanded]'))); });
+        return all.filter(function (b) { return !b.hasAttribute('aria-haspopup'); }).slice(0, 24);
+      }
+      var total = btns().length;
+      for (var i = 0; i < total && !late(); i++) {
+        var b = btns()[i];
+        if (!b || b.getAttribute('aria-expanded') === 'true') continue;
+        var ctrl = b.getAttribute('aria-controls');
+        if (ctrl ? document.getElementById(ctrl) : b.nextElementSibling) continue;   // its panel is in the page already
+        var closed = looks(b);
+        b.click();
+        await wait(450);
+        b = btns()[i];
+        var panel = b && (ctrl ? document.getElementById(ctrl) : b.nextElementSibling);
+        var after = panel && panel.previousElementSibling, rec = null;
+        if (b && b.getAttribute('aria-expanded') === 'true' && panel && after && !/^(BUTTON|A)$/.test(panel.tagName)) {
+          var nodes = getNodes();
+          for (var n = 0; n < nodes.length && !rec; n++) {
+            var p = nodes[n] === after ? null : pathOf(nodes[n], after);
+            var bp = nodes[n] === b ? [] : pathOf(nodes[n], b);
+            if (p && bp) rec = { node: n, path: p, html: panel.outerHTML, button: bp, look: openLook(closed, b) };
+          }
+        }
+        if (b && b.getAttribute('aria-expanded') === 'true') { b.click(); await wait(300); }
+        if (rec) out.push(rec);
+      }
+      return out;
+    }
+    function snapshot(nodes, rows) {
+      var clones = nodes.map(function (n) { return n.cloneNode(true); });
+      var at = rows.map(function (r) { return atPath(clones[r.node], r.path); });
+      var btn = rows.map(function (r) { return atPath(clones[r.node], r.button); });
+      rows.forEach(function (r, i) {
+        if (btn[i]) {
+          var els = subtree(btn[i]);
+          r.look.forEach(function (x) {
+            if (!els[x[0]]) return;
+            if (x[1] !== null) els[x[0]].setAttribute('data-rv-open-class', x[1]);
+            if (x[2] !== null) els[x[0]].setAttribute('data-rv-open-text', x[2]);
+          });
+        }
+        if (!at[i]) return;
+        at[i].insertAdjacentHTML('afterend', r.html);
+        var p = at[i].nextElementSibling;
+        p.style.height = '0px'; p.style.opacity = '0'; p.style.overflow = 'hidden';
+      });
+      return clones.map(function (c) { return c.outerHTML; });
+    }
+    function autoMs(list, scope) {
+      var ms = 0;
+      [list].concat(arr(list.querySelectorAll('*'))).forEach(function (el) {
+        var cs = getComputedStyle(el);
+        if (!cs.animationName || cs.animationName === 'none' || cs.animationIterationCount === 'infinite') return;
+        var d = parseFloat(cs.animationDuration) * (/ms$/.test(cs.animationDuration) ? 1 : 1000);
+        if (d >= 2000 && d <= 60000) ms = Math.max(ms, Math.round(d));
+      });
+      return ms;
+    }
+
+    var start = window.__rvTabStart || [];
+    var lists = arr(document.querySelectorAll('[role="tablist"]'));
+    var groups = [];
+    for (var li = 0; li < lists.length && groups.length < o.maxLists && !late(); li++) {
+      var list = lists[li];
+      if (list.closest('header, nav')) continue;
+      var tabs = tabsOf(list);
+      if (tabs.length < 2) continue;
+      var scope = scopeOf(list);
+      /* each tab naming a panel of its own that is already in the page: nothing to capture */
+      var own = tabs.map(function (t) { return t.getAttribute('aria-controls'); });
+      if (own.every(function (id, i) { return id && own.indexOf(id) === i && document.getElementById(id); })) continue;
+      var startK = start[li] >= 0 && start[li] < tabs.length ? start[li] : 0;
+      var states = [];
+      for (var k = 0; k < tabs.length && !late(); k++) {
+        tabsOf(list)[k].click();
+        await wait(650);
+        if (tabsOf(list)[k].getAttribute('aria-selected') !== 'true') { tabsOf(list)[k].click(); await wait(650); }
+        if (tabsOf(list)[k].getAttribute('aria-selected') !== 'true') break;
+        var nodes = region(list, scope);
+        if (!nodes.length) break;
+        var rows = await openRows(function () { return region(list, scope); });
+        nodes = region(list, scope);
+        states.push({ html: snapshot(nodes, rows), classes: outside(scope, nodes) });
+      }
+      tabsOf(list)[startK].click();
+      await wait(650);
+      if (states.length !== tabs.length) continue;      // not every tab could be read: the page keeps the one on show
+      groups.push({ list: list, n: tabs.length, startK: startK, states: states, auto: autoMs(list, scope) });
+    }
+    window.__rvTabs = groups;
+    window.scrollTo(0, 0);
+  }, { deadline: deadline, maxLists: SETTLE_MAX_TABLISTS, maxTabs: SETTLE_MAX_TABS });
+
+  /* Carousels that keep only the cards on show in the page: a previous and a next button near a region
+     holding one row (in the same box, or a few boxes up: the buttons can sit in the section's heading). Next
+     is pressed until no new card turns up, and the row is rebuilt with every card in it, as a strip that
+     scrolls sideways (data-rv-carousel / -track / -prev / -next: et-runtime.js moves it on the live page, and
+     the editor shows the whole strip). */
+  await page.evaluate(async function (o) {
     function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     var found = [];
     var nexts = Array.prototype.slice.call(document.querySelectorAll('button[aria-label]')).filter(function (b) {
-      return /^next\b/i.test(b.getAttribute('aria-label')) && !b.closest('header, nav');
+      var bar = b.closest('header, nav');      // the site's bar, not a section's own heading
+      return /^next\b/i.test(b.getAttribute('aria-label')) && !(bar && !bar.closest('section, article'));
     }).slice(0, 12);
-    for (var n = 0; n < nexts.length; n++) {
-      var next = nexts[n], box = next.parentElement;
-      var holder = box && box.querySelector('[role="region"], [aria-roledescription="carousel"]');
+    for (var n = 0; n < nexts.length && Date.now() < o.deadline; n++) {
+      var next = nexts[n], box = next.parentElement, holder = null;
+      for (var up = 0; box && up < 4; box = box.parentElement, up++) {
+        holder = box.querySelector('[role="region"], [aria-roledescription="carousel"]');
+        if (holder || /^(SECTION|ARTICLE|MAIN|BODY)$/.test(box.tagName)) break;
+      }
       if (!holder) continue;
       var row = function () { return holder.querySelector('[data-carousel-layer="current"]') || holder.querySelector('[data-carousel-layer]') || holder.firstElementChild; };
       if (!row() || !row().children.length) continue;
       var first = row().firstElementChild.getBoundingClientRect().width;
       var gap = parseFloat(getComputedStyle(row()).columnGap) || 16;
       var cards = [], seen = {}, stale = 0, onShow = row().children.length;
-      for (var i = 0; i < maxPages && stale < 2; i++) {
+      for (var i = 0; i < o.maxPages && stale < 2 && Date.now() < o.deadline; i++) {
         var fresh = 0;
         Array.prototype.forEach.call(row().children, function (card) {
           var key = (card.textContent || '').replace(/\s+/g, ' ').trim() || card.outerHTML;
@@ -134,24 +365,33 @@ async function settlePage(page) {
        few cards back over ours. */
     window.__rvCarousels = found;
     window.scrollTo(0, 0);
-  }, 40);
+  }, { maxPages: 40, deadline: deadline });
 
-  await page.evaluate(async function (maxRows) {
+  await page.evaluate(async function (o) {
     function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    /* the tabs' panels were read with their rows open, tab by tab (above) */
+    var tabbed = (window.__rvTabs || []).map(function (g) { return g.list.closest('section, article, [aria-roledescription="carousel"]') || g.list.parentElement; });
     var rows = Array.prototype.slice.call(document.querySelectorAll('button[aria-expanded]')).filter(function (b) {
-      return !b.closest('header, nav') && !b.hasAttribute('aria-haspopup');
-    }).slice(0, maxRows);
+      return !b.closest('header, nav, [role="tabpanel"]') && !b.hasAttribute('aria-haspopup') &&
+        !tabbed.some(function (s) { return s.contains(b); });
+    }).slice(0, o.maxRows);
     if (!rows.length) return;
     var wasOpen = rows.filter(function (b) { return b.getAttribute('aria-expanded') === 'true'; });
     var copies = [];
-    for (var i = 0; i < rows.length; i++) {
+    function panelOf(b) { var c = b.getAttribute('aria-controls'); return c ? document.getElementById(c) : b.nextElementSibling; }
+    function subtree(el) { return [el].concat(Array.prototype.slice.call(el.querySelectorAll('*'))); }
+    function looks(b) { return subtree(b).map(function (e) { return [e.getAttribute('class') || '', e.children.length ? null : e.textContent]; }); }
+    for (var i = 0; i < rows.length && Date.now() < o.deadline; i++) {
       var b = rows[i];
-      if (b.getAttribute('aria-expanded') === 'true' || b.nextElementSibling) continue;   // its panel is in the page already
+      if (b.getAttribute('aria-expanded') === 'true' || panelOf(b)) continue;   // its panel is in the page already
+      var closed = looks(b);
       b.click();
       await wait(650);
-      var panel = b.nextElementSibling;
-      if (b.getAttribute('aria-expanded') === 'true' && panel && !/^(BUTTON|A)$/.test(panel.tagName)) {
-        copies.push({ row: b, html: panel.outerHTML });
+      var panel = panelOf(b), after = panel && panel.previousElementSibling;
+      if (b.getAttribute('aria-expanded') === 'true' && panel && after && !/^(BUTTON|A)$/.test(panel.tagName)) {
+        /* how the button looks open (its sign turned), for et-runtime.js to give it */
+        var look = looks(b);
+        copies.push({ row: b, after: after, html: panel.outerHTML, look: look.length === closed.length ? look.map(function (x, k) { return [x[0] !== closed[k][0] ? x[0] : null, x[1] !== closed[k][1] ? x[1] : null]; }) : [] });
       }
     }
     // back to how the page opens
@@ -160,14 +400,19 @@ async function settlePage(page) {
       if (open !== (wasOpen.indexOf(rows[j]) !== -1)) { rows[j].click(); await wait(650); }
     }
     copies.forEach(function (c) {
-      if (c.row.nextElementSibling || c.row.getAttribute('aria-expanded') === 'true') return;
-      c.row.insertAdjacentHTML('afterend', c.html);
-      var p = c.row.nextElementSibling;
+      if (!c.after.isConnected || panelOf(c.row) || c.row.getAttribute('aria-expanded') === 'true') return;
+      c.after.insertAdjacentHTML('afterend', c.html);
+      var p = c.after.nextElementSibling;
       p.style.height = '0px'; p.style.opacity = '0'; p.style.overflow = 'hidden';
+      var els = subtree(c.row);
+      if (els.length === c.look.length) c.look.forEach(function (x, k) {
+        if (x[0] !== null) els[k].setAttribute('data-rv-open-class', x[0]);
+        if (x[1] !== null) els[k].setAttribute('data-rv-open-text', x[1]);
+      });
     });
     window.scrollTo(0, 0);
     await wait(300);
-  }, SETTLE_MAX_ROWS);
+  }, { maxRows: SETTLE_MAX_ROWS, deadline: deadline });
 }
 
 /* Runs in the page, in one go: what settlePage prepared is put into the markup and the markup is read, with
@@ -190,7 +435,112 @@ function finishPage() {
       });
     });
   } catch (e) { /* the page is read as it stands */ }
+  try {
+    var bar = window.__rvBar;
+    if (bar && bar.el.isConnected) {
+      var els = [bar.el].concat(Array.prototype.slice.call(bar.el.querySelectorAll('*')));
+      if (els.length === bar.scrolled.length) {
+        els.forEach(function (el, i) {
+          if ((el.getAttribute('class') || '') !== bar.scrolled[i]) el.setAttribute('data-rv-scrolled-class', bar.scrolled[i]);
+        });
+      }
+    }
+  } catch (e) { /* the bar stays as it is at the top of the page */ }
+  (window.__rvTabs || []).forEach(function (g, gi) {
+    try {
+      var list = g.list;
+      if (!list.isConnected) return;
+      var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]')).slice(0, g.n);
+      if (tabs.length !== g.n) return;
+      var scope = list.closest('section, article, [aria-roledescription="carousel"]') || list.parentElement;
+      var id = tabs[0].getAttribute('aria-controls'), named = id && document.getElementById(id), nodes = [];
+      if (named && !named.contains(list) && scope.contains(named)) nodes = [named];
+      else for (var s = list.nextElementSibling; s; s = s.nextElementSibling) if (!/^(SCRIPT|STYLE|TEMPLATE)$/.test(s.tagName)) nodes.push(s);
+      if (!nodes.length) return;
+      var key = String(gi), made = [], frag = document.createDocumentFragment(), tpl = document.createElement('template');
+      g.states.forEach(function (st, k) {
+        st.html.forEach(function (h) {
+          tpl.innerHTML = h;
+          var el = tpl.content.firstElementChild;
+          if (!el) return;
+          el.setAttribute('data-rv-tabpanel', key + ':' + k);
+          if (k !== g.startK) { el.setAttribute('hidden', ''); el.removeAttribute('id'); }
+          frag.appendChild(el);
+          made.push(el);
+        });
+      });
+      nodes[0].parentNode.insertBefore(frag, nodes[0]);
+      nodes.forEach(function (n) { n.remove(); });
+      tabs.forEach(function (t, k) {
+        t.setAttribute('data-rv-tab', key + ':' + k);
+        t.setAttribute('aria-selected', k === g.startK ? 'true' : 'false');
+      });
+      list.setAttribute('data-rv-tablist', key);
+      if (g.auto) list.setAttribute('data-rv-tab-auto', String(g.auto));
+      /* around the panels: the page as it is now (the opening tab), by the same keys as when each tab was read */
+      var now = {};
+      (function walk(el, k0) {
+        var place = 0;
+        Array.prototype.forEach.call(el.children, function (c) {
+          if (made.some(function (m) { return m === c || m.contains(c); })) return;
+          var k = k0 + '/' + (place++) + c.tagName;
+          now[k] = c;
+          walk(c, k);
+        });
+      })(scope, '');
+      var keys = {};
+      g.states.forEach(function (st) { Object.keys(st.classes).forEach(function (k) { keys[k] = 1; }); });
+      var adds = [];
+      Object.keys(keys).forEach(function (k) {
+        var per = g.states.map(function (st) { return st.classes[k]; });
+        var has = [];
+        per.forEach(function (x, i) { if (x) has.push(i); });
+        if (has.length === g.n) {
+          var cls = per.map(function (x) { return x[0]; });
+          if (now[k] && cls.some(function (c) { return c !== cls[0]; })) {
+            now[k].setAttribute('data-rv-tab-classes', JSON.stringify({ g: key, c: cls }));
+            now[k].setAttribute('class', cls[g.startK]);
+          }
+          return;
+        }
+        /* only some tabs have it: shown with those */
+        var only = JSON.stringify({ g: key, k: has });
+        if (now[k]) { now[k].setAttribute('data-rv-tab-only', only); return; }
+        var first = per[has[0]];
+        if (now[first[1]] || first[1] === '') adds.push({ parent: first[1] === '' ? scope : now[first[1]], place: first[2], html: first[3], only: only });
+      });
+      adds.forEach(function (x) {
+        if (!x.parent) return;
+        tpl.innerHTML = x.html;
+        var el = tpl.content.firstElementChild;
+        if (!el) return;
+        el.setAttribute('data-rv-tab-only', x.only);
+        el.setAttribute('hidden', '');
+        var kids = Array.prototype.filter.call(x.parent.children, function (c) { return !made.some(function (m) { return m === c; }); });
+        x.parent.insertBefore(el, kids[x.place] || null);
+      });
+    } catch (e) { /* this tab set is read as it stands */ }
+  });
   return document.documentElement.outerHTML;
+}
+
+// Renders `url` in an open tab and returns its markup as captured (settlePage, finishPage). Exported, with
+// those two, so the capture can be run from a script with a Chrome of its own (tools/reimport-lovable.js).
+async function capturePage(page, url) {
+  await page.setViewport({ width: 1440, height: 900 });
+  try {
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
+  } catch (err) {
+    // A site with e.g. continuous analytics pings may never truly go network-idle -- don't fail the
+    // whole render over that; capture whatever has rendered by now instead.
+    console.error('scrape: navigation to "' + url + '" did not fully settle (' + err.message + ') -- capturing whatever rendered so far.');
+  }
+  await new Promise(function (resolve) { setTimeout(resolve, 3500); }); // let an intro animation play out
+  try { await settlePage(page); } catch (err) {
+    // best effort: a page this cannot walk through is still captured as it stands
+    console.error('scrape: could not settle "' + url + '" before capture (' + err.message + ').');
+  }
+  return page.evaluate(finishPage);
 }
 
 // Launches headless Chrome, navigates to `url`, waits briefly for any late mount/animation, and returns
@@ -210,7 +560,7 @@ async function scrapeUrl(url) {
   }
 
   var work = (async function () {
-    browser = await puppeteer.launch({
+    browser = await require('puppeteer').launch({
       headless: true,
       // --disable-dev-shm-usage: Cloud Run's default /dev/shm is tiny; without this, Chrome can crash
       // outright on real pages. --no-sandbox/--disable-setuid-sandbox: Chrome's own sandbox needs kernel
@@ -219,20 +569,7 @@ async function scrapeUrl(url) {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
     var page = await browser.newPage();
-    await page.setViewport({ width: 1440, height: 900 });
-    try {
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
-    } catch (err) {
-      // A site with e.g. continuous analytics pings may never truly go network-idle -- don't fail the
-      // whole render over that; capture whatever has rendered by now instead.
-      console.error('scrape: navigation to "' + url + '" did not fully settle (' + err.message + ') -- capturing whatever rendered so far.');
-    }
-    await new Promise(function (resolve) { setTimeout(resolve, 3500); }); // let an intro animation play out
-    try { await settlePage(page); } catch (err) {
-      // best effort: a page this cannot walk through is still captured as it stands
-      console.error('scrape: could not settle "' + url + '" before capture (' + err.message + ').');
-    }
-    return page.evaluate(finishPage);
+    return capturePage(page, url);
   })();
 
   var timer;
@@ -270,6 +607,7 @@ function readBody(req, cb) {
   req.on('error', function () { cb(''); });
 }
 
+function serve() {
 var server = http.createServer(function (req, res) {
   if (req.method === 'GET' && req.url === '/healthz') return sendJson(res, 200, { ok: true });
 
@@ -305,3 +643,7 @@ var server = http.createServer(function (req, res) {
 });
 
 server.listen(PORT, function () { console.log('lovable-scraper-service listening on :' + PORT); });
+}
+
+module.exports = { capturePage: capturePage, settlePage: settlePage, finishPage: finishPage, validateUrl: validateUrl };
+if (require.main === module) serve();

@@ -45,7 +45,18 @@
          the visitor has scrolled (rv-bar-solid), so its links stay readable over the content;
        · menu buttons that are not links go to their section: by the section's id where the label names it,
          else in page order when there are as many buttons as sections; the brand button goes to the top;
-       · a button with aria-expanded opens and closes the panel that follows it, one at a time per list;
+       · a button with aria-expanded opens and closes its panel — the one it names (aria-controls, the nearest
+         of that id), else the one after it — one at a time per list, looking as it did open on the original
+         page (data-rv-open-class / -text) and turning "Read more" into "Read less";
+       · tab sets captured with every tab's panel (lovable-scraper-service: data-rv-tab, data-rv-tabpanel,
+         data-rv-tab-classes, data-rv-tab-only) switch on a click and the arrow keys, and one that moved on by
+         itself (data-rv-tab-auto) does so here too, pausing while pointed at or focused;
+       · a top bar whose look changed once the visitor scrolled takes that look past the first few pixels
+         (data-rv-scrolled-class); a clear bar imported before that was read gets the page's background
+         (rv-bar-clear);
+       · carousel arrows in a section's heading drive the row beside them; a measured summary height
+         (style="height:25px" over a line-clamped text) is let go; a sign-up button with no link ("Apply to
+         join", "Request an invite") opens the event's form (data-register-cta, rv-forms.js);
        · a "menu" button on a narrow window opens the bar's own links as a list (never while editing);
        · the site builder's "Edit with …" badge is removed.
 
@@ -144,7 +155,11 @@
     '.rv-imported [data-rv-wrap]{min-height:0!important;height:auto!important;flex:none!important;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important}',
     '.rv-imported [data-rv-wrap]::before,.rv-imported [data-rv-wrap]::after{content:none!important}',
     '.rv-imported .rv-bar{opacity:1!important;visibility:visible!important;pointer-events:auto!important}',
-    '.rv-imported .rv-bar.rv-bar-solid{background:var(--rv-bar-bg,#fff)!important;box-shadow:0 1px 0 rgba(128,128,128,.25)}',
+    '.rv-imported .rv-bar.rv-bar-solid,.rv-imported .rv-bar-clear.rv-bar-solid{background:var(--rv-bar-bg,#fff)!important;box-shadow:0 1px 0 rgba(128,128,128,.25)}',
+    /* the panels of a tab set not chosen (lovable-scraper-service) stay out of sight whatever their classes say */
+    /* a row's panel shut by height (et-runtime.js toggleRow, lovable-scraper-service's copies) takes no room at all */
+    '.rv-imported [style*="height: 0px"][style*="opacity: 0"]{padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important;border-top-width:0!important;border-bottom-width:0!important}',
+    '.rv-imported [data-rv-tabpanel][hidden],.rv-imported [data-rv-tab-only][hidden]{display:none!important}',
     '.rv-imported .rv-menu{position:absolute;left:0;right:0;top:100%;display:flex;flex-direction:column;align-items:flex-start;gap:20px;padding:20px 24px 28px;background:var(--rv-bar-bg,#fff);max-height:calc(100vh - 100%);max-height:calc(100dvh - 100%);overflow:auto;box-shadow:0 14px 24px rgba(0,0,0,.14)}',
     '.rv-imported .rv-menu > *{text-align:left}'
   ].join('\n');
@@ -304,35 +319,238 @@
     window.scrollTo({ top: top, behavior: still ? 'auto' : 'smooth' });
   }
 
-  /* a button with aria-expanded and the panel after it; one open at a time among the rows of its list */
+  /* The panel a row's button opens: the one it names (aria-controls) — the nearest element with that id, since
+     a captured tab set can hold the same ids once per tab — else the element after it. */
+  function panelOf(btn) {
+    var id = btn.getAttribute('aria-controls');
+    if (id) {
+      var sel = '[id="' + id.replace(/["\\]/g, '\\$&') + '"]';
+      for (var a = btn.parentElement; a; a = a.parentElement) {
+        var p = a.querySelector(sel);
+        if (p && p !== btn && !p.contains(btn)) return p;
+      }
+    }
+    var next = btn.nextElementSibling;
+    return next && !/^(BUTTON|A)$/.test(next.tagName) ? next : null;
+  }
+
+  /* the row: the closest element holding both the button and its panel */
+  function rowOf(btn, panel) {
+    var r = btn.parentElement;
+    while (r && !r.contains(panel)) r = r.parentElement;
+    return r;
+  }
+
+  var MORE_LESS = /\b(Read|Show|See|View)( |\u00a0)(more|less)\b/i;
+  /* "Read more" becomes "Read less" while its panel is open, and back */
+  function moreLess(btn, open) {
+    var walker = document.createTreeWalker(btn, NodeFilter.SHOW_TEXT, null), n;
+    while ((n = walker.nextNode())) {
+      if (!MORE_LESS.test(n.nodeValue)) continue;
+      n.nodeValue = n.nodeValue.replace(MORE_LESS, function (all, verb, sp, w) {
+        var to = open ? 'less' : 'more';
+        return verb + sp + (w.charAt(0) === w.charAt(0).toUpperCase() ? to.charAt(0).toUpperCase() + to.slice(1) : to);
+      });
+      return;
+    }
+  }
+
+  function setPanel(p, on) {
+    p.removeAttribute('hidden');
+    /* a panel its classes keep closed as a grid row of no height (grid-rows-[0fr] opacity-0): opened by giving
+       it its full row; closed by handing it back to its classes (which may open it on hover) */
+    if (/(^|\s)grid-rows-\[0fr\](\s|$)/.test(p.getAttribute('class') || '')) {
+      p.style.gridTemplateRows = on ? '1fr' : '';
+      p.style.opacity = on ? '1' : '';
+      return;
+    }
+    p.style.height = on ? 'auto' : '0px';
+    p.style.opacity = on ? '1' : '0';
+    p.style.overflow = 'hidden';
+  }
+
+  /* a button with aria-expanded and the panel it opens; one open at a time among the rows of its list */
   function toggleRow(root, btn) {
-    var panel = btn.nextElementSibling;
-    if (!panel || /^(BUTTON|A)$/.test(panel.tagName)) return false;
-    var list = btn.parentElement && btn.parentElement.parentElement;
+    var panel = panelOf(btn);
+    if (!panel) return false;
+    var row = rowOf(btn, panel), list = row && row.parentElement;
     var rows = [];
     each((list || root).querySelectorAll('button[aria-expanded]'), function (b) {
-      if (b.parentElement && b.parentElement.parentElement === list && b.nextElementSibling) rows.push(b);
+      var p = b === btn ? panel : panelOf(b), r = p && rowOf(b, p);
+      if (r && r.parentElement === list) rows.push({ b: b, p: p });
     });
+    if (!rows.some(function (r) { return r.b === btn; })) rows.push({ b: btn, p: panel });
     var turn = null;                                   // the class that turns the open row's sign (+ to ×, chevron down to up)
-    rows.forEach(function (b) {
-      if (turn || b.getAttribute('aria-expanded') !== 'true') return;
-      each(b.querySelectorAll('[class*="rotate-"]'), function (x) {
+    rows.forEach(function (r) {
+      if (turn || r.b.getAttribute('aria-expanded') !== 'true') return;
+      each(r.b.querySelectorAll('[class*="rotate-"]'), function (x) {
         var m = /(?:^|\s)(-?rotate-\[?[\w.]+\]?)(?:\s|$)/.exec(x.getAttribute('class') || '');
         if (m && !turn) turn = m[1];
       });
     });
-    if (turn) list.__rvTurn = turn; else turn = list && list.__rvTurn;
+    if (list) { if (turn) list.__rvTurn = turn; else turn = list.__rvTurn; }
     var open = btn.getAttribute('aria-expanded') !== 'true';
-    rows.forEach(function (b) {
-      var on = b === btn ? open : false, p = b.nextElementSibling;
+    rows.forEach(function (r) {
+      var b = r.b, on = b === btn ? open : false;
+      if (b !== btn && b.getAttribute('aria-expanded') !== 'true') return;    // a closed row stays as it is
       b.setAttribute('aria-expanded', on ? 'true' : 'false');
-      p.style.height = on ? 'auto' : '0px';
-      p.style.opacity = on ? '1' : '0';
-      p.style.overflow = 'hidden';
+      setPanel(r.p, on);
+      moreLess(b, on);
+      /* the look the button had open on the original page (data-rv-open-class, lovable-scraper-service) */
+      var looks = [b].concat(Array.prototype.slice.call(b.querySelectorAll('[data-rv-open-class], [data-rv-open-text]'))).filter(function (x) {
+        return x.hasAttribute('data-rv-open-class') || x.hasAttribute('data-rv-open-text');
+      });
+      looks.forEach(function (x) {
+        if (x.hasAttribute('data-rv-open-class')) {
+          if (x.__rvShut === undefined) x.__rvShut = (x.getAttribute('class') || '').split(/\s+/).filter(function (c) { return c && !/^rv-/.test(c); }).join(' ');
+          swapClass(x, on ? x.getAttribute('data-rv-open-class') : x.__rvShut);
+        }
+        if (x.hasAttribute('data-rv-open-text') && !x.children.length) {
+          if (x.__rvShutText === undefined) x.__rvShutText = x.textContent;
+          x.textContent = on ? x.getAttribute('data-rv-open-text') : x.__rvShutText;
+        }
+      });
       var sign = b.querySelector('[aria-hidden="true"]:last-child') || b.lastElementChild;
-      if (turn && sign) sign.classList.toggle(turn, on);
+      if (turn && sign && !looks.length) sign.classList.toggle(turn, on);
     });
     return true;
+  }
+
+  /* ----- tab sets captured with every tab's panel (lovable-scraper-service): data-rv-tab="<set>:<k>" on each
+     tab, data-rv-tabpanel="<set>:<k>" on what tab k shows, data-rv-tab-classes='{"g":"<set>","c":[…]}' on an
+     element whose classes change with the tab, data-rv-tab-auto="<ms>" on a set that moves on by itself ----- */
+  function tabKey(v) {
+    v = String(v || '');
+    var i = v.lastIndexOf(':');
+    return { g: v.slice(0, i), k: +v.slice(i + 1) };
+  }
+
+  /* the classes this script adds (rv-…) are kept when an element takes another tab's classes */
+  function swapClass(el, cls) {
+    var own = (el.getAttribute('class') || '').split(/\s+/).filter(function (c) { return /^rv-/.test(c); });
+    el.setAttribute('class', [String(cls || '')].concat(own).join(' ').trim());
+  }
+
+  function tabsOfSet(root, g) {
+    var out = [];
+    each(root.querySelectorAll('[data-rv-tab]'), function (t) { if (tabKey(t.getAttribute('data-rv-tab')).g === g) out.push(t); });
+    return out;
+  }
+
+  function selectTab(root, tab, focus) {
+    var key = tabKey(tab.getAttribute('data-rv-tab')), g = key.g, k = key.k, idHolder = null, shown = [];
+    tabsOfSet(root, g).forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.setAttribute('tabindex', on ? '0' : '-1');
+    });
+    each(root.querySelectorAll('[data-rv-tabpanel]'), function (p) {
+      var pk = tabKey(p.getAttribute('data-rv-tabpanel'));
+      if (pk.g !== g) return;
+      if (pk.k === k) { p.removeAttribute('hidden'); shown.push(p); }
+      else { p.setAttribute('hidden', ''); if (p.id && !idHolder) idHolder = p; }
+    });
+    /* the panel the tabs name by id (aria-controls) is the one on show */
+    if (idHolder && shown.length === 1 && !shown[0].id && idHolder.id === tab.getAttribute('aria-controls')) {
+      shown[0].id = idHolder.id;
+      idHolder.removeAttribute('id');
+    }
+    each(root.querySelectorAll('[data-rv-tab-classes]'), function (el) {
+      var spec = null;
+      try { spec = JSON.parse(el.getAttribute('data-rv-tab-classes')); } catch (err) { /* not ours */ }
+      if (!spec || String(spec.g) !== g || !spec.c || typeof spec.c[k] !== 'string') return;
+      swapClass(el, spec.c[k]);
+    });
+    /* what only some tabs have (the chosen tab's progress bar) */
+    each(root.querySelectorAll('[data-rv-tab-only]'), function (el) {
+      var spec = null;
+      try { spec = JSON.parse(el.getAttribute('data-rv-tab-only')); } catch (err) { /* not ours */ }
+      if (!spec || String(spec.g) !== g || !spec.k || !spec.k.indexOf) return;
+      if (spec.k.indexOf(k) !== -1) el.removeAttribute('hidden'); else el.setAttribute('hidden', '');
+    });
+    if (focus) tab.focus();
+  }
+
+  function stillWanted() { return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+  function tabSets(root) {
+    if (editing() || root.__rvTabs) return;
+    root.__rvTabs = true;
+    var sets = {};
+    each(root.querySelectorAll('[data-rv-tab]'), function (t) {
+      var g = tabKey(t.getAttribute('data-rv-tab')).g;
+      if (!sets[g] || t.getAttribute('aria-selected') === 'true') sets[g] = t;
+    });
+    Object.keys(sets).forEach(function (g) { selectTab(root, sets[g], false); });
+    root.addEventListener('click', function (e) {
+      if (e.defaultPrevented || e.button || editing()) return;
+      var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+      var tab = t && t.closest ? t.closest('[data-rv-tab]') : null;
+      if (!tab || !root.contains(tab)) return;
+      e.preventDefault();
+      selectTab(root, tab, false);
+      if (tab.__rvRestart) tab.__rvRestart();
+    });
+    root.addEventListener('keydown', function (e) {
+      var tab = e.target && e.target.closest ? e.target.closest('[data-rv-tab]') : null;
+      if (!tab || editing()) return;
+      var all = tabsOfSet(root, tabKey(tab.getAttribute('data-rv-tab')).g), i = all.indexOf(tab), to = -1;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') to = (i + 1) % all.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') to = (i - 1 + all.length) % all.length;
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = all.length - 1;
+      if (to < 0) return;
+      e.preventDefault();
+      selectTab(root, all[to], true);
+      if (all[to].__rvRestart) all[to].__rvRestart();
+    });
+    /* a set that moved on by itself does so here too: never while the visitor points at it or is in it, while a
+       pop-up is open, while the page is not on show, or for visitors who asked for no motion */
+    each(root.querySelectorAll('[data-rv-tab-auto]'), function (list) {
+      var ms = parseInt(list.getAttribute('data-rv-tab-auto'), 10);
+      var first = list.querySelector('[data-rv-tab]');
+      if (!(ms >= 2000) || !first || !stillWanted()) return;
+      var g = tabKey(first.getAttribute('data-rv-tab')).g;
+      var area = list.closest('section, article, [aria-roledescription="carousel"]') || list.parentElement;
+      var held = false, timer = null;
+      area.addEventListener('mouseenter', function () { held = true; });
+      area.addEventListener('mouseleave', function () { held = false; });
+      function step() {
+        if (held || document.hidden || area.contains(document.activeElement) || document.documentElement.hasAttribute('data-rv-modal') || editing()) return;
+        var all = tabsOfSet(root, g), i = -1;
+        all.forEach(function (t, j) { if (t.getAttribute('aria-selected') === 'true') i = j; });
+        if (all.length > 1) selectTab(root, all[(i + 1) % all.length], false);
+      }
+      function restart() { clearInterval(timer); timer = setInterval(step, ms); }
+      tabsOfSet(root, g).forEach(function (t) { t.__rvRestart = restart; });
+      restart();
+    });
+  }
+
+  /* A summary whose height the page's script measured and wrote on it (style="height:25px", for its text at
+     the width it was captured at) and that shows a few lines at most (line-clamp): it takes its own height, or
+     its text is cut on a narrower screen. */
+  function freeMeasured(root) {
+    if (editing()) return;
+    each(root.querySelectorAll('[style*="height"][class*="transition-[height]"]'), function (el) {
+      if (!/(^|;)\s*height\s*:\s*[\d.]+px/.test(el.getAttribute('style') || '')) return;
+      var only = el.children.length === 1 ? el.firstElementChild : null;
+      if (only && /(^|\s)line-clamp-\d/.test(only.getAttribute('class') || '')) el.style.height = 'auto';
+    });
+  }
+
+  /* A button the page's script opened a sign-up form with — no link, nothing else of ours on it — and named
+     like one: it opens the event's own form (data-register-cta, rv-forms.js) */
+  var SIGNUP = /^(apply( now| to join| here)?|register( now| here)?|request (an |your )?invit(e|ation)|book (now|your (seat|place|spot))|reserve (your )?(seat|place|spot)|express (your )?interest|sign up|enrol+( now)?)\b/i;
+  function signUpButtons(root) {
+    if (editing()) return;
+    each(root.querySelectorAll('button'), function (b) {
+      if (b.hasAttribute('aria-expanded') || b.hasAttribute('aria-controls') || b.hasAttribute('aria-haspopup') || b.hasAttribute('role') ||
+          b.hasAttribute('data-rv-form') || b.hasAttribute('data-register-cta') || b.getAttribute('type') === 'submit' ||
+          b.closest('form, [data-rv-form-root], [data-rv-carousel]')) return;
+      var text = (b.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text.length <= 40 && SIGNUP.test(text)) b.setAttribute('data-register-cta', '');
+    });
   }
 
   function closeMenu(root) {
@@ -374,7 +592,7 @@
   function watchBars(root) {
     root.style.setProperty('--rv-bar-bg', pageBackground(root));
     if (editing()) return;
-    each(root.querySelectorAll('.rv-bar'), function (bar) {
+    each(root.querySelectorAll('.rv-bar, .rv-bar-clear'), function (bar) {
       if (bar.__rvSolid) return;
       var clear = alpha(getComputedStyle(bar).backgroundColor) < 0.1;
       bar.__rvSolid = function () {
@@ -382,6 +600,47 @@
       };
       window.addEventListener('scroll', bar.__rvSolid, { passive: true });
       bar.__rvSolid();
+    });
+  }
+
+  /* The top bar's look once the visitor has scrolled, as the page's script gave it (data-rv-scrolled-class,
+     read by lovable-scraper-service with the page scrolled): every element of the bar whose classes changed
+     takes them past the first few pixels, and its first classes again at the top. */
+  function scrolledBars(root) {
+    if (editing() || root.__rvScrolled) return;
+    var els = root.querySelectorAll('[data-rv-scrolled-class]');
+    if (!els.length) return;
+    root.__rvScrolled = true;
+    each(els, function (el) {
+      el.__rvTopClass = (el.getAttribute('class') || '').split(/\s+/).filter(function (c) { return c && !/^rv-/.test(c); }).join(' ');
+    });
+    var was = null;
+    function sync() {
+      var on = window.pageYOffset > 24;
+      if (on === was) return;
+      was = on;
+      each(els, function (el) { swapClass(el, on ? el.getAttribute('data-rv-scrolled-class') : el.__rvTopClass); });
+    }
+    window.addEventListener('scroll', sync, { passive: true });
+    sync();
+  }
+
+  /* A top bar on show, fixed over the page with no background of its own, imported before its scrolled look
+     was read: it gets the page's background once the visitor has scrolled (rv-bar-clear, watchBars), so its
+     links are not drawn over the content. */
+  function clearBars(root) {
+    if (editing() || root.querySelector('[data-rv-scrolled-class]')) return;
+    each(root.querySelectorAll('header, nav, [role="banner"]'), function (h) {
+      var top = null;
+      for (var el = h; el && el !== root; el = el.parentElement) {
+        var p = getComputedStyle(el).position;
+        if (p === 'fixed' || p === 'sticky') top = el;
+      }
+      if (!top || top.classList.contains('rv-bar') || top.classList.contains('rv-bar-clear')) return;
+      var cs = getComputedStyle(top), r = top.getBoundingClientRect();
+      if (r.top > 1 || !r.height || r.height >= window.innerHeight / 2 || cs.visibility !== 'visible' || cs.opacity === '0' || !hasContent(top)) return;
+      if (alpha(cs.backgroundColor) >= 0.1 || alpha(getComputedStyle(h).backgroundColor) >= 0.1) return;
+      top.classList.add('rv-bar-clear');
     });
   }
 
@@ -444,7 +703,12 @@
         removeBadges(root);
         liftCurtains(root);
         showStuck(root, false);
+        scrolledBars(root);
+        clearBars(root);
         watchBars(root);
+        tabSets(root);
+        freeMeasured(root);
+        signUpButtons(root);
         behave(root);
       });
     }, 60);
@@ -678,9 +942,10 @@
   /* The rules a carousel needs travel with this script, because an imported page loads no stylesheet of
      ours. In the editor the strip wraps instead of scrolling, so every slide can be seen and edited. */
   var CAROUSEL_CSS = [
-    '[data-rv-carousel-track]{display:flex;gap:24px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
-    '[data-rv-carousel-track]::-webkit-scrollbar{display:none}',
-    '[data-rv-carousel-track] > *{flex:0 0 auto;scroll-snap-align:start}',
+    /* a track marked "own" is an imported region that already scrolls its row by its own CSS: left as it is */
+    '[data-rv-carousel-track]:not([data-rv-carousel-track="own"]){display:flex;gap:24px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
+    '[data-rv-carousel-track]:not([data-rv-carousel-track="own"])::-webkit-scrollbar{display:none}',
+    '[data-rv-carousel-track]:not([data-rv-carousel-track="own"]) > *{flex:0 0 auto;scroll-snap-align:start}',
     '.rv-carousel-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--rv-surface,#fff);color:var(--rv-text,#111);box-shadow:0 4px 16px rgba(0,0,0,.18)}',
     '.rv-carousel-btn[hidden]{display:none}',
     '[data-rv-carousel] button:disabled{opacity:.35;cursor:default}',
@@ -690,8 +955,8 @@
     '@media (max-width:640px){[data-rv-carousel]:has(> .rv-carousel-btn:not([hidden])){padding-bottom:60px}' +
       '[data-rv-carousel] > .rv-carousel-btn{top:auto;bottom:0;transform:none}' +
       '[data-rv-carousel] > .rv-carousel-prev{left:calc(50% - 52px)}[data-rv-carousel] > .rv-carousel-next{right:calc(50% - 52px)}}',
-    'html[data-rv-editing] [data-rv-carousel-track]{flex-wrap:wrap!important;overflow:visible!important;height:auto!important}',
-    'html[data-rv-editing] [data-rv-carousel] :has(> [data-rv-carousel-track]){height:auto!important;overflow:visible!important}'
+    'html[data-rv-editing] [data-rv-carousel-track]:not([data-rv-carousel-track="own"]){flex-wrap:wrap!important;overflow:visible!important;height:auto!important}',
+    'html[data-rv-editing] [data-rv-carousel] :has(> [data-rv-carousel-track]:not([data-rv-carousel-track="own"])){height:auto!important;overflow:visible!important}'
   ].join('\n');
   function carouselCss() {
     /* a page saved from the editor carries the copy this script wrote then: it is brought up to date, so a
@@ -711,18 +976,29 @@
      pages imported before it did.) */
   function adoptImportedCarousels(root) {
     each(root.querySelectorAll('.rv-imported button[aria-label]'), function (next) {
-      if (!/^next\b/i.test(next.getAttribute('aria-label')) || next.closest('header, nav')) return;
-      var box = next.parentElement;
-      if (!box || box.querySelector('[data-rv-carousel-track]')) return;
-      var holder = box && box.querySelector('[role="region"], [aria-roledescription="carousel"]');
+      /* not the site's own bar (a section's heading, <header> inside the section, is no bar) */
+      var bar = next.closest('header, nav');
+      if (!/^next\b/i.test(next.getAttribute('aria-label')) || (bar && !bar.closest('section, article'))) return;
+      /* the row is beside the buttons, or a few boxes up from them (buttons in the section's heading) */
+      var box = next.parentElement, holder = null;
+      for (var up = 0; box && up < 4; box = box.parentElement, up++) {
+        if (box.querySelector('[data-rv-carousel-track]')) return;
+        holder = box.querySelector('[role="region"], [aria-roledescription="carousel"]');
+        if (holder || /^(SECTION|ARTICLE|MAIN|BODY)$/.test(box.tagName)) break;
+      }
+      if (!holder) return;
       var row = holder && (holder.querySelector('[data-carousel-layer]') || holder.firstElementChild);
       if (!row || row.children.length < 2) return;
       var first = row.firstElementChild.getBoundingClientRect().width;
       if (!first) return;
-      var gap = parseFloat(getComputedStyle(row).columnGap) || 16;
-      each(row.children, function (card) { card.style.flex = '0 0 ' + Math.round(first) + 'px'; card.style.scrollSnapAlign = 'start'; });
-      row.style.cssText = 'display:flex;gap:' + gap + 'px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;width:100%';
-      row.setAttribute('data-rv-carousel-track', '');
+      if (/auto|scroll/.test(getComputedStyle(holder).overflowX)) {
+        holder.setAttribute('data-rv-carousel-track', 'own');  // the region already scrolls its row sideways: it is the track
+      } else {
+        var gap = parseFloat(getComputedStyle(row).columnGap) || 16;
+        each(row.children, function (card) { card.style.flex = '0 0 ' + Math.round(first) + 'px'; card.style.scrollSnapAlign = 'start'; });
+        row.style.cssText = 'display:flex;gap:' + gap + 'px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;width:100%';
+        row.setAttribute('data-rv-carousel-track', '');
+      }
       box.setAttribute('data-rv-carousel', '');
       next.setAttribute('data-rv-carousel-next', '');
       each(box.querySelectorAll('button[aria-label]'), function (b) { if (/^previous\b/i.test(b.getAttribute('aria-label'))) b.setAttribute('data-rv-carousel-prev', ''); });
@@ -735,7 +1011,12 @@
     box.__rvCarousel = true;
     if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
 
-    function step() { var item = track.firstElementChild; return item ? item.getBoundingClientRect().width + (parseFloat(getComputedStyle(track).columnGap) || 0) : track.clientWidth; }
+    function step() {
+      var item = track.firstElementChild, row = track;
+      /* a track holding one row wider than itself (an imported region that scrolls): a step is one card of it */
+      if (item && item.firstElementChild && item.children.length > 1 && item.getBoundingClientRect().width > track.clientWidth + 2) { row = item; item = item.firstElementChild; }
+      return item ? item.getBoundingClientRect().width + (parseFloat(getComputedStyle(row).columnGap) || 0) : track.clientWidth;
+    }
     function atEnd() { return track.scrollLeft + track.clientWidth >= track.scrollWidth - 2; }
     function go(dir, wrap) {
       if (dir > 0 && atEnd()) { if (wrap) track.scrollTo({ left: 0, behavior: 'smooth' }); return; }
