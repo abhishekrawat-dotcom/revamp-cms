@@ -8002,6 +8002,7 @@ var ROUTES = {
   'GET /api/public/places': formsRoute('handlePublicPlaces'),
   'GET /api/event/dashboard-stats': audience('handleDashboardStats'),
   'GET /api/event/activity': audience('handleActivity'),
+  'GET /api/activity/all': inModule('api-activity', 'handleActivityAll'),   // the all-events Activity log page
   'GET /api/insights': audience('handleInsights'),
 
   'GET /api/promo/kit': promo('handleKit'),

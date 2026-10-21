@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Revamp CMS — Activity log across all events (GET /api/activity/all, lib/api-activity.js) -->
+<title>Activity log &mdash; Revamp CMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<style>
+  :root{
+    --bg:#F7F7F4; --surface:#FFFFFF; --surface-2:#F1F0EC; --surface-3:#E7E5DF;
+    --border:#E6E4DE; --border-strong:#D7D4CB; --text:#1D1B17; --text-muted:#6C6A60; --text-faint:#9B988D;
+    --accent:#FF0035; --accent-strong:#D6002C; --accent-soft:#FFE3E8; --accent-contrast:#FFFFFF;
+    --ok:#16794F; --ok-soft:#E4F5EC; --warn:#A9700F; --warn-soft:#FBF0DA; --crit:#C13333; --crit-soft:#FBE8E7;
+    --tag-blue:#1D5FA3; --tag-blue-soft:#E3EEFB; --tag-teal:#0E7C6B; --tag-teal-soft:#E0F5F0;
+    --tag-violet:#7A3FA0; --tag-violet-soft:#F1E7F8; --tag-cyan:#0E7490; --tag-cyan-soft:#DFF4F8;
+    --tag-amber:#9C6B0B; --tag-amber-soft:#F7EEDA; --tag-rose:#B23A6B; --tag-rose-soft:#FBE7EF;
+    --r-sm:8px; --r-md:12px;
+    --font-body:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
+      --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
+      --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+      --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+      --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+      --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38; --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+      --tag-amber:#E8C069; --tag-amber-soft:#332711; --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
+    --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
+    --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+    --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+    --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+    --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38; --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+    --tag-amber:#E8C069; --tag-amber-soft:#332711; --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--bg); color:var(--text); font-family:var(--font-body); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  a{ color:inherit; }
+  button,input,select{ font-family:var(--font-body); font-size:13px; color:var(--text); }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  [hidden]{ display:none !important; }
+  .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+  .muted{ color:var(--text-muted); }
+
+  .nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:20; }
+  .nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:14px; padding:0 24px; }
+  .nav-brand img{ height:28px; width:auto; display:block; }
+  /* the brand mark is dark lettering: on the dark theme it sits on a light chip so it stays readable */
+  :root[data-theme="dark"] .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; } }
+  .nav-back{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); text-decoration:none; }
+  .nav-back:hover{ background:var(--surface-2); color:var(--text); }
+  .nav-right{ margin-left:auto; display:flex; align-items:center; gap:10px; }
+
+  .app{ max-width:1240px; margin:0 auto; padding:22px 24px 70px; display:flex; flex-direction:column; gap:14px; }
+  .head{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .head h1{ font-size:22px; margin:0; letter-spacing:-.01em; }
+  .head p{ margin:2px 0 0; color:var(--text-muted); font-size:13px; }
+
+  .btn{ display:inline-flex; align-items:center; gap:6px; padding:8px 13px; border-radius:var(--r-sm); border:1px solid var(--border-strong); background:var(--surface); font-weight:600; cursor:pointer; white-space:nowrap; }
+  .btn:hover{ background:var(--surface-2); }
+  .btn[disabled]{ opacity:.5; pointer-events:none; }
+  .btn-primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); }
+  .btn-primary:hover{ background:var(--accent-strong); }
+
+  .filters{ display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:14px; }
+  .f{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .f label{ font-size:11.5px; font-weight:600; color:var(--text-muted); }
+  .f select,.f input{ width:100%; min-width:0; padding:8px 10px; border:1px solid var(--border-strong); border-radius:var(--r-sm); background:var(--surface); }
+  .f.wide{ grid-column:span 2; }
+  .f-actions{ grid-column:1 / -1; display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+  .count{ font-size:12.5px; color:var(--text-muted); }
+
+  .banner{ padding:12px 14px; border-radius:var(--r-md); border:1px solid var(--border); font-size:13.5px; }
+  .banner.warn{ background:var(--warn-soft); color:var(--warn); border-color:transparent; }
+  .banner.crit{ background:var(--crit-soft); color:var(--crit); border-color:transparent; }
+
+  .tbl-wrap{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); overflow:hidden; }
+  table{ width:100%; border-collapse:collapse; }
+  th{ text-align:left; font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+  td{ padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tr:last-child td{ border-bottom:none; }
+  td.when{ white-space:nowrap; color:var(--text-muted); width:150px; }
+  td.who{ width:220px; overflow-wrap:anywhere; }
+  td.ev{ width:200px; }
+  td.ev a{ font-weight:600; text-decoration:none; }
+  td.ev a:hover{ text-decoration:underline; }
+  td.area{ width:120px; }
+  .who-auto{ color:var(--tag-violet); font-weight:600; }
+  .tag{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:100px; background:var(--surface-3); color:var(--text-muted); white-space:nowrap; }
+  .tag.site{ background:var(--tag-blue-soft); color:var(--tag-blue); }
+  .tag.content{ background:var(--tag-teal-soft); color:var(--tag-teal); }
+  .tag.forms{ background:var(--tag-cyan-soft); color:var(--tag-cyan); }
+  .tag.design{ background:var(--tag-violet-soft); color:var(--tag-violet); }
+  .tag.publishing{ background:var(--ok-soft); color:var(--ok); }
+  .tag.registrations{ background:var(--tag-amber-soft); color:var(--tag-amber); }
+  .tag.promotions{ background:var(--tag-rose-soft); color:var(--tag-rose); }
+  .tag.settings{ background:var(--surface-3); color:var(--text-muted); }
+  .tag.event{ background:var(--accent-soft); color:var(--accent-strong); }
+  .deleted{ font-size:11px; color:var(--text-faint); font-weight:600; }
+  .what-action{ color:var(--text-faint); font-size:11.5px; }
+  details.changes{ margin-top:6px; }
+  details.changes summary{ cursor:pointer; font-size:12px; color:var(--text-muted); font-weight:600; }
+  .chg{ display:grid; grid-template-columns:minmax(90px,auto) 1fr 1fr; gap:4px 10px; margin-top:6px; font-size:12px; }
+  .chg .h{ font-weight:700; color:var(--text-faint); font-size:11px; text-transform:uppercase; }
+  .chg .b{ color:var(--crit); overflow-wrap:anywhere; }
+  .chg .a{ color:var(--ok); overflow-wrap:anywhere; }
+  .empty{ padding:40px 16px; text-align:center; color:var(--text-muted); }
+  .more{ display:flex; justify-content:center; padding:4px 0; }
+
+  @media (max-width: 900px){
+    .filters{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .f.wide{ grid-column:1 / -1; }
+  }
+  @media (max-width: 700px){
+    .nav-inner{ padding:0 16px; gap:8px; }
+    .nav-brand img{ height:22px; }
+    .app{ padding:16px 16px 60px; }
+    thead{ display:none; }
+    table, tbody, tr, td{ display:block; width:auto !important; }
+    tr{ border-bottom:1px solid var(--border); padding:10px 14px; }
+    tr:last-child{ border-bottom:none; }
+    td{ border:none; padding:2px 0; }
+    td.when{ font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="Event_Listing.html"><img src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></a>
+    <a class="nav-back" href="Event_Listing.html">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Events
+    </a>
+    <div class="nav-right">
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+      <span data-rv-account></span>
+    </div>
+  </div>
+</header>
+
+<main class="app">
+  <div class="head">
+    <div>
+      <h1>Activity log</h1>
+      <p>Every change made to any event, newest first. Times are India time (IST).</p>
+    </div>
+  </div>
+
+  <form class="filters" id="filters" autocomplete="off">
+    <div class="f wide"><label for="f-event">Event</label><select id="f-event"><option value="">All events</option></select></div>
+    <div class="f"><label for="f-user">Person</label><select id="f-user"><option value="">Everyone</option><option value="platform">Platform (automated)</option></select></div>
+    <div class="f"><label for="f-area">Area</label><select id="f-area"><option value="">All areas</option></select></div>
+    <div class="f"><label for="f-from">From</label><input type="date" id="f-from"></div>
+    <div class="f"><label for="f-to">To</label><input type="date" id="f-to"></div>
+    <div class="f wide"><label for="f-q">Search the rows shown</label><input type="search" id="f-q" placeholder="Name, event, change…"></div>
+    <div class="f-actions">
+      <span class="count" id="count" aria-live="polite"></span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn" id="btn-reset">Clear filters</button>
+        <button type="button" class="btn" id="btn-export">Export CSV</button>
+      </span>
+    </div>
+  </form>
+
+  <div id="msg"></div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>When (IST)</th><th>Who</th><th>Event</th><th>Area</th><th>What changed</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="5" class="empty">Loading the activity log…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="more"><button type="button" class="btn" id="btn-more" hidden>Load more</button></div>
+</main>
+
+<script src="theme-toggle.js"></script>
+<script src="auth.js"></script>
+<script>
+(function(){
+  'use strict';
+  var AREAS = [['site','Site'],['content','Content'],['forms','Forms'],['design','Design'],['publishing','Publishing'],
+    ['registrations','Registrations'],['promotions','Promotions'],['settings','Settings'],['event','Event']];
+  var AREA_LABEL = {};
+  AREAS.forEach(function(a){ AREA_LABEL[a[0]] = a[1]; });
+
+  var S = { items: [], next: null, loading: false, seq: 0, users: {}, events: {} };
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+
+  var IST = null;
+  try { IST = new Intl.DateTimeFormat('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true }); } catch (e) { IST = null; }
+  function when(iso){
+    var d = new Date(iso || '');
+    if (isNaN(d.getTime())) return '—';
+    if (IST) return IST.format(d);
+    var t = new Date(d.getTime() + 330 * 60000);   // no Intl time zones: shift to IST by hand
+    function p(n){ return (n < 10 ? '0' : '') + n; }
+    return t.getUTCFullYear() + '-' + p(t.getUTCMonth() + 1) + '-' + p(t.getUTCDate()) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes());
+  }
+  /* a date picked in the browser is a whole day in India */
+  function dayStart(v, plusDays){
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return '';
+    var t = Date.parse(v + 'T00:00:00+05:30');
+    if (isNaN(t)) return '';
+    return new Date(t + (plusDays || 0) * 86400000).toISOString();
+  }
+
+  function api(url){
+    if (!window.RevampAuth || typeof window.RevampAuth.authedFetch !== 'function') return Promise.reject(new Error('Please sign in again.'));
+    return window.RevampAuth.authedFetch(url).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(data){
+        if (!res.ok){ var e = new Error((data && data.error) || ('The log could not be loaded (' + res.status + ').')); e.code = data && data.code; e.status = res.status; throw e; }
+        return data;
+      });
+    });
+  }
+
+  /* ---------- filters (kept in the address, so a filtered log can be shared) ---------- */
+  AREAS.forEach(function(a){ var o = document.createElement('option'); o.value = a[0]; o.textContent = a[1]; $('f-area').appendChild(o); });
+  function readUrl(){
+    var q = new URLSearchParams(location.search);
+    return { event: q.get('event') || '', user: q.get('user') || '', area: q.get('area') || '', from: q.get('from') || '', to: q.get('to') || '' };
+  }
+  function filters(){
+    return { event: $('f-event').value, user: $('f-user').value, area: $('f-area').value, from: $('f-from').value, to: $('f-to').value };
+  }
+  function writeUrl(f){
+    var q = new URLSearchParams();
+    Object.keys(f).forEach(function(k){ if (f[k]) q.set(k, f[k]); });
+    var s = q.toString();
+    try { history.replaceState(null, '', location.pathname + (s ? '?' + s : '')); } catch (e) {}
+  }
+  function ensureOption(sel, value, label){
+    if (!value) return;
+    for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === value) return;
+    var o = document.createElement('option'); o.value = value; o.textContent = label || value; sel.appendChild(o);
+  }
+  function applyFilters(f){
+    ensureOption($('f-event'), f.event, f.event);
+    ensureOption($('f-user'), f.user, f.user);
+    $('f-event').value = f.event; $('f-user').value = f.user; $('f-area').value = f.area; $('f-from').value = f.from; $('f-to').value = f.to;
+  }
+
+  function loadEventChoices(){
+    var keep = $('f-event').value;
+    return Promise.all([api('/api/events').catch(function(){ return { items: [] }; }), api('/api/events?deleted=1').catch(function(){ return { items: [] }; })]).then(function(r){
+      var list = [];
+      (r[0].items || []).forEach(function(e){ list.push({ id: e.id, name: e.name || e.id, deleted: false }); });
+      (r[1].items || []).forEach(function(e){ list.push({ id: e.id, name: e.name || e.id, deleted: true }); });
+      list.sort(function(a, b){ return a.deleted !== b.deleted ? (a.deleted ? 1 : -1) : a.name.localeCompare(b.name); });
+      var sel = $('f-event');
+      sel.innerHTML = '<option value="">All events</option>';
+      list.forEach(function(e){ var o = document.createElement('option'); o.value = e.id; o.textContent = e.name + (e.deleted ? ' (deleted)' : ''); sel.appendChild(o); });
+      ensureOption(sel, keep, keep);
+      sel.value = keep;
+    });
+  }
+
+  function rememberUsers(items){
+    var sel = $('f-user'), added = false;
+    items.forEach(function(it){
+      if (!it.by || it.by === 'platform' || it.by === 'system' || S.users[it.by]) return;
+      S.users[it.by] = 1; added = true;
+    });
+    if (!added) return;
+    var keep = sel.value;
+    var names = Object.keys(S.users).sort();
+    sel.innerHTML = '<option value="">Everyone</option><option value="platform">Platform (automated)</option>';
+    names.forEach(function(n){ var o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+    ensureOption(sel, keep, keep);
+    sel.value = keep;
+  }
+
+  /* ---------- loading ---------- */
+  function query(cursor){
+    var f = filters(), q = new URLSearchParams();
+    if (f.event) q.set('event', f.event);
+    if (f.user) q.set('user', f.user);
+    if (f.area) q.set('area', f.area);
+    var from = dayStart(f.from, 0), to = dayStart(f.to, 1);
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    q.set('limit', '50');
+    if (cursor) q.set('cursor', cursor);
+    return '/api/activity/all?' + q.toString();
+  }
+  function load(more){
+    var f = filters();
+    if (f.from && f.to && f.from > f.to){ showMsg('crit', 'The "From" date must be on or before the "To" date.'); return; }
+    var seq = ++S.seq;
+    if (!more){ S.items = []; S.next = null; $('rows').innerHTML = '<tr><td colspan="5" class="empty">Loading the activity log…</td></tr>'; }
+    S.loading = true; $('btn-more').disabled = true; $('btn-more').textContent = 'Loading…';
+    showMsg('', '');
+    writeUrl(f);
+    api(query(more ? S.next : null)).then(function(out){
+      if (seq !== S.seq) return;
+      S.loading = false; S.failed = false;
+      S.items = S.items.concat(out.items || []);
+      S.next = out.next || null;
+      rememberUsers(out.items || []);
+      render();
+    }, function(err){
+      if (seq !== S.seq) return;
+      S.loading = false; S.failed = true;
+      if (err.code === 'index-building' || err.code === 'index-missing') showMsg('warn', err.message);
+      else showMsg('crit', err.message || 'The activity log could not be loaded. Please try again.');
+      render();
+    }).then(function(){
+      if (seq !== S.seq) return;
+      S.loading = false; $('btn-more').disabled = false; $('btn-more').textContent = 'Load more';
+    });
+  }
+  function showMsg(kind, text){
+    $('msg').innerHTML = text ? '<div class="banner ' + kind + '" role="' + (kind === 'crit' ? 'alert' : 'status') + '">' + esc(text) + '</div>' : '';
+  }
+
+  /* ---------- the rows ---------- */
+  function visible(){
+    var q = $('f-q').value.trim().toLowerCase();
+    if (!q) return S.items;
+    return S.items.filter(function(it){
+      var hay = [it.byLabel, it.by, it.eventName, it.eventId, AREA_LABEL[it.area], it.action, it.detail].concat((it.fields || []).map(function(c){ return c.field + ' ' + c.before + ' ' + c.after; })).join(' ').toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+  }
+  function eventHref(id){ return 'edit-event.html?event=' + encodeURIComponent(id) + '#activity'; }
+  function rowHtml(it){
+    var who = it.by === 'platform' || it.by === 'system' || !it.by ? '<span class="who-auto">Platform (automated)</span>' : esc(it.byLabel || it.by);
+    var changes = '';
+    if (it.fields && it.fields.length){
+      changes = '<details class="changes"><summary>Before and after (' + it.fields.length + ')</summary><div class="chg"><span class="h">Field</span><span class="h">Before</span><span class="h">After</span>' +
+        it.fields.map(function(c){ return '<span>' + esc(c.field) + '</span><span class="b">' + (esc(c.before) || '—') + '</span><span class="a">' + (esc(c.after) || '—') + '</span>'; }).join('') + '</div></details>';
+    }
+    return '<tr>' +
+      '<td class="when mono">' + esc(when(it.at)) + '</td>' +
+      '<td class="who">' + who + '</td>' +
+      '<td class="ev"><a href="' + esc(eventHref(it.eventId)) + '">' + esc(it.eventName || it.eventId) + '</a>' + (it.eventDeleted ? ' <span class="deleted">(deleted)</span>' : '') + '</td>' +
+      '<td class="area"><span class="tag ' + esc(it.area) + '">' + esc(AREA_LABEL[it.area] || it.area) + '</span></td>' +
+      '<td class="what">' + (esc(it.detail) || '<span class="muted">—</span>') + (it.version != null ? ' <span class="muted mono">v' + esc(it.version) + '</span>' : '') +
+        '<div class="what-action mono">' + esc(it.action) + '</div>' + changes + '</td>' +
+      '</tr>';
+  }
+  function render(){
+    var rows = visible();
+    var q = $('f-q').value.trim();
+    if (!rows.length){
+      var empty = S.loading ? 'Loading…' : S.failed && !S.items.length ? 'The log could not be shown — see the message above.' : (S.items.length ? 'No loaded row matches “' + q + '”.' + (S.next ? ' Load more to search further back.' : '') :
+        (S.next ? 'Nothing matches in the most recent stretch of the log. Load more to look further back.' : 'No changes match these filters.'));
+      $('rows').innerHTML = '<tr><td colspan="5" class="empty">' + esc(empty) + '</td></tr>';
+    } else {
+      $('rows').innerHTML = rows.map(rowHtml).join('');
+    }
+    $('btn-more').hidden = !S.next;
+    $('count').textContent = S.items.length ? (q ? rows.length + ' of ' : '') + S.items.length + ' change' + (S.items.length === 1 ? '' : 's') + ' shown' + (S.next ? ' — more available' : '') : '';
+  }
+
+  /* ---------- CSV of the rows shown ---------- */
+  function exportCsv(){
+    function cell(v){ v = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+    var rows = [['When (IST)', 'Who', 'Event', 'Event id', 'Area', 'What', 'Action', 'Version', 'Field', 'Before', 'After']];
+    visible().forEach(function(it){
+      var head = [when(it.at), it.byLabel || it.by, it.eventName, it.eventId, AREA_LABEL[it.area] || it.area, it.detail, it.action, it.version != null ? it.version : ''];
+      if (!it.fields || !it.fields.length) rows.push(head.concat(['', '', '']));
+      else it.fields.forEach(function(c){ rows.push(head.concat([c.field, c.before, c.after])); });
+    });
+    var blob = new Blob(['﻿' + rows.map(function(r){ return r.map(cell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'activity-log-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  }
+
+  ['f-event', 'f-user', 'f-area', 'f-from', 'f-to'].forEach(function(id){ $(id).addEventListener('change', function(){ load(false); }); });
+  var qTimer = null;
+  $('f-q').addEventListener('input', function(){ clearTimeout(qTimer); qTimer = setTimeout(render, 120); });
+  $('filters').addEventListener('submit', function(e){ e.preventDefault(); });
+  $('btn-more').addEventListener('click', function(){ if (S.next && !S.loading) load(true); });
+  $('btn-reset').addEventListener('click', function(){ applyFilters({ event:'', user:'', area:'', from:'', to:'' }); $('f-q').value = ''; load(false); });
+  $('btn-export').addEventListener('click', exportCsv);
+
+  applyFilters(readUrl());
+  loadEventChoices();
+  load(false);
+})();
+</script>
+</body>
+</html>
