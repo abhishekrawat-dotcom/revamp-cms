@@ -115,6 +115,12 @@ async function migrateEvent(fb, id, ev) {
     out.totals = APPLY ? 'rebuilt' : 'would rebuild';
     if (APPLY) await audience.rebuildAudience(fb, id);
   }
+  /* what changed, as one line in the event's activity log by "platform" */
+  const did = [];
+  if (out.form === 'created') did.push('the first form (“Register now”) created');
+  if (APPLY && out.backfilled) did.push(out.backfilled + ' earlier registration' + (out.backfilled === 1 ? '' : 's') + ' linked to it');
+  if (out.questions === 'given the standard seven') did.push('“Register now” given the seven standard questions');
+  if (APPLY && did.length) await require(path.join(lib, 'activity.js')).logActivity(fb, id, 'platform', 'repaired', 'forms migration (tools/migrate-forms.js): ' + did.join('; '), { area: 'forms' });
   return out;
 }
 

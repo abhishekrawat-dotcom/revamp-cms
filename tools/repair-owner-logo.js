@@ -55,6 +55,7 @@ function short(url) { return String(url || '').replace(/^https:\/\/storage\.goog
 (async function () {
   const api = require(path.join(lib, 'api.js'))._testHooks;
   const { getFirebase } = require(path.join(lib, 'firebase.js'));
+  const { logActivity } = require(path.join(lib, 'activity.js'));   // each repair is a line in the event's activity log, by "platform"
   const fb = getFirebase();
   if (fb.error) throw new Error('Firebase: ' + fb.error);
   const events = fb.db.collection('events');
@@ -102,6 +103,8 @@ function short(url) { return String(url || '').replace(/^https:\/\/storage\.goog
       const unit = await api.ownerLogoUnit(fb, ev.id, inputs);
       if (!unit || unit.refused) { failed++; console.log('  FAILED: ' + ((unit && unit.note) || 'the uploaded logo could not be read as a picture') + ' Nothing written.'); continue; }
       const done = await api.saveOwnerUnit(fb, ev.id, unit, { heroNote: false });
+      await logActivity(fb, ev.id, 'platform', 'logo-changed', 'logo repair (tools/repair-owner-logo.js): the uploaded logo put into the site’s design' +
+        (done.heroUpdated ? '; banner updated' : done.toneClash ? '; banner kept — the logo is drawn for a ' + done.toneClash + ' background' : ''), { area: 'design' });
       console.log('  written:         ' + short(unit.url) + ' ' + unit.width + '×' + unit.height + (unit.url === ev.state.logoUrl ? ' (the logo as uploaded)' : ' (examined copy)') +
         (done.heroUpdated ? '; generated hero swapped' : done.toneClash ? '; generated hero NOT swapped: the logo is drawn for a ' + done.toneClash + ' ground and the hero is not' : '; generated hero unchanged'));
       if (unit.note) console.log('  note:            ' + unit.note);

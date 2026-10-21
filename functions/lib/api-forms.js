@@ -230,7 +230,7 @@ function handleFormsCreate(req, res) {
           }
           if (mode === 'duplicateOf' && !formIdOk(body.duplicateOf)) return sendJson(res, 404, { error: 'That form no longer exists.', code: 'form-missing' });
 
-          var now = new Date().toISOString(), actor = actorOf(decoded);
+          var now = new Date().toISOString(), actor = actorOf(decoded), madeFrom = '';
           formsWrite(fb, eventId, function (tx, ev, list) {
             if (list.length >= LIMITS.maxForms) {
               throw httpError(409, 'An event can have at most ' + LIMITS.maxForms + ' forms. Delete one you no longer need first.', { code: 'limit' });
@@ -247,12 +247,14 @@ function handleFormsCreate(req, res) {
               value.name = freeName(value.name, list);
               if (value.title === tpl.form.name) value.title = value.name;
               mayUseRegister = tpl.id === 'register';
+              madeFrom = ' — from the “' + tpl.form.name + '” template';
               suggestion = mayUseRegister && ids.indexOf(forms.DEFAULT_FORM_ID) === -1 ? forms.DEFAULT_FORM_ID : forms.slugify(value.name);
             } else {
               var src = list.filter(function (f) { return f.id === body.duplicateOf; })[0];
               if (!src) throw httpError(404, 'That form no longer exists.', { code: 'form-missing' });
               value = inputOf(src);
               value.name = freeName(src.name.slice(0, 80 - 10).trim() + ' (copy)', list);
+              madeFrom = ' — a copy of “' + src.name + '”';
               suggestion = forms.slugify(value.name);
             }
             var checked = forms.cleanFormInput(value, { creating: true });
@@ -271,7 +273,7 @@ function handleFormsCreate(req, res) {
             tx.set(formsCol(fb, eventId).doc(id), doc);
             return forms.storedForm(id, doc);
           }).then(function (form) {
-            return logActivity(fb, eventId, decoded, 'form-created', describe(form)).then(function () {
+            return logActivity(fb, eventId, decoded, 'form-created', describe(form) + madeFrom, { area: 'forms' }).then(function () {
               sendJson(res, 201, { form: adminForm(form, {}) });
             });
           }).catch(function (err) { answerError(res, sendJson, err, 'create this form'); });
@@ -406,11 +408,11 @@ function handleFormsDefault(req, res) {
 }
 
 function handleFormsOrder(req, res) {
-  requireAdmin(req, res, function (fb) {
+  requireAdmin(req, res, function (fb, decoded) {
     guard(res, sendJson, 'reorder the forms', function () {
       parseJsonBody(req, res, function (body) {
         guard(res, sendJson, 'reorder the forms', function () {
-          var eventId = bodyId(body.eventId), ids = body.ids;
+          var eventId = bodyId(body.eventId), ids = body.ids, moved = 0;
           if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
           if (!Array.isArray(ids) || !ids.length || ids.length > LIMITS.maxForms || !ids.every(formIdOk) ||
               ids.some(function (id, i) { return ids.indexOf(id) !== i; })) {
@@ -422,13 +424,15 @@ function handleFormsOrder(req, res) {
               throw httpError(409, 'The forms have changed since you opened them. Reload and try again.', { code: 'stale' });
             }
             var col = formsCol(fb, eventId);
+            moved = 0;
             list.forEach(function (f) {
               var at = ids.indexOf(f.id);
-              if (f.order !== at) { tx.update(col.doc(f.id), { order: at }); f.order = at; }
+              if (f.order !== at) { tx.update(col.doc(f.id), { order: at }); f.order = at; moved++; }
             });
             return sortForms(list);
           }).then(function (list) {
             sendJson(res, 200, { ok: true, forms: list.map(function (f) { return adminForm(f); }) });
+            if (moved) logActivity(fb, eventId, decoded, 'forms-reordered', 'new order: ' + list.map(function (f) { return '“' + f.name + '”'; }).join(', '), { area: 'forms' });
           }).catch(function (err) { answerError(res, sendJson, err, 'reorder the forms'); });
         });
       }, 16 * 1024);

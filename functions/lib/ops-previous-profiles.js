@@ -129,7 +129,11 @@ function main() {
       console.log('\nBackup      ' + backup);
       return src.ref.update({ previous: next }).then(function () {
         return changed.length ? ref.update({ generatedSections: updated }) : null;
-      }).then(function () { console.log('Written     source ' + src.id + '.previous' + (changed.length ? ' and generatedSections: ' + changed.join(', ') : '')); });
+      }).then(function () {
+        console.log('Written     source ' + src.id + '.previous' + (changed.length ? ' and generatedSections: ' + changed.join(', ') : ''));
+        return require('./activity').logActivity(fb, EVENT, 'platform', 'repaired', 'previous edition refresh (functions/lib/ops-previous-profiles.js): speaker profiles read again from ET' +
+          (changed.length ? '; sections rebuilt: ' + changed.join(', ') : ''), { area: 'content' });
+      });
     });
   });
 }

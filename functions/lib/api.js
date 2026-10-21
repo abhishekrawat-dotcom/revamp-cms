@@ -129,7 +129,7 @@ const { getFirebase } = require('./firebase');
    body, a non-object JSON body or an expired sign-in is answered with. */
 const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
-const { logActivity, actorOf } = require('./activity');
+const { logActivity, actorOf, maskEmail, sectionNames } = require('./activity');
 const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
 /* every text call goes through llm.js: Claude first when its key is set, Gemini as the fallback */
 const llm = require('./llm');
@@ -982,7 +982,10 @@ function handleExtractBrief(req, res) {
             sourceFileName: fileName, mimeType: mimeType, storagePath: storagePath,
             extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now
           }); })
-          .then(function (briefRef) { sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted }); });
+          .then(function (briefRef) {
+            sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted });
+            if (watch.live) logActivity(fb, eventId, req.user, 'brief-updated', 'brief read from “' + fileName.slice(0, 120) + '”', { area: 'content' });
+          });
       })
       .catch(function (err) {
         /* the document uploaded for an event that is no longer there must not be left behind */
@@ -1368,6 +1371,7 @@ function handleIngestSource(req, res) {
           }).then(function (sourceRef) {
             sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone,
               previous: previous ? { name: previous.name, speakers: previous.speakers.length, sponsors: previous.sponsors.length, agenda: previous.agenda.length, glimpses: previous.glimpses.length } : null });
+            if (watch.live) logActivity(fb, eventId, req.user, 'source-added', ({ previousEdition: 'previous edition', currentEdition: 'current edition', competitor: 'competitor' }[type] || 'source') + ' page read for the AI: ' + url.split(/[?#]/)[0].slice(0, 200), { area: 'content' });
           });
         });
       })
@@ -2961,6 +2965,8 @@ function handleEventLogoUnit(req, res) {
         if (!unit || unit.refused) return sendJson(res, 422, { error: (unit && unit.note) || 'The logo could not be read as a picture. Upload it again as a PNG, WEBP or SVG.', code: 'logo-unreadable' });
         return saveOwnerUnit(fb, eventId, unit).then(function (done) {
           sendJson(res, 200, { aiDesigned: true, unit: { url: unit.url, width: unit.width, height: unit.height, source: unit.source, note: unit.note, heroMode: unit.heroMode }, heroUpdated: done.heroUpdated, savedSite: done.savedSite, toneClash: done.toneClash });
+          logActivity(fb, eventId, decoded, 'logo-changed', 'logo put into the site’s design' + (unit.url === info.logoUrl ? ' (as uploaded)' : ' (examined copy)') +
+            (done.heroUpdated ? '; banner updated' : done.toneClash ? '; banner kept — the logo is drawn for a ' + done.toneClash + ' background' : ''), { area: 'design' });
         });
       });
     }).catch(function (err) { sendFailure(res, 'logo-unit', err, 'The logo could not be put into the site. Please try again.'); });
@@ -3121,7 +3127,10 @@ function handlePlanStructure(req, res) {
               : { type: 'none', artDirection: artDirection.id }
           };
           return watch.merge({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null })
-            .then(function () { sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan }); });
+            .then(function () {
+              sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan });
+              if (watch.live) logActivity(fb, eventId, req.user, 'site-designed', 'AI made a new site design — ' + sections.length + ' sections', { area: 'design' });
+            });
         });
       });
     }).catch(function (err) { sendStepFailure(res, err, 500, 'plan-structure failed: ' + err.message); });
@@ -3283,7 +3292,7 @@ function sanitizeGeneratedLibrary(parsed, needs) {
 // hero.psdBanner.compositeImageData fill rule (templates/_library/sections/hero/map.json) then picks it up
 // with zero new fill logic, same slot a human-uploaded PSD banner composite already fills for ported
 // templates.
-function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, contentMap, skippedLibraries, genTheme) {
+function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, contentMap, skippedLibraries, genTheme, by) {
   var needs = classifyLibraryNeeds(contentMap);
   if (!Object.keys(needs).length) return sendJson(res, 400, { error: 'This template has no content.map entries this step knows how to generate for.' });
 
@@ -3322,7 +3331,10 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
       var now = new Date().toISOString();
       return watch.stillThere()
         .then(function () { return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: r.model || GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: skippedLibraries }); })
-        .then(function (docRef) { sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library }); });
+        .then(function (docRef) {
+          sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library });
+          if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI content written for the site (' + Object.keys(library).length + ' parts) — opened in the editor next', { area: 'site' });
+        });
     });
   }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
 }
@@ -3672,7 +3684,7 @@ function siteFooter(o) {
 // Also still writes a `drafts` row (library: {} deliberately empty) purely so GET /api/draft's existing
 // draftId/staleness-tracking machinery keeps working for this event — see this function's call site for the
 // full reasoning.
-function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan) {
+function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, by) {
   /* a plan made before sponsors were put first is written in today's order (section-order.js) */
   designPlan = Object.assign({}, designPlan, { sections: sectionOrder.sponsorsFirst(designPlan.sections) });
   var draftRef = fb.db.collection('events').doc(eventId);
@@ -3806,6 +3818,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
             eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes,
             sections: sections.map(function (s) { return { id: s.id, kind: s.kind }; }), library: {}
           });
+          if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI wrote the site’s ' + sections.length + ' sections again — opened in the editor next', { area: 'site' });
         });
     });
   }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
@@ -3993,7 +4006,7 @@ function handleGenerateContent(req, res) {
         if (!designPlan || !designPlan.design || !Array.isArray(designPlan.sections)) {
           return sendJson(res, 400, { error: 'No design plan found for "' + genEventId + '" — run /api/plan-structure first.' });
         }
-        runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan);
+        runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, req.user);
       }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
     }
 
@@ -4023,7 +4036,7 @@ function handleGenerateContent(req, res) {
     // runGenerateContent, shared with the 'gen-' branch above.)
     var skippedLibraries = deliberatelySkippedLibraries((templateJson.content || {}).map);
 
-    runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null);
+    runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null, req.user);
   }, BODY_LIMITS.ai);
 }
 
@@ -4898,9 +4911,15 @@ function handleEventTheme(req, res) {
     ref.get().then(function (snap) {
       var plan = snap.exists && snap.data().designPlan;
       if (!plan || !plan.design) return sendJson(res, 404, { error: 'This site has no themes: it was not designed by the AI.' });
-      var ids = rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto'))).map(function (t) { return t.id; });
+      var themes = rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto')));
+      var ids = themes.map(function (t) { return t.id; });
       if (ids.indexOf(themeId) === -1) return sendJson(res, 400, { error: 'Unknown theme "' + themeId.slice(0, 40) + '".' });
-      return ref.update({ 'designPlan.themeId': themeId, updatedAt: new Date().toISOString() }).then(function () { sendJson(res, 200, { eventId: eventId, themeId: themeId }); });
+      var label = function (id) { var t = themes.filter(function (x) { return x.id === id; })[0]; return (t && t.label) || id || 'As designed'; };
+      var was = plan.themeId || 'original';
+      return ref.update({ 'designPlan.themeId': themeId, updatedAt: new Date().toISOString() }).then(function () {
+        sendJson(res, 200, { eventId: eventId, themeId: themeId });
+        if (was !== themeId) logActivity(fb, eventId, decoded, 'theme-changed', label(was) + ' → ' + label(themeId), { area: 'design', fields: [{ field: 'theme', before: label(was), after: label(themeId) }] });
+      });
     }).catch(function (err) { sendFailure(res, 'theme', err, 'The theme could not be saved. Please try again.'); });
   });
 }
@@ -4986,6 +5005,9 @@ function watchEvent(fb, eventId) {
     var start = eventStateOf(snap);
     if (start === 'deleted') throw notLiveError('deleted', eventId);
     return {
+      /* a real (created) event: only then does a step's result go into its activity log — the wizard runs
+         these steps before the event exists */
+      live: start === 'live',
       stillThere: function () { return ref.get().then(function (now) { check(now, start); }); },
       /* merges `data` into the event document, in the same transaction as the check */
       merge: function (data) {
@@ -5229,6 +5251,8 @@ function recordTitle(d) {
 
 function subcollectionRoutes(name, spec) {
   var fields = spec.fields, label = spec.label;
+  /* the activity log's area for this kind of record */
+  var logArea = name === 'leads' ? 'registrations' : /^promo/.test(name) ? 'promotions' : 'content';
   var required = spec.required || [], anyOf = spec.anyOf || null, fixed = spec.fixed || [];
 
   /* -> { data } or { error, field }. On create every required field must be present; on update a
@@ -5297,7 +5321,7 @@ function subcollectionRoutes(name, spec) {
         .then(function () { return col(fb, eventId).add(data); })
         .then(function (ref) {
           sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now });
-          logActivity(fb, eventId, decoded, 'content-added', label + ' “' + recordTitle(data) + '”', { fields: fieldChanges(null, data, RECORD_META) });
+          logActivity(fb, eventId, decoded, 'content-added', label + ' “' + maskEmail(recordTitle(data)) + '”', { area: logArea, fields: fieldChanges(null, data, RECORD_META) });
         })
         .catch(function (err) { sendFailure(res, name + ' create', err, 'Could not save the ' + label + '. Please try again.'); });
     });
@@ -5333,7 +5357,7 @@ function subcollectionRoutes(name, spec) {
         });
       }).then(function () {
         sendJson(res, 200, { ok: true, updatedAt: now });
-        if (diff.length) logActivity(fb, eventId, decoded, 'content-changed', label + ' “' + title + '” — ' + diff.map(function (f) { return f.field; }).join(', '), { fields: diff });
+        if (diff.length) logActivity(fb, eventId, decoded, 'content-changed', label + ' “' + maskEmail(title) + '” — ' + diff.map(function (f) { return f.field; }).join(', '), { area: logArea, fields: diff });
       })
         .catch(function (err) { sendFailure(res, name + ' update', err, 'Could not save the ' + label + '. Please try again.'); });
     });
@@ -5353,7 +5377,7 @@ function subcollectionRoutes(name, spec) {
       }).then(function (extra) {
         sendJson(res, 200, Object.assign({ ok: true }, spec.onRemove ? extra : null));
         var gone = fieldChanges(null, was, RECORD_META).map(function (f) { return { field: f.field, before: f.after, after: '(deleted)' }; });
-        logActivity(fb, eventId, decoded, 'content-removed', label + ' “' + recordTitle(was) + '”', { fields: gone });
+        logActivity(fb, eventId, decoded, 'content-removed', label + ' “' + maskEmail(recordTitle(was)) + '”', { area: logArea, fields: gone });
       })
         .catch(function (err) { sendFailure(res, name + ' delete', err, 'Could not delete the ' + label + '. Please try again.'); });
     });
@@ -5510,6 +5534,8 @@ function findLeadByKey(col, key) {
   return col.where('dupKey', '==', key).limit(1).get().then(function (snap) { return snap.empty ? null : snap.docs[0]; });
 }
 
+/* a lead's own bookkeeping, never a line in the activity log */
+var LEAD_BOOKKEEPING = ['dupKey', 'emailLower', 'calls', 'notes'];
 function handleLeadCreate(req, res) {
   withAdminBody(req, res, BODY_LIMITS.record, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
@@ -5532,7 +5558,11 @@ function handleLeadCreate(req, res) {
           return ref.set(data);
         });
       });
-    }).then(function () { sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now }); })
+    }).then(function () {
+      sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now });
+      logActivity(fb, eventId, decoded, 'content-added', 'lead “' + maskEmail(recordTitle(data)) + '”',
+        { area: 'registrations', fields: fieldChanges(null, data, RECORD_META.concat(LEAD_BOOKKEEPING)) });
+    })
       .catch(function (err) { sendFailure(res, 'lead create', err, 'Could not save the lead. Please try again.'); });
   });
 }
@@ -5554,7 +5584,7 @@ function handleLeadUpdate(req, res) {
     }
     if (body.removeNoteAt != null && typeof body.removeNoteAt !== 'string') return sendJson(res, 400, { error: '"removeNoteAt" must be the time of the note to remove.', field: 'removeNoteAt' });
 
-    var col = LEADS.col(fb, eventId), ref = col.doc(body.id), now = new Date().toISOString(), actor = actorOf(decoded), result = null;
+    var col = LEADS.col(fb, eventId), ref = col.doc(body.id), now = new Date().toISOString(), actor = actorOf(decoded), result = null, logged = null;
     loadLiveEvent(fb, eventId).then(function () {
       return fb.db.runTransaction(function (tx) {
         return tx.get(ref).then(function (snap) {
@@ -5590,6 +5620,9 @@ function handleLeadUpdate(req, res) {
               data.notes = notes;
               data.calls = notes.filter(function (x) { return x && x.kind === 'call'; }).length;
             }
+            /* for the activity log: what changed, before and after, and what happened to the notes */
+            logged = { title: recordTitle(merged), fields: fieldChanges(stored, data, RECORD_META.concat(LEAD_BOOKKEEPING)),
+              notes: add != null ? (add.kind === 'call' ? 'call logged' : 'note added') : body.removeNoteAt != null ? 'note removed' : '' };
             data.updatedAt = now; data.updatedBy = actor;
             tx.update(ref, data);
             result = leadForClient(ref.id, Object.assign({}, stored, data));
@@ -5600,6 +5633,8 @@ function handleLeadUpdate(req, res) {
       var out = { ok: true, updatedAt: now, lead: result };
       if (note) out.note = note;
       sendJson(res, 200, out);
+      var what = logged.fields.map(function (f) { return f.field; }).concat(logged.notes ? [logged.notes] : []);
+      if (what.length) logActivity(fb, eventId, decoded, 'content-changed', 'lead “' + maskEmail(logged.title) + '” — ' + what.join(', '), { area: 'registrations', fields: logged.fields });
     }).catch(function (err) { sendFailure(res, 'lead update', err, 'Could not save the lead. Please try again.'); });
   });
 }
@@ -5728,7 +5763,11 @@ function handleLeadsBulkUpdate(req, res) {
         updated++;
       });
       return commitInBatches(fb, writes);
-    }).then(function () { sendJson(res, 200, { updated: updated, missing: missing, updatedAt: now }); })
+    }).then(function () {
+      sendJson(res, 200, { updated: updated, missing: missing, updatedAt: now });
+      if (updated) logActivity(fb, eventId, decoded, 'leads-updated', updated + (updated === 1 ? ' lead' : ' leads') + ' — ' + Object.keys(clean.data).map(function (k) { return k + ' set to ' + historyValue(clean.data[k]); }).join(', '),
+        { area: 'registrations', fields: fieldChanges(null, clean.data, RECORD_META) });
+    })
       .catch(function (err) { sendFailure(res, 'leads bulk update', err, 'The leads could not be updated. Please try again.'); });
   });
 }
@@ -7229,7 +7268,8 @@ function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note) {
       items: beforeHtml == null ? [] : items, note: String(note || '').trim().slice(0, 500)
     });
   }).then(function (ref) {
-    logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version + ' — ' + summary, { changeId: ref.id, version: version });
+    var named = beforeHtml == null ? '' : sectionNames(items);   // which sections: "Hero, Speakers, Agenda"
+    logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version + ' — ' + summary + (named ? ' (' + named + ')' : ''), { area: 'site', changeId: ref.id, version: version });
     return { changeId: ref.id, summary: summary, items: items };
   }).then(null, function (err) {
     console.error('api: the save of ' + eventId + ' v' + version + ' was stored but not recorded — ' + (err && err.message));

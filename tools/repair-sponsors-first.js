@@ -107,6 +107,8 @@ function hrefs(html) { return (String(html || '').match(/href\s*=\s*["']#[^"']*[
   /* only over the version read above: a save in between makes this fail rather than be overwritten */
   await ref.update(update, { lastUpdateTime: snap.updateTime });
   console.log('written: designPlan.sections, generatedSections' + (newDraft ? ', generatedAt' : ''));
+  await require(path.join(REPO, 'functions', 'lib', 'activity.js')).logActivity(fb, eventId, 'platform', 'repaired',
+    'section order repair (tools/repair-sponsors-first.js): sponsors placed right after the hero' + (linkChanges.length ? ', menu links updated' : ''), { area: 'site' });
   if (newDraft) {
     const last = await ref.collection('drafts').orderBy('generatedAt', 'desc').limit(1).get();
     const prev = last.empty ? {} : last.docs[0].data();

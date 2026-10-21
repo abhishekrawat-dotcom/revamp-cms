@@ -361,7 +361,7 @@ function handleHeroVideoSave(req, res) {
           if (before && before.path && before.path !== after.path && mediaPathOk(eventId, before.path)) fb.bucket.file(before.path).delete().catch(function () { /* kept */ });
           var what = !before ? 'Banner video added' : before.path !== after.path ? 'Banner video replaced'
             : before.enabled !== after.enabled ? (after.enabled ? 'Banner video turned on' : 'Banner video turned off') : 'Banner video settings changed';
-          logActivity(fb, eventId, decoded, 'updated', what);
+          logActivity(fb, eventId, decoded, 'banner-video-changed', what, { area: 'design' });
         }).catch(function (err) { fail(res, 'save', err, 'The banner video could not be saved. Please try again.'); });
       });
     }, 64 * 1024);
@@ -389,7 +389,7 @@ function handleHeroVideoRemove(req, res) {
         if (!before) return;
         /* the video goes; its still is an ordinary image upload and stays (see handleHeroVideoSave) */
         if (mediaPathOk(eventId, before.path)) fb.bucket.file(before.path).delete().catch(function () { /* kept */ });
-        logActivity(fb, eventId, decoded, 'updated', 'Banner video removed');
+        logActivity(fb, eventId, decoded, 'banner-video-changed', 'Banner video removed', { area: 'design' });
       }).catch(function (err) { fail(res, 'remove', err, 'The banner video could not be removed. Please try again.'); });
     });
   });
