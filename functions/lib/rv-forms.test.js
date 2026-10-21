@@ -58,7 +58,8 @@ var PARTNER = F('partnership', 'select', 'Partnership interest', true, { options
 var MEAL = F('meal', 'radio', 'Meal', true, { options: ['Veg', 'Non-veg'] });
 var TOPICS = F('topics', 'multiselect', 'Topics', true, { options: ['AI', 'Cloud', 'Security'] });
 var TOPICS_OPT = F('topics', 'multiselect', 'Topics', false, { options: ['AI', 'Cloud', 'Security'] });
-var CONSENT = F('consent', 'checkbox', 'I agree to the terms', true);
+/* an organiser's own tick box ("consent" is the id of the locked consent box every form ends with) */
+var CONSENT = F('agree_terms', 'checkbox', 'I agree to the terms', true);
 var NEWS = F('news', 'checkbox', 'Send me news', false);
 var COUNTRY = F('country', 'country', 'Country', true, { options: ['India', 'Afghanistan', 'United Kingdom'] });
 var ALT_EMAIL = F('assistant_email', 'email', 'Assistant email', true);
@@ -188,8 +189,8 @@ VECTORS.forEach(function (v, i) {
 
 /* validate(): every field, keyed by id, in field order; a draft's empty label still reads */
 var form = { id: 'vip-delegates', fields: [NAME, EMAIL, PHONE, LI, CONSENT] };
-var errs = RF.validate(form, { name: '', email: 'x', phone: '1234567', linkedin: 'linkedin.com/in/a', consent: false });
-check('validate: only the bad fields, in field order', JSON.stringify(Object.keys(errs)) === JSON.stringify(['name', 'email', 'consent']), JSON.stringify(errs));
+var errs = RF.validate(form, { name: '', email: 'x', phone: '1234567', linkedin: 'linkedin.com/in/a', agree_terms: false });
+check('validate: only the bad fields, in field order', JSON.stringify(Object.keys(errs)) === JSON.stringify(['name', 'email', 'agree_terms']), JSON.stringify(errs));
 check('validate: an empty values object: every required field', Object.keys(RF.validate(form, {})).length === 5);
 check('validate: tolerates a form without fields', JSON.stringify(RF.validate({}, {})) === '{}' && JSON.stringify(RF.validate(null, null)) === '{}');
 check('a field without a label reads "this field"', RF.cleanValue({ id: 'x', type: 'text', label: '', required: true }, '').error === 'Please fill in this field.');

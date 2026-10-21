@@ -31,7 +31,7 @@ window.RevampEditorForms = (function () {
   var C = window.RevampCore;
   var qs = new URLSearchParams(location.search);
   var eventId = qs.get('slug') || qs.get('event') || '';
-  var state = { forms: null, defaultFormId: '', countries: [], registration: { open: true }, published: false, waitlist: false };
+  var state = { forms: null, defaultFormId: '', countries: [], registration: { open: true }, published: false, waitlist: false, consent: null };
   var loading = null, loadError = '';
   var drafts = {};                  // formId -> the form as it stands in the builder, unsaved
   var host = {}, builder = null;
@@ -52,6 +52,8 @@ window.RevampEditorForms = (function () {
     state.forms = (p.forms || []).slice();
     state.defaultFormId = p.defaultFormId || '';
     state.countries = p.countries || state.countries || [];
+    /* the consent box every form ends with: its wording and the event's links (functions/lib/forms.js consentFor) */
+    state.consent = p.consent || state.consent;
     state.registration = p.registration || state.registration;
     state.published = !!p.published;
     loadError = '';
@@ -93,9 +95,12 @@ window.RevampEditorForms = (function () {
         if (x.type === 'country') o.options = (state.countries || []).slice();
         return o;
       }),
-      submitLabel: f.submitLabel || 'Submit', open: f.open !== false && regOpen, counts: !!f.countsAsRegistration, rev: f.rev || 0
+      submitLabel: f.submitLabel || 'Submit', open: f.open !== false && regOpen, counts: !!f.countsAsRegistration, rev: f.rev || 0,
+      consent: state.consent || undefined
     };
   }
+  /* the questions an organiser set (the locked consent box every form ends with is not one of them) */
+  function ownCount(f) { return (f.fields || []).filter(function (x) { return x && x.type !== 'consent'; }).length; }
 
   /* ---------- markup (the forms spec, §1.5) ---------- */
   function embedHtml(formId, hideTitle) {
@@ -250,7 +255,7 @@ window.RevampEditorForms = (function () {
               return '<label style="display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">' +
                 '<input type="radio" name="rvf-pick" value="' + esc(f.id) + '"' + (checked ? ' checked' : '') + ' style="margin-top:3px">' +
                 '<span style="min-width:0"><b style="display:block;overflow-wrap:anywhere">' + esc(f.name) + (f.id === defaultFormId() ? ' <span class="hint">(default)</span>' : '') + '</b>' +
-                '<span class="hint">' + (f.fields || []).length + ' fields' + (f.open === false ? ' · not taking responses' : '') + '</span></span></label>';
+                '<span class="hint">' + ownCount(f) + ' fields' + (f.open === false ? ' · not taking responses' : '') + '</span></span></label>';
             }).join('') + '</fieldset>'
           : '<p class="hint">This event has no forms yet.</p>';
         var h = dialog({

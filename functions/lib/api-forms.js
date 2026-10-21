@@ -43,7 +43,8 @@ var MAX_FORMS_BODY = 256 * 1024;
 function formsCol(fb, eventId) { return eventDoc(fb, eventId).collection('forms'); }
 function sortForms(list) { return list.sort(forms.byOrder); }
 function fieldsWord(n) { return n + ' field' + (n === 1 ? '' : 's'); }
-function describe(form) { return '“' + form.name + '” — ' + fieldsWord(form.fields.length); }
+/* the organiser's own questions are counted (not the consent box every form ends with) */
+function describe(form) { return '“' + form.name + '” — ' + fieldsWord(form.fields.filter(function (f) { return !forms.isConsentField(f); }).length); }
 
 /* what a form edit changed, for the activity log: { what: ['name', 'fields added: Company', ...], fields: [{ field, before, after }] } */
 var FORM_SETTINGS = ['name', 'title', 'intro', 'submitLabel', 'successMessage', 'countsAsRegistration', 'needsApproval', 'open', 'duplicates', 'purpose'];
@@ -96,9 +97,33 @@ function loadForm(fb, eventId, ev, formId) {
     return formsCol(fb, eventId).limit(1).get().then(function (s) { return s.empty ? forms.legacyDefaultForm(ev) : null; });
   });
 }
+/* The consent box of the event's forms (forms.consentFor): its links are the pages of the ET portal the event
+   belongs to — the one its previous edition (or this edition's own page) was read from, as the site's footer
+   says — else ETCIO's. Read from the event's sources (only the four fields that say it), kept a few minutes
+   per event, so a busy registration page reads them once in a while, not per visitor. Never rejects: the
+   sources not being readable gives ETCIO's links. */
+var CONSENT_TTL_MS = 5 * 60 * 1000, CONSENT_KEEP = 2000;
+var consentCache = new Map();
+function loadConsent(fb, eventId) {
+  var hit = consentCache.get(eventId);
+  if (hit && Date.now() - hit.at < CONSENT_TTL_MS) return Promise.resolve(hit.consent);
+  return eventDoc(fb, eventId).collection('sources').select('type', 'url', 'previous.portal', 'previous.url').get().then(function (snap) {
+    return forms.consentFor(forms.portalOfSources(snap.docs.map(function (d) { return d.data(); })));
+  }, function (err) {
+    console.warn('forms: the sources of ' + eventId + ' could not be read for the consent links — ' + (err && err.message));
+    return null;
+  }).then(function (consent) {
+    if (!consent) return forms.consentFor('');
+    if (consentCache.size >= CONSENT_KEEP) consentCache.delete(consentCache.keys().next().value);
+    consentCache.set(eventId, { at: Date.now(), consent: consent });
+    return consent;
+  });
+}
 /* The definitions a visitor's page is given (GET /api/public/forms, and the #rv-forms block publishing writes). */
 function loadPublicForms(fb, eventId, ev) {
-  return loadForms(fb, eventId, ev).then(function (r) { return forms.publicFormsPayload(eventId, ev, r.forms); });
+  return Promise.all([loadForms(fb, eventId, ev), loadConsent(fb, eventId)]).then(function (r) {
+    return forms.publicFormsPayload(eventId, ev, r[0].forms, r[1]);
+  });
 }
 
 /* Inside a forms write transaction, after every other read it makes: reads the event's forms and, when it
@@ -188,11 +213,13 @@ function handleFormsList(req, res) {
       eventDoc(fb, eventId).get().then(function (snap) {
         var ev = liveEvent(snap);
         if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
-        return Promise.all([loadForms(fb, eventId, ev), responseCounts(fb, eventId, ev)]).then(function (r) {
+        return Promise.all([loadForms(fb, eventId, ev), responseCounts(fb, eventId, ev), loadConsent(fb, eventId)]).then(function (r) {
           var reg = forms.legacyRegistration(ev);
           sendJson(res, 200, {
             forms: r[0].forms.map(function (f) { return adminForm(f, r[1]); }),
             defaultFormId: r[0].defaultFormId,
+            /* the consent box every form ends with (its last field, type "consent"): locked, shown as it is */
+            consent: forms.publicConsent(r[2]),
             materialized: r[0].materialized,
             templates: forms.FORM_TEMPLATES,
             fieldTypes: forms.FIELD_TYPES.map(function (t) { return { type: t, label: forms.FIELD_TYPE_LABELS[t] }; }),
@@ -538,5 +565,5 @@ function handlePublicPlaces(req, res) {
 
 module.exports = {
   handleFormsList, handleFormsCreate, handleFormsUpdate, handleFormsDelete, handleFormsDefault, handleFormsOrder, handlePublicForms,
-  handlePublicPlaces, loadForms, loadForm, loadPublicForms, ensureMaterialized, geoCountry
+  handlePublicPlaces, loadForms, loadForm, loadPublicForms, loadConsent, ensureMaterialized, geoCountry
 };

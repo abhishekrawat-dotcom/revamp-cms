@@ -39,8 +39,11 @@ ok(eq(tplIds, ['register', 'interest', 'partner', 'vip', 'speaker', 'blank']), '
 F.FORM_TEMPLATES.forEach(function (t) {
   var r = F.cleanFormInput(t.form, { creating: true });
   ok(!r.error, 'template "' + t.id + '" is a valid form', r.error);
-  ok(eq(t.form.fields.slice(0, 7).map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), ['first_name:text:true', 'last_name:text:true', 'email:email:true', 'phone:phone:true', 'company:text:true', 'designation:text:true', 'location:location:true']),
+  ok(eq(t.form.fields.slice(0, 7).map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), ['email:email:true', 'first_name:text:true', 'last_name:text:true', 'phone:phone:true', 'company:text:true', 'designation:text:true', 'location:location:true']),
     'template "' + t.id + '" starts with the seven standard questions, all required', JSON.stringify(t.form.fields.map(function (f) { return f.id; })));
+  var lastF = t.form.fields[t.form.fields.length - 1];
+  ok(eq(lastF, { id: 'consent', type: 'consent', label: 'Consent', required: true, placeholder: '', help: '' }), 'template "' + t.id + '" ends with the locked consent box', JSON.stringify(lastF));
+  ok(eq(r.value && r.value.fields, t.form.fields), 'template "' + t.id + '" is stored as it is', JSON.stringify(r.value && r.value.fields.map(function (f) { return f.id; })));
   ok(t.form.title === t.form.name && t.form.intro === '' && t.form.open === true && t.form.duplicates === 'reject', 'template "' + t.id + '": title = name, no intro, open, one per email');
   ok(typeof t.description === 'string' && t.description.indexOf(t.name) === 0, 'template "' + t.id + '" has a one-line description', t.description);
 });
@@ -49,12 +52,13 @@ ok(T.register.form.countsAsRegistration && !T.register.form.needsApproval, 'Regi
 ok(!T.interest.form.countsAsRegistration && !T.partner.form.countsAsRegistration, 'Express interest and Join as partner do not count');
 ok(T.vip.form.countsAsRegistration && T.vip.form.needsApproval, 'VIP delegates counts and needs approval');
 ok(!T.speaker.form.countsAsRegistration && T.speaker.form.needsApproval, 'Speaker application needs approval, does not count');
-var STD = ['first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'location'];
-ok(eq(T.vip.form.fields.map(function (f) { return f.id; }), STD.concat(['linkedin', 'why_attend'])), 'VIP fields: the standard seven, then its own');
-ok(T.vip.form.fields[2].label === 'Work email' && T.vip.form.submitLabel === 'Request an invitation', 'VIP: work email, its own button');
+var STD = ['email', 'first_name', 'last_name', 'phone', 'company', 'designation', 'location'];
+ok(eq(T.vip.form.fields.map(function (f) { return f.id; }), STD.concat(['linkedin', 'why_attend', 'consent'])), 'VIP fields: the standard seven, then its own, then the consent box');
+ok(T.vip.form.fields[0].label === 'Official email' && T.vip.form.submitLabel === 'Request an invitation', 'VIP: official email, its own button');
+ok(F.FORM_TEMPLATES.every(function (t) { return t.form.fields[0].label === 'Official email'; }), 'every template asks for the official email first');
 ok(eq(T.partner.form.fields[7].options, ['Presenting partner', 'Associate partner', 'Exhibitor', 'Knowledge partner', 'Other']) && T.partner.form.fields[7].required, 'Join as partner: the partnership choice');
-ok(eq(T.blank.form.fields.map(function (f) { return f.id; }), STD) && T.blank.form.submitLabel === 'Submit', 'Custom form: the standard seven only');
-ok(eq(T.register.form.fields.map(function (f) { return f.id; }), STD), 'Register now: the standard seven');
+ok(eq(T.blank.form.fields.map(function (f) { return f.id; }), STD.concat(['consent'])) && T.blank.form.submitLabel === 'Submit', 'Custom form: the standard seven and the consent box only');
+ok(eq(T.register.form.fields.map(function (f) { return f.id; }), STD.concat(['consent'])), 'Register now: the standard seven and the consent box');
 ok(T.register.form.fields[6].placeholder === 'Start typing your city' && T.register.form.fields[3].label === 'Mobile number', 'the standard labels and the location hint');
 ok(eq(F.defaultFields().map(function (f) { return f.id; }), STD) && eq(F.DEFAULT_FIELD_IDS, STD), 'defaultFields: the seven, in order');
 ok(T.speaker.form.fields.filter(function (f) { return f.id === 'linkedin'; })[0].required === true, 'Speaker application: LinkedIn required');
@@ -101,14 +105,14 @@ refused(Object.assign(form(), { id: 'other' }), 'changing the id on update', 'id
 refused(form([fld('Bad-Id', 'text', 'X', false)]), 'a bad field id', 'fields.2.id');
 ok(!F.cleanFormInput({ name: 'X', fields: [EMAIL, fld('', 'text', 'Other', false)], submitLabel: 'Go', successMessage: 'Done' }, { creating: true }).error, 'a form without a name question is fine (only the email is locked)');
 ok(!F.cleanFormInput({ name: 'X', fields: [EMAIL], submitLabel: 'Go', successMessage: 'Done' }, { creating: true }).error, 'a form of the email alone is fine');
-var trimmed = clone(T.register.form); trimmed.fields = trimmed.fields.filter(function (f) { return f.id !== 'phone' && f.id !== 'location'; }); trimmed.fields[0].required = false; trimmed.fields[1].label = 'Surname';
+var trimmed = clone(T.register.form); trimmed.fields = trimmed.fields.filter(function (f) { return f.id !== 'phone' && f.id !== 'location'; }); trimmed.fields[1].required = false; trimmed.fields[2].label = 'Surname';
 ok(!F.cleanFormInput(trimmed, { creating: true }).error, 'the organiser may remove Mobile and Location, make First name optional, relabel Last name');
 refused({ name: 'X', fields: [NAME, fld('other', 'text', 'Other', false)], submitLabel: 'Go', successMessage: 'Done' }, 'a form without the email field', 'fields');
 ok(!F.cleanFormInput({ name: 'X', fields: [fld('name', 'text', 'Name', false), EMAIL], submitLabel: 'Go', successMessage: 'Done' }, { creating: true }).error, 'an optional name is fine');
 var noEmail = clone(T.register.form); noEmail.fields = noEmail.fields.filter(function (f) { return f.id !== 'email'; });
 refused(noEmail, 'the standard form without its email', 'fields');
-var optEmail = clone(T.register.form); optEmail.fields[2].required = false;
-refused(optEmail, 'the standard form with an optional email', 'fields.2.required');
+var optEmail = clone(T.register.form); optEmail.fields[0].required = false;
+refused(optEmail, 'the standard form with an optional email', 'fields.0.required');
 refused(form([fld('first_name', 'textarea', 'First name', true)]), 'first_name as another type', 'fields.2.type');
 refused(form([fld('location', 'text', 'Location', true)]), 'the location column as plain text', 'fields.2.type');
 var autoId = F.cleanFormInput(form([fld('', 'location', 'Where are you based?', true), fld('', 'text', 'First name', true)]), { creating: true });
@@ -151,7 +155,7 @@ refused('not a form', 'a form that is not an object', '');
 var EV = { createdAt: '2026-01-02T03:04:05.000Z', createdBy: 'a@b.in' };
 var legacy = F.legacyDefaultForm(EV);
 ok(legacy.id === 'register' && legacy.name === 'Register now' && legacy.countsAsRegistration && !legacy.needsApproval && legacy.open && legacy.order === 0 && legacy.rev === 0, 'the original form: register, counts, open', JSON.stringify(legacy).slice(0, 200));
-ok(eq(legacy.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), STD.map(function (id) { return id + ':' + F.MAPPED_TYPES[id] + ':true'; })), 'an event that never set its form up: the seven standard questions', JSON.stringify(legacy.fields.map(function (f) { return f.id; })));
+ok(eq(legacy.fields.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), STD.concat(['consent']).map(function (id) { return id + ':' + F.MAPPED_TYPES[id] + ':true'; })), 'an event that never set its form up: the seven standard questions and the consent box', JSON.stringify(legacy.fields.map(function (f) { return f.id; })));
 var oldDefault = F.legacyFields(EV);
 ok(eq(oldDefault.map(function (f) { return f.id + ':' + f.type + ':' + f.required; }), ['name:text:true', 'email:email:true', 'phone:phone:false', 'company:text:false', 'designation:text:false']), 'the original form\'s questions: name, email, then phone, company, designation optional; city not asked');
 ok(oldDefault[2].label === 'Phone number' && oldDefault[2].type === 'phone', 'the legacy "tel" field becomes a phone field with its label');
@@ -168,7 +172,7 @@ ok(legacy.updatedAt === EV.createdAt && legacy.createdAt === EV.createdAt, 'its 
 ok(legacy.successMessage === F.DEFAULT_SUCCESS && legacy.duplicates === 'reject', 'the default success message and one per email');
 ok(!F.cleanFormInput(legacy, { creating: false, formId: 'register' }).error, 'the original form is itself a valid form');
 var custom = F.legacyDefaultForm({ createdAt: 'x', settings: { registration: { duplicates: 'allow', successMessage: 'See you!', fields: { phone: { show: true, required: true }, company: false, city: { show: true } } } } });
-ok(eq(custom.fields.map(function (f) { return f.id + ':' + f.required; }), ['name:true', 'email:true', 'phone:true', 'designation:false', 'city:false']), 'an organiser\'s own settings: phone required, no company, city asked', JSON.stringify(custom.fields));
+ok(eq(custom.fields.map(function (f) { return f.id + ':' + f.required; }), ['name:true', 'email:true', 'phone:true', 'designation:false', 'city:false', 'consent:true']), 'an organiser\'s own settings: phone required, no company, city asked (and the consent box)', JSON.stringify(custom.fields));
 ok(custom.successMessage === 'See you!' && custom.duplicates === 'allow', 'their success message and duplicates rule');
 ok(F.legacyRegistration({ settings: { registration: { capacity: 0 } } }).capacity === null && F.legacyRegistration({ settings: { registration: { capacity: 50.7 } } }).capacity === 50, 'capacity: none, or a whole number');
 ok(F.resolveDefaultFormId({ settings: { registration: { defaultFormId: 'vip' } } }, [{ id: 'register' }, { id: 'vip' }]) === 'vip', 'the default form as set');
@@ -184,7 +188,7 @@ var pubText = JSON.stringify(pub);
   ok(pubText.indexOf(k) === -1, 'the public form leaks no "' + k + '"');
 });
 ok(pub.counts === true && pub.open === true && pub.rev === 4 && pub.submitLabel === 'Request an invitation', 'counts, open, rev, the button');
-ok(eq(pub.fields[pub.fields.length - 1].options, F.COUNTRIES), 'a country field is sent with the country list');
+ok(eq(pub.fields.filter(function (f) { return f.id === 'country'; })[0].options, F.COUNTRIES), 'a country field is sent with the country list');
 ok(F.publicForm(vip, { settings: { registration: { open: false } } }).open === false, 'registration closed: every form is closed');
 ok(F.publicForm(Object.assign({}, vip, { open: false }), {}).open === false, 'a form that takes no responses is closed');
 var payload = F.publicFormsPayload('ev-1', { settings: { registration: { capacity: 2, defaultFormId: 'vip-delegates' } }, counters: { audienceV: 2, confirmed: 2 } }, [legacy, vip]);
@@ -215,26 +219,26 @@ ok(F.FIELD_TYPES.every(function (t) { return typesCovered[t]; }), 'the vectors c
 
 /* ---------- answers: a whole form ---------- */
 var reg = F.validateAnswers(vip, { answers: { first_name: ' Asha ', last_name: 'Rao', email: 'ASHA@ex.in', phone: { country: 'IN', number: '98765 43210' }, company: 'Acme', designation: 'CIO',
-  location: 'noida, UTTAR pradesh, india', linkedin: 'linkedin.com/in/asha', why_attend: '', stranger: 'dropped', country: 'India' }, utm: { source: 'li', medium: 'social' }, source: 'Website' });
+  location: 'noida, UTTAR pradesh, india', linkedin: 'linkedin.com/in/asha', why_attend: '', stranger: 'dropped', country: 'India' }, utm: { source: 'li', medium: 'social' }, source: 'Website', consent: true });
 ok(!Object.keys(reg.errors).length, 'a complete VIP request is accepted', JSON.stringify(reg.errors));
 ok(reg.reg.name === 'Asha Rao' && reg.reg.firstName === 'Asha' && reg.reg.lastName === 'Rao' && reg.reg.email === 'asha@ex.in' && reg.reg.company === 'Acme' && reg.reg.city === '', 'the columns: first and last name, and the name they make; a column the form does not ask is empty', JSON.stringify(reg.reg));
 ok(reg.reg.phone === '+919876543210' && reg.reg.phoneCountry === 'IN', 'the mobile number in E.164, with its country');
 ok(reg.reg.location === 'Noida, Uttar Pradesh, India' && eq(reg.reg.locationParts, { city: 'Noida', state: 'Uttar Pradesh', country: 'India', countryCode: 'IN', verified: true }), 'a place from the list: its own spelling and its parts, verified', JSON.stringify(reg.reg.locationParts));
-var typedPlace = F.validateAnswers(vip, { answers: { first_name: 'A', last_name: 'B', email: 'a@b.in', phone: { country: 'SG', number: '8123 4567' }, company: 'C', designation: 'D', location: 'Sector 62, near the metro' } });
+var typedPlace = F.validateAnswers(vip, { answers: { first_name: 'A', last_name: 'B', email: 'a@b.in', phone: { country: 'SG', number: '8123 4567' }, company: 'C', designation: 'D', location: 'Sector 62, near the metro' }, consent: true });
 ok(!Object.keys(typedPlace.errors).length && typedPlace.reg.location === 'Sector 62, near the metro' && typedPlace.reg.locationParts.verified === false && typedPlace.reg.locationParts.city === '', 'a place typed by hand: kept as typed, not verified', JSON.stringify(typedPlace.reg));
 ok(typedPlace.reg.phone === '+6581234567' && typedPlace.reg.phoneCountry === 'SG', 'a Singapore number');
 var oneName = F.validateAnswers(vip, { answers: { first_name: 'Asha', last_name: '', email: 'a@b.in', phone: { country: 'IN', number: '9876543210' }, company: 'C', designation: 'D', location: 'Pune' } });
 ok(oneName.errors.last_name === 'Please enter your last name.', 'a required last name');
-var optLast = clone(vip); optLast.fields[1].required = false;
-var onlyFirst = F.validateAnswers(optLast, { answers: { first_name: 'Asha', email: 'a@b.in', phone: { country: 'IN', number: '9876543210' }, company: 'C', designation: 'D', location: 'Pune' } });
+var optLast = clone(vip); optLast.fields[2].required = false;
+var onlyFirst = F.validateAnswers(optLast, { answers: { first_name: 'Asha', email: 'a@b.in', phone: { country: 'IN', number: '9876543210' }, company: 'C', designation: 'D', location: 'Pune' }, consent: true });
 ok(!Object.keys(onlyFirst.errors).length && onlyFirst.reg.name === 'Asha' && onlyFirst.reg.lastName === '', 'last name made optional and left empty: the name is the first name', JSON.stringify(onlyFirst.reg));
 ok(eq(reg.answers, { linkedin: 'https://linkedin.com/in/asha', country: 'India' }), 'answers: only the other fields that were answered; unknown keys dropped', JSON.stringify(reg.answers));
 ok(eq(reg.answerLabels, { linkedin: 'LinkedIn profile', country: 'Country' }), 'each answer\'s label at the time');
 ok(reg.reg.source === 'website' && reg.reg.utm.source === 'li' && reg.reg.utm.campaign === '', 'source and utm');
 var bad = F.validateAnswers(vip, { answers: { email: 'nope', phone: '1' } });
-ok(eq(Object.keys(bad.errors), STD), 'errors in the form\'s field order', Object.keys(bad.errors).join());
+ok(eq(Object.keys(bad.errors), STD.concat(['consent'])), 'errors in the form\'s field order, the consent box last', Object.keys(bad.errors).join());
 var first = F.firstFieldError(vip, bad.errors);
-ok(first.message === 'Please enter your first name.' && first.fields === bad.errors, 'the first error is the 400\'s message, with every field\'s');
+ok(first.message === F.EMAIL_MESSAGE && first.fields === bad.errors, 'the first error is the 400\'s message, with every field\'s', first.message);
 /* a form saved before first and last names: one name question, as before */
 var oldForm = { fields: F.legacyFields(EV) };
 var oldAnswer = F.validateAnswers(oldForm, { answers: { name: ' Ravi  Kumar ', email: 'ravi@x.in', phone: '+91 98765 43210' } });
@@ -251,6 +255,98 @@ var big = F.validateAnswers(form([fld('a', 'textarea', 'A', false), fld('b', 'te
     e: new Array(2001).join('é'), f: new Array(2001).join('é'), g: new Array(2001).join('é'), h: new Array(2001).join('é'), i: new Array(2001).join('é') } });
 ok(big.tooLong === true && !Object.keys(big.errors).length, 'answers over 16 KB are too long');
 ok(F.validateAnswers(form(), { answers: { name: 'N', email: 'n@x.in' } }).tooLong === false, 'a small answer is not');
+
+/* ---------- the consent box ---------- */
+ok(F.FIELD_TYPES.indexOf('consent') === -1 && F.FIELD_PRESETS.every(function (p) { return p.field.type !== 'consent'; }), 'the consent box is no field type a builder offers');
+ok(F.CONSENT_TEXT === 'I understand that the information I provide may be shared with partners and I agree to receive communications from them and Economic Times Business Verticals. I also agree to the Privacy Policy, Cookie Policy and T&C', 'the owner\'s wording, exactly');
+var cio = F.consentFor('');
+ok(eq(cio.links, [{ label: 'Privacy Policy', href: 'https://cio.economictimes.indiatimes.com/privacy_policy.php' }, { label: 'Cookie Policy', href: 'https://cio.economictimes.indiatimes.com/cookie_policy.php' },
+  { label: 'T&C', href: 'https://cio.economictimes.indiatimes.com/terms_conditions.php' }]), 'no portal known: ETCIO\'s pages, as the owner gave them', JSON.stringify(cio.links));
+ok(eq(F.consentFor('nonsense'), cio) && eq(F.consentFor(undefined), cio) && eq(F.consentFor('constructor'), cio), 'an unknown portal: ETCIO\'s');
+ok(/^[0-9a-f]{12}$/.test(cio.version) && F.consentFor('').version === cio.version, 'a short, stable version');
+var hrC = F.consentFor('hr');
+ok(hrC.links[0].href === 'https://hr.economictimes.indiatimes.com/privacy_policy.php' && hrC.links[2].href === 'https://hr.economictimes.indiatimes.com/terms_conditions.php' && hrC.version !== cio.version, 'the event\'s own portal\'s pages, and their own version', JSON.stringify(hrC));
+var wp = F.consentFor('workplace');
+ok(eq(wp.links.map(function (l) { return l.href; }), ['https://workplace.economictimes.indiatimes.com/privacy_policy', 'https://workplace.economictimes.indiatimes.com/cookie_policy.php', 'https://workplace.economictimes.indiatimes.com/terms_conditions']), 'a newer portal: no ".php" on privacy and terms; the cookie policy keeps it', JSON.stringify(wp.links));
+ok(F.consentFor('startup').links[0].href === 'https://entrepreneur.economictimes.indiatimes.com/privacy_policy.php', 'a portal on another host');
+ok(cio.links.every(function (l) { return cio.text.split(l.label).length === 2; }), 'each link\'s label is in the sentence once');
+/* the portal, by the same rule as the site footer */
+var srcs = [{ type: 'competitor', url: 'https://hr.economictimes.indiatimes.com/x' }, { type: 'currentEdition', url: 'https://cfo.economictimes.indiatimes.com/annual-2026' },
+  { type: 'previousEdition', url: 'https://example.com/old', previous: { portal: 'cio', url: 'https://cio.economictimes.indiatimes.com/annual-2025' } }];
+ok(F.portalOfSources(srcs) === 'cio' && F.portalOfSources(srcs.slice(0, 2)) === 'cfo' && F.portalOfSources(srcs.slice(0, 1)) === '' && F.portalOfSources(null) === '', 'the portal: the previous edition\'s, else this edition\'s; never a competitor\'s');
+[srcs, srcs.slice(0, 2), srcs.slice(0, 1), [{ type: 'previousEdition', url: 'https://www.economictimes.indiatimes.com/x' }]].forEach(function (list, n) {
+  ok(F.portalOfSources(list) === require('./api')._testHooks.sitePortal(list).portal, 'the consent links\' portal is the footer\'s (' + n + ')');
+});
+/* a builder cannot remove, move, reword or loosen it */
+var reg0 = clone(T.register.form);
+var moved = clone(reg0); moved.fields.unshift(moved.fields.pop()); moved.fields[0].required = false; moved.fields[0].label = 'Whatever';
+var movedR = F.cleanFormInput(moved, { creating: true });
+ok(!movedR.error && eq(movedR.value.fields, reg0.fields), 'moved, made optional and relabelled: put back, last and locked', JSON.stringify(movedR).slice(0, 300));
+var removed = clone(reg0); removed.fields.pop();
+ok(eq(F.cleanFormInput(removed, { creating: true }).value.fields, reg0.fields), 'removed (or an older builder that never had it): put back');
+var twiceC = clone(reg0); twiceC.fields.push(F.consentField());
+ok(F.cleanFormInput(twiceC, { creating: true }).value.fields.filter(F.isConsentField).length === 1, 'sent twice: kept once');
+refused(form([fld('consent', 'checkbox', 'I agree', true)]), 'an organiser\'s own field with the id "consent"', 'fields.2.id');
+var auto = F.cleanFormInput(form([fld('', 'checkbox', 'Consent', false)]), { creating: true });
+ok(!auto.error && auto.value.fields[2].id === 'consent_2' && auto.value.fields[2].type === 'checkbox', 'an organiser\'s own tick box labelled "Consent" gets another id', JSON.stringify(auto.value && auto.value.fields));
+var forty2 = []; for (i = 0; i < 38; i++) forty2.push(fld('', 'text', 'Question ' + i, false));
+ok(!F.cleanFormInput(form(forty2.concat([F.consentField()])), { creating: true }).error, 'the consent box does not count towards the 40 fields');
+/* a stored form: always ends with it */
+var storedOld = F.storedForm('vip', { name: 'VIP', fields: [EMAIL, NAME] });
+ok(eq(storedOld.fields.map(function (f) { return f.id + ':' + f.type; }), ['email:email', 'name:text', 'consent:consent']), 'a form stored before the box: read with it, last', JSON.stringify(storedOld.fields));
+var storedMid = F.storedForm('vip', { name: 'VIP', fields: [F.consentField(), EMAIL, NAME] });
+ok(storedMid.fields[2].id === 'consent' && storedMid.fields.length === 3, 'stored out of place: read last');
+/* what a page is told */
+var pubC = F.publicForm(storedOld, {}, hrC);
+ok(eq(pubC.fields[2], { id: 'consent', type: 'consent', label: 'Consent', required: true, placeholder: '', help: '' }), 'the public form ends with the box', JSON.stringify(pubC.fields[2]));
+ok(eq(pubC.consent, { text: hrC.text, links: hrC.links, version: hrC.version }), 'the public form carries its wording, links and version', JSON.stringify(pubC.consent));
+ok(eq(F.publicForm(storedOld, {}).consent.links, cio.links), 'no consent given: ETCIO\'s');
+var payC = F.publicFormsPayload('e', {}, [storedOld], hrC);
+ok(eq(payC.consent, pubC.consent) && eq(payC.forms[0].consent, pubC.consent), 'the payload says it once for the page, and on each form');
+/* a visitor's answers */
+var answersOk = { answers: { email: 'a@b.in', name: 'A' } };
+var noTick = F.validateAnswers(storedOld, answersOk);
+ok(noTick.consent === false && noTick.errors.consent === 'Please tick the box to agree before you submit.' && F.firstFieldError(storedOld, noTick.errors).message === 'Please tick the box to agree before you submit.', 'not ticked: the owner\'s sentence, as the 400\'s message', JSON.stringify(noTick.errors));
+var yes = F.validateAnswers(storedOld, Object.assign({ consent: true }, answersOk));
+ok(yes.consent === true && !Object.keys(yes.errors).length, 'consent: true — accepted', JSON.stringify(yes.errors));
+ok(F.validateAnswers(storedOld, { answers: { email: 'a@b.in', name: 'A', consent: true } }).consent === true, 'answers.consent: true — accepted too');
+['true', 'on', 1, 'yes', {}].forEach(function (v) {
+  ok(!!F.validateAnswers(storedOld, Object.assign({ consent: v }, answersOk)).errors.consent, 'consent ' + JSON.stringify(v) + ' is not a yes');
+});
+ok(!('consent' in yes.answers) && !('consent' in yes.reg), 'the box is not an answer; the route records it');
+var rec = F.consentRecord(hrC, '2026-10-21T08:00:00.000Z');
+ok(rec.given === true && rec.at === '2026-10-21T08:00:00.000Z' && rec.version === hrC.version && rec.text.indexOf(F.CONSENT_TEXT) === 0 && rec.text.indexOf('Cookie Policy: https://hr.economictimes.indiatimes.com/cookie_policy.php') !== -1, 'the record: given, when, which wording, the sentence and its links', JSON.stringify(rec));
+ok(F.requiredMessage(F.consentField()) === F.CONSENT_MESSAGE, 'its required message');
+/* the standard questions' new order: which stored "Register now" a migration moves on */
+var oldSeven = F.oldDefaultFields();
+ok(eq(oldSeven.map(function (f) { return f.id; }), F.OLD_DEFAULT_FIELD_IDS) && oldSeven[2].label === 'Email', 'the old order: First name, Last name, Email …');
+var std0 = Object.assign({}, legacy, { fields: oldSeven, rev: 0 });
+ok(F.isUntouchedDefault(std0, EV) === true, 'never saved, the seven in the old order: untouched');
+ok(F.isUntouchedDefault(Object.assign({}, std0, { fields: oldSeven.concat([F.consentField()]) }), EV) === true, '… with the consent box too');
+ok(F.isUntouchedDefault(Object.assign({}, std0, { rev: 1, updatedBy: 'migration: standard questions' }), EV) === true, 'saved only by the earlier migration: untouched');
+ok(F.isUntouchedDefault(Object.assign({}, std0, { rev: 2, updatedBy: 'a@b.in' }), EV) === false, 'saved by an organiser: their order is kept');
+var std0b = clone(std0); std0b.fields[3].required = false;
+ok(F.isUntouchedDefault(std0b, EV) === false, 'a question changed: kept');
+ok(F.hasCurrentDefaults(legacy) && !F.hasCurrentDefaults(std0), 'today\'s order is recognised');
+
+/* tools/migrate-forms.js steps 4 and 5 (forms.migrationPlan) */
+var NOW = '2026-10-21T09:00:00.000Z';
+var p1 = F.migrationPlan('register', { name: 'Register now', fields: F.oldDefaultFields(), rev: 0 }, EV, NOW);
+ok(p1.action === 'standard' && eq(p1.patch.fields.map(function (f) { return f.id; }), STD.concat(['consent'])) && p1.patch.rev === 1 && p1.patch.updatedAt === NOW && /^migration/.test(p1.patch.updatedBy), 'an untouched Register now in the old order: today\'s order and the consent box, rev moved on', JSON.stringify(p1));
+var p1b = F.migrationPlan('register', { name: 'Register now', fields: F.oldDefaultFields(), rev: 1, updatedBy: 'migration: standard questions' }, EV, NOW);
+ok(p1b.action === 'standard' && p1b.patch.rev === 2, 'one the first migration gave the seven: moved on too');
+var p1c = F.migrationPlan('register', { name: 'Register now', fields: F.legacyFields(EV), rev: 0 }, EV, NOW);
+ok(p1c.action === 'standard', 'one still with the original questions: today\'s seven too');
+ok(F.migrationPlan('register', p1.patch, EV, NOW).action === 'none', 'run again: nothing to do');
+var orgFields = [fld('first_name', 'text', 'First name', true), fld('last_name', 'text', 'Last name', true), EMAIL, fld('partnership', 'select', 'Partnership', true, { options: ['A'] })];
+var p2 = F.migrationPlan('partner', { name: 'Partner', fields: orgFields, rev: 1, updatedBy: 'a@b.in', updatedAt: 'u' }, EV, NOW);
+ok(p2.action === 'consent' && eq(Object.keys(p2.patch), ['fields']) && eq(p2.patch.fields.map(function (f) { return f.id; }), ['first_name', 'last_name', 'email', 'partnership', 'consent']), 'an organiser\'s form: the box appended, their order kept, only the fields written', JSON.stringify(p2));
+var p3 = F.migrationPlan('register', { name: 'Register now', fields: F.oldDefaultFields(), rev: 3, updatedBy: 'a@b.in' }, EV, NOW);
+ok(p3.action === 'consent' && p3.patch.fields[0].id === 'first_name' && /organiser/.test(p3.kept), 'a Register now the organiser saved: its order kept, the box appended', JSON.stringify(p3));
+var firestoreOrder = { help: '', id: 'consent', label: 'Consent', placeholder: '', required: true, type: 'consent' };
+ok(F.migrationPlan('partner', { fields: orgFields.concat([firestoreOrder]), rev: 1, updatedBy: 'a@b.in' }, EV, NOW).action === 'none', 'the box already stored (in any key order): nothing to do');
+ok(F.migrationPlan('partner', { fields: [F.consentField()].concat(orgFields), rev: 1, updatedBy: 'a@b.in' }, EV, NOW).patch.fields[4].id === 'consent', 'a box stored out of place: moved last');
+ok(F.migrationPlan('partner', { fields: orgFields.concat([Object.assign(F.consentField(), { required: false })]), rev: 1 }, EV, NOW).action === 'consent', 'a box stored loosened: put right');
 
 /* ---------- one response per email; status ---------- */
 var crypto = require('crypto');
@@ -305,17 +401,17 @@ var nf = ops.newForms;
 ok(nf.length === 2 && nf[0].ref === 'new-1' && nf[1].ref === 'new-2', 'two new forms; the one named like an existing form is not made again', JSON.stringify(nf.map(function (x) { return x.ref; })));
 var vf = nf[0].form;
 ok(vf.id === 'vip-delegates' && vf.template === 'vip' && vf.needsApproval && vf.countsAsRegistration, 'the VIP form: its id and its template\'s switches', JSON.stringify(vf).slice(0, 200));
-ok(eq(vf.fields.map(function (f) { return f.id; }), STD.concat(['sessions'])), 'the seven standard questions first; the model\'s full name covered by them; the dropdown without options left out', JSON.stringify(vf.fields.map(function (f) { return f.id; })));
-ok(vf.fields[2].required === true && vf.fields[2].label === 'Work email', 'the email question is always required, its label kept');
+ok(eq(vf.fields.map(function (f) { return f.id; }), STD.concat(['sessions', 'consent'])), 'the seven standard questions first; the model\'s full name covered by them; the dropdown without options left out', JSON.stringify(vf.fields.map(function (f) { return f.id; })));
+ok(vf.fields[0].required === true && vf.fields[0].label === 'Work email', 'the email question is always required, its label kept');
 ok(vf.fields[3].label === 'Mobile' && vf.fields[4].label === 'Organisation' && vf.fields[5].label === 'Job title', 'a standard question in the model\'s words keeps them');
 ok(vf.fields.slice(0, 7).every(function (f) { return f.required; }), 'the seven are required in a form the AI makes');
 ok(eq(vf.fields[7].options, ['Day 1', 'Day 2']), 'options cleaned');
 var named = F.cleanAiForm({ template: 'blank', name: 'Survey', fields: [{ label: 'Given name', type: 'text' }, { label: 'Surname', type: 'text' }, { label: 'City', type: 'text' }, { label: 'Phone', type: 'text' }, { label: 'Favourite session', type: 'text' }] });
-ok(!named.error && eq(named.form.fields.map(function (f) { return f.id + ':' + f.type; }), ['first_name:text', 'last_name:text', 'email:email', 'phone:phone', 'company:text', 'designation:text', 'location:location', 'favourite_session:text']),
+ok(!named.error && eq(named.form.fields.map(function (f) { return f.id + ':' + f.type; }), ['email:email', 'first_name:text', 'last_name:text', 'phone:phone', 'company:text', 'designation:text', 'location:location', 'favourite_session:text', 'consent:consent']),
   'given name, surname, city and a phone typed as text are the standard questions (as a Location, a Mobile); the rest follow', JSON.stringify(named.form && named.form.fields.map(function (f) { return f.id + ':' + f.type; })));
 ok(ops.skipped.some(function (s) { return /Diet/.test(s); }), 'the dropped question is reported', ops.skipped.join(' | '));
 var ef = nf[1].form;
-ok(ef.id === 'express-interest' && eq(ef.fields.map(function (f) { return f.id; }), STD.concat(['message'])), 'one field given: the template\'s fields are kept', JSON.stringify(ef.fields.map(function (f) { return f.id; })));
+ok(ef.id === 'express-interest' && eq(ef.fields.map(function (f) { return f.id; }), STD.concat(['message', 'consent'])), 'one field given: the template\'s fields are kept', JSON.stringify(ef.fields.map(function (f) { return f.id; })));
 ok(!F.cleanFormInput(vf, { creating: true }).error && !F.cleanFormInput(ef, { creating: true }).error, 'every new form is a form the routes accept');
 var links = ops.ctaLinks;
 ok(links.length === 3, 'three links survive', JSON.stringify(links));
@@ -352,7 +448,8 @@ var prompt = hooks.buildChatPrompt({ instruction: 'add a VIP delegate form', sec
 ok(/"buttons": \[\s*"Register Now"\s*\]/.test(prompt), 'the prompt shows each section\'s buttons');
 ok(prompt.indexOf('"formId": "register"') !== -1 && prompt.indexOf('"Full name"') !== -1, 'the prompt lists the site\'s forms and their questions');
 ok(/`newForms`/.test(prompt) && /`ctaLinks`/.test(prompt) && /`formEmbeds`/.test(prompt), 'the prompt documents the three form tools');
-ok(/seven standard questions/.test(prompt) && /First name \(text\), Last name \(text\), Email \(email\), Mobile number \(phone/.test(prompt), 'the prompt asks for the seven standard questions first');
+ok(/seven standard questions/.test(prompt) && /Official email \(email\), First name \(text\), Last name \(text\), Mobile number \(phone/.test(prompt), 'the prompt asks for the seven standard questions first, the email first');
+ok(/never add a consent, terms or privacy question/.test(prompt), 'the prompt says the consent box is the platform\'s');
 ok(!/add or edit [^.]*registration/i.test(prompt) && /payments, or send confirmation emails or WhatsApp messages/.test(prompt), 'registration is no longer "cannot do"; payment, email and WhatsApp still are');
 
 /* ---------- the gates: settings and access ---------- */

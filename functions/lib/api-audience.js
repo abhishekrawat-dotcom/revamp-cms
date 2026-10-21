@@ -1023,6 +1023,7 @@ function storeRegistrations(fb, eventId, items) {
             if (counts && status === 'confirmed') confirmed++;
             var doc = Object.assign({}, p.it.reg, {
               formId: p.form.id, formName: p.form.name, counts: counts,
+              consent: isObj(p.it.reg.consent) ? Object.assign({}, p.it.reg.consent, { at: nowIso }) : null,
               answers: p.it.answers, answerLabels: p.it.answerLabels,
               status: status, notes: '',
               // online payment is not available; kept so that older readers of this record find the field
@@ -1118,11 +1119,14 @@ function handleRegister(req, res) {
             if (!preview && ev.published !== true) throw registerError(404, NOT_AVAILABLE, 'unavailable');
             var settings = registrationSettings(ev);
             if (!settings.open) throw registerError(403, CLOSED_MESSAGE, 'closed');
-            return formsApi().loadForm(fb, eventId, ev, formId).then(function (form) {
+            return Promise.all([formsApi().loadForm(fb, eventId, ev, formId), formsApi().loadConsent(fb, eventId)]).then(function (loaded) {
+              var form = loaded[0], consent = loaded[1];
               if (!form) throw registerError(404, FORM_MISSING_MESSAGE, 'form-missing');
               if (form.open === false) throw registerError(403, FORM_CLOSED_MESSAGE, 'form-closed');
 
               // only what this form asks for is kept; what it requires must be there
+              // every form ends with the consent box (forms.storedForm puts it there); asked here whatever the form says
+              form = Object.assign({}, form, { fields: forms.withConsent(form.fields) });
               var read = forms.validateAnswers(form, body);
               var first = forms.firstFieldError(form, read.errors);
               if (first) throw registerError(400, first.message, 'invalid', first.fields);
@@ -1138,6 +1142,9 @@ function handleRegister(req, res) {
               var reg = read.reg;
               reg.device = deviceClass(req);
               reg.referrer = referrerHost(req, body.ref);
+              /* what the visitor agreed to (the box is ticked: validateAnswers refuses a response without it);
+                 its time is set again when the response is stored */
+              reg.consent = forms.consentRecord(consent, new Date().toISOString());
               return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels }).then(function (stored) {
                 sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId,
                   message: stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
@@ -1177,6 +1184,10 @@ function publicRegistration(id, r) {
     counts: r.counts !== false,
     answers: isObj(r.answers) ? r.answers : {}, answerLabels: isObj(r.answerLabels) ? r.answerLabels : {},
     status: normStatus(r.status), notes: r.notes || '',
+    /* the consent box the visitor ticked (every response since 21 Oct 2026); null for an earlier one */
+    consent: isObj(r.consent) && r.consent.given === true
+      ? { given: true, at: typeof r.consent.at === 'string' ? r.consent.at : '', version: typeof r.consent.version === 'string' ? r.consent.version : '' }
+      : null,
     tags: Array.isArray(r.tags) ? r.tags.filter(function (t) { return typeof t === 'string'; }) : [],
     createdAt: r.createdAt || null, checkedInAt: r.checkedInAt || null, updatedAt: r.updatedAt || null,
     decidedAt: r.decidedAt || null, decidedBy: r.decidedBy || null
@@ -1492,6 +1503,13 @@ function exportCell(v) {
   if (typeof v === 'object') return '';
   return String(v);
 }
+/* "Yes — 2026-10-21 14:05" (India time) for a response whose visitor ticked the consent box; '' for one from
+   before the box existed */
+function consentCell(c) {
+  if (!isObj(c) || c.given !== true) return '';
+  var at = typeof c.at === 'string' ? istStamp(c.at) : '';
+  return at ? 'Yes — ' + at : 'Yes';
+}
 /* the event's responses, newest first, filtered — by the form index when it is there, else in memory */
 function exportRows(refs, formId, status) {
   var rows = [];
@@ -1550,7 +1568,7 @@ function handleRegistrationsExport(req, res) {
           });
           var head = ['Submitted', 'Form', 'Status', 'Name', 'First name', 'Last name', 'Email', 'Phone', 'Phone country', 'Company', 'Designation',
             'Location', 'Location verified', 'City', 'State', 'Country', 'Source',
-            'UTM source', 'UTM medium', 'UTM campaign', 'Device', 'Referrer', 'Checked in', 'Notes', 'Tags']
+            'UTM source', 'UTM medium', 'UTM campaign', 'Device', 'Referrer', 'Checked in', 'Notes', 'Tags', 'Consent']
             .concat(cols.map(function (c) { return c.label; }));
           var lines = [head.map(forms.csvEscape).join(',')];
           rows.forEach(function (row) {
@@ -1562,7 +1580,7 @@ function handleRegistrationsExport(req, res) {
               d.location, d.location ? (lp.verified === true ? 'Yes' : 'No') : '', d.city || lp.city, lp.state, lp.country,
               d.source, utm.source, utm.medium, utm.campaign,
               d.device, d.referrer, d.checkedInAt ? istStamp(d.checkedInAt) : '', d.notes,
-              Array.isArray(d.tags) ? d.tags.join('; ') : ''];
+              Array.isArray(d.tags) ? d.tags.join('; ') : '', consentCell(d.consent)];
             cols.forEach(function (c) { cells.push(answers[c.key]); });
             lines.push(cells.map(function (v) { return forms.csvEscape(exportCell(v)); }).join(','));
           });
@@ -1896,7 +1914,8 @@ module.exports = {
   handleRegistrationDelete, handleRegistrationsExport, handleTrack, handleDashboardStats, handleInsights, handleActivity,
   handlePublicOptions, publicSiteData, seedContent,
   /* for tools/migrate-forms.js and the tests */
-  counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES
+  counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES,
+  publicRegistration, consentCell
 };
 /* the small helpers lib/api-forms.js shares with this module, so the two answer alike */
 module.exports._shared = {

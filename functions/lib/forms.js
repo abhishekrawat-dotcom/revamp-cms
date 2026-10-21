@@ -15,8 +15,8 @@
 //   changes either; nine of them (MAPPED_FIELDS) are the registration's own columns rather than an answer.
 //
 // THE STANDARD QUESTIONS. Every new form — a custom one, every template, the default "Register now", one the
-//   AI makes — starts with seven, in this order, all required (defaultFields): First name, Last name, Email,
-//   Mobile (a country code picker and the number, kept as +919876543210 — lib/phone.js), Company,
+//   AI makes — starts with seven, in this order, all required (defaultFields): Official email, First name,
+//   Last name, Mobile (a country code picker and the number, kept as +919876543210 — lib/phone.js), Company,
 //   Designation, Location (city, state and country, suggested as it is typed — lib/places.js). An organiser
 //   may make any of them optional, remove it, relabel it or give it a placeholder — except the email: every
 //   form asks for one, always required (it is how "one response per email" tells responses apart), though
@@ -24,6 +24,14 @@
 //   name") keeps working as it is, everywhere.
 //   A registration's name is its "name" answer on such a form, and "First Last" on a form with the two: every
 //   reader of a registration (Reporting, the export, the totals, the activity log) finds it in `name`.
+//
+// THE CONSENT BOX. Every form — whatever an organiser does to it — ends with one locked item, { id: 'consent',
+//   type: 'consent', label: 'Consent', required: true } (consentField): ET's consent sentence with a tick box
+//   (CONSENT_TEXT; its links are the event's portal's own privacy, cookie and terms pages — consentFor). It
+//   cannot be removed, moved, made optional or reworded in a builder: whatever a builder sends in its place is
+//   dropped and the item is put back at the end (withConsent). A visitor must tick it (POST /api/register
+//   sends consent: true), and the registration records what they agreed to: consent { given, at, version,
+//   text } (consentRecord). It is not one of the "fields" a form may have (FIELD_TYPES): no form gets a second.
 //
 // The validation messages below are part of the contract: the page runtime (templates/_shared/rv-forms.js)
 // says exactly the same sentences, so an answer the server refuses reads the same as one the browser did.
@@ -34,9 +42,13 @@ var crypto = require('crypto');
 
 var phone = require('./phone');
 var places = require('./places');
+var etFooter = require('./et-footer');
+var etEvents = require('./et-events');
+var etPrevious = require('./et-previous');
 
 var FIELD_TYPES = ['text', 'textarea', 'email', 'phone', 'number', 'url', 'date', 'select', 'radio', 'multiselect', 'checkbox', 'country', 'location'];
 var FIELD_TYPE_LABELS = {
+  consent: 'Consent (always required)',
   text: 'Short text', textarea: 'Long text', email: 'Email', phone: 'Mobile (with country code)', number: 'Number', url: 'Web address',
   date: 'Date', select: 'Dropdown', radio: 'Single choice', multiselect: 'Multiple choice', checkbox: 'Tick box (yes/no)',
   country: 'Country', location: 'Location (city, state, country)'
@@ -45,9 +57,9 @@ var OPTION_TYPES = ['select', 'radio', 'multiselect'];
 var PURPOSES = ['register', 'interest', 'partner', 'vip', 'speaker', 'custom'];
 /* a registration's own columns: their values are stored as reg[MAPPED_KEY[id] || id], every other answer
    under answers.<id> */
-var MAPPED_FIELDS = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location'];
+var MAPPED_FIELDS = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location', 'consent'];
 var MAPPED_TYPES = { name: 'text', first_name: 'text', last_name: 'text', email: 'email', phone: 'phone', company: 'text',
-  designation: 'text', city: 'text', location: 'location' };
+  designation: 'text', city: 'text', location: 'location', consent: 'consent' };
 var MAPPED_KEY = { first_name: 'firstName', last_name: 'lastName' };
 var MAPPED_MAX = { name: 120, first_name: 60, last_name: 60, company: 120, designation: 120, city: 80 };
 var LOCATION_MAX = 200;
@@ -64,7 +76,7 @@ var TEXT = { name: 80, title: 120, intro: 600, submitLabel: 40, successMessage: 
 
 /* bumped whenever templates/_shared/rv-forms.js changes, so a browser holding the old copy (static files are
    cached for five minutes, under an unhashed name) asks for the new one */
-var FORMS_RUNTIME_V = 2;
+var FORMS_RUNTIME_V = 3;
 
 /* An email address as a form takes it: name@domain.tld — the name of the letters, digits and signs an address
    may have, no two dots in a row and none at either end; the domain of labels of letters, digits and hyphens,
@@ -79,6 +91,54 @@ var SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 var DEFAULT_SUCCESS = 'You are registered. We look forward to seeing you there.';
 var WAITLIST_MESSAGE = 'This event is full, so you have been added to the waitlist. We will be in touch if a place opens up.';
 var PREVIEW_NOTE = ' (Preview — this test registration was not saved.)';
+
+/* ---------- the consent box every form ends with ---------- */
+
+var CONSENT_ID = 'consent', CONSENT_TYPE = 'consent';
+/* ET's consent sentence, as the owner wrote it (the tick box's required mark is drawn by the page, not part of
+   the text). Each link's label appears in it exactly once: a page makes that part of the sentence the link. */
+var CONSENT_TEXT = 'I understand that the information I provide may be shared with partners and I agree to receive communications ' +
+  'from them and Economic Times Business Verticals. I also agree to the Privacy Policy, Cookie Policy and T&C';
+var CONSENT_MESSAGE = 'Please tick the box to agree before you submit.';
+/* the portal whose pages the links are when the event's own is not known: ETCIO's, the ones the owner gave */
+var CONSENT_FALLBACK_PORTAL = 'cio';
+/* [label, page, always .php]: every portal's cookie policy is cookie_policy.php, the newer ones' too (their
+   cookie_policy without it is a 404; checked on 21 Oct 2026) */
+var CONSENT_PAGES = [['Privacy Policy', 'privacy_policy', false], ['Cookie Policy', 'cookie_policy', true], ['T&C', 'terms_conditions', false]];
+
+/* The consent box for an event of `portal` (an ET portal's slug, e.g. 'hr'; '' or an unknown one: ETCIO's)
+   -> { text, links: [{ label, href }], version, portal }. The pages are the portal's own: the older portals
+   keep ".php" on the privacy and terms pages, the newer ones do not (lib/et-footer.js has which is which and
+   the few on another host). version: a short hash of the text and the links, so a registration says which wording it agreed to. */
+function consentFor(portal) {
+  /* a portal ET lists that the footer's table does not have yet: its pages where the older portals keep them */
+  var slug = etFooter.isKnown(portal) || etEvents.isPortal(portal) ? portal : CONSENT_FALLBACK_PORTAL;
+  var d = etFooter.isKnown(slug) ? etFooter.DATA[slug] : {};
+  var home = 'https://' + (d.host || slug + '.economictimes.indiatimes.com'), ext = d.clean ? '' : '.php';
+  var links = CONSENT_PAGES.map(function (p) { return { label: p[0], href: home + '/' + p[1] + (p[2] ? '.php' : ext) }; });
+  var version = crypto.createHash('sha256').update(CONSENT_TEXT + '\n' + links.map(function (l) { return l.label + ' ' + l.href; }).join('\n'))
+    .digest('hex').slice(0, 12);
+  return { text: CONSENT_TEXT, links: links, version: version, portal: slug };
+}
+/* The ET portal an event belongs to, from its sources (events/<id>/sources): the one its previous edition (or
+   this edition's own page) was read from — the same rule as the site's ET footer (lib/api.js sitePortal, which
+   forms.test.js checks this against). '' when none says. */
+function portalOfSources(sourceDocs) {
+  var own = (sourceDocs || []).filter(function (v) { return v && (v.type === 'previousEdition' || v.type === 'currentEdition'); });
+  own.sort(function (a, b) { return (a.type === b.type ? 0 : a.type === 'previousEdition' ? -1 : 1) || (b.previous ? 1 : 0) - (a.previous ? 1 : 0); });
+  for (var i = 0; i < own.length; i++) {
+    var v = own[i], url = (v.previous && v.previous.url) || v.url;
+    var portal = v.previous && etEvents.isPortal(v.previous.portal) ? v.previous.portal : etPrevious.portalOf(url);
+    if (etEvents.isPortal(portal)) return portal;
+  }
+  return '';
+}
+/* What a registration keeps of the consent its visitor gave: the wording as shown, with its links named. */
+function consentRecord(consent, atIso) {
+  var c = isObj(consent) ? consent : consentFor('');
+  var links = (Array.isArray(c.links) ? c.links : []).map(function (l) { return l.label + ': ' + l.href; }).join('; ');
+  return { given: true, at: atIso, version: String(c.version || ''), text: String(c.text || CONSENT_TEXT) + (links ? ' (' + links + ')' : '') };
+}
 
 /* ---------- countries: India first, then A–Z ---------- */
 var COUNTRIES = ['India'].concat([
@@ -173,23 +233,36 @@ function uniqueId(base, taken, sep) {
 function F(id, type, label, required, extra) {
   return Object.assign({ id: id, type: type, label: label, required: !!required, placeholder: '', help: '' }, extra || {});
 }
-/* The seven questions every new form starts with, in this order, all required. */
-var DEFAULT_FIELD_IDS = ['first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'location'];
+/* The seven questions every new form starts with, in this order, all required: the email first (ET's own
+   forms ask for it first, as "Official email"). */
+var DEFAULT_FIELD_IDS = ['email', 'first_name', 'last_name', 'phone', 'company', 'designation', 'location'];
+/* the order they had until 21 Oct 2026: a "Register now" still in it and never edited is moved on by
+   tools/migrate-forms.js (isUntouchedDefault) */
+var OLD_DEFAULT_FIELD_IDS = ['first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'location'];
+var DEFAULT_EMAIL_LABEL = 'Official email';
 function defaultFields(emailLabel) {
   return [
+    F('email', 'email', emailLabel || DEFAULT_EMAIL_LABEL, true),
     F('first_name', 'text', 'First name', true),
     F('last_name', 'text', 'Last name', true),
-    F('email', 'email', emailLabel || 'Email', true),
     F('phone', 'phone', 'Mobile number', true),
     F('company', 'text', 'Company', true),
     F('designation', 'text', 'Designation', true),
     F('location', 'location', 'Location', true, { placeholder: 'Start typing your city' })
   ];
 }
+/* the locked consent box (THE CONSENT BOX above) */
+function consentField() { return F(CONSENT_ID, CONSENT_TYPE, 'Consent', true); }
+function isConsentField(f) { return !!f && (f.id === CONSENT_ID || f.type === CONSENT_TYPE); }
+/* a form's fields with the consent box last: whatever stood in its place (moved, relabelled, made optional, or
+   missing — a form stored before it existed) is dropped and the locked item put back at the end */
+function withConsent(fields) {
+  return (Array.isArray(fields) ? fields : []).filter(function (f) { return !isConsentField(f); }).concat([consentField()]);
+}
 function templateForm(t) {
   return {
     name: t.name, title: t.name, intro: '', purpose: t.purpose,
-    fields: defaultFields(t.emailLabel).concat(t.fields),
+    fields: withConsent(defaultFields(t.emailLabel).concat(t.fields)),
     submitLabel: t.submitLabel, successMessage: t.successMessage,
     countsAsRegistration: t.counts, needsApproval: t.approval, open: true, duplicates: 'reject', template: t.id
   };
@@ -208,7 +281,7 @@ var TEMPLATE_SOURCE = [
     fields: [F('partnership', 'select', 'Partnership interest', true, { options: ['Presenting partner', 'Associate partner', 'Exhibitor', 'Knowledge partner', 'Other'] }),
       F('message', 'textarea', 'Tell us about your goals', false)],
     submitLabel: 'Send enquiry', successMessage: 'Thank you. The partnerships team will get back to you.' },
-  { id: 'vip', name: 'VIP delegates', purpose: 'vip', counts: true, approval: true, emailLabel: 'Work email',
+  { id: 'vip', name: 'VIP delegates', purpose: 'vip', counts: true, approval: true,
     description: 'Needs approval, counts as a registration',
     fields: [F('linkedin', 'url', 'LinkedIn profile', false, { placeholder: 'https://www.linkedin.com/in/…' }),
       F('why_attend', 'textarea', 'Why would you like to attend?', false)],
@@ -219,7 +292,7 @@ var TEMPLATE_SOURCE = [
       F('topic', 'text', 'Proposed topic', true), F('abstract', 'textarea', 'Short abstract', true)],
     submitLabel: 'Apply to speak', successMessage: 'Thank you for applying. The programme team will review your application.' },
   { id: 'blank', name: 'Custom form', purpose: 'custom', counts: false, approval: false,
-    description: 'Starts with the standard questions (name, email, mobile, company, designation, location); add your own',
+    description: 'Starts with the standard questions (email, name, mobile, company, designation, location); add your own',
     fields: [], submitLabel: 'Submit', successMessage: 'Thank you. Your response has been received.' }
 ];
 /* [{ id, name, description, purpose, countsAsRegistration, needsApproval, form: FormInput (no id) }] */
@@ -344,13 +417,19 @@ function cleanFormInput(input, opts) {
   return { value: out };
 }
 
+/* The consent box a builder sends back (type "consent", wherever it stands and whatever it says) is not the
+   organiser's to change: it is dropped here and the locked item put back last. An organiser's own question may
+   not take its id. */
 function cleanFields(list) {
   if (!Array.isArray(list)) return fail('"fields" must be a list of fields.', 'fields');
-  if (list.length > LIMITS.maxFields) return fail('A form can have at most ' + LIMITS.maxFields + ' fields.', 'fields');
-  var fields = [], given = [], i;
+  var own = list.filter(function (f) { return !(isObj(f) && f.type === CONSENT_TYPE); }).length;
+  if (own > LIMITS.maxFields) return fail('A form can have at most ' + LIMITS.maxFields + ' fields.', 'fields');
+  var fields = [], given = [], at = [], i;
   for (i = 0; i < list.length; i++) {
     var f = list[i], where = 'fields.' + i, n = 'Field ' + (i + 1);
     if (!isObj(f)) return fail(n + ' is not a valid field.', where);
+    if (f.type === CONSENT_TYPE) continue;
+    if (f.id === CONSENT_ID) return fail('“consent” is the id of the consent box every form ends with. Give this field another id.', where + '.id');
     var fk = Object.keys(f);
     for (var j = 0; j < fk.length; j++) {
       if (FIELD_KEYS.indexOf(fk[j]) === -1) return fail('"fields[' + i + '].' + fk[j] + '" is not a field setting.', where + '.' + fk[j]);
@@ -383,6 +462,7 @@ function cleanFields(list) {
       out.id = f.id;
     }
     fields.push(out);
+    at.push(i);
   }
   /* fields sent without an id are given one from their label; a column's id only when the type fits it */
   var taken = given.slice();
@@ -396,18 +476,18 @@ function cleanFields(list) {
   for (i = 0; i < fields.length; i++) {
     var fd = fields[i], want = MAPPED_TYPES[fd.id];
     if (want && fd.type !== want) {
-      if (fd.id === 'email') return fail('The email field is always an Email field.', 'fields.' + i + '.type');
-      return fail('“' + fd.label + '” holds the registration’s ' + fd.id.replace(/_/g, ' ') + ', so it must be a ' + FIELD_TYPE_LABELS[want] + ' field.', 'fields.' + i + '.type');
+      if (fd.id === 'email') return fail('The email field is always an Email field.', 'fields.' + at[i] + '.type');
+      return fail('“' + fd.label + '” holds the registration’s ' + fd.id.replace(/_/g, ' ') + ', so it must be a ' + FIELD_TYPE_LABELS[want] + ' field.', 'fields.' + at[i] + '.type');
     }
   }
   for (i = 0; i < LOCKED_FIELDS.length; i++) {
-    var id = LOCKED_FIELDS[i], at = -1;
-    fields.forEach(function (fd, x) { if (fd.id === id) at = x; });
-    if (at === -1) return fail('Every form asks for an email address: the "' + id + '" field is missing.', 'fields');
-    if (!fields[at].required) return fail('The ' + id + ' field is always required: it is how one response is told from another.', 'fields.' + at + '.required');
+    var id = LOCKED_FIELDS[i], x = -1;
+    fields.forEach(function (fd, k) { if (fd.id === id) x = k; });
+    if (x === -1) return fail('Every form asks for an email address: the "' + id + '" field is missing.', 'fields');
+    if (!fields[x].required) return fail('The ' + id + ' field is always required: it is how one response is told from another.', 'fields.' + at[x] + '.required');
   }
   if (fields.length < MIN_FIELDS) return fail('A form needs at least ' + MIN_FIELDS + ' fields.', 'fields');
-  return { value: fields };
+  return { value: withConsent(fields) };
 }
 
 /* ---------- the event's original single form ---------- */
@@ -470,33 +550,78 @@ function legacyDefaultForm(ev) {
   var at = isoOf(ev && ev.createdAt) || '', by = (ev && typeof ev.createdBy === 'string' && ev.createdBy) || 'system';
   return {
     id: DEFAULT_FORM_ID, name: 'Register now', title: 'Register now', intro: '', purpose: 'register',
-    fields: hasLegacyFieldChoice(ev) ? legacyFields(ev) : defaultFields(),
+    fields: withConsent(hasLegacyFieldChoice(ev) ? legacyFields(ev) : defaultFields()),
     submitLabel: 'Register', successMessage: legacy.successMessage,
     countsAsRegistration: true, needsApproval: false, open: true, duplicates: legacy.duplicates,
     order: 0, template: 'register', rev: 0, createdAt: at, createdBy: by, updatedAt: at, updatedBy: by
   };
 }
 
-/* A stored "Register now" made for the event automatically and never edited since: it is the original form,
-   nobody ever saved it (rev 0) and its questions are still the ones it was made with, from before the seven
-   standard questions. tools/migrate-forms.js gives such a form the seven; a form anyone saved stays as it is. */
+/* The seven standard questions as they were until 21 Oct 2026: First name, Last name, Email first … */
+function oldDefaultFields() {
+  var std = defaultFields('Email'), byId = {};
+  std.forEach(function (f) { byId[f.id] = f; });
+  return OLD_DEFAULT_FIELD_IDS.map(function (id) { return byId[id]; });
+}
+/* A stored "Register now" made for the event automatically and never edited by anyone since: nobody ever saved
+   it (rev 0), or only tools/migrate-forms.js did (updatedBy "migration: …"), and its questions are still
+   exactly ones the platform gave it — the original form's (name, email and the optional phone / company /
+   designation), or the seven standard questions in their old order. The consent box is left out of the
+   comparison (it is the platform's, in every form). tools/migrate-forms.js gives such a form today's standard
+   questions; a form an organiser saved keeps its order. */
 function isUntouchedDefault(form, ev) {
-  if (!form || form.id !== DEFAULT_FORM_ID || Number(form.rev) !== 0 || hasLegacyFieldChoice(ev)) return false;
+  if (!form || form.id !== DEFAULT_FORM_ID || hasLegacyFieldChoice(ev)) return false;
+  var byMigration = /^migration\b/.test(String(form.updatedBy || ''));
+  if (Number(form.rev) !== 0 && !byMigration) return false;
   function sig(list) {
-    return JSON.stringify((list || []).map(function (f) { return [f.id, f.type, f.label, f.required === true, f.placeholder || '', f.help || '']; }));
+    return JSON.stringify((list || []).filter(function (f) { return !isConsentField(f); })
+      .map(function (f) { return [f.id, f.type, f.label, f.required === true, f.placeholder || '', f.help || '']; }));
   }
-  return sig(form.fields) === sig(legacyFields(ev));
+  var now = sig(form.fields);
+  return now === sig(legacyFields(ev)) || now === sig(oldDefaultFields());
+}
+/* the platform's own questions are already today's: nothing for a migration to do to their order */
+function hasCurrentDefaults(form) {
+  var ids = (form && form.fields || []).filter(function (f) { return !isConsentField(f); }).map(function (f) { return f.id; });
+  return JSON.stringify(ids) === JSON.stringify(DEFAULT_FIELD_IDS);
+}
+
+/* What tools/migrate-forms.js does to one stored form document (`data` as stored, under `id`) ->
+     { action: 'standard', patch }  an untouched "Register now" (isUntouchedDefault): today's seven standard
+                                    questions, then the consent box; its rev moves on and the migration signs it
+     { action: 'consent', patch, kept }  any other form not already ending with the consent box: the box stored
+                                    last, the form's own questions and their order as they are; only `fields`
+                                    is written (not rev or who changed it), so an open builder sees no conflict
+     { action: 'none', kept }       nothing to do
+   The stored fields are judged as stored, not as storedForm reads them (it adds the box). */
+var MIGRATION_SIGNATURE = 'migration: standard questions, email first, consent';
+function migrationPlan(id, data, ev, nowIso) {
+  data = isObj(data) ? data : {};
+  var raw = Array.isArray(data.fields) ? data.fields : [];
+  var f = storedForm(id, data);
+  if (id === DEFAULT_FORM_ID && isUntouchedDefault(f, ev)) {
+    return { action: 'standard', patch: { fields: withConsent(defaultFields()), rev: (Number(data.rev) || 0) + 1, updatedAt: nowIso, updatedBy: MIGRATION_SIGNATURE } };
+  }
+  var kept = hasCurrentDefaults(f) ? 'already has the standard questions' : f.rev ? 'edited by the organiser, kept' : 'kept (not the original questions)';
+  var boxes = raw.filter(function (x) { return isObj(x) && isConsentField(x); }), last = raw[raw.length - 1];
+  /* Firestore gives a map's keys back in its own order: compared key by key */
+  var box = consentField();
+  var isBox = isObj(last) && Object.keys(last).length === Object.keys(box).length && Object.keys(box).every(function (k) { return last[k] === box[k]; });
+  if (boxes.length === 1 && isBox) return { action: 'none', kept: kept };
+  return { action: 'consent', kept: kept, patch: { fields: withConsent(raw.filter(function (x) { return isObj(x) && !isConsentField(x); })) } };
 }
 
 /* A stored form document as every reader sees it: defaults filled in, never a missing list. */
 function storedForm(id, d) {
   d = isObj(d) ? d : {};
-  var fields = (Array.isArray(d.fields) ? d.fields : []).filter(isObj).map(function (f) {
+  /* the consent box is the platform's: put back last whatever was stored (a form saved before it existed has
+     none; the migration stores it) */
+  var fields = withConsent((Array.isArray(d.fields) ? d.fields : []).filter(isObj).filter(function (f) { return !isConsentField(f); }).map(function (f) {
     var out = { id: String(f.id || ''), type: FIELD_TYPES.indexOf(f.type) !== -1 ? f.type : 'text', label: String(f.label || ''),
       required: f.required === true, placeholder: String(f.placeholder || ''), help: String(f.help || '') };
     if (OPTION_TYPES.indexOf(out.type) !== -1) out.options = (Array.isArray(f.options) ? f.options : []).filter(function (o) { return typeof o === 'string'; });
     return out;
-  });
+  }));
   return {
     id: id, name: String(d.name || id), title: String(d.title || ''), intro: String(d.intro || ''),
     purpose: PURPOSES.indexOf(d.purpose) !== -1 ? d.purpose : 'custom', fields: fields,
@@ -520,19 +645,27 @@ function resolveDefaultFormId(ev, forms) {
 
 /* ---------- what a browser is told ---------- */
 
+/* The consent box as a page is told it: { text, links: [{ label, href }], version } */
+function publicConsent(consent) {
+  var c = isObj(consent) && typeof consent.text === 'string' ? consent : consentFor('');
+  return { text: c.text, links: (c.links || []).map(function (l) { return { label: l.label, href: l.href }; }), version: c.version };
+}
 /* One form for a visitor's page: an allow-list, so nothing an organiser keeps for themselves (the success
-   message comes back with the registration; approval, duplicates, order and who changed it never leave). */
-function publicForm(form, ev) {
+   message comes back with the registration; approval, duplicates, order and who changed it never leave).
+   Its last field is the consent box ({ id: 'consent', type: 'consent' }), whose wording and links are
+   `consent` (consentFor: the event's portal's pages). */
+function publicForm(form, ev, consent) {
   var eventOpen = legacyRegistration(ev || {}).open;
   return {
     id: form.id, name: form.name, title: form.title || '', intro: form.intro || '', purpose: form.purpose,
-    fields: form.fields.map(function (f) {
+    fields: withConsent(form.fields).map(function (f) {
       var out = { id: f.id, type: f.type, label: f.label, required: !!f.required, placeholder: f.placeholder || '', help: f.help || '' };
       if (OPTION_TYPES.indexOf(f.type) !== -1) out.options = (f.options || []).slice();
       if (f.type === 'country') out.options = COUNTRIES.slice();
       return out;
     }),
-    submitLabel: form.submitLabel, open: form.open !== false && eventOpen, counts: form.countsAsRegistration === true, rev: form.rev || 0
+    submitLabel: form.submitLabel, open: form.open !== false && eventOpen, counts: form.countsAsRegistration === true, rev: form.rev || 0,
+    consent: publicConsent(consent)
   };
 }
 function counterNum(v) { var n = Number(v); return isFinite(n) && n > 0 ? Math.floor(n) : 0; }
@@ -541,17 +674,19 @@ function isFull(ev) {
   var legacy = legacyRegistration(ev || {}), c = ev && isObj(ev.counters) ? ev.counters : {};
   return legacy.capacity != null && Number(c.audienceV) >= 1 && counterNum(c.confirmed) >= legacy.capacity;
 }
-/* GET /api/public/forms, and the #rv-forms block publishing writes into a page */
-function publicFormsPayload(eventId, ev, forms) {
+/* GET /api/public/forms, and the #rv-forms block publishing writes into a page. consent: consentFor(the
+   event's portal) — the same box on every form of the event, so also said once for the whole page. */
+function publicFormsPayload(eventId, ev, forms, consent) {
   return {
     v: 1, eventId: eventId, open: legacyRegistration(ev || {}).open, defaultFormId: resolveDefaultFormId(ev, forms),
-    waitlist: isFull(ev), forms: forms.map(function (f) { return publicForm(f, ev); })
+    waitlist: isFull(ev), consent: publicConsent(consent), forms: forms.map(function (f) { return publicForm(f, ev, consent); })
   };
 }
 
 /* ---------- a visitor's answers ---------- */
 
 function requiredMessage(f) {
+  if (isConsentField(f)) return CONSENT_MESSAGE;
   if (f.id === 'name') return 'Please enter your name.';
   if (f.id === 'first_name') return 'Please enter your first name.';
   if (f.id === 'last_name') return 'Please enter your last name.';
@@ -640,6 +775,9 @@ function cleanAnswer(f, raw) {
     case 'checkbox':
       var t = isTicked(raw);
       return { value: t, empty: !t };
+    case 'consent':
+      /* only a real yes: the page sends true once the box is ticked */
+      return { value: raw === true, empty: raw !== true };
     default:   // text
       s = line(raw, MAPPED_MAX[f.id] || 200);
       return { value: s, empty: !s };
@@ -656,7 +794,11 @@ function cleanAnswer(f, raw) {
      location       "Noida, Uttar Pradesh, India" as chosen, or as typed; locationParts { city, state, country,
                     countryCode, verified } — verified: it is one of the places the field suggests
    answers / answerLabels: every other field that was answered, with its label at the time; errors:
-   { fieldId: message } in the form's field order. Keys the form does not have are dropped. */
+   { fieldId: message } in the form's field order. Keys the form does not have are dropped.
+   consent: whether the visitor ticked the form's consent box — body.consent === true (also read from
+   answers.consent); without it errors.consent is CONSENT_MESSAGE. Every form a reader gets (storedForm,
+   legacyDefaultForm) ends with the box, and POST /api/register checks with withConsent besides. The
+   registration's consent record is the route's to make (consentRecord: it knows the time and the wording). */
 function validateAnswers(form, body) {
   body = isObj(body) ? body : {};
   var src = isObj(body.answers) ? body.answers : {};
@@ -665,8 +807,13 @@ function validateAnswers(form, body) {
   var reg = { name: '', firstName: '', lastName: '', email: '', phone: '', phoneCountry: '', company: '', designation: '', city: '',
     location: '', source: line(body.source, 60).toLowerCase() || 'website',
     utm: { source: line(utm.source, 80), medium: line(utm.medium, 80), campaign: line(utm.campaign, 120) } };
-  var answers = {}, answerLabels = {}, errors = {};
+  var answers = {}, answerLabels = {}, errors = {}, consent = false;
   (form.fields || []).forEach(function (f) {
+    if (isConsentField(f)) {
+      consent = body.consent === true || src[CONSENT_ID] === true;
+      if (!consent) errors[CONSENT_ID] = CONSENT_MESSAGE;
+      return;
+    }
     var c = cleanAnswer(f, has(src, f.id) ? src[f.id] : undefined);
     if (c.error) { errors[f.id] = c.error; return; }
     if (c.empty && f.required) { errors[f.id] = requiredMessage(f); return; }
@@ -689,7 +836,7 @@ function validateAnswers(form, body) {
      its one name */
   if (!reg.name) reg.name = (reg.firstName + ' ' + reg.lastName).trim().slice(0, MAPPED_MAX.name);
   var big = Buffer.byteLength(JSON.stringify(answers), 'utf8') > MAX_ANSWERS_BYTES;
-  return { reg: reg, answers: answers, answerLabels: answerLabels, errors: errors, tooLong: big };
+  return { reg: reg, answers: answers, answerLabels: answerLabels, errors: errors, tooLong: big, consent: consent };
 }
 
 /* The first problem in field order -> { message, fields } (the 400's error and its per-field map), or null. */
@@ -935,8 +1082,10 @@ function cleanAiFormOps(parsed, payload) {
 module.exports = {
   FIELD_TYPES, FIELD_TYPE_LABELS, OPTION_TYPES, PURPOSES, MAPPED_FIELDS, MAPPED_TYPES, MAPPED_KEY, LOCKED_FIELDS, COUNTRIES,
   FORM_TEMPLATES, TEMPLATE_BY_ID, FIELD_PRESETS, LIMITS, FORM_ID_RE, FIELD_ID_RE, DEFAULT_FORM_ID, FORMS_RUNTIME_V, EMAIL_RE,
-  EMAIL_MESSAGE, DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, AI_LIMITS, DEFAULT_FIELD_IDS,
-  defaultFields, legacyFields, isUntouchedDefault, requiredMessage,
+  EMAIL_MESSAGE, DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, AI_LIMITS, DEFAULT_FIELD_IDS, OLD_DEFAULT_FIELD_IDS, DEFAULT_EMAIL_LABEL,
+  CONSENT_ID, CONSENT_TYPE, CONSENT_TEXT, CONSENT_MESSAGE, CONSENT_FALLBACK_PORTAL,
+  consentFor, consentField, isConsentField, withConsent, consentRecord, portalOfSources, publicConsent, hasCurrentDefaults, oldDefaultFields,
+  defaultFields, legacyFields, isUntouchedDefault, migrationPlan, requiredMessage,
   slugify, uniqueId, isReservedId, cleanFormInput, legacyRegistration, legacyDefaultForm, storedForm, byOrder, resolveDefaultFormId,
   publicForm, publicFormsPayload, isFull, validateAnswers, cleanAnswer, firstFieldError, regDocId, planStatus, statusLabel,
   formUsage, csvEscape, cleanAiForm, cleanAiFormOps, line, multiline, isoOf

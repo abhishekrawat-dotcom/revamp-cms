@@ -78,6 +78,23 @@ var total = { forms: {} };
 });
 ok(total.submissions === 4 && total.registrations === 3 && total.confirmed === 1 && total.pending === 1 && total.waitlist === 1 && total.forms.register.n === 2, 'four responses: four submissions, three registrations', JSON.stringify(total));
 
+/* ---------- the consent box: what Reporting and the export show ---------- */
+var given = { given: true, at: '2026-10-21T08:35:00.000Z', version: 'ea3ab2997e9e', text: 'I understand … (Privacy Policy: https://…)' };
+var pr = A.publicRegistration('r1', { email: 'a@b.in', consent: given });
+ok(eq(pr.consent, { given: true, at: '2026-10-21T08:35:00.000Z', version: 'ea3ab2997e9e' }), 'Reporting gets that consent was given, when, and which wording', JSON.stringify(pr.consent));
+ok(A.publicRegistration('r2', { email: 'a@b.in' }).consent === null && A.publicRegistration('r3', { consent: { given: false } }).consent === null, 'a response from before the box: no consent recorded');
+ok(A.consentCell(given) === 'Yes — 2026-10-21 14:05', 'the export\'s Consent column: Yes and the time, in India', A.consentCell(given));
+ok(A.consentCell(null) === '' && A.consentCell({ given: 'yes' }) === '' && A.consentCell({ given: true }) === 'Yes', 'nothing recorded: empty; no time: Yes');
+var stored = F.consentRecord(F.consentFor(''), '2026-10-21T08:35:00.000Z');
+ok(stored.given === true && stored.version === F.consentFor('').version && stored.text.indexOf(F.CONSENT_TEXT) === 0, 'the stored record: given, the version and the sentence as shown');
+/* POST /api/register always asks for it, whatever the form says (the route adds it with withConsent) */
+var src = require('fs').readFileSync(require('path').join(__dirname, 'api-audience.js'), 'utf8');
+ok(/form = Object\.assign\(\{\}, form, \{ fields: forms\.withConsent\(form\.fields\) \}\);\s*var read = forms\.validateAnswers\(form, body\);/.test(src), 'the register route checks every response for the consent box');
+ok(/consent: isObj\(p\.it\.reg\.consent\) \? Object\.assign\(\{\}, p\.it\.reg\.consent, \{ at: nowIso \}\)/.test(src), 'the stored response records it, timed when it is stored');
+var bare = F.validateAnswers({ fields: F.withConsent([F.defaultFields()[0]]) }, { answers: { email: 'a@b.in' } });
+var firstErr = F.firstFieldError({ fields: F.withConsent([F.defaultFields()[0]]) }, bare.errors);
+ok(firstErr && firstErr.message === 'Please tick the box to agree before you submit.' && eq(Object.keys(firstErr.fields), ['consent']), 'a response without it is refused with the owner\'s sentence', JSON.stringify(firstErr));
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });
