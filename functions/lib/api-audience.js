@@ -59,7 +59,7 @@ const {
   sendJson, parseJsonBody, parseJsonObject, readBody, requireAdmin, adminFromRequest, sendPublicJson,
   sendPublicNoContent, clientIp, rateLimit, isEventId, isEmail, CONTENT_STATUSES, str
 } = require('./http');
-const { logActivity, listActivity, actorOf } = require('./activity');
+const { logActivity, listActivity, actorOf, maskEmail } = require('./activity');
 const forms = require('./forms');
 const phone = require('./phone');
 const pictures = require('./pictures');
@@ -1417,7 +1417,7 @@ function handleRegistrationUpdate(req, res) {
             });
           }).then(function (out) {
             var logged = out.changes.length
-              ? logActivity(fb, eventId, decoded, 'registration-updated', out.name + ' — ' + out.changes.join(', '))
+              ? logActivity(fb, eventId, decoded, 'registration-updated', maskEmail(out.name) + ' — ' + out.changes.join(', '), { area: 'registrations' })
               : Promise.resolve();
             return logged.then(function () { sendJson(res, 200, { ok: true, registration: out.registration }); });
           }).catch(function (err) { answerError(res, sendJson, err, 'update this registration'); });
@@ -1469,7 +1469,7 @@ function handleRegistrationDelete(req, res) {
           });
         });
       }).then(function (name) {
-        return logActivity(fb, eventId, decoded, 'registration-deleted', name).then(function () { sendJson(res, 200, { ok: true }); });
+        return logActivity(fb, eventId, decoded, 'registration-deleted', maskEmail(name), { area: 'registrations' }).then(function () { sendJson(res, 200, { ok: true }); });
       }).catch(function (err) { answerError(res, sendJson, err, 'delete this registration'); });
     });
   });

@@ -288,6 +288,8 @@ function sentences(html) {
     t.set(ref, update, { merge: true });
   });
   console.log('written: events/' + ID + ' designPlan + generatedSections, and its previous-edition source (look, keyVisual).');
+  await require(path.join(lib, 'activity.js')).logActivity(fb, ID, 'platform', 'repaired',
+    'design repair (tools/repair-edition-look.js): the previous edition’s look and the venue’s city applied; new pictures: ' + (Object.keys(swaps).length || 'none') + (NEW_DRAFT ? ' — opened in the editor next' : ''), { area: 'design' });
   if (NEW_DRAFT) {
     const last = await ref.collection('drafts').orderBy('generatedAt', 'desc').limit(1).get();
     const was = last.empty ? {} : last.docs[0].data();

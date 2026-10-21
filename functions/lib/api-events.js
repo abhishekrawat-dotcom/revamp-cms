@@ -172,6 +172,8 @@ function handleSlugAvailable(req, res) {
    Storage object is not a Firestore document, so nothing appears in any list. A deleted event is refused.
    ===================================================================================================== */
 var UPLOAD_KINDS = ['speakers', 'partners', 'gallery', 'logo', 'banner', 'media', 'brief'];
+/* how an upload reads in the activity log */
+var UPLOAD_LABELS = { speakers: 'Speaker picture', partners: 'Partner logo', gallery: 'Gallery picture', logo: 'Logo', banner: 'Banner picture', media: 'Picture', brief: 'Brief document' };
 var MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 /* 8 MB of image is ~10.7 MB of base64; the rest is the JSON around it. A larger body is cut off by
    readBody with a 413 before it is buffered. */
@@ -280,9 +282,10 @@ function handleUpload(req, res) {
         }
 
         var storagePath = 'events/' + eventId + '/' + kind + '/' + storedName(fileName, IMAGE_TYPES[contentType]);
-        var file = fb.bucket.file(storagePath);
+        var file = fb.bucket.file(storagePath), live = false;
         eventRef(fb, eventId).get().then(function (snap) {
           if (snap.exists && (snap.data() || {}).deletedAt) throw reject(404, 'This event has been deleted. Restore it before adding images.');
+          live = snap.exists && !!(snap.data() || {}).createdAt;   // the wizard uploads before the event exists: not logged then
           /* The name is unique for ever, so the object never changes: browsers and Google's edge may keep
              it for a year without asking again. (Replacing a picture means a new upload and a new URL.) */
           return file.save(buffer, {
@@ -307,6 +310,8 @@ function handleUpload(req, res) {
           var answer = { url: publicUrl(fb, storagePath), path: storagePath, contentType: contentType, size: buffer.length };
           if (made) { answer.width = made.width; answer.height = made.height; }
           sendJson(res, 200, answer);
+          if (live) logActivity(fb, eventId, decoded, 'file-uploaded', (UPLOAD_LABELS[kind] || kind) + ' uploaded: ' + fileName.slice(0, 120),
+            { area: kind === 'logo' || kind === 'banner' ? 'design' : 'content' });
         }).catch(function (err) { fail(res, 'upload', err, 'The image could not be stored. Please try again.'); });
       });
     }, MAX_UPLOAD_BODY, 'That file is too large. Images can be up to 8 MB.');

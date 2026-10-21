@@ -63,7 +63,10 @@ function main() {
               var steps = isPublic ? file.makePrivate() : Promise.resolve();
               return steps.then(function () {
                 return d.ref.update({ publishedPath: '/e/' + id, publishedUrl: FieldValue.delete() });
-              }).then(function () { console.log('  done: page private, publishedPath /e/' + id); });
+              }).then(function () {
+                console.log('  done: page private, publishedPath /e/' + id);
+                return require('./activity').logActivity(fb, id, 'platform', 'repaired', 'address repair (functions/lib/ops-republish.js): the old storage link closed; the site is served at /e/' + id + ' only', { area: 'publishing' });
+              });
             });
           }).catch(function (err) { failed.push(id + ' — ' + (err && err.message)); });
         });
