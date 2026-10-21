@@ -53,6 +53,9 @@ var PROFILES = {
   'logo-unit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 6000 },
   /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
   'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
+  /* the event's two- or three-sentence description, written again for an event made before the plan wrote it
+     (tools/repair-description.js, lib/event-description.js) */
+  'event-description': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 4000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 

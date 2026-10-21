@@ -137,6 +137,7 @@ const logoUnit = require('./logo-unit');
 const pngLite = require('./png-lite');
 const svgYear = require('./svg-year');
 const ownerBrief = require('./owner-brief');
+const eventDescription = require('./event-description');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
 const prevSections = require('./prev-sections');
@@ -977,7 +978,10 @@ function handleExtractBrief(req, res) {
 
         var now = new Date().toISOString();
         var eventRef = fb.db.collection('events').doc(eventId);
-        return watch.merge(Object.assign({}, eventMeta, { updatedAt: now }))
+        /* the event's facts as the form gave them — never its description: what the owner typed is the brief
+           (kept with the brief below), and the description is written from it at design time
+           (event-description.js) */
+        return watch.merge(Object.assign({}, eventDescription.storedFacts(eventMeta), { updatedAt: now }))
           .then(function () { return eventRef.collection('briefs').add({
             sourceFileName: fileName, mimeType: mimeType, storagePath: storagePath,
             extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now
@@ -1593,6 +1597,8 @@ var DESIGN_PLAN_SCHEMA = {
     /* called "evidence", not "reasoning": Claude refuses an answer format that asks for a field of that
        name (it reads it as a request for the model's own reasoning) */
     evidence: { type: 'STRING', description: 'A note for the team, never shown on the site: the specific evidence (from the brief, the reference pages, the event\'s facts) behind each section and each design choice.' },
+    /* written to events/<id>.description when that is empty or the owner's raw brief (event-description.js) */
+    eventDescription: { type: 'STRING', description: eventDescription.RULE },
     design: {
       type: 'OBJECT',
       properties: {
@@ -1644,7 +1650,7 @@ var DESIGN_PLAN_SCHEMA = {
       }
     }
   },
-  required: ['evidence', 'design', 'sections']
+  required: ['evidence', 'eventDescription', 'design', 'sections']
 };
 
 /* What a generated site is modelled on. The event's own previous edition comes first (a returning visitor
@@ -1822,7 +1828,8 @@ function buildDesignPlanPrompt(payload) {
     'Task — produce:',
     '- evidence: a note for the team, never shown on the site. Name the evidence behind each section and each design choice' + (ref.basis ? ', and say what you kept from the reference and what you changed.' : '.'),
     '- design: mood, mode, the six colours, the two fonts (real Google Fonts family names), layout, imageStyle, heroImage.',
-    '- sections: the middle sections, each with id, kind, purpose, layout and image.'
+    '- sections: the middle sections, each with id, kind, purpose, layout and image.',
+    '- eventDescription: the event\'s own short description (its listing, its search result, its promotions). ' + eventDescription.RULE
   );
   return lines.filter(function (l) { return l != null; }).join('\n');
 }
@@ -3126,10 +3133,15 @@ function handlePlanStructure(req, res) {
               ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
               : { type: 'none', artDirection: artDirection.id }
           };
-          return watch.merge({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null })
+          /* the event's description, written from the brief and the previous edition — only where it is empty or
+             still the owner's raw brief; one the owner wrote by hand is kept (event-description.js) */
+          var described = eventDescription.patch(r.parsed && r.parsed.eventDescription, stored, (payload.eventMeta || {}).description);
+          return watch.merge(Object.assign({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null }, described || {}))
             .then(function () {
-              sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan });
+              sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan, description: described ? described.description : undefined });
               if (watch.live) logActivity(fb, eventId, req.user, 'site-designed', 'AI made a new site design — ' + sections.length + ' sections', { area: 'design' });
+              if (watch.live && described) logActivity(fb, eventId, req.user, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
+                fields: [{ field: 'description', before: String(stored.description || '').slice(0, 600), after: described.description }] });
             });
         });
       });
