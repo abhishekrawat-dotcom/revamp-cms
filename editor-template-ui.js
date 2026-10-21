@@ -4352,15 +4352,22 @@
   /* made automatically: a unit the server made (generated/…-logo-unit), or an earlier logo the owner
      uploaded in Basics (logo/…) that was used as uploaded — a picture put in with Replace image is media/… */
   var AUTO_UNIT = /\/events\/[^\/]+\/(generated\/\d+-logo-unit\.(png|svg|jpe?g|webp)|logo\/[^\/?#]+)(\?|$)/i;
+  /* The previous edition's lock-up made for the design after the site was saved (tools/repair-logo-unit.js:
+     ETCIO Annual Conclave 2027 was saved with its name drawn, the 2026 lock-up having been passed over) is
+     put in the same way — only where the hero still shows a unit made automatically, never over a picture
+     the owner chose. */
   function ownerLogoOffer() {
     var design = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
-    if (!canvas || !canvas.doc || !design || design.logoUnitSource !== 'owner' || !/^https:\/\//i.test(String(design.logoUnitUrl || ''))) return;
+    var source = design ? String(design.logoUnitSource || '') : '';
+    if (!canvas || !canvas.doc || !design || (source !== 'owner' && source !== 'previous-edition') || !/^https:\/\//i.test(String(design.logoUnitUrl || ''))) return;
     var unit = canvas.doc.querySelector('[data-rv-logo-unit]');
     if (!unit) return;
     var img = unit.querySelector('img.rv-lu-img');
     var shown = img ? String(img.getAttribute('src') || '') : '';
     if (shown === design.logoUnitUrl) return;
     var automatic = img ? AUTO_UNIT.test(shown) : !!unit.querySelector('.rv-lu-name');
+    var previous = source === 'previous-edition';
+    if (previous && !automatic) return;
     var key = 'rv.ownerLogoOffer:' + eventId + ':' + design.logoUnitUrl;
     /* a logo drawn for the other ground than this hero's would vanish on it: it is only offered, and said so */
     var hero = unit.closest('.hero-root');
@@ -4414,11 +4421,13 @@
       putIn();
       showNotice('owner-logo', {
         kind: 'info', dismissible: true,
-        text: 'The hero now shows the event logo you uploaded, in place of the one made automatically. ' + (about ? about + ' ' : '') + 'Save to keep it.',
+        text: (previous ? 'The hero now shows the previous edition\'s logo, in place of the event\'s name drawn for it. '
+          : 'The hero now shows the event logo you uploaded, in place of the one made automatically. ') + (about ? about + ' ' : '') + 'Save to keep it.',
         actions: [{ label: 'Undo', onClick: function () { takeBack(); keepOld(); noticeGone(); } }]
       });
       return;
     }
+    if (previous) return;               // drawn for the other ground: left to the owner (Replace image)
     showNotice('owner-logo', {
       kind: 'info', dismissible: true,
       text: 'The event has a new logo. ' + (about ? about + ' ' : '') +

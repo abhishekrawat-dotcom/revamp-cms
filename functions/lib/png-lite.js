@@ -20,8 +20,8 @@
    edgeColour(img, box) -> [r, g, b] the colour around a box;  hasTransparency(img) -> boolean
    crop(img, box) -> that part as its own picture;  inkProfile(img, 'x'|'y', background) -> lettering per column / row
    inkRuns(profile) -> [{ from, to }] the runs of lettering in a profile, with empty lines between them
-   inkCount(img, box, background, within?) -> how many pixels of lettering a box holds (only those inside one
-                   of the `within` boxes, when given)
+   inkCount(img, box, background, within?, without?) -> how many pixels of lettering a box holds (only those
+                   inside one of the `within` boxes, when given, and none inside one of the `without` boxes)
    No network, no Firebase: see png-lite.test.js. */
 
 const zlib = require('zlib');
@@ -271,13 +271,15 @@ function inkRuns(profile) {
 
 /* How many pixels of lettering a box holds — all of them, or (with `within`, a list of boxes) only those
    that also lie inside at least one of those boxes. */
-function inkCount(img, box, background, within) {
+function inkCount(img, box, background, within, without) {
   var b = clampBox(img, box), d = img.data, n = 0;
   var areas = within ? within.map(function (w) { return clampBox(img, w); }) : null;
+  var outside = without && without.length ? without.map(function (w) { return clampBox(img, w); }) : null;
   for (var y = b.y0; y < b.y1; y++) {
     for (var x = b.x0; x < b.x1; x++) {
       if (!isInk(d, (y * img.width + x) * 4, background)) continue;
       if (areas && !areas.some(function (a) { return x >= a.x0 && x < a.x1 && y >= a.y0 && y < a.y1; })) continue;
+      if (outside && outside.some(function (a) { return x >= a.x0 && x < a.x1 && y >= a.y0 && y < a.y1; })) continue;
       n++;
     }
   }

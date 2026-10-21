@@ -148,6 +148,17 @@
     var u = safeUrl(url);
     return u ? '<img src="' + esc(u) + '" alt=""' + (attrs ? ' ' + attrs : '') + '>' : '';
   }
+  /* What the site's generator had to say about the logo at the top of the AI-designed hero (functions/lib/
+     api.js, buildLogoUnit): the previous edition's logo it could not use and why, a sponsor it cropped out,
+     a year it changed. The editor says the same when the site is opened; here it is said where the logo is
+     uploaded, so that it is never only in the editor. */
+  function logoUnitCallout(e){
+    var design = e && e.designPlan && e.designPlan.design;
+    var note = design ? String(design.logoUnitNote || '').replace(/\s+/g, ' ').trim() : '';
+    if (!note) return '';
+    return '<div class="callout" style="margin-top:10px" role="note" id="b-logo-note">' + svg(IC.info, 17) +
+      '<div><strong>The logo at the top of the site</strong><span>' + esc(note) + '</span></div></div>';
+  }
 
   /* ============================================================
      WHAT A FIELD MAY HOLD
@@ -1003,7 +1014,8 @@
           '<span class="lt" id="b-logo-state">' + (e.logoUrl ? 'Opens the site’s hero.' : 'No logo yet — the site shows the event’s name in its place.') + '</span>' +
           '<button class="btn btn-secondary btn-sm" type="button" id="b-logo-btn">' + (e.logoUrl ? 'Replace' : 'Upload') + '</button>' +
         '</div>' +
-        '<p class="hint">A PNG, WEBP or SVG, ideally on a transparent background. It is read when you upload it: a year from another edition is changed to this edition’s, written the same way, and a sponsor’s mark from another edition is cropped out. Nothing else in it is changed, boxed or redrawn.</p></div>';
+        '<p class="hint">A PNG, WEBP or SVG, ideally on a transparent background. It is read when you upload it: a year from another edition is changed to this edition’s, written the same way, and a sponsor’s mark from another edition is cropped out. Nothing else in it is changed, boxed or redrawn.</p>' +
+        logoUnitCallout(e) + '</div>';
 
     var when =
       '<div class="field c6">' +

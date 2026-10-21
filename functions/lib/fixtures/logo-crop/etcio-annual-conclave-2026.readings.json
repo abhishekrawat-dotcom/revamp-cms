@@ -1,0 +1,169 @@
+{
+ "first": [
+  {
+   "allText": "kyndryl PRESENTS ET CIO annual LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION CO-PRESENTED BY servicenow POWERED BY newgen workday CO-POWERED BY Redis Red Hat IN ASSOCIATION WITH IBM TrendAI AI Fearlessly",
+   "year": "",
+   "yearFull": "",
+   "yearBox": [],
+   "yearFont": "sans-serif",
+   "yearWeight": "regular",
+   "tagline": "LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION",
+   "extras": "kyndryl PRESENTS CO-PRESENTED BY servicenow POWERED BY newgen workday CO-POWERED BY Redis Red Hat IN ASSOCIATION WITH IBM TrendAI AI Fearlessly",
+   "extraBoxes": [
+    {
+     "text": "kyndryl PRESENTS",
+     "box": [
+      0,
+      296,
+      126,
+      703
+     ]
+    },
+    {
+     "text": "CO-PRESENTED BY servicenow",
+     "box": [
+      453,
+      219,
+      552,
+      782
+     ]
+    },
+    {
+     "text": "POWERED BY newgen workday",
+     "box": [
+      590,
+      69,
+      734,
+      933
+     ]
+    },
+    {
+     "text": "CO-POWERED BY Redis Red Hat",
+     "box": [
+      757,
+      131,
+      862,
+      868
+     ]
+    },
+    {
+     "text": "IN ASSOCIATION WITH IBM TrendAI AI Fearlessly",
+     "box": [
+      898,
+      199,
+      1000,
+      801
+     ]
+    }
+   ],
+   "ownBox": [
+    111,
+    0,
+    429,
+    1000
+   ]
+  },
+  {
+   "allText": "kyndryl PRESENTS ET CIO annual LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION CO-PRESENTED BY servicenow POWERED BY newgen workday CO-POWERED BY Redis Red Hat IN ASSOCIATION WITH IBM TrendAI AI Fearlessly",
+   "year": "",
+   "yearFull": "",
+   "yearBox": [],
+   "yearFont": "sans-serif",
+   "yearWeight": "regular",
+   "tagline": "LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION",
+   "extras": "kyndryl PRESENTS CO-PRESENTED BY servicenow POWERED BY newgen workday CO-POWERED BY Redis Red Hat IN ASSOCIATION WITH IBM TrendAI AI Fearlessly",
+   "extraBoxes": [
+    {
+     "text": "kyndryl PRESENTS",
+     "box": [
+      0,
+      296,
+      128,
+      705
+     ]
+    },
+    {
+     "text": "CO-PRESENTED BY servicenow",
+     "box": [
+      453,
+      219,
+      552,
+      782
+     ]
+    },
+    {
+     "text": "POWERED BY newgen workday",
+     "box": [
+      589,
+      65,
+      734,
+      935
+     ]
+    },
+    {
+     "text": "CO-POWERED BY Redis Red Hat",
+     "box": [
+      757,
+      131,
+      862,
+      868
+     ]
+    },
+    {
+     "text": "IN ASSOCIATION WITH IBM TrendAI AI Fearlessly",
+     "box": [
+      898,
+      199,
+      1000,
+      799
+     ]
+    }
+   ],
+   "ownBox": [
+    110,
+    0,
+    423,
+    1000
+   ]
+  }
+ ],
+ "second": {
+  "allText": "ET CIO annual LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION",
+  "year": "",
+  "yearFull": "",
+  "yearBox": [],
+  "yearFont": "sans-serif",
+  "yearWeight": "regular",
+  "tagline": "LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION",
+  "extras": "",
+  "extraBoxes": [],
+  "ownBox": []
+ },
+ "secondRun1": {
+  "allText": "PRESENTS ET CIO annual LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION",
+  "year": "",
+  "yearFull": "",
+  "yearBox": [],
+  "yearFont": "sans-serif",
+  "yearWeight": "regular",
+  "tagline": "LEAD THE SHIFT : FROM RESILIENCE TO REINVENTION",
+  "extras": "PRESENTS",
+  "extraBoxes": [
+   {
+    "text": "PRESENTS",
+    "box": [
+     38,
+     414,
+     82,
+     587
+    ]
+   }
+  ],
+  "ownBox": [
+   44,
+   0,
+   960,
+   1000
+  ]
+ }
+}
