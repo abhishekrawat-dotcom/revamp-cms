@@ -708,7 +708,7 @@
     '.rv-form-modal-body{padding:22px 40px 32px}',
     '@media (max-width:600px){',
     '.rv-form-modal{padding:0;align-items:stretch}',
-    '.rv-form-modal-panel{width:100%;max-height:none;height:100vh;height:100dvh;border-radius:0;box-shadow:none;transform:translateY(24px)}',
+    '.rv-form-modal-panel{width:100%;max-height:none;height:100vh;height:100dvh;border-radius:0;box-shadow:none;transform:translateY(24px);scroll-padding-top:var(--rvf-head-h,140px);scroll-padding-bottom:var(--rvf-bar-h,104px)}',
     '.rv-form-modal-head{position:sticky;top:0;z-index:3;padding:18px 64px 14px 20px;box-shadow:0 1px 0 var(--rvf-line)}',
     '.rv-form-modal-title{font-size:19px}',
     '.rv-form-modal-title::after{margin-top:10px}',
@@ -805,6 +805,22 @@
     });
   }
   function focusNode(n) { if (!n) return; try { n.focus({ preventScroll: false }); } catch (e) { try { n.focus(); } catch (e2) { /* not focusable */ } } }
+  /* A field focused because it is wrong (a failed submit): on a phone the pop-up's title and Submit bar stick to
+     its top and bottom, and the browser may scroll the field under either. The field (its label, box and
+     message) is brought clear of both. */
+  function keepClear(field) {
+    try {
+      var panel = field && field.closest && field.closest('.rv-form-modal-panel');
+      if (!panel) return;
+      var win = panel.ownerDocument.defaultView, pr = panel.getBoundingClientRect(), top = pr.top, bottom = pr.bottom, gap = 12;
+      var head = panel.querySelector('.rv-form-modal-head'), bar = panel.querySelector('.rv-form-form > .rv-form-actions');
+      if (head && win.getComputedStyle(head).position === 'sticky') top = Math.max(top, head.getBoundingClientRect().bottom);
+      if (bar && win.getComputedStyle(bar).position === 'sticky') bottom = Math.min(bottom, bar.getBoundingClientRect().top);
+      var r = field.getBoundingClientRect();
+      if (r.top < top + gap) panel.scrollTop -= (top + gap - r.top);
+      else if (r.bottom > bottom - gap) panel.scrollTop += Math.min(r.bottom - (bottom - gap), r.top - (top + gap));
+    } catch (e) { /* no layout: as the browser scrolled it */ }
+  }
   function reducedMotion(win) { try { return !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } }
 
   /* The form is a white card on every site, light or dark, so its words never depend on the section around
@@ -1554,6 +1570,7 @@
       Object.keys(map).forEach(function (k) { if (map[k] && !partFor(k)) loose.push(str(map[k])); });
       if (alertEl) alertEl.textContent = loose.join(' ');
     }
+    function focusPart(p) { focusNode(p.focus); keepClear(p.wrap || p.focus); }
     function firstInvalid(map) {
       for (var i = 0; i < parts.length; i++) if (map[parts[i].key]) return parts[i];
       return null;
@@ -1635,14 +1652,14 @@
           if (unknown.length && typeof opts.onStale === 'function') { opts.onStale(values(), b.fields); return; }
           setErrors(b.fields);
           var bad = firstInvalid(b.fields);
-          if (bad) focusNode(bad.focus);
+          if (bad) focusPart(bad);
           return;
         }
         if (r.status === 409 && (b.code === 'duplicate' || (b.fields && b.fields.email))) {
           var m = {};
           m[partFor('email') ? 'email' : '_'] = (b.fields && b.fields.email) || b.error || 'This email has already been used for this form.';
           setErrors(m);
-          if (partFor('email')) focusNode(partFor('email').focus);
+          if (partFor('email')) focusPart(partFor('email'));
           return;
         }
         if (r.status >= 500 || !r.status) { formError(MSG.offline); return; }
@@ -1662,7 +1679,7 @@
       setErrors(errs);
       if (noticeEl) noticeEl.hidden = true;
       var bad = firstInvalid(errs);
-      if (bad) { focusNode(bad.focus); return; }
+      if (bad) { focusPart(bad); return; }
       if (mode === 'ai-view') {
         if (noticeEl) { noticeEl.hidden = false; noticeEl.textContent = MSG.aiView; }
         return;

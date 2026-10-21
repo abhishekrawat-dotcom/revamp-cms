@@ -309,6 +309,10 @@ check('consent: sent as the body\'s consent: true', /consent: true/.test(SRC));
 check('consent: the policy links open in a new tab, without the opener', /a\.target = '_blank'/.test(SRC) && /noopener/.test(SRC));
 check('the default form\'s title is the design\'s sentence', SRC.indexOf("'Please take a moment to provide us with your Information'") !== -1);
 check('styles are in px (a fixed template\'s root font size is 10px)', !/\d(?:\.\d+)?rem\b/.test(SRC.slice(SRC.indexOf('var CSS = ['), SRC.indexOf("].join('\\n')"))));
+/* on a phone the pop-up's Submit bar and title stick: a field focused after a failed submit (the consent box,
+   last) must scroll clear of them, not sit under the Submit bar (WCAG 2.4.11) */
+check('phone pop-up keeps a focused field clear of its sticky title and Submit bar', /\.rv-form-modal-panel\{[^}]*scroll-padding-bottom:[^;}]*\d+px[^}]*\}/.test(SRC) && /\.rv-form-modal-panel\{[^}]*scroll-padding-top:[^;}]*\d+px/.test(SRC));
+check('a wrong field focused after a failed submit is brought clear of the sticky title and Submit bar', /function keepClear\(/.test(SRC) && /if \(bad\) \{ focusPart\(bad\); return; \}/.test(SRC));
 
 if (failed) { console.error('rv-forms: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-forms: all ' + passed + ' checks passed');
