@@ -220,6 +220,21 @@ ok(count(picOut, '<style data-rv-pictures>') === 1 && picOut.indexOf('<style dat
 ok(publishTransform(picOut, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN], pictures: PICS }) === picOut, 'running it again changes nothing (pictures)');
 ok(publishTransform(picPage, { eventId: 'qa-fixture', event: { name: 'Summit' }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }).indexOf('.rv-a1b2c3d4.') === -1, 'without pictures looked up, pictures are as they were');
 
+/* the preview's theme box: section edges for every site but an imported one; themes for an AI-designed one */
+function boxData(html) { var m = /<script type="application\/json" id="rv-themes" data-rv-runtime>([^<]*)<\/script>/.exec(html); return m ? JSON.parse(m[1]) : null; }
+var SMOOTH_EV = { name: 'S', templateId: 'tech500', designPlan: { design: { sectionEdges: 'smooth' } } };
+var portedPrev = publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH_EV, mode: 'preview', templateId: 'tech500', origins: [ORIGIN] });
+var pd = boxData(portedPrev);
+ok(pd && pd.edges === 'smooth' && pd.themes.length === 0 && count(portedPrev, 'rv-theme-switcher.js') === 1 && portedPrev.indexOf('/templates/_shared/rv-theme.js') === -1,
+  'a ported template\'s preview gets the box with its saved edges and no themes', JSON.stringify(pd));
+ok(pd && pd.editorBase === '/custom_editor.html?event=qa-fixture&template=tech500', 'the box knows the editor\'s address', pd && pd.editorBase);
+ok(publishTransform(portedPrev, { eventId: 'qa-fixture', event: SMOOTH_EV, mode: 'preview', templateId: 'tech500', origins: [ORIGIN] }) === portedPrev, 'running it again changes nothing (theme box)');
+var genPrev = publishTransform(EDITING, { eventId: 'qa-fixture', event: { name: 'G', designPlan: { design: { mode: 'light', themeColor: '#123456', headingFont: 'Inter', bodyFont: 'Inter' } } }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN] });
+var gd = boxData(genPrev);
+ok(gd && gd.edges === 'sharp' && gd.themes.length >= 2 && /&theme=$/.test(gd.editor), 'an AI-designed site\'s preview: themes, and sharp edges when none was chosen', JSON.stringify(gd && { edges: gd.edges, n: gd.themes.length, editor: gd.editor }));
+ok(publishTransform(PAGE, { eventId: 'import-abc', event: { name: 'I' }, mode: 'preview', templateId: 'imported-abc', origins: [ORIGIN] }).indexOf('rv-theme-switcher.js') === -1, 'an imported site\'s preview has no theme box');
+ok(publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH_EV, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }).indexOf('rv-theme-switcher.js') === -1, 'a published page has no theme box');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

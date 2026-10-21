@@ -190,6 +190,12 @@
       var askedTheme = new URLSearchParams(location.search).get('theme');
       var ti = themesInfo();
       if (askedTheme && ti && ti.current !== askedTheme) setTimeout(function () { applyTheme(askedTheme); }, 600);
+      /* the section edges this site is kept in, shown on the canvas; or the ones the preview's "Apply in editor" asked for */
+      var askedEdges = new URLSearchParams(location.search).get('edges');
+      showSectionEdges(savedSectionEdges());
+      if ((askedEdges === 'smooth' || askedEdges === 'sharp') && sectionEdgesInfo() && askedEdges !== savedSectionEdges()) {
+        setTimeout(function () { applySectionEdges(askedEdges); }, 700);
+      }
       updateHistoryButtons();
       renderTopbar();
       sectionsChanged();
@@ -3363,6 +3369,61 @@
     return true;
   }
 
+  /* ---------- section edges (every site but an imported one) ----------
+     'sharp' or 'smooth': where one section's colour meets the next. Kept with the site's theme
+     (designPlan.design.sectionEdges, POST /api/event/section-edges) and written onto the page as
+     <html data-rv-edges> when it is previewed and published; the canvas shows it the same way. It is not part
+     of the page the editor saves (editor-canvas.js serialize leaves the attribute out). */
+  var sectionEdgesSaving = null;
+  function savedSectionEdges() {
+    var d = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
+    return d && d.sectionEdges === 'smooth' ? 'smooth' : 'sharp';
+  }
+  function sectionEdgesInfo() {
+    if (!canvas || !canvas.doc || !eventId) return null;
+    if (/^(imported|import)-/.test(String(templateId || '')) || /^import-/.test(String(eventId || ''))) return null;
+    return { current: canvas.doc.documentElement.getAttribute('data-rv-edges') === 'smooth' ? 'smooth' : 'sharp', saved: savedSectionEdges(), saving: !!sectionEdgesSaving };
+  }
+  function showSectionEdges(value) {
+    if (!sectionEdgesInfo()) return;
+    canvas.doc.documentElement.setAttribute('data-rv-edges', value === 'smooth' ? 'smooth' : 'sharp');
+    try {
+      var ev;
+      try { ev = new canvas.win.CustomEvent('rv:themechange', { detail: { edges: value } }); }
+      catch (e) { ev = canvas.doc.createEvent('CustomEvent'); ev.initCustomEvent('rv:themechange', false, false, { edges: value }); }
+      canvas.doc.dispatchEvent(ev);
+    } catch (e) { /* the canvas went away meanwhile */ }
+  }
+  /* shows the choice on the canvas at once and saves it for the site; -> Promise<boolean saved> */
+  function applySectionEdges(value, quiet) {
+    var info = sectionEdgesInfo();
+    if (!info || remounting || (value !== 'sharp' && value !== 'smooth')) return Promise.resolve(false);
+    var before = info.current;
+    showSectionEdges(value);
+    designChanged();
+    if (!window.RevampAuth) return Promise.resolve(false);
+    var req = sectionEdgesSaving = RevampAuth.authedFetch('/api/event/section-edges', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventId: eventId, sectionEdges: value }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { if (!r.ok) throw new Error(b.error || 'The section edges could not be saved.'); return b; }); })
+      .then(function () {
+        if (currentEvent) {
+          currentEvent.designPlan = currentEvent.designPlan || {};
+          currentEvent.designPlan.design = currentEvent.designPlan.design || {};
+          currentEvent.designPlan.design.sectionEdges = value;
+        }
+        if (!quiet) showToast(value === 'smooth'
+          ? 'Smooth section edges saved: where the colour changes, one section fades into the next. Publish to put it live.'
+          : 'Sharp section edges saved: each section ends in a straight line. Publish to put it live.');
+        return true;
+      }, function (err) {
+        showSectionEdges(before);
+        showToast((err && err.message) || 'The section edges could not be saved. Please try again.', { kind: 'error' });
+        return false;
+      })
+      .then(function (saved) { if (sectionEdgesSaving === req) sectionEdgesSaving = null; designChanged(); return saved; });
+    designChanged();
+    return req;
+  }
+
   function setDesign(key, value) {
     if (!canvas || remounting) return false;
     var why = unsupportedReason(key);
@@ -4687,6 +4748,7 @@
     setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty() }; }, undo: undo, redo: redo, flush: flush,
     addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
     getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: applyTheme,
+    sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: applySectionEdges,
     selectedStyle: selectedStyle, styleSelected: styleSelected,
     listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
     setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,
