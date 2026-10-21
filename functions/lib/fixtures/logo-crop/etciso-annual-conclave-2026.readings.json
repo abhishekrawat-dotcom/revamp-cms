@@ -1,0 +1,80 @@
+{
+ "source": "https://ciso.economictimes.indiatimes.com/annual-conclave",
+ "logo": "https://img.etb2bimg.com/files/retail_files/file_17865388117188_Asset_20_2_.svg",
+ "recorded": "2026-10-21, Gemini, the reading of the whole drawing (1000 px wide) and of the cut",
+ "first": {
+  "allText": "chrome enterprise Presents ET CISO annual conclave The Trust Imperative: Securing the Intelligent Enterprise Co-Presented By servicenow Powered By Microsoft SQ1 nxtgen cybersecurity Co-Powered By proofpoint CLOUDFLARE In Association With veeam exabeam",
+  "year": "",
+  "yearFull": "",
+  "yearBox": [],
+  "yearFont": "sans-serif",
+  "yearWeight": "bold",
+  "tagline": "The Trust Imperative: Securing the Intelligent Enterprise",
+  "extras": "chrome enterprise Presents Co-Presented By servicenow Powered By Microsoft SQ1 nxtgen cybersecurity Co-Powered By proofpoint CLOUDFLARE In Association With veeam exabeam",
+  "extraBoxes": [
+   {
+    "text": "chrome enterprise Presents",
+    "box": [
+     0,
+     186,
+     136,
+     815
+    ]
+   },
+   {
+    "text": "Co-Presented By servicenow",
+    "box": [
+     447,
+     278,
+     546,
+     722
+    ]
+   },
+   {
+    "text": "Powered By Microsoft SQ1 nxtgen cybersecurity",
+    "box": [
+     573,
+     114,
+     700,
+     888
+    ]
+   },
+   {
+    "text": "Co-Powered By proofpoint CLOUDFLARE",
+    "box": [
+     734,
+     0,
+     850,
+     999
+    ]
+   },
+   {
+    "text": "In Association With veeam exabeam",
+    "box": [
+     892,
+     70,
+     999,
+     930
+    ]
+   }
+  ],
+  "ownBox": [
+   142,
+   167,
+   420,
+   832
+  ]
+ },
+ "second": {
+  "allText": "ET CISO annual conclave The Trust Imperative: Securing the Intelligent Enterprise",
+  "year": "",
+  "yearFull": "",
+  "yearBox": [],
+  "yearFont": "sans-serif",
+  "yearWeight": "regular",
+  "tagline": "The Trust Imperative: Securing the Intelligent Enterprise",
+  "extras": "",
+  "extraBoxes": [],
+  "ownBox": []
+ }
+}

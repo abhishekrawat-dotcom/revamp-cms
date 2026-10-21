@@ -2077,6 +2077,23 @@ function sizedSvg(text, info) {
   tag = tag.replace(/\s(width|height)\s*=\s*("[^"]*"|'[^']*')/gi, '') + ' width="' + Math.round(info.width) + '" height="' + Math.round(info.height) + '"';
   return text.slice(0, at) + tag + text.slice(end);
 }
+/* Is an SVG a picture wrapped in an SVG (the picture is the lock-up), or a lock-up drawn as outlines that
+   only carries small pictures (a sponsor's icon, a gradient's piece)? -> true when a picture embedded in it
+   fills a quarter of its drawing or more, when it draws nothing but pictures, or when the sizes cannot be
+   told (the picture is then taken to be the lock-up, as before). */
+function embedsMainPicture(svgText) {
+  if (!/<(path|text|rect|circle|ellipse|polygon|polyline|line)[\s>\/]/i.test(svgText)) return true;
+  var vb = svgYear.viewBoxOf(svgText);
+  if (!vb || !(vb.width > 0 && vb.height > 0)) return true;
+  var tags = String(svgText).match(/<image\b[^>]*>/gi) || [], biggest = 0, unknown = false;
+  tags.forEach(function (tag) {
+    if (!/href\s*=\s*["']data:image\//i.test(tag)) return;
+    var w = /\swidth\s*=\s*["']\s*([\d.]+)\s*(px)?\s*["']/i.exec(tag), h = /\sheight\s*=\s*["']\s*([\d.]+)\s*(px)?\s*["']/i.exec(tag);
+    if (!w || !h || /\stransform\s*=/i.test(tag)) { unknown = true; return; }
+    biggest = Math.max(biggest, (+w[1] * +h[1]) / (vb.width * vb.height));
+  });
+  return unknown || biggest >= 0.25;
+}
 /* -> { bytes, info, stacked } | { refused: why }. A lock-up stacked with its sponsors (taller than wide,
    logo-unit.js stackedUnit) is taken, marked stacked: it is used only once they are cropped out of it. */
 function usableLogoPicture(bytes) {
@@ -2168,9 +2185,16 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt, eventName) {
     }
     /* every word read as an extra, in full: what a cut may take away (keepsOwnLine) */
     var extraWords = [String(p.extras || '')].concat(groups.map(function (e) { return String(e.text || ''); })).join(' ').replace(/\s+/g, ' ').trim().slice(0, 1000);
-    return { year: year, full: full, box: box, shown: shownYears, allText: allText, tagline: tagline, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: extras.slice(0, 160), extraWords: extras ? extraWords : '',
+    return { year: year, full: full, box: box, shown: shownYears, allText: allText, tagline: tagline, ownBox: pixels(p.ownBox), extraBoxes: extraBoxes, serif: p.yearFont === 'serif', bold: p.yearWeight === 'bold', extras: shortExtras(extras), extraWords: extras ? extraWords : '',
       fontFamily: YEAR_FONT_CHOICES.indexOf(p.yearFontFamily) !== -1 ? p.yearFontFamily : '', fontWeight: /^[3-8]00$/.test(String(p.yearFontWeight)) ? +p.yearFontWeight : 0 };
   }, function () { return null; });
+}
+/* the extras as the owner reads them in a note: a long list of partners is cut at a word, never inside one
+   ("… In Association W" in ETCISO Annual Conclave's), and said to go on */
+function shortExtras(extras) {
+  extras = String(extras || '');
+  if (extras.length <= 160) return extras;
+  return extras.slice(0, 160).replace(/\s+\S*$/, '').replace(/[\s·,;:]+$/, '') + ' …';
 }
 /* words only, lower case, one space between: how two readings of the same line are compared */
 function wordsOf(text) { return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
@@ -2706,6 +2730,11 @@ function examineUnit(fb, eventId, picture, ctx) {
        that an old year drawn in it is at least reported. One whose lettering is drawn as outlines is drawn
        here as a picture and read; its year's shapes are then replaced (outlinedYear). */
     var wrapped = /href\s*=\s*["']data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+\/=\s]+)["']/.exec(svgText);
+    /* A lock-up drawn as outlines that only carries small pictures in it (ETCISO Annual Conclave's: the
+       Chrome Enterprise sponsor's ball, three 51 x 56 pieces, in 246 outlined shapes) is not a PNG wrapped
+       in an SVG: reading only that piece read nothing, so its sponsors were never seen. It is drawn whole
+       and read as an outlined lock-up. */
+    if (wrapped && !embedsMainPicture(svgText)) wrapped = null;
     if (!wrapped) return outlinedYear(svgText).then(function (pic) { picture = pic; return result(); });
     var innerBytes = Buffer.from(wrapped[2].replace(/\s+/g, ''), 'base64'), innerInfo = logoUnit.imageInfo(innerBytes);
     var innerDecoded = innerInfo.type === 'png' && innerInfo.width * innerInfo.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(innerBytes) : null;
