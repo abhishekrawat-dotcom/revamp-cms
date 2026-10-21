@@ -1183,6 +1183,9 @@
       var root = doc.documentElement.cloneNode(true);
       root.removeAttribute('data-rv-editing');
       root.removeAttribute('data-rv-editor-mode');
+      /* the section edges are the site's setting (designPlan.design.sectionEdges), written onto the page when it is
+         previewed and published — the canvas only shows them */
+      root.removeAttribute('data-rv-edges');
       // hidden (and not-yet-live scheduled) sections aren't on the published page
       root.querySelectorAll('[data-rv-section].is-hidden-sec').forEach(function (sec) {
         copiedStyles(root, sec).forEach(function (s) { s.remove(); });

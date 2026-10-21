@@ -4936,6 +4936,43 @@ function handleEventTheme(req, res) {
   });
 }
 
+/* Section edges — where one section's background meets the next: 'sharp' (a straight line, every site's look
+   until now and the default) or 'smooth' (the colours fade into each other; the page's runtime does it, reading
+   <html data-rv-edges>, which publishTransform writes from designPlan.design.sectionEdges). Kept with the site's
+   theme, so it reaches a published page with the next publish. An imported (Lovable) site has no such choice. */
+var SECTION_EDGES = ['sharp', 'smooth'];
+function sectionEdgesOf(event) {
+  var v = event && event.designPlan && event.designPlan.design && event.designPlan.design.sectionEdges;
+  return v === 'smooth' ? 'smooth' : 'sharp';
+}
+function isImportedSite(eventId, templateId) {
+  return /^(imported|import)-/.test(String(templateId || '')) || /^import-/.test(String(eventId || ''));
+}
+function siteTemplateIdOf(event) {
+  return String((event && ((event.site && event.site.templateId) || event.templateId)) || '');
+}
+/* POST /api/event/section-edges { eventId, sectionEdges: 'sharp' | 'smooth' } — the editor's Design panel saves
+   it (the preview's "Apply in editor" carries a choice there). 200 { eventId, sectionEdges }. */
+function handleEventSectionEdges(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.small, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var edges = typeof body.sectionEdges === 'string' ? body.sectionEdges.trim().toLowerCase() : '';
+    if (SECTION_EDGES.indexOf(edges) === -1) return sendJson(res, 400, { error: 'Section edges must be "sharp" or "smooth".' });
+    loadLiveEvent(fb, eventId).then(function (data) {
+      if (isImportedSite(eventId, siteTemplateIdOf(data))) {
+        return sendJson(res, 400, { error: 'An imported site keeps sharp section edges.', code: 'imported-site' });
+      }
+      var was = sectionEdgesOf(data);
+      var label = function (v) { return v === 'smooth' ? 'Smooth' : 'Sharp'; };
+      return eventDocRef(fb, eventId).update({ 'designPlan.design.sectionEdges': edges, updatedAt: new Date().toISOString() }).then(function () {
+        sendJson(res, 200, { eventId: eventId, sectionEdges: edges });
+        if (was !== edges) logActivity(fb, eventId, decoded, 'theme-changed', 'Section edges: ' + label(edges), { area: 'design', fields: [{ field: 'section edges', before: label(was), after: label(edges) }] });
+      });
+    }).catch(function (err) { sendFailure(res, 'section edges', err, 'The section edges could not be saved. Please try again.'); });
+  });
+}
+
 function withAdminBody(req, res, maxBytes, cb) {
   withAdmin(req, res, function (fb, decoded) {
     parseJsonBody(req, res, function (body) {
@@ -7825,12 +7862,16 @@ function themeSwitcherHtml(event, eventId, templateId) {
   var plan = event && event.designPlan;
   /* an AI-designed site: its template id says so, or (a site not saved yet) its own design and sections do */
   if (!templateId && plan && Array.isArray(event.generatedSections) && event.generatedSections.length) templateId = 'gen-' + eventId;
-  if (!plan || !plan.design || !/^gen-/.test(String(templateId || ''))) return '';
-  var themes = rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto')));
-  var data = JSON.stringify({ themes: themes, design: plan.design, current: plan.themeId || 'original',
-    editor: '/custom_editor.html?event=' + encodeURIComponent(eventId) + '&template=' + encodeURIComponent(templateId) + '&theme=' })
+  if (!templateId) templateId = siteTemplateIdOf(event);
+  /* every site but an imported one gets the box: the section edges for all, the themes for an AI-designed one */
+  if (!eventId || !templateId || isImportedSite(eventId, templateId)) return '';
+  var generated = !!(plan && plan.design && /^gen-/.test(String(templateId)));
+  var themes = generated ? rvTheme.themesFor(Object.assign({}, plan.design, genDesign.palette(plan.design, 'auto'))) : [];
+  var editorBase = '/custom_editor.html?event=' + encodeURIComponent(eventId) + '&template=' + encodeURIComponent(templateId);
+  var data = JSON.stringify({ themes: themes, design: generated ? plan.design : null, current: (plan && plan.themeId) || 'original',
+    edges: sectionEdgesOf(event), editorBase: editorBase, editor: editorBase + '&theme=' })
     .replace(/</g, '\\u003c');
-  return '<script src="/templates/_shared/rv-theme.js" data-rv-runtime></script>\n' +
+  return (generated ? '<script src="/templates/_shared/rv-theme.js" data-rv-runtime></script>\n' : '') +
     '<script type="application/json" id="rv-themes" data-rv-runtime>' + data + '</script>\n' +
     '<script src="/templates/_shared/rv-theme-switcher.js" data-rv-runtime></script>\n';
 }
@@ -8053,6 +8094,7 @@ var ROUTES = {
   'POST /api/event/publish': handleEventPublish,
   'POST /api/event/approval/request': handleApprovalRequest,
   'POST /api/event/theme': handleEventTheme,
+  'POST /api/event/section-edges': handleEventSectionEdges,
   'POST /api/event/logo-unit': handleEventLogoUnit,
   'POST /api/event/approval/decide': handleApprovalDecide,
   'GET /api/event/approval': handleApprovalGet,

@@ -174,6 +174,32 @@ ok(/\+2$/.test(activity.sectionNames([1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
   await call('POST', '/api/event/theme', { eventId: EV, themeId: other.id });
   ok(!last(await lines(EV), 'theme-changed'), 'choosing the theme already in use writes no line');
 
+  /* section edges: validated, kept with the theme, logged; an imported site has no such choice */
+  clearLines(EV);
+  var se = await call('POST', '/api/event/section-edges', { eventId: EV, sectionEdges: 'smooth' });
+  var sl = last(await lines(EV), 'theme-changed');
+  ok(se.status === 200 && se.body.sectionEdges === 'smooth' && FB.docs['events/' + EV].designPlan.design.sectionEdges === 'smooth', 'POST /api/event/section-edges stores designPlan.design.sectionEdges', JSON.stringify(se.body));
+  ok(FB.docs['events/' + EV].designPlan.design.headingFont === 'Inter' && FB.docs['events/' + EV].designPlan.themeId === other.id, 'saving the edges keeps the rest of the design and the theme');
+  ok(sl && sl.area === 'design' && sl.detail === 'Section edges: Smooth' && sl.fields[0].before === 'Sharp' && sl.fields[0].after === 'Smooth', 'section edges log "Section edges: Smooth" under Design, with before and after', JSON.stringify(sl));
+  clearLines(EV);
+  await call('POST', '/api/event/section-edges', { eventId: EV, sectionEdges: 'smooth' });
+  ok(!last(await lines(EV), 'theme-changed'), 'choosing the edges already in use writes no line');
+  var bad = await call('POST', '/api/event/section-edges', { eventId: EV, sectionEdges: 'wavy' });
+  var none = await call('POST', '/api/event/section-edges', { eventId: EV });
+  ok(bad.status === 400 && none.status === 400 && FB.docs['events/' + EV].designPlan.design.sectionEdges === 'smooth', 'anything but sharp or smooth is refused and changes nothing', bad.status + ' ' + none.status);
+  var badId = await call('POST', '/api/event/section-edges', { eventId: '../x', sectionEdges: 'sharp' });
+  var missing = await call('POST', '/api/event/section-edges', { eventId: 'qa-no-such-event', sectionEdges: 'sharp' });
+  ok(badId.status === 400 && missing.status === 404 && !FB.docs['events/qa-no-such-event'], 'a bad id is 400, an event that does not exist is 404 and is not created', badId.status + ' ' + missing.status);
+  var back = await call('POST', '/api/event/section-edges', { eventId: EV, sectionEdges: 'SHARP' });
+  ok(back.status === 200 && FB.docs['events/' + EV].designPlan.design.sectionEdges === 'sharp', 'back to sharp (case does not matter)');
+  /* a ported template's site (no AI design) keeps the choice too */
+  FB.docs['events/qa-edges-ported'] = { name: 'QA ported', createdAt: now, updatedAt: now, status: 'draft', templateId: 'tech500' };
+  var ported = await call('POST', '/api/event/section-edges', { eventId: 'qa-edges-ported', sectionEdges: 'smooth' });
+  ok(ported.status === 200 && FB.docs['events/qa-edges-ported'].designPlan.design.sectionEdges === 'smooth', 'a ported template\'s site stores it as well', JSON.stringify(ported.body));
+  FB.docs['events/qa-edges-imported'] = { name: 'QA imported', createdAt: now, updatedAt: now, status: 'draft', site: { templateId: 'imported-abc123' } };
+  var imp = await call('POST', '/api/event/section-edges', { eventId: 'qa-edges-imported', sectionEdges: 'smooth' });
+  ok(imp.status === 400 && imp.body.code === 'imported-site' && !FB.docs['events/qa-edges-imported'].designPlan, 'an imported site is refused and keeps sharp', JSON.stringify(imp.body));
+
   /* forms: create from a template, duplicate, reorder */
   var c1 = await call('POST', '/api/event/forms', { eventId: EV, template: 'register' });
   var lf = await lines(EV);
