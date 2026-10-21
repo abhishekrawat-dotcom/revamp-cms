@@ -294,5 +294,21 @@ check('the visitor-facing words of the new fields', ['Country code', 'Search by 
   'Not one of the suggested places: it will be sent as you typed it.', 'Did you mean '].every(function (s) { return SRC.indexOf(s) !== -1; }) && req.length === 2);
 check('suggestions come from /api/public/places', SRC.indexOf("'/api/public/places'") !== -1);
 
+/* ---------- the consent every form ends with ---------- */
+var CONSENT_MSG = 'Please tick the box to agree before you submit.';
+var CF = { id: 'consent', type: 'consent', label: 'Consent', required: true };
+check('consent: unticked is refused with the owner\'s sentence', RF.cleanValue(CF, false).error === CONSENT_MSG);
+check('consent: nothing given is refused', RF.cleanValue(CF, undefined).error === CONSENT_MSG);
+check('consent: required even when a stored field says optional', RF.cleanValue({ id: 'consent', type: 'consent', label: 'Consent', required: false }, '').error === CONSENT_MSG);
+check('consent: ticked is true', RF.cleanValue(CF, true).value === true && RF.cleanValue(CF, 'yes').value === true);
+check('consent: validate() names it last, after the other fields', JSON.stringify(Object.keys(RF.validate({ fields: [NAME, CF] }, {}))) === JSON.stringify(['name', 'consent']));
+check('consent: the owner\'s words, as written', SRC.indexOf('I understand that the information I provide may be shared with partners and I agree to receive communications from them and Economic Times Business Verticals. I also agree to the Privacy Policy, Cookie Policy and T&C') !== -1);
+['https://cio.economictimes.indiatimes.com/privacy_policy.php', 'https://cio.economictimes.indiatimes.com/cookie_policy.php',
+  'https://cio.economictimes.indiatimes.com/terms_conditions.php'].forEach(function (u) { check('consent: a page published without consent words still links ' + u, SRC.indexOf("'" + u + "'") !== -1); });
+check('consent: sent as the body\'s consent: true', /consent: true/.test(SRC));
+check('consent: the policy links open in a new tab, without the opener', /a\.target = '_blank'/.test(SRC) && /noopener/.test(SRC));
+check('the default form\'s title is the design\'s sentence', SRC.indexOf("'Please take a moment to provide us with your Information'") !== -1);
+check('styles are in px (a fixed template\'s root font size is 10px)', !/\d(?:\.\d+)?rem\b/.test(SRC.slice(SRC.indexOf('var CSS = ['), SRC.indexOf("].join('\\n')"))));
+
 if (failed) { console.error('rv-forms: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-forms: all ' + passed + ' checks passed');
