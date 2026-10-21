@@ -45,6 +45,27 @@ function sortForms(list) { return list.sort(forms.byOrder); }
 function fieldsWord(n) { return n + ' field' + (n === 1 ? '' : 's'); }
 function describe(form) { return '“' + form.name + '” — ' + fieldsWord(form.fields.length); }
 
+/* what a form edit changed, for the activity log: { what: ['name', 'fields added: Company', ...], fields: [{ field, before, after }] } */
+var FORM_SETTINGS = ['name', 'title', 'intro', 'submitLabel', 'successMessage', 'countsAsRegistration', 'needsApproval', 'open', 'duplicates', 'purpose'];
+function formChanges(was, now) {
+  var what = [], fields = [];
+  if (!was || !now) return { what: what, fields: fields };
+  FORM_SETTINGS.forEach(function (k) {
+    if (String(was[k]) === String(now[k])) return;
+    what.push(k);
+    fields.push({ field: k, before: String(was[k] == null ? '' : was[k]).slice(0, 200), after: String(now[k] == null ? '' : now[k]).slice(0, 200) });
+  });
+  function labels(list) { return (list || []).map(function (f) { return f.label || f.id; }); }
+  var before = labels(was.fields), after = labels(now.fields);
+  var added = after.filter(function (l) { return before.indexOf(l) === -1; }), removed = before.filter(function (l) { return after.indexOf(l) === -1; });
+  if (added.length) what.push('fields added: ' + added.slice(0, 5).join(', '));
+  if (removed.length) what.push('fields removed: ' + removed.slice(0, 5).join(', '));
+  var wasSig = JSON.stringify(was.fields || []), nowSig = JSON.stringify(now.fields || []);
+  if (!added.length && !removed.length && wasSig !== nowSig) what.push('fields edited');
+  if (before.join('|') !== after.join('|')) fields.push({ field: 'fields', before: before.join(', ').slice(0, 300), after: after.join(', ').slice(0, 300) });
+  return { what: what, fields: fields };
+}
+
 /* ---------- reading ---------- */
 
 /* The event's forms, in their order -> { forms, materialized, defaultFormId }. An event with none stored has
@@ -297,10 +318,11 @@ function handleFormsUpdate(req, res) {
           var c = forms.cleanFormInput(body.form, { creating: false, formId: formId });
           if (c.error) return badRequest(res, c);
 
-          var now = new Date().toISOString(), actor = actorOf(decoded);
+          var now = new Date().toISOString(), actor = actorOf(decoded), was = null;
           formsWrite(fb, eventId, function (tx, ev, list) {
             var current = list.filter(function (f) { return f.id === formId; })[0];
             if (!current) throw httpError(404, 'That form no longer exists. It may have been deleted.', { code: 'form-missing' });
+            was = current;
             if (body.ifUpdatedAt != null && body.ifUpdatedAt !== current.updatedAt) {
               throw httpError(409, 'Someone else changed this form. Reload it to see their version.', { code: 'stale', form: adminForm(current) });
             }
@@ -315,7 +337,8 @@ function handleFormsUpdate(req, res) {
             tx.set(formsCol(fb, eventId).doc(formId), doc);
             return forms.storedForm(formId, doc);
           }).then(function (form) {
-            return logActivity(fb, eventId, decoded, 'form-updated', describe(form)).then(function () {
+            var ch = formChanges(was, form);
+            return logActivity(fb, eventId, decoded, 'form-updated', describe(form) + (ch.what.length ? ' — ' + ch.what.join(', ') : ''), { area: 'forms', fields: ch.fields }).then(function () {
               sendJson(res, 200, { form: adminForm(form) });
             });
           }).catch(function (err) { answerError(res, sendJson, err, 'save this form'); });
