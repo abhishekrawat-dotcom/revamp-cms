@@ -686,6 +686,9 @@
     '[data-rv-carousel] button:disabled{opacity:.35;cursor:default}',
     '.rv-carousel-prev{left:8px}',
     '.rv-carousel-next{right:8px}',
+    /* wider screens: the buttons stand in a gutter on each side of the row, never over its cards */
+    '@media (min-width:641px){[data-rv-carousel]:has(> .rv-carousel-btn:not([hidden])){padding-left:60px;padding-right:60px}' +
+      '[data-rv-carousel] > .rv-carousel-prev{left:0}[data-rv-carousel] > .rv-carousel-next{right:0}}',
     /* on a phone the buttons would sit over the photos and names of the cards: they go under the row, side by side */
     '@media (max-width:640px){[data-rv-carousel]:has(> .rv-carousel-btn:not([hidden])){padding-bottom:60px}' +
       '[data-rv-carousel] > .rv-carousel-btn{top:auto;bottom:0;transform:none}' +
