@@ -1742,7 +1742,7 @@
         window.location.href = 'edit-event.html?event=' + id; break;
       case 'view':
         /* the same page the Design editor's Preview opens (and the event console's Preview) */
-        window.open('/preview/' + encodeURIComponent(e.id) + '?draft=1', 'revamp-preview-' + e.id); break;
+        window.open('/preview/' + encodeURIComponent(e.id) + '?draft=1', '_blank'); break;
       case 'reports':
         window.location.href = 'audience-registrations.html?event=' + id; break;
       case 'duplicate':

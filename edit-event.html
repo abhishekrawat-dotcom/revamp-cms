@@ -5709,7 +5709,7 @@
      from the editor, or the site as last saved when that is newer (functions/lib/api.js ownDraftOrSaved). */
   function openPreview(){
     var url = C.previewUrl(EV.id);
-    if (url) window.open(url + '?draft=1', 'revamp-preview-' + EV.id);
+    if (url) window.open(url + '?draft=1', '_blank');   // a new tab every time, never this one
   }
 
   /* Publishes the site as it was last saved in the site editor. Where changes need approval (the default)

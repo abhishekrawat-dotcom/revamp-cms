@@ -48,7 +48,7 @@
     var id = new URLSearchParams(location.search).get('event'), b = document.getElementById('btn-preview');
     if (!b || !id) return;
     b.hidden = false;
-    b.onclick = function(){ window.open(RevampCore.previewUrl(id) + '?draft=1', 'revamp-preview-' + id); };
+    b.onclick = function(){ window.open(RevampCore.previewUrl(id) + '?draft=1', '_blank'); };
   })();
 </script>
 <script src="auth.js"></script>

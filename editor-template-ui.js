@@ -4462,7 +4462,7 @@
       setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 60000);
       return;
     }
-    var win = window.open('', 'revamp-staging-' + eventId);
+    var win = window.open('', '_blank');   // always a new tab: a named tab is reused even when it is this one (a tab keeps its name when it navigates)
     if (!win) { showToast('Allow pop-ups to open the preview in a new tab.'); return; }
     win.document.open();
     win.document.write('<!doctype html><title>Loading preview…</title><body style="font:14px/1.5 system-ui,sans-serif;padding:40px;color:#666">Loading preview…</body>');
@@ -4586,7 +4586,7 @@
       renderSiteState();
       if (!opts.quiet) {
         showToast('Saved to staging as version ' + out.version + (out.summary ? ' — ' + out.summary : ''), {
-          action: { label: 'Open staging', onClick: function () { window.open('/preview/' + eventId + '?staged=1', 'revamp-staging-' + eventId); } }
+          action: { label: 'Open staging', onClick: function () { window.open('/preview/' + eventId + '?staged=1', '_blank'); } }
         });
       }
       return out;
