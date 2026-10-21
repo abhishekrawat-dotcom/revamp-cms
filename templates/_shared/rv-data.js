@@ -462,12 +462,18 @@
     if (!whole && !/[\s,]/.test(url)) list.push({ width: w, url: url });
     return { w: w, h: h, whole: whole, list: list };
   }
+  /* the rule lib/pictures.js writes (SIZED_CSS): in a cascade layer of its own, first in the head so that the
+     layer ranks below every other, or a page whose classes are all in layers (Tailwind v4) would lose the
+     heights its classes give a picture */
+  var SIZED_RULE = '@layer rv-pictures{:where(img[data-rv-sized]){height:auto}}';
   function sizedRule(doc) {
-    if (doc.querySelector('style[data-rv-pictures]')) return;
+    var had = doc.querySelector('style[data-rv-pictures]');
+    if (had) { if (had.textContent !== SIZED_RULE) had.textContent = SIZED_RULE; return; }
     var style = doc.createElement('style');
     style.setAttribute('data-rv-pictures', '');
-    style.textContent = ':where(img[data-rv-sized]){height:auto}';
-    (doc.head || doc.documentElement).appendChild(style);
+    style.textContent = SIZED_RULE;
+    var head = doc.head || doc.documentElement;
+    head.insertBefore(style, head.firstChild);
   }
   /* With "w" candidates a picture's natural width becomes its sizes, so sizes is never more than the
      original's width (data-rv-w): a picture whose CSS leaves its width to its natural size does not grow. */

@@ -79,8 +79,13 @@ var STORAGE_HOST = 'https://storage.googleapis.com/';
 
 /* the CSS that keeps a sized picture's height in the page's hands: :where() weighs nothing, so any rule of
    the page's own that sets a height wins, and it still beats the height attribute (which weighs less than
-   any rule) */
-var SIZED_CSS = '<style data-rv-pictures>:where(img[data-rv-sized]){height:auto}</style>';
+   any rule). It sits in a cascade layer of its own, declared at the top of the head and so below every
+   other layer: a page whose CSS is all in layers (Tailwind v4 puts every class in @layer utilities, as a
+   Lovable site does) would otherwise lose to it, since a rule in no layer beats any rule in a layer, and a
+   banner picture sized by class (h-full, h-[122%]) came out at its natural height instead.
+   SIZED_CSS_V1 is the rule pages carried before: it is brought up to date when such a page is written again. */
+var SIZED_CSS = '<style data-rv-pictures>@layer rv-pictures{:where(img[data-rv-sized]){height:auto}}</style>';
+var SIZED_CSS_V1 = '<style data-rv-pictures>:where(img[data-rv-sized]){height:auto}</style>';
 
 var sharpModule;
 function loadSharp() {
@@ -387,6 +392,7 @@ function rewriteCss(css, index, state, quoted) {
    comments is never touched. */
 function rewriteHtml(html, index) {
   html = String(html == null ? '' : html);
+  if (html.indexOf(SIZED_CSS_V1) !== -1) html = html.split(SIZED_CSS_V1).join(SIZED_CSS);
   if (!index || !index.entries || !Object.keys(index.entries).length) return html;
   var state = { lcpDone: false, inHero: false, sized: false, heroBg: '', inHeroStyle: false };
   var hero = null;                                  // { name, depth } while inside the first hero/banner element
@@ -471,5 +477,5 @@ module.exports = {
   variantName: variantName, parseVariant: parseVariant, isVariant: isVariant, widthsFor: widthsFor, pathOfUrl: pathOfUrl,
   publicUrl: publicUrl, wanted: wanted, isLogoPath: isLogoPath, hex8OfMd5Base64: hex8OfMd5Base64, md5Hex8: md5Hex8,
   available: function () { return !!loadSharp(); },
-  SIZED_CSS: SIZED_CSS, CACHE: CACHE, WIDTHS: WIDTHS, MAX_WIDTH: MAX_WIDTH, _forgetDir: forgetDir
+  SIZED_CSS: SIZED_CSS, SIZED_CSS_V1: SIZED_CSS_V1, CACHE: CACHE, WIDTHS: WIDTHS, MAX_WIDTH: MAX_WIDTH, _forgetDir: forgetDir
 };

@@ -22,6 +22,16 @@ with real headless Chrome, hand back the rendered HTML. `functions/lib/api.js`'s
 calls this service over plain HTTP instead of launching Chrome itself. Everything downstream of that one
 function (image re-hosting, Storage, Firestore, the ZIP-upload input method) is completely unchanged.
 
+## What the capture keeps
+
+`server.js` `settlePage` / `finishPage` walk the page before reading it, so what its script would draw later
+is in the markup: content revealed on scroll, every card of a carousel, every tab's content (with the
+tab's own look, its background picture and progress bar), every FAQ answer and accordion panel (found by
+`aria-controls`), and the top bar's look once scrolled. `templates/_shared/et-runtime.js` brings these back
+to life on the imported page. A change here reaches new imports only once this service is deployed again
+(below); `tools/reimport-lovable.js` runs the same capture on an operator's own Chrome to import one
+unsaved event again.
+
 ## Deploying it
 
 You need the `gcloud` CLI, authenticated against the `revamp-cms` GCP project (`gcloud auth login`,
