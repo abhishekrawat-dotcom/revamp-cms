@@ -189,6 +189,24 @@ var NOTE = /^The previous edition's logo could not be used: .+\. Upload this yea
   var refusedOwner = await build({ opts: { ownerLogoUrl: 'https://storage.googleapis.com/b/events/x/logo/missing.png', sourceDocs: [Object.assign({}, SOURCE, { logoCandidates: [SOURCE.logoCandidates[1]] })] } });
   check('an upload that could not be used and a previous logo that could not either: both said', /Your uploaded logo could not be used/.test(refusedOwner.unit.note) && /The previous edition's logo could not be used/.test(refusedOwner.unit.note), refusedOwner.unit.note);
 
+  /* ---- ETCISO Annual Conclave 2026: the same stacked shape, drawn as outlines that carry three small
+     pictures (the Chrome Enterprise sponsor's ball, 51 x 56 each). Only that piece was read — it read as
+     nothing — so the sponsors were never seen: the stacked lock-up was refused, a plain one would have kept
+     them. The whole drawing is read now. Readings: the model's, 21 Oct 2026. ---- */
+  var CISO = fs.readFileSync(path.join(FIX, 'etciso-annual-conclave-2026.svg'), 'utf8');
+  var CISO_READ = JSON.parse(fs.readFileSync(path.join(FIX, 'etciso-annual-conclave-2026.readings.json'), 'utf8'));
+  var shownSizes = [];
+  downloads = {}; downloads[CISO_READ.logo] = Buffer.from(CISO);
+  answers = function (shown) { shownSizes.push(shown.width + 'x' + shown.height); return shown.height > shown.width ? CISO_READ.first : CISO_READ.second; };
+  var ciso = await build({ opts: { eventMeta: { name: 'ETCISO Annual Conclave 2027', start: '2027-05-21T10:00' },
+    sourceDocs: [{ type: 'previousEdition', url: CISO_READ.source, fetchedAt: '2026-10-21T00:00:00Z', editionHints: {}, logoCandidates: [{ url: CISO_READ.logo, kind: 'img', score: 165, cls: 'logo' }] }] } });
+  check('ETCISO: the whole drawing is read, not the small picture inside it', shownSizes.length === 2 && +shownSizes[0].split('x')[0] >= 500, shownSizes.join(' '));
+  check('ETCISO: the previous edition\'s unit, cut to its lock-up and tagline', ciso.unit.source === 'previous-edition' && ciso.unit.width > 200 && ciso.unit.height > 100 && ciso.unit.height < 140, JSON.stringify(ciso.unit));
+  var cisoDrawn = ciso.svg && png.decode((await hooks.rasterise(ciso.svg, { clear: true })).png);
+  var cisoRows = cisoDrawn ? png.inkRuns(png.inkProfile(cisoDrawn, 'y', null)) : [];
+  check('ETCISO: drawn again, nothing below the tagline (the rule, then the tagline, last)', cisoRows.length >= 2 && cisoDrawn.height - cisoRows[cisoRows.length - 1].to < cisoDrawn.height * 0.06, JSON.stringify(cisoRows));
+  check('ETCISO: a long list of partners is cut at a word in the note, never inside one', /^“chrome enterprise Presents .* …” belonged to the previous edition and was cropped out/.test(ciso.unit.note) && !/ W”/.test(ciso.unit.note), ciso.unit.note);
+
   /* ---- plan-structure starts it while the plan is written ---- */
   var api = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
   var plan = api.slice(api.indexOf('var logoFound = foundLogoUnit('), api.indexOf('var unitJob = logoUnitInTime('));
