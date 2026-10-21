@@ -133,11 +133,14 @@ ok(AQ.parseQuery(qs({ before: '2026-10-21T05:00:00.000Z|a/../b' })).before.id ==
 ok(AQ.parseQuery(qs({ by: ' A@ETB2B.com ' })).by === 'a@etb2b.com', 'by is compared without case');
 
 /* ---------- privacy ---------- */
+var anyArea = AQ.entryOf('y', { at: 'x', by: 'b@etb2b.com', action: 'content-added', detail: 'contact asha@gmail.com by ops@timesinternet.in', fields: [{ field: 'apiKey', before: 's1', after: 's2' }, { field: 'email', before: '', after: 'k.r@yahoo.com' }] });
+ok(anyArea.detail === 'contact a…@gmail.com by ops@timesinternet.in', 'outside addresses are shortened in every area; company ones are kept', anyArea.detail);
+ok(anyArea.fields.length === 1 && anyArea.fields[0].after === 'k…@yahoo.com', 'a secret-named value is dropped; before/after addresses are shortened', JSON.stringify(anyArea.fields));
 ok(AQ.maskEmails('Asha (asha.verma@example.com)') === 'Asha (a…@example.com)', 'an address is shortened to its first letter and domain');
 var reg = AQ.entryOf('x', { at: 'x', by: 'b@etb2b.com', action: 'registration-updated', detail: 'to asha@example.com', fields: [{ field: 'email', before: 'old@ex.com', after: 'new@ex.com' }] });
 ok(reg.by === 'b@etb2b.com' && reg.detail === 'to a…@example.com' && reg.fields[0].before === 'o…@ex.com' && reg.fields[0].after === 'n…@ex.com', 'registrants\' addresses are masked, the staff member is not', JSON.stringify(reg));
-var st = AQ.entryOf('y', { at: 'x', by: 'a@etb2b.com', action: 'settings-changed', detail: 'approvers: boss@etb2b.com' });
-ok(st.detail === 'approvers: boss@etb2b.com', 'a staff address in a setting is shown');
+var st = AQ.entryOf('y', { at: 'x', by: 'a@etb2b.com', action: 'settings-changed', detail: 'approvers: boss@timesinternet.in' });
+ok(st.detail === 'approvers: boss@timesinternet.in', 'a staff (company-domain) address in a setting is shown', st.detail);
 
 /* ---------- paging and filters ---------- */
 Promise.resolve().then(function () {

@@ -45,18 +45,9 @@ var AREAS = ['site', 'content', 'forms', 'design', 'publishing', 'registrations'
 
 /* the area an entry belongs to: its own 'area' when it has one (entries written from now on), else from the
    action (every entry written before) */
-var ACTION_AREA = {
-  'created': 'event', 'deleted': 'event', 'restored': 'event', 'cloned': 'event',
-  'updated': 'settings', 'status-changed': 'settings', 'settings-changed': 'settings',
-  'site-saved': 'site',
-  'approval-requested': 'publishing', 'approved': 'publishing', 'rejected': 'publishing',
-  'published': 'publishing', 'unpublished': 'publishing',
-  'content-seeded': 'content', 'content-added': 'content', 'content-changed': 'content', 'content-removed': 'content',
-  'registration-updated': 'registrations', 'registration-deleted': 'registrations',
-  'registration-approved': 'registrations', 'registration-declined': 'registrations',
-  'leads-imported': 'registrations', 'leads-deleted': 'registrations',
-  'form-created': 'forms', 'form-updated': 'forms', 'form-deleted': 'forms', 'form-default': 'forms', 'forms-ordered': 'forms'
-};
+/* one table for the whole log: lib/activity.js's AREA_OF (the writer's), plus two older registration actions */
+var ACTION_AREA = Object.assign({ 'registration-approved': 'registrations', 'registration-declined': 'registrations' },
+  require('./activity').AREA_OF);
 function areaOf(entry) {
   var a = entry && typeof entry.area === 'string' ? entry.area : '';
   if (AREAS.indexOf(a) !== -1) return a;

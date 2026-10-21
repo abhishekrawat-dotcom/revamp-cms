@@ -12,17 +12,10 @@
 
 const AREAS = ['site', 'content', 'forms', 'design', 'publishing', 'registrations', 'promotions', 'settings', 'event'];
 
-/* the area of an action that was recorded before entries carried their own */
-const ACTION_AREA = {
-  'created': 'event', 'updated': 'event', 'status-changed': 'event', 'deleted': 'event', 'restored': 'event', 'cloned': 'event',
-  'settings-changed': 'settings',
-  'site-saved': 'site',
-  'approval-requested': 'publishing', 'approved': 'publishing', 'rejected': 'publishing', 'published': 'publishing', 'unpublished': 'publishing',
-  'content-seeded': 'content', 'content-added': 'content', 'content-changed': 'content', 'content-removed': 'content',
-  'registration-updated': 'registrations', 'registration-deleted': 'registrations', 'registration-approved': 'registrations',
-  'registration-declined': 'registrations', 'leads-imported': 'registrations', 'leads-deleted': 'registrations',
-  'form-created': 'forms', 'form-updated': 'forms', 'form-deleted': 'forms', 'form-default': 'forms'
-};
+/* the area of an action that was recorded before entries carried their own. ONE table for the whole log:
+   lib/activity.js's AREA_OF (the writer's), plus two registration actions older entries may still carry */
+const ACTION_AREA = Object.assign({ 'registration-approved': 'registrations', 'registration-declined': 'registrations' },
+  require('./activity').AREA_OF);
 
 function areaOf(entry) {
   var a = entry && entry.area;
@@ -94,16 +87,20 @@ function matches(e, opts) {
   return true;
 }
 
-/* A registrant's address is never shown in full: "a…@example.com". Staff who made changes (`by`) are
-   shown as they are — that is the point of the log. */
+/* A registrant's address is never shown in full, whatever the entry: "a…@example.com". Company addresses
+   (staff, who make the changes) are shown as they are — that is the point of the log. A changed value whose
+   name looks like a secret is never sent. The same rule as GET /api/activity/all (lib/api-activity.js). */
+const STAFF_DOMAIN = require('./access').ALLOWED_DOMAIN;
+const SECRET_NAME = /pass(word)?|secret|token|api[-_ ]?key|private[-_ ]?key|credential/i;
 function maskEmails(s) {
   if (typeof s !== 'string') return s;
-  return s.replace(EMAIL_RE, function (m, first, domain) { return first + '…@' + domain; });
+  return s.replace(EMAIL_RE, function (m, first, domain) { return domain.toLowerCase() === STAFF_DOMAIN ? m : first + '…@' + domain; });
 }
 function privacy(e) {
-  if (e.area !== 'registrations') return e;
   e.detail = maskEmails(e.detail);
-  if (Array.isArray(e.fields)) e.fields = e.fields.map(function (f) {
+  if (Array.isArray(e.fields)) e.fields = e.fields.filter(function (f) {
+    return !(f && typeof f === 'object' && SECRET_NAME.test(String(f.field || f.name || '')));
+  }).map(function (f) {
     return f && typeof f === 'object' ? Object.assign({}, f, { before: maskEmails(f.before), after: maskEmails(f.after) }) : f;
   });
   return e;
