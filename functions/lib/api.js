@@ -7426,43 +7426,54 @@ function handleApprovalSettingsPut(req, res) {
   });
 }
 
-/* The event's history, newest first: every recorded action with who and when, and — for a save or an
-   approval request — what changed, before and after. */
+/* ---- Activity log (Part 1): GET /api/event/history ----
+   The event's history, newest first: every recorded action with who and when, its area, and — for a save
+   or an approval request — what changed, before and after. A page at a time: ?limit=50&before=<next>,
+   filtered by ?from=&to= (ISO times), ?by=<email|platform>, ?area=, ?action=, ?q=<text>
+   (lib/activity-query.js). Without any of them it answers the newest 300, as it always has. */
 function handleEventHistory(req, res) {
   withAdmin(req, res, function (fb) {
     var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
     if (!eventId) return;
-    var ref = eventDocRef(fb, eventId);
+    var ref = eventDocRef(fb, eventId), AQ = require('./activity-query'), opts = AQ.parseQuery(qs, 300);
     loadLiveEvent(fb, eventId).then(function (data) {
-      return Promise.all([
-        ref.collection('activity').orderBy('at', 'desc').limit(300).get(),
-        ref.collection('changes').orderBy('at', 'desc').limit(120).get(),
-        ref.collection('approvals').orderBy('requestedAt', 'desc').limit(60).get()
-      ]).then(function (r) {
-        var changes = {}, approvals = {};
-        r[1].docs.forEach(function (d) { changes[d.id] = d.data(); });
-        r[2].docs.forEach(function (d) { approvals[d.id] = d.data(); });
-        var usage = isPlainObject(data.aiUsage) ? data.aiUsage : null;
-        sendJson(res, 200, {
-          eventId: eventId, name: data.name || eventId,
-          aiUsage: usage ? { usd: +usage.usd || 0, calls: +usage.calls || 0, pictures: +usage.pictures || 0, updatedAt: usage.updatedAt || null, byRoute: isPlainObject(usage.byRoute) ? usage.byRoute : {} } : null,
-          items: r[0].docs.map(function (d) {
-            var a = d.data(), out = { id: d.id, at: a.at || null, by: a.by || '', action: a.action || '', detail: a.detail || '', version: a.version || null };
-            if (a.fields) out.fields = a.fields;
-            var c = a.changeId && changes[a.changeId];
-            if (c) out.changes = c.items || [];
-            var p = a.approvalId && approvals[a.approvalId];
-            if (p) {
-              out.approval = { id: a.approvalId, status: p.status, requestedBy: p.requestedBy || '', requestedAt: p.requestedAt || null, decidedBy: p.decidedBy || '', decidedAt: p.decidedAt || null, decisionNote: p.decisionNote || '', fromVersion: p.fromVersion || 0, toVersion: p.toVersion || 0 };
-              if (a.action === 'approval-requested') out.changes = p.items || [];
-            }
+      return AQ.queryPage(ref.collection('activity'), opts).then(function (page) {
+        /* the saves and approval requests these entries belong to, read by id */
+        function byId(sub, key) {
+          var ids = [];
+          page.items.forEach(function (a) { if (a[key] && ids.indexOf(String(a[key])) === -1) ids.push(String(a[key])); });
+          if (!ids.length) return Promise.resolve({});
+          return fb.db.getAll.apply(fb.db, ids.map(function (id) { return ref.collection(sub).doc(id); })).then(function (snaps) {
+            var out = {};
+            snaps.forEach(function (s) { if (s.exists) out[s.id] = s.data(); });
             return out;
-          })
+          });
+        }
+        return Promise.all([byId('changes', 'changeId'), byId('approvals', 'approvalId')]).then(function (r) {
+          var changes = r[0], approvals = r[1];
+          var usage = isPlainObject(data.aiUsage) ? data.aiUsage : null;
+          sendJson(res, 200, {
+            eventId: eventId, name: data.name || eventId, next: page.next, people: page.people || null,
+            aiUsage: usage ? { usd: +usage.usd || 0, calls: +usage.calls || 0, pictures: +usage.pictures || 0, updatedAt: usage.updatedAt || null, byRoute: isPlainObject(usage.byRoute) ? usage.byRoute : {} } : null,
+            items: page.items.map(function (a) {
+              var out = { id: a.id, at: a.at, by: a.by, action: a.action, detail: a.detail, area: a.area, version: a.version || null };
+              if (a.fields) out.fields = a.fields;
+              var c = a.changeId && changes[a.changeId];
+              if (c) out.changes = c.items || [];
+              var p = a.approvalId && approvals[a.approvalId];
+              if (p) {
+                out.approval = { id: a.approvalId, status: p.status, requestedBy: p.requestedBy || '', requestedAt: p.requestedAt || null, decidedBy: p.decidedBy || '', decidedAt: p.decidedAt || null, decisionNote: p.decisionNote || '', fromVersion: p.fromVersion || 0, toVersion: p.toVersion || 0 };
+                if (a.action === 'approval-requested') out.changes = p.items || [];
+              }
+              return out;
+            })
+          });
         });
       });
     }).catch(function (err) { sendFailure(res, 'history', err, 'The history could not be loaded. Please try again.'); });
   });
 }
+/* ---- end Activity log (Part 1) ---- */
 
 /* what a history line shows of a field's value: short, and never a picture's bytes */
 function historyValue(v) {

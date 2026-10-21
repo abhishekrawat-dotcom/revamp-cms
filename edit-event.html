@@ -738,13 +738,14 @@
         { id:'contact',  label:'Contact' }
     ]},
 
+    { id:'activity', label:'Activity log', icon:IC.clock, tabs:[] },
+
     { id:'settings', label:'Settings', icon:IC.gear, tabs:[
         { id:'form',       label:'Registration forms' },
         { id:'seo',        label:'URL & SEO' },
         { id:'links',      label:'Social links' },
         { id:'visibility', label:'Visibility' },
-        { id:'advanced',   label:'Advanced' },
-        { id:'history',    label:'History' }
+        { id:'advanced',   label:'Advanced' }
     ]}
   ];
 
@@ -816,6 +817,8 @@
     if (sec === 'payment' || (sec === 'audience' && tab === 'payments')){
       return { url: RevampRail.href('payment', EV.id) };
     }
+    /* the log used to be Settings › History; old links and bookmarks still lead to it */
+    if (sec === 'settings' && tab === 'history') return { sec: 'activity', tab: null };
     if (sec === 'audience'){
       if (tab === 'insights') return { sec: 'dashboard', tab: null };
       return { url: RevampRail.href('audience', EV.id) };
@@ -4529,27 +4532,53 @@
       '</div>';
   }
 
-  /* The event's real history (GET /api/event/history): every recorded action, newest first, with who did it
-     and when; for a save or an approval request the changes section by section, before and after; for a
-     Content record or a detail of the event the fields that changed; and who approved what went live. */
-  var HIST = { items: null, usage: null, at: 0, loading: false, error: null };
+  /* ============================================================
+     VIEW : ACTIVITY LOG  (#activity; #settings/history leads here)
+
+     Every recorded edit to this event, newest first (GET /api/event/history, a page of 50 at a time): when
+     (IST), who ("Platform (automated)" for the platform's own repairs), the area, what changed, and — for a
+     save, an approval request, a Content record or a setting — before and after. Filters by date, person,
+     area and text are applied by the server, so "Load more" and the CSV carry on with the same filter.
+     ============================================================ */
+  var LOG = { items: null, next: null, people: [], usage: null, at: 0, loading: false, more: false, error: null,
+    seq: 0, exporting: false, f: { from: '', to: '', by: '', area: '', q: '' } };
+  var LOG_AREAS = [['site', 'Site'], ['content', 'Content'], ['forms', 'Forms'], ['design', 'Design'], ['publishing', 'Publishing'],
+    ['registrations', 'Registrations'], ['promotions', 'Promotions'], ['settings', 'Settings'], ['event', 'Event']];
+  var LOG_AREA_BADGE = { site:'b-info', content:'b-ok', forms:'b-review', design:'b-accent', publishing:'b-warn',
+    registrations:'b-info', promotions:'b-accent', settings:'b-mute', event:'b-mute' };
+  /* what each recorded action was, in words */
   var HIST_AREA = {
-    'created':'Event', 'updated':'Basic details', 'status-changed':'Status', 'settings-changed':'Settings', 'site-saved':'Site · saved to staging',
-    'approval-requested':'Site · sent for approval', 'approved':'Site · approved', 'rejected':'Site · rejected', 'published':'Site · live',
-    'unpublished':'Site · taken down', 'deleted':'Event', 'restored':'Event', 'cloned':'Event', 'content-seeded':'Content',
-    'content-added':'Content · added', 'content-changed':'Content · changed', 'content-removed':'Content · removed',
-    'registration-updated':'Registrations', 'registration-deleted':'Registrations', 'leads-imported':'Leads', 'leads-deleted':'Leads',
-    'registration-approved':'Registrations · approved', 'registration-declined':'Registrations · declined',
+    'created':'Event created', 'updated':'Basic details changed', 'status-changed':'Status changed', 'settings-changed':'Settings changed', 'site-saved':'Site saved to staging',
+    'approval-requested':'Sent for approval', 'approved':'Approved', 'rejected':'Rejected', 'published':'Published (live)',
+    'unpublished':'Taken down', 'deleted':'Event deleted', 'restored':'Event restored', 'cloned':'Event copied', 'content-seeded':'Content filled in',
+    'content-added':'Content added', 'content-changed':'Content changed', 'content-removed':'Content removed',
+    'registration-updated':'Registration changed', 'registration-deleted':'Registration deleted', 'leads-imported':'Leads imported', 'leads-deleted':'Leads deleted',
+    'registration-approved':'Registration approved', 'registration-declined':'Registration declined',
     'form-created':'Form created', 'form-updated':'Form edited', 'form-deleted':'Form deleted', 'form-default':'Default form changed'
   };
   var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
-  function histWhen(iso){
-    var d = new Date(iso || '');
-    if (isNaN(d)) return '—';
-    function p(n){ return (n < 10 ? '0' : '') + n; }
-    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  function actionLabel(a){
+    a = String(a || '');
+    if (HIST_AREA[a]) return HIST_AREA[a];
+    a = a.replace(/[-_]+/g, ' ').trim();
+    return a ? a.charAt(0).toUpperCase() + a.slice(1) : 'Change';
   }
-  /* [{ what, before, after }] — the before/after lines of one history entry */
+  function areaLabel(id){
+    for (var i = 0; i < LOG_AREAS.length; i++) if (LOG_AREAS[i][0] === id) return LOG_AREAS[i][1];
+    return 'Event';
+  }
+  function isPlatform(by){ return !by || by === 'platform' || by === 'system'; }
+  function whoLabel(by){ return isPlatform(by) ? 'Platform (automated)' : String(by); }
+  /* "21 Oct 2026, 11:05 am" in India time, whatever the browser's own zone */
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function histWhen(iso){
+    var t = Date.parse(iso || '');
+    if (isNaN(t)) return '—';
+    var d = new Date(t + 330 * 60000), h = d.getUTCHours(), m = d.getUTCMinutes();
+    return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear() + ', ' +
+      ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
+  }
+  /* [{ what, before, after }] — the before/after lines of one entry */
   function histLines(h){
     var out = [];
     (h.changes || []).forEach(function(c){
@@ -4561,43 +4590,205 @@
   function histApprovedBy(h){
     var a = h.approval;
     if (!a) return '';
-    if (a.status === 'approved') return a.decidedBy;
-    if (a.status === 'rejected') return 'rejected by ' + a.decidedBy;
-    return 'waiting';
+    if (a.status === 'approved') return 'Approved by ' + whoLabel(a.decidedBy) + (a.decidedAt ? ', ' + histWhen(a.decidedAt) : '');
+    if (a.status === 'rejected') return 'Rejected by ' + whoLabel(a.decidedBy);
+    return 'Waiting for approval';
   }
-  function loadHistory(){
-    if (HIST.loading) return;
-    HIST.loading = true;
-    /* a browser may still hold the previous edit-event-core.js for a few minutes after a release */
+  /* the filter as the API takes it: whole days, India time */
+  function logQuery(extra){
+    var f = LOG.f, o = { limit: 50 };
+    if (f.from) o.from = f.from + 'T00:00:00+05:30';
+    if (f.to) o.to = f.to + 'T23:59:59.999+05:30';
+    if (f.by) o.by = f.by;
+    if (f.area) o.area = f.area;
+    if (f.q) o.q = f.q;
+    for (var k in extra) if (extra.hasOwnProperty(k)) o[k] = extra[k];
+    return o;
+  }
+  function logFiltered(){ var f = LOG.f; return !!(f.from || f.to || f.by || f.area || f.q); }
+
+  /* first page (again); an answer for an older filter that arrives late is dropped */
+  function loadLog(){
+    var seq = ++LOG.seq;
+    LOG.loading = true; LOG.error = null;
+    paintLog();
     var asked;
-    try {
-      asked = C.fetchHistoryAndUsage ? C.fetchHistoryAndUsage(EV.id)
-        : C.fetchHistory(EV.id).then(function(items){ return { items: items, aiUsage: null }; });
-    } catch (e) { asked = Promise.reject(e); }
-    asked.then(function(got){ HIST.items = got.items; HIST.usage = got.aiUsage; HIST.error = null; }, function(err){ HIST.error = (err && err.message) || 'The history could not be loaded.'; })
-      .then(function(){ HIST.loading = false; HIST.at = Date.now(); if (routeId() === 'settings/history') render(); });
-  }
-  function exportHistory(){
-    function cell(v){ v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-    var rows = [['When', 'Who', 'Area', 'What', 'Item', 'Before', 'After', 'Version', 'Requested by', 'Approved by', 'Approved at']];
-    (HIST.items || []).forEach(function(h){
-      var a = h.approval || {}, lines = histLines(h);
-      var tail = [h.version || '', a.requestedBy || '', a.status === 'approved' ? a.decidedBy : '', a.status === 'approved' ? histWhen(a.decidedAt) : ''];
-      var head = [histWhen(h.at), h.by, HIST_AREA[h.action] || h.action, h.detail];
-      if (!lines.length) rows.push(head.concat(['', '', ''], tail));
-      lines.forEach(function(l){ rows.push(head.concat([l.what, l.before, l.after], tail)); });
+    try { asked = C.fetchActivityLog(EV.id, logQuery()); } catch (e) { asked = Promise.reject(e); }
+    asked.then(function(got){
+      if (seq !== LOG.seq) return;
+      LOG.items = got.items; LOG.next = got.next; LOG.usage = got.aiUsage;
+      if (got.people && !logFiltered()) LOG.people = got.people;
+      else if (got.people) got.people.forEach(function(p){ if (LOG.people.indexOf(p) === -1) LOG.people.push(p); });
+    }, function(err){
+      if (seq !== LOG.seq) return;
+      LOG.error = (err && err.message) || 'The activity log could not be loaded.';
+    }).then(function(){
+      if (seq !== LOG.seq) return;
+      LOG.loading = false; LOG.at = Date.now();
+      if (routeId() === 'activity') { paintLog(); paintPeople(); paintUsage(); }
     });
-    var blob = new Blob(['﻿' + rows.map(function(r){ return r.map(cell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = EV.id + '-history.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
   }
+  function loadMoreLog(){
+    if (!LOG.next || LOG.more || LOG.loading) return;
+    var seq = LOG.seq;
+    LOG.more = true; paintLog();
+    C.fetchActivityLog(EV.id, logQuery({ before: LOG.next })).then(function(got){
+      if (seq !== LOG.seq) return;
+      LOG.items = (LOG.items || []).concat(got.items); LOG.next = got.next;
+    }, function(err){
+      if (seq !== LOG.seq) return;
+      notifyError(err, { what: 'Older entries could not be loaded.' });
+    }).then(function(){
+      if (seq !== LOG.seq) return;
+      LOG.more = false;
+      if (routeId() === 'activity') paintLog();
+    });
+  }
+
+  /* CSV of everything the current filter matches (up to 10,000 entries), read page by page */
+  function csvCell(v){
+    v = String(v == null ? '' : v);
+    if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+    return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function exportLog(){
+    if (LOG.exporting) return;
+    LOG.exporting = true; paintLog();
+    var all = [];
+    function page(before){
+      return C.fetchActivityLog(EV.id, logQuery(before ? { before: before, limit: 200 } : { limit: 200 })).then(function(got){
+        all = all.concat(got.items);
+        if (got.next && all.length < 10000) return page(got.next);
+      });
+    }
+    page(null).then(function(){
+      var rows = [['Date & time (IST)', 'Time (ISO)', 'User', 'Area', 'Action', 'What changed', 'Item', 'Before', 'After', 'Version', 'Approval']];
+      all.forEach(function(h){
+        var lines = histLines(h);
+        var head = [histWhen(h.at), h.at || '', whoLabel(h.by), areaLabel(h.area), actionLabel(h.action), h.detail || ''];
+        var tail = [h.version || '', histApprovedBy(h)];
+        if (!lines.length) rows.push(head.concat(['', '', ''], tail));
+        lines.forEach(function(l){ rows.push(head.concat([l.what, l.before, l.after], tail)); });
+      });
+      var blob = new Blob(['﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = EV.id + '-activity-log.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+    }, function(err){
+      notifyError(err, { what: 'The activity log could not be exported.' });
+    }).then(function(){ LOG.exporting = false; if (routeId() === 'activity') paintLog(); });
+  }
+
+  function logRow(h){
+    var lines = histLines(h), a = h.approval, area = h.area || 'event';
+    var more = lines.length ? '<details class="alog-ba"><summary>Before and after (' + lines.length + ')</summary>' +
+      '<div class="alog-ba-list">' + lines.map(function(l){
+        return '<div class="alog-ba-row"><div class="alog-ba-what">' + esc(l.what) + '</div>' +
+          '<div class="alog-ba-before"><span>Before</span>' + esc(l.before || '—') + '</div>' +
+          '<div class="alog-ba-after"><span>After</span>' + esc(l.after || '—') + '</div></div>';
+      }).join('') + '</div></details>' : '';
+    var review = a ? ' · <a href="/review.html?event=' + encodeURIComponent(EV.id) + '&request=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">Open review</a>' : '';
+    var who = whoLabel(h.by);
+    return '<li class="alog-row">' +
+      '<div class="alog-when" title="' + esc(h.at || '') + '">' + esc(histWhen(h.at)) + '</div>' +
+      '<div class="alog-who' + (isPlatform(h.by) ? ' platform' : '') + '" title="' + esc(who) + '">' + esc(who) + '</div>' +
+      '<div class="alog-area"><span class="badge ' + (LOG_AREA_BADGE[area] || 'b-mute') + '">' + esc(areaLabel(area)) + '</span></div>' +
+      '<div class="alog-what"><div class="alog-act">' + esc(actionLabel(h.action)) + (h.version ? ' · version ' + esc(String(h.version)) : '') + '</div>' +
+        '<div class="alog-detail">' + esc(h.detail || '—') + '</div>' +
+        (a ? '<div class="alog-appr">' + esc(histApprovedBy(h)) + review + '</div>' : '') + more + '</div>' +
+    '</li>';
+  }
+  function logBodyHTML(){
+    if (!LOG.items){
+      if (LOG.error) return '<div class="alog-state" role="alert"><b>The activity log could not be loaded.</b><span>' + esc(LOG.error) + '</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-alog="refresh">Try again</button></div>';
+      return '<div class="alog-state" aria-busy="true"><span>Loading the activity log…</span></div>';
+    }
+    var err = LOG.error ? '<div class="alog-note" role="alert">' + esc(LOG.error) + ' <button class="btn btn-secondary btn-sm" type="button" data-alog="refresh">Try again</button></div>' : '';
+    if (!LOG.items.length){
+      return err + '<div class="alog-state"><b>' + (logFiltered() ? 'Nothing matches this filter.' : 'Nothing has been recorded for this event yet.') + '</b>' +
+        (logFiltered() ? '<button class="btn btn-secondary btn-sm" type="button" data-alog="clear">Clear the filter</button>' : '<span>Every edit to the event will be listed here, with when it was made and by whom.</span>') + '</div>';
+    }
+    return err + '<div class="alog-head" aria-hidden="true"><div>Date &amp; time (IST)</div><div>User</div><div>Area</div><div>What changed</div></div>' +
+      '<ol class="alog-list">' + LOG.items.map(logRow).join('') + '</ol>' +
+      (LOG.next ? '<div class="alog-more"><button class="btn btn-secondary btn-sm" type="button" data-alog="more"' + (LOG.more ? ' disabled' : '') + '>' +
+        (LOG.more ? 'Loading…' : 'Load older entries') + '</button></div>' : '<div class="alog-end">' + (LOG.items.length > 8 ? 'That is the whole log' + (logFiltered() ? ' for this filter.' : '.') : '') + '</div>');
+  }
+  function logCount(){
+    if (!LOG.items) return LOG.loading ? 'Loading…' : '';
+    var n = LOG.items.length;
+    return n + (LOG.next ? '+' : '') + (n === 1 && !LOG.next ? ' entry' : ' entries') + (logFiltered() ? ' match' : '') + (LOG.loading ? ' · updating…' : '');
+  }
+  /* redraws the list only: the filter fields keep their focus and what is being typed */
+  function paintLog(){
+    var body = document.getElementById('alog-body');
+    if (!body) return;
+    body.innerHTML = logBodyHTML();
+    body.setAttribute('aria-busy', LOG.loading ? 'true' : 'false');
+    var c = document.getElementById('alog-count');
+    if (c) c.textContent = logCount();
+    var x = document.querySelector('[data-alog="export"]');
+    if (x){ x.disabled = LOG.exporting || !(LOG.items && LOG.items.length); x.lastChild.textContent = LOG.exporting ? ' Preparing…' : ' Export CSV'; }
+  }
+  function paintUsage(){
+    var u = document.getElementById('alog-usage');
+    if (u) u.innerHTML = usagePanel();
+  }
+  function peopleOptions(){
+    var list = LOG.people.slice();
+    if (LOG.f.by && list.indexOf(LOG.f.by) === -1) list.push(LOG.f.by);
+    return '<option value="">Everyone</option>' + list.map(function(p){
+      return '<option value="' + esc(p) + '"' + (p === LOG.f.by ? ' selected' : '') + '>' + esc(whoLabel(p)) + '</option>';
+    }).join('');
+  }
+  function paintPeople(){
+    var s = document.getElementById('alog-by');
+    if (s && document.activeElement !== s) s.innerHTML = peopleOptions();
+  }
+  function logToolbar(){
+    var f = LOG.f;
+    return '<div class="toolbar alog-filters" role="search" aria-label="Filter the activity log">' +
+      '<label class="alog-f"><span>From</span><input class="inp" type="date" id="alog-from" data-alog-f="from" value="' + esc(f.from) + '"></label>' +
+      '<label class="alog-f"><span>To</span><input class="inp" type="date" id="alog-to" data-alog-f="to" value="' + esc(f.to) + '"></label>' +
+      '<label class="alog-f"><span>User</span><select class="inp" id="alog-by" data-alog-f="by">' + peopleOptions() + '</select></label>' +
+      '<label class="alog-f"><span>Area</span><select class="inp" data-alog-f="area"><option value="">All areas</option>' + LOG_AREAS.map(function(a){
+        return '<option value="' + a[0] + '"' + (a[0] === f.area ? ' selected' : '') + '>' + esc(a[1]) + '</option>';
+      }).join('') + '</select></label>' +
+      '<label class="alog-f alog-q"><span>Search</span><span class="search">' + svg(IC.search, 14) +
+        '<input type="search" data-alog-f="q" placeholder="Words, a section, a person…" value="' + esc(f.q) + '" aria-label="Search the activity log"></span></label>' +
+      '<button class="btn btn-secondary btn-sm alog-clear" type="button" data-alog="clear"' + (logFiltered() ? '' : ' hidden') + '>Clear</button>' +
+    '</div>';
+  }
+  function setLogFilter(k, v){
+    if (LOG.f[k] === v) return;
+    LOG.f[k] = v;
+    var clr = document.querySelector('[data-alog="clear"].alog-clear');
+    if (clr) clr.hidden = !logFiltered();
+    LOG.items = null; LOG.next = null;
+    loadLog();
+  }
+  var logTyping = null;
   document.addEventListener('click', function(e){
-    var t = e.target && e.target.closest && e.target.closest('[data-hist]');
-    if (!t) return;
-    if (t.getAttribute('data-hist') === 'export') exportHistory();
-    else { HIST.items = null; render(); }
+    var t = e.target && e.target.closest && e.target.closest('[data-alog]');
+    if (!t || t.tagName === 'INPUT' || t.tagName === 'SELECT') return;
+    var what = t.getAttribute('data-alog');
+    if (what === 'export') exportLog();
+    else if (what === 'more') loadMoreLog();
+    else if (what === 'clear'){ LOG.f = { from: '', to: '', by: '', area: '', q: '' }; LOG.items = null; LOG.next = null; loadLog(); render(); }
+    else if (what === 'refresh'){ loadLog(); }
+  });
+  document.addEventListener('change', function(e){
+    var t = e.target, k = t && t.getAttribute && t.getAttribute('data-alog-f');
+    if (!k || k === 'q') return;
+    if ((k === 'from' || k === 'to') && t.value && !/^\d{4}-\d{2}-\d{2}$/.test(t.value)) return;
+    setLogFilter(k, t.value || '');
+  });
+  document.addEventListener('input', function(e){
+    var t = e.target;
+    if (!t || !t.getAttribute || t.getAttribute('data-alog-f') !== 'q') return;
+    clearTimeout(logTyping);
+    logTyping = setTimeout(function(){ setLogFilter('q', String(t.value || '').trim()); }, 350);
   });
 
   /* What the AI has cost this event, step by step (events/<id>.aiUsage, written by the server as each model
@@ -4611,7 +4802,7 @@
   };
   function money(v){ v = +v || 0; return '$' + (v >= 1 ? v.toFixed(2) : v.toFixed(3)); }
   function usagePanel(){
-    var u = HIST.usage;
+    var u = LOG.usage;
     if (!u || !u.calls) return '';
     var steps = Object.keys(u.byRoute || {}).map(function(k){ return [k, u.byRoute[k] || {}]; })
       .sort(function(a, b){ return (+b[1].usd || 0) - (+a[1].usd || 0) || (+b[1].calls || 0) - (+a[1].calls || 0); });
@@ -4627,36 +4818,19 @@
       '<p style="padding:10px 16px 14px;margin:0;font-size:12px;color:var(--text-muted)">Claude at Anthropic\'s list prices. Gemini (pictures, and any step Claude could not answer) is counted in calls and tokens, not priced here.</p>');
   }
 
-  function viewHistory(){
-    if (!HIST.loading && (!HIST.items && !HIST.error || Date.now() - HIST.at > 20000)) loadHistory();
-    var head = function(count){
-      return vhead('Event History', 'Every change made to this event, newest first: who made it, when, what it was before and after, and who approved what went live.',
-        '<button class="btn btn-secondary btn-sm" type="button" data-hist="refresh">Refresh</button> ' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-hist="export"' + (count ? '' : ' disabled') + '>' + svg(IC.down, 13) + ' Export log</button>');
-    };
-    if (!HIST.items){
-      return head(0) + panelFlush('Audit trail', '', '<p style="padding:22px;color:var(--text-muted)">' + esc(HIST.error || 'Loading the history…') + '</p>');
+  function viewActivity(){
+    if (!LOG.loading && !LOG.queued && (!LOG.items && !LOG.error || Date.now() - LOG.at > 20000)){
+      LOG.queued = true;
+      setTimeout(function(){ LOG.queued = false; if (routeId() === 'activity' && !LOG.loading) loadLog(); }, 0);
     }
-    var rows = HIST.items.map(function(h){
-      var lines = histLines(h), a = h.approval;
-      var more = lines.length ? '<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--text-muted);font-size:12px">Before and after (' + lines.length + ')</summary>' +
-        '<table style="width:100%;margin-top:6px;font-size:12px;border-collapse:collapse">' + lines.map(function(l){
-          return '<tr><td style="padding:4px 8px 4px 0;vertical-align:top;font-weight:600;width:28%">' + esc(l.what) + '</td>' +
-            '<td style="padding:4px 8px;vertical-align:top;background:var(--danger-soft, rgba(179,38,30,.08));width:36%;white-space:pre-wrap;word-break:break-word">' + esc(l.before || '—') + '</td>' +
-            '<td style="padding:4px 8px;vertical-align:top;background:var(--ok-soft, rgba(47,143,91,.1));white-space:pre-wrap;word-break:break-word">' + esc(l.after || '—') + '</td></tr>';
-        }).join('') + '</table></details>' : '';
-      var review = a ? ' <a href="/review.html?event=' + encodeURIComponent(EV.id) + '&request=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener" style="font-size:12px">Open review</a>' : '';
-      return '<tr><td class="num" style="white-space:nowrap;vertical-align:top">' + esc(histWhen(h.at)) + '</td>' +
-        '<td class="td-strong" style="vertical-align:top">' + esc(h.by) + '</td>' +
-        '<td style="vertical-align:top"><span class="badge b-mute">' + esc(HIST_AREA[h.action] || h.action) + '</span></td>' +
-        '<td style="vertical-align:top">' + esc(h.detail || '—') + review + more + '</td>' +
-        '<td style="vertical-align:top;white-space:nowrap">' + (a ? esc(histApprovedBy(h)) + (a.status === 'approved' ? '<div style="color:var(--text-muted);font-size:12px">' + esc(histWhen(a.decidedAt)) + '</div>' : '') : '—') + '</td></tr>';
-    }).join('');
-    return head(HIST.items.length) + usagePanel() +
-      panelFlush('Audit trail', HIST.items.length + (HIST.items.length === 1 ? ' entry' : ' entries'),
-        HIST.items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>When</th><th>Who</th><th>Area</th><th>What changed</th><th>Approved by</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p style="padding:22px;color:var(--text-muted)">Nothing has been recorded for this event yet.</p>');
+    return vhead('Activity log', 'Every edit made to this event, newest first: when it was made (India time), who made it, what changed, and its value before and after.',
+        '<button class="btn btn-secondary btn-sm" type="button" data-alog="refresh">Refresh</button> ' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-alog="export"' + (LOG.items && LOG.items.length && !LOG.exporting ? '' : ' disabled') + '>' + svg(IC.down, 13) + '<span>' + (LOG.exporting ? ' Preparing…' : ' Export CSV') + '</span></button>') +
+      '<div class="panel alog">' +
+        '<div class="panel-head"><h3>Edits</h3><span class="sub" id="alog-count" aria-live="polite">' + esc(logCount()) + '</span></div>' +
+        logToolbar() +
+        '<div id="alog-body" aria-busy="' + (LOG.loading ? 'true' : 'false') + '">' + logBodyHTML() + '</div>' +
+      '</div>' + '<div id="alog-usage">' + usagePanel() + '</div>';
   }
 
 
@@ -5452,7 +5626,8 @@
     'settings/links':       viewSocialLinks,
     'settings/visibility':  viewVisibility,
     'settings/advanced':    viewSetAdv,
-    'settings/history':     viewHistory
+
+    'activity':             viewActivity
   };
 
   function render(){

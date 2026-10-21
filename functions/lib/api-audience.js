@@ -1876,12 +1876,14 @@ function handleActivity(req, res) {
     guard(res, sendJson, 'load the history', function () {
       var qs = query(req), eventId = str(qs.get('eventId'), 100);
       if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
-      var limit = intParam(qs.get('limit'), 100, 1, 500);
+      /* a page at a time with ?before=<next>, filtered like GET /api/event/history (lib/activity-query.js);
+         without paging parameters, the newest 100 as before */
+      var AQ = require('./activity-query'), opts = AQ.parseQuery(qs, 100);
       eventDoc(fb, eventId).get().then(function (snap) {
         if (!snap.exists) throw httpError(404, 'No event found for "' + eventId + '".');
-        return listActivity(fb, eventId, limit).then(function (items) {
-          sendJson(res, 200, { items: items.map(function (a) {
-            return { id: a.id, at: a.at || null, by: a.by || '', action: a.action || '', detail: a.detail || '' };
+        return AQ.queryPage(eventDoc(fb, eventId).collection('activity'), opts).then(function (page) {
+          sendJson(res, 200, { next: page.next, people: page.people || null, items: page.items.map(function (a) {
+            return { id: a.id, at: a.at || null, by: a.by || '', action: a.action || '', detail: a.detail || '', area: a.area };
           }) });
         });
       }).catch(function (err) { answerError(res, sendJson, err, 'load the history'); });

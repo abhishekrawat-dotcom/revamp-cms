@@ -451,6 +451,20 @@ window.RevampCore = (function(){
     return need(eventId, 'fetchHistoryAndUsage: eventId') ||
       api('GET', '/api/event/history?eventId=' + q(eventId)).then(function(data){ return { items: (data && data.items) || [], aiUsage: (data && data.aiUsage) || null }; });
   }
+  /* the Activity log, a page at a time: opts { limit, before (the last answer's `next`), from, to (ISO times),
+     by, area, action, q } -> { items, next, people (first page only), aiUsage } */
+  function fetchActivityLog(eventId, opts){
+    var u = '/api/event/history?eventId=' + q(eventId);
+    opts = opts || {};
+    ['limit', 'before', 'from', 'to', 'by', 'area', 'action', 'q'].forEach(function(k){
+      if (opts[k] != null && opts[k] !== '') u += '&' + k + '=' + q(opts[k]);
+    });
+    return need(eventId, 'fetchActivityLog: eventId') ||
+      api('GET', u).then(function(data){
+        data = data || {};
+        return { items: data.items || [], next: data.next || null, people: data.people || null, aiUsage: data.aiUsage || null };
+      });
+  }
   function fetchApprovalSettings(){ return api('GET', '/api/settings/approvals'); }
   function saveApprovalSettings(settings){ return api('PUT', '/api/settings/approvals', settings || {}); }
 
@@ -1048,7 +1062,7 @@ window.RevampCore = (function(){
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
     fetchSite: fetchSite, saveSite: saveSite, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
-    fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
+    fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
     uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
