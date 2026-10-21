@@ -3411,7 +3411,7 @@
           currentEvent.designPlan.design.sectionEdges = value;
         }
         if (!quiet) showToast(value === 'smooth'
-          ? 'Smooth section edges saved: where the colour changes, one section fades into the next. Publish to put it live.'
+          ? 'Smooth section edges saved: where the colour changes, one section fades into the next. Open Preview to see it (the editor keeps showing sharp edges); publish to put it live.'
           : 'Sharp section edges saved: each section ends in a straight line. Publish to put it live.');
         return true;
       }, function (err) {
