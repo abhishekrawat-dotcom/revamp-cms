@@ -141,6 +141,7 @@ const eventDescription = require('./event-description');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
 const googleFonts = require('./google-fonts');
+const sectionPictures = require('./section-pictures');
 const prevSections = require('./prev-sections');
 const sectionOrder = require('./section-order');
 const etNav = require('./et-nav');
@@ -1235,6 +1236,30 @@ function handleEtEvents(req, res) {
   });
 }
 
+/* What KIND of picture the previous edition puts in each of its content sections (section-pictures.js):
+   its content pictures are fetched (bounded) and read together in one small call, so that the new edition's
+   pictures follow its choices section by section. Never fails the step: what cannot be had is not known.
+   -> Promise<[{ heading, kind, about }]> */
+var SECTION_PICTURE_MAX_BYTES = 1.5 * 1024 * 1024;
+function readSectionPictures(eventId, html, url, skip, deadlineAt) {
+  var found = [];
+  try { found = sectionPictures.picturesIn(html, url, { skip: skip }); } catch (e) { found = []; }
+  if (!found.length || (deadlineAt && deadlineAt - Date.now() < 40000)) return Promise.resolve([]);
+  return Promise.all(found.map(function (p) {
+    return safeFetch(p.url, { timeoutMs: 8000, maxBytes: SECTION_PICTURE_MAX_BYTES }).then(function (r) {
+      var info = r.status === 200 ? logoUnit.imageInfo(r.body) : null;
+      /* a real picture, big enough to be a section's (an icon or a thumbnail is not) */
+      if (!info || ['png', 'jpeg', 'webp', 'gif'].indexOf(info.type) === -1 || !(info.width >= 240 && info.height >= 160)) return null;
+      return Object.assign({}, p, { image: { mimeType: info.mime, data: r.body.toString('base64') } });
+    }, function () { return null; });
+  })).then(function (got) {
+    return sectionPictures.classify(got.filter(Boolean), function (prompt, schema, images) {
+      return callGeminiJson(prompt, schema, { route: 'ingest-source', eventId: eventId, images: images, maxOutputTokens: AI_OUTPUT_TOKENS.small, timeoutMs: 60000, deadlineAt: deadlineAt })
+        .then(function (r) { var record = aiUsageRecorder(null, eventId, 'ingest-source'); if (record) record(r.usage); return r; });
+    });
+  }).then(null, function (err) { console.error('ingest-source: section pictures not read — ' + (err && err.message)); return []; });
+}
+
 /* What the edition looks like, beyond its words (edition-look.js): its palette and type from its own styles,
    its lock-up's colours, and the banner picture it is built on (read by the model, described in words). What
    is read here inspires the new design; none of it is copied into it. Each read is bounded and none can
@@ -1361,9 +1386,12 @@ function handleIngestSource(req, res) {
             edition.keyVisual = null;
             return llm.callJson(buildIngestSourcePrompt(url, type, text, skeleton, false), ingestSchemaFor(false), Object.assign({}, ask, { images: undefined }));
           });
-          return Promise.all([read, previousRead, edition]);
+          /* the previous edition's section pictures, by kind — read beside the page (the banner is the key visual) */
+          var picturesRead = type !== 'previousEdition' ? Promise.resolve([]) :
+            readSectionPictures(eventId, html, url, [edition && edition.keyVisual && edition.keyVisual.url], deadlineAt);
+          return Promise.all([read, previousRead, edition, picturesRead]);
         }).then(function (both) {
-          var r = both[0], previous = both[1], edition = both[2];
+          var r = both[0], previous = both[1], edition = both[2], pictureKinds = both[3] || [];
           if (r.error) return sendAiFailure(res, r);
           var look = edition ? edition.look : null;
           var keyVisual = edition ? keptKeyVisual(edition.keyVisual, r.parsed.keyVisual) : null;
@@ -1376,7 +1404,7 @@ function handleIngestSource(req, res) {
             return fb.db.collection('events').doc(eventId).collection('sources').add({
               type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
               design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
-              previous: previous || null, look: look, keyVisual: keyVisual
+              previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds
             });
           }).then(function (sourceRef) {
             sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone,
@@ -1526,8 +1554,8 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
    { sectionId, url, subject } — or null when it could not be made, which costs the site that one picture
    and nothing else. `stamp` keeps a re-run's pictures apart from the last run's (a cached old picture under
    the same address would otherwise be shown for the new site). */
-function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level) {
-  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about, level: level }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level, kind) {
+  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about, level: level, kind: kind }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
     if (record) record(r.usage);
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
@@ -1657,9 +1685,11 @@ var DESIGN_PLAN_SCHEMA = {
           kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the others ONLY when this section is really that specific data-bound type (see below).' },
           purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' },
           layout: { type: 'STRING', description: 'one sentence: how THIS section is laid out (e.g. "picture left, text right, three ticked points under the text", "one band of four large numbers", "three-column cards with an icon each", "a vertical timeline"). Neighbouring sections must not share a layout.' },
-          image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence: the real-world scene THIS section is about, as a photographer covering this event and its industry would shoot it (not a generic backdrop, and different from every other picture on the page). For a section about the event itself (overview, why attend, who attends, networking, awards) that is the event: delegates in conversation, a panel on stage, an audience, a registration desk, a trophy table. For a section about the subject (themes, tracks, discussion points) it is that subject at work in its real setting, with the people who do it. The people are Indian, women and men in about equal numbers, women in leading roles too; faces may show, but never a real or named person. No text or logos. Empty string only for a section that carries no generated picture.' }
+          image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence, of the KIND given in imageKind: the real thing THIS section is about (not a generic backdrop, and different from every other picture on the page). people: the gathering — delegates in conversation, an audience, an awards table; place: the venue or the city itself; subject: the field\'s own technology, products, materials or workplace, in detail, no people; graphic: an illustration drawn from the subject. People appear only in a "people" picture: Indian, women and men in about equal numbers, women in leading roles too; never a real or named person. No text or logos. Empty string only for a section that carries no generated picture.' },
+
+          imageKind: { type: 'STRING', enum: genDesign.IMAGE_KINDS, description: 'The KIND of that picture (see PICTURE KINDS): "people" only where the section is about people or the gathering; "place", "subject" or "graphic" otherwise. Any value when the section has no picture.' }
         },
-        required: ['id', 'kind', 'purpose', 'layout', 'image']
+        required: ['id', 'kind', 'purpose', 'layout', 'image', 'imageKind']
       }
     }
   },
@@ -1687,6 +1717,11 @@ function designReference(sourceDocs) {
 /* About two fifths of a generated page is pictures: the hero's, and one for most of the sections the model
    writes itself. Each is a paid image call, made side by side with the others. */
 var MAX_SECTION_IMAGES = 8;
+/* of those, the ones whose picture is of people (genDesign.IMAGE_KINDS): a page of faces section after section
+   read as one picture repeated (the owner, 22 Oct 2026) */
+var MAX_PEOPLE_PICTURES = 2;
+/* a section that is about people or the gathering itself — the first to keep a picture of people */
+var PEOPLE_SECTION = /network|who-?(?:should|attends|is-it-for|enter)|attendee|audience|delegate|community|testimonial|experience|gala|ceremony|awards?-night|night|meet|connect/i;
 
 /* The previous edition's look, for the plan prompt: its palette and type as its own page sets them, its
    lock-up's colours and its banner artwork in words (edition-look.js, read at ingest). The new site is
@@ -1794,7 +1829,14 @@ function buildDesignPlanPrompt(payload) {
     'ONE TONE: the page keeps its mode (design.mode) from the first section under the hero to the footer — a light site is light all the way down, a dark site dark all the way down. Sections differ by layout, pictures and the surface colour, never by switching between light and dark bands.',
     '',
     'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage): the one picture that tells a visitor what this event is — an event scene of this event\'s own kind and field, never an abstraction. Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
-    'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", never a metaphor made of unrelated objects (glass blocks, light trails, a server rack for a marketing event), and never the same subject twice on one page. RELEVANCE IS THE TEST: someone shown the picture alone should be able to say what kind of event this is and what it is about. So the pictures are scenes from this event\'s world, as an editorial photographer would shoot them: the event itself (a hall and its audience, a panel on stage, delegates talking over coffee, an awards table) and its subject at work in its real setting (for marketing technology: a marketing team around campaign dashboards; for German industry: a factory floor being shown to visiting executives; for retail: a shop floor). People belong in them: Indian professionals, women and men in about equal numbers, with women in leading roles (on stage, leading the discussion), never only men; faces may show, as in real event photography, but never a real or named person. Where the event is tied to a place (a city, a country), let that place show. No text or logos in any picture (screens and signs are blank or blurred).',
+    'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", never a metaphor made of unrelated objects (glass blocks, light trails, a server rack for a marketing event), and never the same subject twice on one page. RELEVANCE IS THE TEST: someone shown the picture alone should be able to say what kind of event this is and what it is about. No text or logos in any picture (screens and signs are blank or blurred). Where the event is tied to a place (a city, a country), let that place show.',
+    'PICTURE KINDS — a page of photographs of people, section after section, is dull and reads as one picture repeated. Give each section\'s picture the KIND (sections[].imageKind) that suits what the section says:',
+    '- "people": a photograph whose subject is people — ONLY for a section that is about people or the gathering itself: networking, who attends or should enter, the audience and the experience of the day, an awards night, testimonials. The people are Indian professionals, women and men in about equal numbers, women in leading roles too; never a real or named person.',
+    '- "place": the venue, the city or the setting — no people (the overview of an event tied to a city, the venue, travel and stay).',
+    '- "subject": the field itself — its technology, products, machines, materials or workplace, shot as a still life or an industrial photograph, no people (themes, tracks, discussion points, the state of the industry, award categories).',
+    '- "graphic": an illustration or abstract artwork drawn from the subject (the overview, why attend, how it works, the process, numbers).',
+    'Mix them: at most ' + MAX_PEOPLE_PICTURES + ' sections with "people" pictures, never two "people" sections next to each other, and every kind you use should have a reason in what its section says. Where the previous edition\'s section pictures are listed below, follow its choice of kind for a section that does the same job.',
+
     '',
     'Event (already known):', JSON.stringify(payload.eventMeta || {}, null, 2)
   );
@@ -1813,6 +1855,13 @@ function buildDesignPlanPrompt(payload) {
   if (payload.sources && payload.sources.length) {
     lines.push('', 'What the collected pages SAY (content, summarised):');
     payload.sources.forEach(function (s) { lines.push('--- ' + s.type + ' (' + s.url + ') ---', JSON.stringify(s.extractedSections, null, 2)); });
+    /* what kind of picture the previous edition put in each section (ingest-source, section-pictures.js) */
+    var kinds = [];
+    payload.sources.forEach(function (s) { (s.sectionPictures || []).forEach(function (p) { kinds.push('- "' + p.heading + '": ' + p.kind + ' — ' + p.about); }); });
+    if (kinds.length) {
+      lines.push('', 'THE PICTURES THE PREVIOUS EDITION PUT IN ITS SECTIONS (section heading: kind — what it showed). For a section of yours that does the same job, choose the same KIND of picture (sections[].imageKind) — a new picture, never theirs:');
+      lines.push.apply(lines, kinds.slice(0, 12));
+    }
   }
 
   var ti = payload.themeInfo || {};
@@ -1870,9 +1919,30 @@ function sanitizeDesignPlanSections(parsed, siteMode) {
     var kind = std ? std.kind : (DESIGN_SECTION_KINDS.indexOf(s.kind) !== -1 ? s.kind : 'custom');
     var image = kind === 'custom' ? String(s.image || '').trim().slice(0, 300) : '';
     if (image && ++pictures > MAX_SECTION_IMAGES) image = '';
-    out.push({ id: id, name: std ? std.name : '', kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image });
+    var imageKind = genDesign.IMAGE_KINDS.indexOf(s.imageKind) !== -1 ? s.imageKind : (image ? 'subject' : '');
+    out.push({ id: id, name: std ? std.name : '', kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image, imageKind: image ? imageKind : '' });
   });
-  return out;
+  return fewerPeoplePictures(out);
+}
+/* At most MAX_PEOPLE_PICTURES sections with a picture of people, never two next to each other; sections that
+   are about people keep theirs first. Another becomes a picture of its subject, its scene said again from
+   what the section is for (the scene written for people would bring them back). */
+function fewerPeoplePictures(sections) {
+  var people = sections.filter(function (s) { return s.imageKind === 'people'; });
+  var keep = people.filter(function (s) { return PEOPLE_SECTION.test(s.id + ' ' + s.name + ' ' + s.purpose); })
+    .concat(people.filter(function (s) { return !PEOPLE_SECTION.test(s.id + ' ' + s.name + ' ' + s.purpose); }));
+  var kept = {}, n = 0;
+  keep.forEach(function (s) {
+    var i = sections.indexOf(s);
+    var beside = (sections[i - 1] && kept[sections[i - 1].id]) || (sections[i + 1] && kept[sections[i + 1].id]);
+    if (n < MAX_PEOPLE_PICTURES && !beside) { kept[s.id] = 1; n++; }
+  });
+  sections.forEach(function (s) {
+    if (s.imageKind !== 'people' || kept[s.id]) return;
+    s.imageKind = 'subject';
+    s.image = 'what this section is about, shown through its own objects, tools and setting, with no people: ' + s.purpose.slice(0, 220);
+  });
+  return sections;
 }
 function sanitizeDesignPlanDesign(parsed, themeMode, eventName) {
   var d = (parsed && parsed.design) || {};
@@ -3349,7 +3419,7 @@ function handlePlanStructure(req, res) {
       if (!eventMeta.description) delete eventMeta.description;
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
       var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
-      var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections }; });
+      var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections, sectionPictures: v.type === 'previousEdition' ? v.sectionPictures || [] : [] }; });
       var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
       var reference = designReference(sourceDocs);
       var artDirection = genDesign.artDirectionFor(eventId);
@@ -3436,7 +3506,7 @@ function handlePlanStructure(req, res) {
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
-            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level);
+            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level, s.imageKind);
           })
         );
         /* the logo unit is made alongside them: the logo the owner uploaded, else the previous edition's own,
@@ -8540,7 +8610,7 @@ module.exports._testHooks = {
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, readSectionPictures, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont

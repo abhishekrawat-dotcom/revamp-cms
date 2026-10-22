@@ -522,7 +522,12 @@ var PEOPLE_RULES_GLOBAL = PEOPLE_RULES
   .replace('professional Indian business attire (suits, blazers, sarees, kurtas)', 'professional business attire');
 /* the owner asked for graphics, not photographs: a composition, with no people in it */
 var GRAPHIC_RULES = 'STRICT: a graphic composition, not a photograph — shapes, light, texture and forms drawn from the event\'s subject; no people, no faces.' + 
- ' No readable text, letters or numbers anywhere, no logos, no brand names, no watermarks, no flags.';
+ ' No readable text, letters or numbers anywhere — no labels, captions, callouts or keywords beside the forms, not a single word (the website sets every word itself) — no logos, no brand names, no watermarks, no flags.';
+/* A section's picture is of one KIND (plan-structure, sections[].imageKind). People are in it only when the
+   section is about people; the place, the subject and a graphic carry none — a page whose every picture was a
+   crowd of faces read as one picture repeated (the owner, 22 Oct 2026). */
+var IMAGE_KINDS = ['people', 'place', 'subject', 'graphic'];
+var NO_PEOPLE_RULES = 'NO PEOPLE: this picture is of the place or the things themselves — no people in it; at most a few small figures far in the distance, no face visible.';
 var IMAGE_TAIL = ' No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
 var IMAGE_RULES = 'STRICT: ' + PEOPLE_RULES + IMAGE_TAIL;
 
@@ -554,20 +559,27 @@ function placeLine(place, hero) {
 
 /* opts: { hero, about, context, level: 'global'|…  (an owner's "global" event shows an international mix),
    graphic: true (the owner asked for graphics, not photographs), place: { city, cues } (where it happens; else
-   design.place, which plan-structure sets) }; design.inspiredBy: the previous edition's banner artwork in words */
+   design.place, which plan-structure sets), kind: a section picture's IMAGE_KINDS entry ('people' when not
+   given; the hero always shows the event with its people) }; design.inspiredBy: the previous edition's banner
+   artwork in words */
 function imagePrompt(subject, design, opts) {
   design = design || {};
   opts = opts || {};
-  var graphic = !!opts.graphic;
+  var kind = IMAGE_KINDS.indexOf(opts.kind) !== -1 ? opts.kind : 'people';
+  var graphic = !!opts.graphic || (!opts.hero && kind === 'graphic');
   var lines = [
     opts.hero
       ? (graphic
         ? 'Create the wide background artwork for the hero banner of a professional event website: a refined graphic composition (not a photograph) drawn from what this event is about. The event\'s name and buttons will sit over the middle of it, so keep the main forms towards the sides and the lower third, and the middle calmer.'
         : 'Create the wide background photograph for the hero banner of a professional event website. It must say at a glance what this event is: show the scene described below, not an abstraction of it. The event\'s name and buttons will sit over the middle of it, so compose it with depth and atmosphere, the main elements towards the sides, the back and the lower third, and a calmer, darker or softer middle.')
+      : graphic ? 'Create one refined graphic illustration (not a photograph) for a section of a professional event website: forms, light and texture drawn from what the section is about. It is artwork, not a diagram, an infographic or an annotated drawing: nothing in it is labelled.'
+      : kind === 'place' ? 'Create one editorial photograph of a PLACE for a section of a professional event website: the venue, the city or the setting itself, shot as an architecture and travel photographer would.'
+      : kind === 'subject' ? 'Create one editorial photograph of the SUBJECT for a section of a professional event website: the technology, products, materials or working environment the section is about, shot as a still-life or industrial photographer would — the things themselves, in detail.'
       : 'Create one editorial photograph for a section of a professional event website.',
     'Scene: ' + String(subject || 'a large business conference in session, an Indian audience of women and men facing a lit stage where a woman is speaking').slice(0, 500) + '.',
-    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic ? ' and the forms in it.' : ', the people at work and the objects in view.') : '',
-    opts.context ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
+    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic ? ' and the forms in it.' : kind === 'people' || opts.hero ? ', the people at work and the objects in view.' : ' and the objects in view.') : '',
+    /* an illustration told what its section says draws those words in as labels: it gets the scene alone */
+    opts.context && !(graphic && !opts.hero) ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
     placeLine(opts.place || design.place, opts.hero),
     /* the previous edition's banner artwork, in words (plan-structure, design.inspiredBy): the hero is a new
        picture inspired by it, never a copy */
@@ -578,7 +590,7 @@ function imagePrompt(subject, design, opts) {
     'Every picture on this site shares this one style, so that they read as a set.',
     /* the model paints the event's name into a hero it is told the name will sit over: said outright */
     opts.hero ? 'The picture itself carries no words at all — never the event\'s name, its date or its place, no title card, no lettering on stage screens or banners: the site sets the name and the buttons over it. Landscape, 16:9.' : 'Landscape, 4:3.',
-    graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) + IMAGE_TAIL
+    graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.hero || kind === 'people' ? (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) : NO_PEOPLE_RULES) + IMAGE_TAIL
   ];
   return lines.filter(Boolean).join(' ');
 }
@@ -586,5 +598,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE, MOBILE_RULES,
-  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, IMAGE_KINDS, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };
