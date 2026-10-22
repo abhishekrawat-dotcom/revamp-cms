@@ -146,6 +146,17 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   check('drawn: everything above the year row is untouched', after && png.inkCount(after, { x: 0, y: 0, width: 417, height: 80 }, null) === png.inkCount(before, { x: 0, y: 0, width: 417, height: 80 }, null));
   const astray = await hooks.moveYearInPng(prevDecoded, Object.assign({}, read26, { box: { x: 4, y: 97, width: 270, height: 59 } }), '2027', '', PREV.length);
   check('a box round something that is not a year ("summit") is not acted on', astray === null);
+  /* the new digit fitted to the 2 that stays (its ink: x 311-347, y 99-154), not to the font's capitals */
+  const seven = after && png.inkBounds(after, { x: 350, y: 80, width: 67, height: 95 }, null);
+  check('drawn: the 7 stands as tall as the 2, on its foot, no wider than it, clear of it', seven && Math.abs(seven.height - 55) <= 2 && Math.abs(seven.y + seven.height - 154) <= 1.5 &&
+    seven.width <= 36 * 1.15 && seven.x >= 349, seven);
+  /* A reading whose box was a little loose took in the end of "summit"'s t; the year was then left at '26
+     (AutoTech Summit 2027, made on 22 Oct 2026). The t is outside the year's look now. */
+  const loose = await hooks.moveYearInPng(prevDecoded, Object.assign({}, read26, { box: { x: 282.309, y: 95.513, width: 106.335, height: 57.684 } }), '2027', '', PREV.length);
+  check('a box a little loose (taking in the t of "summit") still moves the year, the t untouched', loose && loose.to === '\'27', loose && loose.to);
+  const looseDrawn = loose && await hooks.rasterise(loose.bytes.toString('utf8'), { clear: true, width: 417, font: loose.font });
+  const looseAfter = looseDrawn && png.decode(looseDrawn.png);
+  check('… everything left of the apostrophe is as it was', looseAfter && png.inkCount(looseAfter, { x: 0, y: 80, width: 290, height: 80 }, null) === png.inkCount(before, { x: 0, y: 80, width: 290, height: 80 }, null));
 
   /* ---------- 5. the previous edition's unit, end to end ---------- */
   function verifying(after) { return function (shown) { return shown.width === 1000 ? after : READ_26; }; }

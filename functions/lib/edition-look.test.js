@@ -49,7 +49,8 @@ ok(el.keyVisualOf('<style>#top-banner{background-image:url("/kv.webp")}</style><
 ok(el.keyVisualOf('<section class="speakers"><img src="/a.jpg"></section>', 'https://x.in') === '', 'no banner -> nothing');
 
 /* ---- fonts ---- */
-ok(el.googleFont('theano_didotregular') === 'Theano Didot', '@font-face local name of a Google family');
+ok(el.googleFont('theano_didotregular') === 'Playfair Display', 'Theano Didot is not on Google Fonts: the nearest Google family');
+ok(el.googleFont('montserrat-bold') === 'Montserrat' && el.googleFont('Mukta Vaani') === 'Mukta Vaani', '@font-face local name of a Google family; any family in the catalogue');
 ok(el.googleFont('SangBleuVersailles-Bold-WebS') === 'Playfair Display', 'a commercial family -> its substitute');
 ok(el.googleFont('Gotham') === 'Montserrat' && el.googleFont('Some Custom Face') === '', 'substitutes; an unknown family is the model\'s to match');
 

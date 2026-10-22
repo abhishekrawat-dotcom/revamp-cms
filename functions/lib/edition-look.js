@@ -226,13 +226,14 @@ function compact(name) {
     .replace(/[-_ ]?(?:webs?|webfont|regular|bold|semibold|medium|light|book|italic|black|thin|std|pro)\b/g, ' ')
     .replace(/[^a-z0-9]/g, '');
 }
-/* families on Google Fonts that event pages use; matched loosely ("theano_didotregular" is Theano Didot) */
+/* families on Google Fonts that event pages use; matched loosely ("montserratbold" is Montserrat). Any other
+   family on Google Fonts is found in its catalogue (google-fonts.js). */
 var GOOGLE_FONTS = ['Montserrat', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Poppins', 'Raleway', 'Nunito', 'Nunito Sans', 'Work Sans',
   'Playfair Display', 'Merriweather', 'Source Sans 3', 'Source Serif 4', 'PT Sans', 'PT Serif', 'Oswald', 'Rubik', 'Manrope', 'DM Sans',
   'DM Serif Display', 'Plus Jakarta Sans', 'Outfit', 'Lexend', 'Urbanist', 'Sora', 'Space Grotesk', 'Barlow', 'Barlow Condensed', 'Josefin Sans',
   'Mulish', 'Karla', 'Libre Baskerville', 'Libre Franklin', 'Libre Caslon Text', 'Cormorant Garamond', 'Cormorant', 'EB Garamond', 'Lora',
   'Crimson Text', 'Noto Sans', 'Noto Serif', 'Fira Sans', 'IBM Plex Sans', 'IBM Plex Serif', 'Red Hat Display', 'Bebas Neue', 'Archivo',
-  'Hind', 'Mukta', 'Kanit', 'Quicksand', 'Cabin', 'Arvo', 'Bitter', 'Gloock', 'Bodoni Moda', 'Theano Didot', 'Figtree', 'Jost', 'Prompt',
+  'Hind', 'Mukta', 'Kanit', 'Quicksand', 'Cabin', 'Arvo', 'Bitter', 'Gloock', 'Bodoni Moda', 'Figtree', 'Jost', 'Prompt',
   'Saira', 'Exo 2', 'Titillium Web', 'Anton', 'Teko', 'Fraunces', 'Instrument Serif', 'Abril Fatface', 'Spectral', 'Cinzel', 'Marcellus',
   'Tenor Sans', 'Syne', 'Epilogue', 'Be Vietnam Pro', 'Albert Sans', 'Onest', 'Inter Tight', 'Roboto Condensed', 'Roboto Slab', 'Zilla Slab',
   'Ubuntu', 'Heebo', 'Assistant', 'Archivo Black', 'Chivo', 'Public Sans', 'Lexend Deca', 'Questrial', 'Overpass', 'Hanken Grotesk',
@@ -242,17 +243,20 @@ GOOGLE_FONTS.forEach(function (f) { GOOGLE_BY_KEY[compact(f)] = f; });
 /* families that are not on Google Fonts, and the Google family nearest to each in character */
 var SUBSTITUTES = {
   sangbleuversailles: 'Playfair Display', sangbleu: 'Playfair Display', sangbleusunrise: 'Playfair Display', sangbleuempire: 'Playfair Display',
-  didot: 'Playfair Display', bodoni: 'Bodoni Moda', garamond: 'EB Garamond', caslon: 'Libre Caslon Text', baskerville: 'Libre Baskerville',
+  didot: 'Playfair Display', theanodidot: 'Playfair Display', bodoni: 'Bodoni Moda', garamond: 'EB Garamond', caslon: 'Libre Caslon Text', baskerville: 'Libre Baskerville',
   canela: 'Fraunces', tiempos: 'Source Serif 4', tiemposheadline: 'Source Serif 4', minion: 'Crimson Text', trajan: 'Cinzel', optima: 'Marcellus',
   gotham: 'Montserrat', gothamrounded: 'Nunito', proximanova: 'Figtree', avenir: 'Nunito Sans', avenirnext: 'Nunito Sans', futura: 'Jost',
   futurapt: 'Jost', gilroy: 'Plus Jakarta Sans', circular: 'DM Sans', helveticaneue: 'Inter', graphik: 'Inter', sfpro: 'Inter', sfprodisplay: 'Inter',
   aktivgrotesk: 'Inter', brandongrotesque: 'Josefin Sans', myriad: 'Source Sans 3', segoe: 'Open Sans', calibri: 'Open Sans', frutiger: 'Hind',
   eina: 'Plus Jakarta Sans', sofiapro: 'Figtree', neuehaasgrotesk: 'Inter', neuehaasdisplay: 'Inter', apercu: 'DM Sans', gtwalsheim: 'Outfit'
 };
+var googleFonts = null;
 function googleFont(name) {
   var k = compact(name);
   if (!k) return '';
-  return GOOGLE_BY_KEY[k] || SUBSTITUTES[k] || '';
+  if (GOOGLE_BY_KEY[k] || SUBSTITUTES[k]) return GOOGLE_BY_KEY[k] || SUBSTITUTES[k];
+  if (!googleFonts) googleFonts = require('./google-fonts');
+  return googleFonts.family(name);
 }
 
 /* ---------- the look ---------- */

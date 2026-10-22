@@ -140,6 +140,7 @@ const ownerBrief = require('./owner-brief');
 const eventDescription = require('./event-description');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
+const googleFonts = require('./google-fonts');
 const prevSections = require('./prev-sections');
 const sectionOrder = require('./section-order');
 const etNav = require('./et-nav');
@@ -1433,15 +1434,20 @@ function extractThemeFromPreviousEditionSources(sourceDocs) {
   var tally = {};
   prev.forEach(function (s) {
     var signals = genDesign.fontFamilies(s.fontSignals || []);
-    signals.forEach(function (family, idx) { tally[family] = (tally[family] || 0) + (signals.length - idx); });
+    /* counted as the Google families they are or stand in for: a page's own licensed face is never named */
+    signals.forEach(function (family, idx) {
+      var g = googleFonts.toGoogle(family);
+      if (g) tally[g] = (tally[g] || 0) + (signals.length - idx);
+    });
   });
   var ranked = Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a]; });
   var headingFont = ranked[0] || THEME_FALLBACK.headingFont;
   var bodyFont = (ranked[1] && ranked[1] !== headingFont) ? ranked[1] : (ranked.length ? THEME_FALLBACK.bodyFont : THEME_FALLBACK.bodyFont);
   /* the edition's type by role: what its headings and its body are set in */
-  if (look && (look.headingFont || look.bodyFont)) {
-    headingFont = look.headingFont || look.bodyFont;
-    bodyFont = look.bodyFont || look.headingFont;
+  var lookHead = look && googleFonts.toGoogle(look.headingFont), lookBody = look && googleFonts.toGoogle(look.bodyFont);
+  if (lookHead || lookBody) {
+    headingFont = lookHead || lookBody;
+    bodyFont = lookBody || lookHead;
     ranked = [headingFont];
   }
   var keyVisual = null;
@@ -1457,8 +1463,9 @@ function extractThemeFromPreviousEditionSources(sourceDocs) {
   };
 }
 
+/* the family's stylesheet, asking only for weights it has ('' for a family not on Google Fonts) */
 function googleFontUrl(family) {
-  return 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600;700;800&display=swap';
+  return googleFonts.cssUrl(family);
 }
 
 function buildHeroImagePrompt(brief, themeColor) {
@@ -1548,9 +1555,10 @@ function clampHexColor(v, fallback) {
   var s = String(v || '').trim();
   return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : fallback;
 }
+/* a font the design names, as a Google Fonts family (google-fonts.js): a licensed face the model or the
+   previous edition named is set in the Google family nearest to it, anything else in the fallback */
 function clampFontName(v, fallback) {
-  var s = String(v || '').trim().slice(0, 60);
-  return s || fallback;
+  return googleFonts.googleOnly(String(v || '').trim().slice(0, 60), fallback);
 }
 // Not part of THEME_FALLBACK (left completely unchanged per the design brief) — accentColor is a new field
 // that object never had, so it gets its own small fallback constant instead of growing that one.
@@ -2438,6 +2446,31 @@ function cropSvgToOwnUnit(svgText, read) {
    readLogoPicture()'s answer; toYear four digits.
    -> { bytes, info, font } — font: what the new characters are set in ({ family, ttfBase64 } | null), so
    that a second reading can draw them (checkMovedYear). */
+/* Where the year is looked for, narrowed to leave out a neighbour's lettering. A box drawn a little loose
+   takes in the edge of the letter beside the year — "summit"'s t beside '26 in ETAutoTech Summit's lock-up,
+   one reading in five — and lettering that runs to the edge of the look is then taken for something that
+   emptying the year would damage, so the year was left at '26. Lettering that lies mostly outside the box
+   the model drew is a neighbour's: the look is cut in the empty line between it and the year, across and
+   then down. Lettering that touches the year (no empty line between) is never cut away: the check after
+   this still refuses it. -> the box to look in */
+function yearOnly(decoded, around, box, background) {
+  function narrow(area, axis) {
+    var x0 = Math.max(0, Math.floor(area.x)), y0 = Math.max(0, Math.floor(area.y));
+    var part = pngLite.crop(decoded, area);
+    if (!part) return area;
+    var runs = pngLite.inkRuns(pngLite.inkProfile(part, axis, background));
+    var o = axis === 'x' ? x0 : y0, lo = (axis === 'x' ? box.x : box.y) - o, hi = lo + (axis === 'x' ? box.width : box.height);
+    var mine = runs.map(function (r) { return Math.max(0, Math.min(r.to, hi) - Math.max(r.from, lo)) >= (r.to - r.from) * 0.5; });
+    var first = mine.indexOf(true), last = mine.lastIndexOf(true);
+    if (first === -1 || (first === 0 && last === runs.length - 1)) return area;
+    var a = axis === 'x' ? area.x : area.y, end = a + (axis === 'x' ? area.width : area.height);
+    if (first > 0) a = o + (runs[first - 1].to + runs[first].from) / 2;
+    if (last < runs.length - 1) end = o + (runs[last].to + runs[last + 1].from) / 2;
+    return axis === 'x' ? { x: a, y: area.y, width: end - a, height: area.height } : { x: area.x, y: a, width: area.width, height: end - a };
+  }
+  return narrow(narrow(around, 'x'), 'y');
+}
+
 function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
   if (!decoded || !read || !read.box) return Promise.resolve(null);
   var oldText = String(read.year || '').replace(/\s+/g, ''), newText = logoUnit.yearAs(read.year, toYear).replace(/\s+/g, '');
@@ -2449,6 +2482,7 @@ function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
      inside a transparent lock-up stands on that badge's colour. */
   var covered = pngLite.inkOf(decoded, around).coverage;
   var clear = pngLite.hasTransparency(decoded) && covered < 0.6, background = clear ? null : pngLite.edgeColour(decoded, around);
+  around = yearOnly(decoded, around, box, background);
   var ink = pngLite.inkBounds(decoded, around, background);
   if (!ink || !ink.colour) return Promise.resolve(null);
   var ratio = ink.width / ink.height;
@@ -2497,15 +2531,61 @@ function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
   if (kept.length * 4 / 3 > Math.min(LOGO_UNIT_MAX_BYTES, Math.max(2 * (sourceBytes || 0), 600 * 1024))) return Promise.resolve(null);
 
   var family = read.fontFamily || (read.serif ? 'Source Serif 4' : 'Inter'), fontWeight = read.fontWeight || (read.bold ? 700 : 400);
-  return yearFont(family, fontWeight, read.serif, sets.map(function (s) { return s.text; }).join('')).then(function (font) {
+  /* A digit of the year that stays ("2" in '26 -> '27) shows how this lock-up draws its figures: the new
+     digit is set in the weight whose same digit is as heavy as it (ink over its box), and narrowed or
+     widened to its proportions. A reading names a face like the lock-up's, rarely the lock-up's own —
+     ETAutoTech Summit's was read as Montserrat Bold, whose 7 came out 40% wider and heavier than the 2
+     beside it. */
+  var ref = null;
+  if (glyphs) glyphs.forEach(function (g, i) { if (!ref && g.digit && oldChars[i] === newChars[i]) ref = { ch: oldChars[i], b: g.bounds }; });
+  if (ref) ref.fill = pngLite.inkCount(decoded, ref.b, background) / (ref.b.width * ref.b.height);
+  var subset = sets.map(function (s) { return s.text; }).join('') + (ref ? ref.ch : '');
+  function calibrated() {
+    if (!ref) return yearFont(family, fontWeight, read.serif, subset).then(function (font) { return { font: font, refFit: null }; });
+    var weights = [fontWeight, fontWeight - 100, fontWeight + 100, fontWeight - 200, fontWeight + 200].filter(function (w) { return w >= 300 && w <= 800; });
+    return Promise.all(weights.map(function (w) {
+      return fetchUnitFont(family, w, subset).then(function (f) { return f ? inkOfText(f, ref.ch).then(function (fit) { return fit ? { font: f, refFit: fit } : null; }) : null; });
+    })).then(function (tried) {
+      var best = null;
+      tried.forEach(function (t) { if (t && (!best || Math.abs(t.refFit.fill - ref.fill) < Math.abs(best.refFit.fill - ref.fill))) best = t; });
+      return best || yearFont(family, fontWeight, read.serif, subset).then(function (font) { return { font: font, refFit: null }; });
+    });
+  }
+  return calibrated().then(function (cal) {
+    var font = cal.font;
+    /* the lock-up's figures against the face's, width for height */
+    var sx = cal.refFit ? Math.max(0.6, Math.min(1.4, (ref.b.width / ref.b.height) / (cal.refFit.width / cal.refFit.height))) : 1;
+    /* and the size and baseline the kept digit was set at: a flat-topped 7 then stands as the 2 does, not
+       as tall as a round 6 that overshoots it */
+    var at = cal.refFit ? { size: ref.b.height / cal.refFit.height, base: ref.b.y + ref.b.height - cal.refFit.below * ref.b.height / cal.refFit.height } : null;
+    return Promise.all(sets.map(function (s) { return font ? inkOfText(font, s.text) : null; })).then(function (fits) { return drawn(font, fits, sx, at); });
+  });
+  function drawn(font, fits, sx, at) {
     var W = decoded.width, H = decoded.height, style = '', texts = '';
     var fallback = read.serif ? 'Georgia, \'Times New Roman\', serif' : 'Arial, Helvetica, sans-serif';
     if (font) style = '<style>@font-face{font-family:\'rvyear\';src:url(data:font/ttf;base64,' + font.ttfBase64 + ') format(\'truetype\')}</style>';
-    sets.forEach(function (s) {
+    sets.forEach(function (s, i) {
       var fill = '#' + hex2(s.colour[0]) + hex2(s.colour[1]) + hex2(s.colour[2]);
       var family = font ? '\'rvyear\', ' + fallback : fallback;
-      var chars = Array.from(s.text).length;
-      if (font) {
+      var chars = Array.from(s.text).length, fit = fits[i];
+      if (font && fit && !s.whole) {
+        /* One digit in the place of another, fitted to the ink it replaces: as tall as the old digits, its
+           foot on theirs, centred in its place. A figure is not as tall as the font's capitals in every
+           face (in ETAutoTech Summit's lock-up, set like Montserrat, a 7 sized by the capitals stood taller
+           than the 2 beside it and below its foot), so the new digit's own ink is measured, not assumed. */
+        var fsize = at ? at.size : s.height / fit.height;
+        if (fit.width * fsize * sx > s.width * 1.3) fsize = s.width * 1.3 / (fit.width * sx);
+        var fx = s.cx - (fit.left + fit.width / 2) * fsize * sx, fy = at ? at.base : s.baseline - fit.below * fsize;
+        texts += '<text transform="translate(' + fx.toFixed(2) + ' ' + fy.toFixed(2) + ')' + (Math.abs(sx - 1) > 0.01 ? ' scale(' + sx.toFixed(3) + ' 1)' : '') + '" x="0" y="0" fill="' + fill + '" font-family="' + family + '" font-size="' + fsize.toFixed(2) + '">' + escHtmlText(s.text) + '</text>';
+      } else if (font && fit) {
+        /* the whole year, fitted the same way: as tall as the old one, its foot on the old foot, spread to
+           the old one's width */
+        var wsize = s.height / fit.height;
+        if (fit.width * wsize > s.width * 1.04) wsize = s.width * 1.04 / fit.width;
+        var wspacing = chars > 1 ? Math.max(0, Math.min((s.width - fit.width * wsize) / (chars - 1), wsize * 0.6)) : 0;
+        var wx = s.x - fit.left * wsize, wy = s.baseline - fit.below * wsize;
+        texts += '<text x="' + wx.toFixed(2) + '" y="' + wy.toFixed(2) + '" fill="' + fill + '" font-family="' + family + '" font-size="' + wsize.toFixed(2) + '" letter-spacing="' + wspacing.toFixed(2) + '">' + escHtmlText(s.text) + '</text>';
+      } else if (font) {
         /* lining figures stand as tall as the capitals: the size that makes them as tall as the old ones */
         var size = s.height / (font.metrics.capHeight / font.metrics.unitsPerEm);
         var natural = logoUnit.textWidth(font.metrics, s.text, size, 0);
@@ -2529,7 +2609,35 @@ function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
       '<image width="' + W + '" height="' + H + '" href="data:image/png;base64,' + kept.toString('base64') + '"/>' + texts + '</svg>';
     if (svgCouldRun(svg)) return null;
     return { bytes: Buffer.from(svg, 'utf8'), info: { type: 'svg', mime: 'image/svg+xml', width: W, height: H, alpha: null }, font: font, from: oldText, to: newText };
-  });
+  }
+}
+
+/* Where a text's ink falls when it is set in a font, per unit of font size: { left, width, height, below,
+   fill } (left: from the text's start; below: how far its foot sits under the baseline, negative above;
+   fill: the share of its box that is ink — how heavy it is). Drawn
+   once at a large size and measured. -> Promise<that | null> (null: it could not be drawn here) */
+var INK_PROBE_SIZE = 200;
+function inkOfText(font, text) {
+  var chars = Array.from(String(text || '')).length;
+  if (!font || !font.ttfBase64 || !chars) return Promise.resolve(null);
+  var size = INK_PROBE_SIZE, x = size * 0.5, base = size * 1.5, W = Math.round(size * (chars + 1.5)), H = size * 2;
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+    '<text x="' + x + '" y="' + base + '" fill="#000" font-family="\'rvyear\', sans-serif" font-size="' + size + '">' + escHtmlText(text) + '</text></svg>';
+  return rasterise(svg, { width: W, clear: true, font: font }).then(function (r) {
+    if (!r || r.width !== W || !r.pixels) return null;
+    /* ink as png-lite counts it in a see-through picture (alpha 96 and up) */
+    var px = r.pixels, x0 = W, y0 = r.height, x1 = -1, y1 = -1, n = 0;
+    for (var y = 0; y < r.height; y++) {
+      for (var xx = 0; xx < W; xx++) {
+        if (px[(y * W + xx) * 4 + 3] < 96) continue;
+        n++;
+        if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+    if (x1 < x0 || y1 - y0 < size * 0.2) return null;
+    return { left: (x0 - x) / size, width: (x1 - x0 + 1) / size, height: (y1 - y0 + 1) / size, below: (y1 + 1 - base) / size,
+      fill: n / ((x1 - x0 + 1) * (y1 - y0 + 1)) };
+  }, function () { return null; });
 }
 
 /* What background a raster unit was drawn for, from its own lettering: 'for-dark' when it has white in it
@@ -2786,12 +2894,19 @@ function examineUnit(fb, eventId, picture, ctx) {
       if (!r) return pic;
       var old = oldIn(r);
       if (!old) return pic;
-      /* a year seen in its words but not placed: it cannot be moved */
-      if (old !== r.year || !r.box) { stillShows(old); return pic; }
-      return moveYearInPng(decoded, r, years.to, ctx.eventName, pic.bytes.length).then(function (patched) {
-        if (!patched) { stillShows(old); return pic; }
-        return keepMoved(patched, patched.font, old, ' over ' + (owner ? 'your' : 'the previous edition\'s') + ' artwork, in the lettering closest to it', pic);
-      });
+      /* A year seen in its words but not placed, or placed where it cannot be moved cleanly, is read once
+         more before it is given up on: where a reading puts the year varies from one reading to the next
+         (AutoTech Summit 2027 was left showing '26 on one such reading). */
+      function move(reading, tries) {
+        var placed = reading && reading.year === old && reading.box ? moveYearInPng(decoded, reading, years.to, ctx.eventName, pic.bytes.length) : Promise.resolve(null);
+        return placed.then(function (patched) {
+          if (patched) return keepMoved(patched, patched.font, old, ' over ' + (owner ? 'your' : 'the previous edition\'s') + ' artwork, in the lettering closest to it', pic);
+          if (tries >= 2) { stillShows(old); return pic; }
+          console.error('logo unit: the year ' + old + ' in ' + eventId + '\'s logo could not be placed from the first reading; read once more');
+          return read(pic, decoded).then(function (again) { return move(again, tries + 1); });
+        });
+      }
+      return move(r, 1);
     });
   }
   function result() { return { picture: picture, changed: changed, notes: notes, tone: tone, stuck: stuck, unread: unread, seen: seen }; }
@@ -3783,6 +3898,8 @@ function sanitizeGeneratedSectionHtml(html) {
     out = out.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '').replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '');
     out = out.replace(/(href|src)\s*=\s*"\s*javascript:[^"]*"/gi, '$1="#"');
     out = out.replace(/(href|src)\s*=\s*'\s*javascript:[^']*'/gi, "$1='#'");
+    /* Google Fonts only, in its <style> blocks and style="" attributes too; no stylesheet <link> of its own */
+    out = googleFonts.googleOnlyHtml(out);
     return out;
   } catch (e) {
     console.error('sanitizeGeneratedSectionHtml failed on malformed input, degrading to empty — ' + e.message);
@@ -3793,6 +3910,8 @@ function sanitizeGeneratedSectionCss(css) {
   try {
     var out = String(css || '');
     out = out.replace(/@import\b[^;]*;?/gi, '');
+    /* Google Fonts only: no face of its own, every family named a Google one */
+    out = googleFonts.googleOnlyCss(out);
     out = out.replace(/url\(\s*["']?\s*javascript:[^)]*\)/gi, 'url()');
     out = out.replace(/behavior\s*:[^;]*;?/gi, '');
     out = out.replace(/-moz-binding\s*:[^;]*;?/gi, '');
@@ -8424,5 +8543,5 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
+  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

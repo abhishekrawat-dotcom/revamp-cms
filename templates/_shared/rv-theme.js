@@ -205,8 +205,13 @@
     doc.body.setAttribute('data-rv-theme', t.id);
     [t.headingFont, t.bodyFont].forEach(function (f) {
       var url = fontUrl(f);
-      /* a served page may carry the font's stylesheet written in (style[data-rv-remote], lib/delivery.js) */
-      if (!url || doc.querySelector('link[href="' + url + '"], style[data-rv-remote="' + url + '"]')) return;
+      if (!url) return;
+      /* a served page may carry the font's stylesheet written in (style[data-rv-remote], lib/delivery.js); and
+         the page's own may ask for other weights (the server asks only for those the family has — a family
+         with one weight is refused when asked for more), so any stylesheet of the family will do */
+      var fam = 'family=' + String(f).replace(/[^A-Za-z0-9 ]/g, '').trim().replace(/ /g, '+');
+      var has = ['link[href', 'style[data-rv-remote'].map(function (a) { return a + '*="' + fam + ':"], ' + a + '*="' + fam + '&"]'; }).join(', ');
+      if (doc.querySelector('link[href="' + url + '"], style[data-rv-remote="' + url + '"], ' + has)) return;
       var l = doc.createElement('link'); l.rel = 'stylesheet'; l.href = url; doc.head.appendChild(l);
     });
     return true;
