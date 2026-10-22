@@ -46,7 +46,7 @@ ee.fetchIpEvents('brandequity', fakeFetch).then(function (events) {
   var ids = events.map(function (e) { return e.id; });
   check('only ET\'s own events (ownership 1, number or text), once each, newest first, what is coming first', JSON.stringify(ids) === '["11","10","1","4","3"]', JSON.stringify(ids));
   var e1 = events.filter(function (e) { return e.id === '1'; })[0], e11 = events[0];
-  check('compact rows', JSON.stringify(Object.keys(e1).sort()) === JSON.stringify(['dateLabel', 'end', 'id', 'link', 'logo', 'past', 'speakers', 'start', 'title', 'upcoming']));
+  check('compact rows', JSON.stringify(Object.keys(e1).sort()) === JSON.stringify(['dateLabel', 'end', 'id', 'kind', 'link', 'logo', 'past', 'speakers', 'start', 'title', 'upcoming']));
   check('row fields', e1.title === 'Event 1' && e1.start === '2026-09-01 09:00:00' && e1.dateLabel === 'Day 1' && e1.link === 'https://brandequity.economictimes.indiatimes.com/e1' && e1.logo === 'https://img.etb2bimg.com/l1.jpg' && e1.speakers === 3 && e1.past === true && e1.upcoming === false);
   check('upcoming marked', e11.upcoming === true && e11.past === false);
   check('a complete read is not partial', !events.partial);
@@ -150,6 +150,43 @@ ee.fetchIpEvents('brandequity', fakeFetch).then(function (events) {
     check('listUpcoming: a failure is not kept', calls.length === 1 && ev.length === 2);
     reset();
     return ee.listUpcoming('nope', fakeFetch, clock).then(function () { check('listUpcoming unknown portal', false); }, function (err) { check('listUpcoming: unknown portal refused, nothing asked', err.code === 'unknown-portal' && calls.length === 0); });
+  });
+}).then(function () {
+  /* awards: their own listing, the MICROSITE id (event_id) as the id, kept apart from the events */
+  var aw = function (entity, micro, extra) {
+    return Object.assign({ entity_id: entity, event_id: micro, title: 'Award ' + entity, complete_date: '2025-02-27 23:00:00', date_unix: 1740627000,
+      date_str: 'Thu, 27 Feb 2025', link: 'https://cio.economictimes.indiatimes.com/a' + entity, small_logo: 'https://img.etb2bimg.com/a' + entity + '.jpg', is_past: 1 }, extra || {});
+  };
+  var a = ee.compactAward(aw(233, 3056), true);
+  check('compactAward: id is the microsite (event_id), awardId the award', a && a.id === '3056' && a.awardId === '233' && a.kind === 'award' && a.past === true, JSON.stringify(a));
+  check('compactAward: the ceremony stands for the date', a.start === '2025-02-27 23:00:00' && a.dateLabel === 'Thu, 27 Feb 2025');
+  check('compactAward: date_unix when complete_date is missing', ee.compactAward(aw(1, 2, { complete_date: '' }), true).start === '2025-02-27 03:30:00');
+  check('compactAward: no microsite, no row', ee.compactAward(aw(1, 0), true) === null && ee.compactAward(aw(1, ''), true) === null && ee.compactAward(aw('', 5), true) === null);
+  var AW = {
+    1: { active: [], upcoming: [aw(407, 4648, { complete_date: '2026-10-31 18:00:00', is_past: 0, is_upcoming: 1 })],
+         past: { items: [aw(233, 3056), aw(9, 0)], total_pages: 2, cur_page: 1, is_last_page: false } },
+    2: { past: { items: [aw(157, 2109, { complete_date: '2024-02-22 19:00:00' })], total_pages: 2, cur_page: 2, is_last_page: true } }
+  };
+  var awCalls = [];
+  function awFetch(url, headers) {
+    awCalls.push(url + ' portal=' + headers.portal);
+    var n = +(/page=(\d+)/.exec(url) || [])[1];
+    return Promise.resolve(/award-listing/.test(url) && AW[n] ? { status: true, data: AW[n] } : { status: false });
+  }
+  ee.clearCache();
+  var clock = { now: function () { return 5000; } };
+  return ee.listAwards('cio', awFetch, clock).then(function (list) {
+    check('listAwards: every page of /v1/award-listing', awCalls.length === 2 && awCalls.every(function (c) { return c.indexOf(ee.API + '/v1/award-listing?page=') === 0 && / portal=cio$/.test(c); }), awCalls.join(' | '));
+    check('listAwards: coming first, then the past newest first; no microsite left out', list.map(function (e) { return e.id; }).join(',') === '4648,3056,2109', list.map(function (e) { return e.id; }).join(','));
+    check('listAwards: the coming one is marked upcoming', list[0].upcoming === true && list[1].upcoming === false);
+    awCalls = [];
+    return ee.listAwards('cio', awFetch, clock);
+  }).then(function () {
+    check('listAwards: kept', awCalls.length === 0);
+    reset();
+    return ee.listUpcoming('cio', fakeFetch, clock);
+  }).then(function () {
+    check('listAwards: the footer\'s upcoming list does not use the awards\' entry', calls.length === 1 && /event-listing/.test(calls[0]));
   });
 }).then(function () {
   if (failed) { console.error('et-events: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }

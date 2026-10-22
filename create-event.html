@@ -4287,8 +4287,9 @@
   }
 
   /* ---------- the previous edition picked from ET's own events ----------
-     Optional, beside the plain address: a portal, then one of that portal's own (IP) events. Picking one
-     fills "Previous edition URL" with its page and keeps the event in S.brief.etEvent, so the run can tell
+     Optional, beside the plain address: a portal, then one of that portal's own (IP) events — or, for an
+     Awards event, one of the portal's awards (ET's award listing, as the social post app reads it). Picking
+     one fills "Previous edition URL" with its page and keeps the event in S.brief.etEvent, so the run can tell
      the server which event it is (ingest-source); an address typed by hand drops it. */
   var etPick = { portal: null, event: null, portals: null, portalsLoading: null, events: {}, eventsLoading: {}, partial: {}, slug: '', showPickers: false };
   /* two addresses for the same page: scheme, www, query and a trailing slash aside */
@@ -4301,6 +4302,10 @@
     var call = window.RevampCore && RevampCore.authedFetch ? RevampCore.authedFetch(url) : fetch(url);
     return Promise.resolve(call).then(readJson);
   }
+  /* which of ET's listings the picker reads: the awards for an Awards event, the IP events otherwise */
+  function etKind(){ return S.basics && S.basics.category === 'Awards' ? 'award' : 'event'; }
+  function etNoun(){ return etKind() === 'award' ? 'awards' : 'events'; }
+  function etKey(slug){ return etKind() + ':' + slug; }
   function etPortalName(slug){
     var list = etPick.portals || [];
     for (var i = 0; i < list.length; i++){ if (list[i].slug === slug) return list[i].name; }
@@ -4341,35 +4346,35 @@
     return etPick.portalsLoading;
   }
   function loadEtEvents(slug){
-    var box = etPick.event;
+    var box = etPick.event, kind = etKind(), key = kind + ':' + slug, noun = etNoun();
     function show(events){
-      if (etPick.slug !== slug) return;
+      if (etPick.slug !== slug || etKind() !== kind) return;
       /* past editions first (newest on top); what is still to come last, marked, so Enter never picks it by chance */
       var past = events.filter(function(ev){ return !ev.upcoming; }), coming = events.filter(function(ev){ return ev.upcoming; });
       box.setItems(past.concat(coming).map(function(ev){
         return { value: String(ev.id), label: String(ev.title), sub: ev.dateLabel || '', tag: ev.upcoming ? 'Upcoming — not a past edition' : '', text: ev.title + ' ' + (ev.dateLabel || ''), ev: ev };
       }));
-      box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s events' : 'No events on this portal');
+      box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s ' + noun : 'No ' + noun + ' on this portal');
       var cur = S.brief.etEvent;
-      box.setValue(cur && cur.portal === slug ? String(cur.id) : '');
-      etStatus(!events.length ? etPortalName(slug) + ' has no ET events to pick from.'
-        : etPick.partial[slug] ? 'ET sent only part of ' + etPortalName(slug) + '’s older events. If yours is not listed, try again in a few minutes.' : '');
+      box.setValue(cur && cur.portal === slug && (cur.kind || 'event') === kind ? String(cur.id) : '');
+      etStatus(!events.length ? etPortalName(slug) + ' has no ET ' + noun + ' to pick from.'
+        : etPick.partial[key] ? 'ET sent only part of ' + etPortalName(slug) + '’s older ' + noun + '. If yours is not listed, try again in a few minutes.' : '');
     }
-    if (etPick.events[slug]){ show(etPick.events[slug]); return Promise.resolve(etPick.events[slug]); }
+    if (etPick.events[key]){ show(etPick.events[key]); return Promise.resolve(etPick.events[key]); }
     box.setItems([]); box.setValue('');
-    box.setDisabled(true, 'Loading events…');
-    etStatus('Loading ' + etPortalName(slug) + '’s events…');
-    if (!etPick.eventsLoading[slug]){
-      etPick.eventsLoading[slug] = etGet('/api/et/events?portal=' + encodeURIComponent(slug)).then(function(body){
-        delete etPick.eventsLoading[slug];
-        etPick.partial[slug] = !!body.partial;
-        return (etPick.events[slug] = (body.events || []).filter(function(ev){ return ev && ev.id != null && ev.title && normalUrl(ev.link); }));
-      }, function(err){ delete etPick.eventsLoading[slug]; throw err; });
+    box.setDisabled(true, 'Loading ' + noun + '…');
+    etStatus('Loading ' + etPortalName(slug) + '’s ' + noun + '…');
+    if (!etPick.eventsLoading[key]){
+      etPick.eventsLoading[key] = etGet('/api/et/events?portal=' + encodeURIComponent(slug) + (kind === 'award' ? '&kind=award' : '')).then(function(body){
+        delete etPick.eventsLoading[key];
+        etPick.partial[key] = !!body.partial;
+        return (etPick.events[key] = (body.events || []).filter(function(ev){ return ev && ev.id != null && ev.title && normalUrl(ev.link); }));
+      }, function(err){ delete etPick.eventsLoading[key]; throw err; });
     }
-    return etPick.eventsLoading[slug].then(show, function(err){
-      if (etPick.slug !== slug) return;
+    return etPick.eventsLoading[key].then(show, function(err){
+      if (etPick.slug !== slug || etKind() !== kind) return;
       box.setDisabled(true, 'Previous edition');
-      etStatus(etPortalName(slug) + '’s events could not be loaded. ' + plainError(err), function(){ loadEtEvents(slug); });
+      etStatus(etPortalName(slug) + '’s ' + noun + ' could not be loaded. ' + plainError(err), function(){ loadEtEvents(slug); });
     });
   }
   /* the chip while an event is picked, the two lists otherwise (or after "Change") */
@@ -4392,7 +4397,9 @@
     }
     /* the lists load once they are on screen in the AI form, not before */
     if (S.creationMethod === 'brief') loadEtPortals().then(function(){
-      if (etPick.slug && !etPick.events[etPick.slug] && !etPick.eventsLoading[etPick.slug]) loadEtEvents(etPick.slug);
+      /* always through loadEtEvents (kept lists come straight back), so a category changed to or from Awards
+         since the list was filled shows that kind's list, not the other's */
+      if (etPick.slug) loadEtEvents(etPick.slug);
     }, function(){});
   }
   function wireEtPicker(){
@@ -4403,13 +4410,13 @@
     if (cur && (typeof cur !== 'object' || !cur.link || !sameLink(cur.link, S.brief.previous))){ S.brief.etEvent = cur = null; save(); }
     if (!etPick.portal){
       etPick.portal = makeCombobox({ input: portalInp, list: $('gb-et-portal-list'), empty: 'No portals', onPick: function(it){
-        if (it.value === etPick.slug && etPick.events[it.value]) return;
+        if (it.value === etPick.slug && etPick.events[etKey(it.value)]) return;
         etPick.slug = it.value;
         loadEtEvents(it.value).then(function(){ if (etPick.slug === it.value && !eventInp.disabled) eventInp.focus(); });
       } });
       etPick.event = makeCombobox({ input: eventInp, list: $('gb-et-event-list'), empty: 'No events', onPick: function(it){
         var ev = it.ev, link = normalUrl(ev.link);
-        S.brief.etEvent = { portal: etPick.slug, id: ev.id, title: String(ev.title), link: link, dateLabel: ev.dateLabel || '' };
+        S.brief.etEvent = { portal: etPick.slug, kind: ev.kind === 'award' ? 'award' : 'event', id: ev.id, title: String(ev.title), link: link, dateLabel: ev.dateLabel || '' };
         S.brief.previous = link;
         $('gb-previous').value = link;
         etPick.showPickers = false;
@@ -5400,7 +5407,7 @@
         var body = { url: inputs.urls[s.field.key], type: s.field.type };
         /* the previous edition picked from ET's own events: the server reads that event's records by its id */
         var et = S.brief.etEvent;
-        if (s.field.key === 'previous' && et && et.portal && et.id != null && sameLink(et.link, body.url)) body.etEvent = { portal: et.portal, id: et.id };
+        if (s.field.key === 'previous' && et && et.portal && et.id != null && sameLink(et.link, body.url)) body.etEvent = { portal: et.portal, id: et.id, kind: et.kind === 'award' ? 'award' : 'event' };
         return postJson('/api/ingest-source', body);
       };
     });

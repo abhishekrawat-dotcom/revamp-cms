@@ -1190,25 +1190,28 @@ function pageKey(u) {
 }
 function confirmEtPick(pick, url) {
   if (!pick) return Promise.resolve(null);
-  return etEvents.listIpEvents(pick.portal, etJson).then(function (events) {
+  var award = pick.kind === 'award';
+  return (award ? etEvents.listAwards : etEvents.listIpEvents)(pick.portal, etJson).then(function (events) {
     var ev = events.filter(function (e) { return String(e.id) === pick.id; })[0];
     if (ev && pageKey(ev.link) && pageKey(ev.link) === pageKey(url)) return pick;
-    console.warn('ingest-source: etEvent ' + pick.portal + '/' + pick.id + (ev ? ' is not ' + url : ' is not an IP event of that portal') + ' — read by its address');
+    console.warn('ingest-source: etEvent ' + pick.portal + '/' + pick.id + (ev ? ' is not ' + url : award ? ' is not an award of that portal' : ' is not an IP event of that portal') + ' — read by its address');
     return null;
   }, function () { return null; });
 }
 
-/* payload.etEvent { portal, id } -> { portal, id } | null when absent | false when it is not a real pick
-   (a portal off the roster, an id that is not digits): neither ever reaches ET's header or address. */
+/* payload.etEvent { portal, id, kind? } -> { portal, id, kind } | null when absent | false when it is not a real
+   pick (a portal off the roster, an id that is not digits, a kind other than 'event' or 'award'): neither ever
+   reaches ET's header or address. An award's id is its microsite's (et-events.js compactAward). */
 function etPickOf(v) {
   if (v == null) return null;
   if (typeof v !== 'object') return false;
-  var portal = String(v.portal || '').trim(), id = String(v.id == null ? '' : v.id).trim();
-  return etEvents.isPortal(portal) && /^\d{1,9}$/.test(id) ? { portal: portal, id: id } : false;
+  var portal = String(v.portal || '').trim(), id = String(v.id == null ? '' : v.id).trim(), kind = v.kind == null ? 'event' : String(v.kind);
+  return etEvents.isPortal(portal) && /^\d{1,9}$/.test(id) && (kind === 'event' || kind === 'award') ? { portal: portal, id: id, kind: kind } : false;
 }
 
-/* ---------- GET /api/et/portals, GET /api/et/events?portal=<slug> — Create Event's previous-edition picker ----------
-   ET's B2B portals, and one portal's own (IP) events from ET's event API (et-events.js; kept 6 hours). */
+/* ---------- GET /api/et/portals, GET /api/et/events?portal=<slug>[&kind=award] — Create Event's previous-edition picker ----------
+   ET's B2B portals, and one portal's own (IP) events from ET's event API — or, with kind=award (an Awards
+   event), the portal's awards from ET's award listing (et-events.js; each kept 6 hours). */
 function etJson(u, headers) {
   return safeFetch(u, { timeoutMs: 15000, maxBytes: 4 * 1024 * 1024, headers: Object.assign({ accept: 'application/json' }, headers || {}) })
     .then(function (r) { return r.status === 200 ? JSON.parse(r.body.toString('utf8')) : null; });
@@ -1220,11 +1223,13 @@ function handleEtEvents(req, res) {
   withAdmin(req, res, function () {
     var portal = String(queryOf(req).get('portal') || '').trim();
     if (!etEvents.isPortal(portal)) return sendJson(res, 400, { error: 'Unknown portal "' + portal.slice(0, 40) + '".', code: 'unknown-portal' });
-    etEvents.listIpEvents(portal, etJson).then(function (events) {
-      sendJson(res, 200, { portal: portal, events: events, partial: !!events.partial });
+    var kind = String(queryOf(req).get('kind') || 'event');
+    if (kind !== 'event' && kind !== 'award') return sendJson(res, 400, { error: 'kind must be "event" or "award".', code: 'bad-kind' });
+    (kind === 'award' ? etEvents.listAwards : etEvents.listIpEvents)(portal, etJson).then(function (events) {
+      sendJson(res, 200, { portal: portal, kind: kind, events: events, partial: !!events.partial });
     }, function (err) {
-      console.error('et/events: ' + portal + ' — ' + (err && err.message));
-      sendJson(res, 502, { error: 'ET\'s event list could not be read right now. Please try again in a few minutes.', code: 'et-down' });
+      console.error('et/events: ' + portal + (kind === 'award' ? ' awards' : '') + ' — ' + (err && err.message));
+      sendJson(res, 502, { error: 'ET\'s ' + (kind === 'award' ? 'award' : 'event') + ' list could not be read right now. Please try again in a few minutes.', code: 'et-down' });
     });
   });
 }
