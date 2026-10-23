@@ -9,6 +9,8 @@ const fs = require('fs'), path = require('path');
    replaced before. Each answer is picked by the height of the picture shown (the whole lock-up, or the cut). */
 const gemini = require('./gemini');
 var answers = null, asked = 0;
+/* the year is never redrawn by the image model here: these checks are of the readings and the font (logo-redraw.test.js has the redraw) */
+require('./gemini').callGeminiImage = function () { return Promise.resolve({ error: 'no image model in tests', code: 'ai-config' }); };
 gemini.callGeminiJson = function (prompt, schema, opts) {
   asked++;
   var shown = require('./png-lite').decode(Buffer.from(opts.images[0].data, 'base64'));

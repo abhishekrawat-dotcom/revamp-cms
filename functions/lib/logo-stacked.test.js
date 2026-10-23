@@ -13,6 +13,8 @@ const fs = require('fs'), path = require('path');
 /* replayed readings and downloads: api.js takes callGeminiJson and safeFetch when it is loaded */
 const gemini = require('./gemini');
 var answers = null, asked = 0;
+/* the year is never redrawn by the image model here: these checks are of the readings and the font (logo-redraw.test.js has the redraw) */
+require('./gemini').callGeminiImage = function () { return Promise.resolve({ error: 'no image model in tests', code: 'ai-config' }); };
 gemini.callGeminiJson = function (prompt, schema, opts) {
   asked++;
   var shown = require('./png-lite').decode(Buffer.from(opts.images[0].data, 'base64'));

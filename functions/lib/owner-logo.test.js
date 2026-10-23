@@ -23,6 +23,8 @@ require('./safe-fetch').safeFetch = function (url) {
 };
 const png = require('./png-lite');
 let answer = null, asked = [];
+/* the year is never redrawn by the image model here: these checks are of the readings and the font (logo-redraw.test.js has the redraw) */
+require('./gemini').callGeminiImage = function () { return Promise.resolve({ error: 'no image model in tests', code: 'ai-config' }); };
 require('./gemini').callGeminiJson = function (prompt, schema, opts) {
   const shown = png.decode(Buffer.from(opts.images[0].data, 'base64'));
   asked.push({ prompt: prompt, width: shown.width, height: shown.height });

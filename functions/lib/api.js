@@ -2931,6 +2931,89 @@ function yearOnly(decoded, around, box, background) {
   return narrow(narrow(around, 'x'), 'y');
 }
 
+/* The year redrawn in the lock-up's own lettering. A face from Google Fonts is rarely the lock-up's own
+   (AutoTech Summit 2027's '27: a Montserrat 7 stood heavier and blockier than the thin 2 beside it), so Gemini's
+   image model is asked to change only the year in the picture. Its answer is never used as a whole picture — it
+   may reframe or soften anything — only the new year's SHAPE is taken from it: found by a reading, fitted to the
+   old year's height and place, and painted in the old year's own colour into the original picture, whose every
+   other pixel stays. readFn(picture, decoded) -> Promise<reading | null> (the lock-up reading).
+   -> Promise<{ bytes, info } (a PNG) | null> — null: anything uncertain; the caller then sets it in a font */
+var YEAR_REDRAW_MIN_MS = 90000;    // an image call and a reading of its answer, with room to spare
+function redrawYearInPng(decoded, reading, toYear, eventId, deadlineAt, readFn, sourceBytes) {
+  if (!decoded || !reading || !reading.box || (deadlineAt && deadlineAt - Date.now() < YEAR_REDRAW_MIN_MS)) return Promise.resolve(null);
+  var oldText = String(reading.year || '').replace(/\s+/g, ''), newText = logoUnit.yearAs(reading.year, toYear).replace(/\s+/g, '');
+  if (!oldText || !newText || oldText === newText || Array.from(oldText).length !== Array.from(newText).length) return Promise.resolve(null);
+  var box = reading.box;
+  var around = { x: box.x - box.width * 0.08, y: box.y - box.height * 0.22, width: box.width * 1.16, height: box.height * 1.44 };
+  var clear = pngLite.hasTransparency(decoded) && pngLite.inkOf(decoded, around).coverage < 0.6;
+  var background = clear ? null : pngLite.edgeColour(decoded, around);
+  around = yearOnly(decoded, around, box, background);
+  var ink = pngLite.inkBounds(decoded, around, background);
+  if (!ink || !ink.colour || ink.height < 8) return Promise.resolve(null);
+  /* shown to the model on a plain ground well away from the year's colour (a see-through lock-up) */
+  var lum = (0.299 * ink.colour[0] + 0.587 * ink.colour[1] + 0.114 * ink.colour[2]) / 255;
+  var plate = lum > 0.5 ? [40, 40, 40] : [235, 235, 235];
+  var shown = clear ? pngLite.flatten(decoded, plate) : decoded;
+  var prompt = 'This is an event logo. Change ONLY the year "' + oldText + '" to "' + newText + '". Draw each new character in exactly the same lettering as the characters around it — the same typeface, stroke weight, width, height, colour and baseline — as if the logo\'s own designer had drawn it. Keep everything else exactly as it is: the same background, size and framing, every other letter untouched. Add nothing.';
+  return callGeminiImage(prompt, { image: { mimeType: 'image/png', data: pngLite.encode(shown).toString('base64') }, route: 'logo-unit', eventId: eventId, timeoutMs: 60000, deadlineAt: deadlineAt }).then(function (r) {
+    var record = aiUsageRecorder(null, eventId, 'logo-unit'); if (record) record(r.usage);
+    if (r.error) { console.error('logo unit: the year of ' + eventId + '\'s logo could not be redrawn — ' + (r.code || r.error)); return null; }
+    var bytes = Buffer.from(r.base64, 'base64'), info = logoUnit.imageInfo(bytes);
+    var asPng = info.type === 'png' && info.width * info.height <= LOGO_UNIT_DECODE_PIXELS
+      ? Promise.resolve({ bytes: bytes, info: info, decoded: pngLite.decode(bytes) })
+      : workingCopy(wrapPictureSvg({ bytes: bytes, info: info }));
+    return asPng.then(function (edited) {
+      if (!edited || !edited.decoded) return null;
+      return readFn({ bytes: edited.bytes, info: edited.info }, edited.decoded).then(function (e) {
+        /* the model's picture must show the new year, written the same way, and placed */
+        if (!e || !e.box || String(e.year || '').replace(/\s+/g, '') !== newText) return null;
+        var ed = edited.decoded;
+        var eAround = { x: e.box.x - e.box.width * 0.08, y: e.box.y - e.box.height * 0.22, width: e.box.width * 1.16, height: e.box.height * 1.44 };
+        var eBack = pngLite.edgeColour(ed, eAround);
+        eAround = yearOnly(ed, eAround, e.box, eBack);
+        var eInk = pngLite.inkBounds(ed, eAround, eBack);
+        if (!eInk || !eInk.colour || eInk.height < 8) return null;
+        var scale = ink.height / eInk.height, W = Math.round(eInk.width * scale), H = ink.height;
+        /* about as wide as the old year (a 7 for a 6, an 8 for a 7), never something else */
+        if (W < ink.width * 0.7 || W > ink.width * 1.35) return null;
+        /* where the new year reaches past the old one, that room must be empty in the original */
+        if (W > ink.width + 2 && pngLite.inkCount(decoded, { x: ink.x + ink.width + 2, y: ink.y, width: W - ink.width, height: H }, background) > 0) return null;
+        var full = Math.abs(eInk.colour[0] - eBack[0]) + Math.abs(eInk.colour[1] - eBack[1]) + Math.abs(eInk.colour[2] - eBack[2]);
+        if (full < 120) return null;
+        var hole = { x: ink.x - 2, y: ink.y - 2, width: Math.max(ink.width, W) + 4, height: ink.height + 4 };
+        var out = clear ? pngLite.clearBox(decoded, hole) : pngLite.fillBox(decoded, hole, background);
+        var d = out.data, src = ed.data, colour = ink.colour;
+        function at(x, y, c) { x = Math.max(0, Math.min(ed.width - 1, x)); y = Math.max(0, Math.min(ed.height - 1, y)); return src[(y * ed.width + x) * 4 + c]; }
+        function sample(fx, fy) {   // the edited picture's distance from its ground at a point, between pixels
+          var x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0, v = 0;
+          [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]].forEach(function (k) {
+            var x = x0 + k[0], y = y0 + k[1];
+            v += k[2] * (Math.abs(at(x, y, 0) - eBack[0]) + Math.abs(at(x, y, 1) - eBack[1]) + Math.abs(at(x, y, 2) - eBack[2]));
+          });
+          return v;
+        }
+        for (var ty = 0; ty < H; ty++) {
+          var py = ink.y + ty;
+          if (py < 0 || py >= out.height) continue;
+          for (var tx = 0; tx < W; tx++) {
+            var px = ink.x + tx;
+            if (px < 0 || px >= out.width) continue;
+            var a = (sample(eInk.x + (tx + 0.5) / scale - 0.5, eInk.y + (ty + 0.5) / scale - 0.5) / full - 0.15) / 0.7;
+            a = Math.max(0, Math.min(1, a));
+            if (!a) continue;
+            var o = (py * out.width + px) * 4;
+            if (clear) { d[o] = colour[0]; d[o + 1] = colour[1]; d[o + 2] = colour[2]; d[o + 3] = Math.round(a * 255); }
+            else { for (var c = 0; c < 3; c++) d[o + c] = Math.round(colour[c] * a + d[o + c] * (1 - a)); d[o + 3] = 255; }
+          }
+        }
+        var png = pngLite.encode(out);
+        if (png.length * 4 / 3 > Math.min(LOGO_UNIT_MAX_BYTES, Math.max(2 * (sourceBytes || 0), 600 * 1024))) return null;
+        return { bytes: png, info: logoUnit.imageInfo(png), decoded: out };
+      });
+    });
+  }).then(null, function (err) { console.error('logo unit: redrawing the year of ' + eventId + '\'s logo failed — ' + (err && err.message)); return null; });
+}
+
 function moveYearInPng(decoded, read, toYear, eventName, sourceBytes) {
   if (!decoded || !read || !read.box) return Promise.resolve(null);
   var oldText = String(read.year || '').replace(/\s+/g, ''), newText = logoUnit.yearAs(read.year, toYear).replace(/\s+/g, '');
@@ -3381,12 +3464,28 @@ function examineUnit(fb, eventId, picture, ctx) {
          more before it is given up on: where a reading puts the year varies from one reading to the next
          (AutoTech Summit 2027 was left showing '26 on one such reading). */
       function move(reading, tries) {
-        var placed = reading && reading.year === old && reading.box ? moveYearInPng(decoded, reading, years.to, ctx.eventName, pic.bytes.length) : Promise.resolve(null);
-        return placed.then(function (patched) {
+        var placeable = reading && reading.year === old && reading.box;
+        /* first, the year redrawn in the lock-up's own lettering (redrawYearInPng), kept only when a second
+           reading finds the new year and not the old; else the year set in the closest Google font */
+        var redrawn = placeable && tries === 1 ? redrawYearInPng(decoded, reading, years.to, eventId, ctx.deadlineAt, read, pic.bytes.length) : Promise.resolve(null);
+        return redrawn.then(function (red) {
+          if (!red) return null;
+          return read({ bytes: red.bytes, info: red.info }, red.decoded).then(function (again) {
+            var oldFull = (logoUnit.shownYear(old) || {}).full;
+            var all = again ? (again.shown || []).concat(again.full ? [{ full: again.full }] : []) : [];
+            if (!again || !all.some(function (y) { return y.full === years.to; }) || all.some(function (y) { return y.full === oldFull; })) return null;
+            moved(old, logoUnit.yearAs(old, years.to), ' over ' + (owner ? 'your' : 'the previous edition\'s') + ' artwork, redrawn in its own lettering');
+            return { bytes: red.bytes, info: red.info };
+          });
+        }).then(function (done) {
+          if (done) return done;
+          var placed = placeable ? moveYearInPng(decoded, reading, years.to, ctx.eventName, pic.bytes.length) : Promise.resolve(null);
+          return placed.then(function (patched) {
           if (patched) return keepMoved(patched, patched.font, old, ' over ' + (owner ? 'your' : 'the previous edition\'s') + ' artwork, in the lettering closest to it', pic);
           if (tries >= 2) { stillShows(old); return pic; }
           console.error('logo unit: the year ' + old + ' in ' + eventId + '\'s logo could not be placed from the first reading; read once more');
           return read(pic, decoded).then(function (again) { return move(again, tries + 1); });
+          });
         });
       }
       return move(r, 1);
@@ -9205,7 +9304,7 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
-  classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
+  redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
