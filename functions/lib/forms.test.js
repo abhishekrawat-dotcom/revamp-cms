@@ -363,6 +363,8 @@ var page = '<a href="#rv-form-vip" data-rv-form="vip" data-register-cta>VIP</a><
   '<div class="rv-block-form" data-rv-form-embed="vip"></div><a data-rv-form="vip-2">z</a><div data-rv-form-embed="other"></div><p>data-rv-form="vip" in text</p>';
 ok(F.formUsage(page, 'vip') === 4, 'usage: three buttons and an embed, in any quoting, not another form, not text', F.formUsage(page, 'vip'));
 ok(F.formUsage(page, 'other') === 1 && F.formUsage(page, 'none') === 0 && F.formUsage(null, 'vip') === 0, 'usage of other forms, and of nothing');
+var awardPage = '<a data-rv-award-cta data-nominate-form="nomination" data-interest-form=\'express-interest\'>Nominate Now</a><button data-rv-award-cta data-nominate-form=nomination>x</button>';
+ok(F.formUsage(awardPage, 'nomination') === 2 && F.formUsage(awardPage, 'express-interest') === 1, 'usage: an award site\'s lifecycle buttons count for the forms they open');
 ok(F.csvEscape('plain') === '"plain"' && F.csvEscape('say "hi"') === '"say ""hi"""' && F.csvEscape(null) === '""' && F.csvEscape(12) === '"12"', 'CSV: quoted, quotes doubled');
 ['=1+1', '+91', '-2', '@SUM(A1)', '\tx', '\rx'].forEach(function (v) {
   ok(F.csvEscape(v) === '"\'' + v.replace(/"/g, '""') + '"', 'CSV: "' + JSON.stringify(v) + '" cannot run as a formula');
@@ -484,6 +486,116 @@ ok(access.isPublic({ method: 'GET', headers: {} }, '/api/public/forms') === true
 ok(access.isPublic({ method: 'GET', headers: {} }, '/api/public/places') === true, '/api/public/places is public');
 ok(F.FORMS_RUNTIME_V >= 2, 'the runtime version was bumped for the Mobile and Location fields');
 ok(access.isPublic({ method: 'GET', headers: {} }, '/api/event/forms') === false, '/api/event/forms is not');
+
+/* ---------- a Long text field's word limit (Field.maxWords) ---------- */
+var SUMMARY = fld('summary', 'textarea', 'Entry summary', true, { maxWords: 300 });
+var withLimit = F.cleanFormInput(form([SUMMARY]), { creating: true });
+ok(!withLimit.error && withLimit.value.fields[2].maxWords === 300, 'a Long text field may have a word limit', JSON.stringify(withLimit).slice(0, 200));
+ok(!('maxWords' in F.cleanFormInput(form([fld('msg', 'textarea', 'Message', false)]), { creating: true }).value.fields[2]), 'none unless given');
+refused(form([fld('t', 'text', 'Title', false, { maxWords: 20 })]), 'a word limit on a Short text field', 'fields.2.maxWords');
+refused(form([fld('s', 'textarea', 'Summary', false, { maxWords: 5 })]), 'a word limit under 10', 'fields.2.maxWords');
+refused(form([fld('s', 'textarea', 'Summary', false, { maxWords: 1001 })]), 'a word limit over 1000', 'fields.2.maxWords');
+refused(form([fld('s', 'textarea', 'Summary', false, { maxWords: '300' })]), 'a word limit that is text', 'fields.2.maxWords');
+refused(form([fld('s', 'textarea', 'Summary', false, { maxWords: 12.5 })]), 'a word limit that is not whole', 'fields.2.maxWords');
+ok(!F.cleanFormInput(form([fld('s', 'textarea', 'Summary', false, { maxWords: null })]), { creating: true }).error, 'maxWords: null is "no limit"');
+var words300 = new Array(301).join('word '), words301 = words300 + 'more';
+var sv = F.validateAnswers({ fields: [SUMMARY] }, { answers: { summary: words300 } });
+ok(!sv.errors.summary && sv.answers.summary.split(' ').length === 300, '300 words are taken', JSON.stringify(sv.errors));
+sv = F.validateAnswers({ fields: [SUMMARY] }, { answers: { summary: words301 } });
+ok(sv.errors.summary === 'Please keep Entry summary to 300 words or fewer (it has 301).', '301 words are refused, with the count', sv.errors.summary);
+ok(F.wordCount('  one\ntwo\t three  ') === 3 && F.wordCount('') === 0 && F.wordCount('   ') === 0, 'words are what is between spaces and line breaks');
+ok(F.textareaMax({ maxWords: 300 }) === 3600 && F.textareaMax({}) === 2000 && F.textareaMax({ maxWords: 1000 }) === 8000 && F.textareaMax({ maxWords: 50 }) === 2000, 'a word limit makes room for its words (2,000 to 8,000 characters)');
+var longWords = new Array(300).join('extraordinarily ');      // 299 long words, over 2,000 characters
+sv = F.validateAnswers({ fields: [SUMMARY] }, { answers: { summary: longWords } });
+ok(!sv.errors.summary && sv.answers.summary.length > 2000, 'within the word limit, an answer may run past 2,000 characters', sv.answers.summary && sv.answers.summary.length);
+var stSum = F.storedForm('f', { name: 'F', fields: [fld('email', 'email', 'Email', true), fld('s', 'textarea', 'S', false, { maxWords: 300 }), fld('t', 'text', 'T', false, { maxWords: 300 }), fld('u', 'textarea', 'U', false, { maxWords: 'x' })] });
+ok(stSum.fields[1].maxWords === 300 && !('maxWords' in stSum.fields[2]) && !('maxWords' in stSum.fields[3]), 'a stored word limit is read only where it is valid');
+var pubSum = F.publicForm(stSum, {}, F.consentFor('hr'));
+ok(pubSum.fields[1].maxWords === 300, 'a visitor\'s page is told the word limit');
+
+/* ---------- required only when an earlier answer is a certain option (Field.requiredWhen) ---------- */
+var KIND = fld('kind', 'radio', 'Nominee type', true, { options: ['Individual', 'Organisation'] });
+var DESIG = fld('designation', 'text', 'Nominee designation', false, { requiredWhen: { field: 'kind', equals: 'Individual' } });
+var condForm = F.cleanFormInput(form([KIND, DESIG]), { creating: true });
+ok(!condForm.error && eq(condForm.value.fields[3].requiredWhen, { field: 'kind', equals: 'Individual' }), 'a field may be required only when another answer is a certain option', JSON.stringify(condForm).slice(0, 300));
+refused(form([DESIG, KIND]), 'a condition on a question further down', 'fields.2.requiredWhen');
+refused(form([KIND, fld('designation', 'text', 'D', false, { requiredWhen: { field: 'kind', equals: 'Robot' } })]), 'a condition on an option the question does not have', 'fields.3.requiredWhen');
+refused(form([fld('note', 'text', 'Note', false), fld('designation', 'text', 'D', false, { requiredWhen: { field: 'note', equals: 'x' } })]), 'a condition on a Short text question', 'fields.3.requiredWhen');
+refused(form([KIND, fld('designation', 'text', 'D', false, { requiredWhen: { field: 'kind' } })]), 'a condition without its option', 'fields.3.requiredWhen');
+refused(form([KIND, fld('designation', 'text', 'D', false, { requiredWhen: { field: 'kind', equals: 'Individual', or: 'x' } })]), 'a condition with other keys', 'fields.3.requiredWhen');
+refused({ name: 'X', fields: [fld('kind', 'select', 'Kind', true, { options: ['A'] }), fld('email', 'email', 'Email', false, { requiredWhen: { field: 'kind', equals: 'A' } })], submitLabel: 'S', successMessage: 'T' }, 'the email required only sometimes');
+var always = F.cleanFormInput(form([KIND, fld('designation', 'text', 'D', true, { requiredWhen: { field: 'kind', equals: 'Individual' } })]), { creating: true });
+ok(!always.error && !('requiredWhen' in always.value.fields[3]), 'a field required anyway drops its condition');
+var cf = F.storedForm('c', condForm.value);
+var ans = { name: 'Asha', email: 'a@b.co' };
+var r1 = F.validateAnswers(cf, { answers: Object.assign({ kind: 'Individual' }, ans), consent: true });
+ok(r1.errors.designation === 'Please fill in Nominee designation.', 'an individual must give a designation', JSON.stringify(r1.errors));
+var r2 = F.validateAnswers(cf, { answers: Object.assign({ kind: 'Organisation' }, ans), consent: true });
+ok(!r2.errors.designation && !Object.keys(r2.errors).length, 'an organisation need not', JSON.stringify(r2.errors));
+var r3 = F.validateAnswers(cf, { answers: Object.assign({ kind: 'Individual', designation: 'CIO' }, ans), consent: true });
+ok(!Object.keys(r3.errors).length && r3.reg.designation === 'CIO', 'given: stored as the registration\'s designation');
+ok(eq(F.publicForm(cf, {}, null).fields[3].requiredWhen, { field: 'kind', equals: 'Individual' }), 'a visitor\'s page is told the condition');
+
+/* ---------- an award's forms ---------- */
+ok(F.PURPOSES.indexOf('nomination') !== -1, 'a form may be for nominations');
+ok(F.FORM_TEMPLATES.every(function (t) { return t.id !== 'nomination'; }), 'no builder offers a nomination template (it is made from the award\'s categories)');
+var co = F.awardCategoryOptions(['Technology › AI Leader', { master: 'Technology', name: 'Cloud Leader' }, { name: 'People', subcategories: ['CHRO of the Year', { title: 'DEI Champion' }] },
+  { name: 'Solo' }, 'Technology › AI Leader', '', 42, null, new Array(30).join('Very long category name ')]);
+ok(eq(co.options.slice(0, 5), ['Technology › AI Leader', 'Technology › Cloud Leader', 'People › CHRO of the Year', 'People › DEI Champion', 'Solo']) && co.options.length === 6,
+  'categories become "Master › Sub" options, once each', JSON.stringify(co.options));
+ok(co.options[5].length <= 120 && /…$/.test(co.options[5]), 'a category over 120 characters is shortened', co.options[5]);
+var many = []; for (var mi = 0; mi < 130; mi++) many.push('Category ' + mi);
+var mo = F.awardCategoryOptions(many);
+ok(mo.options.length === 100 && mo.skipped === 30, 'at most 100 categories; the rest are counted', mo.skipped);
+ok(F.awardCategoryOptions(null).options.length === 0 && F.awardCategoryOptions('x').options.length === 0, 'no categories: no options');
+
+var nom = F.awardNominationForm({ options: co.options, title: 'Nominate for the ETHR Awards 2027' });
+var nomC = F.cleanFormInput(nom, { creating: true });
+ok(!nomC.error, 'the nomination form is a valid form', JSON.stringify(nomC.error));
+var nf = nomC.value;
+ok(eq(nf.fields.map(function (f) { return f.id; }), ['category', 'nominee_type', 'name', 'designation', 'company', 'email', 'phone', 'entry_title', 'entry_summary', 'supporting_link', 'consent']),
+  'its questions, in order, and the consent box last', nf.fields.map(function (f) { return f.id; }).join());
+var byId = {}; nf.fields.forEach(function (f) { byId[f.id] = f; });
+ok(byId.category.type === 'select' && byId.category.required && eq(byId.category.options, co.options), 'Category: a required dropdown of the categories');
+ok(byId.nominee_type.type === 'radio' && eq(byId.nominee_type.options, ['Individual', 'Organisation']) && byId.nominee_type.required, 'Nominee type: Individual / Organisation');
+ok(byId.name.label === 'Nominee name' && byId.name.required, 'Nominee name (the registration\'s name)');
+ok(!byId.designation.required && eq(byId.designation.requiredWhen, { field: 'nominee_type', equals: 'Individual' }), 'Nominee designation: required for an individual only');
+ok(byId.company.label === 'Organisation' && byId.company.required, 'Organisation (the registration\'s company)');
+ok(byId.email.label === 'Official email' && byId.email.required && byId.phone.type === 'phone' && byId.phone.required, 'Official email and Mobile (with country code)');
+ok(byId.entry_title.type === 'text' && byId.entry_title.required, 'Entry title');
+ok(byId.entry_summary.type === 'textarea' && byId.entry_summary.maxWords === 300 && byId.entry_summary.required, 'Entry summary: long text, 300 words');
+ok(byId.supporting_link.type === 'url' && !byId.supporting_link.required, 'Supporting link: an optional web address');
+ok(nf.purpose === 'nomination' && nf.template === 'nomination' && nf.countsAsRegistration === false && nf.needsApproval === false && nf.duplicates === 'allow',
+  'for nominations; not a registration; one person may nominate several times');
+ok(nf.title === 'Nominate for the ETHR Awards 2027' && nf.name === 'Nomination' && nf.submitLabel === 'Submit nomination', 'its name, title and button');
+var nst = F.storedForm('nomination', nf);
+ok(nst.template === 'nomination' && nst.purpose === 'nomination', 'stored, it keeps its kind');
+var good = { category: co.options[0], nominee_type: 'Individual', name: 'Asha Rao', designation: 'CHRO', company: 'Acme', email: 'asha@acme.com',
+  phone: { country: 'IN', number: '98765 43210' }, entry_title: 'Hiring at scale', entry_summary: 'We hired 5,000 people in a year.', supporting_link: 'acme.com/story' };
+var nv = F.validateAnswers(nst, { answers: good, consent: true });
+ok(!Object.keys(nv.errors).length, 'a complete nomination is taken', JSON.stringify(nv.errors));
+ok(nv.reg.name === 'Asha Rao' && nv.reg.company === 'Acme' && nv.reg.designation === 'CHRO' && nv.reg.phone === '+919876543210' && nv.reg.email === 'asha@acme.com',
+  'its nominee and contact are the registration\'s own columns', JSON.stringify(nv.reg));
+ok(nv.answers.category === co.options[0] && nv.answers.nominee_type === 'Individual' && nv.answers.entry_title === 'Hiring at scale' && nv.answers.supporting_link === 'https://acme.com/story' &&
+  nv.answerLabels.entry_summary === 'Entry summary', 'the rest are answers, with their labels (Reporting shows them)', JSON.stringify(nv.answers));
+var orgAns = Object.assign({}, good, { nominee_type: 'Organisation', designation: '' });
+ok(!Object.keys(F.validateAnswers(nst, { answers: orgAns, consent: true }).errors).length, 'an organisation without a designation is taken');
+ok(F.validateAnswers(nst, { answers: Object.assign({}, good, { category: 'Not a category' }), consent: true }).errors.category === 'Please choose one of the options for Category.', 'only the award\'s categories');
+ok(F.validateAnswers(nst, { answers: good }).errors.consent === F.CONSENT_MESSAGE, 'the consent box is required');
+
+var intr = F.cleanFormInput(F.awardInterestForm(), { creating: true });
+ok(!intr.error && eq(intr.value.fields.map(function (f) { return f.id; }), F.DEFAULT_FIELD_IDS.concat(['consent'])) && intr.value.fields.slice(0, 7).every(function (f) { return f.required; }),
+  'Express Interest: the seven standard questions, all required, and the consent box', JSON.stringify(intr.error));
+ok(intr.value.purpose === 'interest' && intr.value.name === 'Express Interest' && intr.value.countsAsRegistration === false && intr.value.duplicates === 'reject', 'an expression of interest, not a registration');
+
+var found = F.findAwardForms([F.storedForm('register', { name: 'Register now', purpose: 'register' }), F.storedForm('ei', { name: 'EI', purpose: 'interest' }), nst, F.storedForm('ei2', { name: 'EI2', purpose: 'interest' })]);
+ok(found.nominate.id === 'nomination' && found.interest.id === 'ei', 'an event\'s award forms are found by what they are for (the first of each)');
+ok(F.findAwardForms([]).nominate === null && F.findAwardForms(null).interest === null, 'none');
+ok(F.withCategoryOptions(nst, co.options) === null, 'the same categories: nothing to change');
+var moved = F.withCategoryOptions(nst, ['New › One']);
+ok(moved && eq(moved.filter(function (f) { return f.id === 'category'; })[0].options, ['New › One']) && moved.length === nst.fields.length &&
+  eq(moved.filter(function (f) { return f.id !== 'category'; }), nst.fields.filter(function (f) { return f.id !== 'category'; })), 'new categories change the Category options only');
+ok(F.withCategoryOptions(nst, []) === null, 'no categories given: nothing changes');
 
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');

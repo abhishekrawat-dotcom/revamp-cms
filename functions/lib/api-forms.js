@@ -11,6 +11,9 @@
 //   GET    /api/public/forms?eventId=                handlePublicForms   PUBLIC — what a visitor's page is told
 //   GET    /api/public/places?q=&cc=                 handlePublicPlaces  PUBLIC — a Location field's suggestions
 //
+//   createAwardForms(fb, eventId, opts)  (no route of its own: the award set-up calls it) — an award event's
+//                                        "Nomination" and "Express Interest" forms, made once and reused
+//
 // Both builders — the event console's Settings › Registration forms and the site editor's Forms panel —
 // use these routes and nothing else, so a form made in one is the same form in the other.
 //
@@ -173,6 +176,8 @@ function adminForm(f, counts) {
     fields: f.fields.map(function (x) {
       var o = { id: x.id, type: x.type, label: x.label, required: x.required, placeholder: x.placeholder, help: x.help };
       if (forms.OPTION_TYPES.indexOf(x.type) !== -1) o.options = (x.options || []).slice();
+      if (x.maxWords) o.maxWords = x.maxWords;
+      if (x.requiredWhen) o.requiredWhen = { field: x.requiredWhen.field, equals: x.requiredWhen.equals };
       return o;
     }),
     submitLabel: f.submitLabel, successMessage: f.successMessage, countsAsRegistration: f.countsAsRegistration,
@@ -258,6 +263,18 @@ function nameTaken(name, list, exceptId) {
   return other ? httpError(409, 'This event already has a form called “' + other.name + '”. Give this one a different name.', { code: 'name-taken', field: 'name' }) : null;
 }
 
+/* The ids a new form may not be given: the event's forms', "register" (unless mayUseRegister: a form made
+   from the "Register now" template while the event has none of that id), and every id a deleted form that
+   still has responses had (the event's per-form totals name every form that ever had one): its responses,
+   its totals and "one response per email" would carry over to the new form. */
+function takenFormIds(ev, ids, mayUseRegister) {
+  var taken = mayUseRegister ? ids.slice() : ids.concat([forms.DEFAULT_FORM_ID]);
+  var answered = isObj(ev.counters) && isObj(ev.counters.forms) ? Object.keys(ev.counters.forms) : [];
+  if (!shared.hasAudienceCounters(ev) && ids.indexOf(forms.DEFAULT_FORM_ID) === -1) answered.push(forms.DEFAULT_FORM_ID);
+  answered.forEach(function (k) { if (taken.indexOf(k) === -1) taken.push(k); });
+  return taken;
+}
+
 function handleFormsCreate(req, res) {
   requireAdmin(req, res, function (fb, decoded) {
     guard(res, sendJson, 'create this form', function () {
@@ -308,14 +325,8 @@ function handleFormsCreate(req, res) {
             var checked = forms.cleanFormInput(value, { creating: true });
             if (checked.error) throw httpError(400, checked.error, { field: checked.field || undefined });
             /* "register" is the original form's id: only that form, or one made from its template while the
-               event has no form of that id, may have it. Nor is a new form given the id of a deleted one that
-               still has responses (the event's per-form totals name every form that ever had one): its
-               responses, its totals and "one response per email" would carry over to the new form. */
-            var taken = mayUseRegister ? ids.slice() : ids.concat([forms.DEFAULT_FORM_ID]);
-            var answered = isObj(ev.counters) && isObj(ev.counters.forms) ? Object.keys(ev.counters.forms) : [];
-            if (!shared.hasAudienceCounters(ev) && ids.indexOf(forms.DEFAULT_FORM_ID) === -1) answered.push(forms.DEFAULT_FORM_ID);
-            answered.forEach(function (k) { if (taken.indexOf(k) === -1) taken.push(k); });
-            var id = forms.uniqueId(suggestion, taken, '-');
+               event has no form of that id, may have it (takenFormIds) */
+            var id = forms.uniqueId(suggestion, takenFormIds(ev, ids, mayUseRegister), '-');
             var order = list.reduce(function (m, f) { return Math.max(m, f.order); }, -1) + 1;
             var doc = storedDoc(id, checked.value, { order: order, rev: 1, createdAt: now, createdBy: actor, updatedAt: now, updatedBy: actor });
             tx.set(formsCol(fb, eventId).doc(id), doc);
@@ -490,6 +501,78 @@ function handleFormsOrder(req, res) {
   });
 }
 
+/* ---------- an award's forms ---------- */
+
+/* createAwardForms(fb, eventId, { categories, nominateTitle, by })
+     -> Promise<{ nominateFormId, interestFormId, created: [formId], updated: [formId], skippedCategories,
+                  needsCategories }>
+   The two forms an award site's main button opens (templates/_shared/rv-award-cta.js): "Nomination" (the
+   award's categories, the nominee, the entry — forms.awardNominationForm) and "Express Interest" (the seven
+   standard questions — forms.awardInterestForm). Idempotent: an event that already has a nomination form
+   (purpose "nomination") or an interest form (purpose "interest") keeps it and its id is returned; only the
+   nomination form's Category options are brought up to date with `categories` (nothing else an organiser
+   changed is touched). One transaction, with the same rules as a form made in a builder: the event must be
+   live, at most LIMITS.maxForms forms, names never shared (a clash gets "Nomination 2"), ids never reused.
+     categories     the award's categories (forms.awardCategoryOptions: "Master › Sub" strings or objects).
+                    With none, no nomination form can be made yet: nominateFormId is '' (or the existing one)
+                    and needsCategories is true; the interest form is made all the same.
+     nominateTitle  the nomination form's heading (default "Submit a nomination"); only for a new form
+     by             who is doing it, for the activity log: a decoded ID token or a string (default
+                    "system: award setup")
+   Rejects with an httpError (status, message, extra.code) as the routes do: 400 a bad id, 404 no such live
+   event, 409 'limit'. */
+function createAwardForms(fb, eventId, opts) {
+  opts = opts || {};
+  if (!validEventId(eventId)) return Promise.reject(httpError(400, 'A valid eventId is required.'));
+  var cats = forms.awardCategoryOptions(opts.categories);
+  var by = opts.by || 'system: award setup';
+  var actor = typeof by === 'string' ? by : actorOf(by);
+  var now = new Date().toISOString(), log = [];
+  return formsWrite(fb, eventId, function (tx, ev, list) {
+    log = [];                // a transaction may run more than once: only the last run's changes are logged
+    var found = forms.findAwardForms(list);
+    var out = { nominateFormId: found.nominate ? found.nominate.id : '', interestFormId: found.interest ? found.interest.id : '',
+      created: [], updated: [], skippedCategories: cats.skipped, needsCategories: !found.nominate && !cats.options.length };
+    var col = formsCol(fb, eventId);
+    var order = list.reduce(function (m, f) { return Math.max(m, f.order); }, -1) + 1;
+    function add(value) {
+      if (list.length >= LIMITS.maxForms) {
+        throw httpError(409, 'An event can have at most ' + LIMITS.maxForms + ' forms. Delete one you no longer need first.', { code: 'limit' });
+      }
+      value.name = freeName(value.name, list);
+      var checked = forms.cleanFormInput(value, { creating: true });
+      if (checked.error) throw httpError(500, 'The award form “' + value.name + '” could not be made: ' + checked.error, { field: checked.field || undefined });
+      var id = forms.uniqueId(forms.slugify(checked.value.name), takenFormIds(ev, list.map(function (f) { return f.id; }), false), '-');
+      var doc = storedDoc(id, checked.value, { order: order++, rev: 1, createdAt: now, createdBy: actor, updatedAt: now, updatedBy: actor });
+      tx.set(col.doc(id), doc);
+      var form = forms.storedForm(id, doc);
+      list.push(form);
+      out.created.push(id);
+      log.push(['form-created', describe(form) + ' — for the award']);
+      return id;
+    }
+    if (found.nominate) {
+      var fields = forms.withCategoryOptions(found.nominate, cats.options);
+      if (fields) {
+        var f = found.nominate, input = inputOf(f);
+        input.fields = fields;
+        var checked = forms.cleanFormInput(input, { creating: false, formId: f.id });
+        if (checked.error) throw httpError(500, 'The categories of “' + f.name + '” could not be updated: ' + checked.error, { field: checked.field || undefined });
+        var doc = storedDoc(f.id, checked.value, { order: f.order, rev: (f.rev || 0) + 1, createdAt: f.createdAt || now, createdBy: f.createdBy || actor, updatedAt: now, updatedBy: actor });
+        tx.set(col.doc(f.id), doc);
+        out.updated.push(f.id);
+        log.push(['form-updated', describe(forms.storedForm(f.id, doc)) + ' — the award’s categories']);
+      }
+    } else if (cats.options.length) {
+      out.nominateFormId = add(forms.awardNominationForm({ options: cats.options, title: opts.nominateTitle }));
+    }
+    if (!found.interest) out.interestFormId = add(forms.awardInterestForm());
+    return out;
+  }).then(function (out) {
+    return Promise.all(log.map(function (l) { return logActivity(fb, eventId, by, l[0], l[1], { area: 'forms' }); })).then(function () { return out; });
+  });
+}
+
 /* ---------- GET /api/public/forms ---------- */
 
 /* The visitor's country, when the hosting in front of this server says it in a request header — as Google
@@ -565,5 +648,5 @@ function handlePublicPlaces(req, res) {
 
 module.exports = {
   handleFormsList, handleFormsCreate, handleFormsUpdate, handleFormsDelete, handleFormsDefault, handleFormsOrder, handlePublicForms,
-  handlePublicPlaces, loadForms, loadForm, loadPublicForms, loadConsent, ensureMaterialized, geoCountry
+  handlePublicPlaces, loadForms, loadForm, loadPublicForms, loadConsent, ensureMaterialized, geoCountry, createAwardForms
 };

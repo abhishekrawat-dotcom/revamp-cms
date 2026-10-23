@@ -7137,13 +7137,19 @@ var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable'
   'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded', 'data-rv-edge-host'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
-var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend)\.js|editor-fill\.js)$/;
+var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend|rv-award-cta)\.js|editor-fill\.js)$/;
 /* The forms runtime (templates/_shared/rv-forms.js: a button's form in a pop-up, a form placed in the page,
    validation and sending). Its address carries lib/forms.js FORMS_RUNTIME_V, bumped whenever the file
    changes: static files are cached for five minutes under an unhashed name. */
 var FORMS_RUNTIME_V = formsLib.FORMS_RUNTIME_V;
 var FORMS_RUNTIME_SRC = '/templates/_shared/rv-forms.js?v=' + FORMS_RUNTIME_V;
 var FORMS_RUNTIME_TAG = '<script src="' + FORMS_RUNTIME_SRC + '" data-rv-runtime></script>';
+/* An award site's lifecycle button (templates/_shared/rv-award-cta.js: "Express Interest" -> "Nominate Now" ->
+   "Winners will be announced soon" -> "View Winners" by the award's dates). Only on a page that has one
+   (data-rv-award-cta); its address carries AWARD_CTA_RUNTIME_V, bumped whenever the file changes. */
+var AWARD_CTA_RUNTIME_V = 1;
+var AWARD_CTA_TAG = '<script src="/templates/_shared/rv-award-cta.js?v=' + AWARD_CTA_RUNTIME_V + '" data-rv-runtime></script>';
+var AWARD_CTA_MARK = /<[a-z][^>]*\sdata-rv-award-cta(?=[\s=>\/])/i;
 /* section edges' runtime (templates/_shared/rv-blend.js): bumped whenever that file changes */
 var BLEND_RUNTIME_V = 1;
 /* JSON inside a <script> block: "<" must not appear (a "</script" in some text would end the block early),
@@ -7534,6 +7540,9 @@ function publishTransform(html, opts) {
   tail.push('<script src="/templates/_shared/rv-data.js" data-rv-runtime></script>');
   /* a speaker's profile and a gallery's photos, in a pop-up — on the visitor's page only, never in the editor */
   tail.push('<script src="/templates/_shared/rv-popups.js" data-rv-runtime></script>');
+  /* an award site's lifecycle buttons: their words and what they open, by the award's dates (before the forms
+     runtime, which then opens the form a button names) */
+  if (AWARD_CTA_MARK.test(html)) tail.push(AWARD_CTA_TAG);
   /* the forms: a button's form in a pop-up, a form placed in the page */
   tail.push(FORMS_RUNTIME_TAG);
   /* visit counting (rv-live.js) — the slot is kept; left out while that file is not part of this release, so

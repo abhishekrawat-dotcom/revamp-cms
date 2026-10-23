@@ -52,7 +52,11 @@
   var LOCK_NOTE = 'Every form asks for an email address, always required: it is how one response is told from another';
   var LOCK_BADGE = 'Always required';
   /* the words for a form's purpose (the server's PURPOSES); the choices themselves come from its templates */
-  var PURPOSE_WORDS = { register: 'Registration', interest: 'Expression of interest', partner: 'Partnership enquiry', vip: 'VIP invitation request', speaker: 'Speaker application', custom: 'Other' };
+  var PURPOSE_WORDS = { register: 'Registration', interest: 'Expression of interest', partner: 'Partnership enquiry', vip: 'VIP invitation request', speaker: 'Speaker application', nomination: 'Award nomination', custom: 'Other' };
+  /* a Long text field's word limit (the server's forms.WORDS) */
+  var WORDS = { min: 10, max: 1000 };
+  /* the types a field may depend on (Field.requiredWhen: required only when that answer is a certain option) */
+  var CONDITION_TYPES = { select: 1, radio: 1 };
 
   /* ---------- small pure helpers (exported as RevampFormsBuilder._pure for the unit test) ---------- */
   function esc(s) {
@@ -107,18 +111,47 @@
     return f.name + ': ' + bits.join(', ');
   }
 
+  /* A field's condition (Field.requiredWhen), when it still holds: the field it depends on is above it in
+     `list`, is a Dropdown or Single choice, and still has that option. Else null — the condition is dropped
+     (the question it depended on was deleted, moved below it, retyped or lost that option). */
+  function conditionOf(f, list) {
+    var rw = f && f.requiredWhen;
+    if (!rw || f.required || typeof rw !== 'object') return null;
+    var at = -1;
+    (list || []).forEach(function (x, j) { if (x === f) at = j; });
+    for (var j = 0; j < (at === -1 ? (list || []).length : at); j++) {
+      var x = list[j];
+      if (x && x.id && x.id === rw.field) {
+        if (!CONDITION_TYPES[x.type]) return null;
+        return (x.options || []).map(function (o) { return str(o).trim(); }).indexOf(str(rw.equals)) !== -1 ? { field: str(rw.field), equals: str(rw.equals) } : null;
+      }
+    }
+    return null;
+  }
+  /* a Long text field's word limit as a number, or null when it has none ('' or nothing) */
+  function maxWordsOf(f) {
+    if (!f || f.type !== 'textarea' || f.maxWords == null || f.maxWords === '') return null;
+    var n = Number(f.maxWords);
+    return isFinite(n) ? n : NaN;
+  }
+
   /* The form as the server takes it (FormInput): every key it accepts and nothing it refuses. A field that
      has no id yet is sent without one; the server gives it one from its label. */
   function formInput(d) {
+    var own = ownFields(d.fields);
     return {
       name: str(d.name).trim(), title: str(d.title).trim(), intro: str(d.intro).replace(/\s+$/, ''),
       purpose: d.purpose || 'custom',
-      fields: ownFields(d.fields).map(function (f) {
+      fields: own.map(function (f) {
         var o = {};
         if (f.id) o.id = f.id;
         o.type = f.type; o.label = str(f.label).trim(); o.required = !!f.required;
         o.placeholder = str(f.placeholder).trim(); o.help = str(f.help).trim();
         if (OPTION_TYPES[f.type]) o.options = (f.options || []).map(function (x) { return str(x).trim(); });
+        var mw = maxWordsOf(f);
+        if (mw !== null) o.maxWords = mw;
+        var cond = conditionOf(f, own);
+        if (cond) o.requiredWhen = cond;
         return o;
       }),
       submitLabel: str(d.submitLabel).trim(), successMessage: str(d.successMessage).replace(/\s+$/, ''),
@@ -133,6 +166,8 @@
       var o = d.fields[i];
       o.label = str(f.label);
       if (OPTION_TYPES[f.type]) o.options = (f.options || []).slice();
+      /* kept as stored while it is edited: formInput drops one that no longer holds */
+      if (f.requiredWhen && !f.required) o.requiredWhen = { field: str(f.requiredWhen.field), equals: str(f.requiredWhen.equals) };
       return o;
     });
     d.name = str(form && form.name); d.title = str(form && form.title); d.intro = str(form && form.intro);
@@ -154,6 +189,10 @@
     }
     (d.fields || []).forEach(function (f, i) {
       if (!str(f.label).trim()) errs.push({ key: 'label', field: i, msg: 'Give this field a label.' });
+      var mw = maxWordsOf(f);
+      if (mw !== null && (!(mw >= WORDS.min && mw <= WORDS.max) || Math.floor(mw) !== mw)) {
+        errs.push({ key: 'maxWords', field: i, msg: 'A word limit is a whole number from ' + WORDS.min + ' to ' + WORDS.max + ', or leave it empty for none.' });
+      }
       if (OPTION_TYPES[f.type]) {
         var opts = f.options || [], seen = {};
         if (!opts.length) errs.push({ key: 'options', field: i, msg: 'Add at least one option.' });
@@ -191,6 +230,10 @@
       var o = { id: id, type: f.type, label: str(f.label).trim(), required: !!f.required, placeholder: str(f.placeholder), help: str(f.help) };
       if (OPTION_TYPES[f.type]) o.options = (f.options || []).map(function (x) { return str(x).trim(); }).filter(Boolean);
       if (f.type === 'country') o.options = (countries || []).slice();
+      var mw = maxWordsOf(f);
+      if (mw && mw >= WORDS.min && mw <= WORDS.max) o.maxWords = Math.floor(mw);
+      var cond = conditionOf(f, ownFields(d.fields));
+      if (cond) o.requiredWhen = cond;
       return o;
     });
     /* the locked consent box, last, as visitors see it */
@@ -700,6 +743,17 @@
         h += '<div class="fb-ctl"><label for="' + fid + '-ph">Placeholder</label><input type="text" id="' + fid + '-ph" data-fb-k="placeholder" data-fk="fp-' + i + '" maxlength="' + MAX.placeholder + '" value="' + esc(f.placeholder) + '"><span class="fb-hint">Light text in the empty box, as an example. Optional.</span></div>';
       }
       h += '<div class="fb-ctl"><label for="' + fid + '-help">Help text</label><input type="text" id="' + fid + '-help" data-fb-k="help" data-fk="fh-' + i + '" maxlength="' + MAX.help + '" value="' + esc(f.help) + '"><span class="fb-hint">Shown under the field. Optional.</span></div>';
+      if (f.type === 'textarea') {
+        var mwErr = errFor('maxWords', i), mwv = f.maxWords == null ? '' : str(f.maxWords);
+        h += '<div class="fb-ctl"><label for="' + fid + '-mw">Word limit</label><input type="number" inputmode="numeric" min="' + WORDS.min + '" max="' + WORDS.max + '" step="1" id="' + fid + '-mw" data-fb-k="maxWords" data-fk="fw-' + i + '" value="' + esc(mwv) + '"' +
+          (mwErr ? ' aria-invalid="true" aria-describedby="' + fid + '-mw-err"' : '') + '><span class="fb-hint">Visitors see the words counted as they type, and cannot send more. Leave empty for no limit.</span>' + errHtml(fid + '-mw', mwErr) + '</div>';
+      }
+      var cond = conditionOf(f, draft ? ownFields(draft.fields) : []);
+      if (cond) {
+        var on = (draft ? ownFields(draft.fields) : []).filter(function (x) { return x.id === cond.field; })[0];
+        h += '<div class="fb-ctl"><label class="fb-req"><input type="checkbox" data-fb-k="requiredWhen" data-fk="fc-' + i + '" checked> Required only when “' + esc(on ? str(on.label).trim() || cond.field : cond.field) + '” is “' + esc(cond.equals) + '”</label>' +
+          '<span class="fb-hint">Untick to make it optional for everyone. Ticking “Required” makes it required for everyone.</span></div>';
+      }
       if (OPTION_TYPES[f.type]) h += optionsHtml(f, i, fid, optsErr);
       if (f.type === 'country') h += '<p class="fb-hint">Visitors choose from a list of ' + ((data.countries || []).length || 'all') + ' countries, India first.</p>';
       if (f.type === 'phone') h += '<p class="fb-hint">Visitors choose their country code (it starts on the country they are in) and type their number. It is checked for that country (in India: 10 digits, starting 6–9) and kept in international form, like +91 98765 43210.</p>';
@@ -1035,12 +1089,15 @@
             if (c) c.setAttribute('aria-label', p[1]);
           });
         } else if (k === 'placeholder' || k === 'help') f[k] = t.value;
-        else if (k === 'required') { f.required = !!t.checked; }
+        else if (k === 'maxWords') f.maxWords = t.value.trim() === '' ? null : Number(t.value);
+        else if (k === 'requiredWhen' && e.type === 'change') { if (!t.checked) delete f.requiredWhen; return afterEdit(true); }
+        else if (k === 'required') { f.required = !!t.checked; if (f.required) delete f.requiredWhen; }
         else if (k === 'type' && e.type === 'change') {
           if (MAPPED_TYPES[f.id]) return;
           f.type = t.value;
           if (OPTION_TYPES[f.type]) { if (!f.options || !f.options.length) f.options = ['']; }
           else delete f.options;
+          if (f.type !== 'textarea') delete f.maxWords;
           return afterEdit(true);
         }
         return afterEdit(false);
@@ -1314,7 +1371,7 @@
     _pure: {
       formInput: formInput, draftOf: draftOf, sameDraft: sameDraft, validateDraft: validateDraft, parseOptionList: parseOptionList,
       moveItem: moveItem, templateForm: templateForm, describeTemplate: describeTemplate, serverFieldOf: serverFieldOf,
-      previewForm: previewForm, MAPPED_TYPES: MAPPED_TYPES, LOCKED: LOCKED, ownFields: ownFields, consentHtml: consentHtml
+      previewForm: previewForm, MAPPED_TYPES: MAPPED_TYPES, LOCKED: LOCKED, ownFields: ownFields, consentHtml: consentHtml, conditionOf: conditionOf
     }
   };
 })();
