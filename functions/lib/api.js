@@ -142,6 +142,9 @@ const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
 const googleFonts = require('./google-fonts');
 const sectionPictures = require('./section-pictures');
+const etAwards = require('./et-awards');
+const awardSite = require('./award-site');
+const awardSections = require('./award-sections');
 const prevSections = require('./prev-sections');
 const sectionOrder = require('./section-order');
 const etNav = require('./et-nav');
@@ -1236,6 +1239,95 @@ function handleEtEvents(req, res) {
   });
 }
 
+/* Internal pages (an award's Categories, Guidelines, Judging Criteria, Jury, FAQs, T&C) need sites of more than
+   one page, which come next for every kind of event (the owner, 23 Oct 2026: award sites go live as one page
+   first). Until then an award site is its home page: no page sections, no page links; the words written for
+   the pages are kept on the event (awardPages) for when they come. */
+var SITE_PAGES = false;
+/* events/<id>/faqs from an award's FAQs (writeAwardPages: written for this edition; else the previous
+   edition's record), only when the event has no FAQ yet — never over the owner's own. Never fails the run. */
+function seedAwardFaqs(fb, eventId, got, by) {
+  var list = ((got.pages && got.pages.faq) || []).length ? got.pages.faq : ((got.record && got.record.faq) || []);
+  list = list.filter(function (f) { return f && f.q && f.a; }).slice(0, 30);
+  if (!list.length) return Promise.resolve();
+  var col = fb.db.collection('events').doc(eventId).collection('faqs');
+  return col.limit(1).get().then(function (snap) {
+    if (!snap.empty) return;
+    var batch = fb.db.batch(), now = new Date().toISOString(), who = String(by || 'platform');
+    list.forEach(function (f, i) {
+      batch.set(col.doc(), { question: String(f.q).slice(0, 300), answer: String(f.a).slice(0, 3000), order: i + 1, createdAt: now, updatedAt: now, createdBy: who, updatedBy: who });
+    });
+    return batch.commit();
+  }).then(null, function (err) { console.error('generate-content: the award FAQs of ' + eventId + ' were not stored — ' + (err && err.message)); });
+}
+
+/* the top bar's short names for an award site's internal pages */
+var AWARD_TAB_LABELS = { 'award-category': 'Categories', 'award-guidelines': 'Guidelines', 'award-judging-criteria': 'Judging Criteria', 'award-jury': 'Jury', 'award-faq': 'FAQs', 'award-tnc': 'T&C' };
+
+/* The words of an award site's internal pages (award-site.js): one reading, beside the sections. Rewritten for
+   this edition from the previous edition's own pages when its award record has them; with no categories on
+   record (an award made from a brief), the categories are proposed here too — free, never with a fee.
+   -> Promise<{ award: AWARD with its categories, pages: { guidelines, judging, tnc, faq }, record }>, never
+   rejecting: a failed reading leaves the pages it would have written out of the site. */
+function writeAwardPages(fb, eventId, stored, sourceDocs, brief, eventMeta) {
+  var award = awardForSite(sourceDocs, stored);
+  var rec = (sourceDocs || []).filter(function (d) { return d && d.type === 'previousEdition' && d.award; }).map(function (d) { return d.award; })[0] || null;
+  var recPages = rec && rec.pages ? rec.pages : {};
+  var needCategories = !award.categories.length;
+  var prompt = awardSite.buildPagesPrompt({
+    event: { name: stored.name || eventMeta.name, dates: award.dates, venue: [stored.venue, stored.city].filter(Boolean).join(', '), description: eventMeta.description },
+    brief: brief || null,
+    previousPages: { guidelines: recPages.guidelines, judging: recPages.judging, tnc: recPages.tnc, faq: (recPages.faq && recPages.faq.length ? recPages.faq : (rec && rec.faq) || []) },
+    needCategories: needCategories
+  });
+  return llm.callJson(prompt, awardSite.PAGES_SCHEMA, { route: 'generate-content', eventId: eventId, timeoutMs: 100000, maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') })
+    .then(function (r) {
+      if (r.error) console.error('generate-content: the award pages of ' + eventId + ' were not written — ' + (r.code || r.error));
+      var pages = awardSite.sanitizePages(r.error ? {} : r.parsed, needCategories);
+      if (needCategories) award.categories = pages.categories;
+      return { award: award, pages: pages, record: rec };
+    }, function () { return { award: award, pages: awardSite.sanitizePages({}, false), record: rec }; });
+}
+/* what an internal page shows (award-sections.js PAGE_KINDS kind -> its content) */
+function awardPageContent(kind, got) {
+  var p = got.pages || {}, a = got.award || {};
+  if (kind === 'award-category') return a.categories;
+  if (kind === 'award-jury') return a.jury;
+  if (kind === 'award-guidelines') return p.guidelines;
+  if (kind === 'award-judging-criteria') return p.judging;
+  if (kind === 'award-tnc') return p.tnc;
+  if (kind === 'award-faq') return (p.faq || []).length ? p.faq : ((got.record && got.record.faq) || []);
+  return null;
+}
+
+/* An ET award's address -> { portal, id: <microsite id>, kind: 'award' } when it is one of that portal's
+   awards (et-events.js listAwards, cached), else null — for a previous edition pasted rather than picked. */
+function awardPickByLink(url) {
+  var portal = etPrevious.portalOf(url);
+  if (!etEvents.isPortal(portal)) return Promise.resolve(null);
+  return etEvents.listAwards(portal, etJson).then(function (list) {
+    var hit = list.filter(function (a) { return pageKey(a.link) && pageKey(a.link) === pageKey(url); })[0];
+    return hit ? { portal: portal, id: String(hit.id), kind: 'award' } : null;
+  }, function () { return null; });
+}
+/* the award's record (et-awards.js readAward), bounded for the source document; null when it cannot be read */
+var AWARD_PAGE_MAX_BYTES = 3 * 1024 * 1024;
+function readAwardRecord(pick) {
+  function fetchText(u, headers) {
+    return safeFetch(u, { timeoutMs: 15000, maxBytes: AWARD_PAGE_MAX_BYTES, headers: headers || {} }).then(function (r) { return r.status === 200 ? r.body.toString('utf8') : ''; });
+  }
+  return etAwards.readAward({ portal: pick.portal, micrositeId: pick.id }, { fetchJson: etJson, fetchText: fetchText }).then(function (a) {
+    if (!a) return null;
+    /* a source document holds at most a few hundred KB of it (Firestore's limit is 1 MB a document) */
+    var text = JSON.stringify(a);
+    if (text.length > 600 * 1024) {
+      a.jury = (a.jury || []).map(function (g) { return Object.assign({}, g, { people: g.people.slice(0, 40).map(function (p) { return Object.assign({}, p, { bio: String(p.bio || '').slice(0, 400) }); }) }); });
+      a.guests = [];
+    }
+    return a;
+  }).then(null, function (err) { console.error('ingest-source: award record not read — ' + (err && err.message)); return null; });
+}
+
 /* What KIND of picture the previous edition puts in each of its content sections (section-pictures.js):
    its content pictures are fetched (bounded) and read together in one small call, so that the new edition's
    pictures follow its choices section by section. Never fails the step: what cannot be had is not known.
@@ -1367,9 +1459,15 @@ function handleIngestSource(req, res) {
         var hints = ownEdition ? logoUnit.editionHints(html, url) : null;
         /* A previous edition on ET's own platform: its real speakers, sponsors, agenda and photos, read from
            ET's event API (et-previous.js) beside the summary below — shown as "Previous Edition …" sections. */
-        var previousRead = type !== 'previousEdition' ? Promise.resolve(null) : confirmEtPick(etPick, url).then(function (pick) {
+        var confirmed = type !== 'previousEdition' ? Promise.resolve(null) : confirmEtPick(etPick, url);
+        var previousRead = type !== 'previousEdition' ? Promise.resolve(null) : confirmed.then(function (pick) {
           return pick || etPrevious.portalOf(url) ? readEtPrevious(url, html, pick) : null;
         });
+        /* a previous edition that is one of ET's AWARDS: its award record — categories, jury and partners by
+           group, FAQs, and the words of its internal pages (et-awards.js) — kept for the award site */
+        var awardRead = type !== 'previousEdition' ? Promise.resolve(null) : confirmed.then(function (pick) {
+          return pick && pick.kind === 'award' ? pick : awardPickByLink(url);
+        }).then(function (pick) { return pick ? readAwardRecord(pick) : null; }, function () { return null; });
         var editionHints = hints ? {
           title: String(hints.title || '').slice(0, 200), headings: (hints.headings || []).slice(0, 6).map(function (h) { return String(h).slice(0, 200); }),
           years: (hints.years || []).slice(0, 8), editionImage: String(hints.editionImage || '').slice(0, 1000)
@@ -1389,9 +1487,9 @@ function handleIngestSource(req, res) {
           /* the previous edition's section pictures, by kind — read beside the page (the banner is the key visual) */
           var picturesRead = type !== 'previousEdition' ? Promise.resolve([]) :
             readSectionPictures(eventId, html, url, [edition && edition.keyVisual && edition.keyVisual.url], deadlineAt);
-          return Promise.all([read, previousRead, edition, picturesRead]);
+          return Promise.all([read, previousRead, edition, picturesRead, awardRead]);
         }).then(function (both) {
-          var r = both[0], previous = both[1], edition = both[2], pictureKinds = both[3] || [];
+          var r = both[0], previous = both[1], edition = both[2], pictureKinds = both[3] || [], award = both[4] || null;
           if (r.error) return sendAiFailure(res, r);
           var look = edition ? edition.look : null;
           var keyVisual = edition ? keptKeyVisual(edition.keyVisual, r.parsed.keyVisual) : null;
@@ -1404,7 +1502,7 @@ function handleIngestSource(req, res) {
             return fb.db.collection('events').doc(eventId).collection('sources').add({
               type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
               design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
-              previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds
+              previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds, award: award
             });
           }).then(function (sourceRef) {
             sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone,
@@ -1815,7 +1913,11 @@ function buildDesignPlanPrompt(payload) {
     '',
     'Ground every section in real content-shape evidence from the material below — never include a section that has nothing real to put in it, and never omit one the material clearly supports. A thin site with 3 well-grounded sections beats a padded one with 7 that have nothing real to say.',
     '',
-    payload.siteMode === 'standard'
+    payload.siteMode === 'award'
+      ? 'THIS IS AN AWARD SITE, built as every ET award site is. Its sections are chosen ONLY from this list, in this order — use exactly these ids and kinds:\n' +
+        awardSite.AWARD_SECTIONS.filter(function (x) { return !x.prebuilt; }).map(function (x) { return '  ' + x.id + '  (kind "' + x.kind + '") — ' + x.name + (x.purpose ? ': ' + x.purpose : ''); }).join('\n') + '\n' +
+        'Include overview, why-enter, how-it-works, recognition, who-should-enter, faqs, contact-us and about-vertical always; awards-night when the awards have a ceremony; past-edition-glimpses only when a previous edition is given. The key dates, the categories, the jury and the partners are built by the server from the award\'s records and placed in their ET positions — never list them. The award\'s internal pages (categories, entry guidelines, judging criteria, jury, FAQs, terms) are made separately. (nav, hero and footer are added automatically.)'
+      : payload.siteMode === 'standard'
       ? 'THIS IS A STANDARD SITE. Its sections are chosen ONLY from this list — use exactly these ids and kinds, and no section that is not on it:\n' +
         STANDARD_SECTIONS.map(function (x) { return '  ' + x.id + '  (kind "' + x.kind + '") — ' + x.name; }).join('\n') + '\n' +
         'Which of them this site has: every one of these that the reference page above has, under whatever name it goes there (its "Partners" are sponsors, its "Gallery" or "Glimpses" are past-edition-glimpses, its "Why attend" is why-join-us, its "Themes" or "Tracks" are key-discussion-points…), is made again for this edition; add one the brief document or the owner\'s instructions ask for; leave out one they say this edition does not have. With no reference page, include the ones the material supports — Overview always. Order them as the reference page does; with none, in the order of the list. (nav, hero and footer are added automatically and are not in your list.)'
@@ -1823,7 +1925,7 @@ function buildDesignPlanPrompt(payload) {
     '',
     'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, and everything a visitor needs to understand the event lives in the sections. (The server places the sponsors directly under the hero, ahead of the overview: this edition\'s sponsors section when the site has one, then the previous edition\'s sponsors; list it wherever you like — the other sections keep your order.)',
     '',
-    'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.'),
+    'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.') + (payload.siteMode === 'award' ? ' On an award site, "speakers" is never used: the jury is built from records.' : ''),
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
     'ONE TONE: the page keeps its mode (design.mode) from the first section under the hero to the footer — a light site is light all the way down, a dark site dark all the way down. Sections differ by layout, pictures and the surface colour, never by switching between light and dark bands.',
@@ -1902,6 +2004,8 @@ function sanitizeDesignPlanSections(parsed, siteMode) {
   var out = [];
   var pictures = 0;
   var list = Array.isArray(parsed.sections) ? parsed.sections.slice() : [];
+  /* an award site: ET's own sections, in ET's order; the ones built from records are never the model's */
+  if (siteMode === 'award') return awardPlanSections(list);
   /* a standard site always opens with its overview */
   if (siteMode === 'standard' && !list.some(function (s) { return s && standardSectionFor(s.id) && standardSectionFor(s.id).id === 'overview'; })) {
     list.unshift({ id: 'overview', kind: 'custom', purpose: 'What this event is, who it is for and why it matters this year.', layout: 'picture and text side by side', image: '' });
@@ -1924,6 +2028,78 @@ function sanitizeDesignPlanSections(parsed, siteMode) {
   });
   return fewerPeoplePictures(out);
 }
+/* The award a site is built for: the previous edition's records as ET's award API gave them at ingest
+   (sources[].award, et-awards.js), under THIS edition's name and dates — the nomination window the owner set
+   (events/<id>.nomination) and the event's own date for the awards night, never the previous edition's.
+   Its jury and partners were the previous edition's, and say so ("Grand Jury 2026"). Its categories keep
+   their nomination fees as ET has them (the owner, 23 Oct 2026: "show the fee, will add payment setup
+   later" — the nomination form takes no payment yet).
+   With no award on record: the owner's dates alone (the categories come with the internal pages' words).
+   -> AWARD (award-sections.js shape) */
+function awardForSite(sourceDocs, stored) {
+  stored = stored || {};
+  var rec = (sourceDocs || []).filter(function (d) { return d && d.type === 'previousEdition' && d.award; }).map(function (d) { return d.award; })[0] || null;
+  var nom = stored.nomination || {};
+  function when(v, tbd) { return tbd ? '' : String(v || '').replace('T', ' ').slice(0, 19); }
+  var prevYear = rec ? (String((rec.dates || {}).ceremony || '').slice(0, 4) || ((/(19|20)\d{2}/.exec(rec.name || '') || [''])[0])) : '';
+  function labelled(groups) {
+    return (groups || []).map(function (g) { return Object.assign({}, g, { group: g.group + (prevYear ? ' ' + prevYear : '') }); });
+  }
+  return {
+    name: String(stored.name || (rec && rec.name) || ''),
+    edition: '',
+    dates: { nominationOpen: when(nom.open, nom.openTbd), nominationClose: when(nom.close, nom.closeTbd), ceremony: when(stored.start) },
+    categories: rec ? rec.categories || [] : [],
+    jury: rec ? labelled(rec.jury) : [],
+    partners: rec ? labelled(rec.partners) : [],
+    fromRecords: !!rec
+  };
+}
+
+/* The model's sections of an award site, as ET's: each mapped onto its AWARD_SECTIONS entry (award-site.js),
+   those built from records dropped (the server adds them where it has records), unknown ones dropped, the
+   overview always first, and the list put in ET's order. */
+function awardPlanSections(list) {
+  var seen = {}, out = [], pictures = 0;
+  (list || []).forEach(function (s) {
+    if (!s) return;
+    var std = awardSite.awardSectionFor(s.id) || awardSite.awardSectionFor(s.name || '');
+    if (!std || std.prebuilt || seen[std.id]) return;
+    seen[std.id] = true;
+    var image = std.kind === 'custom' ? String(s.image || '').trim().slice(0, 300) : '';
+    if (image && ++pictures > MAX_SECTION_IMAGES) image = '';
+    var imageKind = genDesign.IMAGE_KINDS.indexOf(s.imageKind) !== -1 ? s.imageKind : (image ? 'subject' : '');
+    out.push({ id: std.id, name: std.name, kind: std.kind, purpose: String(s.purpose || std.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image, imageKind: image ? imageKind : '' });
+  });
+  if (!seen.overview) out.unshift({ id: 'overview', name: 'Overview', kind: 'custom', purpose: awardSite.AWARD_SECTIONS[0].purpose, layout: 'picture and text side by side', image: '', imageKind: '' });
+  var order = awardSite.AWARD_SECTIONS.map(function (x) { return x.id; });
+  out.sort(function (a, b) { return order.indexOf(a.id) - order.indexOf(b.id); });
+  return fewerPeoplePictures(out);
+}
+/* The award's sections built from records (award-sections.js), as planned entries in their ET places:
+   key dates after the overview, the categories after why-enter, the jury after how-it-works, the partners
+   after who-should-enter — each only when its records exist. award: et-awards.js AWARD, or what the brief
+   gave (categories proposed by the model, the owner's dates). */
+function withAwardRecords(sections, award) {
+  if (!award) return sections;
+  var built = awardSections.homeSections(award, { edition: award.name || '' });
+  /* with no categories on record (an award from a brief) they are proposed with the internal pages' words
+     (writeAwardPages, generate-content): their place is kept, and left empty if none come */
+  if (!built.some(function (b) { return b.id === 'award-categories'; })) {
+    built.push({ id: 'award-categories', name: 'Award Categories', prebuilt: 'award-categories', purpose: 'Award Categories — the master categories. Built by the server.', layout: 'a grid of cards, one per master category' });
+  }
+  var have = {}; built.forEach(function (b) { have[b.id] = b; });
+  var order = awardSite.AWARD_SECTIONS.map(function (x) { return x.id; });
+  var out = sections.slice();
+  built.forEach(function (b) {
+    var entry = { id: b.id, name: b.name, kind: b.id === 'award-partners' ? 'partners' : 'custom', prebuilt: b.prebuilt, purpose: b.purpose || b.name, layout: b.layout || '', image: '', imageKind: '' };
+    var mine = order.indexOf(b.id), at = out.length;
+    for (var i = 0; i < out.length; i++) { var o = order.indexOf(out[i].id); if (o > mine) { at = i; break; } }
+    out.splice(at, 0, entry);
+  });
+  return out;
+}
+
 /* At most MAX_PEOPLE_PICTURES sections with a picture of people, never two next to each other; sections that
    are about people keep theirs first. Another becomes a picture of its subject, its scene said again from
    what the section is for (the scene written for people would bring them back). */
@@ -3419,6 +3595,8 @@ function handlePlanStructure(req, res) {
       if (!eventMeta.description) delete eventMeta.description;
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
       var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
+      /* an awards event is built as ET's award sites are (award-site.js), whatever structure was asked for */
+      if (String(stored.category || '').toLowerCase() === 'awards' || payload.siteMode === 'award') siteMode = 'award';
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections, sectionPictures: v.type === 'previousEdition' ? v.sectionPictures || [] : [] }; });
       var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
       var reference = designReference(sourceDocs);
@@ -3444,6 +3622,12 @@ function handlePlanStructure(req, res) {
            the contact section, or at the end */
         var prevDoc = sourceDocs.filter(function (d) { return d.type === 'previousEdition' && d.previous; })[0];
         var prevPlanned = prevDoc ? prevSections.plan(prevDoc.previous).filter(function (x) { return !sections.some(function (y) { return y.id === x.id; }); }) : [];
+        /* an award site: the jury and partners are built from the award's records (below), so of the previous
+           edition's own lists only its photos stay */
+        if (siteMode === 'award') {
+          prevPlanned = prevPlanned.filter(function (x) { return x.prebuilt === 'glimpses'; });
+          sections = withAwardRecords(sections, awardForSite(sourceDocs, stored));
+        }
         /* the previous edition's real photos stand in for the standard "past edition glimpses" gallery */
         if (prevPlanned.some(function (x) { return x.prebuilt === 'glimpses'; })) sections = sections.filter(function (x) { return x.id !== 'past-edition-glimpses'; });
         if (prevPlanned.length) {
@@ -4133,11 +4317,23 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     // any other call this file makes. A timeout is never retried (gemini.js), so 100s is also the longest
     // this request can spend on the model: the calls of a split site run side by side, not one after another.
     var batches = sectionCodeBatches(designPlan);
+    /* an award site: the words of its internal pages, written beside the sections (writeAwardPages) */
+    var awardRead = designPlan.siteMode === 'award'
+      ? writeAwardPages(fb, eventId, stored, sourcesSnap.docs.map(function (d) { return d.data(); }), brief, eventMeta).then(function (a) {
+        /* its Nomination form (a Category list from its categories) and its Express Interest form
+           (api-forms.js createAwardForms: reused when they exist, their categories brought up to date) */
+        return require('./api-forms').createAwardForms(fb, eventId, { categories: a.award.categories, nominateTitle: 'Nomination', by: by })
+          .then(function (ids) { a.forms = ids; return a; }, function (err) {
+            console.error('generate-content: the award forms of ' + eventId + ' were not made — ' + (err && err.message));
+            a.forms = {}; return a;
+          });
+      })
+      : Promise.resolve(null);
     return Promise.all(batches.map(function (ids) {
       var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
       return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') });
     })).then(function (answers) {
-      return footerRead.then(function (footerList) { return { answers: answers, footerList: footerList }; });
+      return Promise.all([footerRead, awardRead]).then(function (both) { return { answers: answers, footerList: both[0], award: both[1] }; });
     }).then(function (got) {
       var answers = got.answers;
       var failed = answers.filter(function (r) { return r.error; })[0];
@@ -4167,6 +4363,18 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         primary: null, secondary: null
       };
       var heroButtons = ownerBrief.buttons(designPlan.owner || (brief && brief.owner), { register: contact ? contact.id : 'footer', partner: partners ? partners.id : '' });
+      /* an award site's main button follows the award (rv-award-cta.js): Express Interest, Nominate Now, Winners
+         will be announced soon, View Winners — by the visitor's date; its second goes to the categories page */
+      if (got.award) {
+        var ad = got.award.award.dates || {}, af = got.award.forms || {};
+        heroButtons = {
+          primary: { label: 'Nominate Now', href: '#hero', award: { open: ad.nominationOpen, close: ad.nominationClose, ceremony: ad.ceremony,
+            nominateForm: af.nominateFormId || '', interestForm: af.interestFormId || '', winnersHref: '' } },
+          secondary: (got.award.award.categories || []).length
+            ? (SITE_PAGES ? { label: 'View Categories', href: 'award-category', page: 'award-category' } : { label: 'View Categories', href: '#award-categories' })
+            : heroButtons.secondary
+        };
+      }
       heroOpts.primary = heroButtons.primary; heroOpts.secondary = heroButtons.secondary;
       written.push({ id: 'hero', html: genDesign.heroHtml(heroOpts), css: genDesign.heroCss(heroOpts) });
 
@@ -4190,8 +4398,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* the previous edition's sections, built here from its real records (prev-sections.js), each in its
          planned place */
       var prevDoc = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.previous; })[0];
+      /* an award site's own sections built from its records (award-sections.js), by id */
+      var awardHome = {};
+      if (got.award) awardSections.homeSections(got.award.award, { edition: eventMeta.name || '', pages: SITE_PAGES }).forEach(function (b) { awardHome[b.id] = b; });
       planned.filter(function (x) { return x.prebuilt; }).forEach(function (x) {
-        var built = prevDoc ? prevSections.build(x.prebuilt, prevDoc.previous, {}) : null;
+        var built = /^award-/.test(x.prebuilt) ? awardHome[x.id] || null : prevDoc ? prevSections.build(x.prebuilt, prevDoc.previous, {}) : null;
         if (!built) return;
         var at = sections.length - (sections.length && sections[sections.length - 1].id === 'footer' ? 1 : 0);
         var order = planned.map(function (y) { return y.id; }), mine = order.indexOf(x.id);
@@ -4200,6 +4411,24 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       });
       /* the sponsors right after the hero whatever came back (section-order.js) */
       sections = sectionOrder.sponsorsAfterHero(sections, planned);
+      /* an award site: a section's own call to act (written as a registration button) enters the award — it
+         follows the award as the main button does; the awards night's stays a registration (a seat on the night) */
+      if (got.award) sections.forEach(function (sec) {
+        if (/^(nav|hero|footer|awards-night)$/.test(sec.id)) return;
+        sec.html = String(sec.html || '').replace(/\sdata-register-cta(?=[\s>=])(?:=(?:"[^"]*"|'[^']*'))?/g, genDesign.ctaAttrs(heroButtons.primary));
+      });
+      /* an award site's internal pages (award-sections.js pageSections), after the home page's sections:
+         each page's sections carry its slug (data-rv-page), and the page list goes with the site */
+      var sitePages = [];
+      if (got.award && SITE_PAGES) awardSections.PAGE_KINDS.forEach(function (k) {
+        var built = awardSections.pageSections(k.kind, awardPageContent(k.kind, got.award), { edition: eventMeta.name || '' });
+        if (!built.length) return;
+        sitePages.push({ slug: k.slug, title: k.title });
+        built.forEach(function (b) {
+          sections.push({ id: b.id, kind: 'custom', page: k.slug, html: b.html,
+            css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(b.css, b.id, sectionRootInfo(b.html))), b.html) });
+        });
+      });
       /* ET's common footer, last: the portal's links and its events coming up, under a band for this event
          with its main button (et-footer.js) */
       sections = sections.filter(function (s) { return s.id !== 'footer'; });
@@ -4208,7 +4437,12 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* the top bar, built here as on ET's own event sites (et-nav.js): the portal's logo, the event's name,
          date and place, a link to every section in the page's order, the owner's main action */
       sections = sections.filter(function (s) { return s.id !== 'nav'; });
-      var navFor = { order: sections.map(function (s) { return s.id; }), sources: sourcesSnap.docs.map(function (d) { return d.data(); }), owner: designPlan.owner || (brief && brief.owner) };
+      var navFor = { order: sections.filter(function (s) { return !s.page; }).map(function (s) { return s.id; }), sources: sourcesSnap.docs.map(function (d) { return d.data(); }), owner: designPlan.owner || (brief && brief.owner) };
+      /* an award site: its main button, and a link to each of its internal pages */
+      if (got.award) {
+        navFor.cta = heroButtons.primary;
+        navFor.tabs = sitePages.map(function (pg) { return { label: AWARD_TAB_LABELS[pg.slug] || pg.title, page: pg.slug }; });
+      }
       var navSection;
       /* never a reason to lose a whole site: a bar that cannot be made from the stored records is made from
          the event's facts alone (no portal, the default action) */
@@ -4224,7 +4458,13 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var now = new Date().toISOString();
 
       /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
-      return watch.merge({ generatedSections: sections, generatedAt: now })
+      var merged = { generatedSections: sections, generatedPages: sitePages, generatedAt: now };
+      /* an award site's internal pages' words, kept until the site can have pages (SITE_PAGES) */
+      if (got.award) merged.awardPages = got.award.pages;
+      return watch.merge(merged)
+        /* an award site's FAQs are the event's FAQ records (Content › FAQ), as the page shows them: the ones
+           written for this edition, put there only while the event has none of its own */
+        .then(function () { return got.award ? seedAwardFaqs(fb, eventId, got.award, by) : null; })
         .then(function () {
           return draftRef.collection('drafts').add({
             templateId: templateId, sourceEventId: sourceEventId, library: {},
@@ -8619,7 +8859,7 @@ module.exports._testHooks = {
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont

@@ -419,14 +419,34 @@ var HERO_ICONS = {
   place: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>'
 };
 
+/* The attributes of a main button: an award's lifecycle button (templates/_shared/rv-award-cta.js: Express
+   Interest -> Nominate Now -> Winners will be announced soon -> View Winners, by the visitor's date) when the
+   button carries `award`, else the registration pop-up's (rv-forms.js) unless register is false.
+   btn.award = { open, close, ceremony: 'YYYY-MM-DD…', nominateForm, interestForm, winnersHref } */
+function ctaAttrs(btn) {
+  if (!btn) return '';
+  var a = btn.award;
+  if (!a) return btn.register === false ? '' : ' data-register-cta';
+  function day(v) { var m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v || '')); return m ? m[1] : ''; }
+  function id(v) { return /^[A-Za-z0-9_-]{1,80}$/.test(String(v || '')) ? String(v) : ''; }
+  var out = ' data-rv-award-cta';
+  if (day(a.open)) out += ' data-nominations-open="' + day(a.open) + '"';
+  if (day(a.close)) out += ' data-nominations-close="' + day(a.close) + '"';
+  if (day(a.ceremony)) out += ' data-ceremony="' + day(a.ceremony) + '"';
+  if (id(a.nominateForm)) out += ' data-nominate-form="' + id(a.nominateForm) + '"';
+  if (id(a.interestForm)) out += ' data-interest-form="' + id(a.interestForm) + '"';
+  if (a.winnersHref) out += ' data-winners-href="' + escAttr(a.winnersHref) + '"';
+  return out;
+}
+
 function heroHtml(o) {
   o = o || {};
   var facts = '';
   if (o.date) facts += '<span class="hero-fact">' + HERO_ICONS.date + '<span>' + escAttr(o.date) + '</span></span>';
   if (o.place) facts += '<span class="hero-fact">' + HERO_ICONS.place + '<span>' + escAttr(o.place) + '</span></span>';
   var buttons = '';
-  if (o.primary && o.primary.label) buttons += '<a class="hero-btn hero-btn-primary"' + (o.primary.register === false ? '' : ' data-register-cta') + ' href="' + escAttr(o.primary.href || '#') + '">' + escAttr(o.primary.label) + '</a>';
-  if (o.secondary && o.secondary.label) buttons += '<a class="hero-btn hero-btn-secondary" href="' + escAttr(o.secondary.href || '#') + '">' + escAttr(o.secondary.label) + '</a>';
+  if (o.primary && o.primary.label) buttons += '<a class="hero-btn hero-btn-primary"' + ctaAttrs(o.primary) + ' href="' + escAttr(o.primary.href || '#') + '">' + escAttr(o.primary.label) + '</a>';
+  if (o.secondary && o.secondary.label) buttons += '<a class="hero-btn hero-btn-secondary"' + (o.secondary.page ? ' data-rv-page-link="' + escAttr(o.secondary.page) + '"' : '') + ' href="' + escAttr(o.secondary.href || '#') + '">' + escAttr(o.secondary.label) + '</a>';
   return '<section id="hero" class="hero-root hero-on-' + (o.mode === 'dark' ? 'dark' : 'light') + '">' +
     '<div class="hero-veil" aria-hidden="true"></div>' +
     '<div class="hero-inner">' +
@@ -598,5 +618,5 @@ function imagePrompt(subject, design, opts) {
 module.exports = {
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE, MOBILE_RULES,
-  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, IMAGE_KINDS, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, IMAGE_KINDS, ctaAttrs, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

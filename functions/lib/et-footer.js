@@ -200,7 +200,7 @@ function build(data) {
     band = '<div class="' + c + '-event"><div class="' + c + '-in ' + c + '-event-in">' +
       '<div class="' + c + '-event-text"><p class="' + c + '-event-name">' + esc(ev.name) + '</p>' +
       (meta ? '<p class="' + c + '-event-meta">' + meta + '</p>' : '') + '</div>' +
-      (b.label && bHref ? '<a class="' + c + '-event-btn"' + (b.register === false ? '' : ' data-register-cta') + ' href="' + esc(bHref) + '">' + esc(b.label) + '</a>' : '') +
+      (b.label && bHref ? '<a class="' + c + '-event-btn"' + require('./gen-design').ctaAttrs(b) + ' href="' + esc(bHref) + '">' + esc(b.label) + '</a>' : '') +
       '</div></div>';
   }
 

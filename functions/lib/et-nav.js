@@ -164,7 +164,10 @@ function build(o) {
   var sub = o.sub || {};
   var date = clean(sub.date), place = clean(sub.place);
   var links = (o.links || []).filter(function (l) { return l && l.id && clean(l.label); });
-  var tabs = (o.tabs || []).filter(function (t) { return t && clean(t.label) && safeHref(t.href); });
+  /* a tab may be one of the site's own pages (t.page: its slug — site-pages, data-rv-page-link): its address is
+     set where the page is viewed (rv-pages.js); the slug stands until then */
+  var tabs = (o.tabs || []).map(function (t) { return t && t.page && /^[a-z0-9-]{1,40}$/.test(t.page) ? Object.assign({}, t, { href: t.href || t.page }) : t; })
+    .filter(function (t) { return t && clean(t.label) && (t.page ? /^[a-z0-9-]{1,40}$/.test(t.page) : safeHref(t.href)); });
   var cta = o.cta && clean(o.cta.label) ? o.cta : null;
 
   var html = '<header class="' + c + '" id="nav" data-rv-etnav>' +
@@ -177,12 +180,13 @@ function build(o) {
         (date || place ? '<p class="' + c + '-sub">' + (date ? '<span class="' + c + '-date">' + esc(date) + '</span>' : '') + (place ? '<span class="' + c + '-place">' + esc(place) + '</span>' : '') + '</p>' : '') +
       '</div>' +
       (tabs.length ? '<ul class="' + c + '-tabs">' + tabs.map(function (t) {
-        return '<li><a class="' + c + '-tab' + (t.active ? ' is-current' : '') + '" href="' + esc(safeHref(t.href)) + '"' + (t.active ? ' aria-current="page"' : '') + '>' + esc(clean(t.label)) + '</a></li>';
+        var href = t.page ? t.page : safeHref(t.href);
+        return '<li><a class="' + c + '-tab' + (t.active ? ' is-current' : '') + '"' + (t.page ? ' data-rv-page-link="' + esc(t.page) + '"' : '') + ' href="' + esc(href) + '"' + (t.active ? ' aria-current="page"' : '') + '>' + esc(clean(t.label)) + '</a></li>';
       }).join('') + '</ul>' : '') +
       (links.length ? '<nav class="' + c + '-links" aria-label="Sections"><ul class="' + c + '-list">' + links.map(function (l) {
         return '<li><a href="#' + esc(l.id) + '">' + esc(clean(l.label)) + '</a></li>';
       }).join('') + '</ul></nav>' : '') +
-      (cta ? '<a class="' + c + '-cta"' + (cta.register === false ? '' : ' data-register-cta') + ' href="' + esc(safeHref(cta.href) || '#hero') + '">' + esc(clean(cta.label)) + '</a>' : '') +
+      (cta ? '<a class="' + c + '-cta"' + require('./gen-design').ctaAttrs(cta) + ' href="' + esc(safeHref(cta.href) || '#hero') + '">' + esc(clean(cta.label)) + '</a>' : '') +
     '</div></header>';
 
   var line = 'color-mix(in srgb,var(--rv-text) 14%,transparent)';
@@ -304,7 +308,8 @@ function ctaFor(designPlan, owner) {
    its stylesheet confined to the section as every generated section's is.
      event      the event document (name, start, end, dateLabel, venue, city, location, designPlan)
      o.order    the page's section ids in order (nav, hero and footer are skipped)
-     o.sources  the event's sources documents     o.owner  the brief's owner points when the plan has none */
+     o.sources  the event's sources documents     o.owner  the brief's owner points when the plan has none
+     o.cta      the main button, when the page sets it     o.tabs  more links, as forEvent takes them */
 function sectionFor(event, o) {
   o = o || {};
   var plan = (event && event.designPlan) || {};
@@ -312,7 +317,8 @@ function sectionFor(event, o) {
   var sections = (o.order || planned.map(function (s) { return s.id; })).map(function (id) {
     return planned.filter(function (p) { return p.id === id; })[0] || { id: id };
   });
-  var built = forEvent(event, { sections: sections, portals: portalCandidates(plan, o.sources), cta: ctaFor(plan, o.owner) });
+  /* o.cta: the main button as the page builds it (an award's lifecycle button) — else worked out here */
+  var built = forEvent(event, { sections: sections, portals: portalCandidates(plan, o.sources), cta: o.cta || ctaFor(plan, o.owner), tabs: o.tabs });
   var markup = require('./gen-markup');
   var css = require('./gen-design').clampFontSizes(markup.scopeSectionCss(built.css, 'nav', markup.sectionRootInfo(built.html)));
   return { id: 'nav', kind: 'nav', html: built.html, css: css };

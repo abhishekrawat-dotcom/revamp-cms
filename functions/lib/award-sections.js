@@ -172,7 +172,8 @@ function newBadge(cls) { return '<span class="' + cls + '">New</span>'; }
 function badgeCss(sel) {
   return sel + '{display:inline-block;flex:0 0 auto;padding:3px 9px;border-radius:999px;background:' + FILL + ';color:' + ON_FILL + ';font-size:0.6875rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;line-height:1.4}';
 }
-/* a link that opens one of the award's own pages (the site's page runtime reads data-rv-page-link) */
+/* a link that opens one of the award's own pages (the site's page runtime reads data-rv-page-link) — only on a
+   site that has its internal pages (o.pages); a one-page site has nowhere for it to go */
 function pageLink(cls, kind, label) {
   return '<div class="' + cls + '-more"><a class="' + cls + '-btn" data-rv-page-link="' + esc(kind) + '" href="' + esc(kind) + '">' + esc(label) + '</a></div>';
 }
@@ -297,7 +298,7 @@ function categoriesSummary(award, o) {
       (n ? '<p class="' + c + '-count">' + n + ' sub-' + (n === 1 ? 'category' : 'categories') + '</p>' : '') + '</article>';
   }).join('');
   var html = root(id, c, '') + '<div class="' + c + '-in">' + head(c, id, o.edition, 'Award Categories', lead) +
-    '<div class="' + c + '-grid">' + cards + '</div>' + pageLink(c, 'award-category', 'View all categories') + '</div></section>';
+    '<div class="' + c + '-grid">' + cards + '</div>' + (o && o.pages ? pageLink(c, 'award-category', 'View all categories') : '') + '</div></section>';
   var css = baseCss(c, '--rv-surface') + buttonCss(c) +
     /* a short last row stands in the middle, not at the left */
     '.' + c + '-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:20px}' +
@@ -327,7 +328,7 @@ function juryHome(award, o) {
     ? '<div class="' + c + '-row" data-rv-carousel="auto"><div class="' + c + '-track" data-rv-carousel-track>' + cards + '</div></div>'
     : '<div class="' + c + '-grid">' + cards + '</div>';
   var html = root(id, c, '', ' data-rv-profiles') + '<div class="' + c + '-in">' + head(c, id, o.edition, g.group || 'Jury') + row +
-    pageLink(c, 'award-jury', 'Meet the jury') + '</div></section>';
+    (o && o.pages ? pageLink(c, 'award-jury', 'Meet the jury') : '') + '</div></section>';
   var css = baseCss(c) + buttonCss(c) + personCss(c, '236px') +
     '.' + c + '-row{position:relative}.' + c + '-track{gap:24px;padding:4px 2px 12px}' +
     '.' + c + '-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:24px}' +

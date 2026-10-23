@@ -48,7 +48,7 @@
   var OPTION_TYPES = { select: 1, radio: 1, multiselect: 1 };
   var TEXT_LIKE = { text: 1, textarea: 1, email: 1, phone: 1, number: 1, url: 1, location: 1 };   // types a placeholder shows on
   var MAX = { name: 80, title: 120, intro: 600, label: 120, placeholder: 120, help: 300, submitLabel: 40, successMessage: 600, option: 120 };
-  var DEFAULT_LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 100 };
+  var DEFAULT_LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 300 };
   var LOCK_NOTE = 'Every form asks for an email address, always required: it is how one response is told from another';
   var LOCK_BADGE = 'Always required';
   /* the words for a form's purpose (the server's PURPOSES); the choices themselves come from its templates */

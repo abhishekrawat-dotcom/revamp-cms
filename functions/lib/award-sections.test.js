@@ -52,7 +52,7 @@ var award = {
     { group: 'Empty', items: [] }
   ]
 };
-var o = { edition: 'ETCIO Awards 2027', now: NOW };
+var o = { edition: 'ETCIO Awards 2027', now: NOW, pages: true };
 
 /* ---------- home ---------- */
 var home = aw.homeSections(award, o);
@@ -114,6 +114,8 @@ var jh = home[2].html;
 check('jury: the Grand Jury, wherever it stands', jh.indexOf('>Grand Jury</h2>') !== -1 && jh.indexOf('Meera Iyer') === -1);
 check('jury: nameless jurors out', (jh.match(/class="aw-jury-card"/g) || []).length === 5);
 check('jury: a carousel when many', /data-rv-carousel="auto"><div class="aw-jury-track" data-rv-carousel-track>/.test(jh));
+var onePage = aw.homeSections(award, { edition: 'ETCIO Awards 2027', now: NOW });
+check('a one-page site (no internal pages): no link to a page', onePage.every(function (x) { return x.html.indexOf('data-rv-page-link') === -1; }));
 check('jury: Meet the jury link', jh.indexOf('<a class="aw-jury-btn" data-rv-page-link="award-jury" href="award-jury">Meet the jury</a>') !== -1);
 check('jury: profile template with bio and LinkedIn', jh.indexOf('<template data-rv-profile><span data-rv-profile-for hidden>Anita Rao</span><p data-rv-profile-bio>Thirty years in banking.</p><a data-rv-profile-li href="https://www.linkedin.com/in/anita"') !== -1);
 check('jury: no template without bio or a safe link', (jh.match(/<template/g) || []).length === 1);

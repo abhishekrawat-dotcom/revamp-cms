@@ -3738,9 +3738,10 @@
   /* ---------- category-specific panel ---------- */
   function renderCatPanel(){
     var b = S.basics, C = CATS[b.category], panel = $('cat-panel');
-    // brief mode keeps the details form to exactly name/URL/date/venue — nomination/campaign dates can be
-    // set later in the real event console once the event exists, same reasoning as skipping logo/payment.
-    if ((!C.nomination && !C.campaign) || S.creationMethod === 'brief'){ panel.hidden = true; return; }
+    // brief mode keeps the details form to name/URL/date/venue — campaign dates can be set later in the event
+    // console. An award's nomination window stays: it drives the generated site's Key Dates and its main
+    // button (Nominate Now / Winners will be announced soon / View Winners), so it is asked here, optional.
+    if ((!C.nomination && !C.campaign) || (S.creationMethod === 'brief' && !C.nomination)){ panel.hidden = true; return; }
     panel.hidden = false;
     var body = $('cat-panel-body');
 
@@ -9431,6 +9432,15 @@
       end: (exact && b.end) ? b.end : null,
       payment: { type: 'free' }
     };
+    /* an award's nomination window (the server's events/<id>.nomination): what its site's Key Dates and its
+       main button follow */
+    if (CATS[b.category] && CATS[b.category].nomination){
+      rec.nomination = {
+        open: b.nomOpenTbd ? '' : String(b.nomOpen || ''), openTbd: !!b.nomOpenTbd,
+        close: b.nomCloseTbd ? '' : String(b.nomClose || ''), closeTbd: !!b.nomCloseTbd,
+        shortlist: b.shortlistTbd ? '' : String(b.shortlist || ''), shortlistTbd: !!b.shortlistTbd
+      };
+    }
     /* a generated site only has a template once generation has finished (startGenerateFromBrief()'s last row sets it) */
     if (S.creationMethod !== 'brief') rec.templateId = handoffTemplate().site;
     return rec;

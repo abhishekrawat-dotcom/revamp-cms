@@ -77,7 +77,7 @@ var FORM_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
 var FIELD_ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
 var DEFAULT_FORM_ID = 'register';
 
-var LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 100 };
+var LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 300 };   // 300: an award's Category list (Trendies 2026 has 114 sub-categories)
 /* a Long text field's word limit (Field.maxWords), and the characters such an answer may have */
 var WORDS = { min: 10, max: 1000 };
 var TEXTAREA_MAX = 2000, TEXTAREA_MAX_WORDS_CAP = 8000;
@@ -364,7 +364,7 @@ function boolIn(input, key, dflt, what) {
   return { value: input[key] };
 }
 
-/* Options of a select / radio / multiselect field: 1–100 different, non-empty lines of at most 120 characters. */
+/* Options of a select / radio / multiselect field: 1–300 different, non-empty lines of at most 120 characters. */
 function cleanOptions(v, where, label) {
   if (!Array.isArray(v) || !v.length) return { error: fail('“' + label + '” needs at least one option to choose from.', where) };
   if (v.length > LIMITS.maxOptions) return { error: fail('“' + label + '” can have at most ' + LIMITS.maxOptions + ' options.', where) };
@@ -550,7 +550,7 @@ var ENTRY_SUMMARY_WORDS = 300;
      { name|title, subcategories|subs|children: [...] }  one option per sub ('Name › Sub'), the name itself when
                                                        it has none; a sub is text or { name|title }
    Each option is one line of at most 120 characters (longer ones are shortened, ending "…"); the same option
-   twice is kept once; after 100, the rest are left out and counted in `skipped`. */
+   twice is kept once; after 300 (LIMITS.maxOptions), the rest are left out and counted in `skipped`. */
 function awardCategoryOptions(categories) {
   var out = [], skipped = 0;
   function nameOf(v) { return typeof v === 'string' ? line(v, 1000) : isObj(v) ? line(v.name || v.title || v.sub || v.label || '', 1000) : ''; }

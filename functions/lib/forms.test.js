@@ -127,9 +127,9 @@ refused(form([fld('', 'radio', 'Choose', false, { options: [] })]), 'single choi
 refused(form([fld('', 'multiselect', 'Choose', false, { options: ['a', ''] })]), 'an empty option', 'fields.2.options.1');
 refused(form([fld('', 'select', 'Choose', false, { options: ['a', 'a'] })]), 'a repeated option', 'fields.2.options.1');
 refused(form([fld('', 'select', 'Choose', false, { options: [new Array(122).join('x')] })]), 'an option over 120 characters', 'fields.2.options.0');
-var many = []; for (var i = 0; i < 101; i++) many.push('Option ' + i);
-refused(form([fld('', 'select', 'Choose', false, { options: many })]), '101 options', 'fields.2.options');
-ok(!F.cleanFormInput(form([fld('', 'select', 'Choose', false, { options: many.slice(0, 100) })]), { creating: true }).error, '100 options are fine');
+var many = []; for (var i = 0; i < 301; i++) many.push('Option ' + i);
+refused(form([fld('', 'select', 'Choose', false, { options: many })]), '301 options', 'fields.2.options');
+ok(!F.cleanFormInput(form([fld('', 'select', 'Choose', false, { options: many.slice(0, 300) })]), { creating: true }).error, '300 options are fine (an award\'s Category list)');
 var forty = []; for (i = 0; i < 38; i++) forty.push(fld('', 'text', 'Question ' + i, false));
 ok(!F.cleanFormInput(form(forty), { creating: true }).error, '40 fields are fine');
 refused(form(forty.concat([fld('', 'text', 'One more', false)])), '41 fields', 'fields');
@@ -544,9 +544,9 @@ var co = F.awardCategoryOptions(['Technology › AI Leader', { master: 'Technolo
 ok(eq(co.options.slice(0, 5), ['Technology › AI Leader', 'Technology › Cloud Leader', 'People › CHRO of the Year', 'People › DEI Champion', 'Solo']) && co.options.length === 6,
   'categories become "Master › Sub" options, once each', JSON.stringify(co.options));
 ok(co.options[5].length <= 120 && /…$/.test(co.options[5]), 'a category over 120 characters is shortened', co.options[5]);
-var many = []; for (var mi = 0; mi < 130; mi++) many.push('Category ' + mi);
+var many = []; for (var mi = 0; mi < 330; mi++) many.push('Category ' + mi);
 var mo = F.awardCategoryOptions(many);
-ok(mo.options.length === 100 && mo.skipped === 30, 'at most 100 categories; the rest are counted', mo.skipped);
+ok(mo.options.length === 300 && mo.skipped === 30, 'at most 300 categories (Trendies 2026 has 114); the rest are counted', mo.skipped);
 ok(F.awardCategoryOptions(null).options.length === 0 && F.awardCategoryOptions('x').options.length === 0, 'no categories: no options');
 
 var nom = F.awardNominationForm({ options: co.options, title: 'Nominate for the ETHR Awards 2027' });
