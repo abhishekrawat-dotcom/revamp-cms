@@ -297,6 +297,10 @@ var DESIGN_WEIGHT_FIELDS = ['headingWeight', 'bodyWeight'];
 var DESIGN_NUMERIC_FIELDS = { bodySize: [12, 24], headingSize: [20, 64], sectionSpacing: [0, 140], bgOpacity: [0, 100] };
 var DESIGN_FIELDS = DESIGN_COLOR_FIELDS.concat(DESIGN_FONT_FIELDS, Object.keys(DESIGN_ENUM_FIELDS), DESIGN_WEIGHT_FIELDS, Object.keys(DESIGN_NUMERIC_FIELDS));
 
+/* ET's rule for every logo of its verticals (the owner, 23 Oct 2026), in every prompt that can style or edit a
+   page or a logo: when a logo's colour changes, only its black lettering may change; the red ET square never. */
+var ET_LOGO_COLOUR_RULE = 'ET LOGOS (every vertical\'s — ETAuto, ETHRWorld, ETRetail and the rest — and The Economic Times Business Verticals logo): if a logo\'s colour must change to suit a dark or a light ground, ONLY its black lettering may change (to white or another colour). The red ET square, with the white "ET" in it, is NEVER changed at any cost: never recoloured, tinted, inverted, filtered (no CSS filter, mix-blend-mode or opacity on a logo), outlined, boxed or redrawn. Never recolour a logo picture yourself: the site already has the right version of each logo for a dark and a light ground.';
+
 /* The prompt: event basics + the section content already filled in step 1 (so suggestions build on what's
    really there, never invent facts) + the ONE baseline template already in use (its structure is fixed —
    this is a visual redesign, not a different template pick). Section data is passed through once as JSON so
@@ -580,6 +584,8 @@ function buildChatPrompt(payload) {
         (payload.unseenNote ? payload.unseenNote + ' ' : '') +
         'To place a picture on the page, the owner\'s words say what it is for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
       : ''),
+    ET_LOGO_COLOUR_RULE,
+    '',
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
     '',
@@ -1943,6 +1949,7 @@ function buildDesignPlanPrompt(payload) {
         'Which of them this site has: every one of these that the reference page above has, under whatever name it goes there (its "Partners" are sponsors, its "Gallery" or "Glimpses" are past-edition-glimpses, its "Why attend" is why-join-us, its "Themes" or "Tracks" are key-discussion-points…), is made again for this edition; add one the brief document or the owner\'s instructions ask for; leave out one they say this edition does not have. With no reference page, include the ones the material supports — Overview always. Order them as the reference page does; with none, in the order of the list. (nav, hero and footer are added automatically and are not in your list.)'
       : 'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
+    ET_LOGO_COLOUR_RULE,
     'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, and everything a visitor needs to understand the event lives in the sections. (The server places the sponsors directly under the hero, ahead of the overview: this edition\'s sponsors section when the site has one, then the previous edition\'s sponsors; list it wherever you like — the other sections keep your order.)',
     '',
     'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.') + (payload.siteMode === 'award' ? ' On an award site, "speakers" is never used: the jury is built from records.' : ''),
@@ -2954,7 +2961,7 @@ function redrawYearInPng(decoded, reading, toYear, eventId, deadlineAt, readFn, 
   var lum = (0.299 * ink.colour[0] + 0.587 * ink.colour[1] + 0.114 * ink.colour[2]) / 255;
   var plate = lum > 0.5 ? [40, 40, 40] : [235, 235, 235];
   var shown = clear ? pngLite.flatten(decoded, plate) : decoded;
-  var prompt = 'This is an event logo. Change ONLY the year "' + oldText + '" to "' + newText + '". Draw each new character in exactly the same lettering as the characters around it — the same typeface, stroke weight, width, height, colour and baseline — as if the logo\'s own designer had drawn it. Keep everything else exactly as it is: the same background, size and framing, every other letter untouched. Add nothing.';
+  var prompt = 'This is an event logo. Change ONLY the year "' + oldText + '" to "' + newText + '". Draw each new character in exactly the same lettering as the characters around it — the same typeface, stroke weight, width, height, colour and baseline — as if the logo\'s own designer had drawn it. Keep everything else exactly as it is: the same background, size and framing, every other letter untouched; the red ET square and the white "ET" in it keep their exact colours and shape. Add nothing.';
   return callGeminiImage(prompt, { image: { mimeType: 'image/png', data: pngLite.encode(shown).toString('base64') }, route: 'logo-unit', eventId: eventId, timeoutMs: 60000, deadlineAt: deadlineAt }).then(function (r) {
     var record = aiUsageRecorder(null, eventId, 'logo-unit'); if (record) record(r.usage);
     if (r.error) { console.error('logo unit: the year of ' + eventId + '\'s logo could not be redrawn — ' + (r.code || r.error)); return null; }
@@ -4469,6 +4476,7 @@ function buildSectionCodePrompt(payload) {
   if (placeLine) lines.push('', placeLine);
   lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section of the list below that is not the sponsors introduces the event properly. The sections stand on the page in the order listed below (the sponsors, when there are any, come straight after the hero), and the nav\'s links follow that order.',
     'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero.',
+    ET_LOGO_COLOUR_RULE,
     'THE TOP BAR IS NOT YOURS TO WRITE EITHER: the server builds the nav as ET\'s own event sites have it (the portal\'s logo, the event\'s name, date and place, a link to every section, the main action). Do not return a "nav" section.');
 
   lines.push('', 'PICTURES — the site must not be text only:');
@@ -5006,6 +5014,7 @@ function buildRedesignPrompt(payload) {
     '- Light motion: data-rv-reveal (or ="left", "right", "zoom", "fade") on a few blocks that should ease in on scroll — the page animates them, write no opacity:0 or keyframes for it; a gentle hover lift on cards and buttons.',
     '- A row with more items than fit may be a carousel: data-rv-carousel on the wrapper, data-rv-carousel-track on the element holding the items, a width on each item; the page adds the buttons — never draw arrows or dots.',
     '',
+    ET_LOGO_COLOUR_RULE,
     'HTML rules: ONE root element carrying id="' + payload.sectionId + '", no <html>/<body>/<head>, no <script>, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
     'CSS rules: plain class selectors for the classes you use, each class prefixed with "' + payload.sectionId + '-", including one for the root element. Do NOT write [data-rv-section] in any selector and do not style html, body or :root. No @import.',
     '',

@@ -175,6 +175,9 @@ ok(!el.ownerSetsLook('The theme of this year is regional growth') && !el.ownerSe
 var rd = api.buildRedesignPrompt({ mode: 'redesign', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light', place: { city: 'Chennai', motif: 'a kolam border' } } });
 var ed = api.buildRedesignPrompt({ mode: 'edit', instruction: 'bigger title', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light', place: { city: 'Chennai', motif: 'a kolam border' } } });
 ok(/THE PLACE: this edition takes place in Chennai/.test(rd) && !/kolam border/.test(rd) && !/THE PLACE/.test(ed), 'redesign carries the city (by name, no ornament), edit does not');
+/* ET's logo rule (the owner, 23 Oct 2026): only black lettering may change colour, never the red ET square */
+var ETRULE = /ONLY its black lettering may change[\s\S]*red ET square, with the white "ET" in it, is NEVER changed/;
+ok(ETRULE.test(prompt) && ETRULE.test(code) && ETRULE.test(rd) && ETRULE.test(ed), 'every prompt that styles a page or a logo carries ET\'s logo colour rule');
 
 /* ---- review: a card colour never walks off into grey (the stored BWS design gave #bebdb9 on #f5f3ee) ---- */
 var stored = { mode: 'light', themeColor: '#ed1c24', accentColor: '#f5a300', backgroundColor: '#ffffff', surfaceColor: '#fff3ea', textColor: '#1a1414', mutedColor: '#574e4e', headingFont: 'Montserrat', bodyFont: 'Work Sans' };
