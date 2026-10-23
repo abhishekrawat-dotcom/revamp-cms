@@ -107,7 +107,7 @@ ok(ov.source === 'previous' && ov.city === 'Gurugram', 'its venue when this edit
 /* ---- image prompts carry the city as the plan wrote it ---- */
 var design = { mode: 'light', themeColor: '#f42a58', place: { city: 'Pune', cues: 'Peshwa-era stone wadas and teak balconies', motif: 'a border' } };
 var hero = gd.imagePrompt('a summit hall', design, { hero: true });
-ok(/takes place in Pune/.test(hero) && /teak balconies/.test(hero) && /never a postcard/.test(hero), 'hero prompt: the city, recognisably', hero);
+ok(/the event is in Pune/.test(hero) && /teak balconies/.test(hero) && /never a tourist postcard/.test(hero), 'hero prompt: the city, recognisably (its landmarks worked into the key visual)', hero);
 ok(/the event is in Pune/.test(gd.imagePrompt('delegates over coffee', design, {})), 'section prompt: the city where the scene allows');
 ok(!/Place:/.test(gd.imagePrompt('x', { mode: 'light' }, {})), 'no place, no place line');
 ok(/as someone from Nagpur would recognise/.test(gd.imagePrompt('x', { place: { city: 'Nagpur' } }, {})), 'no cues written: the picture is asked to find them');
@@ -115,7 +115,7 @@ var inspiredHero = gd.imagePrompt('a summit hall', { inspiredBy: 'An illustrated
 ok(/banner artwork was this — An illustrated coastline/.test(inspiredHero) && /never a copy/.test(inspiredHero), 'the hero is inspired by the edition\'s banner, in words', inspiredHero);
 ok(!/Inspiration/.test(gd.imagePrompt('x', { inspiredBy: 'An illustrated coastline.' }, {})), 'only the hero is told about the banner');
 var long = gd.imagePrompt('x', { place: { city: 'Pune', cues: 'stone wadas.' }, inspiredBy: 'A long description. ' + new Array(200).join('word ') }, { hero: true });
-ok(/wadas\. Make the city/.test(long) && / word\. Make a NEW/.test(long) && !/\.\./.test(long), 'model-written text ends cleanly in the prompt (no "..", no half word)', long.slice(0, 400));
+ok(/wadas — stylised/.test(long) && / word\. Make a NEW/.test(long) && !/\.\./.test(long), 'model-written text ends cleanly in the prompt (no "..", no half word)', long.slice(0, 400));
 
 /* ---- plan-structure ---- */
 var srcDoc = { type: 'previousEdition', url: BWS_URL, colorSignals: ['#ed1c24', '#00afdf'], fontSignals: ['Montserrat'], look: withLogo,
@@ -135,7 +135,7 @@ ok(api.DESIGN_PLAN_SCHEMA.properties.design.properties.placeCues && api.DESIGN_P
 var none = api.buildDesignPlanPrompt(Object.assign({}, base, { themeInfo: api.extractThemeFromPreviousEditionSources([]) }));
 ok(!/THE PLACE/.test(none) && !/INSPIRED BY/.test(none) && /No previous edition was given/.test(none), 'no previous edition: designed as before');
 var code = api.buildSectionCodePrompt({ designPlan: { design: { mode: 'light', place: design.place }, sections: [] }, eventMeta: {} });
-ok(/THE PLACE: this edition takes place in Pune/.test(code) && /a border/.test(code) && /never write them/.test(code), 'section code prompt: a motif from the city');
+ok(/THE PLACE: this edition takes place in Pune/.test(code) && /Draw NO ornament/.test(code) && !/a border/.test(code) && /never write them/.test(code), 'section code prompt: the city by name, never a drawn ornament (ET\'s newer standard)');
 ok(!/THE PLACE/.test(api.buildSectionCodePrompt({ designPlan: { design: { mode: 'light' }, sections: [] }, eventMeta: {} })), 'no place, no place block');
 
 /* ---- ingest: the banner picture read in words with the page ---- */
@@ -174,7 +174,7 @@ ok(!el.ownerSetsLook('The theme of this year is regional growth') && !el.ownerSe
 /* ---- review: a redesigned section may carry the city; an edit does only what was asked ---- */
 var rd = api.buildRedesignPrompt({ mode: 'redesign', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light', place: { city: 'Chennai', motif: 'a kolam border' } } });
 var ed = api.buildRedesignPrompt({ mode: 'edit', instruction: 'bigger title', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light', place: { city: 'Chennai', motif: 'a kolam border' } } });
-ok(/THE PLACE: this edition takes place in Chennai/.test(rd) && /kolam border/.test(rd) && !/THE PLACE/.test(ed), 'redesign carries the city, edit does not');
+ok(/THE PLACE: this edition takes place in Chennai/.test(rd) && !/kolam border/.test(rd) && !/THE PLACE/.test(ed), 'redesign carries the city (by name, no ornament), edit does not');
 
 /* ---- review: a card colour never walks off into grey (the stored BWS design gave #bebdb9 on #f5f3ee) ---- */
 var stored = { mode: 'light', themeColor: '#ed1c24', accentColor: '#f5a300', backgroundColor: '#ffffff', surfaceColor: '#fff3ea', textColor: '#1a1414', mutedColor: '#574e4e', headingFont: 'Montserrat', bodyFont: 'Work Sans' };
@@ -198,7 +198,7 @@ var kvChennai = { url: 'https://img.example.com/kv.jpg', description: 'An illust
 var lk2 = api.editionLookLines(withLogo, kvChennai).join('\n');
 ok(!/Chennai/.test(lk2) && /not carried over/.test(lk2), 'the plan is not told the old banner\'s city; the place is THE PLACE\'s', lk2);
 var heroPune = gd.imagePrompt('a summit hall', { inspiredBy: kvChennai.description, place: { city: 'Pune', cues: 'stone wadas' } }, { hero: true });
-ok(/takes place in Pune/.test(heroPune) && /Take no place from it/.test(heroPune), 'hero with a place: inspired by the banner, the place is this edition\'s', heroPune);
+ok(/the event is in Pune/.test(heroPune) && /Take no place from it/.test(heroPune), 'hero with a place: inspired by the banner, the place is this edition\'s', heroPune);
 ok(!/Take no place/.test(gd.imagePrompt('a summit hall', { inspiredBy: kvChennai.description }, { hero: true })), 'no place given: no place sentence');
 ok(/Name no city/.test(api.ingestSchemaFor(true).properties.keyVisual.properties.description.description), 'the banner is described without its city');
 

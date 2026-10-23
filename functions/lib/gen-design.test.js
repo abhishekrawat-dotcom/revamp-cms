@@ -108,7 +108,10 @@ ok((kept.match(/<img/g) || []).length === 1 && kept.indexOf('<img data-rv-logo c
 ok(g.ensureLogo(nav, '', 'E') === nav, 'no logo, no change');
 
 /* ---- imagePrompt ---- */
-var ip = g.imagePrompt('server halls', { mode: 'dark', themeColor: '#123456', accentColor: '#abcdef', imageStyle: 'long exposure' }, { hero: true });
+var ip = g.imagePrompt('server halls', { mode: 'dark', themeColor: '#123456', accentColor: '#abcdef', imageStyle: 'long exposure' }, { hero: true, keyVisual: false });
+/* the banner by default: a designed key visual as on ET's own sites — no people, no words, the centre calm */
+var kv = g.imagePrompt('battery packs and ADAS sensors', { mode: 'dark', themeColor: '#123456', accentColor: '#abcdef', imageStyle: 'long exposure', place: { city: 'Bengaluru' } }, { hero: true });
+ok(/KEY VISUAL/.test(kv) && /not a photograph of an event/.test(kv) && /no people and no faces/.test(kv) && !/Indian \(South Asian\)/.test(kv) && /centre is calm/.test(kv) && /work its landmarks/.test(kv) && !/long exposure/.test(kv), 'the banner is a key visual of the field and the city: no people, no words, calm centre', kv);
 ok(/never a real, famous or named person/.test(ip) && /No readable text/.test(ip) && /16:9/.test(ip) && /Scene: server halls/.test(ip) && /long exposure/.test(ip), 'image prompt carries the scene, the style and the rules', ip);
 ok(!/no people/i.test(ip) && /Indian \(South Asian\) professionals/.test(ip) && /Women and men in about equal numbers/.test(ip) && /women clearly present in leading roles/.test(ip), 'people are Indian, women as much as men, never anyone real', ip);
 var ipGlobal = g.imagePrompt('a panel on stage', {}, { level: 'global' });

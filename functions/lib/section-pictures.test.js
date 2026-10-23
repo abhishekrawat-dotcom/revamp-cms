@@ -6,6 +6,44 @@ const api = require('./api')._testHooks;
 var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); }
 
+/* ---------- 0. a section written without its styles is written again (it would show as bare text) ---------- */
+var styled = '.x{padding:clamp(48px,5vw,72px) 0;background:var(--rv-bg)}.x h2{margin:0}';
+var unstyled = api.unstyledSectionIds([{ parsed: { sections: [{ id: 'overview', html: '<section></section>', css: styled + styled }, { id: 'who-should-attend', html: '<section></section>', css: '' }] } }],
+  { sections: [{ id: 'overview' }, { id: 'who-should-attend' }, { id: 'agenda' }, { id: 'previous-speakers', prebuilt: 'speakers' }] });
+check('unstyled or missing sections are named, built ones never', JSON.stringify(unstyled) === '["who-should-attend","agenda"]', unstyled);
+
+var G0 = 'https://img.etb2bimg.com/g0/';
+/* ---------- 0c. a picture taken away leaves no empty box ---------- */
+check('an empty picture box is caught', api.emptyPictureBox('<div class="why-join-us-media" data-rv-reveal="left"></div>', '.why-join-us-media{height:560px}'));
+check('a box painted by its CSS, an overlay, a filled figure are not', !api.emptyPictureBox('<div class="cta-photo"></div>', '.cta-photo{background:url(rvimg://x) center/cover}') &&
+  !api.emptyPictureBox('<div class="hero-image-overlay"></div>', '') && !api.emptyPictureBox('<figure class="f-photo"><img src="x"></figure>', ''));
+check('a section with an empty picture box is written again', JSON.stringify(api.unstyledSectionIds([{ parsed: { sections: [{ id: 'why-join-us', html: '<div class="wj-media"></div><p>x</p>', css: styled + styled }] } }], { sections: [{ id: 'why-join-us' }] })) === '["why-join-us"]');
+var dropped = { id: 'why-join-us', layout: 'Text/picture split: the picture on the left', image: 'a hall' };
+api.dropPicture(dropped);
+var plain = { id: 'themes', layout: 'A list of six themes', image: 'x' };
+api.dropPicture(plain);
+check('a picture taken away: the layout is told, one without a picture is left as it was', !dropped.image && /NO PICTURE/.test(dropped.layout) && plain.layout === 'A list of six themes');
+var unread = [{ id: 'overview' }];
+api.newStandardPictures(unread, [{ url: G0 + 'a.jpg', kind: 'unknown', wide: true }], {});
+check('a photo that could not be looked at is never placed', !unread[0].imageUrl);
+
+/* ---------- 0a. a lock-up's picture placed small by <use transform> is a corner of it, not the lock-up ---------- */
+var PNG = 'data:image/png;base64,iVBORw0KGgo=';
+var drawn = '<path d="M0 0h10v10z"/>';
+check('a picture placed at 8% by <use> is not the main picture', api.embedsMainPicture('<svg viewBox="0 0 196 203">' + drawn + '<defs><image width="995" height="426" id="img1" href="' + PNG + '"/></defs><use href="#img1" transform="matrix(.08,0,0,.081,115,155)"/></svg>') === false);
+check('a picture drawn at full size still is', api.embedsMainPicture('<svg viewBox="0 0 196 203">' + drawn + '<image width="196" height="203" href="' + PNG + '"/></svg>') === true);
+check('a picture placed by a rotation is not known: taken as the main picture', api.embedsMainPicture('<svg viewBox="0 0 196 203">' + drawn + '<defs><image width="50" height="50" id="a" href="' + PNG + '"/></defs><use href="#a" transform="rotate(30)"/></svg>') === true);
+
+/* ---------- 0b. the previous edition's real photos: never a performance, a close-up or a screen full of words ---------- */
+var G = 'https://img.etb2bimg.com/g/';
+var secs = [{ id: 'overview' }, { id: 'who-should-attend' }, { id: 'closing-cta' }];
+api.newStandardPictures(secs, [
+  { url: G + 'singer.jpg', kind: 'performance', wide: true }, { url: G + 'name-screen.jpg', kind: 'panel', wide: true, textHeavy: true },
+  { url: G + 'face.jpg', kind: 'portrait', wide: false }, { url: G + 'hall.jpg', kind: 'hall', wide: true },
+  { url: G + 'stage.jpg', kind: 'stage', wide: true }, { url: G + 'mingle.jpg', kind: 'networking', wide: true }], {});
+var shown = secs.map(function (x) { return x.imageUrl || ''; });
+check('real photos: no performance, close-up or text-filled shot; none twice', shown.every(function (u) { return u && !/singer|name-screen|face/.test(u); }) && new Set(shown).size === 3, shown);
+
 /* ---------- 1. a previous edition's content pictures, each under its section ---------- */
 var IMG = 'https://img.etb2bimg.com/files/';
 var page = '<header><img src="' + IMG + 'site-logo.png"></header><nav><img src="' + IMG + 'menu.jpg"></nav>' +
@@ -58,12 +96,13 @@ sp.classify(withImages, function (prompt, schema, images) {
   check('graphic: an illustration, nothing labelled, and not told the section\'s words (they came back as labels)',
     /graphic illustration/.test(graphic) && /nothing in it is labelled/.test(graphic) && /no labels, captions/.test(graphic) && !/Networking/.test(graphic) && !/PEOPLE: the people/.test(graphic));
   check('no kind given: as before (people)', /PEOPLE: the people are Indian/.test(gd.imagePrompt('x', design, {})));
-  check('the hero always shows the event and its people', /PEOPLE: the people are Indian/.test(gd.imagePrompt('a hall', design, { hero: true, kind: 'place' })));
+  check('the hero is a key visual whatever the kind: no people', /KEY VISUAL/.test(gd.imagePrompt('a hall', design, { hero: true, kind: 'people' })) && !/PEOPLE: the people are Indian/.test(gd.imagePrompt('a hall', design, { hero: true, kind: 'people' })));
 
   /* ---------- 4. the plan: at most two people pictures, never side by side ---------- */
   function sec(id, kind, purpose) { return { id: id, kind: 'custom', purpose: purpose || id, layout: 'split', image: 'a picture for ' + id, imageKind: kind }; }
-  var out = api.sanitizeDesignPlanSections({ sections: [sec('overview', 'people'), sec('themes', 'people'), sec('why-attend', 'people'), sec('networking', 'people'),
-    sec('venue', 'place'), sec('who-should-attend', 'people'), sec('numbers', 'nonsense')] }, '');
+  /* the people cap on its own (the plan keeps at most MAX_SECTION_IMAGES pictures before it) */
+  var out = api.fewerPeoplePictures([sec('overview', 'people'), sec('themes', 'people'), sec('why-attend', 'people'), sec('networking', 'people'),
+    sec('venue', 'place'), sec('who-should-attend', 'people'), sec('numbers', 'subject')]);
   var kinds = {}; out.forEach(function (s) { kinds[s.id] = s.imageKind; });
   check('the sections about people keep theirs; the rest become the subject', kinds.networking === 'people' && kinds['who-should-attend'] === 'people' &&
     kinds.overview === 'subject' && kinds.themes === 'subject' && kinds['why-attend'] === 'subject' && kinds.venue === 'place', kinds);

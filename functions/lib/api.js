@@ -1711,6 +1711,11 @@ var DESIGN_SECTION_KINDS = ['custom', 'speakers', 'sessions', 'faq', 'partners',
    as for an ADVANCED site, whose sections the AI chooses freely. `also`: other names a section goes by. */
 var STANDARD_SECTIONS = [
   { id: 'overview', name: 'Overview', kind: 'custom', also: /overview|about (the )?(event|summit|conclave|awards|conference)|introduction|why now|the theme/ },
+  /* ET's newer event sites (upcoming IP events, 23 Oct 2026): a band of big numbers under the banner, a "What awaits
+     you" band of photo cards, and a closing call to act on a photo */
+  { id: 'by-the-numbers', name: 'By the Numbers', kind: 'custom', also: /numbers|stats|in figures|scale|at a glance/ },
+  { id: 'what-awaits', name: 'What Awaits You', kind: 'custom', also: /what awaits|experience|formats?|what to expect|inside/ },
+  { id: 'closing-cta', name: 'Take Your Seat', kind: 'custom', also: /closing|take your seat|join us|call to action|cta/ },
   { id: 'speakers', name: 'Speakers', kind: 'speakers', also: /speaker|jury|panel(l)?ist|faculty/ },
   { id: 'agenda', name: 'Agenda', kind: 'sessions', also: /agenda|schedule|programme|program|session|itinerary/ },
   { id: 'sponsors', name: 'Sponsors', kind: 'partners', also: /sponsor|partner|supported by|exhibitor/ },
@@ -1769,7 +1774,7 @@ var DESIGN_PLAN_SCHEMA = {
         placeCity: { type: 'STRING', description: 'When THE PLACE is given below: the city of that venue, as its own name (e.g. from "Hotel X, Juhu, <city>, <state>" the city). An empty string when no place is given.' },
         placeCues: { type: 'STRING', description: 'When THE PLACE is given below: one sentence, the visual cues of that city a local would recognise at once (its architecture, landscape, light, crafts and textiles), for its pictures to carry — tasteful, never a postcard. An empty string when no place is given.' },
         placeMotif: { type: 'STRING', description: 'When THE PLACE is given below: one graphic motif drawn from that city\'s own crafts or architecture that a designer can draw in simple lines (a pattern, a border, an outline). An empty string when no place is given.' },
-        heroImage: { type: 'STRING', description: 'One or two sentences: the scene of the hero background picture. A visitor must see at once (1) that this is a business EVENT of this kind (a summit: a large hall with an audience facing a lit stage; an awards night: a stage with trophies under spotlights; an immersion or study tour: a delegation of executives being shown round the place they visit; an expo: a show floor) and (2) WHAT FIELD it is about — the stage screens, the setting and the objects in view come from this event\'s own subject — and, where the place matters (a named city or country), that place. Never an abstract pattern, never unrelated objects. The people are Indian, women and men alike (a woman may well be the one on stage); never a real or named person. No text, no logos.' }
+        heroImage: { type: 'STRING', description: 'One or two sentences: the KEY VISUAL of the hero banner, as ET\'s own event sites have it — a rich, full-colour designed composition (a photo-real 3-D render, a detailed illustration or a photo-collage — never thin line art or a wireframe, never a photograph of an audience and a stage) of the objects, machines, infrastructure and symbols of THIS event\'s own field (for automotive technology: an EV battery pack, ADAS sensors, a software-defined car in cutaway; for ports: container ships and cranes; for pharma: molecules, vials, a lab), together with the landmarks of the host city when one is known. No people, no text, no logos.' }
       },
       required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'logoUnit', 'heroTagline', 'placeCity', 'placeCues', 'placeMotif', 'heroImage']
     },
@@ -1814,7 +1819,22 @@ function designReference(sourceDocs) {
 
 /* About two fifths of a generated page is pictures: the hero's, and one for most of the sections the model
    writes itself. Each is a paid image call, made side by side with the others. */
-var MAX_SECTION_IMAGES = 8;
+/* ET's newer standard (its upcoming event sites, studied 23 Oct 2026): a numbers band, a "What awaits you" band of
+   photo cards, editorial serif headlines, light and dark bands alternating, and the previous edition's REAL photos
+   in the banner, the overview, the cards and the closing band (newStandardPictures). false: the earlier rules. */
+var NEW_ET_STANDARD = true;
+/* Pictures on an ET event or award site are few (200 recent ET sites, 23 Oct 2026): a median of one or two
+   made for a section, a third of event sites none — the rest of the page's pictures are real (the previous
+   edition's photos, speakers, jury, logos) and its sections carry icons. */
+var MAX_SECTION_IMAGES = 3;
+/* where ET puts a section's picture, in the order a picture is kept when there are more (etPictureRules) */
+var PICTURE_SECTIONS = [
+  { re: /venue|city|location|getting-there|travel|stay/, kind: 'place' },
+  { re: /how-it-works|how-our-awards|judging|evaluation|process/, kind: 'subject' },
+  { re: /why-(join|attend|enter)|reasons|what-awaits|experience/, kind: 'people', real: true },
+  { re: /key-discussion|discussion|themes?|tracks|focus|pillars|topics|sectors/, kind: 'subject' },
+  { re: /^overview$|about-the-(event|summit|awards)/, kind: 'subject' }
+];
 /* of those, the ones whose picture is of people (genDesign.IMAGE_KINDS): a page of faces section after section
    read as one picture repeated (the owner, 22 Oct 2026) */
 var MAX_PEOPLE_PICTURES = 2;
@@ -1928,12 +1948,14 @@ function buildDesignPlanPrompt(payload) {
     'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.') + (payload.siteMode === 'award' ? ' On an award site, "speakers" is never used: the jury is built from records.' : ''),
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
-    'ONE TONE: the page keeps its mode (design.mode) from the first section under the hero to the footer — a light site is light all the way down, a dark site dark all the way down. Sections differ by layout, pictures and the surface colour, never by switching between light and dark bands.',
+    (NEW_ET_STANDARD
+      ? 'ET\'S NEWER STANDARD (its upcoming event sites, 23 Oct 2026) — build the page this way: right under the hero a band of big numbers (by-the-numbers: 4 to 6 figures — delegates, speakers, sessions, exhibitors, networking minutes, days — from the material); a "What awaits you" band (what-awaits: 3 or 4 tall photo cards, numbered, one per format or moment of the day — the conference, boardrooms, networking, the expo floor, an awards night — each with a short caption); a closing call to act (closing-cta) on a full-width photo, with the main buttons; and every other section as the list allows. Headlines are editorial — a short statement, not the section\'s label ("Region Rewriting How It Learns.", "Four scenes, one day.") — under a small numbered eyebrow ("01  OVERVIEW"). design.headingFont is a SERIF DISPLAY face (Playfair Display, Fraunces, DM Serif Display or Cormorant Garamond) with a clean sans for the body. BANDS: the page alternates light sections with a few deep, dark bands — the what-awaits band, the discussion topics and the closing call to act — in a very deep shade of the brand colour (or near-black) with light text; never two dark bands next to each other.'
+      : 'ONE TONE: the page keeps its mode (design.mode) from the first section under the hero to the footer — a light site is light all the way down, a dark site dark all the way down. Sections differ by layout, pictures and the surface colour, never by switching between light and dark bands.'),
     '',
-    'PICTURES: aim for a page that is about 60% text and 40% pictures by area — a visitor scrolling it should never see a full screen without a picture. The hero has a background picture (design.heroImage): the one picture that tells a visitor what this event is — an event scene of this event\'s own kind and field, never an abstraction. Besides it, give a picture (sections[].image) to nearly every "custom" section, up to ' + MAX_SECTION_IMAGES + ' of them — leave it empty only for a section that is one band of numbers — and design each of those sections around its picture, at a large size: a half-width split whose picture runs the full height of the section, a full-bleed band with the text set over the picture, a wide picture above the text. Keep text-only sections to a minimum and never put two of them next to each other. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
+    'PICTURES, AS ON ET\'S OWN SITES: an ET event or award site has few pictures made for its sections — a median of one or two, a third of them none. The hero has its key visual (design.heroImage). Of the sections, ONLY these carry a picture (sections[].image), at most ' + MAX_SECTION_IMAGES + ' in all: a venue or city section (the venue or the city itself, no people); "how our awards work" on an award site (an evaluation scene: a chart on a boardroom table, entries under review); why attend / why enter (the experience of the day; the previous edition\'s real photos are used here when there are any); the themes or discussion points (ONE picture of the subject itself, no people); the overview only when none of those have one. Every other section has no picture: give it a strong typographic layout with simple line icons (inline SVG, drawn in the brand colour), large numerals, cards and brand-colour panels — never an empty-looking section. Who should attend / enter, the recognition, the benefits and reasons are icon cards, never pictures. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
     'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", never a metaphor made of unrelated objects (glass blocks, light trails, a server rack for a marketing event), and never the same subject twice on one page. RELEVANCE IS THE TEST: someone shown the picture alone should be able to say what kind of event this is and what it is about. No text or logos in any picture (screens and signs are blank or blurred). Where the event is tied to a place (a city, a country), let that place show.',
     'PICTURE KINDS — a page of photographs of people, section after section, is dull and reads as one picture repeated. Give each section\'s picture the KIND (sections[].imageKind) that suits what the section says:',
-    '- "people": a photograph whose subject is people — ONLY for a section that is about people or the gathering itself: networking, who attends or should enter, the audience and the experience of the day, an awards night, testimonials. The people are Indian professionals, women and men in about equal numbers, women in leading roles too; never a real or named person.',
+    '- "people": a photograph whose subject is people — ONLY for why attend / why enter (the experience of the day: a packed hall, delegates networking, an expo floor), never for any other section. The people are Indian professionals, women and men in about equal numbers, women in leading roles too; never a real or named person.',
     '- "place": the venue, the city or the setting — no people (the overview of an event tied to a city, the venue, travel and stay).',
     '- "subject": the field itself — its technology, products, machines, materials or workplace, shot as a still life or an industrial photograph, no people (themes, tracks, discussion points, the state of the industry, award categories).',
     '- "graphic": an illustration or abstract artwork drawn from the subject (the overview, why attend, how it works, the process, numbers).',
@@ -1953,6 +1975,10 @@ function buildDesignPlanPrompt(payload) {
         'In the words, where it is natural: the overview can say what the city and its region bring to this event, a reason to attend can be the region\'s own market. ' +
         'These are directions for you: never write them, or any instruction, on the site itself.');
   }
+  /* the lists the event already has on record: their sections are on the page (an agenda that exists is shown) */
+  var REC = { sessions: 'this edition\'s agenda (kind "sessions", id "agenda")', speakers: 'this edition\'s speakers (kind "speakers", id "speakers")', faqs: 'FAQs (kind "faq", id "faqs")' };
+  var held = (payload.onRecord || []).filter(function (k) { return REC[k]; });
+  if (held.length) lines.push('', 'ALREADY ON RECORD for this edition (the ET team entered them): ' + held.map(function (k) { return REC[k]; }).join('; ') + '. Each of these MUST have its section on the page, placed where ET\'s sites put it (the agenda after the discussion topics).');
   if (payload.brief) lines.push('', 'Extracted brief:', JSON.stringify(payload.brief, null, 2));
   if (payload.sources && payload.sources.length) {
     lines.push('', 'What the collected pages SAY (content, summarised):');
@@ -2098,6 +2124,147 @@ function withAwardRecords(sections, award) {
     out.splice(at, 0, entry);
   });
   return out;
+}
+
+/* The previous edition's photos, each read for what it shows (one small reading for up to 12): { url, kind, wide }
+   kind: hall (a full room or audience) | stage (a speaker or ceremony on stage, room in view) | panel (a panel or
+   fireside on stage) | award (an award being given) | expo (booths, a show floor) | networking (delegates talking)
+   | portrait (one face, close up) | other (a slide, a logo, text). wide: a landscape shot with room for words over
+   it. -> Promise<[…] | null> (null: they could not be read; the addresses are then used in their order) */
+var GLIMPSE_SCHEMA = { type: 'OBJECT', properties: { photos: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+  n: { type: 'INTEGER' }, kind: { type: 'STRING', enum: ['hall', 'stage', 'panel', 'award', 'expo', 'networking', 'portrait', 'performance', 'other'] }, wide: { type: 'BOOLEAN' }, textHeavy: { type: 'BOOLEAN' } }, required: ['n', 'kind', 'wide', 'textHeavy'] } } }, required: ['photos'] };
+function classifyGlimpses(fb, eventId, urls, deadlineAt) {
+  var list = (urls || []).filter(function (u) { return /^https:\/\//i.test(String(u || '')); }).slice(0, 12);
+  if (!list.length) return Promise.resolve(null);
+  return Promise.all(list.map(function (u) {
+    return safeFetch(u, { timeoutMs: 8000, maxBytes: SECTION_PICTURE_MAX_BYTES }).then(function (r) {
+      var info = r.status === 200 ? logoUnit.imageInfo(r.body) : null;
+      return info && ['png', 'jpeg', 'webp'].indexOf(info.type) !== -1 ? { url: u, image: { mimeType: info.mime, data: r.body.toString('base64') }, w: info.width, h: info.height } : null;
+    }, function () { return null; });
+  })).then(function (got) {
+    got = got.filter(Boolean);
+    if (!got.length) return null;
+    var batches = [];
+    for (var i = 0; i < got.length; i += 6) batches.push(got.slice(i, i + 6));
+    return Promise.all(batches.map(function (b) {
+      var prompt = 'These are photos from an earlier edition of a business conference. For each numbered photo say what it shows (kind: "performance" for entertainment — a singer, comedian, celebrity act, dance or cultural show; "portrait" for a close-up of one or two people), whether it is a wide landscape shot that could sit behind a heading (wide), and whether large words — a name on a screen, a slide, a backdrop title — fill a big part of it (textHeavy).\n' + b.map(function (p, k) { return (k + 1) + '. ' + p.w + 'x' + p.h + 'px'; }).join('\n');
+      /* a reading that fails is asked once more while there is time; a photo still unread is marked unknown and
+         never placed (23 Oct 2026: one timed-out batch let a close-up and a screen of names onto a page) */
+      function ask(tries) {
+        return callGeminiJson(prompt, GLIMPSE_SCHEMA, { route: 'plan-structure', eventId: eventId, images: b.map(function (p) { return p.image; }), maxOutputTokens: AI_OUTPUT_TOKENS.small, timeoutMs: 60000, deadlineAt: deadlineAt })
+          .then(function (r) {
+            var record = aiUsageRecorder(fb, eventId, 'plan-structure'); if (record) record(r.usage);
+            if (r.error && tries < 2 && !(deadlineAt && deadlineAt - Date.now() < 70000)) { console.warn('pictures: the reading of ' + eventId + '\'s photos failed (' + (r.code || r.error) + '); asked once more'); return ask(tries + 1); }
+            return r;
+          });
+      }
+      return ask(1)
+        .then(function (r) {
+          return r.error ? b.map(function (p) { return { url: p.url, kind: 'unknown', wide: false }; }) : b.map(function (p, k) {
+            var x = (r.parsed.photos || []).filter(function (y) { return y.n === k + 1; })[0] || {};
+            return { url: p.url, kind: x.kind || 'unknown', wide: x.wide === true && p.w >= p.h * 1.2, textHeavy: x.textHeavy === true };
+          });
+        });
+    })).then(function (parts) { return [].concat.apply([], parts); });
+  }).then(null, function () { return null; });
+}
+
+/* A section's picture taken away: its layout is told so too, or the section is written around a picture box
+   that stays empty (Healthcare Leaders 2027's "Why join us": half the band a blank 560px box) */
+function dropPicture(s) {
+  s.image = ''; s.imageKind = '';
+  if (s.imageUrl) return;
+  var layout = String(s.layout || '');
+  if (/\b(picture|photo|image|visual|illustration)s?\b/i.test(layout) && !/NO PICTURE/.test(layout)) {
+    s.layout = layout.replace(/[.\s]*$/, '') + '. NO PICTURE in this section after all: lay it out without one — no picture box, no empty column; the words take the full width or a layout of their own.';
+  }
+}
+
+/* ET's newer sites put the previous edition's real photos — people, stage, hall — in the banner (under a tint), beside
+   the overview, on the "What awaits you" cards, as one tile among the audience cards and behind the closing call to
+   act. Those places get the previous edition's photos (glimpses) when it has any: s.photos (the cards) or s.imageUrl,
+   and design.heroImageUrl. Without them, a generated picture stands in where one is needed (the overview's subject,
+   the cards' moments of the day); nothing else gets one. -> the sections, changed in place */
+var REAL_PHOTO_PLACES = { overview: 1, 'what-awaits': 4, 'who-should-attend': 1, 'closing-cta': 1 };
+function newStandardPictures(sections, glimpses, design) {
+  /* glimpses: addresses, or classifyGlimpses' { url, kind, wide } — then each place takes the kind it wants */
+  var all = (glimpses || []).map(function (g) { return typeof g === 'string' ? { url: g, kind: '', wide: true } : g; })
+    /* never a close-up, an entertainment act, or a photo filled with a screen's words: they say nothing about the
+       business audience, and the words come out cropped (23 Oct 2026, Healthcare and Retail test sites) */
+    .filter(function (g) { return g && /^https:\/\//i.test(String(g.url || '')) && ['portrait', 'performance', 'other', 'unknown'].indexOf(g.kind) === -1 && !g.textHeavy; });
+  var used = {};
+  function pick(kinds, wide) {
+    for (var i = 0; i < kinds.length; i++) {
+      var hit = all.filter(function (g) { return !used[g.url] && (!kinds[i] || g.kind === kinds[i]) && (!wide || g.wide); })[0];
+      if (hit) { used[hit.url] = 1; return hit.url; }
+    }
+    return '';
+  }
+  var WANT = {
+    hero: [['hall', true], ['stage', true], ['panel', true], ['', true]],
+    overview: [['stage', true], ['panel', true], ['hall', true], ['', true]],
+    'what-awaits': [['panel'], ['award'], ['expo'], ['networking'], ['stage'], ['hall'], ['']],
+    'who-should-attend': [['networking'], ['expo'], ['hall'], ['']],
+    'closing-cta': [['hall', true], ['panel', true], ['stage', true], ['', true], ['']]
+  };
+  function take(id, n) {
+    var out = [], want = WANT[id] || [['']];
+    if (id === 'what-awaits') { want.forEach(function (w) { if (out.length < n) { var u = pick([w[0]], w[1]); if (u) out.push(u); } }); return out; }
+    for (var k = 0; k < n; k++) { var u = ''; for (var j = 0; j < want.length && !u; j++) u = pick([want[j][0]], want[j][1]); if (u) out.push(u); }
+    return out;
+  }
+  var real = all, given = {};
+  /* the banner is a city / industry key visual, generated (ET's upcoming sites: 81% of event banners, glimpses
+     or not — 23 Oct 2026); the real photos go to the sections below */
+  /* the places that matter most choose first: the closing band, the overview, the cards, the audience tile */
+  ['closing-cta', 'overview', 'what-awaits', 'who-should-attend'].forEach(function (id) {
+    if (real.length && sections.some(function (s) { return s.id === id; })) given[id] = take(id, REAL_PHOTO_PLACES[id]);
+  });
+  sections.forEach(function (s) {
+    var n = REAL_PHOTO_PLACES[s.id];
+    if (n && real.length) {
+      var got = given[s.id] || [];
+      if (!got.length) { dropPicture(s); return; }
+      s.image = ''; s.imageKind = 'photo'; s.imageSource = 'previous-edition'; s.imageUrl = got[0];
+      if (n > 1) s.photos = got;
+      return;
+    }
+    /* no real photo: a generated one only for the overview (the subject) and the cards (the moments of the day) */
+    if (s.image && (s.id === 'overview' || s.id === 'what-awaits')) { s.imageKind = s.id === 'overview' ? 'subject' : 'people'; return; }
+    dropPicture(s);
+  });
+  return sections;
+}
+
+/* A section keeps a picture only where ET's own sites put one (PICTURE_SECTIONS: venue, how the awards work,
+   why attend, the themes, the overview only when none of those has one), in that order of preference, at most
+   MAX_SECTION_IMAGES; its kind is the one ET uses there. Why attend shows the previous edition's REAL photo
+   when it has any (glimpses), made by nobody. -> the sections, changed in place */
+function etPictureRules(sections, glimpses) {
+  var real = (glimpses || []).filter(function (u) { return /^https:\/\//i.test(String(u || '')); });
+  function ruleOf(s) {
+    var key = slugifyId(s.id + ' ' + (s.name || ''));
+    for (var i = 0; i < PICTURE_SECTIONS.length; i++) if (PICTURE_SECTIONS[i].re.test(key)) return i;
+    return -1;
+  }
+  var wanted = sections.filter(function (s) { return s.image && ruleOf(s) !== -1; });
+  var others = wanted.filter(function (s) { return PICTURE_SECTIONS[ruleOf(s)].re.source.indexOf('overview') === -1; });
+  if (others.length) wanted = others;
+  wanted.sort(function (a, b) { return ruleOf(a) - ruleOf(b); });
+  var keep = {};
+  wanted.slice(0, MAX_SECTION_IMAGES).forEach(function (s) { keep[s.id] = 1; });
+  var usedReal = 0;
+  sections.forEach(function (s) {
+    if (!s.image) return;
+    if (!keep[s.id]) { dropPicture(s); return; }
+    var rule = PICTURE_SECTIONS[ruleOf(s)];
+    if (rule.real && real[usedReal]) {
+      s.imageUrl = real[usedReal++]; s.imageSource = 'previous-edition'; s.image = ''; s.imageKind = 'photo';
+      return;
+    }
+    s.imageKind = rule.kind === 'subject' && s.imageKind === 'graphic' ? 'graphic' : rule.kind;
+  });
+  return sections;
 }
 
 /* At most MAX_PEOPLE_PICTURES sections with a picture of people, never two next to each other; sections that
@@ -2340,6 +2507,19 @@ function sizedSvg(text, info) {
    only carries small pictures (a sponsor's icon, a gradient's piece)? -> true when a picture embedded in it
    fills a quarter of its drawing or more, when it draws nothing but pictures, or when the sizes cannot be
    told (the picture is then taken to be the lock-up, as before). */
+/* the area a <use>'s transform scales what it places by, for a plain matrix / scale / translate; null for any
+   other (a rotation, a skew, several in a row: the picture's size is then not known) */
+function useScale(transform) {
+  var t = String(transform || '').trim(), m;
+  if (!t) return 1;
+  if ((m = /^matrix\(\s*([-\d.e]+)[\s,]+([-\d.e]+)[\s,]+([-\d.e]+)[\s,]+([-\d.e]+)[\s,]+[-\d.e]+[\s,]+[-\d.e]+\s*\)$/i.exec(t))) {
+    if (Math.abs(+m[2]) > 1e-6 || Math.abs(+m[3]) > 1e-6) return null;
+    return Math.abs(+m[1] * +m[4]);
+  }
+  if ((m = /^scale\(\s*([-\d.e]+)(?:[\s,]+([-\d.e]+))?\s*\)$/i.exec(t))) return Math.abs(+m[1] * (m[2] == null ? +m[1] : +m[2]));
+  if (/^translate\([^)]*\)$/i.test(t)) return 1;
+  return null;
+}
 function embedsMainPicture(svgText) {
   if (!/<(path|text|rect|circle|ellipse|polygon|polyline|line)[\s>\/]/i.test(svgText)) return true;
   var vb = svgYear.viewBoxOf(svgText);
@@ -2349,7 +2529,19 @@ function embedsMainPicture(svgText) {
     if (!/href\s*=\s*["']data:image\//i.test(tag)) return;
     var w = /\swidth\s*=\s*["']\s*([\d.]+)\s*(px)?\s*["']/i.exec(tag), h = /\sheight\s*=\s*["']\s*([\d.]+)\s*(px)?\s*["']/i.exec(tag);
     if (!w || !h || /\stransform\s*=/i.test(tag)) { unknown = true; return; }
-    biggest = Math.max(biggest, (+w[1] * +h[1]) / (vb.width * vb.height));
+    /* a picture kept in <defs> and placed by <use href="#id" transform="…">, as Illustrator exports one, is
+       drawn at that scale: FinNext Summit 2026's 995 x 426 sponsor panel is placed at 8%, a corner of the
+       lock-up, not the lock-up (read as its main picture, the 2026 drawn beside it went unseen) */
+    var id = /\sid\s*=\s*["']([^"']+)["']/i.exec(tag), scale = 1;
+    var uses = id ? String(svgText).match(new RegExp('<use\\b[^>]*href\\s*=\\s*["\']#' + id[1].replace(/[^\w-]/g, '\\$&') + '["\'][^>]*>', 'gi')) || [] : [];
+    if (uses.length) {
+      scale = 0;
+      uses.forEach(function (u) {
+        var t = /\stransform\s*=\s*["']\s*([^"']*)["']/i.exec(u), s = t ? useScale(t[1]) : 1;
+        if (s == null) unknown = true; else scale = Math.max(scale, s);
+      });
+    }
+    biggest = Math.max(biggest, (+w[1] * +h[1] * scale) / (vb.width * vb.height));
   });
   return unknown || biggest >= 0.25;
 }
@@ -3580,10 +3772,13 @@ function handlePlanStructure(req, res) {
       return Promise.all([
         eventRef.get(),
         eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-        eventRef.collection('sources').get()
+        eventRef.collection('sources').get(),
+        /* what the event already has on record (Content › Agenda, Speakers, FAQ): a list that exists gets its section */
+        Promise.all(['sessions', 'speakers', 'faqs'].map(function (c) { return eventRef.collection(c).limit(1).get().then(function (q) { return q.empty ? '' : c; }, function () { return ''; }); }))
       ]);
     }).then(function (results) {
       var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
+      var onRecord = (results[3] || []).filter(Boolean);
       var stored = eventSnap.exists ? eventSnap.data() : {};
       /* the facts of the event only: what earlier runs left on the record is not material for a new design */
       var eventMeta = Object.assign({}, {
@@ -3608,14 +3803,18 @@ function handlePlanStructure(req, res) {
       var prevSource = sourceDocs.filter(function (d) { return d.type === 'previousEdition'; })[0] || null;
       var venue = prevSource ? editionLook.venueForDesign(eventMeta, brief, prevSource.previous) : null;
       var place = venue && venue.venue ? venue : null;
-      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode, place: place });
+      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode, place: place, onRecord: onRecord });
       /* The logo unit — the owner's upload, else the previous edition's lock-up — needs nothing of the plan:
          it is fetched and read while the plan is written, so that its readings (20 to 30 s each, measured)
          have the time they need rather than what the plan leaves (foundLogoUnit). */
       var logoInputs = { eventMeta: eventMeta, ownerLogoUrl: stored.logoUrl, briefTexts: briefYearTexts(brief, eventMeta), sourceDocs: sourceDocs,
         stamp: new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14), deadlineAt: deadlineAt };
       var logoFound = foundLogoUnit(fb, eventId, logoInputs);
-      return llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }).then(function (r) {
+      /* the previous edition's photos, sorted by what they show (classifyGlimpses), read beside the plan */
+      var glimpseSrc = sourceDocs.filter(function (d) { return d.type === 'previousEdition' && d.previous; })[0];
+      var glimpseRead = NEW_ET_STANDARD && glimpseSrc ? classifyGlimpses(fb, eventId, glimpseSrc.previous.glimpses, deadlineAt) : Promise.resolve(null);
+      return Promise.all([llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }), glimpseRead]).then(function (both) {
+        var r = both[0], glimpseKinds = both[1];
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
         /* the previous edition's real records, as sections the server builds (prev-sections.js): placed before
@@ -3661,6 +3860,8 @@ function handlePlanStructure(req, res) {
           Object.assign(r.parsed.design, editionLook.inspiredDesign(themeInfo.look, r.parsed.design, themeMode));
         }
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
+        /* ET's newer sites set their headlines in a serif display face */
+        if (NEW_ET_STANDARD && googleFonts.categoryOf(design.headingFont) !== 'serif') design.headingFont = 'Playfair Display';
         /* the city as the model named and pictured it (no city is known to the code) */
         if (place) {
           var pd = r.parsed.design || {};
@@ -3676,6 +3877,19 @@ function handlePlanStructure(req, res) {
         if (owner && owner.tagline) design.heroTagline = owner.tagline;
         var graphic = !!(owner && owner.pictures === 'graphics');
         if (graphic) sections.forEach(function (s) { s.image = ''; });
+        /* the previous edition's real photos where ET's newer sites put theirs; generated pictures only where
+           there are none (newStandardPictures) — else, the earlier rules (etPictureRules) */
+        /* only photos that were looked at are placed: unread ones could be a close-up or a screen of names */
+        else if (NEW_ET_STANDARD) sections = newStandardPictures(sections, glimpseKinds || [], design);
+        else sections = etPictureRules(sections, prevDoc && prevDoc.previous ? prevDoc.previous.glimpses : []);
+        /* the numbers band is told the previous edition's own figures */
+        if (NEW_ET_STANDARD && prevDoc && prevDoc.previous) {
+          var pv = prevDoc.previous, days = {};
+          (pv.agenda || []).forEach(function (a) { var d = String(a.start || '').slice(0, 10); if (d) days[d] = 1; });
+          var figures = [Object.keys(days).length ? Object.keys(days).length + ' days' : '', (pv.speakers || []).length ? (pv.speakers || []).length + ' speakers' : '',
+            (pv.agenda || []).length ? (pv.agenda || []).length + ' sessions' : '', (pv.sponsors || []).length ? (pv.sponsors || []).length + ' partners' : ''].filter(Boolean);
+          sections.forEach(function (s) { if (s.id === 'by-the-numbers' && figures.length) s.purpose = String(s.purpose || '') + ' The previous edition had: ' + figures.join(', ') + ' — use these (as "60+" and the like) with any the brief gives.'; });
+        }
         var now = new Date().toISOString();
         var stamp = now.replace(/[^0-9]/g, '').slice(0, 14);
 
@@ -3686,7 +3900,10 @@ function handlePlanStructure(req, res) {
           .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
         var level = owner && owner.level ? owner.level : '';
         var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about, level: level, graphic: graphic });
-        var jobs = [buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp)].concat(
+        /* the banner on the previous edition's real photo (newStandardPictures), else a generated one */
+        var heroReal = design.heroImageReal;
+        delete design.heroImageReal;
+        var jobs = [heroReal ? Promise.resolve({ heroImageUrl: heroReal, heroImageStoragePath: null, heroImageError: null }) : buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp)].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
@@ -3708,6 +3925,7 @@ function handlePlanStructure(req, res) {
           design.heroImageError = heroImage.heroImageError;
           var images = made.slice(1).filter(Boolean);
           sections.forEach(function (s) {
+            if (!s.image && s.imageSource === 'previous-edition') return;      // a real photo, set by etPictureRules
             var img = images.filter(function (i) { return i.sectionId === s.id; })[0];
             s.imageUrl = img ? img.url : '';
           });
@@ -3994,6 +4212,9 @@ function plannedSectionList(designPlan) {
    different sites (owners asked for the theme to carry through). The hero is a picture banner and takes its
    own tone; every section after it, the footer included, stays in the page's mode. */
 function toneRule(design) {
+  if (NEW_ET_STANDARD) {
+    return 'BANDS, AS ON ET\'S NEWER SITES: most sections are light (var(--rv-bg) / var(--rv-surface), text var(--rv-text)); the "What awaits you" band, the discussion topics and the closing call to act are DEEP, DARK bands — background a very deep shade of the brand colour, e.g. color-mix(in srgb, var(--theme-color) 22%, #0b0b10), with light text (#f4f1ec and rgba(244,241,236,.72) for secondary text) and accents in the brand colour. Never two dark bands next to each other. Text set over a photo sits on a dark veil over the WHOLE photo — at least rgba(0,0,0,.72), deeper behind the words — in light text, so no lettering or logo in the photo shows through the words. Headlines are an editorial serif (var(--heading-font-family)) under a small numbered eyebrow in letter-spaced capitals ("01  OVERVIEW").';
+  }
   var dark = design && design.mode === 'dark';
   return 'ONE TONE FOR THE WHOLE PAGE: this site is ' + (dark ? 'DARK' : 'LIGHT') + ' and every section below the hero — the footer included — stays ' + (dark ? 'dark' : 'light') + ': its background is var(--rv-bg) or var(--rv-surface) (or a soft tint of the brand colour that is just as ' + (dark ? 'dark' : 'light') + '), its text var(--rv-text) and var(--rv-muted). Never invert a section to the opposite (' + (dark ? 'a white or light band' : 'a black, navy or dark-brand band') + ') — sections differ by layout, pictures and surface, not by flipping between light and dark. Text set over a picture sits on a ' + (dark ? 'dark' : 'light') + ' veil, in the page\'s own text colour. Brand colour is for buttons, accents, rules and highlights, not for whole ' + (dark ? 'light' : 'dark') + ' bands.';
 }
@@ -4003,6 +4224,12 @@ function toneRule(design) {
    section), which may carry the motif when it suits it. '' when no city is known. */
 function placeDirection(place, oneSection) {
   if (!place || !place.city) return '';
+  /* ET's newer sites carry the city in the banner and in their words, never as drawn ornaments: line-art domes
+     and arches above sections read as clip-art (the owner, 23 Oct 2026) */
+  if (NEW_ET_STANDARD) {
+    var c = String(place.city).replace(/\s+/g, ' ').trim().slice(0, 60);
+    return 'THE PLACE: this edition takes place in ' + c + ': where the words naturally speak of the venue or the region, name ' + c + '. Draw NO ornament, motif, outline or pattern of the city (no domes, arches, skylines or monuments in CSS or SVG). These are directions for you: never write them on the site.';
+  }
   var city = String(place.city).replace(/\s+/g, ' ').trim().slice(0, 60);
   var motif = String(place.motif || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   return 'THE PLACE: this edition takes place in ' + city + ', and the page shows it beyond the hero\'s address line — subtly: ' +
@@ -4086,9 +4313,20 @@ function buildSectionCodePrompt(payload) {
   lines.push('', 'PICTURES — the site must not be text only:');
   var pictured = fullList.filter(function (s) { return s.imageUrl; });
   pictured.forEach(function (s) {
+    if (s.photos && s.photos.length > 1) {
+      lines.push('- Section "' + s.id + '" has ' + s.photos.length + ' REAL photos from the previous edition, one per card: ' + s.photos.map(function (u, i) { return genDesign.pictureToken('photo-' + s.id + '-' + (i + 1)); }).join(' , ') + '. Make each a tall photo card (about 3:4, object-fit: cover) with a dark gradient at its foot carrying a small number ("01"), the card\'s title in the serif and one line under it; in a row that scrolls sideways on a phone.');
+      return;
+    }
     lines.push('- Section "' + s.id + '" has a picture, already made. Its address is exactly ' + genDesign.pictureToken(s.id) + ' (it shows: ' + s.image + '). Use it with <img src="' + genDesign.pictureToken(s.id) + '" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band, at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
   });
   lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails.');
+  if (NEW_ET_STANDARD) {
+    lines.push('- NO DECORATION WITHOUT CONTENT: never draw illustrations, line art, clip-art, monuments, outlines of buildings or vehicles, or decorative patterns in SVG or CSS; never a box, frame, panel or card that holds no real picture and no real text (a coloured block "standing in" for a picture is a blank box — leave it out and let the text use the width). Icons are allowed only as small line icons (about 24px) beside a card\'s title.');
+    lines.push('- PHOTOS OF PEOPLE: object-fit: cover with object-position: center 25% so heads and faces stay in frame; a picture frame is never taller than the photo allows (no head cut off at the top).');
+    lines.push('- SPACING: every section has the same vertical padding, clamp(48px, 5vw, 72px) top and bottom, and no empty spacer blocks; a section that is only a heading and a button is not a section.');
+    lines.push('- A section with one of the data-bound kinds (speakers/sessions/faq/partners/contact/glimpses) holds ONLY its heading block and its list — no button, call to act or side panel: when the event has no records of that kind the whole section is hidden, and nothing may be left standing.');
+  }
+  lines.push('- Each picture belongs to the section it is given to and appears ONCE on the page: never put one section\'s picture in another section, and never add a picture to a section that was given none.');
   lines.push('- Use ONLY the picture addresses given above, written exactly as given (they begin "rvimg://" — the server turns them into the real addresses); never write an http address for a picture and never invent one. Elsewhere, add visual interest with CSS: inline SVG icons you draw yourself (simple line icons, stroke="currentColor"), large numerals, coloured shapes, rules and gradients.');
 
   /* the nav and the footer carry The Economic Times Business Verticals logo, placed by the server */
@@ -4123,7 +4361,7 @@ function buildSectionCodePrompt(payload) {
     '',
     'For a section with one of the data-bound kinds (speakers/sessions/faq/partners/contact/glimpses): design the section\'s own visual container and any intro/heading copy with real text, but the REPEATING list items are real records a human CMS editor manages elsewhere — never yours to invent. Write exactly ONE well-designed example item, marked with the attribute data-rv-repeat-template="<kind>" on its root element, with clearly-labeled placeholder values (e.g. "Speaker Name", "Role, Company") — that is the ONLY item you write; a client-side mechanism clones or replaces it once real records exist, or leaves this one placeholder item visible as-is when none do. Its container must lay the clones out well however many there are (a responsive grid: repeat(auto-fill, minmax(…, 1fr))). Inside that one template element, put these EXACT, case-sensitive data-rv-field attributes on the right descendant elements, by kind — never invent other field names:',
     '  speakers: data-rv-field="n" (name, text), "r" (role/title, text), "c" (company, text), "photo" (headshot — on an <img>, or on a div meant to show a background-image photo)',
-    '  sessions (the agenda): data-rv-field="time" (e.g. "9:30 AM – 10:15 AM", text), "title" (text), "desc" (text), "speakers" (the speakers\' names, text), "room" (text)',
+    '  sessions (the agenda): data-rv-field="time" (e.g. "9:30 AM – 10:15 AM", text), "title" (text), "desc" (text), "speakers" (the speakers\' names, text), "room" (text). An agenda of more than one day is shown ONE DAY AT A TIME: the page puts a row of day tabs ("Day 1", its date) above the list itself — so write no day headings, day columns or day tabs of your own, only the one session item in a list that reads well for a single day.',
     '  faq: data-rv-field="t" (question, text), "d" (answer, text)',
     '  partners: data-rv-field="name" (text), "url" (the href target if the item is/contains a link — put this on the <a>), "logo" (on an <img>)',
     '  contact: data-rv-field="label" (e.g. department/role, text), "name" (text), "email" (text), "phone" (text)',
@@ -4174,6 +4412,35 @@ function sanitizeGeneratedSectionCss(css) {
     console.error('sanitizeGeneratedSectionCss failed on malformed input, degrading to empty — ' + e.message);
     return '';
   }
+}
+
+/* A written section's styles shorter than this are none at all: its words would show as bare text */
+var UNSTYLED_CSS_CHARS = 80;
+/* the planned sections (written by the model, not built here) that came back with no styles, with an empty
+   picture box, or not at all */
+function unstyledSectionIds(answers, designPlan) {
+  var got = {};
+  (answers || []).forEach(function (r) {
+    ((r && r.parsed && r.parsed.sections) || []).forEach(function (s) { if (s && s.id) got[slugifyId(s.id)] = s; });
+  });
+  return ((designPlan && designPlan.sections) || []).filter(function (p) { return p && p.id && !p.prebuilt; }).map(function (p) { return p.id; })
+    .filter(function (id) { var s = got[id]; return !s || String(s.css || '').trim().length < UNSTYLED_CSS_CHARS || emptyPictureBox(s.html, s.css); });
+}
+/* a box named for a picture with nothing in it and no picture behind it in the CSS: a blank block on the page.
+   An empty box whose class is given a background picture (url(...)) is a picture, and an overlay or veil is not
+   meant to hold one. */
+function emptyPictureBox(html, css) {
+  var re = /<(div|figure|aside)\b[^>]*\bclass\s*=\s*["']([^"']*)["'][^>]*>\s*<\/\1>/gi, m, styles = String(css || '');
+  while ((m = re.exec(String(html || '')))) {
+    var names = m[2].split(/\s+/).filter(Boolean);
+    if (!names.some(function (n) { return /(media|image|img|photo|picture|visual)/i.test(n) && !/(overlay|veil|shade|scrim|gradient|glow|tint)/i.test(n); })) continue;
+    var painted = names.some(function (n) {
+      var rule = new RegExp('\\.' + n.replace(/[^\w-]/g, '\\$&') + '(?![\\w-])[^{]*\\{[^}]*url\\(', 'i');
+      return rule.test(styles);
+    });
+    if (!painted) return true;
+  }
+  return false;
 }
 
 // Matches Gemini's returned sections back to the planned id list (nav/hero + designPlan.sections + footer),
@@ -4333,6 +4600,22 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
       return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') });
     })).then(function (answers) {
+      /* a section that came back without its styles (or not at all) shows as bare text on the page: it is
+         written once more on its own, and the second answer replaces the first */
+      var again = answers.some(function (r) { return r.error; }) ? [] : unstyledSectionIds(answers, designPlan);
+      if (!again.length) return answers;
+      console.warn('generate-content: ' + eventId + ' — written again, unstyled or missing: ' + again.join(', '));
+      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: again });
+      return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') })
+        .then(function (r) {
+          if (r.error || !r.parsed || !Array.isArray(r.parsed.sections)) return answers;
+          var fixed = r.parsed.sections.filter(function (s) { return s && again.indexOf(slugifyId(s.id)) !== -1 && String(s.css || '').trim().length >= UNSTYLED_CSS_CHARS && !emptyPictureBox(s.html, s.css); });
+          var ids = fixed.map(function (s) { return slugifyId(s.id); });
+          return answers.map(function (a) {
+            return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || ids.indexOf(slugifyId(s.id)) === -1; }) }) });
+          }).concat([{ parsed: { sections: fixed } }]);
+        }, function () { return answers; });
+    }).then(function (answers) {
       return Promise.all([footerRead, awardRead]).then(function (both) { return { answers: answers, footerList: both[0], award: both[1] }; });
     }).then(function (got) {
       var answers = got.answers;
@@ -4383,7 +4666,10 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
          address that is not one of this site's is repaired (genDesign.restorePictures). The event's own
          logo is in the top bar whatever was written. */
       var pictures = {};
-      planned.forEach(function (x) { if (x.imageUrl) pictures[genDesign.pictureToken(x.id)] = x.imageUrl; });
+      planned.forEach(function (x) {
+        if (x.imageUrl) pictures[genDesign.pictureToken(x.id)] = x.imageUrl;
+        (x.photos || []).forEach(function (u, i) { pictures[genDesign.pictureToken('photo-' + x.id + '-' + (i + 1))] = u; });
+      });
       if (logoUrl) pictures[genDesign.pictureToken('logo')] = logoUrl;
       if (design.heroImageUrl) pictures[genDesign.pictureToken('hero')] = design.heroImageUrl;
       sections.forEach(function (sec) {
@@ -4398,11 +4684,15 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* the previous edition's sections, built here from its real records (prev-sections.js), each in its
          planned place */
       var prevDoc = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.previous; })[0];
+      /* every photo a section shows: the previous edition's gallery leaves them out (no picture twice on a page) */
+      var usedPhotos = [];
+      planned.forEach(function (x) { if (x.imageUrl) usedPhotos.push(x.imageUrl); (x.photos || []).forEach(function (u) { usedPhotos.push(u); }); });
+      if (design.heroImageUrl) usedPhotos.push(design.heroImageUrl);
       /* an award site's own sections built from its records (award-sections.js), by id */
       var awardHome = {};
       if (got.award) awardSections.homeSections(got.award.award, { edition: eventMeta.name || '', pages: SITE_PAGES }).forEach(function (b) { awardHome[b.id] = b; });
       planned.filter(function (x) { return x.prebuilt; }).forEach(function (x) {
-        var built = /^award-/.test(x.prebuilt) ? awardHome[x.id] || null : prevDoc ? prevSections.build(x.prebuilt, prevDoc.previous, {}) : null;
+        var built = /^award-/.test(x.prebuilt) ? awardHome[x.id] || null : prevDoc ? prevSections.build(x.prebuilt, prevDoc.previous, { exclude: usedPhotos }) : null;
         if (!built) return;
         var at = sections.length - (sections.length && sections[sections.length - 1].id === 'footer' ? 1 : 0);
         var order = planned.map(function (y) { return y.id; }), mine = order.indexOf(x.id);
@@ -8853,13 +9143,14 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
+  classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont

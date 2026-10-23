@@ -1039,6 +1039,23 @@
       return b;
     }
     var prev = button(-1), next = button(1);
+    /* Whole cards only: a row of equal cards wider than its room is narrowed to the cards that fit in full and
+       centred, so no card shows cut in half at the edge (a cut picture or a clipped label reads as broken). */
+    function whole() {
+      if (track === box || track.getAttribute('data-rv-carousel-track') === 'own') return;
+      track.style.maxWidth = ''; track.style.marginLeft = ''; track.style.marginRight = '';
+      var kids = track.children, w = kids.length && kids[0].getBoundingClientRect().width;
+      if (!w || track.scrollWidth <= track.clientWidth + 2) return;
+      for (var i = 1; i < kids.length; i++) if (Math.abs(kids[i].getBoundingClientRect().width - w) > 1) return;
+      var cs = getComputedStyle(track), gap = parseFloat(cs.columnGap) || 0;
+      var pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      var room = track.clientWidth - pad, n = Math.floor((room + gap) / (w + gap));
+      if (n < 1) return;
+      track.style.maxWidth = Math.ceil(n * w + (n - 1) * gap + pad) + 'px';
+      track.style.marginLeft = 'auto'; track.style.marginRight = 'auto';
+      /* cards sized by the row (a phone's "one card and the edge of the next", which says "swipe") keep it */
+      if (Math.abs(kids[0].getBoundingClientRect().width - w) > 1) { track.style.maxWidth = ''; track.style.marginLeft = ''; track.style.marginRight = ''; }
+    }
     function sync() {
       var fits = track.scrollWidth <= track.clientWidth + 2;
       if (prev.classList.contains('rv-carousel-btn')) prev.hidden = fits;
@@ -1047,9 +1064,11 @@
       next.disabled = atEnd();
     }
     track.addEventListener('scroll', sync, { passive: true });
-    window.addEventListener('resize', sync);
-    if ('MutationObserver' in window) new MutationObserver(sync).observe(track, { childList: true });   // records arriving
+    window.addEventListener('resize', function () { whole(); sync(); });
+    if ('MutationObserver' in window) new MutationObserver(function () { whole(); sync(); }).observe(track, { childList: true });   // records arriving
+    whole();
     sync();
+    window.addEventListener('load', function () { whole(); sync(); });   // pictures that set a card's width
 
     var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (box.getAttribute('data-rv-carousel') === 'auto' && !still) {
@@ -1354,7 +1373,68 @@
 
   if (waiting && waiting.splice) waiting.splice(0).forEach(function (call) { register(call[0], call[1]); });
 
-  function start() { reveal(); settleImported(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); arrive(); }
+  /* This edition's agenda (sessions from the event's records, drawn by rv-data.js) one day at a time, when it has
+     more than one day (the owner, 23 Oct 2026: "in case of multiple days' agenda it should be displayed on tab basis
+     by day/dates, not one after another"): a row of day tabs — "Day 1" over its date — goes before the list, and
+     every session carries its day's panel mark, so the tab sets below show one day. Never while editing, where every
+     session stays in reach; the row is the runtime's (data-rv-runtime) and is never saved. */
+  function sessionDays() {
+    if (editing()) return;
+    var lists = [];
+    each(document.querySelectorAll('[data-rv-item="sessions"][data-rv-day], [data-rv-repeat-template="sessions"][data-rv-day]'), function (card) {
+      if (lists.indexOf(card.parentNode) === -1) lists.push(card.parentNode);
+    });
+    lists.forEach(function (list, li) {
+      var cards = [], days = [], seen = {};
+      each(list.children, function (c) { if (c.getAttribute && c.hasAttribute('data-rv-day') && (c.getAttribute('data-rv-item') === 'sessions' || c.getAttribute('data-rv-repeat-template') === 'sessions')) cards.push(c); });
+      cards.forEach(function (c) {
+        var k = c.getAttribute('data-rv-day') || '';
+        if (seen[k] == null) { seen[k] = days.length; days.push({ name: c.getAttribute('data-rv-day-name') || '', date: c.getAttribute('data-rv-day-date') || '' }); }
+      });
+      if (days.length < 2 || (list.previousElementSibling && list.previousElementSibling.hasAttribute('data-rv-day-tabs'))) return;
+      var set = 'session-days-' + li;
+      var bar = document.createElement('div');
+      bar.setAttribute('data-rv-day-tabs', '');
+      bar.setAttribute('data-rv-runtime', '');
+      bar.setAttribute('role', 'tablist');
+      bar.setAttribute('aria-label', 'Agenda by day');
+      bar.className = 'rv-day-tabs';
+      days.forEach(function (d, i) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'rv-day-tab';
+        b.setAttribute('role', 'tab');
+        b.setAttribute('data-rv-tab', set + ':' + i);
+        b.setAttribute('aria-selected', i ? 'false' : 'true');
+        var top = document.createElement('span'); top.className = 'rv-day-tab-n'; top.textContent = 'Day ' + (i + 1); b.appendChild(top);
+        var sub = d.date || (d.name && !/^day\s*\d+$/i.test(d.name) ? d.name : '');
+        if (sub) { var sp = document.createElement('span'); sp.className = 'rv-day-tab-d'; sp.textContent = sub; b.appendChild(sp); }
+        bar.appendChild(b);
+      });
+      cards.forEach(function (c) { c.setAttribute('data-rv-tabpanel', set + ':' + seen[c.getAttribute('data-rv-day') || '']); });
+      list.parentNode.insertBefore(bar, list);
+    });
+    if (lists.length && !document.getElementById('rv-day-tabs-css')) {
+      var st = document.createElement('style');
+      st.id = 'rv-day-tabs-css';
+      st.setAttribute('data-rv-runtime', '');
+      /* a section's own CSS (display:grid on its rows) must not keep another day's sessions on show */
+      st.textContent = '[data-rv-tabpanel][hidden]{display:none!important}' +
+        '.rv-day-tabs{display:flex;justify-content:center;gap:10px;margin:0 auto 24px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}' +
+        '.rv-day-tabs::-webkit-scrollbar{display:none}' +
+        '.rv-day-tab{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:120px;padding:11px 18px;border:1.5px solid color-mix(in srgb,var(--rv-text,#111) 22%,transparent);border-radius:var(--rv-radius,12px);background:var(--rv-surface,#f4f5f7);color:var(--rv-text,#111);font:inherit;cursor:pointer}' +
+        '.rv-day-tab:focus-visible{outline:2px solid var(--theme-color,#186bf9);outline-offset:2px}' +
+        '.rv-day-tab[aria-selected="true"]{background:var(--rv-theme-fill,var(--theme-color,#186bf9));border-color:var(--rv-theme-fill,var(--theme-color,#186bf9));color:var(--rv-on-theme,#fff)}' +
+        '.rv-day-tab-n{font-family:var(--heading-font-family,inherit);font-weight:700;letter-spacing:.04em;text-transform:uppercase}.rv-day-tab-d{font-size:.85em;opacity:.85}' +
+        '@media (max-width:820px){.rv-day-tabs{justify-content:flex-start}}';
+      document.head.appendChild(st);
+    }
+  }
+
+  /* Tab sets on a page of our own making (an agenda by day: prev-sections.js, sessionDays) — imported pages start
+     theirs in settleImported, so a page that has an imported part is left to it */
+  function ownTabs() { if (!document.querySelector('.rv-imported') && document.querySelector('[data-rv-tab]')) tabSets(document); }
+  function start() { reveal(); settleImported(); sessionDays(); ownTabs(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

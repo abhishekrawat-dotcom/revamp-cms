@@ -715,18 +715,28 @@
     if (!m || +m[1] > 23) return String(v || '').trim();
     return ((+m[1] % 12) || 12) + ':' + m[2] + (+m[1] < 12 ? ' AM' : ' PM');
   }
+  /* "2027-06-22" -> "22 June 2027" ('' for anything else) */
+  function dayDateLabel(v) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+    if (!m) return '';
+    var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return (+m[3]) + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1];
+  }
   function translateSessionsFlat(sessions, days, speakers) {
     if (!sessions || !sessions.length) return null;
-    var dayAt = {}, nameOf = {};
-    (days || []).slice().sort(byOrder).forEach(function (d, i) { dayAt[d.id] = i; });
+    var dayAt = {}, nameOf = {}, dayOf = {};
+    (days || []).slice().sort(byOrder).forEach(function (d, i) { dayAt[d.id] = i; dayOf[d.id] = d; });
     (speakers || []).forEach(function (s) { nameOf[s.id] = s.name || ''; });
     return sessions.slice().sort(function (a, b) {
       var da = a.groupId in dayAt ? dayAt[a.groupId] : 999, db = b.groupId in dayAt ? dayAt[b.groupId] : 999;
       return (da - db) || String(a.start || '').localeCompare(String(b.start || '')) || byOrder(a, b);
     }).map(function (s) {
       var time = [clockLabel(s.start), clockLabel(s.end)].filter(Boolean).join(' – ');
+      var day = dayOf[s.groupId] || null;
       return { title: s.title || '', time: time, desc: s.desc || '', room: s.room || '',
-        speakers: (s.speakerIds || []).map(function (id) { return nameOf[id]; }).filter(Boolean).join(', ') };
+        speakers: (s.speakerIds || []).map(function (id) { return nameOf[id]; }).filter(Boolean).join(', '),
+        /* the session's day, for the page's day tabs (et-runtime.js sessionDays) */
+        dayKey: String(s.groupId || ''), dayName: day ? String(day.name || '') : '', dayDate: day ? dayDateLabel(day.date) : '' };
     });
   }
 
@@ -764,6 +774,16 @@
   function setGenericRepeatField(fieldEl, field, value, kind, refill) {
     var isImage = field === 'photo' || field === 'logo' || field === 'imageUrl';
     if (!value) {
+      /* A record's text field that has nothing is cleared and hidden: the design's sample words ("Session
+         description goes here", "Speaker names") are never the event's, and visitors would read them (the
+         owner, 23 Oct 2026). A picture keeps the design's placeholder on a first fill. */
+      if (!isImage && !fieldEl.querySelector('[data-rv-field]')) {
+        fieldEl.textContent = ''; fieldEl.setAttribute('hidden', '');
+        /* its line goes too when all that is left in it is a label ("Speakers" over nothing) */
+        var line = labelOnlyLine(fieldEl);
+        if (line) { line.setAttribute('hidden', ''); line.setAttribute('data-rv-empty-line', ''); }
+        return;
+      }
       /* A model that was itself drawn from a record (refill) still holds that record's values: what this
          record does not have is cleared, or it would show another partner's logo or link. The first fill,
          from the design's own placeholder item, leaves the placeholder where the record has nothing. */
@@ -783,8 +803,20 @@
       else fieldEl.textContent = value;
       return;
     }
+    fieldEl.removeAttribute('hidden');
+    var hiddenLine = fieldEl.parentElement && fieldEl.parentElement.closest('[data-rv-empty-line]');
+    if (hiddenLine) { hiddenLine.removeAttribute('hidden'); hiddenLine.removeAttribute('data-rv-empty-line'); }
     if ('value' in fieldEl) fieldEl.value = value;
     else fieldEl.textContent = value;
+  }
+  /* The element holding an empty field when it holds nothing else of a record's — no other field, no picture —
+     and no more words than a label: that line shows only "Speakers" or "Room" over nothing. -> it, or null */
+  function labelOnlyLine(fieldEl) {
+    var line = fieldEl.parentElement;
+    if (!line || line.hasAttribute('data-rv-repeat-template') || line.hasAttribute('data-rv-item') || line.hasAttribute('data-rv-section')) return null;
+    if (line.querySelector('[data-rv-field]:not([hidden]), img, picture, svg, video, a[href], button')) return null;
+    var words = (line.textContent || '').replace(/\s+/g, ' ').trim();
+    return words.length <= 30 ? line : null;
   }
 
   function fillGenericRepeatClone(clone, item, kind, refill) {
@@ -795,6 +827,11 @@
       setGenericRepeatField(fieldEl, field, item[field], kind, refill);
     });
     if (kind === 'speakers') setSpeakerProfile(clone, item.profile);
+    if (kind === 'sessions') {
+      clone.setAttribute('data-rv-day', item.dayKey || '');
+      if (item.dayName) clone.setAttribute('data-rv-day-name', item.dayName); else clone.removeAttribute('data-rv-day-name');
+      if (item.dayDate) clone.setAttribute('data-rv-day-date', item.dayDate); else clone.removeAttribute('data-rv-day-date');
+    }
     clone.setAttribute('data-rv-filled', '');
   }
 

@@ -548,6 +548,8 @@ var GRAPHIC_RULES = 'STRICT: a graphic composition, not a photograph — shapes,
    crowd of faces read as one picture repeated (the owner, 22 Oct 2026). */
 var IMAGE_KINDS = ['people', 'place', 'subject', 'graphic'];
 var NO_PEOPLE_RULES = 'NO PEOPLE: this picture is of the place or the things themselves — no people in it; at most a few small figures far in the distance, no face visible.';
+/* the banner's key visual: no person, no word (the site sets the name over it) */
+var KEY_VISUAL_RULES = 'STRICT: no people and no faces; no readable text, letters or numbers anywhere — no event name, date, labels or captions — no logos, no brand names, no watermarks, no flags. Crisp and premium, like the key visual of a major industry conference.';
 var IMAGE_TAIL = ' No readable text, letters or numbers anywhere (screens, signs, badges and banners are blank, blurred or abstract light), no logos, no brand names, no watermarks, no flags. Photographic and believable: correct anatomy, no distorted hands or faces, no surreal or abstract objects.';
 var IMAGE_RULES = 'STRICT: ' + PEOPLE_RULES + IMAGE_TAIL;
 
@@ -566,12 +568,13 @@ function sentence(text, max) {
 /* The city an event takes place in, in the picture: recognisably, as a local would know it — through the
    setting, the décor, the textiles, the light — and never as a postcard (edition-look.js, placeOf).
    place: { city, cues } — cues '' when the city is not on that list: the picture is then asked to find them. */
-function placeLine(place, hero) {
+function placeLine(place, hero, keyVisual) {
   place = place || {};
   var city = String(place.city || '').replace(/\s+/g, ' ').trim().slice(0, 60);
   if (!city) return '';
   var cues = sentence(place.cues, 500).replace(/[.!]+$/, '');
   var how = cues ? cues : 'its own architecture, landscape, light and crafts, as someone from ' + city + ' would recognise them';
+  if (keyVisual) return 'Place: the event is in ' + city + ': work its landmarks and character into the composition — ' + how + ' — stylised in the same finish as the rest, never a tourist postcard.';
   return hero
     ? 'Place: this event takes place in ' + city + ', and the picture must show it, recognisably: ' + how + '. Make the city part of the scene itself (the view beyond the hall, the décor, the attire, the light), tasteful and believable — never a postcard collage, never a landmark pasted on, never a caricature.'
     : 'Place: the event is in ' + city + '. Where the scene allows, let the city show in its setting — ' + how + ' — subtly and believably, never as a postcard.';
@@ -587,9 +590,16 @@ function imagePrompt(subject, design, opts) {
   opts = opts || {};
   var kind = IMAGE_KINDS.indexOf(opts.kind) !== -1 ? opts.kind : 'people';
   var graphic = !!opts.graphic || (!opts.hero && kind === 'graphic');
+  /* The banner as ET's own sites have it (154 banners of recent ET event and award sites, 23 Oct 2026): a
+     designed key visual — a 3-D render, an illustration or a photo-collage of the field's own objects with the
+     host city's landmarks, artwork to the sides, the centre calm for the name, in the brand colours; 74% have no
+     person and 75% no word. A photograph of an audience and a stage is the exception (6%). */
+  var keyVisual = !!opts.hero && !graphic && opts.keyVisual !== false;
   var lines = [
     opts.hero
-      ? (graphic
+      ? (keyVisual
+        ? 'Create the wide KEY VISUAL for the hero banner of a professional Economic Times event website: a polished designed composition — a 3-D render, an illustration or a photo-collage, not a photograph of an event — made of the objects, machines, infrastructure and symbols of THIS event\'s own field, together with the landmarks of its host city where one is named below. The event\'s name, date and buttons will be set over the middle, so the artwork sits towards the left and right sides and the lower part, and the centre is calm, softly washed out in a light or dark tone for the words. Finish it in the brand colours, as a gradient, a duotone or a glow. Rich and full of colour and depth, like a premium conference poster — never thin line art, a wireframe or a sketch on a blank ground.'
+        : graphic
         ? 'Create the wide background artwork for the hero banner of a professional event website: a refined graphic composition (not a photograph) drawn from what this event is about. The event\'s name and buttons will sit over the middle of it, so keep the main forms towards the sides and the lower third, and the middle calmer.'
         : 'Create the wide background photograph for the hero banner of a professional event website. It must say at a glance what this event is: show the scene described below, not an abstraction of it. The event\'s name and buttons will sit over the middle of it, so compose it with depth and atmosphere, the main elements towards the sides, the back and the lower third, and a calmer, darker or softer middle.')
       : graphic ? 'Create one refined graphic illustration (not a photograph) for a section of a professional event website: forms, light and texture drawn from what the section is about. It is artwork, not a diagram, an infographic or an annotated drawing: nothing in it is labelled.'
@@ -597,20 +607,20 @@ function imagePrompt(subject, design, opts) {
       : kind === 'subject' ? 'Create one editorial photograph of the SUBJECT for a section of a professional event website: the technology, products, materials or working environment the section is about, shot as a still-life or industrial photographer would — the things themselves, in detail.'
       : 'Create one editorial photograph for a section of a professional event website.',
     'Scene: ' + String(subject || 'a large business conference in session, an Indian audience of women and men facing a lit stage where a woman is speaking').slice(0, 500) + '.',
-    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic ? ' and the forms in it.' : kind === 'people' || opts.hero ? ', the people at work and the objects in view.' : ' and the objects in view.') : '',
+    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic || keyVisual ? ' and the forms in it.' : kind === 'people' || opts.hero ? ', the people at work and the objects in view.' : ' and the objects in view.') : '',
     /* an illustration told what its section says draws those words in as labels: it gets the scene alone */
     opts.context && !(graphic && !opts.hero) ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
-    placeLine(opts.place || design.place, opts.hero),
+    placeLine(opts.place || design.place, opts.hero, keyVisual),
     /* the previous edition's banner artwork, in words (plan-structure, design.inspiredBy): the hero is a new
        picture inspired by it, never a copy */
     opts.hero && !graphic && design.inspiredBy ? 'Inspiration: the previous edition\'s banner artwork was this — ' + sentence(design.inspiredBy, 600) + ' Make a NEW picture in that mood and palette family, with a composition and scene of its own; never a copy of it.' +
       (placeLine(opts.place || design.place, true) ? ' Take no place from it: any city or landmark it shows is not this edition\'s — the place is the one named above.' : '') : '',
-    graphic ? '' : design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
+    graphic || keyVisual ? '' : design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial event photography, natural light, shallow depth of field.',
     'Palette: ' + (design.mode === 'dark' ? 'dark and moody' : 'bright and airy') + ', with ' + (design.themeColor || 'the brand colour') + ' and ' + (design.accentColor || 'a warm accent') + ' present as accents' + (graphic ? '.' : ' in the lighting.'),
     'Every picture on this site shares this one style, so that they read as a set.',
     /* the model paints the event's name into a hero it is told the name will sit over: said outright */
     opts.hero ? 'The picture itself carries no words at all — never the event\'s name, its date or its place, no title card, no lettering on stage screens or banners: the site sets the name and the buttons over it. Landscape, 16:9.' : 'Landscape, 4:3.',
-    graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.hero || kind === 'people' ? (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) : NO_PEOPLE_RULES) + IMAGE_TAIL
+    keyVisual ? KEY_VISUAL_RULES : graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.hero || kind === 'people' ? (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) : NO_PEOPLE_RULES) + IMAGE_TAIL
   ];
   return lines.filter(Boolean).join(' ');
 }

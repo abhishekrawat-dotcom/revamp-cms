@@ -308,14 +308,14 @@
     });
     if (byLabel['']) blocks.unshift(blocks.splice(blocks.indexOf(byLabel['']), 1)[0]);
 
-    var dayName = {};
-    list(data.agendaGroups).forEach(function (g) { dayName[g.id] = str(g.name); });
+    var dayName = {}, dayDate = {};
+    list(data.agendaGroups).forEach(function (g) { dayName[g.id] = str(g.name); dayDate[g.id] = str(g.date); });
     var sessions = sorted(data.sessions).map(function (s) {
       var names = (Array.isArray(s.speakerIds) ? s.speakerIds : []).map(function (id) { return speakerName[id]; }).filter(Boolean);
       return { id: str(s.id), title: str(s.title), start: str(s.start), end: str(s.end),
         time: [clock(s.start), clock(s.end)].filter(Boolean).join(' – '),
         desc: str(s.desc), room: str(s.room), kind: str(s.kind), speakers: names.join(', '), speakerNames: names,
-        day: dayName[s.groupId] || '', groupId: str(s.groupId) };
+        day: dayName[s.groupId] || '', dayDate: dayDate[s.groupId] || '', groupId: str(s.groupId) };
     });
     var sessionsOut = {
       items: sessions,
@@ -632,6 +632,12 @@
       fillFields(card, record, kind);
       card.setAttribute('data-rv-item', kind);
       if (record.id) card.setAttribute('data-rv-id', record.id);
+      /* a session's day (its agenda group, its name and date), for the page's day tabs (et-runtime.js sessionDays) */
+      if (kind === 'sessions') {
+        card.setAttribute('data-rv-day', String(record.groupId || ''));
+        if (record.day) card.setAttribute('data-rv-day-name', String(record.day)); else card.removeAttribute('data-rv-day-name');
+        if (record.dayDate) card.setAttribute('data-rv-day-date', dayLabel(record.dayDate)); else card.removeAttribute('data-rv-day-date');
+      }
       return card;
     });
     // a card that comes out exactly as the one in its place stays: no picture reloads, nothing changes

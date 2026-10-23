@@ -45,7 +45,7 @@ function head(cls, kind, edition) {
     '<h2 class="' + cls + '-title">' + esc(LABELS[kind]) + '</h2></div>';
 }
 var BASE_CSS = function (c) {
-  return '.' + c + '{background:var(--rv-bg);color:var(--rv-text);padding:clamp(64px,8vw,112px) 0;font-family:var(--body-font-family)}' +
+  return '.' + c + '{background:var(--rv-bg);color:var(--rv-text);padding:clamp(48px,5vw,72px) 0;font-family:var(--body-font-family)}' +
     '.' + c + '-in{max-width:1200px;margin:0 auto;padding:0 24px}' +
     '.' + c + '-head{text-align:center;margin:0 0 40px}' +
     '.' + c + '-eyebrow{margin:0 0 10px;font-size:0.875rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--theme-color)}' +
@@ -137,6 +137,11 @@ function timeOf(v) {
   var h = +m[1];
   return ((h % 12) || 12) + ':' + m[2] + ' ' + (h >= 12 ? 'PM' : 'AM');
 }
+/* The agenda, one day at a time when it has more than one (the owner, 23 Oct 2026: "in case of multiple days'
+   agenda it should be displayed on tab basis by day/dates, not one after another"): a row of day tabs — "Day 1",
+   its date under it — over the sessions of the chosen day. The tabs are the page runtime's
+   (templates/_shared/et-runtime.js: data-rv-tab / data-rv-tabpanel, arrow keys between them); without the
+   runtime, and in the editor, every day shows, one after another, so that nothing is ever out of reach. */
 function agenda(p, edition) {
   var c = 'pe-agd', days = [], by = {};
   p.agenda.forEach(function (a) {
@@ -144,15 +149,23 @@ function agenda(p, edition) {
     if (!by[d]) { by[d] = []; days.push(d); }
     by[d].push(a);
   });
-  var body = days.map(function (d) {
-    return '<div class="' + c + '-day" data-rv-reveal>' + (days.length > 1 || d !== 'Sessions' ? '<h3 class="' + c + '-date">' + esc(d) + '</h3>' : '') +
-      by[d].map(function (a) {
-        var t = [timeOf(a.start), timeOf(a.end)].filter(Boolean).join(' – ');
-        return '<div class="' + c + '-row">' + '<p class="' + c + '-time">' + esc(t) + '</p><div class="' + c + '-what"><h4 class="' + c + '-name">' + esc(a.title) + '</h4>' +
-          (a.speakers && a.speakers.length ? '<p class="' + c + '-who">' + esc(a.speakers.join(', ')) + '</p>' : '') + '</div></div>';
-      }).join('') + '</div>';
+  var tabbed = days.length > 1, set = 'previous-agenda';
+  function rows(d) {
+    return by[d].map(function (a) {
+      var t = [timeOf(a.start), timeOf(a.end)].filter(Boolean).join(' – ');
+      return '<div class="' + c + '-row">' + '<p class="' + c + '-time">' + esc(t) + '</p><div class="' + c + '-what"><h4 class="' + c + '-name">' + esc(a.title) + '</h4>' +
+        (a.speakers && a.speakers.length ? '<p class="' + c + '-who">' + esc(a.speakers.join(', ')) + '</p>' : '') + '</div></div>';
+    }).join('');
+  }
+  var tabs = !tabbed ? '' : '<div class="' + c + '-tabs" role="tablist" aria-label="Agenda by day">' + days.map(function (d, i) {
+    return '<button type="button" class="' + c + '-tab" role="tab" id="' + c + '-tab-' + i + '" aria-controls="' + c + '-day-' + i + '" aria-selected="' + (i ? 'false' : 'true') + '" tabindex="' + (i ? '-1' : '0') + '" data-rv-tab="' + set + ':' + i + '">' +
+      '<span class="' + c + '-tab-n">Day ' + (i + 1) + '</span>' + (d !== 'Sessions' ? '<span class="' + c + '-tab-d">' + esc(d) + '</span>' : '') + '</button>';
+  }).join('') + '</div>';
+  var body = days.map(function (d, i) {
+    return '<div class="' + c + '-day"' + (tabbed ? ' role="tabpanel" id="' + c + '-day-' + i + '" aria-labelledby="' + c + '-tab-' + i + '" data-rv-tabpanel="' + set + ':' + i + '"' : ' data-rv-reveal') + '>' +
+      (days.length > 1 || d !== 'Sessions' ? '<h3 class="' + c + '-date">' + esc(d) + '</h3>' : '') + rows(d) + '</div>';
   }).join('');
-  var html = '<section class="' + c + '"><div class="' + c + '-in">' + head(c, 'agenda', edition) + '<div class="' + c + '-list">' + body + '</div></div></section>';
+  var html = '<section class="' + c + '"><div class="' + c + '-in">' + head(c, 'agenda', edition) + tabs + '<div class="' + c + '-list">' + body + '</div></div></section>';
   var css = BASE_CSS(c) +
     '.' + c + '-list{max-width:920px;margin:0 auto}.' + c + '-day{margin:0 0 32px}' +
     '.' + c + '-date{margin:0 0 6px;padding:0 0 10px;border-bottom:2px solid var(--theme-color);font-family:var(--heading-font-family);font-size:1.1rem;letter-spacing:.06em;text-transform:uppercase;color:var(--rv-text)}' +
@@ -160,13 +173,28 @@ function agenda(p, edition) {
     '.' + c + '-time{margin:0;font-size:0.95rem;font-weight:700;color:var(--theme-color);white-space:nowrap}' +
     '.' + c + '-name{margin:0;font-family:var(--heading-font-family);font-size:1.125rem;line-height:1.4;color:var(--rv-text)}' +
     '.' + c + '-who{margin:4px 0 0;font-size:0.95rem;line-height:1.5;color:var(--rv-muted)}' +
-    '@media (max-width:820px){.' + c + '-row{grid-template-columns:1fr;gap:4px}}';
+    /* the day tabs: a row of pills, the chosen one in the brand colour; on a phone the row scrolls sideways */
+    '.' + c + '-tabs{display:flex;justify-content:center;gap:10px;max-width:920px;margin:0 auto 28px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}' +
+    '.' + c + '-tabs::-webkit-scrollbar{display:none}' +
+    '.' + c + '-tab{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:132px;padding:12px 20px;border:1.5px solid color-mix(in srgb,var(--rv-text) 22%,transparent);border-radius:var(--rv-radius,12px);background:var(--rv-surface);color:var(--rv-text);font:inherit;cursor:pointer;transition:background .2s ease,border-color .2s ease,color .2s ease}' +
+    '.' + c + '-tab:hover{border-color:var(--theme-color)}' +
+    '.' + c + '-tab:focus-visible{outline:2px solid var(--theme-color);outline-offset:2px}' +
+    '.' + c + '-tab[aria-selected="true"]{background:var(--rv-theme-fill,var(--theme-color));border-color:var(--rv-theme-fill,var(--theme-color));color:var(--rv-on-theme,var(--rv-bg))}' +
+    '.' + c + '-tab-n{font-family:var(--heading-font-family);font-size:1rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}' +
+    '.' + c + '-tab-d{font-size:0.85rem;opacity:.85}' +
+    /* the chosen day's heading is said by its tab */
+    '.' + c + '-tabs + .' + c + '-list .' + c + '-date{display:none}' +
+    '@media (max-width:820px){.' + c + '-row{grid-template-columns:1fr;gap:4px}.' + c + '-tabs{justify-content:flex-start}.' + c + '-tab{min-width:112px;padding:10px 14px}}';
   return { html: html, css: css };
 }
 
-function glimpses(p, edition) {
+function glimpses(p, edition, o) {
   var c = 'pe-glm';
-  var photos = p.glimpses.map(function (u, i) {
+  /* a photo already shown elsewhere on the page (a section's, the cards') is not shown again (the owner, 23 Oct
+     2026: "we can not repeat a single image across sections") */
+  var skip = {};
+  ((o && o.exclude) || []).forEach(function (u) { skip[String(u)] = 1; });
+  var photos = p.glimpses.filter(function (u) { return !skip[String(u)]; }).map(function (u, i) {
     var src = httpsUrl(u);
     return src ? '<figure class="' + c + '-ph"><img src="' + esc(src) + '" alt="' + esc((edition || 'Previous edition') + ' — photo ' + (i + 1)) + '" loading="lazy"></figure>' : '';
   }).join('');
@@ -185,7 +213,7 @@ var BUILD = { speakers: speakers, sponsors: sponsors, agenda: agenda, glimpses: 
 function build(kind, previous, o) {
   o = o || {};
   if (!BUILD[kind] || !has(previous, kind)) return null;
-  return BUILD[kind](previous, o.edition || previous.name || '');
+  return BUILD[kind](previous, o.edition || previous.name || '', o);
 }
 
 module.exports = { plan, build, LABELS, IDS };

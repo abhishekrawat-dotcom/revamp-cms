@@ -45,6 +45,12 @@ function substitute(name) {
 function toGoogle(name) { return family(name) || substitute(name); }
 function googleOnly(name, fallback) { return toGoogle(name) || toGoogle(fallback) || 'Inter'; }
 
+/* the family's kind as Google lists it: 'sans' | 'serif' | 'display' | 'handwriting' | 'mono' | '' */
+function categoryOf(name) {
+  var f = family(name), row = f ? FAMILIES[f] : null;
+  return row ? ({ s: 'sans', r: 'serif', d: 'display', h: 'handwriting', m: 'mono' })[row[0]] || '' : '';
+}
+
 function weights(name) {
   var f = family(name), row = f ? FAMILIES[f] : null;
   return row ? row.slice(1) : [];
@@ -125,4 +131,4 @@ function googleOnlyHtml(html) {
   return out;
 }
 
-module.exports = { googleOnlyHtml: googleOnlyHtml, family: family, toGoogle: toGoogle, googleOnly: googleOnly, weights: weights, cssUrl: cssUrl, googleOnlyCss: googleOnlyCss, familyList: familyList };
+module.exports = { googleOnlyHtml: googleOnlyHtml, categoryOf: categoryOf, family: family, toGoogle: toGoogle, googleOnly: googleOnly, weights: weights, cssUrl: cssUrl, googleOnlyCss: googleOnlyCss, familyList: familyList };
