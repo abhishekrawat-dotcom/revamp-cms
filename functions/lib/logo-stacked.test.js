@@ -140,7 +140,7 @@ var NOTE = /^The previous edition's logo could not be used: .+\. Upload this yea
 
   answers = function () { return { code: 'ai-timeout' }; };
   var timedOut = await build();
-  check('…asked once more only: two timeouts and the owner is told', asked === 2 && timedOut.unit.source === 'generated' && NOTE.test(timedOut.unit.note), asked + ' ' + timedOut.unit.note);
+  check('…asked up to three times only: three timeouts and the owner is told', asked === 3 && timedOut.unit.source === 'generated' && NOTE.test(timedOut.unit.note), asked + ' ' + timedOut.unit.note);
 
   downloads = {};
   var gone = await build();

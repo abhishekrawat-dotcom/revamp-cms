@@ -2507,6 +2507,26 @@ function sizedSvg(text, info) {
    only carries small pictures (a sponsor's icon, a gradient's piece)? -> true when a picture embedded in it
    fills a quarter of its drawing or more, when it draws nothing but pictures, or when the sizes cannot be
    told (the picture is then taken to be the lock-up, as before). */
+/* A lock-up too large to work on pixel by pixel, drawn at a working size (RASTER_WIDTH wide), transparent: the
+   copy its year is moved in and its extras cut from. -> Promise<{ bytes, info, decoded } | null> */
+function workingCopy(svgText) {
+  if (!svgText) return Promise.resolve(null);
+  return rasterise(svgText, { clear: true }).then(function (r) {
+    if (!r || !(r.width * r.height <= LOGO_UNIT_DECODE_PIXELS)) return null;
+    var info = logoUnit.imageInfo(r.png), decoded = pngLite.decode(r.png);
+    return decoded ? { bytes: r.png, info: info, decoded: decoded } : null;
+  }, function () { return null; });
+}
+/* a PNG, JPEG or WebP lock-up as an SVG holding it, so that it can be drawn at a working size ('' when it
+   cannot be: another kind, or too large to draw) */
+function wrapPictureSvg(picture) {
+  var info = picture && picture.info || {};
+  if (['png', 'jpeg', 'webp'].indexOf(info.type) === -1 || !(info.width > 0 && info.height > 0)) return '';
+  var data = picture.bytes.toString('base64');
+  if (data.length + 400 > RASTER_MAX_SVG_BYTES) return '';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + info.width + ' ' + info.height + '" width="' + info.width + '" height="' + info.height + '">' +
+    '<image width="' + info.width + '" height="' + info.height + '" href="data:' + info.mime + ';base64,' + data + '"/></svg>';
+}
 /* the area a <use>'s transform scales what it places by, for a plain matrix / scale / translate; null for any
    other (a rotation, a skew, several in a row: the picture's size is then not known) */
 function useScale(transform) {
@@ -2588,7 +2608,9 @@ function readLogoPicture(eventId, picture, decoded, deadlineAt, eventName) {
     return callGeminiJson(logoReadPrompt(eventName), LOGO_READ_SCHEMA, ask).then(function (r) {
       var record = aiUsageRecorder(null, eventId, 'logo-unit');
       if (record) record(r.usage);
-      if (r.error && r.code === 'ai-timeout' && tries < 2 && !(deadlineAt && deadlineAt - Date.now() < 25000)) {
+      /* Gemini is at times slow for minutes on end (Great India Retail Summit 2027's lock-up: two readings of
+         60 s ran out, with time left in the plan): asked up to three times while the plan has time */
+      if (r.error && r.code === 'ai-timeout' && tries < 3 && !(deadlineAt && deadlineAt - Date.now() < 30000)) {
         console.error('logo unit: the reading of ' + eventId + '\'s logo ran out of time; asked once more');
         return asked(tries + 1);
       }
@@ -3293,22 +3315,45 @@ function examineUnit(fb, eventId, picture, ctx) {
        sponsor's mark in it can be cropped and its year moved. Kept as the SVG it is when nothing needs to
        change. */
     var onlyWraps = !/<(path|text|rect|circle|ellipse|polygon|polyline|line|g|mask|clipPath|filter)[\s>]/i.test(svgText);
-    if (innerDecoded && onlyWraps && (owner ? innerInfo.width >= 16 && innerInfo.height >= 16 : !logoUnit.plausibleUnit(innerInfo) || logoUnit.stackedUnit(innerInfo))) {
+    var fits = function (info) { return owner ? info.width >= 16 && info.height >= 16 : !logoUnit.plausibleUnit(info) || logoUnit.stackedUnit(info); };
+    if (innerDecoded && onlyWraps && fits(innerInfo)) {
       var whole = picture;
       return rasterExamined({ bytes: innerBytes, info: innerInfo }, innerDecoded).then(function (pic) {
         picture = changed ? pic : whole;
         return result();
       });
     }
+    /* that one picture too large to work on pixel by pixel, or not a PNG (Healthcare Leaders Summit 2026's:
+       1792 x 1792, so its 2026 stayed and its sponsors' marks could not be cut): the SVG is drawn at a working
+       size, transparent, and that drawing is examined as the lock-up */
+    if (!innerDecoded && onlyWraps) {
+      var wholeSvg = picture;
+      return workingCopy(svgText).then(function (copy) {
+        if (!copy || !fits(copy.info)) return readInnerOnly();
+        return rasterExamined({ bytes: copy.bytes, info: copy.info }, copy.decoded).then(function (pic) {
+          picture = changed ? pic : wholeSvg;
+          return result();
+        });
+      });
+    }
+    return readInnerOnly();
+  }
+  function readInnerOnly() {
     return read({ bytes: innerBytes, info: innerInfo }, innerDecoded).then(function (inner) {
       if (!inner) unread = true;
       else { var old = oldIn(inner); if (old) stillShows(old); carries(inner.extras); }
       return result();
     });
   }
-  /* a logo unit is a small picture: one too large to be worth reading pixel by pixel is used as it is */
+  /* a logo unit is a small picture: one too large to work on pixel by pixel (or not a PNG) is worked on as a
+     copy at a working size; when no copy can be made it is read, and used as it is */
   var decoded = picture.info.type === 'png' && picture.info.width * picture.info.height <= LOGO_UNIT_DECODE_PIXELS ? pngLite.decode(picture.bytes) : null;
-  return rasterExamined(picture, decoded).then(function (pic) { picture = pic; return result(); });
+  if (decoded) return rasterExamined(picture, decoded).then(function (pic) { picture = pic; return result(); });
+  var original = picture;
+  return workingCopy(wrapPictureSvg(picture)).then(function (copy) {
+    if (!copy) return rasterExamined(original, null).then(function (pic) { picture = pic; return result(); });
+    return rasterExamined({ bytes: copy.bytes, info: copy.info }, copy.decoded).then(function (pic) { picture = changed ? pic : original; return result(); });
+  });
 
   /* a raster lock-up: -> Promise<the picture to use> */
   function rasterExamined(pic, decoded) {
@@ -3392,6 +3437,23 @@ function previousEditionUnit(fb, eventId, o) {
   var source = unitSources(o.sourceDocs)[0];
   if (!source) return Promise.resolve(null);
   var candidates = source.logoCandidates.slice(0, LOGO_UNIT_TRIES), refusals = [];
+  var years = logoUnit.editionYears({ eventName: o.eventMeta.name, start: o.eventMeta.start, briefTexts: o.briefTexts, hints: source.editionHints || {}, pageUrl: source.url });
+  /* A lock-up examined once for this edition's year is not examined again: reading it can take a minute or
+     more when Gemini is slow, and a site made again would otherwise risk the event's name in its place. Kept on
+     the previous edition's record; only a unit used after a finished examination is kept — never one read short,
+     and never a year that could not be moved (where a reading places the year varies: the next may move it). */
+  var cacheKey = candidates.map(function (c) { return c.url || (c.svg ? 'inline:' + crypto.createHash('sha1').update(String(c.svg)).digest('hex') : ''); }).join(',') + '|' + years.to + '|' + String(o.eventMeta.name || '');
+  var cached = source.examinedUnit && source.examinedUnit.key === cacheKey ? source.examinedUnit.unit : null;
+  if (cached && cached.url) return Promise.resolve(cached);
+  var finished = false;
+  function remember(unit) {
+    if (!finished || !unit || !unit.url || !(fb && fb.db && typeof fb.db.collection === 'function')) return unit;
+    /* keeping it is a convenience: whatever goes wrong here, the unit made is used */
+    return Promise.resolve().then(function () {
+      return fb.db.collection('events').doc(eventId).collection('sources').where('type', '==', source.type).where('url', '==', source.url).limit(1).get();
+    }).then(function (snap) { if (snap && !snap.empty) return snap.docs[0].ref.update({ examinedUnit: { key: cacheKey, unit: unit, at: new Date().toISOString() } }); })
+      .then(function () { return unit; }, function (err) { console.error('logo unit: the examined unit of ' + eventId + ' was not kept — ' + (err && err.message)); return unit; });
+  }
   function failed(why) {
     console.error('logo unit: the previous edition\'s logo of ' + eventId + ' was not used (' + why + ') — ' + source.url);
     return { failed: true, note: previousUnitNote(why) };
@@ -3407,8 +3469,8 @@ function previousEditionUnit(fb, eventId, o) {
   return pick(0).then(function (picture) {
     /* the reason the best candidate (the first) was refused is the one that matters */
     if (!picture) return failed(refusals[0] || 'no picture was found on its page');
-    var years = logoUnit.editionYears({ eventName: o.eventMeta.name, start: o.eventMeta.start, briefTexts: o.briefTexts, hints: source.editionHints || {}, pageUrl: source.url });
     return examineUnit(fb, eventId, picture, { years: years, origin: 'previous-edition', eventName: o.eventMeta.name, deadlineAt: o.deadlineAt }).then(function (ex) {
+      finished = !ex.unread;
       /* never used showing an earlier edition's year: the event's name stands in its place, and the owner
          is told why */
       if (ex.stuck) {
@@ -3437,7 +3499,7 @@ function previousEditionUnit(fb, eventId, o) {
         };
       });
     });
-  });
+  }).then(remember);
 }
 
 /* The logo the owner uploaded (events/<id>.logoUrl), as bytes: read from this project's own bucket when it
