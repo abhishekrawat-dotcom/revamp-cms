@@ -102,6 +102,28 @@
     return !m || ID_ATTR.test(m[2]);
   }
 
+  /* Internal pages (templates/_shared/rv-pages.js): template.json "pages": [{ slug, title, description? }] becomes
+     <meta name="rv-pages"> in <head>, and a section's "page" — a page's slug, "*" (every page: the top bar, the
+     footer) or "home" — its root's data-rv-page. A section without one is on the home page. */
+  var PAGE_SLUG = /^[a-z0-9-]{1,40}$/;
+  function cleanPages(list) {
+    if (global.RevampPages) return global.RevampPages.cleanPages(list);
+    var out = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (p) {
+      var slug = p && typeof p.slug === 'string' ? p.slug.trim() : '';
+      if (!PAGE_SLUG.test(slug) || slug === 'home' || seen[slug] || out.length >= 50) return;
+      seen[slug] = 1;
+      var page = { slug: slug, title: typeof p.title === 'string' && p.title.trim() ? p.title.replace(/\s+/g, ' ').trim().slice(0, 120) : slug };
+      if (typeof p.description === 'string' && p.description.trim()) page.description = p.description.replace(/\s+/g, ' ').trim().slice(0, 300);
+      out.push(page);
+    });
+    return out;
+  }
+  function pageAttr(page) {
+    page = typeof page === 'string' ? page.trim() : '';
+    return page === '*' || page === 'home' || PAGE_SLUG.test(page) ? ' data-rv-page="' + esc(page) + '"' : '';
+  }
+
   function tagSection(html, id, attrs) {
     return html.replace(ROOT_TAG, function (all, open, rest) {
       return open + ' data-rv-section="' + esc(id) + '"' + (attrs || '') + rest;
@@ -248,7 +270,7 @@
         var written = generated && opts.editing ? ' data-ai-generated="true"' : '';
         t.sections.forEach(function (s, i) {
           var html = parts[2 + i * 3], css = parts[3 + i * 3], js = parts[4 + i * 3];
-          sectionsHtml += tagSection(html, s.id, (ids[s.id] ? ' id="' + esc(s.id) + '"' : '') + written) +
+          sectionsHtml += tagSection(html, s.id, (ids[s.id] ? ' id="' + esc(s.id) + '"' : '') + pageAttr(s.page) + written) +
             '<style data-rv-style="' + esc(s.id) + '">\n' + css + '</style>\n';
           if (js) scripts += '<script data-rv-script="' + esc(s.id) + '">\n' + js + '</script>\n';
         });
@@ -260,6 +282,9 @@
           '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">',
           '<title>' + esc(opts.title || t.name || '') + '</title>'
         ];
+        /* a site with internal pages: its page list (templates/_shared/rv-pages.js has the contract) */
+        var pageList = cleanPages(t.pages);
+        if (pageList.length) head.push('<meta name="rv-pages" content="' + esc(JSON.stringify(pageList)).replace(/>/g, '&gt;') + '">');
         (t.shared || []).forEach(function (p) { head.push('<link rel="stylesheet" href="' + esc(shared(p)) + '">'); });
         (t.fonts || []).forEach(function (href) { head.push('<link rel="stylesheet" href="' + esc(href) + '">'); });
         if (t.theme) head.push('<link rel="stylesheet" href="' + esc(new URL(t.theme, base).href) + '">');

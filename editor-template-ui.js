@@ -35,6 +35,10 @@
      styleSelected({ fontFamily, fontSize, fontWeight, color }) restyles that one element.
      host.onDesignChange() is called whenever the design shown by those may have changed, and
      host.onSelectionChange({ kind, canStyle } | null) whenever another element, or none, is selected.
+   Internal pages (templates/_shared/rv-pages.js): a site whose page carries <meta name="rv-pages"> has a page
+   switcher in the top bar; the canvas shows one page at a time (the top bar and footer on every page), the
+   section list, moves and the section picker work on the page shown, and a section added there is on that page.
+   pages() -> [{ slug, title }], currentPage() -> slug | "home", showPage(slug). Saving keeps one document.
    flush() records an edit that is still pending (text being typed, a slider still moving).
    leave(url) is how the page is left for another one: what is pending is recorded first.
    handoffFor(eventId) is the Create Event hand-off waiting in this browser, when it belongs to that event.
@@ -2608,6 +2612,67 @@
     typingTimer = setTimeout(function () { typingTimer = null; commitTyping(); }, 600);
   }
 
+  /* ---------- internal pages (templates/_shared/rv-pages.js) ----------
+     One document holds every page; the canvas shows the one picked in the top bar's page switcher. Which page is
+     shown is the canvas's <html data-rv-current-page> with the rule that goes with it — the editor's own copy
+     (data-rv-editor) — and neither is saved (editor-canvas.js serialize()). A site without a page list has no
+     switcher and nothing here changes anything. */
+  var currentPage = 'home', pageSwitch = null;
+  function pagesLib() { return window.RevampPages || null; }
+  function sitePages() { return canvas && !remounting && pagesLib() ? pagesLib().readPages(canvas.doc) : []; }
+  // a one-page site: every section is on the page shown
+  function onShownPage(sec) {
+    if (!pagesLib() || !sitePages().length) return true;
+    return pagesLib().shownOn(sec, currentPage);
+  }
+  // the sections of the page shown, in page order (every section on a one-page site)
+  function pageSections() { return canvas.sections().filter(onShownPage); }
+  /* quiet: nothing announced (the caller says the sections changed itself) */
+  function showPage(slug, quiet) {
+    if (!canvas || remounting || !pagesLib()) return currentPage;
+    var pages = sitePages();
+    if (!pages.length) { currentPage = 'home'; renderPageSwitch(pages); return currentPage; }
+    var was = currentPage;
+    var next = slug === 'home' || pages.some(function (p) { return p.slug === slug; }) ? slug : 'home';
+    if (next !== was) {
+      if (editingEl) exitEdit(editingEl);
+      if (activeSectionEl && !pagesLib().shownOn(activeSectionEl, next)) deselect();
+    }
+    currentPage = pagesLib().show(canvas.doc, next, { pages: pages, links: false, editor: true });
+    renderPageSwitch(pages);
+    if (next !== was) {
+      try { canvas.win.scrollTo(0, 0); } catch (e) { /* nothing to scroll */ }
+      repositionToolbars();
+      if (!quiet) { sectionsChanged(); changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } }); }
+    }
+    return currentPage;
+  }
+  function renderPageSwitch(pages) {
+    if (!pageSwitch) {
+      var acts = document.querySelector('.topbar .topbar-acts'), before = document.getElementById('btn-preview');
+      if (!acts) return;
+      pageSwitch = document.createElement('label');
+      pageSwitch.className = 'ed-page-switch';
+      pageSwitch.hidden = true;
+      pageSwitch.innerHTML = '<span class="ed-page-switch-label">Page</span><select id="ed-page-select" aria-label="Page of the site shown"></select>';
+      acts.insertBefore(pageSwitch, before && before.parentNode === acts ? before : acts.firstChild);
+      pageSwitch.querySelector('select').addEventListener('change', function (e) { showPage(e.target.value); });
+    }
+    var select = pageSwitch.querySelector('select');
+    pageSwitch.hidden = !pages.length;
+    var want = [{ slug: 'home', title: 'Home' }].concat(pages);
+    var same = select.options.length === want.length && want.every(function (p, i) { return select.options[i].value === p.slug && select.options[i].textContent === p.title; });
+    if (!same) {
+      select.innerHTML = '';
+      want.forEach(function (p) {
+        var o = document.createElement('option');
+        o.value = p.slug; o.textContent = p.title;
+        select.appendChild(o);
+      });
+    }
+    select.value = currentPage;
+  }
+
   /* ---------- section toolbar (move / add / duplicate / hide / delete) ---------- */
   function buildSecToolbar(sec) {
     var hidden = sec.classList.contains('is-hidden-sec');
@@ -2643,7 +2708,7 @@
   /* where one step up or down takes a section: the section it lands in front of (null: the end of the page), or
      undefined when it cannot go that way — it is first or last, it is pinned, or a pinned section is in the way */
   function moveTarget(sec, dir) {
-    var secs = canvas.sections(), i = secs.indexOf(sec);
+    var secs = pageSections(), i = secs.indexOf(sec);
     if (i === -1 || (dir < 0 && i === 0)) return undefined;
     var before = dir < 0 ? secs[i - 1] : (secs[i + 2] || null);
     return canvas.canMoveSection(sec, before) ? before : undefined;
@@ -2744,7 +2809,7 @@
 
   function listSections() {
     if (!canvas || remounting) return [];
-    return canvas.sections().map(function (sec) {
+    return pageSections().map(function (sec) {
       var type = sec.getAttribute('data-rv-section');
       var marker = sec.querySelector('[data-rv-repeat-template]');
       return {
@@ -2773,6 +2838,11 @@
 
   function selectSection(sec) {
     if (!isLive(sec)) return;
+    // a section of another page (the chat's reference, a link to it): that page first
+    if (pagesLib() && sitePages().length && !onShownPage(sec)) {
+      var on = pagesLib().pageOfElement(sec);
+      if (on !== '*') showPage(on);
+    }
     selectSectionOnly(sec);
     canvas.scrollToSection(sec);
   }
@@ -2780,8 +2850,14 @@
   // toIndex: the place the section should have in listSections() once it has moved
   function moveSection(sec, toIndex) {
     if (!isLive(sec)) return false;
-    var others = canvas.sections().filter(function (s) { return s !== sec; });
-    return moveSectionBefore(sec, others[toIndex] || null);
+    var others = pageSections().filter(function (s) { return s !== sec; });
+    /* past the last section of the page shown: in front of whatever followed it (the footer, another page's sections) */
+    var before = others[toIndex] || null;
+    if (!before && others.length) {
+      var all = canvas.sections(), last = all.indexOf(others[others.length - 1]);
+      for (var i = last + 1; i < all.length && !before; i++) if (all[i] !== sec) before = all[i];
+    }
+    return moveSectionBefore(sec, before);
   }
 
   function setHidden(sec, hide) {
@@ -3102,6 +3178,8 @@
     canvas.win.addEventListener('keydown', onGlobalKey);
     if (canvas.onResize === null) canvas.onResize = repositionToolbars;
     canvas.onNavigate = recoverCanvas;
+    // a canvas mounted afresh (opening, recovering) shows the page that was shown
+    showPage(currentPage, true);
   }
 
   /* The canvas has loaded some other document (a script on the page set location; links and forms are already
@@ -4538,8 +4616,12 @@
     win.document.write('<!doctype html><title>Loading preview…</title><body style="font:14px/1.5 system-ui,sans-serif;padding:40px;color:#666">Loading preview…</body>');
     win.document.close();
     /* the page as it is in this editor, saved or not: this person's own preview. Staging changes on Save. */
+    var pageShown = currentPage;
     RevampCore.previewDraft(eventId, canvas.serialize()).then(function (result) {
-      win.location.href = result.stagingUrl;
+      var url = result.stagingUrl;
+      // the page shown in the editor: its own address (/preview/<id>/<slug>?draft=1)
+      if (pageShown !== 'home' && typeof url === 'string') url = url.replace(/^([^?#]*?)\/?(?=[?#]|$)/, '$1/' + encodeURIComponent(pageShown));
+      win.location.href = url;
     }).catch(function (err) {
       win.document.open();
       win.document.write('<!doctype html><title>Preview failed</title><body style="font:14px/1.5 system-ui,sans-serif;padding:40px;color:#a23b36">Could not load the preview — ' + escHtml(err && err.message ? err.message : 'please try again.') + '</body>');
@@ -4760,6 +4842,8 @@
     sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: applySectionEdges,
     selectedStyle: selectedStyle, styleSelected: styleSelected,
     listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
+    pages: function () { return sitePages().map(function (p) { return { slug: p.slug, title: p.title }; }); },
+    currentPage: function () { return currentPage; }, showPage: function (slug) { return showPage(slug); },
     setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,
     insertSection: insertSection, addBlock: addBlock,
     /* forms (editor-forms.js): formsChanged() after the event's forms changed — previews drawn again and the
