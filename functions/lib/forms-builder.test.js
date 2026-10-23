@@ -136,6 +136,44 @@ ok(loc.fields[0].placeholder === 'Start typing your city', 'a Location field kee
 /* every piece of form data reaches the page escaped (no raw data in innerHTML) */
 ok(/function esc\(/.test(src) && !/innerHTML\s*=\s*[^;]*\b(f|form|field|d)\.(name|label|title|intro)\b(?![^;]*esc\()/.test(src), 'labels and names go through esc()');
 
+/* a Long text field's word limit and a field required only sometimes (an award's nomination form) survive a
+   round trip through the builder; a condition that no longer holds is dropped, never sent broken */
+var nomination = {
+  id: 'nomination', name: 'Nomination', title: 'Submit a nomination', intro: '', purpose: 'nomination',
+  fields: [
+    { id: 'category', type: 'select', label: 'Category', required: true, placeholder: '', help: '', options: ['Tech › AI', 'People › CHRO'] },
+    { id: 'nominee_type', type: 'radio', label: 'Nominee type', required: true, placeholder: '', help: '', options: ['Individual', 'Organisation'] },
+    { id: 'designation', type: 'text', label: 'Nominee designation', required: false, placeholder: '', help: '', requiredWhen: { field: 'nominee_type', equals: 'Individual' } },
+    { id: 'email', type: 'email', label: 'Official email', required: true, placeholder: '', help: '' },
+    { id: 'entry_summary', type: 'textarea', label: 'Entry summary', required: true, placeholder: '', help: '', maxWords: 300 },
+    { id: 'consent', type: 'consent', label: 'Consent', required: true, placeholder: '', help: '' }
+  ],
+  submitLabel: 'Submit nomination', successMessage: 'Thanks.', countsAsRegistration: false, needsApproval: false, open: true, duplicates: 'allow', template: 'nomination', rev: 1
+};
+var ni = P.formInput(nomination);
+ok(ni.fields[4].maxWords === 300 && JSON.stringify(ni.fields[2].requiredWhen) === '{"field":"nominee_type","equals":"Individual"}', 'the word limit and the condition are sent back as they were', JSON.stringify(ni.fields));
+ok(ni.template === 'nomination' && ni.purpose === 'nomination', 'a nomination form stays one');
+ok(P.sameDraft(P.draftOf(nomination), nomination), 'a draft of it is the same form');
+ok(P.validateDraft(P.draftOf(nomination)).length === 0, 'it has no problems', JSON.stringify(P.validateDraft(P.draftOf(nomination))));
+var dn = P.draftOf(nomination); dn.fields.splice(1, 1);
+ok(!('requiredWhen' in P.formInput(dn).fields[1]), 'the question it depends on deleted: the condition is dropped');
+dn = P.draftOf(nomination); dn.fields[1].options = ['Person', 'Organisation'];
+ok(!('requiredWhen' in P.formInput(dn).fields[2]), 'its option renamed: the condition is dropped');
+dn = P.draftOf(nomination); P.moveItem(dn.fields, 2, 0);
+ok(!('requiredWhen' in P.formInput(dn).fields[0]), 'moved above the question it depends on: the condition is dropped');
+dn = P.draftOf(nomination); dn.fields[2].required = true;
+ok(!('requiredWhen' in P.formInput(dn).fields[2]), 'made required for everyone: no condition');
+dn = P.draftOf(nomination); dn.fields[4].maxWords = 5;
+ok(JSON.stringify(P.validateDraft(dn).map(function (e) { return e.key + '@' + e.field; })) === '["maxWords@4"]', 'a word limit under 10 is caught before sending');
+dn = P.draftOf(nomination); dn.fields[4].maxWords = null;
+ok(!('maxWords' in P.formInput(dn).fields[4]) && P.validateDraft(dn).length === 0, 'an empty word limit is no limit');
+dn = P.draftOf(nomination); dn.fields[4].type = 'text';
+ok(!('maxWords' in P.formInput(dn).fields[4]), 'a field that is no longer Long text sends no word limit');
+var pv = P.previewForm(P.draftOf(nomination), 'nomination', [], null);
+ok(pv.fields[4].maxWords === 300 && pv.fields[2].requiredWhen && pv.fields[2].requiredWhen.equals === 'Individual', 'the preview draws the word count and the condition');
+ok(/nomination: 'Award nomination'/.test(src), 'a nomination form\'s purpose has words in the builder');
+ok(/data-fb-k="maxWords"/.test(src) && /data-fb-k="requiredWhen"/.test(src), 'the field editor has a Word limit and the condition');
+
 if (failures.length) {
   console.error('forms-builder.test.js: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
   process.exit(1);

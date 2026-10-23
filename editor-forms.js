@@ -93,6 +93,8 @@ window.RevampEditorForms = (function () {
         var o = { id: x.id, type: x.type, label: x.label, required: !!x.required, placeholder: x.placeholder || '', help: x.help || '' };
         if (x.options) o.options = x.options.slice();
         if (x.type === 'country') o.options = (state.countries || []).slice();
+        if (x.maxWords) o.maxWords = x.maxWords;
+        if (x.requiredWhen) o.requiredWhen = { field: x.requiredWhen.field, equals: x.requiredWhen.equals };
         return o;
       }),
       submitLabel: f.submitLabel || 'Submit', open: f.open !== false && regOpen, counts: !!f.countsAsRegistration, rev: f.rev || 0,

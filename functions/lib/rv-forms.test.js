@@ -314,5 +314,34 @@ check('styles are in px (a fixed template\'s root font size is 10px)', !/\d(?:\.
 check('phone pop-up keeps a focused field clear of its sticky title and Submit bar', /\.rv-form-modal-panel\{[^}]*scroll-padding-bottom:[^;}]*\d+px[^}]*\}/.test(SRC) && /\.rv-form-modal-panel\{[^}]*scroll-padding-top:[^;}]*\d+px/.test(SRC));
 check('a wrong field focused after a failed submit is brought clear of the sticky title and Submit bar', /function keepClear\(/.test(SRC) && /if \(bad\) \{ focusPart\(bad\); return; \}/.test(SRC));
 
+/* ---------- a Long text field's word limit, and a field required only sometimes (award nominations) ----------
+   The same answers through this runtime and through the server: the same verdict, the same words. */
+var SUMMARY = F('entry_summary', 'textarea', 'Entry summary', true, { maxWords: 300 });
+var w300 = new Array(301).join('word '), w301 = w300 + 'extra', longOk = new Array(300).join('extraordinarily ');
+[[w300, null], [w301, 'Please keep Entry summary to 300 words or fewer (it has 301).'], [longOk, null], ['', 'Please fill in Entry summary.'],
+  ['  one\n\ntwo  ', null]].forEach(function (t, i) {
+  var page = RF.cleanValue(SUMMARY, t[0]), server = SERVER.validateAnswers({ fields: [SUMMARY] }, { answers: { entry_summary: t[0] } });
+  if (t[1]) {
+    check('word limit ' + i + ': the page refuses it with the server\'s words', page.error === t[1], JSON.stringify(page));
+    check('word limit ' + i + ': so does the server', server.errors.entry_summary === t[1], JSON.stringify(server.errors));
+  } else {
+    check('word limit ' + i + ': the page takes it', !page.error, JSON.stringify(page).slice(0, 120));
+    check('word limit ' + i + ': so does the server, cleaned the same', !server.errors.entry_summary && server.answers.entry_summary === page.value, JSON.stringify(server.errors));
+  }
+});
+check('a word-limited answer may be longer than 2,000 characters on the page too', RF.cleanValue(SUMMARY, longOk).value.length > 2000);
+check('without a limit, a Long text answer is still cut at 2,000', RF.cleanValue(F('m', 'textarea', 'M', false), new Array(2101).join('a')).value.length === 2000);
+
+var KIND = F('nominee_type', 'radio', 'Nominee type', true, { options: ['Individual', 'Organisation'] });
+var DESIG = F('designation', 'text', 'Nominee designation', false, { requiredWhen: { field: 'nominee_type', equals: 'Individual' } });
+var condForm = { fields: [KIND, DESIG] };
+[[{ nominee_type: 'Individual', designation: '' }, 'Please fill in Nominee designation.'], [{ nominee_type: 'Organisation', designation: '' }, null],
+  [{ nominee_type: 'Individual', designation: 'CIO' }, null], [{ nominee_type: '', designation: '' }, null]].forEach(function (t, i) {
+  var page = RF.validate(condForm, t[0]).designation, server = SERVER.validateAnswers(condForm, { answers: t[0] }).errors.designation;
+  check('required only sometimes ' + i + ': page and server agree', (page || null) === t[1] && (server || null) === t[1], JSON.stringify([page, server]));
+});
+check('the page draws the word count under the box', SRC.indexOf("' / ' + limit + ' words'") !== -1 && /'\.rv-form \.rv-form-count\{/.test(SRC));
+check('a field required only sometimes shows its star while it is', /function syncConditions\(/.test(SRC) && /syncConditions\(\);\n\s*if \(pv\) return;/.test(SRC));
+
 if (failed) { console.error('rv-forms: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-forms: all ' + passed + ' checks passed');

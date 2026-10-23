@@ -469,7 +469,34 @@
   }
   function maxOf(field) {
     if (MAPPED_MAX[field.id] && field.type === 'text') return MAPPED_MAX[field.id];
+    if (field.type === 'textarea') return textareaMax(field);
     return MAXLEN[field.type] || 200;
+  }
+  /* a Long text field's word limit (field.maxWords, functions/lib/forms.js): words are what is between spaces
+     and line breaks; such an answer may have room for its words, 12 characters each (2,000 to 8,000) */
+  function maxWordsOf(field) {
+    var n = Number(field && field.maxWords);
+    return field && field.type === 'textarea' && isFinite(n) && n >= 1 && Math.floor(n) === n ? n : 0;
+  }
+  function textareaMax(field) {
+    var mw = maxWordsOf(field);
+    return mw ? Math.min(8000, Math.max(MAXLEN.textarea, mw * 12)) : MAXLEN.textarea;
+  }
+  function wordCount(s) { var t = str(s).trim(); return t ? t.split(/\s+/).length : 0; }
+  function wordsMessage(field, n) { return 'Please keep ' + labelOf(field) + ' to ' + maxWordsOf(field) + ' words or fewer (it has ' + n + ').'; }
+  /* a field required only when an earlier single-choice answer is a certain option (field.requiredWhen) */
+  function conditionMet(field, values) {
+    var rw = field && field.requiredWhen;
+    if (!rw || typeof rw !== 'object' || !values || !Object.prototype.hasOwnProperty.call(values, str(rw.field))) return false;
+    return line(values[str(rw.field)], 1000) === str(rw.equals);
+  }
+  /* the field as it must be answered now: required when its condition is met */
+  function effective(field, values) {
+    if (!field || field.required || !conditionMet(field, values)) return field;
+    var out = {};
+    for (var k in field) if (Object.prototype.hasOwnProperty.call(field, k)) out[k] = field[k];
+    out.required = true;
+    return out;
   }
   function keyOf(field, i) { return field && field.id ? String(field.id) : 'field_' + (i + 1); }
 
@@ -567,8 +594,9 @@
         if (!realDate(s)) return { error: 'Please enter a valid date for ' + labelOf(field) + '.' };
         return { value: s };
       case 'textarea':
-        s = multiline(raw, 2000);
+        s = multiline(raw, textareaMax(field));
         if (!s) return empty();
+        if (maxWordsOf(field) && wordCount(s) > maxWordsOf(field)) return { error: wordsMessage(field, wordCount(s)) };
         return { value: s };
       default:
         s = line(raw, maxOf({ id: field.id, type: 'text' }));
@@ -582,7 +610,7 @@
     values = values || {};
     fields.forEach(function (f, i) {
       if (!f) return;
-      var k = keyOf(f, i), r = cleanValue(f, values[k]);
+      var k = keyOf(f, i), r = cleanValue(effective(f, values), values[k]);
       if (r.error) errors[k] = r.error;
     });
     return errors;
@@ -626,6 +654,9 @@
     '.rv-form .rv-form-choice input:focus-visible{outline:2px solid var(--rvf-focus);outline-offset:2px}',
     '.rv-form .rv-form-choice span{min-width:0;overflow-wrap:anywhere}',
     '.rv-form .rv-form-help{margin:6px 0 0;font-size:13px;line-height:1.45;color:var(--rvf-muted);overflow-wrap:anywhere}',
+    /* a Long text field's word count, under its box */
+    '.rv-form .rv-form-count{margin:6px 0 0;font-size:12.5px;line-height:1.4;color:var(--rvf-muted);text-align:right;font-variant-numeric:tabular-nums}',
+    '.rv-form .rv-form-count.is-over{color:var(--rvf-err);font-weight:600}',
     '.rv-form .rv-form-err{margin:6px 0 0;font-size:13px;font-weight:500;line-height:1.4;color:var(--rvf-err);overflow-wrap:anywhere}',
     '.rv-form .rv-form-err:empty{display:none}',
     /* the consent: a light bordered panel with its tick box; required on every form, never optional */
@@ -1012,15 +1043,31 @@
       if (line(str(form.intro), 10)) root.appendChild(paragraphs(doc, mk(doc, 'div', 'rv-form-intro'), form.intro));
     }
 
-    function labelContent(parent, field) {
+    /* part: the field's part, given when the field is required only sometimes (field.requiredWhen) — its marks
+       are then kept in part.condMarks and shown while the condition holds (syncConditions) */
+    function labelContent(parent, field, part) {
       var text = line(str(field.label), 200);
       parent.appendChild(doc.createTextNode(text || (pv ? MSG.untitled : labelOf(field))));
-      if (field.required) {
+      var sometimes = !field.required && !!field.requiredWhen && !!part;
+      if (field.required || sometimes) {
         var star = mk(doc, 'span', 'rv-form-req', '*');
         star.setAttribute('aria-hidden', 'true');
         parent.appendChild(star);
-        parent.appendChild(mk(doc, 'span', 'rv-form-vh', ' (required)'));
+        var vh = mk(doc, 'span', 'rv-form-vh', ' (required)');
+        parent.appendChild(vh);
+        if (sometimes) { star.hidden = true; vh.hidden = true; part.condMarks = [star, vh]; }
       }
+    }
+    /* a field required only sometimes: its star, and its box's required state, follow the answer it depends on */
+    function syncConditions() {
+      var vals = null;
+      parts.forEach(function (p) {
+        if (!p.condMarks) return;
+        if (!vals) vals = values();
+        var on = conditionMet(p.field, vals);
+        p.condMarks.forEach(function (m) { m.hidden = !on; });
+        p.controls.forEach(function (c) { if (c.type !== 'radio' && c.type !== 'checkbox') c.required = on; });
+      });
     }
 
     function control(el) {
@@ -1408,7 +1455,7 @@
 
       if (group) {
         var legend = mk(doc, 'legend', 'rv-form-legend');
-        labelContent(legend, field);
+        labelContent(legend, field, part);
         wrap.appendChild(legend);
         wrap.setAttribute('aria-describedby', described);
         var box = mk(doc, 'div', 'rv-form-choices');
@@ -1478,7 +1525,7 @@
         cb.setAttribute('aria-describedby', described);
         lab2.appendChild(cb);
         var span = mk(doc, 'span');
-        labelContent(span, field);
+        labelContent(span, field, part);
         lab2.appendChild(span);
         wrap.appendChild(lab2);
         part.controls.push(cb);
@@ -1488,7 +1535,7 @@
       } else {
         var label = mk(doc, 'label', 'rv-form-label');
         label.htmlFor = id;
-        labelContent(label, field);
+        labelContent(label, field, part);
         wrap.appendChild(label);
         var c;
         if (type === 'select' || type === 'country') {
@@ -1506,8 +1553,24 @@
           wrap.appendChild(holder);
         } else if (type === 'textarea') {
           c = control(mk(doc, 'textarea', 'rv-form-input'));
-          c.rows = 4;
+          c.rows = maxWordsOf(field) ? 6 : 4;
           wrap.appendChild(c);
+          if (maxWordsOf(field)) {
+            var taCount = mk(doc, 'p', 'rv-form-count');
+            taCount.id = id + '-count';
+            taCount.setAttribute('aria-live', 'polite');
+            var taBox = c, limit = maxWordsOf(field);
+            var showCount = function () {
+              var n = wordCount(taBox.value);
+              taCount.textContent = n + ' / ' + limit + ' words';
+              if (n > limit) taCount.className = 'rv-form-count is-over'; else taCount.className = 'rv-form-count';
+            };
+            showCount();
+            if (!pv) taBox.addEventListener('input', showCount);
+            part.showCount = showCount;
+            wrap.appendChild(taCount);
+            described += ' ' + taCount.id;
+          }
         } else if (type === 'phone') {
           c = control(mk(doc, 'input', 'rv-form-input rv-form-phone-num'));
           try { c.type = 'tel'; } catch (e) { c.setAttribute('type', 'tel'); }
@@ -1539,7 +1602,7 @@
         part.controls.push(c);
         part.focus = c;
         if (!part.get) part.get = function () { return c.value; };
-        if (!part.set) part.set = function (v) { c.value = v == null ? '' : (Array.isArray(v) ? v.join(', ') : String(v)); };
+        if (!part.set) part.set = function (v) { c.value = v == null ? '' : (Array.isArray(v) ? v.join(', ') : String(v)); if (part.showCount) part.showCount(); };
       }
       if (part.note) wrap.appendChild(part.note);
       wrap.appendChild(helpEl);
@@ -1743,6 +1806,7 @@
       root.appendChild(formEl);
 
       if (initial) parts.forEach(function (p) { if (initial.hasOwnProperty(p.key)) p.set(initial[p.key]); });
+      syncConditions();
       if (pv) return;
 
       formEl.addEventListener('submit', onSubmit);
@@ -1751,6 +1815,7 @@
       submitBtn.addEventListener('click', onSubmit);
       function touch() {
         st.touched = true;
+        syncConditions();
         if (typeof opts.onInput === 'function') { try { opts.onInput(values()); } catch (e) { /* the host's own */ } }
       }
       formEl.addEventListener('input', touch);

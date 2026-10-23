@@ -8,7 +8,15 @@
 //     { id, name, title, intro, purpose, fields: [Field], submitLabel, successMessage,
 //       countsAsRegistration, needsApproval, open, duplicates, order, template, rev,
 //       createdAt, createdBy, updatedAt, updatedBy }
-//   Field { id, type, label, required, placeholder, help, options? }   options: select / radio / multiselect only
+//   Field { id, type, label, required, placeholder, help, options?, maxWords?, requiredWhen? }
+//     options       select / radio / multiselect only
+//     maxWords      Long text (textarea) only: at most this many words (10–1000); the page counts them as the
+//                   visitor types, and the answer may then be longer than the usual 2,000 characters
+//                   (textareaMax). Absent: no word limit.
+//     requiredWhen  { field, equals }: the field is required only when the answer to an earlier single-choice
+//                   (select / radio) field `field` is the option `equals` — e.g. a nominee's designation, asked
+//                   of an individual and optional for an organisation. Only on a field that is not required
+//                   otherwise; never on the email.
 //
 //   A form id is /^[a-z][a-z0-9-]{0,39}$/ and never changes. "register" is the form an event's original
 //   single registration form becomes (legacyDefaultForm). A field id is /^[a-z][a-z0-9_]{0,39}$/ and never
@@ -54,7 +62,7 @@ var FIELD_TYPE_LABELS = {
   country: 'Country', location: 'Location (city, state, country)'
 };
 var OPTION_TYPES = ['select', 'radio', 'multiselect'];
-var PURPOSES = ['register', 'interest', 'partner', 'vip', 'speaker', 'custom'];
+var PURPOSES = ['register', 'interest', 'partner', 'vip', 'speaker', 'nomination', 'custom'];
 /* a registration's own columns: their values are stored as reg[MAPPED_KEY[id] || id], every other answer
    under answers.<id> */
 var MAPPED_FIELDS = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location', 'consent'];
@@ -70,13 +78,16 @@ var FIELD_ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
 var DEFAULT_FORM_ID = 'register';
 
 var LIMITS = { maxForms: 20, maxFields: 40, maxOptions: 100 };
+/* a Long text field's word limit (Field.maxWords), and the characters such an answer may have */
+var WORDS = { min: 10, max: 1000 };
+var TEXTAREA_MAX = 2000, TEXTAREA_MAX_WORDS_CAP = 8000;
 var MIN_FIELDS = 1;
 var MAX_ANSWERS_BYTES = 16 * 1024;
 var TEXT = { name: 80, title: 120, intro: 600, submitLabel: 40, successMessage: 600, label: 200, placeholder: 120, help: 300, option: 120 };
 
 /* bumped whenever templates/_shared/rv-forms.js changes, so a browser holding the old copy (static files are
    cached for five minutes, under an unhashed name) asks for the new one */
-var FORMS_RUNTIME_V = 3;
+var FORMS_RUNTIME_V = 4;
 
 /* An email address as a form takes it: name@domain.tld — the name of the letters, digits and signs an address
    may have, no two dots in a row and none at either end; the domain of labels of letters, digits and hyphens,
@@ -303,6 +314,10 @@ var FORM_TEMPLATES = TEMPLATE_SOURCE.map(function (t) {
 var TEMPLATE_BY_ID = {};
 FORM_TEMPLATES.forEach(function (t) { TEMPLATE_BY_ID[t.id] = t; });
 var TEMPLATE_IDS = FORM_TEMPLATES.map(function (t) { return t.id; });
+/* templates a form may be stored as but no builder offers: an award's nomination form is made from its
+   categories (awardNominationForm, lib/api-forms.js createAwardForms), never picked from a list */
+var NOMINATION_TEMPLATE = 'nomination';
+var STORED_TEMPLATE_IDS = TEMPLATE_IDS.concat([NOMINATION_TEMPLATE]);
 
 /* The builder's "Add field" quick picks: { presetId, label, field }. A preset's id is a suggestion: when the
    form already has a field with that id, the builder sends the new one without an id and is given one. */
@@ -329,7 +344,8 @@ var FORM_KEYS = ['id', 'name', 'title', 'intro', 'purpose', 'fields', 'submitLab
   'needsApproval', 'open', 'duplicates', 'template'];
 /* what the server itself keeps on a form, and a builder may send back as it was given: ignored, never refused */
 var SERVER_KEYS = ['rev', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'order', 'submissions', 'pending'];
-var FIELD_KEYS = ['id', 'type', 'label', 'required', 'placeholder', 'help', 'options'];
+var FIELD_KEYS = ['id', 'type', 'label', 'required', 'placeholder', 'help', 'options', 'maxWords', 'requiredWhen'];
+var CONDITION_TYPES = ['select', 'radio'];
 
 function fail(error, field) { return { error: error, field: field || '' }; }
 function tooLong(what, max) { return what + ' is too long (the limit is ' + max + ' characters).'; }
@@ -412,7 +428,7 @@ function cleanFormInput(input, opts) {
   if (dup !== 'reject' && dup !== 'allow') return fail('"One response per email" must be "reject" or "allow".', 'duplicates');
   out.duplicates = dup;
   var tpl = input.template == null || input.template === '' ? 'blank' : input.template;
-  if (TEMPLATE_IDS.indexOf(tpl) === -1) return fail('"template" must be one of: ' + TEMPLATE_IDS.join(', ') + '.', 'template');
+  if (STORED_TEMPLATE_IDS.indexOf(tpl) === -1) return fail('"template" must be one of: ' + TEMPLATE_IDS.join(', ') + '.', 'template');
   out.template = tpl;
   return { value: out };
 }
@@ -452,6 +468,21 @@ function cleanFields(list) {
       if (o.error) return o.error;
       out.options = o.value;
     }
+    if (f.maxWords != null && f.maxWords !== '') {
+      if (f.type !== 'textarea') return fail('Only a Long text field can have a word limit (“' + label + '”).', where + '.maxWords');
+      if (typeof f.maxWords !== 'number' || Math.floor(f.maxWords) !== f.maxWords || f.maxWords < WORDS.min || f.maxWords > WORDS.max) {
+        return fail('The word limit of “' + label + '” must be a whole number from ' + WORDS.min + ' to ' + WORDS.max + '.', where + '.maxWords');
+      }
+      out.maxWords = f.maxWords;
+    }
+    if (f.requiredWhen != null) {
+      var rw = f.requiredWhen;
+      if (!isObj(rw) || typeof rw.field !== 'string' || typeof rw.equals !== 'string' || Object.keys(rw).some(function (k) { return k !== 'field' && k !== 'equals'; })) {
+        return fail('“' + label + '”: "requiredWhen" must be { field, equals }.', where + '.requiredWhen');
+      }
+      /* a field required anyway needs no condition: it is dropped */
+      if (out.required !== true) out.requiredWhen = { field: rw.field, equals: line(rw.equals, 100000) };
+    }
     if (f.id != null && f.id !== '') {
       if (typeof f.id !== 'string' || !FIELD_ID_RE.test(f.id)) {
         return fail('The id of “' + label + '” must be lower-case letters, digits and underscores, starting with a letter (at most 40).', where + '.id');
@@ -480,6 +511,17 @@ function cleanFields(list) {
       return fail('“' + fd.label + '” holds the registration’s ' + fd.id.replace(/_/g, ' ') + ', so it must be a ' + FIELD_TYPE_LABELS[want] + ' field.', 'fields.' + at[i] + '.type');
     }
   }
+  for (i = 0; i < fields.length; i++) {
+    var cond = fields[i].requiredWhen;
+    if (!cond) continue;
+    var where2 = 'fields.' + at[i] + '.requiredWhen';
+    if (LOCKED_FIELDS.indexOf(fields[i].id) !== -1) return fail('The ' + fields[i].id + ' field is always required: it cannot be required only sometimes.', where2);
+    var ref = -1;
+    for (var r2 = 0; r2 < i; r2++) if (fields[r2].id === cond.field) ref = r2;
+    if (ref === -1) return fail('“' + fields[i].label + '” is required only when another question has a certain answer, but that question (“' + cond.field + '”) is not above it in this form.', where2);
+    if (CONDITION_TYPES.indexOf(fields[ref].type) === -1) return fail('“' + fields[i].label + '” can depend only on a Dropdown or Single choice question, and “' + fields[ref].label + '” is not one.', where2);
+    if ((fields[ref].options || []).indexOf(cond.equals) === -1) return fail('“' + fields[i].label + '” is required when “' + fields[ref].label + '” is “' + cond.equals + '”, which is not one of its options.', where2);
+  }
   for (i = 0; i < LOCKED_FIELDS.length; i++) {
     var id = LOCKED_FIELDS[i], x = -1;
     fields.forEach(function (fd, k) { if (fd.id === id) x = k; });
@@ -488,6 +530,115 @@ function cleanFields(list) {
   }
   if (fields.length < MIN_FIELDS) return fail('A form needs at least ' + MIN_FIELDS + ' fields.', 'fields');
   return { value: withConsent(fields) };
+}
+
+/* ---------- an award's forms (lib/api-forms.js createAwardForms stores them) ----------
+   An award site's main button says "Express Interest" before nominations open and "Nominate Now" while they
+   are open (templates/_shared/rv-award-cta.js). Each opens one of these two forms. Both are ordinary forms:
+   an organiser edits them in either builder like any other, and their responses are in Reporting under the
+   form's name. Neither counts as a registration; nominating is free (no fee is taken). */
+var NOMINEE_TYPES = ['Individual', 'Organisation'];
+var CATEGORY_SEP = ' › ';          // "Master › Sub"
+var AWARD_NOMINATION_NAME = 'Nomination';
+var AWARD_INTEREST_NAME = 'Express Interest';
+var ENTRY_SUMMARY_WORDS = 300;
+
+/* An award's categories as the options of the nomination form's Category field -> { options, skipped }.
+   categories: a list of any of
+     'Master › Sub' or 'Category'                      as written
+     { master|group|parent, name|title|sub }           'Master › Name' ('Name' alone without a master)
+     { name|title, subcategories|subs|children: [...] }  one option per sub ('Name › Sub'), the name itself when
+                                                       it has none; a sub is text or { name|title }
+   Each option is one line of at most 120 characters (longer ones are shortened, ending "…"); the same option
+   twice is kept once; after 100, the rest are left out and counted in `skipped`. */
+function awardCategoryOptions(categories) {
+  var out = [], skipped = 0;
+  function nameOf(v) { return typeof v === 'string' ? line(v, 1000) : isObj(v) ? line(v.name || v.title || v.sub || v.label || '', 1000) : ''; }
+  function push(label) {
+    label = line(label, 1000);
+    if (!label) return;
+    if (label.length > TEXT.option) label = label.slice(0, TEXT.option - 1).replace(/\s+\S*$/, '').trim().slice(0, TEXT.option - 1) + '…';
+    if (out.indexOf(label) !== -1) return;
+    if (out.length >= LIMITS.maxOptions) { skipped++; return; }
+    out.push(label);
+  }
+  (Array.isArray(categories) ? categories : []).forEach(function (c) {
+    if (typeof c === 'string') return push(c);
+    if (!isObj(c)) return;
+    var subs = c.subcategories || c.subs || c.children;
+    var master = line(c.master || c.group || c.parent || '', 1000), name = nameOf(c);
+    if (Array.isArray(subs) && subs.length) {
+      var named = 0;
+      subs.forEach(function (sub) { var n = nameOf(sub); if (n) { named++; push((name ? name + CATEGORY_SEP : '') + n); } });
+      if (named) return;
+    }
+    if (name) push(master ? master + CATEGORY_SEP + name : name);
+  });
+  return { options: out, skipped: skipped };
+}
+
+/* The nomination form (FormInput, no id): the award's categories, who is nominated, their organisation, how to
+   reach the nominator, the entry itself, and the consent box. Nominee name, designation and organisation are
+   the registration's own name / designation / company columns, so Reporting lists nominations like any other
+   response; the designation is asked of an individual and optional for an organisation (requiredWhen).
+   One person may nominate in several categories: duplicates are allowed. opts: { options (the categories as
+   awardCategoryOptions gives them, at least one), title, name } */
+function awardNominationForm(opts) {
+  opts = opts || {};
+  var fields = [
+    F('category', 'select', 'Category', true, { options: (opts.options || []).slice() }),
+    F('nominee_type', 'radio', 'Nominee type', true, { options: NOMINEE_TYPES.slice() }),
+    F('name', 'text', 'Nominee name', true, { help: 'The person or organisation you are nominating.' }),
+    F('designation', 'text', 'Nominee designation', false, { help: 'Not needed when the nominee is an organisation.', requiredWhen: { field: 'nominee_type', equals: 'Individual' } }),
+    F('company', 'text', 'Organisation', true),
+    F('email', 'email', DEFAULT_EMAIL_LABEL, true),
+    F('phone', 'phone', 'Mobile number', true),
+    F('entry_title', 'text', 'Entry title', true),
+    F('entry_summary', 'textarea', 'Entry summary', true, { maxWords: ENTRY_SUMMARY_WORDS, help: 'What the nominee did and the difference it made, in up to ' + ENTRY_SUMMARY_WORDS + ' words.' }),
+    F('supporting_link', 'url', 'Supporting link', false, { placeholder: 'https://', help: 'A page, document or video that supports the entry. Optional.' })
+  ];
+  return {
+    name: line(opts.name, TEXT.name) || AWARD_NOMINATION_NAME,
+    title: line(opts.title, TEXT.title) || 'Submit a nomination',
+    intro: '', purpose: 'nomination', fields: withConsent(fields),
+    submitLabel: 'Submit nomination',
+    successMessage: 'Thank you. Your nomination has been received, and the awards team will be in touch.',
+    countsAsRegistration: false, needsApproval: false, open: true, duplicates: 'allow', template: NOMINATION_TEMPLATE
+  };
+}
+/* The "Express Interest" form (FormInput, no id): the seven standard questions and the consent box. */
+function awardInterestForm(opts) {
+  opts = opts || {};
+  return {
+    name: line(opts.name, TEXT.name) || AWARD_INTEREST_NAME,
+    title: line(opts.title, TEXT.title) || AWARD_INTEREST_NAME,
+    intro: '', purpose: 'interest', fields: withConsent(defaultFields()),
+    submitLabel: 'Express interest',
+    successMessage: 'Thank you for your interest. We will let you know when nominations open.',
+    countsAsRegistration: false, needsApproval: false, open: true, duplicates: 'reject', template: 'interest'
+  };
+}
+/* Which of an event's forms (stored forms, in order) are its award forms -> { nominate, interest } (null when
+   it has none): the first form made for nominations, and the first expression-of-interest form. */
+function findAwardForms(list) {
+  list = Array.isArray(list) ? list : [];
+  return {
+    nominate: list.filter(function (f) { return f && f.purpose === 'nomination'; })[0] || null,
+    interest: list.filter(function (f) { return f && f.purpose === 'interest'; })[0] || null
+  };
+}
+/* A nomination form's Category field given new options -> the new fields, or null when nothing changes (no
+   Category select any more, or the same options). Nothing else of the form is touched. */
+function withCategoryOptions(form, options) {
+  if (!form || !Array.isArray(options) || !options.length) return null;
+  var changed = false;
+  var fields = (form.fields || []).map(function (f) {
+    if (f.id !== 'category' || f.type !== 'select') return f;
+    if (JSON.stringify(f.options || []) === JSON.stringify(options)) return f;
+    changed = true;
+    return Object.assign({}, f, { options: options.slice() });
+  });
+  return changed ? fields : null;
 }
 
 /* ---------- the event's original single form ---------- */
@@ -611,6 +762,16 @@ function migrationPlan(id, data, ev, nowIso) {
   return { action: 'consent', kept: kept, patch: { fields: withConsent(raw.filter(function (x) { return isObj(x) && !isConsentField(x); })) } };
 }
 
+/* A field's word limit and its condition, as stored, onto `out` (a field of the same type): only what is
+   well formed, so a reader never has to check again. */
+function copyExtras(f, out) {
+  var mw = Number(f && f.maxWords);
+  if (out.type === 'textarea' && isFinite(mw) && Math.floor(mw) === mw && mw >= WORDS.min && mw <= WORDS.max) out.maxWords = mw;
+  var rw = f && f.requiredWhen;
+  if (!out.required && isObj(rw) && typeof rw.field === 'string' && rw.field && typeof rw.equals === 'string') out.requiredWhen = { field: rw.field, equals: rw.equals };
+  return out;
+}
+
 /* A stored form document as every reader sees it: defaults filled in, never a missing list. */
 function storedForm(id, d) {
   d = isObj(d) ? d : {};
@@ -620,6 +781,7 @@ function storedForm(id, d) {
     var out = { id: String(f.id || ''), type: FIELD_TYPES.indexOf(f.type) !== -1 ? f.type : 'text', label: String(f.label || ''),
       required: f.required === true, placeholder: String(f.placeholder || ''), help: String(f.help || '') };
     if (OPTION_TYPES.indexOf(out.type) !== -1) out.options = (Array.isArray(f.options) ? f.options : []).filter(function (o) { return typeof o === 'string'; });
+    copyExtras(f, out);
     return out;
   }));
   return {
@@ -628,7 +790,7 @@ function storedForm(id, d) {
     submitLabel: String(d.submitLabel || 'Submit'), successMessage: String(d.successMessage || DEFAULT_SUCCESS),
     countsAsRegistration: d.countsAsRegistration === true, needsApproval: d.needsApproval === true, open: d.open !== false,
     duplicates: d.duplicates === 'allow' ? 'allow' : 'reject', order: Number(d.order) || 0,
-    template: TEMPLATE_IDS.indexOf(d.template) !== -1 ? d.template : 'blank', rev: Number(d.rev) || 0,
+    template: STORED_TEMPLATE_IDS.indexOf(d.template) !== -1 ? d.template : 'blank', rev: Number(d.rev) || 0,
     createdAt: isoOf(d.createdAt), createdBy: String(d.createdBy || ''), updatedAt: isoOf(d.updatedAt), updatedBy: String(d.updatedBy || '')
   };
 }
@@ -662,7 +824,7 @@ function publicForm(form, ev, consent) {
       var out = { id: f.id, type: f.type, label: f.label, required: !!f.required, placeholder: f.placeholder || '', help: f.help || '' };
       if (OPTION_TYPES.indexOf(f.type) !== -1) out.options = (f.options || []).slice();
       if (f.type === 'country') out.options = COUNTRIES.slice();
-      return out;
+      return copyExtras(f, out);
     }),
     submitLabel: form.submitLabel, open: form.open !== false && eventOpen, counts: form.countsAsRegistration === true, rev: form.rev || 0,
     consent: publicConsent(consent)
@@ -697,6 +859,21 @@ function requiredMessage(f) {
   return 'Please fill in ' + f.label + '.';
 }
 function optionMessage(f) { return 'Please choose one of the options for ' + f.label + '.'; }
+/* words: what is between spaces and line breaks (the page counts them the same way as the visitor types) */
+function wordCount(s) { var t = String(s == null ? '' : s).trim(); return t ? t.split(/\s+/).length : 0; }
+function wordsMessage(f, n) { return 'Please keep ' + f.label + ' to ' + f.maxWords + ' words or fewer (it has ' + n + ').'; }
+/* the characters a Long text answer may have: 2,000, or room for its word limit (12 a word, at most 8,000) */
+function textareaMax(f) {
+  var mw = f && f.maxWords;
+  return mw ? Math.min(TEXTAREA_MAX_WORDS_CAP, Math.max(TEXTAREA_MAX, mw * 12)) : TEXTAREA_MAX;
+}
+/* a field required only when an earlier single-choice answer is a certain option (Field.requiredWhen): whether
+   that is so for these answers (src: { fieldId: raw answer }) */
+function conditionMet(f, src) {
+  var rw = f && f.requiredWhen;
+  if (!rw || !src || !has(src, rw.field)) return false;
+  return line(src[rw.field], 1000) === rw.equals;
+}
 function isRealDate(s) {
   var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (!m) return false;
@@ -716,7 +893,11 @@ function cleanAnswer(f, raw) {
   var s, n;
   switch (f.type) {
     case 'textarea':
-      s = multiline(raw, 2000);
+      s = multiline(raw, textareaMax(f));
+      if (s && f.maxWords) {
+        n = wordCount(s);
+        if (n > f.maxWords) return { error: wordsMessage(f, n) };
+      }
       return { value: s, empty: !s };
     case 'email':
       s = line(raw, 200).toLowerCase();
@@ -816,7 +997,7 @@ function validateAnswers(form, body) {
     }
     var c = cleanAnswer(f, has(src, f.id) ? src[f.id] : undefined);
     if (c.error) { errors[f.id] = c.error; return; }
-    if (c.empty && f.required) { errors[f.id] = requiredMessage(f); return; }
+    if (c.empty && (f.required || conditionMet(f, src))) { errors[f.id] = requiredMessage(f); return; }
     if (MAPPED_TYPES[f.id]) {
       reg[MAPPED_KEY[f.id] || f.id] = c.empty ? '' : c.value;
       if (f.id === 'phone' && !c.empty) reg.phoneCountry = c.country || '';
@@ -876,10 +1057,11 @@ function statusLabel(doc) {
 
 /* ---------- pages ---------- */
 
-/* How many buttons and embedded copies on a page open or show the form `formId`. */
+/* How many buttons and embedded copies on a page open or show the form `formId` — an award site's lifecycle
+   button (templates/_shared/rv-award-cta.js: data-nominate-form / data-interest-form) included. */
 function formUsage(html, formId) {
   if (typeof html !== 'string' || !FORM_ID_RE.test(String(formId || ''))) return 0;
-  var re = new RegExp('\\sdata-rv-form(?:-embed)?\\s*=\\s*(?:"' + formId + '"|\'' + formId + '\'|' + formId + '(?=[\\s>/]))', 'gi');
+  var re = new RegExp('\\sdata-(?:rv-form(?:-embed)?|nominate-form|interest-form)\\s*=\\s*(?:"' + formId + '"|\'' + formId + '\'|' + formId + '(?=[\\s>/]))', 'gi');
   var m = html.match(re);
   return m ? m.length : 0;
 }
@@ -1088,5 +1270,8 @@ module.exports = {
   defaultFields, legacyFields, isUntouchedDefault, migrationPlan, requiredMessage,
   slugify, uniqueId, isReservedId, cleanFormInput, legacyRegistration, legacyDefaultForm, storedForm, byOrder, resolveDefaultFormId,
   publicForm, publicFormsPayload, isFull, validateAnswers, cleanAnswer, firstFieldError, regDocId, planStatus, statusLabel,
-  formUsage, csvEscape, cleanAiForm, cleanAiFormOps, line, multiline, isoOf
+  formUsage, csvEscape, cleanAiForm, cleanAiFormOps, line, multiline, isoOf,
+  WORDS, wordCount, textareaMax, conditionMet, STORED_TEMPLATE_IDS, NOMINATION_TEMPLATE, NOMINEE_TYPES, CATEGORY_SEP,
+  AWARD_NOMINATION_NAME, AWARD_INTEREST_NAME, ENTRY_SUMMARY_WORDS,
+  awardCategoryOptions, awardNominationForm, awardInterestForm, findAwardForms, withCategoryOptions
 };

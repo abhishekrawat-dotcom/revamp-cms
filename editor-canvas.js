@@ -71,6 +71,10 @@
 
   var DEVICES = { desktop: 1440, mobile: 390 };
   var EDITOR_CSS = new URL('editor-canvas.css', document.currentScript.src).href;
+  /* an award site's lifecycle button (templates/_shared/rv-award-cta.js): in the canvas it only tags each such
+     button with what visitors see today, from a stylesheet marked data-rv-editor; the script itself is marked
+     too, so serialize() leaves both out of the saved page */
+  var AWARD_CTA_JS = new URL('templates/_shared/rv-award-cta.js', document.currentScript.src).href;
 
   /* ---------- which elements are editable ----------
      Template markup is ET's, so nothing carries editor markers. They are worked out per section:
@@ -643,7 +647,7 @@
 
     return RevampTemplates.load(templateId, {
       editing: true,
-      headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>'],
+      headExtra: ['<link rel="stylesheet" href="' + EDITOR_CSS + '" data-rv-editor>', '<script src="' + AWARD_CTA_JS + '" data-rv-editor></script>'],
       sectionOrder: opts && opts.sectionOrder
     }).then(function (res) {
       return new Promise(function (resolve, reject) {
