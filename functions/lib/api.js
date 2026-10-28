@@ -2990,6 +2990,20 @@ function redrawYearInPng(decoded, reading, toYear, eventId, deadlineAt, readFn, 
         var hole = { x: ink.x - 2, y: ink.y - 2, width: Math.max(ink.width, W) + 4, height: ink.height + 4 };
         var out = clear ? pngLite.clearBox(decoded, hole) : pngLite.fillBox(decoded, hole, background);
         var d = out.data, src = ed.data, colour = ink.colour;
+        /* the old year's own colour, column by column: a year set in a gradient (Digiplus Awards' orange to purple
+           '26) keeps it, the new digits taking the colour of the old ones' place */
+        var cols = [], od = decoded.data;
+        for (var cx = 0; cx < ink.width; cx++) {
+          var rr = 0, gg = 0, bb = 0, nn = 0;
+          for (var cy = ink.y; cy < ink.y + ink.height; cy++) {
+            var oo = (cy * decoded.width + ink.x + cx) * 4;
+            var isInkPx = background ? (Math.abs(od[oo] - background[0]) + Math.abs(od[oo + 1] - background[1]) + Math.abs(od[oo + 2] - background[2]) > 96) : od[oo + 3] >= 200;
+            if (isInkPx) { rr += od[oo]; gg += od[oo + 1]; bb += od[oo + 2]; nn++; }
+          }
+          cols.push(nn ? [Math.round(rr / nn), Math.round(gg / nn), Math.round(bb / nn)] : null);
+        }
+        for (var ci = 0; ci < cols.length; ci++) if (!cols[ci]) { var l = ci, rgt = ci; while (l >= 0 && !cols[l]) l--; while (rgt < cols.length && !cols[rgt]) rgt++; cols[ci] = l >= 0 && (rgt >= cols.length || ci - l <= rgt - ci) ? cols[l] || colour : rgt < cols.length ? cols[rgt] : colour; }
+        function colourAt(tx) { return cols.length ? cols[Math.max(0, Math.min(cols.length - 1, Math.round(tx * ink.width / Math.max(1, W))))] || colour : colour; }
         function at(x, y, c) { x = Math.max(0, Math.min(ed.width - 1, x)); y = Math.max(0, Math.min(ed.height - 1, y)); return src[(y * ed.width + x) * 4 + c]; }
         function sample(fx, fy) {   // the edited picture's distance from its ground at a point, between pixels
           var x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0, v = 0;
@@ -3008,9 +3022,9 @@ function redrawYearInPng(decoded, reading, toYear, eventId, deadlineAt, readFn, 
             var a = (sample(eInk.x + (tx + 0.5) / scale - 0.5, eInk.y + (ty + 0.5) / scale - 0.5) / full - 0.15) / 0.7;
             a = Math.max(0, Math.min(1, a));
             if (!a) continue;
-            var o = (py * out.width + px) * 4;
-            if (clear) { d[o] = colour[0]; d[o + 1] = colour[1]; d[o + 2] = colour[2]; d[o + 3] = Math.round(a * 255); }
-            else { for (var c = 0; c < 3; c++) d[o + c] = Math.round(colour[c] * a + d[o + c] * (1 - a)); d[o + 3] = 255; }
+            var o = (py * out.width + px) * 4, col = colourAt(tx);
+            if (clear) { d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(a * 255); }
+            else { for (var c = 0; c < 3; c++) d[o + c] = Math.round(col[c] * a + d[o + c] * (1 - a)); d[o + 3] = 255; }
           }
         }
         var png = pngLite.encode(out);
@@ -3342,20 +3356,36 @@ function examineUnit(fb, eventId, picture, ctx) {
       if (!old) return picture;
       var form = logoUnit.shownYear(old);
       /* the digits are replaced, a mark written before them (the apostrophe of "'26") stays */
-      if (old !== r.year || !r.box || !form || ['full', 'apos', 'short'].indexOf(form.form) === -1) { stillShows(old); return picture; }
+      if (old !== r.year || !r.box || !form || ['full', 'apos', 'short'].indexOf(form.form) === -1) return asPicture(old);
       var digits = form.form === 'full' ? 4 : 2;
       var sx = vb.width / raster.width, sy = vb.height / raster.height;
       var box = { x: vb.x + r.box.x * sx, y: vb.y + r.box.y * sy, width: r.box.width * sx, height: r.box.height * sy };
       var found = svgYear.yearShapes(svgText, box, { digits: digits, lead: form.form === 'apos' });
-      if (!found) { stillShows(old); return picture; }
+      if (!found) return asPicture(old);
       /* drawn again without them: the change is kept only when exactly the year went (yearCutColour) */
       return rasterise(svgYear.cutShapes(svgText, found)).then(function (after) {
         var at = { x: (found.box.x - vb.x) / sx, y: (found.box.y - vb.y) / sy, width: found.box.width / sx, height: found.box.height / sy };
         var colour = yearCutColour(raster, after, r.box, at);
-        if (!colour) { stillShows(old); return picture; }
+        if (!colour) return asPicture(old);
         return withYear(svgText, r, found, colour, old, digits);
       });
     }, function () { return picture; });
+  }
+  /* The year's shapes could not be told apart in the drawing (Digiplus Awards 2026's '26, drawn in a gradient among
+     the outlines: the event's name stood in its place on 28 Oct 2026). The lock-up is then drawn as a transparent
+     picture at a working size and its year moved there, as in any picture lock-up — redrawn in its own lettering,
+     else set in the closest font, each kept only when a reading finds the new year. A picture it stays, if so; when
+     neither works, the drawing is kept as it was and the owner is told, as before. */
+  function asPicture(old) {
+    var was = changed;
+    return workingCopy(svgText).then(function (copy) {
+      if (!copy) { stillShows(old); return picture; }
+      changed = false;
+      return rasterExamined({ bytes: copy.bytes, info: copy.info }, copy.decoded).then(function (pic) {
+        if (!changed || !pic) { changed = was; stillShows(old); return picture; }
+        return pic;
+      });
+    }, function () { changed = was; stillShows(old); return picture; });
   }
   function withYear(svgText, r, found, colour, old, digits) {
     var family = r.fontFamily || (r.serif ? 'Source Serif 4' : 'Inter');
