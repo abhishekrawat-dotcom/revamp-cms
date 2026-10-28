@@ -78,7 +78,7 @@ async function run() {
     'plan-structure': [CLAUDE_OPUS, 'medium', 120000, 20000], 'generate-content': [CLAUDE_OPUS, 'low', 120000, 28000], 'redesign-section': [CLAUDE_SONNET, 'low', 120000, 28000],
     'chat-edit': [CLAUDE_SONNET, 'low', 75000, 12000], 'suggest-design': [CLAUDE_SONNET, 'low', 75000, 12000], 'extract-brief': [CLAUDE_HAIKU, 'low', 90000, 12000],
     'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000],
-    'promo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'event-description': [CLAUDE_SONNET, 'low', 60000, 4000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
+    'promo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'promo-ai-fast': [CLAUDE_HAIKU, 'low', 60000, 12000], 'promo-ai-deep': [CLAUDE_OPUS, 'high', 150000, 32000], 'event-description': [CLAUDE_SONNET, 'low', 60000, 4000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
   };
   ok(Object.keys(PROFILES).sort().join() === Object.keys(want).sort().join(), 'the profiles are the routes we know', Object.keys(PROFILES).join());
   Object.keys(want).forEach(function (route) {

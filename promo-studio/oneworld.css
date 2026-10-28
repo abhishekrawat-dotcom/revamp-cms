@@ -1,0 +1,6 @@
+/* Oneworld's few rules for the promotional platform's mailer studio, framed in Promotions → Mailers
+   (promo-mailer-studio.html). The platform's own stylesheet is promo-studio/mailer-studio.css, unchanged. */
+#app{display:flex}
+body.ow-embed .content{padding:22px 26px 48px}
+/* Link tracking arrives with the tracking phase (open and click counts); until then the choice would do nothing */
+.ml-props .fld:has(> select[onchange^="MD.doc.trackLinks"]){display:none}

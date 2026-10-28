@@ -259,3 +259,9 @@
 .pp-place{ font-size: calc(var(--k) * 34px); font-weight:600; }
 .pp-tagl{ font-size: calc(var(--k) * 30px); color: var(--pp-muted); line-height:1.4; }
 .pp-num{ font-family: var(--pp-head); font-weight:700; line-height:.9; color: var(--pp-acc-text); letter-spacing:-0.04em; }
+
+/* Mailers: the promotional platform's studio, framed (promo-mailer-studio.html). The frame fills the space under
+   the tabs; while the studio is open it fills the whole window, as the platform's studio does. */
+.promo-mailer-frame{ display:block; width:100%; height:calc(100vh - 220px); min-height:620px; border:0; border-radius:12px; background:#f7f8fa; }
+.promo-mailer-frame.is-studio{ position:fixed; inset:0; width:100vw; height:100vh; min-height:0; border-radius:0; z-index:1000; }
+html.promo-studio-open, html.promo-studio-open body{ overflow:hidden; }

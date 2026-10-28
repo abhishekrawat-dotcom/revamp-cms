@@ -9186,6 +9186,15 @@ var promo = function (handler) {
   };
 };
 
+/* lib/promo-mailer.js (Promotions → Mailers, the promotional platform's studio) takes the same helpers */
+var promoMailer = function (handler) {
+  var run = inModule('promo-mailer', handler);
+  return function (req, res) {
+    try { require('./promo-mailer').wire(promoHelpers()); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+};
+
 /* "METHOD path" -> handler, for every route with a fixed path. */
 var ROUTES = {
   'POST /api/suggest-design': handleSuggestDesign,
@@ -9257,6 +9266,23 @@ var ROUTES = {
   'GET /api/promo/kit': promo('handleKit'),
   'GET /api/promo/image': promo('handleImage'),
   'POST /api/promo/write': promo('handleWrite'),
+  'GET /api/promo/mailers': promoMailer('handleCatalog'),
+  'GET /api/promo/mailer/saves': promoMailer('handleSaves'),
+  'GET /api/promo/mailer/roster': promoMailer('handleRoster'),
+  'POST /api/promo/mailer/doc': promoMailer('handleDoc'),
+  'POST /api/promo/mailer/relayout': promoMailer('handleRelayout'),
+  'POST /api/promo/mailer/import': promoMailer('handleImport'),
+  'POST /api/promo/mailer/render': promoMailer('handleRender'),
+  'POST /api/promo/mailer/block': promoMailer('handleBlock'),
+  'POST /api/promo/mailer/save': promoMailer('handleSave'),
+  'POST /api/promo/mailer/save/rename': promoMailer('handleRename'),
+  'POST /api/promo/mailer/save/delete': promoMailer('handleDelete'),
+  'POST /api/promo/mailer/reset': promoMailer('handleReset'),
+  'POST /api/promo/mailer/download': promoMailer('handleDownload'),
+  'POST /api/promo/mailer/ai': promoMailer('handleAi'),
+  'GET /api/promo/icons': promoMailer('handleIcons'),
+  'POST /api/promo/icons': promoMailer('handleIconUpload'),
+  'DELETE /api/promo/icons': promoMailer('handleIconDelete'),
 
   'POST /api/event/leads/bulk': handleLeadsBulkCreate,
   'PATCH /api/event/leads/bulk': handleLeadsBulkUpdate,

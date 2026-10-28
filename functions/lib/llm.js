@@ -53,6 +53,11 @@ var PROFILES = {
   'logo-unit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 6000 },
   /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
   'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
+  /* the mailer studio's AI (lib/promo-mailer.js, the promotional platform's four tools): subject lines, a field
+     rewritten in a tone and a whole-mail polish on Haiku, as the platform runs them; "Enhance whole mailer"
+     — the one call that restructures a mail — on Opus at high effort, as the platform runs it */
+  'promo-ai-fast': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 60000, maxOutputTokens: 12000 },
+  'promo-ai-deep': { model: CLAUDE_OPUS, effort: 'high', timeoutMs: 150000, maxOutputTokens: 32000 },
   /* the event's two- or three-sentence description, written again for an event made before the plan wrote it
      (tools/repair-description.js, lib/event-description.js) */
   'event-description': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 4000 },

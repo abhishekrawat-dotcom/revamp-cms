@@ -1085,7 +1085,7 @@ function handleWrite(req, res) {
      publicBaseFor, aiUsageRecorder, sendAiFailure, sendFailure, httpError, BODY_LIMITS } */
 function wire(helpers) { H = helpers; }
 
-module.exports = { wire, handleKit, handleImage, handleWrite };
+module.exports = { wire, handleKit, handleImage, handleWrite, buildKit };
 
 /* the pure parts, for promo.test.js */
 module.exports._test = {

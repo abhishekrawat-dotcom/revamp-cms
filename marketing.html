@@ -9,7 +9,6 @@
 <link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="promo.css">
-<link rel="stylesheet" href="promo-mailers.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 </head>
 <body>
@@ -64,7 +63,7 @@
   'use strict';
 
   /* The page is a shell: the top bar and rail of the event console, a heading and two tabs. Each tab's studio
-     is its own file (promo-posts.js, promo-mailers.js) and is handed the event's Kit — its brand and content,
+     is its own file (promo-posts.js; Mailers: promo-mailer-studio.html, the promotional platform's studio) and is handed the event's Kit — its brand and content,
      from RevampPromo.load() — once, when the tab is first opened.
 
      States, never a silent fallback: no event in the address, an event that does not exist, a Kit that did not
@@ -212,16 +211,23 @@
       window.RevampPromoPosts.mount(host, ctx);
       return;
     }
-    /* the mailer studio is a separate file; until it is there, a quiet note — not an error */
-    if (window.RevampPromoMailers && typeof window.RevampPromoMailers.mount === 'function') {
-      mounted.mailers = true;
-      window.RevampPromoMailers.mount(host, ctx);
-    } else {
-      host.innerHTML = '<div class="promo-state" role="status"><span class="spin"></span><b>Mailers are loading…</b></div>';
-    }
+    /* Mailers are the promotional platform's own studio (promo-mailer-studio.html), in a frame: its page and its
+       look are the platform's, on this event. While the studio is open it takes the whole window — the frame
+       says so (postMessage { rvMailerStudio: 'open' | 'close' }) */
+    mounted.mailers = true;
+    host.innerHTML = '<iframe class="promo-mailer-frame" id="promo-mailer-frame" title="Mailers" src="promo-mailer-studio.html?event=' +
+      encodeURIComponent(eventId) + (MAILER_DEEP ? MAILER_DEEP : '') + '"></iframe>';
   }
-  /* promo-mailers.js comes after this script: once the page has loaded, try the Mailers tab again */
-  window.addEventListener('load', function(){ if (KIT && tab === 'mailers' && !mounted.mailers) show(); });
+  var MAILER_DEEP = (function(){
+    var q = new URLSearchParams(location.search), m = q.get('mailer'), v = q.get('version');
+    return m ? '&mailer=' + encodeURIComponent(m) + (v ? '&version=' + encodeURIComponent(v) : '') : '';
+  })();
+  window.addEventListener('message', function(e){
+    if (e.origin !== location.origin || !e.data || !e.data.rvMailerStudio) return;
+    var f = $('promo-mailer-frame');
+    if (f) f.classList.toggle('is-studio', e.data.rvMailerStudio === 'open');
+    document.documentElement.classList.toggle('promo-studio-open', e.data.rvMailerStudio === 'open');
+  });
 
   function loadKit(fresh){
     return withSession(function(){ return window.RevampPromo.load(eventId, fresh); }).then(function(kit){
@@ -249,6 +255,5 @@
   init();
 })();
 </script>
-<script src="promo-mailers.js"></script>
 </body>
 </html>
