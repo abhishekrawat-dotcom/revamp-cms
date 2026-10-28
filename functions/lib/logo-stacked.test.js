@@ -130,7 +130,9 @@ var NOTE = /^The previous edition's logo could not be used: .+\. Upload this yea
 
   answers = function () { return Object.assign({}, READINGS.first[0], { extras: '', extraBoxes: [], ownBox: [] }); };
   var nothingToCut = await build();
-  check('a tall picture read as having no extras is not used whole either: the owner is told', nothingToCut.unit.source === 'generated' && NOTE.test(nothingToCut.unit.note) && /taller than it is wide \(251 × 400\)/.test(nothingToCut.unit.note), nothingToCut.unit.note);
+  /* Digiplus Awards 2026 (28 Oct 2026): ETBrandEquity's masthead over "DG+ '26", read whole as having no sponsor —
+     refused for being tall, the hero showed the event's name typed in a box */
+  check('a tall picture read whole as having no extras is the event\'s own lock-up: used whole, and the owner is told', nothingToCut.unit.source === 'previous-edition' && /taller than it is wide; nothing in it was read as a sponsor's mark, so it is used whole/.test(nothingToCut.unit.note), JSON.stringify(nothingToCut.unit));
 
   answers = function () { return null; };
   var unread = await build();

@@ -1505,12 +1505,21 @@ function handleIngestSource(req, res) {
           });
           var design = sanitizeSourceDesign(r.parsed.design);
           var now = new Date().toISOString();
+          var sourcesRef = fb.db.collection('events').doc(eventId).collection('sources');
+          var record = {
+            type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
+            design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
+            previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds, award: award
+          };
+          /* the same page read again (generating the site again) replaces its earlier reading: two readings of
+             one previous edition left plan-structure taking whichever Firestore listed first */
           return watch.stillThere().then(function () {
-            return fb.db.collection('events').doc(eventId).collection('sources').add({
-              type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
-              design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
-              previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds, award: award
-            });
+            return sourcesRef.where('type', '==', type).where('url', '==', url).get();
+          }).then(function (same) {
+            if (same.empty) return sourcesRef.add(record);
+            var keep = same.docs[0].ref;
+            return Promise.all(same.docs.slice(1).map(function (d) { return d.ref.delete(); }))
+              .then(function () { return keep.set(record); }).then(function () { return keep; });
           }).then(function (sourceRef) {
             sendJson(res, 200, { eventId: eventId, sourceId: sourceRef.id, type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals, design: design, tone: tone,
               previous: previous ? { name: previous.name, speakers: previous.speakers.length, sponsors: previous.sponsors.length, agenda: previous.agenda.length, glimpses: previous.glimpses.length } : null });
@@ -3253,7 +3262,7 @@ function svgUnitTone(svgText) {
      seen: the edition's year the last reading named, as written. */
 function examineUnit(fb, eventId, picture, ctx) {
   var years = ctx.years || { from: '', to: '' }, owner = ctx.origin === 'owner';
-  var notes = [], tone = '', changed = false, stuck = '', unread = false, seen = '';
+  var notes = [], tone = '', changed = false, stuck = '', unread = false, seen = '', extrasLeft = false;
   var it = owner ? 'your logo' : 'the logo unit';
   function read(pic, decoded) { return readLogoPicture(eventId, pic, decoded, ctx.deadlineAt, ctx.eventName); }
   /* a year it shows is an earlier edition's when the page said so, or it is a recent one: "Since 2015" is not
@@ -3282,6 +3291,7 @@ function examineUnit(fb, eventId, picture, ctx) {
     notes.push('“' + extras + '” ' + (owner ? 'is not part of this edition\'s own lock-up and was cropped out of your logo' : 'belonged to the previous edition and was cropped out of the logo unit') + '; the rest of it is untouched.');
   }
   function carries(extras) {
+    if (extras) extrasLeft = true;
     if (extras) notes.push((owner ? 'Your logo' : 'The logo unit') + ' also carries “' + extras + '”, which ' + (owner ? 'does not look like part of this edition\'s own lock-up' : 'came with the previous edition') + ' and could not be cropped out cleanly. Select it and use Replace image to put in artwork without it.');
   }
   function moved(from, to, how) {
@@ -3530,7 +3540,7 @@ function examineUnit(fb, eventId, picture, ctx) {
       return move(r, 1);
     });
   }
-  function result() { return { picture: picture, changed: changed, notes: notes, tone: tone, stuck: stuck, unread: unread, seen: seen }; }
+  function result() { return { picture: picture, changed: changed, notes: notes, tone: tone, stuck: stuck, unread: unread, seen: seen, extrasLeft: extrasLeft }; }
 }
 
 function heroModeOf(tone) { return tone === 'for-dark' ? 'dark' : tone === 'for-light' ? 'light' : ''; }
@@ -3672,13 +3682,18 @@ function previousEditionUnit(fb, eventId, o) {
         return { stuck: true, note: 'The previous edition\'s logo shows ' + ex.stuck + ' and could not be updated to ' + logoUnit.yearAs(ex.stuck, years.to) +
           ', so the event\'s name is shown here instead. Upload this year\'s logo under Event logo in the event\'s Basics, or select this and use Replace image.' };
       }
-      /* a lock-up stacked with its sponsors is used only cut down to the event's own, never with them */
+      /* A lock-up stacked with its sponsors is used only cut down to the event's own, never with them. A tall
+         one read whole in which nothing was a sponsor's is the event's own lock-up and is used as it is:
+         Digiplus Awards 2026's is ETBrandEquity's masthead over "DG+ '26" — the publisher's mark is part of
+         the lock-up, and refusing it for being tall put the event's name in its place (28 Oct 2026). */
+      var tallOwn = false;
       if (picture.stacked && logoUnit.plausibleUnit(ex.picture.info)) {
-        return failed(ex.unread ? 'it is stacked with its sponsors\' marks, and it could not be read in time to crop them out, so the event\'s name is shown here instead'
-          : !ex.notes.length ? 'it is taller than it is wide (' + Math.round(picture.info.width) + ' × ' + Math.round(picture.info.height) + ') and nothing in it could be told apart to crop away, so the event\'s name is shown here instead'
-          : 'it is stacked with its sponsors\' marks, and they could not be cropped out cleanly, so the event\'s name is shown here instead');
+        if (ex.unread) return failed('it is stacked with its sponsors\' marks, and it could not be read in time to crop them out, so the event\'s name is shown here instead');
+        if (ex.extrasLeft) return failed('it is stacked with its sponsors\' marks, and they could not be cropped out cleanly, so the event\'s name is shown here instead');
+        tallOwn = true;
       }
       var notes = ex.notes.slice();
+      if (tallOwn) notes.push('The previous edition\'s logo is taller than it is wide; nothing in it was read as a sponsor\'s mark, so it is used whole. If it does carry one, upload this year\'s logo under Event logo in the event\'s Basics, or select it and use Replace image.');
       /* used unread: its year and any sponsor's mark in it went unchecked, and the owner is told */
       if (ex.unread) {
         notes.push('The previous edition\'s logo could not be read to check ' + (years.from ? 'its year and ' : '') + 'whether a sponsor\'s mark is drawn into it. If it ' +
