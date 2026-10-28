@@ -31,6 +31,8 @@ __export(src_exports, {
   blockPalette: () => blockPalette,
   buildDoc: () => buildDoc,
   buildMailerCatalog: () => buildMailerCatalog,
+  clickTargetOk: () => clickTargetOk,
+  clickUrl: () => clickUrl,
   daysBetween: () => daysBetween,
   enhanceMailer: () => enhanceMailer,
   fmtDateLabel: () => fmtDateLabel,
@@ -45,6 +47,7 @@ __export(src_exports, {
   migrateSponsorTiers: () => migrateSponsorTiers,
   namesAnotherPortal: () => namesAnotherPortal2,
   newSendId: () => newSendId,
+  openUrl: () => openUrl,
   parseEdition: () => parseEdition,
   polishCopy: () => polishCopy,
   readable: () => readable,
@@ -53,10 +56,12 @@ __export(src_exports, {
   renderDoc: () => renderDoc,
   resolvePalette: () => resolvePalette,
   rewriteField: () => rewriteField,
+  safeUrl: () => safeUrl,
   sanitiseFragment: () => sanitiseFragment,
   setAiCaller: () => setAiCaller,
   signClick: () => signClick,
   suggestSubjects: () => suggestSubjects,
+  trackTarget: () => trackTarget,
   verifyClick: () => verifyClick
 });
 module.exports = __toCommonJS(src_exports);
@@ -7720,49 +7725,66 @@ function imageCoverage(root, rendered) {
 
 // promo-engine/src/mailers/track.ts
 var import_node_crypto = require("node:crypto");
-var import_node_fs = require("node:fs");
-var import_node_path = require("node:path");
 function skipHref(url) {
   const u = url.trim();
   if (!u || u === "#") return true;
   if (/^(mailto:|tel:|sms:)/i.test(u)) return true;
   if (/^\{\$\$/.test(u) || u.includes("{$$")) return true;
+  if (/\*\|[^|]*\|\*/.test(u) || /%%[^%\s]+%%/.test(u) || /\{\{[^}]*\}\}/.test(u)) return true;
   if (/^cid:|^data:/i.test(u)) return true;
   return !/^https?:\/\//i.test(u);
 }
-var _secret = null;
-function secret() {
-  if (_secret) return _secret;
-  const env = (process.env.TRACK_SECRET || "").trim();
-  if (env) return _secret = Buffer.from(env, "utf8");
-  const dir = (0, import_node_path.join)(process.cwd(), "assets", "analytics");
-  const file = (0, import_node_path.join)(dir, ".track-secret");
+function clickTargetOk(target) {
+  const t = String(target ?? "");
+  if (!/^https?:\/\//i.test(t) || /[\u0000-\u001f\u007f]/.test(t)) return false;
   try {
-    _secret = Buffer.from((0, import_node_fs.readFileSync)(file, "utf8").trim(), "hex");
-    if (_secret.length >= 16) return _secret;
-  } catch {
-  }
-  const fresh = (0, import_node_crypto.randomBytes)(32);
-  try {
-    (0, import_node_fs.mkdirSync)(dir, { recursive: true });
-    (0, import_node_fs.writeFileSync)(file, fresh.toString("hex"), { mode: 384 });
-  } catch {
-  }
-  return _secret = fresh;
-}
-function signClick(id, target) {
-  return (0, import_node_crypto.createHmac)("sha256", secret()).update(`${id}
-${target}`).digest("base64url").slice(0, 16);
-}
-function verifyClick(id, target, sig) {
-  const want = signClick(id, target);
-  const got = String(sig || "");
-  if (got.length !== want.length) return false;
-  try {
-    return (0, import_node_crypto.timingSafeEqual)(Buffer.from(got), Buffer.from(want));
+    new URL(t);
+    encodeURIComponent(t);
+    return true;
   } catch {
     return false;
   }
+}
+var HREF_ENTITY = /&(amp|quot|#39|lt|gt|#\d{1,7}|#[xX][0-9a-fA-F]{1,6});/g;
+var NAMED_ENTITY = { amp: "&", quot: '"', "#39": "'", lt: "<", gt: ">" };
+function decodeHref(raw) {
+  return raw.replace(HREF_ENTITY, (whole, name) => {
+    if (Object.prototype.hasOwnProperty.call(NAMED_ENTITY, name)) return NAMED_ENTITY[name];
+    const code = /^#[xX]/.test(name) ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+    return code <= 1114111 ? String.fromCodePoint(code) : whole;
+  });
+}
+function trackTarget(rawHref) {
+  const target = decodeHref(String(rawHref ?? "")).replace(/[\t\n\r]/g, "").trim();
+  if (skipHref(target) || !clickTargetOk(target)) return "";
+  return target;
+}
+function keyOf(name) {
+  const v = String(process.env[name] || "").trim();
+  return v.length >= 32 ? Buffer.from(v, "utf8") : null;
+}
+function sign(key, id, target) {
+  return (0, import_node_crypto.createHmac)("sha256", key).update(`${id}
+${target}`).digest("base64url").slice(0, 16);
+}
+function signClick(id, target) {
+  const key = keyOf("TRACK_SECRET");
+  if (!key) throw new Error("TRACK_SECRET is not set (32+ characters) \u2014 tracked links cannot be signed or checked");
+  return sign(key, id, target);
+}
+function verifyClick(id, target, sig) {
+  const current = keyOf("TRACK_SECRET");
+  if (!current) return false;
+  const got = Buffer.from(String(sig || ""), "utf8");
+  for (const key of [current, keyOf("TRACK_SECRET_PREVIOUS")]) {
+    if (!key) continue;
+    try {
+      const want = Buffer.from(sign(key, String(id), String(target)), "utf8");
+      if (got.length === want.length && (0, import_node_crypto.timingSafeEqual)(got, want)) return true;
+    } catch {
+    }
+  }
+  return false;
 }
 var clickUrl = (base, id, target) => `${base}/t/c/${encodeURIComponent(id)}?u=${encodeURIComponent(target)}&s=${signClick(id, target)}`;
 var openUrl = (base, id) => `${base}/t/o/${encodeURIComponent(id)}.gif`;
@@ -7770,8 +7792,8 @@ function injectTracking(html, id, base, o = {}) {
   const root = String(base || "").replace(/\/+$/, "");
   if (!root || !id) return html;
   let out = o.links === false ? String(html) : String(html).replace(/href="([^"]*)"/gi, (whole, raw) => {
-    const target = String(raw).replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-    if (skipHref(target)) return whole;
+    const target = trackTarget(raw);
+    if (!target) return whole;
     return `href="${esc(clickUrl(root, id, target))}"`;
   });
   const pixel = `<img src="${esc(openUrl(root, id))}" width="1" height="1" border="0" alt="" style="display:block;width:1px;height:1px;border:0;outline:none;line-height:1px">`;
@@ -8146,6 +8168,8 @@ function groupSponsors(sponsors) {
   blockPalette,
   buildDoc,
   buildMailerCatalog,
+  clickTargetOk,
+  clickUrl,
   daysBetween,
   enhanceMailer,
   fmtDateLabel,
@@ -8160,6 +8184,7 @@ function groupSponsors(sponsors) {
   migrateSponsorTiers,
   namesAnotherPortal,
   newSendId,
+  openUrl,
   parseEdition,
   polishCopy,
   readable,
@@ -8168,9 +8193,11 @@ function groupSponsors(sponsors) {
   renderDoc,
   resolvePalette,
   rewriteField,
+  safeUrl,
   sanitiseFragment,
   setAiCaller,
   signClick,
   suggestSubjects,
+  trackTarget,
   verifyClick
 });

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Oneworld 2.0 — Mailer performance across all events: opens and clicks of every mailer downloaded or copied from
+     the mailer studio. The dashboard itself is the studio's own page in a frame (promo-mailer-studio.html?scope=all;
+     the team scope lives in promo-studio/oneworld.js), which reads GET /api/promo/analytics/all (lib/promo-track.js).
+     This page is only the bar above it, so the team view and each event's Promotions → Mailers dashboard stay one
+     piece of code. Linked from the events listing (Event_Listing.html, beside "Activity log"). -->
+<title>Mailer performance — Oneworld 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<style>
+  :root{
+    --bg:#F7F7F4; --surface:#FFFFFF; --surface-2:#F1F0EC; --surface-3:#E7E5DF;
+    --border:#E6E4DE; --border-strong:#D7D4CB; --text:#1D1B17; --text-muted:#6C6A60; --text-faint:#9B988D;
+    --accent:#FF0035; --accent-strong:#D6002C; --accent-soft:#FFE3E8; --accent-contrast:#FFFFFF;
+    --ok:#16794F; --ok-soft:#E4F5EC; --warn:#A9700F; --warn-soft:#FBF0DA; --crit:#C13333; --crit-soft:#FBE8E7;
+    --tag-blue:#1D5FA3; --tag-blue-soft:#E3EEFB; --tag-teal:#0E7C6B; --tag-teal-soft:#E0F5F0;
+    --tag-violet:#7A3FA0; --tag-violet-soft:#F1E7F8; --tag-cyan:#0E7490; --tag-cyan-soft:#DFF4F8;
+    --tag-amber:#9C6B0B; --tag-amber-soft:#F7EEDA; --tag-rose:#B23A6B; --tag-rose-soft:#FBE7EF;
+    --r-sm:8px; --r-md:12px;
+    --font-body:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
+      --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
+      --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+      --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+      --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+      --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38; --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+      --tag-amber:#E8C069; --tag-amber-soft:#332711; --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
+    --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
+    --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+    --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+    --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
+    --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38; --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
+    --tag-amber:#E8C069; --tag-amber-soft:#332711; --tag-rose:#F08FB5; --tag-rose-soft:#3A1826;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--bg); color:var(--text); font-family:var(--font-body); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  a{ color:inherit; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+
+  .nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:20; }
+  .nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:14px; padding:0 24px; }
+  .nav-brand{ flex-shrink:0; }
+  .nav-brand img{ height:28px; width:auto; display:block; }
+  /* the brand mark is dark lettering: on the dark theme it sits on a light chip so it stays readable */
+  :root[data-theme="dark"] .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; } }
+  .nav-back{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); text-decoration:none; white-space:nowrap; }
+  .nav-back:hover{ background:var(--surface-2); color:var(--text); }
+  .nav-back svg{ flex-shrink:0; }
+  .nav-back-short{ display:none; }
+  .nav-right{ margin-left:auto; display:flex; align-items:center; gap:10px; flex-shrink:0; }
+
+  /* The dashboard fills the window below the bar (60px and its 1px border), so the frame scrolls and this page
+     never does. Phones: 100vh is the height with the browser's toolbar hidden, which would leave the bottom of the
+     frame under that toolbar and let the page scroll as well; dvh is the height actually showing. */
+  .mp-main{ display:block; }
+  .mp-frame{display:block;width:100%;height:calc(100vh - 61px);border:0;background:#f7f8fa}
+  @supports (height:100dvh){ .mp-frame{ height:calc(100dvh - 61px); } }
+
+  /* phones, as the activity log's bar; the dark theme's light chip adds 12px of width round the mark, so there the
+     mark inside it is drawn smaller and the bar is no wider than on the light theme */
+  @media (max-width: 700px){
+    .nav-inner{ padding:0 16px; gap:8px; }
+    .nav-brand img{ height:22px; }
+    :root[data-theme="dark"] .nav-brand img{ height:20px; }
+  }
+  @media (max-width: 700px) and (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ height:20px; } }
+  /* on a phone "Back to events" and the brand, theme switch and account menu do not fit one 60px row: the link
+     names its destination in one word there (as the activity log's does), so the account menu is never pushed
+     off the screen and the bar never wraps */
+  @media (max-width: 480px){
+    .nav-back-long{ display:none; }
+    .nav-back-short{ display:inline; }
+  }
+  @media (max-width: 374px){
+    .nav-inner{ padding:0 12px; gap:6px; }
+    .nav-brand img{ height:18px; }
+    :root[data-theme="dark"] .nav-brand img{ height:16px; }
+    .nav-back{ padding:8px; }
+  }
+  @media (max-width: 374px) and (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ height:16px; } }
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="Event_Listing.html"><img src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></a>
+    <a class="nav-back" href="Event_Listing.html" aria-label="Back to events">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <span class="nav-back-long">Back to events</span><span class="nav-back-short">Events</span>
+    </a>
+    <div class="nav-right">
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+      <span data-rv-account></span>
+    </div>
+  </div>
+</header>
+
+<main class="mp-main">
+  <iframe id="mp-frame" class="mp-frame" title="Mailer performance" src="promo-mailer-studio.html?scope=all"></iframe>
+</main>
+
+<script src="theme-toggle.js"></script>
+<script src="auth.js"></script>
+</body>
+</html>

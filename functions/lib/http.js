@@ -157,12 +157,19 @@ function isEventId(v) { return typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,79
      the words below      path segments of this host, or words pages treat as "nothing chosen yet"
      import-…             the Lovable import pipeline keeps its staging records in the events collection
                           under these ids. LEGACY_IMPORT_DOCS goes to false once they have been moved out.
-   One rule, used by create, clone and the address check, and mirrored by RevampCore.isReservedSlug(). */
+     qa-…                 on a deployed instance (K_SERVICE set) only: the QA harness's events. A qa- address means
+                          test data to the sitemap, to the team's Mailer performance view (left out), to a local or
+                          QA server's mailer tracking (the only events it tracks, with links to itself) and to the
+                          harness's clean-up (which deletes them) — so no real event may be given one. The harness
+                          creates its events on a local server (and straight in Firestore), where qa- stays open.
+   One rule, used by create, clone and the address check, and mirrored by RevampCore.isReservedSlug() — all but
+   the qa- part, which depends on where this server runs. */
 var LEGACY_IMPORT_DOCS = true;
 var RESERVED_EVENT_IDS = ['new', 'api', 'e', 'preview', 'templates', 'assets', 'index', 'import', 'imports'];
 function isReservedEventId(id) {
   if (typeof id !== 'string') return false;
   if (/^(gen|imported)-/.test(id) || /^\d+$/.test(id) || RESERVED_EVENT_IDS.indexOf(id) !== -1) return true;
+  if (/^qa-/.test(id) && !!process.env.K_SERVICE) return true;
   return LEGACY_IMPORT_DOCS && id.indexOf('import-') === 0;
 }
 

@@ -74,9 +74,14 @@ function slugify(v) {
 }
 
 /* The nearest address to a reserved one (lib/http.js's isReservedEventId) that is not reserved:
-   "gen-summit" -> "summit", "2027" -> "event-2027", "new" -> "new-event". */
+   "gen-summit" -> "summit", "2027" -> "event-2027", "new" -> "new-event", and on a deployed instance
+   "qa-leaders-summit-2027" -> "leaders-summit-2027-qa" (the words kept, the test-data prefix moved to the end). */
 function unreserved(id) {
   var s = String(id);
+  if (/^qa-/.test(s) && isReservedEventId(s)) {
+    while (/^qa-/.test(s)) s = s.replace(/^qa-+/, '');
+    if (s) s = (s === 'qa' ? 'event' : s.slice(0, 77).replace(/-+$/, '')) + '-qa';
+  }
   while (/^(gen|imported|import)-/.test(s)) s = s.replace(/^(gen|imported|import)-+/, '');
   if (!s) return 'event';
   if (/^\d+$/.test(s)) return 'event-' + s;

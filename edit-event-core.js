@@ -664,7 +664,9 @@ window.RevampCore = (function(){
 
   /* Addresses no event can have (the server's rule, functions/lib/http.js isReservedEventId): they mean
      something else to the editor or to this site's own paths. slugAvailable() answers reason 'reserved'
-     for them too; this is for saying so before asking. */
+     for them too; this is for saying so before asking. Not mirrored: the server also refuses qa-… addresses,
+     but only where it is deployed (the QA harness creates its qa- events on a local server), which this page
+     cannot tell — there the server's answer (reason 'reserved', with a suggestion) is the one to show. */
   var RESERVED_SLUGS = ['new', 'api', 'e', 'preview', 'templates', 'assets', 'index', 'import', 'imports'];
   function isReservedSlug(slug){
     slug = String(slug == null ? '' : slug).trim().toLowerCase();

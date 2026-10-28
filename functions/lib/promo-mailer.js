@@ -9,11 +9,12 @@
      POST /api/promo/mailer/doc        { eventId, mailerId, saveId?, fresh? }  open a version / the latest / a new one
      POST /api/promo/mailer/relayout   { eventId, doc, mailerId }              another layout, the sender's work kept
      POST /api/promo/mailer/import?eventId=   (raw .html/.eml, ≤ 2 MB)        an outside mail as a block document
-     POST /api/promo/mailer/render     { eventId, doc, editor? }               the mail's HTML (+ its palette)
+     POST /api/promo/mailer/render     { eventId, doc, editor?, track?, saveId?, saveName? }   the mail's HTML (+ its palette)
      POST /api/promo/mailer/block      { eventId, type }                       a new block, seeded from the event
      POST /api/promo/mailer/save       { eventId, mailerId, doc, saveId?, name? }   Save / Save as new
      POST /api/promo/mailer/save/rename, /save/delete, /reset
-     POST /api/promo/mailer/download   { eventId, doc, test? } -> .html  ·  { eventId, mailerIds? } -> .zip
+     POST /api/promo/mailer/download   { eventId, doc, test?, saveId?, saveName? } -> .html  ·  { eventId, mailerIds: [one] } -> .html
+                                       ·  { eventId, mailerIds? } (none, or several) -> .zip
      POST /api/promo/mailer/ai         { eventId, action: subjects|rewrite|polish|enhance, … }
      GET  /api/promo/icons?eventId=    POST /api/promo/icons?eventId=&name=  (raw)    DELETE /api/promo/icons?eventId=&id=
 
@@ -25,7 +26,16 @@
    VERSIONS are kept in Firestore, events/<id>/mailerSaves/<saveId>: { mailerId, name, subject, doc (JSON), savedAt,
    createdAt, by } — the platform's SaveMeta { saveId, name, savedAt, subject } on the way out.
 
-   Not here yet (Phase 2): tracking (the open pixel, signed click links) and sends. Downloads are plain HTML. */
+   TRACKING (the platform's deliverable(), server.ts). Every export goes out through deliverables(): a download, a
+   Copy HTML (render with track:true) and each file of a ZIP. When tracking runs for the event (lib/promo-track.js
+   availableFor, and the event is live), each file gets its own send id and the open pixel, and its links go
+   through the signed click redirect when the mailer's "Link tracking" is on. One send per file is then recorded
+   in promoSends/<sendId> (lib/promo-track.js recordSends, which also answers the pixel, the clicks and the
+   dashboards). Otherwise the file is the plain mail, never an error: tracking off here, adding it failed, or
+   recording the send failed. The answer says which file went out: X-Mailer-Tracked: yes | no on a download (with
+   Cache-Control: no-store), tracked: true | false from a tracked render, and tracking: true | false in the
+   catalog (the studio hides "Link tracking" when it is false). Never tracked, and nothing recorded: the studio's
+   preview (editor:true), the PNG/PDF export and a test download (test:true). */
 'use strict';
 const crypto = require('crypto');
 const JSZip = require('jszip');
@@ -245,6 +255,102 @@ function aiCallerFor(fb, eventId, user) {
   };
 }
 
+/* ---------- tracking: what an export hands out (the platform's deliverable()) ---------- */
+
+/* lib/promo-track.js (the open pixel, signed click links and their counts) is loaded on first use, inside try —
+   never at the top of this file: a fault in it must cost tracking (plain downloads, catalog.tracking false),
+   never the mailer studio itself */
+var trackLoadLoggedAt = 0;
+/* the mailer id the engine's importHtml gives an imported mail: not a registry mailer, but a real kind of send */
+var IMPORTED_MAILER_ID = 'mailer.imported';
+function tracker() {
+  try { return require('./promo-track'); }
+  catch (err) {
+    if (Date.now() - trackLoadLoggedAt > 600000) { trackLoadLoggedAt = Date.now(); console.error('promo-mailer: lib/promo-track.js could not be loaded — mailers go out untracked — ' + (err && err.stack || err)); }
+    return null;
+  }
+}
+/* tracked for this event: tracking runs here (promo-track availableFor) and the event is live. A module that
+   loads but throws here costs tracking too, never the catalog or the download that asked. */
+function trackingOn(t, eventId, stored) {
+  if (!t || !stored || !stored.createdAt || stored.deletedAt) return false;
+  try { return !!t.availableFor(eventId); } catch (err) { return false; }
+}
+
+/* the platform's deliverable() (server.ts:886-915), for one file or a zip's worth. got: eventFor()'s { ev, stored };
+   items: [{ doc, mailerId, save: { saveId, name } | null }]. Resolves { html: string[], tracked: boolean } and never
+   rejects for a tracking reason: when tracking is off here, or instrumenting or recording fails, every file is the
+   plain render and tracked is false. Order: render, instrument, record — a failure while instrumenting then leaves
+   no recorded send without its file. (The platform recorded first.) */
+function deliverables(fb, decoded, got, eventId, items) {
+  return Promise.resolve().then(function () {
+    var ev = got.ev, stored = got.stored;
+    var plain = items.map(function (it) { return engine.renderDoc(it.doc, ev); });
+    var untracked = { html: plain, tracked: false };
+    var t = tracker();
+    if (!trackingOn(t, eventId, stored)) return untracked;
+    var html, metas;
+    try {
+      var base = t.base(), now = Date.now();
+      /* nowhere for the pixel to point: a send recorded now would be a row nothing can ever count into */
+      if (!base) return untracked;
+      var ids = items.map(function () { return engine.newSendId(); });
+      /* "Link tracking" is the mailer's own choice and off unless turned on, as on the platform: rewriting every
+         link through Oneworld's address is something a sender opts into. The open pixel goes in either way. */
+      html = items.map(function (it, i) {
+        return engine.injectTracking(plain[i], ids[i], base, { links: String(it.doc.trackLinks == null ? 'no' : it.doc.trackLinks) === 'yes' });
+      });
+      /* lib/promo-track.js recordSends checks and caps every field. The mailer id is one the engine knows, or an
+         imported mail's "mailer.imported"; any other id the studio sent (it comes from the document, so it can be
+         anything, "constructor" included) is recorded as '' — the dashboards look a mailer's versions up by it */
+      metas = items.map(function (it, i) {
+        var raw = String(it.mailerId || ''), m = engine.getMailer(raw), save = it.save || null;
+        return {
+          id: ids[i], eventId: eventId, eventCreatedAt: String(stored.createdAt),
+          portal: String(ev.portal || ''), eventName: String(ev.name || ''),
+          mailerId: m ? m.id : (raw === IMPORTED_MAILER_ID ? raw : ''), mailerLabel: m ? m.label : '', subject: String(it.doc.subject || ''),
+          /* which version went out, so the dashboard can drill from a mailer into its versions */
+          saveId: String((save && save.saveId) || ''), saveName: String((save && save.name) || ''),
+          createdAt: now, by: (decoded && decoded.email) || ''
+        };
+      });
+    } catch (err) {
+      console.error('promo-mailer: tracking could not be added — the file went out untracked — ' + (err && err.stack || err));
+      return untracked;
+    }
+    return Promise.resolve().then(function () { return t.recordSends(fb, metas); }).then(function () {
+      return { html: html, tracked: true };
+    }, function (err) {
+      /* the platform's rule: a tracking failure must never break a download (store.ts) — the plain file goes out,
+         flagged, and the studio says it is not tracked this time */
+      console.error('promo-mailer: a send could not be recorded — the file went out untracked — ' + (err && err.stack || err));
+      return untracked;
+    });
+  });
+}
+
+/* What POST /download hands out, exactly as the platform decides it (server.ts:918-967):
+     { doc }               the document on screen (unsaved edits included)        -> { kind: 'doc' }
+     { mailerIds: [id] }   that mailer, when this event can have it               -> { kind: 'one', mailer }, else 404
+     { mailerIds? }        none named (every mailer but Blank) or several: a ZIP  -> { kind: 'zip', mailers }, else 404
+   A ZIP stays a ZIP even when only one mailer is left in it: the studio saves it as mailers.zip. */
+function pickDownload(body, ev) {
+  if (body.doc) return { kind: 'doc' };
+  var ids = Array.isArray(body.mailerIds) ? body.mailerIds.map(String) : [];
+  if (ids.length === 1) {
+    var m = engine.getMailer(ids[0]);
+    return m && m.requires(ev).ok ? { kind: 'one', mailer: m } : { kind: 'none', status: 404, error: 'unknown or unavailable mailer' };
+  }
+  var mailers = (ids.length ? ids.map(function (id) { return engine.getMailer(id); }).filter(Boolean)
+    : engine.ALL_MAILERS.filter(function (x) { return x.bulk !== false; }))
+    .filter(function (x) { return x.requires(ev).ok; })
+    /* ONEWORLD PORT: a mailer named twice is one file — a ZIP keeps one file per name, and a second recorded send
+       would be one no file carries */
+    .filter(function (x, i, all) { return all.indexOf(x) === i; });
+  if (!mailers.length) return { kind: 'none', status: 404, error: 'no mailers available for this event' };
+  return { kind: 'zip', mailers: mailers };
+}
+
 /* ---------- the routes ---------- */
 
 function queryOf(req) { return new URLSearchParams(String(req.url || '').split('?')[1] || ''); }
@@ -265,6 +371,11 @@ function docOr400(res, doc) {
 }
 function slugOf(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'event'; }
 function fileNameOf(m, ev) { return engine.mailerFileName ? engine.mailerFileName(m, ev) : slugOf(ev.name) + '-' + m.id + '.html'; }
+/* an exported file: never cached, and it says whether it went out tracked (the studio's toast reads it) */
+function sendExport(res, type, name, body, tracked) {
+  res.writeHead(200, { 'Content-Type': type, 'Content-Disposition': 'attachment; filename="' + name + '"', 'Cache-Control': 'no-store', 'X-Mailer-Tracked': tracked ? 'yes' : 'no' });
+  res.end(body);
+}
 
 /* GET /api/promo/mailers?eventId= */
 function handleCatalog(req, res) {
@@ -277,7 +388,10 @@ function handleCatalog(req, res) {
         event: { name: ev.name, hashtag: ev.hashtag, dateLabel: ev.dateLabel, venue: ev.venue || ev.city, micrositeUrl: ev.micrositeUrl,
           siteAccent: ev.siteAccent, siteTheme: ev.siteTheme, bannerUrl: ev.keyVisualUrl || null, portal: ev.portal },
         saves: r[1], tones: engine.TONE_OPTIONS
-      }, engine.buildMailerCatalog(ev)));
+      }, engine.buildMailerCatalog(ev), {
+        /* false: this event's exports go out untracked, so the studio hides "Link tracking" (it would do nothing) */
+        tracking: trackingOn(tracker(), eventId, r[0].stored)
+      }));
     }).catch(function (err) { fail(res, 'catalog', err); });
   });
 }
@@ -372,16 +486,20 @@ function handleImport(req, res) {
   });
 }
 
-/* POST /api/promo/mailer/render */
+/* POST /api/promo/mailer/render — editor:true is the studio's own preview, never tracked. track:true (and no
+   editor) is "Copy HTML": an export like a download, so it goes out through deliverables() and the answer adds
+   tracked: true | false. It counts as a send even if the browser then fails to copy it, as on the platform. */
 function handleRender(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
     if (!docOr400(res, body.doc)) return;
     eventFor(fb, eventId, req).then(function (got) {
       var ev = got.ev, pal = engine.renderCtx(ev, body.doc).p;
-      sendJson(res, 200, {
-        html: engine.renderDoc(body.doc, ev, body.editor ? { editor: true } : {}),
-        palette: { accent: pal.accent, primary: pal.primary, ink: pal.ink, cardBg: pal.cardBg, pageBg: pal.pageBg, tileBg: pal.tileBg }
-      });
+      var palette = { accent: pal.accent, primary: pal.primary, ink: pal.ink, cardBg: pal.cardBg, pageBg: pal.pageBg, tileBg: pal.tileBg };
+      if (body.track && !body.editor) {
+        return deliverables(fb, decoded, got, eventId, [{ doc: body.doc, mailerId: String(body.doc.mailerId || ''), save: { saveId: body.saveId, name: body.saveName } }])
+          .then(function (r) { sendJson(res, 200, { html: r.html[0], palette: palette, tracked: r.tracked }); });
+      }
+      sendJson(res, 200, { html: engine.renderDoc(body.doc, ev, body.editor ? { editor: true } : {}), palette: palette });
     }).catch(function (err) { fail(res, 'render', err); });
   });
 }
@@ -468,42 +586,47 @@ function handleReset(req, res) {
   });
 }
 
-/* POST /api/promo/mailer/download — the document on screen as .html; or, with no document, the latest saved
-   version (else a fresh one) of each mailer asked for — all of them but Blank when none is named — as a ZIP
-   with subjects.json. Plain HTML: tracking comes with Phase 2. */
+/* POST /api/promo/mailer/download — what goes out is decided by pickDownload(): the document on screen as .html;
+   one named mailer's latest saved version (else a fresh one) as .html; otherwise, the latest saved version (else
+   a fresh one) of each mailer asked for — all of them but Blank when none is named — as a ZIP with subjects.json.
+   Each file goes out through deliverables(), so every answer says whether it is tracked (X-Mailer-Tracked) —
+   except test:true, the same mail with no tracking and no send recorded, for checking your own work: opening it
+   would otherwise count your own views. */
 function handleDownload(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
     eventFor(fb, eventId, req).then(function (got) {
-      var ev = got.ev;
-      if (body.doc) {
+      var ev = got.ev, pick = pickDownload(body, ev);
+      if (pick.kind === 'none') return sendJson(res, pick.status, { error: pick.error });
+      if (pick.kind === 'doc') {
         if (!docOr400(res, body.doc)) return;
-        var one = engine.getMailer(String(body.doc.mailerId || (body.mailerIds || [])[0] || ''));
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + (one ? fileNameOf(one, ev) : 'mailer.html') + '"', 'Cache-Control': 'no-store' });
-        return res.end(engine.renderDoc(body.doc, ev));
+        var mailerId = String(body.doc.mailerId || (body.mailerIds || [])[0] || '');
+        var one = engine.getMailer(mailerId), fname = one ? fileNameOf(one, ev) : 'mailer.html';
+        if (body.test) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + fname + '"', 'Cache-Control': 'no-store' });
+          return res.end(engine.renderDoc(body.doc, ev));
+        }
+        return deliverables(fb, decoded, got, eventId, [{ doc: body.doc, mailerId: mailerId, save: { saveId: body.saveId, name: body.saveName } }])
+          .then(function (r) { sendExport(res, 'text/html; charset=utf-8', fname, r.html[0], r.tracked); });
       }
-      var ids = Array.isArray(body.mailerIds) ? body.mailerIds.map(String) : [];
-      var wanted = (ids.length ? ids.map(engine.getMailer).filter(Boolean) : engine.ALL_MAILERS.filter(function (m) { return m.bulk !== false; }))
-        .filter(function (m) { return m.requires(ev).ok; });
-      if (!wanted.length) return sendJson(res, 404, { error: 'no mailers available for this event' });
-      return Promise.all(wanted.map(function (m) {
+      var mailers = pick.kind === 'one' ? [pick.mailer] : pick.mailers;
+      return Promise.all(mailers.map(function (m) {
         return (body.fresh ? Promise.resolve(null) : latestSave(fb, eventId, m.id)).then(function (h) {
           return { m: m, doc: h ? engine.migrateSponsorTiers(h.doc, ev) : engine.buildDoc(m, ev, {}), save: h ? h.meta : null };
         });
       })).then(function (built) {
-        if (built.length === 1) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + fileNameOf(built[0].m, ev) + '"' });
-          return res.end(engine.renderDoc(built[0].doc, ev));
-        }
-        var zip = new JSZip(), meta = {};
-        built.forEach(function (b) {
-          var name = fileNameOf(b.m, ev);
-          zip.file(name, engine.renderDoc(b.doc, ev));
-          meta[name] = Object.assign({ subject: b.doc.subject, preheader: b.doc.preheader }, b.save ? { version: b.save.name } : {});
-        });
-        zip.file('subjects.json', JSON.stringify(meta, null, 2));
-        return zip.generateAsync({ type: 'nodebuffer' }).then(function (buf) {
-          res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="' + slugOf(ev.name) + '-mailers.zip"' });
-          res.end(buf);
+        /* one send per file, all recorded in one write */
+        return deliverables(fb, decoded, got, eventId, built.map(function (b) { return { doc: b.doc, mailerId: b.m.id, save: b.save }; })).then(function (r) {
+          if (pick.kind === 'one') return sendExport(res, 'text/html; charset=utf-8', fileNameOf(built[0].m, ev), r.html[0], r.tracked);
+          var zip = new JSZip(), meta = {};
+          built.forEach(function (b, i) {
+            var name = fileNameOf(b.m, ev);
+            zip.file(name, r.html[i]);
+            meta[name] = Object.assign({ subject: b.doc.subject, preheader: b.doc.preheader }, b.save ? { version: b.save.name } : {});
+          });
+          zip.file('subjects.json', JSON.stringify(meta, null, 2));
+          return zip.generateAsync({ type: 'nodebuffer' }).then(function (buf) {
+            sendExport(res, 'application/zip', slugOf(ev.name) + '-mailers.zip', buf, r.tracked);
+          });
         });
       });
     }).catch(function (err) { fail(res, 'download', err); });
@@ -638,4 +761,4 @@ module.exports = {
   wire, handleCatalog, handleSaves, handleRoster, handleDoc, handleRelayout, handleImport, handleRender, handleBlock,
   handleSave, handleRename, handleDelete, handleReset, handleDownload, handleAi, handleIcons, handleIconUpload, handleIconDelete
 };
-module.exports._test = { entityOf, awardOf, toLlmSchema, uniqueName, absolute };
+module.exports._test = { entityOf, awardOf, toLlmSchema, uniqueName, absolute, deliverables, pickDownload, tracker, trackingOn };

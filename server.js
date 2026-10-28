@@ -1,8 +1,9 @@
 // Production server for Firebase App Hosting (backend "revamp-cms", built from GitHub on every push to main).
 // App Hosting runs `npm start` and sends traffic to process.env.PORT. It serves the static pages and hands
-// /api/*, /e/* (published event sites) and /preview/* to functions/lib/api.js — the same handler the local dev
-// server (tools/serve.js) uses, so the endpoints behave identically everywhere. Env vars come from apphosting.yaml
-// (FIREBASE_STORAGE_BUCKET, GEMINI_API_KEY); credentials are App Hosting's own service identity.
+// /api/*, /e/* (published event sites), /preview/* and /t/* (a mailer's open pixel and click links) to
+// functions/lib/api.js — the same handler the local dev server (tools/serve.js) uses, so the endpoints behave
+// identically everywhere. Env vars come from apphosting.yaml (FIREBASE_STORAGE_BUCKET, GEMINI_API_KEY,
+// MAILER_TRACK_BASE, …); credentials are App Hosting's own service identity.
 // Local: `npm install`, then `npm start` → http://localhost:8080 (tools/serve.js stays the dev server).
 const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { handleApi } = require('./functions/lib/api');
@@ -102,6 +103,14 @@ function fail(req, res, err){
 process.on('uncaughtException', function(err){ console.error('uncaughtException (still serving): ' + (err && err.stack || err)); });
 process.on('unhandledRejection', function(err){ console.error('unhandledRejection (still serving): ' + (err && err.stack || err)); });
 
+/* Cloud Run sends SIGTERM and allows 10 s before it stops the instance: mailer open and click counts still
+   held in memory (lib/promo-track.js) are written first. Only when that module was loaded at all. */
+process.on('SIGTERM', function () {
+  var p = path.join(__dirname, 'functions', 'lib', 'promo-track.js'), m = require.cache[p];
+  var flush = m && m.exports && typeof m.exports.flushAll === 'function' ? m.exports.flushAll(8000) : Promise.resolve();
+  flush.then(function () { process.exit(0); }, function () { process.exit(0); });
+});
+
 http.createServer(function(req, res){
   try { gate(req, res, function(){ try { serve(req, res); } catch (err) { fail(req, res, err); } }); }
   catch (err) { fail(req, res, err); }
@@ -109,7 +118,7 @@ http.createServer(function(req, res){
 
 function serve(req, res){
   const url = req.url.split('?')[0];
-  if (/^\/(api|e|preview)\//.test(url)) return handleApi(req, res);
+  if (/^\/(api|e|preview|t)\//.test(url)) return handleApi(req, res);
   if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
   if (url === '/favicon.ico'){

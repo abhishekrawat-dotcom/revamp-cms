@@ -1,7 +1,7 @@
 // Local static server for the repo — templates load their section files with fetch(), which browsers block on file://.
 //   node tools/serve.js [port]      then open http://localhost:8080/templates/preview.html?t=tech500
 //
-// The /api/*, /e/* and /preview/* routes themselves live in functions/lib/api.js, so the EXACT same code runs
+// The /api/*, /e/*, /preview/* and /t/* routes themselves live in functions/lib/api.js, so the EXACT same code runs
 // here (for local dev) and in production (server.js on App Hosting). This file only adds static file serving
 // and loading tools/.env.local for local secrets (GEMINI_API_KEY, the Firebase service account —
 // functions/lib/firebase.js reads the same variable names either way, see its header comment).
@@ -44,7 +44,7 @@ function notFound(res) { res.writeHead(404, { 'Content-Type': 'text/plain; chars
 
 function serve(req, res) {
   const url = req.url.split('?')[0];
-  if (/^\/(api|e|preview)\//.test(url)) return handleApi(req, res);
+  if (/^\/(api|e|preview|t)\//.test(url)) return handleApi(req, res);
   if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
 

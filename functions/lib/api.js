@@ -1,4 +1,4 @@
-// The /api/*, /e/* and /preview/* endpoint logic — the ONE place it's routed. Runs identically in:
+// The /api/*, /e/*, /preview/* and /t/* endpoint logic — the ONE place it's routed. Runs identically in:
 //   - production, called from server.js (Firebase App Hosting)
 //   - locally, called from tools/serve.js
 //   - the legacy Cloud Function entry point, functions/index.js (an Express-based request/response)
@@ -87,6 +87,8 @@
 //                          GET /api/public/forms (PUBLIC — what a visitor's page is told about them)
 //     lib/promo.js         GET /api/promo/kit, GET /api/promo/image, POST /api/promo/write (the Promotions
 //                          pages: an event's brand and content, its pictures from our own address, AI copy)
+//     lib/promo-track.js   GET /t/o/<id>.gif, GET /t/c/<id> (PUBLIC — a mailer's open pixel and click redirect),
+//                          GET /api/promo/analytics, GET /api/promo/analytics/all
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -9879,7 +9881,7 @@ function handleSitemapXml(req, res) {
    ===================================================================================================== */
 
 /* The one entry point every server (server.js on App Hosting, tools/serve.js locally, the legacy Cloud
-   Function) calls, for every path under /api/, /e/ and /preview/. A synchronous throw anywhere in routing
+   Function) calls, for every path under /api/, /e/, /preview/ and /t/. A synchronous throw anywhere in routing
    or in a handler's own first lines becomes a 500 for THAT request instead of an uncaught exception for
    the whole process. Throws inside later stream/promise callbacks are each handler's own to deal with
    (withAdmin / withAdminBody / sendFailure above); server.js adds a process-level net under all of it. */
@@ -9944,6 +9946,42 @@ var promoMailer = function (handler) {
     return run(req, res);
   };
 };
+
+/* lib/promo-track.js (a mailer's open and click counts, and the "Mailer performance" dashboard) takes the
+   same helpers */
+var promoTrack = function (handler) {
+  var run = inModule('promo-track', handler);
+  return function (req, res) {
+    try { require('./promo-track').wire(promoHelpers()); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+};
+
+/* the same 42 bytes as lib/promo-track.js PIXEL (a test checks): a mail must never show a broken image, even
+   when that module is missing from a deployment */
+var TRACK_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+var trackLoadLoggedAt = 0;
+/* /t/o/<id>.gif and /t/c/<id> go to lib/promo-track.js, loaded on each hit like every other route module.
+   They are what a recipient's mail asks for, so when that module cannot be loaded the answer is not
+   inModule()'s JSON 503: the pixel is still a picture (nothing is counted) and a link says in plain words
+   that it is not available just now. That failure is logged at most once a minute: one sent mail can be
+   opened many times a second. */
+function trackHit(kind, req, res) {
+  var mod = null;
+  try { mod = require('./promo-track'); mod.wire(promoHelpers()); }
+  catch (err) {
+    mod = null;
+    if (Date.now() - trackLoadLoggedAt > 60000) { trackLoadLoggedAt = Date.now(); console.error('api: could not load lib/promo-track.js for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err)); }
+  }
+  if (mod && kind === 'o' && typeof mod.handleOpen === 'function') return mod.handleOpen(req, res);
+  if (mod && kind === 'c' && typeof mod.handleClick === 'function') return mod.handleClick(req, res);
+  if (kind === 'o') {
+    res.writeHead(200, { 'Content-Type': 'image/gif', 'Content-Length': TRACK_PIXEL.length, 'Cache-Control': 'no-store, no-cache, must-revalidate, private', Pragma: 'no-cache', Expires: '0', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(req.method === 'HEAD' ? undefined : TRACK_PIXEL);
+  }
+  res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Retry-After': '60' });
+  return res.end('This link is not available right now. Please try again in a few minutes.');
+}
 
 /* "METHOD path" -> handler, for every route with a fixed path. */
 var ROUTES = {
@@ -10036,6 +10074,8 @@ var ROUTES = {
   'GET /api/promo/icons': promoMailer('handleIcons'),
   'POST /api/promo/icons': promoMailer('handleIconUpload'),
   'DELETE /api/promo/icons': promoMailer('handleIconDelete'),
+  'GET /api/promo/analytics': promoTrack('handleAnalytics'),
+  'GET /api/promo/analytics/all': promoTrack('handleAnalyticsAll'),
 
   'POST /api/event/leads/bulk': handleLeadsBulkCreate,
   'PATCH /api/event/leads/bulk': handleLeadsBulkUpdate,
@@ -10063,6 +10103,14 @@ function routeApi(req, res) {
     if (page) { try { eventId = decodeURIComponent(page[2]); slug = page[3] ? decodeURIComponent(page[3]) : ''; } catch (e) { eventId = ''; } }
     if (!page || !isEventId(eventId) || (slug && !sitePages.SLUG_RE.test(slug))) return sendNotAvailable(req, res);
     return page[1] === 'e' ? handlePublicPage(req, res, eventId, slug) : handlePreviewPage(req, res, eventId, slug);
+  }
+
+  /* /t/o/<id>.gif, /t/c/<id>: a mailer's open pixel and click redirect (lib/promo-track.js) — public */
+  var tr = /^\/t\/(o|c)\/([^\/]{1,80})$/.exec(urlPath);
+  if (tr || /^\/t\//.test(urlPath)) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
+    if (!tr) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end('Not found'); }
+    return trackHit(tr[1], req, res);
   }
 
   if (urlPath === '/robots.txt' || urlPath === '/sitemap.xml') {
@@ -10097,6 +10145,7 @@ module.exports._testHooks = {
   unansweredLogoNote: unansweredLogoNote, logoNoteError: logoNoteError, darkCopyOfUnit: darkCopyOfUnit, LOGO_NOTE_CODE: LOGO_NOTE_CODE,
   redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
+  TRACK_PIXEL: TRACK_PIXEL,   // the open pixel answered when lib/promo-track.js cannot be loaded (must equal its PIXEL)
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,

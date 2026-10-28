@@ -213,6 +213,9 @@
   .toolbar-filters-group{ flex:1; display:flex; align-items:center; justify-content:flex-start; gap:8px; flex-wrap:wrap; min-width:0; }
   .toolbar-right-group{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .search-box{ display:flex; align-items:center; gap:7px; background:var(--surface); border:1px solid var(--border-strong); border-radius:var(--r-sm); padding:8px 10px; width:100%; max-width:290px; color:var(--text-faint); }
+  /* a crowded toolbar (a long "Showing …" line, filters in use) narrows the search box, down to 180px, before
+     the filters move onto a second row; with room to spare it is 290px as ever (phones: the 880px rules below) */
+  @media (min-width:881px){ .search-box{ flex:1 1 180px; } }
   .search-box:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   .search-box input{ border:none; background:none; outline:none; color:var(--text); font-size:13px; width:100%; }
   .search-box input::placeholder{ color:var(--text-faint); }
@@ -525,6 +528,8 @@
     .toolbar .toolbar-btn.desk-only{ display:none; }
     .search-box{ max-width:none; flex:1; }
     .view-toggle{ display:none; }
+    /* the right-hand links wrap among themselves rather than push the page wider than the screen */
+    .toolbar-right-group{ flex-wrap:wrap; flex-shrink:1; min-width:0; }
   }
   @media (min-width:881px){ .mobile-only{ display:none !important; } }
 
@@ -609,6 +614,13 @@
 
       <div class="toolbar-right-group">
         <span class="result-line" id="result-line"></span>
+
+        <!-- opens and clicks of the mailers of all events (mailer-performance.html). The short label keeps the
+             toolbar on one row; the page's full name is in its title and its name for screen readers -->
+        <a class="btn btn-secondary btn-sm" href="mailer-performance.html" id="btn-mailer-performance" title="Mailer performance" aria-label="Mailer performance">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-4"/><path d="M13 17V8"/><path d="M18 17v-7"/></svg>
+          Mailers
+        </a>
 
         <!-- the activity log across all events (activity-log.html) -->
         <a class="btn btn-secondary btn-sm" href="activity-log.html" id="btn-activity-log">

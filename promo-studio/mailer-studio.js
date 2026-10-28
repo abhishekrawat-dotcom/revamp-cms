@@ -1,15 +1,226 @@
 /* COPIED from the promotional platform (the owner's Social Post Generator, app/public/index.html) by
-   tools/extract-promo-studio.py — do not edit here: Oneworld's changes are in promo-studio/oneworld.js. */
+   tools/extract-promo-studio.py, unchanged except PATCHES (listed in tools/extract-promo-studio.py) — do not
+   edit here: Oneworld's changes are in promo-studio/oneworld.js. */
 /* ===== from the platform's index.html: $ ===== */
 const $=(id)=>document.getElementById(id);
 
-/* ===== from the platform's index.html: number and date helpers ===== */
+/* ===== from the platform's index.html: the mailer product's nav ===== */
+/** The mailer product carries a persistent nav — its dashboard and its work are
+ *  two places you move between constantly, and the crumb trail alone made picking
+ *  a portal feel like a dead end. */
+function setProdNav(active){
+  const nav=$("prodNav"); if(!nav)return;
+  nav.style.display=S.product==="mail"?"":"none";
+  nav.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===active));
+}
+
+/* ===== from the platform's index.html: number and date helpers, and the mailer dashboard ===== */
 const S_OPEN="#4f46e5", S_CLICK="#eb6834";
 const nFmt=(n)=>Number(n||0).toLocaleString();
 // "3th edition" — blindly appending "th" is wrong for 1/2/3. 11/12/13 stay "th".
 const ordinal=(n)=>{n=Number(n)||0;const t=n%100;return n+(t>=11&&t<=13?"th":["th","st","nd","rd"][n%10]||"th");};
 const kFmt=(n)=>{n=Number(n||0); return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e4?(n/1e3).toFixed(1)+"K":n.toLocaleString();};
 const pct=(a,b)=>b>0?Math.round((a/b)*100):0;
+const AN={range:30, tmplMetric:"opens", subjMetric:"opens", data:null, openVer:null};
+
+/** 12-point sparkline: de-emphasised, with the last point in the series colour. */
+function spark(vals,color){
+  const w=104,h=26,pts=vals.slice(-12); if(pts.length<2) return "";
+  const max=Math.max(1,...pts), st=w/(pts.length-1);
+  const xy=pts.map((v,i)=>[i*st, h-2-(v/max)*(h-5)]);
+  const d=xy.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+  const last=xy[xy.length-1];
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="${color}" stroke-opacity=".28" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="${color}"/></svg>`;
+}
+
+/** Two-series trend. One y-axis (never two), hairline grid, 2px lines, a 10%
+ *  area wash, and a crosshair that snaps to the nearest day and reports BOTH
+ *  series at once — so the pointer never has to find a 2px line. */
+function trendChart(series){
+  const W=980,H=210,L=38,R=14,T=12,B=26;
+  const iw=W-L-R, ih=H-T-B, n=series.length;
+  const max=Math.max(4,...series.map(d=>Math.max(d.opens,d.clicks)));
+  const ny=4, step=Math.ceil(max/ny/5)*5||1, top=step*ny;
+  const x=i=>L+(n<2?iw/2:(i/(n-1))*iw), y=v=>T+ih-(v/top)*ih;
+  const path=(k)=>series.map((d,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(d[k]).toFixed(1)).join(" ");
+  const area=(k)=>`${path(k)} L ${x(n-1).toFixed(1)} ${T+ih} L ${x(0).toFixed(1)} ${T+ih} Z`;
+  const grid=Array.from({length:ny+1},(_,i)=>{const v=i*step,gy=y(v);
+    return `<line x1="${L}" y1="${gy.toFixed(1)}" x2="${W-R}" y2="${gy.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
+            <text x="${L-8}" y="${(gy+3.5).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--faint)">${nFmt(v)}</text>`;}).join("");
+  const every=Math.max(1,Math.round(n/6));
+  const xlab=series.map((d,i)=>i%every===0||i===n-1
+    ? `<text x="${x(i).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--faint)">${new Date(d.date+"T00:00:00Z").toLocaleDateString(undefined,{month:"short",day:"numeric"})}</text>`:"").join("");
+  const end=(k,c)=>{const v=series[n-1][k]; return `<circle cx="${x(n-1).toFixed(1)}" cy="${y(v).toFixed(1)}" r="4.5" fill="${c}" stroke="var(--panel)" stroke-width="2"/>`;};
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Opens and clicks per day">
+    ${grid}
+    <path d="${area("opens")}" fill="${S_OPEN}" fill-opacity=".10"/>
+    <path d="${area("clicks")}" fill="${S_CLICK}" fill-opacity=".10"/>
+    <path d="${path("opens")}" fill="none" stroke="${S_OPEN}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${path("clicks")}" fill="none" stroke="${S_CLICK}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${end("opens",S_OPEN)}${end("clicks",S_CLICK)}
+    <line id="anCross" x1="0" y1="${T}" x2="0" y2="${T+ih}" stroke="var(--axis)" stroke-width="1" opacity="0"/>
+    ${xlab}
+  </svg>`;
+}
+/** Hover: aim at a date, not at a line. */
+function wireTrend(box,series){
+  const svg=box.querySelector("svg"), tip=box.querySelector(".tip"), cross=box.querySelector("#anCross");
+  if(!svg||!tip)return;
+  const W=980,L=38,R=14,iw=W-L-R,n=series.length;
+  const move=(ev)=>{
+    const r=svg.getBoundingClientRect(), sx=(ev.clientX-r.left)/r.width*W;
+    let i=Math.round(((sx-L)/iw)*(n-1)); i=Math.max(0,Math.min(n-1,i));
+    const d=series[i], px=L+(n<2?iw/2:(i/(n-1))*iw);
+    cross.setAttribute("x1",px); cross.setAttribute("x2",px); cross.setAttribute("opacity","1");
+    tip.textContent="";
+    const day=document.createElement("div"); day.className="d";
+    day.textContent=new Date(d.date+"T00:00:00Z").toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+    tip.appendChild(day);
+    for(const [lab,val,col] of [["Opens",d.opens,S_OPEN],["Clicks",d.clicks,S_CLICK]]){
+      const row=document.createElement("div"); row.className="r";
+      const key=document.createElement("i"); key.style.background=col;
+      const b=document.createElement("b"); b.textContent=nFmt(val);
+      const sName=document.createElement("s"); sName.textContent=lab;   // untrusted-safe: textContent
+      row.append(key,b,sName); tip.appendChild(row);
+    }
+    tip.style.left=(px/W*r.width)+"px"; tip.style.top=(r.height*0.06)+"px"; tip.style.opacity="1";
+  };
+  svg.addEventListener("pointermove",move);
+  svg.addEventListener("pointerleave",()=>{tip.style.opacity="0";cross.setAttribute("opacity","0");});
+}
+
+/** Magnitude, ordered: one hue, thin bars, value at the tip.
+    `versions` (templates only) turns a row into a drill-down: the ranking stays
+    by template — a template is the thing you pick — and expanding one answers
+    "which saved version of it did better", which is the whole point of keeping
+    versions. Both metrics ride on every row, so expanding costs no request. */
+function rankCard(title,id,rows,metric,versions){
+  const max=Math.max(1,...rows.map(r=>r[metric]||0));
+  const body=rows.length?`<ol class="rank">${rows.slice(0,6).map((r,i)=>{
+      const vs=versions&&versions[r.key];
+      const open=vs&&AN.openVer===r.key;
+      const vmax=vs?Math.max(1,...vs.map(v=>v[metric]||0)):1;
+      return `<li class="${vs?"has":""} ${open?"open":""}" ${vs?`onclick="anToggleVer(${i})"`:""}>
+        <span class="no">${vs?`<i class="cv">${open?"▾":"▸"}</i>`:i+1}</span>
+        <div><div class="lb" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}${vs?`<span class="vct">${vs.length} versions</span>`:""}</div>
+          <div class="tr" style="width:${Math.max(3,Math.round((r[metric]/max)*100))}%"></div></div>
+        <span class="vv">${kFmt(r[metric])}<s>${r.sends} send${r.sends===1?"":"s"}</s></span>
+        ${open?`<ol class="vrank">${vs.slice().sort((a,b)=>b[metric]-a[metric]).map(v=>`
+          <li><div><div class="lb" title="${escapeHtml(v.label)}">${escapeHtml(v.label)}</div>
+              <div class="tr" style="width:${Math.max(3,Math.round((v[metric]/vmax)*100))}%"></div></div>
+            <span class="vv">${kFmt(v[metric])}<s>${v.sends} send${v.sends===1?"":"s"}</s></span></li>`).join("")}</ol>`:""}
+      </li>`;}).join("")}</ol>`
+    :`<p class="an-empty" style="padding:18px 0">Nothing recorded yet.</p>`;
+  return `<div class="card an-card"><div class="an-hd"><h3>${escapeHtml(title)}</h3>
+      <div class="seg">
+        <button class="${metric==="opens"?"on":""}" onclick="anMetric('${id}','opens')">Opens</button>
+        <button class="${metric==="clicks"?"on":""}" onclick="anMetric('${id}','clicks')">Clicks</button>
+      </div></div>${body}</div>`;
+}
+function anMetric(which,m){ if(which==="tmpl")AN.tmplMetric=m; else AN.subjMetric=m; paintAnalytics(); }
+function anToggleVer(key){ AN.openVer=AN.openVer===key?null:key; paintAnalytics(); }
+function anRange(d){ AN.range=d; paintAnalytics(); }
+/** Reopen the exact mailer a row came from — including the version it was
+    generated from, which is the row you clicked on. */
+async function anOpen(portal,event,mailerId,name,saveId){
+  S.product="mail"; S.portal=portal; S.portalName=name||portal; S.event=Number(event);
+  await loadPortals();
+  // openEvent is fully awaited (it only resolves once MAILERS is set and the
+  // event page is rendered — renderEventDetail is synchronous), so there is
+  // nothing left to wait out here. A fixed setTimeout used to sit in this spot;
+  // on anything slower than local dev (a cold serverless function, a slow
+  // upstream) it could fire before openEvent had actually finished, opening
+  // nothing or the wrong mailer's fresh state instead of the requested save.
+  await openEvent(Number(event));
+  openMailer(mailerId,saveId||null);
+}
+
+async function showAnalytics(){
+  mark("dashboard");
+  crumbs([{t:"Dashboard"}]); setProdNav("dash");
+  if(!AN.data) $("content").innerHTML=`<div class="page-h"><div><h2>Mailer performance</h2>
+      <p>${owDashSubline()}</p></div></div>
+    <div class="kpis">${"<div class=\"card kpi\"><div class=\"sk\" style=\"height:74px\"></div></div>".repeat(4)}</div>
+    <div class="card an-card"><div class="sk" style="height:210px"></div></div>`;
+  const r=await api("/api/analytics");
+  if(!r.ok){ $("content").innerHTML=`<div class="ml-err">Could not load analytics.</div>`; return; }
+  AN.data=await r.json();
+  paintAnalytics();
+}
+
+function paintAnalytics(){
+  const a=AN.data; if(!a)return;
+  const series=(a.series||[]).slice(-AN.range);
+  const win=series.reduce((t,d)=>({opens:t.opens+d.opens,clicks:t.clicks+d.clicks}),{opens:0,clicks:0});
+  const t=a.totals;
+
+  // Say what was excluded and why. A number that quietly got smaller is not more
+  // trustworthy than one that was quietly too big.
+  const filt=a.filtered||{opens:0,clicks:0};
+  const filtNote=(filt.opens||filt.clicks)
+    ? `<div class="an-note">Excluded <b>${nFmt(filt.opens)}</b> automated open${filt.opens===1?"":"s"} and <b>${nFmt(filt.clicks)}</b> automated click${filt.clicks===1?"":"s"} — mail security gateways and link checkers fetch every image and follow every link before a person sees the mail.</div>`
+    : "";
+  // Plain language: a marketer can't act on "Vercel KV / Upstash Redis". Say what
+  // it means for THEM — are their opens and clicks being saved, or not.
+  const note=a.backend==="none"
+    ? `<div class="an-note warn"><b>Opens and clicks aren't being saved right now.</b> Mailers you send will still work, but their performance won't show up here. Ask whoever set up this platform to turn on performance tracking.</div>`
+    : a.backend==="file" ? `<div class="an-note">Your mailer performance is being saved.</div>` : "";
+
+  const empty=t.sends===0;
+  $("content").innerHTML=`<div class="page-h"><div><h2>Mailer performance</h2>
+      <p>${owDashSubline()}</p></div>
+      <div class="r"><button class="btn alt sm" onclick="AN.data=null;AN.fresh=true;showAnalytics()">Refresh</button>
+        <button class="btn sm" onclick="showPortals()">New mailer →</button></div></div>
+    ${note}${filtNote}
+    ${empty?`<div class="card an-empty"><div class="e">✉</div><h4>No mailers generated yet</h4>
+        <p>Download or copy a mailer and its opens and clicks appear here.</p>
+        <button class="btn" onclick="showPortals()">${owDashPickLabel()}</button></div>`
+    :`
+    <div class="an-bar">
+      <div class="seg">
+        ${[7,30].map(d=>`<button class="${AN.range===d?"on":""}" onclick="anRange(${d})">Last ${d} days</button>`).join("")}
+      </div>
+      <span class="muted" style="font-size:11.5px">Totals below cover all time; the chart covers the range.</span>
+    </div>
+    <div class="kpis">
+      <div class="card kpi hero"><div class="k">Opens</div><div class="v">${kFmt(t.opens)}</div>
+        <div class="sub">${nFmt(win.opens)} in the last ${AN.range} days</div>
+        <div class="spark">${spark(series.map(d=>d.opens),S_OPEN)}</div></div>
+      <div class="card kpi"><div class="k">Clicks</div><div class="v">${kFmt(t.clicks)}</div>
+        <div class="sub">${nFmt(win.clicks)} in range</div>
+        <div class="spark">${spark(series.map(d=>d.clicks),S_CLICK)}</div></div>
+      <div class="card kpi"><div class="k">Click-to-open</div><div class="v">${pct(t.clicks,t.opens)}%</div>
+        <div class="sub">clicks per open</div></div>
+      <div class="card kpi"><div class="k">Mailers generated</div><div class="v">${nFmt(t.sends)}</div>
+        <div class="sub">all time</div></div>
+    </div>
+    <div class="card an-card" style="margin-bottom:14px">
+      <div class="an-hd"><h3>Opens and clicks per day</h3>
+        <div class="lgd"><span><i style="background:${S_OPEN}"></i>Opens</span><span><i style="background:${S_CLICK}"></i>Clicks</span></div>
+      </div>
+      <div class="chart" id="anChart">${trendChart(series)}<div class="tip"></div></div>
+    </div>
+    <div class="an-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;margin-bottom:14px">
+      ${rankCard("Top templates","tmpl",AN.tmplMetric==="opens"?a.topOpenedTemplates:a.topClickedTemplates,AN.tmplMetric,a.versions||{})}
+      ${rankCard("Top subject lines","subj",AN.subjMetric==="opens"?a.topOpenedSubjects:a.topClickedSubjects,AN.subjMetric)}
+    </div>
+    <div class="card an-card"><div class="an-hd"><h3>Recent mailers</h3>
+        <span class="muted" style="font-size:11.5px">Click a row to reopen it in the studio</span></div>
+      <table class="an-tbl"><thead><tr>
+          <th>Generated</th><th>Template</th><th>Subject</th><th>Event</th><th class="n">Opens</th><th class="n">Clicks</th><th></th></tr></thead>
+        <tbody>${a.sends.slice(0,12).map((x,i)=>`<tr onclick="anOpenRow(${i})">
+          <td>${new Date(x.createdAt).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</td>
+          <td>${escapeHtml(x.mailerLabel||x.mailerId)}${x.saveName?`<span class="vchip" title="Saved version">${escapeHtml(x.saveName)}</span>`:""}</td>
+          <td class="sub" title="${escapeHtml(x.subject)}">${escapeHtml(x.subject)}</td>
+          <td>${escapeHtml(x.eventName||"")}</td>
+          <td class="n">${nFmt(x.opens)}</td><td class="n">${nFmt(x.clicks)}</td><td class="go">→</td></tr>`).join("")}</tbody></table>
+    </div>
+    <p class="an-foot">Opens are counted when a mail client loads the tracking image, so they under-count clients that block images and over-count privacy proxies that pre-fetch them. Clicks exclude known bots, but can't be guaranteed exact.</p>`}`;
+
+  const box=$("anChart"); if(box) wireTrend(box,series);
+}
 
 /* ===== from the platform's index.html: "Recently updated": every saved version of this event ===== */
 /* ---------- Saved (this event) ----------
@@ -71,7 +282,7 @@ function skEventPage(){
 }
 
 /* ===== from the platform's index.html: escaping, toast and the in-app dialogs ===== */
-const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 let _tt; function toast(m,ms){const t=$("toast");t.textContent=m;t.classList.add("on");clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove("on"),ms||2200);}
 
 /* In-app dialogs replacing prompt()/confirm(). One modal, promise-based, so the
@@ -240,7 +451,7 @@ async function downloadAllMailers(){
   const btn=event?.target; if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> zipping…';}
   const r=await api("/api/mailer/download",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,mailerIds:[]})});
-  if(r.ok){ const a=document.createElement("a"); a.href=URL.createObjectURL(await r.blob()); a.download="mailers.zip"; a.click(); toast("Downloaded — saved edits included"); }
+  if(r.ok){ const a=document.createElement("a"); a.href=URL.createObjectURL(await r.blob()); a.download="mailers.zip"; a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }
   else toast("Download failed");
   if(btn){btn.disabled=false;btn.innerHTML='Download all (.zip)';}
 }
@@ -1934,7 +2145,7 @@ function mlProps(){
           <option value="no" ${String(MD.doc.trackLinks??"no")==="no"?"selected":""}>Off — links point straight at the real page</option>
           <option value="yes" ${String(MD.doc.trackLinks??"no")==="yes"?"selected":""}>On — count clicks (links go via this platform)</option>
         </select>
-        <div class="hint">Off by default: clean, direct URLs, no vercel/deployment domain on hover, no click figures. Turning it on rewrites every href through this deployment's domain so clicks can be counted — recipients see that domain on hover. Opens (if tracking is configured on this deployment at all) are counted either way.</div></div>
+        <div class="hint">Off by default: links go straight to the real page, with no Oneworld address on hover and no click figures. Turning it on sends every link through Oneworld's own address so clicks can be counted — recipients see that address on hover. Opens are counted either way.</div></div>
       <div class="fld"><label>Save button on pictures</label>
         <select onchange="MD.doc.imageGuard=this.value;MD.dirty=true;mlRender(0)">
           <option value="yes" ${String(MD.doc.imageGuard??"yes")!=="no"?"selected":""}>Hide it — pictures sit in an empty anchor</option>
@@ -2332,7 +2543,7 @@ async function mlCopy(){
   const r=await api("/api/mailer/render",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,doc:MD.doc,editor:false,track:true,saveId:MD.saveId,saveName:MD.saveName})});
   if(!r.ok){toast("Render failed");return;}
-  try{ await navigator.clipboard.writeText((await r.json()).html); toast("HTML copied — paste into your ESP"); }
+  try{ const j=await r.json(); await navigator.clipboard.writeText(j.html); owTrackToast("copy",j.tracked!==false,""); }
   catch{ toast("Clipboard blocked by the browser"); }
 }
 /** The same mail with no pixel and no click rewriting, and no send recorded.
@@ -2359,7 +2570,7 @@ async function mlDownload(){
   const fname=(cd.match(/filename="([^"]+)"/)||[])[1]||"mailer.html"; a.download=fname; a.click();
   // Download gave zero on-screen feedback before — a first-timer couldn't tell it
   // worked. Name the file and say where the numbers will land, held on screen longer.
-  toast(`Downloaded ${fname} — opens and clicks will show on your dashboard once it's sent.`,5000);
+  owTrackToast("download",r.headers.get("X-Mailer-Tracked")!=="no",fname);
 }
 function mlStatus(){
   mlHistPush();                      // every mutation path reaches here or mlProps

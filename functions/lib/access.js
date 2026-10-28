@@ -11,6 +11,9 @@
 //   /api/public/*       the data a published site shows (speakers, agenda, …)
 //   /api/register       a visitor's registration
 //   /api/track          one count per page view
+// and what a mailer sent from Promotions needs from a recipient's mail (lib/promo-track.js):
+//   /t/o/<id>.gif       a mailer's open pixel
+//   /t/c/<id>           a mailer's signed click redirect
 // /preview/<eventId> is NOT public: it shows a site that has not been released.
 //
 // WHAT: isServableFile() is the one rule for which files of this repository a web server may send, used by
@@ -106,6 +109,7 @@ function isPublic(req, urlPath) {
   const p = canonicalPath(urlPath);
   if (p === null) return false;
   if (p.indexOf('/e/') === 0 || isPublicApi(p)) return true;      // OPTIONS (a browser's preflight) included
+  if (/^\/t\/[oc]\/[^/]+$/.test(p)) return true;                  // a mailer's open pixel and click links
   if (p.indexOf('/api/') === 0 || p.indexOf('/preview/') === 0) return false;
   if (PUBLIC_PATHS.has(p)) return true;
   /* app code: any file this server would actually send, other than a page. Something it would not send

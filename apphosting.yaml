@@ -60,3 +60,36 @@ env:
     secret: LOVABLE_SCRAPER_SECRET
     availability:
       - RUNTIME
+
+  # The address every tracked mailer points at: its open pixel (/t/o/<id>.gif) and, when "Link tracking" is on,
+  # every link (/t/c/<id>?u=…&s=…) — see functions/lib/promo-track.js. Not a secret. It is PERMANENT in every
+  # mail sent with it: links and pixels already in inboxes keep pointing at this address even if it is changed
+  # later, so this host must keep serving /t/ for as long as those mails are read. It must stay a bare origin
+  # (https, no path, no trailing slash); anything else turns tracking off rather than put a broken address in a
+  # mail.
+  - variable: MAILER_TRACK_BASE
+    value: "https://revamp-cms--revamp-cms.us-east4.hosted.app"
+    availability:
+      - RUNTIME
+
+  # The key that signs every tracked link, so /t/c/ only ever redirects to a link Oneworld itself put in a mail
+  # (64 hex characters from `openssl rand -hex 32`; 32+ characters, no fallback). Until this entry is enabled,
+  # mailer tracking is OFF: downloads are plain, nothing is recorded, and the dashboards say opens and clicks
+  # aren't being saved. Enable it (remove the leading "# " from the four lines below) ONLY after the owner has
+  # run `firebase apphosting:secrets:set TRACK_SECRET --project revamp-cms` and granted this backend access
+  # when asked: a rollout that names a secret it cannot read FAILS. Once enabled, never remove it — every
+  # tracked link already sent would then answer "bad link".
+  # - variable: TRACK_SECRET
+  #   secret: TRACK_SECRET
+  #   availability:
+  #     - RUNTIME
+
+  # TRACK_SECRET_PREVIOUS, for rotating the key: it only ever checks links, it never signs them. To rotate, set
+  # it to the OLD value (`firebase apphosting:secrets:set TRACK_SECRET_PREVIOUS --project revamp-cms`), set
+  # TRACK_SECRET to a new one, enable the entry below and roll out: links already sent keep working, and new
+  # mails use the new key. After a leak, do NOT keep the old key here: drop it instead, and every link signed
+  # with it answers "bad link" — that is the price of revoking it.
+  # - variable: TRACK_SECRET_PREVIOUS
+  #   secret: TRACK_SECRET_PREVIOUS
+  #   availability:
+  #     - RUNTIME
