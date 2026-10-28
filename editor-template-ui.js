@@ -3841,7 +3841,7 @@
   function markUndone(t, note) {
     t.status = 'undone';
     if (t.button) { t.button.disabled = true; t.button.textContent = 'Undone'; }
-    if (t.stateLine) { t.stateLine.textContent = note || 'Undone — the page is back to how it was before this change.'; t.stateLine.hidden = false; }
+    if (t.card) { t.card.status('undone'); t.card.note(note || 'The page is back to how it was before this change.'); }
   }
   /* -> Promise<boolean undone> */
   function undoAiTurn(t, quiet) {
@@ -4069,19 +4069,34 @@
     var notDone = notes.map(plainText).concat(cannot.map(function (c) { return 'I can’t do this here: ' + c; }));
 
     var bubble = appendChatMsg('ai', result.summary);
-    var stateLine = document.createElement('div');
-    stateLine.className = 'chat-state';
-    bubble.appendChild(stateLine);
-    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, stateLine: stateLine, result: result };
+    var card = taskCard(bubble.parentNode);
+    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, card: card, result: result, startedAt: Date.now() };
+    /* the change as steps, planned before anything is done — each lit as it runs and as it ends */
+    var S = {};
+    if (newForms.length) S.forms = card.step(newForms.length === 1 ? 'Create the form “' + refNames[newForms[0].ref] + '”' : 'Create ' + newForms.length + ' forms');
+    if (Object.keys(design).length) S.design = card.step('Update the design: ' + Object.keys(design).map(function (k) { return designLabel(k); }).join(', '));
+    var textBy = {};
+    textEdits.forEach(function (te) { (textBy[te.sectionId] = textBy[te.sectionId] || []).push(te); });
+    Object.keys(textBy).forEach(function (sid) { S['text:' + sid] = card.step('Change the wording in “' + sectionLabel(sid) + '”' + (textBy[sid].length > 1 ? ' (' + textBy[sid].length + ' places)' : '')); });
+    var OP_STEP = { hide: 'Hide', show: 'Show', remove: 'Remove', move: 'Move' };
+    ops.forEach(function (o, i) { S['op' + i] = card.step(OP_STEP[o.op] + ' “' + sectionLabel(o.sectionId) + '”'); });
+    var jobSteps = edits.map(function (e) { return card.step('Rework “' + sectionLabel(e.sectionId) + '”'); })
+      .concat(additions.map(function (n) { return card.step('Add the section “' + n.name + '”'); }));
+    if (ctaLinks.length || formEmbeds.length) S.formOps = card.step(ctaLinks.length && formEmbeds.length ? 'Link buttons to forms and place forms on the page'
+      : ctaLinks.length ? 'Link ' + (ctaLinks.length === 1 ? 'a button' : ctaLinks.length + ' buttons') + ' to ' + (ctaLinks.length === 1 ? 'its form' : 'their forms')
+      : 'Place ' + (formEmbeds.length === 1 ? 'the form' : formEmbeds.length + ' forms') + ' on the page');
+    notDone.forEach(function (n) { card.step(n, 'fail'); });
     if (!usable) {
       t.status = 'failed';
-      stateLine.textContent = 'Nothing on the page changed' + (notDone.length ? ': ' + notDone.join(' ') : '.') + ' Ask again in other words, or make the change yourself on the page.';
+      card.status('failed');
+      card.note('Nothing on the page changed. Ask again in other words, or make the change yourself on the page.');
       reportTurn(t.turnId, 'failed', [], notDone);
       return Promise.resolve(t);
     }
     if (!canvas || remounting) {
       t.status = 'failed';
-      stateLine.textContent = 'The page was being reloaded, so nothing changed. Ask again in a moment.';
+      card.status('failed');
+      card.note('The page was being reloaded, so nothing changed. Ask again in a moment.');
       reportTurn(t.turnId, 'failed', [], ['the page was being reloaded']);
       return Promise.resolve(t);
     }
@@ -4090,13 +4105,14 @@
     flush();                          // what was pending stays its own undo step
     t.before = canvas.snapshot();     // the page as it was just before this change: its checkpoint
     setAiWorking(true);
-    stateLine.textContent = 'Working on it…';
+    card.onProgress = function (n, of) { setChatStatus('working', 'Applying your change — ' + n + ' of ' + of + ' steps done'); };
+    card.onProgress(0, card.count());
 
     /* forms first: a button or an embed can only point at a form that exists. If one cannot be made, those
        already made are deleted again and nothing on the page changes. */
     var formsMade = !newForms.length ? Promise.resolve({ ids: {}, forms: [] }) : (function () {
-      stateLine.textContent = newForms.length === 1 ? 'Creating the form “' + refNames[newForms[0].ref] + '”…' : 'Creating ' + newForms.length + ' forms…';
-      return fApi.createForms(newForms);
+      S.forms.set('run');
+      return fApi.createForms(newForms).then(function (made) { S.forms.set('done'); return made; });
     })();
     return formsMade.then(function (made) {
       if (!canvas || remounting) {
@@ -4105,9 +4121,13 @@
       }
       return applyPage(made);
     }).then(null, function (err) {
+      var why = (err && err.message) || 'a form could not be created';
+      if (S.forms && S.forms.state !== 'done') S.forms.set('fail', why);
+      card.steps().forEach(function (st) { if (st.state === 'wait' || st.state === 'run') st.set('fail', 'not done'); });
       t.status = 'failed';
-      stateLine.textContent = 'Nothing on the page changed: ' + ((err && err.message) || 'a form could not be created') + '.';
-      reportTurn(t.turnId, 'failed', [], [(err && err.message) || 'a form could not be created']);
+      card.status('failed');
+      card.note('Nothing on the page changed.');
+      reportTurn(t.turnId, 'failed', [], [why]);
       setAiWorking(false);
       return t;
     });
@@ -4117,24 +4137,33 @@
       var leftOut = applyAiDesignToCanvas(canvas, design);
       var changedEls = [], done = [], said = [];
       Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) done.push(plainText(designChangeHtml(k, design[k]))); });
-      textEdits.forEach(function (te) {
-        var el = applyTextEdit(te);
-        if (!el) { said.push('“' + te.find + '” in “' + sectionLabel(te.sectionId) + '” was no longer there.'); return; }
-        changedEls.push(el);
-        clearAiGenerated(el);
-        done.push(sectionLabel(te.sectionId) + ': ' + (te.replace ? '“' + te.find + '” → “' + te.replace + '”' : '“' + te.find + '” removed'));
+      if (S.design) {
+        if (leftOut.length === Object.keys(design).length) S.design.set('fail', 'this site has no such setting');
+        else S.design.set('done', leftOut.length ? 'not changed: ' + leftOut.map(function (k) { return designLabel(k); }).join(', ') : '');
+      }
+      Object.keys(textBy).forEach(function (sid) {
+        var missed = 0;
+        textBy[sid].forEach(function (te) {
+          var el = applyTextEdit(te);
+          if (!el) { missed++; said.push('“' + te.find + '” in “' + sectionLabel(te.sectionId) + '” was no longer there.'); return; }
+          changedEls.push(el);
+          clearAiGenerated(el);
+          done.push(sectionLabel(te.sectionId) + ': ' + (te.replace ? '“' + te.find + '” → “' + te.replace + '”' : '“' + te.find + '” removed'));
+        });
+        if (missed === textBy[sid].length) S['text:' + sid].set('fail', 'that wording is no longer on the page');
+        else S['text:' + sid].set('done', missed ? missed + ' of them no longer on the page' : '');
       });
       /* whole sections: hidden, shown, removed, moved */
-      ops.forEach(function (o) {
-        var sec = canvas.sectionByKey(o.sectionId);
-        if (!isLive(sec)) return;
+      ops.forEach(function (o, i) {
+        var sec = canvas.sectionByKey(o.sectionId), step = S['op' + i];
+        if (!isLive(sec)) { step.set('fail', 'the section is no longer on the page'); return; }
         var label = '“' + sectionLabel(o.sectionId) + '”';
-        if (o.op === 'hide' || o.op === 'show') { canvas.setHidden(sec, o.op === 'hide'); done.push(label + (o.op === 'hide' ? ' hidden' : ' shown')); }
-        else if (o.op === 'remove') { canvas.removeSection(sec); done.push(label + ' removed'); }
+        if (o.op === 'hide' || o.op === 'show') { canvas.setHidden(sec, o.op === 'hide'); done.push(label + (o.op === 'hide' ? ' hidden' : ' shown')); step.set('done'); }
+        else if (o.op === 'remove') { canvas.removeSection(sec); done.push(label + ' removed'); step.set('done'); }
         else if (o.op === 'move') {
           var before = o.beforeSectionId ? canvas.sectionByKey(o.beforeSectionId) : null;
-          if (canvas.moveSection(sec, before || null)) done.push(label + ' moved');
-          else said.push(label + ' could not be moved there — the page’s first and last sections keep their places.');
+          if (canvas.moveSection(sec, before || null)) { done.push(label + ' moved'); step.set('done'); }
+          else { said.push(label + ' could not be moved there — the page’s first and last sections keep their places.'); step.set('fail', 'the first and last sections keep their places'); }
         }
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
@@ -4149,27 +4178,33 @@
           lastAfter[n.afterSectionId || ''] = sec;
           return { add: n, sec: sec, label: n.name };
         }));
-      var finished = 0;
-      function progress() {
-        stateLine.textContent = jobs.length === 1 ? 'Working on “' + jobs[0].label + '”… (this takes about half a minute)'
-          : 'Working on ' + jobs.length + ' sections side by side: ' + finished + ' of ' + jobs.length + ' done…';
-      }
-      if (jobs.length) progress();
+      jobs.forEach(function (job, i) { job.step = jobSteps[i]; });
+      if (jobs.length) card.note(jobs.length === 1 ? 'Reworking a section takes about half a minute.' : 'The ' + jobs.length + ' sections are being worked on side by side — about half a minute.');
       return Promise.all(jobs.map(function (job) {
-        if (!isLive(job.sec)) { said.push('“' + job.label + '” is no longer on the page, so it was left out.'); return null; }
+        if (!isLive(job.sec)) { said.push('“' + job.label + '” is no longer on the page, so it was left out.'); job.step.set('fail', 'no longer on the page'); return null; }
+        job.step.set('run');
         return requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
           if (!isLive(job.sec)) throw new Error('the section was removed meanwhile');
           var fresh = applySectionCode(job.sec, code);
           if (!fresh) throw new Error('the AI’s answer was not a usable section');
           changedEls.push(fresh);
           done.push('“' + job.label + '” ' + (job.edit ? 'reworked' : 'added'));
+          job.step.set('done');
         }).then(null, function (err) {
           if (job.add && isLive(job.sec)) canvas.removeSection(job.sec);       // an empty shell is not left behind
-          said.push('“' + job.label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + ((err && err.message) || 'the AI could not do it') + '.');
-        }).then(function () { finished++; if (jobs.length > 1) progress(); });
+          var why = (err && err.message) || 'the AI could not do it';
+          said.push('“' + job.label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + why + '.');
+          job.step.set('fail', why);
+        });
       })).then(function () {
+        card.note('');
         // buttons that open a form, and forms put in the page: after the sections are written, in the same step
-        if (ctaLinks.length || formEmbeds.length) applyFormOps(made.ids || {}, ctaLinks, formEmbeds, changedEls, done, said);
+        if (ctaLinks.length || formEmbeds.length) {
+          var doneBefore = done.length, saidBefore = said.length;
+          applyFormOps(made.ids || {}, ctaLinks, formEmbeds, changedEls, done, said);
+          if (done.length > doneBefore) S.formOps.set('done', said.length > saidBefore ? said.slice(saidBefore).join(' ') : '');
+          else S.formOps.set('fail', said.slice(saidBefore).join(' ') || 'not done');
+        }
         var redraw = changedEls.some(function (el) { return el.querySelector && el.querySelector('[data-rv-repeat-template]'); });
         var changed = commitNow();
         if (formIds.length || ctaLinks.length || formEmbeds.length) {
@@ -4190,7 +4225,7 @@
         t.after = changed ? canvas.snapshot() : null;        // the page as this change left it
         var notAll = said.concat(notDone);
         t.status = !changed && !formIds.length ? 'failed' : notAll.length ? 'partly' : 'applied';
-        drawAiOutcome(t, done, notAll);
+        finishAiCard(t);
         reportTurn(t.turnId, t.status, done, notAll);
         if (t.status !== 'failed') keepCheckpoint(t); else t.before = null;
         setAiWorking(false);
@@ -4206,42 +4241,118 @@
       });
     }
   }
-  /* Under the AI's sentence: what really changed, what could not be done, and Undo. Also for a turn read back from
-     the server (drawn with what the server kept; Undo only where this browser still has its checkpoint). */
-  function drawAiOutcome(t, done, notDone) {
-    var line = t.stateLine;
-    line.textContent = '';
-    line.hidden = false;
-    function list(title, items, cls) {
-      if (!items.length) return;
-      var h = document.createElement('div'); h.className = 'chat-out-h' + (cls ? ' ' + cls : ''); h.textContent = title;
-      var ul = document.createElement('ul'); ul.className = 'chat-out' + (cls ? ' ' + cls : '');
-      items.forEach(function (x) { var li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
-      line.appendChild(h); line.appendChild(ul);
+
+  /* ---------- a change as a task: its steps, each waiting, in progress, done or not done ----------
+     taskCard(host) -> { step(text, state) -> { state, set(state, why) }, steps(), count(), status(kind), note(text),
+     foot, onProgress(n, of) } — kind: run | applied | partly | failed | undone. */
+  var TASK_BADGE = { run: 'In progress', applied: 'Done', partly: 'Partly done', failed: 'Not done', undone: 'Undone' };
+  var TASK_TITLE = { run: 'Changing your site', applied: 'Change made', partly: 'Change partly made', failed: 'Couldn’t make this change', undone: 'Change undone' };
+  function taskCard(host) {
+    var el = document.createElement('div');
+    el.className = 'ai-task is-run';
+    el.setAttribute('role', 'group');
+    el.innerHTML = '<div class="ai-task-head"><span class="ai-task-title"></span><span class="ai-task-badge"></span></div>' +
+      '<div class="ai-task-bar"><i></i></div><ol class="ai-task-steps"></ol><div class="ai-task-note" hidden></div><div class="ai-task-foot" hidden></div>';
+    host.appendChild(el);
+    var list = el.querySelector('.ai-task-steps'), bar = el.querySelector('.ai-task-bar i'), note = el.querySelector('.ai-task-note');
+    var steps = [];
+    var api = { el: el, foot: el.querySelector('.ai-task-foot'), onProgress: null };
+    function progress() {
+      var n = steps.filter(function (s) { return s.state === 'done' || s.state === 'fail'; }).length;
+      bar.style.width = steps.length ? Math.round(100 * n / steps.length) + '%' : '0';
+      if (api.onProgress) api.onProgress(n, steps.length);
     }
-    if (t.status === 'failed') {
-      line.textContent = 'Nothing on the page changed' + (notDone.length ? ': ' + notDone.join(' ') : '.');
-      return;
-    }
-    list('What I changed', done, '');
-    list('What I couldn’t do', notDone, 'is-miss');
-    var row = document.createElement('div'); row.className = 'chat-out-actions';
+    api.step = function (text, state) {
+      var li = document.createElement('li'), span = document.createElement('span'), why = null;
+      span.className = 'ai-step-text';
+      span.textContent = text;
+      li.appendChild(span);
+      list.appendChild(li);
+      var st = { state: state || 'wait', text: text };
+      st.set = function (s, reason) {
+        st.state = s;
+        li.className = 'ai-step is-' + s;
+        if (reason) {
+          if (!why) { why = document.createElement('span'); why.className = 'ai-step-why'; li.appendChild(why); }
+          why.textContent = reason;
+        }
+        progress();
+      };
+      li.className = 'ai-step is-' + st.state;
+      steps.push(st);
+      progress();
+      var thread = chatThread();
+      if (thread) thread.scrollTop = thread.scrollHeight;
+      return st;
+    };
+    api.steps = function () { return steps.slice(); };
+    api.count = function () { return steps.length; };
+    api.status = function (kind) {
+      el.className = 'ai-task is-' + kind;
+      el.querySelector('.ai-task-title').textContent = TASK_TITLE[kind] || '';
+      el.querySelector('.ai-task-badge').textContent = TASK_BADGE[kind] || '';
+    };
+    api.note = function (text) { note.textContent = text || ''; note.hidden = !text; };
+    api.status('run');
+    return api;
+  }
+  /* how a change ended: its badge, and Undo with how long it took (also for a turn read back from the server) */
+  function finishAiCard(t) {
+    var card = t.card;
+    card.status(t.status === 'applying' ? 'run' : t.status);
+    if (t.status === 'failed') { card.note('Nothing on the page changed.'); return; }
+    var foot = card.foot;
+    foot.textContent = '';
+    foot.hidden = false;
     var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-secondary btn-sm chat-undo'; b.textContent = 'Undo';
     b.title = 'Put the page back to how it was before this change';
     b.addEventListener('click', function () { undoAiTurn(t); });
-    row.appendChild(b);
-    line.appendChild(row);
+    foot.appendChild(b);
+    if (t.startedAt) {
+      var took = document.createElement('span'); took.className = 'ai-task-time';
+      took.textContent = 'Took ' + Math.max(1, Math.round((Date.now() - t.startedAt) / 1000)) + 's';
+      foot.appendChild(took);
+    }
     t.button = b;
     if (t.status === 'undone') markUndone(t);
+  }
+  /* a turn read back from the server: its steps as they ended (what changed, what could not be done) */
+  function drawAiOutcome(t, done, notDone) {
+    var card = t.card;
+    done.forEach(function (d) { card.step(d, 'done'); });
+    notDone.forEach(function (n) { card.step(n, 'fail'); });
+    finishAiCard(t);
+  }
+  /* ETB2B AI's state, in its header and over its message box: ready, thinking (waiting for its answer) or working
+     (applying a change). While it is not ready the box takes no message, and the strip above it says what it is
+     doing — it never looks ready while it is busy (the owner, 28 Oct 2026). */
+  function setChatStatus(state, text) {
+    var panel = document.getElementById('panel-chat'), pill = document.getElementById('chat-status'), strip = document.getElementById('chat-busy');
+    var input = document.getElementById('chat-input'), send = document.getElementById('chat-send'), attach = document.getElementById('chat-attach');
+    var busy = state !== 'ready';
+    if (panel) { panel.classList.toggle('is-busy', busy); panel.setAttribute('data-chat-state', state); }
+    if (pill) {
+      pill.className = 'chat-status is-' + state;
+      var word = pill.querySelector('span');
+      if (word) word.textContent = state === 'thinking' ? 'Thinking…' : state === 'working' ? 'Applying changes…' : 'Ready';
+    }
+    if (strip) {
+      strip.hidden = !busy;
+      var line = document.getElementById('chat-busy-text');
+      if (line) line.textContent = text || (state === 'thinking' ? 'ETB2B AI is reading your request…' : 'ETB2B AI is applying your change…');
+    }
+    if (input) {
+      if (!input.hasAttribute('data-placeholder')) input.setAttribute('data-placeholder', input.placeholder || '');
+      input.disabled = busy;
+      input.placeholder = busy ? 'Busy with your last request…' : input.getAttribute('data-placeholder');
+    }
+    if (send) send.disabled = busy;
+    if (attach) attach.disabled = busy;
   }
   /* while a change is being applied the next message waits: two changes at once would overwrite each other */
   function setAiWorking(on) {
     aiWorking = !!on;
-    var send = document.getElementById('chat-send'), input = document.getElementById('chat-input');
-    if (send) send.disabled = !!on;
-    if (!input) return;
-    if (!input.hasAttribute('data-placeholder')) input.setAttribute('data-placeholder', input.placeholder || '');
-    input.placeholder = on ? 'Applying your last change — one moment…' : input.getAttribute('data-placeholder');
+    setChatStatus(on ? 'working' : 'ready');
   }
 
   /* ---------- a section's code, asked of the AI ----------
@@ -4316,7 +4427,6 @@
     localHistory.push({ role: role, text: text });
     if (localHistory.length > 16) localHistory.splice(0, localHistory.length - 16);
   }
-  var CHAT_THINKING_LINES = ['Thinking…', 'Reading the page…', 'Working it out…', 'Almost there…'];
   /* a sent message's bubble, with what it was about (the section selected) and the pictures sent with it */
   function drawUserTurn(text, focusName, pictureUrls, pictureCount) {
     var mine = appendChatMsg('user', text);
@@ -4353,10 +4463,9 @@
           drawUserTurn(h.question, h.focus, null, h.pictures);
           var bubble = appendChatMsg('ai', h.answer);
           if (h.kind !== 'edit') return;
-          var stateLine = document.createElement('div'); stateLine.className = 'chat-state'; bubble.appendChild(stateLine);
-          var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, stateLine: stateLine };
+          var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, card: taskCard(bubble.parentNode) };
           aiTurns.push(t);
-          if (h.status === 'applying') { stateLine.textContent = 'This change was still being applied when the editor was closed.'; return; }
+          if (h.status === 'applying') { t.card.status('failed'); t.card.note('This change was still being applied when the editor was closed; its result is not known.'); return; }
           drawAiOutcome(t, h.done || [], h.notDone || []);
           if (t.status === 'undone' || t.status === 'failed') return;
           /* Undo needs the checkpoint kept in this browser */
@@ -4379,10 +4488,20 @@
     /* A single edit instruction looks identical whether or not real conversation memory exists behind it —
        that only becomes visible on a follow-up ("now make it darker instead"). Say so up front, so this
        reads as an actual chat from the first message, not a repaint of the old one-shot prompt box. */
-    loadChatHistory().then(function (n) {
-      if (n) return;
-      appendChatMsg('ai', 'Hi, I’m ETB2B AI. Tell me what to change — wording, colours and fonts, a section’s layout or content, adding, moving, hiding or removing sections — or ask me anything about the page. I make the change straight away and tell you what I did; every change has an Undo, and nothing goes live until you publish. Our conversation is kept, so you can come back to it, and you can follow up with things like "make it a bit darker" — I’ll know what you mean.');
-    });
+    /* the first open: who it is, how it works, and a few things to ask — a tap sends one */
+    var welcome = null;
+    function drawWelcome() {
+      welcome = document.createElement('div');
+      welcome.className = 'chat-welcome';
+      welcome.innerHTML = '<h4>Hi, I’m ETB2B AI.</h4><p>Tell me what to change on this site, or ask me anything about it. I make each change straight away, show you every step as I do it, and every change has an Undo. Nothing goes live until you publish.</p><div class="chat-suggest"></div>';
+      ['What can you change on this page?', 'Make the buttons rounder', 'Rewrite the hero tagline to sound more premium', 'Add a short FAQ section before the footer'].forEach(function (q) {
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = q;
+        b.addEventListener('click', function () { if (input.disabled) return; input.value = q; go(); });
+        welcome.querySelector('.chat-suggest').appendChild(b);
+      });
+      appendChatNode(welcome);
+    }
+    loadChatHistory().then(function (n) { if (!n) drawWelcome(); });
     /* What the owner has selected on the page goes with the message, so "make this shorter" needs no
        section named: a chip above the box says what it is ("Selected: Why attend · “Six reasons…”"), and
        its × sends without it until something else is selected. */
@@ -4491,18 +4610,18 @@
       attachments = []; drawTray();
       var focus = chatFocus();
       drawUserTurn(instruction, focus ? focus.name + (focus.element && focus.element.text ? ' · “' + (focus.element.text.length > 40 ? focus.element.text.slice(0, 39) + '…' : focus.element.text) + '”' : '') : '', sent);
-      var thinking = appendChatMsg('ai', CHAT_THINKING_LINES[0]);
-      var lineIdx = 0;
-      var thinkingTimer = setInterval(function () {
-        lineIdx = (lineIdx + 1) % CHAT_THINKING_LINES.length;
-        thinking.textContent = CHAT_THINKING_LINES[lineIdx];
-      }, 2200);
+      if (welcome && welcome.parentNode) welcome.parentNode.removeChild(welcome);
+      var dots = document.createElement('div');
+      dots.className = 'chat-typing';
+      dots.setAttribute('aria-label', 'ETB2B AI is thinking');
+      dots.innerHTML = '<i></i><i></i><i></i>';
+      var thinking = appendChatBubble('ai', dots);
+      setChatStatus('thinking');
       function settle() {
-        clearInterval(thinkingTimer);
         var turn = thinking.closest('.chat-turn');
         if (turn) turn.remove();
         busy = false;
-        send.disabled = false;
+        setChatStatus('ready');
       }
       // the request was not answered: the instruction goes back into the box, in front of anything typed since
       function failed(message) {
