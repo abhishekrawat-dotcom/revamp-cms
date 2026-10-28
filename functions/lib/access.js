@@ -69,7 +69,7 @@ function readToken(req) {
      - Nowhere: dotfiles, node_modules, package manifests, backup copies, documents (.md, .docx, no
        extension at all — a Dockerfile, a LICENSE).
    Names are compared in lower case: on a case-insensitive filesystem /SERVER.JS is server.js. */
-const SERVED_DIRS = new Set(['assets', 'templates', 'payment', 'import-figma-design', 'template-previews']);
+const SERVED_DIRS = new Set(['assets', 'templates', 'payment', 'import-figma-design', 'template-previews', 'promo-studio']);
 const SERVED_TYPES = new Set(['.html', '.js', '.css', '.json', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif',
   '.ico', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.pdf', '.txt']);
 const TOP_LEVEL_TYPES = new Set(['.html', '.js', '.css', '.ico', '.png', '.svg', '.txt']);

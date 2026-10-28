@@ -68,5 +68,13 @@ check('a JSON Schema becomes the AI layer\'s form', sch.type === 'OBJECT' && sch
 check('a version name no other version has', pm.uniqueName('Launch', ['Launch', 'launch (2)']) === 'Launch (3)' && pm.uniqueName('  ', []) === 'Untitled');
 check('absolute(): https kept, a path made absolute, anything else dropped', pm.absolute('https://a/b', BASE) === 'https://a/b' && pm.absolute('/x.png', BASE) === BASE + '/x.png' && pm.absolute('http://a/b', BASE) === '' && pm.absolute('//evil/x', BASE) === '');
 
+/* ---- the studio page can load its own files (the server sends only an allow-list) ---- */
+var fs = require('fs'), path = require('path'), access = require('./access');
+var page = fs.readFileSync(path.join(__dirname, '..', '..', 'promo-mailer-studio.html'), 'utf8');
+var local = (page.match(/(?:src|href)="[^"]+"/g) || []).map(function (a) { return a.replace(/^(?:src|href)="|"$/g, ''); })
+  .filter(function (u) { return !/^(https?:)?\/\/|^#|^data:/.test(u); });
+var unserved = local.filter(function (u) { return !access.isServableFile(u.split('?')[0]); });
+check('every file the studio page loads is one the server sends', local.length > 5 && !unserved.length, unserved);
+
 if (failed) { console.error('promo-mailer: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('promo-mailer: all ' + passed + ' checks passed');
