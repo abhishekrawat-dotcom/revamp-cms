@@ -15,7 +15,8 @@ function all(node, fn, out) {
 function textOf(node) { return (node.children || []).map(function (n) { return n.type === 'text' ? n.data : textOf(n); }).join(''); }
 /* every literal colour or font a stylesheet names, outside the partner logo plate (drawn for white, on purpose) */
 function literals(css) {
-  var outside = css.replace(/\.aw-prt-logo(?: span)?\{[^}]*\}/g, '');
+  /* a partner's logo plate, and artwork marked --rv-keep (the trophy scene), keep their own colours in every theme */
+  var outside = css.replace(/\.aw-prt-logo(?: span)?\{[^}]*\}/g, '').replace(/\{[^{}]*--rv-keep:[^}]*\}/g, '{}');
   return (outside.match(/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(|:\s*(?:white|black)\b|font-family:(?!var\()/gi) || []);
 }
 function headingLevels(html) { return (html.match(/<h([1-6])\b/g) || []).map(function (h) { return +h.charAt(2); }); }
@@ -148,6 +149,20 @@ check('jury: initials where there is no photo', jh.indexOf('<span aria-hidden="t
 check('jury: popup hooks', /data-rv-profile-name>Anita Rao<\/h3><p class="aw-jury-role" data-rv-profile-role>CIO<\/p><p class="aw-jury-co" data-rv-profile-co>Bank<\/p>/.test(jh));
 check('jury: "Jury" when unnamed', byId(aw.homeSections({ jury: [{ group: '', people: [{ name: 'One' }] }] }, o), 'award-jury').html.indexOf('>Jury</h2>') !== -1);
 check('jury: none -> no section', !byId(aw.homeSections({ jury: [{ group: 'Grand Jury', people: [{ name: '' }] }] }, o), 'award-jury'));
+
+/* a stage with no photo carries its icon in the top corner (never a blank panel); a photographed one does not */
+var how = byId(home, 'how-it-works');
+check('stages without photos: an icon in the top corner of each, and a faint large one behind', (how.html.match(/class="aw-how-sic"/g) || []).length === 3 && (how.html.match(/class="aw-how-mark"/g) || []).length === 3 &&
+  /\.aw-how-sic\{position:absolute;top:24px;right:24px/.test(how.css));
+var howPh = byId(aw.homeSections(award, Object.assign({}, o, { photos: ['https://img.etb2bimg.com/1.jpg', 'https://img.etb2bimg.com/2.jpg', 'https://img.etb2bimg.com/3.jpg'] })), 'how-it-works');
+check('stages with photos: the photo, no icon', howPh.html.indexOf('aw-how-sic') === -1 && (howPh.html.match(/class="aw-how-ph"/g) || []).length === 3);
+/* the call to enter with no photo: a trophy scene of its own, still for a visitor who asks for less motion */
+var rec = byId(home, 'recognition');
+check('recognition without a photo: a trophy on a lit stage, rays, glow, sparkles; hidden from screen readers', /class="aw-rec-art aw-rec-scene" aria-hidden="true"/.test(rec.html) && /<svg class="aw-rec-trophy"/.test(rec.html) &&
+  (rec.html.match(/class="aw-rec-spark"/g) || []).length === 7 && /aw-rec-rays/.test(rec.html) && rec.html.indexOf('aw-rec-art-plain') === -1);
+check('recognition scene: it lifts under the pointer, and stands still for reduced motion', /\.aw-rec-card:hover \.aw-rec-lift\{transform:/.test(rec.css) && /prefers-reduced-motion:reduce\)\{[^}]*aw-rec-rays[^}]*animation:none/.test(rec.css));
+var recPh = byId(aw.homeSections(award, Object.assign({}, o, { photos: ['https://a/1.jpg', 'https://a/2.jpg', 'https://a/3.jpg', 'https://a/4.jpg'] })), 'recognition');
+check('recognition with a photo: the photo, no scene', recPh.html.indexOf('aw-rec-trophy') === -1 && recPh.html.indexOf('src="https://a/4.jpg"') !== -1);
 
 /* bound: an award's jury is the event's Speakers records (the owner, 28 Oct 2026) — one model card the editor fills */
 var bo = Object.assign({}, o, { bound: true, hasJury: true });

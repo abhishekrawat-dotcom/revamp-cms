@@ -432,10 +432,18 @@ function processHome(o) {
     return '<article class="' + c + '-card" data-rv-reveal><span class="' + c + '-ic"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[i] + '</svg></span>' +
       '<h3 class="' + c + '-name">' + esc(p[0]) + '</h3><p class="' + c + '-text">' + esc(p[1]) + '</p></article>';
   }).join('');
+  /* a stage with no photo of the last edition carries its own icon in the top corner, large and faint behind it too:
+     the panel is never a blank block (the owner, 28 Oct 2026) — the tabulator's checklist, the review, the jury's gavel */
+  var STAGE_ICON = ['<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
+    '<rect x="3" y="3" width="12" height="15" rx="2"/><path d="M7 7.5h5M7 11h3.5"/><circle cx="16" cy="16" r="4"/><path d="m19 19 2.5 2.5"/>',
+    '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>'];
+  function stageIcon(i, cls, size) {
+    return '<svg class="' + cls + '" viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + STAGE_ICON[i] + '</svg>';
+  }
   var panels = stages.map(function (s, i) {
     var ph = photos[i];
     return '<article class="' + c + '-stage' + (ph ? '' : ' ' + c + '-stage-plain') + '" data-rv-reveal>' +
-      (ph ? '<img class="' + c + '-ph" src="' + esc(ph) + '" alt="" loading="lazy">' : '') +
+      (ph ? '<img class="' + c + '-ph" src="' + esc(ph) + '" alt="" loading="lazy">' : stageIcon(i, c + '-mark', 220) + '<span class="' + c + '-sic">' + stageIcon(i, '', 30) + '</span>') +
       '<div class="' + c + '-veil" aria-hidden="true"></div>' +
       '<div class="' + c + '-body"><p class="' + c + '-no">0' + (i + 1) + '</p><h3 class="' + c + '-sname">' + esc(s[0]) + '</h3><p class="' + c + '-stext">' + esc(s[1]) + '</p></div></article>';
   }).join('');
@@ -455,6 +463,10 @@ function processHome(o) {
     '.' + c + '-stage-plain .' + c + '-veil{background:none}' +
     '.' + c + '-body{position:relative;padding:26px 24px 28px;color:#ffffff}' +
     '.' + c + '-stage-plain .' + c + '-body{color:var(--rv-text)}' +
+    '.' + c + '-sic{position:absolute;top:24px;right:24px;display:grid;place-items:center;width:68px;height:68px;border-radius:18px;background:color-mix(in srgb,var(--theme-color) 18%,transparent);border:1px solid color-mix(in srgb,var(--theme-color) 40%,transparent);color:' + INK + ';transition:transform .4s ease,background-color .4s ease}' +
+    '.' + c + '-stage:hover .' + c + '-sic{transform:translateY(-3px) rotate(-4deg);background:color-mix(in srgb,var(--theme-color) 30%,transparent)}' +
+    '.' + c + '-mark{position:absolute;top:-28px;right:-34px;color:var(--theme-color);opacity:.09;pointer-events:none;transition:opacity .4s ease}' +
+    '.' + c + '-stage:hover .' + c + '-mark{opacity:.16}' +
     '.' + c + '-no{margin:0 0 8px;font-family:var(--heading-font-family);font-size:2.25rem;font-weight:700;line-height:1;color:var(--theme-color)}' +
     '.' + c + '-sname{margin:0 0 8px;font-family:var(--heading-font-family);font-size:1.375rem;line-height:1.25;color:inherit}' +
     '.' + c + '-stext{margin:0;font-size:0.9875rem;line-height:1.6;color:inherit;opacity:.88}' +
@@ -467,7 +479,7 @@ function recognitionHome(o) {
   /* a photo of the last edition no other section shows; never the banner's picture again (no picture twice on a page) */
   var c = 'aw-rec', id = 'recognition', photo = httpsUrl(list(o.photos)[3]);
   var html = root(id, c, '') + '<div class="' + c + '-in"><div class="' + c + '-card" data-rv-reveal>' +
-    '<div class="' + c + '-art' + (photo ? '' : ' ' + c + '-art-plain') + '">' + (photo ? '<img src="' + esc(photo) + '" alt="" loading="lazy">' : '<span aria-hidden="true">' + iconFor('') + '</span>') + '</div>' +
+    '<div class="' + c + '-art' + (photo ? '' : ' ' + c + '-scene') + '"' + (photo ? '' : ' aria-hidden="true"') + '>' + (photo ? '<img src="' + esc(photo) + '" alt="" loading="lazy">' : trophyScene(c)) + '</div>' +
     '<div class="' + c + '-body">' +
       '<p class="' + c + '-eyebrow">' + esc(o.edition ? o.edition + ' · Nominations' : 'Nominations') + '</p>' +
       '<h2 class="' + c + '-title" id="' + id + '-title">Get the Recognition You and Your Team Deserve</h2>' +
@@ -478,8 +490,7 @@ function recognitionHome(o) {
     '.' + c + '-card{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);border-radius:calc(var(--rv-radius,12px) * 1.5);overflow:hidden;background:var(--rv-surface);background-image:radial-gradient(90% 120% at 100% 100%, color-mix(in srgb,var(--theme-color) 34%, transparent), transparent 70%);border:1px solid ' + LINE + '}' +
     '.' + c + '-art{position:relative;min-height:340px}' +
     '.' + c + '-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}' +
-    '.' + c + '-art-plain{display:grid;place-items:center;background:' + FILL + ';color:' + ON_FILL + '}' +
-    '.' + c + '-art-plain svg{width:96px;height:96px}' +
+    trophySceneCss(c) +
     '.' + c + '-body{padding:clamp(32px,5vw,64px);display:flex;flex-direction:column;justify-content:center}' +
     '.' + c + '-eyebrow{margin:0 0 12px;font-size:0.8125rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:' + INK + '}' +
     '.' + c + '-title{margin:0;font-family:var(--heading-font-family);font-size:' + SECTION_HEADING + ';line-height:1.15;color:var(--rv-text)}' +
@@ -488,6 +499,47 @@ function recognitionHome(o) {
     '@media (max-width:820px){.' + c + '-card{grid-template-columns:minmax(0,1fr)}.' + c + '-art{min-height:220px}}';
   return { html: html, css: css };
 }
+/* With no photo of the last edition for it, the call to enter has a scene of its own: a trophy on a lit stage, in
+   the award's colour, with turning light rays, a glow and sparkles; the card lifts it when the pointer is over it
+   (the owner, 28 Oct 2026: a flat block with a small trophy icon was "not on the satisfactory level"). Still for a
+   visitor who asks for less motion. */
+var SPARKS = [['14%', '24%', '0s'], ['80%', '18%', '.9s'], ['24%', '64%', '1.7s'], ['72%', '58%', '.4s'], ['50%', '12%', '2.3s'], ['88%', '78%', '1.3s'], ['9%', '84%', '2.8s']];
+function trophyScene(c) {
+  return '<span class="' + c + '-rays"></span><span class="' + c + '-halo"></span><span class="' + c + '-stage"></span>' +
+    SPARKS.map(function (p) { return '<span class="' + c + '-spark" style="--x:' + p[0] + ';--y:' + p[1] + ';--d:' + p[2] + '"></span>'; }).join('') +
+    '<span class="' + c + '-lift"><svg class="' + c + '-trophy" viewBox="0 0 200 240" focusable="false">' +
+      '<defs><linearGradient id="' + c + '-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1c2"/><stop offset=".35" stop-color="#f2c662"/><stop offset=".7" stop-color="#c8902c"/><stop offset="1" stop-color="#8a5a12"/></linearGradient>' +
+      '<linearGradient id="' + c + '-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3f4b"/><stop offset="1" stop-color="#11141b"/></linearGradient></defs>' +
+      '<path d="M50 46H30c-9 0-11 11-8 20 4 18 18 28 32 31M150 46h20c9 0 11 11 8 20-4 18-18 28-32 31" fill="none" stroke="url(#' + c + '-gold)" stroke-width="8" stroke-linecap="round"/>' +
+      '<path d="M48 28h104v42c0 40-25 66-52 69-27-3-52-29-52-69z" fill="url(#' + c + '-gold)"/>' +
+      '<path d="M64 40c-2 32 6 62 24 84" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="5" stroke-linecap="round"/>' +
+      '<path d="M100 62l5.3 10.8 11.9 1.7-8.6 8.4 2 11.8L100 89.1l-10.6 5.6 2-11.8-8.6-8.4 11.9-1.7z" fill="currentColor"/>' +
+      '<rect x="91" y="137" width="18" height="30" fill="#b07a20"/><ellipse cx="100" cy="168" rx="24" ry="7" fill="url(#' + c + '-gold)"/>' +
+      '<path d="M62 176h76l9 30H53z" fill="url(#' + c + '-base)"/><rect x="78" y="186" width="44" height="11" rx="2" fill="url(#' + c + '-gold)"/>' +
+      '<rect x="44" y="206" width="112" height="16" rx="4" fill="url(#' + c + '-base)"/>' +
+    '</svg></span>';
+}
+/* the scene is artwork, as a photograph is: its gold and its dark stage keep their colours in every theme (--rv-keep,
+   rv-theme.js); the award's own colour comes in through var(--theme-color) */
+function trophySceneCss(c) {
+  var C = '.' + c;
+  return C + '-scene{--rv-keep:1;display:grid;place-items:center;overflow:hidden;isolation:isolate;background:radial-gradient(70% 62% at 50% 64%, color-mix(in srgb,var(--theme-color) 58%,#0b0d14) 0%, color-mix(in srgb,var(--theme-color) 22%,#07080c) 62%, #06070b 100%)}' +
+    C + '-rays{--rv-keep:1;position:absolute;left:50%;top:60%;width:180%;aspect-ratio:1/1;transform:translate(-50%,-50%);z-index:-1;opacity:.75;transition:opacity .5s ease;' +
+      'background:repeating-conic-gradient(from 0deg,rgba(255,232,180,.16) 0deg 5deg,transparent 5deg 22deg);-webkit-mask:radial-gradient(circle,#000 0,#000 16%,transparent 60%);mask:radial-gradient(circle,#000 0,#000 16%,transparent 60%);animation:aw-rec-spin 50s linear infinite}' +
+    C + '-halo{--rv-keep:1;position:absolute;left:50%;top:52%;width:64%;aspect-ratio:1/1;transform:translate(-50%,-50%);z-index:-1;border-radius:50%;background:radial-gradient(circle,rgba(255,214,120,.55) 0%,color-mix(in srgb,var(--theme-color) 35%,transparent) 45%,transparent 70%);animation:aw-rec-pulse 5s ease-in-out infinite}' +
+    C + '-stage{--rv-keep:1;position:absolute;left:50%;bottom:12%;width:60%;height:26px;transform:translateX(-50%);z-index:-1;border-radius:50%;background:radial-gradient(closest-side,rgba(255,214,120,.5),transparent)}' +
+    C + '-spark{--rv-keep:1;position:absolute;left:var(--x);top:var(--y);width:11px;height:11px;background:#ffe3a3;clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);opacity:0;animation:aw-rec-twinkle 3.6s ease-in-out infinite;animation-delay:var(--d)}' +
+    C + '-lift{display:block;width:min(46%,210px);transition:transform .6s cubic-bezier(.2,.8,.2,1)}' +
+    C + '-card:hover ' + C + '-lift{transform:translateY(-8px) scale(1.05) rotate(-2deg)}' +
+    C + '-card:hover ' + C + '-rays{opacity:1}' +
+    C + '-trophy{--rv-keep:1;display:block;width:100%;height:auto;color:var(--theme-color);filter:drop-shadow(0 18px 28px rgba(0,0,0,.55));animation:aw-rec-float 6s ease-in-out infinite}' +
+    '@keyframes aw-rec-spin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}' +
+    '@keyframes aw-rec-pulse{0%,100%{opacity:.75;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}}' +
+    '@keyframes aw-rec-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}' +
+    '@keyframes aw-rec-twinkle{0%,100%{opacity:0;transform:scale(.4) rotate(0)}50%{opacity:1;transform:scale(1) rotate(45deg)}}' +
+    '@media (prefers-reduced-motion:reduce){' + C + '-rays,' + C + '-halo,' + C + '-trophy,' + C + '-spark{animation:none}' + C + '-spark{opacity:.8}' + C + '-lift{transition:none}}';
+}
+
 function ceremonyHome(o) {
   var c = 'aw-cer', id = 'awards-night', photo = httpsUrl(list(o.photos)[4]);
   var facts = [o.dateLabel, o.place].map(str).filter(Boolean);

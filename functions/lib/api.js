@@ -4896,6 +4896,61 @@ function siteFooter(o) {
   return { id: 'footer', kind: 'footer', html: built.html, css: genDesign.capHeadingSizes(genDesign.clampFontSizes(scopeSectionCss(built.css, 'footer', sectionRootInfo(built.html))), built.html) };
 }
 
+/* An overview with too little in it to fill its layout gets a picture made from what it says (the owner, 28 Oct
+   2026: Digiplus Awards 2027's overview was one short line in half its width, beside two paragraphs). A written
+   overview with no picture of its own and fewer words than this is one. -> its words, or '' */
+var SPARSE_OVERVIEW_CHARS = 900;
+function sparseOverviewText(answers, designPlan) {
+  var planned = ((designPlan && designPlan.sections) || []).filter(function (s) { return s && s.id === 'overview'; })[0];
+  if (!planned || planned.prebuilt || planned.imageUrl || (planned.photos || []).length) return '';
+  var written = null;
+  (answers || []).forEach(function (r) {
+    ((r && r.parsed && r.parsed.sections) || []).forEach(function (s) { if (s && slugifyId(s.id) === 'overview') written = s; });
+  });
+  if (!written) return '';
+  var html = String(written.html || ''), css = String(written.css || '');
+  if (/<(img|video|picture)\b/i.test(html) || /url\(/i.test(css)) return '';
+  var text = stripToText(html).replace(/\s+/g, ' ').trim();
+  return text && text.length < SPARSE_OVERVIEW_CHARS ? text : '';
+}
+/* The picture for it, made in the site's picture style (no people: the overview is not a section about people),
+   and the overview written once more with it in the half its words leave empty. Never fails the run: anything
+   that does not come leaves the overview as it was written. -> Promise<{ answers, designPlan }> */
+function fillSparseOverview(fb, eventId, answers, designPlan, ctx) {
+  var text = sparseOverviewText(answers, designPlan);
+  if (!text) return Promise.resolve({ answers: answers, designPlan: designPlan });
+  var design = designPlan.design || {}, eventMeta = ctx.eventMeta || {};
+  var kinds = (designPlan.sections || []).map(function (s) { return s.imageKind; }).filter(function (k) { return k && k !== 'people'; });
+  var kind = kinds.indexOf('graphic') !== -1 && kinds.filter(function (k) { return k === 'graphic'; }).length * 2 >= kinds.length ? 'graphic' : 'subject';
+  var subject = 'what this overview says, shown through the objects, work and setting of the event\'s own field: ' + text.slice(0, 400);
+  var about = [eventMeta.name, (ctx.brief && ctx.brief.theme) || eventMeta.description, [eventMeta.venue, eventMeta.city].filter(Boolean).join(', ')]
+    .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
+  var stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  var level = designPlan.owner && designPlan.owner.level ? designPlan.owner.level : '';
+  console.warn('generate-content: ' + eventId + ' — the overview is sparse (' + text.length + ' characters, no picture): a picture is made for it');
+  return buildSectionImage(fb, eventId, 'overview', subject, design, stamp, 'It illustrates the overview of the event\'s website (for your understanding only — none of these words may be written in the picture).', about, level, kind).then(function (made) {
+    if (!made) return { answers: answers, designPlan: designPlan };
+    var plan = Object.assign({}, designPlan, { sections: designPlan.sections.map(function (s) {
+      if (s.id !== 'overview') return s;
+      return Object.assign({}, s, { image: 'the event\'s field, as the overview describes it', imageKind: kind, imageUrl: made.url,
+        layout: String(s.layout || '').trim() + ' The picture fills the side of the section that its words leave empty; nothing stands alone in a half-empty column.' });
+    }) });
+    var prompt = buildSectionCodePrompt(Object.assign({}, ctx.prompt, { designPlan: plan, write: ['overview'] }));
+    return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') }).then(function (r) {
+      var again = r && !r.error && r.parsed && Array.isArray(r.parsed.sections)
+        ? r.parsed.sections.filter(function (s) { return s && slugifyId(s.id) === 'overview' && String(s.css || '').trim().length >= UNSTYLED_CSS_CHARS && /<img\b/i.test(String(s.html || '')) && !emptyPictureBox(s.html, s.css); })[0]
+        : null;
+      if (!again) return { answers: answers, designPlan: designPlan };
+      return {
+        designPlan: plan,
+        answers: answers.map(function (a) {
+          return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: ((a.parsed && a.parsed.sections) || []).filter(function (s) { return !s || slugifyId(s.id) !== 'overview'; }) }) });
+        }).concat([{ parsed: { sections: [again] } }])
+      };
+    }, function () { return { answers: answers, designPlan: designPlan }; });
+  });
+}
+
 // The gen- branch's own tail, deliberately separate from runGenerateContent above (see this block's own
 // header comment for why) — reads brief/sources for sourceEventId exactly like runGenerateContent does,
 // builds the prompt from designPlan, calls Gemini, sanitizes, and persists {generatedSections} directly on
@@ -4908,7 +4963,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
   designPlan = Object.assign({}, designPlan, { sections: sectionOrder.sponsorsFirst(designPlan.sections) });
   var draftRef = fb.db.collection('events').doc(eventId);
   var sourceRef = fb.db.collection('events').doc(sourceEventId);
-  var watch = null;
+  var watch = null, overviewPictured = false;
   watchEvent(fb, eventId).then(function (w) {
     watch = w;
     return Promise.all([
@@ -4965,6 +5020,16 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
             return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || ids.indexOf(slugifyId(s.id)) === -1; }) }) });
           }).concat([{ parsed: { sections: fixed } }]);
         }, function () { return answers; });
+    }).then(function (answers) {
+      /* an overview too thin for its layout gets a picture made from its words, and is written again with it */
+      if (answers.some(function (r) { return r.error; })) return answers;
+      return fillSparseOverview(fb, eventId, answers, designPlan, {
+        eventMeta: eventMeta, brief: brief,
+        prompt: { eventMeta: eventMeta, brief: brief, sources: sources, futureEdition: futureEdition, logoUrl: logoUrl }
+      }).then(function (r) {
+        if (r.designPlan !== designPlan) { designPlan = r.designPlan; overviewPictured = true; }
+        return r.answers;
+      });
     }).then(function (answers) {
       return Promise.all([footerRead, awardRead]).then(function (both) { return { answers: answers, footerList: both[0], award: both[1] }; });
     }).then(function (got) {
@@ -5116,6 +5181,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
 
       /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
       var merged = { generatedSections: sections, generatedPages: sitePages, generatedAt: now };
+      /* the overview's picture, made here (fillSparseOverview), is kept with the plan as every section's is */
+      if (overviewPictured) merged.designPlan = { sections: designPlan.sections };
       /* an award site's internal pages' words, kept until the site can have pages (SITE_PAGES) */
       if (got.award) merged.awardPages = got.award.pages;
       return watch.merge(merged)
@@ -9620,7 +9687,7 @@ module.exports._testHooks = {
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
