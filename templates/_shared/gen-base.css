@@ -61,6 +61,22 @@ html.rv-motion:not([data-rv-editing]) [data-rv-reveal].rv-in{opacity:1;transform
 .rv-lu-plate-dark{background:rgba(13,16,23,.9);box-shadow:0 10px 40px rgba(0,0,0,.25)}
 @media (max-width:640px){.rv-lu-img{max-height:min(220px,32vh)}}
 
+/* A dark theme turns a light hero dark too: the owner found the banner "giving the experience of light" after
+   switching to dark (28 Oct 2026). The theme sets <body data-rv-mode> (rv-theme.js apply; the template sets it for
+   the theme the site opens in). A hero built light carries its logo for a dark ground beside its own (.rv-lu-dark,
+   functions/lib/gen-design.js) and only such a hero turns: a logo drawn for a light ground would vanish on a dark
+   veil. The veil, the words and the second button take the dark hero's colours (gen-design.js heroCss). */
+.rv-lu-dark{display:none}
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark){color:#fff;background-color:var(--rv-bg)}
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark) .hero-veil{background:radial-gradient(ellipse 75% 80% at 50% 50%, rgba(8,10,16,.8) 0%, rgba(8,10,16,.58) 62%, rgba(8,10,16,.36) 100%)}
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark) .hero-tagline,
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark) .hero-facts,
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark) .hero-fact svg,
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark) .rv-lu-on-light{color:#fff}
+body[data-rv-mode="dark"] .hero-on-light:has(.rv-lu-dark) .hero-btn-secondary{background:transparent;border-color:#fff;color:#fff}
+body[data-rv-mode="dark"] .hero-on-light .rv-lu:has(> .rv-lu-dark) > :is(.rv-lu-img, .rv-lu-et):not(.rv-lu-dark){display:none}
+body[data-rv-mode="dark"] .hero-on-light .rv-lu > .rv-lu-dark{display:block}
+
 /* ---------- Phones ----------
    Each section of an AI-designed site is written by the model with its own breakpoints. These rules are the
    floor every one of them stands on at a phone's width, whatever its own CSS says, so that the page reads as one

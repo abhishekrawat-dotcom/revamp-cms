@@ -151,6 +151,18 @@ var noted = g.logoUnitImageHtml({ url: 'https://x.example/u.png', mode: 'light',
 ok(noted.indexOf('data-rv-logo-note="It still shows 2026 &quot;as drawn&quot; &lt;b&gt;"') !== -1 && noted.indexOf('<span class="rv-lu-plate rv-lu-plate-dark"><img') !== -1 && noted.indexOf('rv-lu-on-light') !== -1 && !/width=/.test(noted), 'the note travels on the unit, escaped; a plate when asked; no size when none is known', noted);
 ok(g.logoUnitImageHtml({ url: 'https://x.example/u.png', plate: 'purple' }).indexOf('rv-lu-plate') === -1, 'an unknown plate is no plate');
 
+/* a light hero carries its logo's copy for a dark ground, for a dark theme (gen-base.css; the owner, 28 Oct 2026) */
+var withDark = g.logoUnitImageHtml({ url: 'https://x.example/u.png', darkUrl: 'https://x.example/u-on-dark.png', width: 400, height: 200, mode: 'light' });
+ok(/^<div class="rv-lu rv-lu-pic rv-lu-on-light"[^>]*><img class="rv-lu-img" src="https:\/\/x\.example\/u\.png"[^>]*><img class="rv-lu-img rv-lu-dark" src="https:\/\/x\.example\/u-on-dark\.png" alt="" aria-hidden="true" width="400" height="200"/.test(withDark),
+  'a light hero: the unit\'s own picture first, its dark-ground copy after it', withDark);
+ok(g.logoUnitImageHtml({ url: 'https://x.example/u.png', darkUrl: 'https://x.example/d.png', mode: 'dark' }).indexOf('rv-lu-dark') === -1 &&
+  g.logoUnitImageHtml({ url: 'https://x.example/u.png', darkUrl: 'https://x.example/d.png', mode: 'light', plate: 'dark' }).indexOf('rv-lu-dark') === -1 &&
+  g.logoUnitImageHtml({ url: 'https://x.example/u.png', darkUrl: 'javascript:x', mode: 'light' }).indexOf('rv-lu-dark') === -1,
+  'no copy on a dark hero, on a plate, or from an address that is not https');
+var typedLight = g.logoUnitHtml({ keyword: 'Summit' }, 'light'), typedDark = g.logoUnitHtml({ keyword: 'Summit' }, 'dark');
+ok(/rv-lu-et rv-lu-dark" src="\/templates\/_shared\/img\/et-business-verticals-on-dark\.svg"/.test(typedLight) && typedDark.indexOf('rv-lu-dark') === -1,
+  'a unit set in type on a light hero carries ET\'s logo for a dark ground too; on a dark one it has only that one');
+
 /* the phone rules the prompts carry: what gen-base.css's "Phones" floor relies on (buttons named -btn, one column) */
 ok(typeof g.MOBILE_RULES === 'string' && /360px/.test(g.MOBILE_RULES) && /-btn/.test(g.MOBILE_RULES) && /ONE column/.test(g.MOBILE_RULES) && /min-width:0/.test(g.MOBILE_RULES), 'the phone rules name the checked width, the button class, one column and shrinkable cells');
 

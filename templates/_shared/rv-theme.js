@@ -203,6 +203,8 @@
     var v = varsOf(t);
     Object.keys(v).forEach(function (k) { doc.body.style.setProperty(k, v[k]); });
     doc.body.setAttribute('data-rv-theme', t.id);
+    /* light or dark: a dark theme turns a light hero dark too (gen-base.css) */
+    doc.body.setAttribute('data-rv-mode', t.mode === 'dark' ? 'dark' : 'light');
     [t.headingFont, t.bodyFont].forEach(function (f) {
       var url = fontUrl(f);
       if (!url) return;

@@ -214,6 +214,16 @@ function personCss(c, width) {
     '.' + c + '-role{margin:6px 0 0;font-size:0.9rem;line-height:1.45;color:var(--rv-muted)}' +
     '.' + c + '-co{margin:4px 0 0;font-size:0.9rem;line-height:1.45;font-weight:600;color:var(--rv-text)}';
 }
+/* The model of ONE juror drawn from the event's Speakers records — an award's jury (the owner, 28 Oct 2026: "the
+   speaker module can be used as jury for awards"). The editor fills it from the records (editor-template-ui.js
+   applyGenericRepeat), with each juror's profile for the pop-up; the classes are personCard's. */
+function boundPersonCard(c) {
+  return '<article class="' + c + '-card" data-rv-repeat-template="speakers">' +
+    '<div class="' + c + '-ph"><img data-rv-field="photo" alt="" loading="lazy"></div>' +
+    '<h3 class="' + c + '-name" data-rv-field="n">Juror name</h3>' +
+    '<p class="' + c + '-role" data-rv-field="r">Designation</p>' +
+    '<p class="' + c + '-co" data-rv-field="c">Company</p></article>';
+}
 function people(group) { return list(group && group.people).filter(function (p) { return p && str(p.name); }); }
 function juryGroups(jury) {
   return list(jury).map(function (g) { return { group: str(g && g.group), people: people(g) }; }).filter(function (g) { return g.people.length; });
@@ -349,17 +359,22 @@ function grandJury(jury) {
   return groups.filter(function (g) { return /grand/i.test(g.group); })[0] || groups[0] || null;
 }
 var JURY_ON_HOME = 10;
+/* o.bound: the jurors are the event's Speakers records (boundPersonCard), the first ten on the home page — the
+   section stands when the award has a jury on record or the event has records of its own (o.hasJury) */
 function juryHome(award, o) {
+  o = o || {};
   var g = grandJury(award && award.jury);
-  if (!g) return null;
-  var c = 'aw-jury', id = 'award-jury';
+  if (!g && !(o.bound && o.hasJury)) return null;
+  var c = 'aw-jury', id = 'award-jury', title = (g && g.group) || 'Jury';
   /* ET's grid of portraits, five to a row; the rest of the jury on its own page */
-  var shown = o && o.pages ? g.people.slice(0, JURY_ON_HOME) : g.people;
-  var cards = shown.map(function (p) { return personCard(c, p); }).join('');
-  var html = root(id, c, '', ' data-rv-profiles') + '<div class="' + c + '-in">' + head(c, id, o.edition, g.group || 'Jury') +
+  var shown = !g ? [] : o.pages ? g.people.slice(0, JURY_ON_HOME) : g.people;
+  var cards = o.bound ? boundPersonCard(c) : shown.map(function (p) { return personCard(c, p); }).join('');
+  var more = o.bound ? 'Meet the jury' : g.people.length > shown.length ? 'Meet the full jury' : 'Meet the jury';
+  var html = root(id, c, '', ' data-rv-profiles') + '<div class="' + c + '-in">' + head(c, id, o.edition, title) +
     '<div class="' + c + '-grid">' + cards + '</div>' +
-    (o && o.pages ? pageLink(c, 'award-jury', g.people.length > shown.length ? 'Meet the full jury' : 'Meet the jury') : '') + '</div></section>';
+    (o.pages ? pageLink(c, 'award-jury', more) : '') + '</div></section>';
   var css = baseCss(c) + buttonCss(c) + personCss(c, 'auto') +
+    (o.bound && o.pages ? '.' + c + '-grid > .' + c + '-card:nth-child(n+' + (JURY_ON_HOME + 1) + ' of .' + c + '-card){display:none}' : '') +
     '.' + c + '-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:20px;max-width:1120px;margin:0 auto}' +
     /* ET's portraits stand on the brand colour */
     '.' + c + '-card{padding:0 0 18px;overflow:hidden;text-align:center}' +
@@ -367,7 +382,7 @@ function juryHome(award, o) {
     '.' + c + '-name,.' + c + '-role,.' + c + '-co{padding:0 12px}' +
     '@media (max-width:1000px){.' + c + '-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
     '@media (max-width:640px){.' + c + '-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.' + c + '-name{font-size:1rem}}';
-  return { html: html, css: css, title: g.group || 'Jury', count: g.people.length };
+  return { html: html, css: css, title: title, count: g ? g.people.length : 0 };
 }
 
 /* ---------- a band of the category names, moving under the hero ---------- */
@@ -685,11 +700,14 @@ function categoryPage(kind, content, o) {
 }
 
 function juryPage(kind, content, o) {
+  o = o || {};
   var groups = juryGroups(content);
-  if (!groups.length) return [];
+  if (!groups.length && !(o.bound && o.hasJury)) return [];
   var c = 'aw-jp', id = 'award-jury-groups';
-  var named = groups.length > 1 || groups[0].group;
-  var body = groups.map(function (g, i) {
+  /* bound: every juror of the event's Speakers records, in their order, in one grid */
+  if (o.bound) groups = [{ group: '', people: [] }];
+  var named = !o.bound && (groups.length > 1 || groups[0].group);
+  var body = o.bound ? '<div class="' + c + '-group"><div class="' + c + '-grid">' + boundPersonCard(c) + '</div></div>' : groups.map(function (g, i) {
     return '<div class="' + c + '-group">' +
       (named ? '<h2 class="' + c + '-gname"' + (i === 0 ? ' id="' + id + '-title"' : '') + ' data-rv-reveal>' + esc(g.group || 'Jury') + '</h2>' : '') +
       '<div class="' + c + '-grid">' + g.people.map(function (p) { return personCard(c, p); }).join('') + '</div></div>';

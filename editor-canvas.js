@@ -956,6 +956,15 @@
        else    a box (a generic section's image placeholder): the picture as its background */
     function setPicture(el, url) {
       if (el.tagName === 'IMG') {
+        /* the hero's logo unit: its copy for a dark ground (.rv-lu-dark, functions/lib/gen-design.js) was made of
+           the old picture — a new one replaces the unit's own picture and the copy goes */
+        var unit = el.closest && el.closest('[data-rv-logo-unit]');
+        if (unit) {
+          if (el.classList.contains('rv-lu-dark')) el = unit.querySelector('img.rv-lu-img:not(.rv-lu-dark)') || el;
+          Array.prototype.forEach.call(unit.querySelectorAll('img.rv-lu-img.rv-lu-dark'), function (d) { if (d !== el) d.remove(); });
+          el.classList.remove('rv-lu-dark');
+          el.removeAttribute('aria-hidden');
+        }
         el.setAttribute('src', url);
         el.removeAttribute('srcset');
         el.removeAttribute('sizes');

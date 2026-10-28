@@ -149,6 +149,20 @@ check('jury: popup hooks', /data-rv-profile-name>Anita Rao<\/h3><p class="aw-jur
 check('jury: "Jury" when unnamed', byId(aw.homeSections({ jury: [{ group: '', people: [{ name: 'One' }] }] }, o), 'award-jury').html.indexOf('>Jury</h2>') !== -1);
 check('jury: none -> no section', !byId(aw.homeSections({ jury: [{ group: 'Grand Jury', people: [{ name: '' }] }] }, o), 'award-jury'));
 
+/* bound: an award's jury is the event's Speakers records (the owner, 28 Oct 2026) — one model card the editor fills */
+var bo = Object.assign({}, o, { bound: true, hasJury: true });
+var bh = byId(aw.homeSections(award, bo), 'award-jury');
+check('bound jury: one model card of the event\'s Speakers records, no juror written into the page',
+  (bh.html.match(/data-rv-repeat-template="speakers"/g) || []).length === 1 && bh.html.indexOf('Anita Rao') === -1 &&
+  /data-rv-field="photo"/.test(bh.html) && /data-rv-field="n"/.test(bh.html) && /data-rv-field="r"/.test(bh.html) && /data-rv-field="c"/.test(bh.html), bh.html.slice(0, 600));
+check('bound jury: the group\'s name on record heads it; ten on the home page, then the Jury page',
+  bh.html.indexOf('>Grand Jury</h2>') !== -1 && /\.aw-jury-grid > \.aw-jury-card:nth-child\(n\+11 of \.aw-jury-card\)\{display:none\}/.test(bh.css) && bh.html.indexOf('>Meet the jury</a>') !== -1, bh.css.slice(-300));
+check('bound jury: no jury on record, the event\'s own records -> the section, headed "Jury"', byId(aw.homeSections({ jury: [] }, bo), 'award-jury').html.indexOf('>Jury</h2>') !== -1);
+check('bound jury: no jury anywhere -> no section', !byId(aw.homeSections({ jury: [] }, Object.assign({}, o, { bound: true, hasJury: false })), 'award-jury'));
+var bp = aw.pageSections('award-jury', [], { edition: 'E', bound: true, hasJury: true });
+check('bound jury page: the header, then every juror in one grid of the records', bp.length === 2 && (bp[1].html.match(/data-rv-repeat-template="speakers"/g) || []).length === 1 && bp[1].html.indexOf('aw-jp-gname') === -1);
+check('bound jury page: none anywhere -> no page', aw.pageSections('award-jury', [], { edition: 'E', bound: true, hasJury: false }).length === 0);
+
 /* the two calls to act */
 var rc = byId(home, 'recognition').html, cer = byId(aw.homeSections({}, { edition: 'E', dateLabel: '20 January 2027', place: 'Mumbai' }), 'awards-night').html;
 check('calls: enter (the award\'s main button) and the night (a seat)', /<a class="aw-rec-btn" href="#hero" data-register-cta>Nominate Now<\/a>/.test(rc) && /<a class="aw-cer-btn" href="#hero" data-register-cta>Get Tickets<\/a>/.test(cer));

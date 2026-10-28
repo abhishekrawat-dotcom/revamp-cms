@@ -310,7 +310,8 @@ function ctaFor(designPlan, owner) {
      event      the event document (name, start, end, dateLabel, venue, city, location, designPlan)
      o.order    the page's section ids in order (nav, hero and footer are skipped)
      o.sources  the event's sources documents     o.owner  the brief's owner points when the plan has none
-     o.cta      the main button, when the page sets it     o.tabs  more links, as forEvent takes them */
+     o.cta      the main button, when the page sets it; false for none
+     o.tabs     more links, as forEvent takes them */
 function sectionFor(event, o) {
   o = o || {};
   var plan = (event && event.designPlan) || {};
@@ -318,8 +319,9 @@ function sectionFor(event, o) {
   var sections = (o.order || planned.map(function (s) { return s.id; })).map(function (id) {
     return planned.filter(function (p) { return p.id === id; })[0] || { id: id };
   });
-  /* o.cta: the main button as the page builds it (an award's lifecycle button) — else worked out here */
-  var built = forEvent(event, { sections: sections, portals: portalCandidates(plan, o.sources), cta: o.cta || ctaFor(plan, o.owner), tabs: o.tabs });
+  /* o.cta: the main button as the page builds it — else worked out here; false: the bar has none */
+  var cta = o.cta === false ? null : o.cta || ctaFor(plan, o.owner);
+  var built = forEvent(event, { sections: sections, portals: portalCandidates(plan, o.sources), cta: cta, tabs: o.tabs });
   var markup = require('./gen-markup');
   var css = require('./gen-design').clampFontSizes(markup.scopeSectionCss(built.css, 'nav', markup.sectionRootInfo(built.html)));
   return { id: 'nav', kind: 'nav', html: built.html, css: css };

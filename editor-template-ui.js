@@ -3490,9 +3490,10 @@
      <html data-rv-edges> when it is previewed and published; the canvas shows it the same way. It is not part
      of the page the editor saves (editor-canvas.js serialize leaves the attribute out). */
   var sectionEdgesSaving = null;
+  /* smooth unless the owner chose sharp (functions/lib/api.js sectionEdgesOf) */
   function savedSectionEdges() {
     var d = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
-    return d && d.sectionEdges === 'smooth' ? 'smooth' : 'sharp';
+    return d && d.sectionEdges === 'sharp' ? 'sharp' : 'smooth';
   }
   function sectionEdgesInfo() {
     if (!canvas || !canvas.doc || !eventId) return null;

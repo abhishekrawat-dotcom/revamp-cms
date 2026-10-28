@@ -787,12 +787,15 @@
     renderEventRail('rail', { activeSection: cur.sec, eventId: EV.id });
   }
 
+  /* a tab's name: an award's Speakers are its jury (isAwardEvent) */
+  function tabLabel(t){ return t.id === 'speakers' && isAwardEvent() ? 'Jury' : t.label; }
+
   function tabsHTML(){
     var s = secById(cur.sec);
     if (!s || !s.tabs.length) return '';
     return '<div class="subtabs" role="tablist" aria-label="' + esc(s.label) + '">' + s.tabs.map(function(t){
       var n = tabCount(s.id, t.id);
-      var inner = esc(t.label) + '<span class="cnt"' + (n != null ? '>' + comma(n) : ' hidden>') + '</span>';
+      var inner = esc(tabLabel(t)) + '<span class="cnt"' + (n != null ? '>' + comma(n) : ' hidden>') + '</span>';
       return '<button type="button" role="tab" data-tab="' + esc(t.id) + '" aria-selected="' + (cur.tab === t.id) + '"' +
         (cur.tab === t.id ? '' : ' tabindex="-1"') + '>' + inner + '</button>';
     }).join('') + '</div>';
@@ -938,7 +941,7 @@
     var t = '';
     if (cur.tab){
       var m = s.tabs.filter(function(x){ return x.id === cur.tab; })[0];
-      if (m) t = m.label;
+      if (m) t = tabLabel(m);
     }
     var crumb = (t && t !== s.label) ? s.label + ' › ' + t : s.label;
     return '<div class="vhead"><div class="vhead-row">' +
@@ -2190,8 +2193,18 @@
     return '<span class="' + cls + '" style="background:' + safeColour(p.colour) + '">' + esc(initials(p.name)) + '</span>';
   }
 
+  /* An award has no speakers: these records are its jury, and its site's jury sections draw them (the owner,
+     28 Oct 2026: "the speaker module can be used as jury for awards"). Same records, its own words. */
+  function isAwardEvent(){ return !!EV && String(EV.category || '').toLowerCase() === 'awards'; }
+  function spkWords(){
+    return isAwardEvent()
+      ? { title: 'Jury', one: 'juror', many: 'jurors', lead: 'The jury that judges this award.', none: 'No jurors yet', who: 'Add the jurors who judge this award.' }
+      : { title: 'Speakers', one: 'speaker', many: 'speakers', lead: 'The people on stage at this event.', none: 'No speakers yet', who: 'Add the people on stage.' };
+  }
+  function nSpk(n){ var w = spkWords(); return n + ' ' + (n === 1 ? w.one : w.many); }
+
   function viewSpeakers(){
-    var groups = spkGroups(), all = spkAll();
+    var groups = spkGroups(), all = spkAll(), W = spkWords();
 
     /* loose: the card for speakers that are in no group — it has no name to edit and nothing
        can be added or dragged into it */
@@ -2221,17 +2234,17 @@
 
       if (loose) return '<div class="grp grp-loose">' +
           '<div class="grp-head"><span class="gtitle">Not in a group</span>' +
-            '<span class="gcount">' + people.length + (people.length === 1 ? ' speaker' : ' speakers') + '</span></div>' +
+            '<span class="gcount">' + nSpk(people.length) + '</span></div>' +
           '<div class="grp-note">' + (groups.length
-            ? 'The group these speakers were in no longer exists. Drag each one into a group, or open it and choose one.'
-            : 'These speakers are not in a group yet. Add a group, then drag them in.') + '</div>' +
+            ? 'The group these ' + W.many + ' were in no longer exists. Drag each one into a group, or open it and choose one.'
+            : 'These ' + W.many + ' are not in a group yet. Add a group, then drag them in.') + '</div>' +
           rows + '</div>';
 
       return '<div class="grp" data-grp="' + esc(g.id) + '">' +
           '<div class="grp-head">' +
             '<input class="gname" value="' + esc(g.name) + '" title="' + esc(g.name) + '" data-gname="' + esc(g.id) + '" ' +
               'aria-label="Group name — click to rename" spellcheck="false">' +
-            '<span class="gcount">' + people.length + (people.length === 1 ? ' speaker' : ' speakers') + '</span>' +
+            '<span class="gcount">' + nSpk(people.length) + '</span>' +
             '<span class="grp-acts">' +
               '<button class="btn btn-ghost btn-sm" type="button" data-gsort="' + esc(g.id) + '" ' +
                 'title="Order this group by weight">' + svg(IC.sliders, 13) + ' Sort by weight</button>' +
@@ -2244,7 +2257,7 @@
             '</span>' +
           '</div>' +
           (rows || '<div class="grp-empty">No one in this group yet. ' +
-            'Add someone, or drag a speaker in from another group.</div>') +
+            'Add someone, or drag a ' + W.one + ' in from another group.</div>') +
           '<div class="grp-foot">' +
             '<button class="btn btn-ghost btn-sm" type="button" data-gadd="' + esc(g.id) + '">' +
               svg(IC.plus, 13) + ' Add to ' + esc(g.name) + '</button>' +
@@ -2255,31 +2268,35 @@
       (spkIn('').length ? card({ id: '' }, 0, true) : '');
 
     if (!all.length && !groups.length){
-      return vhead('Speakers', 'The people on stage at this event.') +
-        emptyState(IC.users, 'No speakers yet', 'Add the people on stage.',
-          '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' + svg(IC.plus, 13) + ' Add speakers</button>');
+      return vhead(W.title, W.lead) +
+        emptyState(IC.users, W.none, W.who,
+          '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' + svg(IC.plus, 13) + ' Add ' + W.many + '</button>');
     }
 
     /* a record with no status counts as confirmed, here as on the site */
     var counts = {};
     all.forEach(function(p){ var st = stMeta(p.status).id; counts[st] = (counts[st] || 0) + 1; });
     var shown = all.filter(isConfirmed).length;
-    var sub = all.length + (all.length === 1 ? ' speaker' : ' speakers') +
+    var sub = nSpk(all.length) +
       ' in ' + groups.length + (groups.length === 1 ? ' group' : ' groups') + '. ' +
-      'The site shows the confirmed ones under their group headings, in the order set here.';
+      (isAwardEvent() ? 'The site shows the confirmed ones as its jury, in the order set here.'
+        : 'The site shows the confirmed ones under their group headings, in the order set here.');
 
-    return vhead('Speakers', sub,
+    return vhead(W.title, sub,
         '<button class="btn btn-secondary btn-sm" type="button" id="spk-addgroup">' +
           svg(IC.plus, 13) + ' Add group</button>' +
         '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' +
-          svg(IC.plus, 13) + ' Add speakers</button>') +
+          svg(IC.plus, 13) + ' Add ' + W.many + '</button>') +
 
       '<div class="spk' + (all.length ? '' : ' one') + '">' +
         '<div class="spk-main">' + body +
           (all.length ? '<div class="callout info">' + svg(IC.info, 17) +
             '<span><strong>What the site shows</strong>' +
-            'Only <b>confirmed</b> speakers appear on the site. The <b>group</b> a speaker sits in is a heading there, ' +
-            'and the <b>order</b> inside a group is the order they appear in — drag a row, or use the arrows. ' +
+            (isAwardEvent()
+              ? 'Only <b>confirmed</b> jurors appear on the site: the first ten on the home page, every one on the Jury page, ' +
+                'in the <b>order</b> set here — drag a row, or use the arrows. '
+              : 'Only <b>confirmed</b> speakers appear on the site. The <b>group</b> a speaker sits in is a heading there, ' +
+                'and the <b>order</b> inside a group is the order they appear in — drag a row, or use the arrows. ') +
             '<b>Weight</b> is for ordering a group with Sort by weight. Everything saves as you go.</span></div>' : '') +
         '</div>' +
         (all.length ? '<aside class="spk-side">' +
@@ -2293,7 +2310,7 @@
                   '<span class="num">' + n + '</span></div>';
             }).join('') +
           '</div>' +
-          glanceCard('spv', spkPreview(), shown + ' on site', 'Confirmed speakers, in the order the site lists them.') +
+          glanceCard('spv', spkPreview(), shown + ' on site', 'Confirmed ' + W.many + ', in the order the site lists them.') +
         '</aside>' : '') +
       '</div>';
   }
@@ -2544,7 +2561,7 @@
        newGroup: the name of a group to create on save (an event's first speakers need one). */
     function blank(){
       return {
-        key: draftKey(), gid: gid, newGroup: spkGroups().length ? null : 'Speakers',
+        key: draftKey(), gid: gid, newGroup: spkGroups().length ? null : spkWords().title,
         name:'', desig:'', comp:'', photo:null, logo:null,
         colour: AV[Math.floor(Math.random() * AV.length)],
         weight:'featured', status:'confirmed', email:'', phone:'', li:'', bio:'',

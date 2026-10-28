@@ -38,8 +38,12 @@
 
   function groundLum(node) {
     for (var e = node; e && e.nodeType === 1; e = e.parentElement) {
-      var m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(getComputedStyle(e).backgroundColor || '');
+      var bg = getComputedStyle(e).backgroundColor || '';
+      var m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(bg);
       if (m && (m[4] == null || +m[4] > 0.5)) return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255;
+      /* a color-mix() ground, as the browser gives it back: color(srgb r g b [/ a]), each 0 to 1 */
+      m = /color\(\s*srgb\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)(?:\s*\/\s*([\d.]+))?/i.exec(bg);
+      if (m && (m[4] == null || +m[4] > 0.5)) return 0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3];
     }
     return 1;
   }

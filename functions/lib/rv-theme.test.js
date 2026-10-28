@@ -34,5 +34,17 @@ check('converting twice changes nothing', T.themableCss(out, dark) === out);
 check('fonts: a Google Fonts stylesheet', T.fontUrl('Playfair Display') === 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&display=swap' && T.fontUrl('<x>') === 'https://fonts.googleapis.com/css2?family=x:wght@400;500;600;700;800&display=swap');
 
 check('a rule marked --rv-keep (a logo plate) keeps its colours', /\.plate\{--rv-keep:1;background:#ffffff\}/.test(T.themableCss('.plate{--rv-keep:1;background:#ffffff}', { colors: { bg: '#ffffff', surface: '#f4f4f4', text: '#111111', theme: '#e21b22' } })));
+/* apply: the theme's variables on <body>, its id, and light or dark (gen-base.css turns a light hero dark with a dark theme) */
+function fakeDoc() {
+  var attrs = {}, props = {};
+  return { attrs: attrs, props: props, head: { appendChild: function () {} }, querySelector: function () { return {}; }, createElement: function () { return {}; },
+    body: { style: { setProperty: function (k, v) { props[k] = v; } }, setAttribute: function (k, v) { attrs[k] = v; } } };
+}
+var themes = T.themesFor({ mode: 'light', themeColor: '#7a3cf0', accentColor: '#e91e63', headingFont: 'Inter', bodyFont: 'Inter' });
+var darkOne = themes.filter(function (t) { return t.mode === 'dark'; })[0], lightOne = themes.filter(function (t) { return t.mode === 'light'; })[0];
+var dd = fakeDoc(), ld = fakeDoc();
+check('apply: a dark theme marks <body data-rv-mode="dark">, a light one "light"', darkOne && T.apply(dd, darkOne) && dd.attrs['data-rv-mode'] === 'dark' && dd.attrs['data-rv-theme'] === darkOne.id &&
+  lightOne && T.apply(ld, lightOne) && ld.attrs['data-rv-mode'] === 'light', JSON.stringify({ d: dd.attrs, l: ld.attrs }));
+
 if (failed) { console.error('rv-theme: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-theme: all ' + passed + ' checks passed');

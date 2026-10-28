@@ -226,15 +226,19 @@ var BLEND = 'templates/_shared/rv-blend.js';
 var smoothLive = publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH, mode: 'live', templateId: 'gen-qa-fixture' });
 ok(/<html[^>]* data-rv-edges="smooth"/.test(smoothLive) && count(smoothLive, BLEND) === 1, 'a smooth site: data-rv-edges="smooth" on <html> and the blend runtime once');
 ok(publishTransform(smoothLive, { eventId: 'qa-fixture', event: SMOOTH, mode: 'live', templateId: 'gen-qa-fixture' }) === smoothLive, 'running it again changes nothing (section edges)');
-var sharpLive = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' });
-ok(/<html[^>]* data-rv-edges="sharp"/.test(sharpLive) && sharpLive.indexOf(BLEND) === -1, 'a site with no choice is sharp, and its published page does not load the blend runtime');
-ok(publishTransform(smoothLive, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' }) === sharpLive, 'switching back to sharp leaves exactly the sharp page');
-var sharpPreview = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'preview', templateId: 'gen-qa-fixture' });
+/* smooth unless the owner chose sharp: a hard change of background between sections was the owner's complaint (28 Oct 2026) */
+var SHARP = { name: 'S', designPlan: { design: { sectionEdges: 'sharp' } } };
+var noChoice = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' });
+ok(noChoice === smoothLive, 'a site with no choice is smooth, exactly as one that chose it');
+var sharpLive = publishTransform(PAGE, { eventId: 'qa-fixture', event: SHARP, mode: 'live', templateId: 'gen-qa-fixture' });
+ok(/<html[^>]* data-rv-edges="sharp"/.test(sharpLive) && sharpLive.indexOf(BLEND) === -1, 'a site that chose sharp is sharp, and its published page does not load the blend runtime');
+ok(publishTransform(smoothLive, { eventId: 'qa-fixture', event: SHARP, mode: 'live', templateId: 'gen-qa-fixture' }) === sharpLive, 'switching back to sharp leaves exactly the sharp page');
+var sharpPreview = publishTransform(PAGE, { eventId: 'qa-fixture', event: SHARP, mode: 'preview', templateId: 'gen-qa-fixture' });
 ok(/<html[^>]* data-rv-edges="sharp"/.test(sharpPreview) && count(sharpPreview, BLEND) === 1, 'a preview always has the blend runtime, so the choice can be tried there');
 var imported = publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH, mode: 'preview', templateId: 'imported-imp-abc' });
 ok(/<html[^>]* data-rv-edges="sharp"/.test(imported) && imported.indexOf(BLEND) === -1, 'an imported site is always sharp, with no blend runtime');
 ok(publishTransform(PAGE.replace('<section id="hero"', '<section data-rv-edge-host="pos" id="hero"').replace('</body>', '<div data-rv-edge="top" data-rv-runtime aria-hidden="true"></div></body>'),
-  { eventId: 'qa-fixture', event: { name: 'S' }, mode: 'live', templateId: 'gen-qa-fixture' }) === sharpLive, 'a fade and its mark saved from a live page never reach a published one');
+  { eventId: 'qa-fixture', event: SHARP, mode: 'live', templateId: 'gen-qa-fixture' }) === sharpLive, 'a fade and its mark saved from a live page never reach a published one');
 /* the preview's theme box: section edges for every site but an imported one; themes for an AI-designed one */
 function boxData(html) { var m = /<script type="application\/json" id="rv-themes" data-rv-runtime>([^<]*)<\/script>/.exec(html); return m ? JSON.parse(m[1]) : null; }
 var SMOOTH_EV = { name: 'S', templateId: 'tech500', designPlan: { design: { sectionEdges: 'smooth' } } };
@@ -246,7 +250,7 @@ ok(pd && pd.editorBase === '/custom_editor.html?event=qa-fixture&template=tech50
 ok(publishTransform(portedPrev, { eventId: 'qa-fixture', event: SMOOTH_EV, mode: 'preview', templateId: 'tech500', origins: [ORIGIN] }) === portedPrev, 'running it again changes nothing (theme box)');
 var genPrev = publishTransform(EDITING, { eventId: 'qa-fixture', event: { name: 'G', designPlan: { design: { mode: 'light', themeColor: '#123456', headingFont: 'Inter', bodyFont: 'Inter' } } }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN] });
 var gd = boxData(genPrev);
-ok(gd && gd.edges === 'sharp' && gd.themes.length >= 2 && /&theme=$/.test(gd.editor), 'an AI-designed site\'s preview: themes, and sharp edges when none was chosen', JSON.stringify(gd && { edges: gd.edges, n: gd.themes.length, editor: gd.editor }));
+ok(gd && gd.edges === 'smooth' && gd.themes.length >= 2 && /&theme=$/.test(gd.editor), 'an AI-designed site\'s preview: themes, and smooth edges when none was chosen', JSON.stringify(gd && { edges: gd.edges, n: gd.themes.length, editor: gd.editor }));
 ok(publishTransform(PAGE, { eventId: 'import-abc', event: { name: 'I' }, mode: 'preview', templateId: 'imported-abc', origins: [ORIGIN] }).indexOf('rv-theme-switcher.js') === -1, 'an imported site\'s preview has no theme box');
 ok(publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH_EV, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }).indexOf('rv-theme-switcher.js') === -1, 'a published page has no theme box');
 

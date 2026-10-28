@@ -297,6 +297,8 @@
           '<body' + (b.id ? ' id="' + esc(b.id) + '"' : '') +
           ' data-rv-template-id="' + esc(id) + '"' +
           (eventId ? ' data-rv-event-id="' + esc(eventId) + '"' : '') +
+          /* the theme the site opens in, light or dark (gen-base.css turns a light hero dark with a dark theme) */
+          (b.mode === 'dark' || b.mode === 'light' ? ' data-rv-mode="' + b.mode + '"' : '') +
           ' class="' + esc(b.class || '') + '" style="' + esc(styleAttr(b.style)) + '">\n' +
           frame.frameOpen + '<div class="blur_bg"></div><div id="container">\n' + header +
           '<div id="content" class="full-width"><div class="main-body"><div class="wrapper pd0 schemas"></div>' +

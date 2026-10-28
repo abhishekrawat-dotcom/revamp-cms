@@ -385,6 +385,8 @@ function logoUnitHtml(parts, mode, note) {
   note = String(note || '').replace(/\s+/g, ' ').trim();
   return '<div class="rv-lu rv-lu-on-' + tone + '" data-rv-logo-unit' + (note ? ' data-rv-logo-note="' + escAttr(note) + '"' : '') + '>' +
     '<img class="rv-lu-et" src="' + ET_LOGO[tone] + '" alt="The Economic Times Business Verticals" width="' + (tone === 'dark' ? 401 : 365) + '" height="' + (tone === 'dark' ? 39 : 35) + '">' +
+    /* on a light hero, the ET logo for a dark ground too: a dark theme turns the hero dark (gen-base.css) */
+    (tone === 'light' ? '<img class="rv-lu-et rv-lu-dark" src="' + ET_LOGO.dark + '" alt="" width="401" height="39" aria-hidden="true">' : '') +
     '<div class="rv-lu-name">' + span('rv-lu-pre', parts.before) + span('rv-lu-key', parts.keyword) + span('rv-lu-post', parts.after) + '</div>' +
     '</div>';
 }
@@ -392,8 +394,10 @@ function logoUnitHtml(parts, mode, note) {
 /* The unit as ONE picture: the previous edition's own lock-up, or the SVG drawn for a new event
    (functions/lib/api.js, buildLogoUnit). '' when there is no picture — the caller then sets the unit in
    type (logoUnitHtml).
-     o: { url, alt, width, height, mode, plate: '' | 'light' | 'dark', note }
+     o: { url, alt, width, height, mode, plate: '' | 'light' | 'dark', note, darkUrl }
    plate: the lock-up was drawn for the other kind of background and stands on a plate of that tone.
+   darkUrl: on a light hero, the lock-up's copy for a dark ground (api.js storeOnDarkUnit), shown instead when a dark
+   theme turns the hero dark (gen-base.css); it comes after the unit's own picture, which stays the first .rv-lu-img.
    note: what the owner should check about it; the editor shows it and it never reaches a published page. */
 function logoUnitImageHtml(o) {
   o = o || {};
@@ -403,6 +407,9 @@ function logoUnitImageHtml(o) {
   var w = Math.round(+o.width) || 0, h = Math.round(+o.height) || 0;
   var img = '<img class="rv-lu-img" src="' + escAttr(url) + '" alt="' + escAttr(o.alt || '') + '"' + (w > 0 && h > 0 ? ' width="' + w + '" height="' + h + '"' : '') + ' decoding="async">';
   if (o.plate === 'light' || o.plate === 'dark') img = '<span class="rv-lu-plate rv-lu-plate-' + o.plate + '">' + img + '</span>';
+  else if (tone === 'light' && /^https:\/\//i.test(String(o.darkUrl || '').trim())) {
+    img += '<img class="rv-lu-img rv-lu-dark" src="' + escAttr(String(o.darkUrl).trim()) + '" alt="" aria-hidden="true"' + (w > 0 && h > 0 ? ' width="' + w + '" height="' + h + '"' : '') + ' decoding="async">';
+  }
   var note = String(o.note || '').replace(/\s+/g, ' ').trim();
   return '<div class="rv-lu rv-lu-pic rv-lu-on-' + tone + '" data-rv-logo-unit' + (note ? ' data-rv-logo-note="' + escAttr(note) + '"' : '') + '>' + img + '</div>';
 }

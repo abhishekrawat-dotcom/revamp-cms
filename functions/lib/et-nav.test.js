@@ -98,6 +98,9 @@ check('the date and place of the event', />5–7 Dec 2026</.test(sec.html) && />
 check('its stylesheet is scoped to the section', /^\[data-rv-section="nav"\]\{position:relative;z-index:50;isolation:isolate\}/.test(sec.css) && scopeSectionCss(sec.css, 'nav', sectionRootInfo(sec.html)) === sec.css);
 var plain = nav.sectionFor({ name: 'X', designPlan: { sections: [] } }, {});
 check('an event with nothing known: the ET logo, the name, Register Now to the footer', /et-business-verticals-on-light\.svg/.test(plain.html) && />X</.test(plain.html) && /href="#footer">Register Now</.test(plain.html) && !/rv-etnav-links/.test(plain.html) && !/rv-etnav-sub/.test(plain.html));
+/* an award site's bar: no button at the right (no sign-in for the portals to put there), its page tabs kept */
+var award = nav.sectionFor(event, { order: ['nav', 'hero', 'overview', 'footer'], cta: false, tabs: [{ label: 'Jury', page: 'award-jury' }] });
+check('cta: false — the bar has no button, its tabs stay', !/rv-etnav-cta"/.test(award.html) && !/Book a Seat|Register Now/.test(award.html) && />Jury</.test(award.html), award.html.slice(0, 400));
 
 if (failed) { console.error('et-nav: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('et-nav: all ' + passed + ' checks passed');

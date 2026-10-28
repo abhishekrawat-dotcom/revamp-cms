@@ -43,12 +43,16 @@
     (document.head || root).appendChild(st);
   }
 
-  /* "rgb(1, 2, 3)" / "rgba(1, 2, 3, .5)" / "rgb(1 2 3 / 50%)" -> [r, g, b, a] or null */
+  /* "rgb(1, 2, 3)" / "rgba(1, 2, 3, .5)" / "rgb(1 2 3 / 50%)" -> [r, g, b, a] or null. A colour made with
+     color-mix() is given back by the browser as "color(srgb 0.11 0.06 0.13)" (0 to 1, "/ a" when see-through):
+     read as nothing, a dark band between two light sections looked like no change of colour and kept its hard edges. */
   function parseColor(s) {
     var m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,\/]\s*([\d.]+)(%)?)?\s*\)/.exec(s || '');
+    if (m) return [+m[1], +m[2], +m[3], m[4] == null ? 1 : (+m[4]) / (m[5] ? 100 : 1)];
+    m = /color\(\s*srgb\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i.exec(s || '');
     if (!m) return null;
-    var a = m[4] == null ? 1 : (+m[4]) / (m[5] ? 100 : 1);
-    return [+m[1], +m[2], +m[3], a];
+    function ch(v) { return Math.max(0, Math.min(255, (+v) * 255)); }
+    return [ch(m[1]), ch(m[2]), ch(m[3]), m[4] == null ? 1 : (+m[4]) / (m[5] ? 100 : 1)];
   }
   /* paint `top` (may be see-through) over the opaque `under` */
   function over(under, top) {
