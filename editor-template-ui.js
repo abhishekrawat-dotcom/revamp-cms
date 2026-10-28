@@ -4482,6 +4482,177 @@
     }).then(null, function () { return 0; });
   }
 
+  /* ---------- what ETB2B AI sees of the page ----------
+     A picture of the page as it looks in the editor goes with each message, so the AI judges the look itself (the
+     owner, 28 Oct 2026: "I can't see the page as visitors do" is not what an AI should say). html-to-image draws the
+     canvas's own nodes in the canvas's own window (its fonts and styles), one section at a time (a whole page in one
+     drawing is too large for a browser to load), and the sections are put one under another:
+       - a section selected: that section;
+       - a request about the look of the site: every section, top to bottom, in up to four slices;
+       - otherwise: the sections in view (at most two).
+     Pictures: our Storage and ET's image hosts send no CORS headers, so while it draws, a picture from another host is
+     fetched through /api/promo/image as a small copy, signed in — the SEE_PICTURES largest on the page, six at a time;
+     the rest stand as boxes marked "picture" (a page of 140 photos took a minute). The fonts are read once (Latin only)
+     and kept for the editor's session. A section that cannot be drawn is drawn again without its pictures, else
+     stands as a grey block with its name. Never holds a message back for long: with no picture, the AI is told it
+     has none. -> Promise<{ what, shots: [dataUrl] }> */
+  var SEE_WIDTH = 1000, SEE_SLICES = 4, SEE_SLICE_H = 2400, SEE_PICTURE_W = 480, SEE_PICTURES = 16, SEE_AT_ONCE = 3;
+  var SEE_WAIT_MS = { page: 20000, section: 12000, visible: 12000 };
+  var LOOK_WORDS = /\b(looks?|design|layout|premium|modern|ugly|beautiful|better|improve|review|check|wrong|messy|clean|spacing|spaced|align\w*|colou?rs?|fonts?|style|visual\w*|see|appear\w*|feel|polish\w*|consistent|balance|hierarchy|whole|overall|attractive|professional|bland|boring|empty|blank|cluttered)\b/i;
+  var BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  /* a picture left out of the drawing (past SEE_PICTURES): a hatched grey box marked "picture", so the AI can tell it
+     from a page that really has an empty box (it is told so too) */
+  var LEFT_OUT = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">' +
+    '<defs><pattern id="h" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="16" height="16" fill="#cfd3da"/><rect width="6" height="16" fill="#bfc4cd"/></pattern></defs>' +
+    '<rect width="400" height="300" fill="url(#h)"/><text x="200" y="160" font-family="Arial" font-size="34" font-weight="700" fill="#5b6170" text-anchor="middle">picture</text></svg>');
+  var seeFontCss = null;            // { doc, css: Promise<string> } — the canvas's fonts, read once
+  function captureLib(win) {
+    if (win.htmlToImage) return Promise.resolve(win.htmlToImage);
+    return new Promise(function (resolve) {
+      var sc = win.document.createElement('script');
+      sc.src = '/assets/vendor/html-to-image.js';
+      sc.setAttribute('data-rv-editor', '');                 // the editor's, never saved with the page
+      sc.onload = function () { sc.remove(); resolve(win.htmlToImage || null); };
+      sc.onerror = function () { sc.remove(); resolve(null); };
+      (win.document.head || win.document.documentElement).appendChild(sc);
+    });
+  }
+  /* the canvas's web fonts as one stylesheet, Latin faces only (the rest, every other alphabet, made it 1.8 MB) */
+  function fontCssFor(h2i, doc) {
+    if (seeFontCss && seeFontCss.doc === doc) return seeFontCss.css;
+    var css = h2i.getFontEmbedCSS(doc.body).then(function (all) {
+      return String(all || '').split(/(?=@font-face)/).filter(function (block) {
+        var range = /unicode-range:\s*([^;}]+)/i.exec(block);
+        return !range || /U\+0000-00FF/i.test(range[1]);
+      }).join('');
+    }, function () { return ''; });
+    seeFontCss = { doc: doc, css: css };
+    return css;
+  }
+  function seePage(instruction, focusSec) {
+    if (!canvas || !canvas.win || !canvas.doc || !eventId) return Promise.resolve({ what: '', shots: [] });
+    var win = canvas.win, doc = canvas.doc;
+    var what = focusSec ? 'section' : LOOK_WORDS.test(instruction) ? 'page' : 'visible';
+    var token = window.RevampAuth && RevampAuth.getIdToken ? RevampAuth.getIdToken().then(null, function () { return ''; }) : Promise.resolve('');
+    var stopped = false;
+    return Promise.all([captureLib(win), token]).then(function (got) {
+      var h2i = got[0], bearer = got[1];
+      if (!h2i) return { what: what, shots: [] };
+      /* pictures from other hosts, through our address as small copies: the first SEE_PICTURES, six at a time */
+      var realFetch = win.fetch, here = win.location.origin, seen = [], active = 0, waiting = [], leftOut = 0, undrawn = [];
+      function slot() { return new Promise(function (go) { if (active < 6) { active++; go(); } else waiting.push(go); }); }
+      function free() { active--; var next = waiting.shift(); if (next) { active++; next(); } }
+      win.fetch = function (url, init) {
+        var u = String((url && url.url) || url || '');
+        if (!/^https:\/\//i.test(u) || u.indexOf(here) === 0 || /^https:\/\/fonts\.(googleapis|gstatic)\.com\//i.test(u)) return realFetch.apply(win, arguments);
+        if (seen.indexOf(u) === -1) seen.push(u);
+        if (stopped || !allowed[u]) { leftOut++; return realFetch.call(win, LEFT_OUT); }
+        return slot().then(function () {
+          return realFetch.call(win, '/api/promo/image?eventId=' + encodeURIComponent(eventId) + '&w=' + SEE_PICTURE_W + '&url=' + encodeURIComponent(u), { headers: bearer ? { Authorization: 'Bearer ' + bearer } : {} });
+        }).then(function (r) { free(); return r; }, function (err) { free(); throw err; });
+      };
+      var bg = win.getComputedStyle(doc.body).backgroundColor || '#ffffff';
+      function keep(n) {
+        if (n.nodeType !== 1) return true;
+        if (n.hasAttribute('data-rv-editor') || n.hasAttribute('data-rv-edge') || /^(IFRAME|VIDEO|SCRIPT|NOSCRIPT|TEMPLATE)$/.test(n.tagName)) return false;
+        /* a picture with no address yet (a partner's logo still to come): fetching "" brings the editor page back, and the
+           drawing fails */
+        if (n.tagName === 'IMG' && !String(n.getAttribute('src') || '').trim()) return false;
+        return !(n.classList && n.classList.contains('is-hidden-sec'));
+      }
+      function keepNoPictures(n) { return keep(n) && !(n.nodeType === 1 && n.tagName === 'IMG'); }
+      var scale = Math.min(1, SEE_WIDTH / (doc.body.scrollWidth || win.innerWidth || SEE_WIDTH));
+      /* one section; drawn again without its pictures when it cannot be drawn with them; else a grey block with its name */
+      function drawSection(sec, fonts) {
+        var opts = { pixelRatio: scale, backgroundColor: bg, imagePlaceholder: BLANK_GIF, filter: keep, cacheBust: false, fontEmbedCSS: fonts };
+        return h2i.toCanvas(sec, opts).then(null, function () {
+          return h2i.toCanvas(sec, Object.assign({}, opts, { filter: keepNoPictures })).then(null, function () {
+            undrawn.push(sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-section') || 'a section');
+            var c = document.createElement('canvas'), g;
+            c.width = Math.round((sec.offsetWidth || SEE_WIDTH / scale) * scale); c.height = Math.max(40, Math.round((sec.offsetHeight || 80) * scale));
+            g = c.getContext('2d'); g.fillStyle = '#d9dbe1'; g.fillRect(0, 0, c.width, c.height);
+            g.fillStyle = '#4a4f5c'; g.font = '16px Arial'; g.fillText('[' + (sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-section') || 'section') + ' — could not be drawn]', 16, Math.min(c.height - 12, 28));
+            return c;
+          });
+        });
+      }
+      /* the drawings one under another, then cut into slices of at most SEE_SLICES */
+      function stackAndSlice(parts) {
+        if (!parts.length) return [];
+        var w = Math.max.apply(null, parts.map(function (c) { return c.width; }));
+        var total = parts.reduce(function (h, c) { return h + c.height; }, 0);
+        var n = Math.min(SEE_SLICES, Math.max(1, Math.ceil(total / SEE_SLICE_H))), sliceH = Math.ceil(total / n), out = [];
+        for (var i = 0; i < n; i++) {
+          var part = document.createElement('canvas'), g, top = i * sliceH, y = 0;
+          part.width = w; part.height = Math.min(sliceH, total - top);
+          g = part.getContext('2d'); g.fillStyle = bg; g.fillRect(0, 0, part.width, part.height);
+          parts.forEach(function (c) {
+            if (y + c.height > top && y < top + part.height) g.drawImage(c, 0, y - top);
+            y += c.height;
+          });
+          out.push(part.toDataURL('image/jpeg', 0.72));
+        }
+        return out;
+      }
+      var shown = canvas.sections().filter(function (sec) { return isShown(sec) && sec.offsetHeight > 2; });
+      var targets = what === 'section' ? [focusSec] : what === 'page' ? shown : shown.filter(function (sec) { return canvas.inView(sec); }).slice(0, 2);
+      /* the pictures drawn for real: the SEE_PICTURES largest on the page (banners and section photos, not the first
+         rows of a wall of logos), each by the largest place it fills */
+      var area = {};
+      function note(u, el) {
+        u = String(u || '').replace(/^url\(["']?|["']?\)$/g, '');
+        if (!/^https:\/\//i.test(u) || u.indexOf(here) === 0) return;
+        var r = el.getBoundingClientRect(), a = Math.max(0, r.width) * Math.max(0, r.height);
+        if (!(area[u] >= a)) area[u] = a;
+      }
+      targets.forEach(function (sec) {
+        /* every address a picture may be drawn from: what it shows, its src, and each of its srcset */
+        Array.prototype.forEach.call(sec.querySelectorAll('img'), function (img) {
+          note(img.currentSrc, img); note(img.getAttribute('src'), img); note(img.src, img);
+          String(img.getAttribute('srcset') || '').split(',').forEach(function (c) { note(c.trim().split(/\s+/)[0], img); });
+        });
+        Array.prototype.forEach.call([sec].concat(Array.prototype.slice.call(sec.querySelectorAll('*'))), function (el) {
+          var bgi = win.getComputedStyle(el).backgroundImage;
+          if (bgi && bgi !== 'none') (bgi.match(/url\([^)]+\)/g) || []).forEach(function (u) { note(u, el); });
+        });
+      });
+      /* a picture counts once, whichever of its addresses is drawn: its addresses are allowed together */
+      var allowed = {}, byPicture = {};
+      Object.keys(area).forEach(function (u) { var k = u.replace(/\.rv-[0-9a-f]{8}\.\d+x\d+\.w\d+\.webp$/, ''); (byPicture[k] = byPicture[k] || { a: 0, urls: [] }).urls.push(u); byPicture[k].a = Math.max(byPicture[k].a, area[u]); });
+      Object.keys(byPicture).sort(function (a, b) { return byPicture[b].a - byPicture[a].a; }).slice(0, SEE_PICTURES).forEach(function (k) { byPicture[k].urls.forEach(function (u) { allowed[u] = true; }); });
+      /* SEE_AT_ONCE sections drawn side by side; each drawing kept in its place in the page */
+      var done = [], next = 0;
+      function drawnSoFar() { var out = []; for (var i = 0; i < targets.length && done[i]; i++) out.push(done[i]); return out; }
+      var work = fontCssFor(h2i, doc).then(function (fonts) {
+        function lane() {
+          if (stopped || next >= targets.length) return Promise.resolve();
+          var i = next++;
+          return drawSection(targets[i], fonts).then(function (c) { if (!stopped) done[i] = c; return lane(); });
+        }
+        var lanes = [];
+        for (var k = 0; k < SEE_AT_ONCE; k++) lanes.push(lane());
+        return Promise.all(lanes);
+      }).then(function () { return true; });
+      /* out of time: what is drawn so far goes, and the sections still to draw are named as not drawn */
+      var late = new Promise(function (resolve) { setTimeout(function () { resolve(false); }, SEE_WAIT_MS[what] || 12000); });
+      return Promise.race([work, late]).then(function (finished) {
+        stopped = true;
+        win.fetch = realFetch;
+        var drawn = drawnSoFar();
+        if (!finished) {
+          targets.slice(drawn.length).forEach(function (sec) { undrawn.push(sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-section') || 'a section'); });
+          if (window.console) console.warn('[ETB2B AI] the page took too long to draw; ' + drawn.length + ' of ' + targets.length + ' sections go with the message');
+        }
+        return { what: what, shots: stackAndSlice(drawn).slice(0, SEE_SLICES), leftOut: leftOut, undrawn: undrawn };
+      }, function (err) {
+        stopped = true;
+        win.fetch = realFetch;
+        if (window.console) console.warn('[ETB2B AI] the page could not be drawn:', err);
+        return { what: what, shots: [] };
+      });
+    });
+  }
+
   function wireChatPanel() {
     var input = document.getElementById('chat-input'), send = document.getElementById('chat-send');
     if (!input || !send) return;
@@ -4634,11 +4805,18 @@
       }
       /* signed in, as every other request of the editor (the server keeps the turn under the person who sent it) */
       var send$ = window.RevampAuth && RevampAuth.authedFetch ? RevampAuth.authedFetch : fetch;
-      send$('/api/chat-edit', {
+      /* the page as it looks goes with the message, so the AI sees it (seePage) */
+      var focusSec = focus && focus.sectionId ? canvas.sectionByKey(focus.sectionId) : null;
+      setChatStatus('thinking', 'ETB2B AI is looking at your page…');
+      seePage(instruction, focusSec).then(function (view) {
+        setChatStatus('thinking', 'ETB2B AI is reading your request…');
+        return send$('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
+          view: view.shots, viewWhat: view.what, viewLeftOut: view.leftOut || 0, viewUndrawn: view.undrawn || [],
           // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
           forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [] })
+        });
       })
         .then(function (res) {
           return res.text().then(function (text) {

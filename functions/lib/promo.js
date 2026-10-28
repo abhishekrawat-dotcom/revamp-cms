@@ -37,6 +37,7 @@ const { safeFetch } = require('./safe-fetch');
 const { publicSiteData } = require('./api-audience');
 const ownerBrief = require('./owner-brief');
 const llm = require('./llm');
+const pictures = require('./pictures');
 
 /* lib/api.js's helpers (see wire() at the bottom) */
 var H = null;
@@ -801,9 +802,20 @@ function handleImage(req, res) {
     var problem = imageUrlProblem(url, bucket, eventId);
     /* an address in an import's folder waits for the event: only its own document says which import it is */
     if (problem && !inSomeImport(url, bucket)) return sendJson(res, 400, { error: problem, code: 'image-not-allowed' });
+    var small = parseInt(qs.get('w'), 10), fromCopy = false;
     H.loadLiveEvent(fb, eventId).then(function (ev) {
       if (problem && imageUrlProblem(url, bucket, eventId, importIdOf(ev))) throw H.httpError(400, problem, { code: 'image-not-allowed' });
-      return safeFetch(url, { timeoutMs: 10000, maxBytes: IMAGE_MAX_BYTES, maxRedirects: 0 }).then(null, function (err) {
+      /* ?w=<n> for a picture of ours: the small copy made when it was stored (lib/pictures.js), when there is one */
+      if (!(small >= 80 && small <= 2000)) return url;
+      return pictures.lookupUrls(fb, [url]).then(function (index) {
+        var at = pictures.pathOfUrl(url, index.bucket), e = at && index.entries && index.entries[at];
+        if (!e || !e.widths || !e.widths.length) return url;
+        var width = e.widths.filter(function (x) { return x >= small; })[0] || e.widths[e.widths.length - 1];
+        fromCopy = true;
+        return pictures.publicUrl(index.bucket, pictures.variantName(at, e.hash, e.w, e.h, width));
+      }, function () { return url; });
+    }).then(function (src) {
+      return safeFetch(src, { timeoutMs: 10000, maxBytes: IMAGE_MAX_BYTES, maxRedirects: 0 }).then(null, function (err) {
         var timeout = err && err.code === 'timeout';
         throw H.httpError(timeout ? 504 : 502, timeout ? 'The picture took too long to load. Please try again.'
           : err && err.code === 'too-large' ? 'That picture is too large (over 8 MB).' : 'The picture could not be loaded.', { code: 'image-unavailable' });
@@ -813,6 +825,26 @@ function handleImage(req, res) {
       if (r.status !== 200) throw H.httpError(502, 'The picture could not be loaded.', { code: 'image-unavailable' });
       var info = logoUnitLib.imageInfo(r.body);
       if (!info.mime) throw H.httpError(415, 'That address is not a picture.', { code: 'not-an-image' });
+      /* ?w=<n>: a small copy (no wider than n), for a picture of the page drawn in the browser (the editor's
+         chat shows the AI the page: a full-size banner of 2 MB, thirty times over, took a minute). A PNG stays a PNG (see-through), a
+         photo becomes a JPEG. Without the picture library, or for an SVG or a GIF, the picture as it is. */
+      var w = small;
+      if (!fromCopy && w >= 80 && w <= 2000 && (info.type === 'png' || info.type === 'jpeg' || info.type === 'webp')) {
+        var sharp = null;
+        try { sharp = require('sharp'); } catch (e) { sharp = null; }
+        if (sharp) {
+          /* a PNG stays a PNG (it may be see-through: a logo on a dark band); a photo becomes a JPEG */
+          var png = info.type === 'png';
+          var shrink = sharp(r.body, { limitInputPixels: 60000000 }).rotate().resize({ width: w, withoutEnlargement: true });
+          return (png ? shrink.png({ compressionLevel: 9, palette: true }) : shrink.jpeg({ quality: 72 })).toBuffer().then(function (small) {
+            res.writeHead(200, { 'Content-Type': png ? 'image/png' : 'image/jpeg', 'Content-Length': small.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+            res.end(small);
+          }, function () {
+            res.writeHead(200, { 'Content-Type': info.mime, 'Content-Length': r.body.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+            res.end(r.body);
+          });
+        }
+      }
       var headers = { 'Content-Type': info.mime, 'Content-Length': r.body.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' };
       if (info.type === 'svg') {
         if (logoUnitLib.svgIsActive(r.body.toString('utf8'))) throw H.httpError(415, 'That SVG picture carries scripts or links, so it cannot be used.', { code: 'svg-active' });

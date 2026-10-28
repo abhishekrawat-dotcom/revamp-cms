@@ -569,6 +569,37 @@ function chatForms(payload) {
   });
 }
 
+/* What the AI sees of the page: pictures the editor drew of it as it looks right now (chatView), after any the
+   owner attached. The owner, 28 Oct 2026: "I can't see the page as visitors do" is not an answer an AI should give. */
+var CHAT_VIEW_WHAT = { page: 'the WHOLE page, top to bottom, in order', section: 'the section the owner has selected', visible: 'the part of the page the owner has in view' };
+function chatViewLine(payload) {
+  var n = payload.viewCount || 0;
+  if (!n) return 'No screenshot of the page came with this message (the editor could not draw it in time): answer from the page\'s text and design settings below, and still do what is asked. Do not make a point of it — at most one short clause that the visual check was not possible this time; never say "I can\'t see the page".';
+  return 'You can SEE the page: ' + (n === 1 ? 'the last picture with this message is a screenshot' : 'the last ' + n + ' pictures with this message are screenshots') +
+    ' of the site as it looks in the editor right now — ' + (CHAT_VIEW_WHAT[payload.viewWhat] || CHAT_VIEW_WHAT.visible) + '. Look at them properly: judge the layout, spacing, alignment, colours, contrast, type, pictures and balance from what you see, and say what you see when it matters. Never say you cannot see the page. (Editor marks may show: a coloured outline around what is selected is the editor\'s, not the site\'s.)' +
+    chatViewLimits(payload);
+}
+/* what the screenshots leave out, so the model never reports the screenshot's own limits as problems on the page */
+function chatViewLimits(payload) {
+  var left = Math.max(0, Math.min(999, parseInt(payload.viewLeftOut, 10) || 0));
+  var undrawn = (Array.isArray(payload.viewUndrawn) ? payload.viewUndrawn : []).map(function (n) { return String(n || '').replace(/\s+/g, ' ').trim().slice(0, 60); }).filter(Boolean).slice(0, 12);
+  var out = [];
+  if (left) out.push(left + ' picture' + (left === 1 ? ' is' : 's are') + ' left out of the screenshots and shown as hatched grey boxes marked "picture" (too many to draw) — visitors see the real pictures there');
+  if (undrawn.length) out.push('the section' + (undrawn.length === 1 ? '' : 's') + ' ' + undrawn.map(function (n) { return '"' + n + '"'; }).join(', ') + (undrawn.length === 1 ? ' is' : ' are') + ' not in the screenshots (or shown as a grey block marked "could not be drawn")');
+  return out.length ? ' LIMITS OF THE SCREENSHOTS, NOT OF THE PAGE: ' + out.join('; ') + '. Never report these as problems on the page or advise about them; judge those parts from the text below.' : '';
+}
+/* the pictures the editor drew: JPEG or PNG data addresses, at most `room`, each under CHAT_VIEW_MAX_BYTES */
+var CHAT_VIEW_MAX_BYTES = 900 * 1024;
+function chatView(payload, room) {
+  var out = [];
+  (Array.isArray(payload.view) ? payload.view : []).forEach(function (u) {
+    if (out.length >= room) return;
+    var m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+\/=]+)$/.exec(String(u || ''));
+    if (m && m[2].length * 0.75 <= CHAT_VIEW_MAX_BYTES) out.push({ mimeType: m[1], data: m[2] });
+  });
+  return out;
+}
+
 /* The conversation so far, as the model reads it: each turn's question, your full answer and what then really
    happened on the page (applied, partly, undone), oldest first — from the turns stored for this person
    (chatTurnsFor), else what the browser sent (an editor with no event). */
@@ -604,6 +635,7 @@ function buildChatPrompt(payload) {
     'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
     '',
     chatFocusLine(payload, sections),
+    chatViewLine(payload),
     (payload.attachmentCount
       ? 'The owner ATTACHED ' + payload.attachmentCount + ' picture' + (payload.attachmentCount === 1 ? '' : 's') + ' to this message, numbered 1' + (payload.attachmentCount > 1 ? ' to ' + payload.attachmentCount : '') + '. ' +
         (payload.seenPictures ? 'You can SEE ' + (payload.seenPictures === payload.attachmentCount ? 'them' : 'pictures ' + payload.seenNumbers.join(', ')) + ': they come with this message as images, in that order. Look at them properly. When the owner asks for the look of a picture (its colours, its mood, its layout), read it from the picture itself and give real values — colours as hex codes (e.g. "#0b1f3a deep navy, #c9a227 gold accent"). Never say you cannot see an attached picture you were given. ' : 'You cannot see them; the owner\'s words say what they are for. ') +
@@ -744,6 +776,7 @@ function chatPictures(eventId, urls) {
    conversation (GET /api/chat/history?all=1). The model's memory is the stored conversation, with what really
    happened after each answer (applied, partly, undone). */
 var CHAT_ANSWER_CHARS = 4000;
+var CHAT_MAX_PICTURES = 6;          // what one model call takes (gemini.js / claude.js MAX_IMAGES)
 var CHAT_STATUSES = ['answered', 'applying', 'applied', 'partly', 'failed', 'undone'];
 function chatUserRef(fb, eventId, uid) { return eventDocRef(fb, eventId).collection('aiChats').doc(String(uid).replace(/[^A-Za-z0-9_@.-]/g, '_').slice(0, 120)); }
 function chatUid(decoded) { return String((decoded && (decoded.uid || decoded.email)) || 'anon'); }
@@ -789,7 +822,12 @@ function handleChatEdit(req, res) {
       payload.seenPictures = seen.images.length;
       payload.seenNumbers = seen.numbers;
       payload.unseenNote = seen.skipped.length ? seen.skipped.join(' ') + ' Tell the owner so if it matters for the answer.' : '';
-      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: seen.images.length ? seen.images : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
+      /* the page as it looks, after the owner's own pictures (a model takes six pictures at most) */
+      var view = chatView(payload, CHAT_MAX_PICTURES - seen.images.length);
+      payload.viewCount = view.length;
+      payload.viewWhat = CHAT_VIEW_WHAT[payload.viewWhat] ? payload.viewWhat : 'visible';
+      var images = seen.images.concat(view);
+      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
     }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
@@ -9840,7 +9878,7 @@ module.exports._testHooks = {
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, chatView: chatView, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,

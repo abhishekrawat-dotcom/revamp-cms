@@ -42,8 +42,8 @@ process.env.ALLOWED_EMAIL_DOMAIN = 'timesinternet.in';
 
 /* the model, stubbed: it answers what the test says, and every prompt it is given is kept */
 const llm = require('./llm');
-var prompts = [], answers = [];
-llm.callJson = function (prompt) { prompts.push(prompt); return Promise.resolve({ parsed: answers.shift() }); };
+var prompts = [], answers = [], imagesSent = [];
+llm.callJson = function (prompt, schema, opts) { prompts.push(prompt); imagesSent.push((opts && opts.images) || []); return Promise.resolve({ parsed: answers.shift() }); };
 const api = require('./api');
 const hooks = api._testHooks;
 
@@ -153,6 +153,24 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   var before = prompts.length;
   out = await call('POST', '/api/chat-edit', { eventId: 'qa-no-such-event', instruction: 'hi', sections: SECTIONS });
   ok(out.status === 404 && prompts.length === before, 'a chat for an event that does not exist is refused before the model is asked', out.status);
+
+  /* it sees the page: the editor's pictures of it go to the model, and the model is told what they show */
+  var JPEG = 'data:image/jpeg;base64,' + Buffer.from('fake-jpeg-bytes').toString('base64');
+  answers.push(reply('The hero is crowded.'));
+  await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'check my design', sections: SECTIONS, view: [JPEG, JPEG, JPEG], viewWhat: 'page' });
+  var lastImgs = imagesSent[imagesSent.length - 1];
+  ok(lastImgs.length === 3 && lastImgs[0].mimeType === 'image/jpeg' && lastImgs[0].data === Buffer.from('fake-jpeg-bytes').toString('base64'), 'the pictures of the page go to the model', JSON.stringify(lastImgs.map(function (i) { return i.mimeType; })));
+  ok(/You can SEE the page: the last 3 pictures with this message are screenshots of the site as it looks in the editor right now — the WHOLE page, top to bottom/.test(prompts[prompts.length - 1]) && /Never say you cannot see the page/.test(prompts[prompts.length - 1]),
+    'the model is told what it sees (the whole page) and never to say it cannot see it');
+  answers.push(reply('OK.'));
+  await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'check it', sections: SECTIONS, view: [JPEG], viewWhat: 'page', viewLeftOut: 12, viewUndrawn: ['Sponsors'] });
+  ok(/LIMITS OF THE SCREENSHOTS, NOT OF THE PAGE: 12 pictures are left out of the screenshots and shown as hatched grey boxes marked "picture"[^;]*; the section "Sponsors" is not in the screenshots \(or shown as a grey block marked "could not be drawn"\)\. Never report these as problems on the page/.test(prompts[prompts.length - 1]),
+    'what the screenshots leave out is said, and never to be reported as a problem on the page');
+  answers.push(reply('OK.'));
+  await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'hi', sections: SECTIONS });
+  ok(imagesSent[imagesSent.length - 1].length === 0 && /No screenshot of the page came with this message/.test(prompts[prompts.length - 1]) && /never say "I can't see the page"/.test(prompts[prompts.length - 1]), 'with no picture, the model answers from the text and never says it cannot see the page');
+  ok(hooks.chatView({ view: [JPEG, JPEG, JPEG, JPEG, JPEG] }, 2).length === 2, 'never more pictures than the call has room for (six with the owner\'s own)');
+  ok(hooks.chatView({ view: ['data:image/svg+xml;base64,PHN2Zz4=', 'https://evil.example/x.jpg', 'data:image/jpeg;base64,' + 'A'.repeat(1300000)] }, 6).length === 0, 'only a JPEG or PNG drawing of the page, and not a huge one');
 
   /* a person's turns in a window: a runaway loop cannot spend without bound */
   var t0 = 1e12, allowed = 0;
