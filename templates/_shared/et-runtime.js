@@ -58,7 +58,16 @@
          (style="height:25px" over a line-clamped text) is let go; a sign-up button with no link ("Apply to
          join", "Request an invite") opens the event's form (data-register-cta, rv-forms.js);
        · a "menu" button on a narrow window opens the bar's own links as a list (never while editing);
-       · the site builder's "Edit with …" badge is removed.
+       · the site builder's "Edit with …" badge is removed;
+       · the page's own motion, recorded at import (lovable-scraper-service motionRecorder: data-rv-motion), is
+         played again — entrances as the page opens or as each element comes into view (held at their start
+         until then), loops, and motion tied to the scroll. The markup carries every element as its entrance
+         ends, so the editor, a visitor who asked for no motion and a browser without the script see the page
+         complete; the published page holds those elements back until this script has taken them over
+         (api.js MOTION_HOLD), and lets them go after a few seconds if it never does.
+     Content still caught at the start of a reveal — a word of a heading parked below its frame, a picture
+     behind a shut curtain — is shown as it ends (an import made before motion was recorded has no
+     data-rv-motion to play).
 
    Easing in (data-rv-reveal)
      A block marked data-rv-reveal (or ="left", "right", "zoom", "fade") eases into view the first time it is
@@ -284,6 +293,7 @@
      on hover only, and opening it for good would hide what it lies over. */
   function openCurtains(root) {
     each(root.querySelectorAll('[style*="clip-path"]'), function (el) {
+      if (el.hasAttribute('data-rv-motion')) return;
       var w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h || !hasContent(el) || moving(el)) return;
       var cs = getComputedStyle(el);
@@ -737,13 +747,15 @@
          which the heading's own label reads out but the eye still needs */
       if (c.getAttribute('aria-hidden') === 'true') {
         if (!parentHidden) each([c].concat(Array.prototype.slice.call(c.children)), function (w) {
-          if (slidOut(w, getComputedStyle(w))) w.classList.add('rv-shown');
+          if (!w.hasAttribute('data-rv-motion') && slidOut(w, getComputedStyle(w))) w.classList.add('rv-shown');
         });
         return;
       }
       var cs = getComputedStyle(c);
       if (cs.display === 'none') return;
       var hidden = cs.visibility !== 'visible';
+      /* held at the start of its own motion (playMotion), which ends where the markup has it */
+      if (c.hasAttribute('data-rv-motion')) { showStuck(c, hidden); return; }
       if (cs.opacity === '0' || (hidden && !parentHidden)) {
         if (cs.position === 'absolute' || cs.position === 'fixed') {
           if (topBar(c, cs)) c.classList.add('rv-bar');
@@ -756,9 +768,173 @@
     });
   }
 
+  /* ---------- imported pages: the original's motion (data-rv-motion) ----------
+     { on: 'load' | 'view', v: { m: margin, t: share, u: levels up }, a: [entrance], l: [loop],
+       s: { property: [[place, value], …] } }, an entrance or loop being { k: keyframes, d: ms, w: delay ms,
+     e: easing, i: times or 'inf', r: direction }; v says what the original page watched to set a "view" entrance
+     off — the element itself or the container u levels up — and how far into the window. A motion tied to the
+     scroll is told by how far the page has scrolled past the element's top, in pixels — measured on its place in
+     the page, whatever its motion does to it (lovable-scraper-service measures it the same way). */
+  var motionStarted = false;
+  var NUMBER = /-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi;
+
+  function placeInWindow(el) {
+    var top = 0;
+    for (var e = el; e; e = e.offsetParent) top += e.offsetTop || 0;
+    return window.pageYOffset - top;
+  }
+
+  /* between two values of the same shape, number by number; else the nearer one */
+  function between(a, b, t) {
+    var na = String(a).match(NUMBER) || [], nb = String(b).match(NUMBER) || [];
+    if (na.length !== nb.length || String(a).replace(NUMBER, '#') !== String(b).replace(NUMBER, '#')) return t < 0.5 ? a : b;
+    var i = 0;
+    return String(b).replace(NUMBER, function () {
+      var x = parseFloat(na[i]), y = parseFloat(nb[i]);
+      i++;
+      return String(Math.round((x + (y - x) * t) * 10000) / 10000);
+    });
+  }
+
+  function valueAt(samples, p) {
+    if (!samples || !samples.length) return null;
+    if (p <= samples[0][0]) return samples[0][1];
+    for (var i = 1; i < samples.length; i++) {
+      if (p <= samples[i][0]) {
+        var a = samples[i - 1], b = samples[i];
+        return between(a[1], b[1], b[0] === a[0] ? 1 : (p - a[0]) / (b[0] - a[0]));
+      }
+    }
+    return samples[samples.length - 1][1];
+  }
+
+  function motionRun(el, x, times) {
+    var opts = { duration: x.d || 0, delay: x.w || 0, easing: x.e || 'linear', fill: times === 1 ? 'both' : 'none', iterations: times, direction: x.r || 'normal' };
+    var a = null;
+    try { a = el.animate(x.k, opts); } catch (err) {
+      /* an easing this browser does not know: the same motion, eased its own way */
+      try {
+        opts.easing = 'ease-out';
+        a = el.animate(x.k.map(function (f) { var o = {}; for (var k in f) if (k !== 'easing') o[k] = f[k]; return o; }), opts);
+      } catch (err2) { return null; }
+    }
+    a.pause();
+    return a;
+  }
+
+  function runOnce(a) {
+    a.play();
+    a.finished.then(function () { a.cancel(); }, function () { /* cancelled */ });
+  }
+
+  /* what is watched for coming into view: an element held outside a frame that clips it (a word below its line)
+     never meets the window itself, so its frame is watched instead */
+  function watchedFor(el) {
+    var p = el.parentElement;
+    if (!p) return el;
+    var cs = getComputedStyle(p);
+    if (!/hidden|clip/.test(cs.overflowX + ' ' + cs.overflowY)) return el;
+    var a = el.getBoundingClientRect(), b = p.getBoundingClientRect();
+    var w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return w > 1 && h > 1 ? el : p;
+  }
+
+  /* one watcher per margin and share an element must come into view by (as the original page watched it:
+     m.v, { m: margin, t: share }); without a record of it, a little way into the window */
+  var motionWatchers = {};
+  function motionWatcher(how) {
+    var margin = how && typeof how.m === 'string' && how.m ? how.m : '0px 0px -8% 0px';
+    var share = how && how.t > 0 && how.t <= 1 ? how.t : 0;
+    var key = margin + '|' + share;
+    if (motionWatchers[key]) return motionWatchers[key];
+    var io;
+    try {
+      io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting || en.intersectionRatio < share) return;
+          io.unobserve(en.target);
+          (en.target.__rvMotionWaiting || []).forEach(runOnce);
+          en.target.__rvMotionWaiting = null;
+        });
+      }, { rootMargin: margin, threshold: share });
+    } catch (err) { return how ? motionWatcher(null) : null; }   // a margin this browser cannot read
+    return (motionWatchers[key] = io);
+  }
+
+  function playMotion(root, runs) {
+    var tied = [], waiting = [];
+    var watch = 'IntersectionObserver' in window;
+    each(root.querySelectorAll('[data-rv-motion]'), function (el) {
+      var m;
+      try { m = JSON.parse(el.getAttribute('data-rv-motion')); } catch (err) { return; }
+      if (!m || typeof m !== 'object') return;
+      var held = (m.a || []).map(function (x) { return x && x.k ? motionRun(el, x, 1) : null; }).filter(Boolean);
+      (m.l || []).forEach(function (x) {
+        var a = x && x.k ? motionRun(el, x, x.i === 'inf' ? Infinity : (+x.i || 1)) : null;
+        if (a) a.play();
+      });
+      if (held.length) {
+        runs.push.apply(runs, held);
+        if (m.on !== 'view' || !watch) held.forEach(runOnce);
+        else waiting.push({ el: el, held: held, how: m.v && typeof m.v === 'object' ? m.v : null });
+      }
+      if (m.s && typeof m.s === 'object') { el.__rvMotionTied = m.s; tied.push(el); }
+    });
+    /* read once every element is held at its start: the container the page watched, the element itself, or —
+       with no record of either — the element, or its frame when it is held outside it */
+    waiting.forEach(function (x) {
+      var by = x.el, how = x.how;
+      if (how && how.u > 0) for (var up = 0; up < how.u && by.parentElement; up++) by = by.parentElement;
+      else if (!how) by = watchedFor(x.el);
+      /* a share of something taller than the window can hold (a section grown long on a phone) would never
+         come: it starts on its first pixel instead */
+      if (how && how.t > 0 && by.offsetHeight * how.t > window.innerHeight * 0.8) how = { m: how.m, t: 0 };
+      var io = motionWatcher(how);
+      if (!io) { x.held.forEach(runOnce); return; }
+      by.__rvMotionWaiting = (by.__rvMotionWaiting || []).concat(x.held);
+      io.observe(by);
+    });
+    if (!tied.length) return;
+    var queued = false;
+    function draw() {
+      queued = false;
+      /* every place read before any value is written: one layout per frame */
+      var at = tied.map(placeInWindow);
+      tied.forEach(function (el, i) {
+        for (var k in el.__rvMotionTied) {
+          var v = valueAt(el.__rvMotionTied[k], at[i]);
+          if (v != null) el.style.setProperty(k, v);
+        }
+      });
+    }
+    function ask() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
+    window.addEventListener('scroll', ask, { passive: true });
+    window.addEventListener('resize', ask);
+    draw();
+  }
+
+  /* Plays the motion of every imported page here, once. Never while editing: the editor shows each element as
+     its motion ends, and does not mark the page as started (that mark would be saved with it). */
+  function startMotion() {
+    if (motionStarted || editing()) return;
+    var roots = document.querySelectorAll('.rv-imported');
+    if (!roots.length) return;
+    motionStarted = true;
+    var allowed = !!Element.prototype.animate && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    var runs = [];
+    if (allowed) each(roots, function (root) { playMotion(root, runs); });
+    /* the hold the page was served with (api.js MOTION_HOLD) ends in the same step as the motion's own begins */
+    document.documentElement.setAttribute('data-rv-motion-ready', '');
+    /* a printed page shows everything as it ends */
+    if (runs.length) window.addEventListener('beforeprint', function () {
+      runs.forEach(function (a) { try { if (a.playState !== 'idle') a.finish(); } catch (err) { /* already done */ } });
+    });
+  }
+
   function settleImported() {
     var roots = document.querySelectorAll('.rv-imported');
     if (!roots.length) return;
+    startMotion();
     var st = document.querySelector('style[data-rv-settled]');
     if (!st) {
       st = document.createElement('style');

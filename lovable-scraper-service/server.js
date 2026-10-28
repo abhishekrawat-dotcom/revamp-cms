@@ -74,6 +74,8 @@ function validateUrl(rawUrl) {
 // for a visitor has to have happened before the capture:
 //   - content revealed when it scrolls into view, and lazy pictures: the page is scrolled through once,
 //     top to bottom, and put back at the top;
+//   - the page's own motion (entrances, loops, motion tied to the scroll): recorded on that walk and written
+//     on each element as data-rv-motion (motionRecorder, below), for et-runtime.js to play again;
 //   - a top bar that changes once the visitor scrolls (a transparent bar turning into a floating, frosted
 //     one): the classes of the bar and of everything in it are read with the page scrolled, and each element
 //     whose classes differ there carries them as data-rv-scrolled-class (et-runtime.js swaps them);
@@ -95,6 +97,270 @@ var SETTLE_MAX_SCROLL_STEPS = 80;
 var SETTLE_MAX_TABLISTS = 8;
 var SETTLE_MAX_TABS = 8;
 var SETTLE_BUDGET_MS = 60000;
+/* what has not moved in by the end of the walk is brought into view one at a time, at most this many */
+var SETTLE_MAX_LATE_REVEALS = 40;
+
+/* ---------- the page's own motion ----------
+   The capture keeps the page's look but not its script, and the motion lives in the script: words rising into
+   place, pictures uncovered, cards settling in as the visitor scrolls, a banner drifting as the page moves.
+   motionRecorder runs in the page before the page's own script (page.evaluateOnNewDocument, capturePage) and
+   notes, while the page opens and is walked through once (settlePage):
+     - each animation the page starts with element.animate() — how framer-motion and the Web Animations API run
+       theirs: its keyframes, length, easing and delay as it really played (a delay can be given as a later start,
+       which shows only once the browser has scheduled it); played as the page opened ("load") or as the element
+       came into view ("view"); one that repeats is kept as a loop;
+     - each style the page's script rewrites as the visitor scrolls (a parallax, a zoom tied to the scroll), and
+       each animation run by the scroll itself (a scroll or view timeline): its value at each point of the
+       element's way through the window (by how far the page has scrolled past the element's top), told apart
+       from an entrance timed by the clock by having about one value at each place.
+   window.__rvMotion.write() then puts each element's motion on it as data-rv-motion — which
+   templates/_shared/et-runtime.js plays again — and leaves the element as its entrance ends, so the page reads
+   right with no script at all (the editor, a search engine, a visitor who asked for less motion). */
+function motionRecorder() {
+  if (window.__rvMotion) return;
+  var MAX_ELEMENTS = 600, MAX_SAMPLES = 40, MAX_ATTR = 6000;
+  var PROPS = ['opacity', 'transform', 'clip-path', 'filter', 'translate', 'scale', 'rotate'];
+  var M = window.__rvMotion = { on: true, walk: 0, first: 0, els: [], data: new Map() };
+
+  function place(el) {
+    var top = 0;
+    for (var e = el; e; e = e.offsetParent) top += e.offsetTop || 0;
+    return { top: top, h: el.offsetHeight || 0 };
+  }
+  /* how far the page has scrolled past the element's top, in pixels (negative till its top reaches the top of
+     the window): the same on a phone as on a desktop at the top of the page, where a motion tied to the scroll
+     is seen first */
+  function progress(el) {
+    return window.pageYOffset - place(el).top;
+  }
+  function rec(el) {
+    var d = M.data.get(el);
+    if (!d && M.els.length < MAX_ELEMENTS * 4) { d = { runs: [], seen: {} }; M.data.set(el, d); M.els.push(el); }
+    return d;
+  }
+  /* drawn: read from what the browser draws (an animation run by the scroll), not from the style attribute */
+  function see(d, k, v, p, drawn) {
+    if (!v || typeof p !== 'number' || !isFinite(p)) return;
+    (d.seen[k] = d.seen[k] || []).push({ p: p, v: String(v), drawn: !!drawn });
+  }
+  function cssName(k) { return k.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); }); }
+
+  var animate = Element.prototype.animate;
+  Element.prototype.animate = function () {
+    var a = animate.apply(this, arguments);
+    try {
+      var d = M.on && rec(this);
+      if (d) {
+        var run = { a: a, t: performance.now(), scrolled: !!M.walk };
+        if (!M.first) M.first = run.t;
+        d.runs.push(run);
+        requestAnimationFrame(function () { requestAnimationFrame(function () {
+          try {
+            run.start = a.startTime;
+            run.timing = a.effect.getComputedTiming();
+            run.easing = a.effect.getTiming().easing;
+            run.kf = a.effect.getKeyframes();
+            run.scroll = !!a.timeline && a.timeline !== document.timeline;
+          } catch (e) { /* not kept */ }
+        }); });
+      }
+    } catch (e) { /* the page's own animation runs regardless */ }
+    return a;
+  };
+
+  /* what the page watches for coming into view, and how far in it must be (the margin and share an
+     IntersectionObserver is made with — how framer-motion's whileInView decides): the import watches the same */
+  var Watcher = window.IntersectionObserver;
+  if (Watcher) {
+    var Watching = function (callback, options) {
+      var io = new Watcher(callback, options), observe = io.observe;
+      var t = options && options.threshold, how = { m: (options && options.rootMargin) || '', t: +(Array.isArray(t) ? t[0] : t) || 0 };
+      io.observe = function (el) {
+        try { var d = M.on && el && el.nodeType === 1 && rec(el); if (d) d.io = how; } catch (e) { /* watched regardless */ }
+        return observe.apply(io, arguments);
+      };
+      return io;
+    };
+    Watching.prototype = Watcher.prototype;
+    window.IntersectionObserver = Watching;
+  }
+
+  new MutationObserver(function (list) {
+    if (!M.on || !M.walk) return;
+    list.forEach(function (m) {
+      var el = m.target;
+      if (el.nodeType !== 1 || !el.style) return;
+      var d = rec(el);
+      if (!d) return;
+      var p = progress(el);
+      PROPS.forEach(function (k) { see(d, k, el.style.getPropertyValue(k), p); });
+    });
+  }).observe(document, { subtree: true, attributes: true, attributeFilter: ['style'] });
+
+  /* an animation run by the scroll changes no style: its values are read from what is drawn, at each step of
+     the walk and through each such element's own way across the window (M.tied, recordMotion) */
+  M.sample = function () {
+    M.els.forEach(function (el) {
+      var d = M.data.get(el), cs = null;
+      d.runs.forEach(function (r) {
+        if (!r.scroll || !r.kf) return;
+        cs = cs || getComputedStyle(el);
+        var p = progress(el);
+        Object.keys(r.kf[0] || {}).forEach(function (k) {
+          var css = cssName(k);
+          if (PROPS.indexOf(css) !== -1) see(d, css, cs.getPropertyValue(css), p, true);
+        });
+      });
+    });
+  };
+  M.tied = function () {
+    return M.els.filter(function (el) { return el.isConnected && M.data.get(el).runs.some(function (r) { return r.scroll; }); }).map(place);
+  };
+
+  /* elements that look as if they were still to move in (hidden, uncovered by a clip, moved aside) and have not */
+  M.waiting = function () {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll('[style*="opacity"], [style*="clip-path"], [style*="transform"]'), function (el) {
+      var d = M.data.get(el);
+      if (d && (d.runs.length || Object.keys(d.seen).length)) return;
+      var s = el.getAttribute('style') || '';
+      if (/opacity:\s*0(?![.\d])|clip-path|translate/.test(s) && el.getClientRects().length) out.push(el);
+    });
+    return out;
+  };
+
+  function keyframes(list) {
+    return (list || []).map(function (f) {
+      var o = {};
+      Object.keys(f).forEach(function (k) {
+        if (k === 'offset' || k === 'computedOffset' || k === 'composite') return;
+        if (k === 'easing') { if (f.easing && f.easing !== 'linear') o.easing = f.easing; return; }
+        o[k] = typeof f[k] === 'number' ? f[k] : String(f[k]).trim();
+      });
+      if (typeof f.computedOffset === 'number') o.offset = Math.round(f.computedOffset * 1000) / 1000;
+      return o;
+    });
+  }
+  function samples(list) {
+    var byP = {};
+    list.forEach(function (x) { byP[Math.round(x.p)] = x.v; });
+    var ps = Object.keys(byP).map(Number).sort(function (a, b) { return a - b; });
+    if (ps.length > MAX_SAMPLES) {
+      var keep = [];
+      for (var i = 0; i < MAX_SAMPLES; i++) keep.push(ps[Math.round(i * (ps.length - 1) / (MAX_SAMPLES - 1))]);
+      ps = keep;
+    }
+    return ps.map(function (p) { return [p, byP[p]]; });
+  }
+
+  M.write = function () {
+    M.on = false;
+    var written = 0;
+    M.els.forEach(function (el) {
+      if (written >= MAX_ELEMENTS || !el.isConnected) return;
+      var d = M.data.get(el), m = {}, enter = [], loops = [], scroll = {}, moved = {};
+      var done = d.runs.filter(function (r) { return r.timing && !r.scroll && r.kf && r.kf.length >= 2; });
+      var once = done.filter(function (r) { return !(r.timing.iterations > 1); });
+      /* an entrance's delay counts from what set it off: the page opening, or the element coming into view */
+      var trigger = once.length && once[0].scrolled ? once[0].t : M.first;
+      done.forEach(function (r) {
+        var x = { k: keyframes(r.kf), d: Math.round(r.timing.duration) || 0 };
+        if (r.easing && r.easing !== 'linear') x.e = r.easing.length > 600 ? 'ease-out' : r.easing;
+        var n = r.timing.iterations;
+        if (n === Infinity || n > 1) {
+          if (r.timing.delay > 0) x.w = Math.min(Math.round(r.timing.delay), 5000);
+          x.i = n === Infinity ? 'inf' : n;
+          if (r.timing.direction && r.timing.direction !== 'normal') x.r = r.timing.direction;
+          loops.push(x);
+          return;
+        }
+        var w = Math.round((typeof r.start === 'number' ? r.start : r.t) + (r.timing.delay || 0) - trigger);
+        if (w > 0) x.w = Math.min(w, 5000);
+        enter.push(x);
+        Object.keys(x.k[0]).forEach(function (k) { if (k !== 'offset' && k !== 'easing') moved[cssName(k)] = 1; });
+      });
+      /* a value an animation run by the scroll draws is read only from the drawing: the page's script may hold
+         another in the style attribute all along */
+      var drawn = {};
+      d.runs.forEach(function (r) { if (r.scroll && r.kf && r.kf[0]) Object.keys(r.kf[0]).forEach(function (k) { drawn[cssName(k)] = 1; }); });
+      /* tied to the scroll: read at three places or more, with more than one value, and about one value to a
+         place — an entrance timed by the clock runs through many values at each place it passes */
+      Object.keys(d.seen).forEach(function (k) {
+        var all = drawn[k] ? d.seen[k].filter(function (x) { return x.drawn; }) : d.seen[k], places = {}, pairs = {}, values = {};
+        all.forEach(function (x) { var at = Math.round(x.p); places[at] = 1; pairs[at + ' ' + x.v] = 1; values[x.v] = 1; });
+        var nPlaces = Object.keys(places).length;
+        if (moved[k] || nPlaces < 3 || Object.keys(values).length < 2 || Object.keys(pairs).length > nPlaces * 3) return;
+        scroll[k] = samples(all);
+      });
+      if (enter.length) {
+        m.on = once[0].scrolled ? 'view' : 'load';
+        /* set off by the element itself coming into view, or by the nearest container the page watched */
+        if (m.on === 'view') {
+          for (var w = el, up = 0; w && up <= 6; w = w.parentElement, up++) {
+            var dw = M.data.get(w);
+            if (dw && dw.io) { m.v = { m: dw.io.m, t: dw.io.t }; if (up) m.v.u = up; break; }
+          }
+        }
+        m.a = enter;
+      }
+      if (loops.length) m.l = loops;
+      if (Object.keys(scroll).length) m.s = scroll;
+      if (!m.a && !m.l && !m.s) return;
+      var json = JSON.stringify(m);
+      if (json.length > MAX_ATTR) return;
+      /* the element as its entrance leaves it */
+      (m.a || []).forEach(function (x) {
+        var last = x.k[x.k.length - 1];
+        Object.keys(last).forEach(function (k) { if (k !== 'offset' && k !== 'easing') el.style[k] = last[k]; });
+      });
+      el.setAttribute('data-rv-motion', json);
+      written++;
+    });
+    return written;
+  };
+}
+
+/* The end of the walk (settlePage): what is late brought into view, the page put back at the top, the entrances
+   left to finish, and each element's motion written on it (motionRecorder). A page opened without the
+   recorder is only put back at the top. */
+async function recordMotion(page) {
+  return page.evaluate(async function (maxLate) {
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var M = window.__rvMotion;
+    if (!M) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      await wait(900);
+      return 0;
+    }
+    function frame() { return new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); }); }
+    var late = M.waiting().slice(0, maxLate);
+    for (var i = 0; i < late.length; i++) {
+      if (!late[i].isConnected) continue;
+      late[i].scrollIntoView({ block: 'center', behavior: 'instant' });
+      await wait(160);
+      M.sample();
+    }
+    /* an animation run by the scroll, read in fine steps across the element's way through the window */
+    var vh = window.innerHeight;
+    var tied = M.tied().slice(0, 12);
+    for (var j = 0; j < tied.length; j++) {
+      for (var s = 0; s <= 24; s++) {
+        window.scrollTo({ top: Math.max(0, tied[j].top - vh + (s / 24) * (vh + tied[j].h)), behavior: 'instant' });
+        await frame();
+        M.sample();
+      }
+    }
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    await wait(300);
+    M.sample();
+    var running = document.getAnimations().filter(function (a) {
+      try { return a.playState === 'running' && a.timeline === document.timeline && isFinite(a.effect.getComputedTiming().endTime); } catch (e) { return false; }
+    });
+    await Promise.race([Promise.all(running.map(function (a) { return a.finished.catch(function () {}); })), wait(4000)]);
+    M.sample();
+    return M.write();
+  }, SETTLE_MAX_LATE_REVEALS);
+}
 
 async function settlePage(page) {
   var deadline = Date.now() + SETTLE_BUDGET_MS;
@@ -109,18 +375,27 @@ async function settlePage(page) {
     });
   });
 
+  /* half a window at a time, long enough at each step for what comes into view to start moving (and for a
+     motion tied to the scroll to be read there) */
   await page.evaluate(async function (maxSteps) {
     function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-    var step = Math.max(300, Math.round(window.innerHeight * 0.7));
+    var M = window.__rvMotion;
+    if (M) M.walk = performance.now();
+    var step = Math.max(300, Math.round(window.innerHeight * 0.5));
+    /* at once, whatever the page's scroll-behavior: each step is read where it was meant to be */
     for (var i = 0, y = 0; i < maxSteps && y < document.documentElement.scrollHeight; i++, y += step) {
-      window.scrollTo(0, y);
-      await wait(140);
+      window.scrollTo({ top: y, behavior: 'instant' });
+      await wait(180);
+      if (M) M.sample();
     }
-    window.scrollTo(0, document.documentElement.scrollHeight);
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
     await wait(300);
-    window.scrollTo(0, 0);
-    await wait(900);
+    if (M) M.sample();
   }, SETTLE_MAX_SCROLL_STEPS);
+  try { await recordMotion(page); } catch (err) {
+    console.error('scrape: the page\'s motion could not be recorded (' + err.message + ').');
+    await page.evaluate(function () { window.scrollTo({ top: 0, behavior: 'instant' }); });
+  }
 
   /* The top bar, at the top of the page and scrolled: the classes of the bar and everything in it, in both. */
   await page.evaluate(async function () {
@@ -528,6 +803,7 @@ function finishPage() {
 // those two, so the capture can be run from a script with a Chrome of its own (tools/reimport-lovable.js).
 async function capturePage(page, url) {
   await page.setViewport({ width: 1440, height: 900 });
+  await page.evaluateOnNewDocument(motionRecorder);
   try {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
   } catch (err) {
@@ -645,5 +921,5 @@ var server = http.createServer(function (req, res) {
 server.listen(PORT, function () { console.log('lovable-scraper-service listening on :' + PORT); });
 }
 
-module.exports = { capturePage: capturePage, settlePage: settlePage, finishPage: finishPage, validateUrl: validateUrl };
+module.exports = { capturePage: capturePage, settlePage: settlePage, finishPage: finishPage, motionRecorder: motionRecorder, validateUrl: validateUrl };
 if (require.main === module) serve();

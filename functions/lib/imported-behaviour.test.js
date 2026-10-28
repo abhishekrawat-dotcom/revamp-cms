@@ -6,7 +6,8 @@
         "Read more" closed by its grid row opens, the bar takes its scrolled look, the carousel arrows in the
         section's heading move the row beside it, a sign-up button opens the event's form, and an in-page
         link lands on its section;
-     3. a banner picture sized by a class inside a cascade layer (Tailwind v4) keeps that size beside the
+     3. the page's own motion recorded at capture and played again by the runtime (and still in the editor);
+     4. a banner picture sized by a class inside a cascade layer (Tailwind v4) keeps that size beside the
         sized-picture rule lib/pictures.js writes.
    It needs Chrome and puppeteer-core (CHROME_PATH / RV_PUPPETEER, else the usual places); without them it
    says so and passes. No network, no Firebase. Exits 1 listing every failure. */
@@ -213,7 +214,117 @@ var LIVE = '<!doctype html><html><head><style>' + CSS + '</style></head><body><d
     ok(reveal.track[0] === '' && reveal.track[1] !== 'none', 'a row wider than its frame keeps where it was moved to', reveal);
     await page.close();
 
-    /* ---------- 3. a banner picture sized by a layered class ---------- */
+    /* ---------- 3. the page's own motion: recorded (motionRecorder, settlePage) and played again (playMotion) ----------
+       As framer-motion runs it: an entrance as the page opens (a delay in its timing), entrances set off by an
+       IntersectionObserver with a margin (one delayed by a later start, as framer delays a transform), a loop, a
+       style rewritten on every scroll, and one entrance whose narrow trigger the walk steps over. */
+    var MOVES = '<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>body{margin:0;font:16px sans-serif}.tall{height:1400px}' +
+      '#frame{overflow:hidden;height:40px}#word{display:inline-block}.box{height:200px;background:#ccc}#par{height:200px}#late{height:20px}</style></head><body>' +
+      '<h1 id="intro" style="opacity:0">Intro</h1><div id="spin" style="width:20px">o</div><div class="tall"></div>' +
+      '<section id="sec"><div id="frame"><span id="word" style="transform:translateY(110%)">Word</span></div><div id="card" class="box" style="opacity:0">Card</div></section>' +
+      '<div class="tall"></div><div id="par" style="transform:translateY(0px)">Parallax</div><div class="tall"></div><div id="late" style="opacity:0">Late</div><div class="tall"></div>' +
+      '<script>' +
+      'function settle(el, prop, value, a) { a.finished.then(function () { el.style[prop] = value; a.cancel(); }); }' +
+      'var intro = document.getElementById("intro");' +
+      'settle(intro, "opacity", "1", intro.animate({ opacity: [0, 1] }, { duration: 600, delay: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "both" }));' +
+      'document.getElementById("spin").animate({ transform: ["rotate(0deg)", "rotate(360deg)"] }, { duration: 2000, iterations: Infinity });' +
+      'var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (!e.isIntersecting) return; io.unobserve(e.target);' +
+      '  var w = document.getElementById("word"), c = document.getElementById("card");' +
+      '  var a = w.animate({ transform: ["translateY(110%)", "translateY(0%)"] }, { duration: 500, fill: "both" }); a.startTime = document.timeline.currentTime + 80; settle(w, "transform", "translateY(0%)", a);' +
+      '  settle(c, "opacity", "1", c.animate({ opacity: [0, 1] }, { duration: 500, delay: 100, fill: "both" })); }); }, { rootMargin: "0px 0px -10% 0px" });' +
+      'io.observe(document.getElementById("sec"));' +
+      'var late = new IntersectionObserver(function (es) { es.forEach(function (e) { if (!e.isIntersecting) return; late.unobserve(e.target);' +
+      '  settle(e.target, "opacity", "1", e.target.animate({ opacity: [0, 1] }, { duration: 300, fill: "both" })); }); }, { rootMargin: "-48% 0px -48% 0px", threshold: 1 });' +
+      'late.observe(document.getElementById("late"));' +
+      'addEventListener("scroll", function () { document.getElementById("par").style.transform = "translateY(" + Math.round(scrollY * 0.2) + "px)"; });' +
+      '</script></body></html>';
+    var server = require('http').createServer(function (req, res) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(MOVES); });
+    await new Promise(function (r) { server.listen(0, '127.0.0.1', r); });
+    page = await browser.newPage();
+    await page.setViewport({ width: 1000, height: 800 });
+    await page.evaluateOnNewDocument(scraper.motionRecorder);
+    await page.goto('http://127.0.0.1:' + server.address().port + '/', { waitUntil: 'load' });
+    await sleep(1200);
+    await scraper.settlePage(page);
+    var movedHtml = await page.evaluate(scraper.finishPage);
+    await page.close();
+    server.close();
+    var motionOf = function (id) {
+      var m = new RegExp('<[a-z0-9]+ [^>]*id="' + id + '"[^>]*>').exec(movedHtml);
+      var a = m && /data-rv-motion="([^"]*)"/.exec(m[0]);
+      return { tag: m && m[0], m: a ? JSON.parse(a[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')) : null };
+    };
+    var mi = motionOf('intro'), ms = motionOf('spin'), mw = motionOf('word'), mc = motionOf('card'), mp = motionOf('par'), ml = motionOf('late');
+    ok(mi.m && mi.m.on === 'load' && mi.m.a.length === 1 && mi.m.a[0].d === 600 && Math.abs(mi.m.a[0].w - 200) <= 40 && /cubic-bezier/.test(mi.m.a[0].e),
+      'an entrance as the page opens is recorded with its length, delay and easing', mi.m);
+    ok(ms.m && !ms.m.on && ms.m.l && ms.m.l[0].i === 'inf' && ms.m.l[0].d === 2000, 'a loop is recorded as a loop', ms.m);
+    ok(mw.m && mw.m.on === 'view' && mw.m.v && mw.m.v.m === '0px 0px -10% 0px' && mw.m.v.u === 2 && Math.abs((mw.m.a[0].w || 0) - 80) <= 40,
+      'an entrance set off by a watched container: the container (2 up), its margin, and a delay given as a later start', mw.m);
+    ok(mc.m && mc.m.on === 'view' && mc.m.v && mc.m.v.u === 1 && Math.abs((mc.m.a[0].w || 0) - 100) <= 40, 'and its sibling, one up, with its own delay', mc.m);
+    ok(mp.m && !mp.m.on && mp.m.s && mp.m.s.transform && mp.m.s.transform.length >= 3, 'a style rewritten as the page scrolls is recorded by place', mp.m);
+    ok(ml.m && ml.m.on === 'view' && /opacity:\s*1/.test(ml.tag), 'an entrance the walk stepped over is brought into view and recorded', ml.tag);
+    ok(/id="word"[^>]*style="[^"]*translateY\(0%\)/.test(movedHtml) && /id="card"[^>]*style="[^"]*opacity:\s*1/.test(movedHtml) && /id="intro"[^>]*style="[^"]*opacity:\s*1/.test(movedHtml),
+      'the capture holds each element as its entrance ends');
+
+    var movedBody = /<body[^>]*>([\s\S]*)<\/body>/.exec(movedHtml)[1].replace(/<script\b[\s\S]*?<\/script>/gi, '');
+    var replay = function (extra) {
+      return '<!doctype html><html' + (extra || '') + '><head><meta name="viewport" content="width=device-width"><style>body{margin:0;font:16px sans-serif}.tall{height:1400px}' +
+        '#frame{overflow:hidden;height:40px}#word{display:inline-block}.box{height:200px;background:#ccc}#par{height:200px}#late{height:20px}</style><script>' + RUNTIME + '</script></head><body>' +
+        '<div class="rv-imported">' + movedBody + '</div></body></html>';
+    };
+    var looks = function () {
+      return page.evaluate(function () {
+        function anims(id) { return document.getAnimations().filter(function (a) { return a.effect && a.effect.target && a.effect.target.id === id; }).map(function (a) { return a.playState; }); }
+        function ty(id) { var t = getComputedStyle(document.getElementById(id)).transform; var m = /matrix\(([^)]*)\)/.exec(t); return m ? +m[1].split(',')[5] : 0; }
+        return { ready: document.documentElement.hasAttribute('data-rv-motion-ready'), intro: anims('intro'), spin: anims('spin'), word: anims('word'), card: anims('card'),
+          wordY: ty('word'), cardOp: getComputedStyle(document.getElementById('card')).opacity, parY: ty('par'), shown: document.querySelectorAll('[data-rv-motion].rv-shown').length };
+      });
+    };
+    page = await browser.newPage();
+    await page.setViewport({ width: 1000, height: 800 });
+    await page.setContent(replay(), { waitUntil: 'load' });
+    await sleep(150);
+    var l0 = await looks();
+    ok(l0.ready && l0.intro.length === 1 && l0.spin.join() === 'running', 'the entrance as the page opens plays at once, the loop runs', l0);
+    ok(l0.word.join() === 'paused' && l0.wordY > 15 && l0.card.join() === 'paused' && l0.cardOp === '0', 'what comes in later is held at its start, out of sight', l0);
+    ok(l0.shown === 0, 'nothing held is taken for content stuck hidden (rv-shown)', l0);
+    await page.evaluate(function () { window.scrollTo(0, document.getElementById('sec').offsetTop - 300); });
+    await sleep(150);
+    var l1 = await looks();
+    ok(l1.word.join() === 'running' && l1.card.join() === 'running', 'coming into view sets the entrances off', l1);
+    await sleep(900);
+    var l2 = await looks();
+    ok(l2.word.length === 0 && Math.abs(l2.wordY) < 0.5 && l2.cardOp === '1' && l2.intro.length === 0, 'each entrance ends where the capture has the element, and lets it go', l2);
+    var par = [];
+    for (var py of [1000, 2000]) {
+      await page.evaluate(function (y) { window.scrollTo(0, y); }, py);
+      await sleep(120);
+      par.push((await looks()).parY);
+    }
+    ok(par[1] > par[0] && Math.abs(par[1] - par[0] - 200) <= 30, 'a style tied to the scroll follows the scroll as it did (a fifth of it)', par);
+    await page.close();
+
+    page = await browser.newPage();
+    await page.setContent(replay(), { waitUntil: 'load' });
+    await sleep(100);
+    await page.evaluate(function () { window.dispatchEvent(new Event('beforeprint')); });
+    await sleep(50);
+    var pr = await looks();
+    ok(pr.cardOp === '1' && Math.abs(pr.wordY) < 0.5, 'a printed page shows everything as it ends', pr);
+    await page.close();
+
+    for (var mode of ['editing', 'reduce']) {
+      page = await browser.newPage();
+      if (mode === 'reduce') await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+      await page.setContent(replay(mode === 'editing' ? ' data-rv-editing' : ''), { waitUntil: 'load' });
+      await sleep(150);
+      var still = await looks();
+      ok(!still.intro.length && !still.word.length && !still.card.length && !still.spin.length && still.cardOp === '1' && Math.abs(still.wordY) < 0.5 && still.ready === (mode === 'reduce'),
+        mode === 'editing' ? 'in the editor nothing moves, everything shows, and the page is not marked as taken over' : 'a visitor who asked for no motion sees everything still', still);
+      await page.close();
+    }
+
+    /* ---------- 4. a banner picture sized by a layered class ---------- */
     page = await browser.newPage();
     await page.setContent('<!doctype html><html><head>' + P.SIZED_CSS + '<style>' + CSS + '</style></head><body>' +
       '<div style="height:500px;width:400px"><img id="a" class="h-full" data-rv-sized width="100" height="50" style="width:200px" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%2250%22/%3E"></div>' +

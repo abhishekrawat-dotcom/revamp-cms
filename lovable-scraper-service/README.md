@@ -27,8 +27,12 @@ function (image re-hosting, Storage, Firestore, the ZIP-upload input method) is 
 `server.js` `settlePage` / `finishPage` walk the page before reading it, so what its script would draw later
 is in the markup: content revealed on scroll, every card of a carousel, every tab's content (with the
 tab's own look, its background picture and progress bar), every FAQ answer and accordion panel (found by
-`aria-controls`), and the top bar's look once scrolled. `templates/_shared/et-runtime.js` brings these back
-to life on the imported page. A change here reaches new imports only once this service is deployed again
+`aria-controls`), and the top bar's look once scrolled. The page's own motion is recorded on the way
+(`motionRecorder`): each entrance as the page opens or as an element comes into view (its keyframes, timing
+and what the page watched to set it off), each loop, and each motion tied to the scroll — written on the
+element as `data-rv-motion`, with the element left as its entrance ends. `templates/_shared/et-runtime.js`
+brings all of these back to life on the imported page, motion included. A change here reaches new imports
+only once this service is deployed again
 (below); `tools/reimport-lovable.js` runs the same capture on an operator's own Chrome to import one
 unsaved event again.
 

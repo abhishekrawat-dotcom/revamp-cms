@@ -254,6 +254,18 @@ ok(gd && gd.edges === 'smooth' && gd.themes.length >= 2 && /&theme=$/.test(gd.ed
 ok(publishTransform(PAGE, { eventId: 'import-abc', event: { name: 'I' }, mode: 'preview', templateId: 'imported-abc', origins: [ORIGIN] }).indexOf('rv-theme-switcher.js') === -1, 'an imported site\'s preview has no theme box');
 ok(publishTransform(PAGE, { eventId: 'qa-fixture', event: SMOOTH_EV, mode: 'live', templateId: 'tech500', origins: [ORIGIN] }).indexOf('rv-theme-switcher.js') === -1, 'a published page has no theme box');
 
+/* an imported page's recorded motion: held from the first paint (in <head>), once, never kept as "started" */
+var MOVING = PAGE.replace('<html lang="en"', '<html lang="en" data-rv-motion-ready')
+  .replace('<div data-rv-locked="footer">', '<div data-rv-motion="{&quot;on&quot;:&quot;view&quot;,&quot;a&quot;:[]}"></div><div data-rv-locked="footer">');
+var moving = publishTransform(MOVING, { eventId: 'import-abc', event: { name: 'I' }, mode: 'live', templateId: 'imported-abc', origins: [ORIGIN] });
+var holdAt = moving.indexOf('@keyframes rv-motion-hold');
+ok(holdAt !== -1 && holdAt < moving.indexOf('</head>'), 'a page with motion that moves in is held from the first paint, in <head>');
+ok(/prefers-reduced-motion:no-preference/.test(moving) && /html:not\(\[data-rv-motion-ready\]\):not\(\[data-rv-editing\]\)/.test(moving) && /rv-motion-hold 3s linear/.test(moving),
+  'the hold ends when the runtime takes over, after 3 s at most, and never applies while editing or to a visitor who asked for no motion');
+ok(moving.indexOf('data-rv-motion-ready') === moving.indexOf('data-rv-motion-ready]') && count(moving, 'data-rv-motion-ready') === 1, 'the runtime\'s "taken over" mark is not kept on the page');
+ok(count(publishTransform(moving, { eventId: 'import-abc', event: { name: 'I' }, mode: 'live', templateId: 'imported-abc', origins: [ORIGIN] }), 'rv-motion-hold 3s') === 1, 'the hold is written once however often the page is published');
+ok(out.indexOf('rv-motion-hold') === -1, 'a page with no recorded motion has no hold');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

@@ -8318,7 +8318,9 @@ var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable'
   'data-date-format', 'data-ed', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-editing',
   'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded', 'data-rv-edge-host',
   /* which of a site's pages is shown (rv-pages.js): written as the page is served (sitePages.selectPage), never stored */
-  'data-rv-current-page'];
+  'data-rv-current-page',
+  /* an imported page's motion has been taken over (et-runtime.js startMotion): true of one visit only */
+  'data-rv-motion-ready'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
 var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend|rv-award-cta|rv-pages)\.js|editor-fill\.js)$/;
@@ -8336,6 +8338,14 @@ var AWARD_CTA_TAG = '<script src="/templates/_shared/rv-award-cta.js?v=' + AWARD
 var AWARD_CTA_MARK = /<[a-z][^>]*\sdata-rv-award-cta(?=[\s=>\/])/i;
 /* section edges' runtime (templates/_shared/rv-blend.js): bumped whenever that file changes */
 var BLEND_RUNTIME_V = 2;
+/* An imported page's own motion (lovable-scraper-service motionRecorder: data-rv-motion). Each element that moves
+   in is written as its motion ends; et-runtime.js, loaded deferred, puts it back at its start and plays it. Till
+   then it is held out of sight, so the first paint does not show it finished and then snatch it away — for 3 s
+   at most: after that it shows whether the runtime came or not. Never while editing, nor for a visitor who asked
+   for no motion. */
+var MOTION_MARK = /<[a-z][^>]*\sdata-rv-motion=(["'])\{(?:&quot;|")on(?:&quot;|")/i;
+var MOTION_HOLD = '<style data-rv-runtime>@media (prefers-reduced-motion:no-preference){@keyframes rv-motion-hold{from,to{opacity:0}}' +
+  'html:not([data-rv-motion-ready]):not([data-rv-editing]) [data-rv-motion^=\'{"on":\']{animation:rv-motion-hold 3s linear}}</style>';
 /* JSON inside a <script> block: "<" must not appear (a "</script" in some text would end the block early),
    nor the two characters JavaScript reads as line ends */
 function scriptJson(v) {
@@ -8716,6 +8726,8 @@ function publishTransform(html, opts) {
   /* internal pages: the rule that shows the page <html data-rv-current-page> names, in <head> so that the right page
      shows at once and with no script (the address of each page sets it: sitePages.selectPage) */
   if (sitePageList.length) head.push('<style id="rv-pages-css" data-rv-runtime>' + sitePages.pagesCss(sitePageList).replace(/\n$/, '') + '</style>');
+  /* an imported page's own motion: what moves in is held from the first paint until the runtime has it */
+  if (MOTION_MARK.test(html)) head.push(MOTION_HOLD);
 
   /* ---- 4. the live-site runtime and its config, exactly once ---- */
   var contentMap = contentMapFor(opts.templateId);
