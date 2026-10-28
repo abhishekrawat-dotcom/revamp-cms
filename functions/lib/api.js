@@ -1250,7 +1250,7 @@ function handleEtEvents(req, res) {
    one page, which come next for every kind of event (the owner, 23 Oct 2026: award sites go live as one page
    first). Until then an award site is its home page: no page sections, no page links; the words written for
    the pages are kept on the event (awardPages) for when they come. */
-var SITE_PAGES = false;
+var SITE_PAGES = true;   // merged 28 Oct 2026 (the internal-pages work): an award site has its pages
 /* events/<id>/faqs from an award's FAQs (writeAwardPages: written for this edition; else the previous
    edition's record), only when the event has no FAQ yet — never over the owner's own. Never fails the run. */
 function seedAwardFaqs(fb, eventId, got, by) {
@@ -1943,7 +1943,8 @@ function buildDesignPlanPrompt(payload) {
     payload.siteMode === 'award'
       ? 'THIS IS AN AWARD SITE, built as every ET award site is. Its sections are chosen ONLY from this list, in this order — use exactly these ids and kinds:\n' +
         awardSite.AWARD_SECTIONS.filter(function (x) { return !x.prebuilt; }).map(function (x) { return '  ' + x.id + '  (kind "' + x.kind + '") — ' + x.name + (x.purpose ? ': ' + x.purpose : ''); }).join('\n') + '\n' +
-        'Include overview, why-enter, how-it-works, recognition, who-should-enter, faqs, contact-us and about-vertical always; awards-night when the awards have a ceremony; past-edition-glimpses only when a previous edition is given. The key dates, the categories, the jury and the partners are built by the server from the award\'s records and placed in their ET positions — never list them. The award\'s internal pages (categories, entry guidelines, judging criteria, jury, FAQs, terms) are made separately. (nav, hero and footer are added automatically.)'
+        'Include overview, why-enter, who-should-enter, contact-us and about-vertical always; past-edition-glimpses only when a previous edition is given. The band of category names, the key dates, the categories, how the awards work, the jury, the two calls to act (recognition, the awards night), the partners and the FAQs are built by the server, in ET\'s design, and placed in their ET positions — never list them. The award\'s internal pages (categories, entry guidelines, judging criteria, jury, FAQs, terms) are made separately. (nav, hero and footer are added automatically.)\n' +
+        'AN ET AWARD SITE IS DRESSED FOR THE CEREMONY (ET\'s own award sites, read 28 Oct 2026): dark and premium — a near-black or deep brand-coloured ground with the brand colour and a warm metallic highlight as accents, never a pale page of text. Its hero key visual (design.heroImage) is an AWARDS key visual: a trophy or statuette on a dark stage under spotlight beams, light rays and glowing particles in the brand colour — premium, ceremonial, no people, no words, no city skyline.'
       : payload.siteMode === 'standard'
       ? 'THIS IS A STANDARD SITE. Its sections are chosen ONLY from this list — use exactly these ids and kinds, and no section that is not on it:\n' +
         STANDARD_SECTIONS.map(function (x) { return '  ' + x.id + '  (kind "' + x.kind + '") — ' + x.name; }).join('\n') + '\n' +
@@ -3544,6 +3545,63 @@ function storeLogoUnit(fb, eventId, stamp, pic) {
   var storagePath = 'events/' + eventId + '/generated/' + stamp + '-logo-unit.' + ext;
   return storePublicPicture(fb, storagePath, pic.bytes, pic.info.mime).then(function (url) { return { url: url, storagePath: storagePath }; });
 }
+/* A lock-up drawn for a light ground (dark lettering), made again for a dark one by ET's logo rule (the owner,
+   23 Oct 2026): only its black lettering changes — to white — and the red ET square, with the white "ET" in it,
+   never; any colour of its own (a gradient, an accent) stays as it is. As tools/build-portal-dark-logos.js does for
+   the verticals' wordmarks: the square is the largest single block of ET red. -> a decoded RGBA picture, or null when
+   the lock-up has little dark lettering to turn (it is not drawn for a light ground after all) */
+function isEtRedPx(r, g, b) { return r > 150 && g < 100 && b < 110 && r - g > 90; }
+function onDarkCopy(img) {
+  var w = img.width, h = img.height, d = img.data, out = Buffer.from(d);
+  var red = new Uint8Array(w * h), seen = new Uint8Array(w * h), best = null, i, x, y;
+  for (i = 0; i < w * h; i++) red[i] = d[i * 4 + 3] > 200 && isEtRedPx(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) ? 1 : 0;
+  for (var start = 0; start < w * h; start++) {
+    if (!red[start] || seen[start]) continue;
+    var x0 = w, y0 = h, x1 = -1, y1 = -1, n = 0, stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      i = stack.pop(); x = i % w; y = (i - x) / w; n++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      [i - 1, i + 1, i - w, i + w].forEach(function (j, k) {
+        if (j < 0 || j >= w * h || (k === 0 && x === 0) || (k === 1 && x === w - 1)) return;
+        if (red[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+      });
+    }
+    if (!best || n > best.n) best = { x0: x0 - 2, y0: y0 - 2, x1: x1 + 2, y1: y1 + 2, n: n };
+  }
+  var dark = 0, inked = 0;
+  for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+    var o = (y * w + x) * 4;
+    if (!out[o + 3]) continue;
+    if (best && best.n > 30 && x >= best.x0 && x <= best.x1 && y >= best.y0 && y <= best.y1) continue;     // the ET square
+    var r = out[o], g = out[o + 1], b = out[o + 2], hi = Math.max(r, g, b), lo = Math.min(r, g, b);
+    if (hi - lo > 40) continue;                                                                           // its own colours
+    var lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    if (out[o + 3] > 128) { inked++; if (lum < 110) dark++; }
+    out[o] = out[o + 1] = out[o + 2] = 255 - lum;                                                         // black -> white
+  }
+  return inked && dark / inked > 0.4 ? { width: w, height: h, data: out } : null;
+}
+/* the lock-up stored for the plan, made again for a dark ground -> Promise<{ url, storagePath, width, height } | null> */
+function storeOnDarkUnit(fb, eventId, stamp, unit) {
+  if (!unit || !unit.storagePath || !fb || !fb.bucket) return Promise.resolve(null);
+  return fb.bucket.file(unit.storagePath).download().then(function (got) {
+    var bytes = got[0], info = logoUnit.imageInfo(bytes);
+    var decodedP = info.type === 'svg' ? workingCopy(bytes.toString('utf8'))
+      : info.type === 'png' && info.width * info.height <= LOGO_UNIT_DECODE_PIXELS ? Promise.resolve({ decoded: pngLite.decode(bytes) })
+      : workingCopy(wrapPictureSvg({ bytes: bytes, info: info }));
+    return decodedP.then(function (copy) {
+      var turned = copy && copy.decoded ? onDarkCopy(copy.decoded) : null;
+      if (!turned) return null;
+      var png = pngLite.encode(turned), storagePath = 'events/' + eventId + '/generated/' + stamp + '-logo-unit-on-dark.png';
+      return storePublicPicture(fb, storagePath, png, 'image/png').then(function (url) {
+        /* shown at the size the original is */
+        return { url: url, storagePath: storagePath, width: unit.width || turned.width, height: unit.height || turned.height };
+      });
+    });
+  }).then(null, function (err) { console.error('logo unit: the dark-ground copy of ' + eventId + '\'s lock-up was not made — ' + (err && err.message)); return null; });
+}
+
 /* what the event says about its year beyond its name and dates: the brief's own words */
 function briefYearTexts(brief, eventMeta) {
   brief = brief || {};
@@ -4058,6 +4116,10 @@ function handlePlanStructure(req, res) {
         if (!look && themeInfo.look && r.parsed && r.parsed.design && !editionLook.ownerSetsLook(ownerWords)) {
           Object.assign(r.parsed.design, editionLook.inspiredDesign(themeInfo.look, r.parsed.design, themeMode));
         }
+        /* ET's award sites are dark and premium — five of the seven read on 28 Oct 2026 (HR, BFSI, Auto, Retail,
+           Health); the owner found ours "an article page". An award site opens dark unless the owner chose light
+           (the theme switcher still offers light) */
+        if (siteMode === 'award' && themeMode === 'auto' && r.parsed && r.parsed.design) r.parsed.design.mode = 'dark';
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
         /* ET's newer sites set their headlines in a serif display face */
         if (NEW_ET_STANDARD && googleFonts.categoryOf(design.headingFont) !== 'serif') design.headingFont = 'Playfair Display';
@@ -4117,6 +4179,7 @@ function handlePlanStructure(req, res) {
           design.logoUnitUrl = unit.url; design.logoUnitStoragePath = unit.storagePath; design.logoUnitSource = unit.source;
           design.logoUnitFrom = unit.from; design.logoUnitWidth = unit.width; design.logoUnitHeight = unit.height;
           design.logoUnitPlate = unit.plate; design.logoUnitNote = unit.note; design.logoUnitHeroMode = unit.heroMode || '';
+          delete design.logoUnitDarkUrl; delete design.logoUnitDarkStoragePath;
           var heroImage = made[0];
           /* the hero picture's name carries the run (buildHeroImage) */
           design.heroImageUrl = heroImage.heroImageUrl || null;
@@ -4128,6 +4191,12 @@ function handlePlanStructure(req, res) {
             var img = images.filter(function (i) { return i.sectionId === s.id; })[0];
             s.imageUrl = img ? img.url : '';
           });
+          /* a dark site whose lock-up is drawn for a light ground gets a copy for a dark one (only the black lettering
+             made white: ET's logo rule), so its banner is dark as the site is — never a pale banner on a dark site */
+          var onDark = design.mode === 'dark' && design.logoUnitHeroMode === 'light' && unit.url
+            ? storeOnDarkUnit(fb, eventId, stamp, unit) : Promise.resolve(null);
+          return onDark.then(function (dark) {
+          if (dark) { design.logoUnitDarkUrl = dark.url; design.logoUnitDarkStoragePath = dark.storagePath; }
 
           var designPlan = {
             sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
@@ -4146,6 +4215,7 @@ function handlePlanStructure(req, res) {
               if (watch.live && described) logActivity(fb, eventId, req.user, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
                 fields: [{ field: 'description', before: String(stored.description || '').slice(0, 600), after: described.description }] });
             });
+          });
         });
       });
     }).catch(function (err) { sendStepFailure(res, err, 500, 'plan-structure failed: ' + err.message); });
@@ -4520,6 +4590,17 @@ function buildSectionCodePrompt(payload) {
     lines.push('- Section "' + s.id + '" has a picture, already made. Its address is exactly ' + genDesign.pictureToken(s.id) + ' (it shows: ' + s.image + '). Use it with <img src="' + genDesign.pictureToken(s.id) + '" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band, at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
   });
   lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails.');
+  /* ET's award sites (seven read on 28 Oct 2026): the sections the model writes match the ones the server builds */
+  if (designPlan.siteMode === 'award') {
+    lines.push('', 'THIS IS AN ET AWARD SITE — premium and ceremonial, never an article page. The key dates, categories, jury, how-it-works, the calls to act and the FAQs are built by the server in this design; write yours to sit beside them:',
+      '- Every section heading is centred, with a short uppercase eyebrow over it in the brand colour; headings are bold and confident (ET writes them in title case or capitals).',
+      '- Cards stand on the ground of the page with a faint glow of the brand colour from one corner (background-image: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb,var(--theme-color) 22%, transparent), transparent 60%)), a 1px border at 14% of the text colour, and lift a little on hover.',
+      '- overview: two columns — the picture (a trophy, the stage, the ceremony) tall on one side, the text on the other; at most two short paragraphs.',
+      '- why-enter: four to six reasons as cards, each with a small line icon, a short bold title and one line — or, with real photos, as photo cards with the title over a dark veil. Never a paragraph per reason.',
+      '- who-should-enter: a grid of icon tiles, three or four across, each one kind of entrant ("Banks", "Insurance", "Technology vendors"…) in a few words — no paragraphs.',
+      '- contact-us: centred cards side by side, one per purpose ("For Nominations", "For Jury Opportunities", "For Partnerships"), each with the person\'s name, e-mail and phone.',
+      '- about-vertical: one centred paragraph under its heading.');
+  }
   if (NEW_ET_STANDARD) {
     lines.push('- NO DECORATION WITHOUT CONTENT: never draw illustrations, line art, clip-art, monuments, outlines of buildings or vehicles, or decorative patterns in SVG or CSS; never a box, frame, panel or card that holds no real picture and no real text (a coloured block "standing in" for a picture is a blank box — leave it out and let the text use the width). Icons are allowed only as small line icons (about 24px) beside a card\'s title.');
     lines.push('- PHOTOS OF PEOPLE: object-fit: cover with object-position: center 25% so heads and faces stay in frame; a picture frame is never taller than the photo allows (no head cut off at the top).');
@@ -4833,10 +4914,13 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var place = [eventMeta.venue, eventMeta.city].filter(function (v, i, list) { return v && list.indexOf(v) === i; }).join(', ') || eventMeta.location || '';
       /* a lock-up taken from the previous edition was drawn for a dark or a light banner: the hero is that */
       var heroMode = design.logoUnitUrl && /^(dark|light)$/.test(String(design.logoUnitHeroMode)) ? design.logoUnitHeroMode : design.mode;
+      /* a dark site whose lock-up was drawn for light shows its dark-ground copy (storeOnDarkUnit), on a dark banner */
+      var unitUrl = design.logoUnitUrl;
+      if (design.mode === 'dark' && heroMode === 'light' && design.logoUnitDarkUrl) { heroMode = 'dark'; unitUrl = design.logoUnitDarkUrl; }
       var heroOpts = {
         /* the unit as one picture (the logo the owner uploaded, the previous edition's, or the one drawn for
            this event — buildLogoUnit); set in type only when no picture could be made */
-        unit: genDesign.logoUnitImageHtml({ url: design.logoUnitUrl, alt: eventMeta.name, width: design.logoUnitWidth, height: design.logoUnitHeight, plate: design.logoUnitPlate, note: design.logoUnitNote, mode: heroMode }) ||
+        unit: genDesign.logoUnitImageHtml({ url: unitUrl, alt: eventMeta.name, width: design.logoUnitWidth, height: design.logoUnitHeight, plate: design.logoUnitPlate, note: design.logoUnitNote, mode: heroMode }) ||
           genDesign.logoUnitHtml(design.logoUnit || genDesign.logoUnitParts(eventMeta.name), design.mode, design.logoUnitNote),
         tagline: design.heroTagline, date: eventMeta.dateLabel || eventMeta.date || genDesign.dateLabel(stored.start, stored.end), place: place,
         /* with no hero picture there is no veil to make that tone: the banner is painted in it */
@@ -4890,7 +4974,13 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       if (design.heroImageUrl) usedPhotos.push(design.heroImageUrl);
       /* an award site's own sections built from its records (award-sections.js), by id */
       var awardHome = {};
-      if (got.award) awardSections.homeSections(got.award.award, { edition: eventMeta.name || '', pages: SITE_PAGES }).forEach(function (b) { awardHome[b.id] = b; });
+      /* the previous edition's photos not shown elsewhere on the page light the award's stage panels and its calls to act */
+      var awardRec = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.award; }).map(function (v) { return v.award; })[0];
+      var photoPool = (prevDoc && prevDoc.previous && prevDoc.previous.glimpses && prevDoc.previous.glimpses.length ? prevDoc.previous.glimpses : (awardRec && awardRec.glimpses) || []);
+      var awardPhotos = photoPool.filter(function (u) { return usedPhotos.indexOf(u) === -1; }).slice(0, 5);
+      if (got.award) awardSections.homeSections(got.award.award, { edition: eventMeta.name || '', pages: SITE_PAGES, photos: awardPhotos,
+        heroImage: design.heroImageUrl || '', dateLabel: heroOpts.date, place: place }).forEach(function (b) { awardHome[b.id] = b; });
+      awardPhotos.forEach(function (u) { usedPhotos.push(u); });
       planned.filter(function (x) { return x.prebuilt; }).forEach(function (x) {
         var built = /^award-/.test(x.prebuilt) ? awardHome[x.id] || null : prevDoc ? prevSections.build(x.prebuilt, prevDoc.previous, { exclude: usedPhotos }) : null;
         if (!built) return;
@@ -5261,10 +5351,18 @@ function fontStack(family) { return '"' + family + '", Arial, sans-serif'; }
    (generate-content may have had to omit a planned section whose id was missing from Gemini's response; see
    sanitizeSectionCodeResult). */
 function generatedPageIds(designPlan, generatedSections) {
-  var have = {};
-  (generatedSections || []).forEach(function (s) { if (s && s.id) have[s.id] = 1; });
-  return ['nav', 'hero'].concat(sectionOrder.sponsorsFirst(designPlan.sections).map(function (s) { return s.id; })).concat(['footer'])
-    .filter(function (id) { return have[id]; });
+  var have = {}, paged = [];
+  (generatedSections || []).forEach(function (s) {
+    if (!s || !s.id) return;
+    have[s.id] = 1;
+    /* an internal page's sections (an award's Categories, Jury, FAQs …: generate-content writes them with their
+       page) come after the home page's, in the order they were made */
+    if (typeof s.page === 'string' && s.page && s.page !== '*' && s.page !== sitePages.HOME) paged.push(s.id);
+  });
+  var home = ['nav', 'hero'].concat(sectionOrder.sponsorsFirst(designPlan.sections).map(function (s) { return s.id; }))
+    .filter(function (id) { return paged.indexOf(id) === -1; });
+  var seen = {};
+  return home.concat(paged).concat(['footer']).filter(function (id) { return have[id] && !seen[id] && (seen[id] = 1); });
 }
 
 function handleGeneratedTemplate(req, res) {
@@ -5305,7 +5403,8 @@ function handleGeneratedTemplate(req, res) {
     var byId = {};
     generatedSections.forEach(function (s) { if (s && s.id) byId[s.id] = s; });
     var orderedIds = generatedPageIds(designPlan, generatedSections);
-    var sitePageList = sitePages.cleanPages(designPlan.pages);
+    /* the site's internal pages: the plan's, else those generate-content made (an award's: generatedPages) */
+    var sitePageList = sitePages.cleanPages(Array.isArray(designPlan.pages) && designPlan.pages.length ? designPlan.pages : data.generatedPages);
 
     var template = {
       id: 'gen-' + eventId,
@@ -5356,7 +5455,9 @@ function handleGeneratedTemplate(req, res) {
         /* internal pages (site-pages.js): the top bar and the footer are on every page; a planned section on the page
            its plan names (designPlan.sections[].page); the rest — the hero first — on the home page */
         if (sitePageList.length) {
-          var onPage = id === 'nav' || id === 'footer' ? '*' : planned && typeof planned.page === 'string' ? planned.page : '';
+          var made = byId[id];
+          var onPage = id === 'nav' || id === 'footer' ? '*' : made && typeof made.page === 'string' && made.page ? made.page
+            : planned && typeof planned.page === 'string' ? planned.page : '';
           if (onPage === '*' || onPage === sitePages.HOME || sitePageList.some(function (p) { return p.slug === onPage; })) section.page = onPage;
         }
         return section;
@@ -9429,7 +9530,7 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
-  redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
+  onDarkCopy: onDarkCopy, redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,

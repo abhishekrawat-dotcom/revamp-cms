@@ -256,7 +256,7 @@ function safeCalls() {
 resetEt();
 aw.readAward({ portal: 'cio', micrositeId: '4648' }, { fetchJson: fakeJson, fetchText: fakeText }).then(function (a) {
   check('read: an award, its id found from the microsite', a && a.awardId === '407' && a.micrositeId === '4648' && a.portal === 'cio', a && j([a.awardId, a.micrositeId]));
-  check('read: every part of AWARD', a && j(Object.keys(a).sort()) === j(['about', 'aboutVertical', 'awardId', 'categories', 'dates', 'edition', 'faq', 'guests', 'jury', 'link', 'micrositeId', 'name', 'pages', 'partners', 'portal', 'seo', 'venue', 'whoShouldEnter', 'whyEnter']), a && j(Object.keys(a).sort()));
+  check('read: every part of AWARD', a && j(Object.keys(a).sort()) === j(['about', 'aboutVertical', 'awardId', 'categories', 'dates', 'edition', 'faq', 'glimpses', 'guests', 'jury', 'link', 'micrositeId', 'name', 'pages', 'partners', 'portal', 'seo', 'venue', 'whoShouldEnter', 'whyEnter']), a && j(Object.keys(a).sort()));
   check('read: name, link, edition, venue, about', a.name === 'ET Awards for Enterprise Tech Excellence 2026' && a.link === 'https://cio.economictimes.indiatimes.com/enterprise-tech-award'
     && a.edition === '3rd Edition' && a.venue === 'Grand Hyatt, Mumbai' && a.about === 'Recognising visionary CIOs.', j([a.name, a.link, a.edition, a.venue, a.about]));
   check('read: dates from the listing row and the microsite — never from award/details answering for another award',

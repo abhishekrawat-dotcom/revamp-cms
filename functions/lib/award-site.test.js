@@ -4,11 +4,11 @@ var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); }
 
 check('ET\'s home order', as.AWARD_SECTIONS.map(function (s) { return s.id; }).join() ===
-  'overview,key-dates,why-enter,award-categories,how-it-works,award-jury,recognition,awards-night,who-should-enter,award-partners,past-edition-glimpses,faqs,contact-us,about-vertical');
+  'award-band,overview,key-dates,why-enter,award-categories,how-it-works,award-jury,recognition,awards-night,who-should-enter,award-partners,past-edition-glimpses,faqs,contact-us,about-vertical');
 check('ids a model may use find their section', as.awardSectionFor('Why Nominate').id === 'why-enter' && as.awardSectionFor('how-our-awards-work').id === 'how-it-works' &&
   as.awardSectionFor('grand-jury').id === 'award-jury' && as.awardSectionFor('awards-ceremony').id === 'awards-night' && as.awardSectionFor('who-can-enter').id === 'who-should-enter' &&
   as.awardSectionFor('frequently-asked-questions').id === 'faqs' && as.awardSectionFor('about-etcio').id === 'about-vertical' && as.awardSectionFor('random-thing') === null);
-check('records-built sections are marked', ['key-dates', 'award-categories', 'award-jury', 'award-partners'].every(function (id) { return as.awardSectionFor(id).prebuilt; }));
+check('the sections built in ET\'s design by the server are marked', ['award-band', 'key-dates', 'award-categories', 'how-it-works', 'award-jury', 'recognition', 'awards-night', 'award-partners', 'faqs'].every(function (id) { return as.awardSectionFor(id).prebuilt; }));
 
 var prev = { guidelines: { title: 'Entry Guidelines', blocks: [{ heading: 'How to submit your entry?', paragraphs: ['Create your account in 2026.'], bullets: ['Select your categories'] }] }, faq: [{ q: 'Who can enter?', a: 'Any brand.' }] };
 var p = as.buildPagesPrompt({ event: { name: 'Shark Awards 2027', edition: '5th Edition', dates: { nominationClose: '2027-01-31 23:59:00' } }, previousPages: prev, needCategories: false });

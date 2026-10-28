@@ -140,7 +140,8 @@ function linksOf(sections) {
   var seen = {};
   return (sections || []).filter(function (s) {
     var id = String((s && s.id) || '');
-    if (!id || /^(nav|hero|footer)$/.test(id) || seen[id] || !/^[A-Za-z][\w-]*$/.test(id)) return false;
+    /* an award's moving band of category names is part of its hero, not a place to go to */
+    if (!id || /^(nav|hero|footer|award-band)$/.test(id) || seen[id] || !/^[A-Za-z][\w-]*$/.test(id)) return false;
     seen[id] = 1;
     return true;
   }).map(function (s) { return { id: s.id, label: labelOf(s) }; });

@@ -63,7 +63,7 @@
              dates: { nominationOpen, nominationClose, ceremony }        'YYYY-MM-DD HH:MM:SS' or ''
              categories: [CATEGORY], jury: [GROUP], guests: [GROUP],
              partners: [{ group, items: [{ name, logo, url }] }],
-             faq: [{ q, a }], whoShouldEnter: [string], whyEnter: [string],
+             faq: [{ q, a }], whoShouldEnter: [string], whyEnter: [string], glimpses: [url] (the edition's photos),
              aboutVertical: { title, text }, seo: { title, description },
              pages: { guidelines: TEXTPAGE|null, judging: TEXTPAGE|null, tnc: TEXTPAGE|null,
                       faq: [{ q, a }]|null, categoriesNote: TEXTPAGE|null } }
@@ -520,7 +520,10 @@ function readAward(input, deps) {
       ask(fetchJson, API + '/v1/award/categories?award_id=' + awardId, portal),
       allItems(fetchJson, 'speaker', micrositeId, portal),
       allItems(fetchJson, 'sponsor', micrositeId, portal),
-      pages
+      pages,
+      /* the edition's photo gallery (as an event's: et-previous.js photosOf) — the award site's stage panels and
+         calls to act stand on these real photos */
+      allItems(fetchJson, 'image', micrositeId, portal)
     ]).then(function (all) {
       var a = all[0] || {}, people = groupPeople(all[2]);
       var about = d.about_us && typeof d.about_us === 'object' ? d.about_us : {};
@@ -545,7 +548,8 @@ function readAward(input, deps) {
         whyEnter: listOf(d.why_join_us),
         aboutVertical: { title: cleanText(about.title, LEN.name), text: redact(cleanLines(about.description, LEN.about)) },
         seo: { title: cleanText(seo.title || d.page_title, LEN.seo), description: cleanText(seo.description || d.page_description, LEN.seo * 2) },
-        pages: all[4]
+        pages: all[4],
+        glimpses: etPrevious.photosOf(all[5])
       };
     });
   }).then(null, function () { return null; });

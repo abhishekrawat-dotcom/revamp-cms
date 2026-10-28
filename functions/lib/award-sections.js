@@ -223,63 +223,85 @@ function juryGroups(jury) {
 
 var CHECK = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
+/* ---------- ET's award design (read from seven of ET's own award sites, 28 Oct 2026) ----------
+   Dark and premium, the brand colour lighting the page: key dates as numbered date cards with the current stage
+   lit; the categories under a big count ("10 Master Categories · 85+ sub-categories") as icon cards; the Grand
+   Jury as a grid of portraits on the brand colour; "How our awards work" as three principles and three stages;
+   two wide calls to act (enter; the ceremony); five questions on the home page and the rest on their own page; a
+   band of the category names moving under the hero. Every word is an element's own, so the editor can change it. */
+
+/* a category's icon, from what its name says (a trophy when nothing fits) */
+var ICONS = [
+  [/\b(ai|artificial|tech|digital|data|cloud|software|it\b|cyber|analytics|automation)/i, '<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/><rect x="9" y="9" width="6" height="6"/>'],
+  [/\b(leader|ceo|cxo|chro|cfo|cio|cmo|officer|of the year|individual|professional|woman|women|young|champion|visionary)/i, '<circle cx="12" cy="7" r="4"/><path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8"/>'],
+  [/\b(team|talent|people|hr|culture|employ|workplace|diversity|inclusion|learning)/i, '<circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7M15 14.5c3.3 0 6 2.7 6 6"/>'],
+  [/\b(sustain|esg|green|climate|environment|carbon|water|circular)/i, '<path d="M20 4C9 4 4 10 4 17c0 1 .1 2 .3 3C6 13 11 10 16 9c-4 2-7 5-9 10 9 0 13-7 13-15z"/>'],
+  [/\b(health|care|wellness|hospital|pharma|medic|clinic|nutrition|fertility)/i, '<path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/>'],
+  [/\b(retail|commerce|brand|consumer|store|shop|d2c|fmcg)/i, '<path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="17" cy="20.5" r="1.3"/>'],
+  [/\b(market|campaign|media|content|advert|communic|pr\b|creative|story|social)/i, '<path d="M3 11v2a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1zM17 8a5 5 0 0 1 0 8M20 5a9 9 0 0 1 0 14"/>'],
+  [/\b(financ|bank|fintech|insur|invest|payment|lending|nbfc|wealth)/i, '<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18"/>'],
+  [/\b(startup|innovat|disrupt|new|emerging|launch|rising)/i, '<path d="M12 2c3 2 5 6 5 10l-2 4H9l-2-4c0-4 2-8 5-10zM9 16l-3 4M15 16l3 4M12 9.5v.01"/>'],
+  [/\b(auto|ev\b|electric|mobility|vehicle|car|transport|logistic|supply)/i, '<path d="M5 17h14M3 17v-4l2.5-5h13L21 13v4"/><circle cx="7.5" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/>'],
+  [/\b(energy|power|solar|oil|gas|renewable|grid)/i, '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'],
+  [/\b(organi[sz]ation|company|enterprise|corporate|business|employer|government|public|institution)/i, '<path d="M4 21V5l8-3v19M12 21h8V9l-8-2M8 8v.01M8 12v.01M8 16v.01M16 12v.01M16 16v.01"/>']
+];
+var TROPHY = '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/>';
+function iconFor(name) {
+  var hit = ICONS.filter(function (x) { return x[0].test(String(name || '')); })[0];
+  return '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + (hit ? hit[1] : TROPHY) + '</svg>';
+}
+/* the brand colour lighting a dark card from one corner */
+var GLOW = 'radial-gradient(120% 90% at 0% 0%, color-mix(in srgb,var(--theme-color) 22%, transparent), transparent 60%)';
+
 function keyDates(award, o) {
   var d = (award && award.dates) || {}, now = o.now == null ? Date.now() : +o.now;
   var defs = [
-    { key: 'nominationOpen', name: 'Nominations open' },
-    { key: 'earlyBird', name: 'Early bird deadline', optional: true },
-    { key: 'nominationClose', name: 'Nomination deadline' },
-    { key: 'jury', name: 'Jury evaluation' },
-    { key: 'ceremony', name: 'Awards night' }
+    { key: 'nominationOpen', name: 'Nominations Open' },
+    { key: 'earlyBird', name: 'Early Bird Deadline', optional: true },
+    { key: 'nominationClose', name: 'Nomination Deadline' },
+    { key: 'jury', name: 'Jury Meet' },
+    { key: 'ceremony', name: 'Awards Night' }
   ];
-  var known = 0;
   var steps = defs.map(function (s) {
     var w = when(d[s.key] != null ? d[s.key] : s.key === 'jury' ? d.juryRound : null, o.dateLabel);
-    if (w && s.key !== 'jury') known++;
     return { name: s.name, w: w, optional: s.optional };
   }).filter(function (s) { return s.w || !s.optional; });
-  if (!known) return null;
   /* done: its moment has passed — and every step before a done one is done too */
   var lastDone = -1;
   steps.forEach(function (s, i) { if (s.w && s.w.at < now) lastDone = i; });
   var c = 'aw-kd', id = 'key-dates';
   var items = steps.map(function (s, i) {
     var done = i <= lastDone, next = i === lastDone + 1;
-    var date = s.w ? s.w.label : done ? 'Completed' : 'To be announced';
+    var m = s.w ? /^(\d{1,2})\s+(.+)$/.exec(s.w.label) : null;
+    var big = m ? m[1] : s.w ? '' : '';
+    var small = m ? m[2] : s.w ? s.w.label : 'Coming soon';
     return '<li class="' + c + '-step' + (done ? ' is-done' : '') + (next ? ' is-next' : '') + (s.w ? '' : ' is-tba') + '"' + (next ? ' aria-current="step"' : '') + ' data-rv-reveal>' +
-      '<span class="' + c + '-dot" aria-hidden="true">' + (done ? CHECK : '') + '</span>' +
-      '<div class="' + c + '-card">' +
+      '<p class="' + c + '-no">' + (i < 9 ? '0' : '') + (i + 1) + '</p>' +
+      (big ? '<p class="' + c + '-day">' + esc(big) + '</p>' : '<p class="' + c + '-day ' + c + '-day-tba" aria-hidden="true">—</p>') +
+      '<p class="' + c + '-when">' + esc(small) + '</p>' +
       '<h3 class="' + c + '-name">' + esc(s.name) + '</h3>' +
-      '<p class="' + c + '-date">' + esc(date) + '</p>' +
-      (done && s.w ? '<p class="' + c + '-state">Completed</p>' : next ? '<p class="' + c + '-state">Up next</p>' : '') +
-      '</div></li>';
+      (done ? '<p class="' + c + '-state">' + CHECK + 'Completed</p>' : next ? '<p class="' + c + '-state">Up next</p>' : '') +
+      '</li>';
   }).join('');
   var html = root(id, c, '') + '<div class="' + c + '-in">' + head(c, id, o.edition, 'Key Dates') +
     '<ol class="' + c + '-list">' + items + '</ol></div></section>';
   var css = baseCss(c) +
-    '.' + c + '-list{list-style:none;margin:0 auto;padding:0;max-width:1120px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:20px;counter-reset:aw-kd}' +
-    '.' + c + '-step{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;counter-increment:aw-kd;min-width:0}' +
-    /* the line to the next step, behind the dots */
-    '.' + c + '-step:not(:last-child)::after{content:"";position:absolute;top:23px;left:calc(50% + 30px);width:calc(100% - 40px);height:2px;background:' + LINE + '}' +
-    '.' + c + '-step.is-done:not(:last-child)::after{background:var(--theme-color)}' +
-    '.' + c + '-dot{position:relative;z-index:1;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;border:2px solid ' + LINE + ';background:var(--rv-bg);color:var(--rv-muted);font-family:var(--heading-font-family);font-weight:700;font-size:1rem;margin:0 0 18px;flex:0 0 auto}' +
-    '.' + c + '-dot:empty::before{content:counter(aw-kd)}' +
-    '.' + c + '-step.is-done .' + c + '-dot{background:' + FILL + ';border-color:' + FILL + ';color:' + ON_FILL + '}' +
-    '.' + c + '-step.is-next .' + c + '-dot{border-color:var(--theme-color);color:' + INK + ';box-shadow:0 0 0 6px color-mix(in srgb,var(--theme-color) 18%,transparent)}' +
-    '.' + c + '-card{width:100%;background:var(--rv-surface);border:1px solid ' + LINE + ';border-radius:var(--rv-radius,12px);padding:18px 16px 20px;flex:1 1 auto}' +
-    '.' + c + '-step.is-next .' + c + '-card{border-color:var(--theme-color)}' +
-    '.' + c + '-name{margin:0;font-family:var(--heading-font-family);font-size:1.0625rem;line-height:1.3;color:var(--rv-text)}' +
-    '.' + c + '-date{margin:8px 0 0;font-size:1rem;font-weight:700;line-height:1.4;color:' + INK + '}' +
-    '.' + c + '-step.is-tba .' + c + '-date{font-weight:600;color:var(--rv-muted)}' +
-    '.' + c + '-step.is-done .' + c + '-date{color:var(--rv-muted)}' +
-    '.' + c + '-state{margin:10px 0 0;font-size:0.75rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--rv-muted)}' +
-    '.' + c + '-step.is-next .' + c + '-state{color:' + INK + '}' +
-    /* tablets and phones: one under another, the line down the left */
-    '@media (max-width:900px){.' + c + '-list{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:minmax(0,1fr);gap:16px;max-width:560px}' +
-      '.' + c + '-step{flex-direction:row;align-items:stretch;text-align:left;gap:16px}' +
-      '.' + c + '-step:not(:last-child)::after{top:52px;left:23px;width:2px;height:calc(100% - 40px)}' +
-      '.' + c + '-dot{margin:0}' +
-      '.' + c + '-card{padding:14px 16px 16px}}';
+    '.' + c + '-list{list-style:none;margin:0 auto;padding:0;max-width:1200px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:16px}' +
+    '.' + c + '-step{position:relative;display:flex;flex-direction:column;min-width:0;padding:22px 20px 24px;border-radius:var(--rv-radius,12px);background:var(--rv-surface);background-image:' + GLOW + ';border:1px solid ' + LINE + ';overflow:hidden;transition:transform .3s ease}' +
+    '.' + c + '-step:hover{transform:translateY(-4px)}' +
+    /* the current stage is lit in the brand colour */
+    '.' + c + '-step.is-next{background:' + FILL + ';background-image:none;border-color:transparent;color:' + ON_FILL + ';box-shadow:0 18px 40px -18px color-mix(in srgb,var(--theme-color) 70%,transparent)}' +
+    '.' + c + '-no{margin:0 0 18px;font-size:0.8125rem;font-weight:700;letter-spacing:.16em;color:' + INK + '}' +
+    '.' + c + '-step.is-next .' + c + '-no,.' + c + '-step.is-next .' + c + '-day,.' + c + '-step.is-next .' + c + '-when,.' + c + '-step.is-next .' + c + '-name,.' + c + '-step.is-next .' + c + '-state{color:' + ON_FILL + '}' +
+    '.' + c + '-day{margin:0;font-family:var(--heading-font-family);font-size:clamp(2.75rem,5vw,3.75rem);font-weight:700;line-height:1;color:var(--rv-text)}' +
+    '.' + c + '-day-tba{color:var(--rv-muted)}' +
+    '.' + c + '-when{margin:8px 0 0;font-size:0.9375rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--rv-muted)}' +
+    '.' + c + '-name{margin:auto 0 0;padding:22px 0 0;font-family:var(--body-font-family);font-size:1rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.35;color:var(--rv-text)}' +
+    '.' + c + '-state{display:flex;align-items:center;gap:6px;margin:10px 0 0;font-size:0.75rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--rv-muted)}' +
+    '.' + c + '-state svg{width:14px;height:14px}' +
+    '.' + c + '-step.is-done{opacity:.72}' +
+    '@media (max-width:900px){.' + c + '-list{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-columns:auto}}' +
+    '@media (max-width:520px){.' + c + '-list{grid-template-columns:minmax(0,1fr)}.' + c + '-step{padding:18px}}';
   return { html: html, css: css };
 }
 
@@ -292,25 +314,32 @@ function categoriesSummary(award, o) {
   var cards = cats.map(function (x, i) {
     var n = list(x.subcategories).filter(function (s) { return s && str(s.name); }).length;
     return '<article class="' + c + '-card" data-rv-reveal>' +
-      '<div class="' + c + '-top"><p class="' + c + '-num">' + (i < 9 ? '0' : '') + (i + 1) + '</p>' + (x.isNew ? newBadge(c + '-new') : '') + '</div>' +
+      '<div class="' + c + '-top"><span class="' + c + '-ic">' + iconFor(x.name) + '</span>' + (x.isNew ? newBadge(c + '-new') : '<span class="' + c + '-num">' + (i < 9 ? '0' : '') + (i + 1) + '</span>') + '</div>' +
       '<h3 class="' + c + '-name">' + esc(str(x.name)) + '</h3>' +
-      (str(x.description) ? '<p class="' + c + '-desc">' + esc(str(x.description)) + '</p>' : '') +
-      (n ? '<p class="' + c + '-count">' + n + ' sub-' + (n === 1 ? 'category' : 'categories') + '</p>' : '') + '</article>';
+      (n ? '<p class="' + c + '-count">' + n + ' ' + (n === 1 ? 'category' : 'categories') + '</p>' : '') + '</article>';
   }).join('');
-  var html = root(id, c, '') + '<div class="' + c + '-in">' + head(c, id, o.edition, 'Award Categories', lead) +
+  /* ET's big count over the grid: "10 Master Categories", the sub-categories in the brand colour */
+  var count = '<div class="' + c + '-head" data-rv-reveal>' +
+    (o.edition ? '<p class="' + c + '-eyebrow">' + esc(o.edition) + '</p>' : '') +
+    '<h2 class="' + c + '-big" id="' + id + '-title"><span class="' + c + '-n">' + cats.length + '</span> Master ' + (cats.length === 1 ? 'Category' : 'Categories') + '</h2>' +
+    (subs ? '<p class="' + c + '-subs">' + subs + '+ Sub-Categories</p>' : '') + '</div>';
+  var html = root(id, c, '') + '<div class="' + c + '-in">' + count +
     '<div class="' + c + '-grid">' + cards + '</div>' + (o && o.pages ? pageLink(c, 'award-category', 'View all categories') : '') + '</div></section>';
   var css = baseCss(c, '--rv-surface') + buttonCss(c) +
+    '.' + c + '-big{margin:0;font-family:var(--heading-font-family);font-size:clamp(2rem,4.4vw,3.25rem);font-weight:700;line-height:1.08;letter-spacing:.02em;text-transform:uppercase;color:var(--rv-text)}' +
+    '.' + c + '-n{color:' + INK + '}' +
+    '.' + c + '-subs{margin:12px 0 0;font-size:1.0625rem;font-weight:700;letter-spacing:.06em;color:' + INK + '}' +
     /* a short last row stands in the middle, not at the left */
-    '.' + c + '-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:20px}' +
-    '.' + c + '-card{flex:0 1 calc((100% - 60px) / 4);min-width:250px;display:flex;flex-direction:column;background:var(--rv-bg);border:1px solid ' + LINE + ';border-top:3px solid var(--theme-color);border-radius:var(--rv-radius,12px);padding:22px 22px 20px;transition:transform .3s ease}' +
-    '.' + c + '-card:hover{transform:translateY(-4px)}' +
-    '.' + c + '-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}' +
-    '.' + c + '-num{margin:0;font-family:var(--heading-font-family);font-size:0.875rem;font-weight:700;letter-spacing:.12em;color:' + INK + '}' +
+    '.' + c + '-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:16px}' +
+    '.' + c + '-card{flex:0 1 calc((100% - 64px) / 5);min-width:200px;display:flex;flex-direction:column;background:var(--rv-bg);background-image:' + GLOW + ';border:1px solid ' + LINE + ';border-radius:var(--rv-radius,12px);padding:20px 18px 22px;transition:transform .3s ease,border-color .3s ease}' +
+    '.' + c + '-card:hover{transform:translateY(-4px);border-color:var(--theme-color)}' +
+    '.' + c + '-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px}' +
+    '.' + c + '-ic{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:color-mix(in srgb,var(--theme-color) 16%,transparent);color:' + INK + '}' +
+    '.' + c + '-num{font-size:0.8125rem;font-weight:700;letter-spacing:.14em;color:var(--rv-muted)}' +
     badgeCss('.' + c + '-new') +
-    '.' + c + '-name{margin:0;font-family:var(--heading-font-family);font-size:1.1875rem;line-height:1.3;color:var(--rv-text)}' +
-    '.' + c + '-desc{margin:10px 0 0;font-size:0.95rem;line-height:1.55;color:var(--rv-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}' +
-    '.' + c + '-count{margin:auto 0 0;padding:16px 0 0;font-size:0.875rem;font-weight:700;color:var(--rv-text)}' +
-    '@media (max-width:640px){.' + c + '-grid{gap:14px}.' + c + '-card{flex:1 1 100%;min-width:0;padding:18px}}';
+    '.' + c + '-name{margin:0;font-family:var(--body-font-family);font-size:0.9375rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;line-height:1.4;color:var(--rv-text)}' +
+    '.' + c + '-count{margin:auto 0 0;padding:14px 0 0;font-size:0.875rem;font-weight:600;color:' + INK + '}' +
+    '@media (max-width:640px){.' + c + '-grid{gap:12px}.' + c + '-card{flex:1 1 calc(50% - 6px);min-width:0;padding:16px 14px 18px}}';
   return { html: html, css: css, lead: lead };
 }
 
@@ -319,22 +348,194 @@ function grandJury(jury) {
   var groups = juryGroups(jury);
   return groups.filter(function (g) { return /grand/i.test(g.group); })[0] || groups[0] || null;
 }
+var JURY_ON_HOME = 10;
 function juryHome(award, o) {
   var g = grandJury(award && award.jury);
   if (!g) return null;
-  var c = 'aw-jury', id = 'award-jury', many = g.people.length > 4;
-  var cards = g.people.map(function (p) { return personCard(c, p); }).join('');
-  var row = many
-    ? '<div class="' + c + '-row" data-rv-carousel="auto"><div class="' + c + '-track" data-rv-carousel-track>' + cards + '</div></div>'
-    : '<div class="' + c + '-grid">' + cards + '</div>';
-  var html = root(id, c, '', ' data-rv-profiles') + '<div class="' + c + '-in">' + head(c, id, o.edition, g.group || 'Jury') + row +
-    (o && o.pages ? pageLink(c, 'award-jury', 'Meet the jury') : '') + '</div></section>';
-  var css = baseCss(c) + buttonCss(c) + personCss(c, '236px') +
-    '.' + c + '-row{position:relative}.' + c + '-track{gap:24px;padding:4px 2px 12px}' +
-    '.' + c + '-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:24px}' +
-    '@media (max-width:820px){.' + c + '-card{width:200px}}' +
-    '@media (max-width:640px){.' + c + '-row .' + c + '-card{width:72%;max-width:260px}.' + c + '-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.' + c + '-grid .' + c + '-card{width:auto;padding:10px 10px 14px}.' + c + '-grid .' + c + '-name{font-size:1rem}}';
+  var c = 'aw-jury', id = 'award-jury';
+  /* ET's grid of portraits, five to a row; the rest of the jury on its own page */
+  var shown = o && o.pages ? g.people.slice(0, JURY_ON_HOME) : g.people;
+  var cards = shown.map(function (p) { return personCard(c, p); }).join('');
+  var html = root(id, c, '', ' data-rv-profiles') + '<div class="' + c + '-in">' + head(c, id, o.edition, g.group || 'Jury') +
+    '<div class="' + c + '-grid">' + cards + '</div>' +
+    (o && o.pages ? pageLink(c, 'award-jury', g.people.length > shown.length ? 'Meet the full jury' : 'Meet the jury') : '') + '</div></section>';
+  var css = baseCss(c) + buttonCss(c) + personCss(c, 'auto') +
+    '.' + c + '-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:20px;max-width:1120px;margin:0 auto}' +
+    /* ET's portraits stand on the brand colour */
+    '.' + c + '-card{padding:0 0 18px;overflow:hidden;text-align:center}' +
+    '.' + c + '-ph{border-radius:0;margin:0 0 14px;background:linear-gradient(180deg,color-mix(in srgb,var(--theme-color) 70%,var(--rv-bg)) 0%,var(--theme-color) 100%)}' +
+    '.' + c + '-name,.' + c + '-role,.' + c + '-co{padding:0 12px}' +
+    '@media (max-width:1000px){.' + c + '-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
+    '@media (max-width:640px){.' + c + '-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.' + c + '-name{font-size:1rem}}';
   return { html: html, css: css, title: g.group || 'Jury', count: g.people.length };
+}
+
+/* ---------- a band of the category names, moving under the hero ---------- */
+function categoryBand(award) {
+  var names = [];
+  list(award && award.categories).forEach(function (x) {
+    if (!x || !str(x.name)) return;
+    names.push(str(x.name));
+    list(x.subcategories).slice(0, 3).forEach(function (s) { if (s && str(s.name)) names.push(str(s.name)); });
+  });
+  names = names.filter(function (n, i) { return names.indexOf(n) === i; }).slice(0, 24);
+  if (names.length < 3) return null;
+  var c = 'aw-band', id = 'award-band';
+  var run = function (hidden) {
+    return '<ul class="' + c + '-run"' + (hidden ? ' aria-hidden="true"' : '') + '>' + names.map(function (n) { return '<li class="' + c + '-item">' + esc(n) + '</li>'; }).join('') + '</ul>';
+  };
+  var html = '<section id="' + id + '" data-rv-section-id="' + id + '" class="' + c + '" aria-label="Award categories">' +
+    '<div class="' + c + '-track">' + run(false) + run(true) + '</div></section>';
+  var css = '.' + c + '{background:' + FILL + ';color:' + ON_FILL + ';overflow:hidden;padding:0;font-family:var(--body-font-family)}' +
+    '.' + c + '-track{display:flex;width:max-content;animation:aw-band-move 60s linear infinite}' +
+    '.' + c + ':hover .' + c + '-track{animation-play-state:paused}' +
+    '.' + c + '-run{display:flex;list-style:none;margin:0;padding:0}' +
+    '.' + c + '-item{display:flex;align-items:center;gap:22px;padding:16px 0 16px 22px;font-size:0.875rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;color:' + ON_FILL + '}' +
+    '.' + c + '-item::after{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}' +
+    '@keyframes aw-band-move{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
+    '@media (prefers-reduced-motion:reduce){.' + c + '-track{animation:none;width:auto;flex-wrap:wrap;justify-content:center}.' + c + '-run[aria-hidden]{display:none}.' + c + '-run{flex-wrap:wrap;justify-content:center}}';
+  return { id: id, html: html, css: css };
+}
+
+/* ---------- how our awards work: ET's principles and its three stages ---------- */
+function processHome(o) {
+  var c = 'aw-how', id = 'how-it-works', photos = list(o.photos).map(httpsUrl).filter(Boolean);
+  var principles = [
+    ['Judging Criteria', 'Entries are assessed on clear, published criteria: the results achieved, the originality of the work and the impact it has made.'],
+    ['Persistent Fairness & Integrity', 'Every juror follows a strict code of conduct, and no juror assesses an entry where there is a conflict of interest.'],
+    ['Confidentiality', 'Everything an entrant submits is kept confidential to the jury and used only to assess the entry.']
+  ];
+  var stages = [
+    ['Scrutiny by Expert Tabulator', 'An independent expert tabulator checks every entry for eligibility and completeness, so the jury sees only valid entries.'],
+    ['Thorough Review Process', 'A multi-stage review of each entry against the judging criteria shortlists the strongest in every category.'],
+    ['Grand Jury', 'A grand jury of industry leaders deliberates on the shortlist and decides the winners.']
+  ];
+  var ICON = ['<path d="M9 11l3 3 8-8M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    '<path d="M12 3v18M5 7h14M7 7l-4 7a4 4 0 0 0 8 0L7 7zM17 7l-4 7a4 4 0 0 0 8 0l-4-7z"/>',
+    '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'];
+  var cards = principles.map(function (p, i) {
+    return '<article class="' + c + '-card" data-rv-reveal><span class="' + c + '-ic"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[i] + '</svg></span>' +
+      '<h3 class="' + c + '-name">' + esc(p[0]) + '</h3><p class="' + c + '-text">' + esc(p[1]) + '</p></article>';
+  }).join('');
+  var panels = stages.map(function (s, i) {
+    var ph = photos[i];
+    return '<article class="' + c + '-stage' + (ph ? '' : ' ' + c + '-stage-plain') + '" data-rv-reveal>' +
+      (ph ? '<img class="' + c + '-ph" src="' + esc(ph) + '" alt="" loading="lazy">' : '') +
+      '<div class="' + c + '-veil" aria-hidden="true"></div>' +
+      '<div class="' + c + '-body"><p class="' + c + '-no">0' + (i + 1) + '</p><h3 class="' + c + '-sname">' + esc(s[0]) + '</h3><p class="' + c + '-stext">' + esc(s[1]) + '</p></div></article>';
+  }).join('');
+  var html = root(id, c, '') + '<div class="' + c + '-in">' + head(c, id, o.edition, 'How Our Awards Work') +
+    '<div class="' + c + '-cards">' + cards + '</div><div class="' + c + '-stages">' + panels + '</div></div></section>';
+  var css = baseCss(c, '--rv-surface') +
+    '.' + c + '-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:0 0 28px}' +
+    '.' + c + '-card{background:var(--rv-bg);background-image:' + GLOW + ';border:1px solid ' + LINE + ';border-radius:var(--rv-radius,12px);padding:26px 24px 28px}' +
+    '.' + c + '-ic{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:' + FILL + ';color:' + ON_FILL + ';margin:0 0 18px}' +
+    '.' + c + '-name{margin:0 0 10px;font-family:var(--heading-font-family);font-size:1.25rem;line-height:1.3;color:var(--rv-text)}' +
+    '.' + c + '-text{margin:0;font-size:1rem;line-height:1.65;color:var(--rv-muted)}' +
+    '.' + c + '-stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}' +
+    '.' + c + '-stage{position:relative;min-height:380px;border-radius:var(--rv-radius,12px);overflow:hidden;display:flex;align-items:flex-end;background:var(--rv-bg);background-image:radial-gradient(120% 90% at 100% 0%, color-mix(in srgb,var(--theme-color) 40%, transparent), transparent 70%)}' +
+    '.' + c + '-ph{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;display:block;transition:transform .6s ease}' +
+    '.' + c + '-stage:hover .' + c + '-ph{transform:scale(1.04)}' +
+    '.' + c + '-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.82) 70%)}' +
+    '.' + c + '-stage-plain .' + c + '-veil{background:none}' +
+    '.' + c + '-body{position:relative;padding:26px 24px 28px;color:#ffffff}' +
+    '.' + c + '-stage-plain .' + c + '-body{color:var(--rv-text)}' +
+    '.' + c + '-no{margin:0 0 8px;font-family:var(--heading-font-family);font-size:2.25rem;font-weight:700;line-height:1;color:var(--theme-color)}' +
+    '.' + c + '-sname{margin:0 0 8px;font-family:var(--heading-font-family);font-size:1.375rem;line-height:1.25;color:inherit}' +
+    '.' + c + '-stext{margin:0;font-size:0.9875rem;line-height:1.6;color:inherit;opacity:.88}' +
+    '@media (max-width:900px){.' + c + '-cards,.' + c + '-stages{grid-template-columns:minmax(0,1fr)}.' + c + '-stage{min-height:300px}}';
+  return { html: html, css: css };
+}
+
+/* ---------- the two wide calls to act: enter, and the ceremony ---------- */
+function recognitionHome(o) {
+  /* a photo of the last edition no other section shows; never the banner's picture again (no picture twice on a page) */
+  var c = 'aw-rec', id = 'recognition', photo = httpsUrl(list(o.photos)[3]);
+  var html = root(id, c, '') + '<div class="' + c + '-in"><div class="' + c + '-card" data-rv-reveal>' +
+    '<div class="' + c + '-art' + (photo ? '' : ' ' + c + '-art-plain') + '">' + (photo ? '<img src="' + esc(photo) + '" alt="" loading="lazy">' : '<span aria-hidden="true">' + iconFor('') + '</span>') + '</div>' +
+    '<div class="' + c + '-body">' +
+      '<p class="' + c + '-eyebrow">' + esc(o.edition ? o.edition + ' · Nominations' : 'Nominations') + '</p>' +
+      '<h2 class="' + c + '-title" id="' + id + '-title">Get the Recognition You and Your Team Deserve</h2>' +
+      '<p class="' + c + '-text">Put your work before a jury of the industry’s leaders, and take the stage on awards night.</p>' +
+      '<p class="' + c + '-cta"><a class="' + c + '-btn" href="#hero" data-register-cta>Nominate Now</a></p>' +
+    '</div></div></div></section>';
+  var css = baseCss(c) + buttonCss(c) +
+    '.' + c + '-card{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);border-radius:calc(var(--rv-radius,12px) * 1.5);overflow:hidden;background:var(--rv-surface);background-image:radial-gradient(90% 120% at 100% 100%, color-mix(in srgb,var(--theme-color) 34%, transparent), transparent 70%);border:1px solid ' + LINE + '}' +
+    '.' + c + '-art{position:relative;min-height:340px}' +
+    '.' + c + '-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}' +
+    '.' + c + '-art-plain{display:grid;place-items:center;background:' + FILL + ';color:' + ON_FILL + '}' +
+    '.' + c + '-art-plain svg{width:96px;height:96px}' +
+    '.' + c + '-body{padding:clamp(32px,5vw,64px);display:flex;flex-direction:column;justify-content:center}' +
+    '.' + c + '-eyebrow{margin:0 0 12px;font-size:0.8125rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:' + INK + '}' +
+    '.' + c + '-title{margin:0;font-family:var(--heading-font-family);font-size:' + SECTION_HEADING + ';line-height:1.15;color:var(--rv-text)}' +
+    '.' + c + '-text{margin:16px 0 0;font-size:1.0625rem;line-height:1.65;color:var(--rv-muted)}' +
+    '.' + c + '-cta{margin:28px 0 0}' +
+    '@media (max-width:820px){.' + c + '-card{grid-template-columns:minmax(0,1fr)}.' + c + '-art{min-height:220px}}';
+  return { html: html, css: css };
+}
+function ceremonyHome(o) {
+  var c = 'aw-cer', id = 'awards-night', photo = httpsUrl(list(o.photos)[4]);
+  var facts = [o.dateLabel, o.place].map(str).filter(Boolean);
+  var html = root(id, c, '') + '<div class="' + c + '-in"><div class="' + c + '-card' + (photo ? '' : ' ' + c + '-plain') + '" data-rv-reveal>' +
+    (photo ? '<img class="' + c + '-ph" src="' + esc(photo) + '" alt="" loading="lazy">' : '') + '<div class="' + c + '-veil" aria-hidden="true"></div>' +
+    '<div class="' + c + '-body">' +
+      '<p class="' + c + '-eyebrow">Awards Night</p>' +
+      '<h2 class="' + c + '-title" id="' + id + '-title">Join Us at the Grand Award Ceremony</h2>' +
+      '<p class="' + c + '-text">An evening with the industry’s leaders, as this edition’s winners are named on stage.</p>' +
+      (facts.length ? '<p class="' + c + '-facts">' + facts.map(function (f) { return '<span>' + esc(f) + '</span>'; }).join('') + '</p>' : '') +
+      '<p class="' + c + '-cta"><a class="' + c + '-btn" href="#hero" data-register-cta>Get Tickets</a></p>' +
+    '</div></div></div></section>';
+  var css = baseCss(c) + buttonCss(c) +
+    '.' + c + '-card{position:relative;border-radius:calc(var(--rv-radius,12px) * 1.5);overflow:hidden;min-height:420px;display:flex;align-items:center;justify-content:center;text-align:center;background:var(--rv-surface);background-image:radial-gradient(100% 100% at 50% 0%, color-mix(in srgb,var(--theme-color) 45%, transparent), transparent 70%)}' +
+    '.' + c + '-ph{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}' +
+    '.' + c + '-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.8))}' +
+    '.' + c + '-plain .' + c + '-veil{background:none}' +
+    '.' + c + '-body{position:relative;max-width:720px;padding:clamp(40px,6vw,72px) 24px;color:#ffffff}' +
+    '.' + c + '-plain .' + c + '-body{color:var(--rv-text)}' +
+    '.' + c + '-eyebrow{margin:0 0 12px;font-size:0.8125rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--theme-color)}' +
+    '.' + c + '-title{margin:0;font-family:var(--heading-font-family);font-size:' + SECTION_HEADING + ';line-height:1.15;color:inherit}' +
+    '.' + c + '-text{margin:16px auto 0;max-width:560px;font-size:1.0625rem;line-height:1.65;color:inherit;opacity:.9}' +
+    '.' + c + '-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 22px;margin:20px 0 0;font-size:0.9375rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}' +
+    '.' + c + '-cta{margin:28px 0 0}';
+  return { html: html, css: css };
+}
+
+/* ---------- the home page's questions: the first five of the event's FAQ records, the rest on their page ----------
+   The list is the FAQ records (Content › FAQ; data-rv-repeat-template="faq": t the question, d the answer), so it
+   follows them wherever the page is shown. Only the first five are shown, and "View all FAQs" only when there are
+   more — by CSS, whoever fills the list (the editor, the page's own runtime). */
+var FAQ_ON_HOME = 5;
+var CHEVRON = '<svg class="aw-faq-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg>';
+function faqItem(c) {
+  /* a native <details>: the editor opens it around the answer being edited (editor-canvas.js itemAround) */
+  return '<details class="' + c + '-item" data-rv-repeat-template="faq"><summary class="' + c + '-q"><span class="' + c + '-qtext" data-rv-field="t">Question goes here</span>' + CHEVRON + '</summary>' +
+    '<div class="' + c + '-a"><p data-rv-field="d">Answer goes here.</p></div></details>';
+}
+function faqCss(c) {
+  return '.' + c + '-items{display:flex;flex-direction:column;gap:12px;max-width:860px;margin:0 auto}' +
+    '.' + c + '-item{background:var(--rv-surface);border:1px solid ' + LINE + ';border-radius:var(--rv-radius,12px);overflow:hidden;transition:border-color .25s ease}' +
+    '.' + c + '-item[open]{border-color:var(--theme-color)}' +
+    '.' + c + '-q{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;cursor:pointer;list-style:none;font-family:var(--heading-font-family);font-size:1.0625rem;font-weight:600;line-height:1.45;color:var(--rv-text)}' +
+    '.' + c + '-q::-webkit-details-marker{display:none}' +
+    '.' + c + '-q:hover .' + c + '-qtext{color:' + INK + '}' +
+    '.' + c + '-q:focus-visible{outline:3px solid var(--theme-color);outline-offset:-3px}' +
+    '.aw-faq-icon{flex:0 0 auto;color:' + INK + ';transition:transform .25s ease}' +
+    '.' + c + '-item[open] .aw-faq-icon{transform:rotate(180deg)}' +
+    '.' + c + '-a{padding:0 20px 20px}' +
+    '.' + c + '-a p{margin:0;font-size:1rem;line-height:1.7;color:var(--rv-muted);white-space:pre-line}' +
+    '@media (prefers-reduced-motion:reduce){.aw-faq-icon{transition:none}}' +
+    '@media (max-width:640px){.' + c + '-q{padding:16px;font-size:1rem}.' + c + '-a{padding:0 16px 16px}}';
+}
+function faqHome(o) {
+  var c = 'aw-fq', id = 'faqs';
+  var html = root(id, c, '') + '<div class="' + c + '-in">' + head(c, id, o.edition, 'Frequently Asked Questions') +
+    '<div class="' + c + '-items">' + faqItem(c) + '</div>' +
+    (o && o.pages ? pageLink(c, 'award-faq', 'View all FAQs') : '') + '</div></section>';
+  var css = baseCss(c) + buttonCss(c) + faqCss(c) +
+    '.' + c + '-items > .' + c + '-item:nth-child(n+' + (FAQ_ON_HOME + 1) + ' of .' + c + '-item){display:none}' +
+    '.' + c + '-more{display:none}' +
+    '.' + c + ':has(.' + c + '-items > .' + c + '-item:nth-child(' + (FAQ_ON_HOME + 1) + ' of .' + c + '-item)) .' + c + '-more{display:block}';
+  return { html: html, css: css };
 }
 
 function partnerGroups(partners) {
@@ -374,22 +575,26 @@ function homeSections(award, o) {
   o = o || {};
   award = award || {};
   var out = [];
-  var kd = keyDates(award, o);
-  if (kd) out.push({ id: 'key-dates', name: 'Key Dates', kind: 'custom', prebuilt: 'award-key-dates', image: '',
-    purpose: 'Key Dates — when nominations open and close, the jury evaluates and the awards night is held, from the award’s own dates. Built by the server.',
-    layout: 'a timeline of steps, the ones past marked done', html: kd.html, css: kd.css });
+  function add(id, name, prebuilt, purpose, layout, built) {
+    if (built) out.push({ id: id, name: name, kind: 'custom', prebuilt: prebuilt, image: '', purpose: purpose, layout: layout, html: built.html, css: built.css });
+  }
+  var band = categoryBand(award);
+  add('award-band', 'Categories band', 'award-band', 'A band of the award’s category names moving under the hero. Built by the server from the award’s records.', 'a moving band in the brand colour', band);
+  add('key-dates', 'Key Dates', 'award-key-dates', 'Key Dates — when nominations open and close, the jury meets and the awards night is held (Coming soon until set). Built by the server.',
+    'numbered date cards, the current stage lit', keyDates(award, o));
   var cs = categoriesSummary(award, o);
-  if (cs) out.push({ id: 'award-categories', name: 'Award Categories', kind: 'custom', prebuilt: 'award-categories', image: '',
-    purpose: 'Award Categories — the master categories (' + cs.lead + ') and a link to the full list. Built by the server from the award’s records.',
-    layout: 'a grid of cards, one per master category, and a button', html: cs.html, css: cs.css });
+  add('award-categories', 'Award Categories', 'award-categories', cs ? 'Award Categories — the master categories (' + cs.lead + ') and a link to the full list. Built by the server from the award’s records.' : '',
+    'the count of categories over icon cards, and a button', cs);
+  add('how-it-works', 'How Our Awards Work', 'award-process', 'How Our Awards Work — ET’s principles (judging criteria, fairness and integrity, confidentiality) and its three stages (expert tabulator, review, grand jury). Built by the server.',
+    'three principle cards over three photo panels', processHome(o));
   var jh = juryHome(award, o);
-  if (jh) out.push({ id: 'award-jury', name: 'Jury', kind: 'custom', prebuilt: 'award-jury', image: '',
-    purpose: 'The ' + jh.title + ' — the real jurors of this edition (' + jh.count + '), each opening their profile, and a link to the Jury page. Built by the server.',
-    layout: jh.count > 4 ? 'an auto-advancing carousel of juror cards and a button' : 'a row of juror cards and a button', html: jh.html, css: jh.css });
+  add('award-jury', 'Jury', 'award-jury', jh ? 'The ' + jh.title + ' — the real jurors of this edition (' + jh.count + '), each opening their profile, and a link to the Jury page. Built by the server.' : '',
+    'a grid of portraits, five to a row, and a button', jh);
+  add('recognition', 'The Recognition', 'award-recognition', 'Get the recognition you deserve — a wide call to enter, with the main button. Built by the server.', 'a wide card: a picture beside the call and its button', recognitionHome(o));
+  add('awards-night', 'Awards Night', 'award-ceremony', 'The awards night — a wide call to be in the room, with its date and venue. Built by the server.', 'a wide picture under a veil, the call and its button', ceremonyHome(o));
   var pt = partnersHome(award, o);
-  if (pt) out.push({ id: 'award-partners', name: 'Partners', kind: 'custom', prebuilt: 'award-partners', image: '',
-    purpose: 'Partners — the award’s real partners by group (Knowledge Partner, Supporting Partners …). Built by the server.',
-    layout: 'logos on plates, under each group’s name', html: pt.html, css: pt.css });
+  add('award-partners', 'Partners', 'award-partners', 'Partners — the award’s real partners by group (Knowledge Partner, Supporting Partners …). Built by the server.', 'logos on plates, under each group’s name', pt);
+  add('faqs', 'FAQs', 'award-faqs', 'FAQs — the first five of the event’s FAQ records, and a link to the FAQ page with all of them. Built by the server.', 'questions that open in place, and a button', faqHome(o));
   return out;
 }
 
@@ -558,48 +763,15 @@ function textPage(kind, content, o) {
   return [{ id: id, name: (str(content.title) || titleOf(kind)) + ' text', html: html, css: css }];
 }
 
-var CHEVRON = '<svg class="aw-faq-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg>';
 function faqPage(kind, content, o) {
-  var items = list(content).map(function (x) { return { q: str(x && x.q), a: String((x && x.a) == null ? '' : x.a).trim(), group: str(x && x.group) }; })
-    .filter(function (x) { return x.q && x.a; });
-  if (!items.length) return [];
-  var grouped = items.some(function (x) { return x.group; });
-  var order = [], by = Object.create(null);
-  items.forEach(function (x) {
-    var g = grouped ? (x.group || 'General') : '';
-    if (!by[g]) { by[g] = []; order.push(g); }
-    by[g].push(x);
-  });
+  /* every FAQ record of the event (Content › FAQ), as the home page's first five are — so the page follows the records */
   var c = 'aw-faq', id = 'award-faq-list';
-  var body = order.map(function (g, gi) {
-    return '<div class="' + c + '-group">' +
-      (g ? '<h2 class="' + c + '-gname"' + (gi === 0 ? ' id="' + id + '-title"' : '') + '>' + esc(g) + '</h2>' : '') +
-      '<div class="' + c + '-items">' + by[g].map(function (x) {
-        var paras = x.a.split(/\n\s*\n|\r\n\s*\r\n/).map(str).filter(Boolean);
-        /* a native <details>: the editor opens it around the answer being edited (editor-canvas.js itemAround) */
-        return '<details class="' + c + '-item"><summary class="' + c + '-q"><span class="' + c + '-qtext">' + esc(x.q) + '</span>' + CHEVRON + '</summary>' +
-          '<div class="' + c + '-a">' + paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') + '</div></details>';
-      }).join('') + '</div></div>';
-  }).join('');
-  var html = root(id, c, kind) + '<div class="' + c + '-in">' +
-    (grouped ? '' : '<h2 class="' + c + '-sr" id="' + id + '-title">Frequently asked questions</h2>') + body + '</div></section>';
+  var html = root(id, c, kind) + '<div class="' + c + '-in"><h2 class="' + c + '-sr" id="' + id + '-title">Frequently asked questions</h2>' +
+    '<div class="' + c + '-items">' + faqItem(c) + '</div></div></section>';
   var css = '.' + c + '{background:var(--rv-bg);color:var(--rv-text);padding:clamp(48px,6vw,88px) 0 clamp(64px,8vw,112px);font-family:var(--body-font-family)}' +
-    '.' + c + '-in{max-width:860px;margin:0 auto;padding:0 24px;display:flex;flex-direction:column;gap:48px}' +
+    '.' + c + '-in{max-width:860px;margin:0 auto;padding:0 24px}' +
     '.' + c + '-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}' +
-    '.' + c + '-gname{margin:0 0 18px;font-family:var(--heading-font-family);font-size:clamp(1.25rem,2vw,1.5rem);line-height:1.3;color:var(--rv-text)}' +
-    '.' + c + '-items{display:flex;flex-direction:column;gap:12px}' +
-    '.' + c + '-item{background:var(--rv-surface);border:1px solid ' + LINE + ';border-radius:var(--rv-radius,12px);overflow:hidden;transition:border-color .25s ease}' +
-    '.' + c + '-item[open]{border-color:var(--theme-color)}' +
-    '.' + c + '-q{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;cursor:pointer;list-style:none;font-family:var(--heading-font-family);font-size:1.0625rem;font-weight:600;line-height:1.45;color:var(--rv-text)}' +
-    '.' + c + '-q::-webkit-details-marker{display:none}' +
-    '.' + c + '-q:hover .' + c + '-qtext{color:' + INK + '}' +
-    '.' + c + '-q:focus-visible{outline:3px solid var(--theme-color);outline-offset:-3px}' +
-    '.' + c + '-icon{flex:0 0 auto;color:' + INK + ';transition:transform .25s ease}' +
-    '.' + c + '-item[open] .' + c + '-icon{transform:rotate(180deg)}' +
-    '.' + c + '-a{padding:0 20px 20px;display:flex;flex-direction:column;gap:12px}' +
-    '.' + c + '-a p{margin:0;font-size:1rem;line-height:1.7;color:var(--rv-muted)}' +
-    '@media (prefers-reduced-motion:reduce){.' + c + '-icon{transition:none}}' +
-    '@media (max-width:640px){.' + c + '-in{padding:0 16px;gap:40px}.' + c + '-q{padding:16px;font-size:1rem}.' + c + '-a{padding:0 16px 16px}}';
+    faqCss(c) + '@media (max-width:640px){.' + c + '-in{padding:0 16px}}';
   return [{ id: id, name: 'Questions', html: html, css: css }];
 }
 
