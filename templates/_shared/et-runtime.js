@@ -147,6 +147,7 @@
   var SHOWN_CSS = [
     '.rv-imported .rv-shown{opacity:1!important;transform:none!important;filter:none!important;visibility:visible!important;animation:none!important}',
     '.rv-imported .rv-gone{display:none!important}',
+    '.rv-imported .rv-open{clip-path:none!important}',
     /* in the editor a jump to a section lands at once: a page that scrolls smoothly would still be on its way
        when the editor measures where things are */
     'html[data-rv-editing]{scroll-behavior:auto!important}',
@@ -225,14 +226,76 @@
     return r.width >= window.innerWidth * 0.9 && r.height >= window.innerHeight * 0.6;
   }
 
-  /* a line of text a script was to slide into its clipped frame: still parked outside it, so nothing shows */
+  function overlap(lo, hi, from, to) { return Math.max(0, Math.min(hi, to) - Math.max(lo, from)); }
+
+  /* A line of text a script was to slide into its clipped frame: still parked outside it, so nothing shows —
+     or, tilted as it waits (a word of a heading set to rise into place), only a corner of it. Something that
+     fits its frame and has more than a tenth of itself cut off by it is parked; the middle of its drawn box is
+     where the slide has put it, whatever the tilt. */
   function slidOut(el, cs) {
     if (cs.position !== 'static' && cs.position !== 'relative') return false;
     if (!/translate/.test(el.getAttribute('style') || '') || !hasContent(el) || moving(el)) return false;
     var frame = el.parentElement, fs = frame && getComputedStyle(frame);
     if (!fs || !/hidden|clip/.test(fs.overflowX + ' ' + fs.overflowY)) return false;
     var a = el.getBoundingClientRect(), b = frame.getBoundingClientRect();
-    return a.top >= b.bottom - 1 || a.bottom <= b.top + 1 || a.left >= b.right - 1 || a.right <= b.left + 1;
+    if (a.top >= b.bottom - 1 || a.bottom <= b.top + 1 || a.left >= b.right - 1 || a.right <= b.left + 1) return true;
+    var w = el.offsetWidth, h = el.offsetHeight;
+    if (!(w > 0 && h > 0) || w > frame.clientWidth + 1 || h > frame.clientHeight + 1) return false;
+    var cx = (a.left + a.right) / 2, cy = (a.top + a.bottom) / 2;
+    return overlap(cy - h / 2, cy + h / 2, b.top, b.bottom) < h * 0.9 || overlap(cx - w / 2, cx + w / 2, b.left, b.right) < w * 0.9;
+  }
+
+  function lengthIn(v, size) {
+    var m = /^(-?[\d.]+)(px|%)?$/.exec(v);
+    if (!m) return NaN;
+    return m[2] === '%' ? parseFloat(m[1]) / 100 * size : parseFloat(m[1]);
+  }
+
+  /* a clip-path that leaves nothing of the box: an inset closed from both sides, a shape of no area, a circle
+     or ellipse of no size */
+  function closedClip(value, w, h) {
+    var m = /^(inset|polygon|circle|ellipse)\((.*)\)$/.exec(String(value || '').trim());
+    if (!m) return false;
+    var args = m[2].trim();
+    if (m[1] === 'inset') {
+      var v = args.split(/\s+round\s+/)[0].trim().split(/\s+/);
+      var t = lengthIn(v[0], h), r = lengthIn(v[1] || v[0], w), bt = lengthIn(v[2] || v[0], h), l = lengthIn(v[3] || v[1] || v[0], w);
+      return t + bt >= h - 0.5 || l + r >= w - 0.5;
+    }
+    if (m[1] === 'polygon') {
+      var pts = args.replace(/^(nonzero|evenodd)\s*,/, '').split(',').map(function (p) {
+        var xy = p.trim().split(/\s+/);
+        return [lengthIn(xy[0], w), lengthIn(xy[1], h)];
+      });
+      var area = 0;
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i], q = pts[(i + 1) % pts.length];
+        area += p[0] * q[1] - q[0] * p[1];
+      }
+      return Math.abs(area / 2) < 1;
+    }
+    var radii = args.split(/\s+at\s+/)[0].trim().split(/\s+/);
+    return radii.some(function (rd) { return lengthIn(rd, Math.min(w, h)) === 0; });
+  }
+
+  /* A picture a script was to draw its curtain back from as the visitor scrolled to it, caught with the
+     curtain still shut (the capture's scroll back to the top closes it again). Only a curtain that is all
+     its frame holds, or one in the flow of the page: a shut layer over other content may be meant to open
+     on hover only, and opening it for good would hide what it lies over. */
+  function openCurtains(root) {
+    each(root.querySelectorAll('[style*="clip-path"]'), function (el) {
+      var w = el.offsetWidth, h = el.offsetHeight;
+      if (!w || !h || !hasContent(el) || moving(el)) return;
+      var cs = getComputedStyle(el);
+      if (!closedClip(cs.clipPath, w, h)) return;
+      if (cs.position === 'absolute' || cs.position === 'fixed') {
+        var others = Array.prototype.some.call(el.parentElement ? el.parentElement.children : [], function (s) {
+          return s !== el && !/^(STYLE|SCRIPT|TEMPLATE)$/.test(s.tagName) && hasContent(s);
+        });
+        if (others) return;
+      }
+      el.classList.add('rv-open');
+    });
   }
 
   /* An intro curtain caught mid-play: nothing in it to read or look at, opaque, fixed over the whole window
@@ -669,7 +732,15 @@
      a whole-screen backdrop picture (topBar, backdrop above). */
   function showStuck(el, parentHidden) {
     each(el.children, function (c) {
-      if (/^(STYLE|SCRIPT|TEMPLATE)$/.test(c.tagName) || c.hasAttribute('hidden') || c.getAttribute('aria-hidden') === 'true') return;
+      if (/^(STYLE|SCRIPT|TEMPLATE)$/.test(c.tagName) || c.hasAttribute('hidden')) return;
+      /* what screen readers pass over stays as it is — save the words of a heading split up for its motion,
+         which the heading's own label reads out but the eye still needs */
+      if (c.getAttribute('aria-hidden') === 'true') {
+        if (!parentHidden) each([c].concat(Array.prototype.slice.call(c.children)), function (w) {
+          if (slidOut(w, getComputedStyle(w))) w.classList.add('rv-shown');
+        });
+        return;
+      }
       var cs = getComputedStyle(c);
       if (cs.display === 'none') return;
       var hidden = cs.visibility !== 'visible';
@@ -703,6 +774,7 @@
         removeBadges(root);
         liftCurtains(root);
         showStuck(root, false);
+        openCurtains(root);
         scrolledBars(root);
         clearBars(root);
         watchBars(root);

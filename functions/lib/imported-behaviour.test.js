@@ -183,6 +183,36 @@ var LIVE = '<!doctype html><html><head><style>' + CSS + '</style></head><body><d
     ok(/rv-bar-clear/.test(bar.cls) && /rv-bar-solid/.test(bar.cls) && bar.bg !== 'rgba(0, 0, 0, 0)', 'a clear top bar on show gets a background once the visitor scrolls', bar);
     await page.close();
 
+    /* a capture taken with reveals still at their start (Trendies on Lovable): heading words parked tilted below
+       their frames, pictures behind shut curtains — and what must stay as it is beside them */
+    var PIC = '<img alt="" style="display:block;width:100%;height:100%" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%2210%22/%3E">';
+    var word = function (id, tf) { return '<span style="display:inline-block;overflow:hidden;padding-bottom:.08em;vertical-align:bottom" aria-hidden="true"><span id="' + id + '" style="display:inline-block;transform:' + tf + '">' + id + '&nbsp;</span></span>'; };
+    var parked = '<!doctype html><html><head><style>body{margin:0;font:48px sans-serif}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style><script>' + RUNTIME + '</script></head><body><div class="rv-imported">' +
+      '<h2><span aria-label="Who Should Enter">' + word('who', 'translateY(110%) rotate(4deg)') + word('should', 'translateY(110%) rotate(4deg)') + word('done', 'none') + '</span></h2>' +
+      '<div style="position:relative;overflow:hidden;width:300px;height:200px"><div id="c1" style="position:absolute;inset:0;clip-path:inset(0 0 100% 0)">' + PIC + '</div></div>' +
+      '<div style="position:relative;overflow:hidden;width:300px;height:200px"><div id="c2" style="position:absolute;inset:0;clip-path:polygon(0 0, 0 0, 0 100%, 0 100%)">' + PIC + '</div></div>' +
+      '<div style="position:relative;width:300px;height:200px">' + PIC + '<div id="hover" style="position:absolute;inset:0;clip-path:inset(0 0 100% 0);background:#000;color:#fff">More</div></div>' +
+      '<div id="shape" style="width:200px;height:200px;clip-path:circle(50%)">' + PIC + '</div>' +
+      '<span class="sr-only" id="sr">Only for screen readers</span>' +
+      '<div style="overflow:hidden;width:300px"><div id="track" style="display:flex;width:900px;transform:translate3d(-300px,0,0)"><p style="flex:0 0 300px">A</p><p style="flex:0 0 300px">B</p><p style="flex:0 0 300px">C</p></div></div>' +
+      '</div></body></html>';
+    page = await browser.newPage();
+    await page.setViewport({ width: 1200, height: 800 });
+    await page.setContent(parked, { waitUntil: 'load' });
+    await sleep(300);
+    var reveal = await page.evaluate(function () {
+      var cls = function (id) { return document.getElementById(id).className; };
+      var inFrame = function (id) { var a = document.getElementById(id).getBoundingClientRect(), f = document.getElementById(id).parentElement.getBoundingClientRect(); return a.top >= f.top - 1 && a.bottom <= f.bottom + 1; };
+      var clip = function (id) { return getComputedStyle(document.getElementById(id)).clipPath; };
+      return { who: inFrame('who'), should: inFrame('should'), done: cls('done'), c1: clip('c1'), c2: clip('c2'), hover: clip('hover'), shape: clip('shape'), sr: clip('sr'), track: [cls('track'), getComputedStyle(document.getElementById('track')).transform] };
+    });
+    ok(reveal.who && reveal.should, 'the words of a heading left tilted below their frames rise into them', reveal);
+    ok(reveal.done === '', 'a word already in place is left alone', reveal);
+    ok(reveal.c1 === 'none' && reveal.c2 === 'none', 'a picture behind a shut curtain (inset or flat shape) shows', reveal);
+    ok(reveal.hover !== 'none' && reveal.shape !== 'none' && reveal.sr !== 'none', 'a shut layer over other content, a picture\'s own shape and a screen-reader-only label keep their clip', reveal);
+    ok(reveal.track[0] === '' && reveal.track[1] !== 'none', 'a row wider than its frame keeps where it was moved to', reveal);
+    await page.close();
+
     /* ---------- 3. a banner picture sized by a layered class ---------- */
     page = await browser.newPage();
     await page.setContent('<!doctype html><html><head>' + P.SIZED_CSS + '<style>' + CSS + '</style></head><body>' +
