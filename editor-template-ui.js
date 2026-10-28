@@ -1436,6 +1436,7 @@
     sectionsChanged();
     designChanged();
     pageChanged();
+    logoUnitNotice();      // hidden, shown, deleted, taken back, rewritten: the notice follows the page
     return true;
   }
   function commitNow() { return record(false); }
@@ -1470,6 +1471,7 @@
     sectionsChanged();
     designChanged();
     pageChanged();
+    logoUnitNotice();      // an answered note can come back with the step, and an open one go
   }
   function undo() { step(-1); }
   function redo() { step(1); }
@@ -1766,14 +1768,14 @@
       var picEl = selectedEl;
       openPictureDialog('Replace image', canvas.pictureOf(picEl), function (url) {
         if (!picEl.isConnected) return;
-        /* a logo unit the owner has replaced no longer needs the note about the one it replaced */
-        var unit = picEl.closest ? picEl.closest('[data-rv-logo-note]') : null;
-        if (unit) {
-          unit.removeAttribute('data-rv-logo-note');
-          var shownNote = document.querySelector('#ed-notices [data-notice="logo-unit"]');
-          if (shownNote) shownNote.remove();
-        }
+        /* a logo unit whose own picture the owner has replaced no longer needs the note about the one it replaced —
+           not so the ET logo beside an event name set in type (rv-lu-et), which the note is not about — and the
+           new picture gets its copy for a dark background (darkCopyFor) */
+        var unit = picEl.closest ? picEl.closest('[data-rv-logo-unit]') : null;
+        var ownPicture = !!unit && picEl.classList.contains('rv-lu-img');
+        if (ownPicture) unit.removeAttribute('data-rv-logo-note');
         canvas.setPicture(picEl, url); clearAiGenerated(picEl); commitNow(); repositionToolbars();
+        if (ownPicture) { logoUnitNotice(); darkCopyFor(unit); }
       });
     } else if (action === 'alt-text') {
       var alt = prompt('Alt text', selectedEl.getAttribute('alt') || selectedEl.getAttribute('data-alt') || '');
@@ -4401,8 +4403,23 @@
       holder.textContent = code.js;
       root.appendChild(holder);
     }
+    /* The logo unit's note and its copy for a dark background are not the AI's to drop (it is asked to keep them):
+       put back on the unit when the rewrite lost them and still shows the same picture */
+    var oldUnit = sec.querySelector ? sec.querySelector('[data-rv-logo-unit]') : null;
+    var keptNote = oldUnit ? oldUnit.getAttribute('data-rv-logo-note') : null;
+    var keptCopy = oldUnit ? oldUnit.querySelector('img.rv-lu-dark') : null;
+    var keptMain = oldUnit ? oldUnit.querySelector('img.rv-lu-img:not(.rv-lu-dark)') : null;
+    keptCopy = keptCopy ? keptCopy.cloneNode(true) : null;
+    var keptSrc = keptMain ? keptMain.getAttribute('src') : null;
     var fresh = canvas.replaceSection(sec, root.outerHTML, code.cssIsOwn ? code.css : null);
     if (fresh) fresh.setAttribute('data-ai-generated', 'true');      // written by the AI: asked about before publishing
+    var newUnit = fresh && fresh.querySelector ? fresh.querySelector('[data-rv-logo-unit]') : null;
+    if (newUnit) {
+      if (keptNote && !newUnit.hasAttribute('data-rv-logo-note')) newUnit.setAttribute('data-rv-logo-note', keptNote);
+      var newMain = newUnit.querySelector('img.rv-lu-img:not(.rv-lu-dark)');
+      if (keptCopy && newMain && newMain.getAttribute('src') === keptSrc && !newUnit.querySelector('img.rv-lu-dark')) newMain.parentNode.insertBefore(newUnit.ownerDocument.importNode(keptCopy, true), newMain.nextSibling);
+    }
+    if (oldUnit) logoUnitNotice();
     return fresh;
   }
   /* an empty section of its own type, for the AI to write into */
@@ -4862,23 +4879,134 @@
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } });
   }
 
-  /* What the generator had to say about the logo unit it took from the previous edition (a year it could
-     not change, a sponsor's mark drawn into it): shown once the site is open, until the owner dismisses it
-     or replaces the picture. The note travels on the unit itself and is removed from a published page. */
+  /* What the generator had to say about the logo unit (a year it could not change, a sponsor's mark drawn into
+     it, a banner with no copy of the logo for a dark background): the note travels on the unit itself
+     (data-rv-logo-note) and is removed from a published page. It is shown for as long as it is on the page —
+     a dismissal would not answer it — and answered only by "Looks right" or a picture of the owner's own (Replace
+     image). Nothing goes live while it is open (logoUnitGate; the server refuses too: api.js unansweredLogoNote).
+     Shown again whenever the page changes under it (an Undo, an AI edit), and gone when no note is left. A note in
+     a hidden section does not count: that section is not saved, so it never goes live. */
+  function shownLogoNotes() {
+    if (!canvas || !canvas.doc) return [];
+    return Array.prototype.filter.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { return !el.closest('.is-hidden-sec'); });
+  }
+  var logoNoticeShown = '';
   function logoUnitNotice() {
     if (!canvas || !canvas.doc) return;
-    var unit = canvas.doc.querySelector('[data-rv-logo-note]');
-    if (!unit) return;
+    var unit = shownLogoNotes()[0];
+    var row = document.querySelector('#ed-notices [data-notice="logo-unit"]');
+    if (!unit) { logoNoticeShown = ''; if (row && host && host.clearNotice) host.clearNotice('logo-unit'); return; }
+    var text = 'Logo unit: ' + unit.getAttribute('data-rv-logo-note') + ' Answer this before publishing.';
+    if (row && text === logoNoticeShown) return;           // as it is: not drawn again on every change
+    logoNoticeShown = text;
     showNotice('logo-unit', {
-      kind: 'warn', dismissible: true, text: 'Logo unit: ' + unit.getAttribute('data-rv-logo-note'),
-      /* checked and fine: the note comes off the unit, so it is not shown again the next time the site opens */
-      actions: [{ label: 'Looks right', onClick: function () {
-        Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { el.removeAttribute('data-rv-logo-note'); });
-        commitNow();
-        var shown = document.querySelector('#ed-notices [data-notice="logo-unit"]');
-        if (shown) shown.remove();
-      } }]
+      kind: 'warn', text: text,
+      actions: [
+        { label: 'Show me', onClick: revealLogoUnit },
+        /* checked and fine: the note comes off the unit, so it is not shown again the next time the site opens */
+        { label: 'Looks right', onClick: function () {
+          Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { el.removeAttribute('data-rv-logo-note'); });
+          commitNow();
+          logoUnitNotice();
+        } }
+      ]
     });
+  }
+  /* the unit with the open note (else the hero's unit) brought into view and its picture selected, so the
+     toolbar offers Replace image: in the manual editor (not the AI live view), on the home page (the banner's) */
+  function revealLogoUnit() {
+    var unit = shownLogoNotes()[0] || (canvas && canvas.doc && canvas.doc.querySelector('[data-rv-logo-unit]'));
+    if (!unit) return;
+    function go() {
+      if (!unit.isConnected) return;
+      if (currentPage !== 'home' && sitePages().length) showPage('home');
+      revealElement(unit.querySelector('img.rv-lu-img:not(.rv-lu-dark)') || unit);
+    }
+    var aiMode = window.RevampEditorMode;
+    if (aiMode && aiMode.mode && aiMode.mode() === 'ai') {
+      aiMode.setMode('manual');
+      /* once the canvas has been put back and fitted (setMode waits two frames, then scrolls it back) */
+      setTimeout(go, 120);
+    } else go();
+  }
+  /* Publishing waits for the logo unit's notice: true when it is open — it is shown again and the unit brought
+     into view. The server refuses such a page as well; this says why before anything is asked or saved. */
+  function logoUnitGate() {
+    if (!canvas || remounting) return false;
+    flush();
+    /* a copy for a dark background still being made: what is saved now would go without it, or without the word
+       that none could be made */
+    if (Object.keys(darkPending).length) {
+      showToast('The logo\'s copy for a dark background is still being made. Publish again in a moment.', { kind: 'error' });
+      return true;
+    }
+    if (!shownLogoNotes().length) return false;
+    logoUnitNotice();
+    revealLogoUnit();
+    showToast('Answer the logo unit\'s notice first: check the logo, then press “Looks right” or replace the picture.', { kind: 'error' });
+    return true;
+  }
+  var DARK_COPY_FAILED = 'In a dark theme the banner stays light, so the logo shows as drawn: its copy for a dark background could not be made just now. Replace the picture again to try once more.';
+  /* A picture the owner put into the logo unit of a light banner gets its copy for a dark background
+     (POST /api/event/logo-unit-dark), as the unit made with the site has one (canvas.setPicture dropped the old
+     copy, which showed the picture that was there). Where none can be made, the owner is told on the unit's
+     notice — it is about the logo, and answered like the rest. */
+  var darkPending = {};          // the pictures whose copy for a dark background is being made (logoUnitGate waits)
+  function darkCopyFor(unit) {
+    if (!unit || !eventId || !window.RevampCore || !RevampCore.logoUnitDark) return;
+    var hero = unit.closest('.hero-root');
+    if (!hero || !hero.classList.contains('hero-on-light') || unit.querySelector('.rv-lu-plate')) return;
+    var pic = unit.querySelector('img.rv-lu-img:not(.rv-lu-dark)'), src = pic ? String(pic.getAttribute('src') || '') : '';
+    if (!/^https:\/\//i.test(src) || darkPending[src]) return;
+    /* where the answer goes: the unit on a light banner that still shows this picture with no copy — found again, as
+       an Undo or a remade canvas puts new elements in; none (the picture changed again): the answer is not wanted */
+    function target() {
+      if (!canvas || remounting || !canvas.doc) return null;
+      var units = canvas.doc.querySelectorAll('[data-rv-logo-unit]');
+      for (var i = 0; i < units.length; i++) {
+        var u = units[i], p = u.querySelector('img.rv-lu-img:not(.rv-lu-dark)'), h = u.closest('.hero-root');
+        if (p && p.getAttribute('src') === src && !u.querySelector('img.rv-lu-dark') && h && h.classList.contains('hero-on-light')) return { unit: u, pic: p };
+      }
+      return null;
+    }
+    function tell(t, note) {
+      var was = t.unit.getAttribute('data-rv-logo-note') || '';
+      if (was.indexOf(note) === -1) t.unit.setAttribute('data-rv-logo-note', (was ? was + ' ' : '') + note);
+      logoUnitNotice();
+    }
+    darkPending[src] = true;
+    RevampCore.logoUnitDark(eventId, src).then(function (r) {
+      delete darkPending[src];
+      var t = target();
+      if (!t) return;
+      if (r && r.url) {
+        var copy = canvas.doc.createElement('img');
+        copy.className = 'rv-lu-img rv-lu-dark';
+        copy.setAttribute('src', r.url); copy.setAttribute('alt', ''); copy.setAttribute('aria-hidden', 'true'); copy.setAttribute('decoding', 'async');
+        if (t.pic.getAttribute('width') && t.pic.getAttribute('height')) { copy.setAttribute('width', t.pic.getAttribute('width')); copy.setAttribute('height', t.pic.getAttribute('height')); }
+        t.pic.parentNode.insertBefore(copy, t.pic.nextSibling);
+      } else tell(t, (r && r.note) || DARK_COPY_FAILED);
+      commitNow();
+    }, function () {
+      delete darkPending[src];
+      var t = target();
+      if (!t) return;
+      tell(t, DARK_COPY_FAILED);
+      commitNow();
+    });
+  }
+  /* The saved page still has the logo unit's notice open (the server refused it). Where this page has it too, it is
+     shown and the logo brought up; where this page has answered it — the saved version came from elsewhere — the page
+     is marked unsaved, so Save sends what is shown here. */
+  function logoNoteRefused(err) {
+    if (shownLogoNotes().length) {
+      showToast((err && err.message) || 'Answer the logo unit\'s notice first.', { kind: 'error' });
+      logoUnitNotice(); revealLogoUnit();
+      return;
+    }
+    if (savedMark) savedMark = { version: savedMark.version, hash: '' };
+    renderSiteState();
+    showToast('The saved version still has the logo unit\'s notice, though this page has answered it. Save to replace it with what you see here, then publish.', { kind: 'error' });
   }
 
   /* The logo the owner uploaded is the hero's logo unit (functions/lib/api.js, buildLogoUnit and
@@ -4889,11 +5017,20 @@
      only once the owner saves. Where the owner has put a picture of their own there, it is only offered. */
   /* made automatically: a unit the server made (generated/…-logo-unit), or an earlier logo the owner
      uploaded in Basics (logo/…) that was used as uploaded — a picture put in with Replace image is media/… */
-  var AUTO_UNIT = /\/events\/[^\/]+\/(generated\/\d+-logo-unit\.(png|svg|jpe?g|webp)|logo\/[^\/?#]+)(\?|$)/i;
+  var AUTO_UNIT = /\/events\/[^\/]+\/(generated\/\d+-logo-unit(-on-dark)?\.(png|svg|jpe?g|webp)|logo\/[^\/?#]+)(\?|$)/i;
   /* The previous edition's lock-up made for the design after the site was saved (tools/repair-logo-unit.js:
      ETCIO Annual Conclave 2027 was saved with its name drawn, the 2026 lock-up having been passed over) is
      put in the same way — only where the hero still shows a unit made automatically, never over a picture
      the owner chose. */
+  /* as api.js darkCopyOfUnit: the design's copy for a dark background was made of its unit — logoUnitDarkOf says so, or,
+     in a design written before that was kept, both files come from the same run (generated/<stamp>-logo-unit…) */
+  function darkCopyOfUnit(design) {
+    if (!design || !design.logoUnitDarkUrl) return false;
+    if (design.logoUnitDarkOf) return design.logoUnitDarkOf === design.logoUnitUrl;
+    var run = function (p) { var m = /\/generated\/(\d+)-logo-unit[.-]/.exec(String(p || '')); return m ? m[1] : ''; };
+    var a = run(design.logoUnitStoragePath), b = run(design.logoUnitDarkStoragePath);
+    return !!a && a === b;
+  }
   function ownerLogoOffer() {
     var design = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
     var source = design ? String(design.logoUnitSource || '') : '';
@@ -4902,15 +5039,20 @@
     if (!unit) return;
     var img = unit.querySelector('img.rv-lu-img');
     var shown = img ? String(img.getAttribute('src') || '') : '';
-    if (shown === design.logoUnitUrl) return;
+    var hero = unit.closest('.hero-root');
+    var heroTone = hero ? (hero.classList.contains('hero-on-dark') ? 'dark' : hero.classList.contains('hero-on-light') ? 'light' : '') : '';
+    /* the unit's copy for a dark background, when it was made of this unit (darkCopyOfUnit) */
+    var darkCopy = /^https:\/\//i.test(String(design.logoUnitDarkUrl || '')) && darkCopyOfUnit(design) ? design.logoUnitDarkUrl : '';
+    var drawnFor = /^(dark|light)$/.test(String(design.logoUnitHeroMode || '')) ? design.logoUnitHeroMode : '';
+    /* on a dark banner a unit drawn for a light one is shown as its copy, as the site was made (api.js handleGenerateContent) */
+    var unitUrl = heroTone === 'dark' && drawnFor === 'light' && darkCopy ? darkCopy : design.logoUnitUrl;
+    if (shown === unitUrl || shown === design.logoUnitUrl) return;
     var automatic = img ? AUTO_UNIT.test(shown) : !!unit.querySelector('.rv-lu-name');
     var previous = source === 'previous-edition';
     if (previous && !automatic) return;
     var key = 'rv.ownerLogoOffer:' + eventId + ':' + design.logoUnitUrl;
     /* a logo drawn for the other ground than this hero's would vanish on it: it is only offered, and said so */
-    var hero = unit.closest('.hero-root');
-    var heroTone = hero ? (hero.classList.contains('hero-on-dark') ? 'dark' : hero.classList.contains('hero-on-light') ? 'light' : '') : '';
-    var clash = heroTone && /^(dark|light)$/.test(String(design.logoUnitHeroMode || '')) && design.logoUnitHeroMode !== heroTone;
+    var clash = heroTone && drawnFor && drawnFor !== heroTone && unitUrl === design.logoUnitUrl;
     var before = null, putAt = -1;
     function noticeGone() { var n = document.querySelector('#ed-notices [data-notice="owner-logo"]'); if (n) n.remove(); }
     function putIn() {
@@ -4929,17 +5071,29 @@
       } else if (pic.parentNode !== unit) {
         unit.replaceChild(pic, pic.parentNode);                   // out of a plate: a logo is never boxed
       }
-      canvas.setPicture(pic, design.logoUnitUrl);
+      canvas.setPicture(pic, unitUrl);
       pic.setAttribute('alt', (currentEvent && currentEvent.name) || pic.getAttribute('alt') || '');
       if (+design.logoUnitWidth > 0 && +design.logoUnitHeight > 0) { pic.setAttribute('width', Math.round(design.logoUnitWidth)); pic.setAttribute('height', Math.round(design.logoUnitHeight)); }
       else { pic.removeAttribute('width'); pic.removeAttribute('height'); }
-      /* the note was about the unit that is gone */
-      unit.removeAttribute('data-rv-logo-note');
-      var old = document.querySelector('#ed-notices [data-notice="logo-unit"]');
-      if (old) old.remove();
+      /* the note was about the unit that is gone; what there is to check about the new one is its own note, answered
+         like any other (logoUnitNotice) */
+      if (about) unit.setAttribute('data-rv-logo-note', about); else unit.removeAttribute('data-rv-logo-note');
+      /* a light banner keeps the unit's copy for a dark background beside it (canvas.setPicture dropped the old one);
+         where the server could not make one its note says so already, else one is asked for */
+      var hasCopy = false;
+      if (heroTone !== 'dark' && darkCopy && unitUrl === design.logoUnitUrl) {
+        var copy = canvas.doc.createElement('img');
+        copy.className = 'rv-lu-img rv-lu-dark';
+        copy.setAttribute('src', darkCopy); copy.setAttribute('alt', ''); copy.setAttribute('aria-hidden', 'true'); copy.setAttribute('decoding', 'async');
+        if (pic.getAttribute('width') && pic.getAttribute('height')) { copy.setAttribute('width', pic.getAttribute('width')); copy.setAttribute('height', pic.getAttribute('height')); }
+        pic.parentNode.insertBefore(copy, pic.nextSibling);
+        hasCopy = true;
+      }
       clearAiGenerated(pic);
       commitNow();
       putAt = undoPtr;
+      logoUnitNotice();
+      if (!hasCopy && !/no copy of it for a dark background/.test(about)) darkCopyFor(unit);
     }
     /* Undo on the notice takes back the logo, not whatever was done last: the editor's own Undo when that
        is still the newest step, else the unit as it was put back, as a step of its own */
@@ -4957,10 +5111,11 @@
     before = unit.cloneNode(true);
     if (automatic && !clash) {
       putIn();
+      /* what there is to check about the logo is on the unit's own notice (logoUnitNotice), to be answered */
       showNotice('owner-logo', {
         kind: 'info', dismissible: true,
         text: (previous ? 'The hero now shows the previous edition\'s logo, in place of the event\'s name drawn for it. '
-          : 'The hero now shows the event logo you uploaded, in place of the one made automatically. ') + (about ? about + ' ' : '') + 'Save to keep it.',
+          : 'The hero now shows the event logo you uploaded, in place of the one made automatically. ') + 'Save to keep it.',
         actions: [{ label: 'Undo', onClick: function () { takeBack(); keepOld(); noticeGone(); } }]
       });
       return;
@@ -5167,6 +5322,7 @@
     if (!canvas || !eventId || saving) return;
     deselect();
     flush();
+    if (logoUnitGate()) return;
     var ready = isDirty() ? saveToStaging({ quiet: true }) : Promise.resolve();
     ready.then(function () {
       if (siteInfo && siteInfo.required === false) {
@@ -5183,6 +5339,7 @@
       askApproval();
     }).catch(function (err) {
       if (err && (err.cancelled || err.message === 'busy')) return;
+      if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return; }
       if (err && err.status) showToast('Could not publish — ' + err.message, { kind: 'error' });
     });
   }
@@ -5220,6 +5377,8 @@
         });
       }, function (err) {
         send.disabled = false; send.textContent = 'Send for approval';
+        /* the saved page still has the logo unit's notice open: the dialog goes, and the notice and the logo come up */
+        if (err && err.code === 'logo-unit-unanswered') { m.remove(); logoNoteRefused(err); return; }
         showToast('Could not send for approval — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
       });
     });
@@ -5236,6 +5395,8 @@
     openDevZone: openDevZone,
     open: open, leave: leave, handoffFor: handoffFor,
     setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty() }; }, undo: undo, redo: redo, flush: flush,
+    /* true (and the logo unit's notice brought up) when publishing has to wait for it */
+    logoUnitGate: logoUnitGate,
     addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
     getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: applyTheme,
     sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: applySectionEdges,

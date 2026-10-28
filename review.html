@@ -207,17 +207,21 @@
     var r = data.request;
     if (r.status !== 'pending') return '';
     if (!data.canDecide) return '<div class="decide"><div class="msg">' + esc(data.whyNot || 'You cannot decide this request.') + '</div></div>';
-    return '<div class="decide"><textarea id="d-note" rows="2" maxlength="1000" placeholder="Note (needed when rejecting: what should be fixed)"></textarea>' +
-      '<div class="row"><button class="btn danger" id="d-reject">Reject</button><button class="btn primary" id="d-approve">Approve and publish</button></div>' +
+    /* it can be rejected but not approved (the logo unit still has a notice to answer): said, and only Reject offered */
+    var approvable = data.canApprove !== false;
+    return '<div class="decide">' + (approvable ? '' : '<div class="msg err">' + esc(data.whyNot || 'These changes cannot be approved yet.') + '</div>') +
+      '<textarea id="d-note" rows="2" maxlength="1000" placeholder="Note (needed when rejecting: what should be fixed)"></textarea>' +
+      '<div class="row"><button class="btn danger" id="d-reject">Reject</button>' + (approvable ? '<button class="btn primary" id="d-approve">Approve and publish</button>' : '') + '</div>' +
       '<div id="d-msg"></div></div>';
   }
   function wireDecide(){
     var ok = document.getElementById('d-approve'), no = document.getElementById('d-reject');
-    if (!ok) return;
+    if (!no) return;
+    function busy(on){ if (ok) ok.disabled = on; no.disabled = on; }
     function decide(decision){
       var note = document.getElementById('d-note').value.trim(), msg = document.getElementById('d-msg');
       if (decision === 'reject' && !note){ msg.className = 'msg err'; msg.textContent = 'Say why, so the person who made the changes knows what to fix.'; document.getElementById('d-note').focus(); return; }
-      ok.disabled = no.disabled = true; msg.className = 'msg'; msg.textContent = decision === 'approve' ? 'Publishing version ' + data.request.toVersion + '…' : 'Recording…';
+      busy(true); msg.className = 'msg'; msg.textContent = decision === 'approve' ? 'Publishing version ' + data.request.toVersion + '…' : 'Recording…';
       C.decideApproval(eventId, data.request.id, decision, note).then(function(out){
         requestId = data.request.id;
         return load().then(function(){
@@ -227,10 +231,10 @@
           var side = document.querySelector('.side'); if (side) side.insertBefore(m, side.firstChild);
         });
       }, function(err){
-        ok.disabled = no.disabled = false; msg.className = 'msg err'; msg.textContent = (err && err.message) || 'The decision could not be recorded.';
+        busy(false); msg.className = 'msg err'; msg.textContent = (err && err.message) || 'The decision could not be recorded.';
       });
     }
-    ok.addEventListener('click', function(){ decide('approve'); });
+    if (ok) ok.addEventListener('click', function(){ decide('approve'); });
     no.addEventListener('click', function(){ decide('reject'); });
   }
 

@@ -2759,9 +2759,9 @@ function sizedSvg(text, info) {
    told (the picture is then taken to be the lock-up, as before). */
 /* A lock-up too large to work on pixel by pixel, drawn at a working size (RASTER_WIDTH wide), transparent: the
    copy its year is moved in and its extras cut from. -> Promise<{ bytes, info, decoded } | null> */
-function workingCopy(svgText) {
+function workingCopy(svgText, font) {
   if (!svgText) return Promise.resolve(null);
-  return rasterise(svgText, { clear: true }).then(function (r) {
+  return rasterise(svgText, { clear: true, font: font || null }).then(function (r) {
     if (!r || !(r.width * r.height <= LOGO_UNIT_DECODE_PIXELS)) return null;
     var info = logoUnit.imageInfo(r.png), decoded = pngLite.decode(r.png);
     return decoded ? { bytes: r.png, info: info, decoded: decoded } : null;
@@ -3793,15 +3793,32 @@ function storeLogoUnit(fb, eventId, stamp, pic) {
    the lock-up's see-through ground turns: lettering printed on a plate of the lock-up's own (Trendies Awards 2026's
    tagline, black on cream labels) stays black, as it was drawn to be read there. Turning every grey pixel instead
    turned those labels black and the white "ET" dark (28 Oct 2026).
-   -> a decoded RGBA picture, or null when the lock-up has little such lettering (it is not drawn for a light ground) */
-function onDarkCopy(img) {
+   -> a decoded RGBA picture, or null when the lock-up has little such lettering (darkCopyOf says why) */
+function onDarkCopy(img) { return darkCopyOf(img).copy || null; }
+/* -> { copy: a decoded RGBA picture } | { why } — why no copy could be made, for the owner (darkCopyNote):
+     'solid': the picture has no see-through ground (a JPEG, or a flattened PNG), so there is no lettering standing on it;
+     'coloured': its lettering is in colour — only black lettering may change, by ET's rule;
+     'light': it has no dark lettering at all — drawn for a dark ground, most likely;
+     'plate': its dark lettering sits on a plate of its own, which stays as drawn */
+function darkCopyOf(img) {
   var w = img.width, h = img.height, d = img.data, N = w * h, out = Buffer.from(d), i;
-  /* dark lettering: a pixel with no colour of its own, darker than mid-grey, drawn at all (its soft edges too) */
+  /* dark lettering, drawn at all (its soft edges too): a pixel with no colour of its own darker than mid-grey, or one
+     so dark it reads as black whatever its tint: no channel above 90. A tagline running from
+     deep maroon to black (AutoTech Summit 2027's) was turned white only where its tint fell under the line, half of
+     it, on 28 Oct 2026. A colour that shows as one stays, by ET's rule: the ET red, a navy (#1F3864), a maroon
+     (#800000) or an indigo (#4B0082) wordmark all have a channel above 90. */
   var ink = new Uint8Array(N), seen = new Uint8Array(N);
+  var clearAll = 0, coloured = 0, light = 0;
   for (i = 0; i < N; i++) {
-    var o = i * 4, r = d[o], g = d[o + 1], b = d[o + 2];
-    ink[i] = d[o + 3] >= 24 && Math.max(r, g, b) - Math.min(r, g, b) <= 40 && 0.299 * r + 0.587 * g + 0.114 * b < 140 ? 1 : 0;
+    var o = i * 4, r = d[o], g = d[o + 1], b = d[o + 2], a = d[o + 3];
+    var top = Math.max(r, g, b), chroma = top - Math.min(r, g, b), luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    ink[i] = a >= 24 && luma < 140 && (chroma <= 40 || top <= 90) ? 1 : 0;
+    if (a < 24) clearAll++;
+    else if (a > 128) { if (chroma > 40) coloured++; else if (luma >= 200) light++; }
   }
+  /* no see-through ground: there is no lettering standing on one, and the whole picture would be one dark stroke
+     (a white wordmark on a black field came out as a blank white picture) */
+  if (clearAll < N * 0.02) return { why: 'solid' };
   var inked = 0, turned = 0, opaque = 0;
   for (i = 0; i < N; i++) if (d[i * 4 + 3] > 128) opaque++;
   for (var start = 0; start < N; start++) {
@@ -3815,7 +3832,7 @@ function onDarkCopy(img) {
       var near = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
       for (var k = 0; k < 4; k++) {
         var q = near[k];
-        if (q < 0) { ring++; clear++; continue; }                                   // the picture's edge: its ground
+        if (q < 0) continue;                    // the picture's edge says nothing of the ground (a plate filling it would read as standing on it)
         if (ink[q]) { if (!seen[q]) { seen[q] = 1; stack.push(q); } continue; }
         ring++;
         if (d[q * 4 + 3] < 24) clear++;
@@ -3824,34 +3841,81 @@ function onDarkCopy(img) {
     var strong = 0;
     members.forEach(function (m) { if (d[m * 4 + 3] > 128) strong++; });
     inked += strong;
-    /* on the see-through ground (most of what touches it is clear): lettering to turn; on a plate: left as drawn */
-    if (!ring || clear / ring < 0.3) continue;
+    /* on the see-through ground (most of what touches it is clear): lettering to turn; on a plate: left as drawn. A run
+       with nothing solidly drawn in it is a soft fringe (around the ET red square), never lettering: left as drawn */
+    if (!strong || !ring || clear / ring < 0.3) continue;
     turned += strong;
     members.forEach(function (m) {
       var o = m * 4, lum = Math.round(0.299 * d[o] + 0.587 * d[o + 1] + 0.114 * d[o + 2]);
       out[o] = out[o + 1] = out[o + 2] = 255 - lum;                                  // black -> white
     });
   }
-  return turned && turned / inked > 0.4 && turned > opaque * 0.005 ? { width: w, height: h, data: out } : null;
+  if (turned && turned / inked > 0.4 && turned > opaque * 0.005) return { copy: { width: w, height: h, data: out } };
+  if (inked <= opaque * 0.005) return { why: light > coloured ? 'light' : 'coloured' };
+  return { why: 'plate' };
 }
-/* the lock-up stored for the plan, made again for a dark ground -> Promise<{ url, storagePath, width, height } | null> */
+
+/* What the owner is told when a lock-up on a light banner has no copy for a dark ground (storeOnDarkUnit): on a
+   light site the banner stays light in a dark theme; on a dark site the banner is light from the start. Never
+   that the logo is broken — it shows as drawn — but, where it may not, what to do. */
+var DARK_COPY_WHY = {
+  solid: 'the logo is a picture with a solid background, not a see-through one',
+  coloured: 'its lettering is in colour, and only black lettering may be changed for a dark background',
+  light: 'it has no dark lettering to change. If it looks faint on the light banner, it was drawn for a dark background: upload the version for light backgrounds under Event logo in the event\'s Basics',
+  plate: 'its lettering sits on the logo\'s own background, which stays as drawn',
+  text: 'its lettering is live text in the SVG, which cannot be changed safely here',
+  failed: 'the copy could not be made just now. Upload the logo again under Event logo in the event\'s Basics to try again'
+};
+function darkCopyNote(why, darkSite) {
+  var reason = DARK_COPY_WHY[why] || DARK_COPY_WHY.failed;
+  return (darkSite ? 'The banner stays light on this dark site, so the logo shows as drawn: no copy of it for a dark background could be made, because '
+    : 'In a dark theme the banner stays light, so the logo shows as drawn: no copy of it for a dark background could be made, because ') + reason + '.';
+}
+/* The font a year moved here was set in (svg-year.js replaceYear embeds it as 'rvyear'), when every text in the
+   drawing is set in it -> { family, ttfBase64 } for rasterise, or null: text in any other font cannot be drawn here */
+function embeddedYearFont(svgText) {
+  var m = /@font-face\{font-family:'rvyear';src:url\(data:font\/ttf;base64,([A-Za-z0-9+\/=]+)\)/.exec(String(svgText || ''));
+  if (!m) return null;
+  var texts = String(svgText).match(/<text\b[^>]*>/gi) || [];
+  return texts.length && texts.every(function (t) { return /font-family="'rvyear',/.test(t); }) ? { family: 'rvyear', ttfBase64: m[1] } : null;
+}
+/* The lock-up made again for a dark ground -> Promise<{ url, storagePath, width, height } | { why }>, never rejects.
+   why (darkCopyOf, plus): 'text' — an SVG whose lettering is live <text> in a font it does not carry: drawn here with
+   no fonts, the copy would lose it (the event's name drawn for a light site came out as the ET logo alone, 28 Oct
+   2026); a year moved here as text is drawn in the font embedded with it (embeddedYearFont); 'failed' — the
+   picture could not be had or worked on. Read from this project's bucket, else fetched (fetchOwnerLogo: an
+   owner's logo used as uploaded can live elsewhere). */
 function storeOnDarkUnit(fb, eventId, stamp, unit) {
-  if (!unit || !unit.storagePath || !fb || !fb.bucket) return Promise.resolve(null);
-  return fb.bucket.file(unit.storagePath).download().then(function (got) {
-    var bytes = got[0], info = logoUnit.imageInfo(bytes);
-    var decodedP = info.type === 'svg' ? workingCopy(bytes.toString('utf8'))
+  function failed(what) { console.error('logo unit: the dark-ground copy of ' + eventId + '\'s lock-up was not made — ' + what); return { why: 'failed' }; }
+  if (!unit || !fb || !fb.bucket || !(unit.storagePath || /^https:\/\//i.test(String(unit.url || '')))) return Promise.resolve(failed('there is no picture to copy'));
+  var got = unit.storagePath
+    ? fb.bucket.file(unit.storagePath).download().then(function (r) { return r && r[0]; }, function () { return fetchOwnerLogo(fb, unit.url); })
+    : fetchOwnerLogo(fb, unit.url);
+  return got.then(function (bytes) {
+    if (!Buffer.isBuffer(bytes) || !bytes.length) return failed('the picture could not be read');
+    var info = logoUnit.imageInfo(bytes);
+    if (!info.type) return failed('it is not a picture');
+    var yearFont = null;
+    if (info.type === 'svg') {
+      var text = bytes.toString('utf8');
+      if (svgCouldRun(text)) return failed('its SVG could run code');
+      /* a year moved here as text (svg-year.js replaceYear) is drawn in the font it carries; other text cannot be */
+      if (/<text[\s>]/i.test(text) && !(yearFont = embeddedYearFont(text))) return { why: 'text' };
+    }
+    var decodedP = info.type === 'svg' ? workingCopy(bytes.toString('utf8'), yearFont)
       : info.type === 'png' && info.width * info.height <= LOGO_UNIT_DECODE_PIXELS ? Promise.resolve({ decoded: pngLite.decode(bytes) })
       : workingCopy(wrapPictureSvg({ bytes: bytes, info: info }));
     return decodedP.then(function (copy) {
-      var turned = copy && copy.decoded ? onDarkCopy(copy.decoded) : null;
-      if (!turned) return null;
-      var png = pngLite.encode(turned), storagePath = 'events/' + eventId + '/generated/' + stamp + '-logo-unit-on-dark.png';
+      if (!copy || !copy.decoded) return failed('it could not be drawn to work on');
+      var made = darkCopyOf(copy.decoded);
+      if (!made.copy) return { why: made.why };
+      var png = pngLite.encode(made.copy), storagePath = 'events/' + eventId + '/generated/' + stamp + '-logo-unit-on-dark.png';
       return storePublicPicture(fb, storagePath, png, 'image/png').then(function (url) {
         /* shown at the size the original is */
-        return { url: url, storagePath: storagePath, width: unit.width || turned.width, height: unit.height || turned.height };
+        return { url: url, storagePath: storagePath, width: unit.width || made.copy.width, height: unit.height || made.copy.height };
       });
     });
-  }).then(null, function (err) { console.error('logo unit: the dark-ground copy of ' + eventId + '\'s lock-up was not made — ' + (err && err.message)); return null; });
+  }).then(null, function (err) { return failed(err && err.message); });
 }
 
 /* what the event says about its year beyond its name and dates: the brief's own words */
@@ -4041,11 +4105,21 @@ function drawnLogoUnit(fb, eventId, o) {
   var logo = etLogoSvg(tone);
   if (!logo) return Promise.resolve(null);
   return fetchUnitFont(design.headingFont, 700, name).then(function (font) {
-    var made = logoUnit.buildLogoUnitSvg({ parts: parts, style: design.logoUnitStyle, tone: tone, themeColor: design.themeColor, font: font || { family: design.headingFont }, etLogoSvg: logo });
+    var drawn = function (t, etLogo) { return logoUnit.buildLogoUnitSvg({ parts: parts, style: design.logoUnitStyle, tone: t, themeColor: design.themeColor, font: font || { family: design.headingFont }, etLogoSvg: etLogo }); };
+    var made = drawn(tone, logo);
     if (!made.svg || svgCouldRun(made.svg)) return null;
     var storagePath = 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit.svg';
-    return storePublicPicture(fb, storagePath, Buffer.from(made.svg, 'utf8'), 'image/svg+xml').then(function (url) {
-      return { url: url, storagePath: storagePath, source: 'generated', from: '', width: made.width, height: made.height, heroMode: '', plate: '', note: '' };
+    /* a light site's unit gets its copy for a dark ground drawn the same way — white lettering, the ET logo made for
+       a dark ground — never made from the picture, whose lettering is text a drawing here cannot show */
+    var onDark = tone === 'light' && etLogoSvg('dark') ? drawn('dark', etLogoSvg('dark')) : null;
+    var darkPath = 'events/' + eventId + '/generated/' + o.stamp + '-logo-unit-on-dark.svg';
+    return Promise.all([
+      storePublicPicture(fb, storagePath, Buffer.from(made.svg, 'utf8'), 'image/svg+xml'),
+      onDark && onDark.svg && !svgCouldRun(onDark.svg) ? storePublicPicture(fb, darkPath, Buffer.from(onDark.svg, 'utf8'), 'image/svg+xml').then(null, function () { return ''; }) : ''
+    ]).then(function (urls) {
+      var unit = { url: urls[0], storagePath: storagePath, source: 'generated', from: '', width: made.width, height: made.height, heroMode: '', plate: '', note: '' };
+      if (urls[1]) { unit.darkUrl = urls[1]; unit.darkStoragePath = darkPath; }
+      return unit;
     });
   });
 }
@@ -4178,39 +4252,79 @@ function unitFields(unit) {
     logoUnitWidth: unit.width || 0, logoUnitHeight: unit.height || 0, logoUnitPlate: unit.plate || '', logoUnitNote: unit.note || '', logoUnitHeroMode: unit.heroMode || ''
   };
 }
+/* Whether the design's copy for a dark ground was made of its unit: said by logoUnitDarkOf; a design written before
+   that was kept shows it by its file — made in the same run as its unit (generated/<stamp>-logo-unit… beside
+   generated/<stamp>-logo-unit-on-dark…). An owner's logo used as uploaded has no such name: its old copy is not
+   trusted (one could be an earlier logo's, left by an upload before 28 Oct 2026). */
+function darkCopyOfUnit(design) {
+  if (!design || !design.logoUnitDarkUrl) return false;
+  if (design.logoUnitDarkOf) return design.logoUnitDarkOf === design.logoUnitUrl;
+  var run = function (p) { var m = /\/generated\/(\d+)-logo-unit[.-]/.exec(String(p || '')); return m ? m[1] : ''; };
+  var a = run(design.logoUnitStoragePath), b = run(design.logoUnitDarkStoragePath);
+  return !!a && a === b;
+}
+/* the tone of banner a new unit is shown on once it is the design's: its own, else the site's — never the tone of the
+   unit it replaces, which says nothing of it (as handleGenerateContent builds the hero from the design) */
+function unitHeroMode(unit, design) {
+  return /^(dark|light)$/.test(String(unit.heroMode)) ? unit.heroMode : (design.mode === 'dark' ? 'dark' : 'light');
+}
 function saveOwnerUnit(fb, eventId, unit, opts) {
   /* opts.heroNote false: the hero's unit carries no note (the design keeps it) */
   var heroNote = !(opts && opts.heroNote === false);
   var ref = fb.db.collection('events').doc(eventId), out = null;
-  return fb.db.runTransaction(function (tx) {
-    /* a transaction can run more than once: what it found is the last run's */
-    out = { heroUpdated: false, savedSite: false, toneClash: '' };
-    return tx.get(ref).then(function (snap) {
-      if (eventStateOf(snap) !== 'live') throw httpError(404, 'No event found for "' + eventId + '".', { code: 'event-missing' });
-      var data = snap.data(), design = (data.designPlan && data.designPlan.design) || {};
-      var fields = unitFields(unit), patch = { updatedAt: new Date().toISOString() };
-      Object.keys(fields).forEach(function (k) { patch['designPlan.design.' + k] = fields[k]; });
-      out.savedSite = ownerLogoState(data).savedSite;
-      var sections = Array.isArray(data.generatedSections) ? data.generatedSections : null;
-      if (sections) {
-        var mode = /^(dark|light)$/.test(String(unit.heroMode)) ? unit.heroMode : (/^(dark|light)$/.test(String(design.logoUnitHeroMode)) ? design.logoUnitHeroMode : design.mode);
-        var unitHtml = genDesign.logoUnitImageHtml({ url: unit.url, alt: data.name || eventId, width: unit.width, height: unit.height, plate: unit.plate, note: heroNote ? unit.note : '', mode: mode });
-        var next = sections.map(function (s) {
-          if (!s || s.id !== 'hero') return s;
-          /* A logo drawn for a dark ground (white lettering) would vanish on a light hero, and the other way
-             round: the hero's own tone is not changed here (its colours and veil are the design's), so such a
-             logo is not swapped in — the owner is told (toneClash), and the design's unit takes effect when
-             the site is next generated. */
-          var heroTone = (/\bhero-on-(dark|light)\b/.exec(String(s.html || '')) || [])[1] || '';
-          if (heroTone && /^(dark|light)$/.test(String(unit.heroMode)) && unit.heroMode !== heroTone) { out.toneClash = unit.heroMode; return s; }
-          var html = swapHeroUnit(s.html, unitHtml);
-          if (html === null || html === s.html) return s;
-          out.heroUpdated = true;
-          return Object.assign({}, s, { html: html });
-        });
-        if (out.heroUpdated) patch.generatedSections = next;
-      }
-      tx.update(ref, patch);
+  var stamp = (opts && opts.stamp) || new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  /* The unit's copy for a dark ground, made before the transaction (it writes a file, and a transaction can run more
+     than once): a unit on a light banner gets one, as when the site was designed (plan-structure), and the copy of
+     the unit it replaces is dropped — shown in its place, it would bring the old logo back (a dark site shows the
+     copy as its unit; a light one in a dark theme). */
+  return ref.get().then(function (snap) {
+    var design = snap.exists ? (((snap.data() || {}).designPlan || {}).design || {}) : {};
+    var wants = unitHeroMode(unit, design) === 'light' && unit.url && !unit.plate;
+    return wants ? storeOnDarkUnit(fb, eventId, stamp, unit).then(function (dark) { return { wants: true, dark: dark }; }) : { wants: false, dark: null };
+  }).then(function (made) {
+    var dark = made.dark && made.dark.url ? made.dark : null;
+    return fb.db.runTransaction(function (tx) {
+      /* a transaction can run more than once: what it found is the last run's */
+      out = { heroUpdated: false, savedSite: false, toneClash: '', note: unit.note || '', darkUrl: dark ? dark.url : '' };
+      return tx.get(ref).then(function (snap) {
+        if (eventStateOf(snap) !== 'live') throw httpError(404, 'No event found for "' + eventId + '".', { code: 'event-missing' });
+        var data = snap.data(), design = (data.designPlan && data.designPlan.design) || {};
+        var darkSite = design.mode === 'dark';
+        /* no copy for a dark ground where one was wanted: said on the unit's note, like anything else about it */
+        if (made.wants && !dark) out.note = [unit.note, darkCopyNote(made.dark && made.dark.why, darkSite)].filter(Boolean).join(' ');
+        var fields = unitFields(Object.assign({}, unit, { note: out.note })), patch = { updatedAt: new Date().toISOString() };
+        Object.keys(fields).forEach(function (k) { patch['designPlan.design.' + k] = fields[k]; });
+        if (dark) {
+          patch['designPlan.design.logoUnitDarkUrl'] = dark.url; patch['designPlan.design.logoUnitDarkStoragePath'] = dark.storagePath;
+          patch['designPlan.design.logoUnitDarkOf'] = unit.url;
+        } else {
+          ['logoUnitDarkUrl', 'logoUnitDarkStoragePath', 'logoUnitDarkOf'].forEach(function (k) { patch['designPlan.design.' + k] = fieldDelete(); });
+        }
+        out.savedSite = ownerLogoState(data).savedSite;
+        var sections = Array.isArray(data.generatedSections) ? data.generatedSections : null;
+        if (sections) {
+          var next = sections.map(function (s) {
+            if (!s || s.id !== 'hero') return s;
+            var heroTone = (/\bhero-on-(dark|light)\b/.exec(String(s.html || '')) || [])[1] || '';
+            /* as the hero is built (handleGenerateContent): a dark banner shows a light-drawn unit's copy as the unit;
+               a light banner keeps the copy beside it, for a dark theme */
+            var mode = unitHeroMode(unit, design), url = unit.url, darkUrl = '';
+            if (mode === 'light' && dark) { if ((heroTone || (darkSite ? 'dark' : 'light')) === 'dark') { mode = 'dark'; url = dark.url; } else darkUrl = dark.url; }
+            /* A logo drawn for a dark ground (white lettering) would vanish on a light hero, and the other way
+               round with no copy to show: the hero's own tone is not changed here (its colours and veil are the
+               design's), so such a logo is not swapped in — the owner is told (toneClash), and the design's unit
+               takes effect when the site is next generated. */
+            if (heroTone && /^(dark|light)$/.test(String(unit.heroMode)) && mode !== heroTone) { out.toneClash = unit.heroMode; return s; }
+            var unitHtml = genDesign.logoUnitImageHtml({ url: url, alt: data.name || eventId, width: unit.width, height: unit.height, plate: unit.plate, note: heroNote ? out.note : '', mode: mode, darkUrl: darkUrl });
+            var html = swapHeroUnit(s.html, unitHtml);
+            if (html === null || html === s.html) return s;
+            out.heroUpdated = true;
+            return Object.assign({}, s, { html: html });
+          });
+          if (out.heroUpdated) patch.generatedSections = next;
+        }
+        tx.update(ref, patch);
+      });
     });
   }).then(function () { return out; });
 }
@@ -4228,7 +4342,8 @@ function ownerUnitInputs(fb, eventId, data) {
    examines it (ownerLogoUnit: its year brought to the event's, another edition's marks cropped, never
    redrawn) and becomes the design's logo unit and the generated hero's. A saved site is not touched: the
    answer says so, and the editor offers the new unit when the site is next opened.
-   -> 200 { aiDesigned, unit: { url, width, height, source, note, heroMode } | null, heroUpdated, savedSite,
+   -> 200 { aiDesigned, unit: { url, width, height, source, note, heroMode, darkUrl: its copy for a dark ground,
+            '' when none was wanted or could be made (the note then says why) } | null, heroUpdated, savedSite,
             toneClash: 'dark' | 'light' | '' — the logo is drawn for that ground and the generated hero is the
             other, so it was not swapped into the hero } */
 function handleEventLogoUnit(req, res) {
@@ -4243,19 +4358,45 @@ function handleEventLogoUnit(req, res) {
       if (!info.logoUrl) return sendJson(res, 400, { error: 'This event has no logo yet. Upload one first.', code: 'no-logo' });
       /* a site that is not AI-designed shows the logo where its template puts it: nothing to examine */
       if (!info.aiDesigned) return sendJson(res, 200, { aiDesigned: false, unit: null, heroUpdated: false, savedSite: info.savedSite });
+      var stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
       return ownerUnitInputs(fb, eventId, data).then(function (o) {
-        o.stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        o.stamp = stamp;
         o.deadlineAt = Date.now() + 100000;
         return ownerLogoUnit(fb, eventId, o);
       }).then(function (unit) {
         if (!unit || unit.refused) return sendJson(res, 422, { error: (unit && unit.note) || 'The logo could not be read as a picture. Upload it again as a PNG, WEBP or SVG.', code: 'logo-unreadable' });
-        return saveOwnerUnit(fb, eventId, unit).then(function (done) {
-          sendJson(res, 200, { aiDesigned: true, unit: { url: unit.url, width: unit.width, height: unit.height, source: unit.source, note: unit.note, heroMode: unit.heroMode }, heroUpdated: done.heroUpdated, savedSite: done.savedSite, toneClash: done.toneClash });
+        return saveOwnerUnit(fb, eventId, unit, { stamp: stamp }).then(function (done) {
+          sendJson(res, 200, { aiDesigned: true, unit: { url: unit.url, width: unit.width, height: unit.height, source: unit.source, note: done.note, heroMode: unit.heroMode, darkUrl: done.darkUrl }, heroUpdated: done.heroUpdated, savedSite: done.savedSite, toneClash: done.toneClash });
           logActivity(fb, eventId, decoded, 'logo-changed', 'logo put into the site’s design' + (unit.url === info.logoUrl ? ' (as uploaded)' : ' (examined copy)') +
             (done.heroUpdated ? '; banner updated' : done.toneClash ? '; banner kept — the logo is drawn for a ' + done.toneClash + ' background' : ''), { area: 'design' });
         });
       });
     }).catch(function (err) { sendFailure(res, 'logo-unit', err, 'The logo could not be put into the site. Please try again.'); });
+  });
+}
+
+/* POST /api/event/logo-unit-dark  { eventId, url }
+   A picture the owner put into the hero's logo unit in the editor (Replace image, or the event's logo put in for the
+   one made automatically) gets its copy for a dark ground, as the unit made with the site does (storeOnDarkUnit): the
+   editor sets it beside the picture, or tells the owner why there is none. Fetched from this project's bucket, else
+   through safeFetch (public addresses only).
+   -> 200 { url, width, height } | { url: '', why, note: what the owner is told (darkCopyNote) } */
+function handleEventLogoUnitDark(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var url = String(body.url || '').trim();
+    if (!/^https:\/\/[^\s"'<>]+$/i.test(url) || url.length > 2000) return sendJson(res, 400, { error: 'The picture\'s address (https) is required.', field: 'url' });
+    fb.db.collection('events').doc(eventId).get().then(function (snap) {
+      var state = eventStateOf(snap);
+      if (state !== 'live') throw notLiveError(state, eventId);
+      var design = ((snap.data().designPlan || {}).design) || {};
+      var stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+      return storeOnDarkUnit(fb, eventId, stamp, { url: url, storagePath: storagePathOf(fb, url) }).then(function (dark) {
+        if (dark.url) return sendJson(res, 200, { url: dark.url, width: dark.width || 0, height: dark.height || 0 });
+        sendJson(res, 200, { url: '', why: dark.why, note: darkCopyNote(dark.why, design.mode === 'dark') });
+      });
+    }).catch(function (err) { sendFailure(res, 'logo-unit-dark', err, 'The logo\'s copy for a dark background could not be made. Please try again.'); });
   });
 }
 
@@ -4436,7 +4577,7 @@ function handlePlanStructure(req, res) {
           design.logoUnitUrl = unit.url; design.logoUnitStoragePath = unit.storagePath; design.logoUnitSource = unit.source;
           design.logoUnitFrom = unit.from; design.logoUnitWidth = unit.width; design.logoUnitHeight = unit.height;
           design.logoUnitPlate = unit.plate; design.logoUnitNote = unit.note; design.logoUnitHeroMode = unit.heroMode || '';
-          delete design.logoUnitDarkUrl; delete design.logoUnitDarkStoragePath;
+          delete design.logoUnitDarkUrl; delete design.logoUnitDarkStoragePath; delete design.logoUnitDarkOf;
           var heroImage = made[0];
           /* the hero picture's name carries the run (buildHeroImage) */
           design.heroImageUrl = heroImage.heroImageUrl || null;
@@ -4452,9 +4593,16 @@ function handlePlanStructure(req, res) {
              rule). A dark site's banner is then dark as the site is — never a pale banner on a dark site; a light
              site's banner shows it when a dark theme turns the banner dark (gen-base.css, the owner, 28 Oct 2026). */
           var lightHero = /^(dark|light)$/.test(String(design.logoUnitHeroMode)) ? design.logoUnitHeroMode === 'light' : design.mode !== 'dark';
-          var onDark = lightHero && unit.url ? storeOnDarkUnit(fb, eventId, stamp, unit) : Promise.resolve(null);
+          /* none is needed on a plate (it stays as drawn) nor for a unit set in type (it carries the ET logo for a
+             dark ground); the event's name drawn as a unit brings its own (drawnLogoUnit) */
+          var wantsDark = lightHero && unit.url && !unit.plate;
+          var onDark = !wantsDark ? Promise.resolve(null)
+            : unit.source === 'generated' ? Promise.resolve(unit.darkUrl ? { url: unit.darkUrl, storagePath: unit.darkStoragePath } : { why: 'failed' })
+            : storeOnDarkUnit(fb, eventId, stamp, unit);
           return onDark.then(function (dark) {
-          if (dark) { design.logoUnitDarkUrl = dark.url; design.logoUnitDarkStoragePath = dark.storagePath; }
+          if (dark && dark.url) { design.logoUnitDarkUrl = dark.url; design.logoUnitDarkStoragePath = dark.storagePath; design.logoUnitDarkOf = unit.url; }
+          /* and the owner is told when there is none, on the unit's note like anything else about the logo */
+          else if (wantsDark) design.logoUnitNote = [design.logoUnitNote, darkCopyNote(dark && dark.why, design.mode === 'dark')].filter(Boolean).join(' ');
 
           var designPlan = {
             sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
@@ -5240,7 +5388,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* a dark site whose lock-up was drawn for light shows its dark-ground copy (storeOnDarkUnit), on a dark banner;
          a light banner keeps the copy beside its own, for a dark theme (gen-base.css) */
       var unitUrl = design.logoUnitUrl, unitDarkUrl = '';
-      if (heroMode === 'light' && design.logoUnitDarkUrl) {
+      /* only a copy made of this unit: one made of an earlier logo is never shown in its place (darkCopyOfUnit) */
+      if (heroMode === 'light' && design.logoUnitDarkUrl && darkCopyOfUnit(design)) {
         if (design.mode === 'dark') { heroMode = 'dark'; unitUrl = design.logoUnitDarkUrl; } else unitDarkUrl = design.logoUnitDarkUrl;
       }
       var heroOpts = {
@@ -5449,7 +5598,7 @@ function buildRedesignPrompt(payload) {
       : payload.mode === 'create'
         ? 'Write what the brief asks for. Facts come only from the brief: never invent a name, company, number, date, address, e-mail or phone number — where the brief gives no detail, write honest general copy.'
         : 'KEEP THE CONTENT. Every fact, name, number, date, link and e-mail address in the section stays, with the same meaning; wording may be tightened, and headings sharpened. Do not invent a fact, person, company, number, address, e-mail or phone number. Keep every link\'s href.',
-    payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-register-cta, data-rv-form, data-rv-form-embed, data-rv-form-title, data-rv-carousel, data-rv-carousel-track. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go. An element with data-rv-form-embed stays exactly as it is, with its contents (it is a form the site draws in place); keep it in the section.',
+    payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-rv-logo-note, data-register-cta, data-rv-form, data-rv-form-embed, data-rv-form-title, data-rv-carousel, data-rv-carousel-track. The logo unit (the element with data-rv-logo-unit) stays exactly as it is, with every picture in it — its second picture with the class rv-lu-dark is its copy for a dark background, never remove it. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go. An element with data-rv-form-embed stays exactly as it is, with its contents (it is a form the site draws in place); keep it in the section.',
     'Every button whose action is to register gets data-register-cta and href="#register".',
     (payload.supplied || []).length
       ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) { return 'attached picture ' + p.n + ' = ' + p.token; }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
@@ -8809,6 +8958,37 @@ var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrVal
 
 function cleanCanonical(v) { return (typeof v === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(v.trim())) ? v.trim() : ''; }
 
+/* ---------- the logo unit's notice: answered before anything goes live ----------
+   What the owner has to check about the hero's logo unit travels on the unit (data-rv-logo-note: a year that could
+   not be moved, a sponsor's mark that could not be cut, a logo that could not be used, a banner with no copy for a
+   dark ground…). The editor shows it until it is answered — "Looks right", or a picture of the owner's own — and a
+   save then stores the page without it. Until then nothing of that site goes live: publishing, asking for approval
+   and approving all refuse (409 'logo-unit-unanswered'). The saved page is what is read: publishTransform takes the
+   note off every live and preview page. A version that is already live may go out again as it is (published again
+   after its event's details changed, an approval of it, tools/republish-current.js). */
+var LOGO_NOTE_CODE = 'logo-unit-unanswered';
+/* the note on the first element that carries one, as written (entities read), or null; ' ' for an empty one */
+function unansweredLogoNote(html) {
+  if (typeof html !== 'string' || html.indexOf('data-rv-logo-note') === -1) return null;
+  var tokens = tokenizeHtml(html);
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i].t !== 'open') continue;
+    var v = attrValue(tokens[i], 'data-rv-logo-note');
+    if (v == null) continue;
+    var text = v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    return text || ' ';
+  }
+  return null;
+}
+/* who: 'owner' (publishing, asking for approval) | 'approver' (approving someone else's changes) */
+function logoNoteError(note, who) {
+  var said = String(note || '').trim(), quote = said ? ' (“' + (said.length > 220 ? said.slice(0, 217).replace(/\s+\S*$/, '') + '…' : said) + '”)' : '';
+  var text = who === 'approver'
+    ? 'These changes cannot go live yet: the logo in the banner still has a notice its editor has not answered' + quote + '. Reject this request so they can answer it in the site editor, save, and send the changes again.'
+    : 'The logo in the banner still has a notice to answer' + quote + '. Open the site editor, check the logo, then press “Looks right” or replace the picture, and save. Then publish again.';
+  return httpError(409, text, { code: LOGO_NOTE_CODE });
+}
+
 /* ---------- POST /api/event/publish ----------
    Body { eventId } -> 200 { publishedPath, publishedUrl, publishedAt, publishedVersion }.
    Publishes the site as last SAVED (PUT /api/event/site): 409 { code: 'site-not-saved' } when it never
@@ -8833,6 +9013,9 @@ function handleEventPublish(req, res) {
     if (body.html != null && typeof body.html !== 'string') return sendJson(res, 400, { error: '"html" must be the page as text.' });
     var legacyHtml = typeof body.html === 'string' && body.html.trim() ? body.html : null;
     var base = publicBaseFor(req, body.origin);
+    /* a page sent along (an editor of before) is refused before it is saved over the site */
+    var sentNote = legacyHtml ? unansweredLogoNote(legacyHtml) : null;
+    if (sentNote) return sendFailure(res, 'publish', logoNoteError(sentNote, 'owner'), 'The site could not be published.');
     /* nothing goes live without an approval, unless approval has been switched off (config/approvals). This
        check is always made: nothing in the request can skip it (a body key "__approvalChecked" used to). */
     return approvalsConfig(fb).then(function (cfg) {
@@ -8876,6 +9059,10 @@ function handleEventPublish(req, res) {
 
       return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
         var pageHtml = got[0], livePath = publishedObjectPath(eventId);
+        /* the version already live going out again (its event's details changed) is not held: it is live as it is */
+        var alreadyLive = !legacyHtml && data.published === true && +data.publishedVersion === version;
+        var note = alreadyLive ? null : unansweredLogoNote(pageHtml);
+        if (note) throw logoNoteError(note, 'owner');
         var live = publishTransform(pageHtml, {
           eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
           templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
@@ -8995,6 +9182,8 @@ function handleApprovalRequest(req, res) {
       ]).then(function (r) {
         var before = r[0], after = r[1];
         if (after == null) throw httpError(409, 'The saved site could not be found. Save it again, then send it for approval.', { code: 'site-not-saved' });
+        var logoNote = unansweredLogoNote(after);
+        if (logoNote) throw logoNoteError(logoNote, 'owner');
         var saves = r[2].docs.map(function (d) { var c = d.data(); return { id: d.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note || '', items: c.items || [] }; })
           .filter(function (c) { return c.version <= version; });
         /* what the reviewer is shown: live against proposed when the live version's page was kept, else the
@@ -9053,13 +9242,27 @@ function handleApprovalGet(req, res) {
         var snap = x[0];
         var request = snap && snap.exists ? approvalView(snap.id, snap.data()) : null;
         var why = request ? whyNotApprover(cfg, actorOf(decoded), request.requestedBy) : '';
+        /* a request whose version's logo unit still carries its notice cannot be approved (publishVersion's logoGate):
+           said before the approver tries, so they can reject it with the reason */
+        var pendingNew = request && request.status === 'pending' && !(data.published === true && +data.publishedVersion === request.toVersion);
+        var page = pendingNew && !why ? readObject(fb, versionPath(eventId, request.toVersion)).then(function (t) {
+          return t != null ? t : siteVersionOf(data) === request.toVersion ? readObject(fb, sitePath(eventId, 'page.html')) : null;
+        }).then(null, function () { return null; }) : Promise.resolve(null);
+        return page.then(function (html) {
+        var logoNote = unansweredLogoNote(html);
+        var canDecide = !!request && request.status === 'pending' && !why;
         sendJson(res, 200, {
           eventId: eventId, name: data.name || eventId, me: actorOf(decoded),
           published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0,
           publishedPath: data.published === true ? publicPathOf(eventId) : null, savedVersion: siteVersionOf(data),
-          request: request, canDecide: !!request && request.status === 'pending' && !why, whyNot: why,
+          /* canDecide: may approve or reject; canApprove: may approve too (not while the logo unit's notice is open,
+             said in whyNot — it can still be rejected with that reason) */
+          request: request, canDecide: canDecide, canApprove: canDecide && !logoNote,
+          whyNot: why || (logoNote ? logoNoteError(logoNote, 'approver').message : ''),
           approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required,
-          requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null }; })
+          requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null }; }),
+          logoNote: !!logoNote
+        });
         });
       });
     }).catch(function (err) { sendFailure(res, 'approval get', err, 'The request could not be loaded. Please try again.'); });
@@ -9074,7 +9277,10 @@ function publishedPagesOf(html) {
 }
 
 /* Makes one kept version the live page. The caller has decided that it may. */
-function publishVersion(fb, req, eventId, version, actor, origin, extra) {
+/* opts.logoGate: refuse a version whose logo unit still carries its notice (logoNoteError, worded for an approver)
+   unless it is the version already live — an approval, never tools/republish-current.js, which re-publishes what is
+   live as it is */
+function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
   var HTML = 'text/html; charset=utf-8', token = crypto.randomBytes(12).toString('hex'), now = new Date().toISOString();
   var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null, livePages = null;
   return acquireSiteLock(fb, eventId, token, null).then(function (data) {
@@ -9085,6 +9291,9 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra) {
     return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
       var pageHtml = got[0];
       if (pageHtml == null) throw httpError(409, 'Version ' + version + ' of this site is no longer stored. Save the site again and send a new request.', { code: 'version-missing' });
+      var alreadyLive = data.published === true && +data.publishedVersion === version;
+      var note = opts && opts.logoGate && !alreadyLive ? unansweredLogoNote(pageHtml) : null;
+      if (note) throw logoNoteError(note, 'approver');
       var live = publishTransform(pageHtml, {
         eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
         templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
@@ -9136,7 +9345,7 @@ function handleApprovalDecide(req, res) {
       }
       return publishVersion(fb, req, eventId, request.toVersion, actor, body.origin, {
         approval: fieldDelete(), lastApproval: { id: id, by: actor, at: now, requestedBy: request.requestedBy, version: request.toVersion }
-      }).then(function (out) {
+      }, { logoGate: true }).then(function (out) {
         return reqRef.update(Object.assign({ status: 'approved' }, closed)).then(function () {
           logActivity(fb, eventId, decoded, 'approved', 'version ' + request.toVersion + ' — ' + (request.summary || '') + (note ? ' — “' + note + '”' : ''), { approvalId: id, version: request.toVersion, requestedBy: request.requestedBy });
           logActivity(fb, eventId, decoded, 'published', 'version ' + request.toVersion + ', requested by ' + request.requestedBy + ', approved by ' + actor, { approvalId: id, version: request.toVersion });
@@ -9778,6 +9987,7 @@ var ROUTES = {
   'POST /api/event/theme': handleEventTheme,
   'POST /api/event/section-edges': handleEventSectionEdges,
   'POST /api/event/logo-unit': handleEventLogoUnit,
+  'POST /api/event/logo-unit-dark': handleEventLogoUnitDark,
   'POST /api/event/approval/decide': handleApprovalDecide,
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,
@@ -9883,7 +10093,9 @@ module.exports = { handleApi };
 // import pipeline and the AI sanitizers without a live Gemini call or a real ID token, and the publish
 // transform on a page held in a file. Nothing in this repo's runtime imports from this property.
 module.exports._testHooks = {
-  onDarkCopy: onDarkCopy, redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
+  onDarkCopy: onDarkCopy, darkCopyOf: darkCopyOf, darkCopyNote: darkCopyNote, storeOnDarkUnit: storeOnDarkUnit, drawnLogoUnit: drawnLogoUnit, embeddedYearFont: embeddedYearFont,
+  unansweredLogoNote: unansweredLogoNote, logoNoteError: logoNoteError, darkCopyOfUnit: darkCopyOfUnit, LOGO_NOTE_CODE: LOGO_NOTE_CODE,
+  redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,

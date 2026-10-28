@@ -263,13 +263,45 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   const doc = { createdAt: 'x', name: 'AutoTech Summit 2027', logoUrl: OWNER_URL, site: { version: 3 }, designPlan: { design: { mode: 'light', logoUnitSource: 'previous-edition' } },
     generatedSections: [{ id: 'nav', html: '<nav></nav>' }, { id: 'hero', html: gd.heroHtml({ unit: gd.logoUnitImageHtml({ url: 'https://s/generated/1-logo-unit.png', width: 417, height: 165, note: 'old note', mode: 'light' }), mode: 'light' }) }] };
   let written = null;
-  const dbFb = { db: { collection: function () { return { doc: function () { return {}; } }; },
-    runTransaction: function (fn) { return fn({ get: function () { return Promise.resolve({ exists: true, data: function () { return doc; } }); }, update: function (ref, patch) { written = patch; } }); } } };
-  const res = await hooks.saveOwnerUnit(dbFb, 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: 'checked', heroMode: 'light' }, { heroNote: false });
+  /* a fake with the event's document to read outside the transaction (the unit's copy for a dark ground is made
+     before it) and a bucket holding the owner's logo */
+  function docFb(docOf, store, tx) {
+    return { bucket: store.bucket, db: { collection: function () { return { doc: function () { return { get: function () { return Promise.resolve({ exists: true, data: function () { return docOf(); } }); } }; } }; },
+      runTransaction: tx || function (fn) { return fn({ get: function () { return Promise.resolve({ exists: true, data: function () { return docOf(); } }); }, update: function (ref, patch) { written = patch; } }); } } };
+  }
+  const ownerStore = fakeFb(); ownerStore.stored['events/autotech-summit-2027/logo/owner.svg'] = OWNER;
+  const dbFb = docFb(function () { return doc; }, ownerStore);
+  const res = await hooks.saveOwnerUnit(dbFb, 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: 'checked', heroMode: 'light' }, { heroNote: false, stamp: 's1' });
   const newHero = written && written.generatedSections && written.generatedSections[1].html;
   check('saveOwnerUnit: the design\'s unit is the owner\'s', written && written['designPlan.design.logoUnitUrl'] === OWNER_URL && written['designPlan.design.logoUnitSource'] === 'owner' && written['designPlan.design.logoUnitNote'] === 'checked' && written['designPlan.design.logoUnitWidth'] === 562, written);
   check('saveOwnerUnit: the generated hero shows it (src, width, height) and no note', res.heroUpdated && res.savedSite && /src="https:\/\/storage\.googleapis\.com\/b\/events\/autotech-summit-2027\/logo\/owner\.svg" alt="AutoTech Summit 2027" width="562" height="280"/.test(newHero) && !/data-rv-logo-note/.test(newHero), newHero);
   check('saveOwnerUnit: nothing but the design and the generated sections is written (never the saved site)', written && Object.keys(written).every(function (k) { return /^designPlan\.design\.logoUnit|^generatedSections$|^updatedAt$/.test(k); }), Object.keys(written || {}));
+  /* its copy for a dark ground: made of this logo, kept with what it was made of, shown beside it on the light banner */
+  const darkPath = 'events/autotech-summit-2027/generated/s1-logo-unit-on-dark.png';
+  check('saveOwnerUnit: a light banner\'s new unit gets its own copy for a dark ground, made of it (logoUnitDarkOf)',
+    !!ownerStore.stored[darkPath] && written['designPlan.design.logoUnitDarkStoragePath'] === darkPath && written['designPlan.design.logoUnitDarkOf'] === OWNER_URL && res.darkUrl === written['designPlan.design.logoUnitDarkUrl'], [res.darkUrl, Object.keys(ownerStore.stored)]);
+  check('saveOwnerUnit: the generated hero carries that copy after the unit\'s own picture', /class="rv-lu-img" src="[^"]*owner\.svg"[^>]*><img class="rv-lu-img rv-lu-dark" src="[^"]*s1-logo-unit-on-dark\.png"/.test(newHero), newHero);
+  /* a dark site's dark banner shows the copy as its unit (as handleGenerateContent builds it), not a light-drawn logo */
+  const darkSiteDoc = JSON.parse(JSON.stringify(doc));
+  darkSiteDoc.designPlan.design.mode = 'dark';
+  darkSiteDoc.generatedSections[1].html = gd.heroHtml({ unit: gd.logoUnitImageHtml({ url: 'https://s/generated/1-logo-unit.png', width: 417, height: 165, mode: 'dark' }), mode: 'dark' });
+  written = null;
+  const darkSite = await hooks.saveOwnerUnit(docFb(function () { return darkSiteDoc; }, ownerStore), 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: '', heroMode: 'light' }, { heroNote: false, stamp: 's2' });
+  const darkHero = written && written.generatedSections && written.generatedSections[1].html;
+  check('saveOwnerUnit: on a dark banner a light-drawn logo goes in as its copy for a dark ground (no tone clash)', darkSite.heroUpdated && !darkSite.toneClash && /rv-lu-on-dark/.test(darkHero) && /src="[^"]*s2-logo-unit-on-dark\.png"/.test(darkHero) && !/owner\.svg/.test(darkHero), [darkSite, darkHero]);
+  /* none can be made (a logo whose lettering is in colour): the owner is told on the unit's note, and an older copy is dropped */
+  const colourStore = fakeFb();
+  colourStore.stored['events/autotech-summit-2027/logo/red.png'] = png.encode({ width: 60, height: 20, data: (function () { const b = Buffer.alloc(60 * 20 * 4); for (let i = 0; i < 60 * 20; i++) { if (i % 60 > 10 && i % 60 < 50) { b[i * 4] = 220; b[i * 4 + 1] = 20; b[i * 4 + 2] = 40; b[i * 4 + 3] = 255; } } return b; })() });
+  const staleDoc = JSON.parse(JSON.stringify(doc));
+  staleDoc.designPlan.design.logoUnitDarkUrl = 'https://s/generated/0-logo-unit-on-dark.png'; staleDoc.designPlan.design.logoUnitDarkOf = 'https://s/old.png';
+  written = null;
+  const redUrl = 'https://storage.googleapis.com/b/events/autotech-summit-2027/logo/red.png';
+  const noCopy = await hooks.saveOwnerUnit(docFb(function () { return staleDoc; }, colourStore), 'autotech-summit-2027', { url: redUrl, width: 60, height: 20, source: 'owner', from: redUrl, note: 'checked', heroMode: 'light' }, { stamp: 's3' });
+  const redHero = written && written.generatedSections && written.generatedSections[1].html;
+  check('saveOwnerUnit: no copy can be made — said on the note (design, hero and answer), and the old logo\'s copy is dropped',
+    /in colour, and only black lettering may be changed/.test(written['designPlan.design.logoUnitNote']) && /^checked In a dark theme the banner stays light/.test(noCopy.note) &&
+    /data-rv-logo-note="checked In a dark theme/.test(redHero) && !/rv-lu-dark/.test(redHero) &&
+    ['logoUnitDarkUrl', 'logoUnitDarkStoragePath', 'logoUnitDarkOf'].every(function (k) { const v = written['designPlan.design.' + k]; return v && typeof v === 'object'; }), [noCopy.note, Object.keys(written)]);
 
   /* ---------- 8. review: the owner's logo is never passed over silently, and never collapses ---------- */
   /* an SVG that could run code is not used; the owner is told, on whatever stands in its place */
@@ -305,7 +337,7 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   /* the generated hero is not given a logo drawn for the other ground (it would vanish); a retried transaction reports its last run */
   const darkHeroDoc = JSON.parse(JSON.stringify(doc)); written = null;
   let runs = 0;
-  const retryFb = { db: { collection: function () { return { doc: function () { return {}; } }; },
+  const retryFb = { db: { collection: function () { return { doc: function () { return { get: function () { return Promise.resolve({ exists: true, data: function () { return darkHeroDoc; } }); } }; } }; },
     runTransaction: function (fn) {
       const tx = { get: function () { return Promise.resolve({ exists: true, data: function () { return runs === 1 ? darkHeroDoc : Object.assign({}, darkHeroDoc, { generatedSections: [{ id: 'nav', html: '' }] }); } }); }, update: function (ref, patch) { written = patch; } };
       runs++;
@@ -314,7 +346,7 @@ const PREV_SOURCE = [{ type: 'previousEdition', url: 'https://auto.economictimes
   const clashRes = await hooks.saveOwnerUnit(retryFb, 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: '', heroMode: 'dark' }, { heroNote: false });
   const runsSeen = runs;
   runs = 0; written = null;
-  const clashFb = { db: { collection: function () { return { doc: function () { return {}; } }; },
+  const clashFb = { db: { collection: function () { return { doc: function () { return { get: function () { return Promise.resolve({ exists: true, data: function () { return darkHeroDoc; } }); } }; } }; },
     runTransaction: function (fn) { return fn({ get: function () { return Promise.resolve({ exists: true, data: function () { return darkHeroDoc; } }); }, update: function (ref, patch) { written = patch; } }); } } };
   const clash = await hooks.saveOwnerUnit(clashFb, 'autotech-summit-2027', { url: OWNER_URL, width: 562, height: 280, source: 'owner', from: OWNER_URL, note: '', heroMode: 'dark' }, { heroNote: false });
   check('saveOwnerUnit: tone clash — design written, generated hero left, toneClash "dark"', clash.toneClash === 'dark' && !clash.heroUpdated && written && !written.generatedSections && written['designPlan.design.logoUnitHeroMode'] === 'dark', [clash, Object.keys(written || {})]);

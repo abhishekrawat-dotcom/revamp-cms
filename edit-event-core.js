@@ -66,6 +66,8 @@
      .refreshLogoUnit(eventId)    POST   /api/event/logo-unit -> {aiDesigned, unit, heroUpdated, savedSite}: the
                                    event's uploaded logo examined (its year brought to this edition's) and
                                    made the AI-designed site's hero logo; a saved site is left to the editor
+     .logoUnitDark(eventId, url)  POST   /api/event/logo-unit-dark -> {url, width, height} | {url:'', why, note}: a
+                                   picture put into the hero's logo unit, copied for a dark background (or why not)
      .seedContent(eventId, payload) POST /api/event/seed -> {created}
      .fetchHeroVideo / .uploadHeroVideo / .saveHeroVideo / .removeHeroVideo   the banner video
                                   (/api/event/hero-video…; see the functions themselves)
@@ -559,6 +561,9 @@ window.RevampCore = (function(){
 
   function refreshLogoUnit(eventId){
     return need(eventId, 'refreshLogoUnit: eventId') || api('POST', '/api/event/logo-unit', { eventId: String(eventId).trim() });
+  }
+  function logoUnitDark(eventId, url){
+    return need(eventId, 'logoUnitDark: eventId') || api('POST', '/api/event/logo-unit-dark', { eventId: String(eventId).trim(), url: String(url || '') });
   }
 
   function uploadImage(eventId, kind, file){
@@ -1064,7 +1069,7 @@ window.RevampCore = (function(){
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
-    uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, seedContent: seedContent,
+    uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, deleteRegistration: deleteRegistration,

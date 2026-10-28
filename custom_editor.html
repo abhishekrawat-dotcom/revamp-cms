@@ -2706,6 +2706,8 @@
 
   /* ---------- publish ---------- */
   document.getElementById('btn-publish').addEventListener('click', function(){
+    /* the logo unit's notice comes first: nothing goes live while it is open, so the AI review is not asked for yet */
+    if (window.RevampTemplateUI.logoUnitGate && window.RevampTemplateUI.logoUnitGate()) return;
     if (window.RevampTemplateUI.hasAiProvenance()){
       openAiPublishGate(function(){ window.RevampTemplateUI.publish(); });
     } else {
