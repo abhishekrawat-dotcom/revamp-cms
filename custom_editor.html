@@ -400,6 +400,17 @@
   .chat-proposal .cp-chip{ display:inline-block; width:12px; height:12px; border-radius:3px; border:1px solid var(--border); vertical-align:-2px; }
   .chat-proposal.is-closed > :not(.cp-state){ opacity:.55; }
   .chat-msg .chat-undo{ display:block; margin-top:8px; }
+  /* under an applied change: what really changed, what could not be done, and Undo (editor-template-ui.js drawAiOutcome) */
+  .chat-msg .chat-state{ margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-size:11.5px; line-height:1.45; color: var(--text-muted); white-space:normal; }
+  .chat-msg .chat-state:empty{ display:none; }
+  .chat-msg .chat-out-h{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color: var(--text-faint); margin:2px 0 3px; }
+  .chat-msg .chat-out-h.is-miss{ color: var(--crit, #c0392b); margin-top:8px; }
+  .chat-msg .chat-out{ margin:0; padding-left:16px; display:flex; flex-direction:column; gap:2px; color: var(--text); }
+  .chat-msg .chat-out.is-miss{ color: var(--text-muted); }
+  .chat-msg .chat-out-actions{ display:flex; gap:8px; margin-top:8px; }
+  .chat-msg .chat-out-actions .chat-undo{ margin-top:0; }
+  /* "Earlier in this conversation" / "Now": the kept conversation read back when the editor opens */
+  .chat-day{ align-self:center; font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color: var(--text-faint); margin:6px 0; }
   .chat-compose{
     flex-shrink:0; display:flex; align-items:flex-end; gap:8px; padding: 10px 14px 14px;
     border-top: 1px solid var(--border); background: var(--surface);

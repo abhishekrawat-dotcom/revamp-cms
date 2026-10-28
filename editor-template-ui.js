@@ -1478,7 +1478,6 @@
     var u = document.getElementById('btn-tpl-undo'), r = document.getElementById('btn-tpl-redo');
     if (u) u.disabled = undoPtr <= 0;
     if (r) r.disabled = undoPtr >= undoStack.length - 1;
-    syncAiUndo();
   }
 
   /* "Deleted — Undo": the button undoes the newest step, so the toast goes as soon as that step is no longer
@@ -3809,56 +3808,80 @@
     return at.node.parentElement;
   }
 
-  /* The chat's own way back from an applied change. It undoes the newest step, so it is withdrawn as soon
-     as that step is no longer the AI's change (updateHistoryButtons runs after every recorded step and
-     every undo / redo). */
-  /* A change that made forms (the AI's newForms) takes them away again too: the page goes back one step and
-     each form it made is deleted — unless the site saved since uses it, when it is kept and the owner told.
-     A change that made forms and nothing on the page is not tied to the page's steps at all. Undo in the top
-     bar only ever steps the page back: forms are stored with the event, not in the page. */
-  var aiUndo = null;
-  function syncAiUndo() {
-    if (!aiUndo || aiUndo.formsOnly || aiUndo.ptr === undoPtr) return;
-    aiUndo.button.disabled = true;
-    aiUndo.button.title = 'The site has changed since. Use Undo in the top bar to step back' + (aiUndo.formIds.length ? ', and the Forms panel to delete the forms the AI made.' : '.');
-    aiUndo = null;
-  }
-  function offerAiUndo(bubble, histEntry, summary, made) {
-    made = made || { formIds: [], pageChanged: true };
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn btn-secondary btn-sm chat-undo';
-    button.textContent = 'Undo this change';
-    bubble.appendChild(button);
-    if (aiUndo && aiUndo.button) {
-      aiUndo.button.disabled = true;
-      aiUndo.button.title = 'A newer change was applied since. Use Undo in the top bar, or the Forms panel.';
-    }
-    var mine = aiUndo = { ptr: undoPtr, button: button, formIds: made.formIds || [], formsOnly: !made.pageChanged };
-    button.addEventListener('click', function () {
-      deselect();
-      flush();                          // anything still pending becomes its own step, and withdraws this offer
-      if (aiUndo !== mine) return;
-      aiUndo = null;
-      button.disabled = true;
-      if (!mine.formsOnly) undo();
-      var said = [mine.formsOnly ? 'Undone.' : 'Undone — the site is back to how it was.'];
-      if (!mine.formIds.length || !formsApi()) {
-        bubble.textContent = said.join(' ');
-        if (histEntry) histEntry.text = 'Proposed: ' + summary + ' (applied, then undone)';
-        return;
-      }
-      bubble.textContent = said.join(' ') + ' Deleting the forms it made…';
-      formsApi().deleteCreated(mine.formIds).then(function (results) {
-        results.forEach(function (r) {
-          if (!r.kept) said.push('The form “' + r.name + '” was deleted.');
-          else if (r.inUse) said.push('The form “' + r.name + '” was kept because the saved site uses it.');
-          else said.push('The form “' + r.name + '” could not be deleted (' + (r.error || 'please try again') + '); delete it in the Forms panel.');
-        });
-        bubble.textContent = said.join(' ');
-        if (histEntry) histEntry.text = 'Proposed: ' + summary + ' (applied, then undone)';
-      });
+  /* ---------- ETB2B AI's changes, and taking them back ----------
+     What the AI answers with is applied at once (runAiTurn): there is nothing to accept (the owner, 28 Oct 2026).
+     Each applied change keeps the page as it was just before it — a checkpoint, kept in this browser too, so it
+     outlives a reload — and the forms it made. Undo on its message:
+       - while the change is still the newest step on the page: one step back, as the top bar's Undo does;
+       - after later edits: the page goes back to the checkpoint as a step of its own (the top bar's Undo brings it
+         back), once the owner has confirmed that what was done after it goes too;
+     and the forms it made are deleted (kept when the saved site uses one, and the owner told). The server is told,
+     so the conversation and the event's History say it was undone. */
+  var aiTurns = [];                 // { turnId, order, before, ptr, formIds, pageChanged, status, button, result }
+  var aiTurnOrder = 0;
+  var AI_CHECKPOINTS_KEPT = 15;
+  function checkpointKey(turnId) { return eventId && turnId ? 'rv.aiTurn.' + eventId + '.' + turnId : ''; }
+  function keepCheckpoint(t) {
+    var key = checkpointKey(t.turnId);
+    if (!key || !t.before) return;
+    localPut(key, { before: t.before, after: t.after, formIds: t.formIds, pageChanged: t.pageChanged, at: Date.now() });
+    /* only the newest few are kept in this browser */
+    var kept = aiTurns.filter(function (x) { return x.turnId && x.before; });
+    kept.slice(0, Math.max(0, kept.length - AI_CHECKPOINTS_KEPT)).forEach(function (x) {
+      x.before = null;
+      if (window.RevampStore && RevampStore.remove) RevampStore.remove(checkpointKey(x.turnId)).catch(function () {});
+      if (x.button && x.status !== 'undone') { x.button.disabled = true; x.button.title = 'This change is too long ago to undo from the chat. Use Undo in the top bar.'; }
     });
+  }
+  function reportTurn(turnId, status, done, notDone) {
+    if (!eventId || !turnId || !window.RevampAuth) return;
+    RevampAuth.authedFetch('/api/chat/turn', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [] }) }).catch(function () {});
+  }
+  function markUndone(t, note) {
+    t.status = 'undone';
+    if (t.button) { t.button.disabled = true; t.button.textContent = 'Undone'; }
+    if (t.stateLine) { t.stateLine.textContent = note || 'Undone — the page is back to how it was before this change.'; t.stateLine.hidden = false; }
+  }
+  /* -> Promise<boolean undone> */
+  function undoAiTurn(t, quiet) {
+    if (!t || t.status === 'undone' || !canvas || remounting) return Promise.resolve(false);
+    if (aiWorking) { showToast('One moment — ETB2B AI is still applying a change.'); return Promise.resolve(false); }
+    deselect();
+    flush();
+    var later = aiTurns.filter(function (x) { return x.order > t.order && x.status !== 'undone' && x.status !== 'failed' && x.pageChanged; });
+    var newest = t.pageChanged && t.ptr === undoPtr && !later.length;
+    /* the page exactly as this change left it (after a reload, say): nothing done since would be lost, so no question */
+    var untouched = !newest && !later.length && t.after && canvas.sameSnapshot && canvas.sameSnapshot(canvas.snapshot(), t.after);
+    if (t.pageChanged && !newest && !untouched) {
+      if (!t.before) { showToast('This change is too long ago to undo from the chat. Use Undo in the top bar.', { kind: 'error' }); return Promise.resolve(false); }
+      var also = later.length ? ' The ' + later.length + ' change' + (later.length === 1 ? '' : 's') + ' ETB2B AI made after it, and any edits since, will be undone too.' : ' Any edits you made after it will be undone too.';
+      if (!quiet && !window.confirm('Undo this change?' + also)) return Promise.resolve(false);
+    }
+    if (t.pageChanged) {
+      if (newest) undo();
+      else { canvas.restore(t.before, restoreOpts()); commitNow(); }
+    }
+    var gone = [t].concat(newest ? [] : later);
+    gone.forEach(function (x) { markUndone(x); reportTurn(x.turnId, 'undone'); });
+    var forms = [].concat.apply([], gone.map(function (x) { return x.formIds || []; }));
+    if (!forms.length || !formsApi()) return Promise.resolve(true);
+    return formsApi().deleteCreated(forms).then(function (results) {
+      var said = ['Undone — the page is back to how it was before this change.'];
+      results.forEach(function (r) {
+        if (!r.kept) said.push('The form “' + r.name + '” was deleted.');
+        else if (r.inUse) said.push('The form “' + r.name + '” was kept because the saved site uses it.');
+        else said.push('The form “' + r.name + '” could not be deleted (' + (r.error || 'please try again') + '); delete it in the Forms panel.');
+      });
+      markUndone(t, said.join(' '));
+      formsChanged();
+      return true;
+    });
+  }
+  /* the newest change of the AI that is still on the page */
+  function lastAiTurn() {
+    var live = aiTurns.filter(function (x) { return (x.status === 'applied' || x.status === 'partly') && (x.pageChanged || (x.formIds || []).length); });
+    return live[live.length - 1] || null;
   }
 
   /* ---------- the AI's forms on the page (ctaLinks, formEmbeds of POST /api/chat-edit) ---------- */
@@ -3955,14 +3978,13 @@
     });
   }
 
-  /* Proposals still waiting for Apply / Discard. Only the newest can be applied: an older card applied after
-     a newer one would put its own values back over it without saying so. */
-  var openProposals = [];
-  function closeProposals(except) {
-    openProposals.slice().forEach(function (p) { if (p !== except) p.supersede(); });
-  }
-
-  function renderProposal(result, histEntry, attached) {
+  /* An AI answer of kind "edit", applied at once (the owner, 28 Oct 2026: no proposal to accept). Its message is the
+     AI's own sentence; under it, while it works, what is being done; then what really changed and what could not
+     be done, with Undo. The page as it was just before is kept as the change's checkpoint (undoAiTurn). The
+     server is told how it went, so the conversation remembers it (and the event's History has it).
+     -> Promise that settles when the change is on the page (or could not be made). */
+  function plainText(html) { var d = document.createElement('div'); d.innerHTML = html; return String(d.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function runAiTurn(result, turnId, attached) {
     attached = attached || [];
     /* the pictures an entry names by number, as { n, url } for the request that reworks its section */
     function picturesFor(entry) {
@@ -4044,92 +4066,64 @@
     }));
     var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
     var usable = items.length > 0;
+    var notDone = notes.map(plainText).concat(cannot.map(function (c) { return 'I can’t do this here: ' + c; }));
 
-    /* The model's own sentence is not a promise of what Apply will do: it can describe a change that never
-       made it into the structured answer. The list is built from what will really be applied, and anything
-       that came back unusable is said beside it. With nothing usable the sentence is shown as the AI's
-       words, not as a statement of fact. */
-    var card = document.createElement('div');
-    card.className = 'chat-proposal';
-    card.innerHTML =
-      (usable ? '<span class="cp-summary">' + escHtml(result.summary) + '</span>' : '') +
-      '<span class="cp-will-change">What will change</span>' +
-      (usable ? '<ul>' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>'
-        : '<span class="cp-skipped">Nothing — this request did not produce a change that can be applied.</span>') +
-      (notes.length ? '<span class="cp-skipped">Couldn’t apply:</span><ul class="cp-skipped">' + notes.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>' : '') +
-      (cannot.length ? '<span class="cp-note">I can’t do this here: ' + escHtml(cannot.join('; ')) +
-        '. Speakers, agenda, sponsors, FAQs and contacts are managed in the event’s Content tabs.</span>' : '') +
-      (usable ? '' : '<span class="cp-note">The AI answered: &ldquo;' + escHtml(result.summary) + '&rdquo;</span>' +
-        '<span class="cp-note">The site is unchanged. Ask again in other words, or make the change yourself on the page or in Design.</span>') +
-      '<div class="cp-actions">' +
-        '<button class="btn btn-primary btn-sm" type="button" data-cp="apply"' + (usable ? '' : ' disabled title="There is nothing to apply"') + '>Apply</button>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-cp="discard">Discard</button>' +
-      '</div>' +
-      '<span class="cp-note cp-state" hidden></span>';
-    var turn = appendChatBubble('ai', card).closest('.chat-turn');
-    if (histEntry && !usable) histEntry.text = 'Proposed: ' + result.summary + ' (nothing in it could be applied; the site is unchanged)';
-
-    var me = {
-      supersede: function () {
-        close('Replaced by a newer suggestion — not applied.');
-        if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (superseded, not applied)';
-      }
-    };
-    function close(state) {
-      var at = openProposals.indexOf(me);
-      if (at !== -1) openProposals.splice(at, 1);
-      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-      card.classList.add('is-closed');
-      var line = card.querySelector('.cp-state');
-      if (state) { line.textContent = state; line.hidden = false; }
+    var bubble = appendChatMsg('ai', result.summary);
+    var stateLine = document.createElement('div');
+    stateLine.className = 'chat-state';
+    bubble.appendChild(stateLine);
+    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, stateLine: stateLine, result: result };
+    if (!usable) {
+      t.status = 'failed';
+      stateLine.textContent = 'Nothing on the page changed' + (notDone.length ? ': ' + notDone.join(' ') : '.') + ' Ask again in other words, or make the change yourself on the page.';
+      reportTurn(t.turnId, 'failed', [], notDone);
+      return Promise.resolve(t);
     }
-    closeProposals(me);
-    if (usable) openProposals.push(me);
+    if (!canvas || remounting) {
+      t.status = 'failed';
+      stateLine.textContent = 'The page was being reloaded, so nothing changed. Ask again in a moment.';
+      reportTurn(t.turnId, 'failed', [], ['the page was being reloaded']);
+      return Promise.resolve(t);
+    }
+    aiTurns.push(t);
+    deselect();
+    flush();                          // what was pending stays its own undo step
+    t.before = canvas.snapshot();     // the page as it was just before this change: its checkpoint
+    setAiWorking(true);
+    stateLine.textContent = 'Working on it…';
 
-    card.querySelector('[data-cp="discard"]').addEventListener('click', function () {
-      close('');
-      turn.remove();
-      appendChatMsg('ai', 'Discarded — nothing on the site changed.');
-      if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (discarded, not applied)';
+    /* forms first: a button or an embed can only point at a form that exists. If one cannot be made, those
+       already made are deleted again and nothing on the page changes. */
+    var formsMade = !newForms.length ? Promise.resolve({ ids: {}, forms: [] }) : (function () {
+      stateLine.textContent = newForms.length === 1 ? 'Creating the form “' + refNames[newForms[0].ref] + '”…' : 'Creating ' + newForms.length + ' forms…';
+      return fApi.createForms(newForms);
+    })();
+    return formsMade.then(function (made) {
+      if (!canvas || remounting) {
+        if ((made.forms || []).length) formsChanged();
+        throw new Error('the page was being reloaded' + ((made.forms || []).length ? ' (the forms were created: find them in the Forms panel)' : ''));
+      }
+      return applyPage(made);
+    }).then(null, function (err) {
+      t.status = 'failed';
+      stateLine.textContent = 'Nothing on the page changed: ' + ((err && err.message) || 'a form could not be created') + '.';
+      reportTurn(t.turnId, 'failed', [], [(err && err.message) || 'a form could not be created']);
+      setAiWorking(false);
+      return t;
     });
-    card.querySelector('[data-cp="apply"]').addEventListener('click', function () {
-      if (!canvas || remounting || openProposals.indexOf(me) === -1 || aiWorking) return;
-      deselect();
-      flush();                          // what was pending stays its own undo step
-      closeProposals(me);
-      if (!newForms.length) { applyPage({ ids: {}, forms: [] }); return; }
-      /* the forms first: a button or an embed can only point at a form that exists. If one cannot be made,
-         those already made are deleted again and nothing on the page changes. */
-      var formState = card.querySelector('.cp-state');
-      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-      aiWorking = true;
-      formState.textContent = newForms.length === 1 ? 'Creating the form “' + refNames[newForms[0].ref] + '”…' : 'Creating ' + newForms.length + ' forms…';
-      formState.hidden = false;
-      fApi.createForms(newForms).then(function (made) {
-        aiWorking = false;
-        if (!canvas || remounting) {
-          close('The forms were created, but the page was being reloaded, so nothing on it changed. Find them in the Forms panel.');
-          formsChanged();
-          return;
-        }
-        applyPage(made);
-      }, function (err) {
-        aiWorking = false;
-        close('Not applied: ' + ((err && err.message) || 'a form could not be created.') + ' Nothing on the site changed.');
-        if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (not applied: a form could not be created)';
-      });
-    });
+
     function applyPage(made) {
       var formIds = (made.forms || []).map(function (f) { return f.id; });
       var leftOut = applyAiDesignToCanvas(canvas, design);
-      var changedEls = [];
-      textEdits.forEach(function (t) {
-        var el = applyTextEdit(t);
-        if (!el) return;
+      var changedEls = [], done = [], said = [];
+      Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) done.push(plainText(designChangeHtml(k, design[k]))); });
+      textEdits.forEach(function (te) {
+        var el = applyTextEdit(te);
+        if (!el) { said.push('“' + te.find + '” in “' + sectionLabel(te.sectionId) + '” was no longer there.'); return; }
         changedEls.push(el);
         clearAiGenerated(el);
+        done.push(sectionLabel(te.sectionId) + ': ' + (te.replace ? '“' + te.find + '” → “' + te.replace + '”' : '“' + te.find + '” removed'));
       });
-      var said = [], done = [];
       /* whole sections: hidden, shown, removed, moved */
       ops.forEach(function (o) {
         var sec = canvas.sectionByKey(o.sectionId);
@@ -4145,40 +4139,39 @@
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
 
-      /* sections reworked or written by the AI: one request each, one after another, then ONE undo step */
-      var jobs = edits.map(function (e) { return { edit: e }; }).concat(additions.map(function (n) { return { add: n }; }));
-      var state = card.querySelector('.cp-state');
-      function step(i) {
-        if (i >= jobs.length) return Promise.resolve();
-        var job = jobs[i], sec, label;
-        if (job.edit) { sec = canvas.sectionByKey(job.edit.sectionId); label = sectionLabel(job.edit.sectionId); }
-        else {
-          sec = addBlankSection(job.add.name, job.add.afterSectionId ? canvas.sectionByKey(job.add.afterSectionId) : null);
-          label = job.add.name;
-        }
-        if (!isLive(sec)) { said.push('“' + label + '” is no longer on the page, so it was left out.'); return step(i + 1); }
-        state.textContent = 'Working on “' + label + '” (' + (i + 1) + ' of ' + jobs.length + ') — about half a minute each…';
-        state.hidden = false;
-        return requestSectionCode(sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
-          if (!isLive(sec)) throw new Error('the section was removed meanwhile');
-          var fresh = applySectionCode(sec, code);
+      /* sections reworked or written by the AI: asked for side by side (each takes a while), then ONE undo step.
+         A new section's empty place is made first, in order, so two after the same section keep their order. */
+      var lastAfter = {};
+      var jobs = edits.map(function (e) { return { edit: e, sec: canvas.sectionByKey(e.sectionId), label: sectionLabel(e.sectionId) }; })
+        .concat(additions.map(function (n) {
+          var anchor = lastAfter[n.afterSectionId || ''] || (n.afterSectionId ? canvas.sectionByKey(n.afterSectionId) : null);
+          var sec = addBlankSection(n.name, anchor);
+          lastAfter[n.afterSectionId || ''] = sec;
+          return { add: n, sec: sec, label: n.name };
+        }));
+      var finished = 0;
+      function progress() {
+        stateLine.textContent = jobs.length === 1 ? 'Working on “' + jobs[0].label + '”… (this takes about half a minute)'
+          : 'Working on ' + jobs.length + ' sections side by side: ' + finished + ' of ' + jobs.length + ' done…';
+      }
+      if (jobs.length) progress();
+      return Promise.all(jobs.map(function (job) {
+        if (!isLive(job.sec)) { said.push('“' + job.label + '” is no longer on the page, so it was left out.'); return null; }
+        return requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
+          if (!isLive(job.sec)) throw new Error('the section was removed meanwhile');
+          var fresh = applySectionCode(job.sec, code);
           if (!fresh) throw new Error('the AI’s answer was not a usable section');
           changedEls.push(fresh);
-          done.push('“' + label + '” ' + (job.edit ? 'reworked' : 'added'));
+          done.push('“' + job.label + '” ' + (job.edit ? 'reworked' : 'added'));
         }).then(null, function (err) {
-          if (job.add && isLive(sec)) canvas.removeSection(sec);       // an empty shell is not left behind
-          said.push('“' + label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + ((err && err.message) || 'the AI could not do it') + '.');
-        }).then(function () { return step(i + 1); });
-      }
-      card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-      aiWorking = jobs.length > 0;
-      step(0).then(function () {
-        aiWorking = false;
+          if (job.add && isLive(job.sec)) canvas.removeSection(job.sec);       // an empty shell is not left behind
+          said.push('“' + job.label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + ((err && err.message) || 'the AI could not do it') + '.');
+        }).then(function () { finished++; if (jobs.length > 1) progress(); });
+      })).then(function () {
         // buttons that open a form, and forms put in the page: after the sections are written, in the same step
         if (ctaLinks.length || formEmbeds.length) applyFormOps(made.ids || {}, ctaLinks, formEmbeds, changedEls, done, said);
         var redraw = changedEls.some(function (el) { return el.querySelector && el.querySelector('[data-rv-repeat-template]'); });
         var changed = commitNow();
-        close('');
         if (formIds.length || ctaLinks.length || formEmbeds.length) {
           drawFormPreviews(false);
           if (fApi) fApi.afterAiChange();
@@ -4186,28 +4179,21 @@
         }
         if (formIds.length) {
           done.unshift((formIds.length === 1 ? 'Form “' + made.forms[0].name + '” created' : formIds.length + ' forms created: ' + made.forms.map(function (f) { return '“' + f.name + '”'; }).join(', ')) +
-            (ctaLinks.length || formEmbeds.length ? '' : ' — it is not on the page yet: place it from the Forms panel, or link a button to it'));
+            (ctaLinks.length || formEmbeds.length ? '' : ' — not on the page yet: place it from the Forms panel, or ask me to add a button for it'));
         }
-        if (!changed && formIds.length) {
-          var formsBubble = appendChatMsg('ai', ['Applied.'].concat([done.join('; ') + '.']).concat(said).join(' '));
-          if (histEntry) histEntry.text = 'Proposed and applied: ' + result.summary + ' (' + done.join('; ') + ')';
-          offerAiUndo(formsBubble, histEntry, result.summary, { formIds: formIds, pageChanged: false });
-          chatThread().scrollTop = chatThread().scrollHeight;
-          return;
-        }
-        // a setting this site has nothing for is said, not counted as applied
-        if (leftOut.length) {
-          said.push('Not changed: ' + leftOut.map(function (k) { return designLabel(k) + ' — ' + (unsupportedReason(k) || 'nothing on the page changed for it.'); }).join(' '));
-        }
-        var appliedDesign = {};
-        Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) appliedDesign[k] = design[k]; });
-
-        if (!changed) {
-          designChanged();                // a setting that was tried and did nothing is put away in the Design panel
-          appendChatMsg('ai', ['Nothing could be applied — the site is unchanged.'].concat(said).join(' '));
-          if (histEntry) histEntry.text = 'Proposed: ' + result.summary + ' (nothing could be applied; the site is unchanged)';
-          return;
-        }
+        // a setting this site has nothing for is said, not counted as done
+        if (leftOut.length) said.push('Not changed: ' + leftOut.map(function (k) { return designLabel(k) + ' — ' + (unsupportedReason(k) || 'nothing on the page changed for it.'); }).join(' '));
+        if (!changed) designChanged();
+        t.formIds = formIds;
+        t.pageChanged = !!changed;
+        t.ptr = undoPtr;
+        t.after = changed ? canvas.snapshot() : null;        // the page as this change left it
+        var notAll = said.concat(notDone);
+        t.status = !changed && !formIds.length ? 'failed' : notAll.length ? 'partly' : 'applied';
+        drawAiOutcome(t, done, notAll);
+        reportTurn(t.turnId, t.status, done, notAll);
+        if (t.status !== 'failed') keepCheckpoint(t); else t.before = null;
+        setAiWorking(false);
         var first = changedEls.filter(function (el) { return el && el.isConnected; })[0];
         if (first) {
           // the first change is brought into view; inside an accordion item, the whole item, opened
@@ -4215,19 +4201,47 @@
           canvas.openItem(first);
           canvas.scrollToSection(isShown(around) ? around : first.closest('[data-rv-section]'));
         }
-        var bubble = appendChatMsg('ai', ['Applied.'].concat(done.length ? [done.join('; ') + '.'] : []).concat(said)
-          .concat(formIds.length ? ['Undo in the top bar does not remove forms the AI created; use ‘Undo this change’ or the Forms panel.'] : []).join(' '));
-        if (histEntry) {
-          histEntry.text = 'Proposed and applied: ' + result.summary +
-            (Object.keys(appliedDesign).length ? ' (design: ' + JSON.stringify(appliedDesign) + ')' : '') +
-            (done.length ? ' (' + done.join('; ') + ')' : '') + (said.length ? ' (not done: ' + said.join(' ') + ')' : '');
-        }
-        offerAiUndo(bubble, histEntry, result.summary, { formIds: formIds, pageChanged: true });
-        chatThread().scrollTop = chatThread().scrollHeight;
         if (redraw) drawRecords(false);         // the event's records, drawn into what was rewritten
+        return t;
       });
     }
-    return usable;
+  }
+  /* Under the AI's sentence: what really changed, what could not be done, and Undo. Also for a turn read back from
+     the server (drawn with what the server kept; Undo only where this browser still has its checkpoint). */
+  function drawAiOutcome(t, done, notDone) {
+    var line = t.stateLine;
+    line.textContent = '';
+    line.hidden = false;
+    function list(title, items, cls) {
+      if (!items.length) return;
+      var h = document.createElement('div'); h.className = 'chat-out-h' + (cls ? ' ' + cls : ''); h.textContent = title;
+      var ul = document.createElement('ul'); ul.className = 'chat-out' + (cls ? ' ' + cls : '');
+      items.forEach(function (x) { var li = document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+      line.appendChild(h); line.appendChild(ul);
+    }
+    if (t.status === 'failed') {
+      line.textContent = 'Nothing on the page changed' + (notDone.length ? ': ' + notDone.join(' ') : '.');
+      return;
+    }
+    list('What I changed', done, '');
+    list('What I couldn’t do', notDone, 'is-miss');
+    var row = document.createElement('div'); row.className = 'chat-out-actions';
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-secondary btn-sm chat-undo'; b.textContent = 'Undo';
+    b.title = 'Put the page back to how it was before this change';
+    b.addEventListener('click', function () { undoAiTurn(t); });
+    row.appendChild(b);
+    line.appendChild(row);
+    t.button = b;
+    if (t.status === 'undone') markUndone(t);
+  }
+  /* while a change is being applied the next message waits: two changes at once would overwrite each other */
+  function setAiWorking(on) {
+    aiWorking = !!on;
+    var send = document.getElementById('chat-send'), input = document.getElementById('chat-input');
+    if (send) send.disabled = !!on;
+    if (!input) return;
+    if (!input.hasAttribute('data-placeholder')) input.setAttribute('data-placeholder', input.placeholder || '');
+    input.placeholder = on ? 'Applying your last change — one moment…' : input.getAttribute('data-placeholder');
   }
 
   /* ---------- a section's code, asked of the AI ----------
@@ -4293,22 +4307,71 @@
     return el;
   }
 
-  /* A real back-and-forth, not a one-shot command box: chatHistory carries prior turns (what was asked, what
-     the AI said, and — once known — whether it was applied or discarded) so a follow-up like "make it a bit
-     darker instead" is understood against what was just proposed, and a plain question gets an actual answer
-     instead of being forced through the edit-proposal pipeline. Capped so the prompt doesn't grow without
-     bound over a long session. Entries are objects a proposal card goes on updating as its fate is decided. */
-  var chatHistory = [];
-  var CHAT_HISTORY_MAX = 16;
-  function pushHistory(role, text) {
-    var entry = { role: role, text: text };
-    chatHistory.push(entry);
-    if (chatHistory.length > CHAT_HISTORY_MAX) chatHistory.splice(0, chatHistory.length - CHAT_HISTORY_MAX);
-    return entry;
+  /* A real back-and-forth, not a one-shot command box. The conversation is kept on the server under the person
+     who had it (POST /api/chat-edit stores each turn; GET /api/chat/history reads it back), and the AI's memory is
+     that stored conversation with what really happened after each answer — applied, partly, undone. Only an
+     editor with no event (a template opened on its own) keeps a short memory of its own here. */
+  var localHistory = [];
+  function pushLocal(role, text) {
+    localHistory.push({ role: role, text: text });
+    if (localHistory.length > 16) localHistory.splice(0, localHistory.length - 16);
   }
-
   var CHAT_THINKING_LINES = ['Thinking…', 'Reading the page…', 'Working it out…', 'Almost there…'];
-  var chatTurnCount = 0;
+  /* a sent message's bubble, with what it was about (the section selected) and the pictures sent with it */
+  function drawUserTurn(text, focusName, pictureUrls, pictureCount) {
+    var mine = appendChatMsg('user', text);
+    if (focusName && mine) {
+      var tag = document.createElement('div');
+      tag.className = 'chat-msg-focus';
+      tag.textContent = '↳ ' + focusName;
+      mine.insertBefore(tag, mine.firstChild);
+    }
+    if (mine && pictureUrls && pictureUrls.length) {
+      var strip = document.createElement('div');
+      strip.className = 'chat-sent-pics';
+      pictureUrls.forEach(function (u) { var im = document.createElement('img'); im.src = u; im.alt = 'Attached picture'; strip.appendChild(im); });
+      mine.appendChild(strip);
+    } else if (mine && pictureCount) {
+      var note = document.createElement('div'); note.className = 'chat-msg-focus'; note.textContent = pictureCount + ' picture' + (pictureCount === 1 ? '' : 's') + ' attached';
+      mine.appendChild(note);
+    }
+    return mine;
+  }
+  /* The conversation so far, read back when the editor opens: each turn as it was, with what happened; Undo where
+     this browser still keeps the change's checkpoint. -> Promise<number of turns> */
+  function loadChatHistory() {
+    if (!eventId || !window.RevampAuth) return Promise.resolve(0);
+    return RevampAuth.authedFetch('/api/chat/history?eventId=' + encodeURIComponent(eventId)).then(function (res) {
+      return res.ok ? res.json() : { turns: [] };
+    }).then(function (body) {
+      var turns = (body && body.turns) || [];
+      if (!turns.length) return 0;
+      var head = document.createElement('div'); head.className = 'chat-day'; head.textContent = 'Earlier in this conversation';
+      appendChatNode(head);
+      return turns.reduce(function (chain, h) {
+        return chain.then(function () {
+          drawUserTurn(h.question, h.focus, null, h.pictures);
+          var bubble = appendChatMsg('ai', h.answer);
+          if (h.kind !== 'edit') return;
+          var stateLine = document.createElement('div'); stateLine.className = 'chat-state'; bubble.appendChild(stateLine);
+          var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, stateLine: stateLine };
+          aiTurns.push(t);
+          if (h.status === 'applying') { stateLine.textContent = 'This change was still being applied when the editor was closed.'; return; }
+          drawAiOutcome(t, h.done || [], h.notDone || []);
+          if (t.status === 'undone' || t.status === 'failed') return;
+          /* Undo needs the checkpoint kept in this browser */
+          return localGet(checkpointKey(h.id)).then(function (kept) {
+            if (kept && kept.before) { t.before = kept.before; t.after = kept.after || null; t.formIds = kept.formIds || []; t.pageChanged = kept.pageChanged !== false; return; }
+            if (t.button) { t.button.disabled = true; t.button.title = 'This change was made in another browser or too long ago. Use Undo in the top bar.'; }
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        var line = document.createElement('div'); line.className = 'chat-day'; line.textContent = 'Now';
+        appendChatNode(line);
+        return turns.length;
+      });
+    }).then(null, function () { return 0; });
+  }
 
   function wireChatPanel() {
     var input = document.getElementById('chat-input'), send = document.getElementById('chat-send');
@@ -4316,9 +4379,10 @@
     /* A single edit instruction looks identical whether or not real conversation memory exists behind it —
        that only becomes visible on a follow-up ("now make it darker instead"). Say so up front, so this
        reads as an actual chat from the first message, not a repaint of the old one-shot prompt box. */
-    if (chatHistory.length === 0) {
-      appendChatMsg('ai', 'Hi, I’m ETB2B AI. Ask for any change to this site — wording, colours and fonts, a section’s layout or content, adding, moving, hiding or removing sections — or ask a question about the page. I show you what will change first; nothing happens until you press Apply. I’ll remember what we discuss, so you can follow up with things like "make it a bit darker instead" and I’ll know what "it" means.');
-    }
+    loadChatHistory().then(function (n) {
+      if (n) return;
+      appendChatMsg('ai', 'Hi, I’m ETB2B AI. Tell me what to change — wording, colours and fonts, a section’s layout or content, adding, moving, hiding or removing sections — or ask me anything about the page. I make the change straight away and tell you what I did; every change has an Undo, and nothing goes live until you publish. Our conversation is kept, so you can come back to it, and you can follow up with things like "make it a bit darker" — I’ll know what you mean.');
+    });
     /* What the owner has selected on the page goes with the message, so "make this shorter" needs no
        section named: a chip above the box says what it is ("Selected: Why attend · “Six reasons…”"), and
        its × sends without it until something else is selected. */
@@ -4414,6 +4478,7 @@
     // one request at a time: each is a paid call, and Enter must not start a second while one is running
     var busy = false;
     function go() {
+      if (aiWorking) { showToast('One moment — ETB2B AI is still applying your last change.'); return; }
       if (busy || !canvas || remounting) return;
       var instruction = input.value.trim();
       if (uploading) { showToast('A picture is still uploading — one moment.'); return; }
@@ -4425,19 +4490,7 @@
       var sent = attachments.map(function (a) { return a.url; });
       attachments = []; drawTray();
       var focus = chatFocus();
-      var mine = appendChatMsg('user', instruction);
-      if (focus && mine) {
-        var tag = document.createElement('div');
-        tag.className = 'chat-msg-focus';
-        tag.textContent = '↳ ' + focus.name + (focus.element && focus.element.text ? ' · “' + (focus.element.text.length > 40 ? focus.element.text.slice(0, 39) + '…' : focus.element.text) + '”' : '');
-        mine.insertBefore(tag, mine.firstChild);
-      }
-      if (sent.length && mine) {
-        var strip = document.createElement('div');
-        strip.className = 'chat-sent-pics';
-        sent.forEach(function (u) { var im = document.createElement('img'); im.src = u; im.alt = 'Attached picture'; strip.appendChild(im); });
-        mine.appendChild(strip);
-      }
+      drawUserTurn(instruction, focus ? focus.name + (focus.element && focus.element.text ? ' · “' + (focus.element.text.length > 40 ? focus.element.text.slice(0, 39) + '…' : focus.element.text) + '”' : '') : '', sent);
       var thinking = appendChatMsg('ai', CHAT_THINKING_LINES[0]);
       var lineIdx = 0;
       var thinkingTimer = setInterval(function () {
@@ -4460,9 +4513,11 @@
         // the pictures go back with the words they were sent with
         if (sent.length) { attachments = sent.map(function (u) { return { url: u, name: '' }; }).concat(attachments).slice(0, MAX_ATTACHED); drawTray(); }
       }
-      fetch('/api/chat-edit', {
+      /* signed in, as every other request of the editor (the server keeps the turn under the person who sent it) */
+      var send$ = window.RevampAuth && RevampAuth.authedFetch ? RevampAuth.authedFetch : fetch;
+      send$('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: chatHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
+        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
           // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
           forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [] })
       })
@@ -4484,17 +4539,26 @@
             return;
           }
           settle();
-          pushHistory('user', instruction + (sent.length ? ' [' + sent.length + ' picture' + (sent.length === 1 ? '' : 's') + ' attached]' : ''));
-          chatTurnCount++;
-          if (r.body.kind === 'reply') {
-            appendChatMsg('ai', r.body.summary);
-            pushHistory('assistant', r.body.summary);
+          var body = r.body;
+          if (!eventId) pushLocal('user', instruction + (sent.length ? ' [' + sent.length + ' picture' + (sent.length === 1 ? '' : 's') + ' attached]' : ''));
+          if (body.notKept) appendChatMsg('ai error', 'This message could not be saved to your conversation history; the answer below still stands.');
+          if (body.kind === 'undo') {
+            /* "undo that": the page goes back exactly, at no cost — never a guess at the old look */
+            var last = lastAiTurn();
+            var reply = appendChatMsg('ai', body.summary);
+            if (!last) { reply.textContent = 'There is no change of mine on the page to undo. Undo in the top bar steps back through your own edits.'; return; }
+            undoAiTurn(last).then(function (ok) { if (!ok) reply.textContent = 'I left it as it is.'; });
+            if (!eventId) pushLocal('assistant', body.summary + ' (undone)');
             return;
           }
-          var usable = renderProposal(r.body, pushHistory('assistant', 'Proposed: ' + r.body.summary + ' (awaiting your Apply/Discard)'), sent);
-          /* shown once, after the very first edit, so a user who only ever tries one instruction still
-             discovers the thing that makes this an actual chat rather than a prompt box */
-          if (usable && chatTurnCount === 1) appendChatMsg('ai', 'You can also ask me to adjust this before deciding — e.g. "make it a bit darker instead" — and I’ll understand you mean this change.');
+          if (body.kind === 'reply') {
+            appendChatMsg('ai', body.summary);
+            if (!eventId) pushLocal('assistant', body.summary);
+            return;
+          }
+          runAiTurn(body, body.turnId, sent).then(function (t) {
+            if (!eventId) pushLocal('assistant', body.summary + ' (' + (t && t.status) + ')');
+          });
         });
     }
     send.addEventListener('click', go);

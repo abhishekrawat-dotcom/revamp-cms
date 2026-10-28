@@ -569,13 +569,38 @@ function chatForms(payload) {
   });
 }
 
+/* The conversation so far, as the model reads it: each turn's question, your full answer and what then really
+   happened on the page (applied, partly, undone), oldest first — from the turns stored for this person
+   (chatTurnsFor), else what the browser sent (an editor with no event). */
+var CHAT_MEMORY_TURNS = 12;
+function chatHistoryText(payload) {
+  if (Array.isArray(payload.turns) && payload.turns.length) {
+    return payload.turns.slice(-CHAT_MEMORY_TURNS).map(function (t) {
+      var lines = ['User: ' + String(t.question || '').slice(0, 2000), 'You: ' + String(t.answer || '').slice(0, 1500)];
+      var what = chatOutcomeText(t);
+      if (what) lines.push('[What happened: ' + what + ']');
+      return lines.join('\n');
+    }).join('\n\n');
+  }
+  return (payload.history || []).slice(-16).map(function (h) { return (h.role === 'user' ? 'User: ' : 'You: ') + String(h.text || '').slice(0, 1500); }).join('\n');
+}
+function chatOutcomeText(t) {
+  var done = (t.done || []).join('; '), not = (t.notDone || []).join('; ');
+  if (t.status === 'answered') return '';
+  if (t.status === 'undone') return 'this change was applied and then UNDONE by the owner — the page is as it was before it' + (done ? ' (it had done: ' + done + ')' : '');
+  if (t.status === 'applied') return 'applied: ' + (done || 'as described');
+  if (t.status === 'partly') return 'partly applied: ' + done + (not ? '; not done: ' + not : '');
+  if (t.status === 'failed') return 'nothing could be applied' + (not ? ': ' + not : '') + '; the page is unchanged';
+  if (t.status === 'applying') return 'it was being applied when this conversation was left; its result is not known';
+  return '';
+}
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
-  var history = (payload.history || []).slice(-16);
+  var history = chatHistoryText(payload);
   return [
-    'You are ETB2B AI, a real conversation partner helping someone edit their already-built event microsite for ET Oneworld. You can change ANYTHING on the page the owner asks for — wording, design, the layout or content of any section, the order of sections, hiding, removing or adding sections — through the tools below; nothing is applied until the owner accepts your proposal. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
+    'You are ETB2B AI, a real conversation partner helping someone edit their already-built event microsite for ET Oneworld. You can change ANYTHING on the page the owner asks for — wording, design, the layout or content of any section, the order of sections, hiding, removing or adding sections — through the tools below. What you return is APPLIED TO THE PAGE AT ONCE (the owner can undo it with one click, and nothing goes live until they publish), so do what is asked — no more. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
     '',
-    (history.length ? 'Conversation so far (oldest first):\n' + history.map(function (h) { return (h.role === 'user' ? 'User: ' : 'You: ') + String(h.text || '').slice(0, 400); }).join('\n') + '\n' : ''),
+    (history ? 'Conversation so far (oldest first):\n' + history + '\n' : ''),
     'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
     '',
     chatFocusLine(payload, sections),
@@ -600,8 +625,8 @@ function buildChatPrompt(payload) {
     JSON.stringify(chatForms(payload).map(function (f) { return { formId: f.id, name: f.name, purpose: f.purpose, questions: f.fields }; }), null, 2),
     '',
     'Task:',
-    '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site, "reply" if it\'s a question, small talk, or anything else that doesn\'t call for one — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.',
-    '2. If `kind` is "reply": leave `design` empty and `textEdits` empty, and put a natural, helpful, conversational answer in `summary` — reference the actual sections/design above if relevant, don\'t make things up.',
+    '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site; "undo" if it asks to take back your last change ("undo that", "go back", "revert it", "put it back as it was") — the page then returns exactly to how it was before that change, at no cost, so never re-create the old look yourself; "reply" if it\'s a question, small talk, or anything else that doesn\'t call for a change — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.',
+    '2. If `kind` is "reply" or "undo": leave every change list empty and `design` empty, and put your answer in `summary` — natural, helpful and as long as the question needs (a list of sections is a full list); reference the actual sections/design above, don\'t make things up. A request that is too vague to do well, where reasonable readings would change the site in very different ways ("make it look more premium", "fix the design", "make it pop"), gets ONE short clarifying question as a "reply", offering two or three concrete options to choose from (e.g. "Darker and more spacious, a more classic serif for headings, or gold accents on a deep background?"). A clear request is simply done — don\'t ask for permission.',
     '3. If `kind` is "edit": if it asks for a visual/design change (colour, font, spacing, heading style…), return a partial `design` object — ONLY the fields the instruction actually calls for, using these field names: ' + DESIGN_FIELDS.join(', ') + '. Leave out any field it didn\'t ask to change. A colour field MUST be a hex code ("#1c1c1c") — if it names a colour in words ("orange", "navy blue"), translate it to the closest real hex value yourself; never write the colour word into a colour field, it will be rejected. If it asks to change text, return `textEdits`: an array of {sectionId, find, replace}, where `find` is copied VERBATIM (exact substring, same spelling/punctuation) from that section\'s own text shown above — never invent or paraphrase the original. Never invent facts (dates, numbers, names) that aren\'t already present. A follow-up like "make it bigger instead" that refines a design mentioned earlier in the conversation should produce a fresh, complete replacement for the fields it\'s changing, not an incremental tweak instruction.',
     'A text edit applies to EVERY place that exact `find` text appears in that section. To change a word, a year, a name or a number everywhere (e.g. "change 2026 to 2027"), give `find` as just that word or number and return one edit for each section whose texts contain it — check every section\'s texts, do not stop at the first. `find` must be copied exactly from the texts above.',
     '4. For everything those two cannot do, use the tools that follow — choose the lightest tool that does the job, and combine tools freely:',
@@ -613,7 +638,7 @@ function buildChatPrompt(payload) {
     '   - `ctaLinks`: [{sectionId, buttonText, newButtonLabel, form}] — make a button open a form (an existing formId, or a newForms ref). To link a button that is already there, give its label exactly as listed in that section\'s buttons as `buttonText` (newButtonLabel empty); to add a new button, give `newButtonLabel` (at most 40 characters; buttonText empty). "Add an Express interest button to the hero" means a newForms entry if no such form exists, plus a ctaLinks entry for the hero with newButtonLabel "Express interest". Only when asked.',
     '   - `formEmbeds`: [{form, sectionId, afterSectionId, heading, intro}] — put a form IN the page instead of a pop-up. With `sectionId`, it goes at the end of that section ("embed the Express interest form in the contact section"). With sectionId empty, a new section holding the form is made after `afterSectionId` (empty: just before the footer), with `heading` (at most 80 characters) and a one-line `intro` (at most 300). Only when asked.',
     '   What you still cannot do: make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above); add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves; and take payments, or send confirmation emails or WhatsApp messages — those are not available yet. If the request needs one of these, say so in `summary` and do the rest.',
-    '5. Write `summary` LAST, after deciding the above. For an edit, it must describe ONLY what `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` and `formEmbeds` actually contain, nothing more — the owner sees your summary beside the list of what will change, so any mismatch is a bug.'
+    '5. Write `summary` LAST, after deciding the above. For an edit, it tells the owner in plain, friendly words what you are changing — "I\'m making the buttons green and fully rounded, and tightening the agenda\'s spacing." — the way a designer would say it: no hex codes, CSS terms or pixel values unless the owner used them, and no claim of anything that is not in `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` or `formEmbeds` — the page shows the owner a list of what really changed beside it, so any mismatch is a bug.'
   ].join('\n');
 }
 
@@ -627,7 +652,7 @@ function chatResponseSchema(payload) {
   var schema = {
     type: 'OBJECT',
     properties: {
-      kind: { type: 'STRING', enum: ['edit', 'reply'] },
+      kind: { type: 'STRING', enum: ['edit', 'reply', 'undo'] },
       summary: { type: 'STRING' },
       design: { type: 'OBJECT', properties: designProps },   // no `required` — a partial patch, any subset
       textEdits: {
@@ -710,17 +735,61 @@ function chatPictures(eventId, urls) {
   });
 }
 
-function handleChatEdit(req, res) {
-  readBody(req, res, function (raw) {
-    var payload;
-    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
-    if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
+/* ---------- ETB2B AI, the editor's chat (POST /api/chat-edit, the history routes below) ----------
+   What the AI answers is applied to the page at once and can be undone (editor-template-ui.js); there is no
+   proposal to accept (the owner, 28 Oct 2026). Every exchange is kept, under the person who had it:
+   events/<id>/aiChats/<uid> { uid, email, name, lastAt } and its turns/<turnId> { question, answer, kind,
+   status, done, notDone, focus, pictures, at, updatedAt }. A person sees their own conversation in the editor;
+   each exchange is also a line in the event's History (activity), and the event's approvers can read every
+   conversation (GET /api/chat/history?all=1). The model's memory is the stored conversation, with what really
+   happened after each answer (applied, partly, undone). */
+var CHAT_ANSWER_CHARS = 4000;
+var CHAT_STATUSES = ['answered', 'applying', 'applied', 'partly', 'failed', 'undone'];
+function chatUserRef(fb, eventId, uid) { return eventDocRef(fb, eventId).collection('aiChats').doc(String(uid).replace(/[^A-Za-z0-9_@.-]/g, '_').slice(0, 120)); }
+function chatUid(decoded) { return String((decoded && (decoded.uid || decoded.email)) || 'anon'); }
+function chatName(decoded) { return String((decoded && (decoded.name || decoded.email)) || 'Someone').slice(0, 120); }
+/* this person's turns for the event, oldest first */
+function chatTurnsFor(fb, eventId, uid, limit) {
+  return chatUserRef(fb, eventId, uid).collection('turns').orderBy('at', 'desc').limit(limit || 60).get()
+    .then(function (snap) { return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).reverse(); });
+}
+/* A person's chat turns in a sliding window, held in this server process: a runaway loop or a stuck key cannot
+   spend without bound. Generous for real use (one message every ten seconds, sustained). */
+var CHAT_RATE = { windowMs: 10 * 60 * 1000, max: 60 }, chatRecent = {};
+function chatRateOk(uid, now) {
+  now = now || Date.now();
+  var list = (chatRecent[uid] || []).filter(function (t) { return now - t < CHAT_RATE.windowMs; });
+  if (list.length >= CHAT_RATE.max) { chatRecent[uid] = list; return false; }
+  list.push(now);
+  chatRecent[uid] = list;
+  return true;
+}
+function chatLine(text, max) { return String(text || '').replace(/\s+/g, ' ').trim().slice(0, max || 120); }
 
-    chatPictures(payload.eventId, payload.attachments).then(function (seen) {
+function handleChatEdit(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.ai, function (fb, decoded, payload) {
+    if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
+    var eventId = isEventId(String(payload.eventId || '')) ? String(payload.eventId) : '';
+    var uid = chatUid(decoded);
+    if (!chatRateOk(uid)) return sendJson(res, 429, { error: 'That is a lot of messages in a short time. Please wait a few minutes and try again.', code: 'chat-rate', retryable: true });
+    var userRef = eventId ? chatUserRef(fb, eventId, uid) : null;
+
+    /* the event must exist (its usage and its conversation are kept with it), and the conversation so far is read */
+    var ready = !eventId ? Promise.resolve(null) : eventDocRef(fb, eventId).get().then(function (snap) {
+      if (!snap.exists) throw httpError(404, 'This event does not exist.', { code: 'no-event' });
+      return chatTurnsFor(fb, eventId, uid, CHAT_MEMORY_TURNS).catch(function (err) {
+        console.error('chat-edit: the conversation of ' + eventId + ' could not be read — ' + (err && err.message));
+        return [];
+      });
+    });
+    ready.then(function (turns) {
+      if (turns && turns.length) payload.turns = turns;
+      return chatPictures(eventId, payload.attachments);
+    }).then(function (seen) {
       payload.seenPictures = seen.images.length;
       payload.seenNumbers = seen.numbers;
       payload.unseenNote = seen.skipped.length ? seen.skipped.join(' ') + ' Tell the owner so if it matters for the answer.' : '';
-      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: isEventId(String(payload.eventId || '')) ? payload.eventId : '', maxOutputTokens: AI_OUTPUT_TOKENS.small, images: seen.images.length ? seen.images : undefined, onUsage: aiUsageRecorder(null, payload.eventId, 'chat-edit') });
+      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: seen.images.length ? seen.images : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
     }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
@@ -776,17 +845,99 @@ function handleChatEdit(req, res) {
       var formOps = formsLib.cleanAiFormOps(parsed, { sections: payload.sections || [], forms: chatForms(payload) });
       skipped = skipped.concat(formOps.skipped);
 
-      var summary = String(parsed.summary || '').slice(0, 400);
-      if (!summary && !Object.keys(design).length && !textEdits.length && !sectionEdits.length && !sectionOps.length && !newSections.length &&
-          !formOps.newForms.length && !formOps.ctaLinks.length && !formOps.formEmbeds.length) {
+      var summary = String(parsed.summary || '').trim().slice(0, CHAT_ANSWER_CHARS);
+      var hasChange = Object.keys(design).length || textEdits.length || sectionEdits.length || sectionOps.length || newSections.length ||
+        formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length;
+      if (!summary && !hasChange) {
         return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
       }
-      var kind = parsed.kind === 'reply' ? 'reply' : 'edit';
-      sendJson(res, 200, { kind: kind, summary: summary || 'A change is ready to review.', design: design, textEdits: textEdits,
+      var kind = parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
+      var answer = { kind: kind, summary: summary || 'Done.', design: design, textEdits: textEdits,
         sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections,
-        newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped });
-    }).catch(function (err) { sendStepFailure(res, err, 500, 'The chat could not answer. Please try again.'); });
-  }, BODY_LIMITS.ai);
+        newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped };
+      if (kind !== 'edit') ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].forEach(function (k) { answer[k] = []; });
+      if (kind !== 'edit') answer.design = {};
+      if (!userRef) return sendJson(res, 200, answer);
+      /* kept under the person who asked: a reply is finished; a change is "applying" until the editor says how it went */
+      var now = new Date().toISOString(), turnRef = userRef.collection('turns').doc();
+      var focus = payload.focus && typeof payload.focus === 'object' ? chatLine(payload.focus.name, 80) : '';
+      var turn = { question: String(payload.instruction).trim().slice(0, 4000), answer: answer.summary, kind: kind,
+        status: kind === 'edit' ? 'applying' : 'answered', done: [], notDone: [], focus: focus,
+        pictures: Math.max(0, Math.min(6, (payload.attachments || []).length || 0)), at: now, updatedAt: now };
+      return Promise.all([
+        userRef.set({ uid: uid, email: String(decoded.email || ''), name: chatName(decoded), lastAt: now }, { merge: true }),
+        turnRef.set(turn)
+      ]).then(function () {
+        answer.turnId = turnRef.id;
+        sendJson(res, 200, answer);
+        if (kind !== 'edit') logActivity(fb, eventId, decoded, 'ai-chat', 'Asked ETB2B AI: “' + chatLine(turn.question) + '”' + (kind === 'undo' ? ' — undo' : ' — answered'), { area: 'site' });
+      }, function (err) {
+        /* the answer is not withheld because it could not be kept: the owner is told the conversation was not saved */
+        console.error('chat-edit: the turn of ' + eventId + ' was not kept — ' + (err && err.message));
+        answer.notKept = true;
+        sendJson(res, 200, answer);
+      });
+    }).catch(function (err) { sendStepFailure(res, err, err && err.status === 404 ? 404 : 500, 'The chat could not answer. Please try again.'); });
+  });
+}
+
+/* POST /api/chat/turn { eventId, turnId, status, done: [..], notDone: [..] } — what really happened to a change
+   the AI answered with: applied, partly, failed, or undone later. Only the person whose turn it is reports it. */
+function handleChatTurn(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.small, function (fb, decoded, body) {
+    var eventId = String(body.eventId || '').trim(), turnId = String(body.turnId || '').trim();
+    if (!isEventId(eventId) || !/^[A-Za-z0-9]{10,40}$/.test(turnId)) return sendJson(res, 400, { error: 'eventId and turnId are required.' });
+    var status = CHAT_STATUSES.indexOf(body.status) !== -1 && body.status !== 'answered' && body.status !== 'applying' ? body.status : '';
+    if (!status) return sendJson(res, 400, { error: 'status must be applied, partly, failed or undone.' });
+    function lines(v) { return (Array.isArray(v) ? v : []).map(function (x) { return chatLine(x, 300); }).filter(Boolean).slice(0, 30); }
+    var ref = chatUserRef(fb, eventId, chatUid(decoded)).collection('turns').doc(turnId);
+    ref.get().then(function (snap) {
+      if (!snap.exists) return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
+      var was = snap.data(), patch = { status: status, updatedAt: new Date().toISOString() };
+      if (status !== 'undone') { patch.done = lines(body.done); patch.notDone = lines(body.notDone); }
+      return ref.update(patch).then(function () {
+        sendJson(res, 200, { turnId: turnId, status: status });
+        if (was.status === status) return;
+        var q = '“' + chatLine(was.question) + '”';
+        var detail = status === 'undone' ? 'Undid an ETB2B AI change: ' + q
+          : status === 'failed' ? 'ETB2B AI could not apply: ' + q
+          : 'ETB2B AI changed the site: ' + q + (patch.done.length ? ' — ' + chatLine(patch.done.join('; '), 140) : '');
+        logActivity(fb, eventId, decoded, 'ai-chat', detail, { area: 'site' });
+      });
+    }).catch(function (err) { sendFailure(res, 'chat turn', err, 'That could not be recorded. Please try again.'); });
+  });
+}
+
+/* GET /api/chat/history?eventId=…  -> { turns: [..] } this person's conversation, oldest first.
+   &all=1 -> { people: [{ uid, email, name, turns }] } every conversation of the event, for its approvers
+   (config/approvals; with none named, nobody reads other people's conversations here — the History has a line
+   for each exchange). */
+function handleChatHistory(req, res) {
+  withAdmin(req, res, function (fb, decoded) {
+    var q = queryOf(req), eventId = String(q.get('eventId') || '').trim();
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'eventId is required.' });
+    function shape(t) { return { id: t.id, question: t.question, answer: t.answer, kind: t.kind, status: t.status, done: t.done || [], notDone: t.notDone || [], focus: t.focus || '', pictures: t.pictures || 0, at: t.at }; }
+    if (q.get('all') !== '1') {
+      return chatTurnsFor(fb, eventId, chatUid(decoded), 60).then(function (turns) { sendJson(res, 200, { turns: turns.map(shape) }); })
+        .catch(function (err) { sendFailure(res, 'chat history', err, 'The conversation could not be loaded.'); });
+    }
+    approvalsConfig(fb).then(function (cfg) {
+      var me = String(decoded.email || '').toLowerCase();
+      if (!cfg.approvers.length || cfg.approvers.indexOf(me) === -1) return sendJson(res, 403, { error: 'Only the event approvers can read everyone\'s conversations.', code: 'not-approver' });
+      return eventDocRef(fb, eventId).collection('aiChats').get().then(function (snap) {
+        return Promise.all(snap.docs.map(function (d) {
+          var who = d.data() || {};
+          return d.ref.collection('turns').orderBy('at', 'desc').limit(200).get().then(function (ts) {
+            return { uid: who.uid || d.id, email: who.email || '', name: who.name || who.email || d.id, lastAt: who.lastAt || '',
+              turns: ts.docs.map(function (x) { return shape(Object.assign({ id: x.id }, x.data())); }).reverse() };
+          });
+        }));
+      }).then(function (people) {
+        people.sort(function (a, b) { return String(b.lastAt).localeCompare(String(a.lastAt)); });
+        sendJson(res, 200, { people: people });
+      });
+    }).catch(function (err) { sendFailure(res, 'chat history', err, 'The conversations could not be loaded.'); });
+  });
 }
 
 /* ---------- POST /api/extract-brief — AI site-generation pipeline, step 1 ----------
@@ -9539,6 +9690,8 @@ var promoMailer = function (handler) {
 var ROUTES = {
   'POST /api/suggest-design': handleSuggestDesign,
   'POST /api/chat-edit': handleChatEdit,
+  'POST /api/chat/turn': handleChatTurn,
+  'GET /api/chat/history': handleChatHistory,
   'POST /api/extract-brief': handleExtractBrief,
   'POST /api/ingest-source': handleIngestSource,
   'GET /api/et/portals': handleEtPortals,
@@ -9687,7 +9840,7 @@ module.exports._testHooks = {
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
