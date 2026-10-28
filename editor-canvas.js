@@ -1040,8 +1040,10 @@
       if (!fresh) return null;
       fresh = doc.importNode(fresh, true);
       Array.prototype.forEach.call(sec.attributes, function (a) {
-        if (a.name === 'id' || /^data-sec-/.test(a.name) || /^data-rv-(section|key)$/.test(a.name)) fresh.setAttribute(a.name, a.value);
+        if (a.name === 'id' || /^data-sec-/.test(a.name) || /^data-rv-(section|key|page)$/.test(a.name)) fresh.setAttribute(a.name, a.value);
       });
+      // a section redesigned stays on the page it was on (templates/_shared/rv-pages.js)
+      if (!sec.hasAttribute('data-rv-page')) fresh.removeAttribute('data-rv-page');
       if (sec.classList.contains('is-hidden-sec')) fresh.classList.add('is-hidden-sec');
       var type = sec.getAttribute('data-rv-section');
       var st = doc.querySelector('style[data-rv-style="' + type.replace(/["\\]/g, '\\$&') + '"]');
@@ -1123,10 +1125,21 @@
       else placeAfter(nodes, sectionsOf(doc).filter(function (s) { return s !== sec; }).pop());
       return true;
     }
+    /* A site with internal pages (templates/_shared/rv-pages.js): a new section is on the page the canvas shows
+       (<html data-rv-current-page>, set by editor-template-ui.js) — data-rv-page="<slug>", or none for the home
+       page. One on every page (data-rv-page="*": the top bar, the footer) stays so. A one-page site: untouched. */
+    function onShownPage(el) {
+      if (!doc.querySelector('meta[name="rv-pages"], script#rv-pages')) return;
+      if (el.getAttribute('data-rv-page') === '*') return;
+      var shown = doc.documentElement.getAttribute('data-rv-current-page');
+      if (shown && shown !== 'home') el.setAttribute('data-rv-page', shown);
+      else el.removeAttribute('data-rv-page');
+    }
     /* A new section goes after afterSec, pulled inside the stretch between the pinned sections: never above what
        opens the page or below what closes it. One that is itself the template's pinned section (the banner put
        back after it was deleted) returns to its end of the page, next to its neighbour in the template's order. */
     function insertSection(el, afterSec) {
+      onShownPage(el);
       var secs = sectionsOf(doc).filter(function (s) { return s !== el; });
       var type = el.getAttribute('data-rv-section');
       var own = sectionByKey(type);
@@ -1190,6 +1203,9 @@
       /* the section edges are the site's setting (designPlan.design.sectionEdges), written onto the page when it is
          previewed and published — the canvas only shows them */
       root.removeAttribute('data-rv-edges');
+      /* which of the site's internal pages the canvas shows (editor-template-ui.js's page switcher): the editor's view,
+         not the site's — its rule goes with the other [data-rv-editor] nodes just below */
+      root.removeAttribute('data-rv-current-page');
       // hidden (and not-yet-live scheduled) sections aren't on the published page
       root.querySelectorAll('[data-rv-section].is-hidden-sec').forEach(function (sec) {
         copiedStyles(root, sec).forEach(function (s) { s.remove(); });

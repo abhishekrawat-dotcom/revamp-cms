@@ -247,6 +247,7 @@ const { safeFetch } = require('./safe-fetch');
 /* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
 const siteA11y = require('./site-a11y');
 const siteSeo = require('./site-seo');
+const sitePages = require('./site-pages');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
    one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
@@ -5304,6 +5305,7 @@ function handleGeneratedTemplate(req, res) {
     var byId = {};
     generatedSections.forEach(function (s) { if (s && s.id) byId[s.id] = s; });
     var orderedIds = generatedPageIds(designPlan, generatedSections);
+    var sitePageList = sitePages.cleanPages(designPlan.pages);
 
     var template = {
       id: 'gen-' + eventId,
@@ -5350,9 +5352,19 @@ function handleGeneratedTemplate(req, res) {
       sections: orderedIds.filter(function (id) { return byId[id]; }).map(function (id) {
         var planned = designPlan.sections.filter(function (x) { return x.id === id; })[0];
         var label = (planned && planned.name) || (id === 'nav' ? 'Top bar' : id.replace(/-/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }));
-        return { id: id, name: label, etId: null, script: false };
+        var section = { id: id, name: label, etId: null, script: false };
+        /* internal pages (site-pages.js): the top bar and the footer are on every page; a planned section on the page
+           its plan names (designPlan.sections[].page); the rest — the hero first — on the home page */
+        if (sitePageList.length) {
+          var onPage = id === 'nav' || id === 'footer' ? '*' : planned && typeof planned.page === 'string' ? planned.page : '';
+          if (onPage === '*' || onPage === sitePages.HOME || sitePageList.some(function (p) { return p.slug === onPage; })) section.page = onPage;
+        }
+        return section;
       })
     };
+    /* a site with internal pages: designPlan.pages [{ slug, title, description? }] (template-loader.js writes the
+       list into the page's <head>) */
+    if (sitePageList.length) template.pages = sitePageList;
     /* accessibility: the reading colours of this palette (a brand-coloured button's ground and words, the brand colour as
        text, quiet text that reads on the panels too) — rv-theme.js derivedVars; a theme's own come with varsOf */
     Object.assign(template.body.style, rvTheme.derivedVars({ theme: design.themeColor, accent: design.accentColor,
@@ -7864,10 +7876,12 @@ function rewriteOrigins(html, origins) {
    into any page its user edits — two already-published pages carry it. */
 var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown',
   'data-date-format', 'data-ed', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-editing',
-  'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded', 'data-rv-edge-host'];
+  'data-rv-editor-mode', 'data-gr-ext-installed', 'data-new-gr-c-s-check-loaded', 'data-rv-edge-host',
+  /* which of a site's pages is shown (rv-pages.js): written as the page is served (sitePages.selectPage), never stored */
+  'data-rv-current-page'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
-var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend|rv-award-cta)\.js|editor-fill\.js)$/;
+var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend|rv-award-cta|rv-pages)\.js|editor-fill\.js)$/;
 /* The forms runtime (templates/_shared/rv-forms.js: a button's form in a pop-up, a form placed in the page,
    validation and sending). Its address carries lib/forms.js FORMS_RUNTIME_V, bumped whenever the file
    changes: static files are cached for five minutes under an unhashed name. */
@@ -8115,6 +8129,8 @@ function publishTransform(html, opts) {
     if (tk.t === 'close' && tk.name === 'body') bodyClose = i;
   }
   var inHead = function (idx) { return headOpen !== -1 && idx > headOpen && (headClose === -1 ? (bodyOpen === -1 || idx < bodyOpen) : idx < headClose); };
+  /* a site with internal pages (site-pages.js, templates/_shared/rv-pages.js): its page list; [] for a one-page site */
+  var sitePageList = sitePages._pagesFromTokens(html, tokens, TOKEN_KIT);
 
   /* Removes the element starting at tokens[idx]; returns the index of its last token, or idx when its
      end could not be found (nothing removed). `ours` also takes the one newline we wrote after it. */
@@ -8257,6 +8273,9 @@ function publishTransform(html, opts) {
   if (/^(https?:\/\/[^\s"'<>]+|\/(?!\/)[^\s"'<>]*)$/i.test(logo)) head.push('<link rel="icon" href="' + escHtmlAttr(logo) + '" data-rv-head>');
   else head.push('<link rel="icon" type="image/svg+xml" href="' + SITE_FAVICON + '" data-rv-head>');
   head.push('<link rel="stylesheet" href="/templates/_shared/rv-live.css" data-rv-runtime>');
+  /* internal pages: the rule that shows the page <html data-rv-current-page> names, in <head> so that the right page
+     shows at once and with no script (the address of each page sets it: sitePages.selectPage) */
+  if (sitePageList.length) head.push('<style id="rv-pages-css" data-rv-runtime>' + sitePages.pagesCss(sitePageList).replace(/\n$/, '') + '</style>');
 
   /* ---- 4. the live-site runtime and its config, exactly once ---- */
   var contentMap = contentMapFor(opts.templateId);
@@ -8268,6 +8287,8 @@ function publishTransform(html, opts) {
   if (opts.forms) tail.push('<script id="rv-forms" type="application/json" data-rv-runtime>' + scriptJson(opts.forms) + '</script>');
   if (contentMap) tail.push('<script src="/editor-fill.js" data-rv-runtime></script>');
   tail.push('<script src="/templates/_shared/rv-data.js" data-rv-runtime></script>');
+  /* internal pages: page links, changing page in place (templates/_shared/rv-pages.js) — only on a site that has them */
+  if (sitePageList.length) tail.push('<script src="/templates/_shared/rv-pages.js" data-rv-runtime></script>');
   /* a speaker's profile and a gallery's photos, in a pop-up — on the visitor's page only, never in the editor */
   tail.push('<script src="/templates/_shared/rv-popups.js" data-rv-runtime></script>');
   /* an award site's lifecycle buttons: their words and what they open, by the award's dates (before the forms
@@ -8325,7 +8346,10 @@ function publishTransform(html, opts) {
   if (opts.pictures) page = pictures.rewriteHtml(page, opts.pictures);
   /* ---- 8. accessibility and search (site-a11y.js pagePass): zoom, readable colours on an AI-designed site,
      alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
-  return siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
+  page = siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
+  /* ---- 9. internal pages: each page link's address, so the pages work with no script ---- */
+  if (sitePageList.length && opts.eventId) page = sitePages.setPageLinks(page, mode === 'live' ? publicPathOf(opts.eventId) : '/preview/' + opts.eventId, TOKEN_KIT);
+  return page;
 }
 /* the tokenizer above, for site-a11y.js's page pass */
 var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrValue, classListOf: classListOf, writeTag: writeTag,
@@ -8374,7 +8398,7 @@ function handleEventPublish(req, res) {
       return httpError(409, 'This site has not been saved yet. Open the site editor, make sure it says "Saved", then publish.', { code: 'site-not-saved' });
     }).then(function (data) {
       var undo = [];                                            // what to put back if a later step fails
-      var previousSite = data.site || {}, changes = {};
+      var previousSite = data.site || {}, changes = {}, livePages = null;
       var version = siteVersionOf(data), page;
 
       if (legacyHtml) {
@@ -8404,6 +8428,7 @@ function handleEventPublish(req, res) {
           eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
           templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
         });
+        livePages = publishedPagesOf(live);
         return readObject(fb, livePath).then(function (before) {
           undo.push(function () { return restoreObject(fb, livePath, before, HTML); });
           return saveObject(fb, livePath, live, HTML);
@@ -8411,7 +8436,7 @@ function handleEventPublish(req, res) {
       }).then(function () {
         return commitSiteLock(fb, eventId, token, Object.assign(changes, {
           published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
-          publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now
+          publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages
         }));
       }).then(function () {
         forgetCachedPage(eventId);
@@ -8589,10 +8614,17 @@ function handleApprovalGet(req, res) {
   });
 }
 
+/* The internal pages of a page going live, recorded on the event (publishedPages) for the sitemap: [{ slug, title }],
+   or a delete of the field for a one-page site (most of them: nothing is written that was not there). */
+function publishedPagesOf(html) {
+  var list = sitePages.readPages(html, TOKEN_KIT).map(function (p) { return { slug: p.slug, title: p.title }; });
+  return list.length ? list : fieldDelete();
+}
+
 /* Makes one kept version the live page. The caller has decided that it may. */
 function publishVersion(fb, req, eventId, version, actor, origin, extra) {
   var HTML = 'text/html; charset=utf-8', token = crypto.randomBytes(12).toString('hex'), now = new Date().toISOString();
-  var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null;
+  var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null, livePages = null;
   return acquireSiteLock(fb, eventId, token, null).then(function (data) {
     var text = readObject(fb, versionPath(eventId, version)).then(function (text) {
       if (text != null) return text;
@@ -8605,6 +8637,7 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra) {
         eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
         templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
       });
+      livePages = publishedPagesOf(live);
       return readObject(fb, livePath).then(function (before) {
         undo = function () { return restoreObject(fb, livePath, before, HTML); };
         return saveObject(fb, livePath, live, HTML);
@@ -8612,7 +8645,7 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra) {
     }).then(function () {
       return commitSiteLock(fb, eventId, token, Object.assign({
         published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
-        publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now
+        publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages
       }, extra || {}));
     }).then(function () {
       forgetCachedPage(eventId);
@@ -8952,9 +8985,15 @@ function liveEventSnap(fb, eventId) {
   return p;
 }
 
+/* The document with one of its internal pages selected (site-pages.js): { html, found, page, pages } */
+function selectSitePage(html, slug) { return sitePages.selectPage(html, slug, TOKEN_KIT); }
+
 /* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
-   anything else is the same plain 404, which gives nothing away about what exists. */
-function handlePublicPage(req, res, eventId) {
+   anything else is the same plain 404, which gives nothing away about what exists.
+   GET /e/<eventId>/<slug> — one of its internal pages: the same published document with that page selected
+   (selectSitePage), cached under its own key next to the home page's; a slug the document has no page for is
+   the same 404. */
+function handlePublicPage(req, res, eventId, slug) {
   var fb = getFirebase();
   if (fb.error) {
     console.error('api: /e/' + eventId + ' — ' + fb.error);
@@ -8965,8 +9004,19 @@ function handlePublicPage(req, res, eventId) {
     var data = snap.data();
     /* the banner video is put on the page as it is served (applyHeroVideo): a change to it is a new page */
     var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '') + '|' + heroVideoStamp(data);
+    var slugKey = slug ? key + '|page:' + slug : '';
+    /* the page as served: the document itself, or one of its internal pages selected on it */
+    function send(entry) {
+      if (!slug) return sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+      var chosen = selectSitePage(entry.source, slug);
+      if (!chosen.found) return sendNotAvailable(req, res);
+      var own = cachePage(slugKey, chosen.html);
+      sendHtml(req, res, 200, own.html, LIVE_PAGE_CACHE_CONTROL, own.packed);
+    }
+    var hitPage = slugKey ? cachedPage(slugKey) : null;
+    if (hitPage) return sendHtml(req, res, 200, hitPage.html, LIVE_PAGE_CACHE_CONTROL, hitPage.packed);
     var hit = cachedPage(key);
-    if (hit) return sendHtml(req, res, 200, hit.html, LIVE_PAGE_CACHE_CONTROL, hit.packed);
+    if (hit) return send(hit);
     return readObject(fb, publishedObjectPath(eventId)).then(function (html) {
       if (html == null) return sendNotAvailable(req, res);
       /* A page with no publishedVersion was published by the previous version of this file: the editor's
@@ -8981,8 +9031,7 @@ function handlePublicPage(req, res, eventId) {
             publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
           });
           return withHeroVideo(fb, html, data).then(function (page) {
-            var entry = cachePage(key, page);
-            sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+            send(cachePage(key, page));
           });
         });
       }
@@ -8997,8 +9046,7 @@ function handlePublicPage(req, res, eventId) {
         page = siteA11y.pagePass(page, { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId }, TOKEN_KIT);
         return withHeroVideo(fb, page, data);
       }).then(function (page) {
-        var entry = cachePage(key, page);
-        sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
+        send(cachePage(key, page));
       });
     });
   }).catch(function (err) {
@@ -9054,7 +9102,7 @@ function ownDraftOrSaved(fb, eventId, user) {
   });
 }
 
-function handlePreviewPage(req, res, eventId) {
+function handlePreviewPage(req, res, eventId, slug) {
   /* who is asking and the event document are read at the same time (they were one after the other);
      nothing about the event is sent before the sign-in has been checked */
   var fb = getFirebase();
@@ -9098,6 +9146,12 @@ function handlePreviewPage(req, res, eventId) {
             templateId: (data.site && data.site.templateId) || data.templateId
           }), data);
         }).then(function (page) {
+          /* /preview/<id>/<slug>: one of the site's internal pages (site-pages.js) */
+          if (slug) {
+            var chosen = selectSitePage(page, slug);
+            if (!chosen.found) return sendHtml(req, res, 404, messagePage('This page is not part of the site', 'The site has no page at this address. It may have been renamed or removed.'), 'no-store');
+            page = chosen.html;
+          }
           sendHtml(req, res, 200, deliverPage(page), 'no-store');
         });
       });
@@ -9110,7 +9164,7 @@ function handlePreviewPage(req, res, eventId) {
 
 /* =====================================================================================================
    GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
-   published event's /e/<id> at the address this server is reached at (PUBLIC_BASE_URL when set), except one
+   published event's /e/<id> (and /e/<id>/<slug> for each of its internal pages, event.publishedPages) at the address this server is reached at (PUBLIC_BASE_URL when set), except one
    whose owner gave it a canonical address elsewhere (that address is the one to list, and it is not ours).
    Built at most every 10 minutes per instance; a failure to read the events is a 503, never an empty list
    a crawler would believe.
@@ -9135,7 +9189,7 @@ function handleSitemapXml(req, res) {
   }
   var fb = getFirebase();
   if (fb.error) return sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
-  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'settings').get().then(function (snap) {
+  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'settings', 'publishedPages').get().then(function (snap) {
     var entries = [];
     snap.docs.forEach(function (d) {
       var e = d.data() || {};
@@ -9143,7 +9197,12 @@ function handleSitemapXml(req, res) {
       /* the QA harness's short-lived test copies (always "qa-…", deleted after each run) are no site to list */
       if (/^qa-/.test(d.id)) return;
       if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return;
-      entries.push({ loc: base + publicPathOf(d.id), lastmod: typeof e.publishedAt === 'string' ? e.publishedAt : '' });
+      var lastmod = typeof e.publishedAt === 'string' ? e.publishedAt : '';
+      entries.push({ loc: base + publicPathOf(d.id), lastmod: lastmod });
+      /* its internal pages, as the publish recorded them (publishedPagesOf) */
+      (Array.isArray(e.publishedPages) ? e.publishedPages : []).forEach(function (p) {
+        if (p && typeof p.slug === 'string' && sitePages.SLUG_RE.test(p.slug) && p.slug !== sitePages.HOME) entries.push({ loc: base + publicPathOf(d.id) + '/' + p.slug, lastmod: lastmod });
+      });
     });
     entries.sort(function (a, b) { return a.loc < b.loc ? -1 : a.loc > b.loc ? 1 : 0; });
     sitemapCache = { at: Date.now(), base: base, xml: siteSeo.sitemapXml(entries) };
@@ -9332,13 +9391,14 @@ function isPublicApiPath(urlPath) {
 function routeApi(req, res) {
   var urlPath = String(req.url || '').split('?')[0];
 
-  var page = /^\/(e|preview)\/([^\/]*)\/?$/.exec(urlPath);
+  /* /e/<id> and /preview/<id>, and a site's internal pages: /e/<id>/<slug>, /preview/<id>/<slug> (site-pages.js) */
+  var page = /^\/(e|preview)\/([^\/]*)(?:\/([^\/]+))?\/?$/.exec(urlPath);
   if (page || /^\/(e|preview)\//.test(urlPath)) {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
-    var eventId = '';
-    if (page) { try { eventId = decodeURIComponent(page[2]); } catch (e) { eventId = ''; } }
-    if (!page || !isEventId(eventId)) return sendNotAvailable(req, res);
-    return page[1] === 'e' ? handlePublicPage(req, res, eventId) : handlePreviewPage(req, res, eventId);
+    var eventId = '', slug = '';
+    if (page) { try { eventId = decodeURIComponent(page[2]); slug = page[3] ? decodeURIComponent(page[3]) : ''; } catch (e) { eventId = ''; } }
+    if (!page || !isEventId(eventId) || (slug && !sitePages.SLUG_RE.test(slug))) return sendNotAvailable(req, res);
+    return page[1] === 'e' ? handlePublicPage(req, res, eventId, slug) : handlePreviewPage(req, res, eventId, slug);
   }
 
   if (urlPath === '/robots.txt' || urlPath === '/sitemap.xml') {
@@ -9378,6 +9438,7 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
+  TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
 };

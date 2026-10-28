@@ -313,6 +313,9 @@
       var d = ifr.contentDocument;
       if (d && d.body && d.readyState !== 'loading') show();
     }, 2500);
+    /* a site with internal pages: the page the canvas shows (templates/_shared/rv-pages.js reads it) */
+    var page = UI.currentPage ? UI.currentPage() : 'home';
+    if (page && page !== 'home' && /^[a-z0-9-]{1,40}$/.test(page)) html = String(html).replace(/<html\b/i, '<html data-rv-current-page="' + page + '"');
     ifr.srcdoc = html;
   }
 
@@ -360,6 +363,11 @@
       pick(keyOf(sec), e.clientY);
     }, true);
     doc.addEventListener('auxclick', function (e) { guard(e, true); }, true);
+    /* a page link followed in the live view (rv-pages.js changes page in place there): the canvas follows */
+    doc.addEventListener('rv:pagechange', function (e) {
+      var page = e.detail && e.detail.page;
+      if (page && UI.showPage && UI.currentPage && UI.currentPage() !== page) UI.showPage(page);
+    });
     /* Last of all, every link the site's own code has not dealt with is stopped: one to another page would take
        the live view away, and the browser must not follow even "#name" itself — the live view's address is
        about:srcdoc, whose links resolve against the editor's own address, so it would load the whole editor
