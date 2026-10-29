@@ -1,5 +1,6 @@
-/* Oneworld's few rules for the promotional platform's mailer studio, framed in Promotions → Mailers
-   (promo-mailer-studio.html). The platform's own stylesheet is promo-studio/mailer-studio.css, unchanged. */
+/* Oneworld's rules for the promotional platform's mailer studio, framed in Promotions → Mailers
+   (promo-mailer-studio.html): the few the frame needs, then Oneworld's look (below). The platform's own stylesheet
+   is promo-studio/mailer-studio.css, unchanged. */
 #app{display:flex}
 body.ow-embed .content{padding:22px 26px 48px}
 /* the platform's Dashboard / Events nav sat in its top bar, which this framed page has none of: it gets its own
@@ -15,3 +16,170 @@ body.ow-embed .content{padding:22px 26px 48px}
 .an-grid{grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))!important}
 /* tracking is not set up for this event, so the choice would do nothing */
 body.ow-notrack .ml-props .fld:has(> select[onchange^="MD.doc.trackLinks"]){display:none}
+
+/* ============ Oneworld's look ============
+   The platform's studio has its own look: cool greys, an indigo accent, a near-black main button. Inside Oneworld it
+   wears the event console's (edit-event.css): its warm neutrals, the ET red, Inter, its corners and shadows, light or
+   dark as the page around it is (promo-studio/oneworld-theme.js sets data-theme on <html> before anything paints, and
+   always sets it, so no system-preference rule is needed here). Only the look changes: no rule below sets a layout, a
+   size or a spacing. The platform's tokens get Oneworld's values first; the rules after them are the places where the
+   platform wrote a colour in directly (a white panel, white words on its button colour, its chart colours), which
+   would otherwise stay as they were, or stay white in the dark theme. The mail is never touched: its preview is its
+   own document (a sandboxed frame this stylesheet cannot reach) and the files a sender downloads are built on the
+   server. Words on a tint, a chip, a selected control or a disabled one pass WCAG AA in both themes. */
+:root{
+  --bg:#FAF7F6; --panel:#FFFFFF; --panel2:#F3EEED; --panel3:#FAF7F6;
+  --line:#E0D7D5; --line2:#E9E2E0; --line3:#E0D7D5;
+  --ink:#241B1A; --ink2:#4A3F3D; --soft:#756865; --faint:#A0908C;
+  /* the main button is the console's: ET red, its darker red on hover */
+  --solid:#ED1C24; --solid-h:#B3151B; --solid-line:#ED1C24;
+  --bg-veil:rgba(250,247,246,.72);
+  --accent:#ED1C24; --accent-soft:#FBDBDC; --accent-soft-h:#F8CACC; --accent-ink:#FFFFFF;
+  --accent-ring:rgba(237,28,36,.5); --accent-ring-soft:rgba(237,28,36,.1);
+  /* the console's green is 3.4:1 on its own tint; the studio only writes words with it, so it is a shade darker */
+  --ok:#23744A; --ok-soft:#DFEEE1; --bad:#B3151B; --bad-soft:#FBDBDC; --gold:#9C6B14;
+  --r:13px; --r-sm:8px; --r-lg:15px;
+  --sh-sm:0 1px 2px rgba(30,26,10,.08);
+  --sh:0 12px 28px -10px rgba(30,26,10,.28);
+  --sh-lg:0 28px 60px -24px rgba(30,26,10,.38);
+  --font-body:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  --font-display:var(--font-body);
+  --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  /* the dashboard's two series: opens in the ET red, clicks in the console's blue (told apart by hue and by
+     lightness, so also for colour-blind readers; each also has its legend and its own end label) */
+  --s-open:#ED1C24; --s-click:#2F6FB0; --grid:#EDE7E5; --axis:#CFC4C1;
+  /* Oneworld's own. Inside the open studio the platform sets --accent and --accent-soft to the mail's own accent
+     after each render (mlApplyPalette), so its outlines and tints match the mail being edited; these stay
+     Oneworld's there too: the ET red of a hovered button's edge, red words (the console's --accent-strong; plain
+     --accent is 4.4:1 on white), the red tint of a chosen tab, the console's neutral focus ring, and the warning
+     and error edges */
+  --ow-accent:#ED1C24; --ow-accent-text:#B3151B; --ow-accent-soft:#FBDBDC; --ow-ring:#E9E2E0;
+  --ow-warn-soft:#F3E7C8; --ow-warn-line:#E6CF95; --ow-bad-line:#F4BFC1;
+  --ow-scrim:rgba(20,14,13,.55);
+}
+:root[data-theme="dark"]{
+  --bg:#171514; --panel:#201C1B; --panel2:#2A2422; --panel3:#171514;
+  --line:#3F3532; --line2:#352D2B; --line3:#3F3532;
+  --ink:#EDE6E4; --ink2:#CDC3C0; --soft:#A89C99; --faint:#7C716E;
+  --solid:#FF6B70; --solid-h:#FF8A8E; --solid-line:#FF6B70;
+  --bg-veil:rgba(23,21,20,.72);
+  --accent:#FF6B70; --accent-soft:#3A1518; --accent-soft-h:#4A1B1F; --accent-ink:#2B0A0B;
+  --accent-ring:rgba(255,107,112,.55); --accent-ring-soft:rgba(255,107,112,.14);
+  --ok:#6FD39B; --ok-soft:#1E3328; --bad:#FF8A8E; --bad-soft:#3A1518; --gold:#E0B457;
+  --sh-sm:0 1px 2px rgba(0,0,0,.4);
+  --sh:0 12px 28px -10px rgba(0,0,0,.55);
+  --sh-lg:0 28px 60px -24px rgba(0,0,0,.7);
+  --s-open:#FF6B70; --s-click:#7FB4E8; --grid:#2F2826; --axis:#5A4E4B;
+  --ow-accent:#FF6B70; --ow-accent-text:#FF8A8E; --ow-accent-soft:#3A1518; --ow-ring:#352D2B;
+  --ow-warn-soft:#362B14; --ow-warn-line:#5C4A22; --ow-bad-line:#5A2226;
+  --ow-scrim:rgba(0,0,0,.6);
+}
+/* the dark theme's own pickers, menus and scrollbars where the studio has them; never on the canvas, whose frame
+   holds the mail and must see the page as it always has */
+:root[data-theme="dark"] input,:root[data-theme="dark"] select,:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] .ml-rail,:root[data-theme="dark"] .ml-props,:root[data-theme="dark"] .ed-menu,
+:root[data-theme="dark"] .ml-pop,:root[data-theme="dark"] .icpop,:root[data-theme="dark"] .ml-ins2,
+:root[data-theme="dark"] .mcard .vlist{color-scheme:dark}
+
+/* type: the console's Inter, without the platform's alternate letter shapes; its heading and button weights */
+body{font-feature-settings:normal}
+h1,h2,h3{font-weight:600}
+
+/* the platform's "Liquid" skin: Oneworld's light or dark governs here, so its switch and decoration never show */
+.theme-toggle,.theme-blobs{display:none!important}
+
+/* buttons, as the console's: red main button, white secondary that turns red on hover, quiet ghost */
+.btn{color:var(--accent-ink);font-weight:700;border-radius:9px}
+.btn.alt{background:var(--panel);color:var(--ink)}
+.btn.alt:hover{background:var(--panel);border-color:var(--ow-accent);color:var(--ow-accent-text)}
+.btn.ghost{color:var(--soft)}
+.btn.ghost:hover{background:var(--panel2);color:var(--ink)}
+/* the keyboard's focus ring: the console's (Promotions' Social posts), not the browser's blue */
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--soft);outline-offset:2px}
+/* a button that cannot be used says so in readable grey, instead of fading its words below AA */
+.btn:disabled,.btn:disabled:hover{opacity:1;background:var(--panel2);color:var(--soft);border-color:var(--line)}
+/* the dialog's Delete, as the console's danger button (Promotions' Social posts use it too) */
+.ui-card .btn.danger{background:var(--panel);color:var(--ow-accent-text);border-color:var(--ow-accent-soft)}
+.ui-card .btn.danger:hover{background:var(--ow-accent);color:var(--accent-ink);border-color:var(--ow-accent)}
+
+/* inputs and selects: the console's field, with its neutral focus (red is kept for something wrong) */
+input,select,textarea{background-color:var(--panel)}
+input:focus,select:focus,textarea:focus{border-color:var(--soft);box-shadow:0 0 0 3px var(--ow-ring)}
+.palq:focus{border-color:var(--soft);background:var(--panel)}
+
+/* tabs and pills: the chosen one as the console marks it (its rail, its pressed choices): red words on the red tint */
+.pnav button,.seg button,.secnav button{font-weight:700}
+.pnav button.on,.seg button.on{background:var(--ow-accent-soft);color:var(--ow-accent-text);box-shadow:none}
+.secnav button.on{color:var(--ow-accent-text)}
+.secnav .n,.mlver.none,.chip.grey{color:var(--soft)}
+
+/* chips and red words, readable on white and on the tint */
+.hchip,.timingchip,.fld .ai,.icpop .hd .ai,.thopt.on span,.rank li.has:hover .lb,.rank li.open .cv,
+.an-tbl tbody tr:hover .go,.fld .ql-editor a{color:var(--ow-accent-text)}
+/* Select all / Clear is a button: the console's main one */
+.fld .ai.mpall{background:var(--solid);color:var(--accent-ink);box-shadow:var(--sh-sm)}
+
+/* panels and cards the platform painted white */
+.ev-head,.mcard,.ed-top,.ml-rail,.ml-props,.ed-menu,.ml-note,.ml-busy .bx,.ml-ins2,.icpop,.ml-pop,.ui-card{background:var(--panel)}
+.ml-pal button,.ml-hot .ins,.thopt,.mplist,.iconf .ipv,.iconf .ipick,.ai-opt,.ai-note,.fbar button,.ins2h .acts button,
+.sw .s.auto,.clr input[type=color]{background-color:var(--panel)}
+.card{box-shadow:var(--sh-sm)}
+.mcard:hover{border-color:var(--faint)}
+/* the picture of each kind of mailer is the platform's, drawn with its indigo standing in for an event's colour; it
+   shows the kind, never this event's mail (which keeps its own colours), so its stand-in is turned to the ET red */
+.mcard .art img{filter:hue-rotate(105deg)}
+/* the studio's ← as the console's Back button */
+.ed-top .back{border:1px solid var(--line);border-radius:9px}
+.ed-top .back:hover{background:var(--ow-accent-soft);border-color:var(--ow-accent);color:var(--ow-accent-text)}
+/* a mailer this event cannot make yet: its words in readable grey, rather than the whole card faded below AA */
+.mcard.dis{opacity:1}
+.mcard.dis .art{opacity:.35}
+.mcard.dis .grp,.mcard.dis .nm,.mcard.dis .ds,.mcard.dis .subj{color:var(--soft)}
+.ed-menu.wide button[disabled]{opacity:1}
+.ed-menu.wide button[disabled] b,.ed-menu.wide button[disabled] i{color:var(--soft)}
+/* an icon's remove (×) on its red: the dark theme's red is light, so the × is dark there */
+.icopt .icrm:hover{color:var(--accent-ink)}
+
+/* what floats on the canvas (the picked block's name and tools, a block being dragged, the formatting bar over text
+   being edited) is the console's Design editor toolbar: Oneworld's dark ink in both themes, since it sits on the
+   mail; Delete turns red */
+.ml-hot .tb,.ml-hot .tag,.ml-ghost{background:#241B1A;color:#FFFFFF}
+.ml-hot .tb .grip,.ml-hot .tb button{color:#FFFFFF}
+.ml-hot .tb button[title="Delete"]:hover{background:#ED1C24;opacity:1}
+.ml-hot .ins:hover{background:#241B1A;color:#FFFFFF;border-color:#241B1A}
+.ml-tb{background:#241B1A;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),var(--sh)}
+.ml-tb button{color:#FFFFFF}
+
+/* the settings panel's rich-text field: Quill's own blue hover and white pop-ups, in Oneworld's colours */
+.fld .ql-snow.ql-toolbar button:hover .ql-stroke,.fld .ql-snow.ql-toolbar button:focus .ql-stroke,
+.fld .ql-snow.ql-toolbar button.ql-active .ql-stroke,.fld .ql-snow.ql-toolbar .ql-picker-label:hover .ql-stroke,
+.fld .ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-stroke{stroke:var(--ow-accent-text)}
+.fld .ql-snow.ql-toolbar button:hover .ql-fill,.fld .ql-snow.ql-toolbar button:focus .ql-fill,
+.fld .ql-snow.ql-toolbar button.ql-active .ql-fill,.fld .ql-snow.ql-toolbar .ql-picker-label:hover .ql-fill,
+.fld .ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-fill{fill:var(--ow-accent-text)}
+.fld .ql-snow .ql-picker{color:var(--ink2)}
+.fld .ql-snow .ql-picker-options,.fld .ql-snow .ql-tooltip{background-color:var(--panel);color:var(--ink);border-color:var(--line)}
+.fld .ql-snow .ql-tooltip{box-shadow:var(--sh)}
+.fld .ql-snow .ql-tooltip input[type=text]{border-color:var(--line3)}
+.fld .ql-snow .ql-tooltip a{color:var(--ow-accent-text)}
+
+/* the dashboard */
+.an-note.warn{border-color:var(--ow-warn-line);background:var(--ow-warn-soft)}
+.an-tbl th{font-weight:800}
+.an-tbl tbody tr:hover{background:var(--panel2)}
+.tip{color:var(--bg);box-shadow:var(--sh-lg)}
+/* The platform writes its series colours into the chart itself (opens #4f46e5, clicks #eb6834: S_OPEN and S_CLICK
+   in promo-studio/mailer-studio.js); they are matched here and drawn in Oneworld's. A colour drawn as an SVG
+   attribute gives way to a stylesheet; the legend's and the hover card's keys are inline styles, hence !important. */
+#content [stroke="#4f46e5"]{stroke:var(--s-open)}
+#content [fill="#4f46e5"]{fill:var(--s-open)}
+#content [stroke="#eb6834"]{stroke:var(--s-click)}
+#content [fill="#eb6834"]{fill:var(--s-click)}
+.lgd span:nth-child(1) i,.tip .r:nth-child(2) i{background:var(--s-open)!important}
+.lgd span:nth-child(2) i,.tip .r:nth-child(3) i{background:var(--s-click)!important}
+
+/* messages: the console's toast (its ink, in either theme), its dialog and backdrop, its error edge */
+.toast{background:var(--ink);color:var(--bg);border-radius:10px;font-weight:600}
+.ui-modal{background:var(--ow-scrim)}
+.ui-card{border-radius:15px}
+.ml-err{border-color:var(--ow-bad-line)}

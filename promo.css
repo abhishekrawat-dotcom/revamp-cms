@@ -22,6 +22,8 @@
 .ps h3{ font-size:15px; }
 .ps .btn:focus-visible, .ps button:focus-visible, .ps a:focus-visible, .ps select:focus-visible{ outline:2px solid var(--text-muted); outline-offset:2px; }
 .ps .inp:focus-visible{ outline:none; }
+/* a button that is busy or cannot be used: readable grey (WCAG AA), where the console's fade (.45) falls below it */
+.ps .btn:disabled{ opacity:1; background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
 .ps-offscreen{ position:fixed; left:-30000px; top:0; width:auto; height:auto; pointer-events:none; }
 
 /* ============ GALLERY ============ */
@@ -97,8 +99,10 @@
 .ps-seg button span{ font-size:11px; color: var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ps-seg button:hover{ border-color: var(--text-faint); }
 .ps-seg button[aria-pressed="true"]{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
-.ps-seg button[aria-pressed="true"] span{ color: var(--accent-strong); opacity:.8; }
-.ps-seg button:disabled{ opacity:.5; cursor:not-allowed; }
+/* a chosen choice's note and a choice that cannot be made stay readable (WCAG AA): faded with opacity, both fell
+   below it on the tint and on white */
+.ps-seg button[aria-pressed="true"] span{ color: var(--accent-strong); }
+.ps-seg button:disabled{ cursor:not-allowed; background: var(--surface-2); color: var(--text-muted); }
 .ps-picks{ max-height:240px; overflow:auto; border:1px solid var(--border); border-radius:9px; }
 .ps-picks label{ display:flex; align-items:flex-start; gap:9px; padding:7px 10px; border-top:1px solid var(--border); font-size:12.5px; cursor:pointer; }
 .ps-picks label:first-child{ border-top:0; }
@@ -261,7 +265,9 @@
 .pp-num{ font-family: var(--pp-head); font-weight:700; line-height:.9; color: var(--pp-acc-text); letter-spacing:-0.04em; }
 
 /* Mailers: the promotional platform's studio, framed (promo-mailer-studio.html). The frame fills the space under
-   the tabs; while the studio is open it fills the whole window, as the platform's studio does. */
-.promo-mailer-frame{ display:block; width:100%; height:calc(100vh - 220px); min-height:620px; border:0; border-radius:12px; background:#f7f8fa; }
+   the tabs; while the studio is open it fills the whole window, as the platform's studio does. The studio wears
+   this page's look and light or dark (promo-studio/oneworld.css, oneworld-theme.js); the frame's own background is
+   the page's, so it shows no other colour while the studio loads. */
+.promo-mailer-frame{ display:block; width:100%; height:calc(100vh - 220px); min-height:620px; border:0; border-radius:12px; background: var(--bg); }
 .promo-mailer-frame.is-studio{ position:fixed; inset:0; width:100vw; height:100vh; min-height:0; border-radius:0; z-index:1000; }
 html.promo-studio-open, html.promo-studio-open body{ overflow:hidden; }

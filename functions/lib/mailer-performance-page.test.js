@@ -32,7 +32,8 @@ var FRAME = '<iframe id="mp-frame" class="mp-frame" title="Mailer performance" s
 check('exactly one frame: the studio\'s dashboard for all events', count(page, FRAME) === 1 && count(page, '<iframe') === 1);
 check('the frame sits in main.mp-main, after the header', /<main class="mp-main">\s*<iframe id="mp-frame"[^>]*><\/iframe>\s*<\/main>/.test(page) &&
   page.indexOf('</header>') < page.indexOf('<main class="mp-main">'));
-check('the frame fills the window below the bar (contract C8)', page.indexOf('.mp-frame{display:block;width:100%;height:calc(100vh - 61px);border:0;background:#f7f8fa}') !== -1);
+/* its background is the page's (light or dark), so a loading frame shows no other colour */
+check('the frame fills the window below the bar (contract C8)', page.indexOf('.mp-frame{display:block;width:100%;height:calc(100vh - 61px);border:0;background:var(--bg)}') !== -1);
 /* the 61px in the frame's height is the bar: 60px tall plus its 1px bottom border. If either changes, so must it */
 check('the bar is 60px tall with a 1px border, as the frame\'s 61px assumes',
   /\.nav-inner\{[^}]*\bheight:60px;/.test(page) && /\.nav\{[^}]*border-bottom:1px solid/.test(page) && count(page, '- 61px)') === 2, page.match(/- \d+px\)/g));

@@ -1,7 +1,7 @@
 // node functions/lib/promo-studio.test.js — Promotions → Mailers' page (promo-mailer-studio.html): the platform's
 // studio and mailer dashboard as tools/extract-promo-studio.py copies and patches them, and Oneworld's side of it
-// (promo-studio/oneworld.js and oneworld.css). No network: oneworld.js runs in a vm over stubs of the platform's
-// functions and of RevampAuth.
+// (promo-studio/oneworld.js, oneworld.css and oneworld-theme.js). No network: oneworld.js and oneworld-theme.js run
+// in a vm over stubs of the platform's functions, of RevampAuth and of the page around the frame.
 var fs = require('fs'), path = require('path'), vm = require('vm');
 var ROOT = path.join(__dirname, '..', '..');
 function read(p) { return fs.readFileSync(path.join(ROOT, p), 'utf8'); }
@@ -414,6 +414,110 @@ pending.push(settle(30).then(function () {
 }));
 var l8 = load('', { boot: true, respond: respond(json(200, CATALOG), json(200, {})) });
 pending.push(settle(30).then(function () { check('no event and no scope: "No event"', /No event/.test(l8.els.content.innerHTML) && l8.calls.fetch.length === 0 && l8.calls.paint === 0); }));
+
+/* ---- Oneworld's look: light or dark as the page around it (promo-studio/oneworld-theme.js), and never Liquid ---- */
+var themeSrc = read('promo-studio/oneworld-theme.js');
+var THEME_TAG = '<script src="promo-studio/oneworld-theme.js"></script>';
+check('the theme script parses', compiles(themeSrc, 'oneworld-theme.js') === true, compiles(themeSrc, 'oneworld-theme.js'));
+var themeCode = themeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
+check('the theme script is ES5', !/\blet\s/.test(themeCode) && !/\bconst\s/.test(themeCode) && themeCode.indexOf('=>') === -1);
+check('the page loads it once, in its head, before any stylesheet (the first paint is already in the theme)',
+  count(page, THEME_TAG) === 1 && page.indexOf(THEME_TAG) < page.indexOf('<link rel="stylesheet"') && page.indexOf(THEME_TAG) < page.indexOf('</head>'));
+check('the extractor writes the same tag in the same place', count(py, THEME_TAG) === 1 && py.indexOf(THEME_TAG) < py.indexOf('<link rel="stylesheet" href="promo-studio/mailer-studio.css">'));
+/* the platform keeps its Liquid choice in localStorage "mlTheme" and sets it as data-theme; none of that was copied */
+check('the platform\'s Liquid switch is not on the page and its stored choice is never read', page.indexOf('theme-toggle') === -1 &&
+  studio.indexOf('localStorage') === -1 && !/dataset\.theme\s*=|data-theme/.test(studio) && owSrc.indexOf('data-theme') === -1);
+
+/* runs the theme script: parent is the framing page's <html> attributes (null: not framed), stored is revamp-theme,
+   sysDark the system's preference. Returns the page's <html> and a way to fire what the script listens to. */
+function runTheme(o) {
+  var attrs = {}, observed = [], listeners = {};
+  var root = { getAttribute: function (k) { return k in attrs ? attrs[k] : null; }, setAttribute: function (k, v) { attrs[k] = String(v); } };
+  var parentAttrs = o.parent;
+  var parentRootEl = parentAttrs ? { getAttribute: function (k) { return k in parentAttrs ? parentAttrs[k] : null; } } : null;
+  var win = {
+    matchMedia: function (q) { return { matches: /dark/.test(q) && !!o.sysDark }; },
+    addEventListener: function (type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    MutationObserver: function (fn) { this.observe = function (node, opts) { observed.push({ node: node, opts: opts, fn: fn }); }; this.disconnect = function () { observed.length = 0; }; }
+  };
+  win.parent = parentRootEl ? { document: { documentElement: parentRootEl } } : win;
+  var store = { revamp: o.stored === undefined ? null : o.stored };
+  var sb = { window: win, document: { documentElement: root }, MutationObserver: win.MutationObserver,
+    localStorage: { getItem: function (k) { return k === 'revamp-theme' ? store.revamp : null; } } };
+  sb.window.localStorage = sb.localStorage;
+  vm.runInNewContext(themeSrc, sb, { filename: 'oneworld-theme.js' });
+  return {
+    theme: function () { return attrs['data-theme']; },
+    parentFlips: function (v) { parentAttrs['data-theme'] = v; observed.forEach(function (x) { x.fn([]); }); },
+    observed: observed, listeners: listeners, store: store
+  };
+}
+var T1 = runTheme({ parent: { 'data-theme': 'dark' }, stored: 'light', sysDark: false });
+check('framed: the page around it decides (dark), over the stored choice and the system', T1.theme() === 'dark', T1.theme());
+check('framed: it watches only the framing page\'s data-theme', T1.observed.length === 1 && JSON.stringify(T1.observed[0].opts.attributeFilter) === '["data-theme"]');
+T1.parentFlips('light');
+check('the switch flipped on the page around it: the studio follows to light', T1.theme() === 'light', T1.theme());
+T1.parentFlips('dark');
+check('… and back to dark', T1.theme() === 'dark', T1.theme());
+T1.parentFlips('liquid');
+check('a value Oneworld does not have is never copied (falls back to the stored choice)', T1.theme() === 'light', T1.theme());
+var T2 = runTheme({ parent: {}, stored: 'liquid', sysDark: true });
+check('a stored "liquid" (the platform\'s skin) is ignored: the system\'s dark', T2.theme() === 'dark', T2.theme());
+var T3 = runTheme({ parent: null, stored: 'dark', sysDark: false });
+check('opened on its own: the stored choice', T3.theme() === 'dark' && T3.observed.length === 0, T3.theme());
+T3.store.revamp = 'light';
+(T3.listeners.storage || []).forEach(function (fn) { fn({ key: 'revamp-theme' }); });
+check('opened on its own: a switch flipped in another tab is followed', T3.theme() === 'light', T3.theme());
+var T4 = runTheme({ parent: null, stored: null, sysDark: false });
+check('nothing stored, a light system: light (the value is always set, never left empty)', T4.theme() === 'light', T4.theme());
+
+/* the look: the platform's tokens on Oneworld's values, light and dark */
+function block(sel) {
+  var at = cssRules.indexOf(sel + '{');
+  if (at === -1) return null;
+  var body = cssRules.slice(at + sel.length + 1, cssRules.indexOf('}', at)), out = {}, m, re = /(--[\w-]+)\s*:\s*([^;]+);/g;
+  while ((m = re.exec(body))) out[m[1]] = m[2].trim();
+  return out;
+}
+var LIGHT = block('\n:root'), DARK = block(':root[data-theme="dark"]');
+check('oneworld.css has a light and a dark token block', !!LIGHT && !!DARK);
+LIGHT = LIGHT || {}; DARK = DARK || {};
+['--bg', '--panel', '--panel2', '--panel3', '--line', '--line2', '--line3', '--ink', '--ink2', '--soft', '--faint', '--solid', '--solid-h', '--solid-line',
+  '--accent', '--accent-soft', '--accent-ink', '--ok', '--ok-soft', '--bad', '--bad-soft', '--s-open', '--s-click', '--ow-accent-text', '--ow-accent-soft'].forEach(function (k) {
+  check('token ' + k + ' is set in both themes', !!LIGHT[k] && !!DARK[k], [LIGHT[k], DARK[k]]);
+});
+check('the console\'s palette: warm background, ET red, Inter', LIGHT['--bg'] === '#FAF7F6' && LIGHT['--accent'] === '#ED1C24' && DARK['--bg'] === '#171514' &&
+  DARK['--accent'] === '#FF6B70' && /^'Inter'/.test(LIGHT['--font-body'] || ''));
+/* the studio reads --accent with getComputedStyle and parses it as #rrggbb for its editing ring (mailer-studio.js) */
+check('--accent is a plain #rrggbb in both themes (the editing ring parses it)', /^#[0-9A-Fa-f]{6}$/.test(LIGHT['--accent']) && /^#[0-9A-Fa-f]{6}$/.test(DARK['--accent']) &&
+  studio.indexOf('getPropertyValue("--accent")') !== -1);
+function lum(h) { h = h.replace('#', ''); return [0, 2, 4].map(function (i) { var c = parseInt(h.substr(i, 2), 16) / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); })
+  .reduce(function (s, c, i) { return s + c * [0.2126, 0.7152, 0.0722][i]; }, 0); }
+function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+/* words on a tint, a chip, a chosen tab or pill, a disabled control, the toast: WCAG AA (4.5:1) in both themes */
+[['--ow-accent-text', '--ow-accent-soft', 'red words on the red tint (chosen tab, hashtag and timing chips)'],
+ ['--ow-accent-text', '--panel', 'red words on a panel'],
+ ['--ok', '--ok-soft', 'the saved chip'],
+ ['--soft', '--panel2', 'grey chips and disabled buttons'],
+ ['--soft', '--panel', 'a disabled mailer card\'s words'],
+ ['--bad', '--bad-soft', 'an error'],
+ ['--bg', '--ink', 'the toast and the chart\'s hover card']].forEach(function (p) {
+  [['light', LIGHT], ['dark', DARK]].forEach(function (t) {
+    var r = ratio(t[1][p[0]] || '#000000', t[1][p[1]] || '#000000');
+    check('AA, ' + t[0] + ': ' + p[2] + ' (' + r.toFixed(2) + ':1)', r >= 4.5, [t[1][p[0]], t[1][p[1]]]);
+  });
+});
+check('dark: the main button\'s words on its red pass AA', ratio(DARK['--accent-ink'], DARK['--solid']) >= 4.5, ratio(DARK['--accent-ink'], DARK['--solid']));
+check('the Liquid switch and decoration never show', cssRules.indexOf('.theme-toggle,.theme-blobs{display:none!important}') !== -1);
+/* the chart's series colours are matched by the literals the platform writes (S_OPEN, S_CLICK); if those change, so must the rules */
+check('the chart colours oneworld.css matches are still the platform\'s', studio.indexOf('const S_OPEN="#4f46e5", S_CLICK="#eb6834";') !== -1 &&
+  cssRules.indexOf('#content [stroke="#4f46e5"]{stroke:var(--s-open)}') !== -1 && cssRules.indexOf('#content [stroke="#eb6834"]{stroke:var(--s-click)}') !== -1);
+/* a colour-scheme on anything that holds the mail's frame would change what the mail's own CSS sees */
+var schemed = [], sre = /([^{}]+)\{[^}]*color-scheme[^}]*\}/g, sm;
+while ((sm = sre.exec(cssRules))) sm[1].split(',').forEach(function (s) { schemed.push(s.trim()); });
+var SCHEME_OK = ['input', 'select', 'textarea', '.ml-rail', '.ml-props', '.ed-menu', '.ml-pop', '.icpop', '.ml-ins2', '.mcard .vlist'];
+check('colour-scheme only on fields and side panes, never the page or the canvas that holds the mail\'s frame', schemed.length > 0 &&
+  schemed.every(function (s) { return SCHEME_OK.some(function (ok) { return s === ':root[data-theme="dark"] ' + ok; }); }), schemed);
 
 Promise.all(pending).then(function () {
   if (failed) { console.error('promo-studio: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }

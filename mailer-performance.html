@@ -68,7 +68,7 @@
      never does. Phones: 100vh is the height with the browser's toolbar hidden, which would leave the bottom of the
      frame under that toolbar and let the page scroll as well; dvh is the height actually showing. */
   .mp-main{ display:block; }
-  .mp-frame{display:block;width:100%;height:calc(100vh - 61px);border:0;background:#f7f8fa}
+  .mp-frame{display:block;width:100%;height:calc(100vh - 61px);border:0;background:var(--bg)}
   @supports (height:100dvh){ .mp-frame{ height:calc(100dvh - 61px); } }
 
   /* phones, as the activity log's bar; the dark theme's light chip adds 12px of width round the mark, so there the
