@@ -1,0 +1,10 @@
+{
+  "name": "@webtoon/psd",
+  "version": "0.4.0",
+  "license": "MIT",
+  "description": "Vendored for Oneworld 2.0's social posts (PSD upload, read in the browser). index.js is dist/index.js of the npm package @webtoon/psd 0.4.0 (https://registry.npmjs.org/@webtoon/psd/-/psd-0.4.0.tgz, sha512-ztriE8oFOamRrV9opBURDy+JMiyhur2//vOXsC5CgdnYCB0L1Lnaag4NzP8N+NFCj7uNz9JRYtPmAbQMSDLIsQ==), byte for byte; its WASM decoder is inlined in it as a data: literal. Bundled into assets/vendor/promo-social.js by tools/build-promo-social.js. Not an npm dependency of Oneworld.",
+  "homepage": "https://webtoon.github.io/psd",
+  "author": "W FE Tech <dl_wfetech@webtoonscorp.com>",
+  "type": "module",
+  "main": "./index.js"
+}

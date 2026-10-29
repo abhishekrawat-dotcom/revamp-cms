@@ -13,3 +13,8 @@ export { suggestSubjects, rewriteField, polishCopy, enhanceMailer, AiUnavailable
 export { getBrand, PORTALS, ASSET_BASE } from "./brand/index.ts";
 export { readable, resolvePalette, hexColor, safeUrl } from "./mailers/base.ts";
 export { parseEdition, fmtDateLabel, daysBetween, groupSponsors, namesAnotherPortal } from "./model/normalize.ts";
+/* ONEWORLD PORT: the platform's 9 social-post templates, their catalog and formats, and Oneworld's QR tile, for
+   Promotions → Social posts (lib/promo-social.js builds each post's HTML with them; the browser draws it) */
+export { ALL_TEMPLATES, getTemplate, resolveParams, buildCatalog } from "./templates/registry.ts";
+export { qrTile } from "./templates/base.ts";
+export { FORMATS, DEFAULT_FORMATS } from "./templates/formats.ts";

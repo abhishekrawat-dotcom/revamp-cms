@@ -39,11 +39,23 @@ export const BANNER_PARAMS: ParamDef[] = [
 export function bannerBlocks(event: EventEntity, params: Record<string, any>): Block[] {
   const custom = String(params.bannerUrl || "").trim();
   if (custom) return [blockOf("banner", { url: custom, href: siteUrl(event), alt: event.name })];
-  if (String(params.banner ?? "auto") === "none" || !event.keyVisualUrl) return [];
+  // ONEWORLD PORT (owner C): the event's composed mail banner leads when it has one, else the bare key visual. The
+  // "Custom banner URL" above and "No banner" below still win, so the sender can replace or drop it as before.
+  const art = event.bannerUrl || event.keyVisualUrl;
+  if (String(params.banner ?? "auto") === "none" || !art) return [];
   // The SEO/OG artwork is used at its own aspect ratio: it is already web-sized,
   // and a CDN crop to a fixed 750×400 box was cutting the creative. `width:100%`
   // in the block scales it to the column and lets the height follow.
-  return [blockOf("banner", { url: event.keyVisualUrl, href: siteUrl(event), alt: event.name })];
+  return [blockOf("banner", { url: art, href: siteUrl(event), alt: event.name })];
+}
+
+/** ONEWORLD PORT (owner C, O3 = b): the composed mail banner for the mailers that open with a colour band or the
+ *  award's square mark (the two spotlights, the reminder, the five award sends). Only when the event has one, so
+ *  without it those mailers are the platform's, byte for byte; a "Custom banner URL" or "No banner" still wins, as
+ *  in bannerBlocks. Null means "no banner here": the caller keeps its own band or mark. */
+export function composedBannerBlock(event: EventEntity, params: Record<string, any>): Block | null {
+  if (!event.bannerUrl) return null;
+  return bannerBlocks(event, params)[0] ?? null;
 }
 
 /** "For Delegation / For Sponsorship" contact rows — a fixture of every house

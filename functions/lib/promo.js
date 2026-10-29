@@ -3,6 +3,7 @@
      GET  /api/promo/kit?eventId=          handleKit    the event's brand and content (the Kit)
      GET  /api/promo/image?eventId=&url=   handleImage  one picture of the kit, served from our own address
      POST /api/promo/write                 handleWrite  copy by the AI: a caption, subject lines, an intro, headlines
+                                                        (at most 30 per person in 10 minutes; never from example content)
 
    All three are admin routes. lib/api.js routes them here (loaded on demand, like api-events.js) and hands
    this file, through wire(), the helpers the two share — the admin wrappers, the saved-site reader, the
@@ -29,7 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseDocument } = require('htmlparser2');
 const domutils = require('domutils');
-const { sendJson, str } = require('./http');
+const { sendJson, str, rateLimit } = require('./http');
 const genDesign = require('./gen-design');
 const logoUnitLib = require('./logo-unit');
 const { readPage } = require('./page-diff');
@@ -290,6 +291,20 @@ function shadeOf(theme, mode) {
   return contrast(shade, theme) >= 1.6 ? shade : mix(theme, away, 0.45);
 }
 
+/* Whether an AI design's copy for a dark ground was made of its own unit — api.js darkCopyOfUnit's test, kept the
+   same here so the Kit's darkUrl is the copy the site's hero shows, no more and no less (api.js is the request
+   handler that requires this file, so its helper is not required back). logoUnitDarkOf says it; a design written
+   before that field existed shows it by its files, made in the same run (generated/<stamp>-logo-unit… beside
+   generated/<stamp>-logo-unit-on-dark…); an owner's logo used as uploaded has no such name, so its copy is not
+   trusted. */
+function darkCopyOfUnit(design) {
+  if (!design || !design.logoUnitDarkUrl) return false;
+  if (design.logoUnitDarkOf) return design.logoUnitDarkOf === design.logoUnitUrl;
+  var run = function (p) { var m = /\/generated\/(\d+)-logo-unit[.-]/.exec(String(p || '')); return m ? m[1] : ''; };
+  var a = run(design.logoUnitStoragePath), b = run(design.logoUnitDarkStoragePath);
+  return !!a && a === b;
+}
+
 /* -> Brand (the kit's `brand`). Pure: everything it needs is passed in.
      src: { eventId, bucket, event (the event document), plan (designPlan or null), pageHtml (or null; or
             page: what readSavedPage made of it, when the caller has it already),
@@ -379,21 +394,34 @@ function brandFromSources(src) {
   var banner = page && kind === 'ported' ? page.one(function (e) { return attr(e, 'data-rv-section') === 'banner'; }) : null;
   var unitEl = page ? page.one(function (e) { return e.attribs && 'data-rv-logo-unit' in e.attribs; }) : null;
   var unitImg = unitEl ? domutils.findOne(function (e) { return e.name === 'img' && hasClass(e, 'rv-lu-img'); }, unitEl.children || [], true) : null;
+  /* darkUrl: the lock-up's copy for a dark ground that Oneworld made from it (api.js storeOnDarkUnit: only the dark
+     lettering is recoloured, the ET red square is untouched), or ''. The mail banner and the posts draw that copy
+     when the unit stands on a dark picture, as the site's hero does; they never recolour the unit themselves. A
+     unit on a plate has none: the plate is its ground. */
   if (unitImg && httpsUrl(attr(unitImg, 'src'))) {
     var plateEl = unitImg.parent && hasClass(unitImg.parent, 'rv-lu-plate') ? unitImg.parent : null;
     var plate = plateEl ? (hasClass(plateEl, 'rv-lu-plate-dark') ? 'dark' : hasClass(plateEl, 'rv-lu-plate-light') ? 'light' : '') : '';
     var onTone = hasClass(unitEl, 'rv-lu-on-dark') ? 'dark' : hasClass(unitEl, 'rv-lu-on-light') ? 'light' : mode;
-    unit = { url: drawable(httpsUrl(attr(unitImg, 'src'))), width: +attr(unitImg, 'width') || 0, height: +attr(unitImg, 'height') || 0, tone: plate || onTone };
+    /* gen-design.js logoUnitImageHtml writes it after the unit's own picture, as img.rv-lu-img.rv-lu-dark */
+    var darkImg = plate ? null : domutils.findOne(function (e) {
+      return e !== unitImg && e.name === 'img' && hasClass(e, 'rv-lu-img') && hasClass(e, 'rv-lu-dark');
+    }, unitEl.children || [], true);
+    unit = { url: drawable(httpsUrl(attr(unitImg, 'src'))), darkUrl: darkImg ? drawable(httpsUrl(attr(darkImg, 'src'))) : '',
+      width: +attr(unitImg, 'width') || 0, height: +attr(unitImg, 'height') || 0, tone: plate || onTone };
   } else if (kind === 'generated' && !page && httpsUrl(design.logoUnitUrl)) {
     /* only for a site never saved: a saved page without the picture has its unit set in type */
     var planTone = /^(dark|light)$/.test(design.logoUnitPlate) ? design.logoUnitPlate
       : /^(dark|light)$/.test(design.logoUnitHeroMode) ? design.logoUnitHeroMode : (design.mode === 'dark' ? 'dark' : mode);
-    unit = { url: drawable(httpsUrl(design.logoUnitUrl)), width: +design.logoUnitWidth || 0, height: +design.logoUnitHeight || 0, tone: planTone };
+    /* the plan's copy for a dark ground, when it was made of this very unit (darkCopyOfUnit, api.js's own test) and
+       the unit is drawn for a light ground on no plate — what the saved page would carry as its rv-lu-dark picture */
+    var planDark = planTone === 'light' && !/^(dark|light)$/.test(design.logoUnitPlate) && darkCopyOfUnit(design)
+      ? drawable(httpsUrl(design.logoUnitDarkUrl)) : '';
+    unit = { url: drawable(httpsUrl(design.logoUnitUrl)), darkUrl: planDark, width: +design.logoUnitWidth || 0, height: +design.logoUnitHeight || 0, tone: planTone };
   } else if (kind === 'ported') {
     /* an ET banner's logo IS the lock-up (img.logo, bound to the event's logo) */
     var bannerLogo = banner ? domutils.findOne(function (e) { return e.name === 'img' && hasClass(e, 'logo') && !!httpsUrl(attr(e, 'src')); }, banner.children || [], true) : null;
     var lu = first(drawable(bannerLogo && httpsUrl(attr(bannerLogo, 'src'))), drawable(httpsUrl(ev.logoUrl)));
-    if (lu && !isSample(lu, samples)) unit = { url: lu, width: 0, height: 0, tone: '' };
+    if (lu && !isSample(lu, samples)) unit = { url: lu, darkUrl: '', width: 0, height: 0, tone: '' };
   }
 
   if (unit && !unit.url) unit = null;
@@ -653,34 +681,52 @@ function inSomeImport(raw, bucket) {
 
 /* ---------- checks that need the network (cached for the life of the process) ---------- */
 
+/* Only a real answer is kept for CHECK_TTL_MS. A failure (no answer, a timeout, a busy or failing server) is
+   forgotten once it settles and asked again by the next kit: kept for 6 h, it would let one App Hosting
+   instance build an event's mailers from a guess while the other builds them from the answer, so the same
+   event would carry two banner fingerprints. While a check is out, a second kit waits on it rather than
+   asking again. There is no back-off: kits are built one person at a time, and every fetch here is cut off
+   at its timeout. */
+var CHECK_TTL_MS = 6 * 3600 * 1000;
+function forgetCheck(cache, key, entry) { if (cache[key] === entry) delete cache[key]; }
+
 /* A Google Fonts address that answers 400 gives the browser nothing: a family that is not on Google Fonts,
    or one asked for in weights it does not have (googleFontUrl asks for 300–800; a one-weight family then
-   fails as a whole). -> the address, the same family without weights, or '' when neither loads. A network
-   failure keeps the address: it cannot be judged from here. */
+   fails as a whole). -> the address, the same family without weights, or '' when neither loads. No answer,
+   429 (too many requests) or a 5xx keeps the address being asked about: it cannot be judged from here. */
 var fontChecks = {};
-var CHECK_TTL_MS = 6 * 3600 * 1000;
 function fetchStatus(url) {
   return safeFetch(url, { timeoutMs: 4000, maxBytes: 512 * 1024, maxRedirects: 1 }).then(function (r) { return r.status; }, function () { return 0; });
 }
+function unjudged(status) { return status === 0 || status === 429 || status >= 500; }
 function checkFontCss(url) {
   if (!/^https:\/\/fonts\.googleapis\.com\//.test(url)) return Promise.resolve(url);
   var hit = fontChecks[url];
   if (hit && Date.now() - hit.at < CHECK_TTL_MS) return hit.result;
+  var answered = true;
   var result = fetchStatus(url).then(function (status) {
-    if (status === 200 || status === 0) return url;
+    if (status === 200) return url;
+    if (unjudged(status)) { answered = false; return url; }
     var bare = url.replace(/:(?:ital,)?(?:opsz,)?wght@[^&]*/g, '');
     if (bare === url) return '';
-    return fetchStatus(bare).then(function (s) { return s === 200 ? bare : ''; });
+    return fetchStatus(bare).then(function (s) {
+      if (s === 200) return bare;
+      if (unjudged(s)) { answered = false; return bare; }
+      return '';
+    });
   });
-  fontChecks[url] = { at: Date.now(), result: result };
+  var entry = fontChecks[url] = { at: Date.now(), result: result };
+  result.then(function () { if (!answered) forgetCheck(fontChecks, url, entry); }, function () { forgetCheck(fontChecks, url, entry); });
   return result;
 }
 
-/* the size and, for an SVG, the tone of a logo unit whose page did not say */
+/* the size and, for an SVG, the tone of a logo unit whose page did not say. Only a measurement is kept: a
+   fetch that failed (null) is asked again by the next kit — for a ported site's SVG unit this is where the
+   tone, and so the banner's fingerprint, comes from. */
 var unitChecks = {};
 function measureUnit(unit) {
   if (!unit || (unit.width && unit.height && unit.tone)) return Promise.resolve(unit);
-  var hit = unitChecks[unit.url];
+  var key = unit.url, hit = unitChecks[key];
   var info = hit && Date.now() - hit.at < CHECK_TTL_MS ? hit.result : null;
   if (!info) {
     info = safeFetch(unit.url, { timeoutMs: 5000, maxBytes: 8 * 1024 * 1024, maxRedirects: 0 }).then(function (r) {
@@ -693,7 +739,8 @@ function measureUnit(unit) {
       }
       return { width: Math.round(+i.width || 0), height: Math.round(+i.height || 0), tone: tone };
     }, function () { return null; });
-    unitChecks[unit.url] = { at: Date.now(), result: info };
+    var entry = unitChecks[key] = { at: Date.now(), result: info };
+    info.then(function (i) { if (!i) forgetCheck(unitChecks, key, entry); }, function () { forgetCheck(unitChecks, key, entry); });
   }
   return info.then(function (i) {
     if (!i) return unit;
@@ -877,6 +924,11 @@ var KIND_NOTES = {
   'last-call': 'is the last call to register',
   stats: 'presents the event in numbers',
   topics: 'presents the themes the event covers',
+  /* the Site-look audience post, and the social posts' Who should attend */
+  audience: 'tells the reader who the event is for',
+  /* the social posts' Testimonial and Prediction → outcome templates */
+  testimonial: 'shares a quote from someone who attended or spoke, exactly as the post quotes it',
+  outlook: 'sets last edition\'s signals against what this edition will act on',
   'thank-you': 'thanks the people who attended',
   newsletter: 'gives the reader an update about the event'
 };
@@ -1088,6 +1140,19 @@ function writeWarning(req, answer, kit) {
   return text.indexOf(e.siteUrl) !== -1 ? 'This copy links to the event\'s site, which is not published yet: the link works once the site is published.' : '';
 }
 
+/* Each call is a model call that costs money, and a button pressed over and over (or a script) must not run up
+   the bill: at most WRITE_MAX calls per person in WRITE_WINDOW_MS (lib/http.js rateLimit, per instance). The posts
+   studios and the mailers share it. */
+var WRITE_MAX = 30, WRITE_WINDOW_MS = 10 * 60 * 1000;
+var WRITE_BUSY = 'The AI has been used a lot in the last few minutes. Try again in a little while.';
+
+/* Example content (lib/promo-examples.js: what fills the gaps of a card's preview, marked as such) never becomes
+   copy someone could then save as their own. Loaded on first use; a guard that cannot run answers 500, it does
+   not let the example through. */
+function exampleIn(values) {
+  return values.some(function (v) { return v != null && require('./promo-examples').isExample(v); });
+}
+
 /* POST /api/promo/write { eventId, task, … } -> { text } | { options }, with { warning } when the copy
    links to a site that is not published yet */
 function handleWrite(req, res) {
@@ -1095,6 +1160,13 @@ function handleWrite(req, res) {
     var eventId = H.eventIdOr400(res, body.eventId);
     if (!eventId) return;
     if (['caption', 'subjects', 'intro', 'headline'].indexOf(body.task) === -1) return sendJson(res, 400, { error: '"task" must be caption, subjects, intro or headline.' });
+    /* before the limit is counted: a refused example costs no model call */
+    if (exampleIn([body.post, body.mailer, body.current])) {
+      return sendJson(res, 422, { error: 'Example content cannot be saved, downloaded or sent. Add the event\'s own details, then try again.', code: 'example' });
+    }
+    if (!rateLimit('promo-write:' + String((decoded && decoded.email) || '').toLowerCase(), WRITE_MAX, WRITE_WINDOW_MS)) {
+      return sendJson(res, 429, { error: WRITE_BUSY });
+    }
     buildKit(fb, eventId, req, { brand: false }).then(function (kit) {
       var ask = writeRequest(body, kit);
       if (ask.error) return sendJson(res, 400, { error: ask.error });
@@ -1117,11 +1189,13 @@ function handleWrite(req, res) {
      publicBaseFor, aiUsageRecorder, sendAiFailure, sendFailure, httpError, BODY_LIMITS } */
 function wire(helpers) { H = helpers; }
 
-module.exports = { wire, handleKit, handleImage, handleWrite, buildKit };
+/* imageUrlProblem and importIdOf: the social posts' layouts (lib/promo-social.js) accept a picture address only
+   when the image route would fetch it for the event, by this same rule */
+module.exports = { wire, handleKit, handleImage, handleWrite, buildKit, imageUrlProblem, importIdOf };
 
-/* the pure parts, for promo.test.js */
+/* the pure parts, and the two network checks (run there against a stand-in lib/safe-fetch.js), for promo.test.js */
 module.exports._test = {
   brandFromSources, templateFiles, samplePictures, registerAnchor, readSavedPage, hashtagOf, editionOf, placeOf, daysOf, statsOf,
   audienceOf, topicsOf, contentFrom, eventFrom, imageUrlProblem, importIdOf, inSomeImport, familiesInFontUrl, fontCssUrl, templateRadius,
-  factSheet, writeRequest, cleanWrite, writeWarning, cutChars, cutWords
+  factSheet, writeRequest, cleanWrite, writeWarning, cutChars, cutWords, kindNote, darkCopyOfUnit, checkFontCss, measureUnit
 };

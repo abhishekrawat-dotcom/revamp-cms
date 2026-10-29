@@ -1,0 +1,80 @@
+{
+  "about": "Oneworld 2.0 example library. Fictional people, partners and texts that fill ONLY the gaps in a preview card (Promotions: mailer and post templates whose event lacks that data). Everything here is made up, carries an ex- id or an /assets/promo-examples/ address, and is refused by the server on every save, render, download, export and AI path. One neutral text set for all portals. Pictures: people/p01-p12.jpg (640x640), logos/l01-l12.png (transparent), made once by tools/make-promo-examples.js.",
+  "version": 1,
+  "people": [
+    { "id": "ex-p01", "name": "Meera Kulkarni", "designation": "Chief Executive Officer", "company": "Tarqen Systems", "photo": "/assets/promo-examples/people/p01.jpg", "gender": "woman" },
+    { "id": "ex-p02", "name": "Pranav Kamath", "designation": "Chief Technology Officer", "company": "Velmora Health", "photo": "/assets/promo-examples/people/p02.jpg", "gender": "man" },
+    { "id": "ex-p03", "name": "Kavya Menon", "designation": "Head of Digital", "company": "Orvanta Logistics", "photo": "/assets/promo-examples/people/p03.jpg", "gender": "woman" },
+    { "id": "ex-p04", "name": "Rohan Mehta", "designation": "Chief Financial Officer", "company": "Sundrel Capital", "photo": "/assets/promo-examples/people/p04.jpg", "gender": "man" },
+    { "id": "ex-p05", "name": "Farah Siddiqui", "designation": "Vice President, Strategy", "company": "Kaivalan Labs", "photo": "/assets/promo-examples/people/p05.jpg", "gender": "woman" },
+    { "id": "ex-p06", "name": "Vikram Rao", "designation": "Managing Director", "company": "Brisvane Energy", "photo": "/assets/promo-examples/people/p06.jpg", "gender": "man" },
+    { "id": "ex-p07", "name": "Ishita Banerjee", "designation": "Chief Marketing Officer", "company": "Quillora Analytics", "photo": "/assets/promo-examples/people/p07.jpg", "gender": "woman" },
+    { "id": "ex-p08", "name": "Aditya Joshi", "designation": "Head of Operations", "company": "Ostrival Mobility", "photo": "/assets/promo-examples/people/p08.jpg", "gender": "man" },
+    { "id": "ex-p09", "name": "Tanvi Raghunathan", "designation": "Chief Information Officer", "company": "Halvent Retail", "photo": "/assets/promo-examples/people/p09.jpg", "gender": "woman" },
+    { "id": "ex-p10", "name": "Kabir Malhotra", "designation": "Director, Partnerships", "company": "Pelorin Insurance", "photo": "/assets/promo-examples/people/p10.jpg", "gender": "man" },
+    { "id": "ex-p11", "name": "Neha Deshpande", "designation": "Chief People Officer", "company": "Mirathi Textiles", "photo": "/assets/promo-examples/people/p11.jpg", "gender": "woman" },
+    { "id": "ex-p12", "name": "Sameer Ansari", "designation": "Head of Analytics", "company": "Zorvic Networks", "photo": "/assets/promo-examples/people/p12.jpg", "gender": "man" }
+  ],
+  "partners": [
+    { "id": "ex-l01", "name": "Tarqen Systems", "logo": "/assets/promo-examples/logos/l01.png", "tier": "Presenting Partners" },
+    { "id": "ex-l02", "name": "Velmora Health", "logo": "/assets/promo-examples/logos/l02.png", "tier": "Presenting Partners" },
+    { "id": "ex-l03", "name": "Orvanta Logistics", "logo": "/assets/promo-examples/logos/l03.png", "tier": "Gold Partners" },
+    { "id": "ex-l04", "name": "Sundrel Capital", "logo": "/assets/promo-examples/logos/l04.png", "tier": "Gold Partners" },
+    { "id": "ex-l05", "name": "Kaivalan Labs", "logo": "/assets/promo-examples/logos/l05.png", "tier": "Gold Partners" },
+    { "id": "ex-l06", "name": "Brisvane Energy", "logo": "/assets/promo-examples/logos/l06.png", "tier": "Gold Partners" },
+    { "id": "ex-l07", "name": "Quillora Analytics", "logo": "/assets/promo-examples/logos/l07.png", "tier": "Partners" },
+    { "id": "ex-l08", "name": "Ostrival Mobility", "logo": "/assets/promo-examples/logos/l08.png", "tier": "Partners" },
+    { "id": "ex-l09", "name": "Halvent Retail", "logo": "/assets/promo-examples/logos/l09.png", "tier": "Partners" },
+    { "id": "ex-l10", "name": "Pelorin Insurance", "logo": "/assets/promo-examples/logos/l10.png", "tier": "Partners" },
+    { "id": "ex-l11", "name": "Mirathi Textiles", "logo": "/assets/promo-examples/logos/l11.png", "tier": "Partners" },
+    { "id": "ex-l12", "name": "Zorvic Networks", "logo": "/assets/promo-examples/logos/l12.png", "tier": "Partners" }
+  ],
+  "sessions": [
+    { "id": "ex-s1", "title": "Opening keynote: the decade ahead", "start": "09:30", "end": "10:15", "day": "Day 1" },
+    { "id": "ex-s2", "title": "Panel: building for scale", "start": "10:30", "end": "11:15", "day": "Day 1" },
+    { "id": "ex-s3", "title": "Fireside chat: leading through change", "start": "11:30", "end": "12:15", "day": "Day 1" },
+    { "id": "ex-s4", "title": "Workshop: data that drives decisions", "start": "14:00", "end": "14:45", "day": "Day 1" },
+    { "id": "ex-s5", "title": "Closing panel: what comes next", "start": "15:00", "end": "15:45", "day": "Day 1" }
+  ],
+  "keyPoints": [
+    "Growth strategies for the next decade",
+    "Technology and AI in everyday operations",
+    "Customer experience that builds loyalty",
+    "Talent, skills and leadership",
+    "Regulation, risk and governance",
+    "Sustainability as a business priority"
+  ],
+  "whoShouldAttend": [
+    "CEOs, founders and business heads",
+    "CXOs and functional leaders",
+    "Technology and digital leaders",
+    "Strategy and transformation heads",
+    "Investors and policy makers",
+    "Consultants and industry analysts"
+  ],
+  "whyJoin": [
+    "Hear first-hand from the leaders shaping the industry",
+    "Meet peers facing the same decisions as you",
+    "Take home ideas you can act on next quarter",
+    "See what is working through real case studies",
+    "Build partnerships that last beyond the event"
+  ],
+  "stats": [
+    { "value": "40+", "label": "Speakers" },
+    { "value": "500+", "label": "Attendees" },
+    { "value": "20+", "label": "Sessions" },
+    { "value": "2", "label": "Days" }
+  ],
+  "quotes": [
+    { "id": "ex-q1", "text": "The conversations in the hallway were as valuable as the sessions on stage.", "by": "ex-p05" },
+    { "id": "ex-q2", "text": "Every session gave me something I could take back to my team the next morning.", "by": "ex-p08" },
+    { "id": "ex-q3", "text": "The right people in one room, and the time to actually talk to them.", "by": "ex-p11" }
+  ],
+  "award": {
+    "nominationsCloseOffsetDays": 45,
+    "ceremonyOffsetDays": 90,
+    "editions": 6,
+    "categories": 18,
+    "winners": 24
+  }
+}

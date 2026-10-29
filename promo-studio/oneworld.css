@@ -125,15 +125,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--soft);box-shadow:0 0 
 .sw .s.auto,.clr input[type=color]{background-color:var(--panel)}
 .card{box-shadow:var(--sh-sm)}
 .mcard:hover{border-color:var(--faint)}
-/* the picture of each kind of mailer is the platform's, drawn with its indigo standing in for an event's colour; it
-   shows the kind, never this event's mail (which keeps its own colours), so its stand-in is turned to the ET red */
-.mcard .art img{filter:hue-rotate(105deg)}
 /* the studio's ← as the console's Back button */
 .ed-top .back{border:1px solid var(--line);border-radius:9px}
 .ed-top .back:hover{background:var(--ow-accent-soft);border-color:var(--ow-accent);color:var(--ow-accent-text)}
-/* a mailer this event cannot make yet: its words in readable grey, rather than the whole card faded below AA */
+/* a mailer this event cannot make yet: its words in readable grey, rather than the whole card faded below AA. Its
+   picture is this event's real mail (an example or a past event is badged on it), so it is shown in full colour */
 .mcard.dis{opacity:1}
-.mcard.dis .art{opacity:.35}
+.mcard.dis .art{opacity:1;filter:none}
 .mcard.dis .grp,.mcard.dis .nm,.mcard.dis .ds,.mcard.dis .subj{color:var(--soft)}
 .ed-menu.wide button[disabled]{opacity:1}
 .ed-menu.wide button[disabled] b,.ed-menu.wide button[disabled] i{color:var(--soft)}
@@ -183,3 +181,53 @@ input:focus,select:focus,textarea:focus{border-color:var(--soft);box-shadow:0 0 
 .ui-modal{background:var(--ow-scrim)}
 .ui-card{border-radius:15px}
 .ml-err{border-color:var(--ow-bad-line)}
+
+/* ============ the cards show this event's real mail (owner B; promo-studio/oneworld.js) ============
+   Larger cards: at least 360px, one column at phone width. Each card's picture is the mail itself, drawn 800px wide
+   (its desktop layout) in a locked frame, scaled to the card (--ow-s, set by oneworld.js) and cut to a 4:5 window
+   on its top; a click opens the whole mail. The badge, the note and the chip sit beside the mail, never in it.
+   The Social posts page loads this stylesheet too (for its tokens) and styles the same class names its own way
+   (oneworld-social.css), so every rule here is held to the mailer cards (.ow-prev) or the mailer's own whole-mail
+   view (.ow-lb-mail). */
+.mgrid{grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));gap:18px}
+/* an off-screen card is not laid out until it comes near (its height kept meanwhile), so a long page stays light */
+.mcard{content-visibility:auto;contain-intrinsic-size:auto 640px}
+.mcard .art.ow-prev{position:relative;aspect-ratio:4/5;overflow:hidden;line-height:normal;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;cursor:zoom-in}
+.ow-prev iframe{position:absolute;left:0;top:0;width:800px;height:1000px;border:0;background:#fff;transform-origin:0 0;transform:scale(var(--ow-s,.45));pointer-events:none}
+.ow-prev .sk{position:absolute;inset:0;border-radius:0}
+.ow-prev.ow-none{display:none}
+.ow-prev.ow-err{cursor:default;display:flex;align-items:center;justify-content:center;padding:18px;text-align:center}
+.ow-prev .ow-msg{color:var(--soft);font-size:12px;line-height:1.5}
+.ow-prev .ow-msg .btn{margin-top:8px}
+.ow-prev.ow-has:focus-visible{outline:2px solid var(--soft);outline-offset:2px}
+/* Example: what in this picture is made up (owner B). The badge in the console's strong red, its note on a panel */
+.ow-prev .ow-ex,.ow-lb-mail .ow-ex{display:inline-block;background:var(--ow-accent-text);color:var(--accent-ink);font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:5px;line-height:1.3}
+.ow-prev .ow-ex{position:absolute;top:8px;left:8px;z-index:1;box-shadow:var(--sh-sm)}
+.ow-prev .ow-ex-note{position:absolute;left:0;right:0;bottom:0;z-index:1;background:var(--panel);color:var(--ink2);font-size:11.5px;font-weight:600;line-height:1.35;padding:7px 10px;border-top:1px solid var(--line2)}
+/* a mailer held back by a fact (the event is over, nominations are closed): the real mail, with what holds it back */
+.ow-prev .ow-chip,.ow-lb-mail .ow-chip{display:inline-block;background:var(--ow-warn-soft);color:var(--ink);border:1px solid var(--ow-warn-line);font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;line-height:1.4}
+.ow-prev .ow-chip{position:absolute;top:8px;left:8px;z-index:1;box-shadow:var(--sh-sm)}
+/* the award mailers on an event that is not an award, after the rest; this page's section headings in a grey that
+   reads (the platform's is fainter than AA) */
+#secMail .sec-h{color:var(--soft)}
+.mgrid .ow-award-h{grid-column:1/-1;margin:14px 0 0}
+
+/* the whole mail, full window: over a scrim, 800px wide (scaled down on a narrow screen), its bar kept in view */
+.ow-lb-mail{position:fixed;inset:0;z-index:95;background:var(--ow-scrim);overflow-y:auto;overscroll-behavior:contain;padding:0 16px 40px}
+.ow-lb-mail .ow-lb-col{width:min(800px,100%);margin:0 auto}
+.ow-lb-mail .ow-lb-bar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);color:var(--ink);
+  border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;padding:10px 12px;margin-bottom:12px;box-shadow:var(--sh)}
+.ow-lb-mail .ow-lb-t{flex:1;min-width:0;font-weight:700;font-size:14px}
+.ow-lb-mail .ow-lb-t small{display:block;color:var(--soft);font-weight:500;font-size:12px}
+.ow-lb-mail .ow-lb-note{background:var(--ow-accent-soft);color:var(--ow-accent-text);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:600;line-height:1.45}
+.ow-lb-mail .ow-lb-note.ow-lb-quiet{background:var(--panel);color:var(--ink2)}
+.ow-lb-mail .ow-lb-note a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.ow-lb-mail .ow-lb-page{position:relative;overflow:hidden;border-radius:10px;background:#fff;box-shadow:var(--sh-lg)}
+.ow-lb-mail .ow-lb-page iframe{display:block;width:800px;border:0;background:#fff;transform-origin:0 0}
+
+/* tall: the page around this frame has made it as tall as its content (rvMailerTall, or rvSocialTall on the Social
+   posts page), so this page has no scroll of its own and the console's page scrolls. The team's page never answers,
+   and keeps its own scrolling frame */
+html.ow-tall,html.ow-tall body,html.ow-tall #app{height:auto}
+html.ow-tall{overflow:hidden}
+html.ow-tall .content{overflow:visible}

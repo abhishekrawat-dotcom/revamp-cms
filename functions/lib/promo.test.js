@@ -1,7 +1,49 @@
 /* node functions/lib/promo.test.js — exits 1 on the first failure it lists. No network, no Firebase: the pure
    parts of lib/promo.js (the brand of a generated, a ported and an unknown site; the event's hashtag, edition
    and numbers; the brief's audience; which picture addresses the image route may fetch; the AI copy's
-   prompts and how what comes back is cut). */
+   prompts and how what comes back is cut). Then the AI copy route itself (handleWrite): its limit per person and
+   its refusal of example content, with the model and lib/promo-examples.js as in-memory stand-ins. Last, which
+   answers the font and logo-unit checks keep, with lib/safe-fetch.js as a stand-in. */
+const path = require('path');
+const Module = require('module');
+
+/* lib/promo-examples.js stands in with the markers the plan names (§5h): the example library's picture folder in
+   any address, the "ex-p…" / "ex-l…" / "ex-s…" ids, and the preview's meta tag. Resolved here before the file
+   system is asked, so this runs whether or not that file exists yet. */
+var EXAMPLES = { asked: 0 };
+var exampleStub = {
+  EXAMPLE_PATH: '/assets/promo-examples/',
+  isExample: function (x) {
+    EXAMPLES.asked++;
+    var s = typeof x === 'string' ? x : JSON.stringify(x);
+    return typeof s === 'string' && (s.indexOf('/assets/promo-examples/') !== -1 || /"ex-[pls]\d/.test(s) || s.indexOf('<meta name="oneworld-example"') !== -1);
+  }
+};
+var EX_STUB = path.join(__dirname, '__stub-promo-examples.js'), realResolve = Module._resolveFilename;
+Module._resolveFilename = function (request) {
+  if (request === './promo-examples') return EX_STUB;
+  return realResolve.apply(this, arguments);
+};
+require.cache[EX_STUB] = { id: EX_STUB, filename: EX_STUB, loaded: true, children: [], paths: [], exports: exampleStub };
+/* lib/llm.js: never a real model call here — four headlines, every time, and each call counted */
+var LLM = { calls: [] };
+var LLM_PATH = require.resolve('./llm');
+require.cache[LLM_PATH] = { id: LLM_PATH, filename: LLM_PATH, loaded: true, children: [], paths: [], exports: {
+  callJson: function (prompt, schema, opts) { LLM.calls.push({ prompt: prompt, opts: opts }); return Promise.resolve({ parsed: { options: ['One clear line', 'Two', 'Three', 'Four'] } }); }
+} };
+/* lib/safe-fetch.js: never the network here. safeFetch answers from FETCH.answer(url) — { status, body }, or an
+   Error for a fetch that failed — and counts each address it is asked for; with no answer set it fails, as an
+   unreachable site would. The rest of the module is the real one. */
+var FETCH = { asked: [], answer: null };
+var SAFE_FETCH_PATH = require.resolve('./safe-fetch');
+require.cache[SAFE_FETCH_PATH] = { id: SAFE_FETCH_PATH, filename: SAFE_FETCH_PATH, loaded: true, children: [], paths: [], exports: Object.assign({}, require('./safe-fetch'), {
+  safeFetch: function (url) {
+    FETCH.asked.push(url);
+    var a = FETCH.answer ? FETCH.answer(url) : new Error('stand-in: no network here');
+    return a instanceof Error ? Promise.reject(a) : Promise.resolve({ status: a.status, headers: {}, body: Buffer.from(a.body || ''), finalUrl: url });
+  }
+}) };
+
 const P = require('./promo')._test;
 
 var failures = [], checks = 0;
@@ -270,8 +312,233 @@ ok(/not published yet/.test(P.writeWarning({ task: 'caption' }, { text: 'Registe
 
 ok(P.cutChars('abc def ghi', 7) === 'abc def' && P.cutWords('one two. three four', 3) === 'one two.', 'cutting at a word and at a sentence');
 
-if (failures.length) {
-  console.error('promo.test: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
-  process.exit(1);
+/* ---------- what each kind of post is for ---------- */
+ok(P.kindNote('audience') === 'tells the reader who the event is for', 'kind: audience (the Site-look audience post, the social posts\' Who should attend)', P.kindNote('audience'));
+ok(P.kindNote('testimonial') === 'shares a quote from someone who attended or spoke, exactly as the post quotes it', 'kind: testimonial', P.kindNote('testimonial'));
+ok(P.kindNote('outlook') === 'sets last edition\'s signals against what this edition will act on', 'kind: outlook (Prediction → outcome)', P.kindNote('outlook'));
+ok(P.kindNote('nope') === 'promotes the event' && P.kindNote('constructor') === 'promotes the event' && P.kindNote(undefined) === 'promotes the event', 'kind: anything else gets the general note');
+ok(/The post tells the reader who the event is for\./.test(P.writeRequest({ task: 'caption', network: 'linkedin', post: { type: 'audience' } }, kit).prompt), 'kind: an audience post\'s caption prompt says what it is for');
+ok(/The post sets last edition's signals/.test(P.writeRequest({ task: 'headline', post: { type: 'outlook' } }, kit).prompt), 'kind: an outlook post\'s headline prompt says what it is for');
+
+/* ---------- exported for the social posts (lib/promo-social.js) ---------- */
+var promoMod = require('./promo');
+ok(promoMod.imageUrlProblem === P.imageUrlProblem && promoMod.importIdOf === P.importIdOf, 'imageUrlProblem and importIdOf are exported, the same rule the image route uses');
+ok(promoMod.imageUrlProblem(OWN + 'promo-art/picture-x.png', BUCKET, 'qa-gen') === '' && promoMod.imageUrlProblem('https://evil.example/x.png', BUCKET, 'qa-gen') !== '', 'imageUrlProblem: this event\'s files yes, anything else no');
+
+/* ---------- the logo unit's copy for a dark ground (the mail banner draws it on a dark picture) ---------- */
+var UNIT = OWN + 'generated/1-logo-unit.svg', UNIT_DARK = OWN + 'generated/1-logo-unit-dark.svg';
+function unitPage(inner, onTone) {
+  return genPage.replace(/<div class="rv-lu rv-lu-pic rv-lu-on-dark" data-rv-logo-unit>[\s\S]*?<\/div>/,
+    '<div class="rv-lu rv-lu-pic rv-lu-on-' + (onTone || 'light') + '" data-rv-logo-unit>' + inner + '</div>');
 }
-console.log('promo.test: all ' + checks + ' checks passed');
+function unitOf(html) { return P.brandFromSources({ eventId: 'qa-gen', bucket: BUCKET, event: genEvent, plan: genPlan, pageHtml: html, template: null, gallery: [], googleFontUrl: gf }).logoUnit; }
+var withDark = unitOf(unitPage('<img class="rv-lu-img" src="' + UNIT + '" alt="" width="422" height="340"><img class="rv-lu-img rv-lu-dark" src="' + UNIT_DARK + '" alt="" aria-hidden="true" width="422" height="340">'));
+ok(withDark && withDark.url === UNIT && withDark.darkUrl === UNIT_DARK && withDark.tone === 'light' && withDark.width === 422,
+  'dark copy: a unit with its rv-lu-dark picture after its own: the first is the unit, the second its copy for a dark ground', JSON.stringify(withDark));
+var noDark = unitOf(unitPage('<img class="rv-lu-img" src="' + UNIT + '" alt="" width="422" height="340">'));
+ok(noDark && noDark.url === UNIT && noDark.darkUrl === '', 'dark copy: a unit without one has darkUrl \'\'', JSON.stringify(noDark));
+ok(b.logoUnit && b.logoUnit.darkUrl === '', 'dark copy: a plated unit has none (its plate is its ground)', JSON.stringify(b.logoUnit));
+var platedDark = unitOf(unitPage('<span class="rv-lu-plate rv-lu-plate-dark"><img class="rv-lu-img" src="' + UNIT + '" width="422" height="340"></span><img class="rv-lu-img rv-lu-dark" src="' + UNIT_DARK + '">'));
+ok(platedDark && platedDark.url === UNIT && platedDark.tone === 'dark' && platedDark.darkUrl === '', 'dark copy: a plated unit ignores a stray dark copy', JSON.stringify(platedDark));
+var farDark = unitOf(unitPage('<img class="rv-lu-img" src="' + UNIT + '"><img class="rv-lu-img rv-lu-dark" src="https://cdn.example.com/unit-dark.svg">'));
+ok(farDark && farDark.url === UNIT && farDark.darkUrl === '', 'dark copy: only one the browser can draw (the image route\'s hosts)', JSON.stringify(farDark));
+var etDark = unitOf(unitPage('<img class="rv-lu-et" src="' + OWN + 'et.svg"><img class="rv-lu-et rv-lu-dark" src="' + OWN + 'et-dark.svg"><img class="rv-lu-img" src="' + UNIT + '">'));
+ok(etDark && etDark.url === UNIT && etDark.darkUrl === '', 'dark copy: the ET logo\'s own dark copy (rv-lu-et) is not the unit\'s', JSON.stringify(etDark));
+ok(u.logoUnit && u.logoUnit.darkUrl === '', 'dark copy: an unsaved plan with none has darkUrl \'\'', JSON.stringify(u.logoUnit));
+function planUnit(extra) {
+  return P.brandFromSources({ eventId: 'qa-gen', bucket: BUCKET, event: genEvent, pageHtml: null, template: null, gallery: [], googleFontUrl: gf,
+    plan: Object.assign({}, genPlan, { design: Object.assign({}, genPlan.design, { logoUnitHeroMode: 'light' }, extra) }) }).logoUnit;
+}
+var planDark = planUnit({ logoUnitDarkUrl: OWN + 'generated/old-logo-unit-dark.svg', logoUnitDarkOf: genPlan.design.logoUnitUrl });
+ok(planDark && planDark.darkUrl === OWN + 'generated/old-logo-unit-dark.svg' && planDark.tone === 'light', 'dark copy: an unsaved plan\'s copy for a dark ground, made of this very unit', JSON.stringify(planDark));
+ok(planUnit({ logoUnitDarkUrl: OWN + 'generated/x-dark.svg', logoUnitDarkOf: OWN + 'generated/another-unit.svg' }).darkUrl === '' &&
+  planUnit({ logoUnitDarkUrl: OWN + 'generated/x-dark.svg' }).darkUrl === '' &&
+  planUnit({ logoUnitDarkUrl: OWN + 'generated/x-dark.svg', logoUnitDarkOf: genPlan.design.logoUnitUrl, logoUnitPlate: 'dark' }).darkUrl === '',
+  'dark copy: an unsaved plan\'s copy of another unit, of an unknown one, or on a plate: none');
+/* a design written before logoUnitDarkOf existed: the copy is known by its file, made in the same run as the unit */
+var GEN = 'events/qa-gen/generated/';
+var oldRun = planUnit({ logoUnitDarkUrl: OWN + 'generated/1700000000000-logo-unit-on-dark.png',
+  logoUnitStoragePath: GEN + '1700000000000-logo-unit.svg', logoUnitDarkStoragePath: GEN + '1700000000000-logo-unit-on-dark.png' });
+ok(oldRun && oldRun.darkUrl === OWN + 'generated/1700000000000-logo-unit-on-dark.png', 'dark copy: an older plan with no logoUnitDarkOf: its copy made in the same run as its unit (the site\'s hero shows it)', JSON.stringify(oldRun));
+ok(planUnit({ logoUnitDarkUrl: OWN + 'generated/1700000000001-logo-unit-on-dark.png',
+    logoUnitStoragePath: GEN + '1700000000000-logo-unit.svg', logoUnitDarkStoragePath: GEN + '1700000000001-logo-unit-on-dark.png' }).darkUrl === '' &&
+  planUnit({ logoUnitDarkUrl: OWN + 'generated/1700000000000-logo-unit-on-dark.png',
+    logoUnitStoragePath: 'events/qa-gen/uploads/owner-logo.png', logoUnitDarkStoragePath: GEN + '1700000000000-logo-unit-on-dark.png' }).darkUrl === '',
+  'dark copy: an older plan\'s copy from another run, or beside an owner\'s uploaded logo: none (not trusted)');
+/* the same test as the one the site's hero is built with (api.js darkCopyOfUnit), so the Kit never disagrees with it */
+var apiDarkCopyOfUnit = require('./api')._testHooks.darkCopyOfUnit;
+var unitCases = [null, {}, { logoUnitDarkUrl: 'd' }, { logoUnitDarkUrl: 'd', logoUnitUrl: 'u', logoUnitDarkOf: 'u' }, { logoUnitDarkUrl: 'd', logoUnitUrl: 'u', logoUnitDarkOf: 'v' },
+  { logoUnitDarkOf: 'u', logoUnitUrl: 'u' }, { logoUnitDarkUrl: 'd', logoUnitStoragePath: GEN + '12-logo-unit.svg', logoUnitDarkStoragePath: GEN + '12-logo-unit-on-dark.png' },
+  { logoUnitDarkUrl: 'd', logoUnitStoragePath: GEN + '12-logo-unit.svg', logoUnitDarkStoragePath: GEN + '13-logo-unit-on-dark.png' },
+  { logoUnitDarkUrl: 'd', logoUnitStoragePath: GEN + '12-logo-unit-x.svg', logoUnitDarkStoragePath: GEN + '12-logo-unit-on-dark.png' },
+  { logoUnitDarkUrl: 'd', logoUnitStoragePath: 'events/x/uploads/logo.png', logoUnitDarkStoragePath: 'events/x/uploads/logo-dark.png' },
+  { logoUnitDarkUrl: 'd', logoUnitDarkOf: 'u', logoUnitUrl: 'u2', logoUnitStoragePath: GEN + '12-logo-unit.svg', logoUnitDarkStoragePath: GEN + '12-logo-unit-on-dark.png' }];
+var unitAnswers = unitCases.map(function (d) { return [P.darkCopyOfUnit(d), apiDarkCopyOfUnit(d)]; });
+ok(typeof apiDarkCopyOfUnit === 'function' && unitAnswers.every(function (a) { return a[0] === a[1]; }) && unitAnswers.some(function (a) { return a[0]; }) && unitAnswers.some(function (a) { return !a[0]; }),
+  'dark copy: darkCopyOfUnit answers as api.js\'s does, case for case', JSON.stringify(unitAnswers));
+ok(p.logoUnit && p.logoUnit.darkUrl === '', 'dark copy: an ET banner\'s logo has none', JSON.stringify(p.logoUnit));
+
+/* ---------- the AI copy route: a limit per person, and never from example content ---------- */
+const { sendJson } = require('./http');
+var FAILS = [], LIVE = { calls: 0 };
+var noFirestore = { error: 'stand-in: no Firestore here', db: { collection: function () { return { doc: function () { return { collection: function () {
+  return { orderBy: function () { return { limit: function () { return { get: function () { return Promise.resolve({ empty: true, docs: [] }); } }; } }; } };
+} }; } }; } } };
+promoMod.wire({
+  BODY_LIMITS: { small: 1 << 14 },
+  withAdminBody: function (req, res, limit, cb) {
+    try { cb(noFirestore, { email: req.who }, req.body); } catch (err) { FAILS.push('threw: ' + (err && err.stack || err)); sendJson(res, 500, { error: 'threw' }); }
+  },
+  eventIdOr400: function (res, v) { if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(String(v || ''))) { sendJson(res, 400, { error: 'eventId required' }); return null; } return v; },
+  loadLiveEvent: function () { LIVE.calls++; return Promise.resolve({ name: 'ET Making AI Work 2026', start: '2026-11-20T09:00', category: 'ip', published: true }); },
+  readObject: function () { return Promise.resolve(null); },
+  sitePath: function (id, f) { return 'events/' + id + '/site/' + f; },
+  siteVersionOf: function () { return 0; },
+  publicBaseFor: function () { return 'https://cms.example'; },
+  googleFontUrl: gf,
+  aiUsageRecorder: function () { return function () {}; },
+  sendAiFailure: function (res) { sendJson(res, 503, { error: 'ai failed' }); },
+  sendFailure: function (res, what, err, msg) {
+    if (err && err.status && err.body) return sendJson(res, err.status, err.body);
+    FAILS.push(what + ': ' + (err && err.stack || err)); sendJson(res, 500, { error: msg });
+  }
+});
+function write(who, body) {
+  return new Promise(function (resolve) {
+    var res = { headersSent: false, writeHead: function (s) { res.status = s; res.headersSent = true; },
+      end: function (b) { var j = null; try { j = JSON.parse(b); } catch (e) { /* not JSON */ } resolve({ status: res.status, json: j }); } };
+    promoMod.handleWrite({ method: 'POST', url: '/api/promo/write', headers: {}, who: who, body: Object.assign({ eventId: 'qa-x' }, body) }, res);
+  });
+}
+var HEADLINE = { task: 'headline', post: { type: 'speaker', headline: 'Meet Asha' }, current: 'Meet Asha' };
+function times(n, who, body) {
+  var out = [];
+  return Array.apply(null, new Array(n)).reduce(function (p) {
+    return p.then(function () { return write(who, body).then(function (r) { out.push(r); }); });
+  }, Promise.resolve()).then(function () { return out; });
+}
+var BUSY = 'The AI has been used a lot in the last few minutes. Try again in a little while.';
+var routeChecks = times(30, 'one@timesinternet.in', HEADLINE).then(function (thirty) {
+  ok(thirty.every(function (r) { return r.status === 200 && r.json && r.json.options && r.json.options.length === 4; }), 'write: 30 calls in 10 minutes for one person all answer', JSON.stringify(thirty.map(function (r) { return r.status; })));
+  ok(LLM.calls.length === 30 && LLM.calls.every(function (c) { return c.opts && c.opts.route === 'promo-write'; }), 'write: each one asked the model once', LLM.calls.length);
+  var before = { llm: LLM.calls.length, live: LIVE.calls };
+  return write('one@timesinternet.in', HEADLINE).then(function (r) {
+    ok(r.status === 429 && r.json && r.json.error === BUSY, 'write: the 31st call in 10 minutes for that person is 429, in plain words', JSON.stringify(r));
+    ok(LLM.calls.length === before.llm && LIVE.calls === before.live, 'write: a refused call reads nothing and asks no model');
+    return write('ONE@TimesInternet.in', HEADLINE);
+  }).then(function (r) {
+    ok(r.status === 429, 'write: the same person in other capitals is still that person', r.status);
+    return write('two@timesinternet.in', HEADLINE);
+  }).then(function (r) {
+    ok(r.status === 200 && r.json && r.json.options.length === 4, 'write: another person is not held back', JSON.stringify(r));
+  });
+}).then(function () {
+  var llm = LLM.calls.length, live = LIVE.calls;
+  var examples = [
+    { task: 'caption', network: 'linkedin', post: { type: 'speaker', photo: 'https://cms.example/assets/promo-examples/people/p01.jpg' } },
+    { task: 'subjects', mailer: { type: 'invitation', ids: ['ex-l01'] } },
+    { task: 'intro', mailer: { type: 'invitation' }, current: 'Hello <meta name="oneworld-example" content="speakers">' },
+    { task: 'headline', post: { type: 'speaker' }, current: 'x', mailer: { speakers: [{ id: 'ex-p03', name: 'Meera Kulkarni' }] } }
+  ];
+  return examples.reduce(function (p, body, i) {
+    return p.then(function () {
+      return write('three@timesinternet.in', body).then(function (r) {
+        ok(r.status === 422 && r.json && r.json.code === 'example' && /^Example content cannot be saved, downloaded or sent\./.test(r.json.error), 'write: example content in ' + body.task + ' (#' + (i + 1) + ') is 422', JSON.stringify(r));
+      });
+    });
+  }, Promise.resolve()).then(function () {
+    ok(LLM.calls.length === llm && LIVE.calls === live, 'write: example content reads nothing and asks no model');
+    /* the four refusals did not count: thirty real calls still go through for that person */
+    return times(30, 'three@timesinternet.in', HEADLINE);
+  }).then(function (thirty) {
+    ok(thirty.every(function (r) { return r.status === 200; }), 'write: refused example calls do not count against the limit', JSON.stringify(thirty.map(function (r) { return r.status; })));
+    return write('four@timesinternet.in', { task: 'caption', network: 'x', post: { type: 'testimonial', quote: 'It changed how we buy.' } });
+  }).then(function (r) {
+    ok(r.status !== 422 && r.status !== 429, 'write: a real post is not mistaken for an example', r.status);
+    ok(/shares a quote from someone who attended or spoke/.test(LLM.calls[LLM.calls.length - 1].prompt), 'write: a testimonial caption is told what the post is for');
+    ok(!FAILS.length, 'write: nothing failed unexpectedly', FAILS.join('\n'));
+  });
+});
+
+/* ---------- the network checks keep only real answers ----------
+   A failed logo-unit measurement, and a font check that got no answer, a 429 or a 5xx, are asked again by the
+   next kit; a measurement and a real 200/400 are kept. Kept failures would let two App Hosting instances give
+   one event two banner fingerprints for up to 6 h. */
+var UNIT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100"><path d="M0 0h400v100H0z" fill="#ffffff"/></svg>';
+function askedFor(url) { return FETCH.asked.filter(function (u) { return u === url; }).length; }
+function networkChecks() {
+  var unitUrl = OWN + 'ported/logo-unit.svg', unit = { url: unitUrl, width: 0, height: 0, tone: '' };
+  var font = gf('Bebas Neue'), bare = 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap';
+  var answers = {};
+  FETCH.answer = function (url) { var a = answers[url]; return typeof a === 'function' ? a() : a || new Error('stand-in: unreachable'); };
+  answers[unitUrl] = { status: 503, body: '' };
+  return P.measureUnit(unit).then(function (u) {
+    ok(u === unit && !u.tone && !u.width, 'network: a logo unit whose fetch answered 503 is left as the page said', JSON.stringify(u));
+    answers[unitUrl] = new Error('stand-in: timed out');
+    return P.measureUnit(unit);
+  }).then(function (u) {
+    ok(askedFor(unitUrl) === 2 && u === unit, 'network: a failed measurement is not kept — the next kit asks again', askedFor(unitUrl));
+    answers[unitUrl] = { status: 200, body: UNIT_SVG };
+    return P.measureUnit(unit);
+  }).then(function (u) {
+    ok(askedFor(unitUrl) === 3 && u.tone === 'dark' && u.width === 400 && u.height === 100, 'network: once the unit answers, its size and its SVG\'s tone are measured', JSON.stringify(u));
+    answers[unitUrl] = { status: 503, body: '' };
+    return Promise.all([P.measureUnit(unit), P.measureUnit(Object.assign({}, unit))]);
+  }).then(function (both) {
+    ok(askedFor(unitUrl) === 3 && both.every(function (u) { return u.tone === 'dark' && u.width === 400; }), 'network: a measurement is kept for the next kits', askedFor(unitUrl));
+    var other = OWN + 'ported/other-unit.svg';
+    answers[other] = { status: 200, body: UNIT_SVG };
+    return Promise.all([P.measureUnit({ url: other }), P.measureUnit({ url: other })]).then(function (two) {
+      ok(askedFor(other) === 1 && two[0].tone === 'dark' && two[1].tone === 'dark', 'network: two kits at once wait on the one measurement', askedFor(other));
+    });
+  }).then(function () {
+    answers[font] = { status: 503 };
+    return P.checkFontCss(font);
+  }).then(function (u) {
+    ok(u === font && askedFor(font) === 1, 'network: a font address that answered 503 is kept for this kit', u);
+    answers[font] = { status: 429 };
+    return P.checkFontCss(font);
+  }).then(function (u) {
+    ok(u === font && askedFor(font) === 2 && askedFor(bare) === 0, 'network: a 503 is not kept — the next kit asks again; a 429 keeps the address too', askedFor(font));
+    answers[font] = new Error('stand-in: unreachable');
+    return P.checkFontCss(font);
+  }).then(function (u) {
+    ok(u === font && askedFor(font) === 3, 'network: a font check that got no answer was asked again, and keeps the address', askedFor(font));
+    answers[font] = { status: 400 }; answers[bare] = { status: 502 };
+    return P.checkFontCss(font);
+  }).then(function (u) {
+    ok(u === bare && askedFor(font) === 4 && askedFor(bare) === 1, 'network: weights refused (400) but the bare family\'s check got a 502: the bare family, for this kit', u);
+    answers[bare] = { status: 200 };
+    return P.checkFontCss(font);
+  }).then(function (u) {
+    ok(u === bare && askedFor(font) === 5 && askedFor(bare) === 2, 'network: that 502 was not kept — asked again, and the bare family loads', u);
+    answers[font] = { status: 503 }; answers[bare] = { status: 503 };
+    return P.checkFontCss(font);
+  }).then(function (u) {
+    ok(u === bare && askedFor(font) === 5 && askedFor(bare) === 2, 'network: a real answer (400, then 200 without weights) is kept for the next kits', askedFor(font) + '/' + askedFor(bare));
+    var gone = gf('Not A Family');
+    answers[gone] = { status: 400 }; answers[gone.replace(/:wght@[^&]*/, '')] = { status: 400 };
+    return P.checkFontCss(gone).then(function (first) {
+      return P.checkFontCss(gone).then(function (second) {
+        ok(first === '' && second === '' && askedFor(gone) === 1, 'network: a family Google Fonts refuses outright is kept as refused', askedFor(gone));
+      });
+    });
+  }).then(function () {
+    var ok200 = gf('Inter');
+    answers[ok200] = { status: 200 };
+    return P.checkFontCss(ok200).then(function () { return P.checkFontCss(ok200); }).then(function (u) {
+      ok(u === ok200 && askedFor(ok200) === 1, 'network: a font address that loads is kept', askedFor(ok200));
+    });
+  });
+}
+
+routeChecks.then(networkChecks).then(null, function (err) { ok(false, 'the route and network checks ran without throwing', String(err && err.stack || err)); }).then(function () {
+  Module._resolveFilename = realResolve;
+  delete require.cache[EX_STUB];
+  delete require.cache[SAFE_FETCH_PATH];
+  if (failures.length) {
+    console.error('promo.test: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
+    process.exit(1);
+  }
+  console.log('promo.test: all ' + checks + ' checks passed');
+});

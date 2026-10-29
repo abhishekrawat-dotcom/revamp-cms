@@ -89,6 +89,16 @@
 //                          pages: an event's brand and content, its pictures from our own address, AI copy)
 //     lib/promo-track.js   GET /t/o/<id>.gif, GET /t/c/<id> (PUBLIC — a mailer's open pixel and click redirect),
 //                          GET /api/promo/analytics, GET /api/promo/analytics/all
+//     lib/promo-mailer.js  GET /api/promo/mailers, /api/promo/mailer/* except previews and banner (open, render,
+//                          save, download, AI …),
+//                          GET/POST/DELETE /api/promo/icons (Promotions → Mailers, the platform's mailer studio)
+//     lib/promo-social.js  Promotions → Social posts (the platform's post templates): GET /api/promo/social/catalog,
+//                          GET/POST/DELETE /api/promo/social/art, POST /api/promo/social/art/psd,
+//                          POST /api/promo/social/html, GET/POST /api/promo/social/layout,
+//                          POST /api/promo/social/layout/base, POST /api/promo/social/layout/reset,
+//                          POST /api/promo/social/picture
+//     lib/promo-previews.js  POST /api/promo/mailer/previews (each mailer card's live preview of this event's mail)
+//     lib/promo-banner.js  GET/POST /api/promo/mailer/banner (the mailers' top banner picture, drawn in the browser)
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -7254,13 +7264,37 @@ function checkAudienceFilters(label, v) {
   return '';
 }
 
+/* A saved promotion may never hold the example content the Promotions previews fill a gap with
+   (lib/promo-examples.js isExample: an example picture's address, an example person's or logo's "ex-…" id,
+   a previewed page's example marker). Those people and logos are made up, and a saved promotion goes out
+   under the event's name and is copied into the next edition (CLONED_COLLECTIONS). So every field that can
+   hold free text or an address is checked, not only `body`: the browser checks the whole record before it
+   sends it (promo-kit.js save), and a direct call must not get past the server with a picture in `imageUrl`
+   or an id in `name` that the browser would have refused. Each value is judged as sent and quoted, as the
+   browser's whole-record check sees it, so a bare "ex-p01" in a name is caught as the id it is.
+   That module is loaded here on first use, as every Promotions module is, so a broken one never stops this
+   file from loading. If it cannot be loaded, a value cannot be checked, so it is refused rather than saved
+   unchecked; an empty value holds nothing and is not refused for it. */
+function promoExampleProblem(label, v) {
+  if (v == null || v === '') return '';
+  var examples = null;
+  try { examples = require('./promo-examples'); }
+  catch (err) { console.error('api: could not load lib/promo-examples.js to check a saved promotion — ' + (err && err.stack || err)); }
+  if (!examples || typeof examples.isExample !== 'function') return label + ' could not be checked just now. Please try again in a few minutes.';
+  return examples.isExample(v) || examples.isExample([v]) ? label + ' holds example content, which can never be saved.' : '';
+}
+/* a promotion field's own rule (a field-table type, or a function) first, then the example check */
+function promoField(type) {
+  return function (label, v) { return checkRecordField(label, type, v) || promoExampleProblem(label, v); };
+}
 /* `body` of a post or a mailer is its whole configuration as JSON (promo-kit.js): every text the owner
    edited, section by section, so a mailer can pass 20,000 characters. 60,000 stays far inside a record. */
-function checkPromoBody(label, v) { return checkText(label, v, 60000, false); }
+var checkPromoBody = promoField('text:60000');
 RESOURCES['promo-templates'] = subcollectionRoutes('promoTemplates', { label: 'promotion template', required: ['kind', 'name'], fixed: ['kind'],
   defaults: { status: 'draft' }, fields: {
-    kind: 'enum:email|whatsapp|post|banner', name: 'text:120', subject: 'text:200', body: checkPromoBody, network: 'enum:|linkedin|x|facebook',
-    imageUrl: 'url', size: 'text:40', placement: 'text:200', linkUrl: 'url', utmCampaign: checkUtmCampaign,
+    kind: 'enum:email|whatsapp|post|banner', name: promoField('text:120'), subject: promoField('text:200'), body: checkPromoBody,
+    network: 'enum:|linkedin|x|facebook', imageUrl: promoField('url'), size: promoField('text:40'), placement: promoField('text:200'),
+    linkUrl: promoField('url'), utmCampaign: promoField(checkUtmCampaign),
     status: 'enum:draft|posted', postedAt: 'iso', order: 'num' } });
 RESOURCES['promo-audiences'] = subcollectionRoutes('promoAudiences', { label: 'saved audience', required: ['name'], maxBody: MB, fields: {
   name: 'text:120', note: 'text:500', filters: checkAudienceFilters, personKeys: 'keys', order: 'num' } });
@@ -9957,6 +9991,26 @@ var promoTrack = function (handler) {
   };
 };
 
+/* lib/promo-social.js (Promotions → Social posts: the platform's post templates, their art, saved layouts and
+   uploaded pictures), lib/promo-previews.js (the live previews on the Mailers cards) and lib/promo-banner.js
+   (the mailers' composed top banner) take the same helpers. Each reads the event through lib/promo.js
+   (buildKit) or lib/promo-mailer.js (eventFor), and those two are otherwise handed their helpers only by
+   their own routes above. On a fresh instance whose first Promotions request is one of these, they would
+   still be unwired and the request would fail with a 500, so these routes hand the helpers to them too. */
+function promoRoute(moduleName, handler) {
+  var run = inModule(moduleName, handler);
+  return function (req, res) {
+    var helpers = promoHelpers();
+    ['promo', 'promo-mailer', moduleName].forEach(function (name) {
+      try { require('./' + name).wire(helpers); } catch (e) { /* left to inModule() below: it logs a route module that cannot be loaded and answers 503 */ }
+    });
+    return run(req, res);
+  };
+}
+var promoSocial = function (handler) { return promoRoute('promo-social', handler); };
+var promoPreviews = function (handler) { return promoRoute('promo-previews', handler); };
+var promoBanner = function (handler) { return promoRoute('promo-banner', handler); };
+
 /* the same 42 bytes as lib/promo-track.js PIXEL (a test checks): a mail must never show a broken image, even
    when that module is missing from a deployment */
 var TRACK_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -10074,6 +10128,20 @@ var ROUTES = {
   'GET /api/promo/icons': promoMailer('handleIcons'),
   'POST /api/promo/icons': promoMailer('handleIconUpload'),
   'DELETE /api/promo/icons': promoMailer('handleIconDelete'),
+  'GET /api/promo/social/catalog': promoSocial('handleCatalog'),
+  'GET /api/promo/social/art': promoSocial('handleArt'),
+  'POST /api/promo/social/art': promoSocial('handleArtUpload'),
+  'POST /api/promo/social/art/psd': promoSocial('handleArtPsd'),
+  'DELETE /api/promo/social/art': promoSocial('handleArtDelete'),
+  'POST /api/promo/social/html': promoSocial('handleHtml'),
+  'GET /api/promo/social/layout': promoSocial('handleLayout'),
+  'POST /api/promo/social/layout/base': promoSocial('handleLayoutBase'),
+  'POST /api/promo/social/layout': promoSocial('handleLayoutSave'),
+  'POST /api/promo/social/layout/reset': promoSocial('handleLayoutReset'),
+  'POST /api/promo/social/picture': promoSocial('handlePicture'),
+  'POST /api/promo/mailer/previews': promoPreviews('handlePreviews'),
+  'GET /api/promo/mailer/banner': promoBanner('handleBanner'),
+  'POST /api/promo/mailer/banner': promoBanner('handleBannerUpload'),
   'GET /api/promo/analytics': promoTrack('handleAnalytics'),
   'GET /api/promo/analytics/all': promoTrack('handleAnalyticsAll'),
 

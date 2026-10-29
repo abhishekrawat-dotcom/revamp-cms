@@ -507,8 +507,13 @@ var NOT_CLONED_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedVe
   'eventId', 'id', 'slug', 'name', 'status'];
 
 /* Storage folders under events/<id>/ that are not carried over: the live page and the old preview page
-   (a copy starts unpublished) and the documents uploaded for AI generation (inputs, like drafts). */
-var NOT_CLONED_FOLDERS = ['published', 'staging', 'briefs'];
+   (a copy starts unpublished), the documents uploaded for AI generation (inputs, like drafts), and the
+   Promotions pictures made for this edition: the social posts' art and uploaded pictures (promo-art), their
+   saved layouts (promo-layouts) and the mailers' composed top banner (promo-banner). A new edition takes
+   inspiration from the last one but never copies it: its banner is drawn again from its own site, and its
+   posts start from its own art. Their records (promoSocial, promoSocialLayouts, promoBanner) are not in
+   CLONED_COLLECTIONS either. */
+var NOT_CLONED_FOLDERS = ['published', 'staging', 'briefs', 'promo-art', 'promo-layouts', 'promo-banner'];
 var SITE_FOLDER = 'site';
 var CLONE_CONCURRENCY = 12;
 var BATCH_SIZE = 400;          // Firestore allows 500 writes per batch

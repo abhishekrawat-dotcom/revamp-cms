@@ -278,7 +278,8 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { key: "href", label: "Links to", type: "url" },
       { key: "alt", label: "Alt text", type: "text" },
     ],
-    make: (e) => ({ url: e.keyVisualUrl || "", href: siteUrl(e), alt: e.name }),
+    // ONEWORLD PORT (owner C): a Banner block added in the studio starts on the event's composed mail banner.
+    make: (e) => ({ url: e.bannerUrl || e.keyVisualUrl || "", href: siteUrl(e), alt: e.name }),
   },
   logobar: {
     label: "Logo bar", icon: "✦", addable: true,

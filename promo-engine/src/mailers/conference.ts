@@ -136,7 +136,8 @@ export const conferenceMailer: Mailer = {
         isNo(params.showNav) ? logoBlock(event) : null,
         // The event's key visual goes in as ARTWORK on its own, never behind the
         // headline: it is a composed banner that already carries the event name.
-        event.keyVisualUrl ? blockOf("banner", { url: event.keyVisualUrl, href: event.micrositeUrl || "", alt: event.name }) : null,
+        // ONEWORLD PORT (owner C): the event's composed mail banner when it has one, else the bare key visual.
+        event.bannerUrl || event.keyVisualUrl ? blockOf("banner", { url: event.bannerUrl || event.keyVisualUrl, href: event.micrositeUrl || "", alt: event.name }) : null,
         blockOf("hero", {
           ribbon: "", title: event.name, sub: params.intro || "", meta: dateVenue(event),
           // Photo only when the sender supplies one; otherwise the brand band.

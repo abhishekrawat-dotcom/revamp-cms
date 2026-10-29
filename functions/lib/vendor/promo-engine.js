@@ -21,14 +21,18 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var src_exports = {};
 __export(src_exports, {
   ALL_MAILERS: () => ALL_MAILERS,
+  ALL_TEMPLATES: () => ALL_TEMPLATES,
   ASSET_BASE: () => ASSET_BASE,
   AiUnavailable: () => AiUnavailable,
   BLOCK_SCHEMAS: () => BLOCK_SCHEMAS,
   COPY_FIELDS: () => COPY_FIELDS,
+  DEFAULT_FORMATS: () => DEFAULT_FORMATS,
+  FORMATS: () => FORMATS,
   PORTALS: () => PORTALS,
   TONE_OPTIONS: () => TONE_OPTIONS,
   blockIsEmpty: () => blockIsEmpty,
   blockPalette: () => blockPalette,
+  buildCatalog: () => buildCatalog,
   buildDoc: () => buildDoc,
   buildMailerCatalog: () => buildMailerCatalog,
   clickTargetOk: () => clickTargetOk,
@@ -38,6 +42,7 @@ __export(src_exports, {
   fmtDateLabel: () => fmtDateLabel,
   getBrand: () => getBrand,
   getMailer: () => getMailer,
+  getTemplate: () => getTemplate,
   groupSponsors: () => groupSponsors,
   hexColor: () => hexColor,
   importHtml: () => importHtml,
@@ -50,11 +55,13 @@ __export(src_exports, {
   openUrl: () => openUrl,
   parseEdition: () => parseEdition,
   polishCopy: () => polishCopy,
+  qrTile: () => qrTile,
   readable: () => readable,
   relayout: () => relayout,
   renderCtx: () => renderCtx,
   renderDoc: () => renderDoc,
   resolvePalette: () => resolvePalette,
+  resolveParams: () => resolveParams,
   rewriteField: () => rewriteField,
   safeUrl: () => safeUrl,
   sanitiseFragment: () => sanitiseFragment,
@@ -66,7 +73,948 @@ __export(src_exports, {
 });
 module.exports = __toCommonJS(src_exports);
 
+// promo-engine/src/templates/formats.ts
+var FORMATS = {
+  ig_square: {
+    id: "ig_square",
+    label: "Square 1:1",
+    width: 1080,
+    height: 1080,
+    ratio: "1:1",
+    platforms: ["Instagram", "LinkedIn", "X"]
+  },
+  ig_portrait: {
+    id: "ig_portrait",
+    label: "Portrait 4:5",
+    width: 1080,
+    height: 1350,
+    ratio: "4:5",
+    platforms: ["Instagram", "LinkedIn"]
+  },
+  landscape: {
+    id: "landscape",
+    label: "Landscape 16:9",
+    width: 1200,
+    height: 675,
+    ratio: "16:9",
+    platforms: ["LinkedIn", "X"]
+  },
+  story: {
+    id: "story",
+    label: "Story 9:16",
+    width: 1080,
+    height: 1920,
+    ratio: "9:16",
+    platforms: ["Instagram Stories/Reels", "LinkedIn"]
+  }
+};
+var ALL_FORMATS = Object.values(FORMATS);
+var DEFAULT_FORMATS = ["ig_square", "ig_portrait", "landscape", "story"];
+
+// promo-engine/src/templates/template.ts
+var ALL_RATIOS = ["ig_square", "ig_portrait", "landscape", "story"];
+
+// promo-engine/src/templates/base.ts
+function esc(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function editionRibbon(ctx) {
+  if (!ctx.event.edition) return "";
+  return `<div class="ribbon">${esc(ordinal(ctx.event.edition))} Edition</div>`;
+}
+function hashtag(ctx) {
+  return `<div class="hashtag">${esc(ctx.event.hashtag)}</div>`;
+}
+function brandLockup(ctx, opts = {}) {
+  const { event } = ctx;
+  if (ctx.assets?.logoUnitUrl) {
+    return `<div class="lockup"><img class="lockup-img" src="${esc(ctx.assets.logoUnitUrl)}" alt=""></div>`;
+  }
+  const presenter = event.presenter ? `<div class="lockup-presenter"><span>${esc(event.presenter)}</span> presents</div>` : "";
+  const tagline = event.tagline && !opts.compact ? `<div class="lockup-tagline">${esc(event.tagline)}</div>` : "";
+  return `
+    <div class="lockup">
+      ${presenter}
+      <div class="lockup-name">${esc(event.name)}</div>
+      ${tagline}
+    </div>`;
+}
+var QR_K = { "1:1": 1, "4:5": 1, "16:9": 0.8, "9:16": 1.06 };
+var QR_BASE_PX = { "16:9": 130, "9:16": 190 };
+var QR_FOOTER_16_9 = ".footer>.ow-qr{flex-direction:row;margin:-1.6cqw 0 -2.6cqw}.footer>.ow-qr .ow-qr-t{white-space:normal;overflow-wrap:anywhere;max-width:152px}";
+function qrFooterPinned16x9(tileWidth) {
+  return `.footer>.ow-qr{position:absolute;bottom:18px}.footer>.ow-qr .ow-qr-t{white-space:normal;overflow-wrap:anywhere;max-width:${tileWidth};text-align:center}.footer:has(>.ow-qr) .footer-when{margin-left:calc(${tileWidth} + 3cqw)}`;
+}
+function qrTile(ctx, css10 = "", pin = false) {
+  const url = ctx.assets?.qrUrl;
+  if (!url) return "";
+  const ratio = String(ctx.format?.ratio ?? "");
+  const k = QR_K[ratio] ?? 1;
+  const px2 = Math.round((QR_BASE_PX[ratio] ?? 150) * k);
+  const u = (n) => `${Math.round(n * k * 100) / 100}px`;
+  const label = String(ctx.assets?.qrLabel ?? "");
+  const tileWidth = `${Math.round((px2 + 2 * 8 * k) * 100) / 100}px`;
+  const foot = ratio !== "16:9" ? "" : pin ? qrFooterPinned16x9(tileWidth) : QR_FOOTER_16_9;
+  return `<style>.ow-qr{display:flex;flex-direction:column;align-items:center;gap:${u(8)};flex:none}.ow-qr-code{display:block;width:${px2}px;height:${px2}px;background:#fff;padding:${u(8)};border-radius:${u(12)};box-shadow:0 ${u(4)} ${u(18)} rgba(0,0,0,.18);box-sizing:content-box}.ow-qr-t{font-size:${u(17)};font-weight:600;letter-spacing:.03em;white-space:nowrap}.footer:has(.ow-qr) .footer-when{flex:1}${foot}${css10}</style><div class="ow-qr"><img class="ow-qr-code" src="${esc(url)}" alt="QR code"><div class="ow-qr-t">${esc(label)}</div></div>`;
+}
+function footerBar(ctx, qr = {}) {
+  const { event } = ctx;
+  const where = [event.venue || event.city].filter(Boolean).join("");
+  const dateVenue2 = [event.dateLabel, where].filter(Boolean).join("  \xB7  ");
+  return `
+    <div class="footer">
+      ${qrTile(ctx, qr.css, qr.pin)}<div class="footer-when">${esc(dateVenue2)}</div>
+      <div class="cta">${esc(event.ctaLabel)}</div>
+    </div>`;
+}
+function logoChip(url, title, cls = "tl-logo") {
+  if (!url) return `<div class="${cls} text">${esc(title)}</div>`;
+  const onerr = `this.onerror=null;this.remove();this.parentElement.classList.add('text');this.parentElement.textContent=${JSON.stringify(title)};`;
+  return `<div class="${cls}"><img src="${esc(url)}" alt="${esc(title)}" onerror="${esc(onerr)}"></div>`;
+}
+function baseCss(ctx) {
+  const c = ctx.brand.colors;
+  const light = ctx.params?.theme === "light";
+  const txt = light ? c.ink : "#ffffff";
+  const frostBg = light ? "rgba(255,255,255,.74)" : "rgba(8,10,22,.34)";
+  const frostBorder = light ? "rgba(0,0,0,.08)" : "rgba(255,255,255,.16)";
+  const tileBg = light ? "rgba(0,0,0,.05)" : "rgba(255,255,255,.14)";
+  const tileBorder = light ? "rgba(0,0,0,.10)" : "rgba(255,255,255,.28)";
+  const gradient = `background:
+        radial-gradient(120% 90% at 85% 8%, rgba(255,255,255,.18), transparent 55%),
+        linear-gradient(155deg, ${c.bgFrom} 0%, ${c.bgTo} 100%);`;
+  return `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --ink:${c.ink}; --ink-soft:${c.inkSoft}; --surface:${c.surface};
+    --primary:${c.primary}; --accent:${c.accent}; --accent-ink:${c.accentInk};
+    --tier:${c.tierChip}; --txt:${txt}; --frost-bg:${frostBg}; --frost-border:${frostBorder};
+    --tile-bg:${tileBg}; --tile-border:${tileBorder};
+  }
+  html,body { width:100%; height:100%; }
+  body {
+    font-family:${ctx.brand.fontFamily};
+    color:var(--txt); -webkit-font-smoothing:antialiased;
+  }
+  .canvas {
+    position:relative; width:100%; height:100%; overflow:hidden;
+    ${gradient}
+  }
+  /* PSD background unit (rasterized), shown as-is behind the content */
+  .bg { position:absolute; inset:0; background-size:cover; background-position:center; }
+  /* light legibility scrim so overlaid text stays readable on any artwork */
+  .scrim { position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.10) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,.28) 100%); }
+  /* content layer holds all chrome + data; cqw units resolve against canvas size */
+  .content { position:absolute; inset:0; container-type:size;
+    display:flex; flex-direction:column; padding:6cqw; }
+  /* PSD logo unit dropped into the lockup slot (capped by container HEIGHT so it
+     never dominates / pushes content off-canvas in short 16:9 banners) */
+  .lockup-img { max-width:70%; max-height:20cqh; object-fit:contain; object-position:left center;
+    filter:drop-shadow(0 .5cqw 1.5cqw rgba(0,0,0,.3)); }
+  /* frosted-glass panel: blurs whatever art is behind it so overlaid text stays
+     legible on busy backgrounds ("blur the content area") */
+  .frost { background:var(--frost-bg); -webkit-backdrop-filter:blur(16px) saturate(1.15);
+    backdrop-filter:blur(16px) saturate(1.15); border:1px solid var(--frost-border);
+    border-radius:3cqw; box-shadow:0 1.5cqw 4cqw rgba(0,0,0,.28); }
+  /* header chrome */
+  .ribbon {
+    position:absolute; top:0; left:0; z-index:5;
+    background:var(--accent); color:var(--accent-ink);
+    font-weight:700; font-size:2.4cqw; letter-spacing:.02em;
+    padding:1.4cqw 3.4cqw 1.4cqw 2.2cqw;
+    clip-path:polygon(0 0,100% 0,84% 100%,0 100%);
+  }
+  .hashtag {
+    position:absolute; top:5cqw; right:6cqw; z-index:5;
+    font-weight:700; font-size:2.6cqw; opacity:.92; letter-spacing:.01em;
+  }
+  .lockup { margin-top:2cqw; }
+  .lockup-presenter { font-size:2.4cqw; font-weight:600; opacity:.9; }
+  .lockup-presenter span { text-transform:uppercase; letter-spacing:.06em; }
+  .lockup-name {
+    font-size:6.6cqw; font-weight:700; line-height:1.02; letter-spacing:-.01em;
+    margin-top:.6cqw; text-shadow:0 .4cqw 2cqw rgba(0,0,0,.22);
+  }
+  .lockup-tagline {
+    font-size:2.7cqw; font-weight:600; opacity:.92; margin-top:1.4cqw; max-width:80%;
+  }
+  /* body zone */
+  .body { flex:1; display:flex; min-height:0; }
+  .headline {
+    font-size:6.2cqw; font-weight:700; line-height:1.04; letter-spacing:-.01em;
+    text-shadow:0 .4cqw 2cqw rgba(0,0,0,.25);
+  }
+  .accent-text { color:var(--accent); }
+  /* footer chrome */
+  .footer {
+    display:flex; align-items:center; justify-content:space-between; gap:3cqw;
+    padding-top:3cqw;
+  }
+  .footer-when { font-size:2.7cqw; font-weight:700; opacity:.95; }
+  .cta {
+    background:var(--accent); color:var(--accent-ink);
+    font-weight:700; font-size:2.7cqw;
+    padding:1.8cqw 3.6cqw; border-radius:99px; white-space:nowrap;
+    box-shadow:0 1cqw 3cqw rgba(0,0,0,.22);
+  }
+  /* generic surface card */
+  .card { background:var(--surface); color:var(--ink); border-radius:3cqw;
+    box-shadow:0 2cqw 6cqw rgba(0,0,0,.22); }
+  /* stat chips */
+  .stat { background:var(--tile-bg); border:1px solid var(--tile-border);
+    border-radius:2.4cqw; padding:2.4cqw; backdrop-filter:blur(2px); }
+  .stat-v { font-size:5.4cqw; font-weight:700; color:var(--accent); line-height:1; }
+  .stat-l { font-size:2.3cqw; font-weight:600; opacity:.9; margin-top:.8cqw;
+    text-transform:uppercase; letter-spacing:.04em; }
+  /* role / tier chip */
+  .chip { display:inline-block; background:var(--tier); color:#fff;
+    font-weight:700; font-size:2.2cqw; text-transform:uppercase; letter-spacing:.05em;
+    padding:1.1cqw 2.4cqw; border-radius:99px; }
+  /* headshot cutout treatment \u2014 anchor to top so the face stays visible when cropped */
+  .headshot { object-fit:cover; object-position:top center; background:rgba(255,255,255,.1); }
+  /* landscape is short & wide: dial type down a touch */
+  body[data-ratio="16:9"] .content { padding:4cqw 5cqw; }
+  body[data-ratio="16:9"] .lockup-name { font-size:5cqw; }
+  body[data-ratio="16:9"] .headline { font-size:5cqw; }
+  /* story is tall: give the body room to breathe */
+  body[data-ratio="9:16"] .content { padding:8cqw 7cqw; }
+  `;
+}
+function page(ctx, css10, inner) {
+  const bgUrl = ctx.assets?.backgroundUrl;
+  const bgLayers = bgUrl ? `<div class="bg" style="background-image:url('${bgUrl}')"></div><div class="scrim"></div>` : "";
+  return `<!doctype html>
+<html><head><meta charset="utf-8">
+<style>${baseCss(ctx)}${css10}</style>
+</head>
+<body data-ratio="${ctx.format.ratio}">
+  <div class="canvas">${bgLayers}<div class="content">${inner}</div></div>
+</body></html>`;
+}
+
+// promo-engine/src/templates/generic/announcement.ts
+var css = `
+  /* logo clears the edition ribbon; content never overflows the canvas */
+  .an-lockup { margin-top:6cqw; }
+  .an-fill { flex:1; min-height:0; }
+  .an-panel { padding:4cqw 4.5cqw; display:flex; flex-direction:column; gap:1.6cqw; }
+  .an-save { font-size:min(3cqw,4.4cqh); font-weight:700; letter-spacing:.3em; text-transform:uppercase; opacity:.92; }
+  .an-date { font-size:min(9cqw,13cqh); font-weight:700; line-height:1; letter-spacing:-.01em; }
+  .an-venue { font-size:min(3.6cqw,5cqh); font-weight:700; opacity:.96; }
+  .an-stats { display:flex; flex-wrap:wrap; gap:2cqw; margin-top:1cqw; }
+  .an-stat { flex:1 1 0; min-width:18%; }
+  .an-stat .v { font-size:min(5.4cqw,7.5cqh); font-weight:700; color:var(--accent); line-height:1; }
+  .an-stat .l { font-size:min(2.2cqw,3cqh); font-weight:600; opacity:.9; margin-top:.6cqw;
+    text-transform:uppercase; letter-spacing:.04em; }
+  .an-cta { align-self:flex-start; margin-top:1.5cqw; background:var(--accent); color:var(--accent-ink);
+    font-weight:700; font-size:min(2.8cqw,3.8cqh); padding:1.6cqw 3.6cqw; border-radius:99px; }
+`;
+var AN_ACTS_CSS = ".an-acts{display:flex;align-items:center;justify-content:space-between;gap:2cqw;margin-top:1.5cqw}.an-acts .an-cta{margin-top:0;align-self:center}";
+var AN_ACTS_16_9_CSS = ".an-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-auto-flow:row dense;column-gap:3cqw}.an-panel>*{grid-column:1/-1}.an-panel>:has(+.an-acts),.an-acts>.an-cta{grid-column:1}.an-acts{display:contents}.an-acts>.an-cta{margin-top:1.5cqw;align-self:start;justify-self:start}.an-acts>.ow-qr{grid-column:2;grid-row:span 2;align-self:center}.an-acts>.ow-qr .ow-qr-t{white-space:normal;overflow-wrap:anywhere;max-width:240px;text-align:center}";
+function ctaRow(ctx) {
+  const cta = `<div class="an-cta">${esc(ctx.event.ctaLabel)}</div>`;
+  if (!ctx.assets?.qrUrl) return cta;
+  const css10 = AN_ACTS_CSS + (ctx.format?.ratio === "16:9" ? AN_ACTS_16_9_CSS : "");
+  return `<div class="an-acts">${cta}${qrTile(ctx, css10)}</div>`;
+}
+var announcement = {
+  id: "generic.announcement",
+  category: "generic",
+  subtype: "announcement",
+  label: "Announcement / Save the Date",
+  description: "Hero save-the-date: logo, dates, venue, editable stats and CTA on a frosted panel.",
+  formats: ALL_RATIOS,
+  params: [
+    { key: "kicker", label: "Kicker", type: "text", default: "Save the Date" },
+    { key: "stats", label: "Stats (editable)", type: "stats" }
+  ],
+  requires(event) {
+    const ok = Boolean(event.dateLabel || event.venue);
+    return { ok, missing: ok ? [] : ["event date/venue"] };
+  },
+  render(ctx) {
+    const { event } = ctx;
+    const stats = (Array.isArray(ctx.params.stats) ? ctx.params.stats : event.stats).slice(0, 4);
+    const statsHtml = stats.map((s) => `<div class="an-stat"><div class="v">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join("");
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      <div class="an-lockup">${brandLockup(ctx, { compact: true })}</div>
+      <div class="an-fill"></div>
+      <div class="frost an-panel">
+        <div class="an-save">${esc(ctx.params.kicker || "Save the Date")}</div>
+        ${event.dateLabel ? `<div class="an-date">${esc(event.dateLabel)}</div>` : ""}
+        ${event.venue || event.city ? `<div class="an-venue">${esc(event.venue || event.city)}</div>` : ""}
+        ${statsHtml ? `<div class="an-stats">${statsHtml}</div>` : ""}
+        ${ctaRow(ctx)}
+      </div>`;
+    return page(ctx, css, inner);
+  },
+  caption(ctx) {
+    const { event } = ctx;
+    return `Save the date! ${event.name}${event.tagline ? " \u2014 " + event.tagline : ""}. ` + [event.dateLabel, event.venue].filter(Boolean).join(" \xB7 ") + `. ${event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/generic/who-should-attend.ts
+var css2 = `
+  .wsa-body { flex:1; display:flex; flex-direction:column; gap:2.5cqw; min-height:0; padding:4.5cqw; }
+  .wsa-title { font-size:5.4cqw; font-weight:700; }
+  .wsa-grid { flex:1; display:grid; grid-template-columns:repeat(2,1fr); gap:2cqw; align-content:center; }
+  .wsa-item { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.24);
+    border-radius:2cqw; padding:2.4cqw; font-size:2.5cqw; font-weight:700; line-height:1.2;
+    display:flex; align-items:center; gap:1.4cqw; }
+  .wsa-item::before { content:""; width:2cqw; height:2cqw; border-radius:50%;
+    background:var(--accent); flex:none; }
+  body[data-ratio="9:16"] .wsa-grid { grid-template-columns:1fr; }
+  body[data-ratio="16:9"] .wsa-title { font-size:4cqw; }
+`;
+var QR_16_9_CSS = ".wsa-grid{row-gap:1.2cqw}.wsa-item{padding-top:1cqw;padding-bottom:1cqw}";
+var whoShouldAttend = {
+  id: "generic.who-should-attend",
+  category: "generic",
+  subtype: "who-should-attend",
+  label: "Who Should Attend",
+  description: "Audience-persona grid built from the event's who_should_attend list.",
+  formats: ALL_RATIOS,
+  params: [
+    { key: "limit", label: "Max personas", type: "number", default: 6 },
+    { key: "title", label: "Heading", type: "text", default: "Who Should Attend" }
+  ],
+  requires(event) {
+    const ok = event.whoShouldAttend.length > 0;
+    return { ok, missing: ok ? [] : ["who_should_attend"] };
+  },
+  render(ctx) {
+    const limit = Number(ctx.params.limit) || 6;
+    const items = ctx.event.whoShouldAttend.slice(0, limit).map((p) => `<div class="wsa-item">${esc(p)}</div>`).join("");
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="frost wsa-body">
+        <div class="wsa-title">${esc(ctx.params.title || "Who Should Attend")}</div>
+        <div class="wsa-grid">${items}</div>
+      </div>
+      ${footerBar(ctx, { css: ctx.format?.ratio === "16:9" ? QR_16_9_CSS : "" })}`;
+    return page(ctx, css2, inner);
+  },
+  caption(ctx) {
+    return `Is ${ctx.event.name} for you? ${ctx.event.whoShouldAttend.slice(0, 4).join(", ")} and more should attend. ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/generic/summit-highlights.ts
+var css3 = `
+  .sh-body { flex:1; display:flex; flex-direction:column; gap:3cqw; min-height:0; justify-content:center; padding:4.5cqw; }
+  .sh-title { font-size:5.6cqw; font-weight:700; text-align:center; letter-spacing:-.01em; }
+  .sh-grid { flex:1; display:grid; grid-template-columns:repeat(3,1fr); gap:2cqw;
+    align-content:center; min-height:0; }
+  .sh-tile { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.24);
+    border-radius:2.4cqw; padding:2.8cqw 1.8cqw; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; gap:.9cqw; min-width:0; }
+  .sh-v { font-size:6.6cqw; font-weight:700; color:var(--accent); line-height:1; }
+  .sh-l { font-size:2.2cqw; font-weight:700; line-height:1.15; opacity:.92;
+    text-transform:uppercase; letter-spacing:.05em; }
+  /* portrait & story: two columns, roomy numbers */
+  body[data-ratio="4:5"] .sh-grid, body[data-ratio="9:16"] .sh-grid { grid-template-columns:repeat(2,1fr); }
+  body[data-ratio="9:16"] .sh-v { font-size:8cqw; }
+  /* landscape: single row, tighter type so nothing crops on the short canvas */
+  body[data-ratio="16:9"] .sh-grid { grid-auto-flow:column; grid-auto-columns:1fr; grid-template-columns:none; }
+  body[data-ratio="16:9"] .sh-title { font-size:4cqw; }
+  body[data-ratio="16:9"] .sh-v { font-size:4.6cqw; }
+  body[data-ratio="16:9"] .sh-l { font-size:1.7cqw; }
+  body[data-ratio="16:9"] .sh-tile { padding:2cqw 1.2cqw; }
+`;
+var summitHighlights = {
+  id: "generic.summit-highlights",
+  category: "generic",
+  subtype: "summit-highlights",
+  label: "Summit Highlights",
+  description: "At-a-glance grid of the event's headline numbers (speakers, sessions, attendees\u2026).",
+  formats: ALL_RATIOS,
+  params: [
+    { key: "title", label: "Heading", type: "text", default: "Summit Highlights" },
+    { key: "stats", label: "Stats (editable)", type: "stats" }
+  ],
+  requires(event) {
+    const ok = (event.stats?.length ?? 0) > 0;
+    return { ok, missing: ok ? [] : ["stats"] };
+  },
+  render(ctx) {
+    const stats = (ctx.params.stats ?? ctx.event.stats).slice(0, 6);
+    const tiles = stats.map((s) => `<div class="sh-tile"><div class="sh-v">${esc(s.value)}</div><div class="sh-l">${esc(s.label)}</div></div>`).join("");
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="frost sh-body">
+        <div class="sh-title">${esc(ctx.params.title || "Summit Highlights")}</div>
+        <div class="sh-grid">${tiles}</div>
+      </div>
+      ${footerBar(ctx)}`;
+    return page(ctx, css3, inner);
+  },
+  caption(ctx) {
+    const stats = (ctx.params.stats ?? ctx.event.stats).slice(0, 4);
+    const summary = stats.map((s) => `${s.value} ${s.label}`).join(", ");
+    return `${ctx.event.name} by the numbers \u2014 ${summary} and more. ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/generic/prediction-outcome.ts
+var css4 = `
+  .po-body { flex:1; display:flex; flex-direction:column; gap:3cqw; min-height:0; }
+  .po-title { font-size:5.4cqw; font-weight:700; line-height:1.06; letter-spacing:-.01em;
+    text-shadow:0 .4cqw 2cqw rgba(0,0,0,.25); }
+  .po-cards { flex:1; display:grid; grid-template-columns:repeat(2,1fr); gap:2.6cqw;
+    align-content:center; min-height:0; }
+  .po-card { border-radius:2.6cqw; padding:3cqw 2.6cqw; display:flex; flex-direction:column;
+    align-items:center; text-align:center; gap:1.8cqw; min-height:0; overflow:hidden;
+    -webkit-backdrop-filter:blur(14px) saturate(1.3); backdrop-filter:blur(14px) saturate(1.3);
+    box-shadow:0 1.5cqw 4cqw rgba(0,0,0,.28); }
+  .po-card.pred { background:rgba(244,63,94,.42); border:1px solid rgba(244,63,94,.7); }
+  .po-card.out  { background:rgba(34,197,94,.42);  border:1px solid rgba(34,197,94,.7); }
+  .po-label { font-size:3.4cqw; font-weight:700; letter-spacing:-.01em; }
+  .po-card.pred .po-label { color:#fb7185; }
+  .po-card.out  .po-label { color:#4ade80; }
+  .po-icon { width:8cqw; height:8cqw; flex:none; }
+  .po-card.pred .po-icon { color:#fb7185; }
+  .po-card.out  .po-icon { color:#4ade80; }
+  .po-text { font-size:2.5cqw; font-weight:700; line-height:1.28; opacity:.96; }
+  body[data-ratio="9:16"] .po-cards { grid-template-columns:1fr; }
+  body[data-ratio="16:9"] .po-title { font-size:4cqw; }
+  body[data-ratio="16:9"] .po-text { font-size:2.2cqw; }
+`;
+var iconPred = `<svg class="po-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+var iconOut = `<svg class="po-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`;
+function yearOf(iso) {
+  if (!iso) return void 0;
+  const y = new Date(iso).getFullYear();
+  return Number.isFinite(y) ? y : void 0;
+}
+var predictionOutcome = {
+  id: "generic.prediction-outcome",
+  category: "generic",
+  subtype: "prediction-outcome",
+  label: "Prediction vs Outcome",
+  description: "Last year's prediction paired with this year's outcome in two contrasting cards.",
+  formats: ALL_RATIOS,
+  params: [
+    {
+      key: "headline",
+      label: "Headline",
+      type: "text",
+      default: "What leaders saw last year. What they must prepare for next."
+    },
+    {
+      key: "prediction",
+      label: "Prediction paragraph",
+      type: "text",
+      default: "Last year set the signals \u2014 shifting priorities, new risks, and rising expectations."
+    },
+    {
+      key: "outcome",
+      label: "Outcome paragraph",
+      type: "text",
+      default: "This year, leaders will act on it \u2014 with sharper strategy, governance and execution."
+    },
+    { key: "predictionLabel", label: "Prediction label", type: "text", default: "Prediction" },
+    { key: "outcomeLabel", label: "Outcome label", type: "text", default: "Outcome" }
+  ],
+  requires() {
+    return { ok: true, missing: [] };
+  },
+  render(ctx) {
+    const year = yearOf(ctx.event.startDate);
+    const predBase = String(ctx.params.predictionLabel || "Prediction");
+    const outBase = String(ctx.params.outcomeLabel || "Outcome");
+    const predLabel = year ? `${predBase} ${year - 1}` : predBase;
+    const outLabel = year ? `${outBase} ${year}` : outBase;
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="po-body">
+        <div class="po-title">${esc(ctx.params.headline || "What leaders saw last year. What they must prepare for next.")}</div>
+        <div class="po-cards">
+          <div class="po-card pred">
+            <div class="po-label">${esc(predLabel)}</div>
+            ${iconPred}
+            <div class="po-text">${esc(ctx.params.prediction)}</div>
+          </div>
+          <div class="po-card out">
+            <div class="po-label">${esc(outLabel)}</div>
+            ${iconOut}
+            <div class="po-text">${esc(ctx.params.outcome)}</div>
+          </div>
+        </div>
+      </div>
+      ${footerBar(ctx)}`;
+    return page(ctx, css4, inner);
+  },
+  caption(ctx) {
+    return `From last year's signals to this year's action \u2014 see what's next at ${ctx.event.name}. ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/generic/testimonial.ts
+var DEFAULT_KICKER = "Voices of Last Edition";
+var DEFAULT_QUOTE = "";
+function resolveVoice(ctx) {
+  const { speakers } = ctx.event;
+  const id = ctx.params.speakerId;
+  const byId = id != null && String(id) !== "" ? speakers.find((s2) => String(s2.id) === String(id)) : void 0;
+  const s = byId ?? speakers[0];
+  const authorOverride = String(ctx.params.author ?? "").trim();
+  const titleOverride = String(ctx.params.authorTitle ?? "").trim();
+  const name = authorOverride || (s ? s.name : "");
+  const title = titleOverride || (s ? [s.designation, s.company].filter(Boolean).join(", ") : "");
+  return { name, title, photoUrl: s?.photoUrl };
+}
+var css5 = `
+  .tst-body { flex:1; display:flex; gap:4cqw; align-items:stretch; min-height:0; margin-top:2.5cqw; }
+  .tst-main { flex:1; display:flex; flex-direction:column; justify-content:center; gap:2.4cqw; min-height:0; }
+  .tst-kicker { align-self:flex-start; font-weight:700; line-height:1;
+    font-size:min(4.6cqw,6.4cqh); letter-spacing:.02em; text-transform:uppercase;
+    color:var(--accent); text-shadow:0 .4cqw 2cqw rgba(0,0,0,.3); }
+  /* quote in a light rounded card: semi-opaque white + dark ink reads on any background */
+  .tst-card { position:relative; background:rgba(255,255,255,.95); color:#191b22;
+    border-radius:3cqw; padding:4.4cqw; box-shadow:0 2cqw 6cqw rgba(0,0,0,.26); }
+  .tst-quotemark { font-family:Georgia,"Times New Roman",serif; color:var(--accent);
+    font-weight:700; font-size:min(11cqw,15cqh); line-height:.8; margin-bottom:.4cqw; }
+  .tst-quote { font-size:min(3.6cqw,5cqh); font-weight:600; line-height:1.32; }
+  /* attribution shown below the card when there is no photo */
+  .tst-attr { margin-top:2cqw; }
+  .tst-attr-name { font-size:min(4cqw,5.6cqh); font-weight:700; line-height:1.05; }
+  .tst-attr-title { font-size:min(2.8cqw,3.9cqh); font-weight:600; color:var(--accent); margin-top:.6cqw; }
+  /* rounded speaker photo with scrim + name plate */
+  .tst-photo { position:relative; width:40%; border-radius:3cqw; overflow:hidden;
+    box-shadow:0 2cqw 6cqw rgba(0,0,0,.3); background:rgba(255,255,255,.08); }
+  .tst-photo img { width:100%; height:100%; object-fit:cover; object-position:top center; }
+  .tst-photo::after { content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, transparent 46%, rgba(0,0,0,.62)); }
+  .tst-plate { position:absolute; left:0; right:0; bottom:0; z-index:2;
+    padding:3.4cqw 3cqw; text-align:center; color:#fff; }
+  .tst-plate .tst-attr-name { text-shadow:0 .3cqw 1.4cqw rgba(0,0,0,.55); }
+  .tst-plate .tst-attr-title { color:#fff; opacity:.94; margin-top:.4cqw; }
+  /* landscape is short & wide: tighten type + shrink photo so nothing crops */
+  body[data-ratio="16:9"] .tst-body { gap:3cqw; margin-top:1.5cqw; }
+  body[data-ratio="16:9"] .tst-card { padding:3cqw; border-radius:2.4cqw; }
+  body[data-ratio="16:9"] .tst-quotemark { margin-bottom:0; }
+  body[data-ratio="16:9"] .tst-photo { width:30%; }
+  /* story is tall: stack the quote over the photo */
+  body[data-ratio="9:16"] .tst-body { flex-direction:column; gap:3.5cqw; }
+  body[data-ratio="9:16"] .tst-main { flex:none; justify-content:flex-start; }
+  body[data-ratio="9:16"] .tst-photo { width:100%; flex:1; min-height:0; }
+  body[data-ratio="9:16"] .tst-quote { font-size:4cqw; }
+  body[data-ratio="9:16"] .tst-kicker { font-size:5.2cqw; }
+`;
+var QR_16_9_CSS2 = ".tst-main:has(>.tst-attr){gap:1.2cqw}.tst-attr{margin-top:.6cqw}";
+var testimonial = {
+  id: "generic.testimonial",
+  category: "generic",
+  subtype: "testimonial",
+  label: "Testimonial",
+  description: "Quote card in a speaker's voice: big quotation mark, quote and attribution with an optional headshot.",
+  formats: ALL_RATIOS,
+  params: [
+    { key: "kicker", label: "Kicker", type: "text", default: DEFAULT_KICKER },
+    { key: "quote", label: "Quote", type: "text", default: DEFAULT_QUOTE },
+    { key: "speakerId", label: "Speaker (optional)", type: "select", source: "speakers" },
+    { key: "author", label: "Attribution name (override)", type: "text", default: "" },
+    { key: "authorTitle", label: "Attribution title / company (override)", type: "text", default: "" }
+  ],
+  requires() {
+    return { ok: true, missing: [] };
+  },
+  render(ctx) {
+    const kicker = String(ctx.params.kicker ?? "").trim() || DEFAULT_KICKER;
+    const quote = String(ctx.params.quote ?? "").trim() || DEFAULT_QUOTE;
+    const { name, title, photoUrl } = quote ? resolveVoice(ctx) : { name: "", title: "", photoUrl: void 0 };
+    const attrInner = `<div class="tst-attr-name">${esc(name)}</div>` + (title ? `<div class="tst-attr-title">${esc(title)}</div>` : "");
+    const photoCol = photoUrl ? `<div class="tst-photo">
+          <img src="${esc(photoUrl)}" alt="">
+          ${name ? `<div class="tst-plate">${attrInner}</div>` : ""}
+        </div>` : "";
+    const attrBelow = !photoUrl && name ? `<div class="tst-attr">${attrInner}</div>` : "";
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="tst-body">
+        <div class="tst-main">
+          <div class="tst-kicker">${esc(kicker)}</div>
+          <div class="tst-card">
+            <div class="tst-quotemark" aria-hidden="true">&ldquo;</div>
+            ${quote ? `<div class="tst-quote">${esc(quote)}</div>` : ""}
+          </div>
+          ${attrBelow}
+        </div>
+        ${photoCol}
+      </div>
+      ${footerBar(ctx, { css: ctx.format?.ratio === "16:9" ? QR_16_9_CSS2 : "" })}`;
+    return page(ctx, css5, inner);
+  },
+  caption(ctx) {
+    const quote = String(ctx.params.quote ?? "").trim() || DEFAULT_QUOTE;
+    if (!quote) return "";
+    const { name, title } = resolveVoice(ctx);
+    const attr2 = name ? ` \u2014 ${name}${title ? `, ${title}` : ""}` : "";
+    return `"${quote}"${attr2} ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/partner/tier-ladder.ts
+function asIdList(v) {
+  if (!v) return [];
+  return (Array.isArray(v) ? v : String(v).split(",")).map((x) => String(x).trim()).filter(Boolean);
+}
+function selectTiers(ctx) {
+  const all = ctx.event.sponsorTiers;
+  const ids = new Set(asIdList(ctx.params.sponsorIds));
+  if (ids.size) {
+    return all.map((t) => ({ tier: t.tier, sponsors: t.sponsors.filter((s) => ids.has(String(s.id))) })).filter((t) => t.sponsors.length);
+  }
+  const maxTiers = Number(ctx.params.maxTiers) || 4;
+  const maxSponsors = Number(ctx.params.maxSponsors) || 10;
+  const out = [];
+  let count = 0;
+  for (const t of all.slice(0, maxTiers)) {
+    if (count >= maxSponsors) break;
+    const take = t.sponsors.slice(0, maxSponsors - count);
+    if (take.length) {
+      out.push({ tier: t.tier, sponsors: take });
+      count += take.length;
+    }
+  }
+  return out;
+}
+var css6 = `
+  .tl-body { flex:1; display:flex; flex-direction:column; gap:2.5cqw; min-height:0; overflow:hidden; }
+  .tl-title { font-size:5cqw; font-weight:700; }
+  .tl-tiers { flex:1; display:flex; flex-direction:column; gap:2.2cqw; justify-content:center; }
+  .tl-tier-name { font-size:2.4cqw; font-weight:700; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--accent); margin-bottom:1cqw; }
+  .tl-logos { display:flex; flex-wrap:wrap; gap:1.6cqw; }
+  .tl-logo { background:#fff; border-radius:1.6cqw; padding:1.6cqw 2.2cqw;
+    height:9cqw; min-width:14cqw; display:flex; align-items:center; justify-content:center; }
+  .tl-logo img { max-height:100%; max-width:26cqw; object-fit:contain; }
+  .tl-logo.text { color:var(--ink); font-weight:700; font-size:2.4cqw; }
+  body[data-ratio="16:9"] .tl-title { font-size:3.6cqw; }
+  body[data-ratio="16:9"] .tl-logo { height:7cqw; }
+`;
+var tierLadder = {
+  id: "partner.tier-ladder",
+  category: "partner",
+  subtype: "tier-ladder",
+  label: "Sponsor Tier Ladder",
+  description: "Partners grouped by tier (Presenting \u2192 Powered by \u2192 Gold \u2026). Defaults to the top 10; hand-pick to override.",
+  formats: ALL_RATIOS,
+  params: [
+    {
+      key: "sponsorIds",
+      label: "Pick partners",
+      type: "multiselect",
+      source: "sponsors",
+      hint: "Leave empty to auto-pick the top partners across the highest tiers."
+    },
+    { key: "maxSponsors", label: "Auto-pick count", type: "number", default: 10 },
+    { key: "maxTiers", label: "Max tiers", type: "number", default: 4 },
+    { key: "title", label: "Heading", type: "text", default: "Our Partners" }
+  ],
+  requires(event) {
+    const ok = event.sponsorTiers.length > 0;
+    return { ok, missing: ok ? [] : ["sponsors"] };
+  },
+  render(ctx) {
+    const tiers = selectTiers(ctx).map((t) => {
+      const logos = t.sponsors.map((s) => logoChip(s.logoUrl, s.title, "tl-logo")).join("");
+      return `<div class="tl-tier"><div class="tl-tier-name">${esc(t.tier)}</div><div class="tl-logos">${logos}</div></div>`;
+    }).join("");
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="tl-body">
+        <div class="tl-title">${esc(ctx.params.title || "Our Partners")}</div>
+        <div class="tl-tiers">${tiers}</div>
+      </div>
+      ${footerBar(ctx)}`;
+    return page(ctx, css6, inner);
+  },
+  caption(ctx) {
+    const tiers = selectTiers(ctx).map((t) => t.tier);
+    return `Proud to be powered by our partners at ${ctx.event.name} \u2014 ${[...new Set(tiers)].slice(0, 3).join(", ")} and more. ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/partner/presenting-spotlight.ts
+function pickSponsor(ctx) {
+  const tiers = ctx.event.sponsorTiers;
+  const sid = ctx.params.sponsorId;
+  if (sid) {
+    for (const t of tiers) {
+      const s = t.sponsors.find((x) => String(x.id) === String(sid));
+      if (s) return { tier: t.tier, sponsor: s };
+    }
+  }
+  const tier = tiers.find((t) => t.tier === ctx.params.tier) ?? tiers[0];
+  return tier ? { tier: tier.tier, sponsor: tier.sponsors[0] } : void 0;
+}
+var css7 = `
+  .ps-body { flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:3cqw; text-align:center; }
+  .ps-welcome { font-size:3cqw; font-weight:700; letter-spacing:.06em; text-transform:uppercase; opacity:.9; }
+  .ps-tier { font-size:6cqw; font-weight:700; color:var(--accent); line-height:1; }
+  .ps-card { background:#fff; border-radius:3cqw; padding:5cqw 6cqw; min-width:52%;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 2cqw 6cqw rgba(0,0,0,.28); }
+  .ps-card img { max-width:44cqw; max-height:22cqw; object-fit:contain; }
+  .ps-card .ps-name { color:var(--ink); font-size:5cqw; font-weight:700; }
+  body[data-ratio="16:9"] .ps-tier { font-size:4.5cqw; }
+`;
+var presentingSpotlight = {
+  id: "partner.presenting-spotlight",
+  category: "partner",
+  subtype: "presenting-spotlight",
+  label: "Partner Spotlight",
+  description: "Single-partner hero card labelled by tier (e.g. Welcoming Our Presenting Partner).",
+  formats: ALL_RATIOS,
+  params: [
+    {
+      key: "sponsorId",
+      label: "Pick partner",
+      type: "select",
+      source: "sponsors",
+      hint: "Overrides the tier pick below."
+    },
+    {
+      key: "tier",
+      label: "Tier",
+      type: "select",
+      source: "sponsorTiers",
+      hint: "Featured partner is the top one in this tier when no partner is picked."
+    }
+  ],
+  requires(event) {
+    const ok = event.sponsorTiers.length > 0;
+    return { ok, missing: ok ? [] : ["sponsors"] };
+  },
+  render(ctx) {
+    const pick = pickSponsor(ctx);
+    if (!pick) return page(ctx, css7, `${brandLockup(ctx)}<div class="ps-body">No partner</div>`);
+    const { tier, sponsor } = pick;
+    const onerr = `this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'ps-name',textContent:${JSON.stringify(sponsor.title)}}));`;
+    const logo = sponsor.logoUrl ? `<img src="${esc(sponsor.logoUrl)}" alt="${esc(sponsor.title)}" onerror="${esc(onerr)}">` : `<div class="ps-name">${esc(sponsor.title)}</div>`;
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="ps-body">
+        <div class="ps-welcome">Welcoming our</div>
+        <div class="ps-tier">${esc(tier)}</div>
+        <div class="ps-card">${logo}</div>
+      </div>
+      ${footerBar(ctx, { pin: true })}`;
+    return page(ctx, css7, inner);
+  },
+  caption(ctx) {
+    const pick = pickSponsor(ctx);
+    return `We're delighted to welcome ${pick?.sponsor.title ?? "our partner"} as ${pick?.tier ?? "a partner"} at ${ctx.event.name}. ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/speaker/individual.ts
+function pickSpeaker(ctx) {
+  const { speakers } = ctx.event;
+  const id = ctx.params.speakerId;
+  return speakers.find((s) => String(s.id) === String(id)) ?? speakers[0];
+}
+var css8 = `
+  .spk-body { flex:1; display:flex; gap:4cqw; align-items:stretch; min-height:0; }
+  .spk-info { flex:1; display:flex; flex-direction:column; justify-content:center; gap:2cqw; padding:4cqw; }
+  .spk-role { align-self:flex-start; }
+  .spk-name { font-size:8cqw; font-weight:700; line-height:1; letter-spacing:-.01em;
+    text-shadow:0 .4cqw 2cqw rgba(0,0,0,.28); }
+  .spk-desig { font-size:3.4cqw; font-weight:700; opacity:.96; }
+  .spk-company { font-size:3cqw; font-weight:600; color:var(--accent); }
+  .spk-photo { position:relative; width:44%; border-radius:3cqw; overflow:hidden;
+    box-shadow:0 2cqw 6cqw rgba(0,0,0,.3); background:rgba(255,255,255,.08); }
+  .spk-photo img { width:100%; height:100%; object-fit:cover; object-position:top center; }
+  .spk-photo::after { content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, transparent 55%, rgba(0,0,0,.28)); }
+  /* landscape: keep it side-by-side but tighter */
+  body[data-ratio="16:9"] .spk-name { font-size:6cqw; }
+  body[data-ratio="16:9"] .spk-photo { width:38%; }
+  /* story: stack photo on top */
+  body[data-ratio="9:16"] .spk-body { flex-direction:column; }
+  body[data-ratio="9:16"] .spk-photo { width:100%; height:52%; }
+  body[data-ratio="9:16"] .spk-name { font-size:9cqw; }
+`;
+var individualSpeaker = {
+  id: "speaker.individual",
+  category: "speaker",
+  subtype: "individual",
+  label: "Individual Speaker Card",
+  description: "Single-speaker announcement: headshot + name, designation, company and role label.",
+  formats: ALL_RATIOS,
+  params: [
+    { key: "speakerId", label: "Speaker", type: "select", source: "speakers" },
+    { key: "roleLabel", label: "Role label", type: "text", default: "Speaker" }
+  ],
+  requires(event) {
+    return { ok: event.speakers.length > 0, missing: event.speakers.length ? [] : ["speakers"] };
+  },
+  render(ctx) {
+    const s = pickSpeaker(ctx);
+    const role = ctx.params.roleLabel || s.group || "Speaker";
+    const photo = s.photoUrl ? `<div class="spk-photo"><img src="${esc(s.photoUrl)}" alt=""></div>` : "";
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="spk-body">
+        <div class="frost spk-info">
+          <span class="chip spk-role">${esc(role)}</span>
+          <div class="spk-name">${esc(s.name)}</div>
+          <div class="spk-desig">${esc(s.designation)}</div>
+          <div class="spk-company">${esc(s.company)}</div>
+        </div>
+        ${photo}
+      </div>
+      ${footerBar(ctx)}`;
+    return page(ctx, css8, inner);
+  },
+  caption(ctx) {
+    const s = pickSpeaker(ctx);
+    const where = [ctx.event.dateLabel, ctx.event.venue].filter(Boolean).join(" \xB7 ");
+    return `Meet ${s.name}, ${s.designation} at ${s.company}, joining us at ${ctx.event.name}.` + (where ? ` ${where}.` : "") + ` ${ctx.event.hashtag}`;
+  }
+};
+
+// promo-engine/src/templates/speaker/combined.ts
+function columnsFor(n) {
+  if (n <= 3) return n;
+  if (n <= 4) return 2;
+  if (n <= 6) return 3;
+  if (n <= 12) return 4;
+  if (n <= 16) return 4;
+  return Math.min(7, Math.ceil(Math.sqrt(n)));
+}
+function asIdList2(v) {
+  if (!v) return [];
+  return (Array.isArray(v) ? v : String(v).split(",")).map((x) => String(x).trim()).filter(Boolean);
+}
+function selectSpeakers(ctx) {
+  const all = ctx.event.speakers;
+  const ids = asIdList2(ctx.params.speakerIds);
+  if (ids.length) {
+    const byId = new Map(all.map((s) => [String(s.id), s]));
+    return ids.map((id) => byId.get(id)).filter(Boolean);
+  }
+  let list = all;
+  const group = ctx.params.group;
+  if (group) list = list.filter((s) => s.group === group);
+  const limit = Number(ctx.params.limit) || 8;
+  return list.slice(0, limit);
+}
+var css9 = `
+  .cs-body { flex:1; display:flex; flex-direction:column; min-height:0; gap:2cqw; }
+  .cs-title { font-size:5cqw; font-weight:700; align-self:flex-start; padding:1.6cqw 3cqw; border-radius:2.4cqw; }
+  .cs-grid { flex:1; display:grid; gap:2cqw; min-height:0;
+    grid-template-columns:repeat(var(--cols), 1fr); align-content:center; }
+  .cs-tile { position:relative; border-radius:2cqw; overflow:hidden;
+    background:rgba(255,255,255,.08); box-shadow:0 1cqw 3cqw rgba(0,0,0,.25);
+    display:flex; flex-direction:column; }
+  .cs-tile img { width:100%; flex:1; object-fit:cover; object-position:top center; min-height:0; }
+  .cs-cap { padding:1.4cqw 1.6cqw; background:rgba(0,0,0,.55); color:#fff; }
+  .cs-nm { font-size:1.9cqw; font-weight:700; line-height:1.1; color:#fff; }
+  .cs-rl { font-size:1.4cqw; font-weight:600; opacity:.85; line-height:1.1; margin-top:.4cqw; color:#fff; }
+  /* dense wall: shrink captions */
+  .cs-grid.dense .cs-nm { font-size:1.4cqw; }
+  .cs-grid.dense .cs-rl { display:none; }
+  body[data-ratio="16:9"] .cs-title { font-size:3.6cqw; }
+`;
+var combinedSpeakers = {
+  id: "speaker.combined",
+  category: "speaker",
+  subtype: "combined",
+  label: "Combined Speaker Set",
+  description: "Multi-speaker grid that auto-scales (3 / 6 / 8 / 16 / wall) by count; optional group filter.",
+  formats: ALL_RATIOS,
+  params: [
+    {
+      key: "speakerIds",
+      label: "Pick speakers",
+      type: "multiselect",
+      source: "speakers",
+      hint: "Leave empty to auto-pick the top speakers by priority."
+    },
+    {
+      key: "group",
+      label: "Speaker group",
+      type: "select",
+      source: "speakerGroups",
+      hint: "Filters the auto-pick when no speakers are hand-picked."
+    },
+    { key: "limit", label: "Auto-pick count", type: "number", default: 8 },
+    { key: "title", label: "Heading", type: "text", default: "Meet Our Speakers" }
+  ],
+  requires(event) {
+    return { ok: event.speakers.length >= 2, missing: event.speakers.length >= 2 ? [] : ["speakers (>=2)"] };
+  },
+  render(ctx) {
+    const list = selectSpeakers(ctx);
+    const cols = columnsFor(list.length);
+    const dense = list.length > 16;
+    const tiles = list.map((s) => `
+      <div class="cs-tile">
+        ${s.photoUrl ? `<img src="${esc(s.photoUrl)}" alt="">` : `<div style="flex:1"></div>`}
+        <div class="cs-cap">
+          <div class="cs-nm">${esc(s.name)}</div>
+          <div class="cs-rl">${esc([s.designation, s.company].filter(Boolean).join(", "))}</div>
+        </div>
+      </div>`).join("");
+    const inner = `
+      ${editionRibbon(ctx)} ${hashtag(ctx)}
+      ${brandLockup(ctx, { compact: true })}
+      <div class="cs-body">
+        <div class="frost cs-title">${esc(ctx.params.title || "Meet Our Speakers")}</div>
+        <div class="cs-grid ${dense ? "dense" : ""}" style="--cols:${cols}">${tiles}</div>
+      </div>
+      ${footerBar(ctx)}`;
+    return page(ctx, css9, inner);
+  },
+  caption(ctx) {
+    const list = selectSpeakers(ctx);
+    const names = list.slice(0, 5).map((s) => s.name).join(", ");
+    return `Presenting ${list.length}${ctx.params.group ? " " + ctx.params.group : " speakers"} at ${ctx.event.name} \u2014 ${names}${list.length > 5 ? " and more" : ""}. ${ctx.event.hashtag}`;
+  }
+};
+
 // promo-engine/src/templates/registry.ts
+var ALL_TEMPLATES = [
+  announcement,
+  whoShouldAttend,
+  summitHighlights,
+  predictionOutcome,
+  testimonial,
+  tierLadder,
+  presentingSpotlight,
+  individualSpeaker,
+  combinedSpeakers
+];
+function getTemplate(id) {
+  return ALL_TEMPLATES.find((t) => t.id === id);
+}
+function resolveParams(tpl, overrides = {}) {
+  const out = {};
+  for (const p of tpl.params) if (p.default !== void 0) out[p.key] = p.default;
+  return { ...out, ...overrides };
+}
+var CATEGORY_LABELS = {
+  generic: "Generic",
+  partner: "Partner",
+  speaker: "Speaker"
+};
 function resolveParamOptions(p, event) {
   if (p.type === "stats") return { ...p, default: event.stats };
   if (!p.source) return p;
@@ -89,6 +1037,41 @@ function resolveParamOptions(p, event) {
       break;
   }
   return { ...p, options };
+}
+async function buildCatalog(event) {
+  const cats = ["generic", "partner", "speaker"];
+  const psdEntries = async (_key) => [];
+  const THEME_PARAM2 = {
+    key: "theme",
+    label: "Theme",
+    type: "select",
+    default: "dark",
+    options: [{ value: "dark", label: "Dark bg \xB7 light text" }, { value: "light", label: "Light bg \xB7 dark text" }],
+    hint: "Flips text colours for the background you're placing it on."
+  };
+  const codeEntries = (key) => ALL_TEMPLATES.filter((t) => t.category === key).map((t) => {
+    const avail = event ? t.requires(event) : { ok: true, missing: [] };
+    return {
+      id: t.id,
+      category: t.category,
+      subtype: t.subtype,
+      label: t.label,
+      description: t.description,
+      formats: t.formats.map((f) => ({ id: f, label: FORMATS[f].label, ratio: FORMATS[f].ratio })),
+      params: [THEME_PARAM2, ...event ? t.params.map((p) => resolveParamOptions(p, event)) : t.params],
+      available: avail.ok,
+      missing: avail.missing,
+      isNew: false,
+      kind: "code"
+    };
+  });
+  const categories = await Promise.all(cats.map(async (key) => ({
+    key,
+    label: CATEGORY_LABELS[key],
+    templates: [...await psdEntries(key), ...codeEntries(key)]
+    // NEW PSD frames first
+  })));
+  return { categories };
 }
 
 // promo-engine/src/brand/index.ts
@@ -332,11 +1315,6 @@ var PORTALS = [
   { portal: "wastemanagement", name: "ET Waste Management", configured: false }
 ];
 
-// promo-engine/src/templates/base.ts
-function esc(s) {
-  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 // promo-engine/src/api/images.ts
 var HOST = "https://img.etb2bimg.com";
 var RUNGS = [80, 120, 160, 200, 220, 260, 300, 360, 440, 560, 750];
@@ -538,7 +1516,7 @@ function resolvePalette(brand, event, theme = "site", accentOverride, background
 function fontStack(_brand) {
   return "Verdana, Geneva, 'Helvetica Neue', Helvetica, Arial, sans-serif";
 }
-function ordinal(n) {
+function ordinal2(n) {
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
@@ -938,7 +1916,8 @@ var BLOCK_SCHEMAS = {
       { key: "href", label: "Links to", type: "url" },
       { key: "alt", label: "Alt text", type: "text" }
     ],
-    make: (e) => ({ url: e.keyVisualUrl || "", href: siteUrl(e), alt: e.name })
+    // ONEWORLD PORT (owner C): a Banner block added in the studio starts on the event's composed mail banner.
+    make: (e) => ({ url: e.bannerUrl || e.keyVisualUrl || "", href: siteUrl(e), alt: e.name })
   },
   logobar: {
     label: "Logo bar",
@@ -1019,7 +1998,7 @@ var BLOCK_SCHEMAS = {
       { key: "cta2href", label: "Second button link", type: "url" }
     ],
     make: (e) => ({
-      ribbon: e.edition ? `${ordinal(e.edition)} Edition` : "",
+      ribbon: e.edition ? `${ordinal2(e.edition)} Edition` : "",
       title: e.name,
       sub: e.tagline || "",
       meta: dateVenue(e),
@@ -2022,7 +3001,7 @@ var BLOCK_SCHEMAS = {
       ...SECTION_BG
     ],
     make: (e) => ({
-      flag: e.edition ? `${ordinal(e.edition)} Edition` : "",
+      flag: e.edition ? `${ordinal2(e.edition)} Edition` : "",
       hashtag: e.hashtag || "",
       tone: "accent"
     })
@@ -3315,8 +4294,13 @@ var BANNER_PARAMS = [
 function bannerBlocks(event, params) {
   const custom = String(params.bannerUrl || "").trim();
   if (custom) return [blockOf("banner", { url: custom, href: siteUrl(event), alt: event.name })];
-  if (String(params.banner ?? "auto") === "none" || !event.keyVisualUrl) return [];
-  return [blockOf("banner", { url: event.keyVisualUrl, href: siteUrl(event), alt: event.name })];
+  const art = event.bannerUrl || event.keyVisualUrl;
+  if (String(params.banner ?? "auto") === "none" || !art) return [];
+  return [blockOf("banner", { url: art, href: siteUrl(event), alt: event.name })];
+}
+function composedBannerBlock(event, params) {
+  if (!event.bannerUrl) return null;
+  return bannerBlocks(event, params)[0] ?? null;
 }
 function contactsBlock() {
   return blockOf("contacts", {
@@ -3347,7 +4331,7 @@ function sectionLabel(text2, align = "center") {
 }
 function heroBlock(event, o = {}) {
   return blockOf("hero", {
-    ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
+    ribbon: event.edition ? `${ordinal2(event.edition)} Edition` : "",
     title: o.title ?? event.name,
     sub: o.sub ?? (event.tagline || ""),
     meta: dateVenue(event)
@@ -3489,12 +4473,12 @@ function overviewBlock(event, params, fallback) {
   if (!String(params.intro ?? "").trim() && !fallback && event.tagline && copy.trim() === String(event.tagline).trim()) return null;
   return blockOf("text", { text: copy, size: 15, align: "center" });
 }
-function asIdList(v) {
+function asIdList3(v) {
   if (!v) return [];
   return (Array.isArray(v) ? v : String(v).split(",")).map((x) => String(x).trim()).filter(Boolean);
 }
-function selectSpeakers(event, params, fallbackLimit = 6) {
-  const ids = asIdList(params.speakerIds);
+function selectSpeakers2(event, params, fallbackLimit = 6) {
+  const ids = asIdList3(params.speakerIds);
   if (ids.length) {
     const byId = new Map(event.speakers.map((s) => [String(s.id), s]));
     return ids.map((id) => byId.get(id)).filter(Boolean);
@@ -3504,8 +4488,8 @@ function selectSpeakers(event, params, fallbackLimit = 6) {
   return list.slice(0, Number(params.limit) || fallbackLimit);
 }
 function selectSponsors(event, params) {
-  const ids = asIdList(params.sponsorIds);
-  const tiers = asIdList(params.tiers);
+  const ids = asIdList3(params.sponsorIds);
+  const tiers = asIdList3(params.tiers);
   let groups = event.sponsorTiers;
   if (tiers.length) groups = groups.filter((t) => tiers.includes(t.tier));
   if (ids.length) {
@@ -3514,7 +4498,7 @@ function selectSponsors(event, params) {
   return groups;
 }
 function selectSessions(event, params, fallbackLimit = 6) {
-  const ids = asIdList(params.sessionIds);
+  const ids = asIdList3(params.sessionIds);
   if (ids.length) {
     const byId = new Map(event.sessions.map((s) => [String(s.id), s]));
     return ids.map((id) => byId.get(id)).filter(Boolean);
@@ -3670,7 +4654,7 @@ var speakersMailer = {
     return { ok: event.speakers.length >= 2, missing: event.speakers.length >= 2 ? [] : ["speakers (2+)"] };
   },
   build(event, params) {
-    const list = selectSpeakers(event, params);
+    const list = selectSpeakers2(event, params);
     const first = list[0];
     const subject = !first ? `Speakers announced | ${event.name}` : list.length > 1 ? `${first.name} & ${list.length - 1} more speaking at ${event.name}` : `${first.name} is speaking at ${event.name}`;
     return {
@@ -3724,7 +4708,7 @@ var speakerSpotlightMailer = {
     return { ok: event.speakers.length >= 1, missing: event.speakers.length ? [] : ["speakers"] };
   },
   build(event, params) {
-    const star = selectSpeakers(event, params, 1)[0] ?? event.speakers[0];
+    const star = selectSpeakers2(event, params, 1)[0] ?? event.speakers[0];
     const nMore = Number(params.moreCount ?? 3);
     const others = nMore > 0 ? event.speakers.filter((s) => s.id !== star?.id).slice(0, nMore) : [];
     return {
@@ -3735,7 +4719,10 @@ var speakerSpotlightMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
-        heroBlock(event),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner leads instead of the colour band when the event
+        // has one — the platform's own headerBlocks rule ("fall back to the colour hero band only when the
+        // event has no artwork").
+        composedBannerBlock(event, params) ?? heroBlock(event),
         star ? blockOf("speaker", {
           eyebrow: params.headline || "In the spotlight",
           name: star.name,
@@ -3865,7 +4852,10 @@ var partnerSpotlightMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
-        heroBlock(event),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner leads instead of the colour band when the event
+        // has one — the platform's own headerBlocks rule ("fall back to the colour hero band only when the
+        // event has no artwork").
+        composedBannerBlock(event, params) ?? heroBlock(event),
         sectionLabel(params.headline || "In association with"),
         blockOf("heading", { text: star?.title || "Our presenting partner", size: 22, align: "center" }),
         star ? sponsorsBlock([star], star.tier) : null,
@@ -4075,6 +5065,9 @@ var reminderMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
+        // ONEWORLD PORT (owner C, O3 = b): the event's composed banner right under the logo bar when it has one; the
+        // countdown band below still says what the banner does not (how many days are left).
+        composedBannerBlock(event, params),
         // The countdown band is a hero with no sub-line: full-width colour, one line.
         countdown ? blockOf("hero", { ribbon: "", title: countdown, sub: "", meta: dateVenue(event) }) : null,
         sectionLabel(event.hashtag),
@@ -4185,7 +5178,7 @@ var conferenceMailer = {
   },
   build(event, params) {
     const nSpk = Number(params.speakerCount ?? 6);
-    const speakers = nSpk > 0 ? selectSpeakers(event, params, nSpk).slice(0, nSpk) : [];
+    const speakers = nSpk > 0 ? selectSpeakers2(event, params, nSpk).slice(0, nSpk) : [];
     const sessions = selectSessions(event, params, Number(params.sessionCount ?? 6));
     const tiers = isNo(params.showPartners) ? [] : selectSponsors(event, params);
     const stats = isNo(params.showStats) ? [] : event.stats || [];
@@ -4214,7 +5207,8 @@ var conferenceMailer = {
         isNo(params.showNav) ? logoBlock(event) : null,
         // The event's key visual goes in as ARTWORK on its own, never behind the
         // headline: it is a composed banner that already carries the event name.
-        event.keyVisualUrl ? blockOf("banner", { url: event.keyVisualUrl, href: event.micrositeUrl || "", alt: event.name }) : null,
+        // ONEWORLD PORT (owner C): the event's composed mail banner when it has one, else the bare key visual.
+        event.bannerUrl || event.keyVisualUrl ? blockOf("banner", { url: event.bannerUrl || event.keyVisualUrl, href: event.micrositeUrl || "", alt: event.name }) : null,
         blockOf("hero", {
           ribbon: "",
           title: event.name,
@@ -4482,7 +5476,7 @@ var resilienceMailer = {
 
 // promo-engine/src/mailers/decrypt.ts
 function flagFor(event) {
-  return event.edition ? `${ordinal(event.edition)} Edition` : event.dateLabel || "";
+  return event.edition ? `${ordinal2(event.edition)} Edition` : event.dateLabel || "";
 }
 var CIRCLE_CHARS = 90;
 function calloutsFrom(event) {
@@ -4590,7 +5584,7 @@ var decryptMailer = {
   },
   build(event, params) {
     const nJury = Number(params.juryCount ?? 8);
-    const jury = nJury > 0 ? selectSpeakers(event, params, nJury).slice(0, nJury) : [];
+    const jury = nJury > 0 ? selectSpeakers2(event, params, nJury).slice(0, nJury) : [];
     const callouts = String(params.callouts ?? "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const bandPhoto = String(params.bandPhoto ?? "").trim();
     const bandText = String(params.bandText ?? "").trim();
@@ -4694,7 +5688,7 @@ function generatedIntro(event, angle) {
     const across = a.categories ? ` across ${a.categories} categor${a.categories > 1 ? "ies" : "y"}` : "";
     return `${a.winners} winner${a.winners > 1 ? "s" : ""}${across} were announced${at ? ` ${at}` : ""}.`;
   }
-  const edition = a.editions && a.editions > 1 ? ` This ${past ? "was" : "is"} the ${ordinal(a.editions)} edition.` : "";
+  const edition = a.editions && a.editions > 1 ? ` This ${past ? "was" : "is"} the ${ordinal2(a.editions)} edition.` : "";
   if (at) return `${event.name} ${past ? "was decided" : "is decided"} at the ceremony ${at}.${edition}`;
   return `${event.name}.${edition}`.trim();
 }
@@ -4784,7 +5778,7 @@ var awardContacts = () => blockOf("contacts", {
 });
 function rosterBlock(event, params, n, style, cols) {
   if (n <= 0) return null;
-  const shown = selectSpeakers(event, params, n).slice(0, n);
+  const shown = selectSpeakers2(event, params, n).slice(0, n);
   if (!shown.length) return null;
   return speakersBlock(shown, { title: rosterTitle2(shown), style, cols, tint: false });
 }
@@ -4876,9 +5870,11 @@ var awardNominationsMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 180),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 180),
         blockOf("hero", {
-          ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
+          ribbon: event.edition ? `${ordinal2(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name),
           sub: String(params.heroSub ?? ""),
           // Labelled, always. The deadline is in the sub-line above and in its
@@ -4964,7 +5960,9 @@ var awardDeadlineMailer = {
         logoBlock(event),
         // Smaller than the other four: this send is type-led, and the mark is
         // here to identify the award at a glance, not to be the design.
-        markBlock(event, params, 140),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 140),
         blockOf("heading", { text: String(params.headline ?? event.name), size: 22, align: "center" }),
         // The urgency is carried by TYPE AND COLOUR, because an award has no
         // artwork to carry it with. `lozenges` is the one block that needs no
@@ -5037,7 +6035,7 @@ var awardJuryMailer = {
   },
   build(event, params) {
     const n = Number(params.juryCount ?? 9);
-    const shown = n > 0 ? selectSpeakers(event, params, n).slice(0, n) : [];
+    const shown = n > 0 ? selectSpeakers2(event, params, n).slice(0, n) : [];
     const style = String(params.juryStyle || "cards");
     const stats = isNo(params.showStats) ? [] : countStats(event);
     const href = event.ctaUrl || siteUrl(event) || "";
@@ -5050,9 +6048,11 @@ var awardJuryMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 170),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 170),
         blockOf("hero", {
-          ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
+          ribbon: event.edition ? `${ordinal2(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name),
           sub: "",
           meta: ceremonyLine(event),
@@ -5127,9 +6127,11 @@ var awardCeremonyMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 180),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 180),
         blockOf("hero", {
-          ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
+          ribbon: event.edition ? `${ordinal2(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name),
           sub: String(params.heroSub ?? ""),
           meta: ceremonyLine(event),
@@ -5204,9 +6206,11 @@ var awardWinnersMailer = {
       accent: params.accent || void 0,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 180),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 180),
         blockOf("hero", {
-          ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
+          ribbon: event.edition ? `${ordinal2(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name),
           sub: String(params.heroSub ?? ""),
           meta: ceremonyLine(event),
@@ -5278,7 +6282,7 @@ var allInOneMailer = {
   },
   build(event, params) {
     const nSpeakers = Number(params.speakerCount ?? 6);
-    const speakers = nSpeakers > 0 ? selectSpeakers(event, params, nSpeakers).slice(0, nSpeakers) : [];
+    const speakers = nSpeakers > 0 ? selectSpeakers2(event, params, nSpeakers).slice(0, nSpeakers) : [];
     const sessions = isNo(params.showAgenda) ? [] : selectSessions(event, params, Number(params.sessionCount ?? 5));
     const tiers = isNo(params.showPartners) ? [] : selectSponsors(event, params);
     const topics = isNo(params.showTopics) ? [] : event.keyPoints || [];
@@ -6157,11 +7161,11 @@ function parseSel(raw) {
 function hideRules(sheets) {
   const out = [];
   for (const raw of sheets) {
-    const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+    const css10 = raw.replace(/\/\*[\s\S]*?\*\//g, "");
     let i = 0;
     let buf = "";
-    while (i < css.length && out.length < 400) {
-      const c = css[i];
+    while (i < css10.length && out.length < 400) {
+      const c = css10[i];
       if (c === "{") {
         const sel = buf.trim();
         buf = "";
@@ -6169,15 +7173,15 @@ function hideRules(sheets) {
           i++;
           continue;
         }
-        const end = css.indexOf("}", i);
-        const decls = css.slice(i + 1, end < 0 ? css.length : end);
+        const end = css10.indexOf("}", i);
+        const decls = css10.slice(i + 1, end < 0 ? css10.length : end);
         if (HIDE_DECL.test(decls)) {
           for (const one of sel.split(",")) {
             const p = parseSel(one);
             if (p) out.push(p);
           }
         }
-        i = end < 0 ? css.length : end + 1;
+        i = end < 0 ? css10.length : end + 1;
         continue;
       }
       if (c === "}") {
@@ -8158,14 +9162,18 @@ function groupSponsors(sponsors) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   ALL_MAILERS,
+  ALL_TEMPLATES,
   ASSET_BASE,
   AiUnavailable,
   BLOCK_SCHEMAS,
   COPY_FIELDS,
+  DEFAULT_FORMATS,
+  FORMATS,
   PORTALS,
   TONE_OPTIONS,
   blockIsEmpty,
   blockPalette,
+  buildCatalog,
   buildDoc,
   buildMailerCatalog,
   clickTargetOk,
@@ -8175,6 +9183,7 @@ function groupSponsors(sponsors) {
   fmtDateLabel,
   getBrand,
   getMailer,
+  getTemplate,
   groupSponsors,
   hexColor,
   importHtml,
@@ -8187,11 +9196,13 @@ function groupSponsors(sponsors) {
   openUrl,
   parseEdition,
   polishCopy,
+  qrTile,
   readable,
   relayout,
   renderCtx,
   renderDoc,
   resolvePalette,
+  resolveParams,
   rewriteField,
   safeUrl,
   sanitiseFragment,

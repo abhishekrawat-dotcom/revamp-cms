@@ -6,7 +6,7 @@
      GET  /api/promo/mailers?eventId=                    the catalog: mailers, block palette, saves, tones
      GET  /api/promo/mailer/saves?eventId=&mailerId=     the versions of one mailer, newest first
      GET  /api/promo/mailer/roster?eventId=              the event's speakers, partners and sessions, for the pickers
-     POST /api/promo/mailer/doc        { eventId, mailerId, saveId?, fresh? }  open a version / the latest / a new one
+     POST /api/promo/mailer/doc        { eventId, mailerId, saveId?, fresh? }  open a version / the latest / a new one (+ its palette)
      POST /api/promo/mailer/relayout   { eventId, doc, mailerId }              another layout, the sender's work kept
      POST /api/promo/mailer/import?eventId=   (raw .html/.eml, ≤ 2 MB)        an outside mail as a block document
      POST /api/promo/mailer/render     { eventId, doc, editor?, track?, saveId?, saveName? }   the mail's HTML (+ its palette)
@@ -35,7 +35,26 @@
    recording the send failed. The answer says which file went out: X-Mailer-Tracked: yes | no on a download (with
    Cache-Control: no-store), tracked: true | false from a tracked render, and tracking: true | false in the
    catalog (the studio hides "Link tracking" when it is false). Never tracked, and nothing recorded: the studio's
-   preview (editor:true), the PNG/PDF export and a test download (test:true). */
+   preview (editor:true), the PNG/PDF export and a test download (test:true).
+
+   THE TOP BANNER (lib/promo-banner.js). A mail opens with one composed picture, as ET's own mailers do: the site's
+   hero picture with its logo unit, date and venue on it, drawn in the browser and stored under
+   events/<id>/promo-banner/. eventFor() reads whether it is current (its record matches the event as it is now):
+   only then does the engine's event carry it (bannerUrl). While it is out of date (or cannot be judged: a fault in
+   that module counts as out of date, never as current), every send refuses with 409 banner-stale — the open
+   (/doc), a change of layout (/relayout, which builds the new mailer afresh from the event, as /doc does), every
+   download (a test one too) and a render that is not the studio's own live preview (Copy HTML, the PNG/PDF
+   export) — and the studio has it drawn again, then asks once more. A saved mail
+   follows the current banner: a banner block that holds an older banner of this event, or the site's bare hero
+   picture that the server itself put there (what a save made before the banner existed holds), goes out with the
+   current one (withCurrentBanner). Each banner block the server fills records that address as props.autoUrl, so
+   a picture the sender chose — the site's own hero picture included — is never touched.
+
+   EXAMPLES (lib/promo-examples.js). A card's preview fills only what the event lacks with example people, logos
+   and texts, marked as such. None of it may leave as a real mail: every save, render, download, export, import,
+   relayout and AI request that carries an example marker is refused with 422 code 'example', and a new mailer
+   this event cannot have yet is not opened (409 code 'unavailable'). A saved version still opens: it holds only
+   what was real when it was saved. */
 'use strict';
 const crypto = require('crypto');
 const JSZip = require('jszip');
@@ -48,6 +67,167 @@ const { logActivity } = require('./activity');
 var H = null;
 /* lib/api.js hands over its helpers on each call, as it does for lib/promo.js */
 function wire(helpers) { H = helpers; promo.wire(helpers); }
+
+/* ---------- the mail's top banner: is the composed picture current? ---------- */
+
+/* lib/promo-banner.js is loaded on first use, inside try, as lib/promo-track.js is: a fault in it holds the sends
+   (as a banner out of date does), never the mailer studio itself — its catalog, saves and live preview still work */
+var bannerLoadLoggedAt = 0;
+function bannerLogOnce(what, err) {
+  if (Date.now() - bannerLoadLoggedAt < 600000) return;
+  bannerLoadLoggedAt = Date.now();
+  console.error('promo-mailer: ' + what + ' — mails that need the banner are held (409 banner-stale) meanwhile — ' + (err && err.stack || err));
+}
+function bannerModule() {
+  try {
+    var b = require('./promo-banner');
+    /* its own route wrapper wires it too; a cold instance whose first request is a mailer one needs it as well */
+    if (H && typeof b.wire === 'function') b.wire(H);
+    return b;
+  } catch (err) { bannerLogOnce('lib/promo-banner.js could not be loaded', err); return null; }
+}
+/* -> { needed, fresh, fingerprint, url }. needed: the site has a hero picture, so its mails lead with the composed
+   banner; fresh: the stored banner was drawn from the event as it is now. (A record it cannot read is no record
+   there: needed and not fresh, so the sends wait for a new one.) When lib/promo-banner.js itself cannot load,
+   throws or rejects, the banner cannot be judged, so it is never taken as current: an event whose site has a hero
+   picture counts as needing one that is not fresh, and its sends answer 409 banner-stale — owner C: a stale or
+   missing banner never goes out, so a fault here must not quietly ship the bare hero instead. The studio's live
+   preview still opens (it shows the hero picture meanwhile). "Needed" is lib/promo-banner.js's own rule (needs():
+   the Kit's brand.heroImageUrl, as text, is not empty), so the two agree on which events wait. */
+function bannerStateFor(fb, eventId, kit) {
+  var hero = kit && kit.brand && kit.brand.heroImageUrl;
+  var unknown = { needed: !!(hero != null && String(hero)), fresh: false, fingerprint: '', url: null };
+  var b = bannerModule();
+  if (!b) return Promise.resolve(unknown);
+  return Promise.resolve().then(function () { return b.stateFor(fb, eventId, kit); }).then(function (s) {
+    s = s || {};
+    var url = /^https:\/\/[^\s"'<>]+$/i.test(String(s.url || '')) ? String(s.url) : null;
+    return { needed: !!s.needed, fresh: !!(s.needed && s.fresh && url), fingerprint: String(s.fingerprint || ''), url: url };
+  }, function (err) { bannerLogOnce('the banner\'s state could not be read', err); return unknown; });
+}
+
+/* 409 banner-stale (the studio has it drawn again, then asks once more) when this event's mails need a banner that
+   is out of date. true when it answered. */
+var BANNER_STALE = 'The mail\'s top banner is out of date and is being drawn again. Try again in a moment.';
+function refuseStaleBanner(res, got) {
+  var b = got && got.banner;
+  if (!b || !b.needed || b.fresh) return false;
+  sendJson(res, 409, { error: BANNER_STALE, code: 'banner-stale' });
+  return true;
+}
+
+/* an older composed banner of this event: lib/promo-banner.js stores each one public under
+   events/<id>/promo-banner/ and never deletes it (a sent mail still shows its own). Its isBannerUrl is the rule,
+   kept beside the code that writes the folder; this folder test stands in only while that module cannot load (or
+   no bucket is known), so a saved mail never keeps an old banner because of it. */
+function isOwnBanner(url, eventId, bucket) {
+  var b = bucket ? bannerModule() : null;
+  if (b && typeof b.isBannerUrl === 'function') return !!b.isBannerUrl(url, bucket, eventId);
+  var m = /^https:\/\/storage\.googleapis\.com\/([^/?#]+)\/events\/([^/?#]+)\/promo-banner\/[^/?#]/.exec(String(url || ''));
+  return !!m && !!eventId && m[2] === eventId && (!bucket || m[1] === bucket);
+}
+/* Whether a banner block shows the picture the server chose for it, and so follows the event's banner as it
+   changes. An older banner of this event always does: a stale banner never goes out (owner C). The site's bare
+   hero picture follows only when the server put it there: props.autoUrl records the address the server last
+   wrote into the block, so a hero picture that differs from it is one the sender picked in the studio and is
+   theirs to keep. A block saved before autoUrl existed has none; its hero picture can only have come from the
+   server (the banner did not exist yet), so it follows too. url: the block's address, trimmed. */
+function followsCurrentBanner(props, url, hero, eventId, bucket) {
+  if (!url) return false;
+  if (isOwnBanner(url, eventId, bucket)) return true;
+  if (!hero || url !== hero) return false;
+  return props.autoUrl == null || String(props.autoUrl).trim() === url;
+}
+/* The document with every banner block that follows the current banner (followsCurrentBanner) set to the picture
+   a mail should carry now: the current banner; else (the studio's live preview while it is drawn again, or a banner
+   that could not be read) the hero picture; else nothing — an event with no hero picture has no banner, and a block
+   left pointing at an old one would show dates and a picture the site no longer has. Each such block also records
+   that picture as its autoUrl, one already showing it included, so a picture the sender puts there later is told
+   apart from it. Any other picture (the sender's own, a Custom banner URL, the hero picture the sender picked) is
+   left as it is. The engine's banner renderer reads only url, href and alt, so autoUrl never changes the mail. The
+   same document comes back when nothing changes; the one given is never modified. got: eventFor()'s answer. */
+function withCurrentBanner(doc, got) {
+  if (!doc || !Array.isArray(doc.blocks)) return doc;
+  var ev = (got && got.ev) || {};
+  var hero = String(ev.keyVisualUrl || ''), now = String(ev.bannerUrl || '') || hero;
+  var eventId = String(ev.oneworldId || ''), bucket = got && got.bucket;
+  var changed = false;
+  var blocks = doc.blocks.map(function (b) {
+    if (!b || b.type !== 'banner' || !b.props || typeof b.props !== 'object') return b;
+    var url = String(b.props.url == null ? '' : b.props.url).trim();
+    if (!followsCurrentBanner(b.props, url, hero, eventId, bucket)) return b;
+    if (b.props.url === now && b.props.autoUrl === now) return b;
+    changed = true;
+    return Object.assign({}, b, { props: Object.assign({}, b.props, { url: now, autoUrl: now }) });
+  });
+  return changed ? Object.assign({}, doc, { blocks: blocks }) : doc;
+}
+
+/* Change layout keeps only the props a block's schema declares (relayout.ts drops the rest and names each in the
+   report's warnings), and autoUrl is not one of them: the sender would read a warning about a field they never saw
+   on every change of layout, and a hero picture they picked would lose its mark and turn back into the banner.
+   So autoUrl is taken off the banner blocks before the engine moves them, and put back on the block each became
+   when that block still holds the same picture (the report says where each edited or carried block went). A
+   banner block the engine left behind is the new layout's own; withCurrentBanner marks it. */
+function relayoutKeepingAutoUrl(doc, m, ev, params) {
+  /* keyed by index and by block id, which come from the request: no prototype to collide with */
+  var marks = Object.create(null), any = false;
+  var blocks = Array.isArray(doc.blocks) ? doc.blocks.map(function (b, i) {
+    if (!b || b.type !== 'banner' || !b.props || typeof b.props !== 'object' || !Object.prototype.hasOwnProperty.call(b.props, 'autoUrl')) return b;
+    any = true;
+    marks[i] = { id: b.id, url: b.props.url, autoUrl: b.props.autoUrl };
+    var props = Object.assign({}, b.props);
+    delete props.autoUrl;
+    return Object.assign({}, b, { props: props });
+  }) : doc.blocks;
+  var out = engine.relayout(any ? Object.assign({}, doc, { blocks: blocks }) : doc, m, ev, params);
+  if (!any || !out || !out.doc || !Array.isArray(out.doc.blocks)) return out;
+  var report = out.report || {}, fromOf = Object.create(null);
+  (report.matched || []).forEach(function (x) { if (x && x.type === 'banner' && marks[x.fromIndex]) fromOf[x.toBlockId] = marks[x.fromIndex]; });
+  (report.carried || []).forEach(function (x) {
+    if (!x || x.type !== 'banner') return;
+    Object.keys(marks).forEach(function (i) { if (marks[i].id === x.id) fromOf[x.id] = marks[i]; });
+  });
+  out.doc.blocks.forEach(function (b) {
+    var from = b && b.type === 'banner' && b.props && Object.prototype.hasOwnProperty.call(fromOf, b.id) ? fromOf[b.id] : null;
+    if (from && b.props.url === from.url) b.props.autoUrl = from.autoUrl;
+  });
+  return out;
+}
+
+/* ---------- example content: never a real mail ---------- */
+
+/* lib/promo-examples.js decides what is an example (its markers: the library's picture folder, the "ex-" ids, the
+   preview's meta tag). Loaded on first use, as it is needed only by a request that carries a document; unlike the
+   banner, a fault in it is never passed over: a guard that cannot run answers 500, it does not let a mail through. */
+function exampleIn() {
+  for (var i = 0; i < arguments.length; i++) {
+    if (arguments[i] != null && require('./promo-examples').isExample(arguments[i])) return true;
+  }
+  return false;
+}
+/* what the sender has to add, from the kind of example the request carries (the library's people and logos
+   folders, its ids — quoted as JSON, an attribute or an entity writes them); anything else is just "details" */
+var EXAMPLE_ID_QUOTE = '(?:["\'`]|&quot;|&#0*3[49];|&#x0*2[27];)';
+var EXAMPLE_KINDS = [
+  [new RegExp('promo-examples(?:\\\\?/|%2F)people(?:\\\\?/|%2F)|' + EXAMPLE_ID_QUOTE + 'ex-p\\d', 'i'), 'speakers'],
+  [new RegExp('promo-examples(?:\\\\?/|%2F)logos(?:\\\\?/|%2F)|' + EXAMPLE_ID_QUOTE + 'ex-l\\d', 'i'), 'partners'],
+  [new RegExp(EXAMPLE_ID_QUOTE + 'ex-s\\d'), 'agenda sessions']
+];
+function exampleRefusal(x) {
+  var text = '';
+  try { text = typeof x === 'string' ? x : (JSON.stringify(x) || ''); } catch (e) { text = ''; }
+  var what = EXAMPLE_KINDS.filter(function (k) { return k[0].test(text); }).map(function (k) { return k[1]; });
+  var list = !what.length ? 'details' : what.length === 1 ? what[0] : what.slice(0, -1).join(', ') + ' and ' + what[what.length - 1];
+  return { error: 'Example content cannot be saved, downloaded or sent. Add the event\'s own ' + list + ', then try again.', code: 'example' };
+}
+/* 422 when any of the values carries example content; true when it answered */
+function refuseExample(res) {
+  var values = [].slice.call(arguments, 1);
+  if (!exampleIn.apply(null, values)) return false;
+  sendJson(res, 422, exampleRefusal(values));
+  return true;
+}
 
 /* ---------- the event, as the engine reads it ---------- */
 
@@ -139,20 +319,33 @@ function entityOf(eventId, kit, ev, base, awardRec) {
   };
 }
 
-/* the engine's event for one Oneworld event (and the stored event, for the activity log's labels) */
+/* The engine's event for one Oneworld event, and what goes with it. -> { ev, stored, kit, banner, bucket }:
+     ev      the EventEntity; ev.bannerUrl is the composed top banner, set only while it is current
+     stored  the stored event (the activity log's labels, tracking's checks)
+     kit     lib/promo.js buildKit's Kit (the posts and the banner are drawn from it)
+     banner  { needed, fresh, fingerprint, url } (bannerStateFor), read from the Kit as buildKit made it
+     bucket  the Storage bucket's name (withCurrentBanner knows this event's older banners by it)
+   Exported: the social posts (lib/promo-social.js) and the mailer previews (lib/promo-previews.js) read the same
+   event. */
 function eventFor(fb, eventId, req) {
   var ref = fb.db.collection('events').doc(eventId);
   return Promise.all([
-    promo.buildKit(fb, eventId, req, {}),
+    /* the banner's record is one more read, so it starts as soon as the Kit it is judged against is there */
+    promo.buildKit(fb, eventId, req, {}).then(function (kit) {
+      return bannerStateFor(fb, eventId, kit).then(function (banner) { return { kit: kit, banner: banner }; });
+    }),
     ref.get(),
     ref.collection('sources').get().then(function (s) { return s.docs.map(function (d) { return d.data(); }); }, function () { return []; })
   ]).then(function (r) {
-    var kit = r[0], ev = r[1].exists ? r[1].data() : {}, sources = r[2];
+    var kit = r[0].kit, banner = r[0].banner, ev = r[1].exists ? r[1].data() : {}, sources = r[2];
     /* the event's own line: the one under its site's banner (the AI design), else its listing's tagline */
     var plan = ev.designPlan && ev.designPlan.design;
     kit.event.tagline = String((plan && plan.heroTagline) || ev.tagline || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     var awardRec = sources.filter(function (d) { return d && d.type === 'previousEdition' && d.award; }).map(function (d) { return d.award; })[0] || null;
-    return { ev: entityOf(eventId, kit, ev, H.publicBaseFor(req), awardRec), stored: ev };
+    var entity = entityOf(eventId, kit, ev, H.publicBaseFor(req), awardRec);
+    /* a banner that is out of date is never handed to the engine: the sends refuse instead (refuseStaleBanner) */
+    if (banner.fresh) entity.bannerUrl = banner.url;
+    return { ev: entity, stored: ev, kit: kit, banner: banner, bucket: (fb.bucket && fb.bucket.name) || '' };
   });
 }
 
@@ -277,7 +470,7 @@ function trackingOn(t, eventId, stored) {
   try { return !!t.availableFor(eventId); } catch (err) { return false; }
 }
 
-/* the platform's deliverable() (server.ts:886-915), for one file or a zip's worth. got: eventFor()'s { ev, stored };
+/* the platform's deliverable() (server.ts:886-915), for one file or a zip's worth. got: eventFor()'s { ev, stored, … };
    items: [{ doc, mailerId, save: { saveId, name } | null }]. Resolves { html: string[], tracked: boolean } and never
    rejects for a tracking reason: when tracking is off here, or instrumenting or recording fails, every file is the
    plain render and tracked is false. Order: render, instrument, record — a failure while instrumenting then leaves
@@ -285,7 +478,12 @@ function trackingOn(t, eventId, stored) {
 function deliverables(fb, decoded, got, eventId, items) {
   return Promise.resolve().then(function () {
     var ev = got.ev, stored = got.stored;
-    var plain = items.map(function (it) { return engine.renderDoc(it.doc, ev); });
+    /* every export passes here, so no example can leave and no send of one is ever recorded: the whole export is
+       refused (422), not just the file that holds it */
+    var docs = items.map(function (it) { return it.doc; });
+    if (exampleIn.apply(null, docs)) { var ex = new Error('example content in an export'); ex.status = 422; ex.body = exampleRefusal(docs); throw ex; }
+    /* a saved mail goes out with the event's current banner, never an older one */
+    var plain = items.map(function (it) { return engine.renderDoc(withCurrentBanner(it.doc, got), ev); });
     var untracked = { html: plain, tracked: false };
     var t = tracker();
     if (!trackingOn(t, eventId, stored)) return untracked;
@@ -428,33 +626,59 @@ function handleRoster(req, res) {
   });
 }
 
-/* POST /api/promo/mailer/doc */
+/* The mail's colours as the engine resolves them for this document on this event (its theme, accent and
+   background, else the site's): what the studio's colour fields, swatches and sample button read. /doc carries it
+   as well as /render, so the studio has the accent before the mail is first drawn rather than after. */
+function paletteOf(ev, doc) {
+  var p = engine.renderCtx(ev, doc).p;
+  return { accent: p.accent, primary: p.primary, ink: p.ink, cardBg: p.cardBg, pageBg: p.pageBg, tileBg: p.tileBg };
+}
+
+/* POST /api/promo/mailer/doc — a saved version opens even when the event can no longer have its mailer (it holds
+   only what was real when it was saved); a new one is built only for a mailer this event can have (409
+   'unavailable' with what is missing — its card shows an example preview instead) */
 function handleDoc(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
     var m = engine.getMailer(String(body.mailerId || ''));
     if (!m) return sendJson(res, 404, { error: 'unknown mailer' });
+    if (refuseExample(res, body.params)) return;
     eventFor(fb, eventId, req).then(function (got) {
       var ev = got.ev;
       var hit = body.fresh ? Promise.resolve(null) : body.saveId ? getSave(fb, eventId, m.id, String(body.saveId)) : latestSave(fb, eventId, m.id);
       return hit.then(function (h) {
-        var doc = h ? engine.migrateSponsorTiers(h.doc, ev) : engine.buildDoc(m, ev, body.params || {});
-        sendJson(res, 200, { doc: doc, saved: !!h, save: h ? h.meta : null, html: engine.renderDoc(doc, ev, { editor: true }) });
+        if (!h) {
+          var avail = m.requires(ev);
+          if (!avail.ok) return sendJson(res, 409, { error: 'This event cannot have this mailer yet: it needs ' + avail.missing.join('; ') + '.', code: 'unavailable', missing: avail.missing });
+        }
+        if (refuseStaleBanner(res, got)) return;
+        var doc = withCurrentBanner(h ? engine.migrateSponsorTiers(h.doc, ev) : engine.buildDoc(m, ev, body.params || {}), got);
+        /* the colours with the document: the studio's colour fields and swatches are right before the mail is drawn */
+        sendJson(res, 200, { doc: doc, saved: !!h, save: h ? h.meta : null, html: engine.renderDoc(doc, ev, { editor: true }), palette: paletteOf(ev, doc) });
       });
     }).catch(function (err) { fail(res, 'doc', err); });
   });
 }
 
-/* POST /api/promo/mailer/relayout */
+/* POST /api/promo/mailer/relayout — the new layout is built afresh from the event, as a new mailer is on /doc, so it
+   waits for a current banner as /doc does: built while the banner is out of date, the engine's event has none, and
+   the mailers that lead with it in place of their own colour band or mark (O3 = b: the two spotlights, the award
+   sends) would come out with that band or mark as well as the banner block carried over from the old layout — two
+   headers, kept as a new draft and sent as such once the banner is current, as withCurrentBanner only changes a
+   banner's picture, never removes a band. The studio then has the banner drawn again and asks once more, as for
+   any other 409 banner-stale. */
 function handleRelayout(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
     var m = engine.getMailer(String(body.mailerId || ''));
     if (!m) return sendJson(res, 404, { error: 'unknown mailer' });
     if (!docOr400(res, body.doc)) return;
+    if (refuseExample(res, body.doc, body.params)) return;
     eventFor(fb, eventId, req).then(function (got) {
       var ev = got.ev, avail = m.requires(ev);
       if (!avail.ok) return sendJson(res, 400, { error: 'this event has no ' + avail.missing.join(', '), missing: avail.missing });
-      var out = engine.relayout(body.doc, m, ev, body.params || {});
-      sendJson(res, 200, { doc: out.doc, report: out.report, html: engine.renderDoc(out.doc, ev, { editor: true }) });
+      if (refuseStaleBanner(res, got)) return;
+      var out = relayoutKeepingAutoUrl(body.doc, m, ev, body.params || {});
+      var doc = withCurrentBanner(out.doc, got);
+      sendJson(res, 200, { doc: doc, report: out.report, html: engine.renderDoc(doc, ev, { editor: true }) });
     }).catch(function (err) { fail(res, 'relayout', err); });
   });
 }
@@ -476,10 +700,20 @@ function handleImport(req, res) {
       if (refused) return;
       var raw = Buffer.concat(chunks);
       if (!raw.length) return sendJson(res, 400, { error: 'empty upload' });
-      eventFor(fb, eventId, req).then(function (got) {
-        var ev = got.ev, out = engine.importHtml(raw.toString('utf8'), ev);
-        if (!out.report.ok) return sendJson(res, out.report.bytes ? 413 : 400, { error: out.report.warnings[0] || 'could not read that file', report: out.report });
-        sendJson(res, 200, { doc: out.doc, report: out.report, html: engine.renderDoc(out.doc, ev, { editor: true }) });
+      var text = raw.toString('utf8');
+      /* inside the chain: this runs in a stream event, where a throw would be caught by nobody */
+      Promise.resolve().then(function () {
+        /* a card's preview saved or copied as a file carries the example marker: it never comes back in as a mail */
+        if (refuseExample(res, text)) return;
+        return eventFor(fb, eventId, req).then(function (got) {
+          var ev = got.ev, out = engine.importHtml(text, ev);
+          if (!out.report.ok) return sendJson(res, out.report.bytes ? 413 : 400, { error: out.report.warnings[0] || 'could not read that file', report: out.report });
+          /* and the document it read: the import decodes the file's entities, so an example address written as
+             assets&#47;promo-examples&#47;… passes the raw text above and only shows once it is a document — one
+             every later save, render and download would refuse anyway, so it is refused here, where it came in */
+          if (refuseExample(res, out.doc)) return;
+          sendJson(res, 200, { doc: out.doc, report: out.report, html: engine.renderDoc(out.doc, ev, { editor: true }) });
+        });
       }).catch(function (err) { fail(res, 'import', err); });
     });
     req.on('error', function () { if (!refused) sendJson(res, 400, { error: 'The upload did not come through.' }); });
@@ -492,14 +726,17 @@ function handleImport(req, res) {
 function handleRender(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
     if (!docOr400(res, body.doc)) return;
+    if (refuseExample(res, body.doc)) return;
     eventFor(fb, eventId, req).then(function (got) {
-      var ev = got.ev, pal = engine.renderCtx(ev, body.doc).p;
-      var palette = { accent: pal.accent, primary: pal.primary, ink: pal.ink, cardBg: pal.cardBg, pageBg: pal.pageBg, tileBg: pal.tileBg };
+      /* Copy HTML and the PNG/PDF export leave the studio, so they wait for a current banner; the studio's own live
+         preview never does (it shows the site's hero picture meanwhile) */
+      if (!body.editor && refuseStaleBanner(res, got)) return;
+      var ev = got.ev, doc = withCurrentBanner(body.doc, got), palette = paletteOf(ev, doc);
       if (body.track && !body.editor) {
-        return deliverables(fb, decoded, got, eventId, [{ doc: body.doc, mailerId: String(body.doc.mailerId || ''), save: { saveId: body.saveId, name: body.saveName } }])
+        return deliverables(fb, decoded, got, eventId, [{ doc: doc, mailerId: String(body.doc.mailerId || ''), save: { saveId: body.saveId, name: body.saveName } }])
           .then(function (r) { sendJson(res, 200, { html: r.html[0], palette: palette, tracked: r.tracked }); });
       }
-      sendJson(res, 200, { html: engine.renderDoc(body.doc, ev, body.editor ? { editor: true } : {}), palette: palette });
+      sendJson(res, 200, { html: engine.renderDoc(doc, ev, body.editor ? { editor: true } : {}), palette: palette });
     }).catch(function (err) { fail(res, 'render', err); });
   });
 }
@@ -509,8 +746,13 @@ function handleBlock(req, res) {
   withEvent(req, res, H.BODY_LIMITS.small, function (fb, decoded, body, eventId) {
     var type = String(body.type || '');
     if (!Object.prototype.hasOwnProperty.call(engine.BLOCK_SCHEMAS, type)) return sendJson(res, 400, { error: 'unknown block type' });
-    eventFor(fb, eventId, req).then(function (got) { sendJson(res, 200, { block: engine.makeBlock(type, got.ev) }); })
-      .catch(function (err) { fail(res, 'block', err); });
+    eventFor(fb, eventId, req).then(function (got) {
+      var block = engine.makeBlock(type, got.ev);
+      /* the picture the server put in a new Banner block, so withCurrentBanner can tell it from one the sender picks
+         there later (the site's own hero picture included) */
+      if (type === 'banner' && block && block.props) block.props.autoUrl = block.props.url == null ? '' : String(block.props.url);
+      sendJson(res, 200, { block: block });
+    }).catch(function (err) { fail(res, 'block', err); });
   });
 }
 
@@ -520,6 +762,8 @@ function handleSave(req, res) {
     var m = engine.getMailer(String(body.mailerId || ''));
     if (!m) return sendJson(res, 404, { error: 'unknown mailer' });
     if (!docOr400(res, body.doc)) return;
+    /* nothing example-filled is ever written to mailerSaves */
+    if (refuseExample(res, body.doc)) return;
     var by = (decoded && decoded.email) || '';
     putSave(fb, eventId, m.id, { saveId: body.saveId ? String(body.saveId) : null, name: body.name, doc: body.doc }, by).then(function (save) {
       return listSaves(fb, eventId, m.id).then(function (saves) {
@@ -594,16 +838,20 @@ function handleReset(req, res) {
    would otherwise count your own views. */
 function handleDownload(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
+    /* the document on screen, a test download included (it does not pass through deliverables()) */
+    if (body.doc && refuseExample(res, body.doc)) return;
     eventFor(fb, eventId, req).then(function (got) {
       var ev = got.ev, pick = pickDownload(body, ev);
       if (pick.kind === 'none') return sendJson(res, pick.status, { error: pick.error });
+      if (pick.kind === 'doc' && !docOr400(res, body.doc)) return;
+      /* every kind, a test download too: a file never points at a banner that is out of date */
+      if (refuseStaleBanner(res, got)) return;
       if (pick.kind === 'doc') {
-        if (!docOr400(res, body.doc)) return;
         var mailerId = String(body.doc.mailerId || (body.mailerIds || [])[0] || '');
         var one = engine.getMailer(mailerId), fname = one ? fileNameOf(one, ev) : 'mailer.html';
         if (body.test) {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + fname + '"', 'Cache-Control': 'no-store' });
-          return res.end(engine.renderDoc(body.doc, ev));
+          return res.end(engine.renderDoc(withCurrentBanner(body.doc, got), ev));
         }
         return deliverables(fb, decoded, got, eventId, [{ doc: body.doc, mailerId: mailerId, save: { saveId: body.saveId, name: body.saveName } }])
           .then(function (r) { sendExport(res, 'text/html; charset=utf-8', fname, r.html[0], r.tracked); });
@@ -636,6 +884,8 @@ function handleDownload(req, res) {
 /* POST /api/promo/mailer/ai — action: subjects | rewrite | polish | enhance (the platform's four) */
 function handleAi(req, res) {
   withEvent(req, res, 0, function (fb, decoded, body, eventId) {
+    /* an example would come back as AI copy the sender could then save as their own */
+    if (refuseExample(res, body.doc, body.text)) return;
     eventFor(fb, eventId, req).then(function (got) {
       var ev = got.ev, doc = body.doc;
       var mailer = engine.getMailer(String((doc && doc.mailerId) || ''));
@@ -758,7 +1008,10 @@ function handleIconDelete(req, res) {
 }
 
 module.exports = {
-  wire, handleCatalog, handleSaves, handleRoster, handleDoc, handleRelayout, handleImport, handleRender, handleBlock,
+  wire, eventFor, handleCatalog, handleSaves, handleRoster, handleDoc, handleRelayout, handleImport, handleRender, handleBlock,
   handleSave, handleRename, handleDelete, handleReset, handleDownload, handleAi, handleIcons, handleIconUpload, handleIconDelete
 };
-module.exports._test = { entityOf, awardOf, toLlmSchema, uniqueName, absolute, deliverables, pickDownload, tracker, trackingOn };
+/* for the mailer previews (lib/promo-previews.js): the saved versions, and how a saved mail follows the banner */
+module.exports._internal = { savesOf, metaOf, withCurrentBanner };
+module.exports._test = { entityOf, awardOf, toLlmSchema, uniqueName, absolute, deliverables, pickDownload, tracker, trackingOn,
+  withCurrentBanner, isOwnBanner, bannerStateFor, exampleRefusal, relayoutKeepingAutoUrl, paletteOf };

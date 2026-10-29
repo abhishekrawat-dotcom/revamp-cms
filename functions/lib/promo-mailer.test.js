@@ -26,8 +26,47 @@ var trackStub = {
   }
 };
 var FAIL_LOAD = false, STUB = path.join(__dirname, '__stub-promo-track.js'), realResolve = Module._resolveFilename;
+
+/* lib/promo-banner.js (the composed top banner) stands in as a state each check sets: { needed, fresh, url } as
+   its stateFor() answers, or a read that fails, or a module that cannot load. Always a stand-in, so these checks
+   never depend on its fingerprint or on Storage. */
+var BANNER = { state: null, fail: false, calls: [], wired: 0 };
+function bannerReset(o) {
+  BANNER.state = { needed: false, fresh: false, fingerprint: '', url: null }; BANNER.fail = false; BANNER.calls = [];
+  Object.assign(BANNER, o || {});
+}
+bannerReset();
+var bannerStub = {
+  wire: function () { BANNER.wired++; },
+  /* the rule the plan gives it (§5i): this bucket's events/<id>/promo-banner/<name>.jpg */
+  isBannerUrl: function (url, bucket, eventId) {
+    BANNER.asked = (BANNER.asked || 0) + 1;
+    var prefix = 'https://storage.googleapis.com/' + bucket + '/events/' + eventId + '/promo-banner/';
+    return !!bucket && String(url).indexOf(prefix) === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*\.jpg$/.test(String(url).slice(prefix.length));
+  },
+  stateFor: function (fb, eventId, kitIn) {
+    BANNER.calls.push({ fb: fb, eventId: eventId, kit: kitIn });
+    if (BANNER.fail === 'throw') throw new Error('stub: stateFor threw');
+    if (BANNER.fail) return Promise.reject(new Error('stub: the banner record could not be read'));
+    return Promise.resolve(JSON.parse(JSON.stringify(BANNER.state)));
+  }
+};
+var BANNER_FAIL_LOAD = false, BANNER_STUB = path.join(__dirname, '__stub-promo-banner.js');
+/* lib/promo-examples.js stands in with the markers the plan names (§5h): the example library's picture folder in
+   any address, the "ex-p…" / "ex-l…" / "ex-s…" ids, and the preview's meta tag */
+var exampleStub = {
+  EXAMPLE_PATH: '/assets/promo-examples/',
+  isExample: function (x) {
+    var s = typeof x === 'string' ? x : JSON.stringify(x);
+    return typeof s === 'string' && (s.indexOf('/assets/promo-examples/') !== -1 || /"ex-[pls]\d/.test(s) || s.indexOf('<meta name="oneworld-example"') !== -1);
+  }
+};
+var EX_STUB = path.join(__dirname, '__stub-promo-examples.js');
+
 Module._resolveFilename = function (request) {
   if (request === './promo-track') { if (FAIL_LOAD) throw new Error('stub: cannot load lib/promo-track.js'); return STUB; }
+  if (request === './promo-banner') { if (BANNER_FAIL_LOAD) throw new Error('stub: cannot load lib/promo-banner.js'); return BANNER_STUB; }
+  if (request === './promo-examples') return EX_STUB;
   return realResolve.apply(this, arguments);
 };
 function trackIn() { require.cache[STUB] = { id: STUB, filename: STUB, loaded: true, exports: trackStub, children: [], paths: [] }; }
@@ -35,6 +74,17 @@ function trackIn() { require.cache[STUB] = { id: STUB, filename: STUB, loaded: t
 function trackBroken() { FAIL_LOAD = true; delete require.cache[STUB]; }
 function trackFixed() { FAIL_LOAD = false; trackIn(); }
 trackIn();
+function bannerIn() { require.cache[BANNER_STUB] = { id: BANNER_STUB, filename: BANNER_STUB, loaded: true, exports: bannerStub, children: [], paths: [] }; }
+function bannerBroken() { BANNER_FAIL_LOAD = true; delete require.cache[BANNER_STUB]; }
+function bannerFixed() { BANNER_FAIL_LOAD = false; bannerIn(); }
+bannerIn();
+require.cache[EX_STUB] = { id: EX_STUB, filename: EX_STUB, loaded: true, exports: exampleStub, children: [], paths: [] };
+
+/* lib/llm.js: no model is ever asked here — every AI request in these checks must be refused before it */
+var LLM_CALLS = 0, LLM_PATH = require.resolve('./llm');
+require.cache[LLM_PATH] = { id: LLM_PATH, filename: LLM_PATH, loaded: true, children: [], paths: [], exports: {
+  callJson: function () { LLM_CALLS++; return Promise.resolve({ error: 'stub: no model here', code: 'ai-config' }); }
+} };
 
 /* lib/promo.js builds the event's kit from its site, its page and the web (fonts, the logo): here it hands back the
    sample kit below, so the routes run with no Firebase and no network */
@@ -175,7 +225,7 @@ var FBR = { db: { collection: function () {
       }
     };
   } };
-} } };
+} }, bucket: { name: 'test-bucket' } };
 var FAILS = [];
 mod.wire({
   BODY_LIMITS: { ai: 1 << 20, small: 1 << 14 },
@@ -183,7 +233,11 @@ mod.wire({
   withAdminBody: function (req, res, limit, cb) { cb(FBR, DECODED, req.body); },
   eventIdOr400: function (res, v) { var s = String(v || ''); if (!/^[a-z0-9][a-z0-9-]{0,80}$/.test(s)) { sendJson(res, 400, { error: 'eventId required' }); return null; } return s; },
   publicBaseFor: function () { return BASE; },
-  sendFailure: function (res, what, err, msg) { FAILS.push(what + ': ' + (err && err.stack || err)); sendJson(res, 500, { error: msg }); },
+  /* as lib/api.js's: an error with a status and a body goes out as written; anything else is a fault */
+  sendFailure: function (res, what, err, msg) {
+    if (err && err.status && err.body) return sendJson(res, err.status, err.body);
+    FAILS.push(what + ': ' + (err && err.stack || err)); sendJson(res, 500, { error: msg });
+  },
   aiUsageRecorder: function () { return function () {}; }
 });
 /* one request through a route: { status, headers, body (Buffer | string), json } */
@@ -208,6 +262,62 @@ function onlyAvailable(keep, fn) {
   function restore() { engine.ALL_MAILERS.forEach(function (m, i) { m.requires = saved[i]; }); }
   return Promise.resolve().then(fn).then(function (v) { restore(); return v; }, function (err) { restore(); throw err; });
 }
+/* one raw upload through a route (the import): the bytes arrive as the request's data events */
+var EventEmitter = require('events');
+function callRaw(handler, url, bytes) {
+  return new Promise(function (resolve) {
+    var req = new EventEmitter();
+    req.method = 'POST'; req.url = url; req.headers = {}; req.resume = function () {}; req.destroy = function () {};
+    var res = { status: 0, headers: {}, headersSent: false,
+      setHeader: function (k, v) { res.headers[k] = v; },
+      writeHead: function (s, h) { res.status = s; Object.assign(res.headers, h || {}); res.headersSent = true; return res; },
+      end: function (b) {
+        var json = null;
+        if (typeof b === 'string') { try { json = JSON.parse(b); } catch (e) { /* not JSON */ } }
+        resolve({ status: res.status, headers: res.headers, body: b, json: json });
+      } };
+    handler(req, res);
+    setImmediate(function () { req.emit('data', bytes); req.emit('end'); });
+  });
+}
+/* one request after another: each case is [label, handler, url, body] */
+function inTurn(cases, each) {
+  return cases.reduce(function (p, c) { return p.then(function () { return call(c[1], c[2], c[3]).then(function (r) { each(c, r); }); }); }, Promise.resolve());
+}
+
+/* ---- the top banner: the pictures a mail's banner block can hold ---- */
+var HERO = BASE + '/templates/x/hero.jpg';                       // the site's bare hero picture (ev.keyVisualUrl)
+var HERO_KIT = kit.brand.heroImageUrl;                             // the Kit's own (relative) address of it, put back after a check takes it away
+var OWN_BANNERS = 'https://storage.googleapis.com/test-bucket/events/demo/promo-banner/';
+var OLD_BANNER = OWN_BANNERS + '0123456789abcdef-lq3x9k-a1b2c3d4e5f60718.jpg';
+var NEW_BANNER = OWN_BANNERS + 'fedcba9876543210-lq4a0b-0f1e2d3c4b5a6978.jpg';
+var CUSTOM = 'https://img.etb2bimg.com/files/custom-banner.jpg';
+var OTHER_EVENT_BANNER = 'https://storage.googleapis.com/test-bucket/events/other/promo-banner/0123-x.jpg';
+var OTHER_BUCKET_BANNER = 'https://storage.googleapis.com/other-bucket/events/demo/promo-banner/0123-x.jpg';
+var STALE_TEXT = 'The mail\'s top banner is out of date and is being drawn again. Try again in a moment.';
+function bannerFresh() { bannerReset({ state: { needed: true, fresh: true, fingerprint: 'f'.repeat(32), url: NEW_BANNER } }); }
+function bannerStale() { bannerReset({ state: { needed: true, fresh: false, fingerprint: 'e'.repeat(32), url: OLD_BANNER } }); }
+function bannersOf(d) { return ((d && d.blocks) || []).filter(function (b) { return b.type === 'banner'; }).map(function (b) { return b.props.url; }); }
+function allAre(list, url) { return list.length > 0 && list.every(function (u) { return u === url; }); }
+function withBannerUrl(d, url) { var c = JSON.parse(JSON.stringify(d)); c.blocks.forEach(function (b) { if (b.type === 'banner') b.props.url = url; }); return c; }
+/* every banner block showing url, marked as the server's own choice of autoUrl (undefined: no mark, a save from
+   before the mark existed) */
+function withMark(d, url, autoUrl) {
+  var c = withBannerUrl(d, url);
+  c.blocks.forEach(function (b) { if (b.type === 'banner') { if (autoUrl === undefined) delete b.props.autoUrl; else b.props.autoUrl = autoUrl; } });
+  return c;
+}
+/* eventFor's answer while the banner is current, as the routes see it */
+function GOT_FRESH() { return { ev: Object.assign({}, ev, { oneworldId: 'demo', bannerUrl: NEW_BANNER }), bucket: 'test-bucket' }; }
+function marksOf(d) { return ((d && d.blocks) || []).filter(function (b) { return b.type === 'banner'; }).map(function (b) { return b.props.autoUrl; }); }
+var SAVED_JSON = SAVES.s1save.doc;
+function saveAs(d) { SAVES.s1save.doc = JSON.stringify(d); }
+function savedBack() { SAVES.s1save.doc = SAVED_JSON; }
+function zipFile(r, name) { return JSZip.loadAsync(r.body).then(function (z) { return z.file(name) ? z.file(name).async('string') : ''; }); }
+
+/* ---- example content: a mail holding one of the example library's people or logos ---- */
+var EX_PERSON = BASE + '/assets/promo-examples/people/p01.jpg', EX_LOGO = BASE + '/assets/promo-examples/logos/l01.png';
+function exampleDoc(url) { var d = docOf('mailer.announcement'); d.blocks = d.blocks.concat([{ id: 'exb', type: 'banner', props: { url: url, alt: 'x' } }]); return d; }
 
 var steps = [
 
@@ -584,6 +694,578 @@ var steps = [
     });
   },
 
+  /* ======== Phase 3: the event every Promotions route reads (eventFor), exported ======== */
+  function () {
+    reset(); bannerFresh();
+    var REQ = { method: 'GET', url: '/x', headers: {} };
+    return mod.eventFor(FBR, 'demo', REQ).then(function (got) {
+      check('eventFor: exported; resolves { ev, stored, kit, banner }', typeof mod.eventFor === 'function' && got && got.ev && got.ev.name === kit.event.name &&
+        got.stored && got.stored.category === 'ip' && got.kit && got.kit.event && got.kit.brand && got.banner && typeof got.banner.fresh === 'boolean', got && Object.keys(got));
+      check('eventFor: a current banner is the engine\'s bannerUrl', got.ev.bannerUrl === NEW_BANNER && got.banner.needed === true && got.banner.fresh === true && got.banner.url === NEW_BANNER, got.banner);
+      check('eventFor: the banner is judged once, on the request\'s Firebase, against the Kit buildKit made', BANNER.calls.length === 1 && BANNER.calls[0].fb === FBR &&
+        BANNER.calls[0].eventId === 'demo' && BANNER.calls[0].kit === got.kit && got.kit.brand.heroImageUrl === kit.brand.heroImageUrl, BANNER.calls.length);
+      check('eventFor: the Kit keeps the event\'s own line (tagline), as before', got.kit.event.tagline === '' && got.ev.tagline === undefined, got.kit.event.tagline);
+      check('eventFor: the bucket comes along (a saved mail\'s older banners are known by it)', got.bucket === 'test-bucket', got.bucket);
+      check('eventFor: the banner module is handed the request\'s helpers (a cold instance)', BANNER.wired > 0);
+      bannerStale();
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      check('eventFor: a banner out of date is never the engine\'s', !('bannerUrl' in got.ev) && got.banner.needed === true && got.banner.fresh === false, got.banner);
+      bannerReset({ state: { needed: true, fresh: true, fingerprint: 'x', url: 'http://storage.googleapis.com/test-bucket/events/demo/promo-banner/x.jpg' } });
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      check('eventFor: a "current" banner at an address that is not https is not current', !('bannerUrl' in got.ev) && got.banner.fresh === false && got.banner.url === null, got.banner);
+      bannerReset({ state: { needed: false, fresh: true, fingerprint: 'x', url: NEW_BANNER } });
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      check('eventFor: no banner needed (no hero picture): none is used, even a stored one', !('bannerUrl' in got.ev) && got.banner.needed === false && got.banner.fresh === false, got.banner);
+      LOGS.length = 0; bannerBroken();
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      bannerFixed();
+      /* owner C: a banner that cannot be judged is never taken as current — the sends wait, they do not ship the hero */
+      check('eventFor: lib/promo-banner.js cannot load: the event still comes, its banner needed and not current', got.ev.name === kit.event.name &&
+        got.banner.needed === true && got.banner.fresh === false && got.banner.url === null && !('bannerUrl' in got.ev), got.banner);
+      check('eventFor: that is logged, and says the sends are held', logged(/promo-mailer: lib\/promo-banner\.js could not be loaded — mails that need the banner are held/), LOGS);
+      LOGS.length = 0; bannerReset({ fail: true });
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      check('eventFor: the banner\'s state cannot be read: the event still comes, its banner needed and not current', got.banner.needed === true && got.banner.fresh === false && !('bannerUrl' in got.ev), got.banner);
+      check('eventFor: a failing banner is logged at most once in ten minutes, not per request', !logged(/promo-mailer: /), LOGS);
+      bannerReset({ fail: 'throw' });
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      check('eventFor: stateFor throwing is caught the same way', got.banner.needed === true && got.banner.fresh === false && got.ev.name === kit.event.name, got.banner);
+      /* a site with no hero picture has no banner to wait for, whether or not the module can tell (its own rule) */
+      kit.brand.heroImageUrl = ''; bannerBroken();
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      bannerFixed();
+      check('eventFor: the module cannot load and the site has no hero picture: no banner needed', got.banner.needed === false && got.banner.fresh === false && !('bannerUrl' in got.ev), got.banner);
+      bannerReset({ fail: true });
+      return mod.eventFor(FBR, 'demo', REQ);
+    }).then(function (got) {
+      check('eventFor: the record cannot be read and the site has no hero picture: no banner needed', got.banner.needed === false, got.banner);
+      kit.brand.heroImageUrl = HERO_KIT; bannerReset();
+    }, function (err) { kit.brand.heroImageUrl = HERO_KIT; bannerFixed(); bannerReset(); throw err; });
+  },
+  /* the banner module failing holds the sends, as a banner out of date does (owner C: a stale or missing banner never
+     goes out, so a fault must not ship the bare hero in its place); the studio's live preview still opens; a site
+     with no hero picture needs no banner, so its sends go on — and an old banner is still never let out */
+  function () {
+    reset(); bannerBroken();
+    var d = withBannerUrl(docOf('mailer.announcement'), OLD_BANNER);
+    function stale(what, r) {
+      check('banner module failing: ' + what + ' is 409 banner-stale, never the bare hero in place of the banner', r.status === 409 && r.json && r.json.code === 'banner-stale' && r.json.error === STALE_TEXT, [r.status, r.json]);
+    }
+    return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: d }).then(function (r) {
+      stale('a download (the module cannot load)', r);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: d, track: true });
+    }).then(function (r) {
+      stale('Copy HTML (the module cannot load)', r);
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true });
+    }).then(function (r) {
+      stale('opening a new mailer (the module cannot load)', r);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: d, editor: true });
+    }).then(function (r) {
+      var h = String((r.json || {}).html);
+      check('banner module failing: the studio\'s live preview still opens, with the hero picture, never the old banner', r.status === 200 && h.indexOf(HERO) !== -1 && h.indexOf(OLD_BANNER) === -1, r.status);
+      bannerFixed(); bannerReset({ fail: true });
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: d });
+    }).then(function (r) {
+      stale('a download (the banner record cannot be read)', r);
+      bannerReset({ fail: 'throw' });
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: [] });
+    }).then(function (r) {
+      stale('download all (stateFor throws)', r);
+      check('banner module failing: nothing went out, no send recorded', TRACK.calls.length === 0, TRACK.calls.length);
+      kit.brand.heroImageUrl = ''; bannerReset(); bannerBroken();
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: d });
+    }).then(function (r) {
+      bannerFixed(); kit.brand.heroImageUrl = HERO_KIT;
+      var h = textOf(r);
+      check('banner module failing, site with no hero picture: no banner to wait for, the download goes out without the old banner', r.status === 200 && h.indexOf(OLD_BANNER) === -1 && /<\/html>/i.test(h), r.status);
+    }, function (err) { bannerFixed(); bannerReset(); kit.brand.heroImageUrl = HERO_KIT; throw err; });
+  },
+
+  /* ======== Phase 3: a banner out of date never goes out ======== */
+  function () {
+    reset(); bannerStale();
+    var d = docOf('mailer.announcement');
+    return inTurn([
+      ['open a new mailer (/doc fresh)', mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true }],
+      ['open a saved version (/doc)', mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' }],
+      ['download one', mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: ['mailer.announcement'] }],
+      ['download all (zip)', mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: [] }],
+      ['download the doc on screen', mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: d }],
+      ['a test download', mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: d, test: true }],
+      ['Copy HTML (render track)', mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: d, track: true }],
+      ['the PNG/PDF export (plain render)', mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: d }],
+      /* a new layout is built afresh from the event: built now it would carry the spotlight's colour band as well as
+         the banner block carried over — two headers, kept as a new draft */
+      ['Change layout to a spotlight (/relayout)', mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.speaker-spotlight', doc: withBannerUrl(d, OLD_BANNER) }],
+      ['Change layout to another mailer (/relayout)', mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.partner-spotlight', doc: d }]
+    ], function (c, r) {
+      check('banner out of date: ' + c[0] + ' is 409 banner-stale', r.status === 409 && r.json && r.json.code === 'banner-stale' && r.json.error === STALE_TEXT, [r.status, r.json]);
+    }).then(function () {
+      check('banner out of date: nothing went out, no send recorded', TRACK.calls.length === 0, TRACK.calls.length);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(d, OLD_BANNER), editor: true });
+    }).then(function (r) {
+      var j = r.json || {};
+      check('banner out of date: the studio\'s live preview still renders', r.status === 200 && typeof j.html === 'string', r.status);
+      check('banner out of date: the preview shows the site\'s hero picture meanwhile, never the old banner', String(j.html).indexOf(HERO) !== -1 && String(j.html).indexOf(OLD_BANNER) === -1);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: d, editor: true, track: true });
+    }).then(function (r) {
+      check('banner out of date: an editor render asking to be tracked is still the preview (200, untracked)', r.status === 200 && r.json && !('tracked' in r.json) && TRACK.calls.length === 0, r.status);
+      return call(mod.handleBlock, '/api/promo/mailer/block', { eventId: 'demo', type: 'banner' });
+    }).then(function (r) {
+      /* a block added meanwhile starts on the hero picture, which the sends then point at the current banner */
+      check('banner out of date: a Banner block added in the studio starts on the site\'s hero picture, never the old banner', r.status === 200 && r.json && r.json.block &&
+        r.json.block.props.url === HERO, r.json && r.json.block);
+      bannerReset();
+    }, function (err) { bannerReset(); throw err; });
+  },
+
+  /* ======== Phase 3: a current banner, and saved mails that follow it ======== */
+  function () {
+    reset(); bannerFresh();
+    var d = docOf('mailer.announcement');
+    return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true }).then(function (r) {
+      var j = r.json || {};
+      check('banner current: a new mailer opens with the banner in its banner block', r.status === 200 && allAre(bannersOf(j.doc), NEW_BANNER) && j.html.indexOf(NEW_BANNER) !== -1, [r.status, bannersOf(j.doc)]);
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' });
+    }).then(function (r) {
+      var j = r.json || {};
+      check('banner current: a version saved with the bare hero (before the banner existed) opens with the banner', r.status === 200 && j.saved === true && allAre(bannersOf(j.doc), NEW_BANNER), bannersOf(j.doc));
+      saveAs(withBannerUrl(SAVED_DOC, OLD_BANNER));
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' });
+    }).then(function (r) {
+      check('banner current: a version saved with an older banner of this event opens with the current one', r.status === 200 && allAre(bannersOf(r.json.doc), NEW_BANNER), bannersOf(r.json && r.json.doc));
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: ['mailer.announcement'] });
+    }).then(function (r) {
+      var h = textOf(r);
+      check('banner current: download one: the saved version goes out with the current banner, not the old', r.status === 200 && h.indexOf(NEW_BANNER) !== -1 && h.indexOf(OLD_BANNER) === -1 && pixels(h).length === 1, r.status);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: [] });
+    }).then(function (r) {
+      return JSZip.loadAsync(r.body).then(function (zip) {
+        var names = Object.keys(zip.files).filter(function (n) { return /\.html$/.test(n); });
+        return Promise.all(names.map(function (n) { return zip.file(n).async('string'); })).then(function (htmls) {
+          var ann = htmls[names.indexOf(engine.mailerFileName(ANN, ev))] || '';
+          check('banner current: in the ZIP, the saved version carries the current banner, not the old', r.status === 200 && ann.indexOf(NEW_BANNER) !== -1 && ann.indexOf(OLD_BANNER) === -1);
+          check('banner current: no file of the ZIP points at an older banner or leads with the bare hero', htmls.length > 3 && htmls.every(function (h) { return h.indexOf(OLD_BANNER) === -1 && h.indexOf('src="' + HERO + '"') === -1; }));
+        });
+      });
+    }).then(function () {
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(SAVED_DOC, OLD_BANNER), track: true, saveId: 's1save', saveName: 'Launch v2' });
+    }).then(function (r) {
+      var h = String((r.json || {}).html);
+      check('banner current: Copy HTML carries the current banner, not the old', r.status === 200 && h.indexOf(NEW_BANNER) !== -1 && h.indexOf(OLD_BANNER) === -1 && r.json.tracked === true);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(d, HERO) });
+    }).then(function (r) {
+      var h = String((r.json || {}).html);
+      check('banner current: the PNG/PDF export (plain render) of a doc with the bare hero carries the banner', r.status === 200 && h.indexOf(NEW_BANNER) !== -1 && h.indexOf('src="' + HERO + '"') === -1);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: withBannerUrl(d, OLD_BANNER) });
+    }).then(function (r) {
+      var h = textOf(r);
+      check('banner current: the doc on screen with an older banner downloads with the current one', r.status === 200 && h.indexOf(NEW_BANNER) !== -1 && h.indexOf(OLD_BANNER) === -1);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: withBannerUrl(d, OLD_BANNER), test: true });
+    }).then(function (r) {
+      var h = textOf(r);
+      check('banner current: a test download too', r.status === 200 && h.indexOf(NEW_BANNER) !== -1 && h.indexOf(OLD_BANNER) === -1 && pixels(h).length === 0);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(d, OLD_BANNER), editor: true });
+    }).then(function (r) {
+      check('banner current: the studio\'s live preview shows the current banner', r.status === 200 && r.json.html.indexOf(NEW_BANNER) !== -1 && r.json.html.indexOf(OLD_BANNER) === -1);
+      /* a picture the sender chose is never touched */
+      saveAs(withBannerUrl(SAVED_DOC, CUSTOM));
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: ['mailer.announcement'] });
+    }).then(function (r) {
+      var h = textOf(r);
+      check('banner current: a saved custom picture is left alone in a download', r.status === 200 && h.indexOf(CUSTOM) !== -1 && h.indexOf(NEW_BANNER) === -1);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: [] }).then(function (z) {
+        return zipFile(z, engine.mailerFileName(ANN, ev)).then(function (ann) {
+          check('banner current: … and in the ZIP', z.status === 200 && ann.indexOf(CUSTOM) !== -1 && ann.indexOf(NEW_BANNER) === -1);
+        });
+      });
+    }).then(function () {
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(d, CUSTOM), track: true });
+    }).then(function (r) {
+      var h = String((r.json || {}).html);
+      check('banner current: … and in Copy HTML', r.status === 200 && h.indexOf(CUSTOM) !== -1 && h.indexOf(NEW_BANNER) === -1);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(d, OTHER_EVENT_BANNER), track: true });
+    }).then(function (r) {
+      check('banner current: another event\'s banner is the sender\'s choice, left alone', r.status === 200 && r.json.html.indexOf(OTHER_EVENT_BANNER) !== -1 && r.json.html.indexOf(NEW_BANNER) === -1);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: withBannerUrl(d, OTHER_BUCKET_BANNER), track: true });
+    }).then(function (r) {
+      check('banner current: a banner path in another bucket is left alone', r.status === 200 && r.json.html.indexOf(OTHER_BUCKET_BANNER) !== -1 && r.json.html.indexOf(NEW_BANNER) === -1);
+      return call(mod.handleBlock, '/api/promo/mailer/block', { eventId: 'demo', type: 'banner' });
+    }).then(function (r) {
+      check('banner current: a Banner block added in the studio starts on the current banner', r.status === 200 && r.json && r.json.block &&
+        r.json.block.props.url === NEW_BANNER, r.json && r.json.block);
+      /* Change layout: the engine carries the old layout's banner block across as it was, so only withCurrentBanner
+         brings an older banner up to date; the spotlights lead with the banner alone, never banner and colour band */
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.speaker-spotlight', doc: withBannerUrl(d, OLD_BANNER) });
+    }).then(function (r) {
+      var j = r.json || {}, types = ((j.doc && j.doc.blocks) || []).map(function (b) { return b.type; });
+      check('banner current: Change layout brings a carried-over older banner up to the current one', r.status === 200 && allAre(bannersOf(j.doc), NEW_BANNER) &&
+        String(j.html).indexOf(NEW_BANNER) !== -1 && String(j.html).indexOf(OLD_BANNER) === -1, [r.status, bannersOf(j.doc)]);
+      check('banner current: the Speaker spotlight it makes has the banner and no colour band (one header)', types.indexOf('banner') !== -1 && types.indexOf('hero') === -1, types);
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.partner-spotlight', doc: withBannerUrl(d, HERO) });
+    }).then(function (r) {
+      var j = r.json || {}, types = ((j.doc && j.doc.blocks) || []).map(function (b) { return b.type; });
+      check('banner current: Change layout of a mail holding the bare hero: the Partner spotlight leads with the banner alone', r.status === 200 && allAre(bannersOf(j.doc), NEW_BANNER) &&
+        types.indexOf('hero') === -1, [r.status, types, bannersOf(j.doc)]);
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.speaker-spotlight', doc: withBannerUrl(d, CUSTOM) });
+    }).then(function (r) {
+      check('banner current: Change layout leaves a picture the sender chose alone', r.status === 200 && allAre(bannersOf(r.json && r.json.doc), CUSTOM), [r.status, bannersOf(r.json && r.json.doc)]);
+      savedBack(); bannerReset();
+    }, function (err) { savedBack(); bannerReset(); throw err; });
+  },
+
+  /* withCurrentBanner, alone */
+  function () {
+    var W = pm.withCurrentBanner;
+    var got = { ev: { oneworldId: 'demo', keyVisualUrl: HERO, bannerUrl: NEW_BANNER }, bucket: 'test-bucket' };
+    var custom = withBannerUrl(docOf('mailer.announcement'), CUSTOM);
+    check('withCurrentBanner: nothing to change gives back the same document', W(custom, got) === custom);
+    var old = withBannerUrl(docOf('mailer.announcement'), OLD_BANNER), before = JSON.stringify(old), out = W(old, got);
+    check('withCurrentBanner: an older banner becomes the current one; the document given is not modified', out !== old && allAre(bannersOf(out), NEW_BANNER) && JSON.stringify(old) === before);
+    check('withCurrentBanner: every other block is the very same', out.blocks.filter(function (b) { return b.type !== 'banner'; }).every(function (b) { return old.blocks.indexOf(b) !== -1; }) &&
+      out.subject === old.subject && out.mailerId === old.mailerId);
+    var two = withBannerUrl(docOf('mailer.announcement'), HERO);
+    two.blocks.push({ id: 'b2', type: 'banner', props: { url: OLD_BANNER } }, { id: 'b3', type: 'banner', props: { url: CUSTOM } }, { id: 'b4', type: 'banner', props: { url: '' } });
+    var outTwo = W(two, got);
+    check('withCurrentBanner: each banner block on its own: hero and older banner follow, custom and empty stay', JSON.stringify(bannersOf(outTwo).slice(-4)) === JSON.stringify([NEW_BANNER, NEW_BANNER, CUSTOM, '']), bannersOf(outTwo));
+    check('withCurrentBanner: another event\'s and another bucket\'s banners stay', W(withBannerUrl(custom, OTHER_EVENT_BANNER), got).blocks.every(function (b) { return b.type !== 'banner' || b.props.url === OTHER_EVENT_BANNER; }) &&
+      allAre(bannersOf(W(withBannerUrl(custom, OTHER_BUCKET_BANNER), got)), OTHER_BUCKET_BANNER));
+    BANNER.asked = 0;
+    W(old, got);
+    check('withCurrentBanner: lib/promo-banner.js\'s isBannerUrl decides which pictures are this event\'s banners', BANNER.asked > 0, BANNER.asked);
+    check('withCurrentBanner: with no bucket known, this event\'s banner folder is still recognised', allAre(bannersOf(W(old, { ev: got.ev })), NEW_BANNER));
+    bannerBroken();
+    var byFolder = W(old, got), keptOther = W(withBannerUrl(custom, OTHER_EVENT_BANNER), got);
+    bannerFixed();
+    check('withCurrentBanner: with lib/promo-banner.js unable to load, the folder rule still knows an old banner (and only this event\'s)',
+      allAre(bannersOf(byFolder), NEW_BANNER) && allAre(bannersOf(keptOther), OTHER_EVENT_BANNER));
+    check('withCurrentBanner: an http promo-banner address is not one of ours (left alone)', allAre(bannersOf(W(withBannerUrl(custom, OLD_BANNER.replace('https:', 'http:')), got)), OLD_BANNER.replace('https:', 'http:')));
+    var stale = { ev: { oneworldId: 'demo', keyVisualUrl: HERO }, bucket: 'test-bucket' };
+    check('withCurrentBanner: no current banner: an older one becomes the site\'s hero picture', allAre(bannersOf(W(old, stale)), HERO));
+    var gone = W(old, { ev: { oneworldId: 'demo' }, bucket: 'test-bucket' });
+    check('withCurrentBanner: an event with no hero picture any more: an older banner is dropped, never shipped', allAre(bannersOf(gone), '') && engine.renderDoc(gone, ev).indexOf(OLD_BANNER) === -1 && /<\/html>/i.test(engine.renderDoc(gone, ev)));
+    check('withCurrentBanner: no document, or one with no blocks, comes back as it is', W(null, got) === null && W(undefined, got) === undefined && (function () { var x = { subject: 's' }; return W(x, got) === x; })());
+    check('withCurrentBanner: no answer from eventFor at all: nothing changes', W(old, null) === old && W(old, {}) === old);
+    check('_internal: savesOf, metaOf, withCurrentBanner for the previews', mod._internal && typeof mod._internal.savesOf === 'function' && typeof mod._internal.metaOf === 'function' && mod._internal.withCurrentBanner === W);
+    return mod._internal.savesOf(FBR, 'demo').get().then(function (s) {
+      var m = mod._internal.metaOf(s.docs[0]);
+      check('_internal: savesOf reads the event\'s saved versions, metaOf describes one', s.size === 1 && m.saveId === 's1save' && m.name === 'Launch v2' && m.mailerId === 'mailer.announcement', m);
+    });
+  },
+
+  /* withCurrentBanner and autoUrl, alone: the hero picture the sender picked is theirs; the server's follows */
+  function () {
+    var W = pm.withCurrentBanner, d = docOf('mailer.announcement');
+    var got = { ev: { oneworldId: 'demo', keyVisualUrl: HERO, bannerUrl: NEW_BANNER }, bucket: 'test-bucket' };
+    var stale = { ev: { oneworldId: 'demo', keyVisualUrl: HERO }, bucket: 'test-bucket' };
+    var picked = withMark(d, HERO, OLD_BANNER), before = JSON.stringify(picked);
+    check('autoUrl: the hero picture picked by the sender (the mark holds an older banner) stays, the same document back',
+      W(picked, got) === picked && allAre(bannersOf(picked), HERO) && JSON.stringify(picked) === before);
+    var pickedNow = withMark(d, HERO, NEW_BANNER);
+    check('autoUrl: … and when the mark is the current banner (picked after /doc stamped it)', W(pickedNow, got) === pickedNow);
+    var legacy = W(withMark(d, HERO, undefined), got);
+    check('autoUrl: no mark (a save from before it) and the bare hero: follows the current banner, and is marked',
+      allAre(bannersOf(legacy), NEW_BANNER) && allAre(marksOf(legacy), NEW_BANNER), [bannersOf(legacy), marksOf(legacy)]);
+    var heroMark = W(withMark(d, HERO, HERO), got);
+    check('autoUrl: the mark is the hero picture itself (put there while no banner was current): follows',
+      allAre(bannersOf(heroMark), NEW_BANNER) && allAre(marksOf(heroMark), NEW_BANNER), [bannersOf(heroMark), marksOf(heroMark)]);
+    check('autoUrl: a mark compared trimmed, as the address is', allAre(bannersOf(W(withMark(d, HERO, ' ' + HERO + ' '), got)), NEW_BANNER));
+    var atNow = withMark(d, NEW_BANNER, undefined), stamped = W(atNow, got);
+    check('autoUrl: a block already on the current banner, unmarked, is marked (a new document, the one given untouched)',
+      stamped !== atNow && allAre(bannersOf(stamped), NEW_BANNER) && allAre(marksOf(stamped), NEW_BANNER) && marksOf(atNow).every(function (m) { return m === undefined; }));
+    check('autoUrl: … and once marked, the same document comes back', W(stamped, got) === stamped);
+    check('autoUrl: an older banner never goes out, whatever its mark says', allAre(bannersOf(W(withMark(d, OLD_BANNER, CUSTOM), got)), NEW_BANNER) &&
+      allAre(bannersOf(W(withMark(d, OLD_BANNER, OLD_BANNER), got)), NEW_BANNER));
+    var custom = withMark(d, CUSTOM, NEW_BANNER);
+    check('autoUrl: a custom picture with a mark is left alone, mark and all', W(custom, got) === custom);
+    check('autoUrl: no current banner: the picked hero stays, the same document back', W(picked, stale) === picked);
+    var staleOld = W(withMark(d, OLD_BANNER, OLD_BANNER), stale);
+    check('autoUrl: no current banner: an older banner becomes the hero picture, marked as the server\'s', allAre(bannersOf(staleOld), HERO) && allAre(marksOf(staleOld), HERO));
+    check('autoUrl: then, once a banner is current, that block follows it', allAre(bannersOf(W(staleOld, got)), NEW_BANNER));
+    check('autoUrl: the mail is the same bytes with or without the mark (the renderer reads url, href, alt)',
+      engine.renderDoc(withMark(d, HERO, NEW_BANNER), ev) === engine.renderDoc(withBannerUrl(d, HERO), ev) &&
+      engine.renderDoc(withMark(d, HERO, NEW_BANNER), ev, { editor: true }) === engine.renderDoc(withBannerUrl(d, HERO), ev, { editor: true }));
+    var bare = docOf('mailer.announcement');
+    bare.blocks = bare.blocks.filter(function (b) { return b.type !== 'banner'; });
+    check('autoUrl: a mail with no banner block is the very same document', W(bare, got) === bare && W(bare, stale) === bare);
+  },
+
+  /* ======== the browser pass, 16.replaceSitePicture: the sender's hero picture is what every file shows ======== */
+  function () {
+    reset(); bannerFresh();
+    var d = docOf('mailer.announcement'), picked = withMark(d, HERO, OLD_BANNER), sentBody = JSON.stringify(picked);
+    var heroSrc = 'src="' + HERO + '"';
+    var shows = function (h) { h = String(h); return h.indexOf(heroSrc) !== -1 && h.indexOf(NEW_BANNER) === -1; };
+    saveAs(withMark(SAVED_DOC, HERO, OLD_BANNER));
+    return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' }).then(function (r) {
+      var j = r.json || {};
+      check('picked hero: /doc opens the saved version on the sender\'s hero picture, its mark kept', r.status === 200 && j.saved === true &&
+        allAre(bannersOf(j.doc), HERO) && allAre(marksOf(j.doc), OLD_BANNER) && shows(j.html), [r.status, bannersOf(j.doc), marksOf(j.doc)]);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: picked, editor: true });
+    }).then(function (r) {
+      check('picked hero: the studio\'s live preview shows it', r.status === 200 && shows(r.json && r.json.html), r.status);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: picked });
+    }).then(function (r) {
+      check('picked hero: the PNG/PDF export shows it', r.status === 200 && shows(r.json && r.json.html), r.status);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: picked, track: true });
+    }).then(function (r) {
+      check('picked hero: Copy HTML carries it', r.status === 200 && r.json.tracked === true && shows(r.json.html), r.status);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: picked });
+    }).then(function (r) {
+      check('picked hero: the download of the doc on screen carries it', r.status === 200 && shows(textOf(r)), r.status);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: picked, test: true });
+    }).then(function (r) {
+      check('picked hero: … a test download too', r.status === 200 && shows(textOf(r)), r.status);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: ['mailer.announcement'] });
+    }).then(function (r) {
+      check('picked hero: download one (the saved version) carries it', r.status === 200 && shows(textOf(r)), r.status);
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: [] });
+    }).then(function (r) {
+      return zipFile(r, engine.mailerFileName(ANN, ev)).then(function (ann) {
+        check('picked hero: in the ZIP, the saved version carries it', r.status === 200 && shows(ann), r.status);
+      });
+    }).then(function () {
+      check('picked hero: the document the studio sent is not changed', JSON.stringify(picked) === sentBody);
+      /* the previews draw a saved version through the same withCurrentBanner (lib/promo-previews.js saveItems) */
+      return mod.eventFor(FBR, 'demo', { headers: {} });
+    }).then(function (got) {
+      var previews = require('./promo-previews')._test;
+      var snap = function (doc) { return { exists: true, data: function () { return { doc: JSON.stringify(doc) }; } }; };
+      var items = previews.saveItems(['s1save', 's2save', 's3save'], [snap(withMark(SAVED_DOC, HERO, OLD_BANNER)), snap(withMark(SAVED_DOC, HERO, undefined)), snap(withMark(SAVED_DOC, HERO, HERO))], got);
+      check('picked hero: the saved version\'s preview card shows it', items[0] && shows(items[0].html), items[0] && items[0].error);
+      check('picked hero: a preview of a save from before the mark, on the bare hero, shows the current banner', items[1] && String(items[1].html).indexOf(NEW_BANNER) !== -1 && String(items[1].html).indexOf(heroSrc) === -1);
+      check('picked hero: a preview whose mark is the hero picture itself shows the current banner', items[2] && String(items[2].html).indexOf(NEW_BANNER) !== -1 && String(items[2].html).indexOf(heroSrc) === -1);
+      /* the studio's own round: open a new mailer, put the site's picture in its banner (the field changes url only,
+         every other prop rides along), preview it, save it, open it again */
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true });
+    }).then(function (r) {
+      var j = r.json || {};
+      check('picked hero: a new mailer\'s banner blocks are marked with the banner the server put there', r.status === 200 && allAre(bannersOf(j.doc), NEW_BANNER) && allAre(marksOf(j.doc), NEW_BANNER), marksOf(j.doc));
+      var edited = JSON.parse(JSON.stringify(j.doc));
+      edited.blocks.forEach(function (b) { if (b.type === 'banner') b.props.url = HERO; });
+      saveAs(edited);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: edited, editor: true }).then(function (r2) {
+        check('picked hero: the studio\'s round — the site\'s picture put in the banner shows in the live preview', r2.status === 200 && shows(r2.json && r2.json.html), r2.status);
+        return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' });
+      });
+    }).then(function (r) {
+      check('picked hero: … and is what the saved version reopens on', r.status === 200 && allAre(bannersOf(r.json.doc), HERO) && shows(r.json.html), bannersOf(r.json && r.json.doc));
+      /* a save from before the mark, holding the bare hero, still opens on the banner (the existing rule) */
+      saveAs(withMark(SAVED_DOC, HERO, undefined));
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' });
+    }).then(function (r) {
+      check('picked hero: a save from before the mark, on the bare hero, opens on the current banner, now marked', r.status === 200 &&
+        allAre(bannersOf(r.json.doc), NEW_BANNER) && allAre(marksOf(r.json.doc), NEW_BANNER), [bannersOf(r.json && r.json.doc), marksOf(r.json && r.json.doc)]);
+      saveAs(withMark(SAVED_DOC, HERO, HERO));
+      return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', mailerIds: ['mailer.announcement'] });
+    }).then(function (r) {
+      var h = textOf(r);
+      check('picked hero: a save whose mark is the hero picture itself goes out with the current banner', r.status === 200 && h.indexOf(NEW_BANNER) !== -1 && h.indexOf(heroSrc) === -1);
+      return call(mod.handleBlock, '/api/promo/mailer/block', { eventId: 'demo', type: 'banner' });
+    }).then(function (r) {
+      var p = (r.json && r.json.block && r.json.block.props) || {};
+      check('picked hero: a Banner block added in the studio is marked with the picture it starts on', r.status === 200 && p.url === NEW_BANNER && p.autoUrl === NEW_BANNER, p);
+      return call(mod.handleBlock, '/api/promo/mailer/block', { eventId: 'demo', type: 'text' });
+    }).then(function (r) {
+      check('picked hero: any other block carries no mark', r.status === 200 && r.json.block && !('autoUrl' in r.json.block.props), r.json && r.json.block);
+      bannerStale();
+      return call(mod.handleBlock, '/api/promo/mailer/block', { eventId: 'demo', type: 'banner' });
+    }).then(function (r) {
+      var b = r.json && r.json.block;
+      check('picked hero: a Banner block added while the banner is drawn again is marked with the hero picture it starts on', r.status === 200 && b.props.url === HERO && b.props.autoUrl === HERO, b);
+      var later = pm.withCurrentBanner({ blocks: [b] }, { ev: { oneworldId: 'demo', keyVisualUrl: HERO, bannerUrl: NEW_BANNER }, bucket: 'test-bucket' });
+      check('picked hero: … so it follows the banner once that is current', allAre(bannersOf(later), NEW_BANNER));
+      savedBack(); bannerReset();
+    }, function (err) { savedBack(); bannerReset(); throw err; });
+  },
+
+  /* ======== Change layout keeps the mark (the engine drops props its schema does not declare) ======== */
+  function () {
+    reset(); bannerFresh();
+    var opened, picked;
+    var noMarkWarning = function (rp) { return !((rp && rp.warnings) || []).some(function (w) { return /autoUrl/.test(w); }); };
+    return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true }).then(function (r) {
+      opened = r.json.doc;
+      var before = JSON.stringify(opened);
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.speaker-spotlight', doc: opened }).then(function (r2) {
+        var j = r2.json || {}, rp = j.report || {};
+        check('relayout: no warning about a field the sender never saw', r2.status === 200 && noMarkWarning(rp), rp.warnings);
+        check('relayout: an untouched banner is not counted as moved', !(rp.matched || []).some(function (x) { return x.type === 'banner'; }), rp.matched);
+        check('relayout: the new layout\'s banner is the current one, marked', allAre(bannersOf(j.doc), NEW_BANNER) && allAre(marksOf(j.doc), NEW_BANNER), [bannersOf(j.doc), marksOf(j.doc)]);
+        check('relayout: the document sent is not changed', JSON.stringify(opened) === before);
+      });
+    }).then(function () {
+      picked = withMark(opened, HERO, NEW_BANNER);
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.speaker-spotlight', doc: picked });
+    }).then(function (r) {
+      var j = r.json || {};
+      check('relayout: the hero picture the sender picked moves across, mark and all, and shows', r.status === 200 && allAre(bannersOf(j.doc), HERO) && allAre(marksOf(j.doc), NEW_BANNER) &&
+        String(j.html).indexOf('src="' + HERO + '"') !== -1 && String(j.html).indexOf(NEW_BANNER) === -1 && noMarkWarning(j.report), [bannersOf(j.doc), marksOf(j.doc), j.report && j.report.warnings]);
+      check('relayout: picked as before, so a save of it goes out with the hero picture', allAre(bannersOf(pm.withCurrentBanner(j.doc, GOT_FRESH())), HERO));
+      /* a second banner the sender added, with the layout's own banner edited too (its alt text), so the edited one
+         takes the new layout's only banner slot and the added one is carried in beside it, its mark with it */
+      var two = JSON.parse(JSON.stringify(opened));
+      two.blocks.forEach(function (b) { if (b.type === 'banner') b.props.alt = 'The summit, 2027'; });
+      two.blocks.splice(2, 0, { id: 'bown', type: 'banner', props: { url: HERO, href: '', alt: 'Our venue', autoUrl: NEW_BANNER } });
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.partner-spotlight', doc: two });
+    }).then(function (r) {
+      var j = r.json || {}, banners = ((j.doc && j.doc.blocks) || []).filter(function (b) { return b.type === 'banner'; });
+      var own = banners.filter(function (b) { return b.props.url === HERO; }), auto = banners.filter(function (b) { return b.props.url === NEW_BANNER; });
+      check('relayout: a second banner the sender added keeps its picture and its mark; the layout\'s own stays the current banner',
+        r.status === 200 && own.length === 1 && own[0].id === 'bown' && own[0].props.autoUrl === NEW_BANNER && auto.length === 1 && auto[0].props.autoUrl === NEW_BANNER &&
+        auto[0].props.alt === 'The summit, 2027' && ((j.report && j.report.carried) || []).some(function (c) { return c.id === 'bown'; }) && noMarkWarning(j.report),
+        [banners.map(function (b) { return b.props; }), j.report && j.report.carried, j.report && j.report.warnings]);
+      /* a save from before the mark still follows across a change of layout (the existing rule) */
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: 'mailer.speaker-spotlight', doc: withMark(opened, HERO, undefined) });
+    }).then(function (r) {
+      check('relayout: no mark and the bare hero: the new layout carries the current banner', r.status === 200 && allAre(bannersOf(r.json.doc), NEW_BANNER) && allAre(marksOf(r.json.doc), NEW_BANNER), bannersOf(r.json && r.json.doc));
+      bannerReset();
+    }, function (err) { bannerReset(); throw err; });
+  },
+
+  /* ======== the browser pass, 17.accentLate: /doc carries the mail's colours ======== */
+  function () {
+    reset(); bannerFresh();
+    var KEYS = ['accent', 'primary', 'ink', 'cardBg', 'pageBg', 'tileBg'];
+    var hex = function (v) { return /^#[0-9a-f]{6}$/i.test(String(v)); };
+    var fresh;
+    return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true }).then(function (r) {
+      var j = r.json || {}, pal = j.palette || {};
+      fresh = pal;
+      check('palette: /doc carries palette.accent', r.status === 200 && hex(pal.accent), j.palette);
+      check('palette: /doc carries the six colours /render does, each a colour', JSON.stringify(Object.keys(pal)) === JSON.stringify(KEYS) && KEYS.every(function (k) { return hex(pal[k]); }), pal);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: j.doc, editor: true }).then(function (r2) {
+        check('palette: /doc\'s colours are the ones the studio\'s render answers for the same mail', r2.status === 200 && JSON.stringify(r2.json.palette) === JSON.stringify(pal), [pal, r2.json && r2.json.palette]);
+      });
+    }).then(function () {
+      saveAs(Object.assign({}, SAVED_DOC, { accent: '#1f6feb' }));
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' });
+    }).then(function (r) {
+      var j = r.json || {}, pal = j.palette || {};
+      check('palette: a saved version\'s own colour is in /doc\'s palette', r.status === 200 && pal.primary === '#1f6feb' && fresh.primary !== '#1f6feb' && hex(pal.accent) &&
+        JSON.stringify(pal) === JSON.stringify(pm.paletteOf(GOT_FRESH().ev, j.doc)), [pal, fresh]);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: j.doc, editor: true }).then(function (r2) {
+        check('palette: … the same as the render answers', JSON.stringify(r2.json.palette) === JSON.stringify(pal));
+      });
+    }).then(function () {
+      savedBack(); bannerReset();
+      check('palette: paletteOf is the engine\'s palette for the document', JSON.stringify(pm.paletteOf(ev, { accent: '#1f6feb' })) === JSON.stringify((function (p) {
+        return { accent: p.accent, primary: p.primary, ink: p.ink, cardBg: p.cardBg, pageBg: p.pageBg, tileBg: p.tileBg };
+      })(engine.renderCtx(ev, { accent: '#1f6feb' }).p)));
+    }, function (err) { savedBack(); bannerReset(); throw err; });
+  },
+
+  /* ======== the mail's bytes: a mail without a banner block is what the engine renders, as before ======== */
+  function () {
+    reset(); bannerFresh();
+    var bare = docOf('mailer.announcement');
+    bare.blocks = bare.blocks.filter(function (b) { return b.type !== 'banner'; });
+    return mod.eventFor(FBR, 'demo', { headers: {} }).then(function (got) {
+      var want = engine.renderDoc(bare, got.ev);
+      return call(mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: bare }).then(function (r) {
+        check('bytes: a mail with no banner block renders byte for byte as the engine draws it', r.status === 200 && r.json.html === want);
+        return call(mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: bare, test: true });
+      }).then(function (r) {
+        check('bytes: … and downloads so (a test download, untracked)', r.status === 200 && textOf(r) === want);
+        bannerReset();
+      });
+    }, function (err) { bannerReset(); throw err; });
+  },
+
+  /* ======== Phase 3: example content never leaves as a real mail ======== */
+  function () {
+    reset(); bannerReset();
+    var EXD = exampleDoc(EX_PERSON), EXL = exampleDoc(EX_LOGO), llm0 = LLM_CALLS, saved0 = SAVES.s1save.doc;
+    var ANNID = 'mailer.announcement';
+    return inTurn([
+      ['save', mod.handleSave, '/api/promo/mailer/save', { eventId: 'demo', mailerId: ANNID, doc: EXD }, 'speakers'],
+      ['save as new', mod.handleSave, '/api/promo/mailer/save', { eventId: 'demo', mailerId: ANNID, doc: EXL, name: 'Copy' }, 'partners'],
+      ['render (the studio\'s preview)', mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: EXD, editor: true }, 'speakers'],
+      ['render (Copy HTML)', mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: EXD, track: true }, 'speakers'],
+      ['render (the PNG/PDF export)', mod.handleRender, '/api/promo/mailer/render', { eventId: 'demo', doc: EXL }, 'partners'],
+      ['download the doc on screen', mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: EXD }, 'speakers'],
+      ['a test download', mod.handleDownload, '/api/promo/mailer/download', { eventId: 'demo', doc: EXD, test: true }, 'speakers'],
+      ['relayout', mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: ANNID, doc: EXD }, 'speakers'],
+      ['relayout with an example picture as the Custom banner URL', mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: ANNID, doc: docOf(ANNID), params: { bannerUrl: EX_LOGO } }, 'partners'],
+      ['open a new mailer with an example picture as the Custom banner URL', mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: ANNID, fresh: true, params: { bannerUrl: EX_PERSON } }, 'speakers'],
+      ['AI (subject lines)', mod.handleAi, '/api/promo/mailer/ai', { eventId: 'demo', action: 'subjects', doc: EXD }, 'speakers'],
+      ['AI (polish)', mod.handleAi, '/api/promo/mailer/ai', { eventId: 'demo', action: 'polish', doc: EXL }, 'partners'],
+      ['AI (rewrite a field holding an example id)', mod.handleAi, '/api/promo/mailer/ai', { eventId: 'demo', action: 'rewrite', text: 'Hear {"id":"ex-s1","title":"x"} speak', doc: docOf(ANNID) }, 'agenda sessions']
+    ], function (c, r) {
+      check('example: ' + c[0] + ' is 422 code example', r.status === 422 && r.json && r.json.code === 'example', [r.status, r.json]);
+      check('example: ' + c[0] + ' says what to add (' + c[4] + ')', r.json && r.json.error === 'Example content cannot be saved, downloaded or sent. Add the event\'s own ' + c[4] + ', then try again.', r.json && r.json.error);
+    }).then(function () {
+      check('example: nothing saved, nothing sent or recorded, no model asked', SAVES.s1save.doc === saved0 && Object.keys(SAVES).length === 1 && TRACK.calls.length === 0 && LLM_CALLS === llm0, [Object.keys(SAVES), TRACK.calls.length, LLM_CALLS - llm0]);
+      /* a card's preview saved as a file and imported: its meta marker gives it away */
+      var preview = '<!doctype html><html><head><meta name="oneworld-example" content="speakers"><title>x</title></head><body>' + engine.renderDoc(docOf(ANNID), ev).replace(/^[\s\S]*<body[^>]*>|<\/body>[\s\S]*$/g, '') + '</body></html>';
+      return callRaw(mod.handleImport, '/api/promo/mailer/import?eventId=demo', Buffer.from(preview));
+    }).then(function (r) {
+      check('example: importing a card\'s preview is 422 code example', r.status === 422 && r.json && r.json.code === 'example' && /Add the event's own details/.test(r.json.error), [r.status, r.json]);
+      return callRaw(mod.handleImport, '/api/promo/mailer/import?eventId=demo', Buffer.from(engine.renderDoc(docOf(ANNID), ev)));
+    }).then(function (r) {
+      check('example: a real mail still imports', r.status === 200 && r.json && Array.isArray(r.json.doc.blocks) && r.json.doc.blocks.length > 2, [r.status, r.json && r.json.error]);
+      return callRaw(mod.handleImport, '/api/promo/mailer/import?eventId=demo', Buffer.from('<html><body><img src="' + EX_LOGO + '"></body></html>'));
+    }).then(function (r) {
+      check('example: importing a mail that shows an example logo is 422', r.status === 422 && r.json && r.json.code === 'example' && /own partners,/.test(r.json.error), [r.status, r.json]);
+      /* the address written with entities: the file's text does not show it, the document the import reads does */
+      var encoded = '<html><body><img src="' + BASE + '/assets&#47;promo-examples&#47;people&#47;p01.jpg" alt="x"><p>Join us in New Delhi.</p></body></html>';
+      check('example: (the entity-written address passes the check on the raw file, so the next one is the document\'s)', !exampleStub.isExample(encoded));
+      return callRaw(mod.handleImport, '/api/promo/mailer/import?eventId=demo', Buffer.from(encoded));
+    }).then(function (r) {
+      check('example: importing a mail whose example picture is written with entities is 422, no document handed back', r.status === 422 && r.json && r.json.code === 'example' &&
+        /own speakers,/.test(r.json.error) && !('doc' in r.json) && !('html' in r.json), [r.status, r.json]);
+      /* the export choke point itself: one example among real mails refuses the whole export, and records nothing */
+      return pm.deliverables(FBX, DECODED, GOT, 'demo', [{ doc: docOf(ANNID), mailerId: ANNID, save: null }, { doc: EXD, mailerId: ANNID, save: null }]).then(function () {
+        check('example: deliverables refuses an export holding an example', false);
+      }, function (err) {
+        check('example: deliverables refuses the whole export with 422 code example', err && err.status === 422 && err.body && err.body.code === 'example' && /own speakers,/.test(err.body.error), err && err.body);
+        check('example: … and no send is recorded', TRACK.calls.length === 0);
+      });
+    }).then(function () {
+      check('example: the sentence names every kind found', pm.exampleRefusal([EX_PERSON, EX_LOGO, '"ex-s2"']).error === 'Example content cannot be saved, downloaded or sent. Add the event\'s own speakers, partners and agenda sessions, then try again.' &&
+        pm.exampleRefusal('<meta name="oneworld-example">').error.indexOf('own details,') !== -1);
+      /* the routes do not mistake a real mail for an example */
+      return call(mod.handleRelayout, '/api/promo/mailer/relayout', { eventId: 'demo', mailerId: ANNID, doc: docOf(ANNID), params: { bannerUrl: CUSTOM } });
+    }).then(function (r) {
+      check('example: a real mail with a real custom picture is not refused', r.status === 200 && r.json && Array.isArray(r.json.doc.blocks), [r.status, r.json && r.json.error]);
+    });
+  },
+
+  /* ======== Phase 3: a new mailer this event cannot have is not opened; a saved one is ======== */
+  function () {
+    reset(); bannerReset();
+    var real = engine.getMailer('mailer.award-winners').requires(ev);
+    return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.award-winners' }).then(function (r) {
+      check('open: a new mailer this event cannot have is 409 unavailable, with what is missing', r.status === 409 && r.json && r.json.code === 'unavailable' &&
+        real.missing.length > 0 && JSON.stringify(r.json.missing) === JSON.stringify(real.missing) && r.json.error.indexOf(real.missing[0]) !== -1, [r.status, r.json]);
+      return onlyAvailable(['mailer.agenda'], function () {
+        return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement' }).then(function (r2) {
+          check('open: a saved version of a mailer the event can no longer have still opens, on itself', r2.status === 200 && r2.json.saved === true && r2.json.save && r2.json.save.saveId === 's1save' && r2.json.doc.mailerId === 'mailer.announcement', [r2.status, r2.json && r2.json.error]);
+          return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', saveId: 's1save' });
+        }).then(function (r3) {
+          check('open: … asked for by its id too', r3.status === 200 && r3.json.saved === true);
+          return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', fresh: true });
+        }).then(function (r4) {
+          check('open: but a new one of it is 409 unavailable', r4.status === 409 && r4.json.code === 'unavailable' && r4.json.missing[0] === 'speakers', [r4.status, r4.json]);
+          return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.announcement', saveId: 'nope' });
+        }).then(function (r5) {
+          check('open: a version that is not there is a new one: 409 unavailable', r5.status === 409 && r5.json.code === 'unavailable');
+        });
+      });
+    }).then(function () {
+      return call(mod.handleDoc, '/api/promo/mailer/doc', { eventId: 'demo', mailerId: 'mailer.agenda', fresh: true });
+    }).then(function (r) {
+      check('open: a new mailer the event can have still opens', r.status === 200 && r.json.saved === false && r.json.doc.mailerId === 'mailer.agenda', r.status);
+    });
+  },
+
   /* 10. the source: promo-track is loaded only inside tracker(), and Phase 1's placeholder text is gone */
   function () {
     var src = fs.readFileSync(path.join(__dirname, 'promo-mailer.js'), 'utf8');
@@ -592,6 +1274,15 @@ var steps = [
     var inside = body.match(/require\(\s*['"]\.\/promo-track(\.js)?['"]\s*\)/g) || [];
     check('source: lib/promo-track.js is required only inside tracker(), never at the top', all.length === 1 && inside.length === 1, all);
     check('source: the Phase 1 "Not here yet (Phase 2)" note is gone', src.indexOf('Not here yet (Phase 2)') === -1 && src.indexOf('tracking comes with Phase 2') === -1);
+    /* the banner and the examples are loaded on first use, never at the top: a fault in either holds what needed
+       it (the sends wait for the banner; the request that needed the examples answers 500), never the loading of
+       this file */
+    var bannerReq = src.match(/require\(\s*['"]\.\/promo-banner(\.js)?['"]\s*\)/g) || [];
+    var bannerBody = (/\nfunction bannerModule\(\) \{[\s\S]*?\n\}\n/.exec(src) || [''])[0];
+    check('source: lib/promo-banner.js is required only inside bannerModule()', bannerReq.length === 1 && (bannerBody.match(/require\(\s*['"]\.\/promo-banner/g) || []).length === 1, bannerReq);
+    var exReq = src.match(/require\(\s*['"]\.\/promo-examples(\.js)?['"]\s*\)/g) || [];
+    var exBody = (/\nfunction exampleIn\(\) \{[\s\S]*?\n\}\n/.exec(src) || [''])[0];
+    check('source: lib/promo-examples.js is required only inside exampleIn()', exReq.length === 1 && (exBody.match(/require\(\s*['"]\.\/promo-examples/g) || []).length === 1, exReq);
     check('source: no route failed unexpectedly', FAILS.length === 0, FAILS);
   }
 ];
@@ -602,6 +1293,9 @@ steps.reduce(function (p, step, i) {
   console.error = realError;
   Module._resolveFilename = realResolve;
   delete require.cache[STUB];
+  delete require.cache[BANNER_STUB];
+  delete require.cache[EX_STUB];
+  delete require.cache[LLM_PATH];
   if (failed) { realError('promo-mailer: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('promo-mailer: all ' + passed + ' checks passed');
 });

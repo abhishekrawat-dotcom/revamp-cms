@@ -1,10 +1,10 @@
 <!doctype html>
-<!-- ET Oneworld - Revamp CMS : one event's Promotions — social posts and mailers made from its own site -->
+<!-- Oneworld 2.0 : one event's Promotions — social posts in the ET portal's look, posts in the site's own look, and mailers, all made from its own site -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Promotions &mdash; Revamp CMS</title>
+<title>Promotions &mdash; Oneworld 2.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
@@ -57,14 +57,17 @@
 <script src="assets/vendor/qrcode-generator.js"></script>
 <script src="promo-kit.js"></script>
 <script src="promo-posts.js"></script>
+<script src="promo-banner.js"></script>
 
 <script>
 (function(){
   'use strict';
 
-  /* The page is a shell: the top bar and rail of the event console, a heading and two tabs. Each tab's studio
-     is its own file (promo-posts.js; Mailers: promo-mailer-studio.html, the promotional platform's studio) and is handed the event's Kit — its brand and content,
-     from RevampPromo.load() — once, when the tab is first opened.
+  /* The page is a shell: the top bar and rail of the event console, a heading and three tabs. Each tab's studio
+     is its own file and is mounted once, when the tab is first opened: Social posts is the promotional platform's
+     posts studio (promo-social-studio.html, in a frame); Site-look posts is Oneworld's own (promo-posts.js), handed
+     the event's Kit — its brand and content, from RevampPromo.load(); Mailers is the platform's mailer studio
+     (promo-mailer-studio.html, in a frame).
 
      States, never a silent fallback: no event in the address, an event that does not exist, a Kit that did not
      load (with Try again), and signed out (auth.js sends the user to sign in). The old Promotions screens
@@ -74,11 +77,12 @@
   var eventId = (new URLSearchParams(location.search).get('event') || '').trim();
 
   var TABS = [
-    { id: 'posts', label: 'Social posts', root: 'promo-posts-root' },
+    { id: 'posts', label: 'Social posts', root: 'promo-social-root' },
+    { id: 'site-posts', label: 'Site-look posts', root: 'promo-posts-root' },
     { id: 'mailers', label: 'Mailers', root: 'promo-mailers-root' }
   ];
-  /* the old screens' tab names still arrive from bookmarks and links: they open the posts */
-  function tabFrom(v){ return v === 'mailers' ? 'mailers' : 'posts'; }
+  /* the old screens' tab names (and any other value) still arrive from bookmarks and links: they open Social posts */
+  function tabFrom(v){ return v === 'mailers' ? 'mailers' : v === 'site-posts' ? 'site-posts' : 'posts'; }
   var tab = tabFrom(new URLSearchParams(location.search).get('tab'));
 
   var KIT = null, mounted = {};
@@ -119,12 +123,12 @@
     var cat = C.TYPES[ev.category] || ev.category;
     if (cat) bits.push(cat);
     $('ev-meta').textContent = bits.join('  |  ');
-    document.title = 'Promotions — ' + name + ' — Revamp CMS';
+    document.title = 'Promotions — ' + name + ' — Oneworld 2.0';
   }
 
   function head(){
     return '<div class="promo-head"><h2>Promotions</h2>' +
-      '<div class="sub">Social posts and mailers drawn in this event site’s own look — its pictures, logo unit, fonts and colours — from its real speakers, partners and agenda.</div></div>';
+      '<div class="sub">Social posts in the ET portal’s look, posts in this site’s own look, and mailers — all from this event’s real speakers, partners and agenda.</div></div>';
   }
   function tabsHtml(){
     return '<div class="subtabs promo-tabs" role="tablist" aria-label="Promotions">' + TABS.map(function(t){
@@ -192,41 +196,184 @@
       $('pane-' + t.id).hidden = !on;
       if (on && focus) b.focus();
     });
+    /* a studio left full-window in the tab now shown covers the page again, from where the page is now: its close
+       puts the page back there. The lock follows what is on screen (lockPage). */
+    [FRAMES.social, FRAMES.mailer].forEach(function(k){
+      var f = $(k.id);
+      if (k.tab === tab && f && f._rvPin && f.classList.contains('is-studio')) f._rvPin.y = window.pageYOffset || 0;
+    });
+    lockPage();
     show();
   }
-  /* each studio is mounted the first time its tab is shown, and kept: switching tabs loses nothing. A studio
-     shown again is told so (shown()): what it would have drawn while hidden — where every size reads 0 — it
-     draws now */
+  /* each studio is mounted the first time its tab is shown, and kept: switching tabs loses nothing. Site-look
+     posts, drawn in this page, is told when it is shown again (shown()): what it would have drawn while hidden —
+     where every size reads 0 — it draws now. The two framed studios lay themselves out and report their height. */
   function show(){
     if (mounted[tab]) {
-      var studio = tab === 'posts' ? window.RevampPromoPosts : window.RevampPromoMailers;
-      if (studio && typeof studio.shown === 'function') studio.shown();
+      var studio = window.RevampPromoPosts;
+      if (tab === 'site-posts' && studio && typeof studio.shown === 'function') studio.shown();
       return;
     }
     var t = TABS.filter(function(x){ return x.id === tab; })[0];
     var host = $(t.root), ctx = { eventId: eventId, kit: KIT, toast: toast };
-    if (tab === 'posts') {
+    if (tab === 'site-posts') {
       if (!window.RevampPromoPosts) { host.innerHTML = '<p class="promo-quiet">The posts studio did not load. Reload the page.</p>'; return; }
-      mounted.posts = true;
+      mounted['site-posts'] = true;
       window.RevampPromoPosts.mount(host, ctx);
       return;
     }
-    /* Mailers are the promotional platform's own studio (promo-mailer-studio.html), in a frame: its page and its
-       look are the platform's, on this event. While the studio is open it takes the whole window — the frame
-       says so (postMessage { rvMailerStudio: 'open' | 'close' }) */
+    /* Social posts and Mailers are the promotional platform's own studios (promo-social-studio.html,
+       promo-mailer-studio.html), each in a frame on this event, in this page's look and light or dark
+       (promo-studio/oneworld-theme.js). Each frame grows to its content, so this page scrolls instead of a box
+       inside it, and takes the whole window while a studio or a full-size view is open: the frame says so (the
+       listener below). */
+    if (tab === 'posts') {
+      mounted.posts = true;
+      host.innerHTML = '<iframe class="promo-social-frame" id="promo-social-frame" title="Social posts" src="promo-social-studio.html?event=' +
+        encodeURIComponent(eventId) + '"></iframe>';
+      watchFrame(FRAMES.social);
+      return;
+    }
     mounted.mailers = true;
+    /* the mail's top banner is drawn in this browser (promo-banner.js), so it is started here, the first time
+       Mailers is shown, before the studio asks for it (rvBanner); promo-banner.js keeps the run for those asks */
+    ensureBanner(false);
     host.innerHTML = '<iframe class="promo-mailer-frame" id="promo-mailer-frame" title="Mailers" src="promo-mailer-studio.html?event=' +
       encodeURIComponent(eventId) + (MAILER_DEEP ? MAILER_DEEP : '') + '"></iframe>';
+    watchFrame(FRAMES.mailer);
   }
   var MAILER_DEEP = (function(){
     var q = new URLSearchParams(location.search), m = q.get('mailer'), v = q.get('version');
     return m ? '&mailer=' + encodeURIComponent(m) + (v ? '&version=' + encodeURIComponent(v) : '') : '';
   })();
+
+  /* -> a promise of { ok, none?, url?, error? }; never rejects, so the studio is always answered */
+  function ensureBanner(fresh){
+    var B = window.RevampPromoBanner, p;
+    if (!B || typeof B.ensure !== 'function') return Promise.resolve({ ok: false, error: 'The mail banner drawing did not load. Reload the page.' });
+    try { p = Promise.resolve(B.ensure(eventId, { fresh: !!fresh })); } catch (err) { p = Promise.reject(err); }
+    return p.then(function(r){
+      return r && typeof r === 'object' ? r : { ok: false, error: 'The mail banner could not be made.' };
+    }, function(err){
+      console.error('The mail banner was not made:', err);
+      return { ok: false, error: String((err && err.message) || 'The mail banner could not be made.') };
+    });
+  }
+
+  /* What the two framed studios tell this page (postMessage, same origin). Each message is taken only from one of
+     our own frames' windows, and each frame speaks only for itself:
+       { rvSocialStudio | rvMailerStudio: 'open' | 'close' }  a studio or a full-size view takes the whole window,
+                                                              or gives it back
+       { rvSocialHeight | rvMailerHeight: h }                 its content is h px tall: the frame grows to it. The
+                                                              first report is answered { rvSocialTall | rvMailerTall:
+                                                              true }, and the frame then turns its own scrolling off
+       { rvToast: { m, ms } }                                 a message from a tall frame, whose own toast would sit at
+                                                              its bottom, out of sight: the console shows it
+       { rvBanner: 'ensure', id, fresh? }                     (Mailers only) the mail's top banner, before the studio
+                                                              opens, downloads, exports or copies a mail: answered
+                                                              { rvBannerReady: { id, ok, error? } } to that frame
+     The team's Mailer performance page frames the mailer studio too and answers none of this, so there the frame
+     keeps its own scrolling. */
+  var FRAMES = {
+    social: { id: 'promo-social-frame', tab: 'posts', studio: 'rvSocialStudio', height: 'rvSocialHeight', tall: 'rvSocialTall' },
+    mailer: { id: 'promo-mailer-frame', tab: 'mailers', studio: 'rvMailerStudio', height: 'rvMailerHeight', tall: 'rvMailerTall' }
+  };
+  /* a frame is on screen only while its tab's pane is shown. A frame can say 'open' or 'close' from a hidden tab:
+     a deep-linked mailer opens after its previews load, which can be after the user has moved to another tab. */
+  function onScreen(kind){
+    var pane = $('pane-' + kind.tab);
+    return !!(pane && !pane.hidden);
+  }
+  function frameOf(win){
+    var kinds = [FRAMES.social, FRAMES.mailer];
+    for (var i = 0; i < kinds.length; i++) {
+      var f = $(kinds[i].id);
+      if (win && f && f.contentWindow === win) return { kind: kinds[i], el: f };
+    }
+    return null;
+  }
+  function tell(win, msg){ try { win.postMessage(msg, location.origin); } catch (e) { /* the frame has gone */ } }
+  function tellTall(f, kind){ var m = {}; m[kind.tall] = true; tell(f.contentWindow, m); }
+
+  /* A studio taking the whole window fixes its frame over the page, which leaves the flow: the page would shrink
+     and lose its scroll position. The frame's host keeps the frame's height while it is open, and the scroll is
+     put back when it closes. The frame's reported height is set aside meanwhile: on the element it would hold
+     over the full-window rule (promo.css). A frame in a hidden tab measures 0, so there the height it reported is
+     the one its host keeps. The scroll is put back only when the closing frame is on screen: otherwise the page
+     shown is another tab's, and its place must not move. */
+  function studioOpen(f){
+    if (f.classList.contains('is-studio')) return;
+    var h = f.offsetHeight || parseInt(f.style.height, 10) || 0;
+    f._rvPin = { y: window.pageYOffset || 0, height: f.style.height };
+    if (f.parentNode && h > 0) f.parentNode.style.minHeight = h + 'px';
+    f.style.height = '';
+    f.classList.add('is-studio');
+    lockPage();
+  }
+  function studioClose(f, kind){
+    if (!f.classList.contains('is-studio')) return;
+    var pin = f._rvPin || { y: window.pageYOffset || 0, height: '' }, shown = onScreen(kind);
+    f._rvPin = null;
+    f.classList.remove('is-studio');
+    f.style.height = pin.height;
+    if (f.parentNode) f.parentNode.style.minHeight = '';
+    lockPage();
+    if (shown) window.scrollTo(0, pin.y);
+  }
+  /* the page is locked only while a full-window frame is on screen: one in a hidden tab cannot be seen, and must
+     not stop the tab that is shown from scrolling (select() asks again on every switch) */
+  function lockPage(){
+    var open = [FRAMES.social, FRAMES.mailer].some(function(k){
+      var f = $(k.id);
+      return !!(f && f.classList.contains('is-studio') && onScreen(k));
+    });
+    document.documentElement.classList.toggle('promo-studio-open', open);
+  }
+  /* the frame grows to its content, never below the studio's own minimum; not while it fills the window */
+  function grow(f, kind, h){
+    h = Math.ceil(Number(h));
+    if (!isFinite(h) || h <= 0 || f.classList.contains('is-studio')) return;
+    f.style.height = Math.max(620, h) + 'px';
+    if (!f._rvTall) { f._rvTall = true; tellTall(f, kind); }
+  }
+  /* a frame whose page is reloaded on its own (the browser's Reload frame) starts again: not full-window, not yet
+     told it is tall. Each page it loads is watched for leaving. */
+  function watchFrame(kind){
+    var f = $(kind.id);
+    if (!f || !f.addEventListener) return;
+    f.addEventListener('load', function(){
+      var w = f.contentWindow;
+      try {
+        w.addEventListener('pagehide', function(){ if ($(kind.id) !== f) return; studioClose(f, kind); f._rvTall = false; });
+      } catch (e) { /* not ours to watch */ }
+    });
+  }
+  function relayToast(t){
+    if (!t || typeof t !== 'object' || t.m == null) return;
+    var text = String(t.m).slice(0, 300);
+    if (!text.trim()) return;
+    /* the platform's toasts carry their own ✓ and no icon; the long ones (6 s) are refusals and failures, which
+       the console shows as such and keeps up as long */
+    toast(text, { kind: Number(t.ms) > 3000 ? 'error' : 'info' });
+  }
   window.addEventListener('message', function(e){
-    if (e.origin !== location.origin || !e.data || !e.data.rvMailerStudio) return;
-    var f = $('promo-mailer-frame');
-    if (f) f.classList.toggle('is-studio', e.data.rvMailerStudio === 'open');
-    document.documentElement.classList.toggle('promo-studio-open', e.data.rvMailerStudio === 'open');
+    var d = e.data;
+    if (e.origin !== location.origin || !d || typeof d !== 'object') return;
+    var from = frameOf(e.source);
+    if (!from) return;
+    var f = from.el, kind = from.kind;
+    if (d[kind.studio] === 'open') studioOpen(f);
+    else if (d[kind.studio] === 'close') studioClose(f, kind);
+    if (d[kind.height] != null) grow(f, kind, d[kind.height]);
+    if (d.rvToast) relayToast(d.rvToast);
+    if (d.rvBanner === 'ensure' && kind === FRAMES.mailer) {
+      var id = d.id, win = e.source;
+      ensureBanner(!!d.fresh).then(function(r){
+        var a = { id: id, ok: !!r.ok };
+        if (!r.ok) a.error = String(r.error || 'The mail banner could not be made.');
+        tell(win, { rvBannerReady: a });
+      });
+    }
   });
 
   function loadKit(fresh){

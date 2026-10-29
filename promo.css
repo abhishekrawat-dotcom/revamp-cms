@@ -1,7 +1,8 @@
-/* ET Oneworld - Revamp CMS : Promotions (marketing.html) — the page, the social posts studio and the posts
-   themselves. Linked after edit-event.css, whose tokens (--surface, --border, --accent…) the studio uses so it
-   reads as part of the event console. The posts (.pp) use none of the console's tokens: they are drawn only in
-   the event site's own colours and fonts, set as --pp-* variables on each post by promo-posts.js. */
+/* ET Oneworld - Revamp CMS : Promotions (marketing.html) — the page, the site-look posts studio, the posts
+   themselves and the frames of the two framed studios. Linked after edit-event.css, whose tokens (--surface,
+   --border, --accent…) the studio uses so it reads as part of the event console. The posts (.pp) use none of the
+   console's tokens: they are drawn only in the event site's own colours and fonts, set as --pp-* variables on
+   each post by promo-posts.js. */
 
 /* ============ PAGE ============ */
 .promo-head{ margin-bottom:6px; }
@@ -31,7 +32,8 @@
 .ps-bar .ps-note{ flex:1; min-width:240px; }
 .ps-bar label{ font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:8px; }
 .ps-bar select.inp{ width:auto; height:34px; min-width:200px; }
-.ps-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(214px, 1fr)); gap:16px; }
+/* cards of about 360 px or wider, so a post can be read on its card; one column on a phone, never wider than it */
+.ps-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr)); gap:16px; }
 .ps-card{
   display:flex; flex-direction:column; text-align:left; padding:0; border:1px solid var(--border); border-radius:13px;
   background: var(--surface); overflow:hidden; cursor:pointer; color: var(--text); font: inherit;
@@ -52,6 +54,61 @@
 .ps-card.off .ps-card-body b{ color: var(--text-muted); }
 .ps-why{ font-size:12px; color: var(--text-muted); }
 .ps-why a{ font-weight:700; }
+
+/* A post type the event has no data for still shows this event's real post (promo-posts.js): only the missing
+   list is filled from Oneworld's example library ([data-example-thumb]), or, when what is missing is a state (no
+   date or venue yet, a past event), the real post carries a chip. Such a card stays unavailable — it never opens
+   in the editor and never downloads — but it is shown in full colour, marked "Example" outside the post (.ps-ex)
+   and inside it ([data-example]), and opens a full-size view (.ps-lb). */
+.ps-card.off .ps-thumb{ opacity:1; filter:none; }
+.ps-card.off [data-example-thumb], .ps-card.off .ps-thumb:has(> .ps-chip){ cursor:zoom-in; }
+.ps-ex{
+  display:inline-flex; align-items:center; padding:3px 8px; border-radius:6px; background: var(--text); color: var(--bg);
+  box-shadow: 0 0 0 1px var(--surface); font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; line-height:1.4;
+}
+.ps-ex-note{ display:block; font-size:12px; line-height:1.45; color: var(--text-muted); }
+.ps-ex-note a{ color: var(--accent-strong); font-weight:700; }
+.ps-chip{
+  display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; background: var(--surface); color: var(--text);
+  border:1px solid var(--border); font-size:11px; font-weight:700; line-height:1.4; white-space:nowrap;
+}
+/* on the picture: the badge or the chip at its top left, the note along its foot, all on their own ground (the
+   post under them can be any colour) */
+.ps-thumb .ps-ex, .ps-thumb .ps-chip{ position:absolute; left:10px; top:10px; z-index:2; pointer-events:none; }
+.ps-thumb .ps-chip{ box-shadow: var(--shadow-sm); }
+.ps-thumb .ps-ex-note{ position:absolute; left:0; right:0; bottom:0; z-index:2; padding:7px 11px; background: var(--surface); color: var(--text); border-top:1px solid var(--border); }
+/* inside an example post, a mark of its own, in post pixels like the rest of it: a screenshot of the preview is
+   plainly not a real post */
+.pp[data-example]::after{
+  content:'EXAMPLE'; position:absolute; z-index:9; top: calc(var(--k) * 79px); right: calc(var(--k) * -96px); width: calc(var(--k) * 400px);
+  padding: calc(var(--k) * 12px) 0; transform: rotate(45deg); background: rgba(20,14,13,.86); color:#ffffff; text-align:center; pointer-events:none;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; font-size: calc(var(--k) * 26px); font-weight:800; letter-spacing:.3em; line-height:1;
+  box-shadow: 0 calc(var(--k) * 4px) calc(var(--k) * 16px) rgba(0,0,0,.25);
+}
+
+/* The full-size view of an example or state card: the post at its own width (.ps-lb-col; scaled down to fit a
+   narrower window) over the console, under a bar that stays in view with its name, the Example badge or chip,
+   the note and ✕ (.ps-lb-x). It has no Download and no Open: the post is not the event's yet. */
+.ps-lb{
+  position:fixed; inset:0; z-index:90; display:flex; flex-direction:column; align-items:center; overflow:auto; overscroll-behavior:contain;
+  padding:0 16px 32px; background: rgba(20,14,13,.72);
+}
+.ps-lb[hidden]{ display:none; }
+html:has(.ps-lb:not([hidden])), html:has(.ps-lb:not([hidden])) body{ overflow:hidden; }
+.ps-lb-col{ width: var(--ps-lb-w, 1080px); max-width:100%; display:flex; flex-direction:column; }
+.ps-lb-bar{
+  position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; padding:11px 12px 11px 16px;
+  background: var(--surface); color: var(--text); border:1px solid var(--border); border-top:0; border-radius:0 0 12px 12px; box-shadow: var(--shadow-md);
+}
+.ps-lb-bar b{ font-size:14px; }
+.ps-lb-bar .ps-ex-note{ flex:1 1 220px; min-width:0; }
+.ps-lb-x{
+  flex:0 0 auto; margin-left:auto; display:grid; place-items:center; width:32px; height:32px; border-radius:8px; border:1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size:15px; font-weight:700; cursor:pointer;
+}
+.ps-lb-x:hover{ border-color: var(--accent); color: var(--accent-strong); }
+.ps-lb-x:focus-visible{ outline:2px solid var(--text-muted); outline-offset:2px; }
+.ps-lb .ps-thumb{ border:0; border-radius:10px; box-shadow: var(--shadow-lg); cursor:default; }
 
 .ps-saved{ margin-top:26px; }
 .ps-saved-list{ list-style:none; margin:0; padding:0; }
@@ -264,10 +321,12 @@
 .pp-tagl{ font-size: calc(var(--k) * 30px); color: var(--pp-muted); line-height:1.4; }
 .pp-num{ font-family: var(--pp-head); font-weight:700; line-height:.9; color: var(--pp-acc-text); letter-spacing:-0.04em; }
 
-/* Mailers: the promotional platform's studio, framed (promo-mailer-studio.html). The frame fills the space under
-   the tabs; while the studio is open it fills the whole window, as the platform's studio does. The studio wears
-   this page's look and light or dark (promo-studio/oneworld.css, oneworld-theme.js); the frame's own background is
-   the page's, so it shows no other colour while the studio loads. */
-.promo-mailer-frame{ display:block; width:100%; height:calc(100vh - 220px); min-height:620px; border:0; border-radius:12px; background: var(--bg); }
-.promo-mailer-frame.is-studio{ position:fixed; inset:0; width:100vw; height:100vh; min-height:0; border-radius:0; z-index:1000; }
+/* Social posts and Mailers: the promotional platform's two studios, framed (promo-social-studio.html,
+   promo-mailer-studio.html). A frame fills the space under the tabs until its page reports its height; then
+   marketing.html grows it to its content, so this page scrolls. While a studio or a full-size view is open it
+   fills the whole window, as the platform's studio does. Both wear this page's look and light or dark
+   (promo-studio/oneworld.css, oneworld-theme.js); the frame's own background is the page's, so it shows no other
+   colour while the studio loads. */
+.promo-mailer-frame, .promo-social-frame{ display:block; width:100%; height:calc(100vh - 220px); min-height:620px; border:0; border-radius:12px; background: var(--bg); }
+.promo-mailer-frame.is-studio, .promo-social-frame.is-studio{ position:fixed; inset:0; width:100vw; height:100vh; min-height:0; border-radius:0; z-index:1000; }
 html.promo-studio-open, html.promo-studio-open body{ overflow:hidden; }

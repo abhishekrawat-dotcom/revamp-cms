@@ -1,11 +1,22 @@
-/* Promotions — the social posts studio (marketing.html, "Social posts" tab).
+/* Promotions — the site-look posts studio (marketing.html, "Site-look posts" tab), and the mail banner's drawing.
 
-   window.RevampPromoPosts = { mount(rootEl, ctx) }      ctx = { eventId, kit, toast(msg, opts) }
+   window.RevampPromoPosts = {
+     mount(rootEl, ctx)        ctx = { eventId, kit, toast(msg, opts) }
+     shown()                   the tab is shown again: draw what was put off while it was hidden
+     banner(kitLike)           -> Promise<{ node, width: 750, height, done() }>  the mail's top banner (see THE MAIL
+                               BANNER below); kitLike is a Kit, or the Kit-shaped inputs lib/promo-banner.js sends
+   }
 
    Every post is the event website's own world: its hero picture under a veil in the site's tones, its logo unit,
    its heading and body fonts, its colours and corners, and its real content (speakers, partners, sessions,
-   numbers…) from the Kit (promo-kit.js). A post type the event has no data for is shown as unavailable, with
-   the reason and where to add the data; nothing is ever filled in with sample people, numbers or quotes.
+   numbers…) from the Kit (promo-kit.js). A post type the event has no data for cannot be opened or downloaded: its
+   card says why and where to add the data, and shows a preview of what the post would look like (owner decision
+   B). For a missing list (speakers, partners, numbers, topics…) that preview is the event's own items topped up
+   with EXAMPLE ones from one shared library (/assets/promo-examples/), badged "Example"; for a missing fact (no
+   date yet, already started) it is the real post with a chip saying so. Example content appears only in these
+   previews: every download and save is drawn from the real Kit, and RevampPromo.toPng / save / zip and the
+   server refuse anything carrying an example marker. Nothing downloadable is ever filled in with sample people,
+   numbers or quotes.
 
    How a post is drawn: postHtml() writes the post at its real pixel size (1080 × 1350 and so on) and finish()
    then fits it — a long name steps its font size down within limits, wraps, and only then ends in "…"; a grid
@@ -47,7 +58,8 @@
   /* the logo unit's box in each place it is drawn: [max width, max height] */
   var LOGO_BOX = {
     top: { portrait: [440, 150], square: [400, 124], landscape: [330, 96], story: [520, 176] },
-    big: { portrait: [800, 320], square: [700, 250], landscape: [470, 230], story: [880, 380] }
+    /* the mail banner's unit stands at the left, at most 46% of the inner width (750 - 2 × 40) */
+    big: { portrait: [800, 320], square: [700, 250], landscape: [470, 230], story: [880, 380], mailbanner: [308, 230] }
   };
 
   var BACKGROUNDS = [
@@ -164,9 +176,12 @@
     L.body = stackOf(f.body, 'Arial, sans-serif');
 
     /* the logo unit is drawn for one tone of background; on the other it would not be read, and it is never put
-       on a plate — the event's name is set in type instead */
+       on a plate. On a dark background a unit drawn for a light one takes its own copy for a dark ground when the
+       site has one (darkUrl, the site's rv-lu-dark: whole files are chosen, never recoloured, so the ET red
+       square stays as drawn); otherwise the event's name is set in type instead */
     var lu = b.logoUnit;
-    L.logo = (lu && lu.url && (!lu.tone || lu.tone === L.mode)) ? lu : null;
+    L.logo = (lu && lu.url && (!lu.tone || lu.tone === L.mode)) ? lu
+      : (lu && lu.url && lu.darkUrl && L.mode === 'dark') ? { url: lu.darkUrl, width: lu.width, height: lu.height, tone: 'dark' } : null;
     return L;
   }
 
@@ -498,10 +513,11 @@
       }
     },
     listType('audience', 'Who should attend', 'The people this event is for.', 'audience', 'au', 'Who should attend', 'bar',
-      { why: 'The event’s brief has no “who should attend” list, and nothing here makes one up.', fix: null },
+      /* "no post": the card beside this line shows an example list, and only that preview ever does */
+      { why: 'The event’s brief has no “who should attend” list, and no post makes one up.', fix: null },
       function (D, items) { return 'Who should attend ' + eventOf(D.kit).name + ':\n' + items.map(function (t) { return '• ' + t; }).join('\n'); }),
     listType('topics', 'Key topics', 'What the event will discuss.', 'topics', 'tp', 'Key topics', 'num',
-      { why: 'The event’s brief has no topics or tracks, and nothing here makes them up.', fix: null },
+      { why: 'The event’s brief has no topics or tracks, and no post makes them up.', fix: null },
       function (D, items) { return 'On the agenda at ' + eventOf(D.kit).name + ':\n' + items.map(function (t) { return '• ' + t; }).join('\n'); }),
     {
       id: 'session', label: 'Session spotlight', blurb: 'One post for each session, with its speakers.', per: 'session', headline: 'kicker',
@@ -551,7 +567,9 @@
         return '';
       },
       groups: function (D) {
-        var d = daysToGo(D.kit) || 0;
+        /* never below 0: a post can only be made with days still to go (need), so a smaller number is only ever
+           seen on the gallery's preview of an event that has started, which says so in its chip */
+        var d = Math.max(0, daysToGo(D.kit) || 0);
         return [{ title: 'Words on the post', fields: [
           { key: 'kicker', label: 'Kicker', def: '' },
           { key: 'number', label: 'Number', def: String(d) },
@@ -664,10 +682,18 @@
     }));
   }
   function pic(u) { return u && PICS[u] ? PICS[u] : ''; }
+  /* a picture as one drawing has it: the mail banner brings its own (D.pics, loaded for it alone, because mount()
+     empties the studio's cache and may do so while the banner is being drawn); every post reads the cache */
+  function picFor(D, u) { return D.pics ? (u && D.pics[u]) || '' : pic(u); }
 
   function makeD(kit, cfg, fmtId, squeeze) {
     var type = TYPE[cfg.type], fmt = FMT[fmtId || cfg.format] || FMT.portrait;
-    var look = lookFor(kit, cfg.background);
+    var D = baseD(kit, cfg, type, fmt, lookFor(kit, cfg.background), squeeze);
+    groupsOf(D).forEach(function (g) { g.fields.forEach(function (f) { D.defs[f.key] = f.def; }); });
+    return D;
+  }
+  /* D without its texts' defaults: makeD adds a post type's; the mail banner (bannerD) its own few */
+  function baseD(kit, cfg, type, fmt, look, squeeze) {
     var D = { kit: kit, cfg: cfg, type: type, fmt: fmt, look: look, iw: fmt.w - fmt.px * 2, squeeze: squeeze || 0 };
     /* how much tighter than normal this drawing is (see drawInto) */
     D.s = 1 - 0.08 * Math.min(D.squeeze, 3);
@@ -679,7 +705,6 @@
       return has(D.defs, key) ? String(D.defs[key] == null ? '' : D.defs[key]) : '';
     };
     D.P = function (s, f) { return D.T('p:' + s.id + ':' + f); };
-    groupsOf(D).forEach(function (g) { g.fields.forEach(function (f) { D.defs[f.key] = f.def; }); });
     return D;
   }
 
@@ -702,21 +727,27 @@
     if (linkOf(kit)) ff.push({ key: 'qrLabel', label: 'QR code caption (clear it to leave the QR code out)', def: 'Scan to register' });
     ff.push({ key: 'hashtag', label: 'Hashtag', def: eventOf(kit).hashtag || '' });
     g.push({ title: 'Footer and hashtag', fields: ff });
-    if (!D.look.logo || !pic(D.look.logo.url)) {
-      var parts = (kit.brand && kit.brand.logoUnitParts) || {};
-      var key = parts.keyword || (!parts.before && !parts.after ? eventOf(kit).name : '');
-      g.push({ title: 'Event name (set in type: the site has no logo unit for this background)', fields: [
-        { key: 'lu:before', label: 'Small line above', def: parts.before || '' },
-        { key: 'lu:keyword', label: 'Name, in the theme colour', def: key || '' },
-        { key: 'lu:after', label: 'Rest of the name', def: parts.after || '' }
-      ] });
+    if (!D.look.logo || !picFor(D, D.look.logo.url)) {
+      g.push({ title: 'Event name (set in type: the site has no logo unit for this background)', fields: typedNameFields(kit) });
     }
     return g;
   }
+  /* the event's name set in type, from the parts of its name the site keeps (when there is no logo unit to draw) */
+  function typedNameFields(kit) {
+    var parts = (kit.brand && kit.brand.logoUnitParts) || {};
+    var key = parts.keyword || (!parts.before && !parts.after ? eventOf(kit).name : '');
+    return [
+      { key: 'lu:before', label: 'Small line above', def: parts.before || '' },
+      { key: 'lu:keyword', label: 'Name, in the theme colour', def: key || '' },
+      { key: 'lu:after', label: 'Rest of the name', def: parts.after || '' }
+    ];
+  }
 
-  function logoHtml(D, where, align) {
-    var L = D.look, box = LOGO_BOX[where][D.fmt.id], lu = L.logo;
-    var src = lu ? pic(lu.url) : '';
+  /* box: [max width, max height] in place of the format's own (the mail banner's unit alone, centred) */
+  function logoHtml(D, where, align, box) {
+    var L = D.look, lu = L.logo;
+    box = box || LOGO_BOX[where][D.fmt.id];
+    var src = lu ? picFor(D, lu.url) : '';
     if (src) {
       var w = +lu.width || 0, h = +lu.height || 0;
       if (!(w > 0 && h > 0)) { w = 2.4; h = 1; }
@@ -880,22 +911,34 @@
     return '<div class="pp-top">' + left + (tag ? '<span class="pp-tag">' + esc(tag) + '</span>' : '') + '</div>';
   }
 
+  /* A post drawn from an example Kit (exampleKit's copy, marked __example) carries data-example on its root, so
+     RevampPromo.toPng refuses it whichever path drew it: the mark is part of the drawing, not added after it. */
   function postHtml(D) {
+    var f = D.fmt;
+    return '<div class="pp pp-' + f.id + '" data-type="' + D.type.id + '"' + (D.kit && D.kit.__example ? ' data-example="1"' : '') +
+      ' style="' + esc(postVars(D, f.h)) + '">' + groundHtml(D) +
+      '<div class="pp-frame" style="padding:' + f.pt + 'px ' + f.px + 'px ' + f.pb + 'px">' +
+        topHtml(D) + '<div class="pp-mid">' + D.type.mid.call(D.type, D) + '</div>' + footHtml(D) +
+      '</div></div>';
+  }
+  /* the post's size and the site's look as the --pp-* variables promo.css draws with */
+  function postVars(D, h) {
     var L = D.look, f = D.fmt;
-    var vars = [
-      'width:' + f.w + 'px', 'height:' + f.h + 'px', '--k:' + f.k,
+    return [
+      'width:' + f.w + 'px', 'height:' + h + 'px', '--k:' + f.k,
       '--pp-base:' + L.base, '--pp-base-soft:' + L.baseSoft, '--pp-ink:' + L.ink, '--pp-head-ink:' + L.headInk, '--pp-muted:' + L.muted,
       '--pp-acc:' + L.acc, '--pp-acc-ink:' + L.accInk, '--pp-acc-text:' + L.accText, '--pp-key:' + L.key,
       '--pp-line:' + L.line, '--pp-tile:' + L.tile, '--pp-tile-line:' + L.tileLine, '--pp-glow:' + L.glow,
       '--pp-head:' + L.head, '--pp-body:' + L.body, '--pp-r:' + L.r + 'px', '--pp-cta-r:' + L.ctaR + 'px'
     ].join(';');
-    var bg = L.pic && pic(L.pic) ? '<div class="pp-bg"><img src="' + esc(pic(L.pic)) + '" alt=""></div>' : '';
-    return '<div class="pp pp-' + f.id + '" data-type="' + D.type.id + '" style="' + esc(vars) + '">' +
-      '<div class="pp-bg" style="background:' + esc(L.fill) + '"></div>' + bg +
-      '<div class="pp-veil" style="background:' + esc(L.veil) + '"></div>' +
-      '<div class="pp-frame" style="padding:' + f.pt + 'px ' + f.px + 'px ' + f.pb + 'px">' +
-        topHtml(D) + '<div class="pp-mid">' + D.type.mid.call(D.type, D) + '</div>' + footHtml(D) +
-      '</div></div>';
+  }
+  /* the ground: the background's fill, the site's picture when it is used, and the veil over both */
+  function groundHtml(D) {
+    var L = D.look;
+    var src = L.pic ? picFor(D, L.pic) : '';
+    var bg = src ? '<div class="pp-bg"><img src="' + esc(src) + '" alt=""></div>' : '';
+    return '<div class="pp-bg" style="background:' + esc(L.fill) + '"></div>' + bg +
+      '<div class="pp-veil" style="background:' + esc(L.veil) + '"></div>';
   }
 
   /* ============================================================
@@ -1021,6 +1064,208 @@
   }
 
   /* ============================================================
+     THE MAIL BANNER (owner decision C)
+
+     ET's own mailers open with one picture, 750 px wide, holding the event's art, its logo unit, and its date and
+     venue with a calendar and a pin. Oneworld's mails do the same: lib/promo-banner.js decides when the picture is
+     needed and keeps it, promo-banner.js asks for it to be drawn, and it is drawn here — the "Save the date" post's
+     landscape composition (the logo unit at the left, a rule, then the words) on the site's picture under the
+     posts' veil, in the site's fonts and colours, at a format of its own: 750 wide, as tall as its content asks
+     (320 to 440, about 380 for a usual unit), never offered to anyone as a post. Only what the event really has is
+     drawn: no kicker, tagline, button, QR code or hashtag (the mail's own "Register now" stays a live button below
+     the picture), and a date or a place the event does not have is left out — with neither, the logo unit stands
+     alone, centred.
+
+     The ground and the logo's copy (the ET red square is never recoloured: only whole files are chosen). The
+     ground is DARK when the unit has a copy for a dark ground — its own picture when it is drawn for one (tone
+     'dark'), else its darkUrl — or, with no unit picture, when the site itself is dark; otherwise LIGHT. A dark
+     ground draws the dark-ground copy, a light one the unit's own picture; with no picture at all the event's name
+     is set in type, as the posts do. When the ground's tone is not the site's own, it is the site's deepest (or
+     palest) colour that is, so the veil still reads as the site.
+
+     A copy that cannot be loaded. A picture that fails is asked for once more. A copy that is not there for good
+     (the image proxy or our own server answers that it is missing, refused or not a picture: 400, 404, 410, 415) is
+     no copy, as the posts treat a unit they cannot load: the dark copy gives way to the unit's own picture on a
+     light ground, and that to the name set in type. Otherwise a removed rv-lu-dark object would leave the banner
+     stale for ever, and the server refuses every download and export of the event's mailers while it is stale. A
+     failure that may pass (no network, a server error, a time-out, a session to renew) refuses (rejects) instead:
+     a banner, once drawn, stays the event's current one until an input changes, so a blip must not leave a
+     stand-in in it. The site's picture is never stood in for: it is the banner's ground, and a banner without it
+     is refused.
+
+     banner(kitLike) never reads the studio's own Kit (the Mailers tab may be the first one opened), waits for the
+     given Kit's fonts (at most 6 s, as the studio does) and for its pictures, which it keeps for itself (D.pics):
+     the studio's own cache is emptied whenever the studio is mounted, which may happen while the banner is being
+     drawn. It resolves the drawn node, off the screen, for RevampPromo.toPng(node, 750, height, { pixelRatio: 2,
+     type: 'image/jpeg' }); done() removes it. Change the drawing → bump BANNER_VERSION in lib/promo-banner.js, so
+     every event's banner is drawn again.
+     ============================================================ */
+  var MAILBANNER = { id: 'mailbanner', label: 'Mail banner', w: 750, h: 380, k: 0.62, px: 40, pt: 34, pb: 34 };
+  var BANNER_MIN = 320, BANNER_MAX = 440;
+  /* the unit alone (no date and no place): wider, still clear of the edges */
+  var BANNER_SOLO_BOX = [482, 250];
+
+  /* the darkest (or palest) of the site's own colours, for a ground of that tone; the posts' own grounds last */
+  function groundOf(kit, mode) {
+    var c = (kit.brand && kit.brand.colours) || {}, theme = hexOk(c.theme);
+    var list = mode === 'dark'
+      ? [hexOk(c.heading), hexOk(c.text), theme ? P.mix(theme, '#000000', 0.72) : '']
+      : [hexOk(c.surface), hexOk(c.heading), hexOk(c.text), theme ? P.mix(theme, '#ffffff', 0.9) : ''];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && (mode === 'dark' ? P.lum(list[i]) < 0.05 : P.lum(list[i]) > 0.8)) return list[i];
+    }
+    return mode === 'dark' ? '#0d1017' : '#ffffff';
+  }
+  /* the logo copies the banner may draw, best first, each with the ground it is drawn on: the copy for a dark
+     ground (the unit's own picture when it is drawn for one, else its darkUrl), then the unit's own picture on a
+     light ground. None left → the name set in type, on the site's own tone. */
+  function bannerCopies(kit) {
+    var b = kit.brand || {};
+    var lu = b.logoUnit && b.logoUnit.url ? b.logoUnit : null;
+    if (!lu) return [];
+    var out = [], darkCopy = lu.tone === 'dark' ? lu.url : String(lu.darkUrl || '');
+    if (darkCopy) out.push({ url: darkCopy, mode: 'dark' });
+    if (lu.tone !== 'dark') out.push({ url: lu.url, mode: 'light' });
+    return out;
+  }
+  /* copy: one of bannerCopies(kit), or null for the name set in type; left out, the first (the rule above) */
+  function bannerLook(kit, copy) {
+    var b = kit.brand || {};
+    var lu = b.logoUnit && b.logoUnit.url ? b.logoUnit : null;
+    if (copy === undefined) copy = bannerCopies(kit)[0] || null;
+    var site = lookFor(kit, 'picture');
+    var mode = copy ? copy.mode : site.mode;
+    var k = kit;
+    if (mode !== site.mode) {
+      k = clone(kit);
+      k.brand = k.brand || {};
+      k.brand.mode = mode;
+      k.brand.colours = k.brand.colours || {};
+      k.brand.colours.background = groundOf(kit, mode);
+    }
+    var L = lookFor(k, 'picture');
+    L.logo = !copy || !lu ? null : { url: copy.url, width: +lu.width || 0, height: +lu.height || 0, tone: mode };
+    return L;
+  }
+  /* a picture of the banner, asked for once more when it fails -> { src } or { err } */
+  function bannerPic(u) {
+    function once() {
+      return P.image(u).then(function (src) { return src ? { src: src } : { err: new Error('missing') }; },
+        function (err) { return { err: err || new Error('missing') }; });
+    }
+    return once().then(function (r) { return r.src ? r : once(); });
+  }
+  /* the picture is not there for good — gone, refused by the image proxy, or not a picture — so asking again later
+     will not bring it (promo-kit.js image() keeps the answer's status on its error) */
+  function goneForGood(err) {
+    var s = err ? +err.status : 0;
+    return s === 400 || s === 404 || s === 410 || s === 415;
+  }
+  /* a picture's own width and height, or null */
+  function sizeOf(src) {
+    return new Promise(function (resolve) {
+      if (!src || typeof Image !== 'function') { resolve(null); return; }
+      var im = new Image(), over = false;
+      function end(v) { if (!over) { over = true; resolve(v); } }
+      im.onload = function () { end(im.naturalWidth > 0 && im.naturalHeight > 0 ? { w: im.naturalWidth, h: im.naturalHeight } : null); };
+      im.onerror = function () { end(null); };
+      setTimeout(function () { end(null); }, 5000);
+      im.src = src;
+    });
+  }
+  function bannerD(kit, L) {
+    var D = baseD(kit, { type: 'mailbanner', texts: {}, picks: {} }, { id: 'mailbanner' }, MAILBANNER, L, 0);
+    typedNameFields(kit).forEach(function (f) { D.defs[f.key] = f.def; });
+    return D;
+  }
+  function icon(svg, px) { return svg.replace('<svg ', '<svg style="width:' + px + 'px;height:' + px + 'px;margin-top:' + Math.round(px * 0.12) + 'px" '); }
+  function bannerHtml(D, h) {
+    var e = eventOf(D.kit), f = D.fmt;
+    var date = String(e.dateLabel || '').trim(), place = String(placeOf(D.kit) || '').trim();
+    /* the footer's date and place items (.pp-wi), stacked and larger: the date in the heading font */
+    function item(cls, svg, px, text, style, fit) {
+      return '<span class="pp-wi ' + cls + '" style="width:100%;align-items:flex-start;gap:' + D.u(18) + 'px">' + icon(svg, px) +
+        '<span class="pp-fit" ' + fit + ' style="flex:1 1 auto;min-width:0;white-space:normal;text-overflow:clip;' + style + '">' + esc(text) + '</span></span>';
+    }
+    var words = (date ? item('pp-mb-date', ICON.cal, D.u(46), date, 'font-family:var(--pp-head);font-weight:700;line-height:1.12;color:var(--pp-head-ink)', D.fit(54, 34, 2)) : '') +
+      (place ? item('pp-mb-place', ICON.pin, D.u(40), place, 'font-weight:600;line-height:1.25', D.fit(40, 27, 2)) : '');
+    var body = words
+      ? '<div style="display:flex;align-items:center;gap:' + D.u(64) + 'px;width:100%">' +
+          '<div style="flex:0 0 auto;max-width:46%">' + logoHtml(D, 'big', 'left') + '</div>' +
+          '<span style="flex:0 0 auto;width:1.5px;align-self:stretch;background:var(--pp-line)"></span>' +
+          '<div class="pp-when" style="flex:1 1 auto;min-width:0;flex-direction:column;align-items:flex-start;gap:' + D.u(26) + 'px">' + words + '</div></div>'
+      : '<div style="display:flex;justify-content:center;width:100%">' + logoHtml(D, 'big', 'center', BANNER_SOLO_BOX) + '</div>';
+    return '<div class="pp pp-mailbanner" data-type="mailbanner" style="' + esc(postVars(D, h)) + '">' + groundHtml(D) +
+      '<div class="pp-frame" style="padding:' + f.pt + 'px ' + f.px + 'px ' + f.pb + 'px">' +
+        '<div class="pp-mid" style="padding:0"><div class="pp-mb" data-mb-body style="width:100%">' + body + '</div></div>' +
+      '</div></div>';
+  }
+  function banner(kitLike) {
+    var kit = kitLike && typeof kitLike === 'object' ? kitLike : {};
+    var copies = bannerCopies(kit), hero = pictureOf(kit);
+    /* this drawing's own pictures, address → blob: URL (see the header: never the studio's cache) */
+    var pics = {};
+    var fonts = Promise.race([
+      Promise.resolve().then(function () { return P.ensureFonts(kit); }).catch(function () {}),
+      new Promise(function (r) { setTimeout(r, 6000); })
+    ]);
+    /* the first copy that loads, or null for the name set in type; a copy that may still come refuses the banner */
+    function copyFrom(i) {
+      if (i >= copies.length) return Promise.resolve(null);
+      return bannerPic(copies[i].url).then(function (r) {
+        if (r.src) { pics[copies[i].url] = r.src; return copies[i]; }
+        if (!goneForGood(r.err)) {
+          var e = new Error('The logo unit could not be loaded, so the mail banner was not drawn.');
+          e.cause = r.err;
+          throw e;
+        }
+        console.warn('promo-posts: the mail banner\'s logo copy is not there, so the next one is drawn —', copies[i].url, r.err);
+        return copyFrom(i + 1);
+      });
+    }
+    var host = null;
+    function drop() { if (host && host.parentNode) host.parentNode.removeChild(host); host = null; }
+    return Promise.all([
+      fonts,
+      hero ? bannerPic(hero) : null,
+      /* settled here, so a refused hero does not leave this one's refusal unheard */
+      copyFrom(0).then(function (copy) { return { copy: copy }; }, function (err) { return { err: err }; })
+    ]).then(function (got) {
+      if (hero && !got[1].src) {
+        var e = new Error('The site’s picture could not be loaded, so the mail banner was not drawn.');
+        e.cause = got[1].err;
+        throw e;
+      }
+      if (got[2].err) throw got[2].err;
+      if (hero) pics[hero] = got[1].src;
+      var L = bannerLook(kit, got[2].copy);
+      return (L.logo ? sizeOf(pics[L.logo.url]) : Promise.resolve(null)).then(function (size) { return { L: L, size: size }; });
+    }).then(function (o) {
+      var L = o.L, size = o.size;
+      if (size) { L.logo.width = size.w; L.logo.height = size.h; }
+      var D = bannerD(kit, L);
+      D.pics = pics;
+      host = document.createElement('div');
+      host.setAttribute('aria-hidden', 'true');
+      host.setAttribute('style', 'position:fixed;left:-100000px;top:0;width:' + MAILBANNER.w + 'px;pointer-events:none');
+      document.body.appendChild(host);
+      host.innerHTML = bannerHtml(D, MAILBANNER.h);
+      var node = host.firstChild;
+      return picturesReady(node).then(function () {
+        finish(node);
+        /* as tall as the content and a band of the picture above and below it, within the mail's limits */
+        var body = node.querySelector('[data-mb-body]');
+        var h = Math.round((body ? body.offsetHeight : 0) + MAILBANNER.pt + MAILBANNER.pb + 2 * D.u(128));
+        h = Math.max(BANNER_MIN, Math.min(BANNER_MAX, h || MAILBANNER.h));
+        node.style.height = h + 'px';
+        finish(node);
+        var own = host;
+        return { node: node, width: MAILBANNER.w, height: h, done: function () { if (own && own.parentNode) own.parentNode.removeChild(own); own = null; } };
+      });
+    }).then(null, function (err) { drop(); throw err; });
+  }
+
+  /* ============================================================
      THE STUDIO
      ============================================================ */
   var root, KIT, EVENT_ID, toast;
@@ -1063,9 +1308,204 @@
     return fontsReady;
   }
 
+  /* ---------------- previews of what the event cannot make yet (owner decision B) ----------------
+     A post type the event has no data for keeps its locked card (no Open, nothing to download), but the card
+     shows what the post would look like:
+     - a missing LIST (speakers, partners, numbers, who should attend, topics, sessions): the event's own items
+       first, then EXAMPLE ones from the shared library up to what the post usually shows (8 on a line-up, 8 partners
+       in three tiers…), badged "Example". exampleKit() changes only the list the type's need() complains about
+       (and, for the agenda, adds the example people who speak in it), in a copy of the Kit marked __example; every
+       drawing of that copy is marked data-example (postHtml), which RevampPromo.toPng refuses.
+     - a missing FACT (Save the date without a date or a venue, a Countdown with no exact date or already started):
+       the real post, as the Kit has it, with a chip saying what is missing. Never an example date or venue.
+     A click on either opens it full size (.ps-lb), still with no Download and no Open. */
+  var STATE_TYPES = { announce: 1, countdown: 1 };
+  /* what the example tops a list up to, and what the card calls it */
+  var EXAMPLE_FILL = {
+    speaker: { list: 'speakers', count: 1, words: 'speaker' },
+    lineup: { list: 'speakers', count: 8, words: 'speakers' },
+    partner: { list: 'partners', count: 1, words: 'partner' },
+    partners: { list: 'partners', count: 8, words: 'partners' },
+    stats: { list: 'stats', count: 4, words: 'numbers' },
+    audience: { list: 'audience', count: 6, words: '“who should attend” list' },
+    topics: { list: 'topics', count: 6, words: 'topics' },
+    session: { list: 'sessions', count: 5, words: 'agenda' }
+  };
+  var EXAMPLE_ROOT = '/assets/promo-examples/';
+
+  /* the shared library (functions/lib/promo-examples.js reads the same file), fetched once a page. People,
+     partners and sessions are used only when they carry the library's own markers (an ex- id, a picture under
+     /assets/promo-examples/), so save and zip know them; the plain lists (numbers, who should attend, topics) carry
+     none. What keeps any of it out of a download is the drawing itself: postHtml marks the root of every drawing
+     of an example Kit data-example, which RevampPromo.toPng refuses. */
+  var exampleLib = null;
+  function exampleLibrary() {
+    if (!exampleLib) {
+      exampleLib = fetch(EXAMPLE_ROOT + 'library.json', { credentials: 'same-origin' }).then(function (r) {
+        if (!r.ok) throw new Error('The example library could not be loaded (' + r.status + ').');
+        return r.json();
+      }).then(function (lib) {
+        lib = lib && typeof lib === 'object' ? lib : {};
+        function under(u) { return String(u || '').indexOf(EXAMPLE_ROOT) === 0; }
+        function strings(a) { return (Array.isArray(a) ? a : []).map(function (x) { return String(x == null ? '' : x).trim(); }).filter(Boolean); }
+        return {
+          people: (lib.people || []).filter(function (p) { return p && /^ex-p\d+$/.test(p.id) && p.name && under(p.photo); }),
+          partners: (lib.partners || []).filter(function (p) { return p && /^ex-l\d+$/.test(p.id) && p.name && under(p.logo); }),
+          sessions: (lib.sessions || []).filter(function (s) { return s && /^ex-s\d+$/.test(s.id) && s.title; }),
+          stats: (lib.stats || []).filter(function (s) { return s && (s.value || s.label); }),
+          audience: strings(lib.whoShouldAttend),
+          topics: strings(lib.keyPoints)
+        };
+      }).then(null, function (err) { exampleLib = null; throw err; });
+    }
+    return exampleLib;
+  }
+
+  /* a copy of the Kit with only the list type t lacks topped up from the library; the real KIT is never touched */
+  function exampleKit(t, lib) {
+    var fill = EXAMPLE_FILL[t.id];
+    var ek = clone(KIT);
+    ek.content = ek.content || {};
+    var c = ek.content;
+    function person(p, group) { return { id: p.id, name: p.name, designation: p.designation || '', company: p.company || '', photoUrl: p.photo, group: group || '' }; }
+    if (fill.list === 'speakers') {
+      var real = speakersOf(ek), group = (real[0] && real[0].group) || '';
+      c.speakers = (c.speakers || []).concat(lib.people.slice(0, Math.max(0, fill.count - real.length)).map(function (p) { return person(p, group); }));
+    } else if (fill.list === 'partners') {
+      var realP = partnersOf(ek);
+      c.partners = (c.partners || []).concat(lib.partners.slice(0, Math.max(0, fill.count - realP.length)).map(function (p) {
+        return { id: p.id, name: p.name, logoUrl: p.logo, tier: p.tier || '', url: '' };
+      }));
+    } else if (fill.list === 'stats') {
+      c.stats = lib.stats.slice(0, fill.count).map(function (s) { return { value: String(s.value || ''), label: String(s.label || '') }; });
+    } else if (fill.list === 'audience' || fill.list === 'topics') {
+      c[fill.list] = lib[fill.list].slice(0, fill.count);
+    } else if (fill.list === 'sessions') {
+      /* made-up sessions are given example people only: a real speaker is never shown on a session that does not
+         exist, even in a preview (the rule the Testimonial preview keeps: a made-up quote is never put in a real
+         person's mouth). They join the speakers so their pictures are found by name (sessionSpeakers), skipping
+         any name the event already has, so a name never finds a real person's photo; a panel has two */
+      var taken = {};
+      speakersOf(ek).forEach(function (p) { taken[String(p.name).trim().toLowerCase()] = 1; });
+      var people = lib.people.filter(function (p) { return !taken[String(p.name).trim().toLowerCase()]; }).slice(0, 5)
+        .map(function (p) { return person(p, ''); });
+      c.speakers = (c.speakers || []).concat(people);
+      c.sessions = lib.sessions.slice(0, fill.count).map(function (s, i) {
+        var who = people.length ? [people[i % people.length].name] : [];
+        if (/^(panel|closing panel)/i.test(s.title) && people.length > 1) who.push(people[(i + 1) % people.length].name);
+        return { id: s.id, title: s.title, start: s.start || '', end: s.end || '', day: s.day || '', speakers: who };
+      });
+    }
+    ek.__example = true;
+    return ek;
+  }
+  function exampleNote(t) {
+    var fill = EXAMPLE_FILL[t.id], own = fill.list === 'speakers' ? speakersOf(KIT).length : fill.list === 'partners' ? partnersOf(KIT).length : 0;
+    return own ? 'Example ' + fill.words + ' beside the event’s own — add more to use this' : 'Example ' + fill.words + ' — add yours to use this';
+  }
+  function stateChip(t) {
+    if (t.id === 'announce') return 'No date or venue yet';
+    var d = daysToGo(KIT);
+    return d == null ? 'No start date yet' : d === 0 ? 'Starts today' : 'Already started';
+  }
+  /* the badge or chip on a preview, outside the drawing itself */
+  function previewMark(t) {
+    return STATE_TYPES[t.id] ? '<span class="ps-chip">' + esc(stateChip(t)) + '</span>' : '<span class="ps-ex">Example</span>';
+  }
+  /* what a preview of t is drawn from, its pictures loaded: { kit, cfg, example } */
+  function previewOf(t, fmtId) {
+    if (STATE_TYPES[t.id]) {
+      var cfg = newCfg(t.id);
+      cfg.format = fmtId;
+      return want(urlsFor(KIT, cfg)).then(function () { return { kit: KIT, cfg: cfg, example: false }; });
+    }
+    return exampleLibrary().then(function (lib) {
+      var ek = exampleKit(t, lib);
+      if (t.need(ek)) throw new Error('The example could not fill what this post needs.');
+      var ecfg = { type: t.id, format: fmtId, background: defaultBackground(), picks: t.pickDefaults ? t.pickDefaults(ek) : {}, texts: {}, caption: null, network: 'linkedin' };
+      return want(urlsFor(ek, ecfg)).then(function () { return { kit: ek, cfg: ecfg, example: true }; });
+    });
+  }
+  /* an example's drawing is already marked by postHtml (its Kit is __example); marked here as well, so a preview
+     said to be an example is one whatever Kit it was given */
+  function drawPreview(host, p) {
+    var node = drawInto(host, p.kit, p.cfg);
+    if (p.example) node.setAttribute('data-example', '1');
+    return node;
+  }
+
+  /* the full-size view of a preview: the post at its format's width (scaled down to fit the window), what is
+     missing and where to add it; Escape, ✕ or a click outside closes it. No Download, no Open: nothing in it can
+     leave the page. Its look is promo.css's: .ps-lb (the scrim), .ps-lb-col (a column as wide as --ps-lb-w, the
+     post's own width, never wider than the window), .ps-lb-bar (stays in view: the badge or chip, the name, the
+     note, ✕), and the post in a .ps-thumb as on its card. */
+  var LB = null;          // { el, from, t, token, fmt }
+  var lbToken = 0;
+  function openPreview(t, from) {
+    closePreview();
+    var need = typeNeed(t), f = FMT[LAST.format], state = !!STATE_TYPES[t.id];
+    var note = state ? need.why : exampleNote(t) + '. ' + need.why;
+    var fix = need.fix ? ' <a href="' + esc(fixLink(EVENT_ID, need.fix[1])) + '">' + esc(need.fix[0]) + '</a>' : '';
+    var el = document.createElement('div');
+    el.className = 'ps-lb';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-labelledby', 'ps-lb-h');
+    el.innerHTML = '<div class="ps-lb-col" style="--ps-lb-w:' + f.w + 'px">' +
+        '<div class="ps-lb-bar">' +
+          previewMark(t) + '<b id="ps-lb-h">' + esc(t.label) + '</b><span class="ps-ex-note">' + esc(note) + fix + '</span>' +
+          '<button type="button" class="ps-lb-x" data-lb-close aria-label="Close the full-size view">✕</button>' +
+        '</div>' +
+        '<div class="ps-thumb ps-lb-stage"><div class="ps-scale"></div><span class="ps-lb-wait">' + spin() + '</span></div>' +
+      '</div>';
+    document.body.appendChild(el);
+    var token = ++lbToken;
+    LB = { el: el, from: from || null, t: t, token: token, fmt: f.id };
+    el.onclick = function (e) { if (e && e.target === el) closePreview(); };
+    el.querySelector('[data-lb-close]').onclick = function () { closePreview(); };
+    document.addEventListener('keydown', onPreviewKey, true);
+    var x = el.querySelector('[data-lb-close]');
+    if (x.focus) x.focus();
+    fitPreview();
+    waitFonts().then(function () { return previewOf(t, f.id); }).then(function (p) {
+      if (!LB || LB.token !== token) return;
+      var stage = el.querySelector('.ps-lb-stage'), wait = el.querySelector('.ps-lb-wait');
+      if (wait) wait.parentNode.removeChild(wait);
+      drawPreview(stage.querySelector('.ps-scale'), p);
+      fitPreview();
+    }).catch(function (err) {
+      console.error('The full-size preview could not be drawn:', err);
+      if (!LB || LB.token !== token) return;
+      var stage = el.querySelector('.ps-lb-stage');
+      stage.innerHTML = '<span class="ps-why">The preview could not be drawn.</span>';
+      stage.style.height = '120px';
+    });
+  }
+  /* the post scaled to the column's width, never above its own size */
+  function fitPreview() {
+    if (!LB) return;
+    var f = FMT[LB.fmt], stage = LB.el.querySelector('.ps-lb-stage'), sc = stage && stage.querySelector('.ps-scale');
+    if (!sc) return;
+    var s = Math.min(1, (stage.clientWidth || f.w) / f.w);
+    stage.style.height = Math.round(f.h * s) + 'px';
+    sc.style.transform = 'scale(' + s + ')';
+  }
+  function onPreviewKey(e) {
+    if (LB && e && (e.key === 'Escape' || e.key === 'Esc')) { e.preventDefault(); e.stopPropagation(); closePreview(); }
+  }
+  function closePreview() {
+    if (!LB) return;
+    var lb = LB;
+    LB = null;
+    document.removeEventListener('keydown', onPreviewKey, true);
+    if (lb.el.parentNode) lb.el.parentNode.removeChild(lb.el);
+    if (lb.from && lb.from.focus && document.body.contains(lb.from)) lb.from.focus();
+  }
+
   /* ---------------- gallery ---------------- */
   function showGallery() {
     ED = null;
+    closePreview();
     window.removeEventListener('beforeunload', onLeave);
     var speakers = speakersOf(KIT).length;
     var fmtOpts = FORMATS.map(function (f) {
@@ -1076,13 +1516,18 @@
       var count = t.count ? t.count(KIT) : 0;
       var noun = { speaker: 'speakers', partner: 'partners', session: 'sessions' }[t.per];
       var sub = need ? '' : !t.per ? t.blurb : count === 1 ? 'One post, for the event’s only ' + t.per + '.' : 'One post for each of the ' + count + ' ' + noun + '.';
-      var thumb = need
-        ? '<div class="ps-thumb ps-thumb-off" style="aspect-ratio:' + FMT[LAST.format].w + '/' + FMT[LAST.format].h + '">' + ICON.lock + '<span class="ps-why">' + esc(need.why) + '</span></div>'
-        : '<div class="ps-thumb" data-thumb="' + t.id + '" style="aspect-ratio:' + FMT[LAST.format].w + '/' + FMT[LAST.format].h + '">' + spin() + '</div>';
       if (need) {
-        return '<div class="ps-card off" aria-disabled="true">' + thumb + '<div class="ps-card-body"><b>' + esc(t.label) + '</b>' +
+        /* locked (no data-open), with a preview: an example for a missing list, the real post for a missing fact */
+        var state = !!STATE_TYPES[t.id];
+        var pv = '<div class="ps-thumb" ' + (state ? 'data-state-thumb' : 'data-example-thumb') + '="' + t.id + '" role="button" tabindex="0" aria-label="' +
+          esc(t.label + (state ? ' (' + stateChip(t) + '): see it full size' : ' (example): see it full size')) + '" style="aspect-ratio:' + FMT[LAST.format].w + '/' + FMT[LAST.format].h + '">' +
+          spin() + previewMark(t) + '</div>';
+        return '<div class="ps-card off" aria-disabled="true" data-preview="' + t.id + '">' + pv + '<div class="ps-card-body"><b>' + esc(t.label) + '</b>' +
+          (state ? '' : '<span class="ps-ex-note">' + esc(exampleNote(t)) + '</span>') +
+          '<span class="ps-why">' + esc(need.why) + '</span>' +
           (need.fix ? '<span class="ps-why"><a href="' + esc(fixLink(EVENT_ID, need.fix[1])) + '">' + esc(need.fix[0]) + '</a></span>' : '<span>Not available for this event.</span>') + '</div></div>';
       }
+      var thumb = '<div class="ps-thumb" data-thumb="' + t.id + '" style="aspect-ratio:' + FMT[LAST.format].w + '/' + FMT[LAST.format].h + '">' + spin() + '</div>';
       return '<button type="button" class="ps-card" data-open="' + t.id + '" aria-label="' + esc(t.label + '. ' + sub) + '">' + thumb +
         '<div class="ps-card-body"><b>' + esc(t.label) + '</b><span>' + esc(sub) + '</span></div></button>';
     }).join('');
@@ -1101,27 +1546,44 @@
     Array.prototype.forEach.call(root.querySelectorAll('[data-open]'), function (b) {
       b.onclick = function () { openEditor(newCfg(b.getAttribute('data-open')), null, ''); };
     });
+    /* a locked card opens its preview full size (its fix link still goes to the console) */
+    Array.prototype.forEach.call(root.querySelectorAll('.ps-card[data-preview]'), function (card) {
+      var t = TYPE[card.getAttribute('data-preview')], th = card.querySelector('.ps-thumb');
+      card.onclick = function (e) {
+        if (e && e.target && e.target.closest && e.target.closest('a')) return;
+        openPreview(t, th);
+      };
+      if (th) th.onkeydown = function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+        e.preventDefault();
+        openPreview(t, th);
+      };
+    });
     wireSaved();
     drawThumbs();
   }
 
   /* A post is fitted by measuring it in the page, and shown at the width of its box: neither can be done while
-     the studio is hidden behind the Mailers tab (every size reads 0). What would be drawn then is left for
+     the studio is hidden behind another tab (every size reads 0). What would be drawn then is left for
      shown(), which marketing.html calls when the tab comes back. */
   function hiddenNow() { return !root || !root.getClientRects().length; }
   var pendingShow = { thumbs: false, stage: false };
 
   var thumbToken = 0;
+  var PREVIEW_THUMBS = '[data-example-thumb]:not([data-drawn]), [data-state-thumb]:not([data-drawn])';
   function drawThumbs() {
     var token = ++thumbToken;
     pendingShow.thumbs = false;
-    var boxes = Array.prototype.slice.call(root.querySelectorAll('[data-thumb]:not([data-drawn])'));
+    /* the event's own posts first, then the previews of the ones it cannot make yet */
+    var boxes = Array.prototype.slice.call(root.querySelectorAll('[data-thumb]:not([data-drawn])'))
+      .concat(Array.prototype.slice.call(root.querySelectorAll(PREVIEW_THUMBS)));
     waitFonts().then(function () {
       /* one at a time, in order: the first cards appear first */
       return boxes.reduce(function (chain, box) {
         return chain.then(function () {
           if (token !== thumbToken || !document.body.contains(box)) return null;
           if (hiddenNow()) { pendingShow.thumbs = true; return null; }
+          if (!box.hasAttribute('data-thumb')) return drawPreviewThumb(box, token);
           var cfg = newCfg(box.getAttribute('data-thumb'));
           return want(urlsFor(KIT, cfg)).then(function () {
             if (token !== thumbToken) return;
@@ -1139,9 +1601,44 @@
       }, Promise.resolve());
     });
   }
+  /* an example or a state preview in its card; its badge or chip stays on top of the drawing. One that fails is
+     tried again when the tab is next shown (shown()), as the event's own thumbnails are. */
+  function drawPreviewThumb(box, token) {
+    var t = TYPE[box.getAttribute('data-example-thumb') || box.getAttribute('data-state-thumb')];
+    return previewOf(t, LAST.format).then(function (p) {
+      if (token !== thumbToken) return;
+      if (hiddenNow()) { pendingShow.thumbs = true; return; }
+      var f = FMT[p.cfg.format];
+      var s = box.clientWidth / f.w;
+      box.className = 'ps-thumb';
+      box.innerHTML = '<div class="ps-scale" style="transform:scale(' + s + ')"></div>' + previewMark(t);
+      drawPreview(box.firstChild, p);
+      exampleNoteOn(box.parentNode, t, p.example);
+      box.setAttribute('data-drawn', '1');
+    }).catch(function (err) {
+      console.error('Post preview failed:', err);
+      /* nothing was drawn, so nothing here is an example: the card goes back to its plain locked look */
+      box.className = 'ps-thumb ps-thumb-off';
+      box.innerHTML = ICON.lock + '<span class="ps-why">The preview could not be drawn.</span>';
+      exampleNoteOn(box.parentNode, t, false);
+    });
+  }
+  /* the card's "Example …" line, there only while its preview shows example content */
+  function exampleNoteOn(card, t, on) {
+    var body = card && card.querySelector('.ps-card-body'), note = body && body.querySelector('.ps-ex-note');
+    if (!body) return;
+    if (!on && note) note.parentNode.removeChild(note);
+    if (on && !note) {
+      var n = document.createElement('span');
+      n.className = 'ps-ex-note';
+      n.textContent = exampleNote(t);
+      var name = body.querySelector('b');
+      if (name && name.nextSibling) body.insertBefore(n, name.nextSibling); else body.appendChild(n);
+    }
+  }
   function rescaleThumbs() {
     if (!root || ED || hiddenNow()) return;
-    Array.prototype.forEach.call(root.querySelectorAll('[data-thumb] .ps-scale'), function (sc) {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-thumb] .ps-scale, [data-example-thumb] .ps-scale, [data-state-thumb] .ps-scale'), function (sc) {
       var f = FMT[LAST.format];
       sc.style.transform = 'scale(' + (sc.parentNode.clientWidth / f.w) + ')';
     });
@@ -1259,6 +1756,7 @@
 
   function openEditor(cfg, savedId, name) {
     var t = TYPE[cfg.type];
+    closePreview();
     ED = { cfg: cfg, savedId: savedId, name: name, dirty: false, sugg: null };
     window.addEventListener('beforeunload', onLeave);
     root.innerHTML = '<div class="ps">' +
@@ -1756,6 +2254,7 @@
      ============================================================ */
   var resizeWired = false;
   function mount(rootEl, ctx) {
+    closePreview();
     root = rootEl; KIT = ctx.kit || {}; EVENT_ID = ctx.eventId;
     toast = ctx.toast || function (m) { console.log(m); };
     PICS = {}; PIC_FAILED = {}; fontsReady = null; SAVED = null; SAVED_ERR = '';
@@ -1764,27 +2263,29 @@
     if (!resizeWired) {
       resizeWired = true;
       var t = 0;
-      window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(function () { fitStage(); rescaleThumbs(); }, 80); });
+      window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(function () { fitStage(); rescaleThumbs(); fitPreview(); }, 80); });
     }
     waitFonts().then(function () { showGallery(); loadSaved(); });
   }
 
-  /* marketing.html calls this each time the Social posts tab is shown again: what was put off while it was hidden
-     is drawn now, at the size it is seen at */
+  /* marketing.html calls this each time the Site-look posts tab is shown again: what was put off while it was
+     hidden is drawn now, at the size it is seen at */
   function shown() {
     if (!root || hiddenNow()) return;
     if (ED) {
       if (pendingShow.stage) redraw(true); else fitStage();
       return;
     }
-    if (pendingShow.thumbs || root.querySelector('[data-thumb]:not([data-drawn])')) drawThumbs();
+    if (pendingShow.thumbs || root.querySelector('[data-thumb]:not([data-drawn])') || root.querySelector(PREVIEW_THUMBS)) drawThumbs();
     rescaleThumbs();
   }
 
   window.RevampPromoPosts = {
     mount: mount,
     shown: shown,
+    banner: banner,
     /* for tests and the mailer studio: the same look a post would use */
-    _internal: { FORMATS: FORMATS, TYPES: TYPES, lookFor: lookFor, drawInto: drawInto, want: want, urlsFor: urlsFor, newCfg: function (t) { return newCfg(t); } }
+    _internal: { FORMATS: FORMATS, TYPES: TYPES, lookFor: lookFor, drawInto: drawInto, want: want, urlsFor: urlsFor, newCfg: function (t) { return newCfg(t); },
+      exampleKit: function (t, lib) { return exampleKit(TYPE[t] || t, lib); }, exampleLibrary: exampleLibrary, bannerLook: bannerLook, MAILBANNER: MAILBANNER }
   };
 })();

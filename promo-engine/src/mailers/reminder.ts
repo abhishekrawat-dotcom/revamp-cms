@@ -6,9 +6,13 @@ import {
   speakersBlock, copyParams, ctaParams, bulletsFor, BULLET_SOURCE_PARAM, YES_NO, isNo, compact,
   overviewBlock,
 } from "./shared.ts";
+// ONEWORLD PORT (owner C): the composed mail banner, above the countdown band.
+import { composedBannerBlock } from "./shared.ts";
 
 // Urgency send. No banner: a countdown band does the work, so it stays light and
 // renders fast in the inbox.
+// ONEWORLD PORT (owner C, O3 = b): except the event's composed mail banner, which leads every mailer but Blank when
+// the event has one; here it sits above the band (see build).
 export const reminderMailer: Mailer = {
   id: "mailer.reminder",
   group: "Reminder",
@@ -56,6 +60,9 @@ export const reminderMailer: Mailer = {
       accent: params.accent || undefined,
       blocks: compact([
         logoBlock(event),
+        // ONEWORLD PORT (owner C, O3 = b): the event's composed banner right under the logo bar when it has one; the
+        // countdown band below still says what the banner does not (how many days are left).
+        composedBannerBlock(event, params),
         // The countdown band is a hero with no sub-line: full-width colour, one line.
         countdown ? blockOf("hero", { ribbon: "", title: countdown, sub: "", meta: dateVenue(event) }) : null,
         sectionLabel(event.hashtag),

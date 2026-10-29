@@ -1,4 +1,4 @@
-Revamp CMS — third-party data notices
+Oneworld 2.0 — third-party notices (data and bundled software)
 
 Place names (functions/lib/data/places.json, used for the "Location" field's suggestions)
   Source: GeoNames (https://www.geonames.org/), files cities1000/cities15000, admin1CodesASCII.txt and
@@ -7,3 +7,14 @@ Place names (functions/lib/data/places.json, used for the "Location" field's sug
   https://creativecommons.org/licenses/by/4.0/
   Changes: reduced to Indian places of 1,000+ people and world places of 15,000+ people (or capitals), with
   their state and country names, and indexed for prefix search (tools/build-places.js).
+
+@webtoon/psd 0.4.0 (promo-engine/vendor/webtoon-psd, bundled into assets/vendor/promo-social.js, which reads a
+  PSD's background and logo in Promotions → Social posts)
+  Source: https://github.com/webtoon/psd, npm package @webtoon/psd 0.4.0, dist/index.js unchanged
+  Licence: MIT, Copyright 2021-present NAVER WEBTOON (promo-engine/vendor/webtoon-psd/LICENSE; the notice is
+  also in the bundle's header)
+
+html-to-image 1.11.13 (assets/vendor/html-to-image.js, and its copy assets/vendor/html-to-image-exact.js)
+  Source: https://github.com/bubkoo/html-to-image, npm package html-to-image 1.11.13, dist/html-to-image.js
+  Licence: MIT, Copyright (c) 2017-2025 W.Y. (the package's LICENSE; the full notice is in the copy's header)
+  Changes: the copy leaves out one fragment, the font-size floor (tools/build-promo-social.js)

@@ -53,7 +53,8 @@ JS = '\n\n'.join('/* ===== from the platform\'s index.html: %s ===== */\n%s' % (
 # are applied to the assembled JS in order, P1 first. A count that differs stops the copy before anything is
 # written, so a platform change under an anchor is read and re-decided, never shipped half-patched. Raw strings:
 # the code holds backticks and ${}. The functions they call (owTrackToast, owDashSubline, owDashPickLabel,
-# anOpenRow, the index-taking anToggleVer) and AN.fresh are promo-studio/oneworld.js's.
+# anOpenRow, the index-taking anToggleVer) and AN.fresh are promo-studio/oneworld.js's. P11 and P12 fix faults of
+# the platform's own (owner D; owner B's decision 5), so the copy does what the platform meant it to.
 PATCHES = [
     (r'''const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");''',
      r'''const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");''',
@@ -85,6 +86,14 @@ PATCHES = [
     (r'''a.download="mailers.zip"; a.click(); toast("Downloaded — saved edits included"); }''',
      r'''a.download="mailers.zip"; a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }''',
      1, 'Download all says when the files went out untracked'),
+    (r'''const fallback=hexNorm((MD&&MD.palette&&MD.palette.accent)||"")||"#4f46e5";''',
+     r'''const fallback=hexNorm((MD&&MD.pal&&MD.pal.accent)||"")||"#4f46e5";''',
+     1, 'a colour field\'s "Use the mailer accent" (its swatch, the picker\'s default, the sample button) reads the palette '
+        'the studio keeps, MD.pal (mlApplyPalette); the platform read MD.palette, which nothing sets, so it always showed its indigo'),
+    (r'''const avail=(MAILERS.mailers||[]).filter(m=>m.available);''',
+     r'''const avail=(MAILERS.mailers||[]).filter(m=>m.available||(saveId&&m.id===preId));''',
+     1, 'a saved version of a mailer the event can no longer make (its speakers were removed, say) opens on itself; the '
+        'platform listed only the mailers that can be made, and silently opened another one in its place'),
 ]
 for n, (old, new, want, why) in enumerate(PATCHES, 1):
     got = JS.count(old)

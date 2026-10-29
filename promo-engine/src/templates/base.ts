@@ -9,7 +9,9 @@ export interface TemplateContext {
   format: Format;
   params: Record<string, any>;
   // Rasterized PSD units (data URIs), assembled into the template layout.
-  assets?: { backgroundUrl?: string; logoUnitUrl?: string };
+  // ONEWORLD PORT: qrUrl / qrLabel are the QR tile's code (a data: SVG of the site's registration address) and its
+  // caption. Oneworld sets them only while the event's site is published; see qrTile below.
+  assets?: { backgroundUrl?: string; logoUnitUrl?: string; qrUrl?: string; qrLabel?: string };
 }
 
 export function esc(s: unknown): string {
@@ -56,13 +58,70 @@ export function brandLockup(ctx: TemplateContext, opts: { compact?: boolean } = 
     </div>`;
 }
 
-export function footerBar(ctx: TemplateContext): string {
+// ONEWORLD PORT: Oneworld's QR tile (promo-posts.js qrHtml; promo.css .pp-qr): the site's registration address as
+// a code on a white tile with its caption, sized per format as Oneworld's own posts size theirs: 150 / 150 / 104 /
+// 201 px for square / portrait / landscape / story (k = 1 / 1 / 0.8 / 1.06). The tile carries its own <style>, so a
+// post without a QR is the platform's, byte for byte. `css` is CSS a template needs only while the tile is there
+// (the Announcement's button row). The caption line is always written, as the shared contract fixes the tile's DOM
+// (.ow-qr > img.ow-qr-code + .ow-qr-t); Oneworld's server never sends an empty caption (it falls back to its own).
+const QR_K: Record<string, number> = { "1:1": 1, "4:5": 1, "16:9": 0.8, "9:16": 1.06 };
+const QR_BASE_PX: Record<string, number> = { "16:9": 130, "9:16": 190 };
+// ONEWORLD PORT: a landscape post is 675 px tall and its templates' bodies already fill it, so Oneworld's stacked
+// tile (about 140 px with its caption) would push the footer up by twice the button's height and the body would lose
+// text and logos it showed without a QR. In 16:9 the caption sits beside the code instead, and the tile reaches into
+// the space the footer already keeps empty above it (about half of its 3cqw top padding) and into the canvas margin
+// below it (about 20 px stay clear of the edge): the footer stays the button's height, so the body keeps every line
+// and logo it had, and the code keeps its full 104 px. A caption longer than "Scan to register" (Oneworld allows 60
+// characters) wraps beside the code instead of pushing the date line into four lines.
+const QR_FOOTER_16_9 = ".footer>.ow-qr{flex-direction:row;margin:-1.6cqw 0 -2.6cqw}" +
+  ".footer>.ow-qr .ow-qr-t{white-space:normal;overflow-wrap:anywhere;max-width:152px}";
+// ONEWORLD PORT: the tile above follows its footer. That is right for every template whose body shrinks to the room
+// it is given (min-height:0), as their 16:9 footer always ends on the content box's bottom edge. The Partner
+// Spotlight's body does not shrink, so with a logo unit (or a name on two lines) it pushes the footer down to the
+// canvas's bottom edge or past it, and a tile that followed would hang off the canvas with its code cut. Such a
+// template asks for the tile pinned to the canvas (pin): in 16:9 it stands 18 px above the canvas's bottom edge (its
+// 17.6 px shadow stays on the canvas) at the footer's left, wherever the footer ends up. It is stacked as Oneworld's
+// own tile, the caption wrapping under the code within the code's width, so its width is known and the date line
+// steps right by exactly that width and the footer's own gap. It rises about 140 px, over that body's empty left side.
+function qrFooterPinned16x9(tileWidth: string): string {
+  return ".footer>.ow-qr{position:absolute;bottom:18px}" +
+    `.footer>.ow-qr .ow-qr-t{white-space:normal;overflow-wrap:anywhere;max-width:${tileWidth};text-align:center}` +
+    `.footer:has(>.ow-qr) .footer-when{margin-left:calc(${tileWidth} + 3cqw)}`;
+}
+export function qrTile(ctx: TemplateContext, css = "", pin = false): string {
+  const url = ctx.assets?.qrUrl;
+  if (!url) return "";
+  const ratio = String(ctx.format?.ratio ?? "");
+  const k = QR_K[ratio] ?? 1;
+  const px = Math.round((QR_BASE_PX[ratio] ?? 150) * k);
+  // Oneworld scales the padding, corner, shadow and caption by k unrounded (calc(var(--k) * 8px)); two decimals keep
+  // the CSS free of float noise such as 18.020000000000003.
+  const u = (n: number) => `${Math.round(n * k * 100) / 100}px`;
+  const label = String(ctx.assets?.qrLabel ?? "");
+  // the white tile's outer width: the code and its padding on both sides (116.8 px in 16:9)
+  const tileWidth = `${Math.round((px + 2 * 8 * k) * 100) / 100}px`;
+  const foot = ratio !== "16:9" ? "" : pin ? qrFooterPinned16x9(tileWidth) : QR_FOOTER_16_9;
+  return `<style>.ow-qr{display:flex;flex-direction:column;align-items:center;gap:${u(8)};flex:none}` +
+    `.ow-qr-code{display:block;width:${px}px;height:${px}px;background:#fff;padding:${u(8)};border-radius:${u(12)};` +
+    `box-shadow:0 ${u(4)} ${u(18)} rgba(0,0,0,.18);box-sizing:content-box}` +
+    `.ow-qr-t{font-size:${u(17)};font-weight:600;letter-spacing:.03em;white-space:nowrap}` +
+    `.footer:has(.ow-qr) .footer-when{flex:1}${foot}${css}</style>` +
+    `<div class="ow-qr"><img class="ow-qr-code" src="${esc(url)}" alt="QR code">` +
+    `<div class="ow-qr-t">${esc(label)}</div></div>`;
+}
+
+// ONEWORLD PORT: `qr` lets a template shape its QR tile. `css` is CSS it needs only while the tile is there (it
+// travels inside the tile's <style>, so a post without a QR stays the platform's), and `pin` pins the 16:9 tile to
+// the canvas (qrFooterPinned16x9 above).
+export function footerBar(ctx: TemplateContext, qr: { css?: string; pin?: boolean } = {}): string {
   const { event } = ctx;
   const where = [event.venue || event.city].filter(Boolean).join("");
   const dateVenue = [event.dateLabel, where].filter(Boolean).join("  ·  ");
+  // ONEWORLD PORT: the QR tile leads the footer. It is written straight before footer-when, so with no QR (an empty
+  // tile) the string is the platform's, whitespace included.
   return `
     <div class="footer">
-      <div class="footer-when">${esc(dateVenue)}</div>
+      ${qrTile(ctx, qr.css, qr.pin)}<div class="footer-when">${esc(dateVenue)}</div>
       <div class="cta">${esc(event.ctaLabel)}</div>
     </div>`;
 }

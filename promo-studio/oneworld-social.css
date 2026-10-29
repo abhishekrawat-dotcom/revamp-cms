@@ -1,0 +1,78 @@
+/* Oneworld's rules for the promotional platform's social posts studio, framed in Promotions → Social posts
+   (promo-social-studio.html). The page loads the platform's stylesheet (promo-studio/mailer-studio.css, the same one
+   the Mailers page uses), then promo-studio/oneworld.css (the console's tokens, light and dark, and the look the two
+   studios share), then this file: only what the posts studio has and the mailer page does not. Like oneworld.css it
+   changes the look, not the layout, wording or behaviour, except where a rule says why (the larger cards, the
+   full-size view). Every colour is one of the console's tokens, so the light and dark themes follow the console's
+   switch; words on a tint, a chip or a badge pass WCAG AA in both (functions/lib/promo-social-adapter.test.js). The
+   post itself is never touched: the stage holds it as drawn, and nothing here reaches the hidden frame it is
+   drawn in. */
+
+/* the platform's Social posts / Promotional mailers switch: Promotions' tabs are the switch here, and its Layout
+   editor / Generate all buttons belong to a drawer Oneworld does not have */
+#evNav{display:none!important}
+/* an event with no hashtag shows no empty chip */
+.hchip:empty{display:none}
+
+/* panels and controls the platform painted white */
+.psd,.assets-slots .slot,.tcard,.ed-zoom,.ed-side,.ed-tabs button.on,.ed-addgrid button,.ed-dd,.ed-ck,.ed-align button{background:var(--panel)}
+.ed-side input[type=color],.seg button,.tgl,.ms,.chk{background-color:var(--panel)}
+.ed-addgrid button:hover{background:var(--panel2)}
+/* the editor's hints (an option's, the QR code's, "Data comes from the API…") are instructions: readable grey (AA),
+   not the platform's faint one */
+.ed-side .hint{color:var(--soft)}
+/* a filled upload slot: the console's saved green on its tint */
+.assets-slots .slot.on{border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+/* the dark theme's own pickers and scrollbars in the editor's bar and side pane; never on the canvas or the stage,
+   which hold the post */
+:root[data-theme="dark"] .ed-side,:root[data-theme="dark"] .ed-top{color-scheme:dark}
+
+/* ---- the template cards (owner B): this event's own posts, larger ---- */
+/* at least 360 px a card (the platform's were 228 px), one column on a phone */
+.tgrid{grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));gap:16px}
+/* the picture is a button that shows it full size (it had no action in the platform) */
+button.thumb{width:100%;margin:0;padding:0;border:0;border-bottom:1px solid var(--line2);border-radius:0;font:inherit;color:inherit}
+.tcard [data-ow-zoom]{cursor:zoom-in}
+.tcard [data-ow-zoom]:focus-visible{outline-offset:-3px}
+/* a template the event cannot make yet shows its real post in full colour; only its words are grey */
+.tcard.dis{opacity:1}
+.tcard.dis .cat,.tcard.dis .nm,.tcard.dis .ds{color:var(--soft)}
+/* Example badge and state chip sit on the picture, outside the post; the post carries its own EXAMPLE ribbon in the
+   top-right corner, so these take the top-left */
+.ow-ex,.ow-chip{position:absolute;top:8px;left:8px;z-index:3;font-size:10.5px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:5px;pointer-events:none}
+.ow-ex{background:var(--ink);color:var(--bg);letter-spacing:.08em;text-transform:uppercase}
+.ow-chip{background:var(--panel);color:var(--ink2);border:1px solid var(--line)}
+.ow-ex-note{font-size:11.5px;line-height:1.45;color:var(--soft);margin-top:9px}
+.ow-ex-note a{color:var(--ow-accent-text);font-weight:600}
+
+/* ---- the full-size view: the whole window (Promotions lets the frame fill it), the picture at its full width ---- */
+.ow-lb{position:fixed;inset:0;z-index:150;display:flex;justify-content:center;align-items:flex-start;overflow:auto;padding:24px 16px;background:var(--ow-scrim)}
+.ow-lb-col{width:min(1080px,100%);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-lg)}
+.ow-lb-bar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--panel);
+  border-bottom:1px solid var(--line2);border-radius:var(--r-lg) var(--r-lg) 0 0}
+.ow-lb-t{font-weight:700;font-size:14px;color:var(--ink)}
+.ow-lb .ow-ex,.ow-lb .ow-chip{position:static}
+.ow-lb-sp{flex:1}
+.ow-lb-x{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);font-size:14px}
+.ow-lb-x:hover{border-color:var(--ow-accent);color:var(--ow-accent-text);background:var(--ow-accent-soft)}
+.ow-lb .ow-ex-note{margin:0;padding:10px 14px}
+.ow-lb-img{display:block;width:100%;max-width:100%;height:auto;border-radius:0 0 var(--r-lg) var(--r-lg)}
+
+/* ---- the upload strip's Remove (oneworld-social-art.js), right after each filled slot ---- */
+.ow-slot-x{display:inline-flex;align-items:center;justify-content:center;min-width:28px;padding:5px 7px;border-radius:7px;border:1px solid var(--line3);
+  background:var(--panel);color:var(--soft);font-size:11px;font-weight:700;line-height:1;margin-left:-3px}
+.ow-slot-x:hover{border-color:var(--ow-accent);color:var(--ow-accent-text);background:var(--ow-accent-soft)}
+
+/* ---- Upload a picture, under the Image / Frame Source box (owner's answer O2 = c) ---- */
+.ow-upl-row{margin-top:6px}
+
+/* ---- the Caption tab and Suggest headlines (oneworld-social-caption.js) ---- */
+#owCapNet{margin-bottom:10px}
+#owCapN{float:right;font-weight:600;color:var(--soft);font-variant-numeric:tabular-nums}
+#owCapN.over{color:var(--bad)}
+.ow-cap-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ow-honest{margin-top:12px;font-size:11.5px;line-height:1.45;color:var(--soft)}
+.ow-sugg{margin-top:6px}
+.ow-sugg-list{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.ow-sugg-list button{text-align:left;padding:6px 9px;border-radius:7px;border:1px solid var(--line3);background:var(--panel);color:var(--ink2);font-size:12px;line-height:1.35}
+.ow-sugg-list button:hover{border-color:var(--ow-accent);color:var(--ow-accent-text)}

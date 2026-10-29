@@ -7,6 +7,8 @@ import {
   selectSponsors, YES_NO, isNo, compact,
   overviewBlock,
 } from "./shared.ts";
+// ONEWORLD PORT (owner C): the composed mail banner, for the spotlight that opens with a colour band.
+import { composedBannerBlock } from "./shared.ts";
 
 // ---- partner line-up (tier ladder) -----------------------------------------
 
@@ -102,7 +104,10 @@ export const partnerSpotlightMailer: Mailer = {
       accent: params.accent || undefined,
       blocks: compact([
         logoBlock(event),
-        heroBlock(event),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner leads instead of the colour band when the event
+        // has one — the platform's own headerBlocks rule ("fall back to the colour hero band only when the
+        // event has no artwork").
+        composedBannerBlock(event, params) ?? heroBlock(event),
         sectionLabel(params.headline || "In association with"),
         blockOf("heading", { text: star?.title || "Our presenting partner", size: 22, align: "center" }),
         star ? sponsorsBlock([star], star.tier) : null,

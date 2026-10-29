@@ -7,6 +7,8 @@ import {
   THEME_PARAM, ACCENT_PARAM, logoBlock, sectionLabel, footerBlock, speakersBlock,
   sponsorsBlock, selectSpeakers, selectSponsors, introFrom, YES_NO, isNo, compact,
 } from "./shared.ts";
+// ONEWORLD PORT (owner C): the composed mail banner, which takes the square mark's place when the event has one.
+import { composedBannerBlock } from "./shared.ts";
 
 // ============================================================================
 //  THE AWARD FAMILY — five sends across one award's lifecycle
@@ -42,6 +44,10 @@ import {
 //     centred**, a **colour band** (the `hero` block's own brand gradient) and
 //     **type**. The deadline send goes further and leads on `lozenges`, which is
 //     nothing but type and colour — the one block that needs no picture at all.
+//     ONEWORLD PORT (owner C): Oneworld composes a WIDE mail banner for each event
+//     (EventEntity.bannerUrl, 750px, drawn from the site's own hero picture).
+//     When an event has one it takes the mark's place through
+//     composedBannerBlock; the square mark itself is still never stretched.
 //
 //   • **WINNERS CANNOT BE NAMED.** `winners_endpoint` exists on 102 rows and
 //     answers 401 "No Token Passed" — it wants a JWT this deployment has not
@@ -432,7 +438,9 @@ export const awardNominationsMailer: Mailer = {
       accent: params.accent || undefined,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 180),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 180),
         blockOf("hero", {
           ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name),
@@ -520,7 +528,9 @@ export const awardDeadlineMailer: Mailer = {
         logoBlock(event),
         // Smaller than the other four: this send is type-led, and the mark is
         // here to identify the award at a glance, not to be the design.
-        markBlock(event, params, 140),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 140),
         blockOf("heading", { text: String(params.headline ?? event.name), size: 22, align: "center" }),
         // The urgency is carried by TYPE AND COLOUR, because an award has no
         // artwork to carry it with. `lozenges` is the one block that needs no
@@ -604,7 +614,9 @@ export const awardJuryMailer: Mailer = {
       accent: params.accent || undefined,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 170),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 170),
         blockOf("hero", {
           ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name), sub: "",
@@ -679,7 +691,9 @@ export const awardCeremonyMailer: Mailer = {
       accent: params.accent || undefined,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 180),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 180),
         blockOf("hero", {
           ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name), sub: String(params.heroSub ?? ""),
@@ -753,7 +767,9 @@ export const awardWinnersMailer: Mailer = {
       accent: params.accent || undefined,
       blocks: compact([
         logoBlock(event),
-        markBlock(event, params, 180),
+        // ONEWORLD PORT (owner C, O3 = b): the composed banner (it carries the logo unit the mark repeats) in
+        // place of the square mark when the event has one; the band and its button below stay.
+        composedBannerBlock(event, params) ?? markBlock(event, params, 180),
         blockOf("hero", {
           ribbon: event.edition ? `${ordinal(event.edition)} Edition` : "",
           title: String(params.headline ?? event.name), sub: String(params.heroSub ?? ""),

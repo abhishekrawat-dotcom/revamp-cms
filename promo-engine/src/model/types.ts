@@ -105,6 +105,10 @@ export interface EventEntity {
   logoUrl?: string;
   keyVisualUrl?: string; // background image (hero banner or promo image)
   keyVisualMode?: "hero" | "wash"; // hero = clean banner shown as-is; wash = blur+tint a busy poster
+  /** ONEWORLD PORT (owner C): the event's composed mail banner — the site's hero picture with its logo unit, date
+   *  and venue drawn in, 750px wide — set by Oneworld only while it is current for the event's inputs. Every
+   *  mailer's top banner defaults to it over the bare key visual; absent, every mailer is the platform's. */
+  bannerUrl?: string;
   micrositeUrl?: string; // public event page (branding_url) — what banners/logos link to
 
   // ---- website theme (so a mailer can match the event's own microsite) ----

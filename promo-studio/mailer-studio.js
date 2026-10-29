@@ -462,7 +462,7 @@ async function downloadAllMailers(){
     With none of them, a mailer that has saves opens on its most recent. */
 function openMailer(preId,saveId,fresh){
   if(!MAILERS){ toast("Open an event first"); return; }
-  const avail=(MAILERS.mailers||[]).filter(m=>m.available);
+  const avail=(MAILERS.mailers||[]).filter(m=>m.available||(saveId&&m.id===preId));
   if(!avail.length){ toast("No mailers available for this event"); return; }
   (MAILERS.blocks||[]).forEach(b=>BS[b.type]=b);
   const akey=`${S.portal}:${S.event}`;
@@ -1508,7 +1508,7 @@ function derivedInk(bg){
 }
 function fldColor(f,val,onchange){
   const wrap=document.createElement("div"); wrap.className="fld";
-  const fallback=hexNorm((MD&&MD.palette&&MD.palette.accent)||"")||"#4f46e5";
+  const fallback=hexNorm((MD&&MD.pal&&MD.pal.accent)||"")||"#4f46e5";
   const cur=hexNorm(val);
   wrap.innerHTML=`<label>${escapeHtml(f.label)}</label>
     <div class="hexf">

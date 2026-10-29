@@ -6,8 +6,13 @@
                                 through GET /api/promo/image, so a drawing that uses it can be exported to PNG —
                                 our Storage bucket and ET's image host send no CORS headers)
      fontsCss(kit)           -> string         <link> tags for the brand's heading and body fonts
-     ensureFonts(kit)        -> Promise         those fonts loaded in this document (document.fonts)
-     toPng(node, w, h)       -> Promise<Blob>  the node drawn as a PNG at exactly w × h (vendored html-to-image)
+     ensureFonts(kit)        -> Promise         their stylesheets arrived and those fonts loaded in this document
+                                (document.fonts), so toPng finds their @font-face rules to embed
+     toPng(node, w, h, opts?) -> Promise<Blob> the node drawn at exactly w × h (vendored html-to-image). With no
+                                opts: a PNG at pixelRatio 1, as every post download has always been made.
+                                opts = { pixelRatio, type, quality }: pixelRatio 2 draws it twice as sharp (the
+                                mail banner: 750 px wide in the mail, 1500 px in the file); type 'image/jpeg' (or
+                                'image/webp') with quality 0..1 encodes that instead of a PNG
      download(blob, name)                      saves a file
      zip(files, name)        -> Promise        files = [{ name, blob|text }] saved as one .zip (vendored JSZip)
      esc(s), colour helpers: lum(hex), contrast(a, b), mix(a, b, t), readableOn(bg) -> '#ffffff'|'#14161b'
@@ -16,7 +21,18 @@
      list(kind)              -> Promise<[item]>  the saved ones, newest first; item.config is the parsed body
      remove(id)              -> Promise
      write(task, input)      -> Promise<{text|options}>  copy by the AI (POST /api/promo/write); see the route
+     isExample(x)            -> boolean        x (a string, or anything JSON can hold) carries example content
    }
+
+   Example content (owner decision B). A preview card of a piece the event has no data for yet may be filled with
+   made-up people, partners and lists from one shared library (/assets/promo-examples/, ids "ex-p01", "ex-l01",
+   "ex-s1"; functions/lib/promo-examples.js). Such content must never leave a preview: toPng refuses a drawing that
+   is or holds a [data-example] node (promo-posts.js marks the root of every drawing of an example Kit) or a picture
+   loaded from the library (its blob: URL from image(), or its own address); the library's plain lists (numbers,
+   who should attend, topics) carry no marker of their own and are caught by that root mark. save and zip refuse
+   anything carrying the library's address or one of its ids, with "Example content can never be saved or
+   downloaded." (error code 'example'). The server refuses the same markers on every path (isExample in lib/promo-examples.js, whose rules
+   these mirror); this is only the browser's own check, so a slip is caught before anything is sent.
 
    Kit (the contract with functions/lib/promo.js — keep the two in step):
    {
@@ -26,7 +42,9 @@
                 colours: { theme, accent, background, surface, text, muted, heading, onTheme },
                 fonts: { heading: { family, stack, cssUrl }, body: { family, stack, cssUrl } },
                 radius,                                   // e.g. '12px'
-                logoUnit: { url, width, height, tone: 'dark'|'light' } | null,   // the site's own lock-up
+                logoUnit: { url, darkUrl, width, height, tone: 'dark'|'light' } | null,   // the site's own lock-up;
+                                                          // darkUrl: its own copy for a dark ground, or '' (never a
+                                                          // recolouring of ours: the ET red square stays as drawn)
                 eventLogoUrl, heroImageUrl, pictures: [url],                      // the site's own pictures
                 logoUnitParts: { before, keyword, after } },                       // to set the name when there is no unit
      content: { overview, speakers: [{ id, name, designation, company, photoUrl, group }],
@@ -68,6 +86,15 @@
   }
 
   var currentEvent = '';
+  /* the blob: URLs made of pictures from the example library: a drawing holding one is an example (drawsExample),
+     even though its <img> no longer shows the library's address */
+  var exampleBlobs = {};
+  /* a failed answer keeps its status, so a caller can tell a picture that is gone (404) from one that may come */
+  function notLoaded(message, status) {
+    var err = new Error(message);
+    err.status = status;
+    return err;
+  }
   function image(url) {
     url = String(url || '');
     if (!url) return Promise.resolve('');
@@ -76,13 +103,17 @@
     var abs = /^\//.test(url) ? location.origin + url : url;
     /* our own files are same-origin already */
     if (abs.indexOf(location.origin + '/') === 0) {
-      blobs[url] = fetch(abs).then(function (r) { if (!r.ok) throw new Error('missing'); return r.blob(); }).then(function (b) { return URL.createObjectURL(b); });
+      blobs[url] = fetch(abs).then(function (r) { if (!r.ok) throw notLoaded('missing', r.status); return r.blob(); }).then(function (b) { return URL.createObjectURL(b); });
     } else {
       blobs[url] = window.RevampAuth.authedFetch('/api/promo/image?eventId=' + encodeURIComponent(currentEvent) + '&url=' + encodeURIComponent(abs))
-        .then(function (r) { if (!r.ok) throw new Error('The picture could not be loaded (' + r.status + ').'); return r.blob(); })
+        .then(function (r) { if (!r.ok) throw notLoaded('The picture could not be loaded (' + r.status + ').', r.status); return r.blob(); })
         .then(function (b) { return URL.createObjectURL(b); });
     }
-    blobs[url] = blobs[url].then(null, function (err) { delete blobs[url]; throw err; });
+    var fromLibrary = EXAMPLE_PATH_RE.test(url);
+    blobs[url] = blobs[url].then(function (b) {
+      if (fromLibrary) exampleBlobs[b] = 1;
+      return b;
+    }, function (err) { delete blobs[url]; throw err; });
     return blobs[url];
   }
 
@@ -93,34 +124,114 @@
     });
     return out;
   }
+  /* Kit font stylesheets this page asked for: address → a promise settled once that <link> has loaded or failed.
+     document.fonts.load() asked before the stylesheet has arrived matches no @font-face and resolves at once, so a
+     drawing made right after ensureFonts (the mail banner, which is then kept; a first card) found no font rules to
+     embed and came out in a fallback face. */
+  var fontSheets = {};
   function ensureFonts(kit) {
-    var f = (kit && kit.brand && kit.brand.fonts) || {};
+    var f = (kit && kit.brand && kit.brand.fonts) || {}, sheets = [];
     [f.heading, f.body].forEach(function (x) {
-      if (!x || !x.cssUrl || document.querySelector('link[data-promo-font="' + x.cssUrl + '"]')) return;
+      if (!x || !x.cssUrl) return;
+      if (fontSheets[x.cssUrl]) { sheets.push(fontSheets[x.cssUrl]); return; }
+      if (document.querySelector('link[data-promo-font="' + x.cssUrl + '"]')) return;
       var l = document.createElement('link');
       /* asked for with CORS (Google's font CSS allows it), so the PNG maker can read its rules and embed the fonts */
       l.rel = 'stylesheet'; l.crossOrigin = 'anonymous'; l.href = x.cssUrl; l.setAttribute('data-promo-font', x.cssUrl);
+      /* waited for only where the browser reports it (a <link> with a sheet property and load / error events) */
+      if ('sheet' in l && typeof l.addEventListener === 'function') {
+        fontSheets[x.cssUrl] = new Promise(function (ok) { l.addEventListener('load', ok); l.addEventListener('error', ok); });
+        sheets.push(fontSheets[x.cssUrl]);
+      }
       document.head.appendChild(l);
     });
-    if (!document.fonts || !document.fonts.load) return Promise.resolve();
-    var wants = [];
-    [f.heading, f.body].forEach(function (x) {
-      if (!x || !x.family) return;
-      ['400', '600', '700', '800'].forEach(function (w) { wants.push(document.fonts.load(w + ' 32px "' + x.family + '"').catch(function () {})); });
-    });
-    return Promise.all(wants).then(function () { return document.fonts.ready; });
+    if (!document.fonts || !document.fonts.load) return Promise.all(sheets);
+    return Promise.all(sheets).then(function () {
+      var wants = [];
+      [f.heading, f.body].forEach(function (x) {
+        if (!x || !x.family) return;
+        ['400', '600', '700', '800'].forEach(function (w) { wants.push(document.fonts.load(w + ' 32px "' + x.family + '"').catch(function () {})); });
+      });
+      return Promise.all(wants);
+    }).then(function () { return document.fonts.ready; });
   }
 
-  /* exactly w × h, whatever the node is shown at on the page */
-  function toPng(node, w, h) {
+  /* ---------------- example content: the browser's own guard (see the header) ---------------- */
+  /* the same three markers as the server's isExample (lib/promo-examples.js): the library's address in a URL (also
+     URL-encoded or JSON-escaped), one of its ids as a quoted value (\x60 is the backtick), and the example meta /
+     label marker */
+  var EXAMPLE_PATH_RE = /assets(?:\\?\/|%2F)promo-examples(?:\\?\/|%2F)/i;
+  var EXAMPLE_ID_RE = /(?:["'\x60]|&quot;|&#0*3[49];|&#x0*2[27];)ex-[pls]\d+(?![A-Za-z0-9_-])/;
+  var EXAMPLE_META_RE = /oneworld-example/i;
+  var EXAMPLE_REFUSED = 'Example content can never be saved or downloaded.';
+  function textOf(x) {
+    if (x == null) return '';
+    if (typeof x === 'string') return x;
+    if (typeof x !== 'object') return '';
+    try { return JSON.stringify(x) || ''; } catch (e) { return ''; }
+  }
+  function isExample(x) {
+    var s = textOf(x);
+    return !!s && (EXAMPLE_PATH_RE.test(s) || EXAMPLE_ID_RE.test(s) || EXAMPLE_META_RE.test(s));
+  }
+  function exampleRefused() {
+    var err = new Error(EXAMPLE_REFUSED);
+    err.code = 'example';
+    return err;
+  }
+  /* a drawing made from example content: promo-posts.js writes data-example on the root of every drawing of an
+     example Kit (postHtml), and, should a drawing ever lack that mark, a picture from the library is caught by
+     itself: by the blob: URL image() made of it, or by its own address */
+  function drawsExample(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.hasAttribute && node.hasAttribute('data-example')) return true;
+    if (!node.querySelector) return false;
+    if (node.querySelector('[data-example]')) return true;
+    var imgs = node.querySelectorAll('img');
+    for (var i = 0; i < imgs.length; i++) {
+      var src = String(imgs[i].getAttribute('src') || '');
+      if (exampleBlobs[src] || EXAMPLE_PATH_RE.test(src)) return true;
+    }
+    return false;
+  }
+
+  /* exactly w × h, whatever the node is shown at on the page. With no opts (every post download) it is what it has
+     always been: a PNG at pixelRatio 1. opts.pixelRatio draws more pixels per CSS pixel; opts.type 'image/jpeg' or
+     'image/webp' goes through toCanvas and the canvas's own encoder, because the vendored toBlob only writes PNG. */
+  function toPng(node, w, h, o) {
     var H = window.htmlToImage;
     if (!H) return Promise.reject(new Error('The picture maker did not load. Reload the page.'));
-    var opts = { width: w, height: h, pixelRatio: 1, cacheBust: false, style: { transform: 'none', transformOrigin: '0 0', margin: '0' } };
-    /* the first pass loads the fonts and pictures into the drawing; the second is the one that is kept */
-    return H.toBlob(node, opts).then(function () { return H.toBlob(node, opts); }).then(function (blob) {
+    if (drawsExample(node)) return Promise.reject(exampleRefused());
+    o = o || {};
+    var ratio = +o.pixelRatio > 0 ? +o.pixelRatio : 1;
+    var type = o.type === 'image/jpeg' || o.type === 'image/webp' ? o.type : 'image/png';
+    var opts = { width: w, height: h, pixelRatio: ratio, cacheBust: false, style: { transform: 'none', transformOrigin: '0 0', margin: '0' } };
+    var made;
+    if (type === 'image/png') {
+      /* the first pass loads the fonts and pictures into the drawing; the second is the one that is kept */
+      made = H.toBlob(node, opts).then(function () { return H.toBlob(node, opts); });
+    } else {
+      if (typeof H.toCanvas !== 'function') return Promise.reject(new Error('The picture maker did not load. Reload the page.'));
+      var quality = +o.quality > 0 && +o.quality <= 1 ? +o.quality : 0.92;
+      /* two passes here too, for the same reason */
+      made = H.toCanvas(node, opts).then(function () { return H.toCanvas(node, opts); }).then(function (canvas) {
+        return encode(canvas, type, quality);
+      });
+    }
+    return made.then(function (blob) {
       if (!blob) throw new Error('The picture could not be made.');
       return blob;
     });
+  }
+  /* a canvas as a Blob of that type (toDataURL where a browser has no canvas.toBlob) */
+  function encode(canvas, type, quality) {
+    if (!canvas) return Promise.resolve(null);
+    if (typeof canvas.toBlob === 'function') {
+      return new Promise(function (resolve) { canvas.toBlob(function (b) { resolve(b || null); }, type, quality); });
+    }
+    var url = canvas.toDataURL(type, quality), bin = atob(url.split(',')[1] || ''), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return Promise.resolve(new Blob([bytes], { type: type }));
   }
 
   function download(blob, name) {
@@ -131,6 +242,11 @@
   }
   function zip(files, name) {
     if (!window.JSZip) return Promise.reject(new Error('The zip maker did not load. Reload the page.'));
+    /* a file's own bytes are pictures made by toPng, which refuses example drawings; its name and any text are
+       looked at here */
+    if (isExample(name) || (files || []).some(function (f) { return isExample(f && f.name) || isExample(f && f.text); })) {
+      return Promise.reject(exampleRefused());
+    }
     var z = new window.JSZip();
     files.forEach(function (f) { z.file(f.name, f.blob || f.text || ''); });
     return z.generateAsync({ type: 'blob' }).then(function (b) { download(b, name); });
@@ -156,6 +272,8 @@
 
   var KIND = { post: 'post', email: 'email' };
   function save(kind, item) {
+    /* the server refuses it too (api.js checkPromoBody); refused here before anything is sent */
+    if (isExample(item)) return Promise.reject(exampleRefused());
     var body = { kind: KIND[kind] || kind, name: String(item.name || 'Untitled').slice(0, 120), body: JSON.stringify(item.config || {}) };
     if (item.subject != null) body.subject = String(item.subject).slice(0, 200);
     if (item.imageUrl) body.imageUrl = item.imageUrl;
@@ -179,6 +297,6 @@
     load: function (eventId, fresh) { currentEvent = String(eventId || ''); return load(currentEvent, fresh); },
     image: image, fontsCss: fontsCss, ensureFonts: ensureFonts, toPng: toPng, download: download, zip: zip,
     esc: esc, lum: lum, contrast: contrast, mix: mix, readableOn: readableOn,
-    save: save, list: list, remove: remove, write: write
+    save: save, list: list, remove: remove, write: write, isExample: isExample
   };
 })();
