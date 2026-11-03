@@ -65,32 +65,34 @@ check('dark theme defined both ways (system and the switch), and the body has it
   /@media \(prefers-color-scheme: dark\)\{\s*:root:not\(\[data-theme="light"\]\)\{/.test(page) && /:root\[data-theme="dark"\]\{/.test(page) && /\bbody\{ background:var\(--bg\);/.test(page));
 check('the viewport is set for phones', page.indexOf('<meta name="viewport" content="width=device-width, initial-scale=1">') !== -1);
 
-/* ---------- Event_Listing.html: the link, once, directly before "Activity log" ---------- */
+/* ---------- Event_Listing.html: Mailer performance is a report in the ⋯ menu above the table ----------
+   (2026-11-03, owner: the toolbar keeps Create Event alone; the reports moved to the ⋯ menu, the activity log also
+   to the "Latest Activity" panel, and the list / card switch to the row above the table) */
 var listing = fs.readFileSync(path.join(ROOT, 'Event_Listing.html'), 'utf8');
-var LINK = '<a class="btn btn-secondary btn-sm" href="mailer-performance.html" id="btn-mailer-performance" title="Mailer performance" aria-label="Mailer performance">';
-var at = listing.indexOf(LINK), actAt = listing.indexOf('id="btn-activity-log"');
-check('the events listing has the Mailer performance link once', count(listing, LINK) === 1 && count(listing, 'id="btn-mailer-performance"') === 1 &&
-  count(listing, 'href="mailer-performance.html"') === 1);
-check('the link comes before Activity log', at !== -1 && actAt !== -1 && at < actAt);
-var block = at === -1 ? '' : listing.slice(at, listing.indexOf('</a>', at) + 4);
-check('it reads "Mailers" beside a 14px stroke icon the screen reader skips; its title and accessible name are "Mailer performance"',
-  /<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">/.test(block) &&
-  /<\/svg>\s*Mailers\s*<\/a>$/.test(block), block);
+var MENU = '\'<a class="popover-item" href="mailer-performance.html" id="menu-mailer-performance">\' + REPORT_IC.mailers + \' Mailer performance</a>\'';
+check('the ⋯ menu lists Mailer performance once, under a "Reports" heading after the deleted events',
+  count(listing, MENU) === 1 && count(listing, 'href="mailer-performance.html"') === 1 &&
+  listing.indexOf('<div class="popover-label">Reports</div>') > listing.indexOf('data-special="deleted"') &&
+  listing.indexOf(MENU) > listing.indexOf('<div class="popover-label">Reports</div>'));
+check('…and the Activity log beside it', listing.indexOf('<a class="popover-item" href="activity-log.html" id="menu-activity-log">') > listing.indexOf(MENU));
+var toolbar = listing.slice(listing.indexOf('<div class="toolbar-right-group">'), listing.indexOf('<div class="chip-row" id="chip-row">'));
+check('the toolbar\'s right-hand group holds only the result line and Create Event',
+  toolbar.indexOf('id="result-line"') !== -1 && toolbar.indexOf('id="btn-create-event"') !== -1 &&
+  toolbar.indexOf('mailer-performance') === -1 && toolbar.indexOf('activity-log') === -1 && toolbar.indexOf('view-toggle') === -1);
+var bar = listing.slice(listing.indexOf('<div class="section-bar-right">'), listing.indexOf('<div id="special-banner">'));
+check('the list / card switch sits on the row above the table, before the refresh', bar.indexOf('<div class="view-toggle" id="view-toggle">') !== -1 &&
+  bar.indexOf('id="view-toggle"') < bar.indexOf('id="btn-sync"'));
+var act = listing.slice(listing.indexOf('<div class="card panel-card" id="activity-card">'));
+check('the "Latest Activity" panel links to the full activity log', /<a class="btn btn-secondary btn-sm" href="activity-log.html" id="btn-activity-log">[\s\S]*?Full activity log\s*<\/a>/.test(act));
 /* the toolbar keeps one row on desktop (measured against the base commit at 1280-1920 px, with long "Showing …" lines
    and filters in use): the search box narrows, down to 180px, before the filters wrap. On a phone the right-hand
-   links wrap among themselves rather than widen the page. */
+   group wraps among itself rather than widen the page. */
 var css = listing.slice(listing.indexOf('<style>'), listing.indexOf('</style>'));
 check('desktop: the search box gives way (flex 1 1 180px) before the filters wrap; 290px stays its width',
   /@media \(min-width:881px\)\{ \.search-box\{ flex:1 1 180px; \} \}/.test(css) && /\.search-box\{[^}]*max-width:290px;/.test(css));
 check('phones: the right-hand group may wrap and shrink', (function () {
   var m = /@media \(max-width:880px\)\{([\s\S]*?)\n  \}/.exec(css);
   return !!m && /\.toolbar-right-group\{ flex-wrap:wrap; flex-shrink:1; min-width:0; \}/.test(m[1]);
-})());
-check('nothing between it and the activity log\'s link but that link\'s comment',
-  /^\s*<!-- the activity log across all events \(activity-log.html\) -->\s*<a class="btn btn-secondary btn-sm" href="activity-log.html" id="btn-activity-log">/.test(listing.slice(at + block.length)));
-check('both sit in the toolbar\'s right-hand group', (function () {
-  var g = listing.indexOf('<div class="toolbar-right-group">');
-  return g !== -1 && g < at && listing.indexOf('<div class="view-toggle" id="view-toggle">', g) > actAt;
 })());
 
 if (failed) { console.error('mailer-performance-page: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
