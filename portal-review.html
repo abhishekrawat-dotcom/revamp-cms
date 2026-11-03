@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Oneworld 2.0 — Fill in portals: every event now belongs to one ET portal, and events made before that have none.
+     This page shows the read-only evidence report (GET /api/events/portal-evidence, lib/event-portal.js) as rows a
+     person can judge: the events whose own records all name one portal are ready and ticked; the ones whose records
+     disagree, or that their name or only their generated site speaks for, need a person (Set portal); the rest have no
+     evidence. One button, for approvers only, sends exactly the ticked (event, portal) pairs to
+     POST /api/events/portal-backfill, which checks each again before it writes. Nothing here works a portal out
+     itself, and nothing is written until an approver presses the button. Linked from the dashboard's
+     "No portal yet" notice (Event_Listing.html). -->
+<title>Fill in portals — Oneworld 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="edit-event.css">
+<script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<style>
+  /* Only the console's own tokens (edit-event.css), so the light / dark switch flips this page as it flips the
+     console, and no colour of its own can drift from it. */
+  [hidden]{ display:none !important; }
+  .topbar .ev-title h1{ font-size:16.5px; }
+  .pr-main{ max-width:1000px; margin:0 auto; padding:22px 24px 80px; }
+  .pr-main .vhead{ margin-bottom:14px; }
+  .pr-main .vhead h2{ font-size:22px; }
+  .pr-main .vhead .sub{ max-width:760px; line-height:1.55; }
+
+  .pr-summary{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin:0 0 16px; font-size:13px; color:var(--text-muted); }
+  .pr-summary b{ color:var(--text); font-weight:800; }
+  .pr-summary .grow{ flex:1; min-width:200px; }
+  .pr-banner{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:12px 14px; border-radius:11px; margin:0 0 16px; font-size:13px; }
+  .pr-banner .grow{ flex:1; min-width:200px; line-height:1.5; }
+  .pr-banner.err{ background:var(--accent-soft); color:var(--accent-strong); font-weight:600; }
+  .pr-note{ padding:12px 14px; border-radius:11px; margin:0 0 16px; font-size:13px; line-height:1.55; background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+
+  .pr-main .panel-head h3{ display:flex; align-items:center; gap:8px; }
+  .pr-main .panel-head h3:focus{ outline:0; }
+  .pr-count{ font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--text-muted); }
+  .pr-lead{ flex-basis:100%; margin:0; font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+  .pr-all{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:var(--text); cursor:pointer; }
+
+  .pr-list{ list-style:none; margin:0; padding:0; }
+  .pr-row{ display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); }
+  .pr-row:last-child{ border-bottom:0; }
+  .pr-row input[type="checkbox"], .pr-all input[type="checkbox"]{ width:18px; height:18px; margin:1px 0 0; flex-shrink:0; accent-color:var(--accent); cursor:pointer; }
+  .pr-row input[type="checkbox"]:disabled{ cursor:not-allowed; }
+  .pr-col{ flex:1; min-width:0; }
+  .pr-line{ display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 8px; font-size:13.5px; }
+  label.pr-line{ cursor:pointer; }
+  .pr-name{ font-weight:700; color:var(--text); overflow-wrap:anywhere; min-width:0; }
+  .pr-to{ color:var(--text-muted); }
+  .pr-portal{ font-weight:800; color:var(--accent-strong); overflow-wrap:anywhere; }
+  .pr-tag{ display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:700; background:var(--ok-soft); color:var(--text); white-space:nowrap; }
+  .pr-why{ margin-top:3px; font-size:12.5px; color:var(--text-muted); line-height:1.5; overflow-wrap:anywhere; }
+  .pr-reason{ margin-top:3px; font-size:13px; color:var(--text); line-height:1.5; overflow-wrap:anywhere; }
+  .pr-hint{ margin-top:3px; font-size:12.5px; font-weight:600; color:var(--warn); line-height:1.5; }
+  .pr-res{ margin-top:5px; font-size:12.5px; font-weight:700; line-height:1.5; color:var(--text); }
+  .pr-res.ok::before{ content:"\2713"; color:var(--ok); margin-right:6px; }
+  .pr-res.skip{ color:var(--warn); }
+  .pr-side{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .pr-open{ font-size:12px; font-weight:700; color:var(--text-muted); text-decoration:none; white-space:nowrap; padding:4px 2px; }
+  .pr-open:hover{ color:var(--accent-strong); text-decoration:underline; }
+  .pr-empty{ padding:18px 16px; margin:0; font-size:13px; color:var(--text-muted); }
+
+  /* the button stays in reach while the ready rows are scrolled through */
+  .pr-actions{ position:sticky; bottom:0; display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:12px 16px; border-top:1px solid var(--border); background:var(--surface); border-radius:0 0 12px 12px; }
+  /* a panel clips its corners with overflow:hidden, which would also stop the bar above from sticking; clip does not */
+  .pr-main .panel.pr-ready{ overflow:visible; overflow:clip; }
+  .pr-actions .grow{ flex:1; min-width:180px; font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+
+  details.pr-fold > summary{ list-style:none; cursor:pointer; }
+  details.pr-fold > summary::-webkit-details-marker{ display:none; }
+  details.pr-fold > summary h3::before{ content:"\25B8"; color:var(--text-muted); font-size:12px; }
+  details.pr-fold[open] > summary h3::before{ content:"\25BE"; }
+  details.pr-fold:not([open]) > summary{ border-bottom:0; }
+  details.pr-fold > summary:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; border-radius:12px; }
+
+  .pr-modal{ width:min(520px, 100%); }
+  .pr-modal .modal-head h3{ font-size:16px; }
+
+  /* phones: the page keeps a 16px gutter (the console's top bar would drop to 10px), and a row's buttons go under
+     its words rather than squeeze them, so nothing ever scrolls sideways at 375px */
+  @media (max-width: 760px){
+    .pr-main{ padding:16px 16px 70px; }
+    .pr-row{ flex-wrap:wrap; padding:12px 14px; }
+    .pr-side{ width:100%; justify-content:flex-end; }
+    .pr-actions{ padding:12px 14px; }
+    .pr-actions .btn{ flex:1 1 auto; }
+  }
+  @media (max-width: 480px){
+    .topbar{ padding:0 16px; }
+    .pr-main .vhead h2{ font-size:19px; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar" id="pr-top">
+  <a class="back-btn" href="Event_Listing.html" aria-label="Back to events">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    <span>Back to events</span>
+  </a>
+  <span class="ev-title">
+    <h1>Fill in portals</h1>
+    <span class="meta">Oneworld 2.0 · events made before portals</span>
+  </span>
+  <span class="topbar-acts">
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span data-rv-account></span>
+  </span>
+</header>
+
+<main class="pr-main" id="pr-main">
+  <div class="vhead">
+    <div class="crumb">Portals</div>
+    <h2 id="pr-heading" tabindex="-1">Fill in the portals of existing events</h2>
+    <div class="sub">Every event in Oneworld 2.0 now belongs to one ET portal. Events made before that have none yet. This page reads each event's own records, and offers a portal only where every one of them names the same portal. Nothing is filled in until an approver presses the button, and nothing is guessed.</div>
+  </div>
+  <div id="pr-status"></div>
+  <div id="pr-body"><p class="pr-empty">Reading every event's records…</p></div>
+  <div class="sr" id="pr-live" aria-live="polite"></div>
+</main>
+
+<div class="toast-host" id="toast-host"></div>
+<div id="modal-host"></div>
+
+<script src="theme-toggle.js"></script>
+<script src="auth.js"></script>
+<script src="portal-picker.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  /* the backfill takes at most 200 pairs a call; more are sent one call after another */
+  var CHUNK = 200;
+
+  /* What each kind of evidence is, in the words the owner reads. The server says each one in words itself
+     (`where`, which knows a previous edition from this edition's own page); these are for an answer without them.
+     The site's bar and footer are what the site "was generated with": they only echo what it was made from. */
+  var KIND_WORDS = {
+    'et-record': 'its previous edition\'s ET record',
+    'et-link': 'its ET link',
+    'design-reference': 'the ET page its design was modelled on',
+    'logo-unit-page': 'the ET page its logo unit came from',
+    'site-bar': 'the ET bar its site was generated with',
+    'site-footer': 'the ET footer its site was generated with'
+  };
+  /* the same, short, for "Its name says ETCIO; its link says ETHRWorld." */
+  var KIND_SHORT = {
+    'et-record': 'its previous edition\'s ET record',
+    'et-link': 'its link',
+    'design-reference': 'the design it was copied from',
+    'logo-unit-page': 'its logo unit\'s page',
+    'site-bar': 'its site\'s generated bar',
+    'site-footer': 'its site\'s generated footer'
+  };
+  /* hints never decide anything; they say how thin the evidence is */
+  var HINT_WORDS = {
+    'link-only': 'Only a typed ET link says so.',
+    'design-only': 'Only the design it was copied from says so.'
+  };
+  /* why the server left a ticked event as it was (it checks each one again when it writes) */
+  var SKIP_WORDS = {
+    'not-found': 'Skipped: this event no longer exists.',
+    'not-live': 'Skipped: this event was deleted, or is being discarded.',
+    'has-portal': 'Skipped: its portal was set meanwhile, so it was left as it is.',
+    'conflict': 'Skipped: its records now name more than one portal.',
+    'blocked': 'Skipped: it now needs a person to choose its portal.',
+    'not-certain': 'Skipped: its records no longer name one portal for certain.',
+    'changed-since-review': 'Skipped: its records changed after this page read them. Check it again before filling it in.'
+  };
+  var FROM_WORDS = { create: 'Chosen in Create Event.', set: 'Set by a person.', backfill: 'Filled in from its records.' };
+
+  var S = {
+    report: null,          // the evidence report the page shows
+    groups: null,          // its items, sorted into ready / person / none / set
+    names: null,           // slug -> name, ET's portal roster
+    loading: false, error: null, seq: 0,
+    choice: Object.create(null),    // 'eventId|slug' -> true / false: what the person ticked or unticked themselves
+    hold: Object.create(null),      // eventId -> true: not filled in by the last press, so it starts unticked and is looked at again
+    results: Object.create(null),   // eventId -> { status, portal, reason, text }: the line its row shows for the last press; a Set portal takes it away
+    run: null,             // the last press: { rows: [{ eventId, name, portal }], results: eventId -> answer, error }. Its answers are its own,
+                           // so a Set portal afterwards never changes what the press is reported to have done
+    busy: false,
+    setOpen: false,        // "Already set" unfolded
+    focusAfter: null       // where focus goes once the report has been read again after a Set portal
+  };
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+  function own(o, k){ return !!o && typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k); }
+  function arr(v){ return Array.isArray(v) ? v : []; }
+  function uniq(a){ var out = []; a.forEach(function(x){ if (out.indexOf(x) === -1) out.push(x); }); return out; }
+  function joinAnd(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function plural(n, one, many){ return n + ' ' + (n === 1 ? one : many); }
+  function say(text){ var el = $('pr-live'); if (el) el.textContent = text; }
+
+  var IST = null;
+  try { IST = new Intl.DateTimeFormat('en-IN', { timeZone:'Asia/Kolkata', day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true }); } catch (e) { IST = null; }
+  function when(iso){
+    var d = new Date(iso || '');
+    if (isNaN(d.getTime()) || !IST) return '';
+    return IST.format(d) + ' IST';
+  }
+
+  /* ---------- names: only ET's roster names a portal; a slug is never shown ---------- */
+  function nameOf(slug){ return own(S.names, slug) ? S.names[slug] : ''; }
+  function shownName(slug){ return nameOf(slug) || 'a portal Oneworld does not list'; }
+
+  /* ---------- reading the evidence the server gives (it is never worked out again here) ---------- */
+  function evidence(it){ return arr(it.evidence).filter(function(e){ return e && typeof e.portal === 'string' && e.portal; }); }
+  function slugsIn(it){ return uniq(evidence(it).map(function(e){ return e.portal; })); }
+  function nameBlocks(it){
+    return uniq(arr(it.blockers).filter(function(b){ return typeof b === 'string' && b.indexOf('name-mentions:') === 0; })
+      .map(function(b){ return b.slice(14); }));
+  }
+  function storedSlug(it){ return typeof it.portal === 'string' ? it.portal : ''; }
+  /* the one portal the server found certain, and only when it is on the roster; it is the portal shown and the
+     portal sent, so what the owner ticks is exactly what is written */
+  function certainSlug(it){
+    var s = '';
+    if (typeof it.certain === 'string') s = it.certain;
+    else if (it.certain === true && slugsIn(it).length === 1) s = slugsIn(it)[0];
+    return s && nameOf(s) ? s : '';
+  }
+  function groupOf(it){
+    var stored = storedSlug(it);
+    // a stored value that is not on the roster is no portal at all: a person sets the right one
+    if (stored) return nameOf(stored) ? 'set' : 'person';
+    if (certainSlug(it) && !arr(it.blockers).length && !arr(it.conflict).length) return 'ready';
+    if (arr(it.blockers).length || arr(it.conflict).length || evidence(it).length) return 'person';
+    return 'none';
+  }
+  function groupsOf(report){
+    var g = { ready: [], person: [], none: [], set: [] }, seen = Object.create(null);
+    arr(report && report.items).forEach(function(it){
+      // an event listed twice would be sent twice, which the server refuses for the whole call
+      if (!it || typeof it.eventId !== 'string' || !it.eventId || own(seen, it.eventId)) return;
+      seen[it.eventId] = true;
+      g[groupOf(it)].push(it);
+    });
+    return g;
+  }
+
+  function serverWords(e){ return typeof e.where === 'string' && /\s/.test(e.where.trim()) ? e.where.trim() : ''; }
+  function kindWords(e){ return serverWords(e) || (own(KIND_WORDS, e.kind) ? KIND_WORDS[e.kind] : 'its records'); }
+  /* a record is named as the server names it (a previous edition's, or this edition's own); a link is "its link" */
+  function kindShort(e){ return (e.kind === 'et-record' && serverWords(e)) || (own(KIND_SHORT, e.kind) ? KIND_SHORT[e.kind] : 'its records'); }
+  function evidenceWords(it, slug){
+    var words = uniq(evidence(it).filter(function(e){ return !slug || e.portal === slug; }).map(kindWords));
+    return words.length ? 'From ' + joinAnd(words) + '.' : '';
+  }
+  function hintWords(it){ return uniq(arr(it.hints).filter(function(h){ return own(HINT_WORDS, h); }).map(function(h){ return HINT_WORDS[h]; })); }
+
+  /* "its link says ETHRWorld", "its link and the design it was copied from say ETHRWorld" */
+  function saysClause(it, slug){
+    var nouns = uniq(evidence(it).filter(function(e){ return e.portal === slug; }).map(kindShort));
+    return joinAnd(nouns) + (nouns.length > 1 ? ' say ' : ' says ') + shownName(slug);
+  }
+  function siteOnlyWords(it){
+    var kinds = uniq(evidence(it).map(function(e){ return e.kind; }));
+    var bar = kinds.indexOf('site-bar') !== -1, foot = kinds.indexOf('site-footer') !== -1;
+    var what = bar && foot ? 'its site\'s generated bar and footer say ' : (foot && !bar ? 'its site\'s generated footer says ' : 'its site\'s generated bar says ');
+    var slugs = slugsIn(it);
+    return slugs.length ? 'Only ' + what + joinAnd(slugs.map(shownName)) + '.' : 'Only its site\'s generated bar or footer names a portal.';
+  }
+  /* why nobody can fill this one in by pressing a button, in words: never a code or a slug */
+  function reasonsOf(it){
+    var out = [], stored = storedSlug(it), named = nameBlocks(it), slugs = slugsIn(it), conflict = arr(it.conflict);
+    var siteOnly = arr(it.blockers).indexOf('site-only') !== -1;
+    if (stored && !nameOf(stored)) return ['It holds a portal Oneworld does not list. Set the right one.'];
+    if (named.length){
+      var head = 'Its name says ' + joinAnd(named.map(shownName));
+      if (!conflict.length && !siteOnly && slugs.length) head += '; ' + joinAnd(slugs.map(function(s){ return saysClause(it, s); }));
+      out.push(head + '.');
+    }
+    if (conflict.length) out.push('Its sources disagree: ' + conflict.map(shownName).join(', ') + '.');
+    if (siteOnly) out.push(siteOnlyWords(it));
+    if (!out.length) out.push('Its records do not name one portal for certain.');
+    return out;
+  }
+  /* where each portal of a conflict was found, so the person can choose */
+  function conflictWhere(it){
+    var conflict = arr(it.conflict);
+    if (!conflict.length) return '';
+    return conflict.map(function(s){
+      var words = uniq(evidence(it).filter(function(e){ return e.portal === s; }).map(kindWords));
+      return shownName(s) + (words.length ? ' from ' + joinAnd(words) : '');
+    }).join('; ') + '.';
+  }
+  function disagreeWords(it){
+    var d = uniq(arr(it.disagrees).filter(function(s){ return typeof s === 'string' && s && s !== storedSlug(it); }));
+    return d.length ? 'Its sources also mention ' + joinAnd(d.map(shownName)) + '.' : '';
+  }
+  function resultWords(r){
+    if (!r) return '';
+    if (r.status === 'set') return 'Set to ' + shownName(r.portal) + '.';
+    if (r.status === 'skipped') return own(SKIP_WORDS, r.reason) ? SKIP_WORDS[r.reason] : 'Skipped. Its row below says where it stands now.';
+    return r.text || 'Not filled in.';
+  }
+
+  /* ---------- the ticks ---------- */
+  function pairKey(it){ return it.eventId + '|' + certainSlug(it); }
+  /* a certain row starts ticked. It starts unticked when the last press did not fill it in, or when the person had
+     already ticked or unticked this event for another portal: its records changed under them, so they look again */
+  function isTicked(it){
+    var k = pairKey(it);
+    if (own(S.choice, k)) return S.choice[k] === true;
+    if (own(S.hold, it.eventId)) return false;
+    return !Object.keys(S.choice).some(function(c){ return c.indexOf(it.eventId + '|') === 0; });
+  }
+  function forget(eventId){ Object.keys(S.choice).forEach(function(k){ if (k.indexOf(eventId + '|') === 0) delete S.choice[k]; }); }
+  function readyItems(){ return S.groups ? S.groups.ready : []; }
+  function tickedPairs(){
+    return readyItems().filter(isTicked).map(function(it){ return { eventId: it.eventId, portal: certainSlug(it) }; });
+  }
+  function chunks(a, n){ var out = []; for (var i = 0; i < a.length; i += n) out.push(a.slice(i, i + n)); return out; }
+  function itemById(id){
+    var found = null;
+    arr(S.report && S.report.items).forEach(function(it){ if (!found && it && it.eventId === id) found = it; });
+    return found;
+  }
+
+  /* ---------- the server ---------- */
+  function api(url, opts, fallback){
+    var A = window.RevampAuth;
+    if (!A || typeof A.authedFetch !== 'function') return Promise.reject(new Error('The sign-in check did not load. Reload the page.'));
+    return A.authedFetch(url, opts).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(data){
+        if (!res.ok){
+          var e = new Error((data && typeof data.error === 'string' && data.error) || (fallback + ' (' + res.status + ')'));
+          e.status = res.status; e.code = data && data.code; e.data = data;
+          throw e;
+        }
+        return data || {};
+      });
+    });
+  }
+  /* ET's roster, from the shared portal list (portal-picker.js) or, if that did not load, from the server */
+  function loadRoster(){
+    var P = window.RevampPortals;
+    var p = P && typeof P.list === 'function' ? P.list() :
+      api('/api/et/portals', null, 'The portal list could not be loaded.').then(function(d){ return d.portals; });
+    return Promise.resolve(p).then(function(rows){
+      var names = Object.create(null);
+      arr(rows).forEach(function(r){ if (r && typeof r.slug === 'string' && r.slug && typeof r.name === 'string' && r.name) names[r.slug] = r.name; });
+      if (!Object.keys(names).length) throw new Error('The portal list could not be loaded.');
+      return names;
+    });
+  }
+
+  function load(){
+    var seq = ++S.seq;
+    S.loading = true; S.error = null;
+    render();
+    return Promise.all([api('/api/events/portal-evidence', null, 'The events could not be read.'), loadRoster()]).then(function(r){
+      if (seq !== S.seq) return;
+      S.names = r[1]; S.report = r[0]; S.groups = groupsOf(r[0]); S.loading = false;
+      render();
+      say(summaryText());
+    }, function(err){
+      if (seq !== S.seq) return;
+      S.loading = false;
+      S.error = { message: (err && err.message) || 'The events could not be read.', signedOut: !!err && (err.status === 401 || err.code === 'revamp/signed-out') };
+      render();
+      say(S.error.message);
+    });
+  }
+
+  /* ---------- drawing ---------- */
+  function summaryText(){
+    var g = S.groups;
+    if (!g) return '';
+    var live = g.ready.length + g.person.length + g.none.length + g.set.length;
+    return plural(live, 'live event', 'live events') + ': ' + g.ready.length + ' ready to fill in, ' + g.person.length + ' ' +
+      (g.person.length === 1 ? 'needs' : 'need') + ' a person, ' + g.none.length + ' with no evidence, ' + g.set.length + ' already ' +
+      (g.set.length === 1 ? 'has a portal' : 'have a portal') + '.';
+  }
+  function canFill(){ return !!(S.report && S.report.canFill === true); }
+  function approverSentence(){
+    var list = arr(S.report && S.report.approvers).filter(function(a){ return typeof a === 'string' && a; });
+    return 'Only an approver' + (list.length ? ' (' + list.join(', ') + ')' : '') + ' can fill in portals. You can still set each event\'s portal yourself with Set portal.';
+  }
+
+  function renderStatus(){
+    var el = $('pr-status');
+    if (!el) return;
+    if (S.error){
+      el.innerHTML = '<div class="pr-banner err" role="alert"><span class="grow">' + esc(S.error.message) + '</span>' +
+        (S.error.signedOut ? '<button type="button" class="btn btn-secondary btn-sm" id="pr-signin">Sign in again</button>' : '') +
+        '<button type="button" class="btn btn-primary btn-sm" id="pr-retry">Retry</button></div>';
+      return;
+    }
+    if (!S.groups){ el.innerHTML = ''; return; }
+    var g = S.groups, at = when(S.report.generatedAt);
+    var live = g.ready.length + g.person.length + g.none.length + g.set.length;
+    el.innerHTML = '<div class="pr-summary"><span class="grow"><b>' + live + '</b> live ' + (live === 1 ? 'event' : 'events') +
+      ' · <b>' + g.ready.length + '</b> ready to fill in · <b>' + g.person.length + '</b> ' + (g.person.length === 1 ? 'needs' : 'need') + ' a person' +
+      ' · <b>' + g.none.length + '</b> with no evidence · <b>' + g.set.length + '</b> already ' + (g.set.length === 1 ? 'has a portal' : 'have a portal') +
+      (S.loading ? ' · Reading the events again…' : (at ? ' · Read at ' + esc(at) : '')) + '</span>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="pr-reload"' + (S.loading || S.busy ? ' disabled' : '') + '>Read again</button></div>' +
+      (canFill() ? '' : '<div class="pr-note" role="note" id="pr-gate">' + esc(approverSentence()) + '</div>');
+  }
+
+  function openLink(it){
+    return '<a class="pr-open" href="edit-event.html?event=' + esc(encodeURIComponent(it.eventId)) + '" target="_blank" rel="noopener">Open<span class="sr"> ' +
+      esc(it.name || 'this event') + ' in a new tab</span></a>';
+  }
+  function publishedTag(it){ return it.published ? '<span class="pr-tag">Published</span>' : ''; }
+  function resultLine(it, group){
+    var r = own(S.results, it.eventId) ? S.results[it.eventId] : null;
+    if (!r) return '';
+    // a row that has a portal now shows only a fill-in that set it; any other answer is out of date
+    if (group === 'set' && r.status !== 'set') return '';
+    if (group !== 'set' && r.status === 'set') return '';
+    return '<div class="pr-res ' + (r.status === 'set' ? 'ok' : 'skip') + '">' + esc(r.status === 'set' ? 'Filled in just now.' : resultWords(r)) + '</div>';
+  }
+  function setButton(it, group, i){
+    return '<button type="button" class="btn btn-secondary btn-sm" id="pr-sp-' + group + '-' + i + '" data-set-portal="' + esc(it.eventId) + '"' +
+      (S.busy || S.loading ? ' disabled' : '') + '>Set portal<span class="sr"> for ' + esc(it.name || 'this event') + '</span></button>';
+  }
+  function hints(it){ return hintWords(it).map(function(h){ return '<div class="pr-hint">' + esc(h) + '</div>'; }).join(''); }
+
+  function readyRow(it, i, fill){
+    var slug = certainSlug(it), name = esc(it.name || 'Untitled event');
+    var line = '<span class="pr-name">' + name + '</span><span class="pr-to" aria-hidden="true">→</span><span class="sr"> gets </span>' +
+      '<span class="pr-portal">' + esc(nameOf(slug)) + '</span>' + publishedTag(it);
+    var words = '<div class="pr-why">' + esc(evidenceWords(it, slug)) + '</div>' + hints(it) + resultLine(it, 'ready');
+    if (fill){
+      return '<li class="pr-row"><input type="checkbox" id="pr-cb-' + i + '" data-pick="' + esc(it.eventId) + '" data-portal="' + esc(slug) + '"' +
+        (isTicked(it) ? ' checked' : '') + (S.busy || S.loading ? ' disabled' : '') + '>' +
+        '<div class="pr-col"><label class="pr-line" for="pr-cb-' + i + '">' + line + '</label>' + words + '</div>' +
+        '<div class="pr-side">' + openLink(it) + '</div></li>';
+    }
+    return '<li class="pr-row"><div class="pr-col"><div class="pr-line">' + line + '</div>' + words + '</div>' +
+      '<div class="pr-side">' + openLink(it) + setButton(it, 'ready', i) + '</div></li>';
+  }
+  function personRow(it, i){
+    var where = conflictWhere(it);
+    return '<li class="pr-row"><div class="pr-col"><div class="pr-line"><span class="pr-name">' + esc(it.name || 'Untitled event') + '</span>' + publishedTag(it) + '</div>' +
+      reasonsOf(it).map(function(r){ return '<div class="pr-reason">' + esc(r) + '</div>'; }).join('') +
+      (where ? '<div class="pr-why">' + esc(where) + '</div>' : '') + resultLine(it, 'person') + '</div>' +
+      '<div class="pr-side">' + openLink(it) + setButton(it, 'person', i) + '</div></li>';
+  }
+  function noneRow(it, i){
+    return '<li class="pr-row"><div class="pr-col"><div class="pr-line"><span class="pr-name">' + esc(it.name || 'Untitled event') + '</span>' + publishedTag(it) + '</div>' +
+      resultLine(it, 'none') + '</div><div class="pr-side">' + openLink(it) + setButton(it, 'none', i) + '</div></li>';
+  }
+  function setRow(it){
+    var how = own(FROM_WORDS, it.portalFrom) ? FROM_WORDS[it.portalFrom] : '', d = disagreeWords(it);
+    return '<li class="pr-row"><div class="pr-col"><div class="pr-line"><span class="pr-name">' + esc(it.name || 'Untitled event') + '</span>' +
+      '<span class="pr-to" aria-hidden="true">·</span><span class="pr-portal">' + esc(nameOf(storedSlug(it))) + '</span>' + publishedTag(it) + '</div>' +
+      (how ? '<div class="pr-why">' + esc(how) + '</div>' : '') +
+      (d ? '<div class="pr-why">' + esc(d) + '</div>' : '') + resultLine(it, 'set') + '</div></li>';
+  }
+  function head(id, title, n, lead, extra){
+    return '<div class="panel-head"><h3 id="pr-h-' + id + '" tabindex="-1">' + esc(title) + ' <span class="pr-count">' + n + '</span></h3>' + (extra || '') +
+      (lead ? '<p class="pr-lead">' + esc(lead) + '</p>' : '') + '</div>';
+  }
+
+  function runPanel(){
+    var run = S.run;
+    if (!run) return '';
+    var title = S.busy ? 'Filling in ' + plural(run.rows.length, 'portal', 'portals') + '…' : 'What the last press did';
+    var lead = S.busy ? 'Each event is checked again before its portal is written.' : runSummary();
+    return '<section class="panel" aria-labelledby="pr-h-run">' + head('run', title, run.rows.length, lead) +
+      (run.error ? '<div class="pr-banner err" role="alert" style="margin:12px 16px 0"><span class="grow">The fill-in stopped: ' + esc(run.error) + '</span></div>' : '') +
+      '<ul class="pr-list">' + run.rows.map(function(r){
+        var x = own(run.results, r.eventId) ? run.results[r.eventId] : null;
+        return '<li class="pr-row"><div class="pr-col"><div class="pr-line"><span class="pr-name">' + esc(r.name || 'Untitled event') + '</span>' +
+          '<span class="pr-to" aria-hidden="true">→</span><span class="sr"> to </span><span class="pr-portal">' + esc(shownName(r.portal)) + '</span></div>' +
+          // "Waiting…" only while the press is still going: a press that is over has said something for every row
+          (x ? '<div class="pr-res ' + (x.status === 'set' ? 'ok' : 'skip') + '">' + esc(resultWords(x)) + '</div>' :
+            '<div class="pr-why">' + (S.busy ? 'Waiting…' : 'Not filled in.') + '</div>') +
+          '</div></li>';
+      }).join('') + '</ul></section>';
+  }
+  function runSummary(){
+    var run = S.run, set = 0, skipped = 0, failed = 0;
+    if (!run) return '';
+    run.rows.forEach(function(r){
+      var x = own(run.results, r.eventId) ? run.results[r.eventId] : null;
+      if (x && x.status === 'set') set++; else if (x && x.status === 'skipped') skipped++; else failed++;
+    });
+    return 'Filled in ' + plural(set, 'portal', 'portals') + '.' +
+      (skipped ? ' ' + plural(skipped, 'event was', 'events were') + ' skipped; each says why.' : '') +
+      (failed ? ' ' + plural(failed, 'event was', 'events were') + ' not filled in.' : '');
+  }
+
+  function render(){
+    renderStatus();
+    var body = $('pr-body');
+    if (!body) return;
+    if (!S.groups || S.error){
+      // a report that could not be read again is not shown: its rows may already be out of date
+      body.innerHTML = runPanel() + (S.error ? '' : '<p class="pr-empty">Reading every event\'s records…</p>');
+      return placeFocus();
+    }
+    var g = S.groups, fill = canFill(), out = runPanel(), off = S.busy || S.loading;
+    var live = g.ready.length + g.person.length + g.none.length + g.set.length;
+    if (!live){
+      body.innerHTML = out + '<div class="panel"><p class="pr-empty">There are no live events yet.</p></div>';
+      return placeFocus();
+    }
+
+    /* 1. ready: every record names the same portal */
+    var ticked = fill ? tickedPairs().length : 0;
+    var allBox = fill && g.ready.length ? '<label class="pr-all"><input type="checkbox" id="pr-all"' + (ticked === g.ready.length ? ' checked' : '') +
+      (off ? ' disabled' : '') + '> Tick all</label>' : '';
+    out += '<section class="panel pr-ready" aria-labelledby="pr-h-ready">' + head('ready', 'Ready to fill in', g.ready.length,
+      g.ready.length ? 'Every record each of these events has names the same portal.' + (fill ? ' Ticked rows are filled in when you press the button. Untick any you doubt.' : '') : '', allBox);
+    if (g.ready.length){
+      out += '<ul class="pr-list">' + g.ready.map(function(it, i){ return readyRow(it, i, fill); }).join('') + '</ul>';
+      if (fill){
+        out += '<div class="pr-actions"><span class="grow">A site that already exists keeps its ET bar and footer until it is generated again.</span>' +
+          '<button type="button" class="btn btn-primary" id="pr-fill"' + (ticked && !off ? '' : ' disabled') + '>' +
+          esc(S.busy ? 'Filling in…' : 'Fill in ' + plural(ticked, 'portal', 'portals')) + '</button></div>';
+      }
+    } else {
+      out += '<p class="pr-empty">Nothing is ready to fill in.' + (g.person.length || g.none.length ? ' Each event left needs a person to choose its portal.' : '') + '</p>';
+    }
+    out += '</section>';
+
+    /* 2. needs a person: the records disagree, or are not enough to be sure */
+    if (g.person.length){
+      out += '<section class="panel" aria-labelledby="pr-h-person">' + head('person', 'Needs a person', g.person.length,
+        'Nothing is filled in for these. Choose each one\'s portal with Set portal.') +
+        '<ul class="pr-list">' + g.person.map(personRow).join('') + '</ul></section>';
+    }
+    /* 3. no evidence at all */
+    if (g.none.length){
+      out += '<section class="panel" aria-labelledby="pr-h-none">' + head('none', 'No evidence', g.none.length,
+        'Nothing in these events\' records names a portal. Choose each one\'s portal with Set portal.') +
+        '<ul class="pr-list">' + g.none.map(noneRow).join('') + '</ul></section>';
+    }
+    /* 4. already set, folded: for reference only */
+    if (g.set.length){
+      out += '<details class="panel pr-fold" id="pr-set"' + (S.setOpen ? ' open' : '') + '><summary class="panel-head"><h3 id="pr-h-set">Already set <span class="pr-count">' +
+        g.set.length + '</span></h3><p class="pr-lead">For reference. An event\'s portal is changed in its Basics, in the event console.</p></summary>' +
+        '<ul class="pr-list">' + g.set.map(setRow).join('') + '</ul></details>';
+    }
+    body.innerHTML = out;
+
+    var all = $('pr-all');
+    if (all) all.indeterminate = ticked > 0 && ticked < g.ready.length;
+    var fold = $('pr-set');
+    if (fold) fold.addEventListener('toggle', function(){ S.setOpen = !!fold.open; });
+    placeFocus();
+  }
+  /* The rows are drawn again after a Set portal or a press, which takes away the button that had focus: focus goes
+     to the same place in the list (the next event's Set portal), else to that list's heading */
+  function placeFocus(){
+    if (!S.focusAfter || S.loading) return;
+    var f = S.focusAfter;
+    S.focusAfter = null;
+    var to = $('pr-sp-' + f.group + '-' + f.index) || $('pr-sp-' + f.group + '-' + (f.index - 1)) || $('pr-h-' + f.group) || $('pr-heading');
+    if (to && typeof to.focus === 'function') to.focus();
+  }
+
+  /* ---------- toasts ---------- */
+  var toastTimer = null;
+  function toast(msg, failed){
+    var host = $('toast-host');
+    if (!host) return;
+    host.innerHTML = '<div class="toast' + (failed ? ' toast-error' : '') + '" role="' + (failed ? 'alert' : 'status') + '"><span class="tt">' + esc(msg) + '</span></div>';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ host.innerHTML = ''; }, failed ? 9000 : 5000);
+  }
+
+  /* ---------- the confirmation ---------- */
+  function setInert(on){
+    ['pr-top', 'pr-main'].forEach(function(id){
+      var el = $(id);
+      if (!el) return;
+      if (on) el.setAttribute('inert', ''); else el.removeAttribute('inert');
+    });
+  }
+  function askFill(){
+    if (S.busy || S.loading || !canFill()) return;
+    var pairs = tickedPairs();
+    if (!pairs.length) return;
+    var n = pairs.length, label = 'Fill in ' + plural(n, 'portal', 'portals');
+    var picked = readyItems().filter(isTicked);
+    var sites = picked.some(function(it){ return !!it.hasGeneratedSite; }), live = picked.some(function(it){ return !!it.published; });
+    var msg = n === 1 ? '1 event gets the portal shown beside it. This is logged on the event and can be changed later in its Basics.' :
+      n + ' events get the portal shown beside them. This is logged on each event and can be changed later in its Basics.';
+    var notes = (sites ? '<p>A site that already exists keeps its ET bar and footer until it is generated again.</p>' : '') +
+      (live ? '<p>A published registration form keeps its privacy links until it is published again.</p>' : '');
+    var host = $('modal-host');
+    host.innerHTML = '<div class="modal-bg" id="pr-modal-bg"><div class="modal pr-modal" id="pr-modal" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title" aria-describedby="pr-modal-msg">' +
+      '<div class="modal-head"><h3 id="pr-modal-title">' + esc(label) + '?</h3></div>' +
+      '<div class="modal-body"><div class="confirm-msg" id="pr-modal-msg"><p>' + esc(msg) + '</p>' + notes + '</div></div>' +
+      '<div class="modal-foot"><button type="button" class="btn btn-secondary" id="pr-modal-cancel">Cancel</button>' +
+      '<button type="button" class="btn btn-primary" id="pr-modal-ok">' + esc(label) + '</button></div></div></div>';
+    setInert(true);
+    var done = false;
+    function close(go){
+      if (done) return;
+      done = true;
+      host.innerHTML = '';
+      setInert(false);
+      if (go) fill(pairs, picked);
+      else { var b = $('pr-fill'); if (b) b.focus(); }
+    }
+    var ok = $('pr-modal-ok'), cancel = $('pr-modal-cancel');
+    ok.addEventListener('click', function(){ close(true); });
+    cancel.addEventListener('click', function(){ close(false); });
+    $('pr-modal-bg').addEventListener('click', function(e){ if (e.target === $('pr-modal-bg')) close(false); });
+    // Escape cancels, and Tab stays on the dialog's two buttons while it is open
+    $('pr-modal').addEventListener('keydown', function(e){
+      if (e.key === 'Escape'){ e.preventDefault(); close(false); return; }
+      if (e.key !== 'Tab') return;
+      var first = cancel, last = ok, at = document.activeElement;
+      if (e.shiftKey && at === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && at === last){ e.preventDefault(); first.focus(); }
+      else if (at !== first && at !== last){ e.preventDefault(); first.focus(); }
+    });
+    ok.focus();
+  }
+
+  /* ---------- the press: exactly the ticked pairs, the portal shown, never worked out again ---------- */
+  function fill(pairs, picked){
+    var names = Object.create(null);
+    picked.forEach(function(it){ names[it.eventId] = it.name || ''; });
+    S.busy = true;
+    S.results = Object.create(null);
+    S.run = { rows: pairs.map(function(p){ return { eventId: p.eventId, name: names[p.eventId] || '', portal: p.portal }; }), results: Object.create(null), error: '' };
+    render();
+    // the dialog that had focus is gone: the person is taken to what the press is doing
+    var h = $('pr-h-run'); if (h) h.focus();
+    say('Filling in ' + plural(pairs.length, 'portal', 'portals') + '…');
+    var batches = chunks(pairs, CHUNK), i = 0;
+    function next(){
+      if (i >= batches.length) return Promise.resolve();
+      var batch = batches[i++];
+      return api('/api/events/portal-backfill', { method: 'POST', body: JSON.stringify({ items: batch }) }, 'The portals could not be filled in.').then(function(out){
+        take(batch, out.results, true);
+        render();
+        return next();
+      }, function(err){
+        // a call that stopped part-way still says which of its events were done; those are kept as done
+        take(batch, err && err.data && err.data.results, false);
+        throw err;
+      });
+    }
+    /* one answer goes to the press's own record (what the run panel reports) and to the row's line (which a Set portal
+       on that row later takes away); the two are kept apart so the report of a finished press never changes */
+    function answer(eventId, r){ S.run.results[eventId] = r; S.results[eventId] = r; }
+    /* the server's answer for each pair of a call, by event; one it did not answer for is said in words */
+    function take(batch, results, whole){
+      var got = Object.create(null);
+      arr(results).forEach(function(r){ if (r && typeof r.eventId === 'string') got[r.eventId] = r; });
+      batch.forEach(function(p){
+        var r = own(got, p.eventId) ? got[p.eventId] : null;
+        if (r && r.status === 'set') answer(p.eventId, { status: 'set', portal: p.portal });
+        else if (r && r.status === 'skipped') answer(p.eventId, { status: 'skipped', portal: p.portal, reason: String(r.reason || '') });
+        else if (whole) answer(p.eventId, { status: 'failed', portal: p.portal, text: 'No answer came back for this one. Its row below shows where it stands now.' });
+      });
+    }
+    return next().then(null, function(err){
+      S.run.error = (err && err.message) || 'The portals could not be filled in.';
+      pairs.forEach(function(p){
+        if (!own(S.run.results, p.eventId)) answer(p.eventId, { status: 'failed', portal: p.portal, text: 'Not filled in: the fill-in stopped before this one was done. Its row below shows where it stands now.' });
+      });
+    }).then(function(){
+      S.busy = false;
+      // whatever was not filled in starts unticked when the list is read again, so it is looked at before it is sent again
+      pairs.forEach(function(p){ if (S.run.results[p.eventId].status !== 'set'){ S.hold[p.eventId] = true; forget(p.eventId); } });
+      var text = runSummary() + (S.run.error ? ' The fill-in stopped: ' + S.run.error : '');
+      toast(text, !!S.run.error);
+      say(text);
+      S.focusAfter = { group: 'run', index: -1 };
+      return load();
+    });
+  }
+
+  /* ---------- Set portal: the person chooses; nothing is pre-selected ---------- */
+  function setPortal(id, button){
+    if (S.busy || S.loading) return;
+    var it = itemById(id), P = window.RevampPortals;
+    if (!it) return;
+    if (!P || typeof P.openSetPortal !== 'function'){ toast('Set portal could not be opened. Reload the page and try again.', true); return; }
+    var m = /^pr-sp-(\w+)-(\d+)$/.exec((button && button.id) || '');
+    P.openSetPortal({
+      eventId: it.eventId, eventName: it.name || '', current: '', returnFocus: button || null,
+      hasGeneratedSite: !!it.hasGeneratedSite, published: !!it.published,
+      onDone: function(slug, name){
+        // only the row's line goes: what the last press did (S.run.results) stays as it was reported
+        if (own(S.results, it.eventId)) delete S.results[it.eventId];
+        delete S.hold[it.eventId];
+        forget(it.eventId);
+        S.focusAfter = m ? { group: m[1], index: parseInt(m[2], 10) } : null;
+        toast('“' + (it.name || 'The event') + '” is now on ' + (name || shownName(slug)) + '.');
+        load();
+      }
+    });
+  }
+
+  /* ---------- wiring (one listener per area; the rows are drawn again on every change) ---------- */
+  function up(el, test, stop){
+    for (var n = el; n && n !== stop; n = n.parentNode) if (n.getAttribute && test(n)) return n;
+    return null;
+  }
+  var body = $('pr-body'), status = $('pr-status');
+  body.addEventListener('click', function(e){
+    var sp = up(e.target, function(n){ return n.getAttribute('data-set-portal') != null; }, body);
+    if (sp){ setPortal(sp.getAttribute('data-set-portal'), sp); return; }
+    if (up(e.target, function(n){ return n.id === 'pr-fill'; }, body)) askFill();
+  });
+  body.addEventListener('change', function(e){
+    var t = e.target;
+    if (!t || !t.getAttribute || S.busy || S.loading) return;
+    if (t.id === 'pr-all'){
+      readyItems().forEach(function(it){ S.choice[pairKey(it)] = !!t.checked; });
+      render();
+      var a = $('pr-all'); if (a) a.focus();
+      return;
+    }
+    var id = t.getAttribute('data-pick');
+    if (id == null) return;
+    var it = itemById(id);
+    if (!it || groupOf(it) !== 'ready') return;
+    S.choice[pairKey(it)] = !!t.checked;
+    render();
+    var again = $(t.id); if (again) again.focus();
+  });
+  status.addEventListener('click', function(e){
+    if (up(e.target, function(n){ return n.id === 'pr-retry' || n.id === 'pr-reload'; }, status)){ if (!S.loading && !S.busy) load(); return; }
+    if (up(e.target, function(n){ return n.id === 'pr-signin'; }, status) && window.RevampAuth && typeof window.RevampAuth.redirectToSignIn === 'function') window.RevampAuth.redirectToSignIn();
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
