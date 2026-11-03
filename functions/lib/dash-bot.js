@@ -415,6 +415,10 @@ function namedPortals(said) {
       var parts = toks.slice(i, i + n), hit = keys[parts.join('').toLowerCase()];
       if (!hit) continue;
       var next = (toks[i + n] || '').toLowerCase();
+      /* "ETB2B AI" is this assistant's own name, not the ET B2B portal: people address it by name ("ETB2B AI,
+         start an event…"), and that must never count as naming a portal they did not mean */
+      var joined = parts.join('').toLowerCase();
+      if (next === 'ai' && (joined === 'etb2b' || (joined === 'b2b' && (toks[i - 1] || '').toLowerCase() === 'et'))) continue;
       var asName = n === 1 && (parts[0].match(/\p{Lu}/gu) || []).length >= 2;
       if ((hit.strong || asName || next === 'portal' || next === 'portals') && out.indexOf(hit.slug) === -1) out.push(hit.slug);
     }

@@ -1269,6 +1269,19 @@ async function e6() {
   check('E.6 cleanAiHero: odd stored values are no request, and a "made" picture only of ours', P.ctx.cleanAiHero('x') === null && P.ctx.cleanAiHero([]) === null &&
     P.ctx.cleanAiHero({ made: { url: 'https://evil.example/x.png' } }).made === null && P.ctx.cleanAiHero({ subject: 7, removed: 'yes' }).removed === false);
 
+  /* ---- a picture made on an earlier run, when the draft has gone another way since ---- */
+  var MADE = { url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'Q' };
+  var Pm = stage({ ownBanner: true });
+  Pm.ctx.S.aiHero = Pm.ctx.cleanAiHero({ subject: '', made: MADE }); Pm.ctx.S.creationMethod = 'template'; Pm.ctx.S.step = 1;
+  check('E.6 made, then the person added their own banner: the editor is not given the picture, and the line says theirs is used',
+    Pm.ctx.aiHeroForHandoff() === null && Pm.line().innerHTML.indexOf('You added your own banner picture, so it is used instead of the hero picture ETB2B AI made.') !== -1 &&
+    Pm.ctx.wantsAiHero() === false, [Pm.ctx.aiHeroForHandoff(), Pm.els['ai-hero-line'].innerHTML]);
+  var Pi = stage();
+  Pi.ctx.S.aiHero = Pi.ctx.cleanAiHero({ subject: '', made: MADE }); Pi.ctx.S.creationMethod = 'imported';
+  check('E.6 made, then the draft moved to an imported design: the editor is not given the picture', Pi.ctx.aiHeroForHandoff() === null);
+  Pi.ctx.S.creationMethod = 'template';
+  check('E.6 …and back on the template path with no banner of their own, it is', JSON.stringify(Pi.ctx.aiHeroForHandoff()) === JSON.stringify(MADE));
+
   /* ---- static ---- */
   var markup = (CE.match(/<div class="callout plain" id="ai-hero-line"[^>]*>/) || [''])[0];
   check('E.6 the line\'s place: right under the note over step 1, a status', markup.indexOf('role="status"') !== -1 && CE.indexOf('id="ai-hero-line"') > CE.indexOf('id="ai-prefill-note"') &&
@@ -1277,7 +1290,10 @@ async function e6() {
   check('E.6 restore() reads a stored request back through cleanAiHero', /S\.aiHero = cleanAiHero\(S\.aiHero\);/.test(fnSrc(CE_INLINE, 'restore') || ''));
   check('E.6 a changed or removed request counts as a change since ETB2B AI filled the draft (its Undo asks first)', /S\.createdEventId, S\.aiHero\]\);/.test(fnSrc(CE_INLINE, 'aiDraftKey') || ''));
   check('E.6 the editor\'s hand-off carries it, for the draft\'s own design only', /aiHero: own \? aiHeroForHandoff\(\) : null,/.test(fnSrc(CE_INLINE, 'buildEditorPayload') || ''));
-  check('E.6 the hand-off code never generates on the brief path (its own runner list has no hero row)', (fnSrc(CE_INLINE, 'startGenerateFromBrief') || 'x').indexOf('ai-hero') === -1);
+  /* the brief path's own runner must exist for this to say anything, and must not reach the picture in any way */
+  var briefRun = fnSrc(CE_INLINE, 'startGenerateFromBrief');
+  check('E.6 the hand-off code never generates on the brief path (its own runner list has no hero row)', !!briefRun &&
+    ['ai-hero', 'makeAiHero', 'handoffSteps', 'aiHeroForHandoff'].every(function (w) { return briefRun.indexOf(w) === -1; }));
 }
 
 /* =============================================================================== E.7 the editor: the picture as one undoable change */

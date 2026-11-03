@@ -8,6 +8,8 @@
        404 no-event                         not an event that is live (never made, deleted, being discarded)
        409 hero-busy                        a picture for this event is being made right now
        409 hero-generated                   a site generated from a brief, which made its own pictures
+       409 hero-no-design                   not on a gallery design: a brief whose site is not generated yet, or an
+                                            imported design, which keeps its own pictures
        429 ai-hero-daily                    the person's AI pictures for today are used up
        the AI's own failures in gemini.js's shape ({ error, code, retryable }), and 502 hero-not-stored
 
@@ -20,7 +22,9 @@
    key visual (no people, no faces, no readable text, no logos or brand names, in one tone of the event's own
    colours), gemini.js callGeminiImage, and stored as generated site pictures are (events/<id>/generated/,
    public, cached a year, WebP copies by pictures.js). The subject is the person's own words for it, else the
-   event's name and place. The event records it (events/<id>.aiHero) and its History says ETB2B AI made it; the
+   event's name and place; the prompt then asks for the field of the event with that title (sceneOf), never for
+   the name itself, which an image model letters onto the picture. Only an event on a gallery design (the template
+   path) gets one. The event records it (events/<id>.aiHero) and its History says ETB2B AI made it; the
    editor then puts it into the hero as one change that Undo takes back (editor-template-ui.js applyAiHero).
 
    LIMITS. One picture per event (a second request answers the first picture). One of the person's daily AI
@@ -74,6 +78,7 @@ var MSG = {
   noEvent: 'This event was not found. It may have been removed.',
   busy: 'ETB2B AI is already making this event’s hero picture. Try again in a few minutes.',
   generated: 'This site was generated from a brief, which made its own pictures, so ETB2B AI does not make a separate hero picture.',
+  noDesign: 'ETB2B AI makes a hero picture only for an event on a design from the gallery. This event has none, so nothing was made.',
   daily: 'You have used today’s ETB2B AI pictures. They reset at midnight (India time).',
   notStored: 'The hero picture was made but could not be stored. Try again in a few minutes.',
   failed: 'The hero picture could not be made just now. Please try again.'
@@ -108,16 +113,42 @@ function cityOf(ev) {
   var parts = line(ev.venue, 200).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   return parts.length > 1 ? parts[parts.length - 1].slice(0, 60) : '';
 }
-/* "the event's name and place", when the person did not say what the picture should show */
+/* The event's name as it goes into the picture's prompt: a title in quotes, with no quote marks, brackets or braces
+   of its own, so a name can neither close the quotes nor read as a part of the prompt. The name is typed by a
+   person and usually holds a brand and a year ("ETCIO Annual Conclave 2027"): it is told to the model as a title
+   to draw the field of, never as the scene itself, which the image model would then letter onto the picture. */
+function titleOf(v, max) {
+  return line(v, max).replace(/["'`‘’‚‛“”„‟«»<>{}\[\]]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+/* "the event's name and place", when the person did not say what the picture should show (what the event records,
+   the History line and Create Event show; the prompt words it as sceneOf does) */
+function placeOf(ev) {
+  var venue = line(ev.venue, 120), city = cityOf(ev);
+  return venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) === -1 ? venue + ', ' + city : (venue || city);
+}
 function subjectOf(ev) {
-  var name = line(ev.name, 120), venue = line(ev.venue, 120), city = cityOf(ev);
-  var place = venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) === -1 ? venue + ', ' + city : (venue || city);
-  return [name, place].filter(Boolean).join(', ').slice(0, CAPS.subjectChars);
+  return [line(ev.name, 120), placeOf(ev)].filter(Boolean).join(', ').slice(0, CAPS.subjectChars);
+}
+/* The scene the model is asked for when the person gave no words of their own: the field of the event with that
+   title, at its place. The key visual's own lines (gen-design.js) then say what that is made of: the field's
+   objects and symbols and the host city's landmarks, with no people, no words and no brand names. */
+function sceneOf(ev) {
+  var title = titleOf(ev.name, 120), place = titleOf(placeOf(ev), 120);
+  return (title ? 'the field of the event titled “' + title + '”' : 'the field of this event') + (place ? ', at ' + place : '');
 }
 function aboutOf(ev) {
   var portal = etEvents.isPortal(ev.portal) ? etEvents.PORTALS[ev.portal] : '';
   var kind = CATEGORY_WORDS[String(ev.category || '').toLowerCase()] || 'a business event';
-  return line(ev.name, 120) + ', ' + kind + (portal ? ' of ' + portal + ', the Economic Times B2B portal for its field' : ' of the Economic Times');
+  var title = titleOf(ev.name, 120);
+  return (title ? '“' + title + '”, ' : '') + kind + (portal ? ' of ' + portal + ', the Economic Times B2B portal for its field' : ' of the Economic Times');
+}
+/* An event the gallery's design is under (templates/<id>/template.json): the template path, where the hero's
+   picture slot is the design's {hero.bannerUrl}. A brief whose site is not generated yet has no design, and an
+   imported design (imported-<id>) keeps its own pictures: neither gets one, as Create Event's line says. */
+function galleryDesign(templateId) {
+  var id = String(templateId || '');
+  if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(id) || /^(?:gen|imported)-/.test(id)) return false;
+  try { return fs.statSync(path.join(ROOT, 'templates', id, 'template.json')).isFile(); } catch (e) { return false; }
 }
 /* The colour the site is set in, so the picture is in its tone: the event's own theme colour when it has one,
    else its gallery design's (templates/<id>/template.json, --theme-color). */
@@ -142,10 +173,11 @@ function designOf(ev) {
 }
 /* The site pipeline's hero rules (gen-design.js): a key visual, never a photograph of an event that has not
    happened; no people and no faces, no readable text, no logos, no brand names, no flags; the host city's
-   character worked in when one is known; the event's own colours. */
-function promptFor(ev, subject) {
+   character worked in when one is known; the event's own colours. own: the subject is the person's own words for
+   the picture (the scene as they said it); otherwise the scene is the event's field (sceneOf), never its bare name. */
+function promptFor(ev, subject, own) {
   var city = cityOf(ev);
-  return genDesign.imagePrompt(subject, designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
+  return genDesign.imagePrompt(own ? subject : sceneOf(ev), designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
 }
 
 /* ---------- the route ---------- */
@@ -176,6 +208,9 @@ function handleHero(req, res) {
         if (h && h.status === 'made' && typeof h.url === 'string' && h.url) return { made: h };
         if (h && h.status === 'making' && started - Date.parse(h.at) < CAPS.makingMs) return { stop: 'hero-busy' };
         if (/^gen-/.test(String(ev.templateId || ''))) return { stop: 'hero-generated' };
+        /* the template path only, as Create Event asks: checked here too, so no request can make a picture for a
+           brief (before its site is generated) or for an imported design */
+        if (!galleryDesign(ev.templateId)) return { stop: 'hero-no-design' };
         var d = got[1].exists ? (got[1].data() || {}) : {};
         var used = Math.max(0, Math.floor(Number(d.pictures) || 0));
         if (used >= CAPS.dayPictures) return { stop: 'ai-hero-daily' };
@@ -188,9 +223,10 @@ function handleHero(req, res) {
       if (c.stop === 'no-event') return H.sendJson(res, 404, { error: MSG.noEvent, code: 'no-event' });
       if (c.stop === 'hero-busy') return H.sendJson(res, 409, { error: MSG.busy, code: 'hero-busy', retryable: true });
       if (c.stop === 'hero-generated') return H.sendJson(res, 409, { error: MSG.generated, code: 'hero-generated' });
+      if (c.stop === 'hero-no-design') return H.sendJson(res, 409, { error: MSG.noDesign, code: 'hero-no-design' });
       if (c.stop === 'ai-hero-daily') return H.sendJson(res, 429, { error: MSG.daily, code: 'ai-hero-daily' });
       if (c.made) return H.sendJson(res, 200, { url: c.made.url, subject: String(c.made.subject || ''), made: false });
-      return make(fb, decoded, eventId, eventRef, c.ev, c.subject, started, by, turnId).then(function (out) {
+      return make(fb, decoded, eventId, eventRef, c.ev, c.subject, !!subject, started, by, turnId).then(function (out) {
         if (out.ai) return H.sendAiFailure(res, out.ai);
         H.sendJson(res, out.status, out.body);
       });
@@ -204,10 +240,10 @@ function giveUp(eventRef, ev, by, subject, why) {
     .catch(function (err) { console.error('ai-hero: the failed claim could not be recorded — ' + (err && err.message)); });
 }
 
-/* -> Promise<{ status, body } | { ai: failure }> */
-function make(fb, decoded, eventId, eventRef, ev, subject, started, by, turnId) {
+/* own: the subject is the person's own words (promptFor). -> Promise<{ status, body } | { ai: failure }> */
+function make(fb, decoded, eventId, eventRef, ev, subject, own, started, by, turnId) {
   var record = H.aiUsageRecorder(fb, eventId, 'ai-hero');
-  return gemini.callGeminiImage(promptFor(ev, subject), {
+  return gemini.callGeminiImage(promptFor(ev, subject, own), {
     route: 'ai-hero', eventId: eventId, user: by, timeoutMs: CAPS.timeoutMs, deadlineAt: started + CAPS.deadlineMs
   }).then(function (r) {
     if (record && r) { try { record(r.usage); } catch (e) { /* the usage line is never why a picture fails */ } }
@@ -246,4 +282,4 @@ function make(fb, decoded, eventId, eventRef, ev, subject, started, by, turnId) 
 
 module.exports = { wire: wire, handleHero: handleHero };
 module.exports._test = { CAPS: CAPS, MSG: MSG, clock: clock, dayKey: dayKey, subjectOf: subjectOf, aboutOf: aboutOf, cityOf: cityOf, designOf: designOf,
-  promptFor: promptFor, templateColour: templateColour, uidKeyOf: uidKeyOf };
+  promptFor: promptFor, templateColour: templateColour, uidKeyOf: uidKeyOf, sceneOf: sceneOf, titleOf: titleOf, galleryDesign: galleryDesign };

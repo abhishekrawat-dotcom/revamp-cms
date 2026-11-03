@@ -406,9 +406,13 @@
     o = o || {};
     var h = o.hero;
     if (!plain(h)) return null;
-    if (plain(h.made) && typeof h.made.url === 'string' && h.made.url) {
+    var made = plain(h.made) && typeof h.made.url === 'string' && !!h.made.url;
+    /* a picture already made goes to the editor only while the draft is still on the template path with no banner
+       of the person's own (create-event.html aiHeroForHandoff); otherwise the lines below say why it is not used */
+    if (made && !o.ownBanner && o.method !== 'brief' && o.method !== 'imported') {
       return { text: 'ETB2B AI made this event\u2019s hero picture' + (h.made.subject ? ': ' + h.made.subject : '') + '. It is in the editor, where Undo puts the design\u2019s own picture back.', can: '' };
     }
+    if (made && o.ownBanner) return { text: 'You added your own banner picture, so it is used instead of the hero picture ETB2B AI made.', can: '' };
     if (h.removed === true) return { text: 'ETB2B AI won\u2019t make a hero picture for this event.', can: 'restore' };
     if (o.method === 'brief') return { text: 'Generate from a brief makes the site\u2019s pictures itself, so ETB2B AI won\u2019t make a separate hero picture.', can: '' };
     if (o.method === 'imported') return { text: 'An imported design keeps its own pictures, so ETB2B AI won\u2019t make a hero picture.', can: '' };

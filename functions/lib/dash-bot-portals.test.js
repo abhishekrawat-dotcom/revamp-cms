@@ -102,6 +102,12 @@ var ON_CIO = { portal: 'cio', working: 'cio' };
   check('P.1 an everyday word is not a portal: "a retail summit about the auto industry"', same(T.namedPortals('create a retail summit about the auto industry'), []));
   check('P.1 …unless it is called a portal: "the retail portal"', same(T.namedPortals('on the retail portal'), ['retail']));
   check('P.1 a word that only contains a name is not it: "set automation"', same(T.namedPortals('set automation for hrs'), []));
+  /* the assistant's own name is not the ET B2B portal: addressing it never names a portal */
+  check('P.1 "ETB2B AI" (the assistant) names no portal, in any spacing', same(T.namedPortals('ETB2B AI, start an IP event called Retail Next'), []) &&
+    same(T.namedPortals('Hey ET B2B AI show my drafts'), []) && same(T.namedPortals('ET-B2B-AI: switch to ETHRWorld'), ['hr']));
+  check('P.1 …while the ET B2B portal itself is still named', same(T.namedPortals('Show ETB2B drafts'), ['b2b']) && same(T.namedPortals('switch to ET B2B'), ['b2b']));
+  check('P.1 …so a create that only addressed the assistant keeps the working portal, and says the model\'s portal was not used',
+    (function () { var c = T.cleanCreate({ category: 'IP', name: 'Retail Next', portal: 'b2b' }, ctxWith('ETB2B AI, start an IP event called Retail Next', ON_CIO)); return c.prefill.portal === 'cio' && c.dropped.indexOf('portal') !== -1; })());
   check('P.1 portalSlug: a slug or a name, never a portal ET does not have', T.portalSlug('ETCIO') === 'cio' && T.portalSlug('ET HR World') === 'hr' && T.portalSlug('cio') === 'cio' &&
     T.portalSlug('ETNews') === '' && T.portalSlug('nowhere') === '' && T.portalSlug('All') === 'all' && T.portalSlug('none') === 'none' && T.portalSlug('') === '');
   check('P.1 every portal the bot can take is on ET\'s roster', Object.keys(etEvents.PORTALS).every(function (slug) { return T.portalSlug(etEvents.PORTALS[slug]) === slug; }));

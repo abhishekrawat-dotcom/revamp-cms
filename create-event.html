@@ -10172,11 +10172,13 @@
       row.label = 'Hero picture not made: the design’s own picture is kept';
     });
   }
-  /* what the editor is told about it: the picture to put in as an undoable change, or why there is none */
+  /* what the editor is told about it: the picture to put in as an undoable change, or why there is none. A picture
+     made on an earlier run of the hand-off is not put in once the draft has gone another way since: a banner the
+     person added is theirs and stays, and a path off the template keeps its own pictures (heroLine says so). */
   function aiHeroForHandoff(){
     var h = S.aiHero;
     if (!h || h.removed) return null;
-    if (h.made) return { url: h.made.url, subject: h.made.subject };
+    if (h.made) return activeBannerUrl() || S.creationMethod !== 'template' ? null : { url: h.made.url, subject: h.made.subject };
     return h.note ? { note: h.note } : null;
   }
 
