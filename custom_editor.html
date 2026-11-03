@@ -523,6 +523,15 @@
   .chat-msg .chat-msg-focus{ font-size: 11px; opacity: .78; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-msg .chat-sent-pics{ display:flex; gap:5px; margin-top:6px; }
   .chat-msg .chat-sent-pics img{ width:42px; height:42px; object-fit:cover; border-radius:6px; }
+  /* a picture ETB2B AI made, shown under its message whole (not cropped), so the owner sees what was put on the
+     page; and the button that puts a made picture that never reached the page into the tray (editor-template-ui.js
+     drawMadePicture, drawHistoryPicture). Not tied to .chat-msg: the picture also sits in the change's card. */
+  .chat-made-pic{ display:block; width:100%; max-width:240px; margin-top:8px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background: var(--surface-2); }
+  img.chat-made-pic, .chat-made-pic img{ display:block; width:100%; height:auto; max-height:200px; object-fit:contain; }
+  .chat-use-pic{ margin-top:8px; }
+  .chat-use-pic:not(.btn){ display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:6px; border:1px solid var(--border); background: var(--surface); color: var(--text); font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .chat-use-pic:not(.btn):hover{ background: var(--surface-2); }
+  .chat-use-pic:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .chat-send-btn:hover:not(:disabled){ filter: brightness(1.08); }
 
   /* ---------- design-panel toggle switch ---------- */
@@ -1530,6 +1539,7 @@
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
+<script src="editor-ai-picture.js"></script>
 <script src="editor-template-ui.js"></script>
 <script src="editor-ai-mode.js"></script>
 <script>

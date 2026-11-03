@@ -201,20 +201,38 @@ function callGeminiJson(prompt, schema, opts) {
   });
 }
 
+/* The shapes the picture model can be asked for: the Gemini API's generationConfig.imageConfig.aspectRatio, which
+   gemini-2.5-flash-image (the default GEMINI_IMAGE_MODEL) and the newer picture models take. Without it the model
+   answers a square (1024 x 1024). Only a caller that names one gets it (opts.aspectRatio, e.g. '16:9' for a wide
+   banner); every other call is sent exactly as before. */
+var IMAGE_ASPECTS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
 function callGeminiImage(prompt, opts) {
   opts = opts || {};
   var parts = [{ text: String(prompt) }];
   /* a picture to change: the model gets it next to the words and answers with the edited picture */
   if (opts.image) parts.push(imagePart(opts.image, 'callGeminiImage'));
-  var body = { contents: [{ parts: parts }], generationConfig: { responseModalities: ['IMAGE'] } };
-  return call('image', GEMINI_IMAGE_MODEL, body, String(prompt).length, opts, function (data) {
+  var aspect = IMAGE_ASPECTS.indexOf(opts.aspectRatio) !== -1 ? opts.aspectRatio : '';
+  function bodyFor(withAspect) {
+    var generationConfig = { responseModalities: ['IMAGE'] };
+    if (withAspect) generationConfig.imageConfig = { aspectRatio: aspect };
+    return { contents: [{ parts: parts }], generationConfig: generationConfig };
+  }
+  function read(data) {
     var bad = unusableReason(data);
     if (bad) return bad;
     var content = data.candidates[0].content;
     var image = ((content && content.parts) || []).filter(function (p) { return p && p.inlineData && p.inlineData.data; })[0];
     if (!image) return { code: 'ai-bad-output', detail: 'the candidate had no image' };
     return { mimeType: image.inlineData.mimeType || 'image/png', base64: image.inlineData.data };
+  }
+  var first = call('image', GEMINI_IMAGE_MODEL, bodyFor(!!aspect), String(prompt).length, opts, read);
+  if (!aspect) return first;
+  /* A picture model that does not know the setting (GEMINI_IMAGE_MODEL set to an older one) refuses the request
+     with a 400, which is not billed: it is asked once more without it, and answers a square picture. */
+  return first.then(function (r) {
+    return r && r.code === 'ai-rejected' ? call('image', GEMINI_IMAGE_MODEL, bodyFor(false), String(prompt).length, opts, read) : r;
   });
 }
 
-module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES };
+module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES, IMAGE_ASPECTS };
