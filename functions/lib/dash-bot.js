@@ -22,8 +22,9 @@
    is started on the portal they named, else the one they work in. An event with no portal is still found by
    name and is said to have none.
    HERO PICTURE (the owner, 3 Nov 2026): an event started here carries a request for a first hero picture
-   (prefill.hero): the person's own words for it, or nothing, which means the event's name and place. Nothing is
-   made here or on Create Event until the event exists: lib/ai-hero.js makes it then.
+   (prefill.hero): the person's own words for it, or nothing, which means the event's field (its portal's, from
+   portal-fields.js) and its place, never its name. Nothing is made here or on Create Event until the event exists:
+   lib/ai-hero.js makes it then.
 
    WHAT THE MODEL MAY DO. One structured JSON answer per message (SCHEMA), with a `kind` and at most one action.
    The vocabulary has no action that deletes, cancels, publishes, unpublishes, approves, restores, sends or pays:
@@ -1270,7 +1271,8 @@ function listTitle(sel, ctx, g) {
   var rule = sel.rule;
   if (rule.title) {
     var guarded = guardText(rule.title, g);
-    if (guarded.text && !/\{\{/.test(guarded.text)) return guarded.text;
+    /* the model's own title keeps the list's scope too, unless it already says it */
+    if (guarded.text && !/\{\{/.test(guarded.text)) return guarded.text + (sel.scope && !saysScope(guarded.text, sel.scope) ? ' · ' + sel.scope.title : '');
   }
   var bits = [];
   if (sel.windowed) {
@@ -1288,6 +1290,13 @@ function listTitle(sel, ctx, g) {
   if (byTotals(sel)) bits.push('by ' + sel.field + (sel.dir === 'asc' ? ', fewest first' : ', most first'));
   if (sel.scope) bits.push(sel.scope.title);
   return bits.join(' · ');
+}
+/* a title or answer that already names its scope: "… across all portals", "… in ETCIO", "… with no portal yet" */
+function saysScope(words, scope) {
+  var w = normalized(words);
+  if (scope.key === 'all') return w.indexOf(' all portals ') !== -1;
+  if (scope.key === 'none') return w.indexOf(' no portal ') !== -1;
+  return w.indexOf(normalized(portalNameOf(scope.key))) !== -1;
 }
 /* the list as the chat shows it: sorted (by totals when asked), cut to its limit, counted over every match */
 function finishList(sel, ctx, g) {
@@ -1391,6 +1400,45 @@ function choiceFor(ev, action, ctx) {
   /* two editions on two portals read alike without it */
   if (ctx && ctx.hasPortals) c.portal = portalOfEvent(ev);
   return c;
+}
+/* An answer that names events across portals says so (plan §15d, QA follow-up 2 F6), so a count never silently
+   mixes portals. When the list shows every portal, or an event the answer names is not on the portal the list
+   shows (an event with no portal counts as its own), each event's name is followed by its portal, "(ETCIO)" or
+   "(no portal yet)", unless the answer already says it ({{<id>.portal}}) or the product's own line does
+   (portalNote: `noted`). One that names two or more events from every portal, or from more than one, ends with its
+   scope: "That is across all portals." (unless it says so), or "These events are on more than one portal." (unless
+   it already says where each one is). A list carries its scope in its own title and rows, so no sentence is added
+   for one. Only an event's own name ({{<id>}}) is tagged: its live address and its Mailer performance link are not
+   names. The stored answer (answerRaw) keeps its tokens. -> { parts, scope: the sentence to add, or '' } */
+function portalTagged(parts, raw, ctx, list, noted) {
+  var none = { parts: parts, scope: '' };
+  if (!ctx.hasPortals) return none;
+  function isName(p) { return p.t === 'event' && !!ctx.byId[p.id] && p.href === hrefOf(p.id); }
+  var named = [];
+  parts.forEach(function (p) { if (isName(p) && named.indexOf(p.id) === -1) named.push(p.id); });
+  if (!named.length) return none;
+  var looking = ctx.view.portal, everyPortal = !looking;
+  var keys = uniq(named.map(function (id) { return ctx.byId[id].portal || 'none'; }));
+  if (!everyPortal && keys.length === 1 && keys[0] === looking) return none;
+  var said = {};
+  tokensIn(raw).forEach(function (t) { if (t.id && t.field === 'portal') said[t.id] = true; });
+  (noted || []).forEach(function (id) { said[id] = true; });
+  var out = [], tagged = {};
+  parts.forEach(function (p) {
+    if (p.t === 'text') { pushText(out, p.v); return; }
+    out.push(p);
+    if (!isName(p) || tagged[p.id] || said[p.id]) return;
+    tagged[p.id] = true;
+    var ev = ctx.byId[p.id];
+    pushText(out, ' (' + (ev.portal ? portalNameOf(ev.portal, ev) : 'no portal yet') + ')');
+  });
+  var scope = '';
+  if (named.length > 1 && !list && (everyPortal || keys.length > 1)) {
+    /* looking at one portal, an answer that already says where each event is needs no more */
+    var allSaid = named.every(function (id) { return said[id] === true; });
+    scope = everyPortal ? (saysScope(plainOf(out), { key: 'all' }) ? '' : 'That is across all portals.') : allSaid ? '' : 'These events are on more than one portal.';
+  }
+  return { parts: out, scope: scope };
 }
 /* The product's own line about an event's portal, for an answer that opens one of its pages: said when the event
    is not on the portal the list shows (or has none), so nobody lands on another portal's event unawares. */
@@ -1570,7 +1618,7 @@ function cleanCreate(raw, ctx) {
   if (method === 'template') { briefText = ''; cur.url = ''; prev.url = ''; }
 
   /* A first hero picture (the owner, 3 Nov 2026): asked for here, made by lib/ai-hero.js only once Create Event
-     has created the event. Its subject is the person's own words for it, or '' for "the event's name and place".
+     has created the event. Its subject is the person's own words for it, or '' for "the event's field and place".
      None when they said they want none, or for "Generate from a brief", which makes the site's pictures itself. */
   var subject = '', rawSubject = displayLine(raw.heroSubject, 1000);
   if (rawSubject) {
@@ -1693,6 +1741,8 @@ function cleanAnswer(parsed, ctx) {
      answer is a reply, and the model's text was written for an action that is not happening ("Opening the
      editor now."): only its questions are kept, else this sentence is said. */
   var multiChoice = false, downgrade = '';
+  /* events whose portal the product's own line already says (portalNote): not tagged again (portalTagged) */
+  var noted = [];
   if (kind === 'open') {
     var o = isObj(parsed.open) ? parsed.open : {}, target = OPEN_TARGETS.indexOf(o.target) !== -1 ? o.target : '';
     if (!target) { out.kind = 'reply'; downgrade = MSG.sorry; }
@@ -1706,7 +1756,7 @@ function cleanAnswer(parsed, ctx) {
     } else out.action = navigateTo(target, ctx.byId[kept[0]], o.tab, notes, tail);
     if (out.action) out.memo = navLabel(out.action.target, tokenEvent(out.action.eventId ? ctx.byId[out.action.eventId] : null), o.tab);
     var openNote = out.action && out.action.eventId ? portalNote(ctx.byId[out.action.eventId], ctx) : '';
-    if (openNote) tail.push({ t: 'text', v: openNote });
+    if (openNote) { tail.push({ t: 'text', v: openNote }); noted.push(out.action.eventId); }
   } else if (kind === 'promo') {
     var p = isObj(parsed.promo) ? parsed.promo : {};
     var post = ids(POST_TEMPLATES).indexOf(p.post) !== -1 ? p.post : '';
@@ -1724,7 +1774,7 @@ function cleanAnswer(parsed, ctx) {
       out.action = promoAction(ctx.byId[kept[0]], post, sitePost, mailer);
       out.memo = promoAction(tokenEvent(ctx.byId[kept[0]]), post, sitePost, mailer).label;
       var promoNote = portalNote(ctx.byId[kept[0]], ctx);
-      if (promoNote) tail.push({ t: 'text', v: promoNote });
+      if (promoNote) { tail.push({ t: 'text', v: promoNote }); noted.push(kept[0]); }
     }
   } else if (kind === 'filter') {
     var patch = cleanFilter(parsed.filter, ctx, notes);
@@ -1838,6 +1888,10 @@ function cleanAnswer(parsed, ctx) {
       }
       var res = resolveAll(raw, ctx, { list: list, sel: sel }, notes, unknownSeen);
       parts = res.parts; raw = res.raw;
+      /* events named across portals say which portal each is on, and the answer says its scope (portalTagged) */
+      var tagged = portalTagged(parts, raw, ctx, list, noted);
+      parts = tagged.parts;
+      if (tagged.scope) tail.unshift({ t: 'text', v: tagged.scope });
       if (!parts.length) {
         /* a create whose sentence the guard took (it repeated the date, say) still says what is happening, so its
            bubble and its line in the history are never empty */

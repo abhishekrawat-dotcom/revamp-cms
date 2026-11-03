@@ -7,11 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
-  /* cross-page transitions: cross-fade into the event console instead of
-     blanking the window between documents. Chrome 126+; anywhere else the
-     at-rule is ignored and navigation behaves as before. */
-  @view-transition { navigation: auto; }
-  @media (prefers-reduced-motion: reduce){ @view-transition { navigation: none; } }
+  /* No cross-page transition (@view-transition) here: Chrome runs one only when the page left and the page opened
+     both ask for it, and no other Oneworld 2.0 page does (the console's was removed with the app shell). Asked for
+     here alone, every move from Create Event to the editor or the dashboard threw "InvalidStateError: Transition was
+     aborted because of invalid state" (QA 3 Nov 2026); dash-bot-handoff.test.js E.2 keeps it out. */
   html{ background: var(--bg); }
   :root{
     color-scheme: light;
@@ -2317,6 +2316,7 @@
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
+<script src="portal-fields.js"></script>
 <script src="create-event-prefill.js"></script>
 <script>
 (function(){
@@ -2844,7 +2844,7 @@
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
     sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
     priorDesigns: [],            // every design name+colours/fonts shown by "Redesign with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
-    aiHero: null,               // ETB2B AI's hero picture for an event it started: { subject ('' = the event's name and place), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
+    aiHero: null,               // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
     assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
   function draftId(){
@@ -2864,7 +2864,7 @@
   var restoreNotice = '';     // what a restored draft could not be resumed with, shown on the method screen until a choice is made
   /* ETB2B AI on the events dashboard can open this page with a new event's details (?prefill=, create-event-prefill.js) */
   var aiPrefill = null;       // those details, held until start() fills the new draft with them, once
-  var aiNote = null;          // the note over step 1: { kind: 'filled' | 'unused' | 'missing', text, snap } (renderAiPrefillNote)
+  var aiNote = null;          // the note over step 1: { kind: 'filled' | 'unused' | 'missing', text, snap, res, portal } (renderAiPrefillNote; res and portal: nameAiNotePortal)
   var resumedExisting = false;   // this page load restored a draft whose event already exists on the server
   var lastSaveOk = true;      // the last save() reached localStorage
   var otherTab = '';          // '' | 'changed' | 'replaced' | 'closed' — what another tab did to the stored draft; this tab stops saving until the owner decides (renderSaveState)
@@ -4119,6 +4119,7 @@
       wireEtPicker();
       checkCurrentLink();
     }
+    nameAiNotePortal();
     guardDraftPortal(true);
   }
   /* The person's working portal, as the server has it now: it wins over the remembered one. A new draft's box
@@ -10527,12 +10528,31 @@
         ' were not used: finish or discard this one, then ask again.' };
       return;
     }
-    var res = RevampPrefill.apply(S, CATS, p, { slugify: slugify });
+    /* portalName: the note over step 1 names the portal the event is on ("IP event on ETCIO · …"), once its name
+       is known: ET's roster is usually still on its way here, and nameAiNotePortal() adds it when it comes */
+    var res = RevampPrefill.apply(S, CATS, p, { slugify: slugify, portalName: knownPortalName });
     /* thenDetails: a brief that came with no type; the type picker opens as a first choice, and the pick goes on to
        the brief form (pickCategory) */
     S.aiPrefill = { turnId: p.turnId, at: p.at, fields: res.fields, thenDetails: res.thenDetails === true };
     save();
-    aiNote = { kind: 'filled', text: RevampPrefill.summary(res), snap: '' };
+    aiNote = { kind: 'filled', text: RevampPrefill.summary(res), snap: '', res: res, portal: res.fields.indexOf('portal') !== -1 ? S.basics.portal : '' };
+  }
+  /* a portal's name only when it is known (the roster's, or the remembered working portal's): never the bare slug */
+  function knownPortalName(slug){
+    if (isRosterPortal(slug)) return portalNames[slug];
+    var name = '';
+    try { name = window.RevampPortals && typeof RevampPortals.nameOf === 'function' ? String(RevampPortals.nameOf(slug) || '') : ''; } catch(e){ name = ''; }
+    return name;
+  }
+  /* The note over step 1 names the portal ETB2B AI filled in as soon as ET's roster says its name, while the draft
+     is still on that portal (a portal off the roster is dropped by portalArrived, and is not named). */
+  function nameAiNotePortal(){
+    var n = aiNote;
+    if (!n || n.kind !== 'filled' || !n.res || !n.res.values || n.res.values.portal || !n.portal) return;
+    if (!isRosterPortal(n.portal) || S.basics.portal !== n.portal) return;
+    n.res.values.portal = portalNames[n.portal];
+    n.text = RevampPrefill.summary(n.res);
+    renderAiPrefillNote();
   }
   /* what the person has entered in the draft, to tell whether Undo would clear something they typed: not the save
      time, the step or the phase (moving about is not typing), and the brief's empty headings count as nothing */
@@ -10575,11 +10595,19 @@
     return { subject: String(h.subject || '').replace(/\s+/g, ' ').trim().slice(0, 200), removed: h.removed === true, made: made,
       note: String(h.note || '').slice(0, 300), turnId: typeof h.turnId === 'string' ? h.turnId.slice(0, 40) : '', at: +h.at || 0 };
   }
-  /* "the event's name and place", as the picture's subject when the person gave none (the server words it the same) */
+  /* The picture's subject when the person gave none: the event's field, which its portal sets, and its place
+     ("technology leadership, Jio World Centre, Mumbai"), worded by portal-fields.js as the server words it
+     (functions/lib/ai-hero.js subjectOf). Never the event's name: an image model letters a name onto the picture. */
   function aiHeroAutoSubject(){
-    var b = S.basics, name = String(b.name || '').trim(), venue = String(b.venue || '').trim(), city = String(b.city || '').trim();
-    var place = venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) === -1 ? venue + ', ' + city : (venue || city);
-    return [name, place].filter(function(x){ return !!x; }).join(', ').slice(0, 200);
+    var b = S.basics, F = window.RevampPortalFields;
+    if (!F || typeof F.subject !== 'function') return '';
+    return F.subject(b.portal, b.venue, b.city);
+  }
+  /* what that subject was made from, said after it: { portal, place } */
+  function aiHeroAutoFrom(){
+    var b = S.basics, F = window.RevampPortalFields;
+    var onTable = !!F && typeof F.fieldOf === 'function' && F.fieldOf(b.portal).portal === true;
+    return { portal: onTable, place: !!(F && typeof F.place === 'function' && F.place(b.venue, b.city)) };
   }
   /* the chosen design shows no hero picture: no hero section, or it is switched off (unknown until the design is read) */
   function aiHeroNoSlot(){
@@ -10589,7 +10617,7 @@
     return !c || !!excludedOn(S.template)[c.sectionId];
   }
   function aiHeroState(){
-    return { hero: S.aiHero, method: S.creationMethod, ownBanner: !!activeBannerUrl(), noSlot: aiHeroNoSlot(), subject: aiHeroAutoSubject() };
+    return { hero: S.aiHero, method: S.creationMethod, ownBanner: !!activeBannerUrl(), noSlot: aiHeroNoSlot(), subject: aiHeroAutoSubject(), from: aiHeroAutoFrom() };
   }
   /* the picture will be asked for when the event is created: a request not removed, on the template path, with
      no banner of the person's own and a design that has a place for it */
@@ -10628,12 +10656,12 @@
     var btn = $(removed ? 'ai-hero-restore' : 'ai-hero-change');
     if (btn) btn.focus();
   }
-  /* Change: what the picture should show, in the person's words; left empty, it is the event's name and place */
+  /* Change: what the picture should show, in the person's words; left empty, it is the event's field and place */
   function changeAiHero(){
     if (!S.aiHero || busy) return;
     openModal({
       title: 'What should the hero picture show?',
-      sub: 'ETB2B AI makes the picture once your event is created. Leave this empty to make it from the event’s name and place.',
+      sub: 'ETB2B AI makes the picture once your event is created. Leave this empty to make it from the event’s field (set by its portal) and its place.',
       body: '<div class="field"><label class="flabel" for="ai-hero-subject">The picture shows</label>' +
         '<input class="inp" id="ai-hero-subject" type="text" maxlength="200" placeholder="' + esc(aiHeroAutoSubject() || 'e.g. a modern retail store at night') + '" value="' + esc(S.aiHero.subject) + '"></div>',
       confirm: 'Save',

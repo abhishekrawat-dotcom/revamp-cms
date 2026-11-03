@@ -874,7 +874,10 @@ async function realKitPass(KIT_SRC) {
   var listing = makeListing();
   var EDITOR = '/edit-event.html?event=autotech-2026#design/editor', PROMO = '/marketing.html?event=autotech-2026&tab=posts';
   var calls = [], assigned = [], answers = [filterAnswer(T1), navAnswer(T4, EDITOR), navAnswer('TurnOpen000005', PROMO, 'Promotions of Autotech 2026'),
-    { status: 429, body: { code: 'dash-bot-daily', error: 'You have used today’s ETB2B AI allowance. It resets at midnight (India time).' } }];
+    { status: 429, body: { code: 'dash-bot-daily', error: 'You have used today’s ETB2B AI allowance. It resets at midnight (India time).' } },
+    ok({ turnId: 'TurnSwitch0009', kind: 'portal', parts: [{ t: 'text', v: 'Switching the dashboard to the portal you asked for.' }], list: null,
+      action: { type: 'portal', portal: 'hr', label: 'ETHRWorld' }, choices: null, asOf: '2026-11-03T06:35:00.000Z', notes: [] })];
+  listing.setPortal = function () { var before = listing.snapshot(); before.mark = ++listing.n; return before; };
   var host = dom.document.createElement('div'); host.id = 'rv-dash-bot'; dom.document.body.appendChild(host);
   var ctx = {
     document: dom.document, console: console, JSON: JSON, Promise: Promise, Date: Date, navigator: { onLine: true },
@@ -957,6 +960,16 @@ async function realKitPass(KIT_SRC) {
   var help = dom.findAll(function (el) { return el.tagName === 'BUTTON' && /Email Customer Care/.test(el.textContent); })[0];
   if (help) help.click();
   res('Email Customer Care opens the page\'s help window, from its own button', !!help && listing.help.length === 1 && listing.help[0] === help);
+  /* QA follow-up 2 F5: the peek after a portal switch said "Showing Now working in ETHRWorld" */
+  if (launcher.getAttribute('aria-expanded') !== 'true') launcher.click();
+  sendText('Switch to ETHRWorld');
+  await flush(); await flush();
+  var label = dom.findAll(function (el) { return /\brvc-peek-label\b/.test(el.className); })[0];
+  clock.tick(100);      // the kit says it to screen readers a moment later (announce)
+  var live = dom.document.getElementById('dash-chat-live');
+  res('a portal switch: the peek reads "Now working in ETHRWorld", with no "Showing" in front', !!label && peek.hidden === false && label.textContent === 'Now working in ETHRWorld',
+    label && label.textContent);
+  res('…and the screen reader hears the same', !!live && live.textContent === 'Now working in ETHRWorld. Undo is in the ETB2B AI bar.', live && live.textContent);
   return out;
 }
 

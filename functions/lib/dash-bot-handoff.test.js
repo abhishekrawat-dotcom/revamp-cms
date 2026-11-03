@@ -30,6 +30,7 @@ function until(cond, ms) {
 }
 
 var PREFILL_SRC = read('create-event-prefill.js');
+var FIELDS_SRC = read('portal-fields.js');
 var CE = read('create-event.html');
 var MK = read('marketing.html');
 var SOCIAL = read('promo-studio/oneworld-social.js');
@@ -289,6 +290,25 @@ function takeOne(p, id, now) {
   check('E.1 F7: a quarter', Prefill.summary(Prefill.apply(freshS(), freshCats(), f7c.got, { slugify: SLUGIFY })).indexOf('from your message: Awards · QA Awards · Q1 2027.') !== -1,
     Prefill.summary(Prefill.apply(freshS(), freshCats(), f7c.got, { slugify: SLUGIFY })));
   check('E.1 F7: a caller with no values still gets the fields named', /from your message: name and date\./.test(Prefill.summary({ fields: ['name', 'dates'], notes: [], phase: 'details' })));
+  /* QA follow-up 2 F4: the person asked for ETCIO while working in ETHRWorld, and the method screen it opens on shows no
+     portal, so the note's values line names it with the type */
+  var NAMES = { cio: 'ETCIO', hr: 'ETHRWorld' };
+  function nameOf(slug) { return NAMES[slug] || ''; }
+  var f4 = viaServer({ category: 'IP', name: 'QA Dashbot CIO Expo', venue: 'Jio World Centre', city: 'Mumbai', dateMode: 'exact', start: '2027-02-12', portal: 'cio' },
+    'Create an IP event on ETCIO called QA Dashbot CIO Expo on 12 Feb 2027 at Jio World Centre, Mumbai');
+  var f4r = Prefill.apply(freshS(), freshCats(), f4.got, { slugify: SLUGIFY, portalName: nameOf });
+  check('E.1 F4: the note names the portal with the type: "IP event on ETCIO · …"', f4.got.portal === 'cio' && f4r.values.portal === 'ETCIO' &&
+    Prefill.summary(f4r).indexOf('Filled in by ETB2B AI from your message: IP event on ETCIO · QA Dashbot CIO Expo · 12 Feb 2027 · Jio World Centre, Mumbai. ') === 0, Prefill.summary(f4r));
+  var f4n = Prefill.apply(freshS(), freshCats(), takeOne(stored({ category: '', portal: 'hr' })).got, { slugify: SLUGIFY, portalName: nameOf });
+  check('E.1 F4: … with the type still to choose: "Event on ETHRWorld · …"', Prefill.summary(f4n).indexOf('from your message: Event on ETHRWorld · Retail Leadership Summit · ') !== -1, Prefill.summary(f4n));
+  var f4u = Prefill.apply(freshS(), freshCats(), f4.got, { slugify: SLUGIFY, portalName: function () { return ''; } });
+  check('E.1 F4: a portal whose name is not known yet is not named (never its bare slug)', f4u.values.portal === '' &&
+    Prefill.summary(f4u).indexOf('from your message: IP event · QA Dashbot CIO Expo · ') !== -1 && Prefill.summary(f4u).indexOf('cio ·') === -1, Prefill.summary(f4u));
+  var f4t = Prefill.apply(freshS(), freshCats(), f4.got, { slugify: SLUGIFY, portalName: function () { throw new Error('x'); } });
+  check('E.1 F4: … nor when the page\'s name lookup fails', f4t.values.portal === '' && /from your message: IP event · /.test(Prefill.summary(f4t)));
+  check('E.1 F4: a caller that passes no portalName gets the values line as before', /from your message: IP event · QA Dashbot CIO Expo · /.test(Prefill.summary(Prefill.apply(freshS(), freshCats(), f4.got, { slugify: SLUGIFY }))));
+  var f4x = Prefill.apply(freshS(), freshCats(), f4.got, { slugify: SLUGIFY, portalName: function () { return 'ET<b>CIO</b>\n2'; } });
+  check('E.1 F4: the name is one line of text', f4x.values.portal === 'ET<b>CIO</b> 2', f4x.values.portal);
   [[{ category: 'IP', name: 'QA Expo', venue: 'jio world centre', city: 'Mumbai', dateMode: 'exact', start: '2027-02-12' }, 'Create an IP event called QA Expo on 12 Feb 2027 at Jio World Centre, Mumbai'],
     [{ category: 'Client', name: 'QA Roundtable', client: 'Acme', city: 'Pune', dateMode: 'month', month: '2027-03' }, 'Create a client roundtable called QA Roundtable for Acme in Pune in March 2027'],
     [{ category: 'Awards', name: 'QA Awards', dateMode: 'quarter', quarter: 'Q1', year: '2027' }, 'Create the QA Awards in Q1 2027'],
@@ -450,7 +470,7 @@ function takeOne(p, id, now) {
 
 /* =============================================================================== E.2 create-event.html */
 var CE_FNS = ['esc', 'slugify', 'init', 'takePrefill', 'prefillName', 'draftLabel', 'askResumeOrDiscard', 'startWithPrefill', 'applyAiPrefill',
-  'aiDraftKey', 'renderAiPrefillNote', 'undoAiPrefill', 'clearAiPrefill'];
+  'aiDraftKey', 'renderAiPrefillNote', 'undoAiPrefill', 'clearAiPrefill', 'knownPortalName', 'nameAiNotePortal', 'isRosterPortal'];
 function noteEl() {
   var els = {};
   function el(id) {
@@ -467,7 +487,8 @@ function noteEl() {
   els['ai-prefill-note'] = el('ai-prefill-note');
   return els;
 }
-/* o: { search, stored, store (localStorage contents), noModule, resumed, noNote } */
+/* o: { search, stored, store (localStorage contents), noModule, resumed, noNote, roster ({ slug: name } as ET's roster
+   came, {} while it has not), cachedName (what RevampPortals.nameOf knows before it: the remembered working portal) } */
 function page(o) {
   o = o || {};
   var log = { calls: [], modals: [] };
@@ -478,7 +499,8 @@ function page(o) {
     location: { search: o.search || '', pathname: '/create-event.html', replace: function (u) { log.calls.push(['location.replace', u]); } },
     history: { replaceState: function (a, b, u) { log.calls.push(['replaceState', u]); } },
     localStorage: storage, CALLS: log.calls, MODALS: log.modals, STORED: o.stored || null, RESUMED: !!o.resumed,
-    ELS: o.noNote ? {} : noteEl()
+    ELS: o.noNote ? {} : noteEl(), ROSTER: o.roster || {},
+    RevampPortals: { nameOf: function (slug) { return o.cachedName && o.cachedName[slug] || ''; } }
   };
   ctx.window = ctx;
   vm.createContext(ctx);
@@ -486,6 +508,7 @@ function page(o) {
   var src = [
     'var S = ' + S_SRC + ';', 'var CATS = ' + CATS_SRC + ';', 'var SLUG_MAX = 48;', 'var BRIEF_TEMPLATE = "Tagline / theme: ";',
     'var aiPrefill = null, aiNote = null, busy = null, draftClosed = false, leavingUnsaved = false;',
+    'var portalNames = ROSTER;',
     'var IC = { info: "<i></i>", spark: "<s></s>" };',
     'function $(id){ return ELS[id] || null; }',
     'function readStoredDraft(){ return STORED; }',
@@ -565,6 +588,19 @@ function withPicker(P) {
   check('E.2 the note has its own spacing rule', /#ai-prefill-note\{ margin-bottom: 16px; \}/.test(CE));
   check('E.2 Undo asks first when the person typed since: "Undo also clears what you typed since"', (fnSrc(CE_INLINE, 'undoAiPrefill') || '').indexOf('Undo also clears what you typed since.') !== -1);
   es5('E.2 create-event.html\'s script', CE_INLINE);
+  /* QA follow-up 2: Chrome runs a cross-page transition only when both pages ask for one. Create Event alone asked,
+     so every move to the editor threw "InvalidStateError: Transition was aborted because of invalid state.
+     ViewTransition opt-in disabled". No page asks now; one that does must be matched by every page it opens. */
+  var asking = fs.readdirSync(ROOT).filter(function (f) { return /\.html$/.test(f); }).filter(function (f) {
+    var css = read(f).replace(/\/\*[\s\S]*?\*\//g, '');
+    return /@view-transition\s*\{[^}]*navigation\s*:\s*auto/i.test(css);
+  });
+  check('E.2 no page asks for a cross-page transition alone (Create Event did, and every move to the editor threw)', asking.length === 0, asking);
+  check('E.2 Create Event loads the portal field table before its own script (the hero line\'s field)', (function () {
+    var t = CE.match(/<script\b[^>]*>/g) || [];
+    var f = t.indexOf('<script src="portal-fields.js">');
+    return count(CE, '<script src="portal-fields.js"></script>') === 1 && f !== -1 && f < t.indexOf('<script>') && access.isServableFile('portal-fields.js');
+  })());
   check('E.2 what the prefill code says names ETB2B AI, never Revamp', /ETB2B AI/.test(prefillCode) && !/Revamp(?!Prefill)/.test(prefillCode.replace(/RevampPrefill/g, '')));
 
   /* ---- init(): the paths as they were, with no new parameter ---- */
@@ -636,6 +672,38 @@ function withPicker(P) {
   P.ctx.ELS['ai-prefill-undo'].onclick(); await wait();
   check('E.2 moving between phases, or the brief\'s empty headings appearing, is not typing: no question', !P.log.modals.length &&
     P.log.calls.some(function (c) { return c[0] === 'location.replace'; }));
+
+  /* QA follow-up 2 F4: the note names the portal the event is on, as soon as ET's roster gives its name */
+  var onCio = stored({ at: Date.now() - 1000, portal: 'cio' });
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(onCio), roster: { cio: 'ETCIO', hr: 'ETHRWorld' } });
+  P.ctx.init(); await wait();
+  check('E.2 F4: the roster is in: "IP event on ETCIO · …"', P.ctx.S.basics.portal === 'cio' &&
+    P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf('Filled in by ETB2B AI from your message: IP event on ETCIO · Retail Leadership Summit · 12 Feb 2027 · Jio World Centre, Mumbai. ') !== -1,
+    P.ctx.ELS['ai-prefill-note'].innerHTML);
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(onCio) });
+  P.ctx.init(); await wait();
+  note = P.ctx.ELS['ai-prefill-note'];
+  check('E.2 F4: the roster still on its way: the portal is not named yet, and never as its bare slug', note.innerHTML.indexOf('from your message: IP event · Retail Leadership Summit · ') !== -1 &&
+    note.innerHTML.indexOf('cio') === -1, note.innerHTML);
+  P.ctx.portalNames = { cio: 'ETCIO' };
+  P.ctx.nameAiNotePortal();
+  check('E.2 F4: …then the roster comes (portalArrived): the note is drawn again with it', note.innerHTML.indexOf('from your message: IP event on ETCIO · Retail Leadership Summit · ') !== -1 &&
+    P.ctx.aiNote.kind === 'filled', note.innerHTML);
+  check('E.2 F4: the page names the portal when its roster arrives', /nameAiNotePortal\(\);/.test(fnSrc(CE_INLINE, 'portalArrived') || ''));
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(onCio), cachedName: { cio: 'ETCIO' } });
+  P.ctx.init(); await wait();
+  check('E.2 F4: the remembered working portal\'s name is used before the roster comes', P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf('IP event on ETCIO · ') !== -1);
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(onCio) });
+  P.ctx.init(); await wait();
+  P.ctx.S.basics.portal = 'hr'; P.ctx.portalNames = { cio: 'ETCIO', hr: 'ETHRWorld' };
+  P.ctx.nameAiNotePortal();
+  check('E.2 F4: a portal changed meanwhile is not named as the one ETB2B AI filled in', P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf(' on ETCIO') === -1 &&
+    P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf(' on ETHRWorld') === -1);
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(onCio) });
+  P.ctx.init(); await wait();
+  P.ctx.portalNames = { hr: 'ETHRWorld' };
+  P.ctx.nameAiNotePortal();
+  check('E.2 F4: a portal off ET\'s roster is never named', P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf('IP event on') === -1 && P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf('IP event · ') !== -1);
 
   /* the note follows the page */
   P = page({ search: '?new=1&prefill=' + ID, store: storeWith(good) });
@@ -1095,7 +1163,7 @@ async function e6() {
   var t = takeOne(stored({ hero: { subject: '  a modern retail\nstore at night ' } }));
   check('E.6 take: the hero request is kept, its subject one line of the person\'s words', !!t.got && JSON.stringify(t.got.hero) === JSON.stringify({ subject: 'a modern retail store at night' }), t.got && t.got.hero);
   t = takeOne(stored({ hero: { subject: '' } }));
-  check('E.6 take: an empty subject is "the event\'s name and place"', !!t.got && JSON.stringify(t.got.hero) === JSON.stringify({ subject: '' }));
+  check('E.6 take: an empty subject is "the event\'s field and place"', !!t.got && JSON.stringify(t.got.hero) === JSON.stringify({ subject: '' }));
   t = takeOne(stored({ method: 'brief', brief: { text: 'A one-day forum.' }, hero: { subject: 'x' } }));
   check('E.6 take: none on the brief path (it makes its own pictures)', !!t.got && t.got.method === 'brief' && t.got.hero === null, t.got && t.got.hero);
   t = takeOne(stored({ hero: 'make one' }));
@@ -1116,14 +1184,22 @@ async function e6() {
 
   /* ---- what the line says ---- */
   var H = Prefill.heroLine;
-  var auto = 'Retail Leadership Summit, Jio World Centre, Mumbai';
-  var L = H({ hero: { subject: '' }, method: 'template', subject: auto });
-  check('E.6 line: the name and place, said to be that, and that nothing is made until the event is created', !!L && L.can === 'change' &&
-    L.text === 'ETB2B AI will make a hero picture: Retail Leadership Summit, Jio World Centre, Mumbai (from the event’s name and place). Nothing is made until your event is created.', L);
+  /* QA follow-up 2 F1/F3: the picture is of the event's field (its portal's) and place, never its name, and the line
+     says so */
+  var auto = 'retail, Jio World Centre, Mumbai';
+  var L = H({ hero: { subject: '' }, method: 'template', subject: auto, from: { portal: true, place: true } });
+  check('E.6 line: the field and place, said to be from the portal and place, and that nothing is made until the event is created', !!L && L.can === 'change' &&
+    L.text === 'ETB2B AI will make a hero picture: retail, Jio World Centre, Mumbai (from the event’s portal and place). Nothing is made until your event is created.', L);
+  check('E.6 line: …its portal alone, its place alone, or neither, said as such',
+    H({ hero: { subject: '' }, method: 'template', subject: 'retail', from: { portal: true, place: false } }).text.indexOf('retail (from the event’s portal).') !== -1 &&
+    H({ hero: { subject: '' }, method: 'template', subject: 'business and industry, Pune', from: { portal: false, place: true } }).text.indexOf('business and industry, Pune (from the event’s place: it has no portal yet).') !== -1 &&
+    H({ hero: { subject: '' }, method: 'template', subject: 'business and industry', from: {} }).text.indexOf('business and industry (it has no portal or place yet).') !== -1);
   L = H({ hero: { subject: 'a modern retail store at night' }, method: null, subject: auto });
   check('E.6 line: the person\'s own words', L.text === 'ETB2B AI will make a hero picture: a modern retail store at night. Nothing is made until your event is created.' && L.can === 'change', L);
   L = H({ hero: { subject: '' }, method: 'template', subject: '' });
-  check('E.6 line: before a name is typed', /from the event’s name and place, once you have typed them\./.test(L.text), L.text);
+  check('E.6 line: no subject to show (the page could not word one)', /from the event’s portal and place, once you have chosen them\./.test(L.text), L.text);
+  check('E.6 line: the event\'s name is never said to be what the picture shows', [H({ hero: { subject: '' }, method: 'template', subject: auto, from: { portal: true, place: true } }),
+    H({ hero: { subject: '' }, method: 'template', subject: '' })].every(function (x) { return x.text.indexOf('name') === -1; }));
   check('E.6 line: removed → "won\'t", with Make one after all', H({ hero: { subject: '', removed: true }, method: 'template' }).can === 'restore' &&
     H({ hero: { subject: '', removed: true } }).text === 'ETB2B AI won’t make a hero picture for this event.');
   check('E.6 line: Generate from a brief → why none', H({ hero: { subject: '' }, method: 'brief' }).text === 'Generate from a brief makes the site’s pictures itself, so ETB2B AI won’t make a separate hero picture.' &&
@@ -1136,7 +1212,7 @@ async function e6() {
   check('E.6 line: no request, no line', H({ hero: null }) === null && H({}) === null);
 
   /* ---- the page ---- */
-  var FNS = ['cleanAiHero', 'aiHeroAutoSubject', 'aiHeroNoSlot', 'aiHeroState', 'wantsAiHero', 'renderAiHeroLine', 'setAiHeroRemoved', 'changeAiHero',
+  var FNS = ['cleanAiHero', 'aiHeroAutoSubject', 'aiHeroAutoFrom', 'aiHeroNoSlot', 'aiHeroState', 'wantsAiHero', 'renderAiHeroLine', 'setAiHeroRemoved', 'changeAiHero',
     'handoffSteps', 'aiHeroFailure', 'makeAiHero', 'aiHeroForHandoff'];
   check('E.6 every hero function is on the page', FNS.every(function (n) { return !!fnSrc(CE_INLINE, n); }), FNS.filter(function (n) { return !fnSrc(CE_INLINE, n); }));
   es5('E.6 the page\'s hero code', FNS.map(function (n) { return fnSrc(CE_INLINE, n); }).join('\n'));
@@ -1161,9 +1237,10 @@ async function e6() {
     ctx.window = ctx;
     vm.createContext(ctx);
     vm.runInContext(PREFILL_SRC, ctx, { filename: 'create-event-prefill.js' });
+    if (!o.noFields) vm.runInContext(FIELDS_SRC, ctx, { filename: 'portal-fields.js' });
     ctx.RevampCore = { authedFetch: function (url, opts) {
       log.fetches.push({ url: url, method: opts.method, body: JSON.parse(opts.body) });
-      var a = o.answer || { status: 200, body: { url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'Retail Leadership Summit, Jio World Centre, Mumbai', made: true } };
+      var a = o.answer || { status: 200, body: { url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'retail, Jio World Centre, Mumbai', made: true } };
       return Promise.resolve({ ok: a.status < 300, status: a.status, json: function () { return Promise.resolve(a.body); } });
     } };
     vm.runInContext([
@@ -1180,7 +1257,7 @@ async function e6() {
       'function createEventRecord(){ return Promise.resolve(); }', 'function openInEditor(){ return Promise.resolve(); }',
       fnSrc(CE_INLINE, 'httpError'), fnSrc(CE_INLINE, 'readJson')
     ].concat(FNS.map(function (n) { return fnSrc(CE_INLINE, n); })).join('\n'), ctx, { filename: 'create-event.html (hero, extracted)' });
-    ctx.S.basics.name = 'Retail Leadership Summit'; ctx.S.basics.venue = 'Jio World Centre, Mumbai';
+    ctx.S.basics.name = 'Retail Leadership Summit'; ctx.S.basics.venue = 'Jio World Centre, Mumbai'; ctx.S.basics.portal = 'retail';
     return { ctx: ctx, els: els, log: log, line: function () { ctx.renderAiHeroLine(); return els['ai-hero-line']; } };
   }
   var P = stage();
@@ -1189,19 +1266,29 @@ async function e6() {
   P.ctx.S.creationMethod = 'template'; P.ctx.S.step = 1;
   var line = P.line();
   check('E.6 page: the line says it plainly, with Change and Remove', line.hidden === false && line.getAttribute('role') === null &&
-    line.innerHTML.indexOf('ETB2B AI will make a hero picture: Retail Leadership Summit, Jio World Centre, Mumbai (from the event’s name and place). Nothing is made until your event is created.') !== -1 &&
+    line.innerHTML.indexOf('ETB2B AI will make a hero picture: retail, Jio World Centre, Mumbai (from the event’s portal and place). Nothing is made until your event is created.') !== -1 &&
     !!P.els['ai-hero-change'] && !!P.els['ai-hero-remove'], line.innerHTML);
+  check('E.6 page: the event\'s name is not in the line (the picture is never of it)', line.innerHTML.indexOf('Retail Leadership Summit') === -1, line.innerHTML);
+  /* the field follows the portal chosen on step 1, from the one table the server reads too (portal-fields.js) */
+  P.ctx.S.basics.portal = 'hr';
+  check('E.6 page: another portal, another field: ETHRWorld → people and workplaces', P.line().innerHTML.indexOf('ETB2B AI will make a hero picture: people and workplaces, Jio World Centre, Mumbai (from the event’s portal and place).') !== -1,
+    P.els['ai-hero-line'].innerHTML);
+  P.ctx.S.basics.portal = '';
+  check('E.6 page: no portal yet: the neutral field, and said why', P.line().innerHTML.indexOf('ETB2B AI will make a hero picture: business and industry, Jio World Centre, Mumbai (from the event’s place: it has no portal yet).') !== -1,
+    P.els['ai-hero-line'].innerHTML);
+  P.ctx.S.basics.portal = 'retail';
+  P.line();
   var before = line.innerHTML;
   P.line();
   check('E.6 page: drawn again only when what it says changes (its buttons keep the keyboard)', P.els['ai-hero-line'].innerHTML === before && P.els['ai-hero-line'].getAttribute('data-line').indexOf('change:') === 0);
-  P.ctx.S.basics.name = 'Retail <b>Summit</b>';
-  check('E.6 page: the name is shown as text, never as markup', P.line().innerHTML.indexOf('Retail &lt;b&gt;Summit&lt;/b&gt;') !== -1);
-  P.ctx.S.basics.name = 'Retail Leadership Summit';
+  P.ctx.S.basics.venue = 'Jio <b>World</b> Centre, Mumbai';
+  check('E.6 page: the place is shown as text, never as markup', P.line().innerHTML.indexOf('Jio &lt;b&gt;World&lt;/b&gt; Centre') !== -1);
+  P.ctx.S.basics.venue = 'Jio World Centre, Mumbai';
   P.line();
   P.els['ai-hero-change'].onclick();
   var m = P.log.modals[0];
-  check('E.6 Change: asks what the picture should show, with the name and place as the empty answer', !!m && m.title === 'What should the hero picture show?' &&
-    m.body.indexOf('id="ai-hero-subject"') !== -1 && m.body.indexOf('maxlength="200"') !== -1 && m.body.indexOf('placeholder="Retail Leadership Summit, Jio World Centre, Mumbai"') !== -1, m);
+  check('E.6 Change: asks what the picture should show, with the field and place as the empty answer', !!m && m.title === 'What should the hero picture show?' &&
+    m.body.indexOf('id="ai-hero-subject"') !== -1 && m.body.indexOf('maxlength="200"') !== -1 && m.body.indexOf('placeholder="retail, Jio World Centre, Mumbai"') !== -1 && /field \(set by its portal\) and its place/.test(m.sub), m);
   P.els['ai-hero-subject'] = { value: '  a modern retail\nstore at night ' };
   m.onConfirm();
   check('E.6 Change: the person\'s words, one line, kept in the draft and shown', P.ctx.S.aiHero.subject === 'a modern retail store at night' && P.log.saves === 1 &&
@@ -1244,7 +1331,7 @@ async function e6() {
   check('E.6 the event exists: one request, for it, with the subject and the turn', P.log.fetches.length === 1 && P.log.fetches[0].url === '/api/event/ai-hero' && P.log.fetches[0].method === 'POST' &&
     JSON.stringify(P.log.fetches[0].body) === JSON.stringify({ eventId: 'retail-2027', subject: 'a modern retail store at night', turnId: ID }), P.log.fetches);
   check('E.6 made: kept in the draft, the row says so, and the editor gets it', !!P.ctx.S.aiHero.made && P.ctx.S.aiHero.made.url === 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png' &&
-    row.label === 'ETB2B AI made a hero picture' && JSON.stringify(P.ctx.aiHeroForHandoff()) === JSON.stringify({ url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'Retail Leadership Summit, Jio World Centre, Mumbai' }),
+    row.label === 'ETB2B AI made a hero picture' && JSON.stringify(P.ctx.aiHeroForHandoff()) === JSON.stringify({ url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'retail, Jio World Centre, Mumbai' }),
     [P.ctx.S.aiHero, row.label]);
   check('E.6 a hand-off run again (a retry) never asks for a second picture', P.ctx.wantsAiHero() === false && JSON.stringify(P.ctx.handoffSteps().map(function (x) { return x.key; })) === '["create","open"]');
   await P.ctx.makeAiHero('RUN', row);
@@ -1352,5 +1439,66 @@ async function e7() {
   check('E.7 the hand-off holds the picture until the boot is done (its first step is the design\'s own picture)', /if \(kept\) forgetHandoff\(\);\s*pendingAiHero = draft;/.test(handoff));
   check('E.7 the boot puts it in last, after the records are drawn into the first step', start.indexOf('applySubcollectionOverlay()') !== -1 &&
     start.indexOf('applyAiHero(heroDraft)') > start.indexOf('applySubcollectionOverlay()') && start.indexOf('applyAiHero(heroDraft)') > start.indexOf('logoUnitNotice();'));
-  check('E.7 a hand-off with no sections still brings the picture', /return seedSnapshot\(null\)\.then\(function \(\) \{ pendingAiHero = draft; \}\);/.test(ED));
+  check('E.7 a hand-off with no sections still brings the picture', /return seedSnapshot\(null\)\.then\(function \(\) \{ pendingAiHero = draft \|\| aiHeroFromEvent\(\); \}\);/.test(ED));
+
+  /* QA follow-up 2: the editor opened in ANOTHER browser (no copy of the site, no hand-off) before the site was ever
+     saved puts in ETB2B AI's picture from the event's own record, as the hand-off does: one step of its own, which
+     Undo takes back to the design's own picture */
+  check('E.7 the editor has aiHeroFromEvent', !!fnSrc(ED, 'aiHeroFromEvent'));
+  es5('E.7 the editor\'s opening code', [fnSrc(ED, 'aiHeroFromEvent'), fnSrc(ED, 'resolveInitialContent')].join('\n'));
+  var MADE_URL = 'https://storage.googleapis.com/test-bucket/events/retail-2027/generated/abc-ai-hero.png';
+  /* o: { local (a copy of the site in this browser), handoff (this browser's hand-off), arriving (?from=create),
+          event (the record GET /api/event gave), template } -> what resolveInitialContent() did, and the picture it
+          left for the end of the boot */
+  async function opening(o) {
+    o = o || {};
+    var log = [];
+    var ctx = { console: console, Promise: Promise, JSON: JSON, String: String, URLSearchParams: URLSearchParams, LOG: log, OPT: o,
+      location: { search: o.arriving ? '?event=retail-2027&from=create' : '?event=retail-2027' } };
+    vm.createContext(ctx);
+    vm.runInContext([
+      'var eventId = "retail-2027", storeKey = "site:retail-2027:tech500", templateId = OPT.template || "tech500", FILL_LOGIC_VERSION = 2;',
+      'var currentEvent = OPT.event || null, pendingAiHero = null, sourceDraftId = null, undoStack = [], undoPtr = -1;',
+      'var canvas = { restore: function(){ LOG.push("restore"); }, snapshot: function(s){ return s || { page: 1 }; } };',
+      'function restoreOpts(){ return {}; }',
+      'function localGet(){ return Promise.resolve(OPT.local ? { snapshot: { page: 2 }, savedAt: 1, fillVersion: 2 } : undefined); }',
+      'function fromCreate(){ return !!OPT.arriving; }',
+      'function readHandoffDraft(){ return OPT.handoff || null; }',
+      'function applyHandoffDraft(d){ LOG.push("handoff"); pendingAiHero = d; return Promise.resolve(); }',
+      'function seedSnapshot(){ LOG.push("seed"); return Promise.resolve(true); }',
+      'function fetchServerDraft(){ LOG.push("server"); return Promise.resolve(null); }',
+      'function newerOnServer(){ return false; }', 'function takeServerVersion(){ return Promise.resolve(); }', 'function adoptGeneration(){}',
+      fnSrc(ED, 'aiHeroFromEvent'), fnSrc(ED, 'resolveInitialContent')
+    ].join('\n'), ctx, { filename: 'editor-template-ui.js (opening, extracted)' });
+    await ctx.resolveInitialContent();
+    return { log: log, pending: ctx.pendingAiHero };
+  }
+  var REC = { eventId: 'retail-2027', templateId: 'tech500', aiHero: { status: 'made', url: MADE_URL, subject: 'retail, Jio World Centre, Mumbai', by: 'asha@timesinternet.in' } };
+  var o1 = await opening({ event: REC });
+  check('E.7 another browser, no site saved yet: the design is seeded, then the event\'s picture waits for the end of the boot',
+    JSON.stringify(o1.log) === '["seed"]' && JSON.stringify(o1.pending) === JSON.stringify({ aiHero: { url: MADE_URL, subject: 'retail, Jio World Centre, Mumbai' } }), o1);
+  var E2 = stage();
+  check('E.7 …and it goes in exactly as the hand-off\'s: one step, Undo offered, Undo brings the design\'s picture back',
+    E2.ctx.applyAiHero(o1.pending) === true && E2.log.steps.length === 1 && E2.banner.src === MADE_URL &&
+    E2.log.undo[0] === 'ETB2B AI made this hero picture: retail, Jio World Centre, Mumbai. Undo puts the design’s own picture back.' && (E2.undo(), E2.banner.src === 'assets/banner.jpg'), E2.log);
+  var o2 = await opening({ event: REC, arriving: true });
+  check('E.7 ?from=create in a browser with no hand-off (the link opened elsewhere): the event\'s picture too', JSON.stringify(o2.pending) === JSON.stringify(o1.pending), o2);
+  var o3 = await opening({ event: REC, local: true });
+  check('E.7 this browser has a copy of the site: it is restored as it was, nothing put in again', JSON.stringify(o3.log) === '["restore"]' && o3.pending === null, o3);
+  var o4 = await opening({ event: Object.assign({}, REC, { site: { version: 2, templateId: 'tech500' } }) });
+  check('E.7 a site that was saved: what the person saved stands, no picture put in', o4.pending === null, o4);
+  /* only a record marked made counts, even one that carries an address (a picture made but not stored is "failed") */
+  var o5 = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'failed', error: 'not-stored', url: MADE_URL } }) });
+  var o6 = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'making', at: '2026-11-03T06:35:00.000Z', url: MADE_URL } }) });
+  var o7 = await opening({ event: { eventId: 'retail-2027', templateId: 'tech500' } });
+  var o7b = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'made', url: '' } }) });
+  check('E.7 no picture made (failed, still being made, never asked for, no address): nothing put in', o5.pending === null && o6.pending === null && o7.pending === null && o7b.pending === null, [o5, o6, o7, o7b]);
+  var HAND = { event: { name: 'Retail Leadership Summit' }, aiHero: null };
+  var o8 = await opening({ event: REC, arriving: true, handoff: HAND });
+  check('E.7 the browser that created it: its hand-off decides (it gave no picture: the person\'s own banner), not the record', o8.pending === HAND, o8);
+  var o9 = await opening({ event: REC, template: 'gen-retail-2027' });
+  check('E.7 a generated site (which made its own pictures) is not given one', o9.pending === null, o9);
+  var E3 = stage();
+  check('E.7 a record\'s picture of another event is never put in (applyAiHero\'s own check)',
+    E3.ctx.applyAiHero({ aiHero: { url: 'https://storage.googleapis.com/test-bucket/events/other-event/generated/x.png' } }) === false && E3.log.set.length === 0);
 }

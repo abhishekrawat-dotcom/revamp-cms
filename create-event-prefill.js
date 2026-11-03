@@ -12,12 +12,15 @@
      RevampPrefill.apply(S, CATS, p[, opts]) -> { fields, values, unused, phase, thenDetails, notes }   fills a blank draft S
      RevampPrefill.describe(fields)          -> "name, date and venue"
      RevampPrefill.summary(result)           -> the sentence the page shows over step 1: the values it filled in
-                                                ("IP event · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai"),
-                                                since the screen it opens on (the method) does not show them yet
+                                                ("IP event on ETCIO · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre,
+                                                Mumbai"), since the screen it opens on (the method) does not show them
+                                                yet. The portal is named because the event may be on another one than
+                                                the person works in (they asked for ETCIO while working in ETHRWorld).
      RevampPrefill.heroLine(o)               -> what the line about ETB2B AI's hero picture says: { text, can }
 
    A HERO PICTURE (the owner, 3 Nov 2026). An event ETB2B AI starts also asks for a first hero picture
-   (p.hero = { subject }: the person's own words for it, or '' for the event's name and place). It is held in
+   (p.hero = { subject }: the person's own words for it, or '' for the event's field, which its portal sets, and
+   its place: portal-fields.js; never its name, which an image model letters onto the picture). It is held in
    the draft (S.aiHero) and shown over step 1 with Change and Remove; nothing is made until the event exists
    (Create Event's hand-off, then functions/lib/ai-hero.js). "Generate from a brief" makes its own pictures, an
    imported design keeps its own, and a banner the person uploads is theirs: none of them gets one.
@@ -173,7 +176,7 @@
     if (!method && hasBrief) method = 'brief';
     if (method !== 'brief') brief = { text: '', current: '', previous: '' };
     var portal = typeof p.portal === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(p.portal) ? p.portal : '';
-    /* the hero picture asked for: its subject one line of the person's words, or '' (the event's name and place);
+    /* the hero picture asked for: its subject one line of the person's words, or '' (the event's field and place);
        none on the brief path, which makes the site's pictures itself */
     var hero = plain(p.hero) && method !== 'brief' ? { subject: line(p.hero.subject, SUBJECT_MAX) } : null;
 
@@ -249,8 +252,9 @@
 
   /* Fills the blank draft S (create-event.html's state) from p, a take() result. CATS is the page's own.
      opts.slugify: the page's; the web address then follows the name, as when it is typed (slugTouched stays
-     false). Returns { fields: what was filled, unused: what arrived and was not filled (take()'s dropped, and
-     what this type's form has no place for), phase: where step 1 opens, thenDetails: a brief is waiting for its
+     false). opts.portalName: the page's (a slug -> "ETCIO", or '' while its name is not known), so the note over
+     step 1 names the portal filled in. Returns { fields: what was filled, unused: what arrived and was not filled
+     (take()'s dropped, and what this type's form has no place for), phase: where step 1 opens, thenDetails: a brief is waiting for its
      type, so picking one opens the brief form, notes: what was assumed }.
      A brief with no type opens the type picker as a first choice, exactly as a new event does (catReturnPhase stays
      null: no type is shown as chosen, and there is nothing to cancel back to). The page keeps thenDetails with the
@@ -338,8 +342,10 @@
     /* the values themselves, for the note over step 1: the screen it opens on does not show them yet */
     function has(k) { return fields.indexOf(k) !== -1; }
     var links = (has('current') ? 1 : 0) + (has('previous') ? 1 : 0);
+    var portalName = '';
+    if (has('portal') && typeof opts.portalName === 'function') { try { portalName = line(String(opts.portalName(b.portal) || ''), 60); } catch (e) { portalName = ''; } }
     var values = {
-      kind: has('category') ? (KIND_WORDS[b.category] || '') : '', name: has('name') ? b.name : '', slug: has('slug') ? b.slug : '',
+      kind: has('category') ? (KIND_WORDS[b.category] || '') : '', portal: portalName, name: has('name') ? b.name : '', slug: has('slug') ? b.slug : '',
       when: has('dates') ? whenText(b) : '', place: has('venue') || has('city') ? b.venue : '', client: has('client') ? b.client : '',
       brief: has('brief'), links: links
     };
@@ -355,11 +361,14 @@
     return { fields: fields, values: values, unused: unused, phase: S.step1Phase, thenDetails: thenDetails, notes: notes };
   }
 
-  /* "IP event · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai", or '' with no values to show */
+  /* "IP event on ETCIO · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai", or '' with no values to show.
+     The portal goes with the type ("Event on ETCIO" while the type is still to be chosen). */
   function valuesLine(v) {
     if (!plain(v)) return '';
-    var bits = [];
-    ['kind', 'name', 'when', 'place'].forEach(function (k) { if (typeof v[k] === 'string' && v[k]) bits.push(v[k]); });
+    var bits = [], kind = typeof v.kind === 'string' ? v.kind : '', portal = typeof v.portal === 'string' ? v.portal : '';
+    if (portal) bits.push((kind || 'Event') + ' on ' + portal);
+    else if (kind) bits.push(kind);
+    ['name', 'when', 'place'].forEach(function (k) { if (typeof v[k] === 'string' && v[k]) bits.push(v[k]); });
     if (typeof v.client === 'string' && v.client) bits.push('for ' + v.client);
     if (v.brief === true) bits.push('your brief');
     if (v.links === 1) bits.push('your link');
@@ -399,7 +408,11 @@
 
   /* What the line over step 1 says about ETB2B AI's hero picture, from the draft as it is now.
      o: { hero: S.aiHero, method: S.creationMethod, ownBanner: the draft has a banner picture of its own,
-          noSlot: the chosen design has no hero picture, subject: what "the event's name and place" comes to now }
+          noSlot: the chosen design has no hero picture,
+          subject: what the picture is of when the person gave no words: the event's field and place as they are now
+                   (portal-fields.js subject: "technology leadership, Jio World Centre, Mumbai"),
+          from: { portal: the event is on a portal of the table, place: it has a venue or city } — what that subject
+                was made from, said after it so nobody looks for the event's name in the picture }
      -> { text, can: 'change' (Change and Remove) | 'restore' (Make one after all) | '' (nothing to do) } or null
         when there is no request. Every reason none will be made is said, never left to be guessed. */
   function heroLine(o) {
@@ -418,8 +431,10 @@
     if (o.method === 'imported') return { text: 'An imported design keeps its own pictures, so ETB2B AI won\u2019t make a hero picture.', can: '' };
     if (o.ownBanner) return { text: 'You added your own banner picture, so ETB2B AI won\u2019t make one.', can: '' };
     if (o.noSlot) return { text: 'This design has no hero picture, so ETB2B AI won\u2019t make one.', can: '' };
-    var own = line(h.subject, SUBJECT_MAX), auto = line(o.subject, SUBJECT_MAX);
-    var what = own ? own : auto ? auto + ' (from the event\u2019s name and place)' : 'from the event\u2019s name and place, once you have typed them';
+    var own = line(h.subject, SUBJECT_MAX), auto = line(o.subject, SUBJECT_MAX), from = plain(o.from) ? o.from : {};
+    var basis = from.portal && from.place ? 'from the event\u2019s portal and place' : from.portal ? 'from the event\u2019s portal'
+      : from.place ? 'from the event\u2019s place: it has no portal yet' : 'it has no portal or place yet';
+    var what = own ? own : auto ? auto + ' (' + basis + ')' : 'from the event\u2019s portal and place, once you have chosen them';
     return { text: 'ETB2B AI will make a hero picture: ' + what + '. Nothing is made until your event is created.', can: 'change' };
   }
 

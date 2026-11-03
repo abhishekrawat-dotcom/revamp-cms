@@ -397,6 +397,19 @@
   }
   var pendingAiHero = null;
 
+  /* ETB2B AI's hero picture from the event's own record (events/<id>.aiHero, functions/lib/ai-hero.js), for an editor
+     that opens with no copy of the site in this browser and no hand-off: the person changed browser (or cleared it)
+     before saving, and the hand-off's picture lived only in the other browser's copy (QA follow-up 2). It is put in
+     exactly as the hand-off puts it (applyAiHero: one step of its own, which Undo takes back to the design's own
+     picture). Only while no site has ever been saved: a saved site is what the person chose, picture or not.
+     -> { aiHero: { url, subject } } or null */
+  function aiHeroFromEvent() {
+    var ev = currentEvent, h = ev && ev.aiHero;
+    if (!eventId || !h || typeof h !== 'object' || h.status !== 'made' || typeof h.url !== 'string' || !h.url) return null;
+    if (ev.site && +ev.site.version > 0) return null;
+    return { aiHero: { url: h.url, subject: typeof h.subject === 'string' ? h.subject : '' } };
+  }
+
   /* ETB2B AI's hero picture, for an event it started on the events dashboard: made on the server once Create Event
      had created the event (functions/lib/ai-hero.js), and brought here by the hand-off (draft.aiHero). It goes in
      AFTER the first undo step (at the end of boot(), once the records' overlay is in that step too), as a step of
@@ -531,13 +544,16 @@
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
         if (saved && saved.snapshot) { restoreLocal(); return; }
-        /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above */
-        return seedSnapshot(null).then(function () { pendingAiHero = draft; });
+        /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above.
+           With no hand-off in this browser at all, the event's own record brings it (aiHeroFromEvent) */
+        return seedSnapshot(null).then(function () { pendingAiHero = draft || aiHeroFromEvent(); });
       }
 
       if (!/^gen-/.test(templateId || '')) {
         if (saved && saved.snapshot) { restoreLocal(); return; }
-        return seedSnapshot(null);
+        /* no copy of the site in this browser: ETB2B AI's hero picture, when the event has one and no site was ever
+           saved, goes in as the hand-off puts it (aiHeroFromEvent) */
+        return seedSnapshot(null).then(function () { pendingAiHero = aiHeroFromEvent(); });
       }
 
       return fetchServerDraft().then(function (res) {

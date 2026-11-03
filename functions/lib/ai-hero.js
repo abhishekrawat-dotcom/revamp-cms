@@ -22,10 +22,13 @@
    key visual (no people, no faces, no readable text, no logos or brand names, in one tone of the event's own
    colours), gemini.js callGeminiImage, and stored as generated site pictures are (events/<id>/generated/,
    public, cached a year, WebP copies by pictures.js). The subject is the person's own words for it, else the
-   event's name and place; the prompt then asks for the field of the event with that title (sceneOf), never for
-   the name itself, which an image model letters onto the picture. Only an event on a gallery design (the template
-   path) gets one. The event records it (events/<id>.aiHero) and its History says ETB2B AI made it; the
-   editor then puts it into the hero as one change that Undo takes back (editor-template-ui.js applyAiHero).
+   event's FIELD, which its portal sets (portal-fields.js: an ETHRWorld event gets workplaces, an ETAuto one
+   vehicles and roads), and its PLACE. The event's name is never in the prompt, not even inside the person's own
+   words (ownScene takes it out): an image model letters a name onto the picture, and a name steers what is drawn
+   ("QA Dashbot CIO Expo" drew robots, QA 3 Nov 2026). Only an event on a gallery design (the template path) gets
+   one. The event records it (events/<id>.aiHero) and its History says ETB2B AI made it; the editor then puts it
+   into the hero as one change that Undo takes back (editor-template-ui.js applyAiHero), in the browser that
+   created the event or, before a site is saved, in any other (aiHeroFromEvent).
 
    LIMITS. One picture per event (a second request answers the first picture). One of the person's daily AI
    pictures (dashChats/<uidKey>/days/<India day>.pictures, CAPS.dayPictures a day: main had no per-person
@@ -43,6 +46,9 @@ const genDesign = require('./gen-design');
 const pictures = require('./pictures');
 const activity = require('./activity');
 const etEvents = require('./et-events');
+/* what each portal's events are about (the picture's field when the person gave no words of their own): one table
+   that Create Event's line reads too, so what the person is told and what is made agree */
+const fields = require('../../portal-fields.js');
 
 var H = null;
 var NEEDS = ['withAdminBody', 'sendJson', 'sendFailure', 'sendAiFailure', 'BODY_LIMITS', 'chatUid', 'isEventId', 'aiUsageRecorder'];
@@ -113,34 +119,43 @@ function cityOf(ev) {
   var parts = line(ev.venue, 200).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   return parts.length > 1 ? parts[parts.length - 1].slice(0, 60) : '';
 }
-/* The event's name as it goes into the picture's prompt: a title in quotes, with no quote marks, brackets or braces
-   of its own, so a name can neither close the quotes nor read as a part of the prompt. The name is typed by a
-   person and usually holds a brand and a year ("ETCIO Annual Conclave 2027"): it is told to the model as a title
-   to draw the field of, never as the scene itself, which the image model would then letter onto the picture. */
-function titleOf(v, max) {
-  return line(v, max).replace(/["'`‘’‚‛“”„‟«»<>{}\[\]]+/g, ' ').replace(/\s+/g, ' ').trim();
+/* the event's portal, when it is on ET's roster ('' otherwise: the field is then the neutral one) */
+function portalOf(ev) { return etEvents.isPortal(ev.portal) ? ev.portal : ''; }
+/* A place as it goes into the picture's prompt: typed by a person, so it carries no quote marks, brackets or braces
+   of its own and cannot read as a part of the prompt. */
+function plainPlace(v, max) {
+  return line(v, max).replace(/["'`‘’‚‛“”„‟«»<>{}\[\]]+/g, ' ').replace(/\s+/g, ' ').replace(/ ,/g, ',').trim();
 }
-/* "the event's name and place", when the person did not say what the picture should show (what the event records,
-   the History line and Create Event show; the prompt words it as sceneOf does) */
-function placeOf(ev) {
-  var venue = line(ev.venue, 120), city = cityOf(ev);
-  return venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) === -1 ? venue + ', ' + city : (venue || city);
-}
-function subjectOf(ev) {
-  return [line(ev.name, 120), placeOf(ev)].filter(Boolean).join(', ').slice(0, CAPS.subjectChars);
-}
-/* The scene the model is asked for when the person gave no words of their own: the field of the event with that
-   title, at its place. The key visual's own lines (gen-design.js) then say what that is made of: the field's
-   objects and symbols and the host city's landmarks, with no people, no words and no brand names. */
+/* "the event's place": its venue, then its city unless the venue names it (portal-fields.js place) */
+function placeOf(ev) { return fields.place(ev.venue, cityOf(ev)); }
+/* What the picture is of when the person gave no words of their own: the event's FIELD (from its portal,
+   portal-fields.js) and its PLACE, never its name. What the event records, the History line, Create Event's line
+   and the editor's toast all say it ("technology leadership, Jio World Centre, Mumbai"). */
+function subjectOf(ev) { return fields.subject(portalOf(ev), ev.venue, cityOf(ev)); }
+/* The scene the model is asked for then: the field's own places and objects (never a person: the hero's rules
+   allow none), at the event's place. The key visual's own lines (gen-design.js) add the host city's landmarks. */
 function sceneOf(ev) {
-  var title = titleOf(ev.name, 120), place = titleOf(placeOf(ev), 120);
-  return (title ? 'the field of the event titled “' + title + '”' : 'the field of this event') + (place ? ', at ' + place : '');
+  var place = plainPlace(placeOf(ev), 120);
+  return fields.fieldOf(portalOf(ev)).scene + (place ? ', at ' + place : '');
 }
+/* What kind of event it is, for the prompt's "The event:" line: the kind alone. Neither its name nor its portal's
+   name (a brand) is ever in the prompt: an image model letters what it is told is a title onto the picture, and a
+   name steers what is drawn ("QA Dashbot CIO Expo" drew robots, QA 3 Nov 2026). The field is the scene's. */
 function aboutOf(ev) {
-  var portal = etEvents.isPortal(ev.portal) ? etEvents.PORTALS[ev.portal] : '';
-  var kind = CATEGORY_WORDS[String(ev.category || '').toLowerCase()] || 'a business event';
-  var title = titleOf(ev.name, 120);
-  return (title ? '“' + title + '”, ' : '') + kind + (portal ? ' of ' + portal + ', the Economic Times B2B portal for its field' : ' of the Economic Times');
+  return CATEGORY_WORDS[String(ev.category || '').toLowerCase()] || 'a business event';
+}
+/* The person's own words for the picture, with the event's name taken out ("a picture of the Dashbot Summit
+   stage" -> "a picture of the event stage"), so not even their words put the name into the prompt. A name of
+   fewer than four characters ("AI") is a word, not a title, and stays. '' when nothing of their own is left
+   (they only named the event): the field and place are used then. */
+var NAME_ONLY = /\b(?:the|a|an|of|for|at|in|on|and|with|its|this|event|picture|pictures|photo|image|hero|banner|showing|show|shows)\b/gi;
+function ownScene(words, ev) {
+  var name = line(ev.name, 120), out = line(words, CAPS.subjectChars);
+  if (name.length >= 4) {
+    var pattern = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    out = out.replace(new RegExp('(^|[^\\p{L}\\p{N}])(?:the\\s+)?' + pattern + '(?=$|[^\\p{L}\\p{N}])', 'giu'), '$1the event').replace(/\s+/g, ' ').trim();
+  }
+  return out.replace(NAME_ONLY, '').replace(/[^\p{L}\p{N}]+/gu, '') ? out : '';
 }
 /* An event the gallery's design is under (templates/<id>/template.json): the template path, where the hero's
    picture slot is the design's {hero.bannerUrl}. A brief whose site is not generated yet has no design, and an
@@ -174,10 +189,12 @@ function designOf(ev) {
 /* The site pipeline's hero rules (gen-design.js): a key visual, never a photograph of an event that has not
    happened; no people and no faces, no readable text, no logos, no brand names, no flags; the host city's
    character worked in when one is known; the event's own colours. own: the subject is the person's own words for
-   the picture (the scene as they said it); otherwise the scene is the event's field (sceneOf), never its bare name. */
+   the picture, which are the scene with the event's name taken out (ownScene); otherwise, or when nothing of
+   theirs is left, the scene is the event's field at its place (sceneOf). Neither the event's name nor its portal's
+   name is ever in the prompt. */
 function promptFor(ev, subject, own) {
-  var city = cityOf(ev);
-  return genDesign.imagePrompt(own ? subject : sceneOf(ev), designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
+  var city = plainPlace(cityOf(ev), 60), words = own ? ownScene(subject, ev) : '';
+  return genDesign.imagePrompt(words || sceneOf(ev), designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
 }
 
 /* ---------- the route ---------- */
@@ -282,4 +299,5 @@ function make(fb, decoded, eventId, eventRef, ev, subject, own, started, by, tur
 
 module.exports = { wire: wire, handleHero: handleHero };
 module.exports._test = { CAPS: CAPS, MSG: MSG, clock: clock, dayKey: dayKey, subjectOf: subjectOf, aboutOf: aboutOf, cityOf: cityOf, designOf: designOf,
-  promptFor: promptFor, templateColour: templateColour, uidKeyOf: uidKeyOf, sceneOf: sceneOf, titleOf: titleOf, galleryDesign: galleryDesign };
+  promptFor: promptFor, templateColour: templateColour, uidKeyOf: uidKeyOf, sceneOf: sceneOf, plainPlace: plainPlace, ownScene: ownScene, portalOf: portalOf,
+  placeOf: placeOf, galleryDesign: galleryDesign };

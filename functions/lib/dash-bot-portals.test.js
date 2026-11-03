@@ -9,6 +9,7 @@
      P.7  events with no portal are found, opened and said to have none; another portal's event is said to be there
      P.8  setting an event's portal is refused, pointing to its Basics
      P.9  the whole route: a switch is stored done, and the memory says what happened
+     P.10 an answer across portals says its scope and each event's portal (QA follow-up 2 F6, plan §15d)
    No network, no AI: the model is stubbed and Firestore is in memory. */
 'use strict';
 var passed = 0, failed = 0;
@@ -230,6 +231,60 @@ var ON_CIO = { portal: 'cio', working: 'cio' };
   ctx = T.contextFor({ decoded: { email: 'asha@timesinternet.in' }, name: 'Asha', message: 'Open it', view: {}, docs: [{ id: 'plain', data: { name: 'Plain Event', createdAt: '2026-10-01T00:00:00.000Z' } }], now: NOW });
   a = await T.cleanAnswer({ kind: 'open', events: ['plain'], open: { target: 'console' }, text: 'Opening it.' }, ctx);
   check('P.7 with no portals in play at all, nothing about portals is said', a.action && partsText(a.parts) === 'Opening it.' && ctx.hasPortals === false, partsText(a.parts));
+
+  /* ===== P.10 an answer across portals says so (QA follow-up 2 F6, plan §15d) =====
+     "How many registrations does each QA Dashbot event have, across all portals?" named five events from ETCIO,
+     ETHRWorld and none, as one undifferentiated list. */
+  var ALL = { portal: '', working: '' };
+  function withTotals(c) {
+    var n = { 'cio-forum': 37, 'cio-draft': 0, 'hr-draft': 18, 'auto-tech': 9, unsorted: 5 };
+    Object.keys(n).forEach(function (id) { c.totals[id] = { registrations: n[id], visitors: 0, confirmed: 0, waitlist: 0, cancelledRegs: 0, checkedIn: 0, pending: 0, uniques: 0, conversion: 0 }; });
+    return c;
+  }
+  var EACH = 'So far, {{unsorted}} has {{unsorted.registrations}} registrations, {{hr-draft}} has {{hr-draft.registrations}}, {{cio-forum}} has {{cio-forum.registrations}}, and {{cio-draft}} has {{cio-draft.registrations}}.';
+  a = await T.cleanAnswer({ kind: 'reply', events: ['unsorted', 'hr-draft', 'cio-forum', 'cio-draft'], text: EACH }, withTotals(ctxWith('How many registrations does each event have, across all portals?', ALL)));
+  check('P.10 All portals: each event\'s name is followed by its portal, "no portal yet" for none, and the answer says its scope',
+    partsText(a.parts) === 'So far, Unsorted Retail Meet (no portal yet) has 5 registrations, HR Future of Work Summit (ETHRWorld) has 18, CIO Leaders Forum 2026 (ETCIO) has 37, and CIO Draft Meet (ETCIO) has 0. That is across all portals.',
+    partsText(a.parts));
+  check('P.10 …the names stay links and the numbers stay values (the tags are plain text beside them)', a.parts.filter(function (p) { return p.t === 'event'; }).length === 4 &&
+    a.parts.filter(function (p) { return p.t === 'value'; }).length === 4 && a.parts.every(function (p, i) { return !(p.t === 'text' && a.parts[i + 1] && a.parts[i + 1].t === 'text'); }), a.parts);
+  check('P.10 …the stored answer keeps its tokens (the memory names events by id)', a.answerRaw === EACH, a.answerRaw);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['hr-draft', 'cio-forum'], text: 'Across all portals, {{hr-draft}} has {{hr-draft.registrations}} and {{cio-forum}} has {{cio-forum.registrations}} registrations.' },
+    withTotals(ctxWith('registrations across all portals?', ALL)));
+  check('P.10 All portals, an answer that already says so: not said twice', partsText(a.parts) === 'Across all portals, HR Future of Work Summit (ETHRWorld) has 18 and CIO Leaders Forum 2026 (ETCIO) has 37 registrations.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['cio-forum'], text: '{{cio-forum}} has {{cio-forum.registrations}} registrations so far.' }, withTotals(ctxWith('How many for the CIO forum?', ALL)));
+  check('P.10 All portals, one event: its portal, and no scope sentence (one event is no mix)', partsText(a.parts) === 'CIO Leaders Forum 2026 (ETCIO) has 37 registrations so far.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['cio-forum', 'cio-draft'], text: '{{cio-forum}} has {{cio-forum.registrations}} and {{cio-draft}} has {{cio-draft.registrations}}.' }, withTotals(ctxWith('both?', ON_CIO)));
+  check('P.10 looking at ETCIO, events on ETCIO: nothing added (as before)', partsText(a.parts) === 'CIO Leaders Forum 2026 has 37 and CIO Draft Meet has 0.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['hr-draft'], text: '{{hr-draft}} has {{hr-draft.registrations}} registrations so far.' }, withTotals(ctxWith('And the HR summit?', ON_CIO)));
+  check('P.10 looking at ETCIO, an event on another portal: its portal is said', partsText(a.parts) === 'HR Future of Work Summit (ETHRWorld) has 18 registrations so far.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['cio-forum', 'hr-draft'], text: '{{cio-forum}} has {{cio-forum.registrations}} and {{hr-draft}} has {{hr-draft.registrations}}.' }, withTotals(ctxWith('Compare them', ON_CIO)));
+  check('P.10 looking at ETCIO, events from two portals: each one\'s portal, and that they are on more than one',
+    partsText(a.parts) === 'CIO Leaders Forum 2026 (ETCIO) has 37 and HR Future of Work Summit (ETHRWorld) has 18. These events are on more than one portal.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['hr-draft', 'unsorted'], text: '{{hr-draft}} has {{hr-draft.registrations}}. {{hr-draft}} is on ETHRWorld; {{unsorted}} has {{unsorted.registrations}}.' },
+    withTotals(ctxWith('these two?', ON_CIO)));
+  check('P.10 an event named twice is tagged once, the first time', partsText(a.parts) === 'HR Future of Work Summit (ETHRWorld) has 18. HR Future of Work Summit is on ETHRWorld; Unsorted Retail Meet (no portal yet) has 5. These events are on more than one portal.',
+    partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['auto-tech'], text: '{{auto-tech}} is live at {{auto-tech.site}}.' }, withTotals(ctxWith('Where is the Autotech site?', ON_CIO)));
+  check('P.10 only an event\'s own name is tagged, never its live address', partsText(a.parts) === 'Autotech Summit 2026 (ETAuto) is live at /e/auto-tech.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'open', events: ['auto-tech'], open: { target: 'editor' }, text: 'Opening the editor of {{auto-tech}}.' }, ctxWith('Open the Autotech editor', ON_CIO));
+  check('P.10 opening an event on another portal: the product\'s own line says it once, and the name is not tagged as well',
+    partsText(a.parts) === 'Opening the editor of Autotech Summit 2026. It is on ETAuto.', partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['unsorted', 'hr-draft'], text: '{{unsorted}} is on {{unsorted.portal}}. {{hr-draft}} is on {{hr-draft.portal}}.' }, ctxWith('Which portals are they on?', ALL));
+  check('P.10 All portals, every portal already said by the answer: not tagged again, and the scope said', partsText(a.parts) === 'Unsorted Retail Meet is on no portal yet. HR Future of Work Summit is on ETHRWorld. That is across all portals.',
+    partsText(a.parts));
+  /* a list carries its scope in its title and rows: the model's own title keeps it too */
+  a = await T.cleanAnswer({ kind: 'reply', text: 'Here they are.', list: { title: 'Upcoming drafts', statuses: ['draft'] } }, ctxWith('List the drafts across all portals', ALL));
+  check('P.10 a list across all portals: the model\'s own title keeps the scope, its rows their portals, and no sentence is added', !!a.list && a.list.title === 'Upcoming drafts · across all portals' &&
+    a.list.showPortal === true && a.list.items.every(function (i) { return typeof i.portal === 'string' && i.portal; }) && partsText(a.parts) === 'Here they are.', [a.list && a.list.title, partsText(a.parts)]);
+  a = await T.cleanAnswer({ kind: 'reply', text: 'Here they are.', list: { title: 'Drafts across all portals', statuses: ['draft'] } }, ctxWith('List the drafts across all portals', ALL));
+  check('P.10 …a title that already says it is kept as it is', !!a.list && a.list.title === 'Drafts across all portals', a.list && a.list.title);
+  a = await T.cleanAnswer({ kind: 'reply', text: 'Here they are.', list: { title: 'Drafts', statuses: ['draft'], portal: 'hr' } }, ctxWith('List ETHRWorld\'s drafts', ON_CIO));
+  check('P.10 …and one portal\'s list says that portal', !!a.list && a.list.title === 'Drafts · in ETHRWorld', a.list && a.list.title);
+  var NOPORT = T.contextFor({ decoded: { email: 'asha@timesinternet.in' }, name: 'Asha', message: 'both?', view: {}, now: NOW,
+    docs: [{ id: 'a1', data: { name: 'Alpha Meet', category: 'ip', createdAt: '2026-10-01T00:00:00.000Z' } }, { id: 'b1', data: { name: 'Beta Meet', category: 'ip', createdAt: '2026-10-01T00:00:00.000Z' } }] });
+  a = await T.cleanAnswer({ kind: 'reply', events: ['a1', 'b1'], text: '{{a1}} and {{b1}} are both drafts.' }, NOPORT);
+  check('P.10 with no portals in play at all, nothing about portals is said', NOPORT.hasPortals === false && partsText(a.parts) === 'Alpha Meet and Beta Meet are both drafts.', partsText(a.parts));
 
   /* ===== P.8 setting an event's portal is the person's ===== */
   a = await T.cleanAnswer({ kind: 'refuse', events: ['auto-tech'], refuse: { action: 'set-portal' }, text: 'Moving it now.' }, ctxWith('Move Autotech to ETCIO', ON_CIO));

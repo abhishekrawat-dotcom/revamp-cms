@@ -463,7 +463,9 @@
       /* where the focus is now decides whether the bar may take it: someone typing in the page keeps their place */
       var take = mayTakeFocus();
       var l = trim(label);
-      var shown = l ? (/^showing\b/i.test(l) ? l : 'Showing ' + l) : 'Showing the results';
+      /* a label that already says what happened ("Showing …", "Now working in ETHRWorld") is shown as it is:
+         "Showing " goes only in front of a bare list ("Draft events · …") */
+      var shown = l ? (/^(?:showing|now)\b/i.test(l) ? l : 'Showing ' + l) : 'Showing the results';
       /* the list change is the newest thing asked for: a page that was about to open stays here */
       stopCountdowns();
       dropPeekStay();

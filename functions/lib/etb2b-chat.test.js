@@ -772,6 +772,17 @@ function btnIn(node, label) { return all(node, function (e) { return e.localName
       e.doc.activeElement === mm.$('input') && mm.chat.isOpen() === true && mm.log.open.join() === 'false,true');
     mm.chat.fold('Showing Draft events · created 26 Oct – 1 Nov 2026', fnUndo);
     check('C.11 a label that already starts with "Showing" is not doubled', byClass(peek, 'rvc-peek-label')[0].textContent === 'Showing Draft events · created 26 Oct – 1 Nov 2026');
+    /* QA follow-up 2 F5: a portal switch's label already says what happened */
+    pb.click();
+    mm.chat.fold('Now working in ETHRWorld', fnUndo);
+    e.clock.advance(60);
+    check('C.11 a label that starts with "Now" gets no "Showing" in front, on the bar or for screen readers',
+      byClass(peek, 'rvc-peek-label')[0].textContent === 'Now working in ETHRWorld' && byClass(peek, 'rvc-peek-label')[0].getAttribute('title') === 'Now working in ETHRWorld' &&
+      e.doc.getElementById('dash-chat-live').textContent === 'Now working in ETHRWorld. Undo is in the ETB2B AI bar.', [byClass(peek, 'rvc-peek-label')[0].textContent, e.doc.getElementById('dash-chat-live').textContent]);
+    mm.chat.fold('Nowhere events', fnUndo);
+    check('C.11 …a word that only begins with "now" still gets it', byClass(peek, 'rvc-peek-label')[0].textContent === 'Showing Nowhere events');
+    pb.click();
+    mm.chat.fold('Showing Draft events · created 26 Oct – 1 Nov 2026', fnUndo);
     th.scrollTop = 0;
     launcher.click();
     check('C.11 the launcher unfolds too, to the same place', panel.hidden === false && peek.hidden === true && th.scrollTop === 120);

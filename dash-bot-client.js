@@ -371,7 +371,9 @@
     for (var i = changes.length - 1; i >= 0; i--) if (!changes[i].undone) return undoChange(changes[i]);
     return false;
   }
-  /* the open panel would cover the very column a filter changed, so it folds to a one-line peek with Undo */
+  /* the open panel would cover the very column a filter changed, so it folds to a one-line peek with Undo. The
+     label says what happened ("Showing …", "Now working in ETAuto"); the kit puts nothing in front of either
+     (etb2b-chat.js fold), on screen or for screen readers */
   function fold(c) {
     if (!chat || typeof chat.fold !== 'function') return;
     try { chat.fold((c.kind === 'portal' ? 'Now ' : 'Showing ') + c.label, c.handler); } catch (e) { /* the card keeps its Undo */ }
