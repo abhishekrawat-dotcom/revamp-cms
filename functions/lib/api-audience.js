@@ -1733,7 +1733,12 @@ function handleTrack(req, res) {
    views x 100), to one decimal place, never above 100, and 0 with no views — print it with a % sign.
    `byDay` has one entry for every day of the window, oldest first, zeros included; its `date` keys are
    India days (YYYY-MM-DD, Asia/Kolkata).
+   `visitsCounted` says whether the live sites count their visits at all: only a page that carries the
+   counting script (templates/_shared/rv-live.js, added to every published page by lib/api.js when that
+   file is part of the release) sends POST /api/track. Without it every page-view figure is 0 because
+   nothing is counted, not because nobody came, and the Dashboard says so instead of showing the zeros.
    ===================================================================================================== */
+var VISITS_COUNTED = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-live.js'));
 
 var REF_CLASSES = [['direct', 'Direct'], ['search', 'Search'], ['social', 'Social'], ['email', 'Email'], ['referral', 'Other sites']];
 
@@ -1804,7 +1809,7 @@ function handleDashboardStats(req, res) {
             cancelled: a.totals.cancelled, checkedIn: a.totals.checkedIn,
             // every form's responses, and those waiting for an organiser's approval (counted forms / all forms)
             submissions: a.totals.submissions, pending: a.totals.pending, awaitingApproval: a.totals.awaitingApproval,
-            visitors: a.visits.visitors, uniques: a.visits.uniques,
+            visitors: a.visits.visitors, uniques: a.visits.uniques, visitsCounted: VISITS_COUNTED,
             conversion: conversionOf(a.totals.registrations, a.visits.visitors),
             capacity: settings.capacity, target: settings.target,
             byDay: byDay,

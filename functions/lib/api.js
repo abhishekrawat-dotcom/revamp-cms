@@ -10025,21 +10025,27 @@ function fieldChanges(prev, next, skip) {
 
 /* ---------- POST /api/event/unpublish ----------
    Body { eventId } -> 200 { ok, published: false }. /e/<id> reads the event on every request, so the page
-   stops being served at once, on every instance. The stored page is kept: publishing again replaces it. */
+   stops being served at once, on every instance. The stored page is kept: publishing again replaces it.
+   Approvers only (lib/access.js notAnApprover): anybody else gets 403 { code: 'not-an-approver' } and the
+   site stays live. */
 function handleEventUnpublish(req, res) {
   withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
     var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), wasPublished = false;
-    fb.db.runTransaction(function (tx) {
-      return tx.get(ref).then(function (snap) {
-        var state = eventStateOf(snap);
-        if (state !== 'live') throw notLiveError(state, eventId);
-        wasPublished = snap.data().published === true;
-        if (!wasPublished) return;
-        tx.update(ref, {
-          published: false, publishedPath: null, publishedUrl: fieldDelete(),
-          unpublishedAt: now, unpublishedBy: actorOf(decoded), updatedAt: now
+    approvalsConfig(fb).then(function (cfg) {
+      var why = require('./access').notAnApprover(cfg.approvers, actorOf(decoded), 'take a live site offline');
+      if (why) throw httpError(403, why, { code: 'not-an-approver' });
+      return fb.db.runTransaction(function (tx) {
+        return tx.get(ref).then(function (snap) {
+          var state = eventStateOf(snap);
+          if (state !== 'live') throw notLiveError(state, eventId);
+          wasPublished = snap.data().published === true;
+          if (!wasPublished) return;
+          tx.update(ref, {
+            published: false, publishedPath: null, publishedUrl: fieldDelete(),
+            unpublishedAt: now, unpublishedBy: actorOf(decoded), updatedAt: now
+          });
         });
       });
     }).then(function () {

@@ -71,8 +71,10 @@ function readToken(req) {
      - Below the top level: only inside the directories the browser loads from, and only web file types.
      - Nowhere: dotfiles, node_modules, package manifests, backup copies, documents (.md, .docx, no
        extension at all — a Dockerfile, a LICENSE).
-   Names are compared in lower case: on a case-insensitive filesystem /SERVER.JS is server.js. */
-const SERVED_DIRS = new Set(['assets', 'templates', 'payment', 'import-figma-design', 'template-previews', 'promo-studio']);
+   Names are compared in lower case: on a case-insensitive filesystem /SERVER.JS is server.js.
+   payment/ is not served: it is a prototype of online payment (out of scope for now) that showed another
+   event's made-up figures; the rail's Payment item says "not available yet" inside the console instead. */
+const SERVED_DIRS = new Set(['assets', 'templates', 'import-figma-design', 'template-previews', 'promo-studio']);
 const SERVED_TYPES = new Set(['.html', '.js', '.css', '.json', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif',
   '.ico', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.pdf', '.txt']);
 const TOP_LEVEL_TYPES = new Set(['.html', '.js', '.css', '.ico', '.png', '.svg', '.txt']);
@@ -137,6 +139,18 @@ function deny(req, res, urlPath, why) {
   res.end();
 }
 
+/* WHO MAY TAKE THINGS AWAY. Deleting an event and taking a live site offline are for approvers only (the
+   owner's rule, 2026-11-03); team members draft, edit and ask for approval. An approver is an address in
+   config/approvals' `approvers` (lib/api.js approvalsConfig reads that document) — and while none are named,
+   every signed-in member approves (the approval rule's own reading), so may do these too.
+   -> '' when `email` may, else the sentence that says who can. `what` finishes "Only an approver (…) can …". */
+function notAnApprover(approvers, email, what) {
+  const list = (Array.isArray(approvers) ? approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(Boolean);
+  if (!list.length) return '';
+  if (list.indexOf(String(email || '').trim().toLowerCase()) !== -1) return '';
+  return 'Only an approver (' + list.join(', ') + ') can ' + (what || 'do that') + '.';
+}
+
 /* lets the request through to next() only for public paths or an allowed, signed-in user (req.user) */
 function gate(req, res, next) {
   const urlPath = req.url.split('?')[0];
@@ -150,4 +164,4 @@ function gate(req, res, next) {
   }, function () { deny(req, res, urlPath, 'signin'); });
 }
 
-module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate, isServableFile, isPublic };
+module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate, isServableFile, isPublic, notAnApprover };
