@@ -389,6 +389,9 @@ function handleEventDiscard(req, res, fb, decoded, eventId) {
   }).then(function () {
     return fb.db.recursiveDelete(ref);                             // the document and every subcollection
   }).then(function () {
+    /* its shared preview links go too (lib/share-preview.js): the address is free for a new event. Never fails the discard */
+    try { return require('./share-preview').revokeAllForEvent(fb, eventId, decoded, 'event-discarded').catch(function () {}); } catch (e) { console.error('api-events: the shared preview links of "' + eventId + '" were not removed — ' + e.message); }
+  }).then(function () {
     console.log('api-events: ' + actor + ' discarded the draft "' + eventId + '"');
     sendJson(res, 200, { ok: true, eventId: eventId, discarded: true });
   }).catch(function (err) {
@@ -415,6 +418,9 @@ function handleEventDelete(req, res) {
       }).then(function () {
         if (!result.changed) return;
         return logActivity(fb, eventId, decoded, 'deleted', result.name ? '"' + str(result.name, 120) + '"' : '');
+      }).then(function () {
+        /* its shared preview links stop, and stay stopped if it is restored (lib/share-preview.js). Never fails the delete */
+        try { return require('./share-preview').revokeAllForEvent(fb, eventId, decoded, 'event-deleted').catch(function () {}); } catch (e) { console.error('api-events: the shared preview links of "' + eventId + '" were not stopped — ' + e.message); }
       }).then(function () {
         sendJson(res, 200, { ok: true, eventId: eventId, deletedAt: result.deletedAt });
       }).catch(function (err) { fail(res, 'delete', err, 'The event could not be deleted. Please try again.'); });

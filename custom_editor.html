@@ -1187,6 +1187,11 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
         Preview
       </button>
+      <!-- a link to the site as last saved for people with no ET account; share-preview.js shows it once Preview is ready -->
+      <button class="btn btn-secondary" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview" title="Make a link anyone can open, without signing in, to see the site as last saved">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        <span>Share preview</span>
+      </button>
       <!-- where the site stands (unsaved / saved to staging / waiting for approval / live), and Save: the
            only thing that puts changes on staging — see editor-template-ui.js's saveToStaging() -->
       <a class="site-state" id="site-state" hidden></a>
@@ -1542,6 +1547,7 @@
 <script src="editor-ai-picture.js"></script>
 <script src="editor-template-ui.js"></script>
 <script src="editor-ai-mode.js"></script>
+<script src="share-preview.js"></script>
 <script>
 (function(){
     var qsEarly = new URLSearchParams(location.search);

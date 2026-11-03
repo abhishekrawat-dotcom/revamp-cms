@@ -133,6 +133,13 @@ check('a partner link that is not http(s) is dropped', ev.sponsorTiers.filter(fu
 check('session speakers by name; an unknown name is left out', ev.sessions[0].speakers.length === 1 && ev.sessions[0].speakers[0].name === 'Asha Rao');
 check('audience and topics carried; why-join empty (nothing invented)', ev.whoShouldAttend.length === 2 && ev.keyPoints.length === 2 && ev.whyJoin.length === 0);
 check('an event that is not an award has no award facts', ev.award === undefined && ev.ctaLabel === 'Register Now');
+/* the event's own portal (events/<id>.portal, as lib/promo.js buildKit puts it in brand.portal): its slug and its name */
+var HR_PORTAL = { slug: 'hr', name: 'ETHRWorld', logo: '/templates/_shared/img/portals/hr.png', logoLight: '/templates/_shared/img/portals/hr-light.png' };
+var hrEv = pm.entityOf('demo', Object.assign({}, kit, { brand: Object.assign({}, kit.brand, { portal: HR_PORTAL }) }), { category: 'ip' }, BASE, null);
+check('the portal\'s name is carried beside its slug', hrEv.portal === 'hr' && hrEv.portalName === 'ETHRWorld', [hrEv.portal, hrEv.portalName]);
+var noPortalEv = pm.entityOf('demo', Object.assign({}, kit, { brand: Object.assign({}, kit.brand, { portal: null }) }), { category: 'ip' }, BASE, null);
+check('an event with no portal yet: no slug and no name (nothing worked out)', noPortalEv.portal === '' && noPortalEv.portalName === '', [noPortalEv.portal, noPortalEv.portalName]);
+check('a portal given without its name: the name is empty, never the slug', ev.portalName === '', ev.portalName);
 
 /* ---- an award ---- */
 var future = new Date(Date.now() + 40 * 864e5).toISOString().slice(0, 16), past = new Date(Date.now() - 5 * 864e5).toISOString().slice(0, 16);
@@ -692,6 +699,22 @@ var steps = [
     }).then(function (r) {
       check('catalog: tracking false when it does not run here', r.status === 200 && r.json && r.json.tracking === false);
     });
+  },
+
+  /* the catalog's event carries the portal's name, which the studio shows (promo-studio/oneworld.js S.portalName) */
+  function () {
+    reset();
+    var was = kit.brand.portal;
+    kit.brand.portal = HR_PORTAL;
+    return call(mod.handleCatalog, '/api/promo/mailers?eventId=demo').then(function (r) {
+      var e = (r.json && r.json.event) || {};
+      check('catalog: the event has the portal\'s slug and name', r.status === 200 && e.portal === 'hr' && e.portalName === 'ETHRWorld', [r.status, e.portal, e.portalName]);
+      kit.brand.portal = null;
+      return call(mod.handleCatalog, '/api/promo/mailers?eventId=demo');
+    }).then(function (r) {
+      var e = (r.json && r.json.event) || {};
+      check('catalog: an event with no portal yet has neither', r.status === 200 && e.portal === '' && e.portalName === '', [r.status, e.portal, e.portalName]);
+    }).then(function () { kit.brand.portal = was; }, function (err) { kit.brand.portal = was; throw err; });
   },
 
   /* ======== Phase 3: the event every Promotions route reads (eventFor), exported ======== */

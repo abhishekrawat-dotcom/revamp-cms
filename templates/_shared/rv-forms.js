@@ -36,6 +36,12 @@
      data-rv-editor-mode="ai"   the editor's live view: forms open and are drawn, but a submit only checks the
                                 answers and says that sending is turned off there; nothing is sent
      #rv-site-config mode "preview"   a submit is sent with preview:true (checked, not stored)
+     #rv-site-config mode "preview" with shared: true   a shareable preview link (/s/<token>, a guest with no sign-in):
+                                forms open and are drawn and a submit checks the answers, but nothing is sent — it
+                                is a preview, and the server would only refuse a guest's preview submit. With
+                                live: true and livePath "/e/<id>" (the event is already published, and the link
+                                shows its coming changes) the note sends the guest to the live site instead of
+                                saying the site is not open
      #rv-site-config mode "live"      a real submit to POST /api/register
 
    ---------------------------------------------------------------------------------------------------------
@@ -43,9 +49,10 @@
    ---------------------------------------------------------------------------------------------------------
      render(form, host, opts) -> { el, values(), setErrors({id: msg}), destroy() }
          form  a public form (spec §1.4 forms[i]) or a builder draft
-         opts  { mode: 'live'|'preview'|'ai-view'|'editor-preview', showTitle (default true), eventId,
+         opts  { mode: 'live'|'preview'|'shared'|'ai-view'|'editor-preview', showTitle (default true), eventId,
                  waitlist, onDone(result), consent (the payload's consent, when the form has none of its own),
-                 opener (the button that opened it: Submit takes that button's colour) }
+                 opener (the button that opened it: Submit takes that button's colour),
+                 livePath (mode 'shared' only: the live site's "/e/<id>", when the event is already published) }
          Every form is drawn as one white card (the design of 21 Oct 2026): its title ("Register now" shows as
          "Please take a moment to provide us with your Information"), one field to a row (first and last name
          share one), and last the consent box — the form's own type 'consent' item, or one added here — that
@@ -60,6 +67,8 @@
      definitions() -> the public forms payload, or null while there is none
      guessCountry(win) -> 'IN'          the visitor's country, as a Mobile field's country code starts on it
      suggestEmail(text) -> 'a@gmail.com' | ''   the address a mistyped common one probably is
+     modeFor(cfg, editorMode, editing, hasEvent) -> 'live'|'preview'|'shared'|'ai-view'|null   a page's mode (Modes above)
+     sharedLivePath(cfg) -> '/e/<id>' | ''   on a shared link, the live site its forms point to ('' while not live)
    The editor and the console set window.RV_FORMS_NO_AUTO = true before loading this file and use render and
    validate only. */
 (function () {
@@ -86,8 +95,10 @@
   var EMAIL_DOMAINS = ['gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.in', 'yahoo.in', 'ymail.com', 'rediffmail.com',
     'hotmail.com', 'hotmail.co.uk', 'outlook.com', 'outlook.in', 'live.com', 'live.in', 'msn.com', 'icloud.com', 'me.com',
     'mac.com', 'aol.com', 'protonmail.com', 'proton.me', 'zoho.com', 'zohomail.in', 'mail.com', 'gmx.com', 'yandex.com'];
-  var MODES = { live: 1, preview: 1, 'ai-view': 1, 'editor-preview': 1 };
+  var MODES = { live: 1, preview: 1, shared: 1, 'ai-view': 1, 'editor-preview': 1 };
   var FORM_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
+  /* the only address a shared link's forms may point a guest to: this host's own live page of an event */
+  var LIVE_PATH_RE = /^\/e\/[a-z0-9][a-z0-9-]{0,79}$/;
 
   var MSG = {
     preview: 'Form preview — visitors fill this in on the published page',
@@ -96,6 +107,10 @@
     sending: 'Sending…',
     offline: 'We could not send your details. Please check your connection and try again.',
     aiView: 'Submitting is turned off in the editor. Open Preview to test this form.',
+    /* a shared link's forms. Not "Registration": an award site's forms are nominations */
+    shared: 'This is a preview, so nothing was sent. This form will work once the site is live.',
+    sharedLive: 'This is a preview, so nothing was sent. To send your details, use the live site.',
+    liveLink: 'Open the live site',
     loading: 'Loading the form…',
     loadFailed: 'This form could not be loaded. Please check your connection and try again.',
     unavailable: 'This form is not available right now.',
@@ -1000,6 +1015,7 @@
     var win = doc.defaultView || window;
     var mode = MODES[opts.mode] ? opts.mode : 'live';
     var pv = mode === 'editor-preview';
+    var livePath = mode === 'shared' && typeof opts.livePath === 'string' && LIVE_PATH_RE.test(opts.livePath) ? opts.livePath : '';
     var showTitle = opts.showTitle !== false;
     var n = ++instanceN, pre = 'rvf-' + n + '-';
     var fields = Array.isArray(form.fields) ? form.fields.filter(function (f) { return f && typeof f === 'object'; }) : [];
@@ -1743,8 +1759,23 @@
       if (noticeEl) noticeEl.hidden = true;
       var bad = firstInvalid(errs);
       if (bad) { focusPart(bad); return; }
-      if (mode === 'ai-view') {
-        if (noticeEl) { noticeEl.hidden = false; noticeEl.textContent = MSG.aiView; }
+      /* the editor's live view and a guest's shared link: the answers are checked, and nothing is sent */
+      if (mode === 'ai-view' || mode === 'shared') {
+        if (noticeEl) {
+          noticeEl.hidden = false;
+          noticeEl.textContent = '';      // a second submit writes the note afresh, never a second link
+          noticeEl.appendChild(doc.createTextNode(mode === 'ai-view' ? MSG.aiView : livePath ? MSG.sharedLive : MSG.shared));
+          /* the site is already live: the way to the form that does send. A new tab keeps the preview open;
+             noreferrer, so the live site is never handed the /s/ address (the link's token) */
+          if (livePath) {
+            var go = mk(doc, 'a', 'rv-form-link', MSG.liveLink);
+            go.setAttribute('href', livePath);
+            go.setAttribute('target', '_blank');
+            go.setAttribute('rel', 'noopener noreferrer');
+            noticeEl.appendChild(doc.createElement('br'));
+            noticeEl.appendChild(go);
+          }
+        }
         return;
       }
       var answers = {};
@@ -1849,7 +1880,7 @@
      ====================================================================================================== */
   var doc = window.document, html = doc && doc.documentElement;
   var page = {
-    mode: null, eventId: '', payload: null, loading: false, failed: false,
+    mode: null, eventId: '', livePath: '', payload: null, loading: false, failed: false,
     embeds: [], modal: null, memory: {}, started: false
   };
 
@@ -1860,13 +1891,25 @@
     try { return JSON.parse(el.textContent || ''); } catch (e) { return null; }
   }
   function validPayload(p) { return !!p && typeof p === 'object' && Array.isArray(p.forms); }
+  /* Which mode a page is in (see Modes at the top), from what it says about itself: cfg, #rv-site-config's JSON
+     (or null); editorMode, <html data-rv-editor-mode>; editing, the editor's canvas; hasEvent, the page names its
+     event. -> 'ai-view' | 'shared' | 'preview' | 'live' | null (nothing happens). Pure, so a test can ask it. */
+  function modeFor(cfg, editorMode, editing, hasEvent) {
+    if (editing) return null;
+    if (editorMode === 'ai') return 'ai-view';
+    if (cfg && cfg.mode === 'preview') return cfg.shared === true ? 'shared' : 'preview';
+    if (cfg && cfg.mode === 'live') return 'live';
+    return hasEvent ? 'live' : null;
+  }
   function pageMode() {
     if (editing()) return null;
-    if (html.getAttribute('data-rv-editor-mode') === 'ai') return 'ai-view';
-    var cfg = readJson('rv-site-config');
-    if (cfg && cfg.mode === 'preview') return 'preview';
-    if (cfg && cfg.mode === 'live') return 'live';
-    return page.eventId ? 'live' : null;
+    return modeFor(readJson('rv-site-config'), html.getAttribute('data-rv-editor-mode'), false, !!page.eventId);
+  }
+  /* On a shared link (modeFor 'shared') of an event that is already live: its live page, where the forms work.
+     Anything but this host's own /e/<id> is ignored. Pure, so a test can ask it. */
+  function sharedLivePath(cfg) {
+    if (!cfg || cfg.mode !== 'preview' || cfg.shared !== true || cfg.live !== true) return '';
+    return typeof cfg.livePath === 'string' && LIVE_PATH_RE.test(cfg.livePath) ? cfg.livePath : '';
   }
   function defaultFormId() {
     var p = page.payload;
@@ -1890,7 +1933,7 @@
   }
   function renderOpts(extra) {
     var o = { mode: page.mode, eventId: page.eventId, waitlist: !!(page.payload && page.payload.waitlist),
-      consent: page.payload && page.payload.consent };
+      consent: page.payload && page.payload.consent, livePath: page.livePath };
     for (var k in extra) if (extra.hasOwnProperty(k)) o[k] = extra[k];
     return o;
   }
@@ -1992,7 +2035,8 @@
     if (fallback) fallback.hidden = true;
     var form = findForm(e.formId);
     if (!form) {
-      if (page.mode === 'live') {
+      /* a guest on a shared link is a visitor too: no editor's instruction for them */
+      if (page.mode === 'live' || page.mode === 'shared') {
         el.hidden = true;
         /* a section made only to hold this form (its heading, a line and the form) would be left as a heading
            over nothing: it goes too */
@@ -2331,6 +2375,7 @@
     })();
     page.mode = pageMode();
     if (!page.mode) return;
+    page.livePath = page.mode === 'shared' ? sharedLivePath(readJson('rv-site-config')) : '';
     page.started = true;
     var inline = readJson('rv-forms');
     page.payload = validPayload(inline) ? inline : null;
@@ -2362,6 +2407,8 @@
     open: open,
     definitions: function () { return page.payload; },
     guessCountry: guessCountry,
-    suggestEmail: suggestEmail
+    suggestEmail: suggestEmail,
+    modeFor: modeFor,
+    sharedLivePath: sharedLivePath
   };
 })();
