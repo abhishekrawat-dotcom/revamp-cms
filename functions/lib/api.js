@@ -94,7 +94,7 @@
 //                          GET/POST/DELETE /api/promo/icons (Promotions → Mailers, the platform's mailer studio)
 //     lib/promo-social.js  Promotions → Social posts (the platform's post templates): GET /api/promo/social/catalog,
 //                          GET/POST/DELETE /api/promo/social/art, POST /api/promo/social/art/psd,
-//                          POST /api/promo/social/html, GET/POST /api/promo/social/layout,
+//                          POST /api/promo/social/html, GET/POST /api/promo/social/layout, GET /api/promo/social/layouts,
 //                          POST /api/promo/social/layout/base, POST /api/promo/social/layout/reset,
 //                          POST /api/promo/social/picture
 //     lib/promo-previews.js  POST /api/promo/mailer/previews (each mailer card's live preview of this event's mail)
@@ -10830,6 +10830,7 @@ var ROUTES = {
   'DELETE /api/promo/social/art': promoSocial('handleArtDelete'),
   'POST /api/promo/social/html': promoSocial('handleHtml'),
   'GET /api/promo/social/layout': promoSocial('handleLayout'),
+  'GET /api/promo/social/layouts': promoSocial('handleLayouts'),
   'POST /api/promo/social/layout/base': promoSocial('handleLayoutBase'),
   'POST /api/promo/social/layout': promoSocial('handleLayoutSave'),
   'POST /api/promo/social/layout/reset': promoSocial('handleLayoutReset'),

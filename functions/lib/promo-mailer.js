@@ -575,16 +575,27 @@ function sendExport(res, type, name, body, tracked) {
   res.end(body);
 }
 
-/* GET /api/promo/mailers?eventId= */
+/* Is the event's site live? Every link in a mail (Register, the website, the agenda) leads to it, and it answers
+   "not found" until it is published. The Kit says (lib/promo.js eventFrom), as the social posts read it; without a
+   Kit, the stored event. */
+function sitePublished(got) {
+  var ke = got && got.kit && got.kit.event;
+  return ke ? ke.published === true : !!(got && got.stored && got.stored.published === true);
+}
+
+/* GET /api/promo/mailers?eventId= — the catalog. Its event says whether the site is published (the studio warns
+   before a mail whose links lead nowhere yet leaves, UX-117), and carries the site's address only while it is: the
+   page's "Website ↗" must not open a page that is not there. The mails keep the address, which works as soon as
+   the site is published. */
 function handleCatalog(req, res) {
   H.withAdmin(req, res, function (fb) {
     var eventId = H.eventIdOr400(res, queryOf(req).get('eventId'));
     if (!eventId) return;
     Promise.all([eventFor(fb, eventId, req), listSavesForEvent(fb, eventId)]).then(function (r) {
-      var ev = r[0].ev;
+      var ev = r[0].ev, live = sitePublished(r[0]);
       sendJson(res, 200, Object.assign({
-        event: { name: ev.name, hashtag: ev.hashtag, dateLabel: ev.dateLabel, venue: ev.venue || ev.city, micrositeUrl: ev.micrositeUrl,
-          siteAccent: ev.siteAccent, siteTheme: ev.siteTheme, bannerUrl: ev.keyVisualUrl || null, portal: ev.portal },
+        event: { name: ev.name, hashtag: ev.hashtag, dateLabel: ev.dateLabel, venue: ev.venue || ev.city, micrositeUrl: live ? ev.micrositeUrl : undefined,
+          published: live, siteAccent: ev.siteAccent, siteTheme: ev.siteTheme, bannerUrl: ev.keyVisualUrl || null, portal: ev.portal },
         saves: r[1], tones: engine.TONE_OPTIONS
       }, engine.buildMailerCatalog(ev), {
         /* false: this event's exports go out untracked, so the studio hides "Link tracking" (it would do nothing) */
@@ -1014,4 +1025,4 @@ module.exports = {
 /* for the mailer previews (lib/promo-previews.js): the saved versions, and how a saved mail follows the banner */
 module.exports._internal = { savesOf, metaOf, withCurrentBanner };
 module.exports._test = { entityOf, awardOf, toLlmSchema, uniqueName, absolute, deliverables, pickDownload, tracker, trackingOn,
-  withCurrentBanner, isOwnBanner, bannerStateFor, exampleRefusal, relayoutKeepingAutoUrl, paletteOf };
+  withCurrentBanner, isOwnBanner, bannerStateFor, exampleRefusal, relayoutKeepingAutoUrl, paletteOf, sitePublished };

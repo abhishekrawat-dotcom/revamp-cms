@@ -201,8 +201,9 @@ window.RevampCore = (function(){
   };
 
   /* deterministic pseudo-random — no longer used to seed fake event/attendee data (that's gone, see
-     fetchEvent/fetchRegistrations below), but kept: other files (edit-event-marketing.js,
-     audience-registrations.html) still call RevampCore.rnd for unrelated deterministic-random UI bits. */
+     fetchEvent/fetchRegistrations below). No page calls RevampCore.rnd any more either: its last caller,
+     edit-event-marketing.js, was deleted when that old page became a redirect to Promotions (UX-137). It stays
+     exported only so that taking it off RevampCore is a change of its own. */
   function rnd(seed){ var x = Math.sin(seed) * 10000; return x - Math.floor(x); }
 
   var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

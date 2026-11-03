@@ -505,6 +505,28 @@ var over = band ? '#' + [1, 2, 3].map(function (i) { return ('0' + Math.round(+b
 check('AA: the EXAMPLE mark inside the post, on its band over a white post (' + ratio('#ffffff', over).toFixed(2) + ':1)', !!mark && mark.decl.color === '#ffffff' && ratio('#ffffff', over) >= 4.5, over);
 check('the badge is set apart from any post under it', !!only('.ps-ex') && /var\(--surface\)/.test(only('.ps-ex').decl['box-shadow'] || ''));
 
+/* ---------- the old Marketing workbench's address (UX-137) ----------
+   edit-event-marketing.html only sends old links and bookmarks on to Promotions, keeping the event and the rest of
+   the address; its script (edit-event-marketing.js, which no longer parsed) is gone. */
+var oldPage = read('edit-event-marketing.html');
+var oldTitle = (/<title>([\s\S]*?)<\/title>/.exec(oldPage) || [])[1];
+check('UX-137: the old address is titled Promotions — Oneworld 2.0', oldTitle && oldTitle.replace(/&mdash;/g, '—') === 'Promotions — Oneworld 2.0', oldTitle);
+check('UX-137: no "Revamp CMS" and no "workbench" on it', oldPage.indexOf('Revamp CMS') === -1 && !/workbench/i.test(oldPage.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, '')));
+check('UX-137: it loads no script file, and edit-event-marketing.js is gone', !/<script\s+src=/.test(oldPage) && !fs.existsSync(path.join(ROOT, 'edit-event-marketing.js')));
+var oldJs = ((/<script>([\s\S]*?)<\/script>/.exec(oldPage)) || [])[1] || '';
+function oldGoesTo(search) {
+  var went = [];
+  vm.runInNewContext(oldJs, { URLSearchParams: URLSearchParams, String: String, location: { search: search, replace: function (u) { went.push(u); } } });
+  return went;
+}
+check('UX-137: an old link with an event opens its Promotions on Social posts', JSON.stringify(oldGoesTo('?event=ev-1')) === JSON.stringify(['/marketing.html?event=ev-1&tab=posts']), oldGoesTo('?event=ev-1'));
+check('UX-137: the rest of the address goes along, and a tab it names is kept', JSON.stringify(oldGoesTo('?event=a%20b&tab=mailers&mailer=mailer.agenda')) ===
+  JSON.stringify(['/marketing.html?event=a+b&tab=mailers&mailer=mailer.agenda']), oldGoesTo('?event=a%20b&tab=mailers&mailer=mailer.agenda'));
+check('UX-137: no event (or a blank one) goes to the events listing', JSON.stringify(oldGoesTo('')) === JSON.stringify(['/Event_Listing.html']) &&
+  JSON.stringify(oldGoesTo('?event=%20%20')) === JSON.stringify(['/Event_Listing.html']));
+var oldDash = read('edit-event-dashboard.html');
+check('UX-137: the old Dashboard address is titled for Oneworld 2.0 too', oldDash.indexOf('Revamp CMS') === -1 && /<title>Dashboard &mdash; Oneworld 2\.0<\/title>/.test(oldDash));
+
 Promise.all(pending).then(function () {
   if (failed) { console.error('promotions-page: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('promotions-page: all ' + passed + ' checks passed');

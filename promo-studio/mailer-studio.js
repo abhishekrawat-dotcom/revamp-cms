@@ -165,7 +165,7 @@ function paintAnalytics(){
   // Plain language: a marketer can't act on "Vercel KV / Upstash Redis". Say what
   // it means for THEM — are their opens and clicks being saved, or not.
   const note=a.backend==="none"
-    ? `<div class="an-note warn"><b>Opens and clicks aren't being saved right now.</b> Mailers you send will still work, but their performance won't show up here. Ask whoever set up this platform to turn on performance tracking.</div>`
+    ? `<div class="an-note warn"><b>Opens and clicks aren't being saved right now.</b> Mailers you send will still work, but their performance won't show up here. Ask your Oneworld admin to turn on performance tracking.</div>`
     : a.backend==="file" ? `<div class="an-note">Your mailer performance is being saved.</div>` : "";
 
   const empty=t.sends===0;
@@ -174,7 +174,7 @@ function paintAnalytics(){
       <div class="r"><button class="btn alt sm" onclick="AN.data=null;AN.fresh=true;showAnalytics()">Refresh</button>
         <button class="btn sm" onclick="showPortals()">New mailer →</button></div></div>
     ${note}${filtNote}
-    ${empty?`<div class="card an-empty"><div class="e">✉</div><h4>No mailers generated yet</h4>
+    ${empty?owDashNotRecorded(a)||`<div class="card an-empty"><div class="e">✉</div><h4>No mailers generated yet</h4>
         <p>Download or copy a mailer and its opens and clicks appear here.</p>
         <button class="btn" onclick="showPortals()">${owDashPickLabel()}</button></div>`
     :`
@@ -448,10 +448,10 @@ const findMailer=(id)=>MAILERS&&MAILERS.mailers.find(m=>m.id===id);
 
 async function downloadAllMailers(){
   if(!MAILERS){toast("Open an event first");return;}
-  const btn=event?.target; if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> zipping…';}
+  const btn=event?.target; if(!(await owMaySend("zip")))return; if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> zipping…';}
   const r=await api("/api/mailer/download",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,mailerIds:[]})});
-  if(r.ok){ const a=document.createElement("a"); a.href=URL.createObjectURL(await r.blob()); a.download="mailers.zip"; a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }
+  if(r.ok){ const a=document.createElement("a"); a.href=URL.createObjectURL(await r.blob()); a.download=owZipName(); a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }
   else toast("Download failed");
   if(btn){btn.disabled=false;btn.innerHTML='Download all (.zip)';}
 }
@@ -483,14 +483,14 @@ function openMailer(preId,saveId,fresh){
   MD.id=$("mlPick").value; MD.sel=null; MD.ai=null;
   mlLoad(!!fresh,saveId||null);
 }
-function closeMailer(){
-  if(MD.dirty&&!confirm("You have unsaved changes in this mailer. Close anyway?"))return;
+async function closeMailer(){
+  if(MD.dirty&&!(await owMayLeave("close")))return;
   $("mailer").classList.remove("on"); document.body.style.overflow=""; MD.dirty=false; mlPopClose(); iconPopClose();
   mark("event");
 }
 /** Changing the mailer in the picker: a different mailer, so its own latest
     saved version — not the one that happened to be open. */
-function switchMailer(){ MD.id=$("mlPick").value; MD.sel=null; MD.ai=null; mlLoad(false,null); }
+async function switchMailer(){ const to=$("mlPick").value; if(MD.dirty&&!(await owMayLeave("switch"))){ $("mlPick").value=MD.id; return; } MD.id=to; MD.sel=null; MD.ai=null; mlLoad(false,null); }
 
 /* ---------- load / render ---------- */
 /* Building a mailer means a doc build (several API calls) plus a render, and the
@@ -1028,7 +1028,7 @@ function mlTbWrap(k){
   }
   IE.dirty=true; mlFit(); mlTbPlace(el);
 }
-function mlTbApply(k){
+async function mlTbApply(k){
   const el=IE.el; if(!el)return;
   const d=$("mlFrame").contentDocument;
   const b=MD.doc.blocks[blockIndex(MD.sel)];
@@ -1036,7 +1036,14 @@ function mlTbApply(k){
   if(k==="a"){
     const sel=d.getSelection();
     if(!sel||!sel.rangeCount||!sel.toString().trim()){ toast("Select the words to link first"); return; }
-    const url=prompt("Link URL","https://"); if(!url)return;
+    const keep=sel.getRangeAt(0).cloneRange();
+    el.removeEventListener("blur",IE.onBlur);
+    const url=await uiPrompt("Link URL",{value:"https://",placeholder:"https://…",ok:"Add link"});
+    if(IE.el!==el||$("mlFrame").contentDocument!==d||!d.contains(el)){ if(url)toast("The link was not added: the mail was redrawn meanwhile. Select the words and add it again.",5000); return; }
+    try{ $("mlFrame").contentWindow.focus(); }catch(_){}
+    el.focus(); sel.removeAllRanges(); sel.addRange(keep);
+    el.addEventListener("blur",IE.onBlur);
+    if(!url)return;
     mlKeepCaret(el,d); d.execCommand("createLink",false,url);
     IE.dirty=true; mlFit(); return;
   }
@@ -1220,7 +1227,7 @@ function mlEditEnd(commit){
    the toolbar became the only chrome. */
 document.addEventListener("mousedown",(e)=>{
   if(!IE.el)return;
-  if(e.target.closest("#mlTB")||e.target.closest("#mlFrame"))return;
+  if(e.target.closest("#mlTB")||e.target.closest("#mlFrame")||e.target.closest("#uiModal"))return;
   mlEditEnd(true);
 },true);
 /* The canvas has no second editor. Prose used to open a Quill panel floating
@@ -1390,7 +1397,7 @@ const FBAR=[
   {k:"a",m:null,label:"↗",title:"Link",css:""},
   {k:"x",m:null,label:"⌫",title:"Clear formatting",css:"color:var(--soft)"},
 ];
-function fmtApply(el,btn,onchange){
+async function fmtApply(el,btn,onchange){
   const v=el.value, a=el.selectionStart, z=el.selectionEnd;
   const sel=v.slice(a,z);
   let out, caret;
@@ -1399,10 +1406,11 @@ function fmtApply(el,btn,onchange){
     if(sel){ out=v.slice(0,a)+clean+v.slice(z); caret=a+clean.length; }
     else { out=clean; caret=clean.length; }
   } else if(btn.k==="a"){
-    const url=prompt("Link URL","https://");
+    const url=await uiPrompt("Link URL",{value:"https://",placeholder:"https://…",ok:"Add link"});
     if(!url) return;
     const label=sel||"link text";
     out=v.slice(0,a)+`[${label}](${url})`+v.slice(z); caret=a+label.length+url.length+4;
+    if(!el.isConnected){ onchange(out); mlProps(); mlInspector(); return; }
   } else {
     const m=btn.m;
     // keep the markers hugging the words: whitespace the user happened to include
@@ -1708,7 +1716,7 @@ function iconPopPaint(){
     e.preventDefault(); e.stopPropagation();
     const id=x.dataset.id;
     const gone=ICONS.uploaded.find(u=>u.id===id);
-    if(!confirm(`Remove “${gone?gone.name:"this icon"}” from the library? Tiles already using it keep their URL.`)) return;
+    if(!(await uiConfirm("Remove this icon?",`“${escapeHtml(gone?gone.name:"this icon")}” is taken out of the library. Tiles already using it keep their picture.`,{ok:"Remove",danger:true}))) return;
     try{ await iconsDelete(id); toast("Icon removed"); }
     catch(err){ toast(String(err.message||err)); }
     if(ICP.el){ iconPopPaint(); iconPopPlace(); }
@@ -1739,7 +1747,7 @@ function iconPopPaint(){
 }
 document.addEventListener("mousedown",(e)=>{
   if(!ICP.el||!e.target||!e.target.closest) return;
-  if(e.target.closest("#icPop")) return;
+  if(e.target.closest("#icPop")||e.target.closest("#uiModal")) return;
   // The anchor itself is left alone so its own click can toggle the popover shut.
   if(ICP.anchor&&(e.target===ICP.anchor||ICP.anchor.contains(e.target))) return;
   iconPopClose();
@@ -2025,7 +2033,7 @@ function mlFields(host,b){
     : f.type==="picker" ? fldPicker(f,b,redraw)
     : f.type==="multipick" ? fldMultipick(f,b,redraw)
     : (f.key==="style"&&f.options) ? fldThumbs(f,b.type,b.props[f.key],set)
-    : fldInput(f,b.props[f.key],set,AI_FIELDS[f.key]?`${b.id}.${f.key}.${AI_FIELDS[f.key]}`:null);
+    : fldInput(f,owFieldValue(b,f,schema),set,AI_FIELDS[f.key]?`${b.id}.${f.key}.${AI_FIELDS[f.key]}`:null);
     fldEl.dataset.fkey=f.key;                 // so 5b can hide the field being edited in-canvas
     return fldEl;
   };
@@ -2362,11 +2370,8 @@ async function mlSave(){
 }
 async function mlSaveAs(){
   if(!MD.doc)return;
-  // Save-name stays a native prompt: the editor audit pins this create-a-version
-  // flow through the browser-dialog channel and asserts the exact name typed, and
-  // the test file is outside this file's ownership. The duplicate-name auto-suffix
-  // below still applies, and Rename/Delete/the AI confirmations use in-app modals.
-  const name=prompt("Name this version",mlDefaultName());
+  // Named in the studio's own dialog, as Rename is. The duplicate-name auto-suffix below still applies.
+  const name=await uiPrompt("Name this version",{value:mlDefaultName(),placeholder:"Version name",ok:"Save"});
   if(name===null)return;                                    // cancelled
   if(await mlPutSave(null,mlUniqueName(name))) toast(`Saved as “${MD.saveName}”`);
 }
@@ -2532,7 +2537,7 @@ async function mlExport(format,width){
 
 async function mlRebuild(){
   closeMenus();
-  if(!await uiConfirm("Rebuild from event data?","This starts a fresh draft from the event's current data. Your saved versions are kept.",{ok:"Rebuild"}))return;
+  if(!await uiConfirm("Rebuild from event data?","This starts a fresh draft from the event's current data. "+(MD.dirty?"Changes you haven't saved are lost; your saved versions are kept.":"Your saved versions are kept."),{ok:"Rebuild",danger:MD.dirty}))return;
   await mlLoad(true,null); toast("Rebuilt from event data");
 }
 async function mlCopy(){
@@ -2645,7 +2650,7 @@ document.addEventListener("keydown",(e)=>{
   if(inField) return;
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="z"&&!e.shiftKey){ e.preventDefault(); mlUndo(); return; }
   if((e.metaKey||e.ctrlKey)&&(e.key.toLowerCase()==="y"||(e.key.toLowerCase()==="z"&&e.shiftKey))){ e.preventDefault(); mlRedo(); return; }
-  if(e.key==="Escape"){ if(ICP.el) iconPopClose(); else if($("mlPop").classList.contains("on")) mlPopClose(); else if(MD.sel) mlSelect(null); else closeMailer(); return; }
+  if(e.key==="Escape"){ if(e.defaultPrevented||$("uiModal").classList.contains("on")) return; if(ICP.el) iconPopClose(); else if($("mlPop").classList.contains("on")) mlPopClose(); else if(MD.sel) mlSelect(null); else closeMailer(); return; }
   if(MD.sel&&(e.key==="Backspace"||e.key==="Delete")){ e.preventDefault(); mlDel(MD.sel); }
 });
 

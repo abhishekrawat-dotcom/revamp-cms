@@ -11,9 +11,10 @@
      DELETE /api/promo/social/art?eventId=&slot=         Remove one picture (the object itself is kept)
      POST   /api/promo/social/html     { eventId, items: [{ templateId, format, params, preview? }], captionOnly? }
      GET    /api/promo/social/layout?eventId=&templateId=&format=&theme=&bg=     a saved layout, if any
+     GET    /api/promo/social/layouts?eventId=          every saved layout's key, time and changes (no elements)
      POST   /api/promo/social/layout/base?eventId=&key=  (raw PNG / WebP) a layout's flattened picture
      POST   /api/promo/social/layout   { eventId, templateId, format, theme, bg, width, height, base, elements,
-                                         params, caption }                    Save
+                                         params, caption, changes }           Save
      POST   /api/promo/social/layout/reset  { eventId, templateId, format, theme, bg }
      POST   /api/promo/social/picture?eventId=           (raw, ≤ 8 MiB) a picture for the layout editor's Image
                                                          and Frame elements ("Upload a picture")
@@ -28,7 +29,8 @@
 
    STORED (Admin SDK only; none of it is copied to a new edition, lib/api-events.js):
      events/<id>/promoSocial/art             { background, logoUnit, bg1, bg2, bg3, psd, updatedAt }
-     events/<id>/promoSocialLayouts/<key>    a saved layout: base picture, elements (JSON), options, caption
+     events/<id>/promoSocialLayouts/<key>    a saved layout: base picture, elements (JSON), options, caption, and
+                                             the text and picture changes it made to its template
      Storage events/<id>/promo-art/…         uploaded pictures — kept while the event lives, even once replaced or
                                              removed: a saved layout may still show one
      Storage events/<id>/promo-layouts/<key>/…   a layout's base picture; the others in its folder are swept after
@@ -76,6 +78,8 @@ var NUMBERS = {
   paramList: 60,
   statsRows: 12,
   elementText: 2000,
+  changes: 60,                 // a layout's text and picture changes carried into its template's other sizes
+  nearText: 120,               // a change's neighbours' words, as the editor compares them (oneworld-social.js OW_NEAR_LEN)
   styleLength: 400,
   captionText: 3000,
   psdName: 120
@@ -792,6 +796,42 @@ function cleanCaption(raw) {
   return { network: network, text: text };
 }
 
+/* The text and picture changes a layout made to what its template drew (UX-124): [{ kind: 'text' | 'src', from,
+   to, id, of, near, alike }], one for each element. The editor carries them into the template's other sizes that
+   have no layout of their own, so a headline corrected on 1:1 reads the same on 9:16 (oneworld-social.js). Each is
+   matched to the same element there by its place in the template, not by its words alone: id is the element's number
+   in the order the template drew it (e0, e1…), of how many elements of its kind the template drew with those words,
+   near the template's words just before and after it, and alike how many of those have the same words around them.
+   Matching by words alone put a stat changed from 3 to 25+ into every 3 the template drew (25+ days, for an event of
+   3 days), and kept only one change for the same words. A picture's new address is drawn in those sizes, so it is
+   held to an element's own rule; the one it replaces is only compared, never drawn or fetched. A change back to what
+   the template drew is no change. */
+var CHANGE_ID = /^e\d{1,6}$/;
+function isCount(n, most) { return typeof n === 'number' && n % 1 === 0 && n >= 1 && n <= most; }
+function cleanChanges(raw, where) {
+  if (raw == null) return [];
+  var bad = function () { return httpErr(400, 'The layout\'s text and picture changes could not be read.'); };
+  if (!Array.isArray(raw) || raw.length > NUMBERS.changes) throw bad();
+  var seen = {};
+  return raw.map(function (c) {
+    if (!isPlainObject(c) || (c.kind !== 'text' && c.kind !== 'src') || typeof c.from !== 'string' || typeof c.to !== 'string') throw bad();
+    if (c.from.length > NUMBERS.elementText || c.to.length > NUMBERS.elementText) throw bad();
+    if (typeof c.id !== 'string' || !CHANGE_ID.test(c.id) || !isCount(c.of, NUMBERS.elements) || !isCount(c.alike, c.of)) throw bad();
+    if (!Array.isArray(c.near) || c.near.length !== 2 || !c.near.every(function (w) { return typeof w === 'string' && w.length <= NUMBERS.nearText; })) throw bad();
+    var to = c.to;
+    if (c.kind === 'src') {
+      to = /^data:/i.test(to) ? '' : cleanSrc(to, where);
+      if (!to) throw httpErr(400, PICTURE_REFUSED, { code: 'picture-not-allowed' });
+      if (isExampleSrc(to)) throw exampleErr();
+    }
+    return { kind: c.kind, from: c.from, to: to, id: c.id, of: c.of, near: [c.near[0], c.near[1]], alike: c.alike };
+  }).filter(function (c) {
+    if (c.from === c.to || seen[c.id]) return false;
+    seen[c.id] = true;
+    return true;
+  });
+}
+
 /* After a save or a reset, every object in the layout's folder but its committed base is deleted — the base it
    replaced, and any left by a save that failed. The objects to go are first marked on the layout's document
    (`sweeping`), in a transaction: a save still in flight whose base is one of them then fails with 409 instead of
@@ -843,8 +883,33 @@ function handleLayout(req, res) {
         return sendJson(res, 200, { saved: false });
       }
       sendJson(res, 200, { saved: true, width: d.width, height: d.height, base: d.baseUrl, elements: elements,
-        params: isPlainObject(d.params) ? d.params : {}, caption: d.caption || null, savedAt: d.savedAt || 0 });
+        params: isPlainObject(d.params) ? d.params : {}, caption: d.caption || null, savedAt: d.savedAt || 0,
+        changes: Array.isArray(d.changes) ? d.changes : [] });
     }).catch(function (err) { fail(res, 'layout', err); });
+  });
+}
+
+/* GET /api/promo/social/layouts?eventId= — every saved layout of the event, without its elements: its key's parts,
+   when it was saved and the changes it made to its template. The editor carries those changes into the template's
+   other sizes and says which sizes are saved (UX-124); the cards show a saved layout and are marked so (UX-127); the
+   all-sizes ZIP takes each size as it was saved (UX-118). Only the fields the list needs are read: a layout's
+   elements can be most of a megabyte. A layout that was reset holds no base picture, and is not listed. */
+var LIST_FIELDS = ['baseUrl', 'savedAt', 'changes'];
+function handleLayouts(req, res) {
+  withQueryEvent(req, res, function (fb, decoded, q, eventId) {
+    H.loadLiveEvent(fb, eventId).then(function () {
+      var col = fb.db.collection('events').doc(eventId).collection('promoSocialLayouts');
+      return (typeof col.select === 'function' ? col.select.apply(col, LIST_FIELDS) : col).get();
+    }).then(function (snap) {
+      var layouts = [];
+      (snap.docs || []).forEach(function (doc) {
+        var d = doc.data() || {}, k = parseKey(doc.id);
+        if (typeof k === 'string' || !d.baseUrl) return;
+        layouts.push({ key: k.key, templateId: k.tpl.id, format: k.fmt.id, theme: k.theme, bg: k.bg, savedAt: d.savedAt || 0,
+          changes: Array.isArray(d.changes) ? d.changes : [] });
+      });
+      sendJson(res, 200, { layouts: layouts });
+    }).catch(function (err) { fail(res, 'layouts', err); });
   });
 }
 
@@ -876,17 +941,18 @@ function handleLayoutSave(req, res) {
   withEvent(req, res, H.BODY_LIMITS.ai, function (fb, decoded, body, eventId) {
     var k = keyParts(body.templateId, body.format, body.theme, body.bg);
     if (typeof k === 'string') return sendJson(res, 400, { error: k });
-    if (examples.isExample({ elements: body.elements, params: body.params, caption: body.caption, base: body.base })) return sendJson(res, 422, exampleErr().body);
+    if (examples.isExample({ elements: body.elements, params: body.params, caption: body.caption, base: body.base, changes: body.changes })) return sendJson(res, 422, exampleErr().body);
     if (+body.width !== k.fmt.width || +body.height !== k.fmt.height) return sendJson(res, 400, { error: 'This layout\'s size is not its format\'s.' });
     var bucket = fb.bucket && fb.bucket.name, ref = layoutRef(fb, eventId, k.key), base = String(body.base || '');
     var row;
     H.loadLiveEvent(fb, eventId).then(function (stored) {
-      var els = cleanElements(body.elements, { bucket: bucket, eventId: eventId, importId: importIdOf(stored) });
-      var params = cleanParams(k.tpl, body.params, k), caption = cleanCaption(body.caption);
+      var where = { bucket: bucket, eventId: eventId, importId: importIdOf(stored) };
+      var els = cleanElements(body.elements, where);
+      var params = cleanParams(k.tpl, body.params, k), caption = cleanCaption(body.caption), changes = cleanChanges(body.changes, where);
       var json = JSON.stringify(els.list);
       var bytes = Buffer.byteLength(json, 'utf8');
       if (bytes > NUMBERS.elementsBytes || els.dataBytes > NUMBERS.dataTotal) throw httpErr(413, LAYOUT_TOO_LARGE);
-      if (bytes + Buffer.byteLength(JSON.stringify({ params: params, caption: caption }), 'utf8') + 2 * base.length + 4096 > NUMBERS.docBytes) throw httpErr(413, LAYOUT_TOO_LARGE);
+      if (bytes + Buffer.byteLength(JSON.stringify({ params: params, caption: caption, changes: changes }), 'utf8') + 2 * base.length + 4096 > NUMBERS.docBytes) throw httpErr(413, LAYOUT_TOO_LARGE);
       var now = Date.now();
       return fb.db.runTransaction(function (t) {
         return t.get(ref).then(function (snap) {
@@ -907,7 +973,7 @@ function handleLayoutSave(req, res) {
           return check.then(function (basePath) {
             row = { templateId: k.tpl.id, format: k.fmt.id, theme: k.theme, bg: k.bg, width: k.fmt.width, height: k.fmt.height,
               baseUrl: publicUrl(bucket, basePath), basePath: basePath, elements: json, params: params, caption: caption,
-              savedAt: now, by: byOf(decoded) };
+              changes: changes, savedAt: now, by: byOf(decoded) };
             /* another tidy-up's marks stay until it is done */
             if (sweeping.length) row.sweeping = sweeping;
             t.set(ref, row);
@@ -959,6 +1025,7 @@ var ROUTES = {
   'DELETE /api/promo/social/art': 'handleArtDelete',
   'POST /api/promo/social/html': 'handleHtml',
   'GET /api/promo/social/layout': 'handleLayout',
+  'GET /api/promo/social/layouts': 'handleLayouts',
   'POST /api/promo/social/layout/base': 'handleLayoutBase',
   'POST /api/promo/social/layout': 'handleLayoutSave',
   'POST /api/promo/social/layout/reset': 'handleLayoutReset',
@@ -967,11 +1034,11 @@ var ROUTES = {
 
 module.exports = {
   wire, handleCatalog, handleArt, handleArtUpload, handleArtPsd, handleArtDelete, handleHtml,
-  handleLayout, handleLayoutBase, handleLayoutSave, handleLayoutReset, handlePicture, ROUTES
+  handleLayout, handleLayouts, handleLayoutBase, handleLayoutSave, handleLayoutReset, handlePicture, ROUTES
 };
 /* the pure parts and the knobs, for promo-social.test.js */
 module.exports._test = {
   NUMBERS, SLOTS, socialEventFor, qrOptions, qrDataUri, artFor, artAnswer, normalise, readRaw, layoutKey, keyParts, parseKey,
-  basePathOf, importIdOf, cleanSrc, cleanElements, cleanParams, cleanCaption, sweepFolder, PICTURE_REFUSED, EXAMPLE_REFUSED,
+  basePathOf, importIdOf, cleanSrc, cleanElements, cleanParams, cleanCaption, cleanChanges, sweepFolder, PICTURE_REFUSED, EXAMPLE_REFUSED,
   setSharp: function (s) { sharpOverride = s || null; }
 };
