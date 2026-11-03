@@ -2265,7 +2265,16 @@
       var t = 0;
       window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(function () { fitStage(); rescaleThumbs(); fitPreview(); }, 80); });
     }
-    waitFonts().then(function () { showGallery(); loadSaved(); });
+    /* ctx.open: a post asked for by name (marketing.html's &post=, from ETB2B AI on the events dashboard). Once the
+       gallery is drawn behind it, its editor opens when the event can make it; otherwise its full-size preview,
+       which says what is missing and links to where it is added. An unknown name leaves the gallery as it is. */
+    var asked = typeof ctx.open === 'string' && Object.prototype.hasOwnProperty.call(TYPE, ctx.open) ? TYPE[ctx.open] : null;
+    waitFonts().then(function () {
+      showGallery(); loadSaved();
+      if (!asked || root !== rootEl) return;      // mounted again meanwhile: that mount decides
+      if (typeNeed(asked)) openPreview(asked);
+      else openEditor(newCfg(asked.id), null, '');
+    });
   }
 
   /* marketing.html calls this each time the Site-look posts tab is shown again: what was put off while it was

@@ -40,6 +40,8 @@
      - the page fits Promotions: the frame grows to its content (the page scrolls, not a box inside it), the
        studio, the full-size view and a dialog over the cards take the whole window, and a toast from a tall frame
        is shown by the console, where it can be seen.
+     - one post asked for by name (&template=<id>, from ETB2B AI on the events dashboard through Promotions): it
+       opens in the editor once the cards are in, or a toast says why it cannot (owOpenDeep).
 
    Function declarations here replace the platform's of the same name (this file loads after it): toast, cardHtml,
    loadThumbs; mark, crumbs and setProdNav do nothing (Promotions has its own heading); openPortal, showPortals and
@@ -1190,10 +1192,53 @@ renderEventDetail = function (assets) {
   owReportHeight();
 };
 
+/* ---------- one post asked for by name ----------
+   ETB2B AI on the events dashboard opens Promotions on the post the person asked for ("a save-the-date post"), and
+   Promotions passes it on in this frame's address (&template=<id>). Once the event's cards are in, a template the
+   event can make opens in the editor, once; one it cannot make yet, or one that does not exist, is said in a toast
+   over the cards. The toast waits a moment for the frame to have grown (rvSocialTall), so that it is the console
+   that shows it, in view, and never longer than that. */
+var OW_DEEP = new URLSearchParams(location.search).get('template') || '';
+var OW_DEEP_WAIT = 2000;
+function owList(words) {
+  words = owArr(words).map(String).filter(Boolean);
+  return words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
+}
+function owWhenTall(ms) {
+  return new Promise(function (resolve) {
+    var waited = 0;
+    (function again() {
+      if (!owFramed() || owTall() || waited >= ms) { resolve(); return; }
+      waited += 100;
+      setTimeout(again, 100);
+    })();
+  });
+}
+function owDeepToast(m) { return owWhenTall(OW_DEEP_WAIT).then(function () { toast(m, OW_LONG); }); }
+function owOpenDeep() {
+  var id = OW_DEEP, found = null;
+  OW_DEEP = '';
+  if (!id || !CAT || !CAT.catalog) return;
+  try {
+    if (/^[a-z]+\.[a-z-]+$/.test(id)) {
+      owArr(CAT.catalog.categories).forEach(function (c) {
+        owArr(c && c.templates).forEach(function (t) { if (t && t.id === id) found = t; });
+      });
+    }
+    if (!found) { owDeepToast('That post template doesn\'t exist.'); return; }
+    if (!found.available) {
+      var need = owList(found.missing);
+      owDeepToast('That post isn\'t available for this event yet' + (need ? ': it needs ' + need : '') + '.');
+      return;
+    }
+    openEditor(found.id);
+  } catch (e) { console.error('promo social: the post asked for', e); }
+}
+
 /* ---------- boot ---------- */
 function owBoot() {
   if (!EVENT_ID) { $('content').innerHTML = '<div class="empty"><div class="big">No event</div>Open Promotions from an event.</div>'; return Promise.resolve(); }
-  return Promise.resolve().then(function () { return openEvent(EVENT_ID); }).then(null, function (err) {
+  return Promise.resolve().then(function () { return openEvent(EVENT_ID); }).then(owOpenDeep, function (err) {
     console.error('promo social: the event page', err);
     $('content').innerHTML = '<div class="empty"><div class="big">Social posts could not be loaded</div>' + escapeHtml(owMessage(err) || 'Please try again.') +
       '<div style="margin-top:14px"><button class="btn" id="owBootAgain" type="button">Try again</button></div></div>';

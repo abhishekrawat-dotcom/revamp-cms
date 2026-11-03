@@ -99,6 +99,11 @@
 //                          POST /api/promo/social/picture
 //     lib/promo-previews.js  POST /api/promo/mailer/previews (each mailer card's live preview of this event's mail)
 //     lib/promo-banner.js  GET/POST /api/promo/mailer/banner (the mailers' top banner picture, drawn in the browser)
+//     lib/dash-bot.js      ETB2B AI on the events dashboard: POST /api/dash-bot (one message, one answer, at most
+//                          one action), POST /api/dash-bot/turn (what became of that action: done, undone, failed),
+//                          GET /api/dash-bot/history (your own conversation; ?all=1 everyone's, for the approvers).
+//                          It reads the same events GET /api/events lists, through liveEventDocs() — see
+//                          dashBotHelpers() for what it is handed.
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -8015,24 +8020,43 @@ function eventListItem(id, d) {
   return item;
 }
 
-function handleEventsList(req, res) {
-  withAdmin(req, res, function (fb) {
-    var wanted = queryOf(req).get('deleted') === '1' ? 'deleted' : 'live';
+/* The events GET /api/events lists, as their documents: a promise of [{ id, data }], in the list's own order
+   (newest-changed first, or newest-deleted first), with only EVENT_LIST_FIELDS read — so `data.counters` is the
+   raw map, audienceV and all, which is what lib/api-audience.js insightTotals() needs to total an event without
+   reading it again. which: 'live' (anything else) or 'deleted'.
+   ETB2B AI on the dashboard (lib/dash-bot.js) reads its events through this as well, so it can never see an event
+   the person's own list does not show, nor miss one it does. `decoded` is the person asking: there is no
+   per-person rule today (the CMS is team-wide, lib/access.js), and one added here applies to both at once. */
+function liveEventDocs(fb, decoded, which) {
+  var wanted = which === 'deleted' ? 'deleted' : 'live';
+  return Promise.resolve().then(function () {
     var query = fb.db.collection('events');
-    query.select.apply(query, EVENT_LIST_FIELDS).limit(EVENTS_LIST_LIMIT).get()
-      .then(function (snap) {
-        var items = snap.docs.filter(function (d) {
-          var data = d.data();
-          /* a draft that is being removed for good is in neither list (lib/api-events.js) */
-          if (eventStateOf(d) !== wanted || data.discardingAt) return false;
-          return typeof data.name === 'string' && data.name.trim() !== '';
-        }).map(function (d) { return eventListItem(d.id, d.data()); });
-        var key = wanted === 'deleted' ? 'deletedAt' : 'updatedAt';
-        items.sort(function (a, b) {
-          var x = String(a[key] || ''), y = String(b[key] || '');
-          return x === y ? (a.id < b.id ? -1 : 1) : (x < y ? 1 : -1);
-        });
-        sendJson(res, 200, { items: items });
+    return query.select.apply(query, EVENT_LIST_FIELDS).limit(EVENTS_LIST_LIMIT).get();
+  }).then(function (snap) {
+    var docs = [], order = {};
+    snap.docs.forEach(function (d) {
+      var data = d.data();
+      /* a draft that is being removed for good is in neither list (lib/api-events.js) */
+      if (eventStateOf(d) !== wanted || data.discardingAt) return;
+      if (typeof data.name !== 'string' || data.name.trim() === '') return;
+      docs.push({ id: d.id, data: data });
+      /* the very value the list item shows as updatedAt (or deletedAt), so the order is the list's */
+      order[d.id] = String((wanted === 'deleted' ? isoOf(data.deletedAt) : isoOf(data.updatedAt) || isoOf(data.createdAt) || null) || '');
+    });
+    docs.sort(function (a, b) {
+      var x = order[a.id], y = order[b.id];
+      return x === y ? (a.id < b.id ? -1 : 1) : (x < y ? 1 : -1);
+    });
+    return docs;
+  });
+}
+
+function handleEventsList(req, res) {
+  withAdmin(req, res, function (fb, decoded) {
+    var which = queryOf(req).get('deleted') === '1' ? 'deleted' : 'live';
+    liveEventDocs(fb, decoded, which)
+      .then(function (docs) {
+        sendJson(res, 200, { items: docs.map(function (d) { return eventListItem(d.id, d.data); }) });
       })
       .catch(function (err) { sendFailure(res, 'events list', err, 'Could not load your events. Please try again.'); });
   });
@@ -10011,6 +10035,31 @@ var promoSocial = function (handler) { return promoRoute('promo-social', handler
 var promoPreviews = function (handler) { return promoRoute('promo-previews', handler); };
 var promoBanner = function (handler) { return promoRoute('promo-banner', handler); };
 
+/* lib/dash-bot.js (ETB2B AI on the events dashboard) is handed this file's helpers the same way, on each call: no
+   require cycle, and a module that fails to load costs only its own three routes inModule()'s 503. It reads its
+   events through liveEventDocs(), so the bot sees exactly the list the person sees, and it shares the editor
+   chat's rate bucket (chatRateOk), so the two chats together cannot outrun one person's limit. */
+function dashBotHelpers() {
+  return { withAdmin, withAdminBody, sendJson, sendFailure, sendAiFailure, httpError, BODY_LIMITS, chatRateOk, chatUid, chatName,
+    approvalsConfig, liveEventDocs, eventListItem, isEventId };
+}
+function dashBot(handler) {
+  var run = inModule('dash-bot', handler);
+  return function (req, res) {
+    var mod;
+    try { mod = require('./dash-bot'); }
+    catch (e) { return run(req, res); /* inModule() logs a module that cannot be loaded and answers 503 */ }
+    /* unlike the Promotions modules, a bot that loads but cannot take its helpers is not run without them (its
+       handlers would have no sign-in check to call and fail with a 500): it is answered as a missing module */
+    try { mod.wire(dashBotHelpers()); }
+    catch (err) {
+      console.error('api: lib/dash-bot.js could not be wired for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+      return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+    }
+    return run(req, res);
+  };
+}
+
 /* the same 42 bytes as lib/promo-track.js PIXEL (a test checks): a mail must never show a broken image, even
    when that module is missing from a deployment */
 var TRACK_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -10043,6 +10092,9 @@ var ROUTES = {
   'POST /api/chat-edit': handleChatEdit,
   'POST /api/chat/turn': handleChatTurn,
   'GET /api/chat/history': handleChatHistory,
+  'POST /api/dash-bot': dashBot('handleChat'),                // ETB2B AI on the events dashboard (lib/dash-bot.js)
+  'POST /api/dash-bot/turn': dashBot('handleTurn'),
+  'GET /api/dash-bot/history': dashBot('handleHistory'),
   'POST /api/extract-brief': handleExtractBrief,
   'POST /api/ingest-source': handleIngestSource,
   'GET /api/et/portals': handleEtPortals,

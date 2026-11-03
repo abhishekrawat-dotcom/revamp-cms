@@ -587,6 +587,8 @@
   .callout a{ color: inherit; font-weight: 700; text-decoration: underline; }
   .callout .callout-actions{ display:flex; flex-wrap:wrap; gap: 8px; margin-top: 10px; }
   #existing-event{ margin-bottom: 14px; }
+  /* what ETB2B AI on the events dashboard filled in, at the top of step 1 (create-event-prefill.js) */
+  #ai-prefill-note{ margin-bottom: 16px; }
 
   .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding: 3px 9px 3px 7px; border-radius: 100px; white-space:nowrap; }
   .pill .d{ width:6px; height:6px; border-radius:50%; }
@@ -1909,6 +1911,10 @@
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
     <section class="step-wrap full" id="step-1" hidden>
+      <!-- what ETB2B AI on the events dashboard filled in from the person's message, with Undo; or why its details
+           were not used. Above all three phases, and gone once the person moves past step 1 (renderAiPrefillNote). -->
+      <div class="callout" id="ai-prefill-note" role="status" hidden></div>
+
       <!-- ===== PHASE 1 : pick the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
@@ -2263,6 +2269,7 @@
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
+<script src="create-event-prefill.js"></script>
 <script>
 (function(){
   'use strict';
@@ -2803,6 +2810,9 @@
   var saveTimer = null;
   var draftClosed = false;    // the draft was handed to the editor or discarded and removed; nothing may write it back
   var restoreNotice = '';     // what a restored draft could not be resumed with, shown on the method screen until a choice is made
+  /* ETB2B AI on the events dashboard can open this page with a new event's details (?prefill=, create-event-prefill.js) */
+  var aiPrefill = null;       // those details, held until start() fills the new draft with them, once
+  var aiNote = null;          // the note over step 1: { kind: 'filled' | 'unused' | 'missing', text, snap } (renderAiPrefillNote)
   var resumedExisting = false;   // this page load restored a draft whose event already exists on the server
   var lastSaveOk = true;      // the last save() reached localStorage
   var otherTab = '';          // '' | 'changed' | 'replaced' | 'closed' — what another tab did to the stored draft; this tab stops saving until the owner decides (renderSaveState)
@@ -3233,6 +3243,7 @@
   var BACK_LABEL = svg('<path d="M15 18l-6-6 6-6"/>', 15) + ' Back';
   function renderFoot(){
     var back = $('btn-back'), next = $('btn-next'), note = $('foot-note');
+    renderAiPrefillNote();
     renderAiEntry();
     setTimeout(placeToasts, 0);     // once the bar has its new content
     if (busy){
@@ -3849,15 +3860,18 @@
 
   /* Choosing the type only changes the type: the fields that depend on it re-render, and whatever was
      chosen after it — the method, the design, the content — stays. A pick made while changing the type
-     goes back to where the owner came from. */
+     goes back to where the owner came from. A first pick for a brief ETB2B AI brought from the events
+     dashboard (S.aiPrefill.thenDetails, create-event-prefill.js) goes on to that brief's form, once. */
   function pickCategory(k){
     var b = S.basics, C = CATS[k], changed = (k !== b.category);
-    var to = (S.catReturnPhase === 'details' && S.creationMethod) ? 'details' : 'method';
+    var aiBrief = !S.catReturnPhase && S.creationMethod === 'brief' && !!(S.aiPrefill && S.aiPrefill.thenDetails);
+    var to = ((S.catReturnPhase === 'details' && S.creationMethod) || aiBrief) ? 'details' : 'method';
     S.catReturnPhase = null;
+    if (S.aiPrefill && S.aiPrefill.thenDetails) S.aiPrefill.thenDetails = false;
     b.category = k;
     /* carry the date over only if the new category understands that mode */
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
-    toast(changed && to === 'details' ? (C.label + ' selected — form updated') : (C.label + ' selected'));
+    toast(changed && to === 'details' && !aiBrief ? (C.label + ' selected — form updated') : (C.label + ' selected'));
     setStep1Phase(to);
   }
   /* opens the type picker from a later phase, remembering the way back */
@@ -9783,29 +9797,62 @@
   /* "Create Event" everywhere in the product links here with ?new=1, and the bare page resumes the draft.
      A new event never silently replaces an unfinished one: when the stored draft holds anything its owner
      entered, they choose between continuing it and discarding it first. ?new=1&discard=1 is for a caller
-     that has already asked. */
+     that has already asked.
+     ETB2B AI on the events dashboard links here with ?new=1&prefill=<id>: a new event's details, taken from the
+     person's own message, wait in localStorage under that id (create-event-prefill.js). They fill a new draft
+     only; an unfinished one is asked about first, as above, and the discard parameter never skips that for them. */
   function init(){
     var params = new URLSearchParams(location.search);
     var startNew = params.get('new') === '1', stored = readStoredDraft();
-    if (startNew) history.replaceState(null, '', location.pathname);
+    /* read before the address is tidied below, and only once: take() removes it from storage */
+    var prefillId = params.get('prefill'), prefill = prefillId ? takePrefill(prefillId) : null;
+    if (startNew || prefillId) history.replaceState(null, '', location.pathname);
+    if (prefillId && !prefill) aiNote = { kind: 'missing', text: 'ETB2B AI’s details for this event were not found. They are kept for 10 minutes after you ask: ask again on the events dashboard.' };
+    if (prefill){
+      var next = RevampPrefill.decide({ startNew: startNew, prefill: prefill, stored: !!stored, hasInput: !!stored && draftHasInput(stored),
+        discard: params.get('discard') === '1' });
+      if (next === 'ask'){ askResumeOrDiscard(stored, prefill); return; }
+      if (stored){ discardStoredDraft(stored).then(function(){ startWithPrefill(prefill); }); return; }
+      startWithPrefill(prefill);
+      return;
+    }
     if (!startNew || !stored){ start(); return; }
     if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(start); return; }
     askResumeOrDiscard(stored);
   }
+  /* ETB2B AI's details for id, or null: none, too old, already used, or unreadable (storage blocked or the script missing) */
+  function takePrefill(id){
+    if (!window.RevampPrefill) return null;
+    var ls = null;
+    try { ls = window.localStorage; } catch(e){ return null; }
+    try { return RevampPrefill.take(ls, id, Date.now()); } catch(e){ return null; }
+  }
+  function prefillName(p){ return String((p && p.basics && p.basics.name) || '').trim(); }
   function draftLabel(d){ return String((d.basics && d.basics.name) || '').trim() || 'Untitled event'; }
-  function askResumeOrDiscard(stored){
+  /* prefill: ETB2B AI's details, waiting. Continuing the draft (or closing the question) sets them aside and says
+     so; only "Discard and start new", confirmed, fills the new draft with them. */
+  function askResumeOrDiscard(stored, prefill){
     var when = stored.savedAt ? new Date(stored.savedAt) : null;
     var edited = when && !isNaN(when.getTime())
       ? ' — last edited ' + when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    var name = prefillName(prefill);
+    var keep = !prefill ? start : function(){
+      aiNote = { kind: 'unused', text: 'Your unfinished event is open. ETB2B AI’s details for ' + (name ? '“' + name + '”' : 'your new event') +
+        ' were not used: finish or discard this one, then ask again.' };
+      start();
+    };
+    var fresh = !prefill ? start : function(){ startWithPrefill(prefill); };
     openModal({
       title: 'You have an unfinished event',
       sub: draftLabel(stored) + edited,
       body: '<div class="callout plain">' + IC.info + '<span>This draft is kept in this browser. Continue it, or discard it and start a new event.' +
-        (stored.createdEventId ? ' Its event (' + esc(stored.createdEventId) + ') already exists and stays in your events list either way.' : '') + '</span></div>',
+        (stored.createdEventId ? ' Its event (' + esc(stored.createdEventId) + ') already exists and stays in your events list either way.' : '') +
+        (prefill ? ' ETB2B AI has the details of ' + (name ? '“' + esc(name) + '”' : 'your new event') + ' ready: they are used only if you start a new event.' : '') +
+        '</span></div>',
       confirm: 'Continue this draft',
       cancelLabel: 'Discard and start new',
-      onConfirm: start,
-      onDismiss: start,           // closing the question decides nothing: the draft is kept
+      onConfirm: keep,
+      onDismiss: keep,            // closing the question decides nothing: the draft is kept
       onCancel: function(){
         openModal({
           title: 'Discard “' + draftLabel(stored) + '”?',
@@ -9813,17 +9860,87 @@
             (stored.createdEventId ? ' The event itself is not deleted.' : ''),
           confirm: 'Discard draft',
           cancelLabel: 'Keep it',
-          onConfirm: function(){ discardStoredDraft(stored).then(start); },
-          onCancel: function(){ askResumeOrDiscard(stored); },
-          onDismiss: function(){ askResumeOrDiscard(stored); }
+          onConfirm: function(){ discardStoredDraft(stored).then(fresh); },
+          onCancel: function(){ askResumeOrDiscard(stored, prefill); },
+          onDismiss: function(){ askResumeOrDiscard(stored, prefill); }
         });
       }
     });
+  }
+  function startWithPrefill(p){ aiPrefill = p; start(); }
+  /* Fills the new draft with ETB2B AI's details (start(), after restore(), before the form is drawn) and saves it.
+     resumed: restore() found a draft after all (another tab started one a moment ago): that draft is never written
+     over, and the person is told the details were not used. */
+  function applyAiPrefill(resumed){
+    var p = aiPrefill, name = prefillName(p);
+    aiPrefill = null;
+    if (resumed){
+      aiNote = { kind: 'unused', text: 'Your unfinished event is open. ETB2B AI’s details for ' + (name ? '“' + name + '”' : 'your new event') +
+        ' were not used: finish or discard this one, then ask again.' };
+      return;
+    }
+    var res = RevampPrefill.apply(S, CATS, p, { slugify: slugify });
+    /* thenDetails: a brief that came with no type; the type picker opens as a first choice, and the pick goes on to
+       the brief form (pickCategory) */
+    S.aiPrefill = { turnId: p.turnId, at: p.at, fields: res.fields, thenDetails: res.thenDetails === true };
+    save();
+    aiNote = { kind: 'filled', text: RevampPrefill.summary(res), snap: '' };
+  }
+  /* what the person has entered in the draft, to tell whether Undo would clear something they typed: not the save
+     time, the step or the phase (moving about is not typing), and the brief's empty headings count as nothing */
+  function aiDraftKey(){
+    var br = S.brief || {};
+    return JSON.stringify([S.basics, br.text === BRIEF_TEMPLATE ? '' : br.text, br.current, br.previous, br.comp1, br.comp2, br.future,
+      br.docName, br.themeMode, br.instructions, br.siteMode, br.etEvent, S.sections, S.template, S.creationMethod, S.excludedSections,
+      S.pulledEdition, S.designIntake, S.sectionOrder, S.aiDesign, S.useBannerTheme, S.createdEventId]);
+  }
+  /* The note over step 1. It is redrawn only when what it says changes (renderFoot runs on every keystroke, and a
+     redraw would take the keyboard off its button); hidden while a job holds the screen, gone once step 1 is left. */
+  function renderAiPrefillNote(){
+    var el = $('ai-prefill-note');
+    if (!el) return;
+    /* an event made on the server from this draft (a brief whose run failed part-way) is past "start again, blank" */
+    if (aiNote && (S.step !== 1 || (aiNote.kind === 'filled' && S.createdEventId))) aiNote = null;
+    var want = aiNote && !busy ? aiNote.kind + ':' + aiNote.text : '';
+    if (el.getAttribute('data-note') === want) return;
+    el.setAttribute('data-note', want);
+    el.hidden = !want;
+    if (!want){ el.innerHTML = ''; return; }
+    var filled = aiNote.kind === 'filled';
+    el.innerHTML = IC.spark + '<span>' + esc(aiNote.text) + '<span class="callout-actions">' +
+      (filled ? '<button class="btn btn-secondary btn-sm" type="button" id="ai-prefill-undo">Undo</button>'
+        : '<button class="btn btn-secondary btn-sm" type="button" id="ai-prefill-dismiss">Dismiss</button>') + '</span></span>';
+    if (filled) $('ai-prefill-undo').onclick = undoAiPrefill;
+    else $('ai-prefill-dismiss').onclick = function(){ aiNote = null; renderAiPrefillNote(); };
+  }
+  /* Undo puts the page back to a blank new event. When the person has typed or chosen anything since ETB2B AI
+     filled it in, that goes too, so they are asked first. */
+  function undoAiPrefill(){
+    if (!aiNote || aiNote.kind !== 'filled' || busy) return;
+    if (aiNote.snap && aiDraftKey() === aiNote.snap){ clearAiPrefill(); return; }
+    openModal({
+      title: 'Undo what ETB2B AI filled in?',
+      sub: 'Undo also clears what you typed since. This new event starts again, blank.',
+      confirm: 'Undo',
+      cancelLabel: 'Keep it',
+      onConfirm: clearAiPrefill
+    });
+  }
+  /* The draft and its files are removed, and the page opens again on a new event: the one sure way to a blank
+     page, with nothing of this draft left in the form, its pictures or the preview. */
+  function clearAiPrefill(){
+    aiNote = null;
+    renderAiPrefillNote();
+    draftClosed = true;          // nothing may write this draft back while it is being removed
+    leavingUnsaved = true;       // and the browser does not ask about leaving it
+    function again(){ window.location.replace(location.pathname + '?new=1'); }
+    discardStoredDraft(S).then(again, again);
   }
   function start(){
     var resumed = restore();
     sweepDraftFiles();
     if (resumed) save();         // an older draft has just been given its id and file slots: keep them
+    if (aiPrefill) applyAiPrefill(resumed);
     initStep1();
     if (S.basics.logo && !logoPreviewUrl){
       Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
@@ -9943,6 +10060,8 @@
     /* a draft is always picked up on the form: the hand-off is a run, not a place to be */
     S.step = 1;
     goStep(1);
+    /* the draft as ETB2B AI left it, now that the form is drawn: what Undo compares with */
+    if (aiNote && aiNote.kind === 'filled') aiNote.snap = aiDraftKey();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

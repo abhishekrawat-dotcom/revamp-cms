@@ -1,0 +1,387 @@
+/* create-event-prefill.js — Create Event's hand-off from ETB2B AI on the events dashboard.
+
+   When someone asks ETB2B AI on the dashboard (Event_Listing.html) to start an event ("Create an IP event called
+   Retail Leadership Summit on 12 Feb 2027 at Jio World Centre, Mumbai"), the dashboard writes what the server
+   took from their own message to localStorage under an id the server made, and opens
+   create-event.html?new=1&prefill=<id>. localStorage, not sessionStorage, so a Ctrl/Cmd-click into a new tab
+   works too: a new tab starts with an empty sessionStorage.
+
+     RevampPrefill.take(storage, id, nowMs)  -> the cleaned details, or null. Read once: the key is removed, and
+                                                so is every other key of this kind older than ten minutes.
+     RevampPrefill.decide(o)                 -> 'start' | 'apply' | 'ask'   what Create Event does with them
+     RevampPrefill.apply(S, CATS, p[, opts]) -> { fields, values, unused, phase, thenDetails, notes }   fills a blank draft S
+     RevampPrefill.describe(fields)          -> "name, date and venue"
+     RevampPrefill.summary(result)           -> the sentence the page shows over step 1: the values it filled in
+                                                ("IP event · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai"),
+                                                since the screen it opens on (the method) does not show them yet
+
+   What arrives is checked again here with the same rules the server used (functions/lib/dash-bot.js cleanCreate):
+   a value written into storage by hand, or by an older page, can never put an odd value into the draft, and
+   anything the server kept is kept here too (dash-bot-handoff.test.js E.1 runs cleanCreate's output through
+   take()). Nothing is ever made up: a field the message did not give stays empty for the person to fill in. Nothing
+   is lost quietly either: a field that arrived but could not be used (a value no longer valid here, or one the
+   chosen type's form has no place for) is named in the sentence over step 1. The one exception is said out loud:
+   Create Event's date boxes take a time, and a message rarely gives one, so an exact date gets 9:00 am to 6:00 pm
+   and the page says so.
+
+   It never replaces an unfinished draft (decide answers 'ask'), never presses Generate, and never sets
+   the discard parameter: the person decides each of those on the page.
+
+   ES5 on purpose (var, function, no arrows): the page serves it as it is, with no build step. */
+(function (root, factory) {
+  var api = factory();
+  if (typeof module === 'object' && module && module.exports) module.exports = api;
+  if (root) root.RevampPrefill = api;
+})(typeof window !== 'undefined' ? window : null, function () {
+  'use strict';
+
+  var PREFIX = 'revamp.createEvent.prefill.v1.';
+  /* long enough to read the bot's card and click through; short enough that an old one never surprises anyone */
+  var MAX_AGE_MS = 10 * 60 * 1000;
+  /* one browser writes and reads, so its clock agrees with itself; a time well ahead of now is a broken value */
+  var SKEW_MS = 60 * 1000;
+  var ID_RE = /^[A-Za-z0-9]{10,40}$/;
+  var CATEGORIES = ['IP', 'Client', 'Awards'];
+  var ALL_DATE_MODES = ['exact', 'month', 'quarter', 'tbd', 'none'];
+  /* the date formats each type allows, and its default, as create-event.html's CATS has them. A copy, because
+     this file is read before the page's script; dash-bot-handoff.test.js E.1 holds the two together. apply()
+     checks again against the page's own CATS. */
+  var DATE_MODES = { IP: ['exact', 'month', 'quarter', 'tbd'], Client: ['none', 'exact', 'month', 'tbd'], Awards: ['exact', 'month', 'quarter', 'tbd'] };
+  var DEFAULT_DATE_MODE = { IP: 'exact', Client: 'exact', Awards: 'month' };
+  var TEXT_MAX = 120, URL_MAX = 500, BRIEF_MAX = 4000;
+  var YEAR_MIN = 2000, YEAR_MAX = 2100;
+  /* Create Event's Starts and Ends boxes are datetime-local: a date alone does not fit in them */
+  var START_TIME = '09:00', END_TIME = '18:00';
+  var LABELS = {
+    category: 'event type', name: 'name', slug: 'web address', client: 'client', dates: 'date', venue: 'venue',
+    city: 'city', brief: 'brief', current: 'this edition’s link', previous: 'previous edition’s link', portal: 'portal'
+  };
+  /* the event type as the dashboard's ETB2B AI card names it (dash-bot-client.js summary), so the two read alike */
+  var KIND_WORDS = { IP: 'IP event', Client: 'Client event', Awards: 'Awards' };
+  var MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function plain(o) { return !!o && typeof o === 'object' && Object.prototype.toString.call(o) === '[object Object]'; }
+
+  /* one line of the person's own words: no control characters or line breaks, at most `max` characters */
+  function line(v, max) {
+    if (typeof v !== 'string') return '';
+    return v.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
+  }
+  /* a pasted brief keeps its lines and tabs; every other control character goes */
+  function briefText(v) {
+    if (typeof v !== 'string') return '';
+    return v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, '').trim().slice(0, BRIEF_MAX);
+  }
+  /* The server's rule for a link (dash-bot.js cleanUrl), so a link it kept is never thrown away here: https: in any
+     case ("Https://" from a phone's auto-capital), at most 500 characters, and one the browser's own URL parser
+     reads (an apostrophe in the path, an underscore in the host: as the page takes them when typed). Kept word for
+     word; the page shows it as the box's value, never as markup, and its own check (normalUrl) judges it there.
+     A browser with no URL parser keeps nothing, and the note over step 1 names the link as not used. */
+  function httpsUrl(v) {
+    if (typeof v !== 'string') return '';
+    v = v.trim();
+    if (!v || v.length > URL_MAX || !/^https:\/\//i.test(v)) return '';
+    try { new URL(v); } catch (e) { return ''; }
+    return v;
+  }
+  /* the stored value says something: text with more than spaces, or any other value that is there (and not used) */
+  function given(v) { return typeof v === 'string' ? v.trim() !== '' : v != null && v !== false; }
+  /* a date was said: a day, a month, a quarter or year, or "to be announced" / "no date", which need none */
+  function saysDate(b) {
+    return given(b.start) || given(b.end) || given(b.month) || given(b.quarter) || given(b.year) || b.dateMode === 'tbd' || b.dateMode === 'none';
+  }
+  function validDay(y, m, d) {
+    if (y < YEAR_MIN || y > YEAR_MAX || m < 1 || m > 12 || d < 1) return false;
+    var days = [31, (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return d <= days[m - 1];
+  }
+  /* 'YYYY-MM-DD', or 'YYYY-MM-DDTHH:MM' should the server ever send a time: { day, time } or null */
+  function dayTime(v) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?:T([01]\d|2[0-3]):([0-5]\d))?$/.exec(typeof v === 'string' ? v.trim() : '');
+    if (!m || !validDay(+m[1], +m[2], +m[3])) return null;
+    return { day: m[1] + '-' + m[2] + '-' + m[3], time: m[4] ? m[4] + ':' + m[5] : '' };
+  }
+  function moment(t) { return t ? t.day + (t.time ? 'T' + t.time : '') : ''; }
+  /* '2027-02-12' or '2027-02-12T09:00' -> '12 Feb 2027' */
+  function dayText(v) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof v === 'string' ? v : '');
+    return m && +m[2] >= 1 && +m[2] <= 12 ? (+m[3]) + ' ' + MONTH_SHORT[+m[2] - 1] + ' ' + m[1] : '';
+  }
+  /* the date the draft now holds, in words, as the dashboard's card wrote it */
+  function whenText(b) {
+    if (b.dateMode === 'exact') {
+      var s = dayText(b.start), e = String(b.end || '').slice(0, 10) !== String(b.start || '').slice(0, 10) ? dayText(b.end) : '';
+      return s ? (e ? s + ' – ' + e : s) : '';
+    }
+    if (b.dateMode === 'month') {
+      var mo = /^(\d{4})-(\d{2})$/.exec(String(b.month || ''));
+      return mo ? MONTH_LONG[+mo[2] - 1] + ' ' + mo[1] : '';
+    }
+    if (b.dateMode === 'quarter') return [b.quarter, b.year].filter(function (x) { return !!x; }).join(' ');
+    if (b.dateMode === 'tbd') return 'date to be decided';
+    if (b.dateMode === 'none') return 'no date';
+    return '';
+  }
+  function monthOf(v) {
+    var m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(typeof v === 'string' ? v.trim() : '');
+    return m && +m[1] >= YEAR_MIN && +m[1] <= YEAR_MAX ? m[0] : '';
+  }
+  function yearOf(v) {
+    var s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v.trim() : '';
+    return /^\d{4}$/.test(s) && +s >= YEAR_MIN && +s <= YEAR_MAX ? s : '';
+  }
+
+  /* The stored details as Create Event may use them, or null. `id` is the one in the address. */
+  function clean(p, id, now) {
+    if (!plain(p) || p.v !== 1 || p.from !== 'etb2b-ai' || p.prefillId !== id) return null;
+    var at = typeof p.at === 'number' ? p.at : NaN;
+    if (!isFinite(at) || now - at > MAX_AGE_MS || at - now > SKEW_MS) return null;
+    var category = CATEGORIES.indexOf(p.category) !== -1 ? p.category : '';
+    var b = plain(p.basics) ? p.basics : {}, br = plain(p.brief) ? p.brief : {};
+
+    /* the date: the format first (one the type allows, else the type's default, as pickCategory does), then only
+       the values that format shows, so nothing hidden is carried into the draft */
+    var start = dayTime(b.start), end = start ? dayTime(b.end) : null;
+    if (start && end && (end.day < start.day || (end.day === start.day && start.time && end.time && end.time < start.time))) end = null;
+    var month = monthOf(b.month), quarter = typeof b.quarter === 'string' && /^Q[1-4]$/.test(b.quarter) ? b.quarter : '', year = yearOf(b.year);
+    var mode = ALL_DATE_MODES.indexOf(b.dateMode) !== -1 ? b.dateMode : '';
+    if (!mode) mode = start ? 'exact' : month ? 'month' : (quarter && year) ? 'quarter' : '';
+    if (mode && category && DATE_MODES[category].indexOf(mode) === -1) mode = DEFAULT_DATE_MODE[category];
+    var basics = {
+      name: line(b.name, TEXT_MAX), client: line(b.client, TEXT_MAX), dateMode: mode,
+      start: mode === 'exact' ? moment(start) : '', end: mode === 'exact' ? moment(end) : '',
+      month: mode === 'month' ? month : '',
+      quarter: mode === 'quarter' ? quarter : '', year: mode === 'quarter' ? year : '',
+      venue: line(b.venue, TEXT_MAX), city: line(b.city, TEXT_MAX)
+    };
+
+    /* "Generate from a brief" needs something to generate from; the person's brief or link means that path */
+    var brief = { text: briefText(br.text), current: httpsUrl(br.current), previous: httpsUrl(br.previous) };
+    var hasBrief = !!(brief.text || brief.current || brief.previous);
+    var method = p.method === 'brief' || p.method === 'template' ? p.method : '';
+    if (method === 'brief' && !hasBrief) method = '';
+    if (!method && hasBrief) method = 'brief';
+    if (method !== 'brief') brief = { text: '', current: '', previous: '' };
+    var portal = typeof p.portal === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(p.portal) ? p.portal : '';
+
+    /* what arrived and is not kept, by LABELS key: apply() passes it on, and the note over step 1 names it */
+    var dropped = [];
+    function lost(k, raw, kept) { if (given(raw) && !kept && dropped.indexOf(k) === -1) dropped.push(k); }
+    lost('category', p.category, category);
+    lost('name', b.name, basics.name);
+    lost('client', b.client, basics.client);
+    var keptDate = !!(basics.start || basics.month || basics.quarter || basics.year) ||
+      ((basics.dateMode === 'tbd' || basics.dateMode === 'none') && basics.dateMode === b.dateMode);
+    if (saysDate(b) && !keptDate) dropped.push('dates');
+    lost('venue', b.venue, basics.venue);
+    lost('city', b.city, basics.city);
+    lost('brief', br.text, brief.text);
+    lost('current', br.current, brief.current);
+    lost('previous', br.previous, brief.previous);
+    lost('portal', p.portal, portal);
+
+    return {
+      v: 1, from: 'etb2b-ai', at: at, prefillId: id,
+      turnId: typeof p.turnId === 'string' && ID_RE.test(p.turnId) ? p.turnId : '',
+      category: category, method: method, portal: portal,
+      basics: basics, brief: brief, dropped: dropped
+    };
+  }
+
+  /* every other key of this kind that can no longer be used: older than ten minutes, or unreadable */
+  function sweep(storage, now, keep) {
+    var keys = [], i, k;
+    try {
+      for (i = 0; i < storage.length; i++) {
+        k = storage.key(i);
+        if (typeof k === 'string' && k.indexOf(PREFIX) === 0 && k !== keep) keys.push(k);
+      }
+    } catch (e) { return; }
+    keys.forEach(function (key) {
+      var at = NaN;
+      try {
+        var v = JSON.parse(storage.getItem(key));
+        if (plain(v) && typeof v.at === 'number') at = v.at;
+      } catch (e) { /* unreadable: it goes */ }
+      if (isFinite(at) && now - at <= MAX_AGE_MS && at - now <= SKEW_MS) return;
+      try { storage.removeItem(key); } catch (e) { /* storage refused: nothing more to do */ }
+    });
+  }
+
+  function take(storage, id, now) {
+    if (!storage) return null;
+    now = typeof now === 'number' && isFinite(now) ? now : Date.now();
+    var valid = typeof id === 'string' && ID_RE.test(id), key = valid ? PREFIX + id : '';
+    sweep(storage, now, key);
+    if (!valid) return null;
+    var raw = null;
+    try { raw = storage.getItem(key); } catch (e) { return null; }
+    /* read once, whatever it holds: a reload or a second tab never fills a second draft from it */
+    try { storage.removeItem(key); } catch (e) { /* storage refused: it ages out */ }
+    if (raw == null) return null;
+    var p = null;
+    try { p = JSON.parse(raw); } catch (e) { return null; }
+    return clean(p, id, now);
+  }
+
+  /* o: { startNew, prefill, stored, hasInput, discard }. With no prefill the page does what it always did ('start').
+     With one, a stored draft that holds anything its owner entered is asked about first ('ask'); otherwise the
+     prefill fills a new draft ('apply'). The discard parameter never skips that question for a prefill: the bot never sets
+     it, and nothing may silently replace an unfinished event. */
+  function decide(o) {
+    o = o || {};
+    if (!o.prefill) return 'start';
+    return o.stored && o.hasInput ? 'ask' : 'apply';
+  }
+
+  /* Fills the blank draft S (create-event.html's state) from p, a take() result. CATS is the page's own.
+     opts.slugify: the page's; the web address then follows the name, as when it is typed (slugTouched stays
+     false). Returns { fields: what was filled, unused: what arrived and was not filled (take()'s dropped, and
+     what this type's form has no place for), phase: where step 1 opens, thenDetails: a brief is waiting for its
+     type, so picking one opens the brief form, notes: what was assumed }.
+     A brief with no type opens the type picker as a first choice, exactly as a new event does (catReturnPhase stays
+     null: no type is shown as chosen, and there is nothing to cancel back to). The page keeps thenDetails with the
+     draft (S.aiPrefill) for its pickCategory. */
+  function apply(S, CATS, p, opts) {
+    opts = opts || {};
+    var fields = [], notes = [], unused = [];
+    function notUsed(k) { if (own(LABELS, k) && unused.indexOf(k) === -1) unused.push(k); }
+    if (!S || !plain(S.basics) || !p || !CATS) return { fields: fields, unused: unused, phase: (S && S.step1Phase) || 'category', thenDetails: false, notes: notes };
+    var b = S.basics, pb = plain(p.basics) ? p.basics : {}, br = plain(p.brief) ? p.brief : {};
+    (Array.isArray(p.dropped) ? p.dropped : []).forEach(notUsed);
+    var hasCat = !!(p.category && own(CATS, p.category));
+    var brief = p.method === 'brief';
+    if (hasCat) { b.category = p.category; fields.push('category'); }
+    else if (p.category) notUsed('category');
+    var C = CATS[b.category] || {}, modes = C.dateModes || ALL_DATE_MODES;
+
+    if (pb.name) {
+      b.name = pb.name;
+      fields.push('name');
+      if (typeof opts.slugify === 'function' && !b.slugTouched && !S.createdEventId) {
+        b.slug = opts.slugify(pb.name);
+        if (b.slug) fields.push('slug');
+      }
+    }
+    /* a client is asked for only by the types that have one, and not on the brief form: it is never kept hidden */
+    if (pb.client && C.client && !brief) { b.client = pb.client; fields.push('client'); }
+    else if (pb.client) notUsed('client');
+
+    if (pb.dateMode && modes.indexOf(pb.dateMode) !== -1) b.dateMode = pb.dateMode;
+    if (modes.indexOf(b.dateMode) === -1) b.dateMode = C.defaultDateMode || modes[0];
+    var dated = false;
+    if (b.dateMode === 'exact' && pb.start) {
+      var s = dayTime(pb.start), e = dayTime(pb.end);
+      if (s) {
+        if (!s.time) notes.push('times-assumed');
+        if (!e) { notes.push('end-assumed'); e = { day: s.day, time: '' }; }
+        else if (!e.time && notes.indexOf('times-assumed') === -1) notes.push('times-assumed');
+        b.start = s.day + 'T' + (s.time || START_TIME);
+        b.end = e.day + 'T' + (e.time || END_TIME);
+        if (b.end < b.start) b.end = b.start;     // a start given at 7 pm with no end: it ends when it starts, for the person to set
+        dated = true;
+      }
+    }
+    else if (b.dateMode === 'month' && pb.month) { b.month = pb.month; dated = true; }
+    else if (b.dateMode === 'quarter' && (pb.quarter || pb.year)) {
+      if (pb.quarter) b.quarter = pb.quarter;
+      if (pb.year) b.year = pb.year;
+      dated = true;
+    }
+    else if ((b.dateMode === 'tbd' || b.dateMode === 'none') && pb.dateMode === b.dateMode) dated = true;
+    if (dated) fields.push('dates');
+    else if (saysDate(pb)) notUsed('dates');
+
+    /* the form has one "Venue & city" box, so the city goes in it after the venue (unless the venue already names it) */
+    var place = pb.venue || '';
+    var withCity = !!pb.city && place.toLowerCase().indexOf(String(pb.city).toLowerCase()) === -1;
+    if (withCity) place = place ? place + ', ' + pb.city : pb.city;
+    if (place && C.venue !== false) {
+      b.venue = place;
+      if (pb.venue) fields.push('venue');
+      if (withCity) fields.push('city');
+    }
+    else if (place) {
+      if (pb.venue) notUsed('venue');
+      if (withCity) notUsed('city');
+    }
+
+    if (brief) {
+      if (!plain(S.brief)) S.brief = {};
+      if (br.text) { S.brief.text = br.text; fields.push('brief'); }
+      if (br.current) { S.brief.current = br.current; fields.push('current'); }
+      if (br.previous) { S.brief.previous = br.previous; S.brief.etEvent = null; fields.push('previous'); }
+    }
+    /* the portal box exists once the portals change is in (S.basics.portal); before that the page has no portal at
+       all, so there is nothing the person could fill it into either, and it is not named as left out */
+    if (p.portal && own(b, 'portal')) { b.portal = p.portal; fields.push('portal'); }
+
+    /* the values themselves, for the note over step 1: the screen it opens on does not show them yet */
+    function has(k) { return fields.indexOf(k) !== -1; }
+    var links = (has('current') ? 1 : 0) + (has('previous') ? 1 : 0);
+    var values = {
+      kind: has('category') ? (KIND_WORDS[b.category] || '') : '', name: has('name') ? b.name : '', slug: has('slug') ? b.slug : '',
+      when: has('dates') ? whenText(b) : '', place: has('venue') || has('city') ? b.venue : '', client: has('client') ? b.client : '',
+      brief: has('brief'), links: links
+    };
+
+    S.step = 1;
+    S.catReturnPhase = null;
+    var thenDetails = false;
+    if (hasCat && brief) { S.creationMethod = 'brief'; S.step1Phase = 'details'; }
+    else if (hasCat) S.step1Phase = 'method';
+    /* the type is still to be chosen, as a first choice; picking it goes straight on to the brief form */
+    else if (brief) { S.creationMethod = 'brief'; S.step1Phase = 'category'; thenDetails = true; }
+    else S.step1Phase = 'category';
+    return { fields: fields, values: values, unused: unused, phase: S.step1Phase, thenDetails: thenDetails, notes: notes };
+  }
+
+  /* "IP event · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai", or '' with no values to show */
+  function valuesLine(v) {
+    if (!plain(v)) return '';
+    var bits = [];
+    ['kind', 'name', 'when', 'place'].forEach(function (k) { if (typeof v[k] === 'string' && v[k]) bits.push(v[k]); });
+    if (typeof v.client === 'string' && v.client) bits.push('for ' + v.client);
+    if (v.brief === true) bits.push('your brief');
+    if (v.links === 1) bits.push('your link');
+    else if (v.links === 2) bits.push('your two links');
+    return bits.join(' · ');
+  }
+
+  function describe(fields) {
+    var words = [];
+    (fields || []).forEach(function (f) { if (own(LABELS, f) && words.indexOf(LABELS[f]) === -1) words.push(LABELS[f]); });
+    if (words.length < 2) return words.join('');
+    return words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
+  }
+
+  function summary(res) {
+    res = res || {};
+    var fields = res.fields || [], notes = res.notes || [], left = describe(res.unused || []);
+    /* said plainly, not as a task: some cannot be typed in at all (a client on an event type that has none) */
+    var notUsed = left ? ' Not used from your message: ' + left + '.' : '';
+    if (!fields.length) return 'ETB2B AI started a new event for you, but nothing in your message could be filled in. Choose its type to begin.' + notUsed;
+    /* the values themselves (the type picker and the method screen do not show them), or, from a caller without
+       them, the fields' names */
+    var out = 'Filled in by ETB2B AI from your message: ' + (valuesLine(res.values) || describe(fields)) + '.';
+    /* the one value the person did not type: said, so it is not taken for theirs */
+    var slug = plain(res.values) && typeof res.values.slug === 'string' ? res.values.slug : '';
+    if (slug) out += ' Its web address, ' + slug + ', was made from the name.';
+    /* where the filled-in fields are on screen: the type and the method come first */
+    if (res.phase === 'category') out += res.thenDetails ? ' Choose the event type, and your brief opens with them.' : ' Choose the event type, then check them.';
+    else if (res.phase === 'method') out += ' Choose how to build your site, then check them on the details form.';
+    else out += ' Check them and continue.';
+    var times = notes.indexOf('times-assumed') !== -1, end = notes.indexOf('end-assumed') !== -1;
+    if (times && end) out += ' Your message gave no end or times, so it is set for that one day, 9:00 am to 6:00 pm: change them if needed.';
+    else if (times) out += ' Your message gave no times, so it starts at 9:00 am and ends at 6:00 pm: change them if needed.';
+    else if (end) out += ' Your message gave no end, so it ends at 6:00 pm that day: change it if needed.';
+    return out + notUsed;
+  }
+
+  return {
+    PREFIX: PREFIX, MAX_AGE_MS: MAX_AGE_MS, ID_RE: ID_RE, DATE_MODES: DATE_MODES, DEFAULT_DATE_MODE: DEFAULT_DATE_MODE,
+    take: take, decide: decide, apply: apply, describe: describe, summary: summary
+  };
+});

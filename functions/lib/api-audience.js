@@ -1715,7 +1715,9 @@ function handleTrack(req, res) {
    `conversion` is registrations as a PERCENTAGE of page views (all-time registrations / all-time
    views x 100), to one decimal place, never above 100, and 0 with no views — print it with a % sign.
    `byDay` has one entry for every day of the window, oldest first, zeros included; its `date` keys are
-   India days (YYYY-MM-DD, Asia/Kolkata).
+   India days (YYYY-MM-DD, Asia/Kolkata). GET /api/insights also takes the window as ?from=&to= (India days),
+   and gives each event its own figures in it (`window`: registrations, views, uniques and the newest day of
+   each), which is what the events dashboard's "Latest activity" shows for the period picked there.
    ===================================================================================================== */
 
 var REF_CLASSES = [['direct', 'Direct'], ['search', 'Search'], ['social', 'Social'], ['email', 'Email'], ['referral', 'Other sites']];
@@ -1812,6 +1814,41 @@ function handleDashboardStats(req, res) {
    is not ordered: an ordered query leaves out every document that lacks the field. */
 var INSIGHTS_EVENT_LIMIT = 1000;
 
+/* The India days an insights request asks about: ?from=YYYY-MM-DD&to=YYYY-MM-DD (both included, cut at today and to
+   the newest 365 days), else the last ?days= (30 by default) ending today. The events dashboard's "Latest
+   activity" sends its period this way, so a custom period that ended last week is summed over its own days only.
+   -> { days: [...] oldest first } or { error } (a period that has not started, or a date that is not one). */
+var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+function isDayKey(v) {
+  var m = DAY_RE.exec(String(v || ''));
+  if (!m) return false;
+  var t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return t.getUTCFullYear() === +m[1] && t.getUTCMonth() === +m[2] - 1 && t.getUTCDate() === +m[3] && +m[1] >= 2000 && +m[1] <= 2100;
+}
+function insightsWindow(qs, nowMs) {
+  var from = qs.get('from'), to = qs.get('to');
+  if (from == null && to == null) return { days: lastDays(intParam(qs.get('days'), 30, 1, 365)) };
+  if (!isDayKey(from) || !isDayKey(to) || from > to) return { error: 'Choose the period again: "from" and "to" must be days (YYYY-MM-DD), "from" first.' };
+  var today = dayKey(nowMs);
+  if (from > today) return { error: 'That period has not started yet.' };
+  if (to > today) to = today;
+  var days = [], t = Date.parse(to + 'T00:00:00Z'), first = Date.parse(from + 'T00:00:00Z');
+  for (; t >= first && days.length < 365; t -= 86400000) days.push(new Date(t).toISOString().slice(0, 10));
+  return { days: days.reverse() };
+}
+/* One event's figures in the window: registrations and page views, and the newest day of each (null when none). */
+function eventWindow(row, days) {
+  var w = { registrations: 0, views: 0, uniques: 0, lastRegistration: null, lastView: null };
+  days.forEach(function (day) {
+    var d = row.daily[day] || {};
+    var regs = row.a.legacyDays ? num(row.a.legacyDays[day]) : num(d.registrations), views = num(d.views);
+    w.registrations += regs; w.views += views; w.uniques += num(d.uniques);
+    if (regs) w.lastRegistration = day;
+    if (views) w.lastView = day;
+  });
+  return w;
+}
+
 /* An event whose totals are not maintained yet costs a query to total. Across a whole listing that is
    one query per such event on every load, so here (and only here) the answer is remembered for a
    minute. It cannot go stale in a way that matters: the first registration, update or delete on such
@@ -1836,7 +1873,9 @@ function insightTotals(fb, eventId, ev) {
 function handleInsights(req, res) {
   requireAdmin(req, res, function (fb) {
     guard(res, sendJson, 'load these numbers', function () {
-      var nDays = intParam(query(req).get('days'), 30, 1, 365), days = lastDays(nDays);
+      var win = insightsWindow(query(req), Date.now());
+      if (win.error) return sendJson(res, 400, { error: win.error });
+      var days = win.days, nDays = days.length;
 
       fb.db.collection('events').limit(INSIGHTS_EVENT_LIMIT)
         .select('name', 'counters', 'createdAt', 'deletedAt', 'published', 'updatedAt').get().then(function (snap) {
@@ -1872,10 +1911,12 @@ function handleInsights(req, res) {
             return { eventId: row.id, name: line(row.ev.name, 300), published: row.ev.published === true,
               visitors: v.visitors, uniques: v.uniques, registrations: t.registrations, confirmed: t.confirmed,
               waitlist: t.waitlist, cancelled: t.cancelled, checkedIn: t.checkedIn,
-              conversion: conversionOf(t.registrations, v.visitors) };
+              conversion: conversionOf(t.registrations, v.visitors),
+              // this event's own figures in the window (the totals above are all-time)
+              window: eventWindow(row, days) };
           });
           sendJson(res, 200, {
-            days: nDays, generatedAt: new Date().toISOString(),
+            days: nDays, from: days[0], to: days[days.length - 1], generatedAt: new Date().toISOString(),
             registrations: sum.registrations, confirmed: sum.confirmed, waitlist: sum.waitlist, cancelled: sum.cancelled,
             checkedIn: sum.checkedIn, visitors: sum.visitors, uniques: sum.uniques,
             conversion: conversionOf(sum.registrations, sum.visitors),
@@ -1915,7 +1956,12 @@ module.exports = {
   handlePublicOptions, publicSiteData, seedContent,
   /* for tools/migrate-forms.js and the tests */
   counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES,
-  publicRegistration, consentCell
+  publicRegistration, consentCell,
+  /* for lib/dash-bot.js: ETB2B AI on the events dashboard answers "how many registrations" with the very totals
+     and conversion the console's Insights shows, older events (scanned, kept for a minute) included */
+  insightTotals, conversionOf,
+  /* the window of GET /api/insights, for its tests */
+  insightsWindow, eventWindow
 };
 /* the small helpers lib/api-forms.js shares with this module, so the two answer alike */
 module.exports._shared = {
