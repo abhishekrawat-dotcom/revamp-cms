@@ -74,6 +74,10 @@
 //                                           preview transform, answered, never stored.
 //   GET   /e/<eventId>                      PUBLIC — the published site, served from private Storage.
 //   GET   /preview/<eventId>                signed-in — what would be published right now.
+//   GET   /s/<token>[/<slug>]               PUBLIC — a shareable preview link: the site as last saved, for people
+//                                           without an ET account, for 7 days or until stopped. With
+//                                           GET/POST /api/event/share-preview and POST /api/event/share-preview/stop
+//                                           (make, list, stop), all in lib/share-preview.js (see shareRoute()).
 //
 //   Routed here, implemented elsewhere (loaded on demand; see inModule()):
 //     lib/api-events.js    POST /api/event/upload, GET /api/event/slug-available, DELETE /api/event,
@@ -142,6 +146,8 @@ const { getFirebase } = require('./firebase');
 const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
 const { logActivity, actorOf, maskEmail, sectionNames } = require('./activity');
+/* a shareable preview link's address, written into a log line without its token (lib/share-token.js) */
+const shareToken = require('./share-token');
 const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
 /* every text call goes through llm.js: Claude first when its key is set, Gemini as the fallback */
 const llm = require('./llm');
@@ -8747,7 +8753,13 @@ function contentMapFor(templateId) {
            publicBase: 'https://host' or '', forms: the event's public form definitions (lib/forms.js
            publicFormsPayload; optional — without it the forms runtime fetches them),
            pictures: the WebP copies of the page's pictures (pictures.prepare; optional — without it the
-           pictures are left as they are) } */
+           pictures are left as they are),
+           shareView: true for a shareable preview link (lib/share-preview.js, mode 'preview'): the ribbon says
+           "not live yet", none of the editor's tools, #rv-site-config says shared (its forms send nothing),
+           shareLive: with shareView, when the event is already published: 'changed' (the saved site has changes
+           the live one has not) or 'same' — the ribbon says so, and #rv-site-config says live with the live
+           site's path, so its forms send a guest there instead of saying the site is not open,
+           pageBase: the address its internal-page links start from ('/s/<token>') } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -8917,6 +8929,9 @@ function publishTransform(html, opts) {
   /* ---- 4. the live-site runtime and its config, exactly once ---- */
   var contentMap = contentMapFor(opts.templateId);
   var config = { eventId: opts.eventId, mode: mode, templateId: opts.templateId || null, contentMap: contentMap || [] };
+  if (opts.shareView === true) config.shared = true;      // a guest's shared link: rv-forms.js sends nothing
+  /* ...and when the event is live, its forms point the guest to the live site, where they do work */
+  if (opts.shareView === true && opts.shareLive) { config.live = true; config.livePath = publicPathOf(opts.eventId); }
   /* "<" must not appear inside the block: "</script" in a field's text would end it early */
   var tail = ['<script id="rv-site-config" type="application/json" data-rv-runtime>' + scriptJson(config) + '</script>'];
   /* the event's forms as they are now — a live page's runtime asks for them again anyway (they change
@@ -8952,7 +8967,7 @@ function publishTransform(html, opts) {
   /* ---- 5. preview ribbon ---- */
   var liveView = mode === 'preview' && opts.liveView === true;
   var ribbon = mode === 'preview' && !liveView
-    ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">Preview — not published</div>'
+    ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">' + shareRibbonText(opts) + '</div>'
     : '';
 
   var headText = head.join('\n') + '\n', tailText = tail.join('\n') + '\n';
@@ -8967,9 +8982,11 @@ function publishTransform(html, opts) {
   if (ribbon) { if (bodyOpen !== -1) out[bodyOpen] = out[bodyOpen] + ribbon + '\n'; else tailText = ribbon + '\n' + tailText; }
   /* ---- 6. preview of an AI-designed site: its themes, to try on the page itself; and the way back into the
      editor, at the section in view. Neither is on a published page, nor in the editor's own live view. ---- */
-  var switcher = mode === 'preview' && !liveView ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
+  /* a shareable preview link (opts.shareView) is a guest's page: none of the team's tools on it */
+  var editorTools = mode === 'preview' && !liveView && opts.shareView !== true;
+  var switcher = editorTools ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
   if (switcher) tailText += switcher;
-  if (mode === 'preview' && !liveView && opts.editButton === true) tailText += '<script src="/templates/_shared/rv-preview-edit.js" data-rv-runtime></script>\n';
+  if (editorTools && opts.editButton === true) tailText += '<script src="/templates/_shared/rv-preview-edit.js" data-rv-runtime></script>\n';
   /* the editor's live view: the one signal runtime code reads to know it is there (et-runtime.js) */
   if (liveView && htmlOpen !== -1) {
     setAttr(tokens[htmlOpen], 'data-rv-editor-mode', 'ai');
@@ -8985,8 +9002,15 @@ function publishTransform(html, opts) {
      alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
   page = siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
   /* ---- 9. internal pages: each page link's address, so the pages work with no script ---- */
-  if (sitePageList.length && opts.eventId) page = sitePages.setPageLinks(page, mode === 'live' ? publicPathOf(opts.eventId) : '/preview/' + opts.eventId, TOKEN_KIT);
+  if (sitePageList.length && opts.eventId) page = sitePages.setPageLinks(page, mode === 'live' ? publicPathOf(opts.eventId) : opts.pageBase || '/preview/' + opts.eventId, TOKEN_KIT);
   return page;
+}
+/* The preview ribbon's words. A shareable link (opts.shareView) is seen by guests, and it often shows the
+   coming changes of a site that is already live: it must not tell them the site is not open when it is. */
+function shareRibbonText(opts) {
+  if (opts.shareView !== true) return 'Preview — not published';
+  if (opts.shareLive === 'same') return 'Preview — this version is live';
+  return opts.shareLive ? 'Preview — changes not live yet' : 'Preview — not live yet';
 }
 /* the tokenizer above, for site-a11y.js's page pass */
 var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrValue, classListOf: classListOf, writeTag: writeTag,
@@ -9859,6 +9883,42 @@ function handlePreviewPage(req, res, eventId, slug) {
   });
 }
 
+/* lib/share-preview.js (shareable preview links: /s/<token> and the make / list / stop routes) is handed the
+   helpers below on every call, like the Promotions modules. It has its own loader rather than inModule(): that
+   one logs req.url, and an /s/ address is a working link to an unreleased site, so this one logs it without
+   the token (shareToken.redactUrl). When the module cannot be loaded a shared link gets a plain HTML page, not
+   inModule()'s JSON. */
+function shareHelpers() {
+  return { withAdmin, withAdminBody, BODY_LIMITS, eventIdOr400, eventDocRef, eventStateOf, siteVersionOf, sitePath, readObject,
+    publicFormsFor, preparePictures: function (fb, html) { return pictures.prepare(fb, html); }, publishTransform, withHeroVideo,
+    selectSitePage, deliverPage, messagePage, acceptedEncoding, compressHtml, publicBaseFor, unansweredLogoNote, sendFailure };
+}
+/* an /s/ answer when lib/share-preview.js is not there to give it: the headers of every /s/ answer (no-store,
+   noindex, Referrer-Policy: strict-origin — sendHtml's policy would hand the token to our own host as the Referer) */
+function shareErrorPage(req, res, status) {
+  if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+  var body = Buffer.from(messagePage('This preview is temporarily unavailable', 'Please try again in a few minutes.'), 'utf8');
+  var headers = shareToken.shareHeaders();
+  headers['Content-Type'] = 'text/html; charset=utf-8';
+  headers['Content-Length'] = body.length;
+  res.writeHead(status, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+function shareRoute(handlerName) {
+  return function (req, res) {
+    var mod = null;
+    try { mod = require('./share-preview'); mod.wire(shareHelpers()); }
+    catch (err) {
+      mod = null;
+      console.error('api: could not load lib/share-preview.js for ' + req.method + ' ' + shareToken.redactUrl(req.url) + ' — ' + (err && err.stack || err));
+    }
+    if (mod && typeof mod[handlerName] === 'function') return mod[handlerName](req, res);
+    if (mod) console.error('api: lib/share-preview.js has no ' + handlerName + '() for ' + req.method + ' ' + shareToken.redactUrl(req.url));
+    if (/^\/s\//.test(String(req.url))) return shareErrorPage(req, res, 503);
+    return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+  };
+}
+
 /* =====================================================================================================
    GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
    published event's /e/<id> (and /e/<id>/<slug> for each of its internal pages, event.publishedPages) at the address this server is reached at (PUBLIC_BASE_URL when set), except one
@@ -9922,8 +9982,9 @@ function handleSitemapXml(req, res) {
 function handleApi(req, res) {
   try { return routeApi(req, res); }
   catch (err) {
-    console.error('api: unhandled error on ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+    console.error('api: unhandled error on ' + req.method + ' ' + shareToken.redactUrl(req.url) + ' — ' + (err && err.stack || err));
     if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+    if (/^\/s\//.test(String(req.url))) return shareErrorPage(req, res, 500);
     if (/^\/(e|preview)\//.test(String(req.url))) {
       return sendHtml(req, res, 500, messagePage('Something went wrong', 'Please try again in a few minutes.'), 'no-store');
     }
@@ -10088,6 +10149,10 @@ var ROUTES = {
   'POST /api/event/unpublish': handleEventUnpublish,
   'POST /api/event/stage': handleEventStage,
   'POST /api/event/live-view': handleEventLiveView,
+  /* shareable preview links (lib/share-preview.js): make, list, stop */
+  'POST /api/event/share-preview': shareRoute('handleCreate'),
+  'GET /api/event/share-preview': shareRoute('handleList'),
+  'POST /api/event/share-preview/stop': shareRoute('handleStop'),
 
   'POST /api/event/seed': audience('handleSeed'),
   'GET /api/event/registrations': audience('handleRegistrationsList'),
@@ -10162,6 +10227,9 @@ function isPublicApiPath(urlPath) {
 
 function routeApi(req, res) {
   var urlPath = String(req.url || '').split('?')[0];
+
+  /* /s/<token>[/<slug>]: a shareable preview link (lib/share-preview.js) — public; it answers every method itself */
+  if (urlPath === '/s' || urlPath.indexOf('/s/') === 0) return shareRoute('handleSharedPage')(req, res);
 
   /* /e/<id> and /preview/<id>, and a site's internal pages: /e/<id>/<slug>, /preview/<id>/<slug> (site-pages.js) */
   var page = /^\/(e|preview)\/([^\/]*)(?:\/([^\/]+))?\/?$/.exec(urlPath);

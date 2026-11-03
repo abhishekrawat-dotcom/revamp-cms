@@ -1,8 +1,8 @@
 // Production server for Firebase App Hosting (backend "revamp-cms", built from GitHub on every push to main).
 // App Hosting runs `npm start` and sends traffic to process.env.PORT. It serves the static pages and hands
-// /api/*, /e/* (published event sites), /preview/* and /t/* (a mailer's open pixel and click links) to
-// functions/lib/api.js — the same handler the local dev server (tools/serve.js) uses, so the endpoints behave
-// identically everywhere. Env vars come from apphosting.yaml (FIREBASE_STORAGE_BUCKET, GEMINI_API_KEY,
+// /api/*, /e/* (published event sites), /preview/*, /t/* (a mailer's open pixel and click links) and /s/*
+// (a shareable preview link) to functions/lib/api.js — the same handler the local dev server (tools/serve.js)
+// uses, so the endpoints behave identically everywhere. Env vars come from apphosting.yaml (FIREBASE_STORAGE_BUCKET, GEMINI_API_KEY,
 // MAILER_TRACK_BASE, …); credentials are App Hosting's own service identity.
 // Local: `npm install`, then `npm start` → http://localhost:8080 (tools/serve.js stays the dev server).
 const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib');
@@ -11,6 +11,8 @@ const { handleApi } = require('./functions/lib/api');
 const { gate, isServableFile } = require('./functions/lib/access');
 // assetVersion: the content hash a page's ?v= names for one of these files (functions/lib/delivery.js)
 const { assetVersion } = require('./functions/lib/delivery');
+// redactUrl: a request address for the log, without the token of a shareable preview link (/s/<token>)
+const { redactUrl } = require('./functions/lib/share-token');
 
 const root = __dirname;
 const port = +process.env.PORT || 8080;
@@ -94,7 +96,7 @@ function notFound(req, res){
      - the process-level handlers: a throw inside a later stream or promise callback is logged and the
        server keeps serving (that one request gets no reply and times out — the lesser harm). */
 function fail(req, res, err){
-  console.error('request failed: ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+  console.error('request failed: ' + req.method + ' ' + redactUrl(req.url) + ' — ' + (err && err.stack || err));
   if (res.headersSent){ try { res.end(); } catch (e) { /* socket already gone */ } return; }
   const api = String(req.url).indexOf('/api/') === 0;
   send(req, res, 500, { 'Content-Type': api ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
@@ -118,7 +120,7 @@ http.createServer(function(req, res){
 
 function serve(req, res){
   const url = req.url.split('?')[0];
-  if (/^\/(api|e|preview|t)\//.test(url)) return handleApi(req, res);
+  if (/^\/(api|e|preview|t)\//.test(url) || url.indexOf('/s/') === 0) return handleApi(req, res);   // /s/: a shared preview link
   if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
   if (url === '/favicon.ico'){

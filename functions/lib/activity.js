@@ -9,7 +9,7 @@ const ACTIONS = ['created', 'updated', 'status-changed', 'settings-changed', 'si
   'leads-imported', 'leads-updated', 'leads-deleted', 'approval-requested', 'approved', 'rejected',
   'content-added', 'content-changed', 'content-removed', 'form-created', 'form-updated', 'form-deleted', 'form-default',
   'forms-reordered', 'theme-changed', 'logo-changed', 'banner-video-changed', 'file-uploaded', 'brief-updated', 'source-added',
-  'site-designed', 'site-generated', 'repaired', 'ai-chat'];
+  'site-designed', 'site-generated', 'repaired', 'ai-chat', 'preview-link-shared', 'preview-link-stopped'];
 
 /* Where a line belongs, for the activity log's "area" column and filter. A new entry carries `area`; an
    older one (written before areas existed) is placed by its action through AREA_OF — readers do the same. */
@@ -26,7 +26,9 @@ const AREA_OF = {
   'form-created': 'forms', 'form-updated': 'forms', 'form-deleted': 'forms', 'form-default': 'forms', 'forms-reordered': 'forms',
   'theme-changed': 'design', 'logo-changed': 'design', 'banner-video-changed': 'design', 'site-designed': 'design',
   /* an exchange with ETB2B AI, the editor's chat (functions/lib/api.js handleChatEdit, handleChatTurn) */
-  'ai-chat': 'site'
+  'ai-chat': 'site',
+  /* a shareable preview link made or stopped (functions/lib/share-preview.js): who was shown the site before it went live */
+  'preview-link-shared': 'publishing', 'preview-link-stopped': 'publishing'
 };
 /* an entry's area: its own when it has a known one, else its action's */
 function areaOf(entry) {

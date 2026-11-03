@@ -24,6 +24,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
       <span>Preview</span>
     </button>
+    <!-- a link to the site as last saved for people with no ET account; share-preview.js shows it once Preview is ready -->
+    <button class="btn btn-secondary" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview" title="Make a link anyone can open, without signing in, to see the site as last saved">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+      <span>Share preview</span>
+    </button>
     <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
   </span>
 </header>
@@ -48,6 +53,7 @@
 <!-- the banner video: its rules (shared with the server) and its settings (shared with the site editor) -->
 <script src="templates/_shared/rv-hero-video-core.js"></script>
 <script src="hero-video-ui.js"></script>
+<script src="share-preview.js"></script>
 
 <script>
 (function(){
