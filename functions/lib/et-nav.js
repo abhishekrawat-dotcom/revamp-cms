@@ -5,9 +5,10 @@
      build(o)              -> { html, css }
        o: { name, sub: { date, place }, portal (a slug of et-events PORTALS, or ''), mode: 'light'|'dark',
             themeColor, links: [{ id, label }], cta: { label, href, register } | null,
-            tabs: [{ label, href, active }] (only when the event really has them) }
-     linksOf(sections)     -> [{ id, label }]   sections: [{ id, name, kind }] in page order (nav, hero and
-                                                footer are left out)
+            tabs: [{ label, href, active } | { label, page, title }] (only when the event really has them; a
+            section link that repeats a page tab is left out: repeatsPage) }
+     linksOf(sections, portal) -> [{ id, label }]   sections: [{ id, name, kind }] in page order (nav, hero and
+                                                footer are left out); "About Vertical" says whose (aboutLabel)
      portalOf(candidates)  -> 'brandequity' | ''   candidates: portal slugs or ET microsite addresses
      logoOf(portal, mode)  -> { src, onLight, onDark, alt, href, height, width }
      shortDate(start, end) -> '5 Dec 2025' | '5–7 Dec 2026' | ''
@@ -129,14 +130,23 @@ function placeOf(event) {
 
 /* ---------- the section links ---------- */
 
+/* "About Vertical" is ET's own word for the section about its portal: a visitor does not know what a vertical
+   is. The link says whose it is ("About ET BrandEquity"), as its heading does; with no known portal, "About Us".
+   site-a11y.js says the same on a page built before. */
+var ABOUT_VERTICAL = /^about\s+(the\s+)?vertical$/i;
+function aboutLabel(portal) {
+  var name = etEvents.isPortal(portal) ? etEvents.PORTALS[portal] : '';
+  return name ? 'About ' + name : 'About Us';
+}
 /* the words a visitor reads in the bar: the section's own name, shortened where it is long by nature */
-function labelOf(s) {
+function labelOf(s, portal) {
   var name = clean(s.name) || String(s.id || '').replace(/-/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); });
   var m = /^previous edition\s+(.+)$/i.exec(name);
   if (m) name = 'Past ' + m[1];
+  if (ABOUT_VERTICAL.test(name)) name = aboutLabel(portal);
   return name.slice(0, 40);
 }
-function linksOf(sections) {
+function linksOf(sections, portal) {
   var seen = {};
   return (sections || []).filter(function (s) {
     var id = String((s && s.id) || '');
@@ -144,7 +154,21 @@ function linksOf(sections) {
     if (!id || /^(nav|hero|footer|award-band)$/.test(id) || seen[id] || !/^[A-Za-z][\w-]*$/.test(id)) return false;
     seen[id] = 1;
     return true;
-  }).map(function (s) { return { id: s.id, label: labelOf(s) }; });
+  }).map(function (s) { return { id: s.id, label: labelOf(s, portal) }; });
+}
+
+/* A section link that goes where one of the site's own pages goes: an award site's Jury, FAQs and Award
+   Categories are each a page (the tabs) and a section of the home page, and the bar listed both — "Jury" and
+   "FAQs" twice in the phone's menu. The page is the fuller one, so the section's link is left out. A link
+   repeats a page when it has the page's words (its tab's label or the page's title) or the page's slug as its
+   section id. et-runtime.js leaves the same links out of a bar built before this. */
+function words(s) { return clean(s).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function repeatsPage(link, tabs) {
+  var label = words(link.label), id = String(link.id || '');
+  return tabs.some(function (t) {
+    if (!t || !t.page) return false;
+    return t.page === id || (label && (label === words(t.label) || label === words(t.title)));
+  });
 }
 
 /* ---------- the bar ---------- */
@@ -170,6 +194,7 @@ function build(o) {
   var tabs = (o.tabs || []).map(function (t) { return t && t.page && /^[a-z0-9-]{1,40}$/.test(t.page) ? Object.assign({}, t, { href: t.href || t.page }) : t; })
     .filter(function (t) { return t && clean(t.label) && (t.page ? /^[a-z0-9-]{1,40}$/.test(t.page) : safeHref(t.href)); });
   var cta = o.cta && clean(o.cta.label) ? o.cta : null;
+  links = links.filter(function (l) { return !repeatsPage(l, tabs); });
 
   var html = '<header class="' + c + '" id="nav" data-rv-etnav>' +
     '<div class="' + c + '-bar">' +
@@ -274,10 +299,11 @@ function forEvent(event, o) {
   o = o || {};
   var design = (event.designPlan && event.designPlan.design) || {};
   var date = shortDate(event.start, event.end) || clean(event.dateLabel || event.date);
+  var portal = portalOf(o.portals || []);
   return build({
-    name: event.name, sub: { date: date, place: placeOf(event) }, portal: portalOf(o.portals || []),
+    name: event.name, sub: { date: date, place: placeOf(event) }, portal: portal,
     mode: design.mode === 'dark' ? 'dark' : 'light', themeColor: design.themeColor,
-    links: linksOf(o.sections || []), cta: o.cta || null, tabs: o.tabs || []
+    links: linksOf(o.sections || [], portal), cta: o.cta || null, tabs: o.tabs || []
   });
 }
 
@@ -327,4 +353,4 @@ function sectionFor(event, o) {
   return { id: 'nav', kind: 'nav', html: built.html, css: css };
 }
 
-module.exports = { build, forEvent, sectionFor, portalCandidates, ctaFor, linksOf, portalOf, logoOf, shortDate, placeOf, labelOf };
+module.exports = { build, forEvent, sectionFor, portalCandidates, ctaFor, linksOf, portalOf, logoOf, shortDate, placeOf, labelOf, aboutLabel, repeatsPage, ABOUT_VERTICAL };

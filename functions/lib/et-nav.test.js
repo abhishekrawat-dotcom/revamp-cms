@@ -102,5 +102,22 @@ check('an event with nothing known: the ET logo, the name, Register Now to the f
 var award = nav.sectionFor(event, { order: ['nav', 'hero', 'overview', 'footer'], cta: false, tabs: [{ label: 'Jury', page: 'award-jury' }] });
 check('cta: false — the bar has no button, its tabs stay', !/rv-etnav-cta"/.test(award.html) && !/Book a Seat|Register Now/.test(award.html) && />Jury</.test(award.html), award.html.slice(0, 400));
 
+/* UX-151: an award site's home sections that are also pages (Jury, FAQs, Award Categories) are linked once — as the page */
+var awardPlan = { designPlan: { sections: [{ id: 'overview', name: 'Overview' }, { id: 'award-categories', name: 'Award Categories' }, { id: 'award-jury', name: 'Jury' },
+  { id: 'faqs', name: 'FAQs' }, { id: 'awards-night', name: 'Awards Night' }, { id: 'about-vertical', name: 'About Vertical' }] } };
+var paged = nav.sectionFor(Object.assign({ name: 'Digiplus Awards 2027' }, awardPlan), { order: ['nav', 'hero', 'overview', 'award-categories', 'award-jury', 'faqs', 'awards-night', 'about-vertical', 'footer'], cta: false,
+  tabs: [{ label: 'Categories', page: 'award-category', title: 'Award Categories' }, { label: 'Jury', page: 'award-jury', title: 'Jury' }, { label: 'FAQs', page: 'award-faq', title: 'FAQs' }, { label: 'T&C', page: 'award-tnc', title: 'Terms & Conditions' }] });
+var sectionLinks = (/<ul class="rv-etnav-list">([\s\S]*?)<\/ul>/.exec(paged.html) || ['', ''])[1];
+check('a section that is also a page is not linked twice (Jury by its slug, FAQs by its words, Award Categories by the page\'s title)',
+  !/#award-jury|#faqs|#award-categories/.test(sectionLinks) && /#overview/.test(sectionLinks) && /#awards-night/.test(sectionLinks), sectionLinks);
+check('the pages themselves stay in the tabs', /data-rv-page-link="award-jury"[^>]*>Jury</.test(paged.html) && /data-rv-page-link="award-faq"[^>]*>FAQs</.test(paged.html) && /data-rv-page-link="award-category"[^>]*>Categories</.test(paged.html));
+check('without page tabs every section is linked', /#award-jury/.test(nav.sectionFor(Object.assign({ name: 'X' }, awardPlan), { order: ['nav', 'hero', 'award-jury', 'faqs', 'footer'] }).html));
+check('a link to another site (no page) never hides a section', !nav.repeatsPage({ id: 'awards', label: 'Awards' }, [{ label: 'Awards', href: 'https://x.economictimes.indiatimes.com/awards' }]));
+
+/* UX-152: "About Vertical" says whose */
+check('the about-vertical link names the portal', />About ET BrandEquity<\/a>/.test(nav.sectionFor(Object.assign({ name: 'B' }, { designPlan: { sections: awardPlan.designPlan.sections, reference: { type: 'previousEdition', url: 'https://brandequity.economictimes.indiatimes.com/x' } } }), { order: ['nav', 'hero', 'about-vertical', 'footer'] }).html));
+check('no known portal: About Us', />About Us<\/a>/.test(paged.html) && !/About Vertical/.test(paged.html) && nav.aboutLabel('cio') === 'About ETCIO' && nav.aboutLabel('nope') === 'About Us');
+check('a name the owner gave the section is kept', nav.labelOf({ id: 'about-vertical', name: 'About the Organisers' }, 'cio') === 'About the Organisers');
+
 if (failed) { console.error('et-nav: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('et-nav: all ' + passed + ' checks passed');

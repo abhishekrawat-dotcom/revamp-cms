@@ -956,8 +956,29 @@ function registerError(status, message, code, fields) {
   if (fields) extra.fields = fields;
   return httpError(status, message, extra);
 }
-function duplicateError() {
-  return registerError(409, DUPLICATE_MESSAGE, 'duplicate', { email: DUPLICATE_MESSAGE });
+/* A second registration with the same e-mail is told what it means: already registered for this event (a form
+   that counts as a registration); any other form keeps the plain words. */
+function duplicateMessage(form, ev) {
+  if (!form || form.countsAsRegistration !== true) return DUPLICATE_MESSAGE;
+  var name = line(ev && ev.name, 200);
+  return name ? 'You\u2019re already registered for ' + name + ' with this email.' : 'You\u2019re already registered for this event with this email.';
+}
+function duplicateError(form, ev) {
+  var message = duplicateMessage(form, ev);
+  return registerError(409, message, 'duplicate', { email: message });
+}
+
+/* What a form's thank-you says about the event (templates/_shared/rv-forms.js): its name, when and where, and its
+   calendar file (GET /api/public/calendar) when it has an exact date. */
+function eventFacts(ev, eventId) {
+  ev = ev || {};
+  var venue = line(ev.venue, 300), city = line(ev.city, 120);
+  if (venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) !== -1) city = '';
+  var exact = !!ymd(ev.start) && (!ev.dateMode || ev.dateMode === 'exact');
+  return {
+    name: line(ev.name, 300), when: dateLabel(ev), where: [venue, city].filter(Boolean).join(', ') || line(ev.location, 300),
+    calendar: exact ? '/api/public/calendar?eventId=' + encodeURIComponent(eventId) : ''
+  };
 }
 
 /* The transaction, for every response that was waiting for this event (see enqueue). Everything it
@@ -1024,7 +1045,7 @@ function storeRegistrations(fb, eventId, items) {
             if (p.reject) {
               /* a request (enquiry) is not the address's registration, so it never makes a registration a duplicate */
               var sameForm = function (d) { return (d.get('formId') || DEFAULT_FORM_ID) === p.form.id && !d.get('enquiry'); };
-              if (seen[key] || dups[i][0].exists || (dups[i][1] && dups[i][1].docs.some(sameForm))) return { error: duplicateError() };
+              if (seen[key] || dups[i][0].exists || (dups[i][1] && dups[i][1].docs.some(sameForm))) return { error: duplicateError(p.form, ev) };
             }
             seen[key] = true;
             var counts = !p.enquiry && p.form.countsAsRegistration === true;
@@ -1151,7 +1172,7 @@ function handleRegister(req, res) {
                 var status = enquiry ? 'pending' : forms.planStatus({ counts: counts, needsApproval: form.needsApproval === true, capacity: settings.capacity,
                   confirmed: num(isObj(ev.counters) ? ev.counters.confirmed : 0) });
                 return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: status, formId: form.id, enquiry: enquiry ? enquiry.kind : '',
-                  message: (enquiry ? enquiry.done : form.successMessage) + forms.PREVIEW_NOTE });
+                  message: (enquiry ? enquiry.done : form.successMessage) + forms.PREVIEW_NOTE, event: eventFacts(ev, eventId) });
               }
               var reg = read.reg;
               reg.device = deviceClass(req);
@@ -1161,7 +1182,7 @@ function handleRegister(req, res) {
               reg.consent = forms.consentRecord(consent, new Date().toISOString());
               return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels, enquiry: enquiry ? enquiry.kind : '' }).then(function (stored) {
                 sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId, enquiry: stored.enquiry || '',
-                  message: enquiry ? enquiry.done : stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
+                  message: enquiry ? enquiry.done : stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage, event: eventFacts(ev, eventId) });
               });
             });
           });
@@ -1937,7 +1958,9 @@ module.exports = {
   handlePublicOptions, publicSiteData, seedContent,
   /* for tools/migrate-forms.js and the tests */
   counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES,
-  publicRegistration, consentCell
+  publicRegistration, consentCell,
+  /* what a form's thank-you and a repeat registration say (published-page-ux.test.js) */
+  eventFacts, duplicateMessage
 };
 /* the small helpers lib/api-forms.js shares with this module, so the two answer alike */
 module.exports._shared = {

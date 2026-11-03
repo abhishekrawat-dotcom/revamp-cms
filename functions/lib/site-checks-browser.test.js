@@ -1,7 +1,8 @@
 /* node functions/lib/site-checks-browser.test.js — the buttons of a live page, in a real Chrome (UX-141, UX-145):
      1. a page as the live pass leaves it (lib/site-checks.js repair): the header's "Register Now" opens the form;
         "Join as Partner" opens it as "Partner with us", with its line above the questions, and a response sent
-        from it is recorded with the source "partner-enquiry";
+        from it is recorded with the source "partner-enquiry", and its thank-you says "Thank you", never registered,
+        with no calendar, and "Send another response" brings back "Partner with us" (UX-145 with UX-150);
      2. the award ceremony's button opens "Request an invitation", saying there is no online payment;
      3. a page the pass has not seen (templates/_shared/rv-forms.js on its own): a "Register Now" that leads to a
         hidden section opens the form all the same, and one that leads to a section on view still goes there.
@@ -12,6 +13,7 @@
 var fs = require('fs'), path = require('path'), http = require('http');
 var ROOT = path.join(__dirname, '..', '..');
 var SC = require('./site-checks');
+var FORMS_LIB = require('./forms');
 var kit = require('./api')._testHooks.TOKEN_KIT;
 
 var failures = [], checks = 0;
@@ -33,7 +35,7 @@ var puppeteer = driver();
 if (!puppeteer || !CHROME) { console.log('site-checks-browser: skipped — no Chrome / puppeteer-core here (set CHROME_PATH and RV_PUPPETEER)'); process.exit(0); }
 
 var FORMS = { open: true, waitlist: false, defaultFormId: 'register', forms: [{
-  id: 'register', name: 'Register now', rev: 1, open: true,
+  id: 'register', name: 'Register now', rev: 1, open: true, counts: true,
   fields: [{ id: 'name', type: 'text', label: 'Full name', required: true }, { id: 'email', type: 'email', label: 'Official email', required: true }]
 }] };
 function pageHtml(body) {
@@ -63,7 +65,12 @@ var server = http.createServer(function (req, res) {
     req.on('end', function () {
       try { posted.push(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { posted.push(null); }
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, status: 'registered', preview: true }));
+      /* answered as lib/api-audience.js handleRegister answers: a request comes back pending, with its kind */
+      var sent = posted[posted.length - 1] || {}, enquiry = FORMS_LIB.enquiryOf(sent.source);
+      var event = { name: 'QA Summit 2026', when: '5th December, 2026', where: 'Mumbai', calendar: '/api/public/calendar?eventId=qa-t' };
+      res.end(JSON.stringify(enquiry
+        ? { ok: true, preview: true, id: null, status: 'pending', formId: 'register', enquiry: enquiry.kind, message: enquiry.done, event: event }
+        : { ok: true, preview: true, id: null, status: 'confirmed', formId: 'register', message: 'You are registered.', event: event }));
     });
     return;
   }
@@ -120,6 +127,19 @@ server.listen(0, '127.0.0.1', function () {
         });
       }).then(function () { return sleep(800); }).then(function () {
         ok(posted.length === 1 && posted[0] && posted[0].source === 'partner-enquiry' && posted[0].preview === true, 'what it sends is recorded as a partner enquiry', posted);
+        return page.evaluate(function () {
+          var mod = document.querySelector('.rv-form-modal'), done = mod && mod.querySelector('.rv-form-done');
+          var again = done && done.querySelector('.rv-form-link');
+          return { title: (mod.querySelector('.rv-form-modal-title') || {}).textContent || '', text: done ? done.textContent : '',
+            facts: !!(done && done.querySelector('.rv-form-done-facts')), calendar: !!(done && done.querySelector('.rv-form-cal')),
+            again: again ? again.textContent : '' };
+        });
+      }).then(function (d) {
+        ok(d.title === 'Thank you' && !/registered/i.test(d.title + ' ' + d.text) && /reached the event team/.test(d.text), 'the partner enquiry\'s thank-you says thank you and that the team has it, never registered', d);
+        ok(!d.facts && !d.calendar && d.again === 'Send another response', 'a request holds no place: no date line, no calendar, "Send another response"', d);
+        return page.click('.rv-form-modal .rv-form-done .rv-form-link').then(function () { return sleep(300); }).then(modal);
+      }).then(function (m) {
+        ok(m && m.title === 'Partner with us', 'sending another brings back the button\'s own title', m);
       }).then(closeModal)
       /* 2. the ceremony */
       .then(function () { return click('.aw-cer-btn'); }).then(modal).then(function (m) {

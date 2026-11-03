@@ -51,7 +51,8 @@
      render(form, host, opts) -> { el, values(), setErrors({id: msg}), destroy() }
          form  a public form (spec §1.4 forms[i]) or a builder draft
          opts  { mode: 'live'|'preview'|'ai-view'|'editor-preview', showTitle (default true), eventId,
-                 waitlist, onDone(result), consent (the payload's consent, when the form has none of its own),
+                 waitlist, onDone(result), onAgain() (the form drawn again for the next person), consent (the
+                 payload's consent, when the form has none of its own),
                  opener (the button that opened it: Submit takes that button's colour) }
          Every form is drawn as one white card (the design of 21 Oct 2026): its title ("Register now" shows as
          "Please take a moment to provide us with your Information"), one field to a row (first and last name
@@ -67,6 +68,8 @@
      definitions() -> the public forms payload, or null while there is none
      guessCountry(win) -> 'IN'          the visitor's country, as a Mobile field's country code starts on it
      suggestEmail(text) -> 'a@gmail.com' | ''   the address a mistyped common one probably is
+     doneHeading(form, result) -> 'You’re registered for <event>' | …   the thank-you's heading
+     doneFacts(result) -> { line: 'date · place', calendar: '/api/public/calendar?eventId=…' | '' }
    The editor and the console set window.RV_FORMS_NO_AUTO = true before loading this file and use render and
    validate only. */
 (function () {
@@ -106,7 +109,10 @@
     loading: 'Loading the form…',
     loadFailed: 'This form could not be loaded. Please check your connection and try again.',
     unavailable: 'This form is not available right now.',
-    again: 'Fill in again',
+    again: 'Register someone else',
+    againOther: 'Send another response',
+    calendar: 'Add to calendar',
+    thanks: 'Thank you',
     retry: 'Retry',
     close: 'Close',
     choose: 'Choose…',
@@ -134,6 +140,31 @@
     if (t && !isGenericTitle(t)) return t;
     if (n && !isGenericTitle(n)) return n;
     return DEFAULT_TITLE;
+  }
+
+  /* The thank-you's heading, in place of the form's title (which asked for details: "Please take a moment to provide
+     us with your Information" stood over "You are registered"). A registration says what happened, for which
+     event (the server sends its name with the answer: result.event); any other form says thank you. A request
+     to the team (a partner enquiry, a nomination, a ceremony invitation: result.enquiry) is not a registration,
+     so it never says registered, even when the form it was sent on counts. */
+  function isEnquiry(result) { return !!(result && str(result.enquiry)); }
+  function doneHeading(form, result) {
+    if (!form || form.counts !== true || isEnquiry(result)) return MSG.thanks;
+    var ev = result && result.event && typeof result.event === 'object' ? result.event : {};
+    var name = line(str(ev.name), 200), status = str(result && result.status);
+    if (status === 'waitlist') return name ? 'You\u2019re on the waitlist for ' + name : 'You\u2019re on the waitlist';
+    if (status === 'pending') return name ? 'Registration received for ' + name : 'Registration received';
+    return name ? 'You\u2019re registered for ' + name : 'You\u2019re registered';
+  }
+  /* the event's date and place under it ("5th – 7th December, 2026 · Taj Wellington Mews, Chennai"), and
+     its calendar file — only an address of this server's own calendar route */
+  function doneFacts(result) {
+    var ev = result && result.event && typeof result.event === 'object' ? result.event : {};
+    var cal = str(ev.calendar);
+    return {
+      line: [line(str(ev.when), 120), line(str(ev.where), 300)].filter(Boolean).join(' \u00b7 '),
+      calendar: /^\/api\/public\/calendar\?eventId=[A-Za-z0-9_-]{1,120}$/.test(cal) ? cal : ''
+    };
   }
 
   /* The consent every form ends with (field type 'consent'): ticked, or the form is not sent. Its words and
@@ -695,6 +726,8 @@
     '.rv-form .rv-form-done-mark svg{display:block;width:26px;height:26px}',
     '.rv-form .rv-form-done p{margin:0 0 10px;font-size:15px;line-height:1.6;color:var(--rvf-text);overflow-wrap:anywhere}',
     '.rv-form .rv-form-done .rv-form-actions{justify-content:flex-start}',
+    '.rv-form .rv-form-done p.rv-form-done-facts{margin:0 0 14px;font-size:15px;font-weight:600;color:var(--rvf-ink)}',
+    '.rv-form a.rv-form-btn2{text-decoration:none}',
     /* the Mobile field: one box — [+91 ⌄] | number — the Location field's suggestions; the email hint */
     '.rv-form .rv-form-phone{position:relative;display:flex;align-items:stretch;min-width:0;background:var(--rvf-fill);border:1px solid var(--rvf-line);border-radius:10px;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}',
     '.rv-form .rv-form-phone:hover{border-color:var(--rvf-line-strong)}',
@@ -1668,13 +1701,25 @@
       mark.setAttribute('aria-hidden', 'true');
       mark.appendChild(tickIcon(doc));
       panel.appendChild(mark);
-      if (showTitle && titleText) panel.appendChild(mk(doc, 'h3', 'rv-form-title', titleText));
+      /* in a pop-up the heading is the pop-up's own title (renderOpts onDone); a form in the page shows it here */
+      if (showTitle) panel.appendChild(mk(doc, 'h3', 'rv-form-title', doneHeading(form, result)));
+      /* a request (isEnquiry) holds no place: no date line, no calendar, and "Send another response" */
+      var counted = form.counts === true && !isEnquiry(result), facts = doneFacts(result);
+      if (counted && facts.line) panel.appendChild(mk(doc, 'p', 'rv-form-done-facts', facts.line));
       paragraphs(doc, panel, (result && result.message) || 'Thank you. Your response has been received.');
       var acts = mk(doc, 'div', 'rv-form-actions');
-      var again = mk(doc, 'button', 'rv-form-link', MSG.again);
+      /* "Add to calendar": a confirmed place at a live event with a date (a preview stores nothing to go to) */
+      if (counted && mode === 'live' && str(result && result.status) === 'confirmed' && facts.calendar) {
+        var cal = mk(doc, 'a', 'rv-form-btn2 rv-form-cal', MSG.calendar);
+        cal.setAttribute('href', facts.calendar);
+        acts.appendChild(cal);
+      }
+      /* the form again, empty, for the next person ("Fill in again" did not say what it was for) */
+      var again = mk(doc, 'button', 'rv-form-link', counted ? MSG.again : MSG.againOther);
       again.type = 'button';
       again.addEventListener('click', function () {
         st.done = false; st.touched = false;
+        if (typeof opts.onAgain === 'function') { try { opts.onAgain(); } catch (e) { /* the host's own */ } }
         build({});
         focusNode(parts[0] && parts[0].focus);
       });
@@ -2151,7 +2196,8 @@
       source: ask.source,
       values: keep,
       onInput: function (vals) { page.memory[form.id] = vals; },
-      onDone: function () { delete page.memory[form.id]; },
+      onDone: function (result) { delete page.memory[form.id]; m.title.textContent = doneHeading(form, result); },
+      onAgain: function () { m.title.textContent = ask.title || formTitle(form); },
       onClose: function () { closeModal(); },
       onBusy: function (on) { m.close.disabled = on; },
       onStale: function (vals, fields) { restale(function () { if (page.modal === m) fillModal(vals, fields); }); }
@@ -2400,6 +2446,8 @@
     open: open,
     definitions: function () { return page.payload; },
     guessCountry: guessCountry,
-    suggestEmail: suggestEmail
+    suggestEmail: suggestEmail,
+    doneHeading: doneHeading,
+    doneFacts: doneFacts
   };
 })();

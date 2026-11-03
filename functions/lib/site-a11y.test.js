@@ -104,7 +104,7 @@ var live = hooks.publishTransform(PAGE, { eventId: 'qa-x', event: EVENT, mode: '
 ok(/<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">/.test(live), 'the published page allows zoom');
 ok(/<img src="https:\/\/x\/a\.jpg" alt="">/.test(live) && /alt="Logo"/.test(live), 'a picture without alt text gets alt="", one with it keeps it');
 ok(/<h4 aria-level="3" data-rv-level="">Asha<\/h4>/.test(live) && /<template data-rv-repeat-template="speakers"><article><h4 aria-level="3" data-rv-level="">Name/.test(live), 'the skipped heading level is announced one below, in the repeat template too');
-ok(/<\/style>\n<main data-rv-main><section data-rv-section="hero"/.test(live) && /<\/main><footer data-rv-section="footer"/.test(live) && count(live, '<main') === 1, 'the sections between the top bar and the footer are the main landmark', (live.match(/[^\n]{0,40}<\/?main[^\n]{0,40}/g) || []).join(' | '));
+ok(/<\/style>\n<main data-rv-main id="rv-main" tabindex="-1"><section data-rv-section="hero"/.test(live) && /<\/main><footer data-rv-section="footer"/.test(live) && count(live, '<main') === 1, 'the sections between the top bar and the footer are the main landmark', (live.match(/[^\n]{0,40}<\/?main[^\n]{0,40}/g) || []).join(' | '));
 ok(/--rv-on-theme:#ffffff/.test(live) && /\.c\{background:var\(--rv-theme-fill,var\(--theme-color\)\);color:var\(--rv-on-theme,#ffffff\)\}/.test(live), 'an AI-designed site: the reading colours on <body>, the top bar\'s button reads');
 ok(/\.k\{font-size:14px;color:var\(--rv-theme-ink,var\(--theme-color\)\)\}/.test(live), 'an AI-designed site: brand-coloured small text reads');
 var ld = /<script type="application\/ld\+json" data-rv-seo>([^<]*)<\/script>/.exec(live);

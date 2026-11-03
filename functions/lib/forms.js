@@ -87,7 +87,7 @@ var TEXT = { name: 80, title: 120, intro: 600, submitLabel: 40, successMessage: 
 
 /* bumped whenever templates/_shared/rv-forms.js changes, so a browser holding the old copy (static files are
    cached for five minutes, under an unhashed name) asks for the new one */
-var FORMS_RUNTIME_V = 4;
+var FORMS_RUNTIME_V = 5;
 
 /* An email address as a form takes it: name@domain.tld — the name of the letters, digits and signs an address
    may have, no two dots in a row and none at either end; the domain of labels of letters, digits and hyphens,

@@ -4967,6 +4967,11 @@ function buildSectionCodePrompt(payload) {
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     genDesign.MOBILE_RULES,
     '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
+    /* a heading said twice reads as a mistake (Agentic: "Not more AI. Better AI." over two sections); the sections
+       are written in several answers at once, so each is told (repeatedHeadingIds writes a repeat again) */
+    '- Every section\'s heading (h2) is its own: never the words of another section\'s heading, nor the hero\'s line "' + (design.heroTagline || '') + '". Sections are written by several writers at the same moment, so make each heading say what that section alone is about.',
+    /* a red round play glyph on a card that plays nothing (BWS Knowledge Series) reads as a broken video */
+    '- Nothing may look like a control that is not one: never draw a play button or triangle, a pause, a download or an external-link icon on anything that is not a real link to that video, file or page (none is given to you, so draw none).',
     '- MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section\'s heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section\'s root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.',
     '- CAROUSELS: any section with a row of more items than fit may be a carousel — speakers, partner logos, photos, testimonials, and also discussion topics, tracks or reasons to attend when there are many — but only where it suits the content; a short list is better laid out in full. Mark the wrapper with data-rv-carousel and the element that directly holds the items with data-rv-carousel-track. MOVING ON ITS OWN (data-rv-carousel="auto") is for logos and photos only, and at most one in what you write: many things moving at once tires a visitor (the server keeps no more than two on a page, never in neighbouring sections). Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
   ];
@@ -5056,6 +5061,10 @@ function buildSectionCodePrompt(payload) {
   } else {
     lines.push('', 'Write every one of these sections.');
   }
+  /* written again because its heading repeated another's (repeatedHeadingIds): the headings it must not take */
+  if (payload.takenHeadings && payload.takenHeadings.length) {
+    lines.push('', 'HEADINGS ALREADY ON THE PAGE — give the sections you write here headings of their own, never these words again: ' + JSON.stringify(payload.takenHeadings));
+  }
 
   lines.push('',
     'Make each section substantial: use the material fully — real headings, real explanatory text, real lists — and build it out with the care of a finished site. A heading with one line under it is not a section.',
@@ -5144,6 +5153,47 @@ function emptyPictureBox(html, css) {
     if (!painted) return true;
   }
   return false;
+}
+
+/* A section's heading (its first h2) as plain words — case, markup and punctuation aside — so that "Not more AI.
+   Better AI." and "NOT MORE AI. BETTER AI." are the same heading. */
+function headingText(html) {
+  var m = /<h2\b[^>]*>([\s\S]*?)<\/h2\s*>/i.exec(String(html || ''));
+  return m ? m[1].replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/&[a-z#0-9]+;/gi, '').replace(/\s+/g, ' ').trim() : '';
+}
+function headingWords(html) { return headingText(html).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function writtenSections(answers) {
+  var got = {};
+  (answers || []).forEach(function (r) {
+    ((r && r.parsed && r.parsed.sections) || []).forEach(function (s) { if (s && s.id) got[slugifyId(s.id)] = s; });
+  });
+  return got;
+}
+/* the planned sections (written by the model) whose heading repeats one before it on the page: the hero's line,
+   or an earlier section's heading. The sections are written in several answers at once and could not see each
+   other (Agentic Summit: "Not more AI. Better AI." over its overview and the next section). The first keeps it. */
+function repeatedHeadingIds(answers, designPlan) {
+  var got = writtenSections(answers), seen = {};
+  var tagline = headingWords('<h2>' + String((designPlan && designPlan.design && designPlan.design.heroTagline) || '').replace(/</g, ' ') + '</h2>');
+  if (tagline) seen[tagline] = 1;
+  return ((designPlan && designPlan.sections) || []).filter(function (p) { return p && p.id && !p.prebuilt; }).map(function (p) { return p.id; })
+    .filter(function (id) {
+      var w = got[id] ? headingWords(got[id].html) : '';
+      if (!w) return false;
+      if (seen[w]) return true;
+      seen[w] = 1;
+      return false;
+    });
+}
+/* the headings a section written again must not take: every other written section's, and the hero's line.
+   -> { shown: [as written], words: [as compared] } */
+function takenHeadings(answers, designPlan, rewriting) {
+  var got = writtenSections(answers), shown = [], words = [];
+  function take(text, w) { if (w && words.indexOf(w) === -1) { words.push(w); shown.push(text); } }
+  var tagline = String((designPlan && designPlan.design && designPlan.design.heroTagline) || '').replace(/\s+/g, ' ').trim();
+  take(tagline, headingWords('<h2>' + tagline.replace(/</g, ' ') + '</h2>'));
+  Object.keys(got).forEach(function (id) { if (rewriting.indexOf(id) === -1) take(headingText(got[id].html), headingWords(got[id].html)); });
+  return { shown: shown, words: words };
 }
 
 // Matches Gemini's returned sections back to the planned id list (nav/hero + designPlan.sections + footer),
@@ -5360,14 +5410,24 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     })).then(function (answers) {
       /* a section that came back without its styles (or not at all) shows as bare text on the page: it is
          written once more on its own, and the second answer replaces the first */
-      var again = answers.some(function (r) { return r.error; }) ? [] : unstyledSectionIds(answers, designPlan);
+      var failedAnswer = answers.some(function (r) { return r.error; });
+      var again = failedAnswer ? [] : unstyledSectionIds(answers, designPlan);
+      /* a section whose heading repeats one before it is written again too, told which headings are taken */
+      var repeated = failedAnswer ? [] : repeatedHeadingIds(answers, designPlan);
+      repeated.forEach(function (id) { if (again.indexOf(id) === -1) again.push(id); });
       if (!again.length) return answers;
-      console.warn('generate-content: ' + eventId + ' — written again, unstyled or missing: ' + again.join(', '));
-      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: again });
+      var taken = takenHeadings(answers, designPlan, again);
+      console.warn('generate-content: ' + eventId + ' — written again, unstyled, missing or with a repeated heading: ' + again.join(', '));
+      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: again, takenHeadings: taken.shown });
       return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') })
         .then(function (r) {
           if (r.error || !r.parsed || !Array.isArray(r.parsed.sections)) return answers;
-          var fixed = r.parsed.sections.filter(function (s) { return s && again.indexOf(slugifyId(s.id)) !== -1 && String(s.css || '').trim().length >= UNSTYLED_CSS_CHARS && !emptyPictureBox(s.html, s.css); });
+          /* a second answer replaces the first only when it is better: styled, no empty picture box and — for a
+             repeated heading — a heading of its own this time */
+          var fixed = r.parsed.sections.filter(function (s) {
+            return s && again.indexOf(slugifyId(s.id)) !== -1 && String(s.css || '').trim().length >= UNSTYLED_CSS_CHARS && !emptyPictureBox(s.html, s.css) &&
+              (repeated.indexOf(slugifyId(s.id)) === -1 || taken.words.indexOf(headingWords(s.html)) === -1);
+          });
           var ids = fixed.map(function (s) { return slugifyId(s.id); });
           return answers.map(function (a) {
             return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || ids.indexOf(slugifyId(s.id)) === -1; }) }) });
@@ -5517,7 +5577,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
          "Express Interest" taken away (28 Oct 2026) — the hero and the footer keep the award's button. */
       if (got.award) {
         navFor.cta = false;
-        navFor.tabs = sitePages.map(function (pg) { return { label: AWARD_TAB_LABELS[pg.slug] || pg.title, page: pg.slug }; });
+        /* the page's title too: a home-section link of the same words ("Award Categories") is left out of the bar (et-nav.js repeatsPage) */
+        navFor.tabs = sitePages.map(function (pg) { return { label: AWARD_TAB_LABELS[pg.slug] || pg.title, page: pg.slug, title: pg.title }; });
       }
       var navSection;
       /* never a reason to lose a whole site: a bar that cannot be made from the stored records is made from
@@ -8685,7 +8746,10 @@ function applyHeroVideo(html, event) {
     if (hv.posterUrl) head.push('<link rel="preload" as="image" href="' + escHtmlAttr(hv.posterUrl) + '" fetchpriority="high" data-rv-hero-video>');
     head.push('<style data-rv-hero-video>' + heroVideoCore.pageCss({ host: place, overlay: overlay, poster: !!hv.posterUrl }) + '</style>');
   } else if (lazyfied) {
-    head.push('<style data-rv-hero-video>@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}</style>');
+    /* rv-hero-video.js gives this video its pause button too: it needs the button's rules (in the hero's tone)
+       or it shows as an empty grey sliver at the hero's edge */
+    head.push('<style data-rv-hero-video>' + heroVideoCore.toggleCss(look.tone === 'light' ? 'dark' : 'light').join('\n') +
+      '\n@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}</style>');
   }
   if (!head.length) return out.join('');
   var headText = head.join('\n') + '\n';
@@ -8891,11 +8955,12 @@ function publishTransform(html, opts) {
   /* the description's headings are the owner's brief, not a summary to show (owner-brief.js): their free
      text, else what the owner said sets the event apart */
   var ownerUsp = event.designPlan && event.designPlan.owner && event.designPlan.owner.usp;
-  var description = String(seo.description || ownerBrief.withoutHeadings(event.description) || ownerUsp || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  /* at most what a search result shows, cut at a word (site-seo.js shareDescription), never mid-word */
+  var description = siteSeo.shareDescription(String(seo.description || ownerBrief.withoutHeadings(event.description) || ownerUsp || ''));
   if (!description && name) {
     /* nothing written for it yet: say what is known (when and where), so a shared link is not a bare title */
     var facts = [event.dateLabel, event.venue, event.city].map(function (v) { return typeof v === 'string' ? v.trim() : ''; }).filter(Boolean);
-    if (facts.length) description = (name + ' — ' + facts.join(', ')).slice(0, 300);
+    if (facts.length) description = siteSeo.shareDescription(name + ' — ' + facts.join(', '));
   }
   var pageUrl = mode === 'live' ? (cleanCanonical(seo.canonicalUrl) || (opts.publicBase ? opts.publicBase + publicPathOf(opts.eventId) : '')) : '';
   var shareImage = String(seo.shareImageUrl || '').trim();
@@ -10108,14 +10173,19 @@ function handleEventLiveView(req, res) {
    These answer HTML, not JSON, and are read by people who have never heard of this CMS: every failure
    is a small plain page, never a JSON body or a stack trace.
    ===================================================================================================== */
-function messagePage(title, message) {
+/* link: { href (root-relative), label } — the way on, where there is one (an event's home page) */
+function messagePage(title, message, link) {
+  var way = link && /^\/(?!\/)[^\s"'<>]*$/.test(String(link.href || '')) && link.label
+    ? '<p class="way"><a href="' + escHtmlAttr(link.href) + '">' + escHtmlText(link.label) + '</a></p>' : '';
   return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<meta name="robots" content="noindex"><title>' + escHtmlText(title) + '</title>' +
     '<link rel="icon" type="image/svg+xml" href="' + SITE_FAVICON + '">' +
     '<style>html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;background:#f6f7f9;color:#191b1f;' +
     'font:16px/1.5 Inter,-apple-system,"Segoe UI",Arial,sans-serif}main{max-width:460px;padding:32px 24px;text-align:center}' +
-    'img{height:28px;margin-bottom:28px}h1{font-size:22px;margin:0 0 10px}p{margin:0;color:#5b616b}</style></head>' +
-    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p></main></body></html>\n';
+    'img{height:28px;margin-bottom:28px}h1{font-size:22px;margin:0 0 10px}p{margin:0;color:#5b616b}' +
+    '.way{margin-top:24px}.way a{display:inline-block;padding:11px 20px;border-radius:8px;background:#c8161d;color:#fff;font-weight:600;text-decoration:none}' +
+    '.way a:hover{background:#a81219}.way a:focus-visible{outline:3px solid #191b1f;outline-offset:2px}</style></head>' +
+    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p>' + way + '</main></body></html>\n';
 }
 
 /* ---- delivery (lib/delivery.js): compression, and what the browser is given to show a page sooner ----
@@ -10163,6 +10233,15 @@ function sendHtml(req, res, status, html, cacheControl, packed) {
 }
 function sendNotAvailable(req, res) {
   sendHtml(req, res, 404, messagePage('This event page is not available', 'It may not be published yet, or it may have been taken down.'), 'no-store');
+}
+/* /e/<id>/<slug> of a live site with no page at that address: the site is there, so this is no dead end */
+function noSuchPageHtml(eventId, event) {
+  var name = event && typeof event.name === 'string' ? event.name.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  return messagePage('This page does not exist', 'The address may be mistyped, or the page may have been renamed or removed.',
+    { href: publicPathOf(eventId), label: name ? 'Go to ' + name : 'Go to the event’s home page' });
+}
+function sendNoSuchPage(req, res, eventId, event) {
+  sendHtml(req, res, 404, noSuchPageHtml(eventId, event), 'no-store');
 }
 
 /* The published pages this instance has served lately, so a busy page is not downloaded from Storage and
@@ -10227,8 +10306,9 @@ function selectSitePage(html, slug) { return sitePages.selectPage(html, slug, TO
 /* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
    anything else is the same plain 404, which gives nothing away about what exists.
    GET /e/<eventId>/<slug> — one of its internal pages: the same published document with that page selected
-   (selectSitePage), cached under its own key next to the home page's; a slug the document has no page for is
-   the same 404. */
+   (selectSitePage), cached under its own key next to the home page's. A slug the document has no page for (or
+   one that cannot be a page name) is a 404 that says the page does not exist and leads to the event's home page
+   (sendNoSuchPage): the site itself is live, so this is no dead end. */
 function handlePublicPage(req, res, eventId, slug) {
   var fb = getFirebase();
   if (fb.error) {
@@ -10244,8 +10324,9 @@ function handlePublicPage(req, res, eventId, slug) {
     /* the page as served: the document itself, or one of its internal pages selected on it */
     function send(entry) {
       if (!slug) return sendLivePage(entry);
-      var chosen = selectSitePage(entry.source, slug);
-      if (!chosen.found) return sendNotAvailable(req, res);
+      var chosen = sitePages.SLUG_RE.test(slug) ? selectSitePage(entry.source, slug) : { found: false };
+      /* the site is live, only this address is wrong (a mistyped or an old page name): say so, and the way home */
+      if (!chosen.found) return sendNoSuchPage(req, res, eventId, data);
       sendLivePage(cachePage(slugKey, chosen.html));
     }
     /* a page kept out of search says so in its header too (X-Robots-Tag), as its robots meta does */
@@ -10454,6 +10535,33 @@ function searchVerdicts(fb, docs) {
 }
 function handleRobotsTxt(req, res) {
   sendText(req, res, 200, 'text/plain; charset=utf-8', siteSeo.robotsTxt(publicBaseFor(req, '')), 'public, max-age=3600');
+}
+
+/* GET /api/public/calendar?eventId=<id> — the event as a calendar file (site-seo.js calendarIcs): the
+   registration form's "Add to calendar" (rv-forms.js). Public, as the site is: only a live, published event with
+   an exact date has one; anything else is a plain 404. A phone opens the file in its calendar app; a computer
+   downloads it, to open in Outlook, Apple Calendar or Google Calendar. */
+function calendarHeaders(eventId, body) {
+  return { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + eventId + '.ics"',
+    'Cache-Control': 'public, max-age=300', 'Content-Length': Buffer.byteLength(body, 'utf8'), 'X-Content-Type-Options': 'nosniff' };
+}
+function handlePublicCalendar(req, res) {
+  var eventId = queryOf(req).get('eventId') || '';
+  var plain = 'text/plain; charset=utf-8';
+  if (!isEventId(eventId)) return sendText(req, res, 404, plain, 'There is no event at this address.\n', 'no-store');
+  var fb = getFirebase();
+  if (fb.error) return sendText(req, res, 503, plain, 'The calendar file is not available right now. Please try again in a few minutes.\n', 'no-store');
+  liveEventSnap(fb, eventId).then(function (snap) {
+    if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendText(req, res, 404, plain, 'There is no event at this address.\n', 'no-store');
+    var data = snap.data(), seo = (data.settings && data.settings.seo) || {};
+    var ics = siteSeo.calendarIcs(data, { id: eventId, url: cleanCanonical(seo.canonicalUrl) || publicBaseFor(req, '') + publicPathOf(eventId) });
+    if (!ics) return sendText(req, res, 404, plain, 'This event has no date yet.\n', 'no-store');
+    res.writeHead(200, calendarHeaders(eventId, ics));
+    res.end(req.method === 'HEAD' ? undefined : ics);
+  }).catch(function (err) {
+    console.error('api: /api/public/calendar for ' + eventId + ' failed — ' + (err && err.stack || err));
+    sendText(req, res, 502, plain, 'The calendar file is not available right now. Please try again in a few minutes.\n', 'no-store');
+  });
 }
 function handleSitemapXml(req, res) {
   var base = publicBaseFor(req, '');
@@ -10737,6 +10845,8 @@ var ROUTES = {
   'DELETE /api/event/leads/bulk': handleLeadsBulkDelete,
 
   'GET /api/public/site-data': audience('handlePublicSiteData'),
+  'GET /api/public/calendar': handlePublicCalendar,
+  'HEAD /api/public/calendar': handlePublicCalendar,
   'POST /api/register': audience('handleRegister'),
   'POST /api/track': audience('handleTrack')
 };
@@ -10756,7 +10866,9 @@ function routeApi(req, res) {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
     var eventId = '', slug = '';
     if (page) { try { eventId = decodeURIComponent(page[2]); slug = page[3] ? decodeURIComponent(page[3]) : ''; } catch (e) { eventId = ''; } }
-    if (!page || !isEventId(eventId) || (slug && !sitePages.SLUG_RE.test(slug))) return sendNotAvailable(req, res);
+    /* a live site's page name that cannot be one ("Award-FAQs") is still asked of the site: its 404 leads home */
+    var badSlug = slug && !sitePages.SLUG_RE.test(slug);
+    if (!page || !isEventId(eventId) || (badSlug && (page[1] !== 'e' || slug.length > 120))) return sendNotAvailable(req, res);
     return page[1] === 'e' ? handlePublicPage(req, res, eventId, slug) : handlePreviewPage(req, res, eventId, slug);
   }
 
@@ -10812,5 +10924,7 @@ module.exports._testHooks = {
   siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
   replaceSiteSection: replaceSiteSection, etChromeFor: etChromeFor, searchVerdicts: searchVerdicts, handleSitemapXml: handleSitemapXml, handleSiteRepair: handleSiteRepair, handleSiteCheck: handleSiteCheck,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
+  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont,
+  /* published pages' UX (published-page-ux.test.js) */
+  noSuchPageHtml: noSuchPageHtml, messagePage: messagePage, routeApi: routeApi, repeatedHeadingIds: repeatedHeadingIds, takenHeadings: takenHeadings, headingWords: headingWords, calendarHeaders: calendarHeaders
 };
