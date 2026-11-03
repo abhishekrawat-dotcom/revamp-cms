@@ -29,6 +29,7 @@
 // page, is the page's markup and is published with the site as before.
 'use strict';
 const forms = require('./forms');
+const etEvents = require('./et-events');
 const phone = require('./phone');
 const places = require('./places');
 const { sendJson, parseJsonBody, requireAdmin, adminFromRequest, sendPublicJson, clientIp, rateLimit, str } = require('./http');
@@ -101,13 +102,22 @@ function loadForm(fb, eventId, ev, formId) {
   });
 }
 /* The consent box of the event's forms (forms.consentFor): its links are the pages of the ET portal the event
-   belongs to — the one its previous edition (or this edition's own page) was read from, as the site's footer
-   says — else ETCIO's. Read from the event's sources (only the four fields that say it), kept a few minutes
-   per event, so a busy registration page reads them once in a while, not per visitor. Never rejects: the
-   sources not being readable gives ETCIO's links. */
+   belongs to. ev: the event document, as the caller has already read it.
+   - An event with its portal set (events/<id>.portal, a slug on the roster): that portal's pages, worked out
+     from the slug alone, with nothing read — so a portal set or changed shows at once, in the public forms and
+     in the next registration's record.
+   - An event with no portal yet: exactly the rule it had before portals were stored — the portal its previous
+     edition (or this edition's own page) was read from, as the site's footer said, else ETCIO's. Its live pages
+     were published with those links (the #rv-forms block), so they stay until a person sets its portal. The
+     sources are read for the links only, and never give the event a portal; only the four fields that say it
+     are read, and kept a few minutes per event, so a busy registration page reads them once in a while, not
+     per visitor. Never rejects: the sources not being readable gives ETCIO's links. */
 var CONSENT_TTL_MS = 5 * 60 * 1000, CONSENT_KEEP = 2000;
 var consentCache = new Map();
-function loadConsent(fb, eventId) {
+function loadConsent(fb, eventId, ev) {
+  /* an event with a portal is answered before the cache is looked at, so what was kept for it while it had
+     none is never given once a portal is set */
+  if (ev && etEvents.isPortal(ev.portal)) return Promise.resolve(forms.consentFor(ev.portal));
   var hit = consentCache.get(eventId);
   if (hit && Date.now() - hit.at < CONSENT_TTL_MS) return Promise.resolve(hit.consent);
   return eventDoc(fb, eventId).collection('sources').select('type', 'url', 'previous.portal', 'previous.url').get().then(function (snap) {
@@ -124,7 +134,7 @@ function loadConsent(fb, eventId) {
 }
 /* The definitions a visitor's page is given (GET /api/public/forms, and the #rv-forms block publishing writes). */
 function loadPublicForms(fb, eventId, ev) {
-  return Promise.all([loadForms(fb, eventId, ev), loadConsent(fb, eventId)]).then(function (r) {
+  return Promise.all([loadForms(fb, eventId, ev), loadConsent(fb, eventId, ev)]).then(function (r) {
     return forms.publicFormsPayload(eventId, ev, r[0].forms, r[1]);
   });
 }
@@ -218,7 +228,7 @@ function handleFormsList(req, res) {
       eventDoc(fb, eventId).get().then(function (snap) {
         var ev = liveEvent(snap);
         if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
-        return Promise.all([loadForms(fb, eventId, ev), responseCounts(fb, eventId, ev), loadConsent(fb, eventId)]).then(function (r) {
+        return Promise.all([loadForms(fb, eventId, ev), responseCounts(fb, eventId, ev), loadConsent(fb, eventId, ev)]).then(function (r) {
           var reg = forms.legacyRegistration(ev);
           sendJson(res, 200, {
             forms: r[0].forms.map(function (f) { return adminForm(f, r[1]); }),

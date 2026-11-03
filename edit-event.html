@@ -1,11 +1,32 @@
-<!-- ET Oneworld - Revamp CMS : per-event admin console ("Edit event") -->
+<!-- Oneworld 2.0 : per-event admin console ("Edit event") -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Edit Event &mdash; Revamp CMS</title>
+<title>Edit Event &mdash; Oneworld 2.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="forms-builder.css">
 <link rel="stylesheet" href="hero-video-ui.css">
+<style>
+  /* The date line and, while the event has no portal, "No portal yet" with Set portal beside it (paintHeader).
+     Only the console's tokens, so it follows the light and dark switch. On a phone or a narrow window the top bar
+     has room for the button alone: the date line and the chip's label give way to a button of the same words. */
+  .ev-title .ev-sub{ display:flex; align-items:center; gap:8px; min-width:0; margin-top:1px; }
+  /* the date line gives way first; the chip only when there is no room left at all, and it is then cut off rather
+     than drawn over the buttons beside it (its padding keeps room for a focus ring) */
+  .ev-title .ev-sub .meta{ min-width:0; flex:0 1000 auto; margin-top:0; }
+  .ev-title .ev-portal{ display:inline-flex; align-items:center; flex:0 1 auto; min-width:0; overflow:hidden; padding:4px; margin:-4px; }
+  .ev-title .ev-portal[hidden]{ display:none; }
+  .ev-portal-wide{ display:inline-flex; align-items:center; gap:6px; }
+  .ev-portal-mini{ display:none; align-items:center; min-height:24px; padding:3px 9px; border-radius:999px; cursor:pointer;
+    border:1px solid var(--border); background: var(--surface); color: var(--text); font-size:11.5px; font-weight:700;
+    line-height:1.2; white-space:nowrap; }
+  .ev-portal-mini:hover, .ev-portal-mini:focus-visible{ border-color: var(--accent); }
+  @media (max-width: 680px){
+    .ev-title .ev-sub.has-portal-chip .meta{ display:none; }
+    .ev-portal-wide{ display:none; }
+    .ev-portal-mini{ display:inline-flex; }
+  }
+</style>
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 
 <header class="topbar">
@@ -15,7 +36,11 @@
   </a>
   <span class="ev-title">
     <h1 id="ev-name">&nbsp;</h1>
-    <span class="meta" id="ev-meta"></span>
+    <span class="ev-sub">
+      <span class="meta" id="ev-meta"></span>
+      <!-- "No portal yet" and Set portal, while the event has no portal (paintHeader) -->
+      <span class="ev-portal" id="ev-portal" hidden></span>
+    </span>
   </span>
   <span class="topbar-acts">
     <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
@@ -44,6 +69,8 @@
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
+<!-- ET's portals and the Set portal dialog (window.RevampPortals) -->
+<script src="portal-picker.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="sidebar.js"></script>
 <!-- the registration forms builder; the form runtime draws its preview (it does nothing else on this page) -->
@@ -66,7 +93,7 @@
   var comma = C.comma;
   var fmtDate = C.fmtDate, fmtDT = C.fmtDT;
   var panel = C.panel, panelFlush = C.panelFlush, emptyState = C.emptyState;
-  var PORTALS = C.PORTALS, TYPES = C.TYPES;
+  var TYPES = C.TYPES;
 
   /* ============================================================
      MESSAGES
@@ -85,13 +112,15 @@
     setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 260);
   }
 
-  function notify(msg){
+  /* ms: how long it stays, for a message longer than a few words (2.6 s otherwise). Only a number counts:
+     the section files are handed notify as their toast, and one may pass the core toast's options. */
+  function notify(msg, ms){
     var el = document.createElement('div');
     el.className = 'toast';
     el.setAttribute('role', 'status');
     el.innerHTML = svg(IC.check, 15) + '<span>' + esc(msg) + '</span>';
     $('toast-host').appendChild(el);
-    setTimeout(function(){ dismissToast(el); }, 2600);
+    setTimeout(function(){ dismissToast(el); }, typeof ms === 'number' && ms > 0 ? ms : 2600);
   }
 
   /* What to tell the user about a failed request. RevampCore rejects with an Error whose status is
@@ -1006,15 +1035,26 @@
     if (!cat) catOptions = '<option value="" selected>Choose a category</option>' + catOptions;
     else if (!TYPES.hasOwnProperty(cat)) catOptions = '<option value="' + esc(cat) + '" selected>' + esc(cat) + '</option>' + catOptions;
 
+    /* The portal, as the server named it. Until portal-picker.js has ET's roster (wireBasics then fills the
+       list in), the list holds the current portal alone; with none yet, a first choice says so. */
+    var portalNow = shownPortal();
+    var portalOptions = portalNow ? '<option value="' + esc(portalNow) + '" selected>' + esc(EV.portalName) + '</option>'
+      : '<option value="" selected>' + esc(NO_PORTAL_CHOICE) + '</option>';
+
     var identity =
-      '<div class="field c7">' +
+      '<div class="field c12">' +
         '<div class="flabel-row"><label for="b-name">Event name <span class="pill-req">Required</span></label></div>' +
         '<input class="inp" id="b-name" value="' + esc(e.name || '') + '" placeholder="e.g. MarTech+ Summit 2026">' +
         '<p class="hint">The event’s title on its site and in the events list.</p></div>' +
 
-      '<div class="field c5"><label for="b-cat">Category</label>' +
+      '<div class="field c6"><label for="b-cat">Category</label>' +
         '<select class="inp" id="b-cat">' + catOptions + '</select>' +
         '<p class="hint">Used to group and label this event in the events list.</p></div>' +
+
+      '<div class="field c6"><label for="b-portal">Portal</label>' +
+        '<select class="inp" id="b-portal">' + portalOptions + '</select>' +
+        '<p class="hint">Its previous editions, its site’s ET bar and footer, and its mailers’ branding come from this portal.</p>' +
+        '<p class="hint" id="b-portal-note" hidden></p></div>' +
 
       /* the event's own logo: an AI-designed site's hero opens with it (functions/lib/api.js, buildLogoUnit) */
       '<div class="field c12"><div class="flabel-row"><span class="flabel" id="b-logo-l">Event logo</span></div>' +
@@ -1132,13 +1172,13 @@
   /* ---------- the live parts of the basics form ---------- */
   function wireBasics(){
     var f = {
-      name:  $('b-name'),  cat:   $('b-cat'),   start: $('b-start'),
+      name:  $('b-name'),  cat:   $('b-cat'),   portal: $('b-portal'), start: $('b-start'),
       end:   $('b-end'),   venue: $('b-venue'), city:  $('b-city'), desc: $('b-desc')
     };
     if (!f.name) return;
 
     /* form field -> the event field it is stored in */
-    var STORED = { name:'name', cat:'category', start:'start', end:'end', venue:'venue', city:'city', desc:'description' };
+    var STORED = { name:'name', cat:'category', portal:'portal', start:'start', end:'end', venue:'venue', city:'city', desc:'description' };
     var KEYS = Object.keys(STORED);
     var initial = {};
     KEYS.forEach(function(k){ initial[k] = f[k].value; });
@@ -1225,7 +1265,8 @@
       var venue = place() || 'Venue to be confirmed';
       var when = s.a ? fmtDT(localIso(s.a)) : 'Date to be announced';
       var path = $('b-slug').value || 'your-event';
-      return { title:title, d:d, venue:venue, when:when, path:path, portal: PORTALS[EV.portal] || 'ET Oneworld' };
+      /* the portal chosen in the list, as the site names it; with none, the name the site shows instead */
+      return { title:title, d:d, venue:venue, when:when, path:path, portal: portalName(v('portal')) || NO_PORTAL_SITE_NAME };
     }
 
     function paintPreview(){
@@ -1278,7 +1319,8 @@
         { label:'Short description', field:'b-desc',
           why: n < DESC_MIN ? 'Add at least ' + DESC_MIN + ' characters (now ' + n + ')'
              : (n > DESC_IDEAL ? 'Shorten to ' + DESC_IDEAL + ' characters (now ' + n + ')' : '') },
-        { label:'Category', field:'b-cat', why: v('cat') ? '' : 'Choose a category' }
+        { label:'Category', field:'b-cat', why: v('cat') ? '' : 'Choose a category' },
+        { label:'Portal', field:'b-portal', why: v('portal') ? '' : 'Choose the portal it belongs to' }
       ];
       var done = items.filter(function(i){ return !i.why; }).length;
 
@@ -1409,6 +1451,74 @@
       } else { done(); }
     });
 
+    /* ---- the portal: ET's roster from portal-picker.js, with the stored portal chosen. While the event
+            has none, a first "No portal yet" choice keeps the list from reading as if its first portal
+            were set; once one is stored it can be changed, never removed, so that choice goes. ---- */
+    var portalsReady = false;
+    /* a portal's name: the server's for the stored one, else the roster's */
+    function portalName(slug){
+      if (!slug) return '';
+      if (slug === shownPortal()) return String(EV.portalName).trim();
+      return rosterName(slug) || slug;
+    }
+    function hasChoice(html, slug){ return html.indexOf('value="' + esc(slug) + '"') !== -1; }
+    function portalChoices(want){
+      var RP = window.RevampPortals, stored = shownPortal();
+      var html = portalsReady ? String(RP.optionsHtml(want, stored ? undefined : NO_PORTAL_CHOICE) || '') : '';
+      /* the choice to show is always there, whatever the list holds: nothing before the roster has come,
+         or a portal the roster no longer has */
+      if (!hasChoice(html, want)) html = (want ? '<option value="' + esc(want) + '">' + esc(portalName(want)) + '</option>'
+        : '<option value="">' + esc(NO_PORTAL_CHOICE) + '</option>') + html;
+      f.portal.innerHTML = html;
+      f.portal.value = want;
+    }
+    function portalNote(text){
+      var el = $('b-portal-note');
+      if (!el) return;
+      el.textContent = text || '';
+      el.hidden = !text;
+    }
+    /* what a portal change leaves as it is until later (the Set portal dialog says the same before) */
+    function portalNotes(name){
+      var n = [];
+      if (EV.generatedAt) n.push('The site keeps its ET bar and footer; they change to ' + name + ' only if the site is generated again.');
+      if (EV.published === true) n.push('Its live registration form keeps its privacy links until it is published again.');
+      return n.join(' ');
+    }
+    function loadPortals(){
+      var RP = window.RevampPortals, sel = f.portal;
+      if (!RP || typeof RP.list !== 'function' || typeof RP.optionsHtml !== 'function') return;
+      RP.list().then(function(){
+        if ($('b-portal') !== sel) return;          // Basics was left meanwhile
+        portalsReady = true;
+        portalChoices(sel.value);                   // what is on screen stays chosen
+        paint();
+      }, function(err){
+        if ($('b-portal') !== sel) return;
+        portalNote(String((err && err.message) || 'The portal list could not be loaded.').trim() + ' Reload the page to choose another portal.');
+      });
+    }
+    /* someone set the portal meanwhile, and nothing of this save was stored: the page takes the portal now
+       stored as the saved one, and the person's own choice stays in the list, so Try again is made knowing */
+    function portalMovedOn(err){
+      var mine = f.portal.value;
+      EV.portal = typeof err.current === 'string' ? err.current : '';
+      EV.portalName = (typeof err.currentName === 'string' && err.currentName) || rosterName(EV.portal);
+      initial.portal = shownPortal();
+      portalChoices(mine);
+      paintHeader();
+      paint();
+    }
+    /* the top bar's Set portal, while Basics is on screen: the list and what counts as saved both take
+       the new portal, so the form is not left showing an unsaved change */
+    BASICS_PORTAL = function(slug){
+      if ($('b-portal') !== f.portal) return;
+      portalChoices(slug);
+      initial.portal = f.portal.value;
+      clearFieldError(f.portal);
+      paint();
+    };
+
     /* What must be put right before anything is sent. The name is always needed; a date or a
        description that was stored before these rules existed only has to be corrected once the
        user changes it. */
@@ -1420,6 +1530,10 @@
       }
       if (changed.indexOf('desc') >= 0 && v('desc').length > DESC_MAX){
         errs.push(['b-desc', 'Shorten the description to ' + DESC_MAX + ' characters (now ' + v('desc').length + ').']);
+      }
+      /* a stored portal can be changed, never removed (the server refuses it too) */
+      if (changed.indexOf('portal') >= 0 && !v('portal') && shownPortal()){
+        errs.push(['b-portal', 'An event’s portal can be changed, not removed. Choose another portal.']);
       }
       return errs;
     }
@@ -1441,6 +1555,11 @@
         /* a cleared date is no date, never an empty string */
         patch[STORED[k]] = ((k === 'start' || k === 'end') && !val) ? null : val;
       });
+      /* a portal change says which portal this page showed ('' for none): one set meanwhile, on the dashboard
+         or in another tab, is then never overwritten unseen; the server answers 409 portal-changed instead */
+      var portalTo = changed.indexOf('portal') >= 0 ? patch.portal : '';
+      var portalToName = portalTo ? portalName(portalTo) : '';
+      if (portalTo) patch.ifPortal = shownPortal();
 
       saving = true;
       failed = '';
@@ -1455,12 +1574,21 @@
           if (f[k].value === sent[k]) f[k].value = stored;
           initial[k] = stored;
         });
+        var said = 'Basics saved';
+        if (portalTo){
+          EV.portalName = portalToName;
+          portalChoices(f.portal.value);            // the "No portal yet" choice goes once a portal is stored
+          var notes = portalNotes(portalToName);
+          portalNote(notes);
+          if (notes) said = 'Basics saved. ' + notes;
+        }
         paint();
         paintHeader();
-        notify('Basics saved');
+        notify(said, said === 'Basics saved' ? 0 : 9000);
       }, function(err){
         saving = false;
         console.error('Basics save failed:', err);
+        if (err && err.code === 'portal-changed') portalMovedOn(err);
         failed = errText(err);
         paintDirty();
         throw err;
@@ -1496,6 +1624,7 @@
     };
 
     paint();
+    loadPortals();
   }
 
   /* ============================================================
@@ -4591,7 +4720,8 @@
     'registration-approved':'Registration approved', 'registration-declined':'Registration declined',
     'form-created':'Form created', 'form-updated':'Form edited', 'form-deleted':'Form deleted', 'form-default':'Default form changed',
     'forms-reordered':'Forms reordered', 'leads-updated':'Leads changed', 'banner-video-changed':'Banner video changed', 'file-uploaded':'File uploaded',
-    'brief-updated':'Brief updated', 'source-added':'Source added', 'site-designed':'Site designed by AI', 'site-generated':'Site written by AI', 'repaired':'Platform repair', 'ai-chat':'ETB2B AI'
+    'brief-updated':'Brief updated', 'source-added':'Source added', 'site-designed':'Site designed by AI', 'site-generated':'Site written by AI', 'repaired':'Platform repair', 'ai-chat':'ETB2B AI',
+    'portal-set':'Portal set'
   };
   var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
   function actionLabel(a){
@@ -5475,8 +5605,10 @@
      ============================================================ */
   var REGF = null;      // { node, builder, ... } once built
 
-  function regSettings(){
-    var r = (EV && EV.settings && EV.settings.registration) || {};
+  /* ev: the event as the server has it now (see saveReg's check); EV, what this page has, when left out */
+  function regSettings(ev){
+    ev = ev || EV;
+    var r = (ev && ev.settings && ev.settings.registration) || {};
     return { open: r.open !== false, capacity: r.capacity == null ? '' : String(r.capacity), target: r.target == null ? '' : String(r.target) };
   }
 
@@ -5536,6 +5668,27 @@
       if (!/^\d+$/.test(v) || +v < 1 || +v > 10000000) return { error: label + ' must be a whole number of 1 or more, or left empty.', field: id };
       return { value: +v };
     }
+    function sameReg(a, b){ return a.open === b.open && a.capacity === b.capacity && a.target === b.target; }
+    /* The token is the event's details date, and every save of the event moves it, this person's own too.
+       Set portal (in the top bar, on the dashboard or in another tab) and Basics save without it, so a
+       Registration save after one of them is refused as stale although nothing it would overwrite has
+       changed. A refusal is therefore checked once: the event is read again, and when the registration
+       settings stored now are still the ones this panel was opened with, nobody has changed what this save
+       writes (the server merges it into the event, every other field and setting untouched), so it is sent
+       again with the event's current date. Moving the token on after those saves instead would hide a real
+       change: somebody else's capacity or target saved in between would then be overwritten unseen.
+       ("Opened with" is `stored`: what the page loaded, or this panel's own last save.) Anything else, the
+       second refusal included, goes back to saveReg to be shown. */
+    function sendReg(reg, at, checked){
+      return C.updateEvent(EV.id, { settings: { registration: reg } }, { ifUpdatedAt: at }).then(null, function(err){
+        if (checked || !(err && err.status === 409 && err.code === 'stale')) throw err;
+        return C.fetchEvent(EV.id).then(function(fresh){
+          var now = (fresh && typeof fresh.detailsUpdatedAt === 'string' && fresh.detailsUpdatedAt) || (fresh && typeof fresh.updatedAt === 'string' && fresh.updatedAt) || '';
+          if (!now || now === at || !sameReg(regSettings(fresh), stored)) throw err;
+          return sendReg(reg, now, true);
+        });
+      });
+    }
     function saveReg(){
       if (!regDirty()) return Promise.resolve();
       var c = current();
@@ -5544,7 +5697,7 @@
       if (bad){ showErr(bad.error, bad.field); return Promise.reject({ invalid: true }); }
       saving = true; showErr(''); paint();
       var reg = { open: c.open, capacity: cap.value, target: tgt.value };
-      return C.updateEvent(EV.id, { settings: { registration: reg } }, { ifUpdatedAt: token }).then(function(res){
+      return sendReg(reg, token, false).then(function(res){
         saving = false;
         token = (res && res.updatedAt) || token;
         EV.settings = EV.settings || {};
@@ -5557,7 +5710,7 @@
       }, function(err){
         saving = false; paint();
         if (err && err.status === 409 && err.code === 'stale'){
-          showErr('Someone else changed this event’s settings since this page was opened. Reload the page to see their changes, then make yours again.');
+          showErr('Someone else changed this event’s registration settings since this page was opened. Reload the page to see their changes, then make yours again.');
         } else {
           showErr(errText(err));
         }
@@ -5763,6 +5916,75 @@
   }
 
   /* ============================================================
+     PORTAL
+
+     An event belongs to one ET portal: EV.portal is its slug on ET's roster and EV.portalName its name,
+     both from the server, which gives no name for a value that is not on the roster. The roster and the
+     Set portal dialog are portal-picker.js's (window.RevampPortals); without it the page still shows the
+     portal's name, and Set portal is simply not offered.
+     ============================================================ */
+  var NO_PORTAL_CHOICE = 'No portal yet — choose one';
+  /* what the site shows in a portal's place while the event has none (the ET Business Verticals bar) */
+  var NO_PORTAL_SITE_NAME = 'The Economic Times Business Verticals';
+  /* set by Basics while it is on screen: the portal the top bar's Set portal has just stored */
+  var BASICS_PORTAL = null;
+
+  /* the portal the page shows, '' for none: an off-roster value counts as none, as it does on the server,
+     and this is what a portal change sends as ifPortal */
+  function shownPortal(){ return String(EV.portalName || '').trim() ? String(EV.portal || '') : ''; }
+
+  function rosterName(slug){
+    var RP = window.RevampPortals;
+    return slug && RP && typeof RP.nameOf === 'function' ? String(RP.nameOf(slug) || '') : '';
+  }
+
+  /* "No portal yet" and its Set portal button beside the date line, while the event has none. The chip is
+     RevampPortals' own, the one the dashboard shows; on a phone the top bar has room for its button only,
+     so a button of the same words stands in for it there (the rules at the top of the page). */
+  function paintPortalChip(){
+    var host = $('ev-portal'), RP = window.RevampPortals;
+    if (!host || !RP || typeof RP.chipHtml !== 'function') return;
+    var none = !shownPortal();
+    host.hidden = !none;
+    if (host.parentNode && host.parentNode.classList) host.parentNode.classList.toggle('has-portal-chip', none);
+    host.innerHTML = none ? '<span class="ev-portal-wide">' + RP.chipHtml({ eventId: EV.id, eventName: EV.name || '' }) + '</span>' +
+      '<button type="button" class="ev-portal-mini" data-set-portal="' + esc(EV.id) + '" aria-label="No portal yet. Set portal">Set portal</button>' : '';
+    host.onclick = function(e){
+      var b = e.target && e.target.closest ? e.target.closest('[data-set-portal]') : null;
+      if (b) openSetPortal();
+    };
+  }
+
+  function openSetPortal(){
+    var RP = window.RevampPortals;
+    if (!RP || typeof RP.openSetPortal !== 'function') return;
+    RP.openSetPortal({
+      eventId: EV.id, eventName: String(EV.name || '').trim() || 'Untitled event', current: shownPortal(),
+      hasGeneratedSite: !!EV.generatedAt, published: EV.published === true,
+      onDone: function(slug, name){
+        portalSet(slug, name);
+        notify('Portal set to ' + EV.portalName + '.');
+        /* the button that opened the dialog has gone with the chip: focus goes to the event's name, which
+           now says the portal, rather than to the top of the page */
+        setTimeout(function(){
+          var h = $('ev-name');
+          if (!h || (document.activeElement && document.activeElement !== document.body)) return;
+          h.setAttribute('tabindex', '-1');
+          h.focus();
+        }, 0);
+      }
+    });
+  }
+
+  /* the portal is now slug: the header follows, and Basics when it is on screen takes it as saved */
+  function portalSet(slug, name){
+    EV.portal = slug;
+    EV.portalName = name || rosterName(slug) || slug;
+    paintHeader();
+    if (BASICS_PORTAL) BASICS_PORTAL(slug);
+  }
+
+  /* ============================================================
      BOOT
 
      EV loads over the network now, so there are three states to show,
@@ -5776,13 +5998,15 @@
      ============================================================ */
   function paintHeader(){
     var name = String(EV.name || '').trim() || 'Untitled event';
-    $('ev-name').textContent = name + (PORTALS[EV.portal] ? ' | ' + PORTALS[EV.portal] : '');
+    var portalName = String(EV.portalName || '').trim();
+    $('ev-name').textContent = name + (portalName ? ' | ' + portalName : '');
     var metaBits = [fmtDT(EV.start)];
     if (EV.eventNo) metaBits.push(EV.eventNo);
     var catLabel = TYPES[EV.category] || EV.category;
     if (catLabel) metaBits.push(catLabel);
     $('ev-meta').textContent = metaBits.join('  |  ');
-    document.title = 'Edit — ' + name + ' — Revamp CMS';
+    document.title = 'Edit — ' + name + ' — Oneworld 2.0';
+    paintPortalChip();
   }
 
   /* Preview, Publish and the rail only mean something once there is an event behind them. */
@@ -5818,7 +6042,7 @@
     $('ev-name').textContent = title;
     $('ev-meta').textContent = '';
     $('rail').innerHTML = '';
-    document.title = 'Edit Event — Revamp CMS';
+    document.title = 'Edit Event — Oneworld 2.0';
     /* the way out is the top bar's "Back to events", which stays on screen in every state */
     $('view').innerHTML = '<div style="padding:60px 20px">' + emptyState(
       IC.info, title, msg,
