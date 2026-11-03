@@ -396,8 +396,16 @@ function takeOne(p, id, now) {
   check('E.1 apply: an exact format with no date is not "filled"', a.r.fields.indexOf('dates') === -1 && a.S.basics.start === '');
   a = run(cleaned({ basics: { venue: 'Jio World Centre, Mumbai', city: 'mumbai' } }));
   check('E.1 apply: a city the venue already names is not added twice', a.S.basics.venue === 'Jio World Centre, Mumbai' && a.r.fields.indexOf('city') === -1, a.S.basics.venue);
-  a = run(cleaned({ portal: 'etretail' }));
-  check('E.1 apply: before the portals change there is no portal box: ignored', !('portal' in a.S.basics) && a.r.fields.indexOf('portal') === -1 && a.r.unused.indexOf('portal') === -1);
+  /* the page's draft has a portal box since the portals change (S.basics.portal); a draft without one is kept below,
+     with the box taken out, so the rule for it stays held */
+  a = run(cleaned({ portal: 'etretail' }), function (S) { delete S.basics.portal; });
+  check('E.1 apply: a draft with no portal box (before the portals change): ignored', !('portal' in a.S.basics) && a.r.fields.indexOf('portal') === -1 && a.r.unused.indexOf('portal') === -1);
+  check('E.1 the page\'s new draft has the portal box, empty', freshS().basics.portal === '');
+  a = run(cleaned({ portal: 'retail' }));
+  check('E.1 apply: the portal ETB2B AI brought fills the portal box and is named as filled (the page checks it against ET\'s roster: portalArrived)',
+    a.S.basics.portal === 'retail' && a.r.fields.indexOf('portal') !== -1 && a.r.unused.indexOf('portal') === -1, a.r);
+  a = run(cleaned({ portal: '' }));
+  check('E.1 apply: no portal brought: the box stays empty (the page then asks, or uses the working portal)', a.S.basics.portal === '' && a.r.fields.indexOf('portal') === -1);
 
   /* ---- what arrived and was not used is named ---- */
   a = run(cleaned({ category: 'IP', basics: { client: 'Acme' } }));
@@ -494,11 +502,15 @@ function page(o) {
     replaced: function () { return log.calls.filter(function (c) { return c[0] === 'replaceState'; }).map(function (c) { return c[1]; }); } };
 }
 function storeWith(p, id) { var s = {}; s[PFX + (id || ID)] = JSON.stringify(p || stored({ at: Date.now() - 1000 })); return s; }
-/* the type picker and the footer bar, from the page, over P's draft: what the person sees on the category screen */
-var PICKER_FNS = ['renderCatPicker', 'pickCategory', 'changeCategory', 'cancelChangeCategory', 'renderFoot'];
+/* the type picker and the footer bar, from the page, over P's draft: what the person sees on the category screen.
+   Since the portals change the same screen asks the portal first: the page's own portal rules come with it (the
+   roster as ET's, two of its portals here), and only the drawing of the Portal box is left out. */
+var PICKER_FNS = ['renderCatPicker', 'pickCategory', 'changeCategory', 'cancelChangeCategory', 'renderFoot',
+  'isRosterPortal', 'portalName', 'portalLocked', 'commitPortal', 'showPortalError'];
 function withPicker(P) {
-  function plainEl(id) { return { id: id, hidden: false, disabled: false, textContent: '', innerHTML: '', querySelectorAll: function () { return []; } }; }
-  ['cat-grid', 'btn-back', 'btn-next', 'foot-note'].forEach(function (id) { P.ctx.ELS[id] = plainEl(id); });
+  function plainEl(id) { return { id: id, hidden: false, disabled: false, textContent: '', innerHTML: '', attrs: {}, querySelectorAll: function () { return []; },
+    setAttribute: function (k, v) { this.attrs[k] = String(v); }, removeAttribute: function (k) { delete this.attrs[k]; }, focus: function () {} }; }
+  ['cat-grid', 'btn-back', 'btn-next', 'foot-note', 'cat-portal', 'cat-portal-error'].forEach(function (id) { P.ctx.ELS[id] = plainEl(id); });
   vm.runInContext([
     'var CAT_ICON = { IP: "", Client: "", Awards: "" };',
     'function svg(){ return "<svg></svg>"; }',
@@ -506,9 +518,17 @@ function withPicker(P) {
     'function toast(m){ CALLS.push(["toast", m]); }',
     /* the real one redraws the step; here, where it goes is what matters */
     'function setStep1Phase(ph){ S.step1Phase = ph; CALLS.push(["phase", ph]); }',
-    'function renderAiEntry(){}', 'function placeToasts(){}', 'function setTimeout(){}'
+    'function renderAiEntry(){}', 'function placeToasts(){}', 'function setTimeout(){}',
+    /* the roster has come (portalArrived); startPortal() puts the draft's own portal in the box */
+    'var portalNames = { retail: "ETRetail", cio: "ETCIO" }, portalRosterLoading = null;',
+    'var stepPortal = S.basics.portal || "", stepPortalFrom = "", stepPortalTouched = false;',
+    'var etPick = { slug: "", showPickers: false };',
+    'function renderPortalStep(){ CALLS.push(["portal-step", stepPortal]); }',
+    'function sameLink(a, b){ return String(a || "") === String(b || ""); }'
   ].concat(PICKER_FNS.map(function (n) { return fnSrc(CE_INLINE, n); })).join('\n'), P.ctx, { filename: 'create-event.html (picker, extracted)' });
   return {
+    /* the person picks a portal in the box, as its onPick does */
+    choosePortal: function (slug) { P.ctx.stepPortal = slug; P.ctx.stepPortalFrom = ''; P.ctx.stepPortalTouched = true; },
     grid: function () { P.ctx.renderCatPicker(); return P.ctx.ELS['cat-grid'].innerHTML; },
     foot: function () { P.ctx.renderFoot(); return { back: P.ctx.ELS['btn-back'], note: P.ctx.ELS['foot-note'].textContent }; },
     phases: function () { return P.log.calls.filter(function (c) { return c[0] === 'phase'; }).map(function (c) { return c[1]; }); },
@@ -736,19 +756,27 @@ function withPicker(P) {
   var grid = K.grid();
   check('E.2 … the picker shows no type as "Current" (no badge, no aria-current)', grid.indexOf('category-current') === -1 && grid.indexOf('aria-current') === -1 && grid.indexOf('data-cat="IP"') !== -1, grid);
   var foot = K.foot();
-  check('E.2 … the footer has no Cancel, and asks for a type (not "cancel to keep IP")', foot.back.hidden === true && foot.note === 'Choose a microsite type to continue.', [foot.back.hidden, foot.note]);
+  check('E.2 … the footer has no Cancel, and asks for the portal and a type (not "cancel to keep IP")', foot.back.hidden === true && foot.note === 'Choose the portal and a microsite type to continue.', [foot.back.hidden, foot.note]);
   check('E.2 … the note over step 1 says the type comes first, then the brief', P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf('Choose the event type, and your brief opens with them.') !== -1 &&
     P.ctx.ELS['ai-prefill-note'].innerHTML.indexOf('from your message: your brief · your link.') !== -1, P.ctx.ELS['ai-prefill-note'].innerHTML);
+  /* the prefill brought no portal (none was said, and the person works in All portals): a type is not taken without one */
+  check('E.2 … no portal came with it: the Portal box is empty', P.ctx.S.basics.portal === '' && P.ctx.stepPortal === '');
+  P.ctx.pickCategory('Client');
+  check('E.2 … a type picked with no portal is not taken: the box asks for one, and the brief\'s way on is kept', JSON.stringify(K.phases()) === '[]' &&
+    P.ctx.ELS['cat-portal-error'].textContent === 'Choose the portal first.' && P.ctx.ELS['cat-portal-error'].hidden === false && P.ctx.S.basics.category !== 'Client' &&
+    P.ctx.S.aiPrefill.thenDetails === true, [K.phases(), P.ctx.ELS['cat-portal-error'].textContent]);
+  K.choosePortal('retail');
   P.ctx.pickCategory('Client');
   check('E.2 … picking a type opens the brief form with it', JSON.stringify(K.phases()) === '["details"]' && P.ctx.S.basics.category === 'Client' && P.ctx.S.creationMethod === 'brief' &&
     P.ctx.S.catReturnPhase === null && P.ctx.S.brief.current === LINK, [K.phases(), P.ctx.S.basics.category]);
-  check('E.2 … with a plain "selected" toast (no form was on screen to be "updated")', JSON.stringify(K.toasts()) === '["Custom Events selected"]', K.toasts());
+  check('E.2 … with the portal it is on: ETRetail', P.ctx.S.basics.portal === 'retail' && P.ctx.ELS['cat-portal-error'].hidden === true, P.ctx.S.basics.portal);
+  check('E.2 … with a plain "selected" toast (no form was on screen to be "updated"), naming the portal chosen', JSON.stringify(K.toasts()) === '["ETRetail · Custom Events selected"]', K.toasts());
   check('E.2 … and the way to the brief form is used once', P.ctx.S.aiPrefill.thenDetails === false);
   /* afterwards the page works as it always did: Back to the method screen, change the type there → back to the method screen */
   P.ctx.S.step1Phase = 'method'; P.ctx.changeCategory();
   grid = K.grid(); foot = K.foot();
   check('E.2 … later, changing the type: now the chosen type is "Current", with Cancel', grid.indexOf('aria-current="true" data-cat="Client"') !== -1 && grid.indexOf('category-current') !== -1 &&
-    foot.back.hidden === false && foot.back.textContent === 'Cancel' && foot.note === 'Pick a type, or cancel to keep Custom Events.', [foot.note]);
+    foot.back.hidden === false && foot.back.textContent === 'Cancel' && foot.note === 'Pick a type, or cancel to keep ETRetail · Custom Events.', [foot.note]);
   P.ctx.pickCategory('Awards');
   check('E.2 … and that pick goes back to the method screen, as before', K.phases().slice(-1)[0] === 'method' && P.ctx.S.basics.category === 'Awards', K.phases());
   P.ctx.S.step1Phase = 'details'; P.ctx.changeCategory(); P.ctx.pickCategory('IP');
@@ -759,8 +787,20 @@ function withPicker(P) {
   P.ctx.init(); await wait();
   K = withPicker(P);
   P.ctx.S.creationMethod = 'brief'; P.ctx.S.step1Phase = 'category';
+  K.choosePortal('cio');
   P.ctx.pickCategory('IP');
-  check('E.2 without ETB2B AI, a first pick goes to the method screen (unchanged)', JSON.stringify(K.phases()) === '["method"]', K.phases());
+  check('E.2 without ETB2B AI, a first pick goes to the method screen (unchanged)', JSON.stringify(K.phases()) === '["method"]' && P.ctx.S.basics.portal === 'cio', K.phases());
+
+  /* the usual case: ETB2B AI brings the portal the person works in (or one they named), and the box opens on it */
+  var withPortal = stored({ at: Date.now() - 1000, category: '', method: 'brief', portal: 'retail', basics: { name: '', dateMode: '', start: '', venue: '', city: '' },
+    brief: { text: 'A one-day forum for retail CXOs.', current: '' } });
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(withPortal) });
+  P.ctx.init(); await wait();
+  K = withPicker(P);
+  check('E.2 a prefill with a portal: the draft and the box hold it', P.ctx.S.basics.portal === 'retail' && P.ctx.stepPortal === 'retail' && P.ctx.S.aiPrefill.fields.indexOf('portal') !== -1, P.ctx.S.aiPrefill);
+  P.ctx.pickCategory('IP');
+  check('E.2 … a type picked goes straight on to the brief form, the portal unchanged (no portal in the toast)', JSON.stringify(K.phases()) === '["details"]' && P.ctx.S.basics.portal === 'retail' &&
+    JSON.stringify(K.toasts()) === JSON.stringify([freshCats().IP.label + ' selected']), [K.phases(), K.toasts()]);
   var pickSrc = fnSrc(CE_INLINE, 'pickCategory') || '';
   check('E.2 pickCategory reads the brief\'s way on from S.aiPrefill.thenDetails, never from catReturnPhase alone', pickSrc.indexOf('S.aiPrefill.thenDetails') !== -1 &&
     /S\.aiPrefill\.thenDetails = false/.test(pickSrc));

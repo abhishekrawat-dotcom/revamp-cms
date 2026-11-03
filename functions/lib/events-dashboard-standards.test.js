@@ -59,15 +59,22 @@ var AUTH = '(function(){var u={uid:"qa",email:"qa-agent@timesinternet.in",displa
 var LOGO = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="28" viewBox="0 0 120 28"><rect width="28" height="28" fill="#ED1C24"/></svg>';
 var NOW = Date.now();
 function day(n) { return new Date(NOW + 330 * 60000 + n * 86400000).toISOString().slice(0, 10); }
+/* ET's portals (the portals change): the roster as GET /api/et/portals gives it, and the person's working portal
+   (none chosen first: All portals, with its Portal column, the first-visit callout and "No portal yet" chips; then
+   ETCIO, one portal on its own). Events on two portals and three with none, so every portal part is drawn. */
+var ROSTER = require('./et-events').portalList();
+var WORKING = null;
 var EVENTS = [
-  { id: 'qa-std-1', name: 'QA Standards CX Leaders Forum', category: 'ip', published: true, start: day(-4) + 'T09:00', end: day(2) + 'T18:00', venue: 'ITC Maratha', city: 'Mumbai', createdAt: '2026-03-01T10:00:00.000Z', createdBy: 'qa-agent@timesinternet.in', counters: { registrations: 77, views: 800, audienceV: 2 } },
-  { id: 'qa-std-2', name: 'QA Standards Retail Leadership Summit with a name long enough to wrap onto a second line', category: 'ip', published: true, start: day(-2) + 'T09:00', end: day(3) + 'T18:00', venue: 'The Leela Palace', city: 'Bengaluru', createdAt: '2026-07-01T10:00:00.000Z', createdBy: 'bob@timesinternet.in', counters: { registrations: 1234, views: 5678, audienceV: 2 } },
+  { id: 'qa-std-1', portal: 'cio', portalName: 'ETCIO', name: 'QA Standards CX Leaders Forum', category: 'ip', published: true, start: day(-4) + 'T09:00', end: day(2) + 'T18:00', venue: 'ITC Maratha', city: 'Mumbai', createdAt: '2026-03-01T10:00:00.000Z', createdBy: 'qa-agent@timesinternet.in', counters: { registrations: 77, views: 800, audienceV: 2 } },
+  { id: 'qa-std-2', portal: 'hr', portalName: 'ETHRWorld', name: 'QA Standards Retail Leadership Summit with a name long enough to wrap onto a second line', category: 'ip', published: true, start: day(-2) + 'T09:00', end: day(3) + 'T18:00', venue: 'The Leela Palace', city: 'Bengaluru', createdAt: '2026-07-01T10:00:00.000Z', createdBy: 'bob@timesinternet.in', counters: { registrations: 1234, views: 5678, audienceV: 2 } },
   { id: 'qa-std-3', name: 'QA Standards CX Awards', category: 'awards', published: true, start: day(-3) + 'T18:00', end: day(0) + 'T22:00', city: 'Delhi', createdAt: '2026-05-01T10:00:00.000Z', createdBy: 'qa-agent@timesinternet.in', counters: { registrations: 10, views: 100, audienceV: 2 } },
-  { id: 'qa-std-4', name: 'QA Standards Making AI Work', category: 'client', published: true, start: day(20) + 'T09:00', end: day(21) + 'T18:00', city: 'Pune', createdAt: '2026-06-01T10:00:00.000Z', createdBy: 'qa-agent@timesinternet.in', counters: { registrations: 5, views: 60, audienceV: 2 } },
+  { id: 'qa-std-4', portal: 'cio', portalName: 'ETCIO', name: 'QA Standards Making AI Work', category: 'client', published: true, start: day(20) + 'T09:00', end: day(21) + 'T18:00', city: 'Pune', createdAt: '2026-06-01T10:00:00.000Z', createdBy: 'qa-agent@timesinternet.in', counters: { registrations: 5, views: 60, audienceV: 2 } },
   { id: 'qa-std-5', name: 'QA Standards Draft', category: 'ip', published: false, createdAt: new Date(NOW - 6 * 86400000).toISOString(), createdBy: 'qa-agent@timesinternet.in', counters: {} }
 ];
 function api(u) {
   if (u.pathname === '/api/events') return { items: EVENTS };
+  if (u.pathname === '/api/et/portals') return { portals: ROSTER };
+  if (u.pathname === '/api/me/working-portal') return { workingPortal: WORKING };
   if (u.pathname === '/api/insights') {
     var from = u.searchParams.get('from'), to = u.searchParams.get('to'), byDay = [];
     for (var d = from; d <= to; d = new Date(Date.parse(d + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)) byDay.push({ date: d, views: 30, uniques: 20, registrations: 3 });
@@ -98,7 +105,9 @@ function serve(r) {
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
 /* What decides the look: the mode and width, the page's height, and the size of every part that quirks mode bent */
-var PARTS = ['#table-body tr', 'thead tr', '.kpi-card', '.kpi-top', '.ev-card', '.ev-name-main', '.ev-meta-line', '.ev-date-cell', '.activity-row', '#activity-card', '.main-nav', '.section-bar'];
+var PARTS = ['#table-body tr', 'thead tr', '.kpi-card', '.kpi-top', '.ev-card', '.ev-name-main', '.ev-meta-line', '.ev-date-cell', '.activity-row', '#activity-card', '.main-nav', '.section-bar',
+  /* the portals change's own parts: the switcher, the notices above the list, the Portal column and the cards' portal line */
+  '#btn-portals-nav', '#portal-notice', '.portal-notice', 'td.col-portal', '.ev-card-portal', '.rvp-chip', '.ev-portal-name'];
 function measure(PARTS) {
   var out = { compat: document.compatMode, innerWidth: window.innerWidth, scrollWidth: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, parts: {} };
   PARTS.forEach(function (sel) {
@@ -170,6 +179,30 @@ function measure(PARTS) {
     ok(sheet.box !== null && sheet.box <= sheet.vh && sheet.locked === 'hidden' && sheet.scrollWidth <= 390, 'iPhone: its message box is in view and the page behind it is locked', sheet);
     ok(!phone.errors.length, 'iPhone: no page error', phone.errors);
     await phone.close();
+
+    /* All portals drew every portal part above; did the pages show them? Then one portal on its own (ETCIO) */
+    var allSeen = await open('/Event_Listing.html', SIZES[0]);
+    var drawn = await allSeen.evaluate(function () {
+      function n(sel) { return document.querySelectorAll(sel).length; }
+      return { notices: n('.portal-notice'), callout: n('.portal-callout'), cells: n('td.col-portal'), chips: n('#table-body .rvp-chip'), named: n('#table-body .ev-portal-name'),
+        column: getComputedStyle(document.querySelector('thead .col-portal')).display, nav: document.getElementById('btn-portals-nav').textContent.trim() };
+    });
+    ok(drawn.notices === 2 && drawn.callout === 1 && drawn.cells === 3 && drawn.chips === 1 && drawn.named === 2 && drawn.column === 'table-cell' && drawn.nav === 'All portals',
+      'All portals: the callout, the "no portal yet" notice, the Portal column with names and a chip were all measured', drawn);
+    await allSeen.close();
+    WORKING = 'cio';
+    for (var j = 0; j < SIZES.length; j += 3) {
+      var sz = SIZES[j];
+      var q2 = await open('/quirks/Event_Listing.html', sz), st2 = await open('/Event_Listing.html', sz);
+      var a2 = await q2.evaluate(measure, PARTS), b2 = await st2.evaluate(measure, PARTS);
+      var one = await st2.evaluate(function () { return { nav: document.getElementById('btn-portals-nav').textContent.trim(), line: document.getElementById('result-line').textContent }; });
+      ok(one.nav === 'ETCIO' && /on ETCIO$/.test(one.line), sz.w + ' px, ETCIO: the list is on one portal', one);
+      ok(b2.compat === 'CSS1Compat' && b2.scrollWidth <= sz.w && b2.height === a2.height, sz.w + ' px, ETCIO: no sideways scroll, and exactly as tall as quirks mode drew it', [a2.height, b2.height, b2.scrollWidth]);
+      var differ2 = PARTS.filter(function (p) { return a2.parts[p] !== b2.parts[p]; });
+      ok(differ2.length === 0, sz.w + ' px, ETCIO: every part keeps its size', differ2.map(function (p) { return p + ': ' + a2.parts[p] + ' -> ' + b2.parts[p]; }));
+      ok(!st2.errors.length, sz.w + ' px, ETCIO: no page error', st2.errors);
+      await q2.close(); await st2.close();
+    }
   } catch (e) {
     ok(false, 'the browser part ran to the end', String(e && e.stack || e));
   } finally {

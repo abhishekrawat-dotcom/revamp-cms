@@ -108,6 +108,20 @@ var LIST_FIELDS_AT_DC1A8E1 = ['name', 'category', 'status', 'start', 'end', 'dat
   'templateId', 'logoUrl', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'published', 'publishedAt',
   'publishedVersion', 'counters', 'site', 'generatedAt', 'deletedAt', 'deletedBy', 'discardingAt'];
 
+/* Since the portals change (a6e0466) every item also says its ET portal: portal and portalName, right after
+   hasGeneratedSite ('' and '' here, as no fixture event has one yet), and the list reads the stored portal. The dc1a8e1
+   copies above gain exactly that and nothing else, so the bot's liveEventDocs refactor is still held to them byte for
+   byte. */
+function withPortalFields(list) {
+  return { items: list.items.map(function (it) {
+    var out = {};
+    Object.keys(it).forEach(function (k) { out[k] = it[k]; if (k === 'hasGeneratedSite') { out.portal = ''; out.portalName = ''; } });
+    return out;
+  }) };
+}
+var EXPECTED_LIVE_NOW = withPortalFields(EXPECTED_LIVE), EXPECTED_DELETED_NOW = withPortalFields(EXPECTED_DELETED);
+var LIST_FIELDS_NOW = LIST_FIELDS_AT_DC1A8E1.concat(['portal']);
+
 require.cache[require.resolve('./firebase')] = { id: require.resolve('./firebase'), filename: require.resolve('./firebase'), loaded: true,
   exports: { getFirebase: function () { return FB; } } };
 
@@ -323,11 +337,11 @@ function fakeRes() {
   /* ======== B.4 GET /api/events is unchanged, and liveEventDocs is the same list ======== */
   queries = [];
   var live = await call('GET', '/api/events');
-  ok(live.status === 200 && live.text === JSON.stringify(EXPECTED_LIVE), 'B.4 GET /api/events answers byte for byte what it answered at dc1a8e1', live.text);
+  ok(live.status === 200 && live.text === JSON.stringify(EXPECTED_LIVE_NOW), 'B.4 GET /api/events answers byte for byte what it answered at dc1a8e1 (with the portal fields of a6e0466)', live.text);
   ok(live.headers['Cache-Control'] === 'no-store' && live.headers['Content-Type'] === 'application/json; charset=utf-8', 'B.4 … with the same headers', live.headers);
   var del = await call('GET', '/api/events?deleted=1');
-  ok(del.status === 200 && del.text === JSON.stringify(EXPECTED_DELETED), 'B.4 GET /api/events?deleted=1 likewise', del.text);
-  ok(queries.length === 2 && queries.every(function (q) { return JSON.stringify(q.fields) === JSON.stringify(LIST_FIELDS_AT_DC1A8E1) && q.limit === 1000; }),
+  ok(del.status === 200 && del.text === JSON.stringify(EXPECTED_DELETED_NOW), 'B.4 GET /api/events?deleted=1 likewise', del.text);
+  ok(queries.length === 2 && queries.every(function (q) { return JSON.stringify(q.fields) === JSON.stringify(LIST_FIELDS_NOW) && q.limit === 1000; }),
     'B.4 … each one query that reads only the list\'s fields, at most 1,000 events', queries);
   var other = await call('GET', '/api/events?deleted=0'), other2 = await call('GET', '/api/events?deleted=true');
   ok(other.text === live.text && other2.text === live.text, 'B.4 deleted=0 or anything but 1 is the live list, as before');
@@ -349,7 +363,7 @@ function fakeRes() {
   ok(auto && JSON.stringify(auto.data.counters) === JSON.stringify({ registrations: 42, views: 900, audienceV: 2, uniques: 300, mobile: 120, desktop: 180 }),
     'B.4 … with the raw counters (audienceV, uniques, mobile, desktop kept) for insightTotals, so no event is read twice', auto && auto.data.counters);
   ok(auto && auto.data.generatedSections === undefined && auto.data.siteLock === undefined && auto.data.slug === undefined &&
-    docs.every(function (d) { return Object.keys(d.data).every(function (k) { return LIST_FIELDS_AT_DC1A8E1.indexOf(k) !== -1; }); }),
+    docs.every(function (d) { return Object.keys(d.data).every(function (k) { return LIST_FIELDS_NOW.indexOf(k) !== -1; }); }),
     'B.4 … and only the list\'s fields: no site markup, no site lock', auto && Object.keys(auto.data));
   var legacy = docs.filter(function (d) { return d.id === 'legacy-forum'; })[0];
   ok(legacy && legacy.data.counters.audienceV === undefined && legacy.data.counters.views === 310 && typeof legacy.data.updatedAt.toDate === 'function',

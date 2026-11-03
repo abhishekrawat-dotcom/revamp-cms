@@ -14,7 +14,10 @@
      .fmtDate(v)          "14 Mar 2027" — a date-only value is that calendar day, never shifted or timed
      .fmtDT(v)            "Mar 14, 2027 (07:00 PM)" — the time only when the value has one
      .fmtRange(start,end) "14–15 Mar 2027", "30 Mar – 2 Apr 2027"; '' with no start
-     .PORTALS .AV
+     .AV                  the avatar colours
+                          An event's portal is ev.portal (a slug of ET's roster) and its name ev.portalName, both
+                          from the server; the roster itself is portal-picker.js's (window.RevampPortals), so
+                          no table of portal names is kept here
      .TYPES               the one table of event categories (key -> label); no page keeps its own
      .slugify(text)       the event-address rule (same as the backend's)
      .isReservedSlug(s)   true for an address no event can have (gen-…, imported-…, numbers, new, …)
@@ -33,7 +36,9 @@
                                    'slug-taken', 400 -> err.code 'slug-reserved'; both carry err.suggestion
      .updateEvent(eventId, patch, {ifUpdatedAt})
                                   PATCH  /api/event -> {ok, updatedAt}; with ifUpdatedAt, 409 -> err.code
-                                   'stale', err.current {updatedAt, updatedBy} (someone else saved first)
+                                   'stale', err.current {updatedAt, updatedBy} (someone else saved first).
+                                   A patch with a portal carries ifPortal, the portal the page showed ('' for
+                                   none): 409 -> err.code 'portal-changed', err.current, err.currentName
      .slugAvailable(slug)         GET    /api/event/slug-available -> {available, suggestion, reason, message}
      .deleteEvent(eventId)        DELETE /api/event — restorable; the address stays reserved
      .discardEvent(eventId)       DELETE /api/event?discard=1 — a draft this user just created and has not
@@ -183,11 +188,6 @@ window.RevampCore = (function(){
     ticket:   '<path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a2.2 2.2 0 0 0 0 4.4v1.3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.3a2.2 2.2 0 0 0 0-4.4z"/><path d="M14 6.5v11"/>'
   };
 
-  var PORTALS = {
-    cio:'ETCIO', bfsi:'ETBFSI', legal:'ETLegalWorld', auto:'ETAuto', telecom:'ETTelecom',
-    retail:'ETRetail', health:'ETHealthWorld', hrworld:'ETHRWorld', manufacturing:'ETManufacturing',
-    gov:'ETGovernment', brandequity:'ETBrandEquity'
-  };
   var TYPES = {
     ip:'IP Event', client:'Client Event', editorial:'Editorial',
     leadgen:'Lead-Gen Microsite', roundtable:'Round Table', awards:'Awards'
@@ -1043,7 +1043,7 @@ window.RevampCore = (function(){
     return {
       EV: opts.EV,
       S: opts.S,
-      IC: IC, AV: AV, PORTALS: PORTALS, TYPES: TYPES,
+      IC: IC, AV: AV, TYPES: TYPES,
       $: $, esc: esc, svg: svg,
       comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange,
       statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
@@ -1063,7 +1063,7 @@ window.RevampCore = (function(){
   return {
     $: $, esc: esc, svg: svg, IC: IC, AV: AV,
     comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange, rnd: rnd,
-    PORTALS: PORTALS, TYPES: TYPES,
+    TYPES: TYPES,
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,

@@ -26,8 +26,9 @@ var INLINE = START === -1 ? '' : PAGE.slice(START + '<script>'.length, PAGE.inde
 /* ======== 1. the page as a file ======== */
 check('D.2 the inline script is found', INLINE.length > 50000);
 var scripts = (PAGE.match(/<script\b[^>]*>/g) || []);
-check('D.2 script order: theme bootstrap, theme-toggle.js, auth.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
-  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+/* portal-picker.js (the portals change) sits right after auth.js, and event-lifecycle.js stays right before the inline script */
+check('D.2 script order: theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
+  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
 check('D.2 the second plain <script> is the inline script itself', PAGE.indexOf('<script src="event-lifecycle.js"></script>\n<script>\n(function(){') !== -1);
 check('D.2 the kit\'s scripts come after the inline script (RvListing exists before they run)', PAGE.indexOf('<script src="etb2b-chat.js">') > PAGE.indexOf('})();\n</script>', START) &&
   PAGE.indexOf('<script src="dash-bot-client.js">') > PAGE.indexOf('<script src="etb2b-chat.js">'));
@@ -147,7 +148,7 @@ check('D.2 rows carry the four search cells, spaces and line breaks folded, lowe
 check('D.2 search: the client is searched', H.searchHit(row3, 'Ltd') === true && H.searchHit(row3, 'infosys ltd') === true);
 check('D.2 search: the words searched for are folded the same way (case, spaces)', H.searchHit(row3, '  INFOSYS    LTD ') === true && H.searchHit(row3, 'leaders meet') === true);
 check('D.2 search: each field on its own, never across two', H.searchHit(row3, 'Mumbai Infosys') === false && H.searchHit(row3, 'meet mumbai') === false);
-check('D.2 search: the creator\'s e-mail, the type and the portal are not searched (the server does not search them)',
+check('D.2 search: the creator\'s e-mail, the type and the portal are not in the event\'s own search cells (the server does not search them there; a portal\'s name is matched on its own, below)',
   H.searchHit(row3, 'ravi') === false && H.searchHit(row3, 'infosys.com') === false && H.searchHit(row3, 'custom') === false && H.searchHit(row3, 'ETCIO') === false);
 check('D.2 search: "Venue to be confirmed" and "—" are the table\'s words, not the event\'s', H.searchHit(row, 'confirmed') === false && H.searchHit(row3, '—') === false);
 check('D.2 search: an empty search matches everything; a row with no cells matches nothing', H.searchHit(row3, '') === true && H.searchHit(row3, '   ') === true && H.searchHit({}, 'x') === false);
@@ -213,7 +214,8 @@ function stand(opt) {
     activeElement: { tagName: 'BODY' },
     documentElement: new El('', {}, 'html'),
     body: new El('', {}, 'body'),
-    getElementById: function (id) { if (!ids[id]) ids[id] = new El(id, { id: id }); return ids[id]; },
+    /* each element by id comes with a parent of its own (the toolbar hides the Portal filter's popover-wrap) */
+    getElementById: function (id) { if (!ids[id]) { ids[id] = new El(id, { id: id }); ids[id].parentNode = new El('', {}, 'div'); } return ids[id]; },
     /* closeAll() hides every .popover: here, the popovers and menus the page has asked for by id */
     querySelectorAll: function (sel) { return sel === '.popover' ? Object.keys(ids).filter(function (k) { return /popover|menu/.test(k); }).map(function (k) { return ids[k]; }) : []; },
     querySelector: function () { return null; },
@@ -250,6 +252,22 @@ function stand(opt) {
   /* a browser that can tell when the "Latest activity" card comes near the screen (opt.io): the test says when */
   var observers = [];
   if (opt.io) ctx.IntersectionObserver = function (cb, o) { var me = { cb: cb, o: o, watched: [], gone: false }; observers.push(me); this.observe = function (el) { me.watched.push(el); }; this.disconnect = function () { me.gone = true; }; };
+  /* window.RevampPortals as portal-picker.js gives it (its contract K9), which the page loads before its own script:
+     ET's roster, and the person's working portal (opt.working: a slug, 'all', or none chosen yet). Its own reads
+     never reach fetch here, so the page's reads above are counted as before. */
+  if (!opt.noPortals) {
+    var roster = require('./et-events').portalList();
+    var nameOf = function (slug) { var p = roster.filter(function (r) { return r.slug === slug; })[0]; return p ? p.name : ''; };
+    ctx.RevampPortals = {
+      list: function () { return Promise.resolve(roster.map(function (p) { return { slug: p.slug, name: p.name }; })); },
+      working: function () { return Promise.resolve(opt.working || null); },
+      cachedWorking: function () { return opt.working || null; },
+      setWorking: function (v) { return Promise.resolve(v); },
+      nameOf: nameOf,
+      chipHtml: function (o) { return '<span class="rvp-chip"><span class="rvp-chip-text">No portal yet</span><button type="button" class="rvp-chip-btn" data-set-portal="' + o.eventId + '">Set portal</button></span>'; },
+      openSetPortal: function () {}
+    };
+  }
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
@@ -279,8 +297,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.2 a page opened with no address keeps it (no #tab=active written on load)', S.replaced.length === 0, S.replaced);
   check('D.2 me(): the signed-in person', same(JSON.parse(JSON.stringify(L.me())), { email: 'Asha.Rao@timesinternet.in', name: 'Asha Rao' }));
   var base = S.snap();
-  check('D.2 snapshot(): {tab, specialView, search, filters, created, starts, mine, sort, page, view} (+ shown)', same(Object.keys(base), ['tab', 'specialView', 'search', 'filters', 'created', 'starts', 'mine', 'sort', 'page', 'view', 'shown']) &&
-    same(base, { tab: 'active', specialView: null, search: '', filters: { types: [], portals: [], payment: [] }, created: null, starts: null, mine: false, sort: { field: 'start', dir: 'asc' }, page: 1, view: 'list', shown: 1 }), base);
+  check('D.2 snapshot(): {tab, specialView, search, filters, created, starts, mine, sort, page, view} (+ portal, shown)', same(Object.keys(base), ['tab', 'specialView', 'search', 'filters', 'created', 'starts', 'mine', 'sort', 'page', 'view', 'portal', 'shown']) &&
+    same(base, { tab: 'active', specialView: null, search: '', filters: { types: [], portals: [], payment: [] }, created: null, starts: null, mine: false, sort: { field: 'start', dir: 'asc' }, page: 1, view: 'list', portal: '', shown: 1 }), base);
   var s1 = L.snapshot(); s1.filters.types.push('ip');
   check('D.2 snapshot() is a copy (changing it changes nothing)', S.snap().filters.types.length === 0);
   check('D.2 the Active tab lists the live, running event', same(shownIds(S), ['live-active']));
@@ -402,7 +420,7 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
     'Infosys': ['campus-day', 'cx-forum', 'infy-summit'],      // client, client with two spaces, venue; not the creator's e-mail
     'infosys ltd': ['cx-forum'],
     'Times': ['campus-day'],                                     // a name, not every timesinternet.in creator
-    'timesinternet': [], 'ETCIO': [], 'ravi': [], 'Awards': [], 'Custom': [],   // e-mail, portal, type: searched by neither
+    'timesinternet': [], 'ETCIO': [], 'ravi': [], 'Awards': [], 'Custom': [],   // e-mail, type: searched by neither; no event here is on ETCIO
     'confirmed': [],                                             // "Venue to be confirmed" is the table's fill-in
     'Mumbai': ['cx-forum'], 'Mumbai Infosys': []                 // a field on its own, never across two
   };
@@ -420,6 +438,53 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
     check('D.2 one search: "' + q + '" typed into the box shows the same events', Sp.snap().search === q.trim() && same(shownIds(Sp).sort(), serverIds), [shownIds(Sp), serverIds]);
   }
   Sp.L.restore(base);
+
+  /* ======== D.2 the list works on one portal at a time (the portals change): ETB2B AI follows it, never moves it ======== */
+  var PORTAL_ITEMS = [
+    { id: 'cio-active', name: 'CIO Active Forum', category: 'ip', published: true, start: '2020-01-01T10:00', end: '2099-01-01T10:00', city: 'Pune', portal: 'cio', portalName: 'ETCIO', createdAt: '2026-10-20T00:00:00.000Z', createdBy: ME, counters: {} },
+    { id: 'hr-active', name: 'HR Active Summit', category: 'ip', published: true, start: '2020-01-01T10:00', end: '2099-01-01T10:00', city: 'Mumbai', portal: 'hr', portalName: 'ETHRWorld', createdAt: '2026-10-21T00:00:00.000Z', createdBy: ME, counters: {} },
+    { id: 'none-active', name: 'Unsorted Active Meet', category: 'ip', published: true, start: '2020-01-01T10:00', end: '2099-01-01T10:00', city: 'Delhi', portal: '', portalName: '', createdAt: '2026-10-22T00:00:00.000Z', createdBy: ME, counters: {} }
+  ];
+  var Sw = stand({ items: PORTAL_ITEMS, working: 'cio' }); await flush();
+  var sw = Sw.snap();
+  check('D.2 portals: snapshot() says the portal the list is on (ETCIO), and the list shows only its events', sw.portal === 'cio' && same(shownIds(Sw), ['cio-active']), [sw.portal, shownIds(Sw)]);
+  Sw.L.apply({ view: 'active', search: 'forum', types: [], mine: false, created: null, starts: null, sort: null });
+  check('D.2 portals: apply() keeps the portal (ETB2B AI never switches it)', Sw.snap().portal === 'cio' && same(shownIds(Sw), ['cio-active']), [Sw.snap().portal, shownIds(Sw)]);
+  Sw.L.restore(Object.assign(Sw.snap(), { portal: 'hr', search: '', filters: { types: [], portals: ['none', 'hr', 'nowhere', '__proto__', 'none', 7], payment: [] } }));
+  var sr = Sw.snap();
+  check('D.2 portals: restore() never moves the portal (Undo cannot reach the saved choice)', sr.portal === 'cio' && same(shownIds(Sw), ['cio-active']), [sr.portal, shownIds(Sw)]);
+  check('D.2 portals: restore() keeps "none" and ET\'s portals in the Portal filter, once each, and drops the rest', same(sr.filters.portals, ['none', 'hr']), sr.filters.portals);
+  var Sall = stand({ items: PORTAL_ITEMS, working: 'all' }); await flush();
+  check('D.2 portals: All portals is "" in the snapshot (the bot\'s "every portal")', Sall.snap().portal === '' && same(shownIds(Sall).sort(), ['cio-active', 'hr-active', 'none-active']), [Sall.snap().portal, shownIds(Sall)]);
+  /* one search, with portals: the server and the list agree on the portal's name too */
+  var pctx = bot.contextFor({ decoded: { email: ME }, name: 'Asha Rao', message: 'Which events are running?', view: {}, docs: PORTAL_ITEMS.map(function (d) { return { id: d.id, data: d }; }) });
+  pctx.events.forEach(function (ev) { pctx.totals[ev.id] = null; });
+  var PEXPECT = { 'ETHRWorld': ['hr-active'], 'hrworld': ['hr-active'], 'ETCIO': ['cio-active'], 'No portal yet': ['none-active'], 'Mumbai': ['hr-active'], 'Active': ['cio-active', 'hr-active', 'none-active'] };
+  for (var pq in PEXPECT) {
+    var pr = await bot.runList({ statuses: ['active'], search: pq, limit: 20 }, pctx);
+    var pIds = pr.list.items.map(function (it) { return it.id; }).sort();
+    check('D.2 portals, one search: the server picks ' + JSON.stringify(PEXPECT[pq]) + ' for "' + pq + '" in all portals', same(pIds, PEXPECT[pq]), pIds);
+    Sall.L.restore(Object.assign(Sall.snap(), { search: '', tab: 'active', specialView: null }));
+    Sall.L.apply(pr.list.view);
+    check('D.2 portals, one search: "Show these in the list" for "' + pq + '" shows the server\'s events', !!pr.list.view && same(shownIds(Sall).sort(), pIds), [shownIds(Sall), pIds]);
+    Sall.L.restore(Object.assign(Sall.snap(), { search: '' }));
+    Sall.$('search-input').value = pq;
+    Sall.$('search-input').fire('input');
+    check('D.2 portals, one search: "' + pq + '" typed into the box shows the same events', same(shownIds(Sall).sort(), pIds), [shownIds(Sall), pIds]);
+  }
+  var cctx = bot.contextFor({ decoded: { email: ME }, name: 'Asha Rao', message: 'Which events are running?', view: { portal: 'cio' }, docs: PORTAL_ITEMS.map(function (d) { return { id: d.id, data: d }; }) });
+  cctx.events.forEach(function (ev) { cctx.totals[ev.id] = null; });
+  var cr = await bot.runList({ statuses: ['active'], search: 'Active', limit: 20 }, cctx);
+  Sw.L.restore(Object.assign(Sw.snap(), { search: '', filters: { types: [], portals: [], payment: [] } }));
+  Sw.L.apply(cr.list.view);
+  check('D.2 portals: on ETCIO the server lists ETCIO\'s events only, and "Show these in the list" there shows the same', same(cr.list.items.map(function (it) { return it.id; }), ['cio-active']) &&
+    !!cr.list.view && same(shownIds(Sw), ['cio-active']), [cr.list.items.map(function (it) { return it.id; }), shownIds(Sw)]);
+
+  var octx = bot.contextFor({ decoded: { email: ME }, name: 'Asha Rao', message: 'Find No portal yet', view: {}, docs: [{ id: 'odd', data: { name: 'Odd Portal Meet', portal: 'nowhere', published: true } }] });
+  octx.events.forEach(function (ev) { octx.totals[ev.id] = null; });
+  var orr = await bot.runList({ statuses: [], search: 'No portal yet', limit: 20 }, octx);
+  check('D.2 portals: a stored portal off ET\'s roster is "No portal yet" to the bot, as the events list says (api.js eventListItem)',
+    octx.events[0].portal === '' && same(orr.list.items.map(function (it) { return it.id; }), ['odd']), [octx.events[0].portal, orr.list.items.map(function (it) { return it.id; })]);
 
   /* ======== D.3 "Latest activity": real figures for the period picked, or a dash and the reason (QA F4, UX-017) ======== */
   var ACT = INLINE.slice(INLINE.indexOf('     LATEST ACTIVITY —'), INLINE.indexOf('     APP RENDER'));

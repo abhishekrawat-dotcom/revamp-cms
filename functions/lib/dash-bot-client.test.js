@@ -612,6 +612,17 @@ var LIST = {
   await Pv.say('most visited events');
   vi = Pv.last().lists[0].items;
   check('D.1 an unknown list.metric is ignored (the title decides)', vi[0].value === '9,000 visitors', vi[0]);
+  /* the portal the list is on (the portals change): the dashboard's snapshot names it, '' for All portals */
+  function hello(id) { return ok({ turnId: id, kind: 'reply', parts: [{ t: 'text', v: 'Hello.' }], list: null, action: null, asOf: '2026-11-03T06:35:00.000Z', notes: [] }); }
+  var Ppo = await page({ answers: [hello('TurnPortal0001'), hello('TurnPortal0002')] });
+  Ppo.listing.base.portal = 'cio';
+  await Ppo.say('How many events are running?');
+  var cPortal = Ppo.botCalls()[0];
+  check('D.1 view.portal is the portal the list is on', !!cPortal && cPortal.body.view.portal === 'cio', cPortal && cPortal.body.view);
+  Ppo.listing.base.portal = 7;
+  await Ppo.say('And now?');
+  cPortal = Ppo.botCalls()[1];
+  check('D.1 …and anything but a string is All portals ("")', !!cPortal && cPortal.body.view.portal === '', cPortal && cPortal.body.view);
   var Pr = await page({ answers: [ok({ turnId: T6, kind: 'reply', parts: [{ t: 'text', v: 'Hello.' }], list: null, action: null, asOf: '2026-11-03T06:35:00.000Z', notes: [] })] });
   await Pr.say('hello');
   check('D.1 a reply with no figures has no "as of"', !('asOf' in Pr.last().o) && Pr.last().buttons.length === 0 && Pr.last().countdowns.length === 0);

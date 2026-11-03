@@ -388,7 +388,8 @@ function eventOf(doc, me, now) {
     datePartial: isObj(d.datePartial) ? d.datePartial : null,
     venue: displayLine(d.venue, 200), city: displayLine(d.city, 120), client: displayLine(d.client, 200),
     createdAt: isoOf(d.createdAt), updatedAt: isoOf(d.updatedAt) || isoOf(d.createdAt), createdBy: text(d.createdBy),
-    portal: text(d.portal), portalName: text(d.portalName)
+    /* a stored portal off ET's roster is none, as the events list says ("No portal yet": api.js eventListItem) */
+    portal: etEvents.isPortal(text(d.portal)) ? text(d.portal) : '', portalName: text(d.portalName)
   };
   ev.startDay = eventDay(ev.start);
   ev.endDay = ev.startDay ? (eventDay(ev.end) || ev.startDay) : '';
@@ -1082,9 +1083,13 @@ function portalScope(rule, ctx) {
   return { test: function (ev) { return ev.portal === p; }, label: portalNameOf(p), working: working === p };
 }
 function inDays(day, r) { return !!day && day >= r.from && day <= r.to; }
+/* The dashboard's own search, so "Show these in the list" shows exactly these events: the event's name, venue, city
+   and client, and the name of its portal as the list shows it ("ETHRWorld", or "No portal yet" for none) — each on
+   its own (Event_Listing.html searchHit and portalSearchHit). */
 function searchHit(ev, q) {
   q = q.toLowerCase();
-  return [ev.name, ev.venue, ev.city, ev.client].some(function (v) { return String(v || '').toLowerCase().indexOf(q) !== -1; });
+  var portal = ev.portal ? portalNameOf(ev.portal, ev) : 'No portal yet';
+  return [ev.name, ev.venue, ev.city, ev.client, portal].some(function (v) { return String(v || '').toLowerCase().indexOf(q) !== -1; });
 }
 function startKey(ev) { var t = stampMs(ev.start); return isNaN(t) ? (ev.startDay ? dayNumber(ev.startDay) : (ev.period ? dayNumber(ev.period.from) : Infinity)) : t; }
 function compareBy(field, dir, ctx) {

@@ -289,7 +289,9 @@ function entityOf(eventId, kit, ev, base, awardRec) {
   var siteUrl = e.siteUrl || '';
   var edition = engine.parseEdition(e.edition || '', e.name || '', e.description || '');
   return {
+    /* the event's own portal (lib/promo.js portalInfo: events/<id>.portal), its slug and the name the studio shows */
     portal: (b.portal && b.portal.slug) || '',
+    portalName: (b.portal && b.portal.name) || '',
     entityId: 0, oneworldId: eventId,
     name: e.name || eventId,
     edition: edition || undefined,
@@ -584,7 +586,7 @@ function handleCatalog(req, res) {
       var ev = r[0].ev;
       sendJson(res, 200, Object.assign({
         event: { name: ev.name, hashtag: ev.hashtag, dateLabel: ev.dateLabel, venue: ev.venue || ev.city, micrositeUrl: ev.micrositeUrl,
-          siteAccent: ev.siteAccent, siteTheme: ev.siteTheme, bannerUrl: ev.keyVisualUrl || null, portal: ev.portal },
+          siteAccent: ev.siteAccent, siteTheme: ev.siteTheme, bannerUrl: ev.keyVisualUrl || null, portal: ev.portal, portalName: ev.portalName },
         saves: r[1], tones: engine.TONE_OPTIONS
       }, engine.buildMailerCatalog(ev), {
         /* false: this event's exports go out untracked, so the studio hides "Link tracking" (it would do nothing) */

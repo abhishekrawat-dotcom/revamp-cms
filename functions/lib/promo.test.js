@@ -378,6 +378,17 @@ ok(typeof apiDarkCopyOfUnit === 'function' && unitAnswers.every(function (a) { r
   'dark copy: darkCopyOfUnit answers as api.js\'s does, case for case', JSON.stringify(unitAnswers));
 ok(p.logoUnit && p.logoUnit.darkUrl === '', 'dark copy: an ET banner\'s logo has none', JSON.stringify(p.logoUnit));
 
+/* ---------- the event's portal: events/<id>.portal as stored, and nothing worked out ---------- */
+var hrInfo = P.portalInfo('hr');
+ok(hrInfo && hrInfo.slug === 'hr' && hrInfo.name === 'ETHRWorld' && hrInfo.logo === '/templates/_shared/img/portals/hr.png' &&
+  hrInfo.logoLight === '/templates/_shared/img/portals/hr-light.png', 'portal: a roster slug gives its name and both wordmarks', JSON.stringify(hrInfo));
+ok(['', null, undefined, 'hrworld', 'HR', '__proto__', 'toString', 'constructor', 7, {}, 'https://hr.economictimes.indiatimes.com/x'].every(function (v) { return P.portalInfo(v) === null; }),
+  'portal: anything not on the roster — an address included — is no portal (null)');
+var promoSrc = require('fs').readFileSync(path.join(__dirname, 'promo.js'), 'utf8');
+ok(promoSrc.indexOf('previousEditionUrl') === -1, 'portal: promo.js no longer reads ev.previousEditionUrl (written by nothing)');
+ok(/brand\.portal = portalInfo\(ev\.portal\);/.test(promoSrc) && !/brand\.portal = portalOf\(/.test(promoSrc) && !/logoUnitFrom[^\n]*portal|portal[^\n]*logoUnitFrom/.test(promoSrc),
+  'portal: the kit\'s brand.portal is the stored portal, not read from the reference page or the logo unit\'s page');
+
 /* ---------- the AI copy route: a limit per person, and never from example content ---------- */
 const { sendJson } = require('./http');
 var FAILS = [], LIVE = { calls: 0 };

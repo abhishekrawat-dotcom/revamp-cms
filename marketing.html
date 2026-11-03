@@ -10,6 +10,29 @@
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="promo.css">
 <style>
+  /* The date line and, while the event has no portal, "No portal yet" with Set portal beside it (paintHeader),
+     as in the event console. Only the console's tokens, so it follows the light and dark switch. On a phone or a
+     narrow window the top bar has room for the button alone: the date line and the chip's label give way to a
+     button of the same words. */
+  .ev-title .ev-sub{ display:flex; align-items:center; gap:8px; min-width:0; margin-top:1px; }
+  /* the date line gives way first; the chip only when there is no room left at all, and it is then cut off rather
+     than drawn over the buttons beside it (its padding keeps room for a focus ring) */
+  .ev-title .ev-sub .meta{ min-width:0; flex:0 1000 auto; margin-top:0; }
+  .ev-title .ev-portal{ display:inline-flex; align-items:center; flex:0 1 auto; min-width:0; overflow:hidden; padding:4px; margin:-4px; }
+  .ev-title .ev-portal[hidden]{ display:none; }
+  .ev-portal-wide{ display:inline-flex; align-items:center; gap:6px; }
+  .ev-portal-mini{ display:none; align-items:center; min-height:24px; padding:3px 9px; border-radius:999px; cursor:pointer;
+    border:1px solid var(--border); background: var(--surface); color: var(--text); font-size:11.5px; font-weight:700;
+    line-height:1.2; white-space:nowrap; }
+  .ev-portal-mini:hover, .ev-portal-mini:focus-visible{ border-color: var(--accent); }
+  @media (max-width: 680px){
+    .ev-title .ev-sub.has-portal-chip .meta{ display:none; }
+    .ev-portal-wide{ display:none; }
+    .ev-portal-mini{ display:inline-flex; }
+  }
+</style>
+<!-- a block of its own: the one above is the event console's header rules, kept identical to edit-event.html's -->
+<style>
   /* the line under the tabs while a mailer ETB2B AI opened waits on the Mailers tab (mailerWaitingHtml) */
   .promo-deep-note{ margin-top:12px; align-items:center; flex-wrap:wrap; }
   .promo-deep-note > span{ flex:1 1 220px; min-width:0; }
@@ -25,7 +48,11 @@
   </a>
   <span class="ev-title">
     <h1 id="ev-name">&nbsp;</h1>
-    <span class="meta" id="ev-meta"></span>
+    <span class="ev-sub">
+      <span class="meta" id="ev-meta"></span>
+      <!-- "No portal yet" and Set portal, while the event has no portal (paintHeader) -->
+      <span class="ev-portal" id="ev-portal" hidden></span>
+    </span>
   </span>
   <span class="topbar-acts">
     <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
@@ -56,6 +83,8 @@
   })();
 </script>
 <script src="auth.js"></script>
+<!-- ET's portals and the Set portal dialog (window.RevampPortals) -->
+<script src="portal-picker.js"></script>
 <script src="sidebar.js"></script>
 <script src="assets/vendor/html-to-image.js"></script>
 <script src="assets/vendor/jszip.min.js"></script>
@@ -130,9 +159,11 @@
     });
   }
 
+  /* The event's portal is the server's: ev.portalName, which it gives only for a portal on ET's roster */
   function paintHeader(ev){
     var name = String(ev.name || '').trim() || 'Untitled event';
-    $('ev-name').textContent = name + (C.PORTALS[ev.portal] ? ' | ' + C.PORTALS[ev.portal] : '');
+    var portalName = String(ev.portalName || '').trim();
+    $('ev-name').textContent = name + (portalName ? ' | ' + portalName : '');
     var bits = [];
     if (ev.start) bits.push(C.fmtDT(ev.start));
     if (ev.eventNo) bits.push(ev.eventNo);
@@ -140,6 +171,29 @@
     if (cat) bits.push(cat);
     $('ev-meta').textContent = bits.join('  |  ');
     document.title = 'Promotions — ' + name + ' — Oneworld 2.0';
+    paintPortalChip(ev, name);
+  }
+  /* "No portal yet" and Set portal beside the date line while the event has none: RevampPortals' chip, and on a
+     phone a button of the same words in its place (the rules at the top of the page). The page does without
+     both when portal-picker.js is missing. The Kit, with the portal's name and wordmark for every mailer and
+     post, is loaded once for the page, so once the portal is set the page is loaded again. */
+  function paintPortalChip(ev, name){
+    var host = $('ev-portal'), RP = window.RevampPortals;
+    if (!host || !RP || typeof RP.chipHtml !== 'function') return;
+    var none = !String(ev.portalName || '').trim();
+    host.hidden = !none;
+    if (host.parentNode && host.parentNode.classList) host.parentNode.classList.toggle('has-portal-chip', none);
+    host.innerHTML = none ? '<span class="ev-portal-wide">' + RP.chipHtml({ eventId: eventId, eventName: name }) + '</span>' +
+      '<button type="button" class="ev-portal-mini" data-set-portal="' + esc(eventId) + '" aria-label="No portal yet. Set portal">Set portal</button>' : '';
+    host.onclick = function(e){
+      var b = e.target && e.target.closest ? e.target.closest('[data-set-portal]') : null;
+      if (!b || typeof RP.openSetPortal !== 'function') return;
+      RP.openSetPortal({
+        eventId: eventId, eventName: name, current: '',
+        hasGeneratedSite: !!ev.generatedAt, published: ev.published === true,
+        onDone: function(){ location.reload(); }
+      });
+    };
   }
 
   function head(){

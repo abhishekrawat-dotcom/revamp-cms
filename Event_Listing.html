@@ -588,6 +588,38 @@
   #toast-region{ position:fixed; bottom:22px; right:22px; display:flex; flex-direction:column; gap:8px; z-index:100; }
   .toast{ background:var(--text); color:var(--bg); font-size:13px; font-weight:600; padding:11px 16px; border-radius:8px; box-shadow:var(--shadow-md); opacity:0; transform:translateY(6px); transition:opacity .18s ease, transform .18s ease; max-width:340px; }
   .toast.show{ opacity:1; transform:translateY(0); }
+  .toast-btn{ background:none; border:none; padding:0; margin-left:10px; color:var(--bg); font-size:13px; font-weight:800; text-decoration:underline; }
+
+  /* ---------- portals: the dashboard works on one ET portal at a time (the top-bar switcher), or on all of them
+     with a Portal column. Words on these grounds are --text or --text-muted (AA in light and dark); links are
+     --accent-strong, except on --accent-soft where they would fall just short of AA. ---------- */
+  #portals-nav-menu{ width:340px; max-width:calc(100vw - 32px); max-height:60vh; display:flex; flex-direction:column; gap:6px; }
+  .pn-search{ display:flex; align-items:center; gap:7px; margin:0 2px; padding:7px 9px; border:1px solid var(--border-strong); border-radius:var(--r-sm); background:var(--surface); color:var(--text-muted); }
+  .pn-search:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .pn-search input{ border:none; background:none; outline:none; width:100%; font-size:13px; color:var(--text); }
+  .pn-search input::placeholder{ color:var(--text-muted); }
+  .pn-list{ overflow-y:auto; min-height:0; flex:1 1 auto; }
+  .pn-opt{ display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:7px; font-size:13px; color:var(--text); cursor:pointer; }
+  .pn-opt:hover, .pn-opt.pn-active{ background:var(--surface-2); }
+  .pn-opt.pn-active{ box-shadow:inset 0 0 0 1px var(--border-strong); }
+  .pn-opt[aria-selected="true"]{ font-weight:700; }
+  .pn-opt .pn-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pn-opt .pn-count{ font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); }
+  .pn-msg{ padding:8px 9px; font-size:12.5px; color:var(--text-muted); }
+  .pn-link{ background:none; border:none; padding:0; font-size:13px; font-weight:700; color:var(--accent-strong); text-decoration:underline; cursor:pointer; white-space:nowrap; }
+  #portal-notice{ display:flex; flex-direction:column; gap:8px; }
+  #portal-notice:empty{ display:none; }
+  .portal-notice{ display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; padding:10px 14px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:13px; }
+  .portal-notice > svg{ color:var(--text-muted); flex-shrink:0; }
+  .portal-notice .pn-text{ flex:1 1 220px; min-width:0; }
+  .portal-notice.portal-callout{ background:var(--accent-soft); border-color:transparent; }
+  .portal-callout .pn-link{ color:var(--text); }
+  .ev-table .col-portal{ display:none; }
+  #results-view.all-portals .ev-table .col-portal{ display:table-cell; }
+  .ev-portal-name{ font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; }
+  .ev-card-portal{ display:none; align-items:center; gap:7px; font-size:12.5px; color:var(--text-muted); }
+  #results-view.all-portals .ev-card-portal{ display:flex; }
+  .ev-card-portal svg{ color:var(--text-faint); flex-shrink:0; }
 
   .fade-in{ animation:fadeIn .18s ease both; }
   @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
@@ -616,9 +648,11 @@
 
     <div style="flex:1;"></div>
 
+    <!-- the portal this person works on (ET's real roster, GET /api/et/portals); the list and Create Event follow it.
+         "Portal" until this browser or the server has said which one, never a guessed name -->
     <div class="main-nav-portals popover-wrap">
-      <button class="mp-btn" id="btn-portals-nav">
-        Brandequity
+      <button class="mp-btn" id="btn-portals-nav" type="button" aria-haspopup="listbox">
+        Portal
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="popover right wide" id="portals-nav-menu" hidden></div>
@@ -708,6 +742,8 @@
   </div>
 
   <div id="special-banner"></div>
+  <!-- the first-visit "Choose the portal you work on" callout, and "N events have no portal yet" (renderPortalNotice) -->
+  <div id="portal-notice"></div>
 
   <div id="results-view" class="view-list">
     <div class="table-wrap" id="table-wrap">
@@ -715,6 +751,7 @@
         <thead>
           <tr>
             <th>Event name</th>
+            <th class="col-portal">Portal</th>
             <th class="sortable" data-sort="start">Event date <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
             <th class="sortable" data-sort="visitors">Visitors <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
             <th class="sortable" data-sort="registrations">Registrations <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
@@ -816,6 +853,8 @@
 
 <script src="theme-toggle.js"></script>
 <script src="auth.js"></script>
+<!-- ET's portal roster, the person's working portal and the Set portal window (window.RevampPortals) -->
+<script src="portal-picker.js"></script>
 <!-- the one rule for Draft / Upcoming / Active / Completed, shared with ETB2B AI's server so the two never disagree -->
 <script src="event-lifecycle.js"></script>
 <script>
@@ -890,8 +929,11 @@
   var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table', awards:'Awards' };
   var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber', awards:'ev-tag-amber' };
   function typeLabel(type){ return EVENT_TYPES[type] || (type ? String(type) : 'Event'); }
-  var PORTALS = { brandequity:'Brandequity', retail:'Retail', auto:'Auto', health:'Health', telecom:'Telecom', bfsi:'BFSI', cio:'CIO', hrworld:'HRWorld', legal:'Legal', manufacturing:'Manufacturing', government:'Government' };
-  var CURRENT_PORTAL = 'brandequity';   // the portal this account is signed into — shown in the top-nav switcher
+  /* ET's portal roster, [{slug, name}] by name, as GET /api/et/portals answers it through portal-picker.js
+     (window.RevampPortals) — the very list the server checks every event's portal against. This page used to
+     keep an invented table of eleven (two of them with slugs ET does not use) and a fixed "current" portal. */
+  var PORTAL_ROSTER = [];
+  var rosterState = 'loading';          // 'loading' | 'ready' | 'failed'
 
   var uidn = 0;
   function nextId(){ uidn++; return 'ev_' + uidn; }
@@ -937,7 +979,11 @@
       id: ev.id, slug: ev.slug || ev.id, name: ev.name || 'Untitled event',
       venue: ev.venue || 'Venue to be confirmed', city: ev.city || '—',
       eventNo: hashToEventNo(ev.id),
-      type: ev.category || 'ip', portal: 'cio',
+      type: ev.category || 'ip',
+      /* the event's stored portal (a roster slug, '' for none yet) and its name, both from the server; the two
+         facts Set portal's window needs are kept beside them (published is kept further down) */
+      portal: typeof ev.portal === 'string' ? ev.portal : '', portalName: typeof ev.portalName === 'string' ? ev.portalName : '',
+      hasGeneratedSite: ev.hasGeneratedSite === true,
       status: window.RevampLifecycle.of(ev, Date.now()),
       start: ev.start || null, end: ev.end || null,
       registrations: Number(counters.registrations) || 0, regTarget: null, visitors: Number(counters.views) || 0, crmLeads: 0,
@@ -966,6 +1012,13 @@
   function searchHit(e, q){
     q = searchLine(q, 80).toLowerCase();
     return !q || (e.searchIn || []).some(function(v){ return v.indexOf(q) !== -1; });
+  }
+  /* The search also finds an event by its portal's name as the list shows it ("ETCIO", or "No portal yet" for
+     none). ETB2B AI's server looks at the same name (dash-bot.js searchHit), so "Show these in the list" still
+     shows exactly the events the bot listed. */
+  function portalSearchHit(e, q){
+    q = searchLine(q, 80).toLowerCase();
+    return !!q && searchLine(e.portal ? portalNameOf(e.portal) : 'No portal yet', 120).toLowerCase().indexOf(q) !== -1;
   }
 
   /* GET /api/events, admin-gated — same Authorization: Bearer <token> pattern every other authed call in
@@ -1044,10 +1097,21 @@
     tab: 'active',
     specialView: null,          // null | 'draft' | 'cancelled' | 'deleted'
     search: '',
-    filters: { types: [], portals: [], payment: [] },
+    filters: { types: [], portals: [], payment: [] },   // portals ('none' = no portal yet) is read only in All portals
     created: null,              // null | {from, to}: made between these days (YYYY-MM-DD, India time, both included)
     starts: null,               // null | {from, to}: starts between these days
     mine: false,                // only the events the signed-in person created
+    /* the portal the list is on: 'all' or a roster slug. portalChosen: the person has chosen one (here or on another
+       device); portalKnown: this browser or the server has answered, so the switcher can name it; portalSettled:
+       the server has answered (or was given its 3 s); portalTouched: the person switched during this visit, so a
+       late answer from the server must not move them; portalReturn: the portal "Show them" / "Show all portals"
+       left for this visit only, which Back returns to and Create Event still starts on */
+    portal: 'all',
+    portalChosen: false,
+    portalKnown: false,
+    portalSettled: false,
+    portalTouched: false,
+    portalReturn: '',
     sort: { field:'start', dir:'asc' },
     page: 1,
     range: { mode:'30', start:null, end:null },
@@ -1294,9 +1358,10 @@
     log: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 8v4l3 2"/><path d="M3.05 11a9 9 0 1 1 .5 4"/><path d="M3 4v5h5"/></svg>'
   };
   function renderMoreMenu(){
-    var draftCount = EVENTS.filter(function(e){ return e.status==='draft'; }).length;
-    var cancelledCount = EVENTS.filter(function(e){ return e.status==='cancelled'; }).length;
-    var deletedCount = EVENTS.filter(function(e){ return e.status==='deleted'; }).length;
+    /* counted on the working portal, like the lists these open (bucketEvents) */
+    var draftCount = EVENTS.filter(function(e){ return e.status==='draft' && inWorkingPortal(e); }).length;
+    var cancelledCount = EVENTS.filter(function(e){ return e.status==='cancelled' && inWorkingPortal(e); }).length;
+    var deletedCount = EVENTS.filter(function(e){ return e.status==='deleted' && inWorkingPortal(e); }).length;
     $('more-menu').innerHTML =
       '<button class="popover-item" data-special="draft">' + IC.file + ' Draft Events <span class="mono faint" style="margin-left:auto;">' + draftCount + '</span></button>' +
       '<button class="popover-item" data-special="cancelled">' + IC.ban + ' Cancelled Events <span class="mono faint" style="margin-left:auto;">' + cancelledCount + '</span></button>' +
@@ -1347,27 +1412,366 @@
     renderMoreProductsMenu(); openPopover('more-products-menu');
   });
 
-  function renderPortalsNavBtn(){
-    $('btn-portals-nav').innerHTML = esc(PORTALS[CURRENT_PORTAL]) +
-      ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>';
+  /* =========================================================
+     PORTALS — the dashboard works on one ET portal at a time
+     (owner, 2026-11-03): the switcher sets the person's working portal, remembered for them on the server
+     (portal-picker.js: GET / PUT /api/me/working-portal, cached in this browser for the first paint). The list,
+     its tab counts, the totals, the QR picker and Create Event follow it. "All portals" lists every event with a
+     Portal column, and the events that have no portal yet each get a one-click Set portal.
+  ========================================================= */
+  function inWorkingPortal(e){ return state.portal === 'all' || e.portal === state.portal; }
+  function onRoster(slug){ return PORTAL_ROSTER.some(function(p){ return p.slug === slug; }); }
+  /* a portal's name for this page: the roster's, else the picker's (its cache knows the working portal's name
+     before the roster has come), else what the server said on an event of that portal; the slug only as a last resort */
+  function portalNameOf(slug){
+    if (slug === 'all') return 'All portals';
+    if (!slug || slug === 'none') return 'No portal yet';
+    for (var i = 0; i < PORTAL_ROSTER.length; i++) if (PORTAL_ROSTER[i].slug === slug) return PORTAL_ROSTER[i].name;
+    var named = window.RevampPortals ? window.RevampPortals.nameOf(slug) : '';
+    if (named) return named;
+    for (var j = 0; j < EVENTS.length; j++) if (EVENTS[j].portal === slug && EVENTS[j].portalName) return EVENTS[j].portalName;
+    return slug;
   }
+  /* live events (every list but Deleted) by portal: { all, none, by: { slug: n } } */
+  function portalCounts(){
+    var c = { all:0, none:0, by:{} };
+    EVENTS.forEach(function(e){
+      if (e.status === 'deleted') return;
+      c.all++;
+      if (!e.portal) c.none++;
+      else c.by[e.portal] = (Object.prototype.hasOwnProperty.call(c.by, e.portal) ? c.by[e.portal] : 0) + 1;
+    });
+    return c;
+  }
+  function portalsWithEvents(c){
+    return Object.keys(c.by).map(function(slug){ return { slug: slug, name: portalNameOf(slug), count: c.by[slug] }; })
+      .sort(function(a, b){ return a.name.localeCompare(b.name, 'en', { sensitivity:'base' }); });
+  }
+  /* Create Event starts on the working portal (create-event.html reads ?portal= before anything else); a portal left
+     for this visit by "Show them" is still the working one */
+  function createHref(){
+    var p = workingPortal();
+    return 'create-event.html?new=1' + (p && p !== 'all' ? '&portal=' + encodeURIComponent(p) : '');
+  }
+
+  /* the working portal: during "Show them" the list looks at every portal for a moment, but nothing was switched */
+  function workingPortal(){ return state.portalReturn || state.portal; }
+  function renderPortalsNavBtn(){
+    var p = workingPortal();
+    var label = !state.portalKnown ? 'Portal' : p === 'all' ? 'All portals' : portalNameOf(p);
+    $('btn-portals-nav').innerHTML = esc(label) +
+      ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>';
+    $('btn-portals-nav').setAttribute('aria-label', state.portalKnown ? 'Switch portal, now ' + label : 'Switch portal');
+  }
+  /* what follows the working portal outside the list itself: the switcher's name and Create Event's link */
+  function renderPortalView(){
+    renderPortalsNavBtn();
+    $('btn-create-event').setAttribute('href', createHref());
+  }
+
+  /* The menu: "Your portal", a search, then one listbox — All portals, the portals that have events, and the other
+     ET portals (most people work on one to three, so theirs are not lost among the whole roster). Keys: arrows
+     move, Enter picks, Escape closes and gives focus back to the button. */
+  var navActive = '';
   function renderPortalsNavMenu(){
-    $('portals-nav-menu').innerHTML = '<div class="popover-label">Switch portal</div>' + Object.keys(PORTALS).map(function(k){
-      return '<a class="popover-item' + (k===CURRENT_PORTAL?' on':'') + '" href="index.html">' + IC.globe + ' ' + PORTALS[k] + (k===CURRENT_PORTAL ? ' <span class="ev-tag ev-tag-blue" style="margin-left:auto;">Current</span>' : '') + '</a>';
-    }).join('');
+    $('portals-nav-menu').innerHTML = '<div class="popover-label" id="pn-label">Your portal</div>' +
+      '<div class="pn-search">' + svg('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', 14) +
+        '<input type="text" id="portal-nav-search" placeholder="Search portals" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="portal-nav-list" aria-labelledby="pn-label"></div>' +
+      '<div class="pn-list" id="portal-nav-list" role="listbox" aria-labelledby="pn-label"></div>';
+    navActive = workingPortal();
+    renderPortalNavList();
+    var input = $('portal-nav-search');
+    input.addEventListener('input', function(){ navActive = ''; renderPortalNavList(); });
+    input.addEventListener('keydown', onPortalNavKey);
+  }
+  function portalNavOptions(){
+    var q = String(($('portal-nav-search') || {}).value || '').trim().toLowerCase();
+    function hit(slug, name){ return !q || name.toLowerCase().indexOf(q) !== -1 || slug.indexOf(q) !== -1; }
+    var c = portalCounts();
+    var withEvents = portalsWithEvents(c).filter(function(p){ return hit(p.slug, p.name); });
+    var others = PORTAL_ROSTER.filter(function(p){ return !Object.prototype.hasOwnProperty.call(c.by, p.slug) && hit(p.slug, p.name); });
+    return { all: hit('all', 'All portals') ? c.all : -1, withEvents: withEvents, others: others, q: q };
+  }
+  function portalNavOptionHTML(slug, name, count){
+    var current = slug === workingPortal();
+    return '<div class="pn-opt' + (slug === navActive ? ' pn-active' : '') + '" role="option" id="pn-opt-' + esc(slug) + '" data-pn="' + esc(slug) + '" aria-selected="' + current + '">' +
+      '<span class="pn-name">' + esc(name) + '</span>' + (count > 0 ? '<span class="pn-count">' + count + '</span>' : '') +
+      (current ? '<span class="ev-tag ev-tag-blue">Current</span>' : '') + '</div>';
+  }
+  function renderPortalNavList(){
+    var listEl = $('portal-nav-list');
+    if (!listEl) return;
+    var o = portalNavOptions();
+    var html = o.all >= 0 ? portalNavOptionHTML('all', 'All portals', o.all) : '';
+    if (o.withEvents.length){
+      html += '<div role="group" aria-labelledby="pn-g-events"><div class="popover-label" id="pn-g-events">Portals with events</div>' +
+        o.withEvents.map(function(p){ return portalNavOptionHTML(p.slug, p.name, p.count); }).join('') + '</div>';
+    }
+    if (o.others.length){
+      html += '<div role="group" aria-labelledby="pn-g-other"><div class="popover-label" id="pn-g-other">Other ET portals</div>' +
+        o.others.map(function(p){ return portalNavOptionHTML(p.slug, p.name, 0); }).join('') + '</div>';
+    }
+    if (rosterState === 'loading') html += '<div class="pn-msg">Loading portals…</div>';
+    else if (rosterState === 'failed') html += '<div class="pn-msg">The portal list could not be loaded. <button type="button" class="pn-link" id="pn-retry">Retry</button></div>';
+    else if (!html) html = '<div class="pn-msg">No portal matches “' + esc(o.q) + '”.</div>';
+    listEl.innerHTML = html;
+    var ids = portalNavIds();
+    if (ids.indexOf(navActive) === -1) navActive = ids[0] || '';
+    markPortalNavActive();
+    listEl.querySelectorAll('[data-pn]').forEach(function(opt){
+      opt.addEventListener('click', function(e){ e.stopPropagation(); pickPortalFromNav(opt.getAttribute('data-pn')); });
+    });
+    var retry = $('pn-retry');
+    if (retry) retry.addEventListener('click', function(e){ e.stopPropagation(); loadRoster(); renderPortalNavList(); });
+  }
+  function portalNavIds(){
+    var o = portalNavOptions(), ids = o.all >= 0 ? ['all'] : [];
+    return ids.concat(o.withEvents.map(function(p){ return p.slug; }), o.others.map(function(p){ return p.slug; }));
+  }
+  function markPortalNavActive(){
+    var listEl = $('portal-nav-list'), input = $('portal-nav-search');
+    if (!listEl || !input) return;
+    listEl.querySelectorAll('[data-pn]').forEach(function(opt){
+      var on = opt.getAttribute('data-pn') === navActive;
+      opt.classList.toggle('pn-active', on);
+      if (on && typeof opt.scrollIntoView === 'function') opt.scrollIntoView({ block:'nearest' });
+    });
+    if (navActive) input.setAttribute('aria-activedescendant', 'pn-opt-' + navActive);
+    else input.removeAttribute('aria-activedescendant');
+  }
+  function onPortalNavKey(e){
+    var ids = portalNavIds(), at = ids.indexOf(navActive);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      if (!ids.length) return;
+      at = e.key === 'ArrowDown' ? (at + 1) % ids.length : (at <= 0 ? ids.length - 1 : at - 1);
+      navActive = ids[at];
+      markPortalNavActive();
+    } else if (e.key === 'Home' || e.key === 'End'){
+      if (!ids.length) return;
+      e.preventDefault();
+      navActive = e.key === 'Home' ? ids[0] : ids[ids.length - 1];
+      markPortalNavActive();
+    } else if (e.key === 'Enter'){
+      e.preventDefault();
+      if (navActive) pickPortalFromNav(navActive);
+    } else if (e.key === 'Escape' || e.key === 'Esc'){
+      e.preventDefault();
+      closeAll();
+      $('btn-portals-nav').focus();
+    } else if (e.key === 'Tab'){
+      closeAll();
+    }
+  }
+  function openPortalsNav(){
+    renderPortalsNavMenu(); openPopover('portals-nav-menu');
+    $('portal-nav-search').focus();
+  }
+  function pickPortalFromNav(v){
+    switchPortal(v);
+    $('btn-portals-nav').focus();
   }
   $('btn-portals-nav').addEventListener('click', function(e){
     e.stopPropagation();
     if (state.openPopover==='portals-nav-menu'){ closeAll(); return; }
-    renderPortalsNavMenu(); openPopover('portals-nav-menu');
+    openPortalsNav();
   });
+
+  /* Switching is the person's choice: the list moves at once, then it is saved for them (F2). A save that fails
+     keeps the choice in this browser and says so. */
+  function switchPortal(v){
+    if (v !== 'all' && !(rosterState !== 'ready' || onRoster(v))) return;
+    state.portal = v;
+    state.portalReturn = '';
+    state.portalChosen = true; state.portalKnown = true; state.portalSettled = true; state.portalTouched = true;
+    state.filters.portals = [];
+    state.page = 1;
+    closeAll();
+    renderApp();
+    if (window.RevampPortals) window.RevampPortals.setWorking(v).then(null, function(err){
+      toast((err && err.message) || 'Your portal choice is kept in this browser only.');
+    });
+  }
+  /* "Show them" (the events with no portal yet) and "Show all portals" look at every portal for this visit only:
+     nothing is saved, Create Event keeps starting on the working portal, and Back returns to it */
+  function showAllPortalsForNow(filter){
+    state.portalTouched = true;
+    if (state.portal !== 'all'){ state.portalReturn = state.portal; state.portal = 'all'; }
+    state.filters.portals = filter ? [filter] : [];
+    state.page = 1;
+    renderApp();
+  }
+  function showNoPortal(){
+    /* the events with no portal may all be drafts, or all past: open the list that has some of them */
+    var none = EVENTS.filter(function(e){ return !e.portal && e.status !== 'deleted'; });
+    function has(s){ return none.some(function(e){ return e.status === s; }); }
+    var bucket = state.specialView || state.tab;
+    if (!has(bucket)){
+      var tab = ['active','upcoming','completed'].filter(has)[0];
+      if (tab){ state.tab = tab; state.specialView = null; }
+      else { var view = ['draft','cancelled'].filter(has)[0]; if (view) state.specialView = view; }
+    }
+    showAllPortalsForNow('none');
+  }
+  function backToWorkingPortal(){
+    if (!state.portalReturn) return;
+    state.portal = state.portalReturn;
+    state.portalReturn = '';
+    state.filters.portals = [];
+    state.page = 1;
+    renderApp();
+  }
+
+  /* F1: paint at once on the portal this browser remembers for the person; ask the server (it wins when it has a
+     choice) and fetch the roster at the same time. With nothing remembered here, the first list waits up to 3 s
+     for the server, so it does not open on every portal and then jump to theirs. */
+  var portalWait = Promise.resolve();
+  function startPortals(){
+    var RP = window.RevampPortals;
+    if (!RP){
+      /* portal-picker.js did not load: every portal, and the switcher says the list is missing */
+      rosterState = 'failed'; state.portalKnown = true; state.portalSettled = true;
+      return;
+    }
+    var cached = RP.cachedWorking();
+    if (cached){ state.portal = cached; state.portalChosen = true; state.portalKnown = true; }
+    loadRoster();
+    var answered = RP.working().then(applyWorking, function(){ applyWorking(null); });
+    portalWait = cached ? Promise.resolve() : new Promise(function(resolve){
+      answered.then(resolve, resolve);
+      setTimeout(function(){
+        if (!state.portalSettled){ state.portalSettled = true; state.portalKnown = true; }
+        resolve();
+      }, 3000);
+    });
+  }
+  /* the server's answer (else this browser's, else null). It moves the list only while the person has not switched.
+     No choice (null) means the person now signed in has none anywhere: the first paint may have been on the portal
+     of the last person seen in this browser (portal-picker.js reads theirs until auth.js has said who this is), so
+     the list goes back to every portal with the first-visit callout, and Create Event to no portal. */
+  function applyWorking(v){
+    var valid = v === 'all' || (typeof v === 'string' && /^[a-z0-9]{1,40}$/.test(v) && (rosterState !== 'ready' || onRoster(v)));
+    state.portalSettled = true; state.portalKnown = true;
+    if (!state.portalTouched){
+      if (valid && (v !== state.portal || !state.portalChosen)){
+        state.portal = v; state.portalChosen = true; state.portalReturn = ''; state.filters.portals = []; state.page = 1;
+      } else if (!valid && state.portalChosen){
+        if (state.portal !== 'all'){ state.portal = 'all'; state.filters.portals = []; state.page = 1; }
+        state.portalChosen = false; state.portalReturn = '';
+      }
+    }
+    renderApp();
+  }
+  function loadRoster(){
+    if (!window.RevampPortals) return;
+    rosterState = 'loading';
+    window.RevampPortals.list().then(function(list){
+      PORTAL_ROSTER = list; rosterState = 'ready';
+      /* a remembered portal the roster no longer has is no choice: every portal, and the first-visit callout */
+      if (state.portal !== 'all' && !onRoster(state.portal)){ state.portal = 'all'; state.portalChosen = false; state.portalReturn = ''; }
+      renderApp();
+      afterRoster();
+    }, function(){
+      rosterState = 'failed';
+      afterRoster();
+    });
+  }
+  /* an open switcher menu or phone Filters sheet shows the roster (or why it is missing) as soon as that is known */
+  function afterRoster(){
+    if (state.openPopover === 'portals-nav-menu') renderPortalNavList();
+    if ($('m-portal')) openMobileFilters();
+  }
+
+  /* Set portal on an event with none (a row's ⋯ menu, or the chip in its Portal cell). Changing a portal that is
+     already set is done in the event console's Basics, so a stray click here never moves an event. */
+  function openSetPortalFor(id, opener){
+    var e = findEvent(id);
+    if (!e || e.portal) return;
+    if (!window.RevampPortals){ toast('The portal list did not load. Reload the page and try again.'); return; }
+    window.RevampPortals.openSetPortal({
+      eventId: e.id, eventName: e.name, current: '', hasGeneratedSite: e.hasGeneratedSite, published: e.published,
+      returnFocus: opener || null,
+      onDone: function(slug, name){
+        var wasShown = getFilteredSorted().indexOf(e) !== -1;
+        e.portal = slug; e.portalName = name || portalNameOf(slug);
+        renderApp();
+        var msg = '“' + e.name + '” is now on ' + e.portalName + '.';
+        /* the row left the list (another portal, or the "no portal yet" filter): offer to follow it there */
+        if (wasShown && getFilteredSorted().indexOf(e) === -1) toastAction(msg, 'View', function(){ switchPortal(slug); });
+        else toast(msg);
+      },
+      /* somebody set it meanwhile: the row shows what the server now has (the window says so, with Reload) */
+      onConflict: function(current, currentName){
+        e.portal = typeof current === 'string' ? current : '';
+        e.portalName = currentName || (e.portal ? portalNameOf(e.portal) : '');
+        renderApp();
+      }
+    });
+  }
+  /* a toast with one button (the Set portal toast's View) — it stays a little longer, so the button can be reached */
+  function toastAction(msg, label, run){
+    var region = $('toast-region');
+    var t = document.createElement('div'); t.className = 'toast';
+    var text = document.createElement('span'); text.textContent = msg; t.appendChild(text);
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'toast-btn'; b.textContent = label;
+    b.addEventListener('click', function(){ t.remove(); run(); });
+    t.appendChild(b);
+    region.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 220); }, 6000);
+  }
+  /* the cell (and the card line) for an event's portal: its name, or the "No portal yet" chip with Set portal */
+  function portalCellHTML(e){
+    if (e.portal) return '<span class="ev-portal-name">' + esc(portalNameOf(e.portal)) + '</span>';
+    if (window.RevampPortals && e.status !== 'deleted') return window.RevampPortals.chipHtml({ eventId: e.id, eventName: e.name });
+    return '<span class="muted">No portal yet</span>';
+  }
+
+  /* The notice above the list: in Show them, what is shown and the way back; on a first visit, the callout that
+     asks for a portal; and while any event has no portal yet, how many, with the way to them and to the page
+     where suggested portals are reviewed (portal-review.html). */
+  function renderPortalNotice(){
+    var el = $('portal-notice');
+    if (!el) return;
+    if (state.loading){ el.innerHTML = ''; return; }
+    var c = portalCounts(), html = '';
+    var review = '<a class="pn-link" href="portal-review.html">Review suggested portals</a>';
+    if (state.portalReturn){
+      var onlyNone = state.filters.portals.length === 1 && state.filters.portals[0] === 'none';
+      html += '<div class="portal-notice">' + IC.globe + '<span class="pn-text">' +
+        (onlyNone ? 'Showing the events with no portal yet.' : 'Showing every portal for now.') + '</span>' +
+        '<button type="button" class="pn-link" id="pn-back">Back to ' + esc(portalNameOf(state.portalReturn)) + '</button>' +
+        (onlyNone ? review : '') + '</div>';
+    } else {
+      if (state.portalSettled && !state.portalChosen && window.RevampPortals){
+        html += '<div class="portal-notice portal-callout">' + IC.globe + '<span class="pn-text">Choose the portal you work on. The events list, Create Event and its previous editions follow it.</span>' +
+          '<button type="button" class="btn btn-secondary btn-sm" id="pn-choose">Choose portal</button></div>';
+      }
+      var filteringNone = state.portal === 'all' && state.filters.portals.indexOf('none') !== -1;
+      if (c.none){
+        html += '<div class="portal-notice">' + IC.alert + '<span class="pn-text">' +
+          (c.none === 1 ? '1 event has no portal yet.' : c.none + ' events have no portal yet.') + '</span>' +
+          (filteringNone ? '' : '<button type="button" class="pn-link" id="pn-show-none">Show them</button>') + review + '</div>';
+      }
+    }
+    el.innerHTML = html;
+    var back = $('pn-back'), choose = $('pn-choose'), showNone = $('pn-show-none');
+    if (back) back.addEventListener('click', backToWorkingPortal);
+    if (showNone) showNone.addEventListener('click', showNoPortal);
+    if (choose) choose.addEventListener('click', function(e){
+      e.stopPropagation();
+      /* the top-bar switcher is hidden on phones: the Filters sheet carries the Portal choice there */
+      var phone = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px)').matches;
+      if (phone) openMobileFilters(); else openPortalsNav();
+    });
+  }
 
   /* =========================================================
      TABS
   ========================================================= */
   function renderTabs(){
     var counts = { upcoming:0, active:0, completed:0 };
-    EVENTS.forEach(function(e){ if (counts[e.status]!==undefined) counts[e.status]++; });
+    EVENTS.forEach(function(e){ if (counts[e.status]!==undefined && inWorkingPortal(e)) counts[e.status]++; });
     var tabs = [['active','Active'],['upcoming','Upcoming'],['completed','Completed']];
     $('status-tabs').innerHTML = tabs.map(function(t){
       var selected = !state.specialView && state.tab === t[0];
@@ -1442,7 +1846,8 @@
     }
     var bucket = state.specialView ? 'upcoming' : state.tab;
     var inTab = {};
-    EVENTS.forEach(function(e){ if (e.status === bucket) inTab[e.id] = true; });
+    /* the tab's events on the working portal, as the list shows them (inWorkingPortal) */
+    EVENTS.forEach(function(e){ if (e.status === bucket && inWorkingPortal(e)) inTab[e.id] = true; });
     var p = activityPeriod(state.range);
     var part = p ? ensureFigures(p, 'insights') : null;
     var vis = 0, reg = 0, note = '';
@@ -1573,10 +1978,17 @@
       b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
     });
   }
+  /* All portals only (a one-portal view hides it: the switcher is the portal control there): "No portal yet", then
+     every portal that has events, with their counts */
+  function portalFilterRows(){
+    var c = portalCounts();
+    return [{ slug:'none', name:'No portal yet', count:c.none }].concat(portalsWithEvents(c));
+  }
   function renderPortalPopover(){
-    $('portal-popover').innerHTML = '<div class="popover-label">Portal</div>' + Object.keys(PORTALS).map(function(k){
-      var on = state.filters.portals.indexOf(k) !== -1;
-      return '<button class="check-row ' + (on?'on':'') + '" data-portal="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + PORTALS[k] + '</button>';
+    $('portal-popover').innerHTML = '<div class="popover-label">Portal</div>' + portalFilterRows().map(function(p){
+      var on = state.filters.portals.indexOf(p.slug) !== -1;
+      return '<button class="check-row ' + (on?'on':'') + '" data-portal="' + esc(p.slug) + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(p.name) +
+        ' <span class="mono muted" style="margin-left:auto;">' + p.count + '</span></button>';
     }).join('');
     $('portal-popover').querySelectorAll('[data-portal]').forEach(function(b){
       b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.portals, b.getAttribute('data-portal')); state.page=1; renderPortalPopover(); renderResults(); renderToolbarButtons(); });
@@ -1587,10 +1999,11 @@
   $('btn-qr-toolbar').addEventListener('click', function(){ openQRModal(); });
 
   function renderToolbarButtons(){
-    var tCount = state.filters.types.length, pCount = state.filters.portals.length;
+    var tCount = state.filters.types.length, pCount = state.portal === 'all' ? state.filters.portals.length : 0;
     $('btn-type').className = 'toolbar-btn' + (tCount?' active-filter':'');
     $('btn-type').innerHTML = 'Event Type' + (tCount ? ' <span class="badge-count">'+tCount+'</span>' : '') + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
-    var portalLabel = pCount ? (esc(PORTALS[state.filters.portals[0]]) + (pCount>1 ? ' +'+(pCount-1) : '')) : 'Portal';
+    $('btn-portal').parentNode.hidden = state.portal !== 'all';
+    var portalLabel = pCount ? (esc(portalNameOf(state.filters.portals[0])) + (pCount>1 ? ' +'+(pCount-1) : '')) : 'Portal';
     $('btn-portal').className = 'toolbar-btn' + (pCount?' active-filter':'');
     $('btn-portal').innerHTML = portalLabel + ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M6 9l6 6 6-6"/></svg>';
   }
@@ -1598,7 +2011,7 @@
   function renderChips(){
     var chips = [];
     state.filters.types.forEach(function(k){ chips.push({ label:'Type: '+EVENT_TYPES[k], onRemove:function(){ toggleInArray(state.filters.types,k); } }); });
-    state.filters.portals.forEach(function(k){ chips.push({ label:'Portal: '+PORTALS[k], onRemove:function(){ toggleInArray(state.filters.portals,k); } }); });
+    if (state.portal === 'all') state.filters.portals.forEach(function(k){ chips.push({ label:'Portal: '+portalNameOf(k), onRemove:function(){ toggleInArray(state.filters.portals,k); } }); });
     state.filters.payment.forEach(function(k){ chips.push({ label:'Payment: '+(k==='paid'?'Paid':'Free'), onRemove:function(){ toggleInArray(state.filters.payment,k); } }); });
     /* the date and "created by you" filters (set from the address or by ETB2B AI) show as chips like the rest,
        so what hides an event is always on screen and one ✕ away */
@@ -1642,16 +2055,20 @@
   ========================================================= */
   function bucketEvents(){
     var status = state.specialView || state.tab;
-    return EVENTS.filter(function(e){ return e.status === status; });
+    return EVENTS.filter(function(e){ return e.status === status && inWorkingPortal(e); });
   }
   function matches(e){
     if (state.filters.types.length && state.filters.types.indexOf(e.type) === -1) return false;
-    if (state.filters.portals.length && state.filters.portals.indexOf(e.portal) === -1) return false;
+    /* the Portal filter counts only in All portals: a value left from there (or by the address or ETB2B AI) can
+       never hide rows in a one-portal view, where it has no chip and nobody could see why */
+    if (state.portal === 'all' && state.filters.portals.length && state.filters.portals.indexOf(e.portal || 'none') === -1) return false;
     if (state.filters.payment.length && state.filters.payment.indexOf(e.payment.type) === -1) return false;
     if (state.created && !inDays(e.createdAt, state.created)) return false;
     if (state.starts && !inDays(e.start, state.starts)) return false;
     if (state.mine && !isMine(e)) return false;
-    if (state.search && !searchHit(e, state.search)) return false;
+    /* the search looks through the event's own cells (searchHit) and the name of its portal ("No portal yet" for
+       none); ETB2B AI's server searches the very same (functions/lib/dash-bot.js searchHit) */
+    if (state.search && !searchHit(e, state.search) && !portalSearchHit(e, state.search)) return false;
     return true;
   }
   /* createdBy is the creator's sign-in email (functions/lib/api.js), so "mine" is the signed-in person's own */
@@ -1760,6 +2177,8 @@
         items.push(['complete', IC.checkCirc, 'Mark as completed']);
       }
     }
+    /* an event with no portal yet: setting one comes first (a deleted event is left as it is) */
+    if (!e.portal && e.status !== 'deleted') items.unshift(['set-portal', IC.globe, 'Set portal'], ['sep']);
     var menuHTML = items.map(function(it){
       if (it[0]==='sep') return '<div class="popover-sep"></div>';
       return '<button class="popover-item' + (it[3]?' danger':'') + '" data-row-action="' + it[0] + '" data-id="' + e.id + '">' + it[1] + ' ' + it[2] + '</button>';
@@ -1792,7 +2211,12 @@
     /* every change to what the list shows passes through here, so the address always matches it */
     syncHash();
     renderChips();
-    $('result-line').textContent = state.loading ? '' : ('Showing ' + (total ? ((state.page-1)*PAGE_SIZE+1) : 0) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s'));
+    renderPortalNotice();
+    /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
+    var allPortals = state.portal === 'all', cols = allPortals ? 7 : 6;
+    $('results-view').classList.toggle('all-portals', allPortals);
+    $('result-line').textContent = state.loading ? '' : ('Showing ' + (total ? ((state.page-1)*PAGE_SIZE+1) : 0) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s') +
+      (allPortals ? '' : ' on ' + portalNameOf(state.portal)));
 
     document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
       th.classList.toggle('sorted', th.getAttribute('data-sort') === state.sort.field);
@@ -1802,7 +2226,7 @@
 
     if (state.loading){
       $('table-body').innerHTML = Array(5).fill(0).map(function(){
-        return '<tr class="skel-row">' + Array(6).fill(0).map(function(){ return '<td><div class="skel skel-line"></div></td>'; }).join('') + '</tr>';
+        return '<tr class="skel-row">' + Array(cols).fill(0).map(function(){ return '<td><div class="skel skel-line"></div></td>'; }).join('') + '</tr>';
       }).join('');
       $('card-list').innerHTML = '';
       $('pagination').innerHTML = '';
@@ -1810,21 +2234,30 @@
     }
 
     if (!total){
-      var hasFilters = state.search || state.filters.types.length || state.filters.portals.length || state.filters.payment.length || hasDateFilters();
+      var hasFilters = state.search || state.filters.types.length || (allPortals && state.filters.portals.length) || state.filters.payment.length || hasDateFilters();
       var emptyHTML;
       if (hasFilters){
         emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No events match</h3><p>Try a different search term, or clear your filters.</p>' +
           '<button class="btn btn-secondary" id="empty-clear">Clear filters</button></div>';
+      } else if (!allPortals && !EVENTS.some(function(e){ return e.portal === state.portal && e.status !== 'deleted'; })){
+        /* a portal with no events at all yet: start its first, or look at every portal (for this visit) */
+        var pName = esc(portalNameOf(state.portal));
+        emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">' + pName + ' has no events yet</h3>' +
+          '<p>Create its first event, or show the events of every portal.</p>' +
+          '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a> ' +
+          '<button type="button" class="btn btn-secondary" data-empty-all-portals>Show all portals</button></div>';
       } else {
         var bucket = state.specialView || state.tab;
         var mainBucket = ['active','upcoming','completed'].indexOf(bucket) !== -1;
         emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No ' + statusLabel(bucket).toLowerCase() + ' events</h3>' +
           '<p>' + (mainBucket ? 'Create your first event — it takes about ten minutes.' : 'Nothing here right now.') + '</p>' +
-          (mainBucket ? '<a class="btn btn-primary" href="create-event.html?new=1">Create Event</a>' : '') + '</div>';
+          (mainBucket ? '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a>' : '') + '</div>';
       }
-      $('table-body').innerHTML = '<tr><td colspan="6">' + emptyHTML + '</td></tr>';
+      $('table-body').innerHTML = '<tr><td colspan="' + cols + '">' + emptyHTML + '</td></tr>';
       $('card-list').innerHTML = emptyHTML;
       var ec = $('empty-clear'); if (ec) ec.addEventListener('click', function(){ state.search=''; $('search-input').value=''; $('btn-clear-search').hidden=true; state.filters={types:[],portals:[],payment:[]}; clearDateFilters(); state.page=1; renderResults(); renderToolbarButtons(); });
+      /* in the table and in the cards alike (the table is hidden on phones) */
+      document.querySelectorAll('[data-empty-all-portals]').forEach(function(b){ b.addEventListener('click', function(){ showAllPortalsForNow(''); }); });
       $('pagination').innerHTML = '';
       return;
     }
@@ -1834,6 +2267,7 @@
         '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '"></span>' +
           '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '">' + esc(e.name) + '</a>' +
           '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div></td>' +
+        '<td class="col-portal">' + portalCellHTML(e) + '</td>' +
         '<td class="ev-date-cell">' + dateCellHTML(e) + '</td>' +
         '<td><span class="vis-num">' + fmtNum(e.visitors) + '</span></td>' +
         '<td class="reg-cell">' + regCellHTML(e) + '</td>' +
@@ -1851,6 +2285,7 @@
           rowActionsHTML(e, 'card') +
         '</div>' +
         '<div class="ev-card-info">' +
+          '<div class="ev-card-portal">' + IC.globe + portalCellHTML(e) + '</div>' +
           '<div class="ev-info-row">' +
             '<span class="ev-info-item">' + IC.calendarSm + '<span class="v' + (e.start?'':' faint2') + '">' + esc(whenText) + '</span></span>' +
             '<span class="ev-info-item">' + IC.users + '<span class="v">' + fmtNum(e.visitors) + ' visitors</span></span>' +
@@ -1886,7 +2321,7 @@
 
   function applyView(){
     var rv = $('results-view');
-    if (rv) rv.className = 'view-' + state.view;
+    if (rv) rv.className = 'view-' + state.view + (state.portal === 'all' ? ' all-portals' : '');
     $('view-toggle').querySelectorAll('[data-view]').forEach(function(b){
       b.setAttribute('aria-pressed', b.getAttribute('data-view') === state.view);
     });
@@ -1943,18 +2378,29 @@
     document.querySelectorAll('[data-row-action]').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
-        handleRowAction(btn.getAttribute('data-row-action'), btn.getAttribute('data-id'));
+        handleRowAction(btn.getAttribute('data-row-action'), btn.getAttribute('data-id'), btn);
         closeAll();
+      });
+    });
+    /* the "No portal yet" chip's Set portal, in the Portal cell and on the card */
+    document.querySelectorAll('[data-set-portal]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        openSetPortalFor(btn.getAttribute('data-set-portal'), btn);
       });
     });
   }
 
   function findEvent(id){ return EVENTS.find(function(e){ return e.id===id; }); }
 
-  function handleRowAction(action, id){
+  function handleRowAction(action, id, from){
     var e = findEvent(id);
     if (!e) return;
     switch(action){
+      case 'set-portal':
+        /* the ⋯ menu closes behind the window, so focus comes back to its ⋯ button */
+        var wrap = from && from.closest ? from.closest('.popover-wrap') : null;
+        openSetPortalFor(id, wrap ? wrap.querySelector('[data-row-menu-btn]') : null); break;
       case 'edit': case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
       case 'view':
@@ -2097,17 +2543,29 @@
   ========================================================= */
   function openMobileFilters(){
     var root = $('sheet-root');
+    /* the top-bar switcher is hidden on phones, so the sheet opens with the working portal: a native select (the
+       whole roster as check boxes would be far too long a sheet, and a select is the surest control on a phone).
+       Changing it switches the portal (F2). In All portals the Portal filter's rows follow under Event type. */
+    var wp = workingPortal();
+    var portalOpts = '<option value="all"' + (wp === 'all' ? ' selected' : '') + '>All portals</option>' +
+      (PORTAL_ROSTER.length ? PORTAL_ROSTER.map(function(p){
+        return '<option value="' + esc(p.slug) + '"' + (p.slug === wp ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      }).join('') : (wp !== 'all' ? '<option value="' + esc(wp) + '" selected>' + esc(portalNameOf(wp)) + '</option>' : '') +
+        (rosterState === 'failed' ? '<option value="" disabled>The portal list could not be loaded</option>' : '<option value="" disabled>Loading portals…</option>'));
     root.innerHTML = '<div class="bottom-sheet-scrim" id="sheet-scrim"><div class="bottom-sheet fade-in">' +
       '<div class="bottom-sheet-handle"></div>' +
       '<h3 style="font-size:16px;margin-bottom:12px;">Filters</h3>' +
+      '<label class="popover-label" for="m-portal" style="display:block;">Portal</label>' +
+      '<select class="finput" id="m-portal" style="margin-bottom:8px;">' + portalOpts + '</select>' +
       '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
         var on = state.filters.types.indexOf(k)!==-1;
         return '<button class="check-row ' + (on?'on':'') + '" data-mtype="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
       }).join('') +
-      '<div class="popover-label" style="margin-top:8px;">Portal</div>' + Object.keys(PORTALS).map(function(k){
-        var on = state.filters.portals.indexOf(k)!==-1;
-        return '<button class="check-row ' + (on?'on':'') + '" data-mportal="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + PORTALS[k] + '</button>';
-      }).join('') +
+      (state.portal === 'all' ? '<div class="popover-label" style="margin-top:8px;">Portal</div>' + portalFilterRows().map(function(p){
+        var on = state.filters.portals.indexOf(p.slug)!==-1;
+        return '<button class="check-row ' + (on?'on':'') + '" data-mportal="' + esc(p.slug) + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(p.name) +
+          ' <span class="mono muted" style="margin-left:auto;">' + p.count + '</span></button>';
+      }).join('') : '') +
       '<div class="popover-label" style="margin-top:8px;">Payment</div>' + [['paid','Paid events'],['free','Free events']].map(function(o){
         var on = state.filters.payment.indexOf(o[0])!==-1;
         return '<button class="check-row ' + (on?'on':'') + '" data-mpay="' + o[0] + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + o[1] + '</button>';
@@ -2118,6 +2576,7 @@
       root.querySelectorAll('[data-mtype]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.types, b.getAttribute('data-mtype')); openMobileFilters(); }); });
       root.querySelectorAll('[data-mportal]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.portals, b.getAttribute('data-mportal')); openMobileFilters(); }); });
       root.querySelectorAll('[data-mpay]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.payment, b.getAttribute('data-mpay')); openMobileFilters(); }); });
+      $('m-portal').addEventListener('change', function(){ if (this.value){ switchPortal(this.value); openMobileFilters(); } });
     }
     rewire();
     $('sheet-scrim').addEventListener('click', function(e){ if (e.target===$('sheet-scrim')) root.innerHTML=''; });
@@ -2574,7 +3033,7 @@
      APP RENDER
   ========================================================= */
   function renderApp(){
-    renderPortalsNavBtn();
+    renderPortalView();
     renderMoreMenu();
     renderTabs();
     renderSpecialBanner();
@@ -2645,11 +3104,14 @@
     try { u = window.RevampAuth && typeof window.RevampAuth.currentUser === 'function' ? window.RevampAuth.currentUser() : null; } catch(e){}
     return { email: u && u.email ? String(u.email) : '', name: u && u.displayName ? String(u.displayName) : '' };
   }
-  /* a deep copy of what decides the list, put back by restore(); "shown" (how many events match) is only read */
+  /* a deep copy of what decides the list, put back by restore(); "shown" (how many events match) and "portal" (the
+     portal the list is on: a roster slug, or '' for All portals) are only read. The bot's answers and lists follow
+     that portal, so its "Show these in the list" lands on the portal it was asked about; it never switches it. */
   function listingSnapshot(){
     return JSON.parse(JSON.stringify({
       tab: state.tab, specialView: state.specialView, search: state.search, filters: state.filters,
       created: state.created, starts: state.starts, mine: state.mine, sort: state.sort, page: state.page, view: state.view,
+      portal: state.portal === 'all' ? '' : state.portal,
       shown: state.loading ? 0 : getFilteredSorted().length
     }));
   }
@@ -2660,6 +3122,17 @@
     return out;
   }
   function knownTypes(list){ return knownKeys(list, EVENT_TYPES); }
+  /* the Portal filter's values: 'none' (no portal yet) and a roster slug, once each; until the roster has come, any
+     value of a slug's shape (matches() reads the filter only in All portals, and a slug no event has hides nothing
+     that a chip does not name) */
+  function knownPortalFilters(list){
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function(v){
+      if (typeof v !== 'string' || out.indexOf(v) !== -1) return;
+      if (v === 'none' || (/^[a-z0-9]{1,40}$/.test(v) && (rosterState !== 'ready' || onRoster(v)))) out.push(v);
+    });
+    return out;
+  }
   /* Puts the list on ETB2B AI's view: {view, search, types, mine, created, starts, sort}. The list then shows
      exactly what the bot's card says, so a filter it does not name (a portal or payment pick) is cleared too;
      a missing view or sort keeps the current one. Returns the list as it was before, for Undo. */
@@ -2680,14 +3153,15 @@
     scrollResultsIntoView();
     return before;
   }
-  /* the list exactly as a snapshot had it: tab, view, search, filters, sort, page and list / cards */
+  /* the list exactly as a snapshot had it: tab, view, search, filters, sort, page and list / cards. Not the portal:
+     that is the person's saved choice (the switcher), which Undo must never move */
   function listingRestore(snap){
     if (!snap || typeof snap !== 'object') return false;
     var f = snap.filters && typeof snap.filters === 'object' ? snap.filters : {};
     state.tab = ['active','upcoming','completed'].indexOf(snap.tab) !== -1 ? snap.tab : 'active';
     state.specialView = ['draft','cancelled','deleted'].indexOf(snap.specialView) !== -1 ? snap.specialView : null;
     state.search = typeof snap.search === 'string' ? snap.search : '';
-    state.filters = { types: knownTypes(f.types), portals: knownKeys(f.portals, PORTALS), payment: knownKeys(f.payment, { paid:1, free:1 }) };
+    state.filters = { types: knownTypes(f.types), portals: knownPortalFilters(f.portals), payment: knownKeys(f.payment, { paid:1, free:1 }) };
     state.created = cleanRange(snap.created);
     state.starts = cleanRange(snap.starts);
     state.mine = snap.mine === true;
@@ -2726,7 +3200,9 @@
     state.loading = true;
     forgetActivity();             // a reload (or Try again) reads the activity figures afresh too
     renderApp();
-    loadEvents().then(function(rows){
+    /* the first list also waits (at most 3 s, and only when this browser remembers nothing) for the working portal */
+    Promise.all([loadEvents(), portalWait]).then(function(got){
+      var rows = got[0];
       EVENTS.length = 0;
       rows.forEach(function(row){ EVENTS.push(row); });
       recomputeDerived();
@@ -2747,6 +3223,7 @@
       wireSortHeaders();
       wireViewToggle();
       applyView();
+      startPortals();
       loadAndRender();
     } catch(err){
       renderErrorBanner(init);
