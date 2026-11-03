@@ -157,7 +157,8 @@ function takeOne(p, id, now) {
   check('E.1 take: a good prefill is returned', !!t.got && t.got.basics.name === 'Retail Leadership Summit' && t.got.category === 'IP' && t.got.prefillId === ID, t.got);
   check('E.1 take: … and its key is removed (read once)', t.storage.getItem(PFX + ID) === null);
   check('E.1 take: … and a second take finds nothing', Prefill.take(t.storage, ID, NOW) === null);
-  check('E.1 take: the cleaned shape', t.got && JSON.stringify(Object.keys(t.got).sort()) === JSON.stringify(['at', 'basics', 'brief', 'category', 'dropped', 'from', 'method', 'portal', 'prefillId', 'turnId', 'v']) &&
+  /* hero: ETB2B AI's hero picture request (plan §18), null when none came */
+  check('E.1 take: the cleaned shape', t.got && JSON.stringify(Object.keys(t.got).sort()) === JSON.stringify(['at', 'basics', 'brief', 'category', 'dropped', 'from', 'hero', 'method', 'portal', 'prefillId', 'turnId', 'v']) &&
     JSON.stringify(Object.keys(t.got.basics).sort()) === JSON.stringify(['city', 'client', 'dateMode', 'end', 'month', 'name', 'quarter', 'start', 'venue', 'year']) &&
     JSON.stringify(Object.keys(t.got.brief).sort()) === JSON.stringify(['current', 'previous', 'text']), t.got);
   check('E.1 take: a good prefill drops nothing', t.got && JSON.stringify(t.got.dropped) === '[]', t.got && t.got.dropped);
@@ -518,7 +519,7 @@ function withPicker(P) {
     'function toast(m){ CALLS.push(["toast", m]); }',
     /* the real one redraws the step; here, where it goes is what matters */
     'function setStep1Phase(ph){ S.step1Phase = ph; CALLS.push(["phase", ph]); }',
-    'function renderAiEntry(){}', 'function placeToasts(){}', 'function setTimeout(){}',
+    'function renderAiEntry(){}', 'function renderAiHeroLine(){}', 'function placeToasts(){}', 'function setTimeout(){}',
     /* the roster has come (portalArrived); startPortal() puts the draft's own portal in the box */
     'var portalNames = { retail: "ETRetail", cio: "ETCIO" }, portalRosterLoading = null;',
     'var stepPortal = S.basics.portal || "", stepPortalFrom = "", stepPortalTouched = false;',
@@ -809,6 +810,8 @@ function withPicker(P) {
   await e3();
   await e4();
   await e5();
+  await e6();
+  await e7();
   console.log('dash-bot-handoff: ' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(function (e) { console.error(e); process.exit(1); });
@@ -1082,4 +1085,256 @@ async function e5() {
   await until(function () { return !!r2.querySelector('.ps-grid'); }, 3000);
   await wait(100);
   check('E.5 a mount that has been replaced opens nothing', !r2.querySelector('.ps-ed-title') && !r1.querySelector('.ps-ed-title'));
+}
+
+/* =============================================================================== E.6 Create Event: ETB2B AI's hero picture (plan §18)
+   The request through the prefill, the line over step 1 with Change and Remove (and why none is made), and the
+   hand-off's row that asks for the picture only once the event exists, never failing the hand-off. */
+async function e6() {
+  /* ---- the prefill ---- */
+  var t = takeOne(stored({ hero: { subject: '  a modern retail\nstore at night ' } }));
+  check('E.6 take: the hero request is kept, its subject one line of the person\'s words', !!t.got && JSON.stringify(t.got.hero) === JSON.stringify({ subject: 'a modern retail store at night' }), t.got && t.got.hero);
+  t = takeOne(stored({ hero: { subject: '' } }));
+  check('E.6 take: an empty subject is "the event\'s name and place"', !!t.got && JSON.stringify(t.got.hero) === JSON.stringify({ subject: '' }));
+  t = takeOne(stored({ method: 'brief', brief: { text: 'A one-day forum.' }, hero: { subject: 'x' } }));
+  check('E.6 take: none on the brief path (it makes its own pictures)', !!t.got && t.got.method === 'brief' && t.got.hero === null, t.got && t.got.hero);
+  t = takeOne(stored({ hero: 'make one' }));
+  check('E.6 take: a request that is not one is none', !!t.got && t.got.hero === null);
+  t = takeOne(stored({ hero: { subject: 'y'.repeat(300) } }));
+  check('E.6 take: the subject is at most 200 characters', !!t.got && t.got.hero.subject.length === 200);
+  var S = freshS(), C = freshCats();
+  check('E.6 the page\'s draft has an empty slot for it', S.aiHero === null && Object.prototype.hasOwnProperty.call(S, 'aiHero'));
+  var r = Prefill.apply(S, C, takeOne(stored({ hero: { subject: 'a modern retail store at night' } })).got, { slugify: SLUGIFY });
+  check('E.6 apply: the request goes into the draft, not made, not removed, with its turn', !!S.aiHero && S.aiHero.subject === 'a modern retail store at night' && S.aiHero.removed === false &&
+    S.aiHero.made === null && S.aiHero.note === '' && S.aiHero.turnId === ID && r.fields.indexOf('hero') !== -1, S.aiHero);
+  var S2 = freshS(); delete S2.aiHero;
+  Prefill.apply(S2, C, takeOne(stored({ hero: { subject: '' } })).got, { slugify: SLUGIFY });
+  check('E.6 apply: a page without the slot ignores it', !('aiHero' in S2));
+  var S3 = freshS();
+  Prefill.apply(S3, C, takeOne(stored({})).got, { slugify: SLUGIFY });
+  check('E.6 apply: no request, nothing in the slot', S3.aiHero === null);
+
+  /* ---- what the line says ---- */
+  var H = Prefill.heroLine;
+  var auto = 'Retail Leadership Summit, Jio World Centre, Mumbai';
+  var L = H({ hero: { subject: '' }, method: 'template', subject: auto });
+  check('E.6 line: the name and place, said to be that, and that nothing is made until the event is created', !!L && L.can === 'change' &&
+    L.text === 'ETB2B AI will make a hero picture: Retail Leadership Summit, Jio World Centre, Mumbai (from the event’s name and place). Nothing is made until your event is created.', L);
+  L = H({ hero: { subject: 'a modern retail store at night' }, method: null, subject: auto });
+  check('E.6 line: the person\'s own words', L.text === 'ETB2B AI will make a hero picture: a modern retail store at night. Nothing is made until your event is created.' && L.can === 'change', L);
+  L = H({ hero: { subject: '' }, method: 'template', subject: '' });
+  check('E.6 line: before a name is typed', /from the event’s name and place, once you have typed them\./.test(L.text), L.text);
+  check('E.6 line: removed → "won\'t", with Make one after all', H({ hero: { subject: '', removed: true }, method: 'template' }).can === 'restore' &&
+    H({ hero: { subject: '', removed: true } }).text === 'ETB2B AI won’t make a hero picture for this event.');
+  check('E.6 line: Generate from a brief → why none', H({ hero: { subject: '' }, method: 'brief' }).text === 'Generate from a brief makes the site’s pictures itself, so ETB2B AI won’t make a separate hero picture.' &&
+    H({ hero: { subject: '' }, method: 'brief' }).can === '');
+  check('E.6 line: an imported design → why none', /imported design keeps its own pictures/.test(H({ hero: { subject: '' }, method: 'imported' }).text));
+  check('E.6 line: the person\'s own banner → why none', H({ hero: { subject: '' }, method: 'template', ownBanner: true }).text === 'You added your own banner picture, so ETB2B AI won’t make one.');
+  check('E.6 line: a design with no hero → why none', /This design has no hero picture/.test(H({ hero: { subject: '' }, method: 'template', noSlot: true }).text));
+  check('E.6 line: made → said, with where it is and that Undo there puts the design\'s own back', H({ hero: { subject: '', made: { url: 'https://storage.googleapis.com/b/x.png', subject: 'Q' } } }).text ===
+    'ETB2B AI made this event’s hero picture: Q. It is in the editor, where Undo puts the design’s own picture back.');
+  check('E.6 line: no request, no line', H({ hero: null }) === null && H({}) === null);
+
+  /* ---- the page ---- */
+  var FNS = ['cleanAiHero', 'aiHeroAutoSubject', 'aiHeroNoSlot', 'aiHeroState', 'wantsAiHero', 'renderAiHeroLine', 'setAiHeroRemoved', 'changeAiHero',
+    'handoffSteps', 'aiHeroFailure', 'makeAiHero', 'aiHeroForHandoff'];
+  check('E.6 every hero function is on the page', FNS.every(function (n) { return !!fnSrc(CE_INLINE, n); }), FNS.filter(function (n) { return !fnSrc(CE_INLINE, n); }));
+  es5('E.6 the page\'s hero code', FNS.map(function (n) { return fnSrc(CE_INLINE, n); }).join('\n'));
+  function stage(o) {
+    o = o || {};
+    var els = {};
+    function el(id) {
+      var e = { id: id, attrs: {}, hidden: true, _html: '', onclick: null, value: '', focused: 0 };
+      e.getAttribute = function (k) { return Object.prototype.hasOwnProperty.call(e.attrs, k) ? e.attrs[k] : null; };
+      e.setAttribute = function (k, v) { e.attrs[k] = String(v); };
+      e.focus = function () { e.focused++; };
+      Object.defineProperty(e, 'innerHTML', { get: function () { return e._html; }, set: function (v) {
+        e._html = String(v);
+        var m, re = /\sid="([^"]+)"/g;
+        while ((m = re.exec(e._html))) els[m[1]] = el(m[1]);
+      } });
+      return e;
+    }
+    els['ai-hero-line'] = el('ai-hero-line');
+    var log = { fetches: [], saves: 0, modals: [] };
+    var ctx = { console: console, JSON: JSON, Promise: Promise, Object: Object, String: String, Math: Math, Array: Array, Error: Error, ELS: els, LOG: log, OPT: o };
+    ctx.window = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(PREFILL_SRC, ctx, { filename: 'create-event-prefill.js' });
+    ctx.RevampCore = { authedFetch: function (url, opts) {
+      log.fetches.push({ url: url, method: opts.method, body: JSON.parse(opts.body) });
+      var a = o.answer || { status: 200, body: { url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'Retail Leadership Summit, Jio World Centre, Mumbai', made: true } };
+      return Promise.resolve({ ok: a.status < 300, status: a.status, json: function () { return Promise.resolve(a.body); } });
+    } };
+    vm.runInContext([
+      'var S = ' + S_SRC + ';', 'var busy = null;',
+      'var IC = { img: "<i></i>" };',
+      'function $(id){ return ELS[id] || null; }',
+      fnSrc(CE_INLINE, 'esc'),
+      'function save(){ LOG.saves++; return true; }',
+      'function draftCaps(){ return OPT.caps === undefined ? null : OPT.caps; }',
+      'function excludedOn(){ return OPT.excluded || {}; }',
+      'function activeBannerUrl(){ return OPT.ownBanner ? "blob:x" : ""; }',
+      'function openModal(m){ LOG.modals.push(m); }',
+      'function isCurrent(run){ return run === "RUN"; }',
+      'function createEventRecord(){ return Promise.resolve(); }', 'function openInEditor(){ return Promise.resolve(); }',
+      fnSrc(CE_INLINE, 'httpError'), fnSrc(CE_INLINE, 'readJson')
+    ].concat(FNS.map(function (n) { return fnSrc(CE_INLINE, n); })).join('\n'), ctx, { filename: 'create-event.html (hero, extracted)' });
+    ctx.S.basics.name = 'Retail Leadership Summit'; ctx.S.basics.venue = 'Jio World Centre, Mumbai';
+    return { ctx: ctx, els: els, log: log, line: function () { ctx.renderAiHeroLine(); return els['ai-hero-line']; } };
+  }
+  var P = stage();
+  check('E.6 page: no request, no line', P.line().hidden === true && P.line().innerHTML === '');
+  P.ctx.S.aiHero = P.ctx.cleanAiHero({ subject: '', removed: false, made: null, note: '', turnId: ID, at: 1 });
+  P.ctx.S.creationMethod = 'template'; P.ctx.S.step = 1;
+  var line = P.line();
+  check('E.6 page: the line says it plainly, with Change and Remove', line.hidden === false && line.getAttribute('role') === null &&
+    line.innerHTML.indexOf('ETB2B AI will make a hero picture: Retail Leadership Summit, Jio World Centre, Mumbai (from the event’s name and place). Nothing is made until your event is created.') !== -1 &&
+    !!P.els['ai-hero-change'] && !!P.els['ai-hero-remove'], line.innerHTML);
+  var before = line.innerHTML;
+  P.line();
+  check('E.6 page: drawn again only when what it says changes (its buttons keep the keyboard)', P.els['ai-hero-line'].innerHTML === before && P.els['ai-hero-line'].getAttribute('data-line').indexOf('change:') === 0);
+  P.ctx.S.basics.name = 'Retail <b>Summit</b>';
+  check('E.6 page: the name is shown as text, never as markup', P.line().innerHTML.indexOf('Retail &lt;b&gt;Summit&lt;/b&gt;') !== -1);
+  P.ctx.S.basics.name = 'Retail Leadership Summit';
+  P.line();
+  P.els['ai-hero-change'].onclick();
+  var m = P.log.modals[0];
+  check('E.6 Change: asks what the picture should show, with the name and place as the empty answer', !!m && m.title === 'What should the hero picture show?' &&
+    m.body.indexOf('id="ai-hero-subject"') !== -1 && m.body.indexOf('maxlength="200"') !== -1 && m.body.indexOf('placeholder="Retail Leadership Summit, Jio World Centre, Mumbai"') !== -1, m);
+  P.els['ai-hero-subject'] = { value: '  a modern retail\nstore at night ' };
+  m.onConfirm();
+  check('E.6 Change: the person\'s words, one line, kept in the draft and shown', P.ctx.S.aiHero.subject === 'a modern retail store at night' && P.log.saves === 1 &&
+    P.els['ai-hero-line'].innerHTML.indexOf('ETB2B AI will make a hero picture: a modern retail store at night.') !== -1, P.ctx.S.aiHero);
+  P.els['ai-hero-remove'].onclick();
+  check('E.6 Remove: none will be made, said so, with the way back', P.ctx.S.aiHero.removed === true && P.els['ai-hero-line'].innerHTML.indexOf('ETB2B AI won’t make a hero picture for this event.') !== -1 &&
+    !!P.els['ai-hero-restore'] && P.els['ai-hero-restore'].focused === 1 && P.ctx.wantsAiHero() === false);
+  var steps = P.ctx.handoffSteps().map(function (x) { return x.key; });
+  check('E.6 Remove: the hand-off asks for no picture', JSON.stringify(steps) === '["create","open"]', steps);
+  P.els['ai-hero-restore'].onclick();
+  check('E.6 Make one after all: back as it was (the subject kept)', P.ctx.S.aiHero.removed === false && P.ctx.S.aiHero.subject === 'a modern retail store at night' && P.ctx.wantsAiHero() === true);
+  steps = P.ctx.handoffSteps();
+  check('E.6 the hand-off: its row comes right after the event is created, before the editor opens', JSON.stringify(steps.map(function (x) { return x.key; })) === '["create","hero","open"]' &&
+    steps[1].label === 'ETB2B AI is making a hero picture', steps.map(function (x) { return x.key + ':' + x.label; }));
+
+  /* why none is made, for each path */
+  P.ctx.S.creationMethod = 'brief';
+  check('E.6 brief path: the line says why, and no picture is asked for', P.line().innerHTML.indexOf('Generate from a brief makes the site’s pictures itself') !== -1 && P.ctx.wantsAiHero() === false && !P.els['ai-hero-line'].innerHTML.match(/ai-hero-change"/));
+  P.ctx.S.creationMethod = 'imported';
+  check('E.6 an imported design: no picture asked for', P.ctx.wantsAiHero() === false);
+  var Pb = stage({ ownBanner: true });
+  Pb.ctx.S.aiHero = Pb.ctx.cleanAiHero({ subject: '' }); Pb.ctx.S.creationMethod = 'template'; Pb.ctx.S.step = 1;
+  check('E.6 the person\'s own banner: said, and no picture asked for', Pb.line().innerHTML.indexOf('You added your own banner picture') !== -1 && Pb.ctx.wantsAiHero() === false);
+  var Pn = stage({ caps: { byLib: {} } });
+  Pn.ctx.S.aiHero = Pn.ctx.cleanAiHero({ subject: '' }); Pn.ctx.S.creationMethod = 'template'; Pn.ctx.S.template = 'x'; Pn.ctx.S.step = 1;
+  check('E.6 a design with no hero section: said, and none asked for', Pn.line().innerHTML.indexOf('This design has no hero picture') !== -1 && Pn.ctx.wantsAiHero() === false);
+  var Px = stage({ caps: { byLib: { hero: { sectionId: 'banner' } } }, excluded: { banner: true } });
+  Px.ctx.S.aiHero = Px.ctx.cleanAiHero({ subject: '' }); Px.ctx.S.creationMethod = 'template'; Px.ctx.S.template = 'x'; Px.ctx.S.step = 1;
+  check('E.6 …or with its hero switched off', Px.ctx.wantsAiHero() === false);
+  P.ctx.S.creationMethod = 'template'; P.ctx.S.step = 4;
+  check('E.6 the line is only over step 1', P.line().hidden === true);
+
+  /* ---- the picture is asked for only once the event exists, and never fails the hand-off ---- */
+  P.ctx.S.step = 1;
+  var row = { key: 'hero', label: 'ETB2B AI is making a hero picture' };
+  await P.ctx.makeAiHero('RUN', row);
+  check('E.6 no event yet: nothing is asked for', P.log.fetches.length === 0);
+  P.ctx.S.createdEventId = 'retail-2027';
+  await P.ctx.makeAiHero('RUN', row);
+  check('E.6 the event exists: one request, for it, with the subject and the turn', P.log.fetches.length === 1 && P.log.fetches[0].url === '/api/event/ai-hero' && P.log.fetches[0].method === 'POST' &&
+    JSON.stringify(P.log.fetches[0].body) === JSON.stringify({ eventId: 'retail-2027', subject: 'a modern retail store at night', turnId: ID }), P.log.fetches);
+  check('E.6 made: kept in the draft, the row says so, and the editor gets it', !!P.ctx.S.aiHero.made && P.ctx.S.aiHero.made.url === 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png' &&
+    row.label === 'ETB2B AI made a hero picture' && JSON.stringify(P.ctx.aiHeroForHandoff()) === JSON.stringify({ url: 'https://storage.googleapis.com/b/events/retail-2027/generated/x-ai-hero.png', subject: 'Retail Leadership Summit, Jio World Centre, Mumbai' }),
+    [P.ctx.S.aiHero, row.label]);
+  check('E.6 a hand-off run again (a retry) never asks for a second picture', P.ctx.wantsAiHero() === false && JSON.stringify(P.ctx.handoffSteps().map(function (x) { return x.key; })) === '["create","open"]');
+  await P.ctx.makeAiHero('RUN', row);
+  check('E.6 …even if its row ran again', P.log.fetches.length === 1);
+  check('E.6 the line then says it was made', P.line().innerHTML.indexOf('ETB2B AI made this event’s hero picture') !== -1);
+
+  var Pf = stage({ answer: { status: 429, body: { error: 'You have used today’s ETB2B AI pictures. They reset at midnight (India time).', code: 'ai-hero-daily' } } });
+  Pf.ctx.S.aiHero = Pf.ctx.cleanAiHero({ subject: '' }); Pf.ctx.S.creationMethod = 'template'; Pf.ctx.S.createdEventId = 'retail-2027';
+  var frow = { key: 'hero', label: 'ETB2B AI is making a hero picture' }, threw = false;
+  await Pf.ctx.makeAiHero('RUN', frow).then(null, function () { threw = true; });
+  check('E.6 a failure never fails the hand-off: the row resolves, and says the picture was not made', threw === false && frow.label === 'Hero picture not made: the design’s own picture is kept', frow.label);
+  check('E.6 …the editor is told why, in the server\'s words', JSON.stringify(Pf.ctx.aiHeroForHandoff()) === JSON.stringify({ note: 'ETB2B AI could not make the hero picture: You have used today’s ETB2B AI pictures. They reset at midnight (India time). The design’s own picture is in place: you can change it in the editor.' }),
+    Pf.ctx.aiHeroForHandoff());
+  var Po = stage({ answer: { status: 200, body: { url: 'https://evil.example/x.png' } } });
+  Po.ctx.S.aiHero = Po.ctx.cleanAiHero({ subject: '' }); Po.ctx.S.createdEventId = 'retail-2027';
+  await Po.ctx.makeAiHero('RUN', { label: '' });
+  check('E.6 an answer that is not a stored picture of ours is not used', !Po.ctx.S.aiHero.made && /could not make the hero picture/.test(Po.ctx.S.aiHero.note));
+  var Pc = stage();
+  Pc.ctx.S.aiHero = Pc.ctx.cleanAiHero({ subject: '' }); Pc.ctx.S.createdEventId = 'retail-2027';
+  await Pc.ctx.makeAiHero('CANCELLED', { label: '' });
+  check('E.6 a hand-off cancelled meanwhile records nothing', !Pc.ctx.S.aiHero.made && Pc.ctx.S.aiHero.note === '');
+  check('E.6 cleanAiHero: odd stored values are no request, and a "made" picture only of ours', P.ctx.cleanAiHero('x') === null && P.ctx.cleanAiHero([]) === null &&
+    P.ctx.cleanAiHero({ made: { url: 'https://evil.example/x.png' } }).made === null && P.ctx.cleanAiHero({ subject: 7, removed: 'yes' }).removed === false);
+
+  /* ---- static ---- */
+  var markup = (CE.match(/<div class="callout plain" id="ai-hero-line"[^>]*>/) || [''])[0];
+  check('E.6 the line\'s place: right under the note over step 1, a status', markup.indexOf('role="status"') !== -1 && CE.indexOf('id="ai-hero-line"') > CE.indexOf('id="ai-prefill-note"') &&
+    CE.indexOf('id="ai-hero-line"') < CE.indexOf('id="cat-picker"'));
+  check('E.6 renderFoot() keeps the line in step', /renderAiPrefillNote\(\);\s*renderAiHeroLine\(\);/.test(fnSrc(CE_INLINE, 'renderFoot') || ''));
+  check('E.6 restore() reads a stored request back through cleanAiHero', /S\.aiHero = cleanAiHero\(S\.aiHero\);/.test(fnSrc(CE_INLINE, 'restore') || ''));
+  check('E.6 a changed or removed request counts as a change since ETB2B AI filled the draft (its Undo asks first)', /S\.createdEventId, S\.aiHero\]\);/.test(fnSrc(CE_INLINE, 'aiDraftKey') || ''));
+  check('E.6 the editor\'s hand-off carries it, for the draft\'s own design only', /aiHero: own \? aiHeroForHandoff\(\) : null,/.test(fnSrc(CE_INLINE, 'buildEditorPayload') || ''));
+  check('E.6 the hand-off code never generates on the brief path (its own runner list has no hero row)', (fnSrc(CE_INLINE, 'startGenerateFromBrief') || 'x').indexOf('ai-hero') === -1);
+}
+
+/* =============================================================================== E.7 the editor: the picture as one undoable change */
+async function e7() {
+  var ED = read('editor-template-ui.js');
+  var FNS = ['applyAiHero', 'heroPictureEls'];
+  check('E.7 the editor has applyAiHero and heroPictureEls', FNS.every(function (n) { return !!fnSrc(ED, n); }));
+  es5('E.7 the editor\'s hero code', FNS.map(function (n) { return fnSrc(ED, n); }).join('\n'));
+  var TECH = JSON.parse(read('templates/tech500/template.json'));
+  function stage(o) {
+    o = o || {};
+    function img(cls, src) { return { cls: cls, src: src }; }
+    var bannerImg = img('banner-bg-image', 'assets/banner.jpg'), logoImg = img('logo', 'assets/logo.png');
+    var section = { querySelectorAll: function (sel) { return sel === 'img.banner-bg-image' ? [bannerImg] : sel === 'img.logo' ? [logoImg] : []; } };
+    var log = { toasts: [], undo: [], steps: [], set: [] };
+    var ctx = { console: console, Array: Array, String: String, LOG: log };
+    ctx.canvas = { template: { content: { map: o.map || TECH.content.map } },
+      doc: { querySelectorAll: function (sel) { return sel === '[data-rv-section="banner"]' ? [section] : []; } },
+      setPicture: function (el, url) { log.set.push([el.cls, url]); el.src = url; } };
+    /* the undo stack, as the editor keeps it: a step holds the page as it was */
+    var stack = [bannerImg.src], ptr = 0;
+    ctx.commitNow = function () { if (o.noChange) return false; stack = stack.slice(0, ptr + 1).concat([bannerImg.src]); ptr = stack.length - 1; log.steps.push(bannerImg.src); return true; };
+    ctx.offerUndo = function (msg) { log.undo.push(msg); };
+    ctx.showToast = function (msg) { log.toasts.push(msg); };
+    ctx.eventId = 'retail-2027';
+    vm.createContext(ctx);
+    vm.runInContext(FNS.map(function (n) { return fnSrc(ED, n); }).join('\n'), ctx, { filename: 'editor-template-ui.js (hero, extracted)' });
+    return { ctx: ctx, log: log, banner: bannerImg, logo: logoImg, undo: function () { if (ptr > 0) { ptr--; bannerImg.src = stack[ptr]; } } };
+  }
+  var URL = 'https://storage.googleapis.com/test-bucket/events/retail-2027/generated/abc-ai-hero.png';
+  var E = stage();
+  var done = E.ctx.applyAiHero({ aiHero: { url: URL, subject: 'a modern retail store at night' } });
+  check('E.7 the picture goes into the hero\'s own picture (the template\'s {hero.bannerUrl} rule), and nothing else', done === true &&
+    JSON.stringify(E.log.set) === JSON.stringify([['banner-bg-image', URL]]) && E.logo.src === 'assets/logo.png', E.log.set);
+  check('E.7 …as one step of its own, with Undo offered in plain words', E.log.steps.length === 1 && E.log.undo.length === 1 &&
+    E.log.undo[0] === 'ETB2B AI made this hero picture: a modern retail store at night. Undo puts the design’s own picture back.', E.log.undo);
+  E.undo();
+  check('E.7 Undo brings the design\'s own picture back', E.banner.src === 'assets/banner.jpg', E.banner.src);
+  E = stage();
+  check('E.7 only this event\'s own generated picture is ever put in', E.ctx.applyAiHero({ aiHero: { url: 'https://storage.googleapis.com/test-bucket/events/other-event/generated/x.png' } }) === false &&
+    E.ctx.applyAiHero({ aiHero: { url: 'https://evil.example/events/retail-2027/generated/x.png' } }) === false &&
+    E.ctx.applyAiHero({ aiHero: { url: URL + '" onerror="x' } }) === false && E.log.set.length === 0 && E.log.steps.length === 0);
+  E = stage();
+  check('E.7 a note (no picture made) is said, and nothing changes', E.ctx.applyAiHero({ aiHero: { note: 'ETB2B AI could not make the hero picture.' } }) === false &&
+    JSON.stringify(E.log.toasts) === JSON.stringify(['ETB2B AI could not make the hero picture.']) && E.log.set.length === 0);
+  E = stage({ map: [{ from: 'event', section: 'x', fill: [] }] });
+  check('E.7 a design with no place for it: said, nothing changes', E.ctx.applyAiHero({ aiHero: { url: URL } }) === false && /no place for one/.test(E.log.toasts[0] || ''), E.log.toasts);
+  E = stage({ noChange: true });
+  check('E.7 nothing changed (the same picture already there): no Undo offered', E.ctx.applyAiHero({ aiHero: { url: URL } }) === false && E.log.undo.length === 0);
+  check('E.7 no hand-off picture, nothing', stage().ctx.applyAiHero({}) === false && stage().ctx.applyAiHero(null) === false);
+  E = stage({ map: [{ from: 'hero', section: 'banner', fill: [{ attr: 'img.banner-bg-image', name: 'src', value: '{hero.psdBanner.compositeImageData}' }] }] });
+  check('E.7 a generated design\'s hero rule ({hero.psdBanner.compositeImageData}) is found too', E.ctx.applyAiHero({ aiHero: { url: URL } }) === true && E.log.set.length === 1);
+
+  /* when it runs: after the first step, once the records' overlay is part of it */
+  var start = fnSrc(ED, 'boot') || '', handoff = fnSrc(ED, 'applyHandoffDraft') || '';
+  check('E.7 the hand-off holds the picture until the boot is done (its first step is the design\'s own picture)', /if \(kept\) forgetHandoff\(\);\s*pendingAiHero = draft;/.test(handoff));
+  check('E.7 the boot puts it in last, after the records are drawn into the first step', start.indexOf('applySubcollectionOverlay()') !== -1 &&
+    start.indexOf('applyAiHero(heroDraft)') > start.indexOf('applySubcollectionOverlay()') && start.indexOf('applyAiHero(heroDraft)') > start.indexOf('logoUnitNotice();'));
+  check('E.7 a hand-off with no sections still brings the picture', /return seedSnapshot\(null\)\.then\(function \(\) \{ pendingAiHero = draft; \}\);/.test(ED));
 }

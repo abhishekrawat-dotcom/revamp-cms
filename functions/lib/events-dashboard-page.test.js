@@ -291,14 +291,15 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   var S = stand();
   await flush();
   var L = S.L;
-  check('D.2 window.RvListing has K7\'s six names', L && same(Object.keys(L).sort(), ['apply', 'me', 'openHelp', 'ready', 'restore', 'snapshot']) && Object.keys(L).every(function (k) { return typeof L[k] === 'function'; }));
+  /* setPortal: ETB2B AI's "switch to ETAuto" (plan §17) */
+  check('D.2 window.RvListing has K7\'s six names and setPortal', L && same(Object.keys(L).sort(), ['apply', 'me', 'openHelp', 'ready', 'restore', 'setPortal', 'snapshot']) && Object.keys(L).every(function (k) { return typeof L[k] === 'function'; }));
   var readyHit = false; await L.ready().then(function () { readyHit = true; });
   check('D.2 ready() settles once the events have loaded', readyHit && S.fetched[0] === '/api/events');
   check('D.2 a page opened with no address keeps it (no #tab=active written on load)', S.replaced.length === 0, S.replaced);
   check('D.2 me(): the signed-in person', same(JSON.parse(JSON.stringify(L.me())), { email: 'Asha.Rao@timesinternet.in', name: 'Asha Rao' }));
   var base = S.snap();
-  check('D.2 snapshot(): {tab, specialView, search, filters, created, starts, mine, sort, page, view} (+ portal, shown)', same(Object.keys(base), ['tab', 'specialView', 'search', 'filters', 'created', 'starts', 'mine', 'sort', 'page', 'view', 'portal', 'shown']) &&
-    same(base, { tab: 'active', specialView: null, search: '', filters: { types: [], portals: [], payment: [] }, created: null, starts: null, mine: false, sort: { field: 'start', dir: 'asc' }, page: 1, view: 'list', portal: '', shown: 1 }), base);
+  check('D.2 snapshot(): {tab, specialView, search, filters, created, starts, mine, sort, page, view} (+ portal, working, listPortal, portalReturn, shown)', same(Object.keys(base), ['tab', 'specialView', 'search', 'filters', 'created', 'starts', 'mine', 'sort', 'page', 'view', 'portal', 'working', 'listPortal', 'portalReturn', 'shown']) &&
+    same(base, { tab: 'active', specialView: null, search: '', filters: { types: [], portals: [], payment: [] }, created: null, starts: null, mine: false, sort: { field: 'start', dir: 'asc' }, page: 1, view: 'list', portal: '', working: 'all', listPortal: 'all', portalReturn: '', shown: 1 }), base);
   var s1 = L.snapshot(); s1.filters.types.push('ip');
   check('D.2 snapshot() is a copy (changing it changes nothing)', S.snap().filters.types.length === 0);
   check('D.2 the Active tab lists the live, running event', same(shownIds(S), ['live-active']));
@@ -485,6 +486,56 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   var orr = await bot.runList({ statuses: [], search: 'No portal yet', limit: 20 }, octx);
   check('D.2 portals: a stored portal off ET\'s roster is "No portal yet" to the bot, as the events list says (api.js eventListItem)',
     octx.events[0].portal === '' && same(orr.list.items.map(function (it) { return it.id; }), ['odd']), [octx.events[0].portal, orr.list.items.map(function (it) { return it.id; })]);
+
+  /* ======== D.2p ETB2B AI and portals (plan §17): another portal looked at for now, the switch, and their Undo ======== */
+  var Sp2 = stand({ items: PORTAL_ITEMS, working: 'cio' }); await flush();
+  var portalSaves = [];
+  Sp2.ctx.RevampPortals.setWorking = function (v) { portalSaves.push(v); return Promise.resolve(v); };
+  var p2before = Sp2.snap();
+  check('D.2p snapshot: the scope on screen, the portal worked in, and the list\'s own portal state', p2before.portal === 'cio' && p2before.working === 'cio' && p2before.listPortal === 'cio' && p2before.portalReturn === '', p2before);
+  /* the server's own patch for "Show ETHRWorld's active events", run through the page */
+  var hctx = bot.contextFor({ decoded: { email: ME }, name: 'Asha Rao', message: 'Show ETHRWorld\'s active events', view: { portal: 'cio', working: 'cio' }, docs: PORTAL_ITEMS.map(function (d) { return { id: d.id, data: d }; }) });
+  var hAns = await bot.cleanAnswer({ kind: 'filter', filter: { view: 'active', portal: 'hr' }, text: 'Here they are.' }, hctx);
+  check('D.2p the server\'s patch names ETHRWorld, and its card says so', !!hAns.action && hAns.action.patch.portal === 'hr' && /in ETHRWorld$/.test(hAns.action.label), hAns.action);
+  var undoSnap = Sp2.L.apply(hAns.action.patch);
+  var p2look = Sp2.snap();
+  check('D.2p apply(portal: another one): the list shows exactly that portal\'s events', same(shownIds(Sp2), ['hr-active']), shownIds(Sp2));
+  check('D.2p …looked at for now: the portal worked in is not moved, and nothing is saved', p2look.working === 'cio' && p2look.listPortal === 'all' && p2look.portalReturn === 'cio' && p2look.portal === 'hr' && portalSaves.length === 0, [p2look, portalSaves]);
+  var notice = Sp2.$('portal-notice').innerHTML;
+  check('D.2p …the notice names the portal looked at, with the way back', notice.indexOf('Showing ETHRWorld for now.') !== -1 && notice.indexOf('Back to ETCIO') !== -1, notice);
+  Sp2.L.restore(undoSnap);
+  var p2back = Sp2.snap();
+  check('D.2p Undo (restore): back on ETCIO exactly, nothing saved', p2back.portal === 'cio' && p2back.listPortal === 'cio' && p2back.portalReturn === '' && same(shownIds(Sp2), ['cio-active']) && portalSaves.length === 0, [p2back, shownIds(Sp2)]);
+  Sp2.L.apply({ view: 'active', search: '', types: [], mine: false, created: null, starts: null, sort: null, portal: 'none' });
+  check('D.2p apply(portal: none): the events with no portal yet, and the notice says so', same(shownIds(Sp2), ['none-active']) && Sp2.$('portal-notice').innerHTML.indexOf('Showing the events with no portal yet.') !== -1, shownIds(Sp2));
+  Sp2.L.apply({ view: 'active', search: '', types: [], mine: false, created: null, starts: null, sort: null, portal: 'all' });
+  check('D.2p apply(portal: all): every portal, for now', same(shownIds(Sp2).sort(), ['cio-active', 'hr-active', 'none-active']) && Sp2.snap().working === 'cio' && Sp2.snap().portal === '', [shownIds(Sp2), Sp2.snap()]);
+  Sp2.L.apply({ view: 'active', search: '', types: [], mine: false, created: null, starts: null, sort: null, portal: 'cio' });
+  check('D.2p apply(portal: the one worked in): back on it', same(shownIds(Sp2), ['cio-active']) && Sp2.snap().portalReturn === '' && Sp2.snap().listPortal === 'cio');
+  Sp2.L.apply({ view: 'active', search: '', types: [], mine: false, created: null, starts: null, sort: null, portal: '<b>' });
+  check('D.2p apply(portal: anything else) is ignored', same(shownIds(Sp2), ['cio-active']) && Sp2.snap().listPortal === 'cio');
+  /* "Show these in the list" for a list on another portal (the server's view carries the portal) */
+  var nctx = bot.contextFor({ decoded: { email: ME }, name: 'Asha Rao', message: 'Which active events have no portal?', view: { portal: 'cio', working: 'cio' }, docs: PORTAL_ITEMS.map(function (d) { return { id: d.id, data: d }; }) });
+  nctx.events.forEach(function (ev) { nctx.totals[ev.id] = null; });
+  var nr = await bot.runList({ statuses: ['active'], portal: 'none', limit: 20 }, nctx);
+  var nUndo = Sp2.L.apply(nr.list.view);
+  check('D.2p "Show these in the list" for the events with no portal: the server\'s events, on the list', !!nr.list.view && nr.list.view.portal === 'none' &&
+    same(nr.list.items.map(function (it) { return it.id; }), ['none-active']) && same(shownIds(Sp2), ['none-active']), [nr.list.view, shownIds(Sp2)]);
+  Sp2.L.restore(nUndo);
+  /* the switch: saved for the person, as the switcher saves it; its Undo switches back */
+  var swUndo = Sp2.L.setPortal('hr');
+  check('D.2p setPortal(): the switcher moves, the list shows that portal, and it is saved', !!swUndo && swUndo.working === 'cio' && Sp2.snap().working === 'hr' &&
+    same(shownIds(Sp2), ['hr-active']) && same(portalSaves, ['hr']), [swUndo && swUndo.working, Sp2.snap().working, portalSaves]);
+  Sp2.L.restore(swUndo);
+  check('D.2p a plain restore() of that snapshot never moves the portal worked in', Sp2.snap().working === 'hr' && same(portalSaves, ['hr']), [Sp2.snap().working, portalSaves]);
+  Sp2.L.restore(swUndo, { portal: true });
+  check('D.2p restore(…, {portal: true}): switched back to ETCIO, and saved', Sp2.snap().working === 'cio' && same(shownIds(Sp2), ['cio-active']) && same(portalSaves, ['hr', 'cio']), [Sp2.snap().working, portalSaves]);
+  check('D.2p setPortal(): a portal off ET\'s roster, or an odd value, is refused (null), nothing saved',
+    Sp2.L.setPortal('nowhere') === null && Sp2.L.setPortal('<x>') === null && Sp2.snap().working === 'cio' && same(portalSaves, ['hr', 'cio']), portalSaves);
+  var allUndo = Sp2.L.setPortal('all');
+  check('D.2p setPortal("all"): All portals', !!allUndo && Sp2.snap().working === 'all' && same(shownIds(Sp2).sort(), ['cio-active', 'hr-active', 'none-active']));
+  Sp2.L.restore(allUndo, { portal: true });
+  check('D.2p …and back', Sp2.snap().working === 'cio' && same(portalSaves, ['hr', 'cio', 'all', 'cio']), portalSaves);
 
   /* ======== D.3 "Latest activity": real figures for the period picked, or a dash and the reason (QA F4, UX-017) ======== */
   var ACT = INLINE.slice(INLINE.indexOf('     LATEST ACTIVITY —'), INLINE.indexOf('     APP RENDER'));

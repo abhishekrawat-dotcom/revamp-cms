@@ -361,7 +361,8 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
 
   /* ===== A.6 the schema ===== */
   var S = T.SCHEMA, engine = require('./vendor/promo-engine');
-  check('A.6 the kind enum is exact', JSON.stringify(S.properties.kind.enum) === JSON.stringify(['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse']));
+  /* "portal" (switch the dashboard's portal) is the owner's addition of 3 Nov 2026 (plan §17) */
+  check('A.6 the kind enum is exact', JSON.stringify(S.properties.kind.enum) === JSON.stringify(['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'portal']));
   check('A.6 text and kind are required', JSON.stringify(S.required) === JSON.stringify(['kind', 'text']));
   check('A.6 promo.post is the engine\'s 9 post templates', JSON.stringify(S.properties.promo.properties.post.enum.filter(Boolean)) === JSON.stringify(engine.ALL_TEMPLATES.map(function (t) { return t.id; })) && engine.ALL_TEMPLATES.length === 9);
   check('A.6 promo.mailer is the engine\'s 18 mailers', JSON.stringify(S.properties.promo.properties.mailer.enum.filter(Boolean)) === JSON.stringify(engine.ALL_MAILERS.map(function (t) { return t.id; })) && engine.ALL_MAILERS.length === 18);
@@ -396,13 +397,14 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   }
   var optional = converted ? optionalParams(converted) : -1;
   check('A.6 strict mode: at most 24 optional parameters in claude.toJsonSchema(SCHEMA) (it was 55)', optional >= 0 && optional <= 24 && T.STRICT_OPTIONAL_MAX === 24, optional);
-  check('A.6 strict mode: only the top level is optional (8: events, notFound and the six blocks)', optional === 8, optional);
+  check('A.6 strict mode: only the top level is optional (9: events, notFound and the seven blocks)', optional === 9, optional);
   check('A.6 strict mode: no union types', !!converted && unionParams(converted) === 0);
-  var blocks = ['create', 'open', 'filter', 'list', 'promo', 'refuse'];
+  var blocks = ['create', 'open', 'filter', 'list', 'promo', 'refuse', 'switchTo'];
   function allRequired(o) { return !!o && o.type === 'object' && o.additionalProperties === false && JSON.stringify(Object.keys(o.properties).sort()) === JSON.stringify((o.required || []).slice().sort()); }
   check('A.6 every field of every block is required, so "" / false / [] / 0 mean "not said"', !!converted && blocks.every(function (b) { return allRequired(converted.properties[b]); }),
     blocks.filter(function (b) { return !converted || !allRequired(converted.properties[b]); }));
-  check('A.6 no ability lost: every block keeps all its fields', JSON.stringify(blocks.map(function (b) { return Object.keys(S.properties[b].properties).length; })) === JSON.stringify([16, 2, 10, 15, 3, 1]),
+  /* plan §17-18: create gains heroSubject and noHeroPicture, filter gains portal, switchTo is new */
+  check('A.6 no ability lost: every block keeps all its fields', JSON.stringify(blocks.map(function (b) { return Object.keys(S.properties[b].properties).length; })) === JSON.stringify([18, 2, 11, 15, 3, 1, 1]),
     blocks.map(function (b) { return Object.keys(S.properties[b].properties).length; }));
   check('A.6 the prompt asks for every field of the block it uses, with empties', /Inside a block, give every field: "" \(an empty string\), false, \[\] or 0/.test(T.buildPrompt(await ctxWith('hi'))));
 

@@ -111,6 +111,9 @@
 //                          GET /api/dash-bot/history (your own conversation; ?all=1 everyone's, for the approvers).
 //                          It reads the same events GET /api/events lists, through liveEventDocs() — see
 //                          dashBotHelpers() for what it is handed.
+//     lib/ai-hero.js       POST /api/event/ai-hero: the first hero picture of an event started from the dashboard's
+//                          ETB2B AI, made once Create Event has created the event (one per event, a small daily
+//                          allowance per person) — see aiHeroHelpers() for what it is handed.
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -10234,6 +10237,28 @@ function dashBot(handler) {
   };
 }
 
+/* lib/ai-hero.js (the first hero picture of an event started from the dashboard's ETB2B AI) is handed this file's
+   helpers the same way: its sign-in check, its answers, the editor chat's per-person key (chatUid, which the bot's
+   daily allowance is kept under) and the event's AI usage recorder. A module that fails to load costs only its
+   own route the 503 inModule() answers, and a wiring with parts missing is answered the same way. */
+function aiHeroHelpers() {
+  return { withAdminBody, sendJson, sendFailure, sendAiFailure, BODY_LIMITS, chatUid, isEventId, aiUsageRecorder };
+}
+function aiHeroRoute(handler) {
+  var run = inModule('ai-hero', handler);
+  return function (req, res) {
+    var mod;
+    try { mod = require('./ai-hero'); }
+    catch (e) { return run(req, res); /* inModule() logs a module that cannot be loaded and answers 503 */ }
+    try { mod.wire(aiHeroHelpers()); }
+    catch (err) {
+      console.error('api: lib/ai-hero.js could not be wired for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+      return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+    }
+    return run(req, res);
+  };
+}
+
 /* the same 42 bytes as lib/promo-track.js PIXEL (a test checks): a mail must never show a broken image, even
    when that module is missing from a deployment */
 var TRACK_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -10298,6 +10323,7 @@ var ROUTES = {
   'POST /api/event/upload': events('handleUpload'),
   'GET /api/event/hero-video': heroVideo('handleHeroVideoGet'),
   'PUT /api/event/hero-video': heroVideo('handleHeroVideoSave'),
+  'POST /api/event/ai-hero': aiHeroRoute('handleHero'),       // ETB2B AI's first hero picture for an event it started (lib/ai-hero.js)
   'DELETE /api/event/hero-video': heroVideo('handleHeroVideoRemove'),
   'POST /api/event/hero-video/upload': heroVideo('handleHeroVideoUpload'),
   'POST /api/event/hero-video/check': heroVideo('handleHeroVideoCheck'),

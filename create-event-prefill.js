@@ -14,6 +14,13 @@
      RevampPrefill.summary(result)           -> the sentence the page shows over step 1: the values it filled in
                                                 ("IP event · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai"),
                                                 since the screen it opens on (the method) does not show them yet
+     RevampPrefill.heroLine(o)               -> what the line about ETB2B AI's hero picture says: { text, can }
+
+   A HERO PICTURE (the owner, 3 Nov 2026). An event ETB2B AI starts also asks for a first hero picture
+   (p.hero = { subject }: the person's own words for it, or '' for the event's name and place). It is held in
+   the draft (S.aiHero) and shown over step 1 with Change and Remove; nothing is made until the event exists
+   (Create Event's hand-off, then functions/lib/ai-hero.js). "Generate from a brief" makes its own pictures, an
+   imported design keeps its own, and a banner the person uploads is theirs: none of them gets one.
 
    What arrives is checked again here with the same rules the server used (functions/lib/dash-bot.js cleanCreate):
    a value written into storage by hand, or by an older page, can never put an odd value into the draft, and
@@ -48,13 +55,14 @@
      checks again against the page's own CATS. */
   var DATE_MODES = { IP: ['exact', 'month', 'quarter', 'tbd'], Client: ['none', 'exact', 'month', 'tbd'], Awards: ['exact', 'month', 'quarter', 'tbd'] };
   var DEFAULT_DATE_MODE = { IP: 'exact', Client: 'exact', Awards: 'month' };
-  var TEXT_MAX = 120, URL_MAX = 500, BRIEF_MAX = 4000;
+  var TEXT_MAX = 120, URL_MAX = 500, BRIEF_MAX = 4000, SUBJECT_MAX = 200;
   var YEAR_MIN = 2000, YEAR_MAX = 2100;
   /* Create Event's Starts and Ends boxes are datetime-local: a date alone does not fit in them */
   var START_TIME = '09:00', END_TIME = '18:00';
   var LABELS = {
     category: 'event type', name: 'name', slug: 'web address', client: 'client', dates: 'date', venue: 'venue',
-    city: 'city', brief: 'brief', current: 'this edition’s link', previous: 'previous edition’s link', portal: 'portal'
+    city: 'city', brief: 'brief', current: 'this edition’s link', previous: 'previous edition’s link', portal: 'portal',
+    hero: 'hero picture'
   };
   /* the event type as the dashboard's ETB2B AI card names it (dash-bot-client.js summary), so the two read alike */
   var KIND_WORDS = { IP: 'IP event', Client: 'Client event', Awards: 'Awards' };
@@ -165,6 +173,9 @@
     if (!method && hasBrief) method = 'brief';
     if (method !== 'brief') brief = { text: '', current: '', previous: '' };
     var portal = typeof p.portal === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(p.portal) ? p.portal : '';
+    /* the hero picture asked for: its subject one line of the person's words, or '' (the event's name and place);
+       none on the brief path, which makes the site's pictures itself */
+    var hero = plain(p.hero) && method !== 'brief' ? { subject: line(p.hero.subject, SUBJECT_MAX) } : null;
 
     /* what arrived and is not kept, by LABELS key: apply() passes it on, and the note over step 1 names it */
     var dropped = [];
@@ -186,7 +197,7 @@
       v: 1, from: 'etb2b-ai', at: at, prefillId: id,
       turnId: typeof p.turnId === 'string' && ID_RE.test(p.turnId) ? p.turnId : '',
       category: category, method: method, portal: portal,
-      basics: basics, brief: brief, dropped: dropped
+      basics: basics, brief: brief, hero: hero, dropped: dropped
     };
   }
 
@@ -317,6 +328,12 @@
     /* the portal box exists once the portals change is in (S.basics.portal); before that the page has no portal at
        all, so there is nothing the person could fill it into either, and it is not named as left out */
     if (p.portal && own(b, 'portal')) { b.portal = p.portal; fields.push('portal'); }
+    /* the hero picture request goes into the draft (the page's S has an aiHero slot); it is made only once the
+       event is created, and the line over step 1 says so */
+    if (plain(p.hero) && own(S, 'aiHero') && !brief) {
+      S.aiHero = { subject: line(p.hero.subject, SUBJECT_MAX), removed: false, made: null, note: '', turnId: typeof p.turnId === 'string' ? p.turnId : '', at: typeof p.at === 'number' ? p.at : 0 };
+      fields.push('hero');
+    }
 
     /* the values themselves, for the note over step 1: the screen it opens on does not show them yet */
     function has(k) { return fields.indexOf(k) !== -1; }
@@ -380,8 +397,30 @@
     return out + notUsed;
   }
 
+  /* What the line over step 1 says about ETB2B AI's hero picture, from the draft as it is now.
+     o: { hero: S.aiHero, method: S.creationMethod, ownBanner: the draft has a banner picture of its own,
+          noSlot: the chosen design has no hero picture, subject: what "the event's name and place" comes to now }
+     -> { text, can: 'change' (Change and Remove) | 'restore' (Make one after all) | '' (nothing to do) } or null
+        when there is no request. Every reason none will be made is said, never left to be guessed. */
+  function heroLine(o) {
+    o = o || {};
+    var h = o.hero;
+    if (!plain(h)) return null;
+    if (plain(h.made) && typeof h.made.url === 'string' && h.made.url) {
+      return { text: 'ETB2B AI made this event\u2019s hero picture' + (h.made.subject ? ': ' + h.made.subject : '') + '. It is in the editor, where Undo puts the design\u2019s own picture back.', can: '' };
+    }
+    if (h.removed === true) return { text: 'ETB2B AI won\u2019t make a hero picture for this event.', can: 'restore' };
+    if (o.method === 'brief') return { text: 'Generate from a brief makes the site\u2019s pictures itself, so ETB2B AI won\u2019t make a separate hero picture.', can: '' };
+    if (o.method === 'imported') return { text: 'An imported design keeps its own pictures, so ETB2B AI won\u2019t make a hero picture.', can: '' };
+    if (o.ownBanner) return { text: 'You added your own banner picture, so ETB2B AI won\u2019t make one.', can: '' };
+    if (o.noSlot) return { text: 'This design has no hero picture, so ETB2B AI won\u2019t make one.', can: '' };
+    var own = line(h.subject, SUBJECT_MAX), auto = line(o.subject, SUBJECT_MAX);
+    var what = own ? own : auto ? auto + ' (from the event\u2019s name and place)' : 'from the event\u2019s name and place, once you have typed them';
+    return { text: 'ETB2B AI will make a hero picture: ' + what + '. Nothing is made until your event is created.', can: 'change' };
+  }
+
   return {
-    PREFIX: PREFIX, MAX_AGE_MS: MAX_AGE_MS, ID_RE: ID_RE, DATE_MODES: DATE_MODES, DEFAULT_DATE_MODE: DEFAULT_DATE_MODE,
-    take: take, decide: decide, apply: apply, describe: describe, summary: summary
+    PREFIX: PREFIX, MAX_AGE_MS: MAX_AGE_MS, ID_RE: ID_RE, DATE_MODES: DATE_MODES, DEFAULT_DATE_MODE: DEFAULT_DATE_MODE, SUBJECT_MAX: SUBJECT_MAX,
+    take: take, decide: decide, apply: apply, describe: describe, summary: summary, heroLine: heroLine
   };
 });

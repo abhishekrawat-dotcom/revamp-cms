@@ -4,7 +4,10 @@
    POST /api/dash-bot together with what the list is showing, and does what the answer says at once. That is
    ETB2B AI's "do it, then undo": there is no Apply or Discard step, and everything it changes can be put back.
      filter     the list changes (window.RvListing.apply); the panel folds to a one-line peek so the list is in
-                view; Undo puts the list back exactly as it was
+                view; Undo puts the list back exactly as it was. Another portal's events are looked at "for now":
+                the portal the person works in is not moved
+     portal     ("switch to ETAuto") the dashboard's own portal switcher moves (RvListing.setPortal, saved for the
+                person as the switcher saves it); Undo switches back
      navigate   "Opening … · Stay here" for 1.2 s, then the page opens; Stay here cancels, and Back undoes
      create     the details go to Create Event (localStorage, under an id the server made), then as navigate
      choose     one button per event; a click runs that event's own action, with no second AI call
@@ -49,7 +52,7 @@
 
   var TEXT = {
     welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions.',
-    footNote: 'ETB2B AI opens pages, filters this list and starts drafts. It never deletes, cancels, publishes or approves anything.',
+    footNote: 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.',
     tooLong: 'Keep the message under 4,000 characters. For a longer brief, ask me to start a new event from a brief, then paste it on Create Event.',
     session: 'Your session has ended. Sign in again.',
     offline: 'You’re offline. Check your connection and try again.',
@@ -88,7 +91,8 @@
   var FIELD_WORDS = {
     name: 'the event name', client: 'the client', venue: 'the venue', city: 'the city',
     date: 'the date', start: 'the dates', end: 'the dates', dates: 'the dates', month: 'the month', quarter: 'the quarter', year: 'the year',
-    currentUrl: 'this edition’s link', previousUrl: 'the previous edition’s link', portal: 'the portal', category: 'the kind of event'
+    currentUrl: 'this edition’s link', previousUrl: 'the previous edition’s link', portal: 'the portal', category: 'the kind of event',
+    heroSubject: 'what the hero picture should show'
   };
 
   var chat = null;
@@ -191,8 +195,10 @@
       tab: str(s.tab) || 'active',
       specialView: s.specialView || null,
       search: str(s.search).slice(0, 80),
-      /* the working portal, once the dashboard has one ('' = all portals) */
+      /* the portal scope the list shows now (a slug, 'none' or '' for every portal), and the portal the person
+         works in ('' = All portals). An older page's snapshot has no working portal: its list portal was it. */
       portal: typeof s.portal === 'string' ? s.portal : '',
+      working: typeof s.working === 'string' ? (s.working === 'all' ? '' : s.working) : (typeof s.portal === 'string' ? s.portal : ''),
       types: s.filters && Array.isArray(s.filters.types) ? s.filters.types.slice(0, 10) : [],
       mine: s.mine === true,
       created: s.created || null,
@@ -279,6 +285,7 @@
   function runAction(action, bubble, ctx, shownText) {
     if (!action || typeof action !== 'object') return false;
     if (action.type === 'filter') return runFilter(action, bubble, ctx);
+    if (action.type === 'portal') return runPortal(action, bubble, ctx);
     if (action.type === 'navigate') return runNavigate(action, bubble, ctx);
     if (action.type === 'create') return runCreate(action, bubble, ctx);
     if (action.type === 'refuse') { drawRefusal(action, bubble, shownText || ''); return true; }
@@ -344,14 +351,17 @@
       });
     }
     /* a "Show these in the list" change belongs to an answer, which stays answered */
-    if (c.kind === 'filter') report(c.turnId, 'undone');
+    if (c.kind === 'filter' || c.kind === 'portal') report(c.turnId, 'undone');
   }
   function undoChange(c) {
     if (!c || c.undone) return false;
     var later = changes.slice(changes.indexOf(c) + 1).filter(function (x) { return !x.undone; });
     if (later.length && !ask(TEXT.olderUndo)) return false;
+    /* Going back past a portal ETB2B AI switched to switches back too. Only then: a portal the person chose
+       themselves on the switcher is theirs, and an Undo of a list change never moves it. */
+    var portalToo = later.concat([c]).some(function (x) { return x.kind === 'portal'; });
     var L = root.RvListing, ok = false;
-    try { ok = !!(L && typeof L.restore === 'function' && L.restore(c.snap) !== false); } catch (e) { ok = false; }
+    try { ok = !!(L && typeof L.restore === 'function' && L.restore(c.snap, portalToo ? { portal: true } : undefined) !== false); } catch (e) { ok = false; }
     if (!ok) { if (c.bubble) c.bubble.note(TEXT.notUndone); return false; }
     /* going back past a later change takes that change away too */
     later.concat([c]).forEach(spent);
@@ -364,7 +374,7 @@
   /* the open panel would cover the very column a filter changed, so it folds to a one-line peek with Undo */
   function fold(c) {
     if (!chat || typeof chat.fold !== 'function') return;
-    try { chat.fold('Showing ' + c.label, c.handler); } catch (e) { /* the card keeps its Undo */ }
+    try { chat.fold((c.kind === 'portal' ? 'Now ' : 'Showing ') + c.label, c.handler); } catch (e) { /* the card keeps its Undo */ }
   }
 
   function runFilter(action, bubble, ctx) {
@@ -377,6 +387,24 @@
     bubble.note('Showing ' + label + '.');
     if (!snap || typeof snap !== 'object') return true;
     var c = keep({ key: ctx.turnId, turnId: ctx.turnId, kind: 'filter', snap: snap, label: label, bubble: bubble });
+    c.buttons.push(bubble.undo(c.handler));
+    fold(c);
+    return true;
+  }
+
+  /* The dashboard's own portal switcher, moved to the portal asked for (saved for the person, as the switcher
+     saves it). The card and the peek say where the list now is, with Undo, which switches back. */
+  function runPortal(action, bubble, ctx) {
+    var L = root.RvListing;
+    var to = str(action.portal);
+    if (!L || typeof L.setPortal !== 'function' || !/^(?:all|[a-z0-9]{1,40})$/.test(to)) return failed(bubble, ctx, TEXT.listMissing);
+    var snap = null;
+    try { snap = L.setPortal(to); } catch (e) { snap = null; }
+    if (!snap || typeof snap !== 'object') return failed(bubble, ctx, 'The dashboard could not be switched to that portal. Reload the page and ask again.');
+    started(ctx);
+    var label = 'working in ' + labelOf(action.label, to === 'all' ? 'All portals' : 'that portal');
+    bubble.note('Now ' + label + '.');
+    var c = keep({ key: ctx.turnId, turnId: ctx.turnId, kind: 'portal', snap: snap, label: label, bubble: bubble });
     c.buttons.push(bubble.undo(c.handler));
     fold(c);
     return true;
@@ -493,6 +521,8 @@
     if (b.client) bits.push('for ' + str(b.client));
     if (br.text) bits.push('your brief');
     if (br.current || br.previous) bits.push(br.current && br.previous ? 'your two links' : 'your link');
+    /* made only once the event is created; Create Event shows it with Change and Remove */
+    if (p.hero && typeof p.hero === 'object') bits.push('a hero picture once it is created');
     return bits.join(' · ');
   }
   /* which details the server left out because the person never typed them (the "grounding" rule) */
@@ -551,7 +581,7 @@
     bubble.choices(choices.map(function (c) {
       c = c && typeof c === 'object' ? c : {};
       return {
-        label: [c.name, c.dates, c.statusLabel].filter(function (x) { return !!x; }).map(str).join(' · '),
+        label: [c.name, c.portal, c.dates, c.statusLabel].filter(function (x) { return !!x; }).map(str).join(' · '),
         onClick: function () {
           if (chosen) return;
           chosen = true;
@@ -582,13 +612,14 @@
     var title = str(list.title);
     return /visit/i.test(title) && !/registr/i.test(title) ? 'visitors' : 'registrations';
   }
-  function kitItem(it, metric) {                         // metric: 'registrations' or 'visitors' (listMetric)
+  function kitItem(it, metric, showPortal) {             // metric: 'registrations' or 'visitors' (listMetric)
     it = it && typeof it === 'object' ? it : {};
     var other = metric === 'visitors' ? 'registrations' : 'visitors';
     var lead = figureText(it[metric], LIST_FIGURES[metric]), next = figureText(it[other], LIST_FIGURES[other]);
     return {
       href: str(it.href), name: str(it.name),
-      meta: [str(it.dates), lead ? next : ''].filter(function (x) { return !!x; }).join(' · '),
+      /* a list across all portals names each event's portal ("No portal yet" for none) */
+      meta: [showPortal ? str(it.portal) : '', str(it.dates), lead ? next : ''].filter(function (x) { return !!x; }).join(' · '),
       chip: { label: str(it.statusLabel) || STATUS_WORDS[it.status] || '', tone: str(it.status) },
       value: lead || next
     };
@@ -596,7 +627,7 @@
   function kitList(list) {
     var items = Array.isArray(list.items) ? list.items : [], metric = listMetric(list);
     return { title: str(list.title), count: typeof list.count === 'number' ? list.count : items.length, more: list.more === true,
-      items: items.map(function (it) { return kitItem(it, metric); }) };
+      items: items.map(function (it) { return kitItem(it, metric, list.showPortal === true); }) };
   }
   function drawList(bubble, list, ctx) {
     bubble.list(kitList(list));
@@ -629,16 +660,18 @@
     var said = parts.length ? parts : (str(t.answer) || (a && a.type === 'create' ? TEXT.creating : ''));
     var b = chat.ai(said, bubbleOpts(parts, list, t.asOf, at));
     if (list) b.list(kitList(list));
-    if (a && a.type === 'filter') {
-      var label = labelOf(a.label, 'a filtered list');
-      if (t.status === 'undone') b.note('Showed ' + label + ', then undone.');
+    if (a && (a.type === 'filter' || a.type === 'portal')) {
+      var isPortal = a.type === 'portal';
+      var label = isPortal ? 'working in ' + labelOf(a.label, 'another portal') : labelOf(a.label, 'a filtered list');
+      var did = isPortal ? 'Switched to ' + labelOf(a.label, 'another portal') : 'Showed ' + label;
+      if (t.status === 'undone') b.note(did + ', then undone.');
       else if (t.status === 'failed') b.note(TEXT.failedBefore);
       else {
-        b.note('Showed ' + label + '.');
+        b.note(did + '.');
         /* Undo comes back only where this tab still holds the list as it was */
         var held = t.status === 'done' ? heldSnap(id) : null;
         if (held) {
-          var c = keep({ key: id, turnId: id, kind: 'filter', snap: held.snap, label: label, at: +held.at || 1, bubble: b });
+          var c = keep({ key: id, turnId: id, kind: a.type, snap: held.snap, label: label, at: +held.at || 1, bubble: b });
           c.buttons.push(b.undo(c.handler));
         }
       }

@@ -14,6 +14,16 @@
    answer questions from the real data of the events they may see, with links; open Promotions on the post and
    mailer templates they ask for. "Do it, then undo": every action runs at once in the browser (dash-bot-client.js)
    and can be taken back there; there is no Apply step here.
+   PORTALS (the owner, 3 Nov 2026, after the portals change): every event belongs to one of ET's portals, and the
+   dashboard works one portal at a time. Lists, filters and answers follow the portal the person is looking at
+   unless they name another one ("ETHRWorld's drafts", "events on ETCIO this month") or say all portals, and they
+   say which. "Switch to ETAuto" moves the dashboard's own portal switcher (kind "portal"), undoably. A portal is
+   taken only from ET's roster (et-events.js PORTALS) and only when the person said it (portalSaid); a new event
+   is started on the portal they named, else the one they work in. An event with no portal is still found by
+   name and is said to have none.
+   HERO PICTURE (the owner, 3 Nov 2026): an event started here carries a request for a first hero picture
+   (prefill.hero): the person's own words for it, or nothing, which means the event's name and place. Nothing is
+   made here or on Create Event until the event exists: lib/ai-hero.js makes it then.
 
    WHAT THE MODEL MAY DO. One structured JSON answer per message (SCHEMA), with a `kind` and at most one action.
    The vocabulary has no action that deletes, cancels, publishes, unpublishes, approves, restores, sends or pays:
@@ -123,7 +133,7 @@ var CAPS = {
 
 /* ---------- the vocabulary ---------- */
 
-var KINDS = ['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse'];
+var KINDS = ['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'portal'];
 var OPEN_TARGETS = ['console', 'content', 'settings', 'insights', 'history', 'editor', 'promotions', 'registrations',
   'preview', 'live', 'activity-log', 'mailer-performance', 'create-event'];
 /* the targets that are a page of one event */
@@ -146,7 +156,7 @@ var TYPE_LABELS = { ip: 'IP', client: 'Custom', awards: 'Awards' };
 var FILTER_SORTS = ['start', 'registrations', 'visitors'];
 var LIST_STATUSES = ['draft', 'upcoming', 'active', 'completed', 'cancelled'];
 var LIST_SORTS = ['start', 'created', 'updated', 'registrations', 'visitors', 'name'];
-var REFUSE_ACTIONS = ['delete', 'cancel', 'publish', 'unpublish', 'approve', 'restore', 'send', 'pay', 'edit-site', 'other'];
+var REFUSE_ACTIONS = ['delete', 'cancel', 'publish', 'unpublish', 'approve', 'restore', 'send', 'pay', 'edit-site', 'set-portal', 'other'];
 var DATE_MODES = ['exact', 'month', 'quarter', 'tbd', 'none'];
 /* Create Event's categories (create-event.html CATS): which date modes each takes, and its default */
 var CATS = {
@@ -178,7 +188,7 @@ function ids(list) { return list.map(function (t) { return t.id; }); }
 function labelOf(list, id) { var hit = list.filter(function (t) { return t.id === id; })[0]; return hit ? hit.label : id; }
 
 /* What a token may ask for (§6c). Numbers are all-time totals, "so far". */
-var TEXT_FIELDS = ['dates', 'start', 'end', 'venue', 'city', 'status', 'type', 'created', 'updated', 'by', 'site'];
+var TEXT_FIELDS = ['dates', 'start', 'end', 'venue', 'city', 'status', 'type', 'created', 'updated', 'by', 'site', 'portal'];
 var METRICS = ['registrations', 'confirmed', 'waitlist', 'cancelledRegs', 'checkedIn', 'pending', 'visitors', 'uniques', 'conversion'];
 var METRIC_LABELS = {
   registrations: 'registrations', confirmed: 'confirmed registrations', waitlist: 'on the waitlist', cancelledRegs: 'cancelled registrations',
@@ -199,6 +209,9 @@ var REFUSALS = {
   send: { text: 'Sending mail, WhatsApp or social posts isn\'t part of this release. I can open the mailer or post, ready to download.', link: 'promotions' },
   pay: { text: 'Payments aren\'t part of this release.', link: null },
   'edit-site': { text: 'Changing a site is done in its editor, and ETB2B AI in the editor can do it for you.', link: 'editor' },
+  /* an event's portal decides where it is listed and whose ET bar, footer and mailers it gets: the person sets
+     it (Set portal on a row with none, or Basics in the event's console) */
+  'set-portal': { text: 'Setting or changing an event\'s portal stays with you: open the event and change it in Basics.', link: 'content' },
   other: { text: null, fallback: 'I can\'t do that here.', link: null }
 };
 
@@ -223,7 +236,9 @@ var MSG = {
   notYours: 'This conversation turn is not yours or no longer exists.',
   notApprover: 'Only the approvers can read everyone’s ETB2B AI conversations.',
   unknownEvent: 'an event I could not find',
-  unavailable: 'not available right now'
+  unavailable: 'not available right now',
+  portalSwitch: 'Switching the dashboard to the portal you asked for.',
+  whichPortal: 'Which portal? Name one of ET\u2019s portals, for example ETCIO or ETHRWorld.'
 };
 
 /* ---------- small text helpers ---------- */
@@ -369,15 +384,64 @@ function todayBlock(ms) {
 /* ---------- events, as this file reads them ---------- */
 
 function portalNameOf(slug, ev) { return (ev && displayLine(ev.portalName, 80)) || etEvents.PORTALS[slug] || slug; }
-/* a roster slug from a slug or a portal's name ("ETCIO" -> "cio"), 'all', 'none', or '' */
+/* ---------- ET's portals, as people name them ----------
+   Every way of writing a portal's name that this file accepts, run together in lower case: its full name
+   ("ETHRWorld", "ET HR World" -> "ethrworld") is a STRONG key, counted wherever it is said; its slug and its name
+   without "ET" ("hr", "hrworld", "retail", "auto") are WEAK keys, because most of them are also everyday words
+   ("a retail summit", "auto industry"). A weak key counts only when it is written as a name (two capitals or more:
+   "HR", "CIO", "HRWorld", "BrandEquity") or followed by the word "portal" ("the retail portal"). Built once. */
+var PORTAL_KEYS = null;
+function compactName(s) { return plainWords(s).join(''); }
+function portalKeys() {
+  if (PORTAL_KEYS) return PORTAL_KEYS;
+  var keys = Object.create(null), slugs = Object.keys(etEvents.PORTALS);
+  slugs.forEach(function (slug) { var k = compactName(etEvents.PORTALS[slug]); if (k && !keys[k]) keys[k] = { slug: slug, strong: true }; });
+  slugs.forEach(function (slug) {
+    var full = compactName(etEvents.PORTALS[slug]);
+    [slug, full.replace(/^et(?=[a-z0-9]{2})/, '')].forEach(function (k) { if (k && k.length >= 2 && !keys[k]) keys[k] = { slug: slug, strong: false }; });
+  });
+  PORTAL_KEYS = keys;
+  return keys;
+}
+/* "all portals", "every portal", "across portals"; "no portal (yet)", "without a portal" */
+var ALL_PORTALS_RE = /\b(?:all|every|each|any)\s+(?:of\s+)?(?:the\s+|my\s+|our\s+)?portals?\b|\bacross\s+(?:all\s+)?(?:the\s+)?portals\b/i;
+var NO_PORTAL_RE = /\bno\s+portals?\b|\bwithout\s+(?:a\s+|any\s+)?portals?\b|\bportal-?less\b|\bnot\s+(?:on|in)\s+(?:a|any)\s+portal\b/i;
+/* the roster portals a text names, as above, in the order it names them */
+function namedPortals(said) {
+  var toks = String(said || '').normalize('NFKD').replace(/[\u0300-\u036F]/g, '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  var keys = portalKeys(), out = [];
+  for (var i = 0; i < toks.length; i++) {
+    for (var n = 1; n <= 3 && i + n <= toks.length; n++) {
+      var parts = toks.slice(i, i + n), hit = keys[parts.join('').toLowerCase()];
+      if (!hit) continue;
+      var next = (toks[i + n] || '').toLowerCase();
+      var asName = n === 1 && (parts[0].match(/\p{Lu}/gu) || []).length >= 2;
+      if ((hit.strong || asName || next === 'portal' || next === 'portals') && out.indexOf(hit.slug) === -1) out.push(hit.slug);
+    }
+  }
+  return out;
+}
+/* Did the person say this portal (a roster slug, 'all' or 'none')? Only what they said counts: a portal the model
+   put in that they never named is not taken, and the one they work in stands. */
+function portalSaid(slug, said) {
+  if (slug === 'all') return ALL_PORTALS_RE.test(String(said || ''));
+  if (slug === 'none') return NO_PORTAL_RE.test(String(said || ''));
+  return etEvents.isPortal(slug) && namedPortals(said).indexOf(slug) !== -1;
+}
+/* a roster slug from what the model wrote: a slug or a portal's name in any spacing ("ETCIO", "ET HR World" ->
+   "hr"), 'all', 'none', or '' for anything else (never a portal that is not ET's) */
 function portalSlug(v) {
   v = displayLine(v, 80);
   if (!v) return '';
   var low = v.toLowerCase();
   if (low === 'all' || low === 'none') return low;
   if (etEvents.isPortal(low)) return low;
-  return Object.keys(etEvents.PORTALS).filter(function (k) { return etEvents.PORTALS[k].toLowerCase() === low; })[0] || '';
+  var hit = portalKeys()[compactName(v)];
+  return hit ? hit.slug : '';
 }
+/* what a scope is called: in a list's title, a filter's label and an event's own line */
+function scopeTitle(key) { return key === 'all' ? 'across all portals' : key === 'none' ? 'with no portal yet' : 'in ' + portalNameOf(key); }
+function portalOfEvent(ev) { return ev.portal ? portalNameOf(ev.portal, ev) : 'No portal yet'; }
 
 function eventOf(doc, me, now) {
   var d = doc && isObj(doc.data) ? doc.data : {};
@@ -433,7 +497,8 @@ function contextFor(o) {
     ctx.events.push(ev);
     ctx.byId[ev.id] = ev;
   });
-  ctx.hasPortals = ctx.events.some(function (ev) { return !!ev.portal; });
+  /* portals are in play once an event carries one, or the person works in (or looks at) one */
+  ctx.hasPortals = ctx.events.some(function (ev) { return !!ev.portal; }) || !!ctx.view.portal || !!ctx.view.working;
   var earlier = ctx.turns.slice(-2).map(function (t) { return text(t.question); });
   ctx.said = earlier.concat([ctx.message]).join('\n');
   return ctx;
@@ -453,7 +518,10 @@ function currentView(ctx) {
 }
 
 /* What the person is looking at (the request's `view`). It tells the model what is on screen; no fact is ever
-   taken from it. */
+   taken from it. portal: the portal scope the list shows now (a roster slug, 'none' for the events with no portal
+   yet, '' for every portal); working: the portal the person works in, saved for them ('' for All portals). The
+   two differ while the list looks at another portal "for now". A page from before `working` sends only `portal`,
+   which was then the working one. */
 function viewRange(r) {
   if (!isObj(r)) return null;
   var f = validDay(r.from), t = validDay(r.to);
@@ -468,6 +536,7 @@ function cleanView(v) {
     specialView: ['draft', 'cancelled', 'deleted'].indexOf(v.specialView) !== -1 ? v.specialView : null,
     search: displayLine(v.search, CAPS.searchChars),
     portal: v.portal === 'none' ? 'none' : (typeof v.portal === 'string' && etEvents.isPortal(v.portal) ? v.portal : ''),
+    working: typeof v.working === 'string' ? (etEvents.isPortal(v.working) ? v.working : '') : (typeof v.portal === 'string' && etEvents.isPortal(v.portal) ? v.portal : ''),
     types: uniq(arr(v.types).filter(function (t) { return TYPES.indexOf(t) !== -1; })),
     mine: v.mine === true,
     created: viewRange(v.created), starts: viewRange(v.starts),
@@ -525,10 +594,14 @@ function viewLine(ctx) {
 }
 function portalLine(ctx) {
   if (!ctx.hasPortals) return '';
-  var p = ctx.view.portal;
-  if (p === 'none') return ctx.firstName + ' works on events with no portal.';
-  if (p) return ctx.firstName + ' works in ' + portalNameOf(p) + ' (portal "' + p + '").';
-  return ctx.firstName + ' works in all portals.';
+  var w = ctx.view.working, p = ctx.view.portal;
+  var line = w ? ctx.firstName + ' works in ' + portalNameOf(w) + ' (portal "' + w + '")' : ctx.firstName + ' works in all portals';
+  if (p !== w) line += p === 'none' ? '; the list shows the events with no portal yet for now' : p ? '; the list shows ' + portalNameOf(p) + ' (portal "' + p + '") for now' : '; the list shows every portal for now';
+  return line + '.';
+}
+/* the roster for the model: slug "name", so a portal the person names can be written as its slug */
+function rosterLine() {
+  return Object.keys(etEvents.PORTALS).map(function (slug) { return slug + ' "' + etEvents.PORTALS[slug] + '"'; }).join('; ');
 }
 /* What really happened after each earlier answer, so "undo that" and "do it again" read right. The label is the
    action's memo, which names events only as {{<id>}} (tokenEvent); a turn without one has its shown label
@@ -540,6 +613,7 @@ function happened(t) {
   if (t.status === 'refused') return 'you refused; nothing was done';
   if (t.status === 'done') {
     if (a.type === 'filter') return 'the list was filtered: ' + label;
+    if (a.type === 'portal') return label || 'the dashboard was switched to another portal';
     if (a.type === 'navigate') return 'the person was taken to ' + label;
     if (a.type === 'create') return 'Create Event was opened, filled in from the message';
     if (t.kind === 'choose') return 'the person picked one of the events you offered' + (t.note ? ' (' + cleanCell(t.note, 80) + ')' : '');
@@ -583,6 +657,7 @@ function buildPrompt(ctx) {
     '- "reply": answer a question, or say something. About one event, use its tokens (below). For "which events …", "list …" or "how many events …", add a `list` rule: the product works out which events belong, so never pick or count them yourself. Example: "Which events go live this month?" -> kind "reply", text "Here are your events this month.", list {startFrom (1st of this month), startTo (last day of this month)}. Example: "How many registrations does Agentic AI have?" -> kind "reply", events [its id], text "{{<id>}} has {{<id>.registrations}} registrations so far."',
     '- "promo": open Promotions on the templates asked for, ready to edit and download. Put the event\'s id in `events`, then set `promo.post` (a Social posts template) or `promo.sitePost` (a post in the site\'s own look), and/or `promo.mailer`. Example: "Make a save-the-date post and an announcement mailer for Autotech" -> kind "promo", events [its id], promo {post "generic.announcement", mailer "mailer.announcement"}.',
     '- "undo": the person asks to take back what you last did ("undo that", "put it back", "go back").',
+    '- "portal": switch the dashboard to another of ET\'s portals, or to all portals, as its portal switcher does ("switch to ETAuto", "work in all portals"). Put the portal\'s slug (from ET PORTALS below), or "all", in `switchTo.portal`. Only when the person asks to switch the portal they work in; "show ETHRWorld\'s drafts" is a filter.',
     '- "refuse": the person asks for something under WHAT YOU NEVER DO.',
     'Rules:',
     '- Return at most one action. To open a page on an event, name its id in `events`.',
@@ -590,9 +665,10 @@ function buildPrompt(ctx) {
     '- "Drafts" are events whose site is not live: filter view "draft", or list site "not-live".',
     '- "Mine" or "my events" means the rows marked "by you" (`mine` true).',
     '- `filter` changes what the dashboard\'s table shows; `list` answers in this chat. "Show …" or "filter …" is a filter; "which …", "list …" and "how many …" are a list.',
+    '- A portal named with a filter or a list ("ETHRWorld\'s drafts", "events on ETCIO this month") goes in `filter.portal` or `list.portal` as its slug; "all portals" is "all"; "events with no portal" is "none". Without one, leave it "": the list stays on the portal the person is looking at.',
     '',
     /* 4. what you never do */
-    'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, or change a site\'s content or design. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, other), and do not say how to do it: the product adds that.',
+    'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.',
     '',
     /* 5. data rules and tokens */
     'DATA RULES',
@@ -605,7 +681,7 @@ function buildPrompt(ctx) {
     '- Never say that something was done, is being done or will be done ("I have opened …", "it has been deleted", "Deleting it now", "I\'ll publish it"): the product shows what was done.',
     'TOKENS',
     '- {{<id>}}: the event\'s name, as a link.',
-    '- {{<id>.dates}}, {{<id>.start}}, {{<id>.end}}, {{<id>.venue}}, {{<id>.city}}, {{<id>.status}}, {{<id>.type}}, {{<id>.created}}, {{<id>.updated}}, {{<id>.by}} (who made it), {{<id>.site}} (its live address, or that it is not live yet).',
+    '- {{<id>.dates}}, {{<id>.start}}, {{<id>.end}}, {{<id>.venue}}, {{<id>.city}}, {{<id>.status}}, {{<id>.type}}, {{<id>.created}}, {{<id>.updated}}, {{<id>.by}} (who made it), {{<id>.site}} (its live address, or that it is not live yet), {{<id>.portal}} (its ET portal, or "no portal yet").',
     '- Numbers so far: {{<id>.registrations}}, {{<id>.confirmed}}, {{<id>.waitlist}}, {{<id>.cancelledRegs}}, {{<id>.checkedIn}}, {{<id>.pending}}, {{<id>.visitors}}, {{<id>.uniques}}, {{<id>.conversion}}, {{<id>.mailerOpens}}, {{<id>.mailerClicks}}.',
     '- With a list rule: {{#count}} (how many events match) and {{#total.<number name>}} (the sum over every match, e.g. {{#total.registrations}}).',
     '- {{#today}}: today\'s date.',
@@ -624,13 +700,16 @@ function buildPrompt(ctx) {
     '- method "brief" when the person describes the event in more than a line, pastes a brief, or gives a link to read; "template" when they ask for a template; otherwise empty.',
     '- dateMode "exact" with start (and end) for a day; "month" with month (YYYY-MM); "quarter" with quarter and year; "tbd" when the date is not decided.',
     '- currentUrl and previousUrl only when the person pasted that link.',
+    '- portal: the slug of the portal the person named for the new event (from ET PORTALS below), else "": the product then uses the one they work in.',
+    '- The product also makes the new event a first hero picture, but only once the event is created. heroSubject: what the person said the picture should show, in their own words, else "". noHeroPicture: true only when they say they want no picture.',
     '',
     /* 8. out of scope */
     'OUT OF SCOPE: anything that is not about these events or Oneworld 2.0 gets kind "reply" with one polite line on what ETB2B AI can help with here (starting an event, opening its pages, answering from its real numbers, setting up promotions).',
     '',
     /* 9. what the person is looking at */
     'WHAT ' + name.toUpperCase() + ' IS LOOKING AT: ' + viewLine(ctx) + '.',
-    portal ? portal + ' Questions and lists are about that portal unless the person names another one or says all portals (list `portal`: a portal slug, "none" or "all"); say which in the answer.' : '',
+    portal ? portal + ' Questions, lists and filters are about the portal the list shows unless the person names another one ("ETHRWorld\'s drafts") or says all portals: then set `list.portal` or `filter.portal` to its slug, "all" or "none". Say which portal in the answer. An event on another portal, or on none, can still be opened and asked about: name its portal with {{<id>.portal}}.' : '',
+    'ET PORTALS (slug "name"; these are the only portals there are): ' + rosterLine() + '.',
     '',
     /* 10. the conversation */
     'THE CONVERSATION SO FAR (oldest first):',
@@ -685,13 +764,16 @@ var SCHEMA = {
       start: sStr(DAY), end: sStr(DAY), month: sStr('YYYY-MM'), quarter: sEnum(['Q1', 'Q2', 'Q3', 'Q4', '']), year: sStr('YYYY'),
       venue: sStr(), city: sStr(), portal: sStr('a portal the person named, or empty'),
       briefFromMessage: { type: 'BOOLEAN', description: 'true when the message itself describes the event' },
-      currentUrl: sStr('a link to this edition that the person pasted'), previousUrl: sStr('a link to the previous edition that the person pasted')
+      currentUrl: sStr('a link to this edition that the person pasted'), previousUrl: sStr('a link to the previous edition that the person pasted'),
+      heroSubject: sStr('what the person said the new event\'s hero picture should show, in their words'),
+      noHeroPicture: { type: 'BOOLEAN', description: 'true only when the person says they want no hero picture' }
     }, 'kind "create": only what the person said about the new event'),
     open: sBlock({ target: sEnum(OPEN_TARGETS), tab: sStr('the tab, or "" for the first one') }, 'kind "open"'),
     filter: sBlock({
       view: sEnum(FILTER_VIEWS.concat([''])), search: sStr(), types: { type: 'ARRAY', items: sEnum(TYPES) }, mine: { type: 'BOOLEAN' },
       createdFrom: sStr(DAY), createdTo: sStr(DAY), startFrom: sStr(DAY), startTo: sStr(DAY),
-      sort: sEnum(FILTER_SORTS.concat([''])), dir: sEnum(['asc', 'desc', ''])
+      sort: sEnum(FILTER_SORTS.concat([''])), dir: sEnum(['asc', 'desc', '']),
+      portal: sStr('a portal slug the person named, "all" or "none"; empty keeps the portal the list shows')
     }, 'kind "filter"'),
     list: sBlock({
       title: sStr(), statuses: { type: 'ARRAY', items: sEnum(LIST_STATUSES) }, site: sEnum(['live', 'not-live', '']), when: sEnum(['starts', 'overlaps', '']),
@@ -703,7 +785,8 @@ var SCHEMA = {
     promo: sBlock({
       post: sEnum(ids(POST_TEMPLATES).concat([''])), sitePost: sEnum(ids(SITE_POSTS).concat([''])), mailer: sEnum(ids(MAILERS).concat(['']))
     }, 'kind "promo"'),
-    refuse: sBlock({ action: sEnum(REFUSE_ACTIONS) }, 'kind "refuse"')
+    refuse: sBlock({ action: sEnum(REFUSE_ACTIONS) }, 'kind "refuse"'),
+    switchTo: sBlock({ portal: sStr('the slug of the portal to work in, or "all"') }, 'kind "portal"')
   },
   required: ['kind', 'text']
 };
@@ -733,7 +816,9 @@ var ADDRESS_RE = new RegExp('https?:|www\\.|\\b[a-z0-9][a-z0-9-]*\\.(?:' + TLDS 
    "started" were missing (QA follow-up): a create answer said "I have set up a new IP event called … for you to
    finish in Create Event" beside "Stayed here.", with no event in existence. */
 var CLAIM_VERBS = 'deleted|cancell?ed|published|unpublished|approved|rejected|sent|e-?mailed|restored|paid|saved|updated|changed|edited|created|scheduled|booked|added|removed|' +
-  'set[\\s-]*up|made|started|built|launched|generated|drafted|prepared|registered|organi[sz]ed|arranged';
+  'set[\\s-]*up|made|started|built|launched|generated|drafted|prepared|registered|organi[sz]ed|arranged|' +
+  /* the dashboard's portal is switched by the page, after the answer: "I've switched you to ETAuto" is not the model's to say */
+  'switched|moved';
 var CLAIM_RE = new RegExp('(?:\\bI\\b|\\bwe\\b|ETB2B AI)(?:[\'’](?:ve|ll|d|m))?(?:\\s+(?:have|has|had|just|also|now|already|successfully|went|and))*\\s+(?:\\w+\\s+){0,2}?(?:' + CLAIM_VERBS + ')\\b', 'i');
 var CLAIM2_RE = new RegExp('\\b(?:has|have|had)\\s+been\\s+(?:\\w+\\s+)?(?:' + CLAIM_VERBS + ')\\b|\\b(?:is|are)\\s+now\\s+(?:\\w+\\s+)?(?:' + CLAIM_VERBS + ')\\b', 'i');
 var NONE_RE = /\b(?:no|zero)\s+(?:\w+\s+)?(?:events?|drafts?|matches|results?|registrations?|sites?|ones?)\b|\bnone\b|\bnothing\s+(?:is|was|matches|found)\b|\bthere\s+(?:are|is|were|was)\s+no\b|\bthere\s+(?:aren['’]t|isn['’]t|weren['’]t|wasn['’]t)\s+any\b|\b(?:don['’]t|do not|doesn['’]t|does not)\s+have\s+any\b/i;
@@ -919,6 +1004,8 @@ function tokenParts(tok, ctx, state, notes, unknownSeen) {
     if (f === 'updated') return [{ t: 'text', v: ev.updatedDay ? fmtDay(ev.updatedDay) : 'an unknown day' }];
     if (f === 'by') return [{ t: 'text', v: ev.mine ? 'you' : (ev.createdBy || 'someone') }];
     if (f === 'site') return ev.published ? [{ t: 'event', id: ev.id, name: '/e/' + ev.id, href: '/e/' + enc(ev.id) }] : [{ t: 'text', v: 'not live yet' }];
+    /* an event with no portal is said to have none, never given one */
+    if (f === 'portal') return [{ t: 'text', v: ev.portal ? portalNameOf(ev.portal, ev) : 'no portal yet' }];
   }
   if (METRICS.indexOf(f) !== -1) {
     var t = ctx.totals[ev.id];
@@ -1057,7 +1144,8 @@ function cleanListRule(raw, ctx) {
   raw = isObj(raw) ? raw : {};
   var sort = LIST_SORTS.indexOf(raw.sort) !== -1 ? raw.sort : '';
   var limit = parseInt(raw.limit, 10);
-  var portal = raw.portal === 'all' || raw.portal === 'none' ? raw.portal : (typeof raw.portal === 'string' && etEvents.isPortal(raw.portal) ? raw.portal : '');
+  /* a roster portal by its slug or its name, 'all' or 'none'; whether the person said it is cleanAnswer's check */
+  var portal = portalSlug(raw.portal);
   return {
     title: displayLine(raw.title, 80),
     statuses: uniq(arr(raw.statuses).filter(function (x) { return LIST_STATUSES.indexOf(x) !== -1; })),
@@ -1072,15 +1160,14 @@ function cleanListRule(raw, ctx) {
     limit: isNaN(limit) || limit < 1 ? CAPS.listLimit : Math.min(CAPS.listLimitMax, limit)
   };
 }
-/* the list's portal scope, once events carry a portal (the portals branch): the working portal unless the rule
-   names another one or all of them */
+/* the list's portal scope, once portals are in play: the portal the list shows unless the rule names another one,
+   all of them, or none. key is what a list view carries to the dashboard ("Show these in the list"). */
 function portalScope(rule, ctx) {
   if (!ctx.hasPortals) return null;
   var p = rule.portal || ctx.view.portal || 'all';
-  var working = ctx.view.portal || 'all';
-  if (p === 'all') return { test: function () { return true; }, label: 'all portals', working: working === 'all' };
-  if (p === 'none') return { test: function (ev) { return !ev.portal; }, label: 'events with no portal', working: working === 'none' };
-  return { test: function (ev) { return ev.portal === p; }, label: portalNameOf(p), working: working === p };
+  if (p === 'all') return { key: 'all', test: function () { return true; }, label: 'all portals', title: scopeTitle('all') };
+  if (p === 'none') return { key: 'none', test: function (ev) { return !ev.portal; }, label: 'events with no portal yet', title: scopeTitle('none') };
+  return { key: p, test: function (ev) { return ev.portal === p; }, label: portalNameOf(p), title: scopeTitle(p) };
 }
 function inDays(day, r) { return !!day && day >= r.from && day <= r.to; }
 /* The dashboard's own search, so "Show these in the list" shows exactly these events: the event's name, venue, city
@@ -1162,15 +1249,18 @@ function listNeeds(sel, allTotals) {
   return sel.all.slice(0, sel.rule.limit).map(function (ev) { return ev.id; });
 }
 /* the dashboard view the list can be shown as ("Show these in the list"), or null: one status, sorted by start
-   or not at all, in the working portal. A registrations or visitors sort is never offered, because the table's
-   column reads the stored counter, which is 0 for an event older than those counters. */
+   or not at all. A registrations or visitors sort is never offered, because the table's column reads the stored
+   counter, which is 0 for an event older than those counters. The view carries the list's portal scope, so the
+   dashboard shows the same events whichever portal they are on (another portal is looked at "for now": the
+   person's own portal is not moved). */
 function listView(sel) {
   var rule = sel.rule;
   if (sel.windowed || rule.statuses.length !== 1 || rule.site) return null;
   if (rule.sort && rule.sort !== 'start') return null;
-  if (sel.scope && !sel.scope.working) return null;
-  return { view: rule.statuses[0], search: rule.search, types: rule.types.slice(), mine: rule.mine, created: rule.created, starts: null,
+  var v = { view: rule.statuses[0], search: rule.search, types: rule.types.slice(), mine: rule.mine, created: rule.created, starts: null,
     sort: rule.sort === 'start' ? { field: 'start', dir: rule.dir } : null };
+  if (sel.scope) v.portal = sel.scope.key;
+  return v;
 }
 function listTitle(sel, ctx, g) {
   var rule = sel.rule;
@@ -1192,7 +1282,7 @@ function listTitle(sel, ctx, g) {
   if (rule.created) bits.push('created ' + windowText(rule.created, ctx.today));
   if (rule.search) bits.push('matching “' + rule.search + '”');
   if (byTotals(sel)) bits.push('by ' + sel.field + (sel.dir === 'asc' ? ', fewest first' : ', most first'));
-  if (sel.scope) bits.push('in ' + sel.scope.label);
+  if (sel.scope) bits.push(sel.scope.title);
   return bits.join(' · ');
 }
 /* the list as the chat shows it: sorted (by totals when asked), cut to its limit, counted over every match */
@@ -1208,10 +1298,12 @@ function finishList(sel, ctx, g) {
       type: ev.category, siteLive: ev.published, dateFixed: !unfixed };
     var t = ctx.totals[ev.id];
     if (t) { item.registrations = t.registrations; item.visitors = t.visitors; }
+    /* every event's portal, "No portal yet" for none: shown on the row when the list spans portals */
+    if (ctx.hasPortals) item.portal = portalOfEvent(ev);
     return item;
   });
   var list = { title: listTitle(sel, ctx, g), count: sel.all.length, more: sel.all.length > shown.length, items: items, view: listView(sel) };
-  if (sel.scope) list.scope = sel.scope.label;
+  if (sel.scope) { list.scope = sel.scope.label; list.showPortal = sel.scope.key === 'all'; }
   return list;
 }
 /* For the tests and for anything that wants a list on its own: the rule applied, with the totals it needs.
@@ -1290,8 +1382,19 @@ function navigateTo(target, ev, tab, notes, tail) {
 /* An event as the memory names it: by its token, so a name typed into an event reaches the prompt only inside
    the fenced, cleaned EVENTS table (§4c), never in the CONVERSATION block above it. */
 function tokenEvent(ev) { return ev ? { id: ev.id, name: '{{' + ev.id + '}}', published: ev.published } : null; }
-function choiceFor(ev, action) {
-  return { eventId: ev.id, name: ev.name, dates: datesText(ev), statusLabel: LABELS[ev.status] || ev.status, action: action };
+function choiceFor(ev, action, ctx) {
+  var c = { eventId: ev.id, name: ev.name, dates: datesText(ev), statusLabel: LABELS[ev.status] || ev.status, action: action };
+  /* two editions on two portals read alike without it */
+  if (ctx && ctx.hasPortals) c.portal = portalOfEvent(ev);
+  return c;
+}
+/* The product's own line about an event's portal, for an answer that opens one of its pages: said when the event
+   is not on the portal the list shows (or has none), so nobody lands on another portal's event unawares. */
+function portalNote(ev, ctx) {
+  if (!ev || !ctx.hasPortals) return '';
+  if (!ev.portal) return 'It has no portal yet.';
+  var scope = ctx.view.portal || 'all';
+  return scope !== 'all' && ev.portal !== scope ? 'It is on ' + portalNameOf(ev.portal, ev) + '.' : '';
 }
 
 /* ---------- filters ---------- */
@@ -1312,8 +1415,22 @@ function cleanFilter(raw, ctx, notes) {
   var created = dayRange(raw.createdFrom, raw.createdTo, ctx, 'created');
   var starts = dayRange(raw.startFrom, raw.startTo, ctx, 'starts');
   var sort = FILTER_SORTS.indexOf(raw.sort) !== -1 ? { field: raw.sort, dir: sortDir(raw.sort, raw.dir) } : null;
-  if (!view && !search && !types.length && !mine && !created && !starts && !sort) return null;
-  return { view: view || currentView(ctx), search: search, types: types, mine: mine, created: created, starts: starts, sort: sort };
+  var portal = saidPortal(raw.portal, ctx, notes);
+  if (!view && !search && !types.length && !mine && !created && !starts && !sort && !portal) return null;
+  var patch = { view: view || currentView(ctx), search: search, types: types, mine: mine, created: created, starts: starts, sort: sort };
+  /* with portals in play the patch says which portal scope to show, the one named or the one on screen, so the
+     list shows exactly what the card says */
+  if (ctx.hasPortals) patch.portal = portal || ctx.view.portal || 'all';
+  return patch;
+}
+/* a portal the model gave for a filter or a list: a roster slug, 'all' or 'none' that the person said, else '' (a
+   note says one was dropped) */
+function saidPortal(v, ctx, notes) {
+  var p = portalSlug(v);
+  if (!p) return '';
+  if (portalSaid(p, ctx.said || ctx.message)) return p;
+  if (notes) notes.push('portal-not-said');
+  return '';
 }
 /* what the card and the peek say the list now shows: "Draft events · created 26 Oct – 1 Nov 2026" */
 function patchLabel(p, ctx) {
@@ -1324,6 +1441,7 @@ function patchLabel(p, ctx) {
   if (p.starts) bits.push('starting ' + windowText(p.starts, ctx.today));
   if (p.search) bits.push('matching “' + p.search + '”');
   if (p.sort) bits.push(p.sort.field === 'start' ? (p.sort.dir === 'asc' ? 'soonest first' : 'latest first') : 'by ' + p.sort.field + (p.sort.dir === 'asc' ? ', fewest first' : ', most first'));
+  if (p.portal) bits.push(scopeTitle(p.portal));
   return bits.join(' · ');
 }
 
@@ -1375,7 +1493,19 @@ function cleanUrl(v, said) {
   return String(said || '').indexOf(v) !== -1 ? { url: v, dropped: false } : { url: '', dropped: true };
 }
 var DROPPED_LABELS = { name: 'the name', client: 'the client', venue: 'the venue', city: 'the city', date: 'the date',
-  currentUrl: 'this edition’s link', previousUrl: 'the previous edition’s link', portal: 'the portal' };
+  currentUrl: 'this edition’s link', previousUrl: 'the previous edition’s link', portal: 'the portal', heroSubject: 'what the hero picture should show' };
+/* words a description of a picture may add to the person's own without changing what it shows */
+var PICTURE_FILLER = ('a an the of in on at with and or for to its it their his her this that these those from by as into over under ' +
+  'showing shows show picture image photo photograph hero banner background visual key some').split(' ');
+/* Is this picture subject the person's own? Every word of it that says something (not PICTURE_FILLER) must be one
+   they used: "a modern retail store at night" after "…with a picture of a modern retail store at night". A
+   subject read in a planted event name, or one the model dreamt up, is not theirs. */
+function subjectSaid(subject, said) {
+  var have = Object.create(null);
+  plainWords(said).forEach(function (w) { have[w] = true; });
+  var want = plainWords(subject).filter(function (w) { return PICTURE_FILLER.indexOf(w) === -1; });
+  return want.length > 0 && want.every(function (w) { return have[w] === true; });
+}
 /* -> { prefill, dropped: [field], notes } (§5b). Nothing is ever made up: a field the person did not give is ''. */
 function cleanCreate(raw, ctx) {
   raw = isObj(raw) ? raw : {};
@@ -1416,12 +1546,13 @@ function cleanCreate(raw, ctx) {
   if (mode !== 'month') month = '';
   if (mode !== 'quarter') { quarter = ''; year = ''; }
 
-  /* the portal: one on the roster that the person named, else the one they work in */
+  /* the portal: one on ET's roster that the person named, else the one they work in (Create Event's step 1 opens
+     on it, and its previous editions are that portal's) */
   var portal = '', named = portalSlug(raw.portal);
   if (named && named !== 'all' && named !== 'none') {
-    if (grounded(named, said) || grounded(etEvents.PORTALS[named], said)) portal = named; else drop('portal');
+    if (portalSaid(named, said)) portal = named; else drop('portal');
   }
-  if (!portal && ctx.view && etEvents.isPortal(ctx.view.portal)) portal = ctx.view.portal;
+  if (!portal && ctx.view && etEvents.isPortal(ctx.view.working)) portal = ctx.view.working;
 
   var method = ['brief', 'template'].indexOf(raw.method) !== -1 ? raw.method : '';
   /* the brief is the message itself, word for word: never a version the model wrote */
@@ -1434,11 +1565,23 @@ function cleanCreate(raw, ctx) {
   if (!method && hasBrief) method = 'brief';
   if (method === 'template') { briefText = ''; cur.url = ''; prev.url = ''; }
 
+  /* A first hero picture (the owner, 3 Nov 2026): asked for here, made by lib/ai-hero.js only once Create Event
+     has created the event. Its subject is the person's own words for it, or '' for "the event's name and place".
+     None when they said they want none, or for "Generate from a brief", which makes the site's pictures itself. */
+  var subject = '', rawSubject = displayLine(raw.heroSubject, 1000);
+  if (rawSubject) {
+    /* checked whole, then cut at a word: a cut word would not be found in what was said */
+    if (subjectSaid(rawSubject, said)) subject = rawSubject.length > 200 ? rawSubject.slice(0, 200).replace(/\s+\S*$/, '') : rawSubject;
+    else drop('heroSubject');
+  }
+  var hero = raw.noHeroPicture === true || method === 'brief' ? null : { subject: subject };
+
   return {
     prefill: {
       category: category, method: method, portal: portal,
       basics: { name: name, client: client, dateMode: mode, start: start, end: end, month: month, quarter: quarter, year: year, venue: venue, city: city },
-      brief: { text: briefText, current: cur.url, previous: prev.url }
+      brief: { text: briefText, current: cur.url, previous: prev.url },
+      hero: hero
     },
     dropped: dropped,
     notes: dropped.length ? ['not-said'] : []
@@ -1555,9 +1698,11 @@ function cleanAnswer(parsed, ctx) {
       else { out.kind = 'reply'; downgrade = MSG.whichEvent; }
     } else if (kept.length > 1) {
       out.kind = 'choose'; multiChoice = true;
-      out.choices = kept.map(function (id) { var ev = ctx.byId[id]; return choiceFor(ev, navigateTo(target, ev, o.tab, notes, null)); });
+      out.choices = kept.map(function (id) { var ev = ctx.byId[id]; return choiceFor(ev, navigateTo(target, ev, o.tab, notes, null), ctx); });
     } else out.action = navigateTo(target, ctx.byId[kept[0]], o.tab, notes, tail);
     if (out.action) out.memo = navLabel(out.action.target, tokenEvent(out.action.eventId ? ctx.byId[out.action.eventId] : null), o.tab);
+    var openNote = out.action && out.action.eventId ? portalNote(ctx.byId[out.action.eventId], ctx) : '';
+    if (openNote) tail.push({ t: 'text', v: openNote });
   } else if (kind === 'promo') {
     var p = isObj(parsed.promo) ? parsed.promo : {};
     var post = ids(POST_TEMPLATES).indexOf(p.post) !== -1 ? p.post : '';
@@ -1570,10 +1715,12 @@ function cleanAnswer(parsed, ctx) {
     else if (!kept.length) { out.kind = 'reply'; downgrade = MSG.whichEvent; }
     else if (kept.length > 1) {
       out.kind = 'choose'; multiChoice = true;
-      out.choices = kept.map(function (id) { var ev = ctx.byId[id]; return choiceFor(ev, promoAction(ev, post, sitePost, mailer)); });
+      out.choices = kept.map(function (id) { var ev = ctx.byId[id]; return choiceFor(ev, promoAction(ev, post, sitePost, mailer), ctx); });
     } else {
       out.action = promoAction(ctx.byId[kept[0]], post, sitePost, mailer);
       out.memo = promoAction(tokenEvent(ctx.byId[kept[0]]), post, sitePost, mailer).label;
+      var promoNote = portalNote(ctx.byId[kept[0]], ctx);
+      if (promoNote) tail.push({ t: 'text', v: promoNote });
     }
   } else if (kind === 'filter') {
     var patch = cleanFilter(parsed.filter, ctx, notes);
@@ -1594,6 +1741,25 @@ function cleanAnswer(parsed, ctx) {
     }
   } else if (kind === 'undo') {
     out.action = { type: 'undo' };
+  } else if (kind === 'portal') {
+    /* the dashboard's own switcher, moved: only to a roster portal (or all portals) the person named */
+    var sw = isObj(parsed.switchTo) ? parsed.switchTo : {}, to = saidPortal(sw.portal, ctx, notes);
+    var working = ctx.view.working || 'all', looking = ctx.view.portal || 'all';
+    if (to === 'none') {
+      /* "events with no portal" is not a portal anyone works in: those events are shown instead, for now */
+      var nonePatch = { view: currentView(ctx), search: '', types: [], mine: false, created: null, starts: null, sort: null, portal: 'none' };
+      out.kind = 'filter';
+      out.action = { type: 'filter', patch: nonePatch, label: patchLabel(nonePatch, ctx) };
+      out.memo = cleanCell(out.action.label, 200);
+    } else if (!to) { out.kind = 'reply'; downgrade = MSG.whichPortal; }
+    else if (to === working && looking === working) {
+      out.kind = 'reply';
+      downgrade = 'You already work in ' + (to === 'all' ? 'all portals' : portalNameOf(to)) + '.';
+    } else {
+      var portalLabel = to === 'all' ? 'All portals' : portalNameOf(to);
+      out.action = { type: 'portal', portal: to, label: portalLabel };
+      out.memo = 'the dashboard was switched to ' + portalLabel;
+    }
   }
 
   /* A list rule. One with no keys of its own ({} or only a limit) is "all your events" when the text counts or
@@ -1608,6 +1774,8 @@ function cleanAnswer(parsed, ctx) {
     rule = null;
     if (!downgrade) downgrade = MSG.sorry;
   }
+  /* and so must its portal: one the person never named leaves the list on the portal they are looking at */
+  if (rule && rule.portal && !portalSaid(rule.portal, ctx.said || ctx.message)) { notes.push('portal-not-said'); rule.portal = ''; }
 
   /* a name the person used that no event has: said so, with a search of the list one click away */
   var nf = displayLine(parsed.notFound, CAPS.searchChars);
@@ -1696,7 +1864,8 @@ function cleanAnswer(parsed, ctx) {
    whose result the page says itself. */
 function actionSentence(action) {
   if (!action) return '';
-  return action.type === 'create' ? MSG.creating : action.type === 'navigate' ? MSG.opening : action.type === 'filter' ? MSG.listShown : '';
+  return action.type === 'create' ? MSG.creating : action.type === 'navigate' ? MSG.opening : action.type === 'filter' ? MSG.listShown :
+    action.type === 'portal' ? MSG.portalSwitch : '';
 }
 
 /* ---------- storage ---------- */
@@ -1766,7 +1935,7 @@ function actionForStore(a, memo) {
   if (a.patch) out.patch = plainCopy(a.patch);
   return out;
 }
-var STARTS_DONE = { filter: 1, open: 1, promo: 1, create: 1 };
+var STARTS_DONE = { filter: 1, open: 1, promo: 1, create: 1, portal: 1 };
 function statusFor(kind) { return kind === 'refuse' ? 'refused' : STARTS_DONE[kind] ? 'done' : 'answered'; }
 /* a prefill can only carry the turn's id when the turn was kept; otherwise it gets one of its own */
 function rekeyPrefill(answer) {
@@ -1927,5 +2096,6 @@ module.exports._test = {
   memoryText: memoryText, harmOf: harmOf,
   REFUSALS: REFUSALS, SITE_POSTS: SITE_POSTS, POST_TEMPLATES: POST_TEMPLATES, MAILERS: MAILERS, CAPS: CAPS, dayKey: dayKey,
   todayBlock: todayBlock, periodOf: periodOf, contextFor: contextFor, cleanView: cleanView, patchLabel: patchLabel, clock: clock,
-  KINDS: KINDS, OPEN_TARGETS: OPEN_TARGETS, MSG: MSG, STRICT_OPTIONAL_MAX: STRICT_OPTIONAL_MAX
+  KINDS: KINDS, OPEN_TARGETS: OPEN_TARGETS, MSG: MSG, STRICT_OPTIONAL_MAX: STRICT_OPTIONAL_MAX,
+  portalSaid: portalSaid, namedPortals: namedPortals, portalSlug: portalSlug, subjectSaid: subjectSaid, portalLine: portalLine
 };

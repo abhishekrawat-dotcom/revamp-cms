@@ -214,6 +214,9 @@
       loadSiteInfo();
       ownerLogoOffer();
       logoUnitNotice();
+      /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
+         them into it), so the picture's own step, and its Undo, hold the picture alone */
+      if (pendingAiHero) { var heroDraft = pendingAiHero; pendingAiHero = null; applyAiHero(heroDraft); }
       return true;
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -389,7 +392,46 @@
       return seedSnapshot(draft);
     }).then(function (kept) {
       if (kept) forgetHandoff();
+      pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
     });
+  }
+  var pendingAiHero = null;
+
+  /* ETB2B AI's hero picture, for an event it started on the events dashboard: made on the server once Create Event
+     had created the event (functions/lib/ai-hero.js), and brought here by the hand-off (draft.aiHero). It goes in
+     AFTER the first undo step (at the end of boot(), once the records' overlay is in that step too), as a step of
+     its own, so Undo (the toast's, or the top bar's) brings the design's own picture back. Only this event's own stored picture is ever put in. A hand-off that says why no picture was
+     made gets that note, said plainly. -> true when the picture was put in */
+  function applyAiHero(draft) {
+    var a = draft && draft.aiHero;
+    if (!a || typeof a !== 'object' || !canvas) return false;
+    if (typeof a.note === 'string' && a.note) { showToast(a.note.slice(0, 300)); return false; }
+    var url = typeof a.url === 'string' ? a.url : '';
+    var own = 'https://storage.googleapis.com/';
+    if (url.indexOf(own) !== 0 || url.indexOf('/events/' + eventId + '/generated/') === -1 || /[\s"'<>()]/.test(url)) return false;
+    var els = heroPictureEls();
+    if (!els.length) { showToast('ETB2B AI made a hero picture, but this design has no place for one.'); return false; }
+    els.forEach(function (el) { canvas.setPicture(el, url); });
+    if (!commitNow()) return false;
+    var subject = typeof a.subject === 'string' ? a.subject.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+    offerUndo('ETB2B AI made this hero picture' + (subject ? ': ' + subject : '') + '. Undo puts the design\u2019s own picture back.');
+    return true;
+  }
+  /* The hero's picture on this design: what its content.map hero rule fills with the event's banner
+     ({hero.bannerUrl}, or a generated site's {hero.psdBanner.compositeImageData}), in every copy of the section. */
+  function heroPictureEls() {
+    var map = (canvas.template && canvas.template.content && canvas.template.content.map) || [], out = [];
+    map.forEach(function (m) {
+      if (!m || m.from !== 'hero' || !m.section) return;
+      (m.fill || []).forEach(function (r) {
+        if (!r || typeof r.attr !== 'string' || r.name !== 'src' || !/\{hero\.(?:bannerUrl|psdBanner\.compositeImageData)\}/.test(String(r.value || ''))) return;
+        Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-section="' + m.section + '"]'), function (sec) {
+          var found = r.attr === ':self' ? [sec] : sec.querySelectorAll(r.attr);
+          Array.prototype.forEach.call(found, function (el) { if (out.indexOf(el) === -1) out.push(el); });
+        });
+      });
+    });
+    return out;
   }
 
   /* Real, confirmed bug this closes: a Generate-from-Brief event's AI-written content only ever reached
@@ -489,7 +531,8 @@
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
         if (saved && saved.snapshot) { restoreLocal(); return; }
-        return seedSnapshot(null);
+        /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above */
+        return seedSnapshot(null).then(function () { pendingAiHero = draft; });
       }
 
       if (!/^gen-/.test(templateId || '')) {

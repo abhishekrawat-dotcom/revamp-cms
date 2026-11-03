@@ -614,6 +614,8 @@
   #existing-event{ margin-bottom: 14px; }
   /* what ETB2B AI on the events dashboard filled in, at the top of step 1 (create-event-prefill.js) */
   #ai-prefill-note{ margin-bottom: 16px; }
+  /* ETB2B AI's hero picture for this event, made only once the event is created (renderAiHeroLine) */
+  #ai-hero-line{ margin-bottom: 16px; }
 
   .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding: 3px 9px 3px 7px; border-radius: 100px; white-space:nowrap; }
   .pill .d{ width:6px; height:6px; border-radius:50%; }
@@ -1939,6 +1941,9 @@
       <!-- what ETB2B AI on the events dashboard filled in from the person's message, with Undo; or why its details
            were not used. Above all three phases, and gone once the person moves past step 1 (renderAiPrefillNote). -->
       <div class="callout" id="ai-prefill-note" role="status" hidden></div>
+      <!-- the hero picture ETB2B AI will make once the event is created, with Change and Remove; or why it won't
+           (renderAiHeroLine, create-event-prefill.js heroLine) -->
+      <div class="callout plain" id="ai-hero-line" role="status" hidden></div>
 
       <!-- ===== PHASE 1 : pick the portal and the category ===== -->
       <div class="phase" id="cat-picker" hidden>
@@ -2839,6 +2844,7 @@
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
     sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
     priorDesigns: [],            // every design name+colours/fonts shown by "Redesign with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
+    aiHero: null,               // ETB2B AI's hero picture for an event it started: { subject ('' = the event's name and place), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
     assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
   function draftId(){
@@ -3013,6 +3019,7 @@
       var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
+      S.aiHero = cleanAiHero(S.aiHero);
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
       /* an older draft lists the page header and footer as sections; they come with the design and are not a draft's to hold */
       S.sections = (S.sections || []).filter(function(sec){ return sec && (isTextSection(sec) || libBy(sec.libId)); });
@@ -3295,6 +3302,7 @@
   function renderFoot(){
     var back = $('btn-back'), next = $('btn-next'), note = $('foot-note');
     renderAiPrefillNote();
+    renderAiHeroLine();
     renderAiEntry();
     setTimeout(placeToasts, 0);     // once the bar has its new content
     if (busy){
@@ -9728,6 +9736,9 @@
       excluded: offSections.map(function(sec){ return sec.libId; }).filter(Boolean),
       aiDesign: own ? draftDesign() : null,                  // canvas.design field values laid over the template (draftDesign)
       sectionOrder: own ? (S.sectionOrder || null) : null,   // a section sequence accepted from an AI proposal; null = the template's own order
+      /* ETB2B AI's hero picture, made once the event was created: the editor puts it in as one undoable change
+         (editor-template-ui.js applyAiHero), or says why there is none */
+      aiHero: own ? aiHeroForHandoff() : null,
       sections: sections
     };
   }
@@ -10119,12 +10130,54 @@
     });
   }
 
-  /* the rows of the hand-off for the current path, in order — a further step is one more entry here */
+  /* the rows of the hand-off for the current path, in order — a further step is one more entry here. ETB2B AI's
+     hero picture (wantsAiHero) is made right after the event exists, and only then. */
   function handoffSteps(){
-    return [
-      { key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event', run: createEventRecord },
-      { key: 'open', label: 'Opening the editor', run: openInEditor }
-    ];
+    var steps = [{ key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event', run: createEventRecord }];
+    if (wantsAiHero()){
+      var hero = { key: 'hero', label: 'ETB2B AI is making a hero picture' };
+      hero.run = function(run){ return makeAiHero(run, hero); };
+      steps.push(hero);
+    }
+    steps.push({ key: 'open', label: 'Opening the editor', run: openInEditor });
+    return steps;
+  }
+  /* What made the picture fail, in a sentence for the editor's note: the server's own when it says one */
+  function aiHeroFailure(err){
+    var said = err && typeof err.said === 'string' && err.said ? err.said : '';
+    return 'ETB2B AI could not make the hero picture' + (said ? ': ' + said.replace(/\.$/, '') : '') + '. The design’s own picture is in place: you can change it in the editor.';
+  }
+  /* The one picture, made now that the event exists (POST /api/event/ai-hero, functions/lib/ai-hero.js). It never
+     fails the hand-off: a failure is kept as a note, the row says so, and the editor opens with the design's own
+     picture. What was made is kept in the draft, so a retried hand-off never asks for a second one. */
+  function makeAiHero(run, row){
+    var h = S.aiHero;
+    if (!h || !S.createdEventId || h.made) return Promise.resolve();
+    var body = { eventId: S.createdEventId, subject: h.subject || '' };
+    if (h.turnId) body.turnId = h.turnId;
+    var send = window.RevampCore && typeof RevampCore.authedFetch === 'function'
+      ? RevampCore.authedFetch('/api/event/ai-hero', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      : Promise.reject(new Error('This page did not load completely.'));
+    return Promise.resolve(send).then(readJson).then(function(r){
+      if (!isCurrent(run)) return;
+      if (!r || typeof r.url !== 'string' || !/^https:\/\/storage\.googleapis\.com\//.test(r.url)) throw new Error('The picture did not come back.');
+      h.made = { url: r.url, subject: String(r.subject || h.subject || '').slice(0, 200) };
+      h.note = '';
+      save();
+      row.label = 'ETB2B AI made a hero picture';
+    }).then(null, function(err){
+      if (!isCurrent(run)) return;
+      h.note = aiHeroFailure(err);
+      save();
+      row.label = 'Hero picture not made: the design’s own picture is kept';
+    });
+  }
+  /* what the editor is told about it: the picture to put in as an undoable change, or why there is none */
+  function aiHeroForHandoff(){
+    var h = S.aiHero;
+    if (!h || h.removed) return null;
+    if (h.made) return { url: h.made.url, subject: h.made.subject };
+    return h.note ? { note: h.note } : null;
   }
 
   /* steps: [{ key, label, run: function(run) -> Promise, skip?: function() -> bool }] */
@@ -10485,7 +10538,7 @@
     var br = S.brief || {};
     return JSON.stringify([S.basics, br.text === BRIEF_TEMPLATE ? '' : br.text, br.current, br.previous, br.comp1, br.comp2, br.future,
       br.docName, br.themeMode, br.instructions, br.siteMode, br.etEvent, S.sections, S.template, S.creationMethod, S.excludedSections,
-      S.pulledEdition, S.designIntake, S.sectionOrder, S.aiDesign, S.useBannerTheme, S.createdEventId]);
+      S.pulledEdition, S.designIntake, S.sectionOrder, S.aiDesign, S.useBannerTheme, S.createdEventId, S.aiHero]);
   }
   /* The note over step 1. It is redrawn only when what it says changes (renderFoot runs on every keystroke, and a
      redraw would take the keyboard off its button); hidden while a job holds the screen, gone once step 1 is left. */
@@ -10506,6 +10559,91 @@
     if (filled) $('ai-prefill-undo').onclick = undoAiPrefill;
     else $('ai-prefill-dismiss').onclick = function(){ aiNote = null; renderAiPrefillNote(); };
   }
+  /* ---------- ETB2B AI's hero picture (the owner, 3 Nov 2026) ----------
+     An event ETB2B AI on the dashboard starts asks for a first hero picture (S.aiHero, create-event-prefill.js).
+     The line over step 1 says plainly what will be made, with Change and Remove; nothing is made until the
+     event has been created (the hand-off's "ETB2B AI is making a hero picture" row, makeAiHero), so a draft that
+     is abandoned costs nothing. A failure there never stops the event: the editor opens with the design's own
+     picture and says why. */
+  /* a request read back from storage: only its known fields, each in its shape (anything else is no request) */
+  function cleanAiHero(h){
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return null;
+    var made = h.made && typeof h.made === 'object' && typeof h.made.url === 'string' && /^https:\/\/storage\.googleapis\.com\//.test(h.made.url)
+      ? { url: h.made.url, subject: String(h.made.subject || '').slice(0, 200) } : null;
+    return { subject: String(h.subject || '').replace(/\s+/g, ' ').trim().slice(0, 200), removed: h.removed === true, made: made,
+      note: String(h.note || '').slice(0, 300), turnId: typeof h.turnId === 'string' ? h.turnId.slice(0, 40) : '', at: +h.at || 0 };
+  }
+  /* "the event's name and place", as the picture's subject when the person gave none (the server words it the same) */
+  function aiHeroAutoSubject(){
+    var b = S.basics, name = String(b.name || '').trim(), venue = String(b.venue || '').trim(), city = String(b.city || '').trim();
+    var place = venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) === -1 ? venue + ', ' + city : (venue || city);
+    return [name, place].filter(function(x){ return !!x; }).join(', ').slice(0, 200);
+  }
+  /* the chosen design shows no hero picture: no hero section, or it is switched off (unknown until the design is read) */
+  function aiHeroNoSlot(){
+    var caps = draftCaps();
+    if (!caps) return false;
+    var c = caps.byLib && caps.byLib.hero;
+    return !c || !!excludedOn(S.template)[c.sectionId];
+  }
+  function aiHeroState(){
+    return { hero: S.aiHero, method: S.creationMethod, ownBanner: !!activeBannerUrl(), noSlot: aiHeroNoSlot(), subject: aiHeroAutoSubject() };
+  }
+  /* the picture will be asked for when the event is created: a request not removed, on the template path, with
+     no banner of the person's own and a design that has a place for it */
+  function wantsAiHero(){
+    var h = S.aiHero;
+    if (!h || h.removed || h.made) return false;
+    var line = window.RevampPrefill && RevampPrefill.heroLine ? RevampPrefill.heroLine(aiHeroState()) : null;
+    return !!line && line.can === 'change' && S.creationMethod === 'template';
+  }
+  /* The line. Redrawn only when what it says changes (renderFoot runs on every keystroke, and a redraw would take
+     the keyboard off its buttons); shown on step 1 while nothing holds the screen. */
+  function renderAiHeroLine(){
+    var el = $('ai-hero-line');
+    if (!el) return;
+    var line = S.step === 1 && !busy && window.RevampPrefill && RevampPrefill.heroLine ? RevampPrefill.heroLine(aiHeroState()) : null;
+    var want = line ? line.can + ':' + line.text : '';
+    if (el.getAttribute('data-line') === want) return;
+    el.setAttribute('data-line', want);
+    el.hidden = !want;
+    if (!want){ el.innerHTML = ''; return; }
+    el.innerHTML = IC.img + '<span>' + esc(line.text) +
+      (line.can === 'change' ? '<span class="callout-actions"><button class="btn btn-secondary btn-sm" type="button" id="ai-hero-change">Change</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="ai-hero-remove">Remove</button></span>'
+      : line.can === 'restore' ? '<span class="callout-actions"><button class="btn btn-secondary btn-sm" type="button" id="ai-hero-restore">Make one after all</button></span>' : '') +
+      '</span>';
+    if ($('ai-hero-change')) $('ai-hero-change').onclick = changeAiHero;
+    if ($('ai-hero-remove')) $('ai-hero-remove').onclick = function(){ setAiHeroRemoved(true); };
+    if ($('ai-hero-restore')) $('ai-hero-restore').onclick = function(){ setAiHeroRemoved(false); };
+  }
+  /* Remove, and its way back ("Make one after all"): the request stays in the draft either way */
+  function setAiHeroRemoved(removed){
+    if (!S.aiHero || busy) return;
+    S.aiHero.removed = removed;
+    save();
+    renderAiHeroLine();
+    var btn = $(removed ? 'ai-hero-restore' : 'ai-hero-change');
+    if (btn) btn.focus();
+  }
+  /* Change: what the picture should show, in the person's words; left empty, it is the event's name and place */
+  function changeAiHero(){
+    if (!S.aiHero || busy) return;
+    openModal({
+      title: 'What should the hero picture show?',
+      sub: 'ETB2B AI makes the picture once your event is created. Leave this empty to make it from the event’s name and place.',
+      body: '<div class="field"><label class="flabel" for="ai-hero-subject">The picture shows</label>' +
+        '<input class="inp" id="ai-hero-subject" type="text" maxlength="200" placeholder="' + esc(aiHeroAutoSubject() || 'e.g. a modern retail store at night') + '" value="' + esc(S.aiHero.subject) + '"></div>',
+      confirm: 'Save',
+      onConfirm: function(){
+        var inp = $('ai-hero-subject');
+        S.aiHero.subject = String((inp && inp.value) || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+        save();
+        renderAiHeroLine();
+      }
+    });
+  }
+
   /* Undo puts the page back to a blank new event. When the person has typed or chosen anything since ETB2B AI
      filled it in, that goes too, so they are asked first. */
   function undoAiPrefill(){

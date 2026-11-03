@@ -247,8 +247,9 @@ var LIST = {
   /* the vocabulary: nothing here deletes, cancels, publishes, approves, sends or pays */
   check('D.1 calls only its own three routes', (SRC.match(/'\/api\/[^']*'/g) || []).every(function (u) { return ['\'/api/dash-bot\'', '\'/api/dash-bot/turn\'', '\'/api/dash-bot/history\''].indexOf(u) !== -1; }), SRC.match(/'\/api\/[^']*'/g));
   check('D.1 no DELETE, publish, unpublish, approve or send call', !/'DELETE'|\/publish|unpublish|\/approve|\/send\b|\/payment/i.test(SRC));
-  check('D.1 the action switch knows filter, navigate, create, refuse (and undo) only',
-    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).sort().join(',') === 'create,filter,navigate,refuse,undo',
+  /* "portal" (the dashboard's own switcher, plan §17) joins them: no destructive action is in it */
+  check('D.1 the action switch knows filter, portal, navigate, create, refuse (and undo) only',
+    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).sort().join(',') === 'create,filter,navigate,portal,refuse,undo',
     SRC.match(/action\.type === '([a-z]+)'/g));
   check('D.1 the answer is drawn by the kit (no innerHTML here)', SRC.indexOf('innerHTML') === -1 && SRC.indexOf('insertAdjacentHTML') === -1 && SRC.indexOf('document.write') === -1);
   check('D.1 NAV_OK is one regex literal (the integration test reads it from here)', /\bvar NAV_OK = \/\^\\\/\(\?:edit-event[^\n]*\$\/;/.test(SRC));
@@ -278,7 +279,7 @@ var LIST = {
   check('D.1 the welcome greets by first name', o.welcome.heading === 'Hi Asha, I’m ETB2B AI.' && /start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions/.test(o.welcome.text), o.welcome);
   check('D.1 four suggestions, one per ability, each with a "…" to fill or none',
     same(o.suggestions.map(function (s) { return s.text; }), ['Create an IP event called … on … in …', 'Show drafts from last week', 'Which events go live this month?', 'Make a save-the-date post and an announcement mailer for …']));
-  check('D.1 the foot note says what it never does', o.footNote === 'ETB2B AI opens pages, filters this list and starts drafts. It never deletes, cancels, publishes or approves anything.');
+  check('D.1 the foot note says what it never does', o.footNote === 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.');
   check('D.1 "Email Customer Care" sits in the header', o.help && o.help.label === 'Email Customer Care' && typeof o.help.onClick === 'function');
   check('D.1 send and loadHistory are given; it does not start open', typeof o.send === 'function' && typeof o.loadHistory === 'function' && o.startOpen === false);
   var btnEl = fakeEl();
@@ -314,7 +315,8 @@ var LIST = {
   var c0 = P.botCalls()[0];
   check('D.1 POST /api/dash-bot with {message, view}', c0 && c0.method === 'POST' && c0.headers['Content-Type'] === 'application/json' && same(Object.keys(c0.body).sort(), ['message', 'view']) && c0.body.message === 'Show drafts from last week');
   check('D.1 no top-level eventId or slug (the QA guard reads those)', !('eventId' in c0.body) && !('slug' in c0.body));
-  check('D.1 view comes from RvListing.snapshot()', same(c0.body.view, { tab: 'active', specialView: null, search: 'mumbai', portal: '', types: ['ip'], mine: false, created: null, starts: null, sort: { field: 'start', dir: 'asc' }, shown: 7 }), c0.body.view);
+  /* working: the portal worked in; a snapshot without it (an older page) sends the list's portal, then the same */
+  check('D.1 view comes from RvListing.snapshot()', same(c0.body.view, { tab: 'active', specialView: null, search: 'mumbai', portal: '', working: '', types: ['ip'], mine: false, created: null, starts: null, sort: { field: 'start', dir: 'asc' }, shown: 7 }), c0.body.view);
   check('D.1 not busy once answered', same(P.kit.chat.busy[P.kit.chat.busy.length - 1], [false, undefined]));
 
   /* ======== Filter: done at once, folded, undone exactly ======== */
@@ -765,6 +767,86 @@ var LIST = {
   var Phx = await page({ answer: function (call) { return call.url === '/api/dash-bot/history' ? { status: 500, body: { error: 'x' } } : null; } });
   var hx = await rejection(Phx.kit.chat.opts.loadHistory());
   check('D.1 history: a failed read rejects, so the kit says the earlier messages could not be loaded', hx && /could not be loaded/.test(hx.message) && Phx.kit.chat.dividers.length === 0);
+
+  /* ======== portals (plan §17): the working portal in the view, the switch and its Undo ======== */
+  var Pw = await page({ answers: [hello('TurnPortalW001'), hello('TurnPortalW002')] });
+  Pw.listing.base.portal = 'hr'; Pw.listing.base.working = 'cio';
+  await Pw.say('Which drafts are there?');
+  check('D.1p view.working is the portal worked in, view.portal the one the list shows for now', same([Pw.botCalls()[0].body.view.portal, Pw.botCalls()[0].body.view.working], ['hr', 'cio']), Pw.botCalls()[0].body.view);
+  Pw.listing.base.working = 'all';
+  await Pw.say('again');
+  check('D.1p …All portals is "" (as the server reads it)', Pw.botCalls()[1] && Pw.botCalls()[1].body.view.working === '', Pw.botCalls()[1] && Pw.botCalls()[1].body.view);
+  function switchAnswer(id, to, label) {
+    return ok({ turnId: id, kind: 'portal', parts: [{ t: 'text', v: 'Switching the dashboard to the portal you asked for.' }], list: null,
+      action: { type: 'portal', portal: to, label: label }, choices: null, asOf: '2026-11-03T06:35:00.000Z', notes: [] });
+  }
+  function withSetPortal(L, ok2) {
+    L.portalSets = [];
+    L.setPortal = function (v) { L.portalSets.push(v); if (!ok2) return null; var before = L.snapshot(); before.mark = ++L.n; before.working = 'cio'; return before; };
+    return L;
+  }
+  var PS = await page({ answers: [switchAnswer('TurnSwitch0001', 'auto', 'ETAuto')], listing: withSetPortal(makeListing(), true) });
+  await PS.say('switch to ETAuto');
+  var bS = PS.last();
+  check('D.1p switch: RvListing.setPortal gets the portal', same(PS.listing.portalSets, ['auto']), PS.listing.portalSets);
+  check('D.1p switch: the card says where the dashboard now is, with Undo', bS.notes.indexOf('Now working in ETAuto.') !== -1 && bS.buttons.some(function (x) { return x.undo; }), bS.notes);
+  check('D.1p switch: the panel folds to its peek', PS.kit.chat.folds.length === 1 && PS.kit.chat.folds[0].label === 'Now working in ETAuto', PS.kit.chat.folds);
+  check('D.1p switch: the list as it was is kept for Undo', !!JSON.parse(PS.session.getItem('rv.dashBot.undo.TurnSwitch0001') || 'null'));
+  bS.buttons.filter(function (x) { return x.undo; })[0].click();
+  await flush();
+  check('D.1p switch Undo: restore(the snapshot before, {portal:true}) switches back', PS.listing.restored.length === 1 && PS.listing.restored[0].working === 'cio', PS.listing.restored);
+  check('D.1p switch Undo: /turn undone', same(PS.turnCalls(), [{ turnId: 'TurnSwitch0001', status: 'undone' }]), PS.turnCalls());
+  /* restore() is asked to move the portal back only when ETB2B AI moved it */
+  var restoreOpts = [];
+  var LF = makeListing(); LF.restore = function (snap, o) { restoreOpts.push(o || null); return true; };
+  var PF = await page({ answers: [filterAnswer(T1)], listing: LF });
+  await PF.say('drafts');
+  PF.last().buttons[0].click(); await flush();
+  check('D.1p a filter\'s Undo never moves the portal worked in', restoreOpts.length === 1 && restoreOpts[0] === null, restoreOpts);
+  var LB = withSetPortal(makeListing(), true), bothOpts = [];
+  LB.restore = function (snap, o) { bothOpts.push([snap.mark, o || null]); return true; };
+  var PB = await page({ answers: [switchAnswer('TurnSwitch0002', 'auto', 'ETAuto'), filterAnswer(T2)], listing: LB, confirm: true });
+  await PB.say('switch to ETAuto'); await PB.say('drafts');
+  PB.kit.chat.bubbles[0].buttons.filter(function (x) { return x.undo; })[0].click(); await flush();
+  check('D.1p going back past a switch ETB2B AI made switches back too ({portal:true})', bothOpts.length === 1 && bothOpts[0][1] && bothOpts[0][1].portal === true, bothOpts);
+  var PX = await page({ answers: [switchAnswer('TurnSwitch0003', 'auto', 'ETAuto')], listing: withSetPortal(makeListing(), false), quiet: true });
+  await PX.say('switch to ETAuto');
+  check('D.1p a switch the page refused: says so, reported failed, no Undo', PX.last().notes.some(function (n) { return /could not be switched/.test(n); }) &&
+    PX.turnCalls().length === 1 && PX.turnCalls()[0].status === 'failed' && !PX.last().buttons.some(function (x) { return x.undo; }), [PX.last().notes, PX.turnCalls()]);
+  var PY = await page({ answers: [switchAnswer('TurnSwitch0004', 'Bad Slug!', 'X')], listing: withSetPortal(makeListing(), true), quiet: true });
+  await PY.say('switch');
+  check('D.1p an odd portal value is never passed on', PY.listing.portalSets.length === 0 && PY.turnCalls()[0].status === 'failed', PY.listing.portalSets);
+  var PH = await page({ history: { turns: [{ id: 'TurnSwitch0005', question: 'switch to ETAuto', parts: [{ t: 'text', v: 'Switching.' }], kind: 'portal', status: 'undone', action: { type: 'portal', label: 'ETAuto' }, at: '2026-11-03T06:00:00.000Z' }] } });
+  PH.kit.chat.opts.loadHistory(); await flush();
+  check('D.1p history: a switch reads "Switched to ETAuto, then undone."', PH.kit.chat.bubbles.some(function (b) { return b.notes.indexOf('Switched to ETAuto, then undone.') !== -1; }), PH.kit.chat.bubbles.map(function (b) { return b.notes; }));
+  /* lists across portals name each event's portal; choices too */
+  var portalList = { title: 'Draft events · across all portals', count: 2, more: false, showPortal: true,
+    items: [{ id: 'a', name: 'A', href: '/edit-event.html?event=a', dates: '8 Nov 2026', status: 'draft', statusLabel: 'Draft', portal: 'ETCIO' },
+      { id: 'b', name: 'B', href: '/edit-event.html?event=b', dates: 'no date yet', status: 'draft', statusLabel: 'Draft', portal: 'No portal yet' }], view: null };
+  var PL = await page({ answers: [ok({ turnId: 'TurnPortalL001', kind: 'reply', parts: [{ t: 'text', v: 'Here they are.' }], list: portalList, action: null, asOf: 'x', notes: [] })] });
+  await PL.say('drafts in all portals');
+  var plItems = PL.last().lists[0].items;
+  check('D.1p a list across portals: each row names its portal, "No portal yet" for none', plItems[0].meta === 'ETCIO · 8 Nov 2026' && plItems[1].meta === 'No portal yet · no date yet', plItems);
+  portalList.showPortal = false;
+  var PL2 = await page({ answers: [ok({ turnId: 'TurnPortalL002', kind: 'reply', parts: [{ t: 'text', v: 'Here.' }], list: portalList, action: null, asOf: 'x', notes: [] })] });
+  await PL2.say('drafts');
+  check('D.1p …a one-portal list does not repeat it', PL2.last().lists[0].items[0].meta === '8 Nov 2026', PL2.last().lists[0].items[0]);
+  var PC = await page({ answers: [ok({ turnId: 'TurnChooseP001', kind: 'choose', parts: [{ t: 'text', v: 'Which one?' }], list: null, action: null, asOf: 'x', notes: [],
+    choices: [{ eventId: 'a', name: 'Autotech', portal: 'ETAuto', dates: '20 Nov 2026', statusLabel: 'Upcoming', action: navAnswer('x', '/edit-event.html?event=a').body.action }] })] });
+  await PC.say('open autotech');
+  check('D.1p a choice names the event\'s portal', PC.last().choices_[0].label === 'Autotech · ETAuto · 20 Nov 2026 · Upcoming', PC.last().choices_[0].label);
+
+  /* ======== the hero picture request (plan §18): the card says it, and it is handed to Create Event ======== */
+  var heroPrefill = JSON.parse(JSON.stringify(PREFILL)); heroPrefill.hero = { subject: '' };
+  var PHc = await page({ answers: [createAnswer('TurnHero000001', [], { prefill: heroPrefill })] });
+  await PHc.say('Create an IP event called Retail Leadership Summit on 12 Feb 2027 at Jio World Centre, Mumbai');
+  var heroCd = PHc.last().countdowns[0];
+  check('D.1h the create card says a hero picture is made once the event is created', !!heroCd && /· a hero picture once it is created…$/.test(heroCd.label), heroCd && heroCd.label);
+  var heroKept = JSON.parse(PHc.local.getItem('revamp.createEvent.prefill.v1.TurnHero000001') || 'null');
+  check('D.1h the request travels in the prefill, unchanged', !!heroKept && same(heroKept.hero, { subject: '' }), heroKept && heroKept.hero);
+  var PHn = await page({ answers: [createAnswer('TurnHero000002', [])] });
+  await PHn.say('Create an IP event called X, no picture');
+  check('D.1h no request, no mention of a picture', !/hero picture/.test(PHn.last().countdowns[0].label), PHn.last().countdowns[0].label);
 
   /* ======== the real kit, when Unit C's etb2b-chat.js is there ======== */
   var KIT = path.join(ROOT, 'etb2b-chat.js');

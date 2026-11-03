@@ -1580,7 +1580,7 @@
   /* Switching is the person's choice: the list moves at once, then it is saved for them (F2). A save that fails
      keeps the choice in this browser and says so. */
   function switchPortal(v){
-    if (v !== 'all' && !(rosterState !== 'ready' || onRoster(v))) return;
+    if (v !== 'all' && !(rosterState !== 'ready' || onRoster(v))) return false;
     state.portal = v;
     state.portalReturn = '';
     state.portalChosen = true; state.portalKnown = true; state.portalSettled = true; state.portalTouched = true;
@@ -1591,6 +1591,7 @@
     if (window.RevampPortals) window.RevampPortals.setWorking(v).then(null, function(err){
       toast((err && err.message) || 'Your portal choice is kept in this browser only.');
     });
+    return true;
   }
   /* "Show them" (the events with no portal yet) and "Show all portals" look at every portal for this visit only:
      nothing is saved, Create Event keeps starting on the working portal, and Back returns to it */
@@ -1738,8 +1739,10 @@
     var review = '<a class="pn-link" href="portal-review.html">Review suggested portals</a>';
     if (state.portalReturn){
       var onlyNone = state.filters.portals.length === 1 && state.filters.portals[0] === 'none';
+      /* one other portal looked at for now (ETB2B AI's "Show this portal's drafts"): named, not "every portal" */
+      var onlyOne = state.filters.portals.length === 1 && !onlyNone ? state.filters.portals[0] : '';
       html += '<div class="portal-notice">' + IC.globe + '<span class="pn-text">' +
-        (onlyNone ? 'Showing the events with no portal yet.' : 'Showing every portal for now.') + '</span>' +
+        (onlyNone ? 'Showing the events with no portal yet.' : onlyOne ? 'Showing ' + esc(portalNameOf(onlyOne)) + ' for now.' : 'Showing every portal for now.') + '</span>' +
         '<button type="button" class="pn-link" id="pn-back">Back to ' + esc(portalNameOf(state.portalReturn)) + '</button>' +
         (onlyNone ? review : '') + '</div>';
     } else {
@@ -3104,16 +3107,37 @@
     try { u = window.RevampAuth && typeof window.RevampAuth.currentUser === 'function' ? window.RevampAuth.currentUser() : null; } catch(e){}
     return { email: u && u.email ? String(u.email) : '', name: u && u.displayName ? String(u.displayName) : '' };
   }
-  /* a deep copy of what decides the list, put back by restore(); "shown" (how many events match) and "portal" (the
-     portal the list is on: a roster slug, or '' for All portals) are only read. The bot's answers and lists follow
-     that portal, so its "Show these in the list" lands on the portal it was asked about; it never switches it. */
+  /* A deep copy of what decides the list, put back by restore(). Read only: "shown" (how many events match),
+     "portal" (the portal scope the list shows: a roster slug, 'none' for the events with no portal yet, '' for every
+     portal; one value in the Portal filter of All portals counts as that one) and "working" (the portal the person
+     works in, saved for them: a slug or 'all'). listPortal and portalReturn are the list's own portal state, which
+     restore() puts back while the working portal is unchanged. ETB2B AI's answers and lists follow "portal". */
+  function listScope(){
+    if (state.portal !== 'all') return state.portal;
+    return state.filters.portals.length === 1 ? state.filters.portals[0] : '';
+  }
   function listingSnapshot(){
     return JSON.parse(JSON.stringify({
       tab: state.tab, specialView: state.specialView, search: state.search, filters: state.filters,
       created: state.created, starts: state.starts, mine: state.mine, sort: state.sort, page: state.page, view: state.view,
-      portal: state.portal === 'all' ? '' : state.portal,
+      portal: listScope(),
+      working: workingPortal(), listPortal: state.portal, portalReturn: state.portalReturn,
       shown: state.loading ? 0 : getFilteredSorted().length
     }));
+  }
+  /* a portal scope ETB2B AI may put the list on: 'all', 'none' or a portal on ET's roster (any slug's shape until
+     the roster has come, as the Portal filter takes it) */
+  function scopeOk(v){ return v === 'all' || v === 'none' || (typeof v === 'string' && /^[a-z0-9]{1,40}$/.test(v) && (rosterState !== 'ready' || onRoster(v))); }
+  /* The list on a portal scope, WITHOUT moving the portal the person works in: their own portal is shown as it
+     is; any other portal (or the events with no portal yet) is looked at "for now" over every portal, as "Show
+     them" does, with the notice's way back; every portal is All portals, or a look at every portal for now. */
+  function showScope(v){
+    var working = workingPortal();
+    if (v === working){ state.portal = working; state.portalReturn = ''; state.filters.portals = []; return; }
+    state.portalTouched = true;
+    state.portalReturn = working === 'all' ? '' : working;
+    state.portal = 'all';
+    state.filters.portals = v === 'all' ? [] : [v];
   }
   /* only the keys this page knows, once each (a snapshot may come back from the tab's storage) */
   function knownKeys(list, table){
@@ -3133,9 +3157,10 @@
     });
     return out;
   }
-  /* Puts the list on ETB2B AI's view: {view, search, types, mine, created, starts, sort}. The list then shows
-     exactly what the bot's card says, so a filter it does not name (a portal or payment pick) is cleared too;
-     a missing view or sort keeps the current one. Returns the list as it was before, for Undo. */
+  /* Puts the list on ETB2B AI's view: {view, search, types, mine, created, starts, sort[, portal]}. The list then
+     shows exactly what the bot's card says, so a filter it does not name (a portal or payment pick) is cleared
+     too; a missing view or sort keeps the current one. portal, when given, is the portal scope to show
+     (showScope, which never moves the portal the person works in). Returns the list as it was before, for Undo. */
   function listingApply(patch){
     var before = listingSnapshot();
     var p = patch && typeof patch === 'object' ? patch : {};
@@ -3143,6 +3168,7 @@
     else if (p.view === 'draft' || p.view === 'cancelled'){ state.specialView = p.view; }
     state.search = typeof p.search === 'string' ? p.search.trim().slice(0, 80) : '';
     state.filters = { types: knownTypes(p.types), portals: [], payment: [] };
+    if (scopeOk(p.portal)) showScope(p.portal);
     state.mine = p.mine === true;
     state.created = cleanRange(p.created);
     state.starts = cleanRange(p.starts);
@@ -3153,10 +3179,17 @@
     scrollResultsIntoView();
     return before;
   }
-  /* the list exactly as a snapshot had it: tab, view, search, filters, sort, page and list / cards. Not the portal:
-     that is the person's saved choice (the switcher), which Undo must never move */
-  function listingRestore(snap){
+  /* The list exactly as a snapshot had it: tab, view, search, filters, sort, page, list / cards, and the portal it
+     was looking at while the person still works in the same portal. The portal they work in is their saved choice
+     (the switcher): it is moved back only with opts.portal, which dash-bot-client.js passes when the Undo takes
+     back a switch ETB2B AI itself made ("switch to ETAuto"). */
+  function listingRestore(snap, opts){
     if (!snap || typeof snap !== 'object') return false;
+    if (opts && opts.portal === true && (snap.working === 'all' || (scopeOk(snap.working) && snap.working !== 'none')) && snap.working !== workingPortal()) switchPortal(snap.working);
+    if (typeof snap.working === 'string' && snap.working === workingPortal() && (snap.listPortal === 'all' || snap.listPortal === snap.working)){
+      state.portal = snap.listPortal;
+      state.portalReturn = state.portal === 'all' && snap.working !== 'all' ? snap.working : '';
+    }
     var f = snap.filters && typeof snap.filters === 'object' ? snap.filters : {};
     state.tab = ['active','upcoming','completed'].indexOf(snap.tab) !== -1 ? snap.tab : 'active';
     state.specialView = ['draft','cancelled','deleted'].indexOf(snap.specialView) !== -1 ? snap.specialView : null;
@@ -3182,10 +3215,21 @@
   var listingReadyDone = null;
   var listingReady = new Promise(function(resolve){ listingReadyDone = resolve; });
   function markListingReady(){ if (listingReadyDone){ listingReadyDone(); listingReadyDone = null; } }
+  /* ETB2B AI's "switch to ETAuto": the switcher's own switchPortal (saved for the person). -> the list as it was
+     before (with the portal worked in then), for Undo, or null when that portal is not one to switch to */
+  function listingSetPortal(v){
+    if (v !== 'all' && !(typeof v === 'string' && /^[a-z0-9]{1,40}$/.test(v))) return null;
+    var before = listingSnapshot();
+    if (!switchPortal(v)) return null;
+    syncHash();
+    scrollResultsIntoView();
+    return before;
+  }
   window.RvListing = {
     snapshot: listingSnapshot,
     apply: listingApply,
     restore: listingRestore,
+    setPortal: listingSetPortal,
     openHelp: function(returnTo){ openHelpModal(returnTo); },
     me: listingMe,
     /* settles once the first load of the events has finished, or failed */
