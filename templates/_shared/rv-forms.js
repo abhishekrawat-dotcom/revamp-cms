@@ -12,6 +12,13 @@
      a[data-rv-form="<formId>"]           a click opens that form in a pop-up (href "#rv-form-<formId>")
      a[data-register-cta]                 without data-rv-form: opens the event's default form (href "#register");
                                           with it, the form named there wins
+     data-rv-form-title / -note / -source on such a button: what the pop-up says it is for when this button opened
+                                          it ("Partner with us", "Request an invitation"), a line above the
+                                          questions ("Seats are confirmed by the ET team; there is no online
+                                          payment."), and the source the response is recorded with — the page's
+                                          live pass writes them (functions/lib/site-checks.js repair)
+     a[href="#<id>"] saying Register      when <id> is not on the page or not shown, opens the default form too:
+                                          a button never leads nowhere (deadRegisterLink)
      div.rv-block-form[data-rv-form-embed="<formId>"]
                                           the form drawn in place. data-rv-form-title="hide" leaves out its title
                                           (the section around it has a heading); its [data-rv-form-fallback]
@@ -1686,7 +1693,7 @@
     function send(answers, website) {
       var body = {
         eventId: str(opts.eventId), formId: str(form.id), answers: answers, website: website, consent: true,
-        source: 'website', utm: utmOf(win), ref: str(doc.referrer), preview: mode === 'preview'
+        source: line(str(opts.source), 60) || 'website', utm: utmOf(win), ref: str(doc.referrer), preview: mode === 'preview'
       };
       if (consent.version) body.consentVersion = consent.version;
       setBusy(true);
@@ -2133,12 +2140,15 @@
       return;
     }
     m.shownId = form.id;
-    m.title.textContent = formTitle(form);
+    /* what the button that opened it asks for: its own title, a line above the questions, its source */
+    var ask = askOf(m.opener);
+    m.title.textContent = ask.title || formTitle(form);
     paint(m.panel, m.opener);
     var keep = values || page.memory[form.id] || null;
-    m.ctrl = render(form, m.body, renderOpts({
+    m.ctrl = render(ask.note ? withNote(form, ask.note) : form, m.body, renderOpts({
       showTitle: false,
       opener: m.opener,
+      source: ask.source,
       values: keep,
       onInput: function (vals) { page.memory[form.id] = vals; },
       onDone: function () { delete page.memory[form.id]; },
@@ -2147,6 +2157,19 @@
       onStale: function (vals, fields) { restale(function () { if (page.modal === m) fillModal(vals, fields); }); }
     }));
     if (errors) m.ctrl.setErrors(errors);
+  }
+
+  /* data-rv-form-title / -note / -source of the button that opened the pop-up (never HTML: set as text) */
+  function askOf(opener) {
+    var get = function (name) { return opener && opener.getAttribute ? line(str(opener.getAttribute(name)), 200) : ''; };
+    return { title: get('data-rv-form-title'), note: get('data-rv-form-note'), source: get('data-rv-form-source').slice(0, 60) };
+  }
+  /* the form with the button's line first among its intro paragraphs */
+  function withNote(form, note) {
+    var copy = {};
+    for (var k in form) if (Object.prototype.hasOwnProperty.call(form, k)) copy[k] = form[k];
+    copy.intro = note + (line(str(form.intro), 10) ? '\n' + str(form.intro) : '');
+    return copy;
   }
 
   function openModal(formId, opener, fallbackDefault, fromHash) {
@@ -2231,9 +2254,24 @@
     if (id) return id;
     return page.payload ? defaultFormId() : '';
   }
+  /* A link that says Register and leads to a part of the page that is not there or not shown (a section hidden
+     because it is empty, or deleted since the button was made): it opens the default form instead, so a
+     visitor's click is never lost. The live page's own pass marks most such buttons already; this catches the
+     ones a page hides as it runs. */
+  var REGISTER_WORDS = /^\s*(?:register|registration|sign\s*up|express\s+(?:your\s+)?interest|book\s+(?:your\s+|a\s+)?(?:seat|pass|place|spot)s?|reserve\s+(?:your\s+|a\s+)?(?:seat|spot|place)s?|request\s+(?:an?\s+)?invit(?:e|ation))\b/i;
+  function deadRegisterLink(target) {
+    var t = target && (target.nodeType === 1 ? target : target.parentElement);
+    var a = t && t.closest ? t.closest('a[href^="#"]') : null;
+    if (!a || a.closest('[data-rv-form-root]') || !REGISTER_WORDS.test(str(a.textContent))) return null;
+    var name = str(a.getAttribute('href')).slice(1);
+    try { name = decodeURIComponent(name); } catch (err) { /* as written */ }
+    if (!name || hashForm('#' + name)) return null;          // "#" alone, #register, #rv-form-…: answered elsewhere
+    var el = doc.getElementById(name);
+    return !el || !el.getClientRects().length ? a : null;
+  }
   function onClick(e) {
     if (!page.started || editing() || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    var el = ctaFor(e.target);
+    var el = ctaFor(e.target) || deadRegisterLink(e.target);
     if (!el) return;
     e.preventDefault();
     /* a page saved long ago may still hold its own register pop-up (templates/_library footer): only one opens */

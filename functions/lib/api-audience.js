@@ -965,7 +965,8 @@ function duplicateError() {
    and each form as they are at that instant, not as they were when each request arrived — and one
    response's refusal (a duplicate, a form closed meanwhile) never affects the others in the same write.
    Resolves one { value } or { error } per item; rejects (for all of them) when the event itself takes no
-   registrations. An item is { reg, formId, answers, answerLabels }. */
+   registrations. An item is { reg, formId, answers, answerLabels, enquiry } — enquiry: the kind of request it
+   is ('partner', 'nominate', 'ceremony': forms.ENQUIRIES), '' for a registration. */
 var REGISTER_BATCH = 50;
 function storeRegistrations(fb, eventId, items) {
   var refs = audienceRefs(fb, eventId), formsCol = refs.event.collection('forms');
@@ -998,12 +999,14 @@ function storeRegistrations(fb, eventId, items) {
           var form = formsById[it.formId];
           if (!form) return { error: registerError(404, FORM_MISSING_MESSAGE, 'form-missing') };
           if (form.open === false) return { error: registerError(403, FORM_CLOSED_MESSAGE, 'form-closed') };
+          /* a request (forms.ENQUIRIES) has an id of its own: sent again, it is the same request */
+          if (it.enquiry) return { it: it, form: form, reject: true, enquiry: it.enquiry, ref: refs.regs.doc(forms.enquiryDocId(form.id, it.enquiry, it.reg.email)) };
           var reject = form.duplicates !== 'allow';
           return { it: it, form: form, reject: reject, ref: reject ? refs.regs.doc(forms.regDocId(form.id, it.reg.email)) : refs.regs.doc() };
         });
         return Promise.all(plans.map(function (p) {
           if (p.error || !p.reject) return null;
-          return Promise.all([tx.get(p.ref), loose ? tx.get(refs.regs.where('email', '==', p.it.reg.email).limit(50)) : null]);
+          return Promise.all([tx.get(p.ref), loose && !p.enquiry ? tx.get(refs.regs.where('email', '==', p.it.reg.email).limit(50)) : null]);
         })).then(function (dups) {
           var now = new Date(), nowIso = now.toISOString(), day = dayKey(now.getTime());
           var confirmed = num(ev.counters.confirmed), delta = { forms: {} }, counted = 0, submitted = 0, newLoose = false;
@@ -1012,14 +1015,21 @@ function storeRegistrations(fb, eventId, items) {
 
           var results = plans.map(function (p, i) {
             if (p.error) return { error: p.error };
-            var key = p.form.id + '\n' + p.it.reg.email;
+            var key = p.form.id + '\n' + (p.enquiry ? p.enquiry + '\n' : '') + p.it.reg.email;
+            if (p.enquiry && (seen[key] || dups[i][0].exists)) {
+              /* the same request again (a second click, a reload): already with the team, nothing more is stored */
+              var was = dups[i][0].exists ? normStatus(dups[i][0].get('status')) : 'pending';
+              return { value: { id: p.ref.id, status: was, formId: p.form.id, enquiry: p.enquiry, again: true } };
+            }
             if (p.reject) {
-              var sameForm = function (d) { return (d.get('formId') || DEFAULT_FORM_ID) === p.form.id; };
+              /* a request (enquiry) is not the address's registration, so it never makes a registration a duplicate */
+              var sameForm = function (d) { return (d.get('formId') || DEFAULT_FORM_ID) === p.form.id && !d.get('enquiry'); };
               if (seen[key] || dups[i][0].exists || (dups[i][1] && dups[i][1].docs.some(sameForm))) return { error: duplicateError() };
             }
             seen[key] = true;
-            var counts = p.form.countsAsRegistration === true;
-            var status = forms.planStatus({ counts: counts, needsApproval: p.form.needsApproval === true, capacity: settings.capacity, confirmed: confirmed });
+            var counts = !p.enquiry && p.form.countsAsRegistration === true;
+            var status = p.enquiry ? 'pending'
+              : forms.planStatus({ counts: counts, needsApproval: p.form.needsApproval === true, capacity: settings.capacity, confirmed: confirmed });
             if (counts && status === 'confirmed') confirmed++;
             var doc = Object.assign({}, p.it.reg, {
               formId: p.form.id, formName: p.form.name, counts: counts,
@@ -1030,6 +1040,7 @@ function storeRegistrations(fb, eventId, items) {
               payment: { required: false, status: 'n/a', amount: 0, txnId: null },
               createdAt: nowIso, checkedInAt: null, decidedAt: null, decidedBy: null
             });
+            if (p.enquiry) doc.enquiry = p.enquiry;
             tx.set(p.ref, doc);
             addDelta(delta, contribution(doc), 1);
             submitted++;
@@ -1046,7 +1057,7 @@ function storeRegistrations(fb, eventId, items) {
                 aggAdded[d][slot.key].n++;
               });
             }
-            return { value: { id: p.ref.id, status: status, formId: p.form.id, successMessage: p.form.successMessage } };
+            return { value: { id: p.ref.id, status: status, formId: p.form.id, successMessage: p.form.successMessage, enquiry: p.enquiry || '' } };
           });
 
           if (submitted) {
@@ -1095,10 +1106,13 @@ function handleRegister(req, res) {
         if (formId && (typeof formId !== 'string' || !forms.FORM_ID_RE.test(formId))) {
           return sendPublicJson(res, 400, { error: 'This form is not linked correctly. Please reload the page and try again.', code: 'invalid' });
         }
+        /* a request (forms.ENQUIRIES: a partner enquiry, a nomination, a ceremony invitation) is answered as one */
+        var enquiry = forms.enquiryOf(line(body.source, 60));
         // A person never sees, so never fills, the "website" field; a form-filling script does. It is told
         // what a person would be told and nothing is stored — or even looked up.
         if (line(body.website, 500)) {
-          return sendPublicJson(res, 200, { ok: true, id: 'r' + crypto.randomBytes(10).toString('hex'), status: 'confirmed', formId: formId || DEFAULT_FORM_ID, message: DEFAULT_SUCCESS });
+          return sendPublicJson(res, 200, { ok: true, id: 'r' + crypto.randomBytes(10).toString('hex'), status: enquiry ? 'pending' : 'confirmed',
+            formId: formId || DEFAULT_FORM_ID, message: enquiry ? enquiry.done : DEFAULT_SUCCESS });
         }
         if (!rateLimit('register-ev:' + eventId + ':' + clientIp(req), REGISTER_EVENT_LIMIT, REGISTER_WINDOW_MS)) {
           return sendPublicJson(res, 429, { error: 'Too many registrations from this network. Please try again in a few minutes.', code: 'rate-limited' },
@@ -1134,10 +1148,10 @@ function handleRegister(req, res) {
 
               if (preview) {
                 var counts = form.countsAsRegistration === true;
-                var status = forms.planStatus({ counts: counts, needsApproval: form.needsApproval === true, capacity: settings.capacity,
+                var status = enquiry ? 'pending' : forms.planStatus({ counts: counts, needsApproval: form.needsApproval === true, capacity: settings.capacity,
                   confirmed: num(isObj(ev.counters) ? ev.counters.confirmed : 0) });
-                return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: status, formId: form.id,
-                  message: form.successMessage + forms.PREVIEW_NOTE });
+                return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: status, formId: form.id, enquiry: enquiry ? enquiry.kind : '',
+                  message: (enquiry ? enquiry.done : form.successMessage) + forms.PREVIEW_NOTE });
               }
               var reg = read.reg;
               reg.device = deviceClass(req);
@@ -1145,9 +1159,9 @@ function handleRegister(req, res) {
               /* what the visitor agreed to (the box is ticked: validateAnswers refuses a response without it);
                  its time is set again when the response is stored */
               reg.consent = forms.consentRecord(consent, new Date().toISOString());
-              return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels }).then(function (stored) {
-                sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId,
-                  message: stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
+              return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels, enquiry: enquiry ? enquiry.kind : '' }).then(function (stored) {
+                sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId, enquiry: stored.enquiry || '',
+                  message: enquiry ? enquiry.done : stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
               });
             });
           });
@@ -1181,6 +1195,9 @@ function publicRegistration(id, r) {
     device: r.device || '', referrer: r.referrer || '',
     formId: typeof r.formId === 'string' && r.formId ? r.formId : DEFAULT_FORM_ID,
     formName: typeof r.formName === 'string' ? r.formName : '',
+    /* a request sent through the form, not a registration (forms.ENQUIRIES): 'partner' | 'nominate' | 'ceremony' */
+    enquiry: typeof r.enquiry === 'string' && Object.prototype.hasOwnProperty.call(forms.ENQUIRIES, r.enquiry) ? r.enquiry : '',
+    enquiryTitle: typeof r.enquiry === 'string' && Object.prototype.hasOwnProperty.call(forms.ENQUIRIES, r.enquiry) ? forms.ENQUIRIES[r.enquiry].title : '',
     counts: r.counts !== false,
     answers: isObj(r.answers) ? r.answers : {}, answerLabels: isObj(r.answerLabels) ? r.answerLabels : {},
     status: normStatus(r.status), notes: r.notes || '',

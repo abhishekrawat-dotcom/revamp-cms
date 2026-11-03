@@ -411,6 +411,8 @@ function escAttr(s) { return String(s).replace(/&(?!amp;|#\d+;|#x[0-9a-f]+;|[a-z
 
 module.exports = { deliverPage: deliverPage, assetVersion: assetVersion, versioned: versioned, fontFamilies: fontFamilies,
   addFontDisplay: addFontDisplay, absoluteUrls: absoluteUrls, RUNTIME_STUB: RUNTIME_STUB,
+  /* step 6's rule, for lib/site-checks.js: a film whose only address is one of these has nothing to play */
+  deadLocalPath: deadLocalPath,
   /* moves on each time another host's stylesheet arrives: a page delivered before it (still linking that sheet)
      is to be delivered again (lib/api.js cachedPage) */
   generation: function () { return remoteGeneration; } };

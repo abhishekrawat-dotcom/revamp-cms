@@ -103,6 +103,39 @@ var DEFAULT_SUCCESS = 'You are registered. We look forward to seeing you there.'
 var WAITLIST_MESSAGE = 'This event is full, so you have been added to the waitlist. We will be in touch if a place opens up.';
 var PREVIEW_NOTE = ' (Preview — this test registration was not saved.)';
 
+/* ---------- enquiries: a request sent through the event's form, never a registration ----------
+   A page's button can open the event's form for something other than a seat: "Join as Partner", an award's
+   "Nominate", the award ceremony's invitation (lib/site-checks.js repair and lib/award-sections.js write the
+   title, the line above the questions and the source on the button; templates/_shared/rv-forms.js shows them
+   and sends the source). WHY (UX sweep of 3 Nov 2026, UX-145): each such request ended "You are registered"
+   and was stored as a confirmed registration, counted in the event's totals, while the form above it said the
+   ET team confirms seats. A response whose source is one of these is a request for the team to answer:
+   POST /api/register keeps it out of the registration totals (counts: false), records it as awaiting the team
+   (status 'pending', which the console lists under "Awaiting approval"), keeps it apart from the visitor's own
+   registration (enquiryDocId), and thanks the visitor for what they asked, never as registered. */
+var ENQUIRIES = {
+  partner: { title: 'Partner with us', note: 'Tell us about your organisation and the event team will get in touch about partnering.',
+    source: 'partner-enquiry', done: 'Thank you. Your enquiry has reached the event team, who will get in touch about partnering.' },
+  nominate: { title: 'Start a nomination', note: 'Leave your details and the awards team will send you what you need to nominate.',
+    source: 'nomination-enquiry', done: 'Thank you. Your request has reached the awards team, who will get in touch about your nomination.' },
+  ceremony: { title: 'Request an invitation', note: 'Seats are confirmed by the ET team; there is no online payment.',
+    source: 'ceremony-invitation', done: 'Thank you. Your request has reached the ET team, who will get in touch to confirm your seat.' }
+};
+/* the enquiry a response's source names -> { kind, title, note, source, done } | null */
+function enquiryOf(source) {
+  var s = String(source == null ? '' : source).trim().toLowerCase();
+  var kinds = Object.keys(ENQUIRIES);
+  for (var i = 0; i < kinds.length; i++) {
+    if (ENQUIRIES[kinds[i]].source === s) return Object.assign({ kind: kinds[i] }, ENQUIRIES[kinds[i]]);
+  }
+  return null;
+}
+/* One request of each kind per email and form, under an id of its own: it neither takes the address's
+   registration (regDocId) nor is refused because the visitor has registered. */
+function enquiryDocId(formId, kind, email) {
+  return 'eq-' + crypto.createHash('sha256').update(formId + '\n' + kind + '\n' + email).digest('hex').slice(0, 40);
+}
+
 /* ---------- the consent box every form ends with ---------- */
 
 var CONSENT_ID = 'consent', CONSENT_TYPE = 'consent';
@@ -1264,7 +1297,7 @@ function cleanAiFormOps(parsed, payload) {
 module.exports = {
   FIELD_TYPES, FIELD_TYPE_LABELS, OPTION_TYPES, PURPOSES, MAPPED_FIELDS, MAPPED_TYPES, MAPPED_KEY, LOCKED_FIELDS, COUNTRIES,
   FORM_TEMPLATES, TEMPLATE_BY_ID, FIELD_PRESETS, LIMITS, FORM_ID_RE, FIELD_ID_RE, DEFAULT_FORM_ID, FORMS_RUNTIME_V, EMAIL_RE,
-  EMAIL_MESSAGE, DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, AI_LIMITS, DEFAULT_FIELD_IDS, OLD_DEFAULT_FIELD_IDS, DEFAULT_EMAIL_LABEL,
+  EMAIL_MESSAGE, DEFAULT_SUCCESS, WAITLIST_MESSAGE, PREVIEW_NOTE, ENQUIRIES, enquiryOf, enquiryDocId, AI_LIMITS, DEFAULT_FIELD_IDS, OLD_DEFAULT_FIELD_IDS, DEFAULT_EMAIL_LABEL,
   CONSENT_ID, CONSENT_TYPE, CONSENT_TEXT, CONSENT_MESSAGE, CONSENT_FALLBACK_PORTAL,
   consentFor, consentField, isConsentField, withConsent, consentRecord, portalOfSources, publicConsent, hasCurrentDefaults, oldDefaultFields,
   defaultFields, legacyFields, isUntouchedDefault, migrationPlan, requiredMessage,
