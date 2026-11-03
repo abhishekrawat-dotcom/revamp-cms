@@ -54,12 +54,15 @@
 //   -- Event console, the saved site and the public site. Every route here except the public ones needs a
 //      verified Firebase ID token for a company account (requireAdmin in lib/http.js). An "event" is a
 //      document that was created as one (it has createdAt) and has not been deleted — see eventStateOf().
-//   POST  /api/event                        create; 409 { code:'slug-taken', suggestion } over an existing one
+//   POST  /api/event                        create; 409 { code:'slug-taken', suggestion } over an existing one.
+//                                           `portal`, the ET portal the event belongs to, is required.
 //   GET   /api/event?eventId=               read one
-//   PATCH /api/event                        update details and `settings`; 404 if there is no such event
+//   PATCH /api/event                        update details and `settings`; 404 if there is no such event. A
+//                                           portal can be changed (with `ifPortal`), never removed.
 //   GET   /api/events                       every live event, team-wide (this is a shared CMS: no per-user
 //                                           filter), newest-updated first, with published / publishedPath /
-//                                           counters. No deleted events, import records or leftover shells.
+//                                           counters and portal / portalName. No deleted events, import
+//                                           records or leftover shells.
 //                                           ?deleted=1 lists the deleted ones instead (to restore them).
 //   POST/PATCH/DELETE /api/event/leads/bulk import, change or delete up to 500 leads in one request
 //   GET/POST/PATCH/DELETE /api/event/<resource>   the per-event content lists — speakers, speaker-groups,
@@ -85,6 +88,10 @@
 //     lib/api-forms.js     an event's registration forms: GET/POST/PUT/DELETE /api/event/forms,
 //                          POST /api/event/forms/default, POST /api/event/forms/order,
 //                          GET /api/public/forms (PUBLIC — what a visitor's page is told about them)
+//     lib/event-portal.js  GET /api/events/portal-evidence (what says which ET portal each existing event is on,
+//                          read only), POST /api/events/portal-backfill (an approver fills in the portals they
+//                          ticked, only where that evidence is still certain)
+//     lib/working-portal.js GET / PUT /api/me/working-portal (the portal a person works on, kept for that person)
 //     lib/promo.js         GET /api/promo/kit, GET /api/promo/image, POST /api/promo/write (the Promotions
 //                          pages: an event's brand and content, its pictures from our own address, AI copy)
 //     lib/promo-track.js   GET /t/o/<id>.gif, GET /t/c/<id> (PUBLIC — a mailer's open pixel and click redirect),
@@ -1403,13 +1410,14 @@ function pageKey(u) {
   var m = /^https?:\/\/([^\/?#]+)([^?#]*)/i.exec(String(u || '').trim());
   return m ? m[1].toLowerCase().replace(/^www\./, '') + m[2].replace(/\/+$/, '').toLowerCase() : '';
 }
-function confirmEtPick(pick, url) {
+/* instead: what is done when the pick is not confirmed, for the log line ('read by its address' unless said) */
+function confirmEtPick(pick, url, instead) {
   if (!pick) return Promise.resolve(null);
   var award = pick.kind === 'award';
   return (award ? etEvents.listAwards : etEvents.listIpEvents)(pick.portal, etJson).then(function (events) {
     var ev = events.filter(function (e) { return String(e.id) === pick.id; })[0];
     if (ev && pageKey(ev.link) && pageKey(ev.link) === pageKey(url)) return pick;
-    console.warn('ingest-source: etEvent ' + pick.portal + '/' + pick.id + (ev ? ' is not ' + url : award ? ' is not an award of that portal' : ' is not an IP event of that portal') + ' — read by its address');
+    console.warn('ingest-source: etEvent ' + pick.portal + '/' + pick.id + (ev ? ' is not ' + url : award ? ' is not an award of that portal' : ' is not an IP event of that portal') + ' — ' + (instead || 'read by its address'));
     return null;
   }, function () { return null; });
 }
@@ -1422,6 +1430,47 @@ function etPickOf(v) {
   if (typeof v !== 'object') return false;
   var portal = String(v.portal || '').trim(), id = String(v.id == null ? '' : v.id).trim(), kind = v.kind == null ? 'event' : String(v.kind);
   return etEvents.isPortal(portal) && /^\d{1,9}$/.test(id) && (kind === 'event' || kind === 'award') ? { portal: portal, id: id, kind: kind } : false;
+}
+
+/* A roster portal's name ("hr" -> "ETHRWorld"), '' for anything else — so a value that is not on the roster is
+   never shown as if it were a portal. */
+function portalNameOf(slug) { return etEvents.isPortal(slug) ? etEvents.PORTALS[slug] : ''; }
+
+/* The roster portal whose ET address serves a portal's site: its own, except where ET runs one site under two
+   names. startup.economictimes.indiatimes.com is ET Entrepreneur's site under another name (et-footer.js gives
+   'startup' the entrepreneur.economictimes… home), yet 'startup' and 'entrepreneur' are both on the roster, so an
+   address on either host is the same site to both. Read from et-footer.js's homes, so the pair is kept in one
+   place; a portal it does not know, or whose home is not an ET portal address (techmonk: techgig.com), is its own. */
+function siteOfPortal(slug) {
+  var home = etFooter.isKnown(slug) ? etPrevious.portalOf(etFooter.info(slug).home) : '';
+  return etEvents.isPortal(home) ? home : slug;
+}
+
+/* An event's own editions come from its own portal: Create Event's picker lists only that portal's editions, and
+   generation reads what is read here (sources) for the site's records, look and logo unit. So for an event that
+   has a portal, a previous or current edition picked from ET's list of another portal, or an ET page whose
+   address is another portal's, is refused before the page is fetched or the model asked. A competitor's page
+   is anyone's; an event with no portal yet, or not created yet, is not checked — and reading a page never sets an
+   event's portal.
+   The pick says which portal's list the edition came from, so it must be the event's own portal exactly (the
+   picker never offers another). The address says only which site serves the page: one served by the other name
+   of the event's own site (siteOfPortal) is the event's own; and a pick of the event's own portal whose address
+   ET's own list gives as that edition's page (confirmEtPick: ET's record, cached) is the event's own wherever it
+   is served. Otherwise an address on another portal is refused — an unconfirmed pick never lets one through,
+   since what is read next would be read by that address, as that other portal's.
+   -> Promise<the other portal's slug, or '' when the page may be read>, never rejecting */
+function otherPortalOf(eventPortal, type, etPick, url) {
+  if (!etEvents.isPortal(eventPortal) || (type !== 'previousEdition' && type !== 'currentEdition')) return Promise.resolve('');
+  if (etPick && etPick.portal !== eventPortal) return Promise.resolve(etPick.portal);
+  var page = etPrevious.portalOf(url);
+  if (!etEvents.isPortal(page) || siteOfPortal(page) === siteOfPortal(eventPortal)) return Promise.resolve('');
+  if (!etPick) return Promise.resolve(page);
+  return confirmEtPick(etPick, url, 'refused: the address is ' + page + '\'s').then(function (pick) { return pick ? '' : page; });
+}
+function otherPortalError(eventPortal, pagePortal) {
+  var ours = portalNameOf(eventPortal), theirs = portalNameOf(pagePortal);
+  return httpError(400, 'This event is on ' + ours + ', and that page is ' + theirs + '\'s. Pick one of ' + ours + '\'s editions, or change the event\'s portal first.',
+    { code: 'other-portal', eventPortal: eventPortal, pagePortal: pagePortal });
 }
 
 /* ---------- GET /api/et/portals, GET /api/et/events?portal=<slug>[&kind=award] — Create Event's previous-edition picker ----------
@@ -1661,13 +1710,23 @@ function handleIngestSource(req, res) {
 
     var controller = new AbortController();
     var timedOut = false;
-    var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 20000);
+    /* the page's 20s start when it is fetched: the portal check before it may first read ET's list of editions */
+    var timer = null;
     /* reading a page that had to be rendered can take two minutes: the model works in what is left */
     var deadlineAt = Date.now() + 270000;
 
     var watch = null;
     watchEvent(fb, eventId)
-      .then(function (w) { watch = w; return fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' } }); })
+      .then(function (w) {
+        watch = w;
+        /* another portal's edition is refused here, before the page is fetched (otherPortalOf) */
+        return otherPortalOf(w.portal, type, etPick, url);
+      })
+      .then(function (other) {
+        if (other) throw otherPortalError(watch.portal, other);
+        timer = setTimeout(function () { timedOut = true; controller.abort(); }, 20000);
+        return fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' } });
+      })
       .then(function (r) {
         if (r.ok) return r.text();
         /* Some sites (several ET verticals among them) turn away anything that is not a browser. The page
@@ -5250,10 +5309,12 @@ function sectionCodeBatches(designPlan) {
 }
 
 /* ---------- ET's common footer on an AI-designed site (et-footer.js) ----------
-   The portal a site belongs to: the one its previous edition (or this edition's own page) was read from — the
-   portal the records came from, else the address. series: that address's event series
+   The portal an event's sources point to: the one its previous edition (or this edition's own page) was read
+   from — the portal the records came from, else the address. series: that address's event series
    (brand-world-summit-south2025 -> brand-world-summit-south), so "What's Happening" never lists this very
-   event's own ET page. -> { portal: slug | '', series } */
+   event's own ET page. It no longer decides the site's portal (sitePortalOf, below, does): its portal is what
+   the consent links of an event with no portal yet are still read from (forms.js portalOfSources is the same
+   rule). -> { portal: slug | '', series } */
 function sitePortal(sourceDocs) {
   var own = (sourceDocs || []).filter(function (v) { return v && (v.type === 'previousEdition' || v.type === 'currentEdition'); });
   own.sort(function (a, b) { return (a.type === b.type ? 0 : a.type === 'previousEdition' ? -1 : 1) || (b.previous ? 1 : 0) - (a.previous ? 1 : 0); });
@@ -5263,6 +5324,15 @@ function sitePortal(sourceDocs) {
     if (etEvents.isPortal(portal)) return { portal: portal, series: etPrevious.seriesOf(etPrevious.slugOf(url)) };
   }
   return { portal: '', series: '' };
+}
+/* The portal a site's ET bar and footer show: the event's own (events/<id>.portal, chosen in Create Event or
+   set with Set portal) and nothing else. It is never worked out from the sources, which could name another
+   portal than the one the event is listed under; with none set, the site gets the ET Business Verticals bar
+   and the ET B2B footer. The series is still the edition's address's (sitePortal). stored: the event's
+   document, or { portal }. -> { portal: slug | '', series } */
+function sitePortalOf(stored, sourceDocs) {
+  var portal = stored && etEvents.isPortal(stored.portal) ? stored.portal : '';
+  return { portal: portal, series: sitePortal(sourceDocs).series };
 }
 /* What is on now or coming on that portal, from ET's event list (kept 6 hours). Never rejects and never holds
    generation up: ET not answering, or slow, leaves the footer without its "What's Happening" column. */
@@ -5384,8 +5454,10 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var v = d.data();
       return { type: v.type, url: v.url, extractedSections: v.extractedSections };
     });
-    /* the footer's "What's Happening" is read from ET while the site is being written */
-    var footerOf = sitePortal(sourcesSnap.docs.map(function (d) { return d.data(); }));
+    /* the footer's "What's Happening" is read from ET while the site is being written. The bar and the footer
+       are the portal of the event this site is for (watchEvent read its document), not of the one the brief
+       and sources may be read from (sourceEventId) */
+    var footerOf = sitePortalOf({ portal: watch.portal }, sourcesSnap.docs.map(function (d) { return d.data(); }));
     var footerRead = footerEvents(footerOf.portal);
 
     // 100s, not the 60s default — writing full bespoke HTML/CSS is a genuinely bigger generation job than
@@ -5572,6 +5644,9 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
          date and place, a link to every section in the page's order, the owner's main action */
       sections = sections.filter(function (s) { return s.id !== 'nav'; });
       var navFor = { order: sections.filter(function (s) { return !s.page; }).map(function (s) { return s.id; }), sources: sourcesSnap.docs.map(function (d) { return d.data(); }), owner: designPlan.owner || (brief && brief.owner) };
+      /* the bar's portal logo is the event's own portal, the footer's (sitePortalOf): et-nav.js takes it as given
+         when the key is there ('' gives none), and works one out of the sources only for callers that send none */
+      navFor.portal = footerOf.portal;
       /* An award site: a link to each of its internal pages, and no button at the right of the bar. That place is
          the portal's sign-in on ET's own sites; with no sign-in for the portals here, the owner had the bar's
          "Express Interest" taken away (28 Oct 2026) — the hero and the footer keep the award's button. */
@@ -5582,11 +5657,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       }
       var navSection;
       /* never a reason to lose a whole site: a bar that cannot be made from the stored records is made from
-         the event's facts alone (no portal, the default action) */
+         the event's facts alone (its portal, the default action) */
       try { navSection = etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: designPlan }), navFor); }
       catch (navErr) {
         console.error('[generate-content] the ET bar for ' + eventId + ' fell back to the plain one: ' + (navErr && navErr.message));
-        navSection = etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: { sections: [] } }), { order: navFor.order });
+        navSection = etNav.sectionFor(Object.assign({}, eventMeta, { designPlan: { sections: [] } }), { order: navFor.order, portal: navFor.portal });
       }
       sections.unshift(navSection);
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
@@ -6883,7 +6958,7 @@ function loadLiveEvent(fb, eventId) {
      - an event that was there at the start and is gone, or deleted, at the end answers
        409 { code: 'event-gone' } and stores nothing.
    An id with no event behind it at the start is left as it was: pages that run these steps before
-   creating the event still work. Resolves { stillThere(), merge(data) }. */
+   creating the event still work. Resolves { live, portal, stillThere(), merge(data) }. */
 function watchEvent(fb, eventId) {
   var ref = eventDocRef(fb, eventId);
   function check(snap, start) {
@@ -6895,10 +6970,14 @@ function watchEvent(fb, eventId) {
   return ref.get().then(function (snap) {
     var start = eventStateOf(snap);
     if (start === 'deleted') throw notLiveError('deleted', eventId);
+    var stored = start === 'live' ? (snap.data() || {}) : {};
     return {
       /* a real (created) event: only then does a step's result go into its activity log — the wizard runs
          these steps before the event exists */
       live: start === 'live',
+      /* the ET portal it belongs to (a roster slug, else ''): what a step reads from ET is that portal's, and the
+         site's bar and footer show it */
+      portal: etEvents.isPortal(stored.portal) ? stored.portal : '',
       stillThere: function () { return ref.get().then(function (now) { check(now, start); }); },
       /* merges `data` into the event document, in the same transaction as the check */
       merge: function (data) {
@@ -6950,6 +7029,8 @@ function eventForClient(eventId, data) {
   /* Online payment is not available, so every event registers free — including the ones an earlier
      wizard stored as "paid" without ever being able to collect anything. */
   out.payment = { type: 'free' };
+  /* the ET portal's name ("ETHRWorld") for the console's header, '' while it has none on the roster */
+  out.portalName = portalNameOf(data.portal);
   return out;
 }
 
@@ -7784,9 +7865,28 @@ var EVENT_FIELD_CHECKS = {
     if (!isPlainObject(v) || Object.keys(v).length > 200) return '"checklist" must be an object.';
     if (!storableJson(v)) return '"checklist" has a name that cannot be stored.';
     return Object.keys(v).every(function (k) { return v[k] == null || typeof v[k] === 'boolean' || typeof v[k] === 'string' || typeof v[k] === 'number'; }) ? '' : '"checklist" has a value that is not valid.';
+  },
+  /* The ET portal the event belongs to (ETHRWorld, ETCIO …): a slug on et-events.js's roster and nothing else
+     (isPortal is an own-property check, so "__proto__" is refused too). It decides where the event is listed,
+     whose previous editions it is made from, its site's ET bar and footer, its consent links and its mailers'
+     branding. Required on create; once set it can be changed, never removed (cleanEventBody, portalRefusal). */
+  portal: function (v) {
+    if (etEvents.isPortal(v)) return '';
+    return v == null || v === '' ? PORTAL_REMOVE_TEXT : 'Unknown portal "' + String(v).slice(0, 40) + '".';
   }
 };
 var EVENT_FIELDS = Object.keys(EVENT_FIELD_CHECKS);
+
+/* The two refusals about a missing portal. A Create Event page opened before the portal was asked for sends
+   none, and shows the server's sentence as it is: it says what to do. */
+var PORTAL_CHOOSE_TEXT = 'Choose the portal this event belongs to. If this page has no Portal box, reload it.';
+var PORTAL_REMOVE_TEXT = 'An event\'s portal can be changed, not removed. Choose another portal.';
+/* The answer to a portal that cannot be stored: 'portal-required' for none, 'unknown-portal' for a value that
+   is not on the roster — with the field, so a page can show it beside its Portal box. */
+function portalRefusal(v, creating) {
+  if (v == null || v === '') return { error: creating ? PORTAL_CHOOSE_TEXT : PORTAL_REMOVE_TEXT, code: 'portal-required', field: 'portal' };
+  return { error: EVENT_FIELD_CHECKS.portal(v), code: 'unknown-portal', field: 'portal' };
+}
 
 /* event.settings (contract section 9). The whole shape is checked and anything not in it is refused by
    name, so a typo in a client ("registraton") fails loudly instead of being stored and ignored. Returns
@@ -7883,8 +7983,10 @@ function cleanEventBody(body, eventId, creating) {
   for (var i = 0; i < EVENT_FIELDS.length; i++) {
     var f = EVENT_FIELDS[i];
     if (!has(body, f)) continue;
+    /* on create, an empty portal is no portal: handleEventCreate refuses that after the address checks */
+    if (f === 'portal' && creating && (body.portal == null || body.portal === '')) continue;
     var problem = EVENT_FIELD_CHECKS[f](body[f]);
-    if (problem) return { error: problem };
+    if (problem) return f === 'portal' ? portalRefusal(body[f], creating) : { error: problem };
     data[f] = body[f];
   }
   if (creating && !has(data, 'name')) return { error: 'The event name is required.' };
@@ -7940,7 +8042,12 @@ var SHELL_STATE_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedV
    address nothing may take (lib/http.js's isReservedEventId). Creating over an existing event used to merge the new
    fields into it: the second event silently took over the first one's content, registrations and site.
    The check and the write are one transaction, so two people creating the same address at the same
-   moment cannot both succeed. */
+   moment cannot both succeed.
+
+   Every event belongs to one ET portal, chosen in Create Event: with none, 400 { code: 'portal-required',
+   field: 'portal' }. That is decided after the address (reserved, taken), so a page that sends no portal
+   still hears first about an address it cannot have, as it always did. The portal is a line of its own in
+   the History, after "created". */
 function handleEventCreate(req, res) {
   withAdminBody(req, res, BODY_LIMITS.event, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId || body.slug);
@@ -7961,12 +8068,15 @@ function handleEventCreate(req, res) {
     data.published = false;
     data.counters = { registrations: 0, views: 0 };
     if (clean.settings) data.settings = mergeSettings(null, clean.settings);
+    /* how the portal was set (only this server writes it): here, by the person creating the event */
+    if (has(data, 'portal')) data.portalFrom = 'create';
 
     var ref = eventDocRef(fb, eventId);
     fb.db.runTransaction(function (tx) {
       return tx.get(ref).then(function (snap) {
         var state = eventStateOf(snap);
         if (state === 'live' || state === 'deleted') throw httpError(409, 'taken');
+        if (!has(data, 'portal')) throw httpError(400, PORTAL_CHOOSE_TEXT, { code: 'portal-required', field: 'portal' });
         if (state === 'missing') { tx.set(ref, data); return; }
         var write = Object.assign({}, data);
         SHELL_STATE_FIELDS.forEach(function (f) { if (!has(write, f)) write[f] = fieldDelete(); });
@@ -7974,7 +8084,12 @@ function handleEventCreate(req, res) {
       });
     }).then(function () {
       sendJson(res, 200, { ok: true, eventId: eventId, createdAt: now, updatedAt: now });
-      logActivity(fb, eventId, decoded, 'created', data.name);
+      var name = portalNameOf(data.portal);
+      /* one after the other, so the History reads "created" and then the portal it was created on */
+      logActivity(fb, eventId, decoded, 'created', data.name).then(function () {
+        return logActivity(fb, eventId, decoded, 'portal-set', name + ' (chosen in Create Event)',
+          { area: 'event', fields: [{ field: 'portal', before: 'No portal', after: name }] });
+      });
     }).catch(function (err) {
       if (!(err && err.status === 409)) return sendFailure(res, 'event create', err, 'The event could not be created. Please try again.');
       suggestFreeEventId(fb, eventId).then(function (suggestion) {
@@ -8007,42 +8122,77 @@ function handleEventGet(req, res) {
    { updatedAt, updatedBy } } when somebody has changed the event's details since then, instead of
    quietly putting its older copy of every field back. What it is compared with is `detailsUpdatedAt`,
    which only this route and create stamp: saving the site in the editor moves the event's `updatedAt`
-   every few seconds and is not a change to its details. A request without `ifUpdatedAt` is not checked. */
+   every few seconds and is not a change to its details. A request without `ifUpdatedAt` is not checked.
+
+   The portal. Set portal (the dashboard, the console, the review page) and Basics send `ifPortal`: the
+   portal the page showed, '' for none. When somebody has set another one meanwhile, 409 { code:
+   'portal-changed', current, currentName } and nothing is written, so a portal is never silently put
+   back. `{ eventId, portal }` alone needs no `ifUpdatedAt`. A portal equal to the stored one is no
+   change: it is not written, not logged, and a PATCH that sent nothing else writes nothing at all and
+   answers the stored `updatedAt` (otherwise both dates would move for nothing). A real change is its
+   own line in the History ("ETCIO → ETHRWorld"), not part of the "updated" line. */
+function checkIfPortal(body) {
+  return (body.ifPortal == null || (typeof body.ifPortal === 'string' && body.ifPortal.length <= 40)) ? '' : '"ifPortal" must be the portal the page showed ("" for none).';
+}
+function portalChangedError(current) {
+  var name = portalNameOf(current);
+  return httpError(409, 'This event\'s portal was changed' + (name ? ' to ' + name : '') + ' meanwhile. Reload to see it.',
+    { code: 'portal-changed', current: current, currentName: name });
+}
 function handleEventUpdate(req, res) {
   withAdminBody(req, res, BODY_LIMITS.event, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
     var clean = cleanEventBody(body, eventId, false);
     if (clean.error) return sendJson(res, 400, { error: clean.error, code: clean.code, field: clean.field });
-    var bad = checkIfUpdatedAt(body);
+    var bad = checkIfUpdatedAt(body) || checkIfPortal(body);
     if (bad) return sendJson(res, 400, { error: bad });
     var changed = Object.keys(clean.data);
     if (!changed.length && !clean.settings) return sendJson(res, 400, { error: 'Nothing to update.' });
 
     var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), statusChange = null, diff = [], settingsDiff = [];
+    var portalChange = null, answeredAt = now;
     fb.db.runTransaction(function (tx) {
       return tx.get(ref).then(function (snap) {
         var state = eventStateOf(snap);
         if (state !== 'live') throw notLiveError(state, eventId);
         var stored = snap.data();
+        /* worked out again on each run: a transaction can run more than once */
+        statusChange = null; diff = []; settingsDiff = []; portalChange = null; answeredAt = now;
+        /* a stored value that is not on the roster is no portal, on both sides of the comparison */
+        var storedPortal = etEvents.isPortal(stored.portal) ? stored.portal : '';
+        if (typeof body.ifPortal === 'string' && (etEvents.isPortal(body.ifPortal) ? body.ifPortal : '') !== storedPortal) {
+          throw portalChangedError(storedPortal);
+        }
         if (body.ifUpdatedAt != null && isoOf(stored.detailsUpdatedAt) && isoOf(stored.detailsUpdatedAt) > body.ifUpdatedAt) {
           throw staleError('event', { updatedAt: isoOf(stored.updatedAt), updatedBy: stored.updatedBy });
         }
-        var write = Object.assign({}, clean.data, { updatedAt: now, detailsUpdatedAt: now, updatedBy: actorOf(decoded) });
+        var data = Object.assign({}, clean.data);
+        if (has(data, 'portal') && data.portal === storedPortal) delete data.portal;
+        if (!Object.keys(data).length && !clean.settings) { answeredAt = isoOf(stored.updatedAt) || isoOf(stored.createdAt) || now; return; }
+        var write = Object.assign({}, data, { updatedAt: now, detailsUpdatedAt: now, updatedBy: actorOf(decoded) });
+        if (has(data, 'portal')) {
+          write.portalFrom = 'set';
+          portalChange = { before: storedPortal, after: data.portal };
+        }
         if (clean.settings) {
           write.settings = mergeSettings(stored.settings, clean.settings);
           settingsDiff = fieldChanges(stored.settings || {}, pick(write.settings, Object.keys(clean.settings)));
         }
-        diff = fieldChanges(stored, clean.data, ['status']);
-        statusChange = has(clean.data, 'status') && clean.data.status != null && clean.data.status !== stored.status
-          ? (stored.status || 'no status') + ' → ' + clean.data.status : null;
+        diff = fieldChanges(stored, data, ['status', 'portal']);
+        statusChange = has(data, 'status') && data.status != null && data.status !== stored.status
+          ? (stored.status || 'no status') + ' → ' + data.status : null;
         tx.update(ref, write);
       });
     }).then(function () {
-      sendJson(res, 200, { ok: true, updatedAt: now });
+      sendJson(res, 200, { ok: true, updatedAt: answeredAt });
       if (clean.settings && settingsDiff.length) logActivity(fb, eventId, decoded, 'settings-changed', settingsDiff.map(function (f) { return f.field; }).join(', '), { fields: settingsDiff });
       if (statusChange) logActivity(fb, eventId, decoded, 'status-changed', statusChange);
       if (diff.length) logActivity(fb, eventId, decoded, 'updated', diff.map(function (f) { return f.field; }).join(', '), { fields: diff });
+      if (portalChange) {
+        var before = portalNameOf(portalChange.before) || 'No portal', after = portalNameOf(portalChange.after);
+        logActivity(fb, eventId, decoded, 'portal-set', before + ' → ' + after, { area: 'event', fields: [{ field: 'portal', before: before, after: after }] });
+      }
     }).catch(function (err) { sendFailure(res, 'event update', err, 'The event could not be saved. Please try again.'); });
   });
 }
@@ -8067,7 +8217,7 @@ function handleEventUpdate(req, res) {
 var EVENTS_LIST_LIMIT = 1000;
 var EVENT_LIST_FIELDS = ['name', 'category', 'status', 'start', 'end', 'dateLabel', 'dateMode', 'venue', 'city', 'client',
   'templateId', 'logoUrl', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'published', 'publishedAt',
-  'publishedVersion', 'counters', 'site', 'generatedAt', 'deletedAt', 'deletedBy', 'discardingAt'];
+  'publishedVersion', 'counters', 'site', 'generatedAt', 'deletedAt', 'deletedBy', 'discardingAt', 'portal'];
 
 function eventListItem(id, d) {
   var c = isPlainObject(d.counters) ? d.counters : {}, site = isPlainObject(d.site) ? d.site : null;
@@ -8089,6 +8239,11 @@ function eventListItem(id, d) {
     site: site ? { version: +site.version || 0, templateId: site.templateId || null, updatedAt: site.updatedAt || null, updatedBy: site.updatedBy || null } : null,
     /* an AI-designed site exists from the moment it is generated, before the editor has saved anything */
     hasGeneratedSite: !!d.generatedAt,
+    /* the ET portal it is listed under, and its name; '' and '' while it has none ("No portal yet") — a stored
+       value that is not on the roster is none too. The list reads every event and the dashboard picks a
+       portal's own: a query on the portal would leave out the events that have none yet. */
+    portal: etEvents.isPortal(d.portal) ? d.portal : '',
+    portalName: portalNameOf(d.portal),
     payment: { type: 'free' }
   };
   item.hasSite = (!!site && +site.version > 0) || item.hasGeneratedSite;
@@ -9924,8 +10079,10 @@ function handleSiteRepair(req, res) {
 
 /* ET's header and footer for an AI-designed site, built as generation builds them (runGenerateDesignedContent):
    the bar from the event's facts, its plan and its sources (et-nav.js), the footer from its portal (et-footer.js,
-   with "What's Happening" when ET answers in time). eventsOf: the portal's events (footerEvents; a test passes its
-   own). -> Promise<{ nav: { html, css }, footer: { html, css } }> */
+   with "What's Happening" when ET answers in time). Both are the event's own portal (events/<id>.portal,
+   sitePortalOf), never one worked out from the sources: an event with none set yet gets the ET Business Verticals
+   bar and the ET B2B footer. eventsOf: the portal's events (footerEvents; a test passes its own).
+   -> Promise<{ nav: { html, css }, footer: { html, css } }> */
 function etChromeFor(fb, eventId, data, page, eventsOf) {
   var ref = eventDocRef(fb, eventId);
   return Promise.all([
@@ -9937,7 +10094,9 @@ function etChromeFor(fb, eventId, data, page, eventsOf) {
     var plan = data.designPlan || {}, design = plan.design || {}, planned = plan.sections || [];
     var meta = eventFacts(data, null), owner = plan.owner || (brief && brief.owner);
     var order = pageSectionOrder(page).filter(function (id) { return id !== 'nav' && id !== 'footer'; });
-    var navOpts = { order: order, sources: sources, owner: owner };
+    var portal = sitePortalOf(data, sources);
+    /* the key is there, so et-nav.js takes the portal as given and guesses none from the sources */
+    var navOpts = { order: order, sources: sources, owner: owner, portal: portal.portal };
     /* an award site: a link to each of its pages and no button in the bar, as generation makes it */
     var pages = Array.isArray(data.generatedPages) ? data.generatedPages : [];
     if (data.category === 'awards' && pages.length) {
@@ -9948,7 +10107,6 @@ function etChromeFor(fb, eventId, data, page, eventsOf) {
     function firstOf(kind) { return planned.filter(function (x) { return x.kind === kind; })[0]; }
     var contact = firstOf('contact'), partners = firstOf('partners');
     var buttons = ownerBrief.buttons(owner, { register: contact ? contact.id : 'footer', partner: partners ? partners.id : '' });
-    var portal = sitePortal(sources);
     var place = [meta.venue, meta.city].filter(function (v, i, list) { return v && list.indexOf(v) === i; }).join(', ') || meta.location || '';
     return (eventsOf || footerEvents)(portal.portal).then(function (list) {
       var footer = siteFooter({ portal: portal.portal, series: portal.series, events: list, design: design, eventName: meta.name,
@@ -10650,6 +10808,25 @@ var audience = function (handler) { return inModule('api-audience', handler); };
 var formsRoute = function (handler) { return inModule('api-forms', handler); };
 var heroVideo = function (handler) { return inModule('api-hero-video', handler); };
 
+/* lib/event-portal.js (the evidence report on which ET portal each existing event is on, and the approver's
+   backfill of the ones ticked) and lib/working-portal.js (the portal a person works on, kept for that person)
+   take a few of this file's helpers the way lib/promo.js does: handed to them (wire()) on each call, so
+   neither requires this file. A module that is missing or fails to load costs only its own routes the 503
+   inModule() answers. */
+function portalHelpers() {
+  return { withAdmin, withAdminBody, eventDocRef, eventStateOf, approvalsConfig, actorOf, logActivity, sendJson, sendFailure,
+    httpError, BODY_LIMITS, isEventId };
+}
+function portalModuleRoute(moduleName, handler) {
+  var run = inModule(moduleName, handler);
+  return function (req, res) {
+    try { require('./' + moduleName).wire(portalHelpers()); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+}
+var eventPortal = function (handler) { return portalModuleRoute('event-portal', handler); };
+var workingPortal = function (handler) { return portalModuleRoute('working-portal', handler); };
+
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
    own routes the 503 inModule() answers. */
@@ -10755,6 +10932,10 @@ var ROUTES = {
   'PATCH /api/event': handleEventUpdate,
   'DELETE /api/event': events('handleEventDelete'),
   'GET /api/events': handleEventsList,
+  'GET /api/events/portal-evidence': eventPortal('handleEvidence'),
+  'POST /api/events/portal-backfill': eventPortal('handleBackfill'),
+  'GET /api/me/working-portal': workingPortal('handleGet'),
+  'PUT /api/me/working-portal': workingPortal('handlePut'),
   'GET /api/event/slug-available': events('handleSlugAvailable'),
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),
@@ -10915,7 +11096,7 @@ module.exports._testHooks = {
   aiDesignOf: aiDesignOf,
   TRACK_PIXEL: TRACK_PIXEL,   // the open pixel answered when lib/promo-track.js cannot be loaded (must equal its PIXEL)
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
-  confirmEtPick: confirmEtPick, pageKey: pageKey, sitePortal: sitePortal, footerEvents: footerEvents, siteFooter: siteFooter,
+  confirmEtPick: confirmEtPick, pageKey: pageKey, otherPortalOf: otherPortalOf, siteOfPortal: siteOfPortal, sitePortal: sitePortal, sitePortalOf: sitePortalOf, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,

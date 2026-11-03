@@ -76,11 +76,15 @@ check('mayTakeOffline: a team member who is not one', C.mayTakeOffline({ me: 'me
 
 /* ---- basicsGaps and DESC ---- */
 check('DESC: 40 / 160 / 220', C.DESC.min === 40 && C.DESC.ideal === 160 && C.DESC.max === 220, C.DESC);
-var full = { name: 'ETCIO Conclave', start: '2027-05-21T10:00', end: '2027-05-22T18:00', venue: 'Grand Hyatt', city: 'Goa', desc: new Array(12).join('word ') + 'end.', cat: 'ip' };
+var full = { name: 'ETCIO Conclave', start: '2027-05-21T10:00', end: '2027-05-22T18:00', venue: 'Grand Hyatt', city: 'Goa', desc: new Array(12).join('word ') + 'end.', cat: 'ip', portal: 'cio' };
 var gaps = C.basicsGaps(full);
-check('basicsGaps: five rows, all done for a filled event', gaps.length === 5 && gaps.every(function (g) { return !g.why; }), gaps);
-gaps = C.basicsGaps({ name: ' ', start: '', venue: '', city: '', desc: 'short', cat: '' });
-check('basicsGaps: an empty event has five things to do', gaps.filter(function (g) { return g.why; }).length === 5 && /Add at least 40 characters \(now 5\)/.test(gaps[3].why), gaps);
+check('basicsGaps: six rows (the portal last), all done for a filled event', gaps.length === 6 && gaps.every(function (g) { return !g.why; }) &&
+  gaps[5].key === 'portal' && gaps[5].label === 'Portal' && gaps[5].field === 'b-portal', gaps);
+gaps = C.basicsGaps({ name: ' ', start: '', venue: '', city: '', desc: 'short', cat: '', portal: '' });
+check('basicsGaps: an empty event has six things to do', gaps.filter(function (g) { return g.why; }).length === 6 && /Add at least 40 characters \(now 5\)/.test(gaps[3].why) &&
+  gaps[5].why === 'Choose the portal it belongs to', gaps);
+gaps = C.basicsGaps(Object.assign({}, full, { portal: undefined }));
+check('basicsGaps: no portal yet is the one thing to do', gaps.filter(function (g) { return g.why; }).length === 1 && gaps[5].why === 'Choose the portal it belongs to', gaps[5]);
 gaps = C.basicsGaps(Object.assign({}, full, { desc: new Array(331).join('x') }));
 check('basicsGaps: a 330-character description: "Shorten to 160"', gaps[3].why === 'Shorten to 160 characters (now 330)', gaps[3]);
 gaps = C.basicsGaps(Object.assign({}, full, { end: '2027-05-20T10:00' }));
@@ -163,7 +167,7 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   check('Dashboard: no target set: no target bar', !/Registration target/.test(tv));
   check('Dashboard: by status, from the stats', /Registrations 2 in all/.test(tv) && /Confirmed 2/.test(tv) && /Cancelled 0/.test(tv) && !/Checked in/.test(tv), tv);
   check('Dashboard: no log yet: "No changes yet", and the way to the full log', /No changes yet/.test(tv) && /data-goto="activity"/.test(v));
-  check('Dashboard: Ready to publish is worked out, read-only, no checkbox, no percent', /Ready to publish/.test(tv) && /Basics 1 of 5 filled in/.test(tv) && /Speakers None on the site yet/.test(tv) &&
+  check('Dashboard: Ready to publish is worked out, read-only, no checkbox, no percent', /Ready to publish/.test(tv) && /Basics 1 of 6 filled in/.test(tv) && /Speakers None on the site yet/.test(tv) &&
     /Site Not saved yet: open the site editor and save it/.test(tv) && /Registration Open · 1 form/.test(tv) && /1 of 6 ready/.test(tv) && !/class="cb"/.test(v) && !/data-chk/.test(v) && !/%<\/b>/.test(v), tv);
   check('Dashboard: a stamp says when the figures were read; Refresh is there', /Updated /.test(tv) && /id="dash-refresh"/.test(v) && !/id="dash-refresh" disabled/.test(v));
   t.D.wire(t.ctx);
@@ -180,6 +184,7 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   /* a live event with a log, a target, a capacity, counted visits and content */
   var LIVE = { id: 'brand-world-summit-2026', eventId: 'brand-world-summit-2026', name: 'Brand World Summit 2026', start: '2026-12-05T10:41', venue: 'Jio World', city: 'Mumbai',
     category: 'ip', description: 'The annual gathering of India\'s marketing and brand leaders, with talks, awards and an evening of networking.',
+    portal: 'brandequity', portalName: 'ET BrandEquity',
     published: true, publishedVersion: 9, publishedAt: '2026-10-20T06:30:00.000Z', site: { version: 10, updatedAt: '2026-11-01T06:30:00.000Z' },
     approval: { id: 'req99', toVersion: 10, requestedBy: 'a@timesinternet.in' } };
   t = makeDash({ ev: LIVE, award: false, counts: { speakers: 12, agenda: 1, sponsors: 0 },
@@ -194,7 +199,14 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   check('Dashboard (live): target and seats from the registration settings', /50% of the target of 300/.test(tv) && /Seats left 60 140 of 200 confirmed/.test(tv) && /Registration target/.test(tv) && /150 of 300/.test(tv), tv.slice(0, 900));
   check('Dashboard (live): the funnel has no Checked in stage without check-ins, and no NaN', /From visit to registration/.test(tv) && /No page views yet/.test(tv) && !/Checked in/.test(tv), tv);
   check('Dashboard (live): Recent activity is the log, in its own words', /Site saved to staging › Hero text changed/.test(tv) && /by a@timesinternet\.in/.test(tv) && /Published \(live\) › version 9/.test(tv) && /by Platform \(automated\)/.test(tv) && /W\(2026-11-02T05:00:00Z\)/.test(tv), tv);
-  check('Dashboard (live): Ready to publish from the records', /Basics 5 of 5 filled in/.test(tv) && /Speakers 12 speakers on the site/.test(tv) && /Agenda 1 session on the site/.test(tv) && /Sponsors None on the site yet/.test(tv) && /Site Saved in the site editor/.test(tv) && /5 of 6 ready/.test(tv), tv);
+  check('Dashboard (live): Ready to publish from the records', /Basics 6 of 6 filled in/.test(tv) && /Speakers 12 speakers on the site/.test(tv) && /Agenda 1 session on the site/.test(tv) && /Sponsors None on the site yet/.test(tv) && /Site Saved in the site editor/.test(tv) && /5 of 6 ready/.test(tv), tv);
+
+  /* a stored portal off ET's roster (the server gives it no name) is no portal: Basics still asks for one */
+  t = makeDash({ ev: Object.assign({}, LIVE, { portal: 'hrworld', portalName: '' }), award: false, counts: { speakers: 12, agenda: 1, sponsors: 0 },
+    stats: Object.assign({}, STATS, { visitsCounted: true }) });
+  t.D.view(t.ctx); t.D.wire(t.ctx); await settle();
+  tv = text(t.D.view(t.ctx));
+  check('Dashboard: a portal off the roster counts as none (Basics 5 of 6, Portal left to do)', /Basics 5 of 6 filled in/.test(tv), tv);
 
   /* one slow answer does not hold back the rest */
   var releaseLog;

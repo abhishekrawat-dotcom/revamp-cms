@@ -119,5 +119,55 @@ check('the about-vertical link names the portal', />About ET BrandEquity<\/a>/.t
 check('no known portal: About Us', />About Us<\/a>/.test(paged.html) && !/About Vertical/.test(paged.html) && nav.aboutLabel('cio') === 'About ETCIO' && nav.aboutLabel('nope') === 'About Us');
 check('a name the owner gave the section is kept', nav.labelOf({ id: 'about-vertical', name: 'About the Organisers' }, 'cio') === 'About the Organisers');
 
+/* ---------- the event's own portal (events/<id>.portal), when the caller passes it ---------- */
+var CIO_SOURCES = [{ type: 'previousEdition', url: 'https://cio.economictimes.indiatimes.com/etcio-annual-conclave-2026', previous: { portal: 'cio' } }];
+var lightEvent = Object.assign({}, event, { designPlan: Object.assign({}, event.designPlan, { design: { mode: 'light', themeColor: '#ed1c24' } }) });
+function logoSrcOf(html) { return (/data-rv-et-logo[^>]* src="([^"]*)"/.exec(html) || [])[1] || ''; }
+var hrBar = nav.sectionFor(lightEvent, { order: ['nav', 'hero', 'overview', 'footer'], portal: 'hr', sources: CIO_SOURCES });
+check('o.portal: the stored portal is the bar\'s, over the ETCIO sources and the ET BrandEquity reference page',
+  logoSrcOf(hrBar.html) === '/templates/_shared/img/portals/hr.png' && /alt="ETHRWorld"/.test(hrBar.html) && !/portals\/(cio|brandequity)/.test(hrBar.html), logoSrcOf(hrBar.html));
+check('o.portal: the logo links to that portal\'s home', /class="rv-etnav-logo" href="https:\/\/hr\.economictimes\.indiatimes\.com\/"/.test(hrBar.html));
+var noneBar = nav.sectionFor(lightEvent, { order: ['nav', 'hero', 'overview', 'footer'], portal: '', sources: CIO_SOURCES });
+check('o.portal \'\' (no portal yet): The Economic Times Business Verticals logo — nothing is worked out from the sources or the plan',
+  /et-business-verticals-on-light\.svg/.test(logoSrcOf(noneBar.html)) && !/img\/portals\//.test(noneBar.html) && /class="rv-etnav-logo" href="#hero"/.test(noneBar.html), logoSrcOf(noneBar.html));
+['hrworld', '__proto__', 'toString', 'HR', null, 7, { portal: 'hr' }].forEach(function (bad) {
+  var b = nav.sectionFor(lightEvent, { order: ['nav', 'hero', 'footer'], portal: bad, sources: CIO_SOURCES });
+  check('o.portal ' + JSON.stringify(bad) + ' is not on the roster: no portal, never a guess from the sources', /et-business-verticals-on-light\.svg/.test(logoSrcOf(b.html)), logoSrcOf(b.html));
+});
+var oldCaller = nav.sectionFor(lightEvent, { order: ['nav', 'hero', 'footer'], sources: CIO_SOURCES });
+check('no o.portal key (older callers): the candidates as before — ET\'s record of the previous edition first',
+  logoSrcOf(oldCaller.html) === '/templates/_shared/img/portals/cio.png', logoSrcOf(oldCaller.html));
+var undefKey = nav.sectionFor(lightEvent, { order: ['nav', 'hero', 'footer'], portal: undefined, sources: CIO_SOURCES });
+check('an o.portal key that is there but undefined still counts as said: no portal', /et-business-verticals-on-light\.svg/.test(logoSrcOf(undefKey.html)), logoSrcOf(undefKey.html));
+var hrDark = nav.sectionFor(event, { order: ['nav', 'hero', 'footer'], portal: 'hr', sources: CIO_SOURCES });
+check('o.portal on a dark site: that portal\'s light-ink wordmark', logoSrcOf(hrDark.html) === '/templates/_shared/img/portals/hr-light.png', logoSrcOf(hrDark.html));
+
+/* ---------- the logo links to the portal's real home ---------- */
+const etFooter = require('./et-footer');
+const ROSTER = Object.keys(require('./et-events').PORTALS);
+['techmonk', 'startup'].forEach(function (slug) {
+  var l = nav.logoOf(slug, 'light');
+  check('logoOf(' + slug + ').href is its et-footer home, not <slug>.economictimes', l.href === etFooter.info(slug).home + '/' && !/^https:\/\/(techmonk|startup)\.economictimes/.test(l.href), l.href);
+});
+check('TechMonk links to techgig.com and ET Startup to ET Entrepreneur\'s site', nav.logoOf('techmonk', 'dark').href === 'https://techgig.com/' &&
+  nav.logoOf('startup', 'light').href === 'https://entrepreneur.economictimes.indiatimes.com/', [nav.logoOf('techmonk', 'dark').href, nav.logoOf('startup', 'light').href].join(' '));
+check('ET BrandEquity\'s link is unchanged', nav.logoOf('brandequity', 'light').href === 'https://brandequity.economictimes.indiatimes.com/' && etFooter.isKnown('brandequity'));
+/* a roster portal with no et-footer row keeps the usual address (info() would give ET B2B's home for it) */
+ROSTER.filter(function (s) { return !etFooter.isKnown(s); }).forEach(function (slug) {
+  var l = nav.logoOf(slug, 'light');
+  check('logoOf(' + slug + ') (no et-footer row): never ET B2B\'s home', l.href === '#hero' || l.href === 'https://' + slug + '.economictimes.indiatimes.com/', l.href);
+});
+check('every roster portal\'s logo links to the top or to an https home', ROSTER.every(function (slug) {
+  var l = nav.logoOf(slug, 'light'); return l.href === '#hero' || /^https:\/\/[a-z0-9.-]+\/$/.test(l.href);
+}));
+
+/* both together: "About Vertical" names the event's own stored portal, never the page the site was modelled on */
+var beReferenced = Object.assign({ name: 'B' }, { designPlan: { sections: awardPlan.designPlan.sections, reference: { type: 'previousEdition', url: 'https://brandequity.economictimes.indiatimes.com/x' } } });
+var hrAbout = nav.sectionFor(beReferenced, { order: ['nav', 'hero', 'about-vertical', 'footer'], portal: 'hr' }).html;
+check('o.portal: the about-vertical link names the stored portal (ETHRWorld), not the ET BrandEquity reference',
+  />About ETHRWorld<\/a>/.test(hrAbout) && !/About ET BrandEquity/.test(hrAbout), hrAbout.slice(0, 400));
+var noAbout = nav.sectionFor(beReferenced, { order: ['nav', 'hero', 'about-vertical', 'footer'], portal: '' }).html;
+check('o.portal \'\' (no portal yet): About Us, nothing guessed from the reference', />About Us<\/a>/.test(noAbout) && !/About ET BrandEquity|About Vertical/.test(noAbout));
+
 if (failed) { console.error('et-nav: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('et-nav: all ' + passed + ' checks passed');

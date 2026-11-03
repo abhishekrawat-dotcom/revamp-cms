@@ -1154,7 +1154,7 @@ function handleRegister(req, res) {
             if (!preview && ev.published !== true) throw registerError(404, NOT_AVAILABLE, 'unavailable');
             var settings = registrationSettings(ev);
             if (!settings.open) throw registerError(403, CLOSED_MESSAGE, 'closed');
-            return Promise.all([formsApi().loadForm(fb, eventId, ev, formId), formsApi().loadConsent(fb, eventId)]).then(function (loaded) {
+            return Promise.all([formsApi().loadForm(fb, eventId, ev, formId), formsApi().loadConsent(fb, eventId, ev)]).then(function (loaded) {
               var form = loaded[0], consent = loaded[1];
               if (!form) throw registerError(404, FORM_MISSING_MESSAGE, 'form-missing');
               if (form.open === false) throw registerError(403, FORM_CLOSED_MESSAGE, 'form-closed');

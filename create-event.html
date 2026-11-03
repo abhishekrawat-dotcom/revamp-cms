@@ -326,6 +326,31 @@
     #cat-picker{ padding-inline: 0; }
     #cat-grid .category-card{ min-height: 225px; }
   }
+  /* the event's portal: one searchable box above the type cards, its list opening under the box
+     (renderPortalStep). Only the page's tokens, so the dark theme follows. */
+  .cat-q{ display: block; font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: .01em; }
+  .field.cat-portal > label.cat-q{ margin-bottom: 8px; font-weight: 700; }
+  .cat-portal{ max-width: 460px; width: 100%; }
+  .cat-portal .cbx{ position: relative; }
+  .cat-portal .cbx::after{
+    content: ''; position: absolute; right: 17px; top: 50%; width: 7px; height: 7px; margin-top: -6px;
+    border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(45deg); pointer-events: none;
+  }
+  .cat-portal .cbx-inp{ height: 44px; padding: 0 42px 0 14px; border-radius: 10px; background: var(--surface); font-size: 14px; text-overflow: ellipsis; }
+  .cat-portal .cbx-inp[aria-expanded="true"]{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .cat-portal .cbx-inp:disabled{ background: var(--surface-2); color: var(--text-faint); cursor: not-allowed; }
+  .cat-portal-fixed{
+    margin: 0; display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 14px; font-weight: 600;
+  }
+  .cat-portal .hint{ font-size: 12.5px; color: var(--text-muted); margin: 7px 0 0; }
+  .cat-portal .hint:empty{ display: none; }
+  .cat-portal .callout{ margin-top: 10px; }
+  .cat-types{ display: flex; flex-direction: column; gap: 10px; }
+  /* the details form's chip: "ETHRWorld · IP & Residential Event · Change" */
+  .cat-chip #cat-bar-portal:not(:empty)::after{ content: ' \00B7'; font-weight: 400; color: var(--text-muted); }
+  /* "This edition's own URL" on another portal: the way to change the event's portal, under the warning */
+  .gb-portal-change{ align-self: flex-start; height: 30px; margin-top: 4px; padding: 0 10px; }
 
   /* compact header row: title + category chip + one-line context */
   .b-head{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -722,12 +747,11 @@
   .gb-guide{ border-top: 3px solid var(--accent); }
   .gb-guide-list b{ color: var(--accent-strong); }
 
-  /* ---------- the previous edition picked from ET's events: two searchable lists, then a chip ----------
-     The boxes are the form's own fields (.inp); both lists open under the whole row, so a long event
-     name has the room to be read. */
-  .et-pick-row{ position: relative; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+  /* ---------- the previous edition picked from the event's portal's ET events: a searchable list, then a chip ----------
+     The box is the form's own field (.inp); its list opens under the whole row, so a long event name has
+     the room to be read. The portal is the event's own (step 1), so there is no portal box here. */
+  .et-pick-row{ position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .et-pick-row[hidden]{ display: none; }
-  @media (max-width: 480px){ .et-pick-row{ grid-template-columns: minmax(0, 1fr); } }
   .cbx{ min-width: 0; }
   .sheet .cbx-inp{ width: 100%; padding-right: 36px; text-overflow: ellipsis;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8380' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -1490,6 +1514,7 @@
   .tpl-carousel-count{ font-size:12px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; color: var(--text-faint); }
   .tpl-carousel-info-head h3{ margin:2px 0 2px; font-size:19px; }
   .tpl-carousel-info-head p{ margin:0; }
+  .tpl-carousel-info-head .tpl-carousel-portal-note{ margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--warn); max-width: 76ch; }
   .tpl-carousel-sections-label{
     margin:18px 0 8px; font-size:12px; font-weight:700; letter-spacing:.02em;
     text-transform:uppercase; color: var(--text-faint);
@@ -1909,19 +1934,35 @@
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
     <section class="step-wrap full" id="step-1" hidden>
-      <!-- ===== PHASE 1 : pick the category ===== -->
+      <!-- ===== PHASE 1 : pick the portal and the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
           <span class="eyebrow">Step 1 of 2 &middot; Event details</span>
-          <h1>What type of microsite are you creating?</h1>
-          <p class="desc">Choose the starting point that best matches the microsite you want to build.</p>
+          <h1>Which portal is this event on, and what type of microsite is it?</h1>
+          <p class="desc">Choose the ET portal it belongs to, then the type that best matches the microsite you want to build.</p>
         </div>
 
-        <div class="tpl-grid event-types" id="cat-grid"></div>
+        <!-- the event's portal (renderPortalStep): ET's roster, searchable; committed with the type card that is clicked -->
+        <div class="field cat-portal" id="cat-portal-field">
+          <label class="cat-q" for="cat-portal">Portal</label>
+          <div class="cbx">
+            <input class="inp cbx-inp" id="cat-portal" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cat-portal-list" aria-describedby="cat-portal-hint cat-portal-error" placeholder="Loading portals…" autocomplete="off" spellcheck="false" disabled>
+            <ul class="cbx-list" id="cat-portal-list" role="listbox" aria-label="ET portals" hidden></ul>
+          </div>
+          <p class="cat-portal-fixed" id="cat-portal-fixed" hidden></p>
+          <p class="hint" id="cat-portal-hint"></p>
+          <p class="field-note field-error" id="cat-portal-error" role="alert" hidden></p>
+          <div class="callout plain" id="cat-portal-notice" role="status" hidden></div>
+        </div>
+
+        <div class="cat-types">
+          <span class="cat-q" id="cat-type-label">Microsite type</span>
+          <div class="tpl-grid event-types" id="cat-grid" role="group" aria-labelledby="cat-type-label"></div>
+        </div>
 
         <div class="callout">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <span><strong>Your choice tailors the setup</strong>We will show the dates, event fields, and nomination options that match your selection. You can change it on the next screen.</span>
+          <span><strong>Your choices tailor the setup.</strong>The portal decides which previous editions you can pick, the ET bar and footer on the site, and the branding of its mailers and posts. The type decides the dates, fields and nomination options. You can change both later.</span>
         </div>
       </div>
 
@@ -1994,6 +2035,8 @@
                   <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
                   <h3 id="tpl-carousel-name"></h3>
                   <p class="hint" id="tpl-carousel-sub"></p>
+                  <!-- a design with another portal's fixed "About …" section says so (aboutPortalNote) -->
+                  <p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden></p>
                 </div>
                 <button class="btn btn-primary btn-lg" type="button" id="tpl-carousel-use">Use this template</button>
               </div>
@@ -2022,6 +2065,7 @@
           <span class="ttl">Basic details</span>
           <span class="cat-chip">
             <span class="ci" id="cat-bar-ico"></span>
+            <b id="cat-bar-portal"></b>
             <b id="cat-bar-name"></b>
             <button type="button" id="btn-change-cat">Change</button>
           </span>
@@ -2134,7 +2178,7 @@
                 <p class="hint" id="gb-doc-note"></p>
                 <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
               </div>
-              <!-- the previous edition, picked from ET's own events (wireEtPicker); its address is kept in #gb-previous -->
+              <!-- the previous edition, picked from the event's own portal's ET events (wireEtPicker); its address is kept in #gb-previous -->
               <div class="field et-pick" id="gb-et">
                 <span class="flabel" id="gb-et-label">Select Previous edition</span>
                 <div class="et-chip" id="gb-et-chip" hidden>
@@ -2145,11 +2189,7 @@
                 </div>
                 <div class="et-pick-row" id="gb-et-pickers">
                   <div class="cbx">
-                    <input class="inp cbx-inp" id="gb-et-portal" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-portal-list" aria-label="Portal" placeholder="Portal" autocomplete="off" spellcheck="false">
-                    <ul class="cbx-list" id="gb-et-portal-list" role="listbox" aria-label="Portals" hidden></ul>
-                  </div>
-                  <div class="cbx">
-                    <input class="inp cbx-inp" id="gb-et-event" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-event-list" aria-label="Previous edition" placeholder="Choose a portal first" autocomplete="off" spellcheck="false" disabled>
+                    <input class="inp cbx-inp" id="gb-et-event" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-event-list" aria-label="Previous edition" placeholder="Choose this event’s portal first" autocomplete="off" spellcheck="false" disabled>
                     <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ET events" hidden></ul>
                   </div>
                 </div>
@@ -2167,6 +2207,8 @@
               <div class="gb-grid">
                 <div class="field"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>
                   <input class="inp" id="gb-current" type="url" placeholder="https://…">
+                  <!-- shown under the warning when the page is another portal's (checkCurrentLink) -->
+                  <button class="et-chip-btn gb-portal-change" type="button" id="gb-current-change" hidden>Change this event’s portal</button>
                 </div>
                 <div class="field"><label class="flabel" for="gb-comp2">A second competitor URL</label>
                   <input class="inp" id="gb-comp2" type="url" placeholder="https://…">
@@ -2259,6 +2301,7 @@
 <script src="ag-psd.bundle.js"></script>
 <script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
+<script src="portal-picker.js"></script>
 <script src="create-event-editions.js"></script>
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
@@ -2368,7 +2411,7 @@
   }
   function isImportedTemplate(id){ return /^imported-/.test(id || ''); }
 
-  /* Real previous-edition data now comes from create-event-editions.js (RevampEditions), not a hardcoded fixture — see openPullContentModal()/openCloneDesignModal(). */
+  /* Real previous-edition data now comes from create-event-editions.js (RevampEditions), not a hardcoded fixture — see openPullContentModal(). openCloneDesignModal() reads the real events list (cloneCandidates). */
 
   var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
 
@@ -2748,8 +2791,11 @@
     createdEventId: null,  // set once the server has created this draft's event — from then on the event is updated, never created again, and its address is fixed
     createdAt: null,       // the server's createdAt for that event, when it reports one
     generatedEventId: null, // the event a "Generate from a brief" run of this draft has already produced a site for — generating again replaces that site
+    portalSent: '',         // the portal this draft last sent the server for its event ('' before it was created): a later save sends the portal only when it differs (eventRecordFromBasics)
+    etPageRead: false,      // a "Generate from a brief" run has read an ET page into the event's sources: its portal is fixed from then on (portalLocked)
     basics: {
       category: 'IP', name: '', client: '',
+      portal: '',               // the ET portal the event belongs to — a slug on ET's roster, chosen with the type on the first screen (commitPortal)
 
       /* --- flexible event date (B2B events are often booked before a date is fixed) --- */
       dateMode: 'exact',        // exact | month | quarter | tbd | none
@@ -2991,6 +3037,11 @@
       });
 
       if (!CATS[merged.category]) merged.category = 'IP';
+      /* a draft from before portals has none; whether a stored one is on ET's roster is checked once the
+         roster has come (startPortal), and one that is not counts as none */
+      if (typeof merged.portal !== 'string') merged.portal = '';
+      if (typeof S.portalSent !== 'string') S.portalSent = '';
+      S.etPageRead = S.etPageRead === true;
       /* legacy single "deadline" field became the nomination window */
       if (merged.deadline && !merged.nomClose){
         merged.nomClose = merged.deadline;
@@ -3257,8 +3308,8 @@
         if (S.catReturnPhase) back.textContent = 'Cancel';
         next.hidden = true;
         note.textContent = S.catReturnPhase
-          ? 'Pick a type, or cancel to keep ' + CATS[S.basics.category].label + '.'
-          : 'Choose a microsite type to continue.';
+          ? 'Pick a type, or cancel to keep ' + (S.basics.portal ? portalName(S.basics.portal) + ' · ' : '') + CATS[S.basics.category].label + '.'
+          : 'Choose the portal and a microsite type to continue.';
       }
       else if (S.step1Phase === 'method'){
         back.hidden = false;
@@ -3472,6 +3523,9 @@
   function validateBasics(method){
     var b = S.basics, C = CATS[b.category], out = [];
     function bad(field, message){ out.push({ field: field, message: message }); }
+    /* every method: the event's portal, chosen with the type on the first screen. One the roster does not
+       have counts as none; while the roster is still on its way, the server checks it */
+    if (!b.portal || (portalRoster && !isRosterPortal(b.portal))) bad('cat-portal', 'Choose the portal this event belongs to.');
     if (!b.name.trim()) bad('f-name', 'Enter the event name.');
     var slugProblem = slugIssue(b.slug.trim());
     if (slugProblem) bad('f-slug', slugProblem);
@@ -3603,6 +3657,8 @@
     setFieldNote('f-start', 'warn', start && start.getTime() < Date.now() ? 'This date is in the past.' : '');
   }
   function focusProblem(issue){
+    /* the portal is chosen on the first screen; from any later screen it is asked in a dialog over it */
+    if (issue && issue.field === 'cat-portal' && !(S.step === 1 && S.step1Phase === 'category')){ askDraftPortal(); return; }
     var el = issue && $(issue.field);
     if (!el) return;
     /* the previous edition's address is kept out of sight: its picker is what is shown and focused */
@@ -3650,6 +3706,7 @@
     $('logo-cell').className     = 'field ' + (withClient ? 'c3' : 'c4') + ' logo-field';
 
     $('cat-bar-ico').innerHTML     = svg(CAT_ICON[b.category], 19);
+    $('cat-bar-portal').textContent = b.portal ? portalName(b.portal) : '';
     $('cat-bar-name').textContent  = C.label;
     $('cat-bar-hint').textContent  = C.hint;
     $('sched-title').textContent   = C.dateTitle;
@@ -3826,8 +3883,392 @@
     }
   }
 
-  /* ---------- phase 1 : the category picker screen ---------- */
+  /* =========================================================
+     THE EVENT'S PORTAL
+     Every Oneworld 2.0 event belongs to one of ET's portals (ETCIO, ETHRWorld, …): the server keeps it as
+     events/<id>.portal, a slug on ET's roster, and the dashboard lists events by it. It is asked first, on
+     the same screen as the type, and everything after uses it: the previous editions offered (etPick), the
+     designs "Clone design" offers (cloneCandidates), and the ET bar, footer and branding the server gives
+     the site and its mailers. The roster is ET's own, from /api/et/portals through portal-picker.js
+     (RevampPortals). A value that is not on it — from the address, ETB2B AI's prefill or an older draft —
+     counts as no portal, and a draft with none gets one only from certain evidence or from the owner:
+     nothing here is guessed.
+  ========================================================= */
+  var portalRoster = null;        // [{ slug, name }] once RevampPortals.list() has answered, in its order (by name)
+  var portalNames = {};           // slug -> name, for the roster's slugs only (isRosterPortal)
+  var portalRosterLoading = null; // the read of the roster under way
+  var portalRosterFailed = false; // the last read failed: the first screen says so, with Retry
+  var portalBox = null;           // the first screen's searchable Portal box (makeCombobox)
+  var stepPortal = '';            // what that box holds: committed with the type card clicked (pickCategory -> commitPortal); '' for none
+  var stepPortalFrom = '';        // '' | 'query' | 'working': why the box was pre-set, for its hint; '' once the owner chose
+  var stepPortalTouched = false;  // the owner chose or emptied the box: a later answer never overwrites their choice
+  var queryPortal = '';           // ?portal= from the dashboard's Create Event link, read before init() tidies the address
+  var newDraft = false;           // this page load started a new draft: only a new draft takes ?portal= or the working portal (startPortal)
+  var workingPortal = null;       // the portal the person works on in the dashboard: a slug, 'all' or null, as last heard
+  /* the type an event in the events list was created as, as this page names it (create-event-editions.js CAT_BY_TYPE) */
+  var CAT_OF_EVENT = { ip: 'IP', editorial: 'IP', client: 'Client', leadgen: 'Client', roundtable: 'Client', virtual: 'Client', awards: 'Awards' };
+  /* The gallery designs whose fixed "About …" section is one portal's own boilerplate, kept on purpose by
+     their template.json, and the heading it carries. On another portal's event it names the wrong portal,
+     so the design's card says so (aboutPortalNote); nothing is invented in its place. */
+  var ABOUT_PORTALS = { 'tech500': ['cio'], 'retail-leadership-summit': ['retail'], 'cx-leaders-forum': ['brandequity'] };
+  var ABOUT_HEADINGS = { 'tech500': 'About ETCIO', 'retail-leadership-summit': 'About ETRetail', 'cx-leaders-forum': 'About ETBrandEquity.com' };
+
+  /* -> Promise<[{ slug, name }]>. Read once; a failed read is tried again on the next call. */
+  function loadPortalRoster(){
+    if (portalRoster) return Promise.resolve(portalRoster);
+    if (portalRosterLoading) return portalRosterLoading;
+    portalRosterFailed = false;
+    portalRosterLoading = Promise.resolve().then(function(){
+      if (!window.RevampPortals || typeof RevampPortals.list !== 'function') throw new Error('The portal list could not be loaded.');
+      return RevampPortals.list();
+    }).then(function(list){
+      var names = {}, clean = [];
+      (Array.isArray(list) ? list : []).forEach(function(p){
+        var slug = p && typeof p.slug === 'string' ? p.slug : '';
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(slug) || Object.prototype.hasOwnProperty.call(names, slug)) return;
+        names[slug] = String(p.name || slug);
+        clean.push({ slug: slug, name: names[slug] });
+      });
+      if (!clean.length) throw new Error('The portal list could not be loaded.');
+      portalRoster = clean;
+      portalNames = names;
+      portalRosterLoading = null;
+      return clean;
+    }).then(null, function(err){
+      portalRosterLoading = null;
+      portalRosterFailed = true;
+      throw err;
+    });
+    return portalRosterLoading;
+  }
+  /* true only for a slug on ET's roster as it was read — never for '__proto__', 'toString' or a name */
+  function isRosterPortal(slug){
+    return typeof slug === 'string' && slug !== '' && Object.prototype.hasOwnProperty.call(portalNames, slug);
+  }
+  function portalName(slug){
+    if (isRosterPortal(slug)) return portalNames[slug];
+    var name = '';
+    try { name = window.RevampPortals && typeof RevampPortals.nameOf === 'function' ? String(RevampPortals.nameOf(slug) || '') : ''; } catch(e){ name = ''; }
+    return name || String(slug || '');
+  }
+  /* "an ETCIO page", "a TechMonk page" */
+  function withArticle(name){ return (/^(ET|[AEIOU])/i.test(name) ? 'an ' : 'a ') + name; }
+  /* the portal an ET microsite's address belongs to: https://cio.economictimes.indiatimes.com/… -> 'cio'
+     (et-previous.js portalOf); '' for any other address */
+  function etPortalOfUrl(url){
+    var m = /^https?:\/\/([a-z0-9-]+)\.economictimes\.indiatimes\.com(?:[\/:?#]|$)/i.exec(String(url || '').trim());
+    return m && !/^(www|m|api|img)$/i.test(m[1]) ? m[1].toLowerCase() : '';
+  }
+  /* ET runs one site under two names: startup.economictimes.indiatimes.com is ET Entrepreneur's site (et-footer.js
+     gives 'startup' the entrepreneur.economictimes… home), so a page on either host is the own page of an event on
+     either portal. The server compares portals this way (api.js siteOfPortal), and the test holds this table to it,
+     so this page never asks the owner to move an event the server would accept the page for. */
+  var ET_SITE_OF = { startup: 'entrepreneur' };
+  function etSiteOf(slug){ return Object.prototype.hasOwnProperty.call(ET_SITE_OF, slug) ? ET_SITE_OF[slug] : slug; }
+
+  /* Once a "Generate from a brief" run has read an ET page for this draft's event, or generated its site,
+     the server keeps that portal's edition in the event's sources, where generation reads it: a portal
+     changed here would leave it there. From then on the portal is changed in the event console's Basics.
+     A draft that has no portal yet can still be given one. */
+  function portalLocked(){ return !!S.basics.portal && (S.etPageRead === true || !!S.generatedEventId); }
+
+  /* The one way the draft's portal changes. A previous edition picked from another portal's events is not
+     this event's previous edition, so it goes, with its address. -> { changed, dropped } (dropped: the
+     pick that was removed), or null when nothing could change: not on the roster, or locked.
+     held: the portal the event already has on the server, set on the dashboard or in Basics (the places the
+     lock sends the owner to), so taking it here is not a change the lock is there to stop. */
+  function commitPortal(slug, held){
+    if (!isRosterPortal(slug) || (!held && portalLocked() && slug !== S.basics.portal)) return null;
+    var was = S.basics.portal, et = S.brief.etEvent, dropped = null;
+    S.basics.portal = slug;
+    stepPortal = slug;
+    if (et && (typeof et !== 'object' || et.portal !== slug)){
+      dropped = et;
+      if (typeof et === 'object' && sameLink(et.link, S.brief.previous)){
+        S.brief.previous = '';
+        var prev = $('gb-previous');
+        if (prev) prev.value = '';
+      }
+      S.brief.etEvent = null;
+    }
+    etPick.slug = slug;
+    etPick.showPickers = false;
+    save();
+    if (dropped) toast((was ? 'Portal changed to ' : 'Portal set to ') + portalName(slug) + '. The previous edition picked on ' +
+      portalName(typeof dropped === 'object' ? dropped.portal : '') + ' was removed.');
+    return { changed: was !== slug, dropped: dropped };
+  }
+
+  /* the first screen's error under the Portal box; '' takes it down */
+  function showPortalError(msg){
+    var err = $('cat-portal-error'), inp = $('cat-portal');
+    if (!err) return;
+    err.textContent = msg || '';
+    err.hidden = !msg;
+    if (inp){ if (msg) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid'); }
+    if (msg && inp && S.step === 1 && S.step1Phase === 'category' && !inp.disabled && !portalLocked()) inp.focus();
+  }
+  /* what the box's hint says about the portal it holds */
+  function portalHint(){
+    var p = stepPortal;
+    if (!p) return 'Search ET’s portals by name, for example ETCIO or ETHRWorld.';
+    if (isRosterPortal(workingPortal) && p !== workingPortal) return 'This event will be listed under ' + portalName(p) + ' on the dashboard.';
+    if (stepPortalFrom) return 'Set from your dashboard. Change it if this event belongs to another portal.';
+    return '';
+  }
+  function fillPortalBox(){
+    if (!portalBox || !portalRoster) return;
+    portalBox.setItems(portalRoster.map(function(p){
+      return { value: p.slug, label: p.name, text: p.name + ' ' + p.slug, tag: p.slug === workingPortal ? 'Your portal' : '' };
+    }));
+  }
+  function ensurePortalBox(){
+    if (portalBox) return;
+    var inp = $('cat-portal'), list = $('cat-portal-list');
+    if (!inp || !list) return;
+    portalBox = makeCombobox({ input: inp, list: list, empty: 'No portals', pickOnLeave: true,
+      onPick: function(it){
+        stepPortal = it.value; stepPortalFrom = ''; stepPortalTouched = true;
+        showPortalError('');
+        renderPortalStep();
+      },
+      /* an emptied box is no portal: a type clicked next asks for one instead of taking the one before */
+      onClear: function(){
+        stepPortal = ''; stepPortalFrom = ''; stepPortalTouched = true;
+        renderPortalStep();
+      }
+    });
+    fillPortalBox();
+  }
+  /* The Portal box on the first screen, as the draft stands: the roster to search, or — once an ET page has
+     been read for the event — the portal as text, with where it can still be changed. */
+  function renderPortalStep(){
+    var inp = $('cat-portal');
+    if (!inp) return;
+    ensurePortalBox();
+    var locked = portalLocked(), fixed = $('cat-portal-fixed'), hint = $('cat-portal-hint'), notice = $('cat-portal-notice');
+    inp.parentNode.hidden = locked;
+    fixed.hidden = !locked;
+    fixed.textContent = locked ? portalName(S.basics.portal) : '';
+    if (portalBox){
+      if (portalRoster){
+        portalBox.setDisabled(false, 'Search ET’s portals');
+        portalBox.setValue(stepPortal);
+      } else {
+        portalBox.setDisabled(true, portalRosterFailed ? 'The portal list is not loaded' : 'Loading portals…');
+        /* the remembered working portal is shown at once when its name is already known */
+        var named = stepPortal ? portalName(stepPortal) : '';
+        inp.value = named && named !== stepPortal ? named : '';
+      }
+    }
+    hint.textContent = locked ? 'This event’s portal is set. To change it, use Basics in the event console.' : portalHint();
+    notice.hidden = locked || !portalRosterFailed;
+    notice.innerHTML = notice.hidden ? '' : IC.warn + '<span>The portal list could not be loaded.' +
+      '<span class="callout-actions"><button class="btn btn-secondary btn-sm" type="button" id="cat-portal-retry">Retry</button></span></span>';
+    var retry = $('cat-portal-retry');
+    if (retry) retry.onclick = function(){
+      loadPortalRoster().then(function(){ portalArrived(); }, function(){ renderPortalStep(); });
+      renderPortalStep();
+    };
+    if (locked || stepPortal) showPortalError('');
+  }
+  /* What a new draft's box opens on, from what is known now: the portal in the dashboard's Create Event
+     link, else the working portal — each only when it is on the roster. Never over the owner's own choice,
+     and never once the draft has a portal. Asked again whenever the roster or the working portal arrives,
+     in whichever order they come. */
+  function presetPortal(){
+    if (!newDraft || S.basics.portal || stepPortalTouched || !portalRoster) return;
+    if (isRosterPortal(queryPortal)){ stepPortal = queryPortal; stepPortalFrom = 'query'; }
+    else if (isRosterPortal(workingPortal)){ stepPortal = workingPortal; stepPortalFrom = 'working'; }
+    else if (stepPortalFrom === 'working' || (stepPortal && !isRosterPortal(stepPortal))){ stepPortal = ''; stepPortalFrom = ''; }
+  }
+  /* the roster has come: what was waiting for it is checked against it */
+  function portalArrived(){
+    /* an off-roster portal kept in the draft or brought by a prefill counts as none */
+    if (S.basics.portal && !isRosterPortal(S.basics.portal)){ S.basics.portal = ''; save(); }
+    if (!stepPortalTouched){
+      if (S.basics.portal) stepPortal = S.basics.portal;
+      else if (stepPortal && !isRosterPortal(stepPortal)){ stepPortal = ''; stepPortalFrom = ''; }
+      presetPortal();
+    }
+    fillPortalBox();
+    /* what was drawn before the roster came is drawn again with its names, without redrawing a form being typed in */
+    if (S.step === 1 && S.step1Phase === 'category') renderPortalStep();
+    if (S.step === 1 && S.step1Phase === 'method' && !busy) renderAboutNote(carouselTemplate());
+    if (S.step === 1 && S.step1Phase === 'details' && !busy){
+      if ($('cat-bar-portal')) $('cat-bar-portal').textContent = S.basics.portal ? portalName(S.basics.portal) : '';
+      wireEtPicker();
+      checkCurrentLink();
+    }
+    guardDraftPortal(true);
+  }
+  /* The person's working portal, as the server has it now: it wins over the remembered one. A new draft's box
+     the owner has not touched follows it, unless the dashboard's link named the portal (presetPortal). */
+  function takeWorking(v){
+    workingPortal = v;
+    fillPortalBox();
+    /* a box the owner is in is theirs: what they see is not changed under them */
+    var inp = $('cat-portal');
+    if (inp && document.activeElement === inp) return;
+    presetPortal();
+    if (S.step === 1 && S.step1Phase === 'category') renderPortalStep();
+  }
+  /* Called once by start(), after the draft (or ETB2B AI's prefill) is in S and before the first screen is
+     drawn: a new draft is pre-set to the dashboard's portal, the roster and the person's working portal are
+     read, and a draft past the first screen with no portal is seen to (guardDraftPortal). */
+  function startPortal(resumed){
+    newDraft = !resumed;
+    try {
+      workingPortal = window.RevampPortals && typeof RevampPortals.cachedWorking === 'function' ? RevampPortals.cachedWorking() : null;
+    } catch(e){ workingPortal = null; }
+    stepPortal = S.basics.portal || '';
+    stepPortalFrom = '';
+    stepPortalTouched = false;
+    /* the remembered working portal is painted at once; an address's ?portal= waits to be checked against the roster */
+    if (newDraft && !stepPortal && !queryPortal && typeof workingPortal === 'string' && workingPortal && workingPortal !== 'all'){
+      stepPortal = workingPortal;
+      stepPortalFrom = 'working';
+    }
+    loadPortalRoster().then(function(){ portalArrived(); }, function(){
+      if (S.step === 1 && S.step1Phase === 'category') renderPortalStep();
+    });
+    if (window.RevampPortals && typeof RevampPortals.working === 'function'){
+      Promise.resolve().then(function(){ return RevampPortals.working(); }).then(function(v){
+        return loadPortalRoster().then(function(){ takeWorking(v); });
+      }).then(null, function(){ /* the remembered one stands */ });
+    }
+  }
+
+  /* A draft past the first screen with no portal — saved before portals existed, or brought by ETB2B AI
+     without one — gets one only from certain evidence: the portal its event already has on the server, else
+     the ET previous edition the owner picked. Otherwise the owner is asked, over the step the draft is on
+     (it never jumps back: the first screen can only return to the method or the details). fromStart: run
+     once the roster has come; an open dialog is not replaced, and the next action asks instead. */
+  function guardDraftPortal(fromStart){
+    if (draftClosed || busy || (S.step === 1 && S.step1Phase === 'category') || isRosterPortal(S.basics.portal)) return Promise.resolve();
+    var stored = S.createdEventId && window.RevampCore && typeof RevampCore.fetchEvent === 'function'
+      ? Promise.resolve().then(function(){ return RevampCore.fetchEvent(S.createdEventId); }).then(function(ev){
+          return ev && isRosterPortal(ev.portal) ? ev.portal : '';
+        }, function(){ return ''; })
+      : Promise.resolve('');
+    return stored.then(function(slug){
+      if (draftClosed || isRosterPortal(S.basics.portal)) return;     // chosen meanwhile
+      if (slug){
+        /* the event's own stored portal is the truth, and the server already has it: nothing to send */
+        S.portalSent = slug;
+        adoptPortal(slug, 'Portal set to ' + portalName(slug) + ', the portal this event already has.');
+        return;
+      }
+      var et = S.brief.etEvent;
+      if (et && typeof et === 'object' && isRosterPortal(et.portal) && et.link && sameLink(et.link, S.brief.previous)){
+        adoptPortal(et.portal, 'Portal set to ' + portalName(et.portal) + ', from the previous edition you picked.');
+        return;
+      }
+      var root = $('modal-root');
+      if (fromStart && ((root && root.firstChild) || document.getElementById('rv-portal-dialog'))) return;
+      askDraftPortal();
+    });
+  }
+  function adoptPortal(slug, notice){
+    if (!commitPortal(slug)) return;
+    refreshPortalViews();
+    toast(notice);
+  }
+  /* the screen the draft is on, drawn again for a portal set from outside it */
+  function refreshPortalViews(){
+    if (busy || S.step !== 1) return;
+    if (S.step1Phase === 'details'){ initStep1(); renderFoot(); }
+    else if (S.step1Phase === 'method') renderStep2();
+    else renderPortalStep();
+  }
+  /* "Which portal is this event on?" over the screen the draft is on: portal-picker.js's Set portal window in
+     its draft mode — with no event to save to, it only reports the choice, and this page commits it. then:
+     what to carry on with once it is set. */
+  var DRAFT_PORTAL_ASK = 'Which portal is this event on? Everything you entered is kept.';
+  function askDraftPortal(then){
+    if (draftClosed || busy) return;
+    if (isRosterPortal(S.basics.portal)){ if (then) then(); return; }
+    if (!window.RevampPortals || typeof RevampPortals.openSetPortal !== 'function'){
+      toast('The portal list could not be loaded. Reload the page and try again.', { type: 'error' });
+      return;
+    }
+    RevampPortals.openSetPortal({
+      eventName: String(S.basics.name || '').trim(),
+      current: '',
+      intro: DRAFT_PORTAL_ASK,
+      onDone: function(slug){
+        /* the window's roster and this page's are the same read; this page checks the choice against its own */
+        loadPortalRoster().then(function(){
+          if (!commitPortal(slug)) return;
+          refreshPortalViews();
+          toast('Portal set to ' + portalName(slug) + '.');
+          if (then) setTimeout(then, 0);
+        }, function(err){
+          toast(plainError(err), { type: 'error', action: { label: 'Retry', onClick: function(){ askDraftPortal(then); } } });
+        });
+      }
+    });
+  }
+
+  /* "Clone design from a previous edition": the events of this draft's portal and type whose design the
+     wizard can start from — a gallery template, or a design imported from Lovable — newest change first.
+     A site designed by ETB2B AI has no design the wizard can take, and this draft's own event is left out. */
+  function cloneCandidates(items, portal, cat, ownId){
+    if (!portal) return [];
+    return (Array.isArray(items) ? items : []).filter(function(it){
+      if (!it || typeof it !== 'object' || it.portal !== portal) return false;
+      var type = String(it.category || '').toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(CAT_OF_EVENT, type) || CAT_OF_EVENT[type] !== cat) return false;
+      var id = String(it.id || it.eventId || '');
+      if (!id || (ownId && id === ownId)) return false;
+      var tpl = String(it.templateId || '');
+      return !!templateById(tpl) || isImportedTemplate(tpl);
+    }).sort(function(a, b){
+      var x = String(a.updatedAt || ''), y = String(b.updatedAt || '');
+      return x === y ? 0 : (x < y ? 1 : -1);
+    });
+  }
+
+  /* What a gallery design's card says when its fixed "About …" section is another portal's text; '' otherwise */
+  function aboutPortalNote(tplId){
+    var own = S.basics.portal;
+    if (!own || !Object.prototype.hasOwnProperty.call(ABOUT_PORTALS, tplId)) return '';
+    var named = ABOUT_PORTALS[tplId];
+    if (named.indexOf(own) !== -1) return '';
+    return 'Its “' + ABOUT_HEADINGS[tplId] + '” section is ' + portalName(named[0]) + '’s own text. Edit or remove it for ' + portalName(own) + ' in the editor.';
+  }
+  /* that note on the gallery's card for design t */
+  function renderAboutNote(t){
+    var note = $('tpl-carousel-portal-note'), text = t ? aboutPortalNote(t.id) : '';
+    if (!note) return;
+    note.textContent = text;
+    note.hidden = !text;
+  }
+
+  /* "This edition's own URL" names this event's own page, so an ET page of another portal is said at once.
+     A check only: the server refuses such a page too (other-portal), and its sentence shows on the run's row.
+     A page served by the other name of the event's own site (etSiteOf) is the event's own, as it is there. */
+  function currentLinkIssue(value){
+    var page = etPortalOfUrl(normalUrl(value)), own = S.basics.portal;
+    if (!page || !own || etSiteOf(page) === etSiteOf(own) || !isRosterPortal(page)) return '';
+    var ownName = portalName(own);
+    return 'This is ' + withArticle(portalName(page)) + ' page, but this event is on ' + ownName + '. Use this event’s own ' + ownName + ' page' +
+      (portalLocked() ? '.' : ', or change the event’s portal.');
+  }
+  function checkCurrentLink(){
+    var el = $('gb-current'), btn = $('gb-current-change');
+    if (!el) return;
+    var text = currentLinkIssue(el.value);
+    setFieldNote('gb-current', 'warn', text);
+    if (!btn) return;
+    btn.hidden = !text || portalLocked();
+    var warn = $('gb-current-warn');
+    if (warn && warn.nextSibling !== btn) warn.parentNode.insertBefore(btn, warn.nextSibling);
+  }
+
+  /* ---------- phase 1 : the portal and category picker screen ---------- */
   function renderCatPicker(){
+    renderPortalStep();
     var b = S.basics, cg = $('cat-grid');
     /* a type counts as chosen once the owner has been past this screen and came back to change it */
     var chosen = S.catReturnPhase ? b.category : null;
@@ -3849,25 +4290,47 @@
 
   /* Choosing the type only changes the type: the fields that depend on it re-render, and whatever was
      chosen after it — the method, the design, the content — stays. A pick made while changing the type
-     goes back to where the owner came from. */
+     goes back to where the owner came from. The portal in the box is committed with it, and a type is
+     never taken without one. */
   function pickCategory(k){
+    if (!portalLocked() && !isRosterPortal(stepPortal)){
+      /* the roster is still on its way: the click is taken once it has come, against the portal it brings */
+      if (portalRosterLoading){
+        portalRosterLoading.then(function(){
+          if (S.step === 1 && S.step1Phase === 'category' && !busy && isRosterPortal(stepPortal)) pickCategory(k);
+          else showPortalError('Choose the portal first.');
+        }, function(){ showPortalError('Choose the portal first.'); });
+        return;
+      }
+      showPortalError('Choose the portal first.');
+      return;
+    }
+    showPortalError('');
+    var portal = portalLocked() ? null : commitPortal(stepPortal);
     var b = S.basics, C = CATS[k], changed = (k !== b.category);
     var to = (S.catReturnPhase === 'details' && S.creationMethod) ? 'details' : 'method';
     S.catReturnPhase = null;
     b.category = k;
     /* carry the date over only if the new category understands that mode */
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
-    toast(changed && to === 'details' ? (C.label + ' selected — form updated') : (C.label + ' selected'));
+    var said = changed && to === 'details' ? (C.label + ' selected — form updated') : (C.label + ' selected');
+    /* a removed previous edition has already been said, with the portal */
+    if (!(portal && portal.dropped)) toast(portal && portal.changed ? portalName(b.portal) + ' · ' + said : said);
     setStep1Phase(to);
   }
-  /* opens the type picker from a later phase, remembering the way back */
+  /* opens the portal and type picker from a later phase, remembering the way back */
   function changeCategory(){
     S.catReturnPhase = S.step1Phase === 'details' ? 'details' : 'method';
+    stepPortal = S.basics.portal; stepPortalFrom = ''; stepPortalTouched = false;
+    showPortalError('');
     setStep1Phase('category');
   }
   function cancelChangeCategory(){
     var to = (S.catReturnPhase === 'details' && S.creationMethod) ? 'details' : 'method';
     S.catReturnPhase = null;
+    /* the portal the box was changed to is not taken without a type */
+    stepPortal = S.basics.portal; stepPortalFrom = ''; stepPortalTouched = false;
+    showPortalError('');
     setStep1Phase(to);
   }
 
@@ -4090,6 +4553,8 @@
         S.brief[key] = el.value;
         /* an address typed by hand is no longer the event picked from ET's list */
         if (key === 'previous' && S.brief.etEvent && !sameLink(S.brief.etEvent.link, el.value)){ S.brief.etEvent = null; showEtPick(); }
+        /* what this edition's page belongs to is said again once the box is left (checkCurrentLink), not mid-typing */
+        if (key === 'current' && $('gb-current-warn') && !$('gb-current-warn').hidden){ setFieldNote('gb-current', 'warn', ''); $('gb-current-change').hidden = true; }
         renderFoot(); save();
       };
       if (id === 'gb-brief-text') return;
@@ -4122,6 +4587,11 @@
     }
     if (moreNote()) $('gb-more').open = true;
     ['gb-current', 'gb-comp2'].forEach(function(id){ $(id).addEventListener('input', moreNote); });
+    /* this edition's own page on another portal than the event's: said when the box is left, and again
+       whenever the form is drawn, so it follows a portal changed since */
+    $('gb-current').onblur = checkCurrentLink;
+    $('gb-current-change').onclick = changeCategory;
+    checkCurrentLink();
     future.addEventListener('change', moreNote);
     function showDoc(){
       pick.textContent = briefDoc ? briefDoc.name + ' · ' + fileSize(briefDoc.size) : 'Choose a PDF';
@@ -4154,7 +4624,9 @@
   /* ---------- a searchable list (ARIA combobox with a listbox popup) ----------
      One box the owner types in to narrow a list: the text matches anywhere in an option, in any case.
      Arrow keys move through what is shown, Enter picks, Escape or a click elsewhere closes and puts back
-     what was picked. o: { input, list, onPick(item), empty } — items are { value, label, sub, tag, text }. */
+     what was picked. o: { input, list, onPick(item), empty, pickOnLeave, onClear } — items are { value, label,
+     sub, tag, text }. pickOnLeave: leaving the box takes what was typed when it names exactly one option;
+     onClear: a box the owner emptied and left is no choice, not the one before (the Portal box). */
   function makeCombobox(o){
     var input = o.input, list = o.list, items = [], shown = [], active = -1, picked = null, typed = false;
     function isOpen(){ return !list.hidden; }
@@ -4240,6 +4712,22 @@
       close(false);
       o.onPick(it);
     }
+    /* the focus leaves the box (Tab, a click elsewhere): without the options above, what was picked is put back */
+    function leave(){
+      if (typed && o.pickOnLeave){
+        var q = input.value.trim().toLowerCase(), exact = -1;
+        filter();
+        shown.forEach(function(it, i){ if (exact === -1 && (String(it.label).toLowerCase() === q || String(it.value).toLowerCase() === q)) exact = i; });
+        if (q && (exact !== -1 || shown.length === 1)){ choose(exact !== -1 ? exact : 0); return; }
+      }
+      if (typed && o.onClear && !input.value.trim()){
+        close(false);
+        picked = null; typed = false; input.value = '';
+        o.onClear();
+        return;
+      }
+      close(true);
+    }
     input.addEventListener('input', function(){
       typed = true;
       if (!isOpen()) open();
@@ -4255,7 +4743,7 @@
       else if (e.key === 'ArrowUp'){ e.preventDefault(); if (!isOpen()) open(); else move(active <= 0 ? 0 : active - 1); }
       else if (e.key === 'Enter'){ if (isOpen()){ e.preventDefault(); if (active >= 0) choose(active); } }
       else if (e.key === 'Escape'){ if (isOpen() || typed){ e.preventDefault(); e.stopPropagation(); close(true); } }
-      else if (e.key === 'Tab'){ close(true); }
+      else if (e.key === 'Tab'){ leave(); }
     });
     /* the focus stays in the box while an option is clicked */
     list.addEventListener('mousedown', function(e){ e.preventDefault(); });
@@ -4264,9 +4752,9 @@
       if (li) choose(+li.getAttribute('data-i'));
     });
     document.addEventListener('mousedown', function(e){
-      if (isOpen() && e.target !== input && !list.contains(e.target)) close(true);
+      if (isOpen() && e.target !== input && !list.contains(e.target)) leave();
     });
-    input.addEventListener('blur', function(){ if (isOpen()) close(true); });
+    input.addEventListener('blur', function(){ if (isOpen()) leave(); });
     return {
       setItems: function(next){
         items = next || [];
@@ -4288,11 +4776,13 @@
   }
 
   /* ---------- the previous edition picked from ET's own events ----------
-     Optional, beside the plain address: a portal, then one of that portal's own (IP) events — or, for an
-     Awards event, one of the portal's awards (ET's award listing, as the social post app reads it). Picking
-     one fills "Previous edition URL" with its page and keeps the event in S.brief.etEvent, so the run can tell
-     the server which event it is (ingest-source); an address typed by hand drops it. */
-  var etPick = { portal: null, event: null, portals: null, portalsLoading: null, events: {}, eventsLoading: {}, partial: {}, slug: '', showPickers: false };
+     Optional, beside the plain address: one of the event's own portal's (IP) events — or, for an Awards
+     event, one of the portal's awards (ET's award listing, as the social post app reads it). The portal is
+     the one chosen on the first screen (S.basics.portal), so only that portal's editions are offered and
+     there is no portal box here. Picking one fills "Previous edition URL" with its page and keeps the event
+     in S.brief.etEvent, so the run can tell the server which event it is (ingest-source); an address typed
+     by hand drops it. */
+  var etPick = { event: null, events: {}, eventsLoading: {}, partial: {}, slug: '', showPickers: false };
   /* two addresses for the same page: scheme, www, query and a trailing slash aside */
   function sameLink(a, b){
     function key(v){ return normalUrl(v).replace(/^https?:\/\/(www\.)?/i, '').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase(); }
@@ -4306,12 +4796,7 @@
   /* which of ET's listings the picker reads: the awards for an Awards event, the IP events otherwise */
   function etKind(){ return S.basics && S.basics.category === 'Awards' ? 'award' : 'event'; }
   function etNoun(){ return etKind() === 'award' ? 'awards' : 'events'; }
-  function etKey(slug){ return etKind() + ':' + slug; }
-  function etPortalName(slug){
-    var list = etPick.portals || [];
-    for (var i = 0; i < list.length; i++){ if (list[i].slug === slug) return list[i].name; }
-    return slug;
-  }
+  function etPortalName(slug){ return portalName(slug); }
   function etStatus(text, retry){
     var el = $('gb-et-status');
     if (!el) return;
@@ -4325,31 +4810,20 @@
       el.appendChild(b);
     }
   }
-  function loadEtPortals(){
-    if (etPick.portals) return Promise.resolve(etPick.portals);
-    if (etPick.portalsLoading) return etPick.portalsLoading;
-    etPick.portal.setDisabled(true, 'Loading portals…');
-    etStatus('Loading ET’s portals…');
-    etPick.portalsLoading = etGet('/api/et/portals').then(function(body){
-      etPick.portalsLoading = null;
-      etPick.portals = (body.portals || []).filter(function(p){ return p && p.slug; }).map(function(p){ return { slug: String(p.slug), name: String(p.name || p.slug) }; });
-      etPick.portal.setItems(etPick.portals.map(function(p){ return { value: p.slug, label: p.name, text: p.name + ' ' + p.slug }; }));
-      etPick.portal.setDisabled(false, 'Portal');
-      if (etPick.slug) etPick.portal.setValue(etPick.slug);
-      etStatus('');
-      return etPick.portals;
-    }, function(err){
-      etPick.portalsLoading = null;
-      etPick.portal.setDisabled(true, 'Portal');
-      etStatus('ET’s portals could not be loaded. ' + plainError(err), function(){ loadEtPortals().then(showEtPick, function(){}); });
-      throw err;
-    });
-    return etPick.portalsLoading;
-  }
-  function loadEtEvents(slug){
-    var box = etPick.event, kind = etKind(), key = kind + ':' + slug, noun = etNoun();
+  /* The event's own portal's events, or its awards for an Awards event: the only editions this event can
+     have. A list that comes back after the portal or the type has changed meanwhile is not shown. */
+  function loadEtEvents(){
+    var slug = S.basics.portal, box = etPick.event, kind = etKind(), key = kind + ':' + slug, noun = etNoun();
+    function stale(){ return S.basics.portal !== slug || etKind() !== kind; }
+    if (!slug){
+      box.setItems([]); box.setValue('');
+      box.setDisabled(true, 'Choose this event’s portal first');
+      etStatus('Choose the portal this event belongs to on the first screen, and its editions are listed here.');
+      return Promise.resolve([]);
+    }
+    etPick.slug = slug;
     function show(events){
-      if (etPick.slug !== slug || etKind() !== kind) return;
+      if (stale()) return;
       /* past editions first (newest on top); what is still to come last, marked, so Enter never picks it by chance */
       var past = events.filter(function(ev){ return !ev.upcoming; }), coming = events.filter(function(ev){ return ev.upcoming; });
       box.setItems(past.concat(coming).map(function(ev){
@@ -4366,22 +4840,22 @@
     box.setDisabled(true, 'Loading ' + noun + '…');
     etStatus('Loading ' + etPortalName(slug) + '’s ' + noun + '…');
     if (!etPick.eventsLoading[key]){
-      etPick.eventsLoading[key] = etGet('/api/et/events?portal=' + encodeURIComponent(slug) + (kind === 'award' ? '&kind=award' : '')).then(function(body){
+      etPick.eventsLoading[key] = etGet('/api/et/events?portal=' + encodeURIComponent(S.basics.portal) + (kind === 'award' ? '&kind=award' : '')).then(function(body){
         delete etPick.eventsLoading[key];
         etPick.partial[key] = !!body.partial;
         return (etPick.events[key] = (body.events || []).filter(function(ev){ return ev && ev.id != null && ev.title && normalUrl(ev.link); }));
       }, function(err){ delete etPick.eventsLoading[key]; throw err; });
     }
     return etPick.eventsLoading[key].then(show, function(err){
-      if (etPick.slug !== slug || etKind() !== kind) return;
+      if (stale()) return;
       box.setDisabled(true, 'Previous edition');
-      etStatus(etPortalName(slug) + '’s ' + noun + ' could not be loaded. ' + plainError(err), function(){ loadEtEvents(slug); });
+      etStatus(etPortalName(slug) + '’s ' + noun + ' could not be loaded. ' + plainError(err), function(){ loadEtEvents(); });
     });
   }
-  /* the chip while an event is picked, the two lists otherwise (or after "Change") */
+  /* the chip while an event is picked, the list otherwise (or after "Change") */
   function showEtPick(){
     var chip = $('gb-et-chip'), pickers = $('gb-et-pickers');
-    if (!chip || !etPick.portal) return;
+    if (!chip || !etPick.event) return;
     /* an address with no pick (an older draft, or one corrected after a failed read) is shown the same way,
        so what the AI will read is never hidden and can always be changed or removed */
     var cur = S.brief.etEvent, link = !cur && normalUrl(S.brief.previous), chipOn = !!(cur || link) && !etPick.showPickers;
@@ -4396,28 +4870,28 @@
       etStatus('');
       return;
     }
-    /* the lists load once they are on screen in the AI form, not before */
-    if (S.creationMethod === 'brief') loadEtPortals().then(function(){
-      /* always through loadEtEvents (kept lists come straight back), so a category changed to or from Awards
-         since the list was filled shows that kind's list, not the other's */
-      if (etPick.slug) loadEtEvents(etPick.slug);
-    }, function(){});
+    /* the list loads once it is on screen in the AI form, not before — always through loadEtEvents (kept
+       lists come straight back), so a type changed to or from Awards shows that kind's list, not the other's */
+    if (S.creationMethod === 'brief') loadEtEvents();
   }
   function wireEtPicker(){
-    var portalInp = $('gb-et-portal'), eventInp = $('gb-et-event');
-    if (!portalInp) return;
-    /* a pick whose page is no longer the address (corrected after a failed run, or an older draft) is dropped */
+    var eventInp = $('gb-et-event');
+    if (!eventInp) return;
+    /* a pick whose page is no longer the address (corrected after a failed run, or an older draft) is dropped,
+       and so is one from another portal than the event's — with its address, which is that portal's page */
     var cur = S.brief.etEvent;
     if (cur && (typeof cur !== 'object' || !cur.link || !sameLink(cur.link, S.brief.previous))){ S.brief.etEvent = cur = null; save(); }
-    if (!etPick.portal){
-      etPick.portal = makeCombobox({ input: portalInp, list: $('gb-et-portal-list'), empty: 'No portals', onPick: function(it){
-        if (it.value === etPick.slug && etPick.events[etKey(it.value)]) return;
-        etPick.slug = it.value;
-        loadEtEvents(it.value).then(function(){ if (etPick.slug === it.value && !eventInp.disabled) eventInp.focus(); });
-      } });
+    if (cur && isRosterPortal(S.basics.portal) && cur.portal !== S.basics.portal){
+      S.brief.previous = '';
+      $('gb-previous').value = '';
+      S.brief.etEvent = cur = null;
+      save();
+    }
+    etPick.slug = S.basics.portal || '';
+    if (!etPick.event){
       etPick.event = makeCombobox({ input: eventInp, list: $('gb-et-event-list'), empty: 'No events', onPick: function(it){
         var ev = it.ev, link = normalUrl(ev.link);
-        S.brief.etEvent = { portal: etPick.slug, kind: ev.kind === 'award' ? 'award' : 'event', id: ev.id, title: String(ev.title), link: link, dateLabel: ev.dateLabel || '' };
+        S.brief.etEvent = { portal: S.basics.portal, kind: ev.kind === 'award' ? 'award' : 'event', id: ev.id, title: String(ev.title), link: link, dateLabel: ev.dateLabel || '' };
         S.brief.previous = link;
         $('gb-previous').value = link;
         etPick.showPickers = false;
@@ -4427,7 +4901,6 @@
       } });
       $('gb-et-cancel').onclick = function(){
         etPick.showPickers = false;
-        if (S.brief.etEvent){ etPick.slug = S.brief.etEvent.portal; etPick.portal.setValue(etPick.slug); }
         showEtPick();
         $('gb-et-change').focus();
       };
@@ -4438,20 +4911,14 @@
         etPick.showPickers = false;
         showEtPick();
         renderFoot(); save();
-        loadEtPortals().then(function(){ portalInp.focus(); }, function(){ portalInp.focus(); });
+        loadEtEvents().then(function(){ eventInp.focus(); }, function(){ eventInp.focus(); });
       };
       $('gb-et-change').onclick = function(){
         etPick.showPickers = true;
-        if (S.brief.etEvent) etPick.slug = S.brief.etEvent.portal;
         showEtPick();
-        loadEtPortals().then(function(){
-          if (!etPick.slug){ portalInp.focus(); return; }
-          etPick.portal.setValue(etPick.slug);
-          return loadEtEvents(etPick.slug).then(function(){ (eventInp.disabled ? portalInp : eventInp).focus(); });
-        }, function(){});
+        loadEtEvents().then(function(){ if (!eventInp.disabled) eventInp.focus(); });
       };
     }
-    if (cur && !etPick.slug) etPick.slug = cur.portal;
     showEtPick();
   }
 
@@ -4803,6 +5270,7 @@
     $('tpl-carousel-count').textContent = (tplCarouselIdx + 1) + ' / ' + list.length;
     $('tpl-carousel-name').textContent = t.name;
     $('tpl-carousel-sub').textContent = t.sub || '';
+    renderAboutNote(t);
 
     var listHost = $('tpl-carousel-sections');
     function renderToggles(canvas){
@@ -5409,7 +5877,12 @@
         /* the previous edition picked from ET's own events: the server reads that event's records by its id */
         var et = S.brief.etEvent;
         if (s.field.key === 'previous' && et && et.portal && et.id != null && sameLink(et.link, body.url)) body.etEvent = { portal: et.portal, id: et.id, kind: et.kind === 'award' ? 'award' : 'event' };
-        return postJson('/api/ingest-source', body);
+        return postJson('/api/ingest-source', body).then(function(resp){
+          /* the event's sources now hold this ET page and generation reads it: the portal is fixed from here
+             (portalLocked), whatever happens to the rest of the run */
+          if (s.field.type !== 'competitor' && (body.etEvent || etPortalOfUrl(body.url))){ S.etPageRead = true; save(); }
+          return resp;
+        });
       };
     });
     /* read when the row runs, like the other inputs: instructions corrected before a retry are what is sent */
@@ -5465,6 +5938,11 @@
       if (s.key === 'create' || s.key === 'open') return plainError(err);
       var common = commonFailure(err);
       if (common) return common;
+      /* an ET page of another portal than the event's is refused before it is read: the server's sentence says whose */
+      if (isSource(s) && err && err.code === 'other-portal'){
+        return serverSentence(err) || ('That page is another portal’s, and this event is on ' + portalName(S.basics.portal) + '. Use one of ' +
+          portalName(S.basics.portal) + '’s own pages, or skip it.');
+      }
       if (isSource(s)) return 'Couldn’t open ' + s.host + ' — correct the address and retry, or skip it.';
       var said = serverSentence(err);
       if (said) return said;
@@ -5476,7 +5954,7 @@
     function runStep(i){
       if (!isCurrent(run) || i >= steps.length) return;
       var s = steps[i];
-      s.status = 'running'; s.startedAt = Date.now(); s.endedAt = null; s.cause = ''; s.fixError = ''; s.editing = false;
+      s.status = 'running'; s.startedAt = Date.now(); s.endedAt = null; s.cause = ''; s.fixError = ''; s.editing = false; s.choice = null;
       render();
       runners[s.key]().then(function(){
         if (!isCurrent(run)) return;
@@ -5487,6 +5965,8 @@
         if (!isCurrent(run)) return;
         if (window.console) console.warn('[create-event] ' + s.key + ' step failed:', err && err.status, err && err.message);
         s.status = 'error'; s.endedAt = Date.now(); s.cause = failureCause(s, err);
+        /* the event's portal set meanwhile: the row asks Keep or Move instead of offering a retry */
+        s.choice = (s.key === 'create' && err && err.portalChoice) || null;
         render();
         // paused — resumes only via the Retry / Skip handled by the delegated listeners below
       });
@@ -5522,6 +6002,12 @@
       }
       runStep(steps.indexOf(s));
     }
+    /* the owner's answer on the create row when the event's portal was set meanwhile, then that row again */
+    function answerPortal(how){
+      var s = stepBy('create');
+      if (!s || s.status !== 'error' || !s.choice || !applyPortalChoice(s.choice, how)) return;
+      runStep(steps.indexOf(s));
+    }
     function skipStep(key){
       var s = stepBy(key);
       if (!s || !isSource(s) || s.status !== 'error') return;      // only a link can be left out
@@ -5539,6 +6025,8 @@
         if (e.target.closest('[data-brief-cancel]')){ requestCancelBusy(); return; }
         var b = e.target.closest('[data-step-retry]');
         if (b){ retryStep(b.getAttribute('data-step-retry')); return; }
+        b = e.target.closest('[data-step-portal]');
+        if (b){ answerPortal(b.getAttribute('data-step-portal')); return; }
         b = e.target.closest('[data-step-skip]');
         if (b){ skipStep(b.getAttribute('data-step-skip')); return; }
         b = e.target.closest('[data-step-pick]');
@@ -5648,6 +6136,9 @@
                 (s.editing ? '' : '<button type="button" class="gb-skip-link" data-step-edit="brief">' + (inputs.text ? 'Edit description' : 'Add a description') + '</button>') +
                 (inputs.file && inputs.text ? '<button type="button" class="gb-skip-link" data-step-nofile="brief">Use only my description</button>' : '') +
                 '<input type="file" accept="application/pdf,.pdf" data-step-file="brief" hidden>';
+            } else if (s.key === 'create' && s.choice){
+              /* a portal question is answered, not retried: a plain retry would only be refused again */
+              fix = portalChoiceButtons(s.choice, function(how){ return 'data-step-portal="' + how + '"'; }, 'btn-xs');
             } else {
               fix = '<button type="button" class="btn btn-secondary btn-xs" data-step-retry="' + key + '">Retry</button>';
             }
@@ -5677,32 +6168,68 @@
     }
   }
 
-  /* ---------- clone design from a previous (completed) edition on this portal ---------- */
+  /* ---------- clone design from a previous edition on this event's portal ----------
+     The real events list (GET /api/events), narrowed to this draft's portal and type and to designs the
+     wizard can start from (cloneCandidates). A gallery template is taken as "Use this template" takes it;
+     an imported design the way a finished import is. */
+  function cloneOptionLabel(it){
+    var tpl = templateById(String(it.templateId || '')), when = fmtD(it.updatedAt);
+    return String(it.name || it.id) + ' — ' + (tpl ? tpl.name : 'Imported design') + (when ? ', updated ' + when : '');
+  }
   function openCloneDesignModal(){
-    /* only events this wizard itself has a recorded template for (see create-event-editions.js), and
-       only where that template is one the gallery still has */
-    var list = (window.RevampEditions ? RevampEditions.editionsWithTemplate(S.basics.category) : [])
-      .filter(function(p){ return !!templateById(p.templateId); });
+    var portal = S.basics.portal;
+    if (!isRosterPortal(portal)){ askDraftPortal(openCloneDesignModal); return; }
+    var name = portalName(portal), cat = S.basics.category, list = [];
     openModal({
       title: 'Clone design from a previous edition',
-      sub: 'Reuse an event you built with this wizard as your starting point.',
-      body: list.length
-        ? '<div class="field"><label for="clone-event-select">Event</label>' +
-            '<select class="inp" id="clone-event-select">' +
-              list.map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') +
-            '</select></div>'
-        : '<p class="hint">No events built with this wizard yet in this category — assemble one first, then its design can be cloned into the next.</p>',
+      sub: 'Reuse the design of an earlier ' + name + ' event as your starting point.',
+      body: '<div id="clone-body"></div>',
       confirm: 'Continue',
       onConfirm: function(){
-        if (!list.length) return;
-        var sel = $('clone-event-select');
-        var pe = null;
+        var sel = $('clone-event-select'), pe = null;
         list.forEach(function(x){ if (sel && String(x.id) === sel.value) pe = x; });
         if (!pe) return;
-        setTimeout(function(){ useTemplate(pe.templateId); }, 0);
+        var tplId = String(pe.templateId), from = String(pe.name || pe.id);
+        setTimeout(function(){
+          if (templateById(tplId)){ useTemplate(tplId); return; }
+          if (busy || S.step !== 1 || S.step1Phase !== 'method') return;
+          applyImportedTemplate(tplId);
+          showStep2View('landing');
+          advanceToDetails('imported');
+          toast('The design of “' + from + '” selected', { type: 'success' });
+        }, 0);
       }
     });
-    if (!list.length){ var ok = $('modal-ok'); if (ok) ok.disabled = true; }
+    var ok = $('modal-ok');
+    function load(){
+      var host = $('clone-body');
+      if (!host) return;
+      ok.disabled = true;
+      host.innerHTML = '<p class="hint" role="status">Loading ' + esc(name) + '’s events…</p>';
+      var asking = window.RevampCore && typeof RevampCore.fetchEvents === 'function'
+        ? RevampCore.fetchEvents() : Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
+      Promise.resolve(asking).then(function(items){
+        if ($('clone-body') !== host) return;      // the dialog was closed meanwhile
+        list = cloneCandidates(items, portal, cat, S.createdEventId);
+        if (!list.length){
+          host.innerHTML = '<p class="hint">No ' + esc(name) + ' event has a design this wizard can start from yet. Sites designed by ETB2B AI are not offered here.</p>';
+          return;
+        }
+        host.innerHTML = '<div class="field"><label for="clone-event-select">Event</label>' +
+          '<select class="inp" id="clone-event-select">' +
+            list.map(function(it){ return '<option value="' + esc(it.id) + '">' + esc(cloneOptionLabel(it)) + '</option>'; }).join('') +
+          '</select></div>';
+        ok.disabled = false;
+        $('clone-event-select').focus();
+      }, function(err){
+        if ($('clone-body') !== host) return;
+        host.innerHTML = '<p class="field-note field-error" role="alert">' + esc(plainError(err)) + '</p>' +
+          '<div><button class="btn btn-secondary btn-sm" type="button" id="clone-retry">Retry</button></div>';
+        $('clone-retry').onclick = load;
+        $('clone-retry').focus();
+      });
+    }
+    load();
   }
 
   /* which of step 2's three views (landing / AI / manual gallery) is showing */
@@ -9461,7 +9988,50 @@
     }
     /* a generated site only has a template once generation has finished (startGenerateFromBrief()'s last row sets it) */
     if (S.creationMethod !== 'brief') rec.templateId = handoffTemplate().site;
+    /* The event's portal: always on create. Afterwards only when it was changed here since this page last
+       sent it, and then with the portal sent that time (ifPortal), so a portal set meanwhile on the
+       dashboard or in Basics is never silently undone: the server refuses such a save instead. */
+    if (!S.createdEventId) rec.portal = b.portal;
+    else if (b.portal && b.portal !== S.portalSent){ rec.portal = b.portal; rec.ifPortal = S.portalSent || ''; }
     return rec;
+  }
+  /* A save refused because the event's portal was set meanwhile to another one than chosen here. It stops the
+     step with a question, and portalChoice says what each answer takes (applyPortalChoice): the portal the
+     event has now ('' when this page's roster does not list it, which cannot be kept) and the one chosen here. */
+  function portalChangedError(now){
+    var chosen = S.basics.portal, chosenName = portalName(chosen);
+    var err = new Error(now
+      ? 'This event’s portal was changed to ' + portalName(now) + ' meanwhile. Keep ' + portalName(now) + ', or move it to ' + chosenName + '?'
+      : 'This event’s portal was changed meanwhile, to one this page does not list. Reload the page to see it, or move it to ' + chosenName + '.');
+    err.portalChoice = { current: now, chosen: chosen };
+    return err;
+  }
+  /* The owner's answer to that question; then the step is run again. 'keep' takes the portal the event has
+     now as this draft's own, so the next save sends none. 'move' sends the portal chosen here against the
+     one the event has now (ifPortal), so only this answer, given knowingly, moves it back.
+     -> true when the draft is ready to be saved again, false when the answer cannot be taken */
+  function applyPortalChoice(choice, how){
+    if (!choice) return false;
+    if (how === 'keep'){
+      var kept = commitPortal(choice.current, true);
+      if (!kept) return false;
+      S.portalSent = choice.current;
+      save();
+      /* commitPortal has already said so when it took away a previous edition of the other portal */
+      if (!kept.dropped) toast('This event stays on ' + portalName(choice.current) + '.');
+      return true;
+    }
+    if (how !== 'move' || !isRosterPortal(S.basics.portal)) return false;
+    S.portalSent = choice.current;
+    save();
+    return true;
+  }
+  /* the two answers as buttons, Keep first (it undoes nothing); mark('keep' | 'move') gives the attribute
+     that tells the button's view which one was pressed */
+  function portalChoiceButtons(choice, mark, size){
+    return (isRosterPortal(choice.current)
+        ? '<button class="btn btn-primary ' + size + '" type="button" ' + mark('keep') + '>Keep ' + esc(portalName(choice.current)) + '</button>' : '') +
+      '<button class="btn btn-secondary ' + size + '" type="button" ' + mark('move') + '>Move it to ' + esc(portalName(S.basics.portal)) + '</button>';
   }
   /* Makes sure the event exists on the server and carries the form's details. Created exactly once per
      draft: after that (a retry, or the owner went back and changed something) the same event is updated.
@@ -9475,13 +10045,29 @@
         throw new Error('This page did not load completely. Reload it and try again.');
       var details = eventRecordFromBasics();
       if (S.createdEventId){
-        return RevampCore.updateEvent(S.createdEventId, details).then(null, function(err){
+        return RevampCore.updateEvent(S.createdEventId, details).then(function(resp){
+          if (details.portal){ S.portalSent = details.portal; save(); }
+          return resp;
+        }, function(err){
           if (err && err.status === 404){
             /* the event was removed since this draft created it — the draft is all that is left, so it starts over */
             S.createdEventId = null;
             S.createdAt = null;
             save();
             return createEventRecord();
+          }
+          if (err && err.status === 409 && err.code === 'portal-changed'){
+            /* Its portal was set meanwhile, on the dashboard or in Basics, and that is what the server holds
+               now. Set to the very portal chosen here, there is nothing to undo, so the save goes on without
+               it. Otherwise the step stops and asks (portalChangedError): S.portalSent stays as it was, so a
+               plain retry, now or on a draft resumed later, is refused again and never moves it back. */
+            var now = isRosterPortal(err.current) ? err.current : '';
+            if (now && now === S.basics.portal){
+              S.portalSent = now;
+              save();
+              return createEventRecord();
+            }
+            throw portalChangedError(now);
           }
           throw new Error('Could not update the event: ' + plainError(err));
         });
@@ -9491,6 +10077,7 @@
         /* recorded even if the run was cancelled meanwhile: the event exists now, whatever the owner does next */
         S.createdEventId = id;
         S.createdAt = (resp && resp.createdAt) || null;
+        S.portalSent = details.portal || '';
         save();
         renderEventExists();
       }, function(err){
@@ -9529,12 +10116,8 @@
       } catch(e){
         throw new Error(HANDOFF_BLOCKED);
       }
-      /* lets a LATER event's "Clone design from a previous edition" (step 2) offer this one — RevampCore.EVENTS
-         never learns about a wizard-created event (no backend), so without this registry it could never be a
-         clone-design candidate even within the same browser session. An imported design has no gallery id to record. */
-      if (portedTemplate() && window.RevampEditions){
-        RevampEditions.registerEventTemplate('new-' + payload.event.slug, S.template, { name: payload.event.name, cat: S.basics.category });
-      }
+      /* nothing else to record for "Clone design from a previous edition": it reads the real events list,
+         where this event now is with its portal, type and design */
       leaveForEditor(run, 'custom_editor.html?from=create&slug=' + encodeURIComponent(payload.event.slug) +
         '&template=' + encodeURIComponent(payload.template.site));
     });
@@ -9556,7 +10139,7 @@
 
     var host = $('step-4');
     var status = steps.map(function(){ return 'pending'; });
-    var failure = null;         // { index, message } while the run is stopped on a failed step
+    var failure = null;         // { index, message, choice } while the run is stopped on a failed step (choice: a portal question, portalChangedError)
 
     function render(){
       host.innerHTML =
@@ -9577,13 +10160,19 @@
             ? '<div class="callout crit handoff-error" role="alert">' + IC.warn +
                 '<span><strong>' + esc(steps[failure.index].label) + ' did not finish</strong>' + esc(failure.message) +
                   '<span class="callout-actions">' +
-                    '<button class="btn btn-primary btn-sm" type="button" id="asm-retry">Try again</button>' +
+                    /* a portal question is answered, not retried: a plain retry would only be refused again */
+                    (failure.choice ? portalChoiceButtons(failure.choice, function(how){ return 'id="asm-' + how + '"'; }, 'btn-sm')
+                      : '<button class="btn btn-primary btn-sm" type="button" id="asm-retry">Try again</button>') +
                     '<button class="btn btn-secondary btn-sm" type="button" id="asm-back">Back to my details</button>' +
                   '</span></span></div>'
             : '<div class="busy-actions"><button class="btn btn-secondary" type="button" id="asm-cancel">Cancel</button></div>') +
         '</div></div>';
       var retry = $('asm-retry'), back = $('asm-back'), cancel = $('asm-cancel');
       if (retry) retry.onclick = function(){ if (isCurrent(run) && failure) exec(failure.index); };
+      ['keep', 'move'].forEach(function(how){
+        var btn = $('asm-' + how);
+        if (btn) btn.onclick = function(){ if (isCurrent(run) && failure && applyPortalChoice(failure.choice, how)) exec(failure.index); };
+      });
       if (back) back.onclick = requestCancelBusy;
       if (cancel) cancel.onclick = requestCancelBusy;
     }
@@ -9601,7 +10190,7 @@
       }, function(err){
         if (!isCurrent(run)) return;
         status[i] = 'error';
-        failure = { index: i, message: plainError(err) };
+        failure = { index: i, message: plainError(err), choice: (err && err.portalChoice) || null };
         render();
       });
     }
@@ -9805,6 +10394,9 @@
   function init(){
     var params = new URLSearchParams(location.search);
     var startNew = params.get('new') === '1', stored = readStoredDraft();
+    /* the dashboard's portal, read before the address is tidied below. It pre-sets a new draft only, once
+       it is found on ET's roster (portalArrived): a draft that is resumed keeps its own portal */
+    queryPortal = params.get('portal') || '';
     if (startNew) history.replaceState(null, '', location.pathname);
     if (!startNew || !stored){ start(); return; }
     if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(start); return; }
@@ -9957,6 +10549,10 @@
     if (previewExpandBtn) previewExpandBtn.addEventListener('click', function(){ togglePreviewMode(true); });
 
     document.addEventListener('keydown', closePreviewOnEscape);
+
+    /* the event's portal: a new draft is pre-set to the dashboard's, and a draft past the first screen
+       without one is seen to once ET's roster has come — after anything above has filled the draft */
+    startPortal(resumed);
 
     /* a draft is always picked up on the form: the hand-off is a run, not a place to be */
     S.step = 1;

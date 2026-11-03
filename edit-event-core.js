@@ -14,7 +14,10 @@
      .fmtDate(v)          "14 Mar 2027" — a date-only value is that calendar day, never shifted or timed
      .fmtDT(v)            "Mar 14, 2027 (07:00 PM)" — the time only when the value has one
      .fmtRange(start,end) "14–15 Mar 2027", "30 Mar – 2 Apr 2027"; '' with no start
-     .PORTALS .AV
+     .AV                  the avatar colours
+                          An event's portal is ev.portal (a slug of ET's roster) and its name ev.portalName, both
+                          from the server; the roster itself is portal-picker.js's (window.RevampPortals), so
+                          no table of portal names is kept here
      .TYPES               the one table of event categories (key -> label); no page keeps its own
      .slugify(text)       the event-address rule (same as the backend's)
      .isReservedSlug(s)   true for an address no event can have (gen-…, imported-…, numbers, new, …)
@@ -33,7 +36,9 @@
                                    'slug-taken', 400 -> err.code 'slug-reserved'; both carry err.suggestion
      .updateEvent(eventId, patch, {ifUpdatedAt})
                                   PATCH  /api/event -> {ok, updatedAt}; with ifUpdatedAt, 409 -> err.code
-                                   'stale', err.current {updatedAt, updatedBy} (someone else saved first)
+                                   'stale', err.current {updatedAt, updatedBy} (someone else saved first).
+                                   A patch with a portal carries ifPortal, the portal the page showed ('' for
+                                   none): 409 -> err.code 'portal-changed', err.current, err.currentName
      .slugAvailable(slug)         GET    /api/event/slug-available -> {available, suggestion, reason, message}
      .deleteEvent(eventId)        DELETE /api/event — restorable; the address stays reserved
      .discardEvent(eventId)       DELETE /api/event?discard=1 — a draft this user just created and has not
@@ -59,7 +64,7 @@
      .siteState(event, approval)  -> where the site stands: live / offline / draft, a request waiting or
                                    rejected, newer changes not live, and the chips that say so (see the function)
      .mayTakeOffline(approval)    -> false only when approvers are named and the signed-in person is not one
-     .basicsGaps(fields)          -> the five Basics rows ({key, label, field, why}; why '' when it is done)
+     .basicsGaps(fields)          -> the six Basics rows ({key, label, field, why}; why '' when it is done)
      .readSiteHead(html)          -> what a page tells search engines and link previews (title, description,
                                    canonical, image, robots / noindex, eventLd), read from its own tags
      .DESC                        {min, ideal, max}: the short description's lengths (Basics' counter and rule)
@@ -190,11 +195,6 @@ window.RevampCore = (function(){
     ticket:   '<path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a2.2 2.2 0 0 0 0 4.4v1.3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.3a2.2 2.2 0 0 0 0-4.4z"/><path d="M14 6.5v11"/>'
   };
 
-  var PORTALS = {
-    cio:'ETCIO', bfsi:'ETBFSI', legal:'ETLegalWorld', auto:'ETAuto', telecom:'ETTelecom',
-    retail:'ETRetail', health:'ETHealthWorld', hrworld:'ETHRWorld', manufacturing:'ETManufacturing',
-    gov:'ETGovernment', brandequity:'ETBrandEquity'
-  };
   var TYPES = {
     ip:'IP Event', client:'Client Event', editorial:'Editorial',
     leadgen:'Lead-Gen Microsite', roundtable:'Round Table', awards:'Awards'
@@ -612,7 +612,8 @@ window.RevampCore = (function(){
 
   /* ---- the event's basics: what Basics asks for, and whether each is there ----
      Basics' own checklist (as the form is typed) and the Dashboard (from the stored event) both read this.
-     fields: { name, start, end, venue, city, desc, cat } as text. DESC is the short description's lengths:
+     fields: { name, start, end, venue, city, desc, cat, portal } as text; portal is the portal's slug as shown,
+     '' while the event has none (a stored value off ET's roster counts as none). DESC is the short description's lengths:
      at least `min`; `ideal` reads best on the listing card and in a search result; `max` is the most a save
      takes, and the server's description writer keeps to it too (functions/lib/event-description.js MAX_LENGTH). */
   var DESC = { min: 40, ideal: 160, max: 220 };
@@ -630,7 +631,8 @@ window.RevampCore = (function(){
       { key: 'desc', label: 'Short description', field: 'b-desc',
         why: n < DESC.min ? 'Add at least ' + DESC.min + ' characters (now ' + n + ')'
            : (n > DESC.ideal ? 'Shorten to ' + DESC.ideal + ' characters (now ' + n + ')' : '') },
-      { key: 'cat', label: 'Category', field: 'b-cat', why: t('cat') ? '' : 'Choose a category' }
+      { key: 'cat', label: 'Category', field: 'b-cat', why: t('cat') ? '' : 'Choose a category' },
+      { key: 'portal', label: 'Portal', field: 'b-portal', why: t('portal') ? '' : 'Choose the portal it belongs to' }
     ];
   }
 
@@ -1188,7 +1190,7 @@ window.RevampCore = (function(){
     return {
       EV: opts.EV,
       S: opts.S,
-      IC: IC, AV: AV, PORTALS: PORTALS, TYPES: TYPES,
+      IC: IC, AV: AV, TYPES: TYPES,
       $: $, esc: esc, svg: svg,
       comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange,
       statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
@@ -1208,7 +1210,7 @@ window.RevampCore = (function(){
   return {
     $: $, esc: esc, svg: svg, IC: IC, AV: AV,
     comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange, rnd: rnd,
-    PORTALS: PORTALS, TYPES: TYPES,
+    TYPES: TYPES,
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,

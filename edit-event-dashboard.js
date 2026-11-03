@@ -220,7 +220,9 @@ window.EditEventDashboard = (function(){
   /* Ready to publish: read-only rows worked out from what is stored; each one leads to where it is done. */
   function readiness(ctx, st){
     var e = ctx.EV, esc = ctx.esc, comma = ctx.comma;
-    var gaps = C.basicsGaps({ name: e.name, start: e.start, end: e.end, venue: e.venue, city: e.city, desc: e.description, cat: e.category });
+    /* the portal as the console shows it: a stored value the server gives no name for (off ET's roster) is none */
+    var gaps = C.basicsGaps({ name: e.name, start: e.start, end: e.end, venue: e.venue, city: e.city, desc: e.description, cat: e.category,
+      portal: String(e.portalName || '').trim() ? e.portal : '' });
     var filled = gaps.filter(function(g){ return !g.why; }).length;
     var counts = D && D.counts, forms = D && D.forms, jury = ctx.isAward && ctx.isAward();
     function countRow(n, one, many){ return n == null ? null : (n ? comma(n) + ' ' + (n === 1 ? one : many) + ' on the site' : 'None on the site yet'); }

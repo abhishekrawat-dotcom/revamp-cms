@@ -1411,12 +1411,17 @@ a.ev-chip:hover{ border-color: currentColor; }
   .ev-state .ev-chip-long{ display:none; } .ev-state .ev-chip-short{ display:inline; }
 }
 @media (max-width: 900px){ .ev-state .ev-chip-more{ display:none; } }
-/* a phone: the name has the first line to itself and the state takes the date's place under it (the date is
-   in Basics) — side by side, the chip squeezed the name out altogether */
+/* a phone: the name has the first line to itself, and under it, in the date's place (the date is in Basics),
+   the state and — while the event has no portal — the Set portal button side by side. Beside the name, the
+   chip squeezed the name out altogether; on three lines of their own, name, state and button overflow the
+   60 px top bar. So the name row lends its two parts to the title's own wrapping row (display: contents).
+   Only the console's title has the state (.with-state): the other pages' top bars are left as they are. */
 @media (max-width: 600px){
-  .ev-name-row{ flex-wrap:wrap; row-gap:2px; }
+  .ev-title.with-state{ display:flex; flex-wrap:wrap; align-items:center; column-gap:6px; row-gap:2px; }
+  .ev-title.with-state .ev-name-row{ display:contents; }
   .ev-name-row h1{ flex-basis:100%; min-width:0; }
-  .ev-title .ev-name-row ~ .meta{ display:none; }
+  .ev-title.with-state .ev-sub .meta{ display:none; }
+  .ev-title.with-state .ev-sub:not(.has-portal-chip){ display:none; }
   .ev-chip{ padding:0 7px; font-size:10.5px; }
 }
 

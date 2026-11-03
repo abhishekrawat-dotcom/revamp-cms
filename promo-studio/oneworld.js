@@ -306,7 +306,7 @@ function owBoot(page) {
     document.body.classList.toggle('ow-notrack', j.tracking === false);
     owMarkStudio();
     S.portal = (j.event && j.event.portal) || '';
-    S.portalName = S.portal;
+    S.portalName = (j.event && j.event.portalName) || S.portal;
     owSortCatalog();
     if (view !== OW_VIEW) return;               // the user has gone elsewhere meanwhile: theirs stays on screen
     if (open && findMailer(open)) {

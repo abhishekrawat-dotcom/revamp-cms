@@ -10,12 +10,15 @@
      linksOf(sections, portal) -> [{ id, label }]   sections: [{ id, name, kind }] in page order (nav, hero and
                                                 footer are left out); "About Vertical" says whose (aboutLabel)
      portalOf(candidates)  -> 'brandequity' | ''   candidates: portal slugs or ET microsite addresses
-     logoOf(portal, mode)  -> { src, onLight, onDark, alt, href, height, width }
+     logoOf(portal, mode)  -> { src, onLight, onDark, alt, href, height, width }   href: the portal's own home
+                                (et-footer.js knows the few on another host)
      shortDate(start, end) -> '5 Dec 2025' | '5–7 Dec 2026' | ''
      placeOf(event)        -> 'Taj Wellington Mews, Chennai'
      forEvent(event, o)    -> { html, css }  the bar for an event document (name, start, end, dateLabel, venue,
                               city, location, designPlan), o: { sections: [{ id, name, kind }] in page order,
                               portals: [slug | address], cta }
+     sectionFor(event, o)  -> the stored nav section; o.portal (the event's own portal, events/<id>.portal) is the
+                              portal whenever the key is there, else it is read from the event's records
 
    Two states, as on ET's pages:
      at the top   a full-width bar: menu button, the portal's logo, a divider, the event's name over its date
@@ -37,6 +40,7 @@ var fs = require('fs');
 var path = require('path');
 var etEvents = require('./et-events');
 var etPrevious = require('./et-previous');
+var etFooter = require('./et-footer');
 var rvTheme = require('../../templates/_shared/rv-theme.js');
 
 var IMG_DIR = path.join(__dirname, '..', '..', 'templates', '_shared', 'img');
@@ -78,6 +82,14 @@ function pngSize(file) {
   return out;
 }
 
+/* Where the portal's logo links: the portal's own home. et-footer.js has it for the portals it knows, among them
+   the few that are not at <slug>.economictimes.indiatimes.com (TechMonk is techgig.com, ET Startup is ET
+   Entrepreneur's site); a portal it has no row for keeps that usual address, because et-footer's info() would
+   give ET B2B's home for it. */
+function homeOf(slug) {
+  return etFooter.isKnown(slug) ? etFooter.info(slug).home + '/' : 'https://' + slug + '.economictimes.indiatimes.com/';
+}
+
 /* The logo is set to a height that makes it about as wide as ET's own (190 px for ET BrandEquity at 20 px):
    a long one-line wordmark stays 20 px tall, a two-line one (ETHRWorld over "From The Economic Times") is
    given up to 32 px so that its lettering can be read. */
@@ -95,7 +107,7 @@ function logoOf(portal, mode) {
     var size = dark ? (onDark || ET_BV.onDark) : onLight;
     return {
       src: dark ? darkSrc : lightSrc, onLight: lightSrc, onDark: darkSrc, alt: etEvents.PORTALS[slug],
-      href: 'https://' + slug + '.economictimes.indiatimes.com/', width: size.width, height: size.height,
+      href: homeOf(slug), width: size.width, height: size.height,
       px: heightFor(onLight.width, onLight.height)
     };
   }
@@ -335,6 +347,10 @@ function ctaFor(designPlan, owner) {
    its stylesheet confined to the section as every generated section's is.
      event      the event document (name, start, end, dateLabel, venue, city, location, designPlan)
      o.order    the page's section ids in order (nav, hero and footer are skipped)
+     o.portal   the event's own portal as stored (events/<id>.portal): when the key is there it is the portal —
+                a roster slug gives that portal's logo, anything else ('' for an event with no portal yet)
+                gives none, and nothing is worked out from o.sources or the plan. Without the key (older
+                callers, tools) the portal is read from those records as before (portalCandidates).
      o.sources  the event's sources documents     o.owner  the brief's owner points when the plan has none
      o.cta      the main button, when the page sets it; false for none
      o.tabs     more links, as forEvent takes them */
@@ -347,7 +363,12 @@ function sectionFor(event, o) {
   });
   /* o.cta: the main button as the page builds it — else worked out here; false: the bar has none */
   var cta = o.cta === false ? null : o.cta || ctaFor(plan, o.owner);
-  var built = forEvent(event, { sections: sections, portals: portalCandidates(plan, o.sources), cta: cta, tabs: o.tabs });
+  /* the event's portal is one stored truth: once the caller passes it, the bar never guesses another from the
+     pages the site was modelled on (an event with no portal yet gets the ET Business Verticals logo) */
+  var portals = Object.prototype.hasOwnProperty.call(o, 'portal')
+    ? (etEvents.isPortal(o.portal) ? [o.portal] : [])
+    : portalCandidates(plan, o.sources);
+  var built = forEvent(event, { sections: sections, portals: portals, cta: cta, tabs: o.tabs });
   var markup = require('./gen-markup');
   var css = require('./gen-design').clampFontSizes(markup.scopeSectionCss(built.css, 'nav', markup.sectionRootInfo(built.html)));
   return { id: 'nav', kind: 'nav', html: built.html, css: css };

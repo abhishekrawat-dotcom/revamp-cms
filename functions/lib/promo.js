@@ -756,22 +756,20 @@ function measureUnit(unit) {
    site was saved (an address can be reused, and a page left from before must never be read as this
    event's), and only the live event's answer is sent. */
 /* ---------- the ET B2B portal an event belongs to ----------
-   Read from the address of the event's previous edition (cio.economictimes.indiatimes.com -> ETCIO). The
-   mailers sign off as the portal and put its wordmark in the logo bar, as ET's own sends do. Names and
-   wordmarks are the promotional platform's portal roster (templates/_shared/img/portals: <slug>.png is the
-   dark-ink wordmark, <slug>-light.png the light-ink one). */
-var PORTALS = require('./et-events').PORTALS; // the roster lives with the event lookup (et-events.js)
+   The event's own portal as it is stored (events/<id>.portal: chosen in Create Event, or set later with Set
+   portal or in the console's Basics), and nothing else. The mailers sign off as the portal and put its
+   wordmark in the logo bar, as ET's own sends do. It is never worked out from the pages the site was modelled
+   on: an event with no portal yet has none here (null), as one with nothing to go on always had, until a
+   person sets it. Names and wordmarks are the promotional platform's portal roster (templates/_shared/img/
+   portals: <slug>.png is the dark-ink wordmark, <slug>-light.png the light-ink one).
+   -> { slug, name, logo, logoLight } for a slug on the roster, else null. */
+var etEvents = require('./et-events'); // the roster lives with the event lookup (et-events.js)
 var PORTAL_IMG = path.join(__dirname, '..', '..', 'templates', '_shared', 'img', 'portals');
-function portalOf(urls) {
-  for (var i = 0; i < urls.length; i++) {
-    var m = /^https?:\/\/([a-z0-9-]+)\.economictimes\.indiatimes\.com(?:[\/:?#]|$)/i.exec(String(urls[i] || ''));
-    var slug = m && m[1].toLowerCase();
-    if (slug && PORTALS[slug]) {
-      var file = function (f) { try { return fs.existsSync(path.join(PORTAL_IMG, f)) ? '/templates/_shared/img/portals/' + f : ''; } catch (e) { return ''; } };
-      return { slug: slug, name: PORTALS[slug], logo: file(slug + '.png'), logoLight: file(slug + '-light.png') };
-    }
-  }
-  return null;
+function portalInfo(slug) {
+  /* an own-property check: "__proto__" or "toString" is no portal */
+  if (!etEvents.isPortal(slug)) return null;
+  var file = function (f) { try { return fs.existsSync(path.join(PORTAL_IMG, f)) ? '/templates/_shared/img/portals/' + f : ''; } catch (e) { return ''; } };
+  return { slug: slug, name: etEvents.PORTALS[slug], logo: file(slug + '.png'), logoLight: file(slug + '-light.png') };
 }
 
 function buildKit(fb, eventId, req, opts) {
@@ -815,8 +813,8 @@ function buildKit(fb, eventId, req, opts) {
         brand.fonts.heading.cssUrl = c[0]; brand.fonts.body.cssUrl = c[1];
         brand.logoUnit = c[2];
         if (brand.logoUnit && !brand.logoUnit.tone) brand.logoUnit.tone = brand.mode;
-        var plan = r[0] || {}, design = plan.design || {};
-        brand.portal = portalOf([plan.reference && plan.reference.url, design.logoUnitFrom, ev.previousEditionUrl]);
+        /* the mailers, posts and icon library follow it (kit.brand.portal.slug) */
+        brand.portal = portalInfo(ev.portal);
         return { event: kit.event, brand: brand, content: kit.content };
       });
     });
@@ -1197,5 +1195,5 @@ module.exports = { wire, handleKit, handleImage, handleWrite, buildKit, imageUrl
 module.exports._test = {
   brandFromSources, templateFiles, samplePictures, registerAnchor, readSavedPage, hashtagOf, editionOf, placeOf, daysOf, statsOf,
   audienceOf, topicsOf, contentFrom, eventFrom, imageUrlProblem, importIdOf, inSomeImport, familiesInFontUrl, fontCssUrl, templateRadius,
-  factSheet, writeRequest, cleanWrite, writeWarning, cutChars, cutWords, kindNote, darkCopyOfUnit, checkFontCss, measureUnit
+  factSheet, writeRequest, cleanWrite, writeWarning, cutChars, cutWords, kindNote, darkCopyOfUnit, checkFontCss, measureUnit, portalInfo
 };

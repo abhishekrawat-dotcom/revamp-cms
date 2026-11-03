@@ -384,14 +384,28 @@ ok(noSnap && noSnap.page.indexOf('data-rv-etnav') !== -1 && noSnap.nodes.length 
 
 /* ET's header and footer, built for an older site as generation builds them (et-nav.js, et-footer.js) */
 var chromeFb = fakeFb({}, { docs: { 'events/agentic-summit-2027': {}, 'events/agentic-summit-2027/sources/s1': { type: 'previousEdition', url: 'https://brandequity.economictimes.indiatimes.com/agentic-summit-2026', previous: { portal: 'brandequity', url: 'https://brandequity.economictimes.indiatimes.com/agentic-summit-2026' } } } });
-pending.push(hooks.etChromeFor(chromeFb, 'agentic-summit-2027', { name: 'Agentic Summit 2027', start: '2027-02-10T09:00', city: 'Mumbai', category: 'ip',
-  designPlan: { design: { mode: 'dark', themeColor: '#186bf9' }, sections: [{ id: 'overview', name: 'Overview', kind: 'custom' }, { id: 'contact-us', name: 'Contact', kind: 'contact' }] } }, AGENTIC,
+var CHROME_EVENT = { name: 'Agentic Summit 2027', start: '2027-02-10T09:00', city: 'Mumbai', category: 'ip', portal: 'brandequity',
+  designPlan: { design: { mode: 'dark', themeColor: '#186bf9' }, sections: [{ id: 'overview', name: 'Overview', kind: 'custom' }, { id: 'contact-us', name: 'Contact', kind: 'contact' }] } };
+pending.push(hooks.etChromeFor(chromeFb, 'agentic-summit-2027', CHROME_EVENT, AGENTIC,
   function (portal) { ok(portal === 'brandequity', 'the footer\'s events are asked of the event\'s own portal', portal); return Promise.resolve([]); }).then(function (built) {
   ok(/data-rv-etnav/.test(built.nav.html) && /Agentic Summit 2027/.test(built.nav.html) && /data-register-cta/.test(built.nav.html) && built.nav.css.length > 200, 'the header is ET\'s bar: the event\'s name, Register in it, its own stylesheet', built.nav.html.slice(0, 300));
   ok(/brandequity/.test(built.nav.html) && !/nav-brand/.test(built.nav.html) && built.nav.html.indexOf('group-4-3.svg') === -1, 'with the portal\'s logo, never the uploaded logo in a white box');
   ok(/data-rv-et-footer="brandequity"/.test(built.footer.html) && /privacy_policy/.test(built.footer.html) && /terms_conditions/.test(built.footer.html) && /contact_us/.test(built.footer.html), 'the footer is ET\'s: the portal\'s privacy, terms and contact links', built.footer.html.slice(0, 200));
   ok(/href="#overview"/.test(built.nav.html) && /href="#about-vertical"/.test(built.nav.html), 'the bar links the page\'s own sections, in page order');
 }, function (err) { ok(false, 'the header and footer were built', err && err.stack); }));
+
+/* the portal is the event's own (events/<id>.portal), as generation has it since portals were stored: never the
+   one its sources point to */
+pending.push(hooks.etChromeFor(chromeFb, 'agentic-summit-2027', Object.assign({}, CHROME_EVENT, { portal: 'hr' }), AGENTIC,
+  function (portal) { ok(portal === 'hr', 'a portal set apart from the sources: the footer\'s events are that portal\'s', portal); return Promise.resolve([]); }).then(function (built) {
+  ok(/portals\/hr-light\.png/.test(built.nav.html) && !/brandequity/.test(built.nav.html), 'the bar has the event\'s own portal\'s logo, not the sources\' ET BrandEquity', built.nav.html.slice(0, 400));
+  ok(/data-rv-et-footer="hr"/.test(built.footer.html) && !/data-rv-et-footer="brandequity"/.test(built.footer.html), 'and so has the footer', built.footer.html.slice(0, 200));
+}, function (err) { ok(false, 'the header and footer were built for a set portal', err && err.stack); }));
+pending.push(hooks.etChromeFor(chromeFb, 'agentic-summit-2027', Object.assign({}, CHROME_EVENT, { portal: '' }), AGENTIC,
+  function (portal) { ok(portal === '', 'no portal yet: none is worked out from the sources for the footer\'s events', portal); return Promise.resolve([]); }).then(function (built) {
+  ok(/et-business-verticals-on-dark\.svg/.test(built.nav.html) && !/img\/portals\//.test(built.nav.html), 'no portal yet: the ET Business Verticals bar', built.nav.html.slice(0, 400));
+  ok(!/data-rv-et-footer="brandequity"/.test(built.footer.html), 'and not the sources\' ET BrandEquity footer', built.footer.html.slice(0, 200));
+}, function (err) { ok(false, 'the header and footer were built with no portal', err && err.stack); }));
 
 /* ---------- 10. the sitemap leaves out a page that is still the template ---------- */
 var sfb = fakeFb({ 'events/cio/published/index.html': CIO, 'events/bws/published/index.html': CLEAN });
