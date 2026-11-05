@@ -670,7 +670,17 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
     check('A.11 ' + ra + ': the fixed sentence, never the model\'s', a.kind === 'refuse' && partsText(a.parts) === REF[ra].text && a.action.type === 'refuse' && a.action.what === ra, a);
     check('A.11 ' + ra + ': ' + (wantHref[ra] ? 'its link' : 'no link'), (a.action.pointer.href || null) === (wantHref[ra] || null) && (!a.action.pointer.href || NAV_OK.test(a.action.pointer.href)), a.action.pointer);
   }
-  check('A.11 the delete sentence', REF.delete.text === 'Deleting or cancelling an event is never done by ETB2B AI. It stays a manual step for you.');
+  /* B07 (UX-016): Delete and Restore are real now, on the dashboard the bot sits on (an approver's row menu and the
+     Deleted Events view). No address opens a row's menu and the console has no Delete, so the sentences say where
+     the control is, and still link nowhere (checked above: no link for delete, cancel or restore) */
+  check('A.11 the delete sentence names the real Delete: approvers, the row\'s More actions, Delete event, Deleted Events',
+    REF.delete.text === 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.' &&
+    REF.delete.link === null, REF.delete);
+  check('A.11 the restore sentence names Deleted Events and its Restore', /never done by ETB2B AI/.test(REF.restore.text) && /approver restores it from Deleted Events/.test(REF.restore.text) &&
+    /Restore on its row/.test(REF.restore.text) && REF.restore.link === null, REF.restore);
+  check('A.11 cancel says plainly there is no Cancel, and no longer shares the delete sentence', /there is no Cancel for an event yet/.test(REF.cancel.text) && REF.cancel.text !== REF.delete.text && REF.cancel.link === null, REF.cancel);
+  check('A.11 the refusals that point nowhere never claim a control that is not there ("It stays a manual step" is gone)',
+    ['delete', 'cancel', 'restore'].every(function (k) { return REF[k].text.indexOf('It stays a manual step for you') === -1; }));
   check('A.11 the publish link is labelled with the event', /^Open Autotech Summit 2026$/.test((await T.cleanAnswer({ kind: 'refuse', refuse: { action: 'publish' }, events: ['autotech-2026'], text: 'x' }, ctx)).action.pointer.hrefLabel));
   a = await T.cleanAnswer({ kind: 'refuse', refuse: { action: 'send' }, events: [], text: 'x' }, ctx);
   check('A.11 with no event, no link is made up', !a.action.pointer.href);
