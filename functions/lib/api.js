@@ -1182,6 +1182,9 @@ function handleChatTurn(req, res) {
       if (!snap.exists) return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
       var was = snap.data(), patch = { status: status, updatedAt: new Date().toISOString() };
       if (status !== 'undone') { patch.done = lines(body.done); patch.notDone = lines(body.notDone); }
+      /* A change where nothing took effect is not "applied" or "partly", whatever an editor (an older one, cached in
+         a browser) says: it is kept, and written in the History, as not applied (QA, UX-091). */
+      if ((status === 'applied' || status === 'partly') && !patch.done.length) status = patch.status = 'failed';
       return ref.update(patch).then(function () {
         sendJson(res, 200, { turnId: turnId, status: status });
         if (was.status === status) return;
