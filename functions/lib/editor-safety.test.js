@@ -5,7 +5,8 @@
 //   openPlan       which copy opens: the version saved on the server, this browser's copy, or a question (UX-072)
 //   olderCopyWords the question when this browser holds changes made on an older version
 //   conflictWords  what Save says when a newer version was saved meanwhile, with "Open version N instead"
-//   leaveAsk       what is asked before the editor is left (UX-073)
+//   leaveAsk       what is asked before the editor is left (UX-073), and unsavedWork: whether there is anything to ask about
+//   cardAsksSave   whether an ETB2B AI change's card still says it is only in this browser (UX-093)
 //   busyLine       why Save, Publish changes, Undo and Redo wait while ETB2B AI is busy (UX-089, UX-090)
 //   turnStatus     "partly" only when something really happened (UX-091), and planLead for the AI's sentence
 //   undoQuestion   the in-app question in place of the browser's confirm (UX-092)
@@ -134,6 +135,28 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('4 ETB2B AI still thinking: asked before a save is waited for', q.kind === 'ai' && /will not be made/.test(q.text), q);
 })();
 
+/* ======================= 4b unsavedWork (UX-073, B04 verify) ======================= */
+(function () {
+  check('4b B04 verify: a site never saved, opened and left untouched: nothing to ask about', W.unsavedWork({ dirty: true, savedVersion: 0, edited: false }) === false);
+  check('4b … the page as it opened is not saved either way: still nothing (no version known yet)', W.unsavedWork({ dirty: true, savedVersion: undefined, edited: false }) === false);
+  check('4b a site never saved with an edit, an ETB2B AI change or a Create Event hand-off: asked', W.unsavedWork({ dirty: true, savedVersion: 0, edited: true }) === true);
+  check('4b a saved site with unsaved changes: asked, also when the editor made them by itself', W.unsavedWork({ dirty: true, savedVersion: 3, edited: false }) === true && W.unsavedWork({ dirty: true, savedVersion: 3, edited: true }) === true);
+  check('4b the saved version as it is: nothing to ask about', W.unsavedWork({ dirty: false, savedVersion: 3, edited: true }) === false && W.unsavedWork({ dirty: false, savedVersion: 0, edited: true }) === false);
+})();
+
+/* ======================= 4c cardAsksSave (UX-093, B04 verify) ======================= */
+(function () {
+  function card(o) { var c = { status: 'applied', pageChanged: true, ptr: 3, savedPtr: -1 }; for (var k in o) c[k] = o[k]; return c; }
+  check('4c a change made and not saved, the page unsaved: "In this browser only until you Save"', W.cardAsksSave(card({}), true) === true);
+  check('4c … and a change made in part', W.cardAsksSave(card({ status: 'partly' }), true) === true);
+  check('4c the page saved: not said', W.cardAsksSave(card({}), false) === false);
+  check('4c B04 verify: the change saved (card Save), then Why now typed in: not said again', W.cardAsksSave(card({ savedPtr: 3 }), true) === false && W.cardAsksSave(card({ savedPtr: 5 }), true) === false);
+  check('4c a save made before the change does not count for it', W.cardAsksSave(card({ savedPtr: 2 }), true) === true);
+  check('4c Undo past the change, Save, then Redo: the change is unsaved again, and said', W.cardAsksSave(card({ ptr: 3, savedPtr: 2 }), true) === true);
+  check('4c a change undone or not made: not said', W.cardAsksSave(card({ status: 'undone' }), true) === false && W.cardAsksSave(card({ status: 'failed' }), true) === false && W.cardAsksSave(card({ status: 'applying' }), true) === false);
+  check('4c a change that only made forms (on the server already): not said', W.cardAsksSave(card({ pageChanged: false }), true) === false);
+})();
+
 /* ======================= 5 turnStatus and planLead (UX-091) ======================= */
 (function () {
   var five = ['“Hero” was not changed: timeout', '“Overview” was not changed: timeout', '“Why Join Us” was not changed: timeout', '“FAQs” was not changed: timeout', '“Footer” was not changed: timeout'];
@@ -210,6 +233,33 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   var guarded = ['setHidden', 'moveSection', 'duplicateSection', 'deleteSection', 'renameSection', 'insertSection', 'addBlock', 'addRepeatItem', 'removeRepeatItem', 'setDesign', 'styleSelected', 'applyTheme', 'applySectionEdges', 'placeFormSection', 'openDevZone'];
   var missing = guarded.filter(function (n) { return !new RegExp(n + ': whenPageFree\\(' + n + '\\)').test(SRC); });
   check('7 UX-090: the side panels\' page changes wait too (whenPageFree)', !missing.length && /if \(aiWorking\) \{ busyToast\(\); return false; \}/.test(body('whenPageFree')), missing);
+  /* B04 verify: Layers → a section's name brought up the section's pill while ETB2B AI was applying a change, and Hide
+     there recorded a step holding half of the change */
+  check('7 UX-090 (B04 verify): the section pill\'s tools wait while ETB2B AI applies a change (Hide, Duplicate, Delete, + Item, </>, Redesign, Background)',
+    /if \(!btn \|\| !activeSectionEl\) return;\s*(\/\*[\s\S]*?\*\/\s*)?if \(aiWorking\) \{ busyToast\(\); return; \}/.test(body('onSecToolbarClick')) &&
+    body('onSecToolbarClick').indexOf('aiWorking') < body('onSecToolbarClick').indexOf("action === 'duplicate-section'"));
+  check('7 UX-090 (B04 verify): … and the element pill\'s tools', /if \(!btn \|\| !selectedEl\) return;\s*(\/\/[^\n]*\s*)?if \(aiWorking\) \{ busyToast\(\); return; \}/.test(body('onToolbarClick')));
+  check('7 UX-090 (B04 verify): selecting from the side panels waits too (Layers → a name, Forms → Show on page, the live view)',
+    /selectSection: whenPageFree\(selectSection\)/.test(SRC) && /revealElement: whenPageFree\(revealElement\)/.test(SRC) && !/selectSection: selectSection[,\s]/.test(SRC));
+  var pos = body('positionToolbars');
+  check('7 UX-090 (B04 verify): neither pill shows while ETB2B AI applies a change, and they come back after', /if \(aiWorking\) \{ selToolbar\.hidden = true; secToolbar\.hidden = true; return; \}/.test(pos) &&
+    pos.indexOf('if (aiWorking)') < pos.indexOf('selToolbar.hidden = false') && pos.indexOf('if (aiWorking)') < pos.indexOf('secToolbar.hidden = false') && /if \(!on\) repositionToolbars\(\);/.test(body('setAiWorking')));
+  var del = body('confirmDeleteSection');
+  check('7 UX-090 (B04 verify): Delete and Hide instead, asked while ETB2B AI was still thinking, wait in their dialog once it applies the change',
+    (del.match(/if \(aiWorking\) \{ busyToast\(\); return false; \}\s*if \(!sec\.isConnected\) return;/g) || []).length === 2);
+  var pic = body('openPictureDialog');
+  check('7 UX-090 (B04 verify): a picture chosen while ETB2B AI applies a change waits in its dialog, an upload kept as its address',
+    /if \(aiWorking\) \{\s*urlBox\.value = url;/.test(pic) && pic.indexOf('if (aiWorking)') < pic.indexOf('apply(url)') && /uploadBtn\.disabled = false;/.test(pic.slice(pic.indexOf('if (aiWorking)'))));
+  var dev = body('openDevZone');
+  check('7 UX-090 (B04 verify): the developer zone\'s Apply waits too, keeping the code', /if \(aiWorking\) return fail\(workSafety\.busyLine\('working'\) \+ '\. Apply again when it is done\.'\);/.test(dev) &&
+    dev.indexOf("busyLine('working') + '. Apply again") < dev.indexOf('canvas.replaceSection('));
+  var redesign = body('openRedesignDialog');
+  check('7 UX-090 (B04 verify): a section redesign answered while ETB2B AI applies a change goes on the page after it, as its own step',
+    /whenAiIdle\(function \(\) \{\s*open = document\.contains\(ask\);\s*if \(!isLive\(sec\)\)/.test(redesign) && redesign.indexOf('whenAiIdle(') < redesign.indexOf('canvas.replaceSection('));
+  var FORMS = fs.readFileSync(path.join(ROOT, 'editor-forms.js'), 'utf8');
+  check('7 UX-090 (B04 verify): a form deleted while ETB2B AI applies a change is let go of after it, and the delete waits for that',
+    /unlinkForm: function \(formId\) \{\s*(\/\/[^\n]*\s*)?if \(aiWorking\) showToast\('The form is deleted once ETB2B AI has finished changing the page\.'\);\s*return new Promise\(function \(done, fail\) \{ whenAiIdle\(function \(\) \{ try \{ done\(unlinkForm\(formId\)\); \} catch \(err\) \{ fail\(err\); \} \}\); \}\);/.test(SRC) &&
+    /if \(ui && ui\.unlinkForm\) return ui\.unlinkForm\(form\.id\);/.test(FORMS));
   check('7 UX-090: a server answer that changes the page waits until the change is on the page (the logo\'s dark copy)', /whenAiIdle\(function \(\) \{\s*delete darkPending\[src\];/.test(SRC) && /afterAiQueue\.splice\(0\)\.forEach/.test(body('setAiWorking')));
 
   var turn = body('runAiTurn');
@@ -238,7 +288,9 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   var card = body('drawCardSave');
   check('7 UX-093: a change made in this session says "In this browser only until you Save", with Save beside Undo', /note\.textContent = 'In this browser only until you Save\.';/.test(card) && /b\.textContent = 'Save';/.test(card) && /saveToStaging\(\)/.test(card) &&
     /else if \(t\.live\) drawCardSave\(t\);/.test(body('finishAiCard')));
-  check('7 UX-093: … shown only while the page is not saved', /var show = !!dirty && \(c\.t\.status === 'applied' \|\| c\.t\.status === 'partly'\);/.test(body('syncCardSaves')) && /syncCardSaves\(dirty\);/.test(state));
+  check('7 UX-093: … shown only while the change is not saved (workSafety.cardAsksSave)', /var show = workSafety\.cardAsksSave\(\{ status: c\.t\.status, pageChanged: c\.t\.pageChanged, ptr: c\.t\.ptr, savedPtr: savedPtr \}, !!dirty\);/.test(body('syncCardSaves')) && /syncCardSaves\(dirty\);/.test(state));
+  check('7 UX-093 (B04 verify): a save records the step it kept, before the cards are drawn again', /var keptPtr = undoPtr;/.test(save) && save.indexOf('var keptPtr = undoPtr;') > save.indexOf('var snap = undoStack[undoPtr]') &&
+    /savedPtr = keptPtr;\s*renderSiteState\(\);/.test(save) && /var savedPtr = -1;/.test(SRC) && /t\.ptr = undoPtr;/.test(turn));
   var history = body('loadChatHistory');
   check('7 UX-093: a read-back card whose Undo is gone says how to get back', /t\.button\.title = workSafety\.UNDO_GONE;/.test(history) && /t\.card\.note\(workSafety\.UNDO_GONE\);/.test(history) && !/Use Undo in the top bar\.'; \}/.test(history));
   check('7 UX-093: "undo that" explains in plain words instead of "I left it as it is."', /last\.undoWhy === 'gone' \? workSafety\.UNDO_GONE\.replace\('Ask ETB2B AI to change it back', 'Ask me to change it back'\)/.test(body('wireChatPanel')) &&
@@ -246,13 +298,16 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-093: the welcome says to press Save', /every change has an Undo\. Press Save to keep your changes; nothing goes live until you publish\./.test(SRC));
 
   var leave = body('leave');
-  check('7 UX-073: leaving asks by workSafety.leaveAsk: Save and leave, Leave without saving, Stay', /workSafety\.leaveAsk\(\{ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && isDirty\(\) \}\)/.test(leave) &&
+  check('7 UX-073: leaving asks by workSafety.leaveAsk: Save and leave, Leave without saving, Stay', /workSafety\.leaveAsk\(\{ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork\(\) \}\)/.test(leave) &&
     /label: 'Save and leave'/.test(leave) && /label: 'Leave without saving'/.test(leave) && /label: 'Stay'/.test(leave) && /saveToStaging\(\{ quiet: true \}\)\.then\(go, function \(\) \{\}\)/.test(leave));
+  check('7 UX-073 (B04 verify): what leaving asks about is the person\'s own work (hasUnsavedWork), while Save still sees a site never saved as unsaved',
+    /workSafety\.unsavedWork\(\{ dirty: isDirty\(\), savedVersion: siteInfo \? siteInfo\.savedVersion : baseVersion, edited: localEdited \}\)/.test(body('hasUnsavedWork')) &&
+    /if \(!savedMark \|\| !siteInfo \|\| !siteInfo\.savedVersion\) return true;/.test(body('isDirty')) && /var dirty = isDirty\(\)/.test(state));
   check('7 UX-073: a save on its way is waited for, so this browser records the version', /\(savingNow \|\| Promise\.resolve\(\)\)\.then\(again, again\);/.test(leave));
   check('7 UX-073: leaving while ETB2B AI applies a change records the turn as not finished first', /stopAiTurn\(false\)\.then\(go, go\);/.test(leave) && /reportTurn\(t\.turnId, 'failed', \[\], \[STOPPED_LINE\], keepalive\)/.test(body('stopAiTurn')));
   var leaving = body('wireLeaving');
   check('7 UX-073: closing or reloading the tab is asked by the browser while work is unsaved, a save runs or ETB2B AI is busy',
-    /addEventListener\('beforeunload'/.test(leaving) && /if \(aiState === 'ready' && !saving && !isDirty\(\)\) return;/.test(leaving) && /e\.preventDefault\(\);/.test(leaving) && /if \(leavingNow/.test(leaving));
+    /addEventListener\('beforeunload'/.test(leaving) && /if \(aiState === 'ready' && !saving && !hasUnsavedWork\(\)\) return;/.test(leaving) && /e\.preventDefault\(\);/.test(leaving) && /if \(leavingNow/.test(leaving));
   check('7 UX-073: once reported as not finished, the change records and reports nothing more (requests cut off by leaving)',
     /t\.stopped = true;/.test(body('stopAiTurn')) && (body('runAiTurn').match(/if \(t\.stopped\) return t;/g) || []).length === 2);
   check('7 UX-073: … and a tab closed while ETB2B AI applies a change reports it (keepalive), recording nothing half-made', /if \(aiWorking\) \{ stopAiTurn\(true\); return; \}/.test(leaving));
@@ -266,7 +321,7 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   try { esbuild = require('esbuild'); } catch (e) { /* the checks above still run */ }
   check('8 esbuild is there to check ES5', !!esbuild);
   if (!esbuild) return;
-  [['editor-template-ui.js', SRC], ['editor-canvas.js', CANVAS], ['editor-ai-mode.js', AIMODE]].forEach(function (f) {
+  [['editor-template-ui.js', SRC], ['editor-canvas.js', CANVAS], ['editor-ai-mode.js', AIMODE], ['editor-forms.js', fs.readFileSync(path.join(ROOT, 'editor-forms.js'), 'utf8')]].forEach(function (f) {
     var es5 = (function () { try { esbuild.transformSync(f[1], { loader: 'js', target: 'es5' }); return true; } catch (e) { return String(e.message).split('\n').slice(0, 3).join(' '); } })();
     check('8 ' + f[0] + ' is ES5 by esbuild', es5 === true, es5);
   });

@@ -1822,6 +1822,9 @@
   function positionToolbars() {
     positionBusyPills();
     if (!canvas || remounting || !selToolbar) return;
+    /* while ETB2B AI is applying a change neither pill shows: their tools would change the page under it (UX-090).
+       Anything still selected gets its pills back when the change is on the page (setAiWorking). */
+    if (aiWorking) { selToolbar.hidden = true; secToolbar.hidden = true; return; }
     var fr = frame.getBoundingClientRect();
     var selBox = null, elBox = null;
 
@@ -1874,6 +1877,8 @@
   function onToolbarClick(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn || !selectedEl) return;
+    // the element's tools wait too while ETB2B AI is applying a change (onSecToolbarClick says why)
+    if (aiWorking) { busyToast(); return; }
     var action = btn.getAttribute('data-action');
     if (action !== 'link') closeLinkPop();
     if (TEXT_FORMAT_ACTIONS[action]) {
@@ -2019,18 +2024,24 @@
         }
         if (!r) return fail('Could not reach the AI. The section is unchanged — check your connection and try again.');
         if (!r.ok || !r.body || r.body.error || !r.body.html) return fail((r.body && r.body.error) || 'The AI could not redesign this section (error ' + r.status + '). It is unchanged — try again.');
-        if (!isLive(sec)) return fail('The section was removed while the AI was working, so there was nothing to replace.');
-        deselect();
-        flush();                        // what was pending stays its own undo step
-        var fresh = canvas.replaceSection(sec, r.body.html, r.body.css);
-        if (!fresh) return fail('The AI did not return a usable section. It is unchanged — try again.');
-        fresh.setAttribute('data-ai-generated', 'true');       // written by the AI: asked about before publishing
-        commitNow();
-        if (keptLists.length) applySubcollectionOverlay();     // the event's records, drawn into the new design
-        if (open && handle && handle.close) handle.close();
-        selectSectionOnly(fresh);
-        canvas.scrollToSection(fresh);
-        offerUndo('“' + name + '” redesigned' + (r.body.summary ? ': ' + r.body.summary : '.'));
+        /* an answer that comes while ETB2B AI is applying a change in the chat waits until that change is on the
+           page, so it is a step of its own and not half of the chat's (UX-090) */
+        var waited = aiWorking;
+        whenAiIdle(function () {
+          open = document.contains(ask);
+          if (!isLive(sec)) return fail(waited ? 'ETB2B AI changed this section meanwhile, so the redesign was not put over it. Try again.' : 'The section was removed while the AI was working, so there was nothing to replace.');
+          deselect();
+          flush();                        // what was pending stays its own undo step
+          var fresh = canvas.replaceSection(sec, r.body.html, r.body.css);
+          if (!fresh) return fail('The AI did not return a usable section. It is unchanged — try again.');
+          fresh.setAttribute('data-ai-generated', 'true');       // written by the AI: asked about before publishing
+          commitNow();
+          if (keptLists.length) applySubcollectionOverlay();     // the event's records, drawn into the new design
+          if (open && handle && handle.close) handle.close();
+          selectSectionOnly(fresh);
+          canvas.scrollToSection(fresh);
+          offerUndo('“' + name + '” redesigned' + (r.body.summary ? ': ' + r.body.summary : '.'));
+        });
       });
     }
   }
@@ -2236,6 +2247,8 @@
     $('rv-dev-apply').addEventListener('click', function () {
       problem.hidden = true;
       function fail(text, where) { problem.textContent = text; problem.hidden = false; if (where) show(where); }
+      // ETB2B AI began applying a change while this was open: the code waits here, to be applied as a step of its own
+      if (aiWorking) return fail(workSafety.busyLine('working') + '. Apply again when it is done.');
       if (!isLive(sec)) return fail('This section is no longer on the page. Pick another one.');
       var t = document.createElement('template');
       t.innerHTML = val('html').trim();
@@ -2301,7 +2314,17 @@
     urlBox.value = /^https?:/i.test(current || '') ? current : '';
     var busy = false;
     function fail(text) { problem.textContent = text; problem.hidden = false; }
-    function done(url) { if (handle && handle.close) handle.close(); apply(url); host.showToast('Picture updated'); }
+    function done(url) {
+      /* ETB2B AI began applying a change while this was open: the picture waits here (an upload is kept as its
+         address), so it goes on the page as a step of its own once the change is done (UX-090) */
+      if (aiWorking) {
+        urlBox.value = url;
+        if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload from your computer'; }
+        fail(workSafety.busyLine('working') + '. Press “Use this picture” again when it is done.');
+        return;
+      }
+      if (handle && handle.close) handle.close(); apply(url); host.showToast('Picture updated');
+    }
     function useAddress() {
       if (busy) return;
       problem.hidden = true;
@@ -2912,6 +2935,9 @@
   function onSecToolbarClick(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn || !activeSectionEl) return;
+    /* while ETB2B AI is applying a change the section's tools wait, like the canvas: a step recorded now would hold
+       half of its change, and the section it is rewriting could be hidden or deleted under it (QA, UX-090) */
+    if (aiWorking) { busyToast(); return; }
     var action = btn.getAttribute('data-action'), sec = activeSectionEl;
     if (action === 'duplicate-section') {
       duplicateSection(sec);
@@ -2943,7 +2969,9 @@
     var name = sec.getAttribute('data-sec-name') || 'this section';
     var actions = [
       { label: 'Cancel', kind: 'secondary', autofocus: true },
+      /* asked before ETB2B AI began applying a change (it was still thinking): the dialog stays until it is done */
       { label: 'Delete', kind: 'danger', onClick: function () {
+        if (aiWorking) { busyToast(); return false; }
         if (!sec.isConnected) return;
         deselect();
         var autoKind = sec.getAttribute('data-rv-auto');
@@ -2960,6 +2988,7 @@
     ];
     if (!sec.classList.contains('is-hidden-sec')) {
       actions.unshift({ label: 'Hide instead', kind: 'ghost', aside: true, onClick: function () {
+        if (aiWorking) { busyToast(); return false; }
         if (!sec.isConnected) return;
         setSectionHidden(sec, true);
         offerUndo('"' + name + '" is hidden. It is not shown on the site.');
@@ -3419,7 +3448,7 @@
     window.addEventListener('beforeunload', function (e) {
       if (leavingNow || !eventId || !canvas) return;
       if (!aiWorking) flush();            // words still being typed count
-      if (aiState === 'ready' && !saving && !isDirty()) return;
+      if (aiState === 'ready' && !saving && !hasUnsavedWork()) return;
       e.preventDefault();
       e.returnValue = '';
     });
@@ -5113,6 +5142,7 @@
     aiWorking = !!on;
     if (!on) currentAiTurn = null;
     setChatStatus(on ? 'working' : 'ready');
+    if (!on) repositionToolbars();    // the pills that waited (positionToolbars)
     if (!on) afterAiQueue.splice(0).forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
   /* what changes the page in its own time (an answer from the server) waits until ETB2B AI's change is on the page,
@@ -6152,6 +6182,23 @@
       if (s.dirty) return { kind: 'unsaved', title: 'Leave without saving?', text: 'You have changes that are not saved. They stay only in this browser until you save.' };
       return null;
     }
+    /* Whether leaving would leave work behind unsaved (leaveAsk's dirty). s: { dirty: the page is not the saved
+       version, savedVersion: 0 when the site was never saved, edited: the page holds something of the person's own
+       (an edit, an ETB2B AI change, what Create Event handed over) }. A site never saved is never the saved version,
+       but a default page left as it opened is the same page next time: nothing to ask about (QA, B04 verify). */
+    function unsavedWork(s) {
+      if (!s.dirty) return false;
+      return !!s.savedVersion || !!s.edited;
+    }
+    /* Whether an ETB2B AI change's card says "In this browser only until you Save", with its Save: only while the
+       page has unsaved changes and this change is one of them. A change a save has kept is not, whatever is edited
+       after it (QA, B04 verify: a saved navy change said it again once Why now was typed in), and a change that
+       only made forms is on the server already. c: { status, pageChanged, ptr: the undo step the change made,
+       savedPtr: the step the newest save in this session kept, -1 for none } */
+    function cardAsksSave(c, dirty) {
+      if (!dirty || !c.pageChanged || (c.status !== 'applied' && c.status !== 'partly')) return false;
+      return !(c.ptr >= 0 && c.savedPtr >= c.ptr);
+    }
 
     /* How an ETB2B AI change ended. done: what took effect; notDone: what could not be done; changed: the page
        was changed; forms: how many forms it made. 'partly' only when something really happened. */
@@ -6180,6 +6227,7 @@
     var UNDO_GONE = 'This change can’t be undone here: it was made in another browser, or too long ago. Ask ETB2B AI to change it back, or change it yourself on the page.';
 
     return { busyLine: busyLine, openPlan: openPlan, olderCopyWords: olderCopyWords, conflictWords: conflictWords, leaveAsk: leaveAsk,
+      unsavedWork: unsavedWork, cardAsksSave: cardAsksSave,
       turnStatus: turnStatus, planLead: planLead, undoQuestion: undoQuestion, UNDO_GONE: UNDO_GONE };
   })();
   /* workSafety:end */
@@ -6211,6 +6259,11 @@
   function isDirty() {
     if (!savedMark || !siteInfo || !siteInfo.savedVersion) return true;
     return savedMark.hash !== snapHash(undoStack[undoPtr]);
+  }
+  /* what leaving asks about: isDirty() is true for a site never saved, which Save needs, but only the person's own
+     work there is worth a question (workSafety.unsavedWork) */
+  function hasUnsavedWork() {
+    return workSafety.unsavedWork({ dirty: isDirty(), savedVersion: siteInfo ? siteInfo.savedVersion : baseVersion, edited: localEdited });
   }
 
   function loadSiteInfo() {
@@ -6330,6 +6383,7 @@
        from the newest step, so what is saved is never a page the editor would not reopen. */
     if (!canvas.sameSnapshot(canvas.snapshot(undoStack[undoPtr]), undoStack[undoPtr])) commitNow();
     var snap = undoStack[undoPtr], hash = snapHash(snap), html = canvas.serialize();
+    var keptPtr = undoPtr;            // the step this save keeps: the ETB2B AI changes up to it are saved (syncCardSaves)
     saving = true; renderSiteState();
     function send(force) {
       return RevampCore.saveSite(eventId, { templateId: templateId, baseVersion: force ? 0 : baseVersion, snapshot: snap, html: html, force: force });
@@ -6361,6 +6415,7 @@
       persist(undoStack[undoPtr]);
       siteInfo = siteInfo || { required: true };
       siteInfo.savedVersion = out.version;
+      savedPtr = keptPtr;
       renderSiteState();
       if (!opts.quiet) {
         showToast('Saved to staging as version ' + out.version + (out.summary ? ' — ' + out.summary : ''), {
@@ -6468,7 +6523,7 @@
   function leave(url) {
     flush();
     function go() { leavingNow = true; location.href = url; }
-    var q = workSafety.leaveAsk({ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && isDirty() });
+    var q = workSafety.leaveAsk({ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork() });
     if (!q) { go(); return; }
     if (q.kind === 'wait') {
       // the server is finishing the version: this browser records it before the page goes, then asks again if need be
@@ -6513,8 +6568,9 @@
   }
 
   /* An ETB2B AI change made in this session stays only in this browser until Save: its card says so, with a Save
-     beside Undo, for as long as the page is not saved (renderSiteState keeps them in step). */
+     beside Undo, until a save keeps it (renderSiteState keeps them in step; workSafety.cardAsksSave decides). */
   var cardSaves = [];
+  var savedPtr = -1;                // the undo step the newest save in this session kept (-1: none yet)
   function drawCardSave(t) {
     if (!eventId || !t.card || !t.card.foot) return;
     var foot = t.card.foot;
@@ -6529,14 +6585,15 @@
   }
   function syncCardSaves(dirty) {
     cardSaves.forEach(function (c) {
-      var show = !!dirty && (c.t.status === 'applied' || c.t.status === 'partly');
+      var show = workSafety.cardAsksSave({ status: c.t.status, pageChanged: c.t.pageChanged, ptr: c.t.ptr, savedPtr: savedPtr }, !!dirty);
       c.button.hidden = c.note.hidden = !show;
       c.button.disabled = saving || !!workSafety.busyLine(aiState);
     });
   }
 
   /* The side panels change the page through these. While ETB2B AI is applying a change they wait (and say so),
-     like the canvas: a step recorded in between would hold half of its change. */
+     like the canvas: a step recorded in between would hold half of its change. Selecting waits too (Layers → a
+     section's name, Forms → Show on page): it brings up the pills whose tools change the page (QA, UX-090). */
   function whenPageFree(fn) {
     return function () {
       if (aiWorking) { busyToast(); return false; }
@@ -6557,7 +6614,7 @@
     getDesign: getDesign, setDesign: whenPageFree(setDesign), designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: whenPageFree(applyTheme),
     sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: whenPageFree(applySectionEdges),
     selectedStyle: selectedStyle, styleSelected: whenPageFree(styleSelected),
-    listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: whenPageFree(moveSection),
+    listSections: listSections, librarySections: librarySections, selectSection: whenPageFree(selectSection), moveSection: whenPageFree(moveSection),
     pages: function () { return sitePages().map(function (p) { return { slug: p.slug, title: p.title }; }); },
     currentPage: function () { return currentPage; }, showPage: function (slug) { return showPage(slug); },
     setHidden: whenPageFree(setHidden), duplicateSection: whenPageFree(duplicateSection), deleteSection: whenPageFree(deleteSection), renameSection: whenPageFree(renameSection),
@@ -6568,7 +6625,14 @@
     formsChanged: formsChanged,
     heroVideoChanged: heroVideoChanged,
     onFormsChange: function (fn) { if (typeof fn === 'function') formsListeners.push(fn); },
-    unlinkForm: unlinkForm, placeFormSection: whenPageFree(placeFormSection), revealElement: revealElement,
+    /* a form deleted while ETB2B AI is applying a change: the page lets go of it once the change is on the page, as
+       a step of its own, and the delete waits for that (forms-builder.js waits for beforeDelete's promise) */
+    unlinkForm: function (formId) {
+      // said, so the Forms panel does not look stuck while it waits
+      if (aiWorking) showToast('The form is deleted once ETB2B AI has finished changing the page.');
+      return new Promise(function (done, fail) { whenAiIdle(function () { try { done(unlinkForm(formId)); } catch (err) { fail(err); } }); });
+    },
+    placeFormSection: whenPageFree(placeFormSection), revealElement: whenPageFree(revealElement),
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers,
     /* for editor-ai-mode.js ("Edit with AI" live view): the mounted canvas (null while there is none),
        onChange(fn) after every change to the page, and leaveEditing() — stops typing in place and lets go of the
