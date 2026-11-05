@@ -8614,8 +8614,9 @@ function handleSiteGet(req, res) {
    `baseVersion` is the version the editor loaded (0 for a first save). If the stored version is different
    and `force` is not true: 409 { error, code: 'site-conflict', current: { version, updatedAt, updatedBy } }
    and nothing is written — the editor asks its user which copy to keep. Versions that only brought Content
-   in (stageContent: site.contentBase is the version they were made on) are no conflict: the editor draws the
-   event's records into the page when it opens it, and this save draws today's records in again below.
+   in (stageContent: site.contentBase is the last version made by anything else) are no conflict, whichever of
+   them the editor is on: the editor draws the event's records into the page when it opens it, and this save
+   draws today's records in again below.
 
    The page is stored with the saving origin already made root-relative (see rewriteOrigins), so what is
    kept does not depend on which host the editor happened to be opened on, and with the event's records as
@@ -8652,7 +8653,11 @@ function handleSitePut(req, res) {
       var current = siteVersionOf(data);
       if (body.force === true || baseVersion === current) return null;
       var site = data.site || {};
-      if (baseVersion && site.contentBase != null && +site.contentBase === baseVersion && current > baseVersion) return null;
+      /* Every version after contentBase was made by Content alone (any other save writes the site afresh,
+         without contentBase), so a save built on contentBase or on any of them is no conflict: an editor on
+         version 9 meets the Content version 10 made since, not somebody's work (a Save that answered "Nothing
+         new to save" leaves the editor on a Content version — B05 verify). */
+      if (baseVersion && site.contentBase != null && +site.contentBase <= baseVersion && baseVersion < current) return null;
       return httpError(409, current
         ? 'This site was changed' + (site.updatedBy ? ' by ' + site.updatedBy : '') + ' after you opened it.'
         : 'This site has no saved version yet — reload the editor.', {

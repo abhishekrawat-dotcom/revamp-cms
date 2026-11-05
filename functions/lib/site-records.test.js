@@ -169,13 +169,43 @@ function rows(extra) {
   check('1.15 an icon inside an item keeps its SVG names (viewBox) and closing tags', card.indexOf('<svg class="ico" viewBox="0 0 24 24"><path d="M3 7l9 6 9-6"></path></svg>') !== -1, card);
   var refill = SR.renderRecords(sp.html, rows({ speakers: [{ id: 'p2', name: 'Anita Rao', desig: '' }], sessions: [], 'agenda-groups': [] }));
   var c2 = refill.html.slice(refill.html.indexOf('<div class="spk"'), refill.html.indexOf('</div>', refill.html.indexOf('<div class="spk"')) + 6);
-  check('1.16 drawn again from a filled card: what the new record lacks goes (no old photo or profile; the link hidden, as the editor does)', c2.indexOf('src=') === -1 && /<a data-rv-field="li" href="[^"]*" hidden=""><\/a>/.test(c2) && c2.indexOf('data-rv-profile') === -1 &&
+  check('1.16 drawn again from a filled card: what the new record lacks goes (no old photo, LinkedIn address or profile; the link hidden)', c2.indexOf('src=') === -1 && c2.indexOf('<a data-rv-field="li" hidden=""></a>') !== -1 && c2.indexOf('linkedin') === -1 && c2.indexOf('data-rv-profile') === -1 &&
     c2.indexOf('>Anita Rao<') !== -1 && c2.indexOf('<p data-rv-field="r" hidden=""></p>') !== -1, c2);
   var bg = SR.renderRecords('<section data-rv-section="g"><div class="w"><figure data-rv-repeat-template="glimpses" style="color: red; background-image: url(&quot;a.png&quot;);"><figcaption data-rv-field="caption">Caption</figcaption><div data-rv-field="imageUrl" style="height:10px"></div></figure></div></section>',
     rows({ gallery: [{ id: 'g1', imageUrl: 'https://x/g.jpg', caption: 'Hall' }] }));
   check('1.17 a picture shown as a background is set in the element\'s style', bg.html.indexOf('<div data-rv-field="imageUrl" style="height:10px; background-image: url(&quot;https://x/g.jpg&quot;);"></div>') !== -1, bg.html);
   var tpl = SR.renderRecords('<section data-rv-section="faq"><template data-rv-pristine="x"><div data-rv-repeat-template="faq"><p data-rv-field="t">Q</p></div></template></section>', rows({ faqs: [{ id: 'f1', question: 'A?' }] }));
   check('1.18 a model kept inside a <template> is not a list', !tpl.changed && tpl.unplaced.indexOf('faq') !== -1);
+
+  /* B05 verify: drawn from the design's sample item, a record that has no picture or link does not keep the
+     sample's (a sample person's photo, another sponsor's logo, a "#sponsors" link), so a second draw — the next
+     Content change, the next request for approval — finds nothing to change and records no version */
+  var SAMPLE = '<section data-rv-section="sponsors" id="sponsors"><h2>Partners</h2><div class="grid"><a class="card" data-rv-repeat-template="partners" data-rv-field="url" href="#sponsors">' +
+    '<img data-rv-field="logo" src="https://x/other-sponsor.png" alt=""><span data-rv-field="name">Partner Name</span></a></div></section>' +
+    '<section data-rv-section="speakers" id="speakers"><h2>Speakers</h2><div class="grid"><div data-rv-repeat-template="speakers"><img data-rv-field="photo" src="https://x/sample-person.jpg" alt="">' +
+    '<h3 data-rv-field="n">Speaker Name</h3><p data-rv-field="r">Role</p><a data-rv-field="li" href="#">LinkedIn</a></div></div></section>';
+  var bare = rows({ speakers: [{ id: 's1', name: 'Asha Rao', desig: 'CTO', photoUrl: '' }], partners: [{ id: 'p1', name: 'Acme', url: '', logoUrl: '' }] });
+  var d1 = SR.renderRecords(SAMPLE, bare), d2 = SR.renderRecords(d1.html, bare);
+  check('1.19 a sponsor without a logo or link keeps neither of the sample\'s', d1.changed && d1.html.indexOf('other-sponsor.png') === -1 && d1.html.indexOf('href="#sponsors"') === -1 &&
+    d1.html.indexOf('<a class="card" data-rv-repeat-template="partners" data-rv-field="url" data-rv-filled="" data-rv-id="p1"><img data-rv-field="logo" alt=""><span data-rv-field="name">Acme</span></a>') !== -1, d1.html);
+  check('1.20 a speaker without a photo does not show the sample person', d1.html.indexOf('sample-person.jpg') === -1 && d1.html.indexOf('<img data-rv-field="photo" alt=""><h3 data-rv-field="n">Asha Rao</h3>') !== -1, d1.html);
+  check('1.21 drawing the same records a second time changes nothing', !d2.changed && d2.html === d1.html, diffPages(d1.html, d2.html));
+  /* the same, over every kind of list on the test page and records with and without each value */
+  var sets = [
+    bare,
+    rows({ speakers: [{ id: 's1', name: 'Asha Rao', desig: 'CTO', photoUrl: 'https://x/asha.jpg', li: 'https://www.linkedin.com/in/asha', bio: 'Leads.' }, { id: 's2', name: 'Meera Iyer' }],
+      partners: [{ id: 'p1', name: 'Acme', url: 'https://acme.example', logoUrl: 'https://x/acme.png' }, { id: 'p2', name: 'Beta' }],
+      faqs: [{ id: 'f1', question: 'Q?', answer: '' }], sessions: [{ id: 'x1', title: 'Talk', start: '10:00', end: '', speakerIds: ['s1'], groupId: 'd1' }],
+      'agenda-groups': [{ id: 'd1', name: 'Day 1', date: '2027-06-22' }], contacts: [{ id: 'k1', label: 'Sales', name: 'Ravi', email: '', phone: '' }] }),
+    rows()
+  ];
+  var steady = sets.every(function (set) {
+    return [SAMPLE, sitePage({ speakers: SPEAKER_MODEL })].every(function (page) {
+      var first = SR.renderRecords(page, set), second = SR.renderRecords(first.html, set);
+      return !second.changed && second.html === first.html;
+    });
+  });
+  check('1.22 every list, with and without each value: a second draw of the same records changes nothing', steady);
 })();
 
 /* ===================== 2. the routes ===================== */
@@ -284,6 +314,44 @@ function addFaq(id, fid, q, a) { FB.docs['events/' + id + '/faqs/' + fid] = { qu
   check('2.24 a real template draws FAQs in the site editor: the console is told to open it', r.status === 200 && r.body.needsEditor.indexOf('faq') !== -1 && r.body.staged === false, r.text);
   r = await call('POST', '/api/event/site/records', { body: { eventId: ID } });
   check('2.25 signed out: refused', r.status === 401, r.status);
+
+  /* B05 verify: a Save that answered "Nothing new to save" leaves the editor on a Content version; another Content
+     version made since is no conflict ("Save over version 10?" named the same person), a person's save is */
+  var ID3 = 'cr-chain', P3 = sitePage();
+  FB.docs['events/' + ID3] = { name: 'Chain', createdAt: NOW, templateId: 'gen-cr-chain', site: { version: 1, snapshotVersion: 1, templateId: 'gen-cr-chain' } };
+  await save('events/' + ID3 + '/site/page.html', P3);
+  await save('events/' + ID3 + '/site/snapshot.json', JSON.stringify({ nodes: ['s1'] }));
+  addFaq(ID3, 'c1', 'First question?', 'One.');
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: ID3 } });
+  var onV2 = file('events/' + ID3 + '/site/page.html');
+  check('2.26 a Content change: version 2, made on version 1', r.status === 200 && r.body.version === 2 && FB.docs['events/' + ID3].site.contentBase === 1, r.text);
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID3, templateId: 'gen-cr-chain', baseVersion: 1, snapshot: { nodes: ['s1'] }, html: onV2 } });
+  check('2.27 the editor saves nothing new: "nothing new", on version 2', r.status === 200 && r.body.unchanged === true && r.body.version === 2, r.text);
+  addFaq(ID3, 'c2', 'Second question?', 'Two.');
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: ID3 } });
+  check('2.28 another Content change: version 3, still made on version 1', r.status === 200 && r.body.version === 3 && FB.docs['events/' + ID3].site.contentBase === 1, r.text);
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID3, templateId: 'gen-cr-chain', baseVersion: 2, snapshot: { nodes: ['s1', 'edit'] },
+    html: onV2.replace('<h1>Big Summit 2027</h1>', '<h1>Big Summit 2027 — Pune</h1>') } });
+  var p4 = file('events/' + ID3 + '/site/page.html') || '';
+  check('2.29 the editor on version 2 saves an edit: no conflict, version 4, and both FAQs stay', r.status === 200 && r.body.version === 4 && /— Pune/.test(p4) &&
+    /First question\?/.test(p4) && /Second question\?/.test(p4) && FB.docs['events/' + ID3].site.contentBase == null, r.status + ' ' + r.text.slice(0, 300));
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID3, templateId: 'gen-cr-chain', baseVersion: 3, snapshot: { nodes: ['old'] }, html: onV2 } });
+  check('2.30 a save built on a Content version from before a person\'s save is a conflict', r.status === 409 && r.body.code === 'site-conflict' && r.body.current.version === 4, r.status + ' ' + r.text);
+  addFaq(ID3, 'c3', 'Third question?', 'Three.');
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: ID3 } });
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID3, templateId: 'gen-cr-chain', baseVersion: 3, snapshot: { nodes: ['old'] }, html: onV2 } });
+  check('2.31 …and still one when Content versions came after that save', FB.docs['events/' + ID3].site.version === 5 && r.status === 409 && r.body.current.version === 5, r.status + ' ' + r.text);
+
+  /* B05 verify: a site with pages shows one FAQ on its home page and on its FAQ page — "1 FAQ added", not 2 */
+  var ID4 = 'cr-pages';
+  var MP = sitePage().replace('<footer', '<section data-rv-section="award-faq" data-rv-key="award-faq" id="award-faq" data-rv-page="award-faq"><h2>All the questions</h2><div class="list">' + FAQ_MODEL + '</div></section><footer');
+  FB.docs['events/' + ID4] = { name: 'Pages', createdAt: NOW, templateId: 'gen-cr-pages', site: { version: 1, snapshotVersion: 1, templateId: 'gen-cr-pages' } };
+  await save('events/' + ID4 + '/site/page.html', MP);
+  addFaq(ID4, 'm1', 'Who can enter?', 'Any company.');
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: ID4 } });
+  var c4p = changes(ID4).filter(function (c) { return c.version === 2; })[0];
+  check('2.32 one FAQ on two pages: drawn on both, counted once', r.status === 200 && r.body.summary === 'Content: 1 FAQ added' && count(file('events/' + ID4 + '/site/page.html'), 'Who can enter?') === 2 &&
+    c4p && c4p.summary === 'Content: 1 FAQ added' && c4p.items.length === 1, r.text.slice(0, 300));
 
   if (failures.length) { console.error('site-records: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - ')); process.exit(1); }
   console.log('site-records: all ' + checks + ' checks passed');

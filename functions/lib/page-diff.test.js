@@ -91,6 +91,27 @@ ok(types(card) === 'record-added:faq' && card[0].after === 'When is it?', 'a rea
 var wizard = diffPages(page(sec('faq', '<h2>FAQ</h2><ul><li data-rv-item="faq"><b>A</b></li></ul>')), page(sec('faq', '<h2>FAQ</h2><ul><li data-rv-item="faq"><b>B</b></li></ul>')));
 ok(!wizard.some(function (i) { return /^record-/.test(i.type); }), 'a card the wizard wrote (no record id) is not one of Content\'s records', JSON.stringify(wizard));
 
+/* a site with pages shows a record on the home page and again on a page of its own: it is one record (B05 verify:
+   one FAQ added read "Content: 2 FAQs added") */
+function mpPage(homeList, pageList) {
+  return page(sec('nav', '<a>Home</a>', ' data-rv-page="*"') + sec('faq', '<h2>FAQs</h2><div class="list">' + homeList + '</div>', ' id="faq"') +
+    sec('award-faq', '<h2>All the FAQs</h2><div class="list">' + pageList + '</div>', ' id="award-faq" data-rv-page="award-faq"'));
+}
+var P = faqItem('f1', 'Is there parking at the venue?', 'Yes, in the basement.'), L = faqItem('f2', 'Is lunch served?', 'Yes.');
+var mpAdded = diffPages(mpPage(P, P), mpPage(P + L, P + L));
+ok(types(mpAdded) === 'record-added:faq' && summarise(mpAdded) === 'Content: 1 FAQ added', 'one FAQ added, shown on the home page and the FAQ page: 1 FAQ added', types(mpAdded) + ' / ' + summarise(mpAdded));
+var mpChanged = diffPages(mpPage(P + L, P + L), mpPage(P + L.replace('Yes.', 'Yes, at noon.'), P + L.replace('Yes.', 'Yes, at noon.')));
+ok(types(mpChanged) === 'record-changed:faq' && mpChanged[0].before === 'Yes.' && mpChanged[0].after === 'Yes, at noon.' && summarise(mpChanged) === 'Content: 1 FAQ changed', 'its answer changed in both places: 1 FAQ changed', JSON.stringify(mpChanged));
+var mpRemoved = diffPages(mpPage(P + L, P + L), mpPage(P, P));
+ok(types(mpRemoved) === 'record-removed:faq' && mpRemoved[0].before === 'Is lunch served?', 'removed from both places: 1 FAQ removed', JSON.stringify(mpRemoved));
+var mpHomeOnlyQuestion = mpPage(faqItem('f2', 'Is lunch served?', ''), L);
+ok(diffPages(mpHomeOnlyQuestion, mpHomeOnlyQuestion.split('Yes.').join('Yes, at noon.')).map(function (i) { return i.type + ':' + i.kind + ':' + i.after; }).join() === 'record-changed:faq:Yes, at noon.',
+  'one place shows the question, the other the answer too: what it shows is what both show');
+var mpOld = mpPage(faqItem('', 'Is lunch served?', 'Yes.'), faqItem('', 'Is lunch served?', 'Yes.'));
+ok(diffPages(mpOld, mpPage(L, L)).length === 0, 'saved before records carried their id: the same name on both pages is the same record, so ids coming in are no change');
+var twins = faqPage(faqItem('', 'To be announced', 'Soon.') + faqItem('', 'To be announced', 'Later.'));
+ok(types(diffPages(twins, faqPage(MODEL, true))) === 'record-removed:faq,record-removed:faq', 'two records named the same in one list are still two');
+
 ok(summarise(t) === '2 sections edited', 'summary of edits', summarise(t));
 ok(summarise(added.concat(moved, design)) === '1 added, 1 moved, site design changed', 'summary of a mix', summarise(added.concat(moved, design)));
 ok(summarise([]) === 'no visible change', 'summary of nothing');

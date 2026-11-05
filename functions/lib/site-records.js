@@ -28,7 +28,10 @@
 const { parseDocument } = require('htmlparser2');
 const render = require('dom-serializer').default;
 const domutils = require('domutils');
-const { Text } = require('domhandler');
+/* A text node of the same kind htmlparser2 builds, taken from htmlparser2 itself: domhandler is only its own
+   dependency, not one this app declares, so requiring it here could break on an install that lays it out
+   differently (the deploy installs from the root package.json alone). */
+const Text = parseDocument('x').children[0].constructor;
 const RR = require('../../templates/_shared/rv-records.js');
 
 function isEl(n) { return !!n && domutils.isTag(n); }
@@ -97,23 +100,26 @@ function labelOnlyLine(fieldEl) {
   return domutils.textContent(line).replace(/\s+/g, ' ').trim().length <= RR.LABEL_LINE_CHARS ? line : null;
 }
 
-function setField(el, field, value, kind, refill) {
+function setField(el, field, value, kind) {
   var isImage = RR.isImageField(field), nested = !!findOne(el, function (e) { return has(e, 'data-rv-field'); });
   if (!value) {
+    /* What the record does not have is taken away, whether the model is the design's sample item or a card drawn
+       from an earlier record: the sample's picture or link ("#", "#sponsors", another sponsor's logo) or the
+       last record's (another speaker's LinkedIn, kept on a hidden link) is never this record's. Keeping it only
+       meant the next draw took it away — a version nobody made, recorded as "1 sponsor changed" (B05 verify).
+       Drawing the same records twice now changes nothing. */
+    if (RR.isLinkField(kind, field) && el.name === 'a') delete el.attribs.href;
+    if (isImage) {
+      if (el.name === 'img') delete el.attribs.src; else setBackground(el, '');
+      return;
+    }
     /* a record's text field that has nothing is cleared and hidden: the design's sample words are never the
        event's; its line goes too when all that is left in it is a label */
-    if (!isImage && !nested) {
+    if (!nested) {
       setText(el, ''); el.attribs.hidden = '';
       var line = labelOnlyLine(el);
       if (line) { line.attribs.hidden = ''; line.attribs['data-rv-empty-line'] = ''; }
-      return;
     }
-    /* a model drawn from an earlier record still holds that record's values; the design's own placeholder
-       item keeps its placeholder picture */
-    if (!refill) return;
-    if (isImage) { if (el.name === 'img') delete el.attribs.src; else setBackground(el, ''); }
-    else if (RR.isLinkField(kind, field) && el.name === 'a') delete el.attribs.href;
-    else if (!nested) setText(el, '');
     return;
   }
   if (isImage) {
@@ -159,8 +165,8 @@ function setProfile(card, profile) {
 function fieldsOf(card) {
   return (has(card, 'data-rv-field') ? [card] : []).concat(findAll(card, function (e) { return has(e, 'data-rv-field'); }));
 }
-function fillClone(clone, item, kind, refill) {
-  fieldsOf(clone).forEach(function (el) { setField(el, attr(el, 'data-rv-field'), item[attr(el, 'data-rv-field')], kind, refill); });
+function fillClone(clone, item, kind) {
+  fieldsOf(clone).forEach(function (el) { setField(el, attr(el, 'data-rv-field'), item[attr(el, 'data-rv-field')], kind); });
   if (kind === 'speakers') setProfile(clone, item.profile);
   if (kind === 'sessions') {
     clone.attribs['data-rv-day'] = item.dayKey || '';
@@ -318,10 +324,10 @@ function renderRecords(html, rows) {
     markFilled(doc, kind, mark);
     report.filled.push(kind);
     mine.forEach(function (list) {
-      var model = list.standing[0], refill = has(model, 'data-rv-filled');
+      var model = list.standing[0];
       var clones = items[kind].map(function (item) {
         var clone = model.cloneNode(true);
-        fillClone(clone, item, kind, refill);
+        fillClone(clone, item, kind);
         return clone;
       });
       var same = clones.length === list.standing.length && clones.every(function (c, i) { return signature(c) === signature(list.standing[i]); });

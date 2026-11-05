@@ -697,28 +697,29 @@
        partners: name, url (href on an <a>, else text), logo (image)
        contact:  label, name, email, phone
        glimpses: imageUrl (image), caption
-     Missing/falsy values leave the clone's existing placeholder content alone rather than blanking it —
-     same never-wipe-to-empty discipline used elsewhere in this file (see translate() comment above). */
-  function setGenericRepeatField(fieldEl, field, value, kind, refill) {
+     A value the record does not have is never the design's sample: see the comments below. */
+  function setGenericRepeatField(fieldEl, field, value, kind) {
     var isImage = field === 'photo' || field === 'logo' || field === 'imageUrl';
+    var isLink = (kind === 'partners' && field === 'url') || (kind === 'speakers' && field === 'li');
     if (!value) {
+      /* A picture or link the record does not have is taken away, whether the model is the design's sample item or
+         a card drawn from an earlier record: either way it is not this record's (a sample person's photo, another
+         partner's logo, a "#" link, the last speaker's LinkedIn on a hidden link). The server draws the same way
+         (functions/lib/site-records.js), so drawing the same records again changes nothing. */
+      if (isLink && fieldEl.tagName === 'A') fieldEl.removeAttribute('href');
+      if (isImage) {
+        if (fieldEl.tagName === 'IMG') fieldEl.removeAttribute('src'); else fieldEl.style.backgroundImage = '';
+        return;
+      }
       /* A record's text field that has nothing is cleared and hidden: the design's sample words ("Session
          description goes here", "Speaker names") are never the event's, and visitors would read them (the
-         owner, 23 Oct 2026). A picture keeps the design's placeholder on a first fill. */
-      if (!isImage && !fieldEl.querySelector('[data-rv-field]')) {
+         owner, 23 Oct 2026). */
+      if (!fieldEl.querySelector('[data-rv-field]')) {
         fieldEl.textContent = ''; fieldEl.setAttribute('hidden', '');
         /* its line goes too when all that is left in it is a label ("Speakers" over nothing) */
         var line = labelOnlyLine(fieldEl);
         if (line) { line.setAttribute('hidden', ''); line.setAttribute('data-rv-empty-line', ''); }
-        return;
       }
-      /* A model that was itself drawn from a record (refill) still holds that record's values: what this
-         record does not have is cleared, or it would show another partner's logo or link. The first fill,
-         from the design's own placeholder item, leaves the placeholder where the record has nothing. */
-      if (!refill) return;
-      if (isImage) { if (fieldEl.tagName === 'IMG') fieldEl.removeAttribute('src'); else fieldEl.style.backgroundImage = ''; }
-      else if (((kind === 'partners' && field === 'url') || (kind === 'speakers' && field === 'li')) && fieldEl.tagName === 'A') fieldEl.removeAttribute('href');
-      else if (!fieldEl.querySelector('[data-rv-field]')) fieldEl.textContent = '';
       return;
     }
     if (isImage) {
@@ -726,7 +727,7 @@
       else fieldEl.style.backgroundImage = 'url(' + value + ')';
       return;
     }
-    if ((kind === 'partners' && field === 'url') || (kind === 'speakers' && field === 'li')) {
+    if (isLink) {
       if (fieldEl.tagName === 'A') fieldEl.href = value;
       else fieldEl.textContent = value;
       return;
@@ -747,12 +748,12 @@
     return words.length <= 30 ? line : null;
   }
 
-  function fillGenericRepeatClone(clone, item, kind, refill) {
+  function fillGenericRepeatClone(clone, item, kind) {
     var fields = clone.hasAttribute('data-rv-field') ? [clone] : [];
     fields = fields.concat(Array.prototype.slice.call(clone.querySelectorAll('[data-rv-field]')));
     fields.forEach(function (fieldEl) {
       var field = fieldEl.getAttribute('data-rv-field');
-      setGenericRepeatField(fieldEl, field, item[field], kind, refill);
+      setGenericRepeatField(fieldEl, field, item[field], kind);
     });
     if (kind === 'speakers') setSpeakerProfile(clone, item.profile);
     if (kind === 'sessions') {
@@ -883,12 +884,12 @@
       if (list) list.standing.push(el); else lists.push({ parent: el.parentNode, standing: [el] });
     });
     lists.forEach(function (list) {
-      var tpl = list.standing[0], refill = tpl.hasAttribute('data-rv-filled');
+      var tpl = list.standing[0];
       var before = list.standing[list.standing.length - 1].nextSibling;
       var drawn = items.map(function (item) {
         var clone = tpl.cloneNode(true);
         clone.classList.remove('ed-selected', 'sec-active');
-        fillGenericRepeatClone(clone, item, kind, refill);
+        fillGenericRepeatClone(clone, item, kind);
         return clone;
       });
       list.standing.forEach(function (el) { el.remove(); });

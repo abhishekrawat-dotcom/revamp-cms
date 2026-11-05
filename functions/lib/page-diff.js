@@ -257,12 +257,37 @@ function capital(w) { return w.charAt(0).toUpperCase() + w.slice(1); }
 /* what a record shows, to tell whether it changed */
 function shown(r) { return r.lines.join('\n') + '\u0001' + r.pictures.map(fileName).join('\n') + '\u0001' + r.links.join('\n'); }
 
+/* One record shown in more than one place is one record: a site with pages lists its FAQs, speakers or partners on
+   the home page and again on a page of their own, and one FAQ added in Content is "1 FAQ added", not one per page
+   that shows it (B05 verify). Places are the same record when they carry the same id, or — on a page saved before
+   records carried their id — the same name in another section. What it shows is what all its places show. */
+function oneEach(records) {
+  var out = [], byId = {};
+  records.forEach(function (r) {
+    var same = (r.id && byId[r.id]) || out.filter(function (o) {
+      return (!o.id || !r.id) && !!r.label && o.label === r.label && o.sections.indexOf(r.section) === -1;
+    })[0];
+    if (!same) {
+      same = Object.assign({}, r, { sections: [r.section] });
+      out.push(same);
+      if (r.id) byId[r.id] = same;
+      return;
+    }
+    if (r.id && !same.id) { same.id = r.id; byId[r.id] = same; }
+    same.sections.push(r.section);
+    same.lines = same.lines.concat(onlyIn(r.lines, same.lines));
+    same.pictures = same.pictures.concat(onlyIn(r.pictures, same.pictures));
+    same.links = same.links.concat(onlyIn(r.links, same.links));
+  });
+  return out;
+}
+
 /* Each kind of record on its own: a record on both pages is the same record when it has the same id, or — on a
    page saved before records carried their id — when it is named the same. The rest were added or removed. */
 function diffRecords(before, after) {
   var items = [];
   RR.KINDS.forEach(function (kind) {
-    var a = before.filter(function (r) { return r.kind === kind; }), b = after.filter(function (r) { return r.kind === kind; });
+    var a = oneEach(before.filter(function (r) { return r.kind === kind; })), b = oneEach(after.filter(function (r) { return r.kind === kind; }));
     if (!a.length && !b.length) return;
     var pairs = [], leftA = a.slice(), leftB = b.slice();
     function pair(match) {
