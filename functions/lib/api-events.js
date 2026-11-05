@@ -807,5 +807,6 @@ function handleEventClone(req, res) {
 module.exports = { handleUpload, handleSlugAvailable, handleEventDelete, handleEventRestore, handleEventClone };
 
 // Exported for tests and for the other backend modules to share ONE definition of each (the address rule,
-// "this event exists", what an image is) instead of growing a second copy. Routing uses only the five above.
-module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };
+// "this event exists", what an image is, which SVG is unsafe; lib/create-drafts.js keeps a draft's pictures by them)
+// instead of growing a second copy. Routing uses only the five above.
+module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, svgIsActive, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };

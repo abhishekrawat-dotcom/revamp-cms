@@ -17,7 +17,7 @@ function tick(n) { var p = Promise.resolve(); for (var i = 0; i < (n || 8); i++)
 
 var page = read('create-event.html');
 var inline = (page.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); });
-var SRC = inline.filter(function (s) { return s.indexOf("var STORE_KEY = 'revamp.createEvent.draft.v1'") !== -1; })[0] || '';
+var SRC = inline.filter(function (s) { return s.indexOf("var DRAFT_PREFIX = 'revamp.createEvent.draft.v2.'") !== -1; })[0] || '';
 var ROSTER = etEvents.portalList();
 var HR_LINK = 'https://hr.economictimes.indiatimes.com/nexttech2026';
 var CIO_LINK = 'https://cio.economictimes.indiatimes.com/annual-conclave';
@@ -172,7 +172,8 @@ function load(o) {
   };
   ctx.window = ctx;
   ctx.self = ctx;
-  if (o.draft) store['revamp.createEvent.draft.v1'] = JSON.stringify(o.draft);
+  /* a draft this browser kept: under its own key, and named the one it worked on last (create-event.html, UX-048) */
+  if (o.draft) { store['revamp.createEvent.draft.v2.' + o.draft.draftId] = JSON.stringify(o.draft); store['revamp.createEvent.current.v2'] = o.draft.draftId; }
   Object.keys(o.storage || {}).forEach(function (k) { store[k] = o.storage[k]; });
   /* portal-picker.js itself, over a signed-in RevampAuth whose answers are set here (o.api: url -> [status, body]) */
   if (o.realPicker) {

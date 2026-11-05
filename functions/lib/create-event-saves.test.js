@@ -8,7 +8,9 @@
 //   UX-045      the address is checked with the server as it is typed, a taken one offers the free one ("Use …"), and a
 //               taken address at the hand-off leads back to the address box instead of a Retry that cannot work;
 //   UX-047      the brief's previous edition can always be given by its link, which opens by itself when ET's list fails;
-//   UX-048      the header says the draft is on this computer, and not before anything is entered;
+//   UX-048      drafts are saved to the person's account as typed (the header says where they are), several at once; ?new=1
+//               keeps an unfinished one in the account instead of discarding it; Resume (?draft=) opens one on any computer
+//               with its pictures; a save from another computer is never overwritten unseen; the dashboard lists them;
 //   UX-049      Starts / Ends are a date and a time, a date alone is whole (9:00 / 18:00), half-typed boxes are named for
 //               what they lack, Ends is optional as in the console, and the boxes are wide enough.
 // The page runs in a vm over a fake DOM (fixtures/create-event-page.js); editor-template-ui.js's functions are extracted.
@@ -58,8 +60,17 @@ check('UX-044 no browser-only edition registry or static seed list is read', EDI
   EDITIONS.indexOf('revamp.eventTemplates') === -1);
 check('UX-044 the previous-edition button is never the red primary', SRC.indexOf("'<button class=\"btn btn-secondary btn-sm\" id=\"btn-edition-menu\"") !== -1 &&
   SRC.indexOf("(locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm\" id=\"btn-edition-menu\"") === -1);
-check('UX-048 the header says where the draft is, hidden until there is one', /<span class="save-state" id="save-state" title="This draft is kept in this browser only\. Another computer or a colleague does not see it\." hidden><span class="d"><\/span>Saved on this computer<\/span>/.test(page) &&
+check('UX-048 the header says where the draft is, hidden until there is one', /<span class="save-state" id="save-state" title="Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer\." hidden><span class="d"><\/span>Saved to your account<\/span>/.test(page) &&
   page.indexOf('Draft autosaved</span>') === -1 && SRC.indexOf("'Draft autosaved'") === -1);
+check('UX-048 the page loads create-drafts.js before its own script', page.indexOf('<script src="create-drafts.js"></script>') !== -1 && page.indexOf('<script src="create-drafts.js"></script>') < page.indexOf(SRC));
+check('UX-048 the dashboard lists the drafts in its Drafts view, with Resume and Discard', (function () {
+  var L = F.read('Event_Listing.html');
+  return L.indexOf('<script src="create-drafts.js"></script>') !== -1 && L.indexOf('<section id="create-drafts" aria-label="Unfinished in Create Event"></section>') !== -1 &&
+    /function renderCreateDrafts\(\)\{[\s\S]*?if \(state\.specialView !== 'draft'\)/.test(L) && L.indexOf('>Resume</a>') !== -1 && L.indexOf('data-cdraft-discard=') !== -1 &&
+    /function renderApp\(\)\{[\s\S]*?renderCreateDrafts\(\);/.test(L);
+})());
+check('UX-048 Save & exit goes to the dashboard\'s Drafts, where the draft is listed', SRC.indexOf("window.location.href = 'Event_Listing.html' + (toDrafts === true ? '#view=draft' : '');") !== -1 &&
+  SRC.indexOf("toast('Draft saved to your account. It is under Drafts on the events dashboard.');") !== -1);
 check('UX-049 Starts and Ends are no longer datetime-local boxes', page.indexOf('id="f-start" type="datetime-local"') === -1 && SRC.indexOf('dateTimeCell(\'start\', \'Starts\', true) + dateTimeCell(\'end\', \'Ends\', false)') !== -1);
 check('UX-047 the link fallback is in the markup: a button and a visible URL box', /<button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-paste">Paste the link instead<\/button>/.test(page) &&
   /<div class="et-link" id="gb-prev-link" hidden>\s*<input class="inp" id="gb-previous" type="url"/.test(page) && page.indexOf('<input type="hidden" id="gb-previous">') === -1);
@@ -244,13 +255,244 @@ async function main() {
   check('UX-047 a link that is not an address is corrected in its own box', p.$('gb-prev-link').hidden === false);
 
   /* =====================================================================================================
-     UX-048 where the draft is
+     UX-048 drafts in the person's account: saved as typed, listed, resumed anywhere, several at once
      ===================================================================================================== */
-  p = F.load();
-  p.ce('S.step = 1; S.step1Phase = "category"; S.basics.name = ""; renderSaveState()');
+  var CD = require('../../create-drafts.js');
+  /* the account, as create-drafts.js reaches it, in memory: drafts with their revision, pictures by slot */
+  function account() {
+    var A = { store: {}, files: {}, calls: [], fail: null };
+    function clone(v) { return JSON.parse(JSON.stringify(v)); }
+    A.api = {
+      writerId: function () { return 'wtest01'; }, serverSlot: CD.serverSlot, localSlot: CD.localSlot, whenLabel: CD.whenLabel,
+      put: function (id, rev, state, opts) {
+        A.calls.push('put ' + id + ' ' + rev + (opts && opts.force ? ' force' : ''));
+        if (A.fail) return Promise.reject(A.fail);
+        var cur = A.store[id], curRev = cur ? cur.rev : 0;
+        if (!(opts && opts.force) && curRev !== rev) {
+          return Promise.reject(Object.assign(new Error('conflict'), { status: 409, code: 'draft-conflict',
+            current: cur ? { rev: cur.rev, savedAt: cur.state.savedAt, updatedAt: cur.state.savedAt, writer: cur.writer } : null }));
+        }
+        A.store[id] = { rev: curRev + 1, state: clone(state), writer: (opts && opts.writer) || '' };
+        return Promise.resolve({ ok: true, rev: curRev + 1, savedAt: state.savedAt });
+      },
+      get: function (id) {
+        A.calls.push('get ' + id);
+        if (A.fail) return Promise.reject(A.fail);
+        var cur = A.store[id];
+        return Promise.resolve(cur ? { id: id, rev: cur.rev, savedAt: cur.state.savedAt, files: cur.state.files || {}, state: clone(cur.state) } : null);
+      },
+      remove: function (id) { A.calls.push('remove ' + id); delete A.store[id]; return Promise.resolve(); },
+      flushRemovals: function () { return Promise.resolve(); },
+      putFile: function (id, slot, blob, name) { A.calls.push('putFile ' + id + ' ' + slot + ' ' + name); if (A.fail) return Promise.reject(A.fail); A.files[id + '/' + slot] = blob; return Promise.resolve({ ok: true }); },
+      getFile: function (id, slot) { A.calls.push('getFile ' + id + ' ' + slot); return Promise.resolve(A.files[id + '/' + slot] || null); }
+    };
+    return A;
+  }
+  var AUTH = { authedFetch: function () { return Promise.reject(new Error('not used here')); }, currentUser: function () { return { uid: 'u-asha' }; },
+    whenResolved: function () { return Promise.resolve(); }, ensureSession: function () { return Promise.resolve(); } };
+  /* FileReader, which node has not: the page reads a fetched logo back as a data URL */
+  function FakeReader() {}
+  FakeReader.prototype.readAsDataURL = function (blob) {
+    var self = this;
+    blob.arrayBuffer().then(function (buf) { self.result = 'data:' + (blob.type || '') + ';base64,' + Buffer.from(buf).toString('base64'); self.onload(); });
+  };
+  function acctPage(A, o) {
+    o = o || {};
+    var pg = F.load(Object.assign({ keepSave: true, globals: { RevampCreateDrafts: A.api, RevampAuth: o.auth || AUTH, FileReader: FakeReader } }, o));
+    pg.ctx.Blob = Blob;
+    pg.ce('PUSH_DELAY_MS = 0; PUSH_RETRY_MS = 60000; ENSURE_TIMEOUT_MS = 2000; LEAVE_WAIT_MS = 2000;');
+    return pg;
+  }
+  var A = account();
+  p = acctPage(A);
+  p.ce('S.step = 1; S.step1Phase = "category"; renderSaveState()');
   check('UX-048 nothing is said about saving on the first screen before anything is entered', p.$('save-state').hidden === true);
-  p.ce('S.step1Phase = "method"; renderSaveState()');
-  check('UX-048 afterwards it says "Saved on this computer"', p.$('save-state').hidden === false && p.$('save-state').innerHTML.indexOf('Saved on this computer') !== -1);
+  p.ce('S.step1Phase = "method"; save()');
+  await tick();
+  check('UX-048 a type picked but nothing typed: nothing goes to the account, and nothing is said', A.calls.length === 0 && p.$('save-state').hidden === true, A.calls);
+  check('UX-048 …this browser keeps it under its own key, named as its last draft', p.ce('localStorage.getItem(CURRENT_KEY)') === p.ce('S.draftId') &&
+    !!p.store['revamp.createEvent.draft.v2.' + p.ce('S.draftId')] && !p.store['revamp.createEvent.draft.v1']);
+  check('UX-048 …and the tab\'s address names the draft (a reload opens this one)', p.log.replaceState >= 1);
+  p.ce('S.basics.name = "QA Account Summit"; save()');
+  check('UX-048 typed: "Saving…" while it goes to the account', p.$('save-state').hidden === false && p.$('save-state').innerHTML.indexOf('Saving…') !== -1, p.$('save-state').innerHTML);
+  await sleep(20); await tick();
+  var id1 = p.ce('S.draftId');
+  check('UX-048 …then it is in the account, as this draft, revision 1', !!A.store[id1] && A.store[id1].rev === 1 && A.store[id1].state.basics.name === 'QA Account Summit' &&
+    p.ce('S.rev') === 1 && p.ce('inAccount()') === true, A.calls);
+  check('UX-048 …and the header says "Saved to your account", with where to find it', p.$('save-state').innerHTML.indexOf('Saved to your account') !== -1 &&
+    p.$('save-state').title === 'Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer.', p.$('save-state').innerHTML);
+  check('UX-048 …the browser\'s copy knows its revision; the draft is marked as this person\'s', JSON.parse(p.store['revamp.createEvent.draft.v2.' + id1]).rev === 1 && p.ce('S.owner') === 'u-asha');
+  /* the account cannot be reached */
+  A.fail = new TypeError('Failed to fetch');
+  p.ce('S.basics.venue = "Jio World Centre"; save()');
+  await sleep(20); await tick();
+  check('UX-048 offline: "Saved on this computer only", and the warning says why, with Try now', p.ce('sync.state') === 'failed' &&
+    p.$('save-state').innerHTML.indexOf('Saved on this computer only') !== -1 && p.$('draft-warning').hidden === false &&
+    p.$('draft-warning').innerHTML.indexOf('Your draft is saved on this computer only: it could not be saved to your account. The server could not be reached. Check your connection and try again. It is tried again by itself.') !== -1 &&
+    !!p.$('draft-warning-act') && p.$('draft-warning-act').textContent === 'Try now', [p.$('save-state').innerHTML, p.$('draft-warning').innerHTML]);
+  check('UX-048 …nothing is lost: this browser has it, and leaving does not warn', JSON.parse(p.store['revamp.createEvent.draft.v2.' + id1]).basics.venue === 'Jio World Centre' && p.ce('draftUnsaved()') === false);
+  A.fail = null;
+  p.winFire('online');
+  await sleep(20); await tick();
+  check('UX-048 back online: sent at once, and the warning goes', A.store[id1].rev === 2 && A.store[id1].state.basics.venue === 'Jio World Centre' && p.$('draft-warning').hidden === true &&
+    p.$('save-state').innerHTML.indexOf('Saved to your account') !== -1);
+  /* changed on another computer meanwhile */
+  A.store[id1] = { rev: 5, state: Object.assign({}, A.store[id1].state, { savedAt: '2026-11-05T09:20:00.000Z', basics: { name: 'Changed elsewhere' } }), writer: 'wother9' };
+  p.ce('S.basics.city = "Mumbai"; save()');
+  await sleep(20); await tick();
+  check('UX-048 changed on another computer: not overwritten unseen; the person is told and chooses', p.ce('sync.state') === 'conflict' && A.store[id1].rev === 5 &&
+    /^This draft was changed on another computer \([^)]+\)\. What you change here is not saved to your account until you choose which to keep\.$/.test(p.ce('unsavedReason()')) &&
+    p.$('draft-warning-act').textContent === 'Open the newer one' && p.$('draft-warning-act-1').textContent === 'Keep this one' &&
+    p.$('save-state').innerHTML.indexOf('Not saved to your account') !== -1, [p.ce('unsavedReason()'), p.$('draft-warning').innerHTML]);
+  p.$('draft-warning-act-1').onclick();
+  await sleep(20); await tick();
+  check('UX-048 Keep this one: saved over it as a new revision', A.store[id1].rev === 6 && A.store[id1].state.basics.city === 'Mumbai' && p.ce('sync.state') === 'saved' && A.calls.slice(-1)[0] === 'put ' + id1 + ' 5 force' || A.calls.slice(-1)[0] === 'put ' + id1 + ' 1 force' || /force$/.test(A.calls.slice(-1)[0]), A.calls.slice(-2));
+  var replaced = null;
+  p.ctx.location.replace = function (u) { replaced = u; };
+  A.store[id1].rev = 9; A.store[id1].writer = 'wother9';
+  p.ce('S.basics.city = "Pune"; save()');
+  await sleep(20); await tick();
+  p.$('draft-warning-act').onclick();
+  check('UX-048 Open the newer one: the page opens the account\'s copy of this draft', replaced === '/create-event.html?draft=' + id1 + '&from=account', replaced);
+  /* this browser's own earlier save whose answer never came back is not "another computer" */
+  p = acctPage(A);
+  p.ce('S.basics.name = "QA Own Echo"; save()');
+  await sleep(20); await tick();
+  var id2 = p.ce('S.draftId');
+  A.store[id2].rev = 4;            // as if a save from this browser had landed and its answer been lost
+  p.ce('S.basics.name = "QA Own Echo 2"; save()');
+  await sleep(20); await tick();
+  check('UX-048 a save of this browser\'s own whose answer was lost: taken up without asking', A.store[id2].rev === 5 && A.store[id2].state.basics.name === 'QA Own Echo 2' && p.ce('sync.state') === 'saved', A.calls.slice(-3));
+  /* discarded elsewhere */
+  delete A.store[id2];
+  p.ce('S.basics.name = "QA Own Echo 3"; save()');
+  await sleep(20); await tick();
+  check('UX-048 discarded on the dashboard while open here: said, with Save it again and Discard it here too', p.ce('sync.state') === 'conflict' &&
+    p.ce('unsavedReason()') === 'This draft was discarded from your Drafts, on the events dashboard or on another computer. What you change here is not saved to your account.' &&
+    p.$('draft-warning-act').textContent === 'Save it again' && p.$('draft-warning-act-1').textContent === 'Discard it here too');
+  p.$('draft-warning-act').onclick();
+  await sleep(20); await tick();
+  check('UX-048 Save it again: back in the account', !!A.store[id2] && A.store[id2].state.basics.name === 'QA Own Echo 3' && p.ce('sync.state') === 'saved');
+  /* pictures go to the account too, by slot and version */
+  p.ce('keepFile("img:3", { name: "speaker.png", blob: new Blob(["png"], { type: "image/png" }), savedAt: 77 })');
+  await sleep(20); await tick();
+  check('UX-048 a section picture goes to the account under its slot, and the draft lists it by version', A.calls.indexOf('putFile ' + id2 + ' img-3 speaker.png') !== -1 &&
+    JSON.stringify(p.ce('S.files["img-3"]')) === '{"name":"speaker.png","savedAt":77}' && A.store[id2].state.files['img-3'].savedAt === 77, A.calls.slice(-3));
+  p.ce('dropImageFile(3)');
+  check('UX-048 a picture taken off the draft is no longer listed', p.ce('S.files["img-3"]') === undefined);
+  check('UX-048 a PSD is never sent (its flattened banner is)', (function () { var before = A.calls.length; p.ce('sendDraftFile("psd", { name: "x.psd", blob: new Blob(["x"]), savedAt: 1 })'); return A.calls.length === before; })());
+  /* the hand-off: the draft leaves the person's Drafts before the editor opens */
+  var went = null;
+  p.ctx.location.replace = function (u) { went = u; };
+  p.ce('busy = { kind: "handoff" }; leaveForEditor(busy, "custom_editor.html?from=create&slug=qa-x")');
+  await sleep(20); await tick();
+  check('UX-048 opened in the editor: removed from the account first, then the editor opens', !A.store[id2] && A.calls.indexOf('remove ' + id2) !== -1 && went === 'custom_editor.html?from=create&slug=qa-x' &&
+    !p.store['revamp.createEvent.draft.v2.' + id2], [A.calls.slice(-2), went]);
+
+  /* ?new=1 beside an unfinished draft: kept in the account, never discarded */
+  A = account();
+  var old = { draftId: 'draft-mold01-aaa111', savedAt: '2026-11-05T08:00:00.000Z', owner: 'u-asha', step: 1, step1Phase: 'details', creationMethod: 'template',
+    basics: { category: 'IP', name: 'Old Forum', slug: 'old-forum' }, brief: {}, sections: [] };
+  p = acctPage(A, { search: '?new=1', draft: old });
+  p.ce('start = function(d){ window.__started = d === null ? "new" : (d && d.draftId) || "current"; }');
+  p.ce('init()');
+  await sleep(20); await tick();
+  check('UX-048 Create Event with an unfinished draft: it is put in the account and a new event starts at once — nothing asked, nothing discarded',
+    p.ctx.__started === 'new' && p.log.modals.length === 0 && !!A.store[old.draftId] && A.store[old.draftId].state.basics.name === 'Old Forum' &&
+    !!p.store['revamp.createEvent.draft.v2.' + old.draftId], [p.ctx.__started, p.log.modals.map(function (m) { return m.title; }), A.calls]);
+  A = account(); A.fail = new TypeError('Failed to fetch');
+  p = acctPage(A, { search: '?new=1', draft: old });
+  p.ce('start = function(d){ window.__started = d === null ? "new" : (d && d.draftId) || "current"; }');
+  p.ce('init()');
+  await sleep(20); await tick();
+  check('UX-048 …when it cannot be put there now, the person is asked as before, and told why', p.ctx.__started === undefined && p.log.modals.length === 1 &&
+    p.log.modals[0].title === 'You have an unfinished event' && p.log.modals[0].body.indexOf('it could not be saved to your account just now, so it is not in your Drafts') !== -1);
+  A = account();
+  p = acctPage(A, { search: '?new=1', draft: Object.assign({}, old, { owner: 'u-someone-else' }) });
+  p.ce('start = function(d){ window.__started = d === null ? "new" : (d && d.draftId) || "current"; }');
+  p.ce('init()');
+  await sleep(20); await tick();
+  check('UX-048 another person\'s draft left in this browser: never sent to this account, never asked about', p.ctx.__started === 'new' && !p.log.modals.length && !A.store[old.draftId] &&
+    A.calls.filter(function (c) { return /^put /.test(c); }).length === 0, A.calls);
+
+  /* Resume (?draft=<id>) on another computer: the account's copy, with its pictures */
+  A = account();
+  var their = { draftId: 'draft-mres01-bbb222', savedAt: '2026-11-05T10:00:00.000Z', owner: 'u-asha', step: 1, step1Phase: 'details', creationMethod: 'template', template: null,
+    basics: { category: 'IP', name: 'Resumed Summit', slug: 'resumed-summit', logo: true, logoName: 'logo.png' }, brief: {}, sections: [],
+    files: { logo: { name: 'logo.png', savedAt: 50 }, 'img-2': { name: 'p.jpg', savedAt: 60 } } };
+  A.store[their.draftId] = { rev: 3, state: their, writer: 'wother9' };
+  A.files[their.draftId + '/logo'] = new Blob(['png'], { type: 'image/png' });
+  A.files[their.draftId + '/img-2'] = new Blob(['jpg'], { type: 'image/jpeg' });
+  p = acctPage(A, { search: '?draft=' + their.draftId });
+  var puts = [];
+  p.ctx.RevampStore.put = function (k, rec) { puts.push([k, rec]); return Promise.resolve(); };
+  p.ce('start = function(d){ window.__started = d; }');
+  p.ce('init()');
+  await sleep(30); await tick(20);
+  var st = p.ctx.__started;
+  check('UX-048 Resume on another computer opens the account\'s copy, known to be in the account', !!st && st.draftId === their.draftId && st.basics.name === 'Resumed Summit' && st.rev === 3 && st.syncedAt === st.savedAt, st);
+  check('UX-048 …with its pictures fetched into the draft\'s own slots first (the logo as the form reads it)', puts.length === 2 &&
+    puts.some(function (x) { return x[0] === 'create:' + their.draftId + ':logo' && /^data:image\/png;base64,/.test(x[1].dataUrl) && x[1].savedAt === 50; }) &&
+    puts.some(function (x) { return x[0] === 'create:' + their.draftId + ':img:2' && x[1].blob && x[1].savedAt === 60; }), puts.map(function (x) { return x[0]; }));
+  /* this browser's copy is newer (typed here, not sent yet): that one opens */
+  A = account();
+  A.store[their.draftId] = { rev: 3, state: their, writer: 'wother9' };
+  p = acctPage(A, { search: '?draft=' + their.draftId, draft: Object.assign({}, their, { savedAt: '2026-11-05T11:00:00.000Z', rev: 3, syncedAt: '2026-11-05T10:00:00.000Z', basics: { category: 'IP', name: 'Typed here later' } }) });
+  p.ce('start = function(d){ window.__started = d; }');
+  p.ce('init()');
+  await sleep(20); await tick();
+  check('UX-048 …this browser\'s newer copy wins over an older one in the account', p.ctx.__started && p.ctx.__started.basics.name === 'Typed here later');
+  /* gone from the account: not opened, and said */
+  A = account();
+  p = acctPage(A, { search: '?draft=' + their.draftId, draft: Object.assign({}, their, { rev: 3, syncedAt: their.savedAt }) });
+  p.ce('start = function(d){ window.__started = d === null ? "new" : d; }');
+  p.ce('init()');
+  await sleep(20); await tick();
+  check('UX-048 a draft no longer in the account (discarded, or already in the editor) is not opened, and that is said', p.ctx.__started === 'new' &&
+    p.log.toasts.some(function (t) { return t.msg === 'That draft is no longer in your Drafts: it was discarded, or already opened in the editor. This is a new event.'; }) &&
+    !p.store['revamp.createEvent.draft.v2.' + their.draftId], p.log.toasts);
+
+  /* this browser's other drafts: sent if they never were, let go once the account has them and a week has passed */
+  A = account();
+  var now = Date.now(), ago = function (ms) { return new Date(now - ms).toISOString(); };
+  var unsent = { draftId: 'draft-mtid01-ccc333', savedAt: ago(1000), owner: 'u-asha', basics: { name: 'Unsent' }, brief: {}, sections: [] };
+  var oldSynced = { draftId: 'draft-mtid02-ddd444', savedAt: ago(8 * 864e5), syncedAt: ago(8 * 864e5), rev: 2, owner: 'u-asha', basics: { name: 'Old' }, brief: {}, sections: [] };
+  var empty = { draftId: 'draft-mtid03-eee555', savedAt: ago(2 * 3600e3), basics: { name: '' }, brief: {}, sections: [] };
+  var others = { draftId: 'draft-mtid04-fff666', savedAt: ago(1000), owner: 'u-other', basics: { name: 'Theirs' }, brief: {}, sections: [] };
+  var storage = {};
+  [unsent, oldSynced, empty, others].forEach(function (d) { storage['revamp.createEvent.draft.v2.' + d.draftId] = JSON.stringify(d); });
+  oldSynced.syncedAt = oldSynced.savedAt;
+  storage['revamp.createEvent.draft.v2.' + oldSynced.draftId] = JSON.stringify(oldSynced);
+  p = acctPage(A, { storage: storage });
+  p.ce('tidyLocalDrafts()');
+  await sleep(20); await tick();
+  check('UX-048 an unsent draft of this person\'s goes to the account', !!A.store[unsent.draftId] && JSON.parse(p.store['revamp.createEvent.draft.v2.' + unsent.draftId]).rev === 1, A.calls);
+  check('UX-048 a week-old one the account holds, and an old empty one, are let go here', !p.store['revamp.createEvent.draft.v2.' + oldSynced.draftId] && !p.store['revamp.createEvent.draft.v2.' + empty.draftId]);
+  check('UX-048 another person\'s is neither sent nor removed', !A.store[others.draftId] && !!p.store['revamp.createEvent.draft.v2.' + others.draftId]);
+
+  /* the one draft an older page kept for the whole browser moves to its own key */
+  p = acctPage(account(), { storage: { 'revamp.createEvent.draft.v1': JSON.stringify({ draftId: 'draft-mleg01-ggg777', savedAt: '2026-11-01T10:00:00.000Z', basics: { name: 'Legacy' } }) } });
+  p.ce('migrateLegacyDraft()');
+  check('UX-048 an older browser\'s single draft is moved to its own key and resumed', !p.store['revamp.createEvent.draft.v1'] && !!p.store['revamp.createEvent.draft.v2.draft-mleg01-ggg777'] &&
+    p.store['revamp.createEvent.current.v2'] === 'draft-mleg01-ggg777' && p.ce('readStoredDraft()').basics.name === 'Legacy');
+
+  /* two tabs: the same draft changed in the other one stops this one; the other tab noting the account's revision does not */
+  p = acctPage(account());
+  p.ce('S.basics.name = "QA Tabs"; save()');
+  await sleep(20); await tick();
+  var key = 'revamp.createEvent.draft.v2.' + p.ce('S.draftId');
+  p.winFire('storage', { key: key, newValue: JSON.stringify(Object.assign(JSON.parse(p.store[key]), { rev: 7 })) });
+  check('UX-048 the other tab only noting the account\'s revision changes nothing here', p.ce('otherTab') === '');
+  p.winFire('storage', { key: key, newValue: JSON.stringify(Object.assign(JSON.parse(p.store[key]), { savedAt: '2030-01-01T00:00:00.000Z' })) });
+  check('UX-048 typed in the other tab: this one stops saving and says so', p.ce('otherTab') === 'changed' && p.$('draft-warning-act').textContent === 'Reload to continue');
+  p.winFire('storage', { key: 'revamp.createEvent.draft.v2.draft-another-1', newValue: '{}' });
+  check('UX-048 another draft in another tab is another draft: tabs on different drafts never meet', p.ce('otherTab') === 'changed');
+
+  /* no account on this page (create-drafts.js did not load): said, never claimed */
+  p = F.load({ keepSave: true });
+  p.ce('S.basics.name = "QA No Account"; save()');
+  check('UX-048 without the account the header says "Saved on this computer only", with why', p.$('save-state').innerHTML.indexOf('Saved on this computer only') !== -1 &&
+    p.$('save-state').title === 'Your account could not be reached from this page. Reload it to save your draft there.');
 
   /* =====================================================================================================
      UX-044 the page's pull-content dialog
@@ -368,6 +610,67 @@ async function main() {
   check('UX-042 records somebody else put in the event are kept, not doubled, and the row says so', byRes('contacts').length === 0 && byRes('faqs').length === 1 &&
     p.ctx.__row.label === 'Saved sponsors, FAQs, contacts and glimpses to the event’s Content (its contacts already there were kept)', p.ctx.__row.label);
 
+  /* regression (B08 verify v9): a kind the draft wrote on an earlier run and no longer has comes out of the Content again */
+  p.ce('S.records = null');
+  subs = {}; made = []; gone = [];
+  await p.ce('writeRecords(busy, window.__row)');
+  var faqIds = p.ce('S.records.made.faqs.slice()'), contactIds = p.ce('S.records.made.contacts.slice()');
+  p.ce('sectionByLib("faq").data = { items: [] }');
+  var rs = p.ce('handoffSteps()').filter(function (s) { return s.key === 'records'; })[0];
+  check('regression: with the FAQs taken out, the records row still runs and names what it saves', !!rs && rs.label === 'Saving sponsors, contacts and glimpses to the event’s Content', rs && rs.label);
+  gone = [];
+  await p.ce('writeRecords(busy, window.__row)');
+  check('regression: the FAQ this draft wrote earlier is deleted from the Content, nothing else', gone.length === 1 && gone[0] === 'faqs ' + faqIds[0] &&
+    p.ce('S.records.made.faqs.length') === 0 && p.ce('S.records.done.faq') === undefined, gone);
+  check('regression: …and the row says so', p.ctx.__row.label === 'Saved sponsors, contacts and glimpses to the event’s Content; the FAQs you removed were taken out', p.ctx.__row.label);
+  p.ce('sectionByLib("contact").data = { blocks: [] }; sectionByLib("partners").data = { tiers: [] }; sectionByLib("glimpses").data = { items: [] }');
+  rs = p.ce('handoffSteps()').filter(function (s) { return s.key === 'records'; })[0];
+  check('regression: every kind taken out: the row runs only to take them out', !!rs && rs.label === 'Taking the sponsors, contacts and glimpses you removed out of the event’s Content', rs && rs.label);
+  gone = [];
+  await p.ce('writeRecords(busy, window.__row)');
+  check('regression: …each of this draft\'s records is deleted', gone.indexOf('contacts ' + contactIds[0]) !== -1 && gone.filter(function (x) { return /^partners /.test(x); }).length === 3 &&
+    gone.filter(function (x) { return /^partner-tiers /.test(x); }).length === 1 && gone.filter(function (x) { return /^gallery /.test(x); }).length === 1 &&
+    p.ctx.__row.label === 'Took the sponsors, contacts and glimpses you removed out of the event’s Content', [gone, p.ctx.__row.label]);
+  check('regression: nothing of this draft\'s is left, so no records row next time', p.ce('staleRecordSources(S.createdEventId, recordPlan(pendingAddress)).length') === 0 &&
+    p.ce('handoffSteps()').every(function (s) { return s.key !== 'records'; }));
+  /* records somebody else wrote are never this draft's to delete */
+  p.ce('S.records = { eventId: "qa-ux-b08-t", done: {}, made: {} }');
+  check('regression: a kind this draft never wrote is not "removed"', p.ce('staleRecordSources(S.createdEventId, [])').length === 0);
+  p.ce('sectionByLib("faq").data = { items: [{ t: "When is it?", d: "In February." }] }; sectionByLib("contact").data = { blocks: [{ t: "Sponsorship", people: [{ n: "Asha Rao", e: "asha@example.com", p: "" }] }] };' +
+    'sectionByLib("partners").data = { tiers: [{ t: "Gold", logos: [{ n: "Acme", url: "acme.com", slot: 1 }, { n: "Beta" }] }] }; sectionByLib("glimpses").data = { items: [{ slot: 2, caption: "Day 1" }] };');
+
+  /* regression (B08 verify v2b): Try again while the failed try's other pictures are still on their way sends none twice */
+  var calls = [], hold = null;
+  var pp = handPage();
+  await pp.ce('loadPortalRoster()');
+  pp.ctx.__tech = TECH;
+  pp.ce('S.template = "retail-leadership-summit"; S.creationMethod = "template"; S.createdEventId = "qa-ux-b08-u"; S.basics.slug = "qa-ux-b08-u"; S.basics.name = "QA B08";' +
+    'S.basics.portal = "retail"; tplInfo["retail-leadership-summit"] = { state: "ready", caps: templateCaps(window.__tech) }; applyTemplate();' +
+    'imgFiles[1] = { blob: new Blob(["a"], { type: "image/png" }), name: "slow.png", url: "blob:1" };' +
+    'imgFiles[2] = { blob: new Blob(["b"], { type: "image/jpeg" }), name: "bad.jpg", url: "blob:2" };' +
+    'var _p = sectionByLib("partners"); setSecIncluded(_p, true); _p.data = { tiers: [{ t: "Gold", logos: [{ n: "Acme", slot: 1 }] }] };' +
+    'var _g = sectionByLib("glimpses"); setSecIncluded(_g, true); _g.data = { items: [{ slot: 2 }] };');
+  pp.ce('RevampCore.uploadImage = function(id, kind, file){ return window.__upload(id, kind, file); }');
+  var badOnce = true;
+  pp.ctx.__upload = function (id, kind, file) {
+    calls.push(file.name);
+    if (file.name === 'bad.jpg' && badOnce) { badOnce = false; return Promise.reject(new Error('The server could not store it.')); }
+    if (file.name === 'slow.png') return new Promise(function (r) { hold = function () { r({ url: 'https://storage.googleapis.com/b/events/' + id + '/' + kind + '/slow.png' }); }; });
+    return Promise.resolve({ url: 'https://storage.googleapis.com/b/events/' + id + '/' + kind + '/' + file.name });
+  };
+  pp.ce('busy = { kind: "handoff" }; window.__row = { label: "" };');
+  var first = await pp.ce('sendPictures(busy, window.__row, function(){})').then(function () { return null; }, function (e) { return e; });
+  check('regression: the try fails on one picture while another is still on its way', !!first && /bad\.jpg/.test(first.message) && typeof hold === 'function' &&
+    JSON.stringify(calls.slice().sort()) === '["bad.jpg","slow.png"]', [first && first.message, calls]);
+  var second = pp.ce('sendPictures(busy, window.__row, function(){})');
+  await tick();
+  hold();
+  await second;
+  check('regression: Try again waits for the picture on its way instead of sending it again', calls.filter(function (x) { return x === 'slow.png'; }).length === 1 &&
+    calls.filter(function (x) { return x === 'bad.jpg'; }).length === 2 && pp.ce('S.uploads.files["img:1"]') === 'https://storage.googleapis.com/b/events/qa-ux-b08-u/partners/slow.png' &&
+    pp.ce('Object.keys(uploadsUnderWay).length') === 0, calls);
+  check('regression: …and the row ends done', pp.ctx.__row.label === 'Uploaded your 2 section pictures', pp.ctx.__row.label);
+
   /* the editor is handed addresses only */
   await p.ce('openInEditor(busy)');
   var handed = JSON.parse(p.store['revamp.editor.handoff.v1'] || 'null');
@@ -404,7 +707,13 @@ async function main() {
     JSON.stringify({ tiers: [{ t: 'Gold', logos: [{ n: 'Acme', logo: 'https://x/a.png', url: 'https://acme.com' }] }, { t: '', logos: [{ n: 'Loose', logo: '', url: '' }] }] }), tp);
   check('UX-042 editor: glimpses keep their captions', JSON.stringify(X.translateGallery([{ imageUrl: 'https://x/1.jpg', caption: 'Day 1' }])) === JSON.stringify({ items: [{ url: 'https://x/1.jpg', caption: 'Day 1' }] }));
   check('UX-042 editor: the first save comes once the page has its saved-state answer', ED.indexOf('loadSiteInfo().then(saveFirstVersion);') !== -1 &&
-    /if \(fromCreate\(\) && !\/\^\(gen\|imported\)-\/\.test\(templateId \|\| ''\)\) firstSaveDue = true;/.test(ED));
+    /if \(fromCreate\(\) && !\/\^gen-\/\.test\(templateId \|\| ''\)\) firstSaveDue = true;/.test(ED));
+  /* the hand-off screen says "keeps your page as its first saved version" on both of its paths (a gallery design and an
+     imported one), so the editor saves both; only a generated site, whose page the server made, is left out */
+  var dueRule = /if \(fromCreate\(\) && (.+?)\) firstSaveDue = true;/.exec(ED);
+  var due = function (tpl) { return vm.runInNewContext('(function(){ var templateId = ' + JSON.stringify(tpl) + '; return ' + dueRule[1] + '; })()', {}); };
+  check('regression: an imported design from Create Event is saved as version 1 too (the hand-off screen says so)',
+    !!dueRule && due('imported-abc123') === true && due('retail-leadership-summit') === true && due('gen-qa-x') === false);
   function firstSave(o) {
     var L = { saves: 0, notices: [] };
     var C = { L: L, setTimeout: function (f) { f(); }, Promise: Promise };

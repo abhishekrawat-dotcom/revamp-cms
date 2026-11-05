@@ -1927,8 +1927,9 @@
         <span class="sub">Self&#8209;serve microsite builder</span>
       </span>
       <div class="spacer"></div>
-      <!-- where the draft is: in this browser only (renderSaveState); not shown until something has been entered -->
-      <span class="save-state" id="save-state" title="This draft is kept in this browser only. Another computer or a colleague does not see it." hidden><span class="d"></span>Saved on this computer</span>
+      <!-- where the draft is: in the person's account, or on this computer only while the account cannot be reached
+           (renderSaveState); not shown until something has been entered -->
+      <span class="save-state" id="save-state" title="Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer." hidden><span class="d"></span>Saved to your account</span>
       <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <button class="btn btn-secondary btn-sm" id="btn-save-exit">Save &amp; exit</button>
       <!-- the signed-in user's avatar and Sign out: auth.js renders it into any [data-rv-account] -->
@@ -2343,6 +2344,7 @@
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
 <script src="portal-fields.js"></script>
+<script src="create-drafts.js"></script>
 <script src="create-event-prefill.js"></script>
 <script>
 (function(){
@@ -2539,7 +2541,18 @@
      see setStep1Phase()) all render under dot 1; step 4 (the hand-off) is dot 2. */
   var STEPS = ['Event details','Assemble'];
   function railPos(step){ return step >= 4 ? 2 : 1; }
-  var STORE_KEY = 'revamp.createEvent.draft.v1';
+  /* WHERE A DRAFT IS KEPT (UX-048)
+     In the person's account (create-drafts.js, functions/lib/create-drafts.js): every draft is saved there a moment
+     after it changes, the events dashboard lists it under Drafts with Resume and Discard, Resume opens it on any
+     computer (create-event.html?draft=<id>), and several drafts can be under way at once. This browser keeps its own
+     copy of each draft too, one localStorage key per draft, so typing never waits for the network and a lost
+     connection loses nothing: what is kept here goes to the account as soon as it can. CURRENT_KEY names the draft
+     this browser worked on last, which the bare page resumes. Before drafts were saved to the account, a browser
+     kept a single draft under LEGACY_STORE_KEY; it is moved to its own key on the first visit (migrateLegacyDraft). */
+  var DRAFT_PREFIX = 'revamp.createEvent.draft.v2.';
+  var CURRENT_KEY = 'revamp.createEvent.current.v2';
+  var LEGACY_STORE_KEY = 'revamp.createEvent.draft.v1';
+  function storeKeyOf(id){ return DRAFT_PREFIX + id; }
   /* DRAFT FILES
      A draft's pictures are never part of S: the draft is one localStorage string with a hard limit of a
      few megabytes, and a single banner would fill it. Each file is kept in IndexedDB (editor-store.js) in
@@ -2617,6 +2630,7 @@
   function bannerUrl(slot){ return (bannerFiles[slot] && bannerFiles[slot].url) || ''; }
   function keepFile(slot, rec){
     var put = window.RevampStore ? RevampStore.put(slotKey(slot), rec) : Promise.reject(new Error('IndexedDB is not available'));
+    sendDraftFile(slot, rec);      // to the account as well, whatever this browser's storage says (UX-048)
     return put.then(function(){
       if (fileFailures[slot] === rec) delete fileFailures[slot];
       noteDraftFiles(draftId());
@@ -2638,6 +2652,7 @@
     if (bannerFiles[slot]){ try { URL.revokeObjectURL(bannerFiles[slot].url); } catch(e){} }
     delete bannerFiles[slot];
     delete fileFailures[slot];
+    forgetDraftFile(slot);
     if (window.RevampStore) RevampStore.remove(slotKey(slot)).catch(function(){});
     renderSaveState();
   }
@@ -2676,6 +2691,7 @@
     if (imgFiles[n]){ try { URL.revokeObjectURL(imgFiles[n].url); } catch(e){} }
     delete imgFiles[n];
     delete fileFailures[imgSlot(n)];
+    forgetDraftFile(imgSlot(n));
     if (window.RevampStore) RevampStore.remove(slotKey(imgSlot(n))).catch(function(){});
     noteDraftImage(draftId(), n, true);
     renderSaveState();
@@ -2787,7 +2803,9 @@
   }
   function storeLogo(file){
     logoSaving = logoDataUrl(file).then(function(dataUrl){
-      return RevampStore.put(logoKey(), { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
+      var rec = { name: file.name, dataUrl: dataUrl, savedAt: Date.now() };
+      sendDraftFile('logo', rec);    // to the account as well (UX-048)
+      return RevampStore.put(logoKey(), rec);
     }).then(function(){
       noteDraftFiles(draftId());
       /* the Gen-2 preview caches the stored logo (storedLogoDataUrl()) so repeated fills don't hit IndexedDB
@@ -2805,6 +2823,7 @@
     if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(e){} logoPreviewUrl = ''; }
     S.basics.logo = false;
     S.basics.logoName = '';
+    forgetDraftFile('logo');
     logoFailed = true;
     gen2Logo = null;
     var input = $('f-logo');
@@ -2878,11 +2897,14 @@
     priorDesigns: [],            // every design name+colours/fonts shown by "Redesign with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
     uploads: null,              // the files the hand-off has put in this draft's event's storage: { eventId, files: { <file key>: url }, logo, logoOn } (uploadsFor)
     records: null,              // the event's Content the hand-off has written from this draft: { eventId, done: { <resource>: what was written }, made: { <resource>: [record ids] } } (writeRecords)
-    aiHero: null,               // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
+    rev: 0,                     // the revision of this draft in the person's account that this copy builds on (0: never saved there; pushDraft)
+    syncedAt: null,             // the savedAt of the copy the account last confirmed: the draft is in the account when it equals savedAt
+    files: {},                  // { <account slot ('logo', 'banner', 'banner-text', 'img-<n>')>: { name, savedAt } } the pictures the account holds (sendDraftFile)
+    aiHero: null,             // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
     assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
   function draftId(){
-    if (!S.draftId) S.draftId = 'draft-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    if (!S.draftId) S.draftId = newDraftId();
     return S.draftId;
   }
 
@@ -2900,122 +2922,454 @@
   var aiPrefill = null;       // those details, held until start() fills the new draft with them, once
   var aiNote = null;          // the note over step 1: { kind: 'filled' | 'unused' | 'missing', text, snap, res, portal } (renderAiPrefillNote; res and portal: nameAiNotePortal)
   var resumedExisting = false;   // this page load restored a draft whose event already exists on the server
-  var lastSaveOk = true;      // the last save() reached localStorage
-  var otherTab = '';          // '' | 'changed' | 'replaced' | 'closed' — what another tab did to the stored draft; this tab stops saving until the owner decides (renderSaveState)
+  var lastSaveOk = true;      // the last save() reached this browser's storage
+  var otherTab = '';          // '' | 'changed' | 'closed' — what another tab did to this draft's copy in this browser; this tab stops saving until the owner decides (renderSaveState)
   var leavingUnsaved = false; // the owner chose to leave without a saved draft: no second warning from the browser
   var DRAFT_MAX_CHARS = 500 * 1024;
-  /* Writes the draft. true only when it is really in localStorage. */
+  /* Writes this draft's copy in this browser, and has it saved to the person's account a moment later (schedulePush).
+     true only when it is really in this browser's storage. */
   function save(){
     if (draftClosed || otherTab) return false;
     draftId();
+    /* whose draft it is: a browser two people sign in to never sends one person's draft to the other's account */
+    if (!S.owner){ var me = currentUid(); if (me) S.owner = me; }
     S.savedAt = new Date().toISOString();
-    var ok = true;
+    var ok = writeLocalCopy();
+    lastSaveOk = ok;
+    keepDraftInAddress();
+    schedulePreview();
+    schedulePush();
+    renderSaveState(true);
+    return ok;
+  }
+  /* S as it is, under its own key, and named as the draft this browser worked on last. savedAt is not touched: noting
+     the account's revision (pushDraft) is not an edit. */
+  function writeLocalCopy(){
     try {
       var json = JSON.stringify(S);
       /* the draft is text; anything that makes it this large is a file that belongs in a slot */
       if (json.length > DRAFT_MAX_CHARS && window.console) console.warn('[create-event] the draft is ' + json.length + ' characters — a file is being kept in it');
-      localStorage.setItem(STORE_KEY, json);
-    } catch(e){ ok = false; }
-    lastSaveOk = ok;
-    schedulePreview();
-    renderSaveState(true);
-    return ok;
+      localStorage.setItem(storeKeyOf(S.draftId), json);
+      localStorage.setItem(CURRENT_KEY, S.draftId);
+      return true;
+    } catch(e){ return false; }
   }
-  function draftUnsaved(){ return !draftClosed && (!!otherTab || !lastSaveOk || Object.keys(fileFailures).length > 0); }
-  /* why what is on screen is not in this browser's storage, as a sentence; '' when it is */
+  /* The tab's address names its draft (create-event.html?draft=<id>): a reload, Back or Forward in this tab opens this
+     draft and no other, even after another tab has started a different one. */
+  function keepDraftInAddress(){
+    try {
+      if (!S.draftId || new URLSearchParams(location.search).get('draft') === S.draftId) return;
+      history.replaceState(null, '', location.pathname + '?draft=' + encodeURIComponent(S.draftId));
+    } catch(e){ /* an address that cannot be changed only means a reload resumes the last draft instead */ }
+  }
+
+  /* ---------- the draft in the person's account (UX-048) ----------
+     A moment after each save (PUSH_DELAY_MS) the draft goes to the account (create-drafts.js). When that cannot be done
+     (no connection, the server down) it stays in this browser, the header and the warning say so, and it is tried again
+     by itself (PUSH_RETRY_MS, and as soon as the browser is back online). A draft is sent only once something of the
+     person's is in it (draftHasInput): opening Create Event and leaving puts nothing in their Drafts. Each copy carries
+     the account's revision it was built on (S.rev), so a save from another computer in between is never overwritten
+     unseen: the person is asked (sync.conflict). */
+  var PUSH_DELAY_MS = 1200, PUSH_RETRY_MS = 20000;
+  var WRITER = window.RevampCreateDrafts ? RevampCreateDrafts.writerId() : '';
+  var sync = { state: 'idle', error: '', conflict: null };   // idle | pending | saving | saved | failed | conflict
+  var pushTimer = null, pushing = null, pushAgain = false, ownConflicts = 0;
+  function accountReady(){ return !!(window.RevampCreateDrafts && window.RevampAuth && typeof RevampAuth.authedFetch === 'function'); }
+  function inAccount(){ return !!S.rev && !!S.syncedAt && S.syncedAt === S.savedAt; }
+  /* the signed-in person's uid, '' while auth.js has not said */
+  function currentUid(){
+    try { var u = window.RevampAuth && typeof RevampAuth.currentUser === 'function' ? RevampAuth.currentUser() : null; return (u && u.uid) || ''; } catch(e){ return ''; }
+  }
+  /* d is somebody else's: a copy saved in this browser by another person who signed in here */
+  function othersDraft(d, me){ return !!(d && d.owner && me && d.owner !== me); }
+  function pushable(){ return !draftClosed && !otherTab && S.assembled !== true && !!S.draftId && accountReady() && !othersDraft(S, currentUid()) && draftHasInput(S, true); }
+  function schedulePush(){
+    clearTimeout(pushTimer);
+    if (!pushable() || sync.state === 'conflict') return;
+    if (inAccount()){ sync.state = 'saved'; return; }
+    /* while the account cannot be reached, typing does not send a request a second: the retry keeps its pace */
+    var failing = sync.state === 'failed';
+    if (!failing) sync.state = pushing ? 'saving' : 'pending';
+    pushTimer = setTimeout(function(){ pushDraft(); }, failing ? PUSH_RETRY_MS : PUSH_DELAY_MS);
+  }
+  /* Sends the draft as it is now; resolves true once the account holds it. force: over whatever the account holds
+     (the person chose "Keep this one", or "Save it again" for a draft discarded elsewhere). */
+  function pushDraft(force){
+    clearTimeout(pushTimer);
+    if (!pushable()) return Promise.resolve(false);
+    if (sync.state === 'conflict' && force !== true) return Promise.resolve(false);
+    if (inAccount() && force !== true){ sync.state = 'saved'; renderSaveState(); return Promise.resolve(true); }
+    if (pushing){ pushAgain = true; return pushing; }
+    var sentAt = S.savedAt;
+    sync.state = 'saving';
+    renderSaveState();
+    pushing = RevampCreateDrafts.put(S.draftId, +S.rev || 0, JSON.parse(JSON.stringify(S)), { writer: WRITER, force: force === true }).then(function(out){
+      S.rev = +out.rev || S.rev;
+      S.syncedAt = sentAt;
+      sync.error = '';
+      sync.conflict = null;
+      sync.state = 'saved';
+      ownConflicts = 0;
+      if (!draftClosed && !otherTab) writeLocalCopy();     // this browser's copy knows the revision too
+      resendFiles();
+      return true;
+    }, function(err){
+      if (err && err.code === 'draft-conflict'){
+        var cur = err.current;
+        /* the account's copy is this browser's own earlier save, whose answer never came back: this copy is newer */
+        if (cur && cur.writer && cur.writer === WRITER && ownConflicts < 2){ ownConflicts++; S.rev = +cur.rev || 0; pushAgain = true; sync.state = 'pending'; return false; }
+        sync.state = 'conflict';
+        sync.conflict = cur || { gone: true };
+        return false;
+      }
+      sync.state = 'failed';
+      sync.error = plainError(err);
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(function(){ pushDraft(); }, PUSH_RETRY_MS);
+      return false;
+    }).then(function(ok){
+      pushing = null;
+      if (pushAgain){ pushAgain = false; if (sync.state !== 'conflict') return pushDraft(); }
+      if (ok && !inAccount() && pushable()) return pushDraft();      // typed while it was on its way
+      renderSaveState();
+      return ok;
+    });
+    return pushing;
+  }
+  window.addEventListener('online', function(){ if (sync.state === 'failed') pushDraft(); });
+  /* leaving the tab (another app, another tab, the phone locked) sends what was typed now rather than in a moment */
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && sync.state === 'pending') pushDraft(); });
+
+  /* The draft's pictures go to the account as well (POST /api/me/create-draft/file), one per slot, so Resume on another
+     computer has them; S.files lists the ones the account holds, each by the version it is (savedAt). A PSD is not sent:
+     its flattened banner is, and only its layers cannot be switched on another computer. */
+  var fileSends = {};         // account slot -> { rec, failed } a picture on its way to the account, or one that could not be sent yet
+  function sendDraftFile(slot, rec){
+    if (!accountReady() || slot === 'psd' || !rec || draftClosed) return;
+    var key = RevampCreateDrafts.serverSlot(slot), id = draftId(), entry = { rec: rec, failed: '' };
+    fileSends[key] = entry;
+    var blob = rec.blob ? Promise.resolve(rec.blob)
+      : rec.dataUrl ? fetch(rec.dataUrl).then(function(r){ return r.blob(); }) : Promise.reject(new Error('The picture could not be read.'));
+    blob.then(function(b){ return RevampCreateDrafts.putFile(id, key, b, rec.name); }).then(function(){
+      if (fileSends[key] !== entry || draftClosed) return;        // a newer picture took the slot meanwhile: it is sent on its own
+      delete fileSends[key];
+      if (!S.files || typeof S.files !== 'object') S.files = {};
+      S.files[key] = { name: String(rec.name || '').slice(0, 200), savedAt: +rec.savedAt || 0 };
+      save();
+    }, function(err){
+      if (fileSends[key] !== entry) return;
+      entry.failed = plainError(err);
+      renderSaveState();
+    });
+  }
+  /* the pictures that could not be sent, once the account answers again */
+  function resendFiles(){
+    Object.keys(fileSends).forEach(function(key){
+      var e = fileSends[key];
+      if (e.failed) sendDraftFile(RevampCreateDrafts.localSlot(key), e.rec);
+    });
+  }
+  /* a picture taken off the draft is no longer one of the account's (its object goes with the draft) */
+  function forgetDraftFile(slot){
+    if (!window.RevampCreateDrafts) return;
+    var key = RevampCreateDrafts.serverSlot(slot);
+    delete fileSends[key];
+    if (S.files && S.files[key]) delete S.files[key];
+  }
+  /* Every picture this draft has in this browser that the account does not hold in that version: a picture chosen
+     while the account could not be reached, before a reload, or in a draft from before drafts were saved there. */
+  function resendMissingFiles(){
+    if (!accountReady() || !window.RevampStore || !S.draftId) return;
+    var slots = [], d = heroData();
+    if (S.basics.logo) slots.push('logo');
+    if (d) ['banner', 'banner-text'].forEach(function(slot){ if (heroPicture(d, slot)) slots.push(slot); });
+    imageHolders().forEach(function(it){ if (typeof it.slot === 'number') slots.push(imgSlot(it.slot)); });
+    slots.forEach(function(slot){
+      RevampStore.get(slotKey(slot)).then(function(rec){
+        if (!rec || (!rec.blob && !rec.dataUrl)) return;
+        var have = (S.files || {})[RevampCreateDrafts.serverSlot(slot)];
+        if (have && have.savedAt === (+rec.savedAt || 0)) return;
+        if (fileSends[RevampCreateDrafts.serverSlot(slot)]) return;
+        sendDraftFile(slot, rec);
+      }, function(){});
+    });
+  }
+  /* is the picture in `slot` (the record IndexedDB would not take) safe in the account anyway */
+  function fileInAccount(slot, rec){
+    var have = window.RevampCreateDrafts && (S.files || {})[RevampCreateDrafts.serverSlot(slot)];
+    return !!have && !!rec && have.savedAt === (+rec.savedAt || 0);
+  }
+  function filesUnsaved(){
+    return Object.keys(fileFailures).filter(function(slot){ return !fileInAccount(slot, fileFailures[slot]); });
+  }
+
+  function draftUnsaved(){ return !draftClosed && (!!otherTab || (!lastSaveOk && !inAccount()) || filesUnsaved().length > 0); }
+  /* why what is on screen is not saved, as a sentence; '' when it is (in this browser, the account, or both) */
   function unsavedReason(){
     if (draftClosed) return '';
-    if (otherTab === 'replaced') return 'Another tab started a different event. This tab’s draft is no longer being saved.';
     if (otherTab === 'changed') return 'This draft was changed in another tab. Changes made in this tab are not being saved.';
     if (otherTab === 'closed') return 'This draft was discarded or opened in the editor from another tab. This tab is no longer being saved.';
-    if (!lastSaveOk) return 'Your draft could not be saved in this browser — storage is full or blocked.';
-    if (Object.keys(fileFailures).length) return 'A picture you added could not be kept in this browser — storage is full or blocked. It will be missing if you reload or leave.';
+    if (sync.state === 'conflict'){
+      var c = sync.conflict || {};
+      if (c.gone) return 'This draft was discarded from your Drafts, on the events dashboard or on another computer. What you change here is not saved to your account.';
+      var at = window.RevampCreateDrafts ? RevampCreateDrafts.whenLabel(c.savedAt || c.updatedAt) : '';
+      return 'This draft was changed on another computer' + (at ? ' (' + at + ')' : '') + '. What you change here is not saved to your account until you choose which to keep.';
+    }
+    if (!lastSaveOk && !inAccount() && sync.state !== 'saving' && sync.state !== 'pending'){
+      return 'Your draft could not be saved in this browser — storage is full or blocked' +
+        (sync.state === 'failed' ? ' — and your account could not be reached either: ' + sync.error.replace(/\.$/, '') : '') + '.';
+    }
+    if (filesUnsaved().length) return 'A picture you added could not be kept in this browser — storage is full or blocked — and is not in your account yet. It will be missing if you reload or leave.';
     return '';
   }
-  /* The header's save state and the warning above the form. The warning stays until the draft is really
-     saved again; justSaved shows the brief "Saving…" of a write that worked. */
-  function renderSaveState(justSaved){
+  /* what the warning's buttons are for this reason: [[label, run]], the first the main one */
+  function warningActions(){
+    if (otherTab === 'changed') return [['Reload to continue', function(){ leavingUnsaved = true; window.location.reload(); }]];
+    if (otherTab === 'closed') return [['Keep working here', function(){
+      /* saved again from here: as a new copy in the account when the other tab removed it there too */
+      otherTab = ''; S.rev = 0; S.syncedAt = null; sync.state = 'idle'; save(); reclaimDraftFiles();
+    }]];
+    if (sync.state === 'conflict'){
+      if (sync.conflict && sync.conflict.gone) return [
+        ['Save it again', function(){ sync.state = 'idle'; sync.conflict = null; S.rev = 0; pushDraft(true); }],
+        ['Discard it here too', confirmDiscard]
+      ];
+      return [
+        ['Open the newer one', function(){ leavingUnsaved = true; window.location.replace(location.pathname + '?draft=' + encodeURIComponent(S.draftId) + '&from=account'); }],
+        ['Keep this one', function(){ sync.state = 'idle'; sync.conflict = null; pushDraft(true); }]
+      ];
+    }
+    /* storage refused: try the draft again, and every file that is still waiting */
+    return [['Try again', function(){
+      Object.keys(fileFailures).forEach(function(slot){ keepFile(slot, fileFailures[slot]); });
+      if (save() && !filesUnsaved().length) toast('Draft saved');
+    }]];
+  }
+  /* The header's save state and the warning above the form. The warning stays until the draft is really saved
+     again. Nothing is said about saving before there is anything of the person's to keep. */
+  function renderSaveState(){
     var el = $('save-state'), warn = $('draft-warning');
     if (!el || !warn) return;
     var reason = unsavedReason();
-    clearTimeout(saveTimer);     // a pending "Saved on this computer" from an earlier save must not overwrite what is said now
-    /* nothing is said about saving before there is anything of the person's to keep: on the first screen, until a
-       type is picked or a name is there (a draft resumed or filled by ETB2B AI has one) */
-    el.hidden = !reason && S.step === 1 && S.step1Phase === 'category' && !S.createdEventId && !String(S.basics.name || '').trim();
+    clearTimeout(saveTimer);
+    el.hidden = !reason && !draftHasInput(S, true);
     if (reason){
-      el.innerHTML = '<span class="d" style="background:var(--accent)"></span>Not saved';
-      var act = otherTab === 'replaced' ? 'Take over here' : otherTab === 'changed' ? 'Reload to continue'
-        : otherTab === 'closed' ? 'Keep working here' : 'Try again';
-      warn.innerHTML = IC.warn + '<span>' + esc(reason) + '</span>' +
-        '<button class="btn btn-secondary btn-sm" type="button" id="draft-warning-act">' + act + '</button>';
+      el.innerHTML = '<span class="d" style="background:var(--accent)"></span>' + (sync.state === 'conflict' && !otherTab ? 'Not saved to your account' : 'Not saved');
+      el.title = reason;
+      var acts = warningActions();
+      warn.innerHTML = IC.warn + '<span>' + esc(reason) + '</span>' + acts.map(function(a, i){
+        return '<button class="btn ' + (i ? 'btn-ghost' : 'btn-secondary') + ' btn-sm" type="button" id="draft-warning-act' + (i ? '-' + i : '') + '">' + esc(a[0]) + '</button>';
+      }).join('');
       warn.hidden = false;
-      $('draft-warning-act').onclick = resolveUnsaved;
+      acts.forEach(function(a, i){ $('draft-warning-act' + (i ? '-' + i : '')).onclick = a[1]; });
       return;
     }
-    warn.hidden = true;
-    warn.innerHTML = '';
-    /* the draft is kept in this browser's storage, not on the server: said as that */
-    var kept = '<span class="d"></span>Saved on this computer';
-    if (!justSaved){ el.innerHTML = kept; return; }
-    el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
-    saveTimer = setTimeout(function(){ el.innerHTML = kept; }, 520);
-  }
-  /* the warning's button */
-  function resolveUnsaved(){
-    if (otherTab === 'changed'){ leavingUnsaved = true; window.location.reload(); return; }
-    if (otherTab === 'replaced'){
-      openModal({
-        title: 'Keep this tab’s event instead?',
-        sub: 'Only one unfinished event is kept in this browser. Taking over here replaces the event started in the other tab with this one.',
-        confirm: 'Take over here',
-        onConfirm: function(){ otherTab = ''; save(); reclaimDraftFiles(); }
-      });
-      return;
+    /* in this browser, but not (yet) in the account: said, with a way to try at once */
+    if (sync.state === 'failed' && pushable()){
+      warn.innerHTML = IC.warn + '<span>' + esc('Your draft is saved on this computer only: it could not be saved to your account. ' + sync.error.replace(/\.$/, '') + '. It is tried again by itself.') + '</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="draft-warning-act">Try now</button>';
+      warn.hidden = false;
+      $('draft-warning-act').onclick = function(){ pushDraft(); };
+    } else {
+      warn.hidden = true;
+      warn.innerHTML = '';
     }
-    if (otherTab === 'closed'){ otherTab = ''; save(); reclaimDraftFiles(); return; }
-    /* storage refused: try the draft again, and every file that is still waiting */
-    Object.keys(fileFailures).forEach(function(slot){ keepFile(slot, fileFailures[slot]); });
-    if (save() && !Object.keys(fileFailures).length) toast('Draft saved on this computer');
+    var st = accountReady() ? (inAccount() ? 'saved' : (sync.state === 'saving' || sync.state === 'pending') ? 'saving' : 'local') : 'local';
+    if (st === 'saved'){
+      el.innerHTML = '<span class="d"></span>Saved to your account';
+      el.title = 'Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer.';
+    } else if (st === 'saving'){
+      el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
+      el.title = 'Saving your draft to your account.';
+    } else {
+      el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saved on this computer only';
+      el.title = !accountReady() ? 'Your account could not be reached from this page. Reload it to save your draft there.'
+        : 'Not saved to your account yet' + (sync.error ? ': ' + sync.error.replace(/\.$/, '') : '') + '. It is tried again by itself.';
+    }
   }
-  /* Another tab wrote, replaced or removed the stored draft. Whichever tab typed last would otherwise
-     overwrite the other without either knowing. */
+  /* Another tab wrote or removed this draft's copy in this browser. Whichever tab typed last would otherwise overwrite
+     the other without either knowing. Another draft's key is another draft: tabs on different drafts never meet. */
   window.addEventListener('storage', function(e){
-    if (e.key !== STORE_KEY || draftClosed) return;
+    if (draftClosed || !S.draftId || e.key !== storeKeyOf(S.draftId)) return;
     var other = null;
     try { other = e.newValue ? JSON.parse(e.newValue) : null; } catch(err){}
-    otherTab = !other ? 'closed' : (other.draftId && other.draftId === S.draftId ? 'changed' : 'replaced');
+    /* the other tab only noted the account's revision of the very same save: nothing was typed */
+    if (other && other.savedAt && other.savedAt === S.savedAt) return;
+    otherTab = !other ? 'closed' : 'changed';
+    clearTimeout(pushTimer);
     renderSaveState();
   });
-  /* the stored draft as it is, without touching S: null when there is none or it cannot be read */
-  function readStoredDraft(){
+  function newDraftId(){ return 'draft-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); }
+  /* this browser's copy of draft `id` (with no id: the draft it worked on last), without touching S: null when there is
+     none or it cannot be read */
+  function readStoredDraft(id){
     try {
-      var d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-      return d && typeof d === 'object' ? d : null;
+      if (id === undefined) id = localStorage.getItem(CURRENT_KEY) || '';
+      if (!id) return null;
+      var d = JSON.parse(localStorage.getItem(storeKeyOf(id)) || 'null');
+      return d && typeof d === 'object' && d.draftId === id ? d : null;
     } catch(e){ return null; }
   }
-  /* is there anything in a stored draft that its owner entered — something a new event must not silently replace */
-  function draftHasInput(d){
+  /* The one draft a browser kept before drafts were saved to the account, moved to its own key (and named the current
+     one, unless another is), so that it is resumed, saved to the account and listed like any other. */
+  function migrateLegacyDraft(){
+    try {
+      var raw = localStorage.getItem(LEGACY_STORE_KEY);
+      if (!raw) return;
+      var d = null;
+      try { d = JSON.parse(raw); } catch(e){ d = null; }
+      if (d && typeof d === 'object' && d.assembled !== true){
+        if (typeof d.draftId !== 'string' || !/^draft-[a-z0-9]+-[a-z0-9]+$/.test(d.draftId)) d.draftId = newDraftId();
+        if (!localStorage.getItem(storeKeyOf(d.draftId))) localStorage.setItem(storeKeyOf(d.draftId), JSON.stringify(d));
+        if (!localStorage.getItem(CURRENT_KEY)) localStorage.setItem(CURRENT_KEY, d.draftId);
+      }
+      localStorage.removeItem(LEGACY_STORE_KEY);
+    } catch(e){ /* storage blocked: there is nothing to move */ }
+  }
+  /* is there anything in a stored draft that its owner entered — something worth keeping, which a new event must
+     never silently replace. asIs: d is the live draft, already tidied by restore(), which is read and never changed */
+  function draftHasInput(d, asIs){
     if (!d || d.assembled === true) return false;
     var b = d.basics || {}, br = d.brief || {};
     if (d.createdEventId || String(b.name || '').trim() || String(b.slug || '').trim() || b.logo) return true;
-    if (['text', 'current', 'previous', 'comp1', 'comp2', 'docName'].some(function(k){ return String(br[k] || '').trim(); })) return true;
+    if (['text', 'current', 'previous', 'comp1', 'comp2', 'docName'].some(function(k){ return String(br[k] || '').trim() && !(k === 'text' && br[k] === BRIEF_TEMPLATE); })) return true;
     return (d.sections || []).some(function(sec){
       if (!sec || !sec.data) return false;
-      if (sec.libId === 'hero') cleanHeroData(sec.data);
+      if (sec.libId === 'hero' && !asIs) cleanHeroData(sec.data);
       return sectionHasContent(sec);
     });
   }
-  /* Removes draft `d` from storage — but never another draft: when a different event has been started
-     in another tab since, the stored draft is that tab's and stays. */
+  /* Removes this browser's copy of draft `d`, and nothing else: every draft has its own key. */
   function removeStoredDraft(d){
-    var stored = readStoredDraft();
-    if (stored && d && stored.draftId && d.draftId && stored.draftId !== d.draftId) return;
-    try { localStorage.removeItem(STORE_KEY); } catch(e){}
+    var id = d && d.draftId;
+    if (!id) return;
+    try {
+      localStorage.removeItem(storeKeyOf(id));
+      if (localStorage.getItem(CURRENT_KEY) === id) localStorage.removeItem(CURRENT_KEY);
+    } catch(e){}
   }
-  /* removes draft `d` and its files; S is not touched */
+  /* removes draft `d` everywhere: this browser's copy and files, and the account's copy (a removal the server cannot be
+     reached for is made on a later visit, and the draft is listed nowhere meanwhile: create-drafts.js); S is not touched */
   function discardStoredDraft(d){
     removeStoredDraft(d);
+    if (d && d.draftId && accountReady()) RevampCreateDrafts.remove(d.draftId).then(null, function(){});
     return clearDraftFiles(d && d.draftId);
+  }
+  /* The draft is safe in the person's account: already there, or sent now. Resolves false when it is not and cannot be
+     (no connection, the account holds a newer copy from another computer). */
+  var ENSURE_TIMEOUT_MS = 8000;
+  function ensureInAccount(d){
+    if (!d || !d.draftId || !accountReady()) return Promise.resolve(false);
+    var who = window.RevampAuth && typeof RevampAuth.whenResolved === 'function' ? Promise.resolve(RevampAuth.whenResolved()).then(currentUid, currentUid) : Promise.resolve(currentUid());
+    return who.then(function(me){
+      /* another person's copy in this browser is theirs: never sent to this person's account, never asked about here */
+      if (othersDraft(d, me)) return 'theirs';
+      return sendLocalDraft(d);
+    });
+  }
+  function sendLocalDraft(d){
+    if (d.rev && d.syncedAt && d.syncedAt === d.savedAt) return Promise.resolve(true);
+    var sent = RevampCreateDrafts.put(d.draftId, +d.rev || 0, d, { writer: WRITER }).then(null, function(err){
+      /* this browser's own earlier save, whose answer never came back */
+      if (err && err.code === 'draft-conflict' && err.current && err.current.writer === WRITER) return RevampCreateDrafts.put(d.draftId, +d.rev || 0, d, { writer: WRITER, force: true });
+      throw err;
+    }).then(function(out){
+      d.rev = +out.rev || 0;
+      d.syncedAt = d.savedAt;
+      try { localStorage.setItem(storeKeyOf(d.draftId), JSON.stringify(d)); } catch(e){}
+      return true;
+    }, function(){ return false; });
+    var late = new Promise(function(resolve){ setTimeout(function(){ resolve(false); }, ENSURE_TIMEOUT_MS); });
+    return Promise.race([sent, late]);
+  }
+  /* This browser's copies of other drafts: one the account holds is let go after a week (Resume opens it from the
+     account), one it does not hold yet is sent there now, and one with nothing in it, or already in the editor, goes. */
+  var LOCAL_KEEP_MS = 7 * 24 * 60 * 60 * 1000, EMPTY_KEEP_MS = 60 * 60 * 1000;
+  function tidyLocalDrafts(){
+    if (!accountReady()) return;
+    RevampCreateDrafts.flushRemovals();
+    var ids = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (k && k.indexOf(DRAFT_PREFIX) === 0) ids.push(k.slice(DRAFT_PREFIX.length));
+      }
+    } catch(e){ return; }
+    ids.forEach(function(id){
+      if (id === S.draftId) return;
+      var d = readStoredDraft(id), age = d ? Date.now() - (Date.parse(d.savedAt) || 0) : Infinity;
+      if (!d || ((d.assembled === true || !draftHasInput(d)) && age > EMPTY_KEEP_MS)){ removeStoredDraft(d || { draftId: id }); return; }
+      if (d.assembled === true || !draftHasInput(d)) return;
+      if (d.rev && d.syncedAt === d.savedAt){ if (age > LOCAL_KEEP_MS) removeStoredDraft(d); return; }
+      ensureInAccount(d);
+    });
+  }
+  /* The draft `id`, from this browser's copy or the account's, whichever was saved last (fromAccount: the account's,
+     which the person chose); its pictures are fetched from the account when this browser does not have them. */
+  function openDraft(id, local, fromAccount){
+    if (local === undefined) local = readStoredDraft(id);
+    /* acc: the account's copy, null when the account answered it has none, undefined when it could not be asked */
+    var asked = accountReady() ? RevampCreateDrafts.get(id).then(function(acc){ return { acc: acc }; }, function(err){ return { error: err }; })
+      : Promise.resolve({ acc: undefined });
+    asked.then(function(got){
+      var theirs = othersDraft(local, currentUid());
+      if (theirs) local = null;
+      var acc = got.acc, pick = local;
+      if (acc && acc.state && acc.state.draftId === id){
+        var their = acc.state;
+        their.rev = +acc.rev || 0;
+        their.syncedAt = their.savedAt;
+        if (fromAccount || !local || (Date.parse(their.savedAt) || 0) > (Date.parse(local.savedAt) || 0)) pick = their;
+      }
+      /* the account answered that it does not have it (discarded, or already in the editor) and this browser has nothing
+         newer that was never sent there: it is not opened, and that is said */
+      if (pick && acc === null && !got.error && pick.rev && pick.syncedAt === pick.savedAt) pick = null;
+      if (!pick || pick.assembled === true){
+        if (theirs && !acc){ start(null); return; }
+        if (got.error && !pick){
+          openModal({
+            title: 'Your draft could not be opened',
+            sub: plainError(got.error),
+            confirm: 'Try again',
+            cancelLabel: 'Start a new event',
+            onConfirm: function(){ openDraft(id, local, fromAccount); },
+            onCancel: function(){ start(null); },
+            onDismiss: function(){ start(null); }
+          });
+          return;
+        }
+        if (local) removeStoredDraft(local);
+        /* a draft somebody else left in this browser is simply not opened; one of this person's that has gone is said */
+        if (!theirs) toast('That draft is no longer in your Drafts: it was discarded, or already opened in the editor. This is a new event.', { type: 'info' });
+        start(null);
+        return;
+      }
+      hydrateFiles(pick).then(function(){ start(pick); });
+    });
+  }
+  /* the pictures the account holds for draft `d` that this browser does not have in that version (or has older),
+     fetched into the draft's own slots before the form reads them; one that cannot be fetched is said missing by
+     loadBannerFiles / loadImageFiles, as a picture this browser lost is */
+  function hydrateFiles(d){
+    var files = d && d.files && typeof d.files === 'object' ? d.files : {}, id = d && d.draftId;
+    if (!id || !window.RevampStore || !accountReady()) return Promise.resolve();
+    return Promise.all(Object.keys(files).map(function(key){
+      var slot = RevampCreateDrafts.localSlot(key), want = files[key] || {};
+      return RevampStore.get(slotKey(slot, id)).then(null, function(){ return null; }).then(function(rec){
+        if (rec && (+rec.savedAt || 0) >= (+want.savedAt || 0)) return;
+        return RevampCreateDrafts.getFile(id, key).then(function(blob){
+          if (!blob) return;
+          var name = String(want.name || ''), at = +want.savedAt || Date.now();
+          var put = slot === 'logo'
+            ? blobDataUrl(blob).then(function(url){ return RevampStore.put(slotKey(slot, id), { name: name, dataUrl: url, savedAt: at }); })
+            : RevampStore.put(slotKey(slot, id), { name: name, blob: blob, savedAt: at });
+          return put.then(function(){
+            if (/^img:\d+$/.test(slot)) noteDraftImage(id, +slot.slice(4));
+            noteDraftFiles(id);
+          });
+        });
+      }).then(null, function(){ /* said missing when the form reads it */ });
+    }));
   }
   /* what older drafts kept in the hero and no draft holds any more: picture data, the sample banner, and
      the secondary button's old starting text (a "Download brochure" button with no brochure behind it) */
@@ -3029,16 +3383,16 @@
       (b.layers || []).forEach(function(l){ delete l.imageData; delete l.autoHidden; });
     }
   }
-  function restore(){
+  /* d: the draft to resume (this browser's copy or the account's, openDraft); with none given, the one this browser
+     worked on last; null: none, a new event */
+  function restore(d){
     try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (!raw) return false;
-      var d = JSON.parse(raw);
+      if (d === undefined) d = readStoredDraft();
       if (!d || typeof d !== 'object') return false;
       /* a draft that was already handed to the editor is finished: resuming it would run the hand-off a
          second time against an event that has since moved on */
       if (d.assembled === true){
-        localStorage.removeItem(STORE_KEY);
+        removeStoredDraft(d);
         return false;
       }
 
@@ -3062,6 +3416,10 @@
       S.sections = (S.sections || []).filter(function(sec){ return sec && (isTextSection(sec) || libBy(sec.libId)); });
       S.sections.filter(isTextSection).forEach(cleanTextSection);
       S.imgSeq = +S.imgSeq || 0;
+      /* where the account stands with this copy (pushDraft): a draft from before drafts were saved there has never been */
+      S.rev = +S.rev || 0;
+      if (typeof S.syncedAt !== 'string') S.syncedAt = null;
+      if (!S.files || typeof S.files !== 'object' || Array.isArray(S.files)) S.files = {};
       if (d.path === 'B'){
         /* saved inside the old "analyse my design" steps, which only ever produced sample sections */
         S.sections = S.sections.filter(function(sec){ return sec.source !== 'detected'; });
@@ -4616,6 +4974,7 @@
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
       gen2Logo = null;
+      forgetDraftFile('logo');
       RevampStore.remove(logoKey()).catch(function(){}).then(renderLivePreview);
       logoInput.value = '';
       save(); initStep1(); renderFoot();
@@ -10406,13 +10765,20 @@
     if (!isCurrent(run)) return;
     S.assembled = true;
     draftClosed = true;
+    clearTimeout(pushTimer);
     removeStoredDraft(S);
     /* what the editor still reads stays (the logo by event.logoKey, the hero picture by event.bannerKey)
        until sweepDraftFiles() removes it; the rest of the draft's files go now */
     var d = heroData();
     clearDraftFiles(S.draftId, ['psd', d && heroSlot(d) === 'banner' ? 'banner-text' : 'banner']);
-    busy = null;
-    window.location.replace(url);
+    /* the draft is finished, so it leaves the person's Drafts, and the editor opens once that is done (a page that
+       navigates away can cut the request off). Not reached in a few seconds: create-drafts.js removes it on the next
+       visit, and no list shows it meanwhile. */
+    var gone = S.draftId && accountReady() ? withinMs(RevampCreateDrafts.remove(S.draftId).then(null, function(){}), LEAVE_WAIT_MS) : Promise.resolve();
+    gone.then(function(){
+      busy = null;
+      window.location.replace(url);
+    });
   }
 
   /* writes the draft's hand-off for custom_editor.html and opens it — the last step of the hand-off */
@@ -10455,9 +10821,12 @@
       pics.run = function(run, refresh){ return sendPictures(run, pics, refresh); };
       steps.push(pics);
     }
-    var kinds = recordKinds();
-    if (kinds.length){
-      var recs = { key: 'records', label: 'Saving ' + listWords(kinds) + ' to the event’s Content' };
+    /* the row also runs when the draft now has none of a kind it wrote on an earlier run (a hand-off that stopped
+       part-way, then Back to my details and the FAQs taken out): those records come out of the Content again */
+    var kinds = recordKinds(), gone = staleRecordSources(S.createdEventId, recordPlan(pendingAddress)).map(function(src){ return src.words; });
+    if (kinds.length || gone.length){
+      var recs = { key: 'records', label: kinds.length ? 'Saving ' + listWords(kinds) + ' to the event’s Content'
+        : 'Taking the ' + listWords(gone) + ' you removed out of the event’s Content' };
       recs.run = function(run){ return writeRecords(run, recs); };
       steps.push(recs);
     }
@@ -10476,6 +10845,7 @@
   ========================================================= */
   var UPLOAD_KIND_OF_SHAPE = { people: 'speakers', logos: 'partners', gallery: 'gallery' };
   var UPLOAD_LANES = 3;          // uploads under way at once: quicker than one by one, gentle on the server
+  var uploadsUnderWay = {};      // '<eventId> <file key>' -> the upload of that picture still on its way (sendPictures)
   function uploadsFor(eventId){
     var u = S.uploads;
     if (!u || typeof u !== 'object' || u.eventId !== eventId || !u.files || typeof u.files !== 'object') S.uploads = u = { eventId: eventId, files: {}, logo: '', logoOn: '' };
@@ -10576,14 +10946,29 @@
     }
     function one(key, kind, blob, name, what){
       if (ups.files[key]){ tick(); return Promise.resolve(); }
-      return fitForUpload(blob).then(function(fit){
-        if (!isCurrent(run)) return;
-        return RevampCore.uploadImage(eventId, kind, asFile(fit, name)).then(function(up){
-          ups.files[key] = up.url;
-          save();
-          tick();
-        });
+      /* Try again can be pressed while the failed try's other pictures are still on their way (one lane failed, the
+         others were mid-upload): such a picture is waited for, never sent a second time, and sent here only if that
+         upload fails or was never started */
+      var flight = uploadsUnderWay[eventId + ' ' + key];
+      return (flight ? flight.then(function(url){ return url || send(); }, send) : send()).then(function(url){
+        if (url) tick();
       }).then(null, function(err){ throw new Error(what + ' could not be uploaded: ' + plainError(err)); });
+      /* -> the uploaded address, or '' when the run was stopped before the picture was sent */
+      function send(){
+        var id = eventId + ' ' + key;
+        var p = fitForUpload(blob).then(function(fit){
+          if (!isCurrent(run)) return '';
+          return RevampCore.uploadImage(eventId, kind, asFile(fit, name)).then(function(up){
+            ups.files[key] = up.url;
+            save();
+            return up.url;
+          });
+        });
+        uploadsUnderWay[id] = p;
+        function settled(){ if (uploadsUnderWay[id] === p) delete uploadsUnderWay[id]; }
+        p.then(settled, settled);
+        return p;
+      }
     }
     var jobs = sitePictureSlots().map(function(n){
       var shape = '';
@@ -10688,12 +11073,25 @@
   }
   /* the kinds the records row names, from the content as it stands (pictures are not needed to know them) */
   function recordKinds(){
-    return recordPlan(function(slot){ return slot != null && imgFiles[slot] ? 'https://pending.invalid/' + slot : ''; }).map(function(x){ return x.source.words; });
+    return recordPlan(pendingAddress).map(function(x){ return x.source.words; });
   }
+  /* a section picture that will be uploaded, as an address for recordPlan() before it is */
+  function pendingAddress(slot){ return slot != null && imgFiles[slot] ? 'https://pending.invalid/' + slot : ''; }
   function recordsFor(eventId){
     var r = S.records;
     if (!r || typeof r !== 'object' || r.eventId !== eventId || !r.done || !r.made) S.records = r = { eventId: eventId, done: {}, made: {} };
     return r;
+  }
+  /* The kinds this draft wrote into the event's Content on an earlier run and no longer has at all (plan: recordPlan()'s
+     answer now). writeRecords() takes their records out again: without that, a FAQ deleted after a hand-off that stopped
+     part-way stayed in the Content, and the editor's Content overlay put it back on the page. */
+  function staleRecordSources(eventId, plan){
+    var r = S.records;
+    if (!eventId || !r || typeof r !== 'object' || r.eventId !== eventId || !r.made || typeof r.made !== 'object') return [];
+    var planned = plan.map(function(x){ return x.source.libId; });
+    return RECORD_SOURCES.filter(function(src){
+      return planned.indexOf(src.libId) === -1 && src.resources.some(function(res){ return (r.made[res] || []).length > 0; });
+    });
   }
   function writeRecords(run, row){
     var eventId = S.createdEventId;
@@ -10702,10 +11100,10 @@
       return Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
     var ups = uploadsFor(eventId), state = recordsFor(eventId), kept = [];
     var plan = recordPlan(function(slot){ return (slot != null && ups.files['img:' + slot]) || ''; });
-    function writeSource(item){
-      var src = item.source, rows = item.rows, what = JSON.stringify(rows);
-      if (state.done[src.libId] === what) return Promise.resolve();
-      /* this draft's own earlier records of this kind (a run that stopped part-way, or content changed since) go first */
+    var stale = staleRecordSources(eventId, plan);
+    /* this draft's own records of one kind, deleted (one already gone counts as deleted); records of that kind
+       anybody else put in the Content are never touched */
+    function removeMine(src){
       var mine = [];
       src.resources.forEach(function(res){ (state.made[res] || []).forEach(function(id){ mine.push([res, id]); }); });
       return mine.reduce(function(p, pair){
@@ -10718,6 +11116,13 @@
       }, Promise.resolve()).then(function(){
         delete state.done[src.libId];
         save();
+      });
+    }
+    function writeSource(item){
+      var src = item.source, rows = item.rows, what = JSON.stringify(rows);
+      if (state.done[src.libId] === what) return Promise.resolve();
+      /* this draft's own earlier records of this kind (a run that stopped part-way, or content changed since) go first */
+      return removeMine(src).then(function(){
         /* records of this kind somebody else put in the event's Content are kept, not doubled */
         return Promise.all(src.resources.map(function(res){ return RevampCore.fetchSub(res, eventId); }));
       }).then(function(lists){
@@ -10741,9 +11146,13 @@
         }, Promise.resolve()).then(function(){ state.done[src.libId] = what; save(); });
       });
     }
-    return plan.reduce(function(p, item){ return p.then(function(){ if (isCurrent(run)) return writeSource(item); }); }, Promise.resolve()).then(function(){
-      row.label = 'Saved ' + listWords(plan.map(function(x){ return x.source.words; })) + ' to the event’s Content' +
-        (kept.length ? ' (its ' + listWords(kept) + ' already there were kept)' : '');
+    var work = stale.reduce(function(p, src){ return p.then(function(){ if (isCurrent(run)) return removeMine(src); }); }, Promise.resolve());
+    return plan.reduce(function(p, item){ return p.then(function(){ if (isCurrent(run)) return writeSource(item); }); }, work).then(function(){
+      var gone = stale.map(function(src){ return src.words; });
+      row.label = plan.length
+        ? 'Saved ' + listWords(plan.map(function(x){ return x.source.words; })) + ' to the event’s Content' +
+          (kept.length ? ' (its ' + listWords(kept) + ' already there were kept)' : '') + (gone.length ? '; the ' + listWords(gone) + ' you removed were taken out' : '')
+        : 'Took the ' + listWords(gone) + ' you removed out of the event’s Content';
     }, function(err){
       if (err && err.message === 'stopped') return;
       throw new Error('The event’s Content could not be saved: ' + plainError(err));
@@ -11060,16 +11469,19 @@
   /* =========================================================
      INIT
   ========================================================= */
-  /* "Create Event" everywhere in the product links here with ?new=1, and the bare page resumes the draft.
-     A new event never silently replaces an unfinished one: when the stored draft holds anything its owner
-     entered, they choose between continuing it and discarding it first. ?new=1&discard=1 is for a caller
-     that has already asked.
+  /* "Create Event" everywhere in the product links here with ?new=1, the dashboard's Drafts open a draft with
+     ?draft=<id> (on any computer: openDraft), and the bare page resumes the draft this browser worked on last.
+     A new event never throws away an unfinished one: one that is safe in the person's account stays there, listed
+     under Drafts, and the new event starts at once (keepOrAsk). Only a draft this browser holds that cannot be
+     saved to the account just now is asked about, as before: continue it, or discard it and start a new event.
+     ?new=1&discard=1 is for a caller that has already asked.
      ETB2B AI on the events dashboard links here with ?new=1&prefill=<id>: a new event's details, taken from the
      person's own message, wait in localStorage under that id (create-event-prefill.js). They fill a new draft
-     only; an unfinished one is asked about first, as above, and the discard parameter never skips that for them. */
+     only; an unfinished one is kept or asked about first, as above, and the discard parameter never skips that. */
   function init(){
+    migrateLegacyDraft();
     var params = new URLSearchParams(location.search);
-    var startNew = params.get('new') === '1', stored = readStoredDraft();
+    var startNew = params.get('new') === '1', wantDraft = params.get('draft') || '', stored = readStoredDraft();
     /* the dashboard's portal, read before the address is tidied below. It pre-sets a new draft only, once
        it is found on ET's roster (portalArrived): a draft that is resumed keeps its own portal. ETB2B AI's
        prefill brings its own portal instead (create-event-prefill.js), which startPortal() takes first */
@@ -11081,14 +11493,23 @@
     if (prefill){
       var next = RevampPrefill.decide({ startNew: startNew, prefill: prefill, stored: !!stored, hasInput: !!stored && draftHasInput(stored),
         discard: params.get('discard') === '1' });
-      if (next === 'ask'){ askResumeOrDiscard(stored, prefill); return; }
+      if (next === 'ask'){ keepOrAsk(stored, function(){ startWithPrefill(prefill); }, function(){ askResumeOrDiscard(stored, prefill); }); return; }
       if (stored){ discardStoredDraft(stored).then(function(){ startWithPrefill(prefill); }); return; }
       startWithPrefill(prefill);
       return;
     }
-    if (!startNew || !stored){ start(); return; }
-    if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(start); return; }
-    askResumeOrDiscard(stored);
+    /* a draft named in the address (Resume on the dashboard, or this tab's own draft after a reload) */
+    if (wantDraft && !startNew){ openDraft(wantDraft, undefined, params.get('from') === 'account'); return; }
+    if (!startNew){ if (stored) openDraft(stored.draftId, stored); else start(null); return; }
+    if (!stored){ start(null); return; }
+    if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(function(){ start(null); }); return; }
+    keepOrAsk(stored, function(){ start(null); }, function(){ askResumeOrDiscard(stored); });
+  }
+  /* An unfinished draft and a new event: when the draft is safe in the person's account it stays there (Drafts on the
+     events dashboard) and the new event starts at once (fresh); when it is not, and cannot be put there now, the
+     person is asked (ask), because discarding it would then lose it. */
+  function keepOrAsk(stored, fresh, ask){
+    ensureInAccount(stored).then(function(ok){ if (ok) fresh(); else ask(); });     // true, or 'theirs': not this person's to ask about
   }
   /* ETB2B AI's details for id, or null: none, too old, already used, or unreadable (storage blocked or the script missing) */
   function takePrefill(id){
@@ -11111,11 +11532,11 @@
         ' were not used: finish or discard this one, then ask again.' };
       start();
     };
-    var fresh = !prefill ? start : function(){ startWithPrefill(prefill); };
+    var fresh = !prefill ? function(){ start(null); } : function(){ startWithPrefill(prefill); };
     openModal({
       title: 'You have an unfinished event',
       sub: draftLabel(stored) + edited,
-      body: '<div class="callout plain">' + IC.info + '<span>This draft is kept in this browser. Continue it, or discard it and start a new event.' +
+      body: '<div class="callout plain">' + IC.info + '<span>This draft is only in this browser: it could not be saved to your account just now, so it is not in your Drafts. Continue it, or discard it and start a new event.' +
         (stored.createdEventId ? ' Its event (' + esc(stored.createdEventId) + ') already exists and stays in your events list either way.' : '') +
         (prefill ? ' ETB2B AI has the details of ' + (name ? '“' + esc(name) + '”' : 'your new event') + ' ready: they are used only if you start a new event.' : '') +
         '</span></div>',
@@ -11126,7 +11547,7 @@
       onCancel: function(){
         openModal({
           title: 'Discard “' + draftLabel(stored) + '”?',
-          sub: 'Everything entered for this draft in this browser is deleted, including its logo and banner. This cannot be undone.' +
+          sub: 'Everything entered for this draft is deleted, including its logo and banner. This cannot be undone.' +
             (stored.createdEventId ? ' The event itself is not deleted.' : ''),
           confirm: 'Discard draft',
           cancelLabel: 'Keep it',
@@ -11137,7 +11558,8 @@
       }
     });
   }
-  function startWithPrefill(p){ aiPrefill = p; start(); }
+  /* ETB2B AI's details always fill a new draft, never the one this browser worked on last */
+  function startWithPrefill(p){ aiPrefill = p; start(null); }
   /* Fills the new draft with ETB2B AI's details (start(), after restore(), before the form is drawn) and saves it.
      resumed: restore() found a draft after all (another tab started one a moment ago): that draft is never written
      over, and the person is told the details were not used. */
@@ -11318,13 +11740,63 @@
     function again(){ window.location.replace(location.pathname + '?new=1'); }
     discardStoredDraft(S).then(again, again);
   }
-  function start(){
-    var resumed = restore();
+  /* removes this draft for good, from the account and this browser — its text, logo and banner. The event, if one was
+     already created, stays. */
+  function confirmDiscard(){
+    openModal({
+      title: 'Discard this draft?',
+      sub: 'Everything entered here is deleted, from your account and from this browser, including the logo and banner. This cannot be undone.' +
+        (S.createdEventId ? ' The event “' + (S.basics.name.trim() || S.createdEventId) + '” already exists and stays in your events list — only this draft is removed.' : ''),
+      confirm: 'Discard draft',
+      cancelLabel: 'Keep it',
+      onConfirm: function(){
+        draftClosed = true;
+        clearTimeout(pushTimer);
+        discardStoredDraft(S).then(function(){ exitToDashboard(); });
+      }
+    });
+  }
+  /* where the draft is, said to someone about to leave */
+  function whereDraftIs(){
+    if (inAccount() || sync.state === 'saving' || sync.state === 'pending') return 'Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer.';
+    return 'Your draft is kept in this browser only for now. ' + accountProblem() + ' It is saved to your account the next time you open Create Event here.';
+  }
+  /* why the account does not have the draft, in a sentence */
+  function accountProblem(){
+    if (!accountReady()) return 'This page could not reach your account: reload it to save your draft there.';
+    if (sync.state === 'conflict') return unsavedReason();
+    return 'It could not be saved to your account: ' + String(sync.error || 'the server could not be reached').replace(/\.$/, '') + '.';
+  }
+  var LEAVE_WAIT_MS = 5000;
+  function withinMs(p, ms){ return Promise.race([p, new Promise(function(resolve){ setTimeout(function(){ resolve(false); }, ms); })]); }
+  /* leaves once what was typed last is in the account (or a few seconds have passed: the copy here goes on the next visit) */
+  function leaveAfterPush(toDrafts){
+    var go = function(){ exitToDashboard(toDrafts); };
+    if (!draftHasInput(S, true) || inAccount()) return go();
+    withinMs(pushDraft(), LEAVE_WAIT_MS).then(go, go);
+  }
+  /* refreshes the session cookie first (same reasoning as auth.js's own a.back-btn click interceptor —
+     this button isn't one, so it needs its own copy) so a long wizard session's cookie going stale never
+     bounces an actually-signed-in admin to the sign-in page on exit. toDrafts: to the dashboard's Drafts, where
+     the draft just saved is listed. */
+  function exitToDashboard(toDrafts){
+    if (window.RevampAuth) RevampAuth.ensureSession().then(go, go); else go();
+    function go(){ window.location.href = 'Event_Listing.html' + (toDrafts === true ? '#view=draft' : ''); }
+  }
+
+  /* d: the draft to open (openDraft), null for a new event, or nothing for the one this browser worked on last */
+  function start(d){
+    var resumed = restore(d);
     sweepDraftFiles();
-    if (resumed) save();         // an older draft has just been given its id and file slots: keep them
+    /* an older draft has just been given its id and file slots, or a draft came from the account: kept in this browser
+       as it is (opening a draft is not an edit, so its "Last edited" stays) */
+    if (resumed){ draftId(); lastSaveOk = writeLocalCopy(); keepDraftInAddress(); }
     if (aiPrefill) applyAiPrefill(resumed);
     initStep1();
+    schedulePush();              // a copy this browser had not sent to the account yet goes now
     renderSaveState();           // where the draft is kept, once there is a draft to keep
+    tidyLocalDrafts();
+    resendMissingFiles();
     if (S.basics.logo && !logoPreviewUrl){
       Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
         if (!rec || rec.name !== S.basics.logoName || logoPreviewUrl) return;
@@ -11358,20 +11830,6 @@
       if (e.persisted && S.assembled) window.location.replace(location.pathname);
     });
 
-    /* removes this draft for good — its text, logo and banner. The event, if one was already created, stays. */
-    function confirmDiscard(){
-      openModal({
-        title: 'Discard this draft?',
-        sub: 'Everything entered here is deleted from this browser, including the logo and banner. This cannot be undone.' +
-          (S.createdEventId ? ' The event “' + (S.basics.name.trim() || S.createdEventId) + '” already exists and stays in your events list — only this draft is removed.' : ''),
-        confirm: 'Discard draft',
-        cancelLabel: 'Keep it',
-        onConfirm: function(){
-          draftClosed = true;
-          discardStoredDraft(S).then(exitToDashboard);
-        }
-      });
-    }
     /* Sign out (the account menu auth.js renders) leaves the page too. Caught on its way to the menu's
        own handler, so that it cannot silently stop a generation or drop a draft this browser never saved. */
     document.addEventListener('click', function(e){
@@ -11397,40 +11855,51 @@
     }, true);
     $('btn-close').addEventListener('click', function(){
       if (leavingStopsGeneration()) return;
-      var saved = save() && !draftUnsaved();
+      var saved = save() && !draftUnsaved(), has = draftHasInput(S, true);
+      if (has) pushDraft();          // what was just typed is on its way while the question is read
       openModal({
         title: 'Leave the builder?',
-        sub: saved ? 'Your draft is kept in this browser. Open Create Event on this computer to continue.'
-          : unsavedReason() + ' If you leave now, what you entered is lost.',
-        body: '<button class="btn btn-ghost btn-sm" type="button" id="leave-discard">' + IC.trash + ' Discard this draft instead</button>',
+        sub: !saved ? unsavedReason() + ' If you leave now, what you entered is lost.'
+          : !has ? 'Nothing has been entered yet, so there is no draft to keep.'
+          : whereDraftIs(),
+        body: has ? '<button class="btn btn-ghost btn-sm" type="button" id="leave-discard">' + IC.trash + ' Discard this draft instead</button>' : '',
         confirm: saved ? 'Leave builder' : 'Leave anyway',
         cancelLabel: 'Stay',
-        onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+        onConfirm: function(){ leavingUnsaved = true; leaveAfterPush(false); }
       });
-      $('leave-discard').onclick = confirmDiscard;
+      if ($('leave-discard')) $('leave-discard').onclick = confirmDiscard;
     });
     $('btn-save-exit').addEventListener('click', function(){
       if (leavingStopsGeneration()) return;
-      if (save() && !draftUnsaved()){
-        toast('Draft saved on this computer');
-        setTimeout(exitToDashboard, 700);
+      var btn = $('btn-save-exit');
+      if (!save() || draftUnsaved()){
+        openModal({
+          title: 'Your draft is not saved',
+          sub: unsavedReason() + ' Leave anyway?',
+          confirm: 'Leave anyway',
+          cancelLabel: 'Stay',
+          onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+        });
         return;
       }
-      openModal({
-        title: 'Your draft is not saved',
-        sub: unsavedReason() + ' Leave anyway?',
-        confirm: 'Leave anyway',
-        cancelLabel: 'Stay',
-        onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+      if (!draftHasInput(S, true)){ exitToDashboard(); return; }
+      btn.disabled = true;
+      withinMs(pushDraft(), LEAVE_WAIT_MS).then(function(ok){
+        btn.disabled = false;
+        if (ok || inAccount()){
+          toast('Draft saved to your account. It is under Drafts on the events dashboard.');
+          setTimeout(function(){ exitToDashboard(true); }, 700);
+          return;
+        }
+        openModal({
+          title: 'Saved on this computer only',
+          sub: accountProblem() + ' Your draft is kept in this browser and is saved to your account the next time you open Create Event here. Until then it is not in your Drafts.',
+          confirm: 'Leave anyway',
+          cancelLabel: 'Stay',
+          onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+        });
       });
     });
-    /* refreshes the session cookie first (same reasoning as auth.js's own a.back-btn click interceptor —
-       this button isn't one, so it needs its own copy) so a long wizard session's cookie going stale never
-       bounces an actually-signed-in admin to the sign-in page on exit. */
-    function exitToDashboard(){
-      if (window.RevampAuth) RevampAuth.ensureSession().then(go, go); else go();
-      function go(){ window.location.href = 'Event_Listing.html'; }
-    }
 
     /* "Preview" <-> "Back to editing" — full-page, same page, via togglePreviewMode() — independent of
        setPreviewVisible()'s per-step on/off (that controls whether this toggle is available at all). */

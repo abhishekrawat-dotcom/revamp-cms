@@ -1,6 +1,7 @@
 // The Create Event page (create-event.html) in a vm, for tests: its main inline script runs over a small fake DOM built
 // from the page's own ids (hidden, disabled, type and value as in the markup), with RevampPortals, RevampCore, RevampStore and
-// the page's own dialog and toasts stubbed (o.core adds or replaces RevampCore calls). window.__ce(expr) is evaluated inside
+// the page's own dialog and toasts stubbed (o.core adds or replaces RevampCore calls; o.globals puts more on window before the
+// script runs, such as a RevampCreateDrafts and a RevampAuth; o.keepSave leaves the page's own save()). window.__ce(expr) is evaluated inside
 // the script's own scope, to read and stub its functions. The same loader as create-event-portal.test.js's, kept here so
 // more than one test can use it. No network, no Firebase, no browser, no AI.
 'use strict';
@@ -10,7 +11,7 @@ var ROOT = path.join(__dirname, '..', '..', '..');
 function read(p) { return fs.readFileSync(path.join(ROOT, p), 'utf8'); }
 var page = read('create-event.html');
 var inline = (page.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); });
-var SRC = inline.filter(function (s) { return s.indexOf("var STORE_KEY = 'revamp.createEvent.draft.v1'") !== -1; })[0] || '';
+var SRC = inline.filter(function (s) { return s.indexOf("var DRAFT_PREFIX = 'revamp.createEvent.draft.v2.'") !== -1; })[0] || '';
 var ROSTER = etEvents.portalList();
 
 /* every element with an id in a piece of markup: its tag and the attributes the script reads */
@@ -48,7 +49,12 @@ function load(o) {
         var self = this;
         this._owned.forEach(drop);
         this._html = String(v == null ? '' : v); this._text = this._html.replace(/<[^>]*>/g, ''); this.children = []; this._owned = [];
-        idsIn(this._html).forEach(function (s) { var c = makeEl(s.id, s.tag, s); c._parent = self; self.children.push(c); elements[s.id] = c; self._owned.push(c); });
+        idsIn(this._html).forEach(function (s) {
+          var c = makeEl(s.id, s.tag, s); c._parent = self; self.children.push(c); elements[s.id] = c; self._owned.push(c);
+          /* its own words, for a test that reads a button the script wrote (a label with no markup inside) */
+          var open = new RegExp('<' + s.tag + '\\b[^>]*\\bid="' + s.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"[^>]*>', 'i').exec(self._html);
+          if (open) { var from = open.index + open[0].length, to = self._html.indexOf('</' + s.tag, from); if (to !== -1) c._text = self._html.slice(from, to).replace(/<[^>]*>/g, ''); }
+        });
       },
       get className() { return Object.keys(classes).join(' '); }, set className(v) { classes = {}; String(v).split(/\s+/).filter(Boolean).forEach(function (c) { classes[c] = 1; }); },
       get parentNode() { return this._parent || (this._parent = makeEl('', 'div')); }, set parentNode(v) { this._parent = v; },
@@ -115,7 +121,8 @@ function load(o) {
   };
   ctx.window = ctx;
   ctx.self = ctx;
-  if (o.draft) store['revamp.createEvent.draft.v1'] = JSON.stringify(o.draft);
+  /* a draft this browser kept: under its own key, and named the one it worked on last (create-event.html, UX-048) */
+  if (o.draft) { store['revamp.createEvent.draft.v2.' + o.draft.draftId] = JSON.stringify(o.draft); store['revamp.createEvent.current.v2'] = o.draft.draftId; }
   Object.keys(o.storage || {}).forEach(function (k) { store[k] = o.storage[k]; });
   /* portal-picker.js itself, over a signed-in RevampAuth whose answers are set here (o.api: url -> [status, body]) */
   if (o.realPicker) {
@@ -154,6 +161,7 @@ function load(o) {
     fetchEvents: function () { log.fetchedEvents = (log.fetchedEvents || 0) + 1; return o.eventsFail ? Promise.reject(Object.assign(new Error('Could not reach the server. Check your connection and try again.'), { status: 0 })) : Promise.resolve(o.events || []); }
   }, o.core || {});
   ctx.RevampStore = { get: function () { return Promise.resolve(null); }, put: function () { return Promise.resolve(); }, remove: function () { return Promise.resolve(); } };
+  Object.keys(o.globals || {}).forEach(function (k) { ctx[k] = o.globals[k]; });
   ctx.__log = log;
   var src = SRC.replace(/\}\)\(\);\s*$/, 'window.__ce = function(__x){ return eval(__x); };\n})();');
   vm.runInNewContext(src, ctx, { filename: 'create-event.html#inline' });
@@ -171,8 +179,10 @@ function load(o) {
     noop: function () {}
   };
   ce('toast = window.__fake.toast; openModal = window.__fake.openModal; setStep1Phase = window.__fake.setStep1Phase;' +
-     'save = function(){ window.__log.saves++; return true; }; schedulePreview = window.__fake.noop; loadBannerFiles = window.__fake.noop; loadImageFiles = window.__fake.noop;');
+     (o.keepSave ? '' : 'save = function(){ window.__log.saves++; return true; };') +
+     'schedulePreview = window.__fake.noop; loadBannerFiles = window.__fake.noop; loadImageFiles = window.__fake.noop;');
   return { ctx: ctx, ce: ce, $: function (id) { return doc.getElementById(id); }, doc: doc, log: log, store: store, fire: fire,
+    winFire: function (type, ev) { (winListeners[type] || []).slice().forEach(function (f) { f(Object.assign({ type: type }, ev || {})); }); },
     make: function (id, tag) { var el = makeEl(id, tag); elements[id] = el; return el; },
     docFire: function (type, target) {
     (docListeners[type] || []).slice().forEach(function (f) { f({ type: type, target: target, preventDefault: function () {}, stopPropagation: function () {} }); });

@@ -393,9 +393,11 @@
     }).then(function (kept) {
       if (kept) forgetHandoff();
       pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
-      /* what Create Event handed over for a gallery design is saved as the site's first version once the page is
-         ready (saveFirstVersion): the person's content is then on the server, for every computer and colleague */
-      if (fromCreate() && !/^(gen|imported)-/.test(templateId || '')) firstSaveDue = true;
+      /* what Create Event handed over for a gallery design or an imported one is saved as the site's first version
+         once the page is ready (saveFirstVersion): the person's content is then on the server, for every computer and
+         colleague, as Create Event's "Saving your event" screen says for both. A generated site ("gen-") is not: its
+         page is made on the server, and Create Event's brief path never shows that screen. */
+      if (fromCreate() && !/^gen-/.test(templateId || '')) firstSaveDue = true;
     });
   }
   var pendingAiHero = null;
