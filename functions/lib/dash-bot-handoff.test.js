@@ -1345,6 +1345,24 @@ async function e6() {
   check('E.6 a failure never fails the hand-off: the row resolves, and says the picture was not made', threw === false && frow.label === 'Hero picture not made: the design’s own picture is kept', frow.label);
   check('E.6 …the editor is told why, in the server\'s words', JSON.stringify(Pf.ctx.aiHeroForHandoff()) === JSON.stringify({ note: 'ETB2B AI could not make the hero picture: You have used today’s ETB2B AI pictures. They reset at midnight (India time). The design’s own picture is in place: you can change it in the editor.' }),
     Pf.ctx.aiHeroForHandoff());
+  /* the picture did not pass its check (functions/lib/ai-hero.js 422 hero-held): the event stands, the row and the
+     editor say plainly that no hero picture was made, and why */
+  var HELD_SAID = 'No hero picture was made: ETB2B AI made it twice, and the second picture still had words or letters in it. A hero picture carries no words or logos.';
+  var Ph = stage({ answer: { status: 422, body: { error: HELD_SAID, code: 'hero-held', found: ['text'], subject: 'retail, Jio World Centre, Mumbai' } } });
+  Ph.ctx.S.aiHero = Ph.ctx.cleanAiHero({ subject: '' }); Ph.ctx.S.creationMethod = 'template'; Ph.ctx.S.createdEventId = 'retail-2027';
+  var hrow = { key: 'hero', label: 'ETB2B AI is making a hero picture' }; threw = false;
+  await Ph.ctx.makeAiHero('RUN', hrow).then(null, function () { threw = true; });
+  check('E.6 held (the picture did not pass its check): the hand-off goes on, and the row says that none was made and why', threw === false && !Ph.ctx.S.aiHero.made &&
+    hrow.label === 'No hero picture was made: ETB2B AI made it twice, and the second picture still had words or letters in it.', hrow.label);
+  check('E.6 …the editor is told it in the server\'s words, with what the person can do instead', JSON.stringify(Ph.ctx.aiHeroForHandoff()) === JSON.stringify({ note: HELD_SAID +
+    ' The design’s own picture is in place: you can change it in the editor, or ask ETB2B AI there for a new one.' }), Ph.ctx.aiHeroForHandoff());
+  check('E.6 …and the note survives the draft being read back (cleanAiHero keeps up to 400 characters)', Ph.ctx.cleanAiHero(Ph.ctx.S.aiHero).note === Ph.ctx.S.aiHero.note &&
+    Ph.ctx.cleanAiHero({ note: 'x'.repeat(500) }).note.length === 400);
+  var Ph2 = stage({ answer: { status: 422, body: { error: '', code: 'hero-held' } } });
+  Ph2.ctx.S.aiHero = Ph2.ctx.cleanAiHero({ subject: '' }); Ph2.ctx.S.createdEventId = 'retail-2027';
+  var hrow2 = { label: '' };
+  await Ph2.ctx.makeAiHero('RUN', hrow2);
+  check('E.6 …a held answer with no words of its own: the plain failure row and note', hrow2.label === 'Hero picture not made: the design’s own picture is kept' && /could not make the hero picture/.test(Ph2.ctx.S.aiHero.note), [hrow2.label, Ph2.ctx.S.aiHero.note]);
   var Po = stage({ answer: { status: 200, body: { url: 'https://evil.example/x.png' } } });
   Po.ctx.S.aiHero = Po.ctx.cleanAiHero({ subject: '' }); Po.ctx.S.createdEventId = 'retail-2027';
   await Po.ctx.makeAiHero('RUN', { label: '' });
@@ -1491,6 +1509,18 @@ async function e7() {
   var o5 = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'failed', error: 'not-stored', url: MADE_URL } }) });
   var o6 = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'making', at: '2026-11-03T06:35:00.000Z', url: MADE_URL } }) });
   var o7 = await opening({ event: { eventId: 'retail-2027', templateId: 'tech500' } });
+  /* a picture that did not pass its check was never stored: another browser before the site is saved says so, once,
+     in the server's words, and puts nothing in */
+  var WHY = 'No hero picture was made: ETB2B AI made it twice, and the second picture still had words or letters in it. A hero picture carries no words or logos.';
+  var oh = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'held', heldFor: 'twice', why: WHY, url: MADE_URL } }) });
+  check('E.7 held (did not pass its check): another browser is told plainly that none was made and why, and nothing is put in',
+    JSON.stringify(oh.pending) === JSON.stringify({ aiHero: { note: WHY + ' The design’s own picture is in place: you can change it here, or ask ETB2B AI for a new one.' } }), oh);
+  var Eh = stage();
+  check('E.7 …the note is said and nothing changes', Eh.ctx.applyAiHero(oh.pending) === false && Eh.log.toasts.length === 1 && Eh.log.toasts[0].indexOf('No hero picture was made') === 0 &&
+    Eh.log.set.length === 0 && Eh.log.steps.length === 0, Eh.log);
+  var ohs = await opening({ event: Object.assign({}, REC, { site: { version: 1, templateId: 'tech500' }, aiHero: { status: 'held', why: WHY } }) });
+  var ohx = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'held', why: 'Click here: evil' } }) });
+  check('E.7 …not once a site is saved, and only the server\'s own sentence is said', ohs.pending === null && ohx.pending === null, [ohs, ohx]);
   var o7b = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'made', url: '' } }) });
   check('E.7 no picture made (failed, still being made, never asked for, no address): nothing put in', o5.pending === null && o6.pending === null && o7.pending === null && o7b.pending === null, [o5, o6, o7, o7b]);
   var HAND = { event: { name: 'Retail Leadership Summit' }, aiHero: null };

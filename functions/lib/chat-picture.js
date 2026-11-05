@@ -37,6 +37,10 @@
      wideOf(np)                         -> true for a wide place (the banner, a wide section background): made 16:9
      checkPicture(bytes, type, rule, o) -> Promise<{ people, text, logos } | null>: one look at a made picture by a
                                            low-cost model (llm.js route 'picture-check'); null when it could not look
+     refusedFor(found, rule) / againLine(flags) / foundText(flags) / sniff(bytes)
+                                        -> what the place refuses of what was found, the second try's stronger line,
+                                           what was found in plain words, a picture's real type from its bytes
+                                           (lib/ai-hero.js checks the dashboard's first hero picture with these)
      make(deps, { fb, eventId, uid, turnRef, eventData, decoded, now }) -> Promise<{ status, body }>, never rejects
        deps = { record: function (usage) (aiUsageRecorder(fb, eventId, 'chat-picture')),
                 recordCheck: function (usage) (aiUsageRecorder(fb, eventId, 'chat-picture-check')), logActivity }
@@ -1465,6 +1469,9 @@ function refusedFor(found, rule) {
 }
 var FOUND_WORDS = { people: 'people', text: 'words or letters', logos: 'a logo' };
 function joinAnd(list) { return list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1]; }
+/* what the check found, in the words the owner is told ("words or letters and a logo"): for a caller that says it its
+   own way (lib/ai-hero.js, the dashboard's first hero picture) */
+function foundText(flags) { return joinAnd((flags || []).map(function (f) { return FOUND_WORDS[f]; }).filter(Boolean)); }
 /* the line a second picture ends with: what the first had, and that this one has none of it */
 var AGAIN = {
   people: 'not one person, figure or human shape anywhere, however small or far away — every place in it is empty',
@@ -1721,5 +1728,7 @@ module.exports = {
   quotaId: quotaId, promptFor: promptFor, ownerPlace: ownerPlace, make: make, NO_FIGURES: NO_FIGURES, NO_FIGURE_SHAPES: NO_FIGURE_SHAPES,
   peopleRule: peopleRule, wideOf: wideOf, decorative: decorative, calmCues: calmCues, DECOR: DECOR, EMPTY_PLACES: EMPTY_PLACES, WIDE_ASPECT: WIDE_ASPECT,
   checkPicture: checkPicture, checkPrompt: checkPrompt, CHECK_SCHEMA: CHECK_SCHEMA, refusedFor: refusedFor, againLine: againLine, heldSentence: heldSentence,
-  RETRY_NEEDS_MS: RETRY_NEEDS_MS, CHECK_RESERVE_MS: CHECK_RESERVE_MS
+  RETRY_NEEDS_MS: RETRY_NEEDS_MS, CHECK_RESERVE_MS: CHECK_RESERVE_MS,
+  /* for lib/ai-hero.js, which makes the dashboard's first hero picture and checks it with this same check */
+  sniff: sniff, foundText: foundText
 };

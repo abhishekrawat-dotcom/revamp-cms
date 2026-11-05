@@ -10,6 +10,9 @@
        409 hero-generated                   a site generated from a brief, which made its own pictures
        409 hero-no-design                   not on a gallery design: a brief whose site is not generated yet, or an
                                             imported design, which keeps its own pictures
+       422 hero-held { error, found }       a picture was made but did not pass its check (found: what it had of
+                                            'people', 'text', 'logos'), so no hero picture was made; error says so
+                                            plainly, and Create Event and the editor show it. The event stands.
        429 ai-hero-daily                    the person's AI pictures for today are used up
        the AI's own failures in gemini.js's shape ({ error, code, retryable }), and 502 hero-not-stored
 
@@ -20,17 +23,33 @@
 
    WHAT. One picture, made with the site pipeline's own backend and rules: gen-design.js imagePrompt as the hero's
    key visual (no people, no faces, no readable text, no logos or brand names, in one tone of the event's own
-   colours), gemini.js callGeminiImage, and stored as generated site pictures are (events/<id>/generated/,
-   public, cached a year, WebP copies by pictures.js). The subject is the person's own words for it, else the
-   event's FIELD, which its portal sets (portal-fields.js: an ETHRWorld event gets workplaces, an ETAuto one
-   vehicles and roads), and its PLACE. The event's name is never in the prompt, not even inside the person's own
-   words (ownScene takes it out): an image model letters a name onto the picture, and a name steers what is drawn
-   ("QA Dashbot CIO Expo" drew robots, QA 3 Nov 2026). Only an event on a gallery design (the template path) gets
-   one. The event records it (events/<id>.aiHero) and its History says ETB2B AI made it; the editor then puts it
-   into the hero as one change that Undo takes back (editor-template-ui.js applyAiHero), in the browser that
-   created the event or, before a site is saved, in any other (aiHeroFromEvent).
+   colours), gemini.js callGeminiImage asked for a wide 16:9 picture as the editor's banner pictures are, and
+   stored as generated site pictures are (events/<id>/generated/, public, cached a year, WebP copies by
+   pictures.js). The subject is the person's own words for it, else the event's FIELD, which its portal sets
+   (portal-fields.js: an ETHRWorld event gets workplaces, an ETAuto one vehicles and roads, and never a screen,
+   a chart, a sign or a panel, which a model letters), and its PLACE. The event's name is never in the prompt,
+   not even inside the person's own words (ownScene takes it out): an image model letters a name onto the
+   picture, and a name steers what is drawn ("QA Dashbot CIO Expo" drew robots, QA 3 Nov 2026). Only an event on
+   a gallery design (the template path) gets one. The event records it (events/<id>.aiHero) and its History says
+   ETB2B AI made it; the editor then puts it into the hero as one change that Undo takes back
+   (editor-template-ui.js applyAiHero), in the browser that created the event or, before a site is saved, in any
+   other (aiHeroFromEvent).
 
-   LIMITS. One picture per event (a second request answers the first picture). One of the person's daily AI
+   CHECKED. The picture model does not always do as it is told (QA follow-up 3: made-up lettering, "DU HGR", on a
+   floating dashboard panel). So the picture goes through the editor's own picture check (lib/chat-picture.js
+   checkPicture, refusedFor and againLine; there is no second check here): one look by a low-cost model at
+   whether it has people, words or letters (real or made-up), or a logo. The banner shows no people at all
+   (chat-picture.js peopleRule for the hero: 'none') and no picture carries words or logos. A picture found with
+   any of those is made ONCE more with the check's stronger line, as one more of the person's pictures for the
+   day; if that one is found wanting too (or there is no time or picture left for it, or it cannot be made), it
+   is not stored and not set as the hero: the event records why (aiHero.status 'held'), its History says so,
+   and the answer (422 hero-held) says in plain words that no hero picture was made and why. The event itself is
+   untouched, and Create Event goes on to the editor, which says it too. A check that cannot be made (both
+   providers down) does not hold a picture back: it is used, and the record says it was not checked
+   (checks: [null]).
+
+   LIMITS. One picture per event (a second request answers the first picture; one held after two tries is
+   answered again, without a call, until the person asks for something else). One of the person's daily AI
    pictures (dashChats/<uidKey>/days/<India day>.pictures, CAPS.dayPictures a day: main had no per-person
    picture allowance, so this small cap is it), claimed in the same transaction that marks the event as having
    its picture made, before the model is asked. What the model used goes into the event's aiUsage.
@@ -46,6 +65,8 @@ const genDesign = require('./gen-design');
 const pictures = require('./pictures');
 const activity = require('./activity');
 const etEvents = require('./et-events');
+/* the editor's picture check, and its rules for who may be in a banner (one check for every picture ETB2B AI makes) */
+const chatPicture = require('./chat-picture');
 /* what each portal's events are about (the picture's field when the person gave no words of their own): one table
    that Create Event's line reads too, so what the person is told and what is made agree */
 const fields = require('../../portal-fields.js');
@@ -69,13 +90,19 @@ function wired(res) {
 var clock = { now: function () { return Date.now(); } };
 
 var CAPS = {
-  dayPictures: 5,             // AI hero pictures per person per India day
+  dayPictures: 5,             // AI hero pictures per person per India day (a second try is one more)
   subjectChars: 200,
-  makingMs: 3 * 60 * 1000,    // a claim older than this is a request that died: another may try
-  timeoutMs: 60000,           // the image model, as the site pipeline gives it
-  deadlineMs: 80000,          // from the moment the request arrived
+  /* a claim older than this is a request that died: another may try. Longer than a request can live (its deadline,
+     then storing the picture and its copies), so a slow second try is never taken for a dead one. */
+  makingMs: 5 * 60 * 1000,
+  timeoutMs: 60000,           // one call to the image model, as the site pipeline gives it
+  /* from the moment the request arrived: the editor's own (chat-picture.js DEADLINE_MS), room for two pictures and
+     their checks inside the function's 240 s */
+  deadlineMs: chatPicture.DEADLINE_MS,
   variantsBudgetMs: 15000     // WebP copies: past this the answer goes without waiting for them
 };
+/* who may be in the banner's picture: nobody (the editor's rule for its banner), for the prompt and the check alike */
+var PEOPLE_RULE = chatPicture.peopleRule({ placement: 'hero' });
 
 var MSG = {
   badEvent: 'eventId is required.',
@@ -89,6 +116,21 @@ var MSG = {
   notStored: 'The hero picture was made but could not be stored. Try again in a few minutes.',
   failed: 'The hero picture could not be made just now. Please try again.'
 };
+
+/* Why no hero picture was made, in plain words, for Create Event's hand-off and the editor. flags: what the picture
+   last looked at had that a banner may not ('people', 'text', 'logos'); why: 'twice' (a second picture was made and
+   had it too), 'limit' (a second would have gone past the person's pictures for today), 'time' (no time was left
+   for one) or 'failed' (the second could not be made). */
+function heldSentence(flags, why) {
+  var found = chatPicture.foundText(flags);
+  var people = flags.indexOf('people') !== -1, marks = flags.length > (people ? 1 : 0);
+  var rule = people && marks ? 'A hero picture shows no people and carries no words or logos.'
+    : people ? 'A hero picture shows no people.' : 'A hero picture carries no words or logos.';
+  var lead = why === 'twice' ? 'ETB2B AI made it twice, and the second picture still had ' + found + ' in it'
+    : 'the picture ETB2B AI made had ' + found + ' in it, and ' + (why === 'limit' ? 'a second try would have gone past your ETB2B AI pictures for today'
+      : why === 'time' ? 'there was no time left for a second try' : 'a second try could not be made');
+  return 'No hero picture was made: ' + lead + '. ' + rule;
+}
 
 function isObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
 /* one line of plain text: control characters and line breaks become spaces */
@@ -136,7 +178,9 @@ function subjectOf(ev) { return fields.subject(portalOf(ev), ev.venue, cityOf(ev
    allow none), at the event's place. The key visual's own lines (gen-design.js) add the host city's landmarks. */
 function sceneOf(ev) {
   var place = plainPlace(placeOf(ev), 120);
-  return fields.fieldOf(portalOf(ev)).scene + (place ? ', at ' + place : '');
+  /* and, in so many words, none of the things a model letters (portal-fields.js KEEP_OUT): the scene names none,
+     and the key visual's "symbols of the field" must not bring a chart or a dashboard in either */
+  return fields.fieldOf(portalOf(ev)).scene + (place ? ', at ' + place : '') + ' — ' + fields.KEEP_OUT;
 }
 /* What kind of event it is, for the prompt's "The event:" line: the kind alone. Neither its name nor its portal's
    name (a brand) is ever in the prompt: an image model letters what it is told is a title onto the picture, and a
@@ -194,7 +238,10 @@ function designOf(ev) {
    name is ever in the prompt. */
 function promptFor(ev, subject, own) {
   var city = plainPlace(cityOf(ev), 60), words = own ? ownScene(subject, ev) : '';
-  return genDesign.imagePrompt(words || sceneOf(ev), designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
+  var prompt = genDesign.imagePrompt(words || sceneOf(ev), designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
+  /* nobody in any form, said as the editor says it for its banner, after the STRICT rules: the check refuses the
+     same (a silhouette, a human icon, a figure however small) */
+  return PEOPLE_RULE === 'none' ? prompt + ' ' + chatPicture.NO_FIGURES : prompt;
 }
 
 /* ---------- the route ---------- */
@@ -228,10 +275,13 @@ function handleHero(req, res) {
         /* the template path only, as Create Event asks: checked here too, so no request can make a picture for a
            brief (before its site is generated) or for an imported design */
         if (!galleryDesign(ev.templateId)) return { stop: 'hero-no-design' };
+        var said = subject || subjectOf(ev);
+        /* two pictures for this were made and refused: the same ask is answered the same way, with no third call;
+           what the person changed since (Change on Create Event) is asked afresh */
+        if (h && h.status === 'held' && h.heldFor === 'twice' && h.subject === said && typeof h.why === 'string' && h.why) return { held: h };
         var d = got[1].exists ? (got[1].data() || {}) : {};
         var used = Math.max(0, Math.floor(Number(d.pictures) || 0));
         if (used >= CAPS.dayPictures) return { stop: 'ai-hero-daily' };
-        var said = subject || subjectOf(ev);
         tx.update(eventRef, { aiHero: { status: 'making', at: at, by: by, subject: said } });
         tx.set(dayRef, { pictures: used + 1, updatedAt: at }, { merge: true });
         return { ev: ev, subject: said };
@@ -243,7 +293,8 @@ function handleHero(req, res) {
       if (c.stop === 'hero-no-design') return H.sendJson(res, 409, { error: MSG.noDesign, code: 'hero-no-design' });
       if (c.stop === 'ai-hero-daily') return H.sendJson(res, 429, { error: MSG.daily, code: 'ai-hero-daily' });
       if (c.made) return H.sendJson(res, 200, { url: c.made.url, subject: String(c.made.subject || ''), made: false });
-      return make(fb, decoded, eventId, eventRef, c.ev, c.subject, !!subject, started, by, turnId).then(function (out) {
+      if (c.held) return H.sendJson(res, 422, heldBody(c.held.why, c.held.found, c.held.subject));
+      return make(fb, decoded, eventId, eventRef, dayRef, c.ev, c.subject, !!subject, started, by, turnId).then(function (out) {
         if (out.ai) return H.sendAiFailure(res, out.ai);
         H.sendJson(res, out.status, out.body);
       });
@@ -257,29 +308,122 @@ function giveUp(eventRef, ev, by, subject, why) {
     .catch(function (err) { console.error('ai-hero: the failed claim could not be recorded — ' + (err && err.message)); });
 }
 
-/* own: the subject is the person's own words (promptFor). -> Promise<{ status, body } | { ai: failure }> */
-function make(fb, decoded, eventId, eventRef, ev, subject, own, started, by, turnId) {
-  var record = H.aiUsageRecorder(fb, eventId, 'ai-hero');
-  return gemini.callGeminiImage(promptFor(ev, subject, own), {
-    route: 'ai-hero', eventId: eventId, user: by, timeoutMs: CAPS.timeoutMs, deadlineAt: started + CAPS.deadlineMs
-  }).then(function (r) {
-    if (record && r) { try { record(r.usage); } catch (e) { /* the usage line is never why a picture fails */ } }
-    if (!r || r.error || !r.base64) {
-      var failure = r && r.error ? r : Object.assign(gemini.failure('ai-bad-output'), { provider: 'gemini' });
-      return giveUp(eventRef, ev, by, subject, failure.code).then(function () { return { ai: failure }; });
-    }
-    var bytes = Buffer.from(r.base64, 'base64');
-    var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
+/* the answer when no hero picture was made because the picture did not pass its check */
+function heldBody(why, found, subject) {
+  return { error: String(why || ''), code: 'hero-held', found: Array.isArray(found) ? found.slice(0, 3) : [], subject: String(subject || '') };
+}
+/* a usage recorder that can never be why a picture fails */
+function safe(record) {
+  return function (usage) {
+    if (!record || !usage) return;
+    try { record(usage); } catch (e) { console.error('ai-hero: usage not recorded — ' + (e && e.message)); }
+  };
+}
+
+/* own: the subject is the person's own words (promptFor). -> Promise<{ status, body } | { ai: failure }>
+   The picture, its check (lib/chat-picture.js, the editor's own), once more with the check's stronger line when it
+   was found wanting, and then either stored as the hero picture or held back with why (see CHECKED above). */
+function make(fb, decoded, eventId, eventRef, dayRef, ev, subject, own, started, by, turnId) {
+  var record = safe(H.aiUsageRecorder(fb, eventId, 'ai-hero'));
+  var recordCheck = safe(H.aiUsageRecorder(fb, eventId, 'ai-hero-check'));
+  var deadlineAt = started + CAPS.deadlineMs, prompt = promptFor(ev, subject, own);
+  var looks = [];   // what each look found ({ people, text, logos }, or null when it could not look)
+
+  /* one call to the picture model, wide as the editor's banner pictures are -> Promise<{ bytes, type } | { ai }> */
+  function picture(text, until) {
+    var call;
+    try {
+      call = Promise.resolve(gemini.callGeminiImage(text, {
+        route: 'ai-hero', eventId: eventId, user: by, timeoutMs: CAPS.timeoutMs, deadlineAt: until, aspectRatio: chatPicture.WIDE_ASPECT
+      }));
+    } catch (err) { call = Promise.reject(err); }
+    return call.then(function (r) {
+      if (r) record(r.usage);
+      if (!r || r.error || !r.base64) return { ai: r && r.error ? r : Object.assign(gemini.failure('ai-bad-output'), { provider: 'gemini' }) };
+      var bytes = Buffer.from(String(r.base64), 'base64');
+      /* the picture's real type, from its bytes (the model's word for it is not trusted), as the editor reads it */
+      var type = chatPicture.sniff(bytes);
+      if (!type) {
+        console.error('ai-hero: the picture model answered ' + bytes.length + ' bytes that are not a PNG, JPEG or WebP');
+        return { ai: Object.assign(gemini.failure('ai-bad-output'), { provider: 'gemini' }) };
+      }
+      return { bytes: bytes, type: type };
+    }, function (err) {
+      console.error('ai-hero: the picture call for ' + eventId + ' failed — ' + (err && err.message));
+      return { ai: Object.assign(gemini.failure('ai-unavailable'), { provider: 'gemini' }) };
+    });
+  }
+  /* the editor's check -> what of it a banner may not have ([] when nothing, or when it could not look) */
+  function look(pic) {
+    return chatPicture.checkPicture(pic.bytes, pic.type, PEOPLE_RULE, { eventId: eventId, deadlineAt: deadlineAt, record: recordCheck }).then(function (found) {
+      looks.push(found);
+      return chatPicture.refusedFor(found, PEOPLE_RULE);
+    });
+  }
+  /* a second picture is one more of the person's pictures today; false when they have none left */
+  function reserveAgain() {
+    return fb.db.runTransaction(function (tx) {
+      return tx.get(dayRef).then(function (snap) {
+        var d = snap.exists ? (snap.data() || {}) : {};
+        var used = Math.max(0, Math.floor(Number(d.pictures) || 0));
+        if (used >= CAPS.dayPictures) return false;
+        tx.set(dayRef, { pictures: used + 1, updatedAt: new Date(clock.now()).toISOString() }, { merge: true });
+        return true;
+      });
+    }).catch(function (err) {
+      console.error('ai-hero: a second picture for ' + eventId + ' could not be counted — ' + (err && err.message));
+      return false;
+    });
+  }
+  function checksOf() { return looks.map(function (f) { return f ? { people: f.people, text: f.text, logos: f.logos } : null; }); }
+
+  return picture(prompt, deadlineAt).then(function (first) {
+    if (first.ai) return giveUp(eventRef, ev, by, subject, first.ai.code).then(function () { return { ai: first.ai }; });
+    return look(first).then(function (flags) {
+      if (!flags.length) return store(first, 1);
+      if (deadlineAt - clock.now() < chatPicture.RETRY_NEEDS_MS) return hold(flags, 'time', 1);
+      return reserveAgain().then(function (reserved) {
+        if (!reserved) return hold(flags, 'limit', 1);
+        return picture(prompt + ' ' + chatPicture.againLine(flags), deadlineAt - chatPicture.CHECK_RESERVE_MS).then(function (second) {
+          if (second.ai) return hold(flags, 'failed', 2);
+          return look(second).then(function (again) { return again.length ? hold(again, 'twice', 2) : store(second, 2); });
+        });
+      });
+    });
+  });
+
+  /* No hero picture: what was made is not stored, the event records why (so the same ask is not made a third time,
+     and the editor in another browser can say so), and its History says ETB2B AI made none. */
+  function hold(flags, why, tries) {
+    var said = heldSentence(flags, why);
+    var rec = { status: 'held', at: new Date(clock.now()).toISOString(), by: by, subject: subject, found: flags, heldFor: why, why: said,
+      tries: tries, checks: checksOf(), from: 'dashboard' };
+    if (turnId) rec.turnId = turnId;
+    return eventRef.get().then(function (snap) {
+      if (!snap.exists || !live(snap.data())) return { status: 404, body: { error: MSG.noEvent, code: 'no-event' } };
+      return eventRef.update({ aiHero: rec }).then(function () {
+        activity.logActivity(fb, eventId, decoded, 'ai-chat', 'ETB2B AI made no hero picture for the site (“' + subject.slice(0, 120) + '”): the picture had ' +
+          chatPicture.foundText(flags) + ' in it' + (why === 'twice' ? ', on a second try too' : ''), { area: 'design' });
+        return { status: 422, body: heldBody(said, flags, subject) };
+      });
+    });
+  }
+
+  /* The picture that passed (or could not be looked at) is stored and set as the hero's. */
+  function store(pic, tries) {
+    var bytes = pic.bytes;
+    var ext = pic.type === 'image/jpeg' ? 'jpg' : pic.type === 'image/webp' ? 'webp' : 'png';
     /* named after the request's moment, like every other generated picture: what one name holds never changes,
        so it is cached for a year */
     var storagePath = 'events/' + eventId + '/generated/' + started.toString(36) + '-ai-hero.' + ext;
     var file = fb.bucket.file(storagePath);
-    return file.save(bytes, { metadata: { contentType: r.mimeType || 'image/png', cacheControl: pictures.CACHE } })
+    return file.save(bytes, { metadata: { contentType: pic.type, cacheControl: pictures.CACHE } })
       .then(function () { return file.makePublic(); })
       .then(function () { return pictures.storeVariants(fb, storagePath, bytes, { budgetMs: CAPS.variantsBudgetMs }); })
       .then(function () {
         var url = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
-        var rec = { status: 'made', url: url, storagePath: storagePath, subject: subject, at: new Date(clock.now()).toISOString(), by: by, from: 'dashboard' };
+        var rec = { status: 'made', url: url, storagePath: storagePath, subject: subject, at: new Date(clock.now()).toISOString(), by: by, from: 'dashboard',
+          tries: tries, checks: checksOf() };
         if (turnId) rec.turnId = turnId;
         /* an event removed while the picture was being made is not written back (update() creates nothing),
            and gets no History line */
@@ -294,10 +438,10 @@ function make(fb, decoded, eventId, eventRef, ev, subject, own, started, by, tur
         console.error('ai-hero: the picture for ' + eventId + ' was made but not stored — ' + (err && err.message));
         return giveUp(eventRef, ev, by, subject, 'not-stored').then(function () { return { status: 502, body: { error: MSG.notStored, code: 'hero-not-stored', retryable: true } }; });
       });
-  });
+  }
 }
 
 module.exports = { wire: wire, handleHero: handleHero };
 module.exports._test = { CAPS: CAPS, MSG: MSG, clock: clock, dayKey: dayKey, subjectOf: subjectOf, aboutOf: aboutOf, cityOf: cityOf, designOf: designOf,
   promptFor: promptFor, templateColour: templateColour, uidKeyOf: uidKeyOf, sceneOf: sceneOf, plainPlace: plainPlace, ownScene: ownScene, portalOf: portalOf,
-  placeOf: placeOf, galleryDesign: galleryDesign };
+  placeOf: placeOf, galleryDesign: galleryDesign, heldSentence: heldSentence, PEOPLE_RULE: PEOPLE_RULE };

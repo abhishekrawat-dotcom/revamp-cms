@@ -4,6 +4,9 @@
      F.1  one table: every portal on ET's roster (lib/et-events.js PORTALS) has its own entry, and nothing else does
      F.2  each entry is safe to draw: a scene of places and objects only (no person, no brand, no word or number to
           letter on), a short field for people to read
+     F.2k no scene names a thing that carries writing (screens, monitors, dashboards, charts, signs, boards, panels,
+          books, labels, …): an image model letters every such surface (QA follow-up 3 N1: "DU HGR" on a dashboard
+          panel in an ETHRWorld hero); KEEP_OUT says so after every scene, and the scene rule says why
      F.3  the fields the owner named: ETHRWorld people and workplaces (as offices, campuses, learning spaces), ETCIO
           technology leadership, ETAuto mobility and vehicles, and so on; a neutral one for no portal
      F.4  place() and subject(), as Create Event's line and the server's record word them
@@ -15,6 +18,8 @@ var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); }
 
 var FILE = path.join(__dirname, '..', '..', 'portal-fields.js');
+/* the file's opening comment, where the rules for an entry are written */
+function SRC_HEAD() { var t = fs.readFileSync(FILE, 'utf8'); return t.slice(0, t.indexOf('*/')); }
 var F = require(FILE);
 var etEvents = require('./et-events');
 var ROSTER = Object.keys(etEvents.PORTALS);
@@ -46,6 +51,32 @@ check('F.2 no scene draws a person (the hero\'s rules allow none): people-heavy 
 var branded = all.filter(function (e) { return brandIn(e[1].scene) || brandIn(e[1].field); }).map(function (e) { return e[0]; });
 check('F.2 no field or scene names a brand (a portal\'s name, ET): an image model letters a brand onto the picture', branded.length === 0, branded);
 check('F.2 the table cannot be changed by a caller (one object for the page and every request)', Object.isFrozen(F.FIELDS) && Object.isFrozen(F.FIELDS.hr) && Object.isFrozen(F.DEFAULT));
+
+/* ---- F.2k nothing a model letters ---- */
+/* the things that carry writing, which an image model fills with made-up glyphs: screens and what is shown on them,
+   signs and boards of every kind (a shopfront is its sign), panels, and the printed things (books, maps, labels,
+   packaging that is not said to be plain) */
+var LETTERED = /\b(?:(?:touch)?screens?|monitors?|displays?|dashboards?|charts?|graphs?|curves?|tickers?|data\s+streams?|code|signs?|signage|shopfronts?|storefronts?|\w*boards?|boardrooms?|panels?|panell?ed|devices?|tablets?|laptops?|(?:smart)?phones?|radar(?!\s+dish)|control|books?|notebooks?|librar(?:y|ies)|documents?|newspapers?|maps?|posters?|banners?|labels?|letters?|text|words?|logos?|numbers?|packaging(?!\s+lines))\b/i;
+var lettered = all.filter(function (e) { return LETTERED.test(e[1].scene); }).map(function (e) { return e[0] + ': ' + e[1].scene.match(LETTERED)[0]; });
+check('F.2k no scene names a screen, monitor, dashboard, chart, sign, board, panel or other thing a model letters', lettered.length === 0, lettered);
+/* the rule, broken once each way it was broken before this fix: every one of these is caught */
+var BEFORE = ['financial district towers, boardrooms and rising curves of light', 'devices, circuit boards, chips and digital networks', 'green buildings, solar panels, forests and clean water',
+  'modern stores, shelves, shopping bags, carts and lit shopfronts', 'drones in flight, aerial views and flight control', 'campuses, classrooms, libraries and books, with no one in them',
+  'a floating dashboard panel', 'office screens and monitors', 'a whiteboard', 'road signs', 'an aircraft, radar and ships', 'boxes, cartons, containers and packaging'];
+var missed = BEFORE.filter(function (t) { return !LETTERED.test(t); });
+check('F.2k …the matcher catches each kind (the scenes as they were, and the follow-up\'s dashboard panel)', missed.length === 0, missed);
+check('F.2k …and lets the plain ones through (solar farms, radar dishes, packaging lines, plain unmarked goods)',
+  ['solar farms', 'radar dishes', 'packaging lines', 'shelves of plain unmarked goods', 'glowing circuitry, unmarked chips'].every(function (t) { return !LETTERED.test(t); }));
+var KEEP = String(F.KEEP_OUT || '');
+var notSaid = ['screens', 'monitors', 'dashboards', 'charts', 'signs', 'boards', 'panels'].filter(function (w) { return !new RegExp('\\b' + w + '\\b').test(KEEP); });
+check('F.2k KEEP_OUT says, in so many words, no screens, monitors, dashboards, charts, signs, boards or panels anywhere', notSaid.length === 0 && /^and no /.test(KEEP) && /anywhere in it$/.test(KEEP) &&
+  !/["'`‘’“”{}\[\]<>.]/.test(KEEP), [notSaid, KEEP]);
+var HEAD = SRC_HEAD();
+check('F.2k the scene rule says it, and why (the model letters them)', /never a thing\s+that carries writing: no screens, monitors, displays, dashboards, charts or graphs, no signs, boards/.test(HEAD) &&
+  /letters every such surface/.test(HEAD) && /KEEP_OUT/.test(HEAD));
+check('F.2k the plain-goods scenes say so (unmarked, unbadged, unlabelled): goods, vehicles and containers carry no brand or code',
+  /unmarked/.test(F.FIELDS.retail.scene) && /unbadged/.test(F.FIELDS.auto.scene) && /unmarked/.test(F.FIELDS.supplychain.scene) && /unmarked/.test(F.FIELDS.shipping.scene) &&
+  /unmarked/.test(F.FIELDS.packaging.scene) && /unlabelled/.test(F.FIELDS.salon.scene));
 
 /* ---- F.3 the fields named ---- */
 var HR = 'bright modern offices, open workspaces, campuses and learning spaces, with no one in them';

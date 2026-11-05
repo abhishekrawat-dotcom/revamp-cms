@@ -402,11 +402,17 @@
      before saving, and the hand-off's picture lived only in the other browser's copy (QA follow-up 2). It is put in
      exactly as the hand-off puts it (applyAiHero: one step of its own, which Undo takes back to the design's own
      picture). Only while no site has ever been saved: a saved site is what the person chose, picture or not.
-     -> { aiHero: { url, subject } } or null */
+     A picture that did not pass its check (status 'held') was never stored: the person is told so, in the server's
+     words ("No hero picture was made: …"), as the hand-off tells them.
+     -> { aiHero: { url, subject } }, { aiHero: { note } } or null */
   function aiHeroFromEvent() {
     var ev = currentEvent, h = ev && ev.aiHero;
-    if (!eventId || !h || typeof h !== 'object' || h.status !== 'made' || typeof h.url !== 'string' || !h.url) return null;
+    if (!eventId || !h || typeof h !== 'object') return null;
     if (ev.site && +ev.site.version > 0) return null;
+    if (h.status === 'held' && typeof h.why === 'string' && h.why.indexOf('No hero picture was made') === 0) {
+      return { aiHero: { note: h.why.slice(0, 300) + ' The design\u2019s own picture is in place: you can change it here, or ask ETB2B AI for a new one.' } };
+    }
+    if (h.status !== 'made' || typeof h.url !== 'string' || !h.url) return null;
     return { aiHero: { url: h.url, subject: typeof h.subject === 'string' ? h.subject : '' } };
   }
 
@@ -418,7 +424,7 @@
   function applyAiHero(draft) {
     var a = draft && draft.aiHero;
     if (!a || typeof a !== 'object' || !canvas) return false;
-    if (typeof a.note === 'string' && a.note) { showToast(a.note.slice(0, 300)); return false; }
+    if (typeof a.note === 'string' && a.note) { showToast(a.note.slice(0, 400)); return false; }
     var url = typeof a.url === 'string' ? a.url : '';
     var own = 'https://storage.googleapis.com/';
     if (url.indexOf(own) !== 0 || url.indexOf('/events/' + eventId + '/generated/') === -1 || /[\s"'<>()]/.test(url)) return false;

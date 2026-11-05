@@ -10143,9 +10143,12 @@
     steps.push({ key: 'open', label: 'Opening the editor', run: openInEditor });
     return steps;
   }
-  /* What made the picture fail, in a sentence for the editor's note: the server's own when it says one */
+  /* What made the picture fail, in a sentence for the editor's note: the server's own when it says one. A picture
+     that did not pass its check (hero-held: it had words, a logo or people in it, twice) is said as the server says
+     it, "No hero picture was made: …", with what the person can do instead. */
   function aiHeroFailure(err){
     var said = err && typeof err.said === 'string' && err.said ? err.said : '';
+    if (err && err.code === 'hero-held' && said) return said.replace(/\s+$/, '') + ' The design’s own picture is in place: you can change it in the editor, or ask ETB2B AI there for a new one.';
     return 'ETB2B AI could not make the hero picture' + (said ? ': ' + said.replace(/\.$/, '') : '') + '. The design’s own picture is in place: you can change it in the editor.';
   }
   /* The one picture, made now that the event exists (POST /api/event/ai-hero, functions/lib/ai-hero.js). It never
@@ -10170,7 +10173,10 @@
       if (!isCurrent(run)) return;
       h.note = aiHeroFailure(err);
       save();
-      row.label = 'Hero picture not made: the design’s own picture is kept';
+      /* held: the row says that none was made and why, in the server's first sentence ("No hero picture was made:
+         ETB2B AI made it twice, and the second picture still had words or letters in it.") */
+      var held = err && err.code === 'hero-held' && typeof err.said === 'string' ? err.said.split('. ')[0].replace(/\.?$/, '.') : '';
+      row.label = held.indexOf('No hero picture was made') === 0 ? held : 'Hero picture not made: the design’s own picture is kept';
     });
   }
   /* what the editor is told about it: the picture to put in as an undoable change, or why there is none. A picture
@@ -10593,7 +10599,7 @@
     var made = h.made && typeof h.made === 'object' && typeof h.made.url === 'string' && /^https:\/\/storage\.googleapis\.com\//.test(h.made.url)
       ? { url: h.made.url, subject: String(h.made.subject || '').slice(0, 200) } : null;
     return { subject: String(h.subject || '').replace(/\s+/g, ' ').trim().slice(0, 200), removed: h.removed === true, made: made,
-      note: String(h.note || '').slice(0, 300), turnId: typeof h.turnId === 'string' ? h.turnId.slice(0, 40) : '', at: +h.at || 0 };
+      note: String(h.note || '').slice(0, 400), turnId: typeof h.turnId === 'string' ? h.turnId.slice(0, 40) : '', at: +h.at || 0 };
   }
   /* The picture's subject when the person gave none: the event's field, which its portal sets, and its place
      ("technology leadership, Jio World Centre, Mumbai"), worded by portal-fields.js as the server words it
