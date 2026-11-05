@@ -56,6 +56,10 @@
   .chg .ba .b{ background:var(--bad-soft); } .chg .ba .a{ background:var(--ok-soft); }
   .chg .ba b{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; display:block; margin-bottom:2px; }
   .chg .extra{ color:var(--muted); font-size:12px; margin-top:6px; }
+  .chg .rec{ margin-top:6px; font-size:12.5px; word-break:break-word; }
+  .side h3{ font-size:12.5px; font-weight:700; margin:14px 0 6px; }
+  .side h3 small{ font-weight:500; color:var(--muted); }
+  .tag{ display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:5px; background:var(--surface-2); color:var(--muted); margin-left:6px; vertical-align:1px; }
   .empty{ color:var(--muted); font-size:13px; }
   .decide{ position:sticky; bottom:-28px; background:var(--surface); border-top:1px solid var(--border); margin:18px -18px -28px; padding:14px 18px 18px; }
   .decide textarea, .settings input[type=text]{ width:100%; font:inherit; font-size:13px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical; }
@@ -108,7 +112,11 @@
 
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   function when(iso){ var d = new Date(iso || ''); return isNaN(d) ? '—' : d.toLocaleString(undefined, { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
-  var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design' };
+  var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design',
+    'record-added':'Added', 'record-removed':'Removed', 'record-changed':'Changed', 'record-order':'New order' };
+  /* the class that colours a change's badge */
+  var TONE = { added:'added', removed:'removed', 'record-added':'added', 'record-removed':'removed' };
+  function isRecord(it){ return /^record-/.test(it.type || ''); }
 
   function fail(message){
     main.innerHTML = '<div class="loading">' + esc(message) + '</div>';
@@ -121,15 +129,49 @@
 
   function changeHtml(it){
     var ba = '';
+    /* one of the event's records (page-diff.js): what names it, and for a change the lines that differ */
+    if (it.type === 'record-added' || it.type === 'record-removed'){
+      return '<div class="chg"><div class="top"><span class="kind ' + esc(TONE[it.type]) + '">' + esc(KIND[it.type]) + '</span><span>' + esc(it.name || 'Record') + '</span></div>' +
+        '<div class="rec">“' + esc(it.type === 'record-added' ? it.after : it.before) + '”</div></div>';
+    }
+    if (it.type === 'record-changed' && it.note){
+      return '<div class="chg"><div class="top"><span class="kind">' + esc(KIND[it.type]) + '</span><span>' + esc(it.name || 'Record') + ' “' + esc(it.note) + '”</span></div>' +
+        '<div class="ba">' + (it.before ? '<div class="b"><b>Before</b>' + esc(it.before) + '</div>' : '') + (it.after ? '<div class="a"><b>After</b>' + esc(it.after) + '</div>' : '') + '</div></div>';
+    }
     if (it.type === 'moved') ba = '<div class="extra">' + esc(it.before) + ' → ' + esc(it.after) + '</div>';
     else if (it.before || it.after){
       ba = '<div class="ba">' +
         (it.before ? '<div class="b"><b>Before</b>' + esc(it.before) + '</div>' : '') +
         (it.after ? '<div class="a"><b>After</b>' + esc(it.after) + '</div>' : '') + '</div>';
     }
-    return '<div class="chg"><div class="top"><span class="kind ' + esc(it.type) + '">' + esc(KIND[it.type] || it.type) + '</span>' +
+    return '<div class="chg"><div class="top"><span class="kind ' + esc(TONE[it.type] || it.type) + '">' + esc(KIND[it.type] || it.type) + '</span>' +
       '<span>' + esc(it.name || it.section || 'Page') + '</span></div>' + ba +
       (it.note ? '<div class="extra">' + esc(it.note) + '</div>' : '') + '</div>';
+  }
+
+  /* The changes in three groups: what people changed in the site editor; what Content (the console's Speakers,
+     Agenda, Sponsors, Gallery, FAQ and Contact) added, changed or removed, record by record; and what the editor
+     updated by itself when it opened (an ET logo brought up to date, heading sizes) — so the approver sees which
+     is which. A group with nothing in it is left out, and so is its heading when it is the only one. */
+  function changesHtml(items){
+    var own = items.filter(function(it){ return !isRecord(it) && !it.auto; });
+    var content = items.filter(isRecord);
+    var auto = items.filter(function(it){ return !isRecord(it) && it.auto; });
+    var groups = [
+      { title: 'Site edits', note: '', list: own },
+      { title: 'Content', note: 'from the event console', list: content },
+      { title: 'Automatic updates', note: 'made by the site editor when it opened', list: auto }
+    ].filter(function(g){ return g.list.length; });
+    if (groups.length === 1 && groups[0].list === own) return own.map(changeHtml).join('');
+    return groups.map(function(g){
+      return '<h3>' + esc(g.title) + ' (' + g.list.length + ')' + (g.note ? ' <small>' + esc(g.note) + '</small>' : '') + '</h3>' + g.list.map(changeHtml).join('');
+    }).join('');
+  }
+  /* a save that only brought Content in, or that the editor made by itself */
+  function saveTag(s){
+    if (s.kind === 'content') return '<span class="tag">Content</span>';
+    if (s.kind === 'automatic') return '<span class="tag">Automatic</span>';
+    return '';
   }
 
   function render(){
@@ -167,12 +209,12 @@
 
       '<h2>Saves in this request (' + (r.saves || []).length + ')</h2>' +
       ((r.saves || []).length ? '<ul class="saves">' + r.saves.map(function(s){
-        return '<li><b>Version ' + esc(s.version) + '</b> — ' + esc(s.summary || 'saved') + '<div class="meta">' + esc(s.by) + ' · ' + esc(when(s.at)) + '</div>' +
+        return '<li><b>Version ' + esc(s.version) + '</b>' + saveTag(s) + ' — ' + esc(s.summary || 'saved') + '<div class="meta">' + esc(s.by) + ' · ' + esc(when(s.at)) + '</div>' +
           (s.note ? '<div class="meta">“' + esc(s.note) + '”</div>' : '') + '</li>';
       }).join('') + '</ul>' : '<p class="empty">The individual saves were not recorded for these versions.</p>') +
 
       '<h2>What changed (' + (r.items || []).length + ')</h2>' +
-      ((r.items || []).length ? r.items.map(changeHtml).join('') :
+      ((r.items || []).length ? changesHtml(r.items) :
         '<p class="empty">' + (r.firstPublish ? 'This is the first time the site goes live: the whole site is new. See it on the right.' : 'No difference a reader would see was found between the two versions.') + '</p>') +
       settingsHtml() + decideHtml();
 

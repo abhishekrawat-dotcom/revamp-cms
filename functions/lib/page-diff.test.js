@@ -45,6 +45,52 @@ ok(types(state) === 'design:' && /Heading size: 40/.test(state[0].before) && /Co
 var rec = diffPages(page(sec('sp', '<h2>Speakers</h2><div data-rv-repeat-template="speakers"><h3>A</h3></div>')), page(sec('sp', '<h2>Speakers</h2><div data-rv-repeat-template="speakers"><h3>A</h3></div><div data-rv-repeat-template="speakers"><h3>B</h3></div>')));
 ok(!rec.some(function (i) { return i.type === 'text'; }), 'a record drawn into a list is not a wording change', JSON.stringify(rec));
 
+/* ---- the event's records, one by one (UX-114): the approver sees each FAQ, speaker, sponsor… by name ---- */
+function faqItem(id, q, a, extra) {
+  return '<div class="qa" data-rv-repeat-template="faq"' + (id ? ' data-rv-filled="" data-rv-id="' + id + '"' : ' data-rv-filled=""') + (extra || '') + '>' +
+    '<h3 data-rv-field="t">' + q + '</h3><p data-rv-field="d">' + a + '</p></div>';
+}
+var MODEL = '<div class="qa" data-rv-repeat-template="faq"><h3 data-rv-field="t">Question goes here</h3><p data-rv-field="d">Answer goes here.</p></div>';
+function faqPage(list, emptyMark) {
+  return page(sec('nav', '<a href="#faq"' + (emptyMark ? ' data-rv-nav-empty=""' : '') + '>FAQ</a>') +
+    sec('faq', '<h2>Questions</h2><div class="list">' + list + '</div>', ' id="faq"' + (emptyMark ? ' data-rv-empty="faq"' : '')));
+}
+var none = faqPage(MODEL, true);
+var one = faqPage(faqItem('f1', 'Is there parking at the venue?', 'Yes, in the basement.'));
+var firstFaq = diffPages(none, one);
+ok(types(firstFaq) === 'record-added:faq' && firstFaq[0].name === 'FAQ' && firstFaq[0].kind === 'faq' && firstFaq[0].after === 'Is there parking at the venue?',
+  'the first FAQ is one added record, named by its question — not "faq: layout or formatting changed", nor a change to the menu', JSON.stringify(firstFaq));
+ok(summarise(firstFaq) === 'Content: 1 FAQ added', 'its summary says what Content added', summarise(firstFaq));
+var two = faqPage(faqItem('f1', 'Is there parking at the venue?', 'Yes, in the basement.') + faqItem('f2', 'Is lunch served?', 'Yes.'));
+var gone = diffPages(two, one);
+ok(types(gone) === 'record-removed:faq' && gone[0].before === 'Is lunch served?', 'a removed record, by name', JSON.stringify(gone));
+var answer = diffPages(one, faqPage(faqItem('f1', 'Is there parking at the venue?', 'Yes, at the Gate 2 lot.')));
+ok(types(answer) === 'record-changed:faq' && answer[0].before === 'Yes, in the basement.' && answer[0].after === 'Yes, at the Gate 2 lot.' && answer[0].note === 'Is there parking at the venue?',
+  'a changed answer: the lines that differ, and which FAQ', JSON.stringify(answer));
+var renamed = diffPages(one, faqPage(faqItem('f1', 'Where do I park?', 'Yes, in the basement.')));
+ok(types(renamed) === 'record-changed:faq' && renamed[0].before === 'Is there parking at the venue?' && renamed[0].after === 'Where do I park?', 'the same record (by its id) with a new question is changed, not removed and added', JSON.stringify(renamed));
+var reordered = diffPages(two, faqPage(faqItem('f2', 'Is lunch served?', 'Yes.') + faqItem('f1', 'Is there parking at the venue?', 'Yes, in the basement.')));
+ok(types(reordered) === 'record-order:faq' && reordered[0].name === 'FAQs', 'the same records in another order', JSON.stringify(reordered));
+ok(summarise(reordered) === 'Content: FAQs reordered', 'summary of a new order', summarise(reordered));
+var oldIds = faqPage(faqItem('', 'Is there parking at the venue?', 'Yes, in the basement.'));
+ok(diffPages(oldIds, one).length === 0, 'a page saved before records carried their id: the same record, matched by name, is no change');
+ok(diffPages(faqPage(MODEL), faqPage(MODEL.replace('Question goes here', 'Your question'))).length === 0, 'the design\'s sample item is not a record, and its words are not the page\'s');
+var hiddenPlace = diffPages(two, faqPage(faqItem('f1', 'Is there parking at the venue?', 'Yes, in the basement.') + faqItem('f2', 'Is lunch served?', 'Yes.'), true));
+ok(types(hiddenPlace) === 'record-removed:faq,record-removed:faq', 'records in a place marked empty are not shown', JSON.stringify(hiddenPlace));
+var mixed = diffPages(one, faqPage(faqItem('f1', 'Is there parking at the venue?', 'Yes, in the basement.') + faqItem('f2', 'Is lunch served?', 'Yes.')).replace('<h2>Questions</h2>', '<h2>Your questions</h2>'));
+ok(types(mixed) === 'text:faq,record-added:faq' && summarise(mixed) === '1 section edited, content: 1 FAQ added', 'an edit and a record: both, apart', types(mixed) + ' / ' + summarise(mixed));
+function spk(id, name, photo) {
+  return '<article data-rv-repeat-template="speakers" data-rv-filled="" data-rv-id="' + id + '"><img data-rv-field="photo" src="' + photo + '" alt=""><h3 data-rv-field="n">' + name + '</h3></article>';
+}
+var photo = diffPages(page(sec('speakers', '<h2>Speakers</h2>' + spk('p1', 'Priya Sharma', 'https://x/events/e/media/old.jpg'))),
+  page(sec('speakers', '<h2>Speakers</h2>' + spk('p1', 'Priya Sharma', 'https://x/events/e/media/new.jpg'))));
+ok(types(photo) === 'record-changed:speakers' && photo[0].name === 'Speaker' && photo[0].before === 'old.jpg' && photo[0].after === 'new.jpg' && photo[0].note === 'Priya Sharma',
+  'a speaker\'s new photo is a change to that speaker, not to the section\'s pictures', JSON.stringify(photo));
+var card = diffPages(page(sec('faq', '<h2>FAQ</h2><ul data-rv-list="li"></ul>')), page(sec('faq', '<h2>FAQ</h2><ul data-rv-list="li"><li data-rv-item="faq" data-rv-id="f9"><b>When is it?</b><p>In June.</p></li></ul>')));
+ok(types(card) === 'record-added:faq' && card[0].after === 'When is it?', 'a real template\'s card that carries its record\'s id is a record too', JSON.stringify(card));
+var wizard = diffPages(page(sec('faq', '<h2>FAQ</h2><ul><li data-rv-item="faq"><b>A</b></li></ul>')), page(sec('faq', '<h2>FAQ</h2><ul><li data-rv-item="faq"><b>B</b></li></ul>')));
+ok(!wizard.some(function (i) { return /^record-/.test(i.type); }), 'a card the wizard wrote (no record id) is not one of Content\'s records', JSON.stringify(wizard));
+
 ok(summarise(t) === '2 sections edited', 'summary of edits', summarise(t));
 ok(summarise(added.concat(moved, design)) === '1 added, 1 moved, site design changed', 'summary of a mix', summarise(added.concat(moved, design)));
 ok(summarise([]) === 'no visible change', 'summary of nothing');

@@ -708,6 +708,10 @@
   .tpl-sel-toolbar button.danger:hover, .tpl-sec-toolbar button.danger:hover{ background:#ED1C24; }
   .tpl-sel-toolbar button:disabled, .tpl-sec-toolbar button:disabled{ opacity:.45; cursor:default; background:none; }
   .tpl-sel-toolbar .tpl-tb-sep, .tpl-sec-toolbar .tpl-tb-sep{ width:1px; height:16px; background:rgba(255,255,255,.25); margin:0 2px; }
+  /* a record from Content: where it is edited, instead of tools (editor-template-ui.js recordPill) */
+  .tpl-sel-toolbar .tpl-tb-text{ padding:4px 6px; color:rgba(255,255,255,.86); font-size:12.5px; }
+  .tpl-sel-toolbar .tpl-tb-link{ color:#fff; font-size:12.5px; font-weight:600; text-decoration:underline; text-underline-offset:2px; padding:4px 7px; border-radius:5px; }
+  .tpl-sel-toolbar .tpl-tb-link:hover, .tpl-sel-toolbar .tpl-tb-link:focus-visible{ background:rgba(255,255,255,.18); outline:none; }
   /* a small form opened from the element toolbar (Link) */
   .tpl-pop{ z-index:41; width:300px; max-width:calc(100% - 12px); padding:12px; display:flex; flex-direction:column; gap:10px; }
   .tpl-pop h4{ font-size:13px; font-weight:700; color:#fff; }
@@ -1544,6 +1548,7 @@
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
+<script src="templates/_shared/rv-records.js"></script>
 <script src="editor-ai-picture.js"></script>
 <script src="editor-template-ui.js"></script>
 <script src="editor-ai-mode.js"></script>

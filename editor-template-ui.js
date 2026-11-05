@@ -172,9 +172,13 @@
       canvas = c;
       return resolveInitialContent();
     }).then(function () {
+      noteOpening();
       // real Content-tab data (speakers/partners/faq/contacts/glimpses) overlaid on top of whatever base
       // content resolveInitialContent() just settled on — see applySubcollectionOverlay()'s own comment.
-      return applySubcollectionOverlay();
+      var seen = recordsSeen(), was = undoStack[undoPtr];
+      return applySubcollectionOverlay().then(function () {
+        if (canvas && was && !canvas.sameSnapshot(undoStack[undoPtr], was)) noteAuto(recordsNamed(seen));
+      });
     }).then(function () {
       if (!pageWired) {
         buildToolbars();
@@ -186,10 +190,11 @@
       wireCanvasEvents();
       /* a page saved before its look last changed carries the ET logo in the right version from now on —
          checked again once the page has laid out (the nav's row is measured) */
-      var putRight = syncEtLogos();
-      if (calmHeadings()) putRight = true;
-      if (putRight) commit();
-      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && syncEtLogos()) commit(); }, ms); });
+      var putRight = [];
+      if (syncEtLogos()) putRight.push('the ET logo and menu');
+      if (calmHeadings()) putRight.push('heading sizes');
+      if (putRight.length) bakeAuto(putRight);
+      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && syncEtLogos()) bakeAuto(['the ET logo and menu']); }, ms); });
       /* opened from the preview's "Apply in editor": that theme */
       var askedTheme = new URLSearchParams(location.search).get('theme');
       var ti = themesInfo();
@@ -211,6 +216,7 @@
       document.getElementById('btn-publish').hidden = !eventId;
       document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
+      settleAuto();
       loadSiteInfo();
       ownerLogoOffer();
       logoUnitNotice();
@@ -555,18 +561,21 @@
      client-side sort is needed for the plain lists; translatePartners still groups by tier explicitly,
      since that structure (tiers -> logos) doesn't exist on the flat `partners` list itself. */
   function byOrder(a, b) { return (a.order || 0) - (b.order || 0); }
+  /* every card drawn from a record carries the record's id (RevampFill writes it as data-rv-id): the editor knows
+     the card is managed in Content, and the approval page can name the record that was added, changed or removed */
+  function recId(r) { return r && r.id != null ? String(r.id) : ''; }
 
   function translateSpeakers(items) {
     if (!items || !items.length) return null;
-    return { items: items.map(function (p) { return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; }) };
+    return { items: items.map(function (p) { return { id: recId(p), n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; }) };
   }
   function translateFaqs(items) {
     if (!items || !items.length) return null;
-    return { items: items.map(function (f) { return { t: f.question || '', d: f.answer || '' }; }) };
+    return { items: items.map(function (f) { return { id: recId(f), t: f.question || '', d: f.answer || '' }; }) };
   }
   function translateGallery(items) {
     if (!items || !items.length) return null;
-    return { items: items.map(function (g) { return { url: g.imageUrl || '' }; }) };
+    return { items: items.map(function (g) { return { id: recId(g), url: g.imageUrl || '' }; }) };
   }
   function translateContacts(items) {
     if (!items || !items.length) return null;
@@ -577,7 +586,7 @@
     items.forEach(function (c) {
       var label = c.label || '';
       if (!byLabel[label]) { byLabel[label] = { t: label, people: [] }; blocks.push(byLabel[label]); }
-      byLabel[label].people.push({ n: c.name || '', e: c.email || '', p: c.phone || '' });
+      byLabel[label].people.push({ id: recId(c), n: c.name || '', e: c.email || '', p: c.phone || '' });
     });
     return blocks.length ? { blocks: blocks } : null;
   }
@@ -593,7 +602,7 @@
     // the Content tab is never silently dropped just because Tiers haven't been configured.
     var fallback = { t: '', logos: [] };
     partners.slice().sort(byOrder).forEach(function (p) {
-      (slots[p.tierId] || fallback).logos.push({ n: p.name || '' });
+      (slots[p.tierId] || fallback).logos.push({ id: recId(p), n: p.name || '' });
     });
     if (fallback.logos.length) ordered.push(fallback);
     var tiersOut = ordered.filter(function (t) { return t.logos.length; });
@@ -627,40 +636,9 @@
      sharing them here would be an accidental coupling waiting to break either path if the other is
      edited for its own reasons later. Same "confirmed empty -> null, don't override" discipline as the
      existing translators: null tells the caller to leave Gemini's own placeholder example item alone
-     rather than wiping it. */
-  function translateSpeakersFlat(items, sessions, days) {
-    if (!items || !items.length) return null;
-    var talks = speakerSessionsOf(sessions, days);
-    return items.map(function (p) {
-      var li = /^https:\/\/[^\s"'<>\\]+$/i.test(String(p.li || '').trim()) ? String(p.li).trim() : '';
-      return { n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '', bio: String(p.bio || '').trim(), li: li,
-        profile: { name: String(p.name || '').trim(), bio: String(p.bio || '').trim(), li: li, sessions: talks[p.id] || [] } };
-    });
-  }
-  /* each speaker's sessions (Content › Agenda), as the pop-up lists them: { when: "26 November 2026 · 9:30 AM – 10:15 AM", title } */
-  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  function dayLabelOf(d) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String((d && d.date) || ''));
-    return m && +m[2] >= 1 && +m[2] <= 12 ? +m[3] + ' ' + MONTH_NAMES[+m[2] - 1] + ' ' + m[1] : String((d && d.name) || '').trim();
-  }
-  function speakerSessionsOf(sessions, days) {
-    var dayById = {}, dayAt = {}, out = {};
-    (days || []).slice().sort(byOrder).forEach(function (d, i) { dayById[d.id] = dayLabelOf(d); dayAt[d.id] = i; });
-    (sessions || []).slice().sort(function (a, b) {
-      var da = a.groupId in dayAt ? dayAt[a.groupId] : 999, db = b.groupId in dayAt ? dayAt[b.groupId] : 999;
-      return (da - db) || String(a.start || '').localeCompare(String(b.start || '')) || byOrder(a, b);
-    }).forEach(function (s) {
-      var title = String(s.title || '').trim();
-      if (!title) return;
-      var time = [clockLabel(s.start), clockLabel(s.end)].filter(Boolean).join(' – ');
-      var when = [dayById[s.groupId] || '', time].filter(Boolean).join(' · ');
-      (s.speakerIds || []).forEach(function (id) {
-        var list = out[id] || (out[id] = []);
-        if (list.length < 6) list.push({ when: when, title: title });
-      });
-    });
-    return out;
-  }
+     rather than wiping it. The rules themselves are templates/_shared/rv-records.js (RevampRecords), the
+     same ones the server draws a saved site's lists with when Content changes (functions/lib/site-records.js),
+     so a record looks the same whichever of the two drew it. */
   /* A speaker's profile, for the pop-up a visitor opens from the card on the published page (templates/_shared/
      rv-popups.js): their text, LinkedIn and sessions, in a <template data-rv-profile> inside the card — never
      drawn on the page, rewritten from the records on every open. Never the speaker's e-mail or phone. */
@@ -694,64 +672,10 @@
     }
     card.appendChild(tpl);
   }
-  function translateFaqsFlat(items) {
-    if (!items || !items.length) return null;
-    return items.map(function (f) { return { t: f.question || '', d: f.answer || '' }; });
-  }
-  function translateGalleryFlat(items) {
-    if (!items || !items.length) return null;
-    return items.map(function (g) { return { imageUrl: g.imageUrl || '', caption: g.caption || '' }; });
-  }
-  function translateContactsFlat(items) {
-    if (!items || !items.length) return null;
-    return items.map(function (c) { return { label: c.label || '', name: c.name || '', email: c.email || '', phone: c.phone || '' }; });
-  }
-  // Flat convention has no tier grouping (unlike translatePartners above) — one item per partner,
-  // tierId is simply dropped; order still follows the same flat display `order` field.
-  function translatePartnersFlat(partners) {
-    if (!partners || !partners.length) return null;
-    return partners.slice().sort(byOrder).map(function (p) { return { name: p.name || '', url: p.url || '', logo: p.logoUrl || '' }; });
-  }
-
-  /* agenda: in day order, then by start time; time as "9:30 AM – 10:15 AM"; speakers by name */
-  function clockLabel(v) {
-    var m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').trim());
-    if (!m || +m[1] > 23) return String(v || '').trim();
-    return ((+m[1] % 12) || 12) + ':' + m[2] + (+m[1] < 12 ? ' AM' : ' PM');
-  }
-  /* "2027-06-22" -> "22 June 2027" ('' for anything else) */
-  function dayDateLabel(v) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
-    if (!m) return '';
-    var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    return (+m[3]) + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1];
-  }
-  function translateSessionsFlat(sessions, days, speakers) {
-    if (!sessions || !sessions.length) return null;
-    var dayAt = {}, nameOf = {}, dayOf = {};
-    (days || []).slice().sort(byOrder).forEach(function (d, i) { dayAt[d.id] = i; dayOf[d.id] = d; });
-    (speakers || []).forEach(function (s) { nameOf[s.id] = s.name || ''; });
-    return sessions.slice().sort(function (a, b) {
-      var da = a.groupId in dayAt ? dayAt[a.groupId] : 999, db = b.groupId in dayAt ? dayAt[b.groupId] : 999;
-      return (da - db) || String(a.start || '').localeCompare(String(b.start || '')) || byOrder(a, b);
-    }).map(function (s) {
-      var time = [clockLabel(s.start), clockLabel(s.end)].filter(Boolean).join(' – ');
-      var day = dayOf[s.groupId] || null;
-      return { title: s.title || '', time: time, desc: s.desc || '', room: s.room || '',
-        speakers: (s.speakerIds || []).map(function (id) { return nameOf[id]; }).filter(Boolean).join(', '),
-        /* the session's day, for the page's day tabs (et-runtime.js sessionDays) */
-        dayKey: String(s.groupId || ''), dayName: day ? String(day.name || '') : '', dayDate: day ? dayDateLabel(day.date) : '' };
-    });
-  }
-
-  var GENERIC_REPEAT_SOURCES = {
-    sessions: { resources: ['sessions', 'agenda-groups', 'speakers'], translate: translateSessionsFlat },
-    speakers: { resources: ['speakers', 'sessions', 'agenda-groups'], translate: translateSpeakersFlat },
-    faq: { resources: ['faqs'], translate: translateFaqsFlat },
-    partners: { resources: ['partners'], translate: translatePartnersFlat },
-    contact: { resources: ['contacts'], translate: translateContactsFlat },
-    glimpses: { resources: ['gallery'], translate: translateGalleryFlat }
-  };
+  var GENERIC_REPEAT_SOURCES = {};
+  RevampRecords.KINDS.forEach(function (kind) {
+    GENERIC_REPEAT_SOURCES[kind] = { resources: RevampRecords.SOURCES[kind], translate: RevampRecords.translate[kind] };
+  });
 
   // Distinct `kind` values actually present in the mounted canvas, restricted to the 5 known kinds
   // (anything else is ignored defensively — not this convention's business).
@@ -837,6 +761,8 @@
       if (item.dayDate) clone.setAttribute('data-rv-day-date', item.dayDate); else clone.removeAttribute('data-rv-day-date');
     }
     clone.setAttribute('data-rv-filled', '');
+    /* the record it shows, so the approval page names a record that was added, changed or removed (page-diff.js) */
+    if (item.id) clone.setAttribute('data-rv-id', item.id); else clone.removeAttribute('data-rv-id');
   }
 
   /* items null/empty -> do nothing, leave Gemini's own markup exactly as written (no template element to
@@ -855,11 +781,18 @@
      stays, under a notice that says why visitors do not see it and where to add the records. The section is
      what is marked when the list is what it is about (nothing else in it but a heading and a line or two);
      otherwise only the list. Records arriving later undo all of it (markFilled). */
-  var EMPTY_NOTES = {
-    partners: 'No partners yet: add them in Content › Partners.', speakers: 'No speakers yet: add them in Content › Speakers.',
-    sessions: 'No agenda yet: add sessions in Content › Agenda.', faq: 'No FAQs yet: add them in Content › FAQs.',
-    contact: 'No contacts yet: add them in Content › Contacts.', glimpses: 'No pictures yet: add them in Content › Gallery.'
-  };
+  /* The notice says it in the owner's words, at a size that reads on the scaled-down canvas (16px there is about
+     13px on screen), with the place to add them as a link: a click on it opens that Content tab in a new tab, a
+     click anywhere else on the notice selects it and the toolbar says the same (recordOf). */
+  function fillEmptyNote(note, kind, whole) {
+    var tab = RevampRecords.TABS[kind];
+    note.textContent = (tab ? 'No ' + tab.many + ' yet' : 'Nothing to show yet') + ': visitors do not see this ' + (whole ? 'section' : 'list') + ' until there are some. ';
+    if (!tab) return;
+    var link = note.ownerDocument.createElement('span');
+    link.setAttribute('data-rv-content-link', '');
+    link.textContent = 'Add ' + tab.many + ' in ' + tab.label + ' ↗';
+    note.appendChild(link);
+  }
   function emptyPlaceOf(listParent) {
     var sec = listParent.closest('[data-rv-section]');
     if (!sec) return listParent;
@@ -882,9 +815,11 @@
       note.setAttribute('data-rv-empty-state', kind);
       note.setAttribute('data-rv-editor', '');
       note.setAttribute('data-ed', 'none');
-      note.setAttribute('style', 'margin:12px 0;padding:10px 14px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;font:500 13px/1.5 Inter,Arial,sans-serif;color:inherit;opacity:.85');
-      note.textContent = (EMPTY_NOTES[kind] || 'Nothing to show yet.') + ' Until then visitors do not see ' + (place === parent ? 'this list' : 'this section') + '.';
+      note.setAttribute('style', 'margin:12px 0;padding:12px 16px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;font:500 16px/1.5 Inter,Arial,sans-serif;color:inherit;opacity:.9;cursor:pointer');
+      fillEmptyNote(note, kind, place !== parent);
       parent.insertBefore(note, parent.firstChild);
+      /* marked as a whole now: a mark the list itself had from an earlier rule is not needed */
+      if (place !== parent && parent.getAttribute('data-rv-empty') === kind) parent.removeAttribute('data-rv-empty');
       if (place !== parent && place.id) {
         Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + place.id + '"]'), function (a) {
           /* the menu's links only: a button elsewhere ("Join as partner") still stands for something real, and
@@ -894,14 +829,22 @@
       }
     });
   }
-  /* A section holding a form — one drawn in place, or a button that opens one (Register included) — is never
-     hidden as empty; the page's own runtime decides the same way (rv-data.js emptyScopeOf). A form or a
-     button can arrive after the section was marked as a whole (the Forms panel, the link pop-over, the AI):
-     before every recorded step the mark moves from such a section to its empty list, so the page that is
-     saved, previewed and published shows the button and the form. */
+  /* A section holding a form — one drawn in place, or a button that opens one — is never hidden as empty; the
+     page's own runtime and the server decide the same way (et-runtime.js emptySections, functions/lib/
+     site-records.js holdsForm). A Register button holds it only when it is the page's only way to register: under
+     an empty agenda it is one of many, and the section goes with its empty list instead of showing a heading, day
+     chips and a button over nothing (UX-147). A form or a button can arrive after the section was marked as a
+     whole (the Forms panel, the link pop-over, the AI): before every recorded step the mark moves from such a
+     section to its empty list, so the page that is saved, previewed and published shows the button and the form. */
   var FORM_HOLDERS = 'a[data-rv-form], a[data-register-cta], [data-rv-form-embed]';
   function holdsForm(el) {
-    return Array.prototype.some.call(el.querySelectorAll(FORM_HOLDERS), function (n) { return !n.closest('[data-rv-editor]'); });
+    return Array.prototype.some.call(el.querySelectorAll(FORM_HOLDERS), function (n) {
+      if (n.closest('[data-rv-editor]')) return false;
+      if (!n.hasAttribute('data-register-cta')) return true;
+      return !Array.prototype.some.call(el.ownerDocument.querySelectorAll('a[data-register-cta]'), function (o) {
+        return !el.contains(o) && !o.closest('[data-rv-editor], [data-rv-empty], .is-hidden-sec');
+      });
+    });
   }
   function keepFormSectionsShown(doc) {
     /* a link that now opens a form (it may have been a menu link to an empty section) is never hidden */
@@ -915,7 +858,7 @@
         if (!parent || parent === sec || parent.nodeType !== 1) return;
         parent.setAttribute('data-rv-empty', kind);
         var note = parent.querySelector(':scope > [data-rv-empty-state]');
-        if (note) note.textContent = (EMPTY_NOTES[kind] || 'Nothing to show yet.') + ' Until then visitors do not see this list.';
+        if (note) fillEmptyNote(note, kind, false);
       });
       // the menu's links to the section come back with it
       if (sec.id) Array.prototype.forEach.call(doc.querySelectorAll('a[href="#' + sec.id + '"][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
@@ -1626,7 +1569,49 @@
     return type === 'text' || type === 'button';
   }
 
+  /* ---------- the event's records on the canvas ----------
+     An item a list drew from Content (a speaker, a session, an FAQ…), the design's sample item in a list that has
+     none yet, and the notice that says so are not the page's own text: Content draws them again every time the
+     site is opened, so a word typed into one would be lost. Clicked, the item is selected whole and the toolbar
+     says where it really lives, with a link that opens that Content tab (UX-074). -> null, or
+     { el, kind, state: 'record' | 'sample' | 'empty', tab } */
+  function recordOf(el) {
+    if (!el || el.nodeType !== 1 || !el.closest || !window.RevampRecords) return null;
+    var TABS = RevampRecords.TABS;
+    var note = el.closest('[data-rv-empty-state]');
+    if (note && TABS[note.getAttribute('data-rv-empty-state')]) return { el: note, kind: note.getAttribute('data-rv-empty-state'), state: 'empty', tab: TABS[note.getAttribute('data-rv-empty-state')] };
+    var item = el.closest('[data-rv-repeat-template]');
+    if (item && TABS[item.getAttribute('data-rv-repeat-template')]) {
+      return { el: item, kind: item.getAttribute('data-rv-repeat-template'), state: item.hasAttribute('data-rv-filled') ? 'record' : 'sample', tab: TABS[item.getAttribute('data-rv-repeat-template')] };
+    }
+    /* a real template's card: drawn from a record when it carries the record's id (or holds cards that do: a
+       contact's group, a sponsor tier); a card the wizard wrote is still the owner's text */
+    var card = el.closest('[data-rv-item][data-rv-id]') || el.closest('[data-rv-item]');
+    if (card && !card.hasAttribute('data-rv-id') && !card.querySelector('[data-rv-item][data-rv-id]')) card = null;
+    if (card && TABS[card.getAttribute('data-rv-item')]) return { el: card, kind: card.getAttribute('data-rv-item'), state: 'record', tab: TABS[card.getAttribute('data-rv-item')] };
+    return null;
+  }
+  function contentHref(kind) {
+    var tab = window.RevampRecords && RevampRecords.TABS[kind];
+    return tab && eventId ? '/edit-event.html?event=' + encodeURIComponent(eventId) + '#' + tab.route : '';
+  }
+  function recordPill(rec) {
+    var t = rec.tab, href = contentHref(rec.kind);
+    var hidden = rec.state === 'empty' || !!rec.el.closest('[data-rv-empty]');
+    var words = rec.state === 'record' ? 'From ' + t.label : 'No ' + t.many + ' yet' + (hidden ? ' · hidden on the live site' : '');
+    return '<span class="tpl-tb-text">' + escHtml(words) + '</span>' +
+      (href ? '<a class="tpl-tb-link" href="' + escHtml(href) + '" target="_blank" rel="noopener" title="Opens ' + escHtml(t.label) +
+        ' in a new tab. The site’s staged copy shows a change made there at once; this editor shows it the next time it opens.">' +
+        (rec.state === 'record' ? 'Edit in Content' : 'Add ' + escHtml(t.many) + ' in Content') + ' ↗</a>' : '');
+  }
+
   function buildToolbar(el) {
+    var rec = recordOf(el);
+    if (rec) {
+      selToolbar.innerHTML = recordPill(rec) + '<span class="tpl-tb-sep"></span>' +
+        '<button class="icon-only" data-action="deselect" title="Close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
+      return;
+    }
     var type = el.getAttribute('data-editable');
     var link = canLink(el) ? '<button data-action="link" title="Where this leads when clicked">Link</button>' : '';
     var html = '';
@@ -2732,7 +2717,7 @@
       html += '<button data-action="toggle-hide" title="Show this section on the site again">Show</button>';
     } else {
       html += '<button data-action="add-section" title="Add a section below this one">+ Section</button>' +
-        (repeatItems(sec).length ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
+        (repeatItems(sec).some(function (it) { return !recordOf(it); }) ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
         (canvas.canRedesign(sec) ? '<button data-action="redesign-section" title="Have the AI design this section again, keeping its content">&#10024; Redesign with AI</button>' : '') +
         (canvas.backgroundHost(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
@@ -3115,7 +3100,8 @@
 
   /* A copy of `item` right after it; without one, of the section's last item. Returns the new item. */
   function addRepeatItem(sec, item) {
-    var items = item ? groupOf(sec, item) : repeatItems(sec);
+    // the section's "+ Item" copies the owner's own items, never one drawn from Content
+    var items = item ? groupOf(sec, item) : repeatItems(sec).filter(function (it) { return !recordOf(it); });
     if (!items.length) return null;
     var from = item && items.indexOf(item) !== -1 ? item : items[items.length - 1];
     var clone = canvas.copyOf(from);
@@ -3192,6 +3178,15 @@
       var target = e.target.nodeType === 1 ? e.target : e.target.parentElement;
       if (!target) return;
       if (canvas.openItem(target)) { repositionToolbars(); return; }
+      /* the event's records: selected whole, and the toolbar says where they are edited (recordOf) */
+      var rec = recordOf(target);
+      if (rec) {
+        var href = target.closest('[data-rv-content-link]') ? contentHref(rec.kind) : '';
+        if (href) window.open(href, '_blank', 'noopener');
+        if (editingEl) exitEdit(editingEl);
+        selectElement(rec.el);
+        return;
+      }
       var editable = target.closest('[data-editable]');
       if (editable) {
         selectElement(editable);
@@ -3588,7 +3583,7 @@
      For what the site-wide settings do not reach: one text or button gets its own font, size, weight or colour,
      as inline styles marked important so they hold against the site-wide heading rules. */
   function styleTarget() {
-    if (!canvas || !selectedEl || !selectedEl.isConnected) return null;
+    if (!canvas || !selectedEl || !selectedEl.isConnected || recordOf(selectedEl)) return null;
     var kind = selectedEl.getAttribute('data-editable');
     return kind === 'text' || kind === 'button' ? selectedEl : null;
   }
@@ -5640,6 +5635,7 @@
     before = unit.cloneNode(true);
     if (automatic && !clash) {
       putIn();
+      tagAutoStep(previous ? 'the previous edition’s logo in the banner' : 'the event’s logo in the banner');
       /* what there is to check about the logo is on the unit's own notice (logoUnitNotice), to be answered */
       showNotice('owner-logo', {
         kind: 'info', dismissible: true,
@@ -5712,6 +5708,89 @@
     });
   }
 
+  /* ---------- what the editor changes by itself as it opens (UX-076) ----------
+     Opening a site can change it before anybody touches it: the event's records are drawn in (Content), the ET logo
+     is brought up to date, section headings are held to the type scale, the owner's new logo goes into the banner.
+     Those changes are the starting point, not edits: they are no Undo step (the logo's is, so it can be taken back,
+     and it is named like the rest), the chip says "Updated automatically" rather than "Unsaved changes", and Save
+     keeps them as a version of their own, recorded as automatic (PUT /api/event/site, automatic: true), before the
+     person's changes — so the summary of their save, and of the approval request, names only what they changed.
+     That can only be told apart when the page opened as this browser last saved it; otherwise they go with the
+     person's save, as before. */
+  var autoNames = [];        // what changed by itself since the page opened ("the ET logo and menu", "FAQs from Content")
+  var autoPoints = [];       // [{ ptr, hash, html, names }]: an undo step holding them, and the page that is saved for it
+  var openedSaved = false;   // the page opened as this browser last saved it
+  var autoReady = false;     // the page has opened: a change made by itself now updates autoPoints at once
+
+  function noteOpening() {
+    var mark = readMark();
+    autoNames = []; autoPoints = []; autoReady = false;
+    openedSaved = !!(mark && mark.hash && undoStack[undoPtr] && mark.hash === snapHash(undoStack[undoPtr]));
+  }
+  function noteAuto(names) {
+    (names || []).forEach(function (n) { if (n && autoNames.indexOf(n) === -1) autoNames.push(n); });
+  }
+  /* the records each list shows, kind -> what they say: to name the kinds that drawing them changed */
+  function recordsSeen() {
+    var out = {};
+    if (!canvas || !canvas.doc || !window.RevampRecords) return out;
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-repeat-template], [data-rv-item]'), function (el) {
+      var kind = el.getAttribute('data-rv-repeat-template') || el.getAttribute('data-rv-item');
+      if (!RevampRecords.TABS[kind]) return;
+      out[kind] = (out[kind] || '') + '\u0001' + (el.getAttribute('data-rv-id') || '') + '|' + String(el.textContent || '').replace(/\s+/g, ' ').trim();
+    });
+    // the previous edition's speakers' profiles, which the same step adds to a page saved before them (refreshPreviousProfiles)
+    out.previous = String(canvas.doc.querySelectorAll('[data-rv-profiles]').length);
+    return out;
+  }
+  function recordsNamed(before) {
+    var after = recordsSeen(), names = [];
+    RevampRecords.KINDS.forEach(function (kind) {
+      if ((before[kind] || '') !== (after[kind] || '')) names.push(RevampRecords.TABS[kind].many + ' from Content');
+    });
+    if (before.previous !== after.previous) names.push('the previous edition’s speaker profiles');
+    return names.length ? names : ['the event’s records from Content'];
+  }
+  /* a change the editor made by itself: part of the page as it opened while nobody has changed anything yet, an
+     ordinary step once somebody has */
+  function bakeAuto(names) {
+    if (!canvas || remounting) return;
+    if (undoPtr !== 0 || editingEl) { commit(); return; }
+    var snap = canvas.snapshot(undoStack[0]);
+    if (canvas.sameSnapshot(snap, undoStack[0])) return;
+    undoStack[0] = snap;
+    persist(snap);
+    noteAuto(names);
+    if (autoReady) settleAuto();
+    scheduleServerSave();
+    sectionsChanged();
+    designChanged();
+    pageChanged();
+  }
+  /* once the page has opened, and again when it changes by itself before anybody has touched it: the page these
+     changes are saved as, taken while the canvas shows exactly that step */
+  function settleAuto() {
+    autoReady = true;
+    autoPoints = [];
+    if (!openedSaved || !autoNames.length || !canvas || undoPtr !== 0) return;
+    autoPoints.push({ ptr: 0, hash: snapHash(undoStack[0]), html: canvas.serialize(), names: autoNames.slice() });
+  }
+  /* an automatic change that is an Undo step of its own, right after the page opened (ownerLogoOffer) */
+  function tagAutoStep(name) {
+    if (!openedSaved || !canvas || undoPtr !== 1) return;
+    autoPoints.push({ ptr: 1, hash: snapHash(undoStack[1]), html: canvas.serialize(), names: autoNames.concat([name]) });
+  }
+  /* the latest of those steps that the page still stands on, or null */
+  function autoPoint() {
+    for (var i = autoPoints.length - 1; i >= 0; i--) {
+      var p = autoPoints[i];
+      if (p.ptr <= undoPtr && undoStack[p.ptr] && snapHash(undoStack[p.ptr]) === p.hash) return p;
+    }
+    return null;
+  }
+  /* nothing but those changes since the page opened */
+  function autoOnly() { var p = autoPoint(); return !!p && p.ptr === undoPtr; }
+
   /* ---------- save to staging / publish changes ----------
      The editor keeps every change in this browser as it is made. Nothing reaches the server until Save: that
      stores the site as a new version, puts it on the staging address and records what changed, by whom.
@@ -5755,6 +5834,10 @@
     if (!eventId || !canvas || !siteInfo) return;
     var dirty = isDirty(), v = siteInfo.savedVersion, kind = 'plain', text, href = '', title = '';
     if (!v) { kind = 'warn'; text = 'Not saved yet'; title = 'Save puts this site on the staging address.'; }
+    else if (dirty && autoOnly()) {
+      kind = 'plain'; text = 'Updated automatically'; href = '/preview/' + eventId + '?staged=1';
+      title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Save to put this on staging; it is kept apart from your own changes.';
+    }
     else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Staging still shows version ' + v + '. Save to update it.'; href = '/preview/' + eventId + '?staged=1'; }
     else if (siteInfo.pending && siteInfo.pending.toVersion === v) { kind = 'wait'; text = 'v' + v + ' · waiting for approval'; href = reviewHref(siteInfo.pending.id); title = 'Sent for approval by ' + siteInfo.pending.requestedBy + '. Open the review page.'; }
     else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'v' + v + ' · live'; href = '/e/' + eventId; title = 'This version is the live site.'; }
@@ -5790,7 +5873,25 @@
     deselect();
     flush();
     var snap = undoStack[undoPtr], hash = snapHash(snap), html = canvas.serialize();
+    var auto = openedSaved && savedMark ? autoPoint() : null;
     saving = true; renderSiteState();
+    /* the editor's own updates first, as a version of their own (UX-076); when that cannot be done (a conflict, a
+       failure) they go with the person's save, as before */
+    function sendAuto() {
+      if (!auto) return Promise.resolve(null);
+      return RevampCore.saveSite(eventId, {
+        templateId: templateId, baseVersion: savedMark.version || 0, snapshot: undoStack[auto.ptr], html: auto.html,
+        automatic: true, note: 'Updated automatically: ' + auto.names.join(', ')
+      }).then(function (out) {
+        writeMark({ version: out.version, hash: auto.hash });
+        autoPoints = []; openedSaved = false;
+        return out;
+      }, function (err) {
+        if (window.console) console.warn('[RevampTemplateUI] The automatic updates go with this save:', err);
+        return null;
+      });
+    }
+    var autoOut = null;
     function send(force) {
       return RevampCore.saveSite(eventId, {
         templateId: templateId, baseVersion: force ? 0 : ((savedMark && savedMark.version) || 0), snapshot: snap, html: html, force: force
@@ -5813,14 +5914,24 @@
         m.addEventListener('click', function () { setTimeout(function () { if (!done && !m.isConnected) { done = true; reject(Object.assign(new Error('cancelled'), { cancelled: true })); } }, 0); });
       });
     }
-    return send(false).then(null, conflict).then(function (out) {
+    return sendAuto().then(function (a) {
+      autoOut = a;
+      /* nothing but the automatic updates to save */
+      if (a && hash === auto.hash) return a;
+      return send(false).then(null, conflict);
+    }).then(function (out) {
       saving = false;
       writeMark({ version: out.version, hash: hash });
       siteInfo = siteInfo || { required: true };
       siteInfo.savedVersion = out.version;
       renderSiteState();
       if (!opts.quiet) {
-        showToast('Saved to staging as version ' + out.version + (out.summary ? ' — ' + out.summary : ''), {
+        var autoTold = autoOut && !autoOut.unchanged ? 'updated automatically (' + auto.names.join(', ') + ')' : '';
+        var text = out === autoOut
+          ? (autoOut.unchanged ? 'Nothing new to save: staging already shows version ' + out.version + '.' : 'Saved to staging as version ' + out.version + ' — ' + autoTold + '.')
+          : out.unchanged ? 'Nothing new to save: staging already shows version ' + out.version + '.'
+            : 'Saved to staging as version ' + out.version + (out.summary ? ' — ' + out.summary : '') + (autoTold ? '. Also ' + autoTold + ', as version ' + autoOut.version + '.' : '');
+        showToast(text, {
           action: { label: 'Open staging', onClick: function () { window.open('/preview/' + eventId + '?staged=1', '_blank'); } }
         });
       }
