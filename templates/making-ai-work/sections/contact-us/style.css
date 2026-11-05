@@ -15,3 +15,14 @@
 .contacts.figma_style_1 .contact-box-wrapper .name{display:block;overflow:hidden;text-align:center;text-overflow:ellipsis;font-size:16px;font-style:normal;font-weight:600;line-height:24px}
 .contacts.figma_style_1 .contact-box-wrapper .email,.contacts.figma_style_1 .contact-box-wrapper .phone{display:block;overflow:hidden;text-align:center;text-overflow:ellipsis;font-size:14px;font-style:normal;font-weight:500;line-height:24px}
 .contacts.figma_style_1 .contact-box-wrapper .email a,.contacts.figma_style_1 .contact-box-wrapper .phone a{color:#ffffff;opacity:1;font-size:14px}
+
+/* The section's heading, in words: the live page showed "Contact Us" as a picture (5443c52a18ecaf0d0d3d.png) of a
+   large serif in light blue that fades out towards its foot. Here it is text in the same look, filled from
+   Contact's own heading in Create Event (October UF-07). */
+#contact-us .page_hdng4 h2.cntnd-hdng{
+  margin:0 auto 8px;font-family:"Playfair Display", Georgia, "Times New Roman", serif;font-weight:700;
+  font-size:clamp(52px, 9vw, 128px);line-height:1.05;letter-spacing:-1px;text-align:center;text-transform:none;
+  color:#B9CDEB;
+  background:linear-gradient(180deg, #9DB8DC 0%, rgba(214, 228, 248, 0.75) 55%, rgba(255, 255, 255, 0.08) 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent
+}

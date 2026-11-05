@@ -28,8 +28,9 @@ check('D.2 the inline script is found', INLINE.length > 50000);
 var scripts = (PAGE.match(/<script\b[^>]*>/g) || []);
 /* portal-picker.js (the portals change) sits right after auth.js, create-drafts.js (Create Event's drafts in the account, UX-048)
    after it, and event-lifecycle.js stays right before the inline script */
-check('D.2 script order: theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, create-drafts.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
-  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+/* edit-event-core.js (B07): the API calls Clone, Delete and Restore make, before auth.js (it reads RevampAuth only when one runs) */
+check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
+  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
 check('D.2 the second plain <script> is the inline script itself', PAGE.indexOf('<script src="event-lifecycle.js"></script>\n<script>\n(function(){') !== -1);
 check('D.2 the kit\'s scripts come after the inline script (RvListing exists before they run)', PAGE.indexOf('<script src="etb2b-chat.js">') > PAGE.indexOf('})();\n</script>', START) &&
   PAGE.indexOf('<script src="dash-bot-client.js">') > PAGE.indexOf('<script src="etb2b-chat.js">'));
@@ -76,7 +77,7 @@ function varSource(name) {
 var helpers = {};
 vm.createContext(helpers);
 vm.runInContext([varSource('EVENT_TYPES'), varSource('MONTH_SHORT'), varSource('IST_OFFSET_MIN')].concat(
-  ['pad2', 'validDay', 'istDay', 'cleanRange', 'inDays', 'fmtDayRange', 'parseListingHash', 'listingHash', 'hashToEventNo', 'searchLine', 'searchCells', 'searchHit', 'mapApiEventToRow'].map(fnSource)).join('\n'), helpers);
+  ['pad2', 'validDay', 'istDay', 'cleanRange', 'inDays', 'fmtDayRange', 'parseListingHash', 'listingHash', 'searchLine', 'searchCells', 'searchHit', 'mapApiEventToRow'].map(fnSource)).join('\n'), helpers);
 var H = helpers;
 
 /* the parse of dc1a8e1, pasted unchanged, for "#tab=…&q=…" means exactly what it always did */
@@ -238,6 +239,10 @@ function stand(opt) {
     fetch: function (url) {
       fetched.push(url);
       if (opt.fail) return Promise.reject(new TypeError('Failed to fetch'));
+      /* B07: the page's two other reads of its own, the deleted events (Deleted Events) and who the approvers are
+         (Delete and Restore), answered here so the panel's reads below are counted as before */
+      if (url === '/api/events?deleted=1') return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({ items: opt.deleted || [] }); } });
+      if (url === '/api/settings/approvals') return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({ approvers: opt.approvers || [], allowSelf: false, required: true }); } });
       /* the "Latest activity" panel's own reads, answered by the test when it gives opt.api */
       var a = opt.api && url !== '/api/events' ? opt.api(url) : null;
       if (a && a.pending) return new Promise(function () {});   // an answer that has not come yet
@@ -321,7 +326,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.2 apply(): the results come into view (smooth)', S.scrolled.length >= 1 && S.scrolled[S.scrolled.length - 1].top === 0 && S.scrolled[S.scrolled.length - 1].behavior === 'smooth');
   var chips = S.$('chip-row').innerHTML;
   check('D.2 the created chip says the range and has a ✕ with a name', chips.indexOf('Created 26 Oct – 1 Nov 2026') !== -1 && /<button type="button" data-chip="0" aria-label="Remove filter: Created 26 Oct – 1 Nov 2026"><svg/.test(chips), chips);
-  check('D.2 the Draft banner says what is shown', S.$('special-banner').innerHTML.indexOf('Showing <strong>Draft events</strong>') !== -1);
+  /* B10 (UX-018): Drafts is a tab now, selected like the others, so it has no banner of its own */
+  check('D.2 the Drafts tab is the one selected (no banner for it)', /aria-selected="true" data-tab="draft"/.test(S.$('status-tabs').innerHTML) && S.$('special-banner').innerHTML === '', S.$('status-tabs').innerHTML);
 
   /* the chip's ✕ */
   S.$('chip-row').querySelectorAll('[data-chip]')[0].fire('click');
@@ -347,7 +353,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.2 "Clear all" clears the date and "mine" filters too', cleared.created === null && cleared.starts === null && cleared.mine === false && cleared.filters.types.length === 0 && S.ctx.location.hash === '#tab=upcoming');
   L.apply({ view: 'upcoming', mine: false, starts: { from: '2026-01-01', to: '2026-01-02' } });
   check('D.2 nothing in the window: "No events match", and Clear filters clears the window', /No events match/.test(S.$('table-body').innerHTML) && (function () {
-    S.$('empty-clear').fire('click'); return S.snap().starts === null && same(shownIds(S), ['live-upcoming', 'month-only']);
+    /* B07: the button carries data-empty-clear (it is drawn in the table and in the phone cards alike) */
+    S.$('table-body').querySelectorAll('[data-empty-clear]')[0].fire('click'); return S.snap().starts === null && same(shownIds(S), ['live-upcoming', 'month-only']);
   })(), shownIds(S));
   L.apply({ view: 'cancelled', search: 'x'.repeat(200), types: ['ip', 'bogus', 'ip'], created: { from: '2026-13-01', to: 'x' }, sort: { field: 'payment-ish', dir: 'up' } });
   var a3 = S.snap();
@@ -356,7 +363,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.2 apply() never opens the deleted view (the bot cannot)', S.snap().specialView === 'cancelled');
   L.restore({ tab: 'nope', specialView: 'evil', search: 5, filters: { types: ['ip', 7, 'ip'], portals: [1, 'cio', 'nowhere', '__proto__'], payment: ['paid', 'gratis'] }, created: 'x', starts: { from: '2026-11-01', to: '2026-10-01' }, mine: 'yes', sort: { field: 'drop table', dir: 'x' }, page: -4, view: 'cards' });
   var r3 = S.snap();
-  check('D.2 restore() takes only what makes sense', r3.tab === 'active' && r3.specialView === null && r3.search === '' && same(r3.filters, { types: ['ip'], portals: ['cio'], payment: ['paid'] }) &&
+  /* (payment is always empty since B07 took the Paid / Free filter out, UX-025) */
+  check('D.2 restore() takes only what makes sense', r3.tab === 'active' && r3.specialView === null && r3.search === '' && same(r3.filters, { types: ['ip'], portals: ['cio'], payment: [] }) &&
     r3.created === null && same(r3.starts, { from: '2026-10-01', to: '2026-11-01' }) && r3.mine === false && r3.page === 1 && r3.view === 'list', r3);
   check('D.2 restore(junk) refuses', L.restore(null) === false && L.restore('x') === false);
   L.restore(base);
@@ -376,7 +384,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   /* the help window, opened from the panel, gives the focus back */
   var opener = S.doc.createElement('button');
   L.openHelp(opener);
-  check('D.2 openHelp(): the page\'s own help window', /<h3>Need help\?<\/h3>/.test(S.$('sheet-root').innerHTML) && S.$('sheet-root').innerHTML.indexOf('customercare@economictimesb2b.com') !== -1);
+  /* (B10, UX-029: its heading has an id now, which names the dialog) */
+  check('D.2 openHelp(): the page\'s own help window', /<h3 id="help-title">Need help\?<\/h3>/.test(S.$('sheet-root').innerHTML) && S.$('sheet-root').innerHTML.indexOf('customercare@economictimesb2b.com') !== -1);
   check('D.2 openHelp(): the focus moves into it', S.$('help-message').focused === 1);
   S.$('help-close').fire('click');
   check('D.2 closing it gives the focus back to what opened it', S.$('sheet-root').innerHTML === '' && opener.focused === 1);
@@ -399,7 +408,13 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   /* signed out or failing: ready() still settles, and "mine" matches nobody without a person */
   var Sf = stand({ fail: true }); await flush();
   var settled = false; await Sf.L.ready().then(function () { settled = true; });
-  check('D.2 ready() settles when the load fails too', settled && /Couldn’t load your events/.test(Sf.$('error-slot').innerHTML));
+  /* B07 (UX-027): the failure is one message where the list would be, worded by its cause, with Try again; no counts, no
+     Insights, no Latest activity, and no "Create your first event" */
+  check('D.2 ready() settles when the load fails too, and the list says so in its place', settled && /The server could not be reached/.test(Sf.$('table-body').innerHTML) &&
+    /data-load-retry/.test(Sf.$('table-body').innerHTML) && Sf.$('error-slot').innerHTML === '', Sf.$('table-body').innerHTML.slice(0, 300));
+  check('D.2 …with no counts (a dash on each tab), no Insights, no Latest activity, no "Create your first event"',
+    /<span class="tc">–<\/span>/.test(Sf.$('status-tabs').innerHTML) && !/<span class="tc">0<\/span>/.test(Sf.$('status-tabs').innerHTML) && Sf.$('insights-section').hidden === true &&
+    Sf.$('lower-panels').hidden === true && !/first event|Create Event/.test(Sf.$('table-body').innerHTML) && Sf.$('result-line').textContent === '');
   var Sn = stand({ user: null }); await flush();
   Sn.L.apply({ view: 'upcoming', mine: true });
   check('D.2 "mine" with nobody signed in shows nothing rather than everything', shownIds(Sn).length === 0 && same(JSON.parse(JSON.stringify(Sn.L.me())), { email: '', name: '' }));
@@ -602,7 +617,9 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   actCalls = [];
   var Sa = stand({ api: actApi() });
   await settle();
-  check('D.3 the events are read first; the panel reads only after they have loaded', Sa.fetched[0] === '/api/events' && Sa.fetched.length === 4, Sa.fetched);
+  /* B07: then the deleted events and who the approvers are, before the panel's three */
+  check('D.3 the events are read first; the panel reads only after they have loaded', Sa.fetched[0] === '/api/events' && Sa.fetched[1] === '/api/events?deleted=1' &&
+    Sa.fetched[2] === '/api/settings/approvals' && Sa.fetched.length === 6, Sa.fetched);
   check('D.3 the last 30 days are asked for as India days, from and to', actCalls.indexOf('/api/insights?from=' + FROM30 + '&to=' + TODAY) !== -1, actCalls);
   var expFrom = new Date(Date.parse(FROM30 + 'T00:00:00+05:30')).toISOString(), expTo = new Date(Date.parse(TODAY + 'T00:00:00+05:30') + 86400000).toISOString();
   check('D.3 the Activity log is asked for the same whole India days', actCalls.indexOf('/api/activity/all?limit=100&from=' + encodeURIComponent(expFrom) + '&to=' + encodeURIComponent(expTo)) !== -1, actCalls);
@@ -724,7 +741,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.3 an account with no events still gets only real figures', rowsOf(Sn).registrations.total === String(REG30));
   var Se = stand({ fail: true });
   await settle();
-  check('D.3 when the events cannot be loaded, the panel shows no figure at all', Se.$('activity-body').innerHTML.indexOf('5.24K') === -1 && /—|could not/i.test(Se.$('activity-body').innerHTML), Se.$('activity-body').innerHTML.slice(0, 300));
+  /* B07 (UX-027): the panel is not shown at all then, so no figure stands beside a list that failed */
+  check('D.3 when the events cannot be loaded, the panel shows no figure at all (it is not shown)', Se.$('activity-body').innerHTML.indexOf('5.24K') === -1 && Se.$('lower-panels').hidden === true, Se.$('activity-body').innerHTML.slice(0, 300));
 
   /* ======== D.4 the Insights cards: the tab's events in the period picked beside them (QA follow-up, UX-022) ======== */
   function kpisOf(S) {
@@ -751,7 +769,7 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.4 Active tab, last 30 days: only the active event\'s own window (400 views, 20 registrations), not every event\'s', K.Visitors.num === '400' && K['New registrations'].num === '20', K);
   check('D.4 …read from the same day figures as Latest activity, once', actCalls.filter(function (u) { return u === '/api/insights?from=' + FROM30 + '&to=' + TODAY; }).length === 1, actCalls);
   check('D.4 the label is the period read', Sk.$('range-label').textContent === 'Last 30 days');
-  check('D.4 Revenue: a dash and "Payments are not part of Oneworld 2.0 yet", never a sum of ticket prices', K.Revenue.num === '—' && K.Revenue.sub === 'Payments are not part of Oneworld 2.0 yet' && Sk.$('kpi-grid').innerHTML.indexOf('₹') === -1, K.Revenue);
+  check('D.4 Revenue: a dash and "Payments: not available yet" (the console\'s words, UX-025), never a sum of ticket prices', K.Revenue.num === '—' && K.Revenue.sub === 'Payments: not available yet' && Sk.$('kpi-grid').innerHTML.indexOf('₹') === -1, K.Revenue);
   check('D.4 no "Total …" all-time cards are left', !/Total (Visitors|Registrations|Revenue)/.test(INLINE.slice(INLINE.indexOf('function renderKPIs('), INLINE.indexOf('function renderRangePopover('))));
   Sk.L.restore(Object.assign(Sk.snap(), { tab: 'upcoming' }));
   K = kpisOf(Sk);

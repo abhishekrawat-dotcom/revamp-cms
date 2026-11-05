@@ -53,8 +53,11 @@ JS = '\n\n'.join('/* ===== from the platform\'s index.html: %s ===== */\n%s' % (
 # are applied to the assembled JS in order, P1 first. A count that differs stops the copy before anything is
 # written, so a platform change under an anchor is read and re-decided, never shipped half-patched. Raw strings:
 # the code holds backticks and ${}. The functions they call (owTrackToast, owDashSubline, owDashPickLabel,
-# anOpenRow, the index-taking anToggleVer) and AN.fresh are promo-studio/oneworld.js's. P11 and P12 fix faults of
-# the platform's own (owner D; owner B's decision 5), so the copy does what the platform meant it to.
+# anOpenRow, the index-taking anToggleVer, owMayLeave, owMaySend, owFieldValue, owZipName, owDashNotRecorded) and
+# AN.fresh are promo-studio/oneworld.js's. P11 and P12 fix faults of the platform's own (owner D; owner B's decision
+# 5), so the copy does what the platform meant it to; so do P13 to P25 (the UX sweep's batch B09: no browser dialog is
+# left, an unsaved mailer is never dropped without asking, Escape closes only what is on top, a menu shows the value
+# in use) and P26 and P27 (batch B20: the dashboard does not say "nothing made yet" while nothing can be recorded).
 PATCHES = [
     (r'''const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");''',
      r'''const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");''',
@@ -84,8 +87,9 @@ PATCHES = [
      r'''try{ const j=await r.json(); await navigator.clipboard.writeText(j.html); owTrackToast("copy",j.tracked!==false,""); }''',
      1, 'Copy HTML says when the copy went out untracked; a failure still says "Clipboard blocked by the browser"'),
     (r'''a.download="mailers.zip"; a.click(); toast("Downloaded — saved edits included"); }''',
-     r'''a.download="mailers.zip"; a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }''',
-     1, 'Download all says when the files went out untracked'),
+     r'''a.download=owZipName(); a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }''',
+     1, 'Download all says when the files went out untracked, and the ZIP is named after the event (UX-136: every '
+        'event\'s was "mailers.zip")'),
     (r'''const fallback=hexNorm((MD&&MD.palette&&MD.palette.accent)||"")||"#4f46e5";''',
      r'''const fallback=hexNorm((MD&&MD.pal&&MD.pal.accent)||"")||"#4f46e5";''',
      1, 'a colour field\'s "Use the mailer accent" (its swatch, the picker\'s default, the sample button) reads the palette '
@@ -94,6 +98,104 @@ PATCHES = [
      r'''const avail=(MAILERS.mailers||[]).filter(m=>m.available||(saveId&&m.id===preId));''',
      1, 'a saved version of a mailer the event can no longer make (its speakers were removed, say) opens on itself; the '
         'platform listed only the mailers that can be made, and silently opened another one in its place'),
+    (r'''function closeMailer(){
+  if(MD.dirty&&!confirm("You have unsaved changes in this mailer. Close anyway?"))return;''',
+     r'''async function closeMailer(){
+  if(MD.dirty&&!(await owMayLeave("close")))return;''',
+     1, '← and Escape ask in the studio\'s own dialog, in the words Social posts and Site-look posts use (owMayLeave), '
+        'not with the browser\'s confirm'),
+    (r'''function switchMailer(){ MD.id=$("mlPick").value; MD.sel=null; MD.ai=null; mlLoad(false,null); }''',
+     r'''async function switchMailer(){ const to=$("mlPick").value; if(MD.dirty&&!(await owMayLeave("switch"))){ $("mlPick").value=MD.id; return; } MD.id=to; MD.sel=null; MD.ai=null; mlLoad(false,null); }''',
+     1, 'picking another mailer in the studio\'s menu asks first when the open one has unsaved edits (the platform loaded '
+        'the other one at once and the edits were gone); on Keep editing the menu goes back to the open mailer'),
+    (r'''if(!await uiConfirm("Rebuild from event data?","This starts a fresh draft from the event's current data. Your saved versions are kept.",{ok:"Rebuild"}))return;''',
+     r'''if(!await uiConfirm("Rebuild from event data?","This starts a fresh draft from the event's current data. "+(MD.dirty?"Changes you haven't saved are lost; your saved versions are kept.":"Your saved versions are kept."),{ok:"Rebuild",danger:MD.dirty}))return;''',
+     1, 'Rebuild says that changes not saved are lost, when there are any (it said only that saved versions are kept)'),
+    (r'''function mlTbApply(k){
+  const el=IE.el; if(!el)return;
+  const d=$("mlFrame").contentDocument;
+  const b=MD.doc.blocks[blockIndex(MD.sel)];
+  if(EXEC[k]||k==="h") return mlTbWrap(k);
+  if(k==="a"){
+    const sel=d.getSelection();
+    if(!sel||!sel.rangeCount||!sel.toString().trim()){ toast("Select the words to link first"); return; }
+    const url=prompt("Link URL","https://"); if(!url)return;
+    mlKeepCaret(el,d); d.execCommand("createLink",false,url);''',
+     r'''async function mlTbApply(k){
+  const el=IE.el; if(!el)return;
+  const d=$("mlFrame").contentDocument;
+  const b=MD.doc.blocks[blockIndex(MD.sel)];
+  if(EXEC[k]||k==="h") return mlTbWrap(k);
+  if(k==="a"){
+    const sel=d.getSelection();
+    if(!sel||!sel.rangeCount||!sel.toString().trim()){ toast("Select the words to link first"); return; }
+    const keep=sel.getRangeAt(0).cloneRange();
+    el.removeEventListener("blur",IE.onBlur);
+    const url=await uiPrompt("Link URL",{value:"https://",placeholder:"https://…",ok:"Add link"});
+    if(IE.el!==el||$("mlFrame").contentDocument!==d||!d.contains(el)){ if(url)toast("The link was not added: the mail was redrawn meanwhile. Select the words and add it again.",5000); return; }
+    try{ $("mlFrame").contentWindow.focus(); }catch(_){}
+    el.focus(); sel.removeAllRanges(); sel.addRange(keep);
+    el.addEventListener("blur",IE.onBlur);
+    if(!url)return;
+    mlKeepCaret(el,d); d.execCommand("createLink",false,url);''',
+     1, 'a link typed on the canvas is asked for in the studio\'s own dialog. The dialog takes the focus, which would end '
+        'the edit (it ends on blur), so that is held off while the dialog is open, and the words are selected again after it. '
+        'A preview drawn again meanwhile (an earlier change answering late) replaces the words being edited: the link is '
+        'then not added, and the toast says so'),
+    (r'''  if(e.target.closest("#mlTB")||e.target.closest("#mlFrame"))return;''',
+     r'''  if(e.target.closest("#mlTB")||e.target.closest("#mlFrame")||e.target.closest("#uiModal"))return;''',
+     1, 'a click in the dialog does not end an edit on the canvas (the link dialog above is part of that edit)'),
+    (r'''
+function fmtApply(el,btn,onchange){
+  const v=el.value,''',
+     r'''
+async function fmtApply(el,btn,onchange){
+  const v=el.value,''',
+     1, 'the settings panel\'s formatting bar waits for the link dialog below'),
+    (r'''    const url=prompt("Link URL","https://");
+    if(!url) return;
+    const label=sel||"link text";
+    out=v.slice(0,a)+`[${label}](${url})`+v.slice(z); caret=a+label.length+url.length+4;''',
+     r'''    const url=await uiPrompt("Link URL",{value:"https://",placeholder:"https://…",ok:"Add link"});
+    if(!url) return;
+    const label=sel||"link text";
+    out=v.slice(0,a)+`[${label}](${url})`+v.slice(z); caret=a+label.length+url.length+4;
+    if(!el.isConnected){ onchange(out); mlProps(); mlInspector(); return; }''',
+     1, 'a link in a settings field is asked for in the studio\'s own dialog; a panel drawn again while it was open (the '
+        'speakers arriving, say) is drawn once more, with the link in it'),
+    (r'''    if(!confirm(`Remove “${gone?gone.name:"this icon"}” from the library? Tiles already using it keep their URL.`)) return;''',
+     r'''    if(!(await uiConfirm("Remove this icon?",`“${escapeHtml(gone?gone.name:"this icon")}” is taken out of the library. Tiles already using it keep their picture.`,{ok:"Remove",danger:true}))) return;''',
+     1, 'removing an uploaded icon is confirmed in the studio\'s own dialog (the name is escaped: the dialog\'s text is markup)'),
+    (r'''  if(e.target.closest("#icPop")) return;''',
+     r'''  if(e.target.closest("#icPop")||e.target.closest("#uiModal")) return;''',
+     1, 'a click in that dialog leaves the icon picker open, so it shows the library without the removed icon'),
+    (r'''  // Save-name stays a native prompt: the editor audit pins this create-a-version
+  // flow through the browser-dialog channel and asserts the exact name typed, and
+  // the test file is outside this file's ownership. The duplicate-name auto-suffix
+  // below still applies, and Rename/Delete/the AI confirmations use in-app modals.
+  const name=prompt("Name this version",mlDefaultName());''',
+     r'''  // Named in the studio's own dialog, as Rename is. The duplicate-name auto-suffix below still applies.
+  const name=await uiPrompt("Name this version",{value:mlDefaultName(),placeholder:"Version name",ok:"Save"});''',
+     1, 'Save as new names the version in the studio\'s own dialog (the platform kept the browser\'s prompt for its own '
+        'test suite, which Oneworld does not run)'),
+    (r'''if(e.key==="Escape"){ if(ICP.el) iconPopClose();''',
+     r'''if(e.key==="Escape"){ if(e.defaultPrevented||$("uiModal").classList.contains("on")) return; if(ICP.el) iconPopClose();''',
+     1, 'Escape that closed a dialog closes only the dialog: the studio\'s own Escape (which closes the studio) stands aside '
+        'when the dialog has taken the key, as the social posts editor\'s does'),
+    (r''': fldInput(f,b.props[f.key],set,''',
+     r''': fldInput(f,owFieldValue(b,f,schema),set,''',
+     1, 'a menu shows the value the mail uses: the field\'s default when the block has none (it showed the first choice, '
+        'so every paragraph read Italic: Show and Line height: Tight)'),
+    (r'''const btn=event?.target; if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> zipping…';}''',
+     r'''const btn=event?.target; if(!(await owMaySend("zip")))return; if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> zipping…';}''',
+     1, 'Download all asks first while the event\'s site is not published (owMaySend): every link in the mails leads to it'),
+    (r'''${empty?`<div class="card an-empty"><div class="e">✉</div><h4>No mailers generated yet</h4>''',
+     r'''${empty?owDashNotRecorded(a)||`<div class="card an-empty"><div class="e">✉</div><h4>No mailers generated yet</h4>''',
+     1, 'while opens and clicks are not recorded, the empty dashboard says so (owDashNotRecorded): "No mailers generated '
+        'yet … Download or copy a mailer" was untrue after mailers had been downloaded, and they would never show (UX-133)'),
+    (r'''Ask whoever set up this platform to turn on performance tracking.''',
+     r'''Ask your Oneworld admin to turn on performance tracking.''',
+     1, 'the "not being saved" note names who to ask (UX-133)'),
 ]
 for n, (old, new, want, why) in enumerate(PATCHES, 1):
     got = JS.count(old)

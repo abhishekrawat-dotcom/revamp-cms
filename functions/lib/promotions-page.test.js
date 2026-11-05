@@ -129,7 +129,7 @@ function load(o) {
     $: function (id) { return doc.getElementById(id); },
     esc: function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
     svg: function () { return '<svg></svg>'; }, IC: { info: 'i' }, PORTALS: { etgov: 'ETGovernment' }, TYPES: {},
-    fmtDT: function () { return '12 Nov 2026'; }, emptyState: function (ic, t) { return '<div class="empty">' + t + '</div>'; },
+    fmtDT: function () { return '12 Nov 2026'; }, emptyState: function (ic, t, m, actions) { return '<div class="empty">' + t + '</div>' + (actions || ''); },
     toast: function (m, opts) { toasts.push({ m: m, opts: opts }); },
     fetchEvent: function () { return Promise.resolve(o.ev || { name: 'Agentic AI Summit', portal: 'etgov', start: '2026-11-12' }); },
     previewUrl: function (id) { return '/preview/' + id; }
@@ -143,10 +143,14 @@ function load(o) {
     scrollTo: function (x, y) { calls.scroll.push([x, y]); sb.pageYOffset = y; },
     addEventListener: function (t, fn) { (winListeners[t] = winListeners[t] || []).push(fn); },
     RevampCore: C,
-    RevampPromo: { use: function (id) { calls.use.push(id); }, load: function () { return Promise.resolve(o.kit || { brand: {}, content: {} }); } },
+    RevampPromo: { use: function (id) { calls.use.push(id); }, load: function (id, fresh) {
+      calls.kitLoads = (calls.kitLoads || []).concat([!!fresh]);
+      return o.kitLoad ? o.kitLoad(calls.kitLoads.length, fresh) : Promise.resolve(o.kit || { brand: {}, content: {} });
+    } },
     renderEventRail: function () {}
   };
   sb.window = sb;
+  if (o.auth) sb.RevampAuth = o.auth;
   if (!o.noPosts) sb.RevampPromoPosts = { mount: function (host, ctx) { calls.mount.push({ host: host.id, ctx: ctx }); }, shown: function () { calls.shown++; } };
   if (!o.noBanner) sb.RevampPromoBanner = { ensure: function (id, opts) {
     calls.ensure.push([id, JSON.parse(JSON.stringify(opts))]);
@@ -504,6 +508,62 @@ var band = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(mark ? mark.decl.b
 var over = band ? '#' + [1, 2, 3].map(function (i) { return ('0' + Math.round(+band[i] * +band[4] + 255 * (1 - +band[4])).toString(16)).slice(-2); }).join('') : '#ffffff';
 check('AA: the EXAMPLE mark inside the post, on its band over a white post (' + ratio('#ffffff', over).toFixed(2) + ':1)', !!mark && mark.decl.color === '#ffffff' && ratio('#ffffff', over) >= 4.5, over);
 check('the badge is set apart from any post under it', !!only('.ps-ex') && /var\(--surface\)/.test(only('.ps-ex').decl['box-shadow'] || ''));
+
+/* ---------- the old Marketing workbench's address (UX-137) ----------
+   edit-event-marketing.html only sends old links and bookmarks on to Promotions, keeping the event and the rest of
+   the address; its script (edit-event-marketing.js, which no longer parsed) is gone. */
+var oldPage = read('edit-event-marketing.html');
+var oldTitle = (/<title>([\s\S]*?)<\/title>/.exec(oldPage) || [])[1];
+check('UX-137: the old address is titled Promotions — Oneworld 2.0', oldTitle && oldTitle.replace(/&mdash;/g, '—') === 'Promotions — Oneworld 2.0', oldTitle);
+check('UX-137: no "Revamp CMS" and no "workbench" on it', oldPage.indexOf('Revamp CMS') === -1 && !/workbench/i.test(oldPage.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, '')));
+check('UX-137: it loads no script file, and edit-event-marketing.js is gone', !/<script\s+src=/.test(oldPage) && !fs.existsSync(path.join(ROOT, 'edit-event-marketing.js')));
+var oldJs = ((/<script>([\s\S]*?)<\/script>/.exec(oldPage)) || [])[1] || '';
+function oldGoesTo(search) {
+  var went = [];
+  vm.runInNewContext(oldJs, { URLSearchParams: URLSearchParams, String: String, location: { search: search, replace: function (u) { went.push(u); } } });
+  return went;
+}
+check('UX-137: an old link with an event opens its Promotions on Social posts', JSON.stringify(oldGoesTo('?event=ev-1')) === JSON.stringify(['/marketing.html?event=ev-1&tab=posts']), oldGoesTo('?event=ev-1'));
+check('UX-137: the rest of the address goes along, and a tab it names is kept', JSON.stringify(oldGoesTo('?event=a%20b&tab=mailers&mailer=mailer.agenda')) ===
+  JSON.stringify(['/marketing.html?event=a+b&tab=mailers&mailer=mailer.agenda']), oldGoesTo('?event=a%20b&tab=mailers&mailer=mailer.agenda'));
+check('UX-137: no event (or a blank one) goes to the events listing', JSON.stringify(oldGoesTo('')) === JSON.stringify(['/Event_Listing.html']) &&
+  JSON.stringify(oldGoesTo('?event=%20%20')) === JSON.stringify(['/Event_Listing.html']));
+var oldDash = read('edit-event-dashboard.html');
+check('UX-137: the old Dashboard address is titled for Oneworld 2.0 too', oldDash.indexOf('Revamp CMS') === -1 && /<title>Dashboard &mdash; Oneworld 2\.0<\/title>/.test(oldDash));
+
+/* ---- UX-121: the framed studios are not held for the Kit, and Social posts' catalog is asked for early ---- */
+var kitFails = load({ search: '?event=ev-1', kitLoad: function (n) { return n === 1 ? Promise.reject(Object.assign(new Error('down'), { status: 503 })) : Promise.resolve({ brand: {}, content: {} }); } });
+pending.push(settle().then(function () {
+  check('UX-121: a Kit that did not load does not keep Social posts away', !!kitFails.frame('promo-social-frame') && /data-tab="site-posts"/.test(kitFails.els.view.innerHTML));
+  kitFails.click('site-posts');
+  return settle();
+}).then(function () {
+  var pane = kitFails.els['promo-posts-root'];
+  check('UX-121: it is said in Site-look posts\' pane, with Try again', /The event’s look and content did not load/.test(pane.innerHTML) && !!kitFails.els['promo-retry'] && !kitFails.calls.mount.length, pane.innerHTML.slice(0, 300));
+  kitFails.els['promo-retry'].onclick();
+  return settle();
+}).then(function () {
+  check('UX-121: Try again asks for the Kit afresh and mounts Site-look posts with it', JSON.stringify(kitFails.calls.kitLoads) === '[false,true]' && kitFails.calls.mount.length === 1 && !!kitFails.calls.mount[0].ctx.kit, [kitFails.calls.kitLoads, kitFails.calls.mount.length]);
+}));
+var slowKit = load({ search: '?event=ev-1&tab=site-posts', kitLoad: function () { return new Promise(function (r) { setTimeout(function () { r({ brand: {}, content: {} }); }, 30); }); } });
+pending.push(settle().then(function () {
+  check('UX-121: Site-look posts waits for the Kit in its own pane', /Loading this event’s look and content/.test(slowKit.els['promo-posts-root'].innerHTML) && !slowKit.calls.mount.length);
+  return new Promise(function (r) { setTimeout(r, 60); });
+}).then(function () {
+  check('UX-121: … and mounts once it has come', slowKit.calls.mount.length === 1 && !!slowKit.calls.mount[0].ctx.kit, slowKit.calls.mount.length);
+}));
+var fetched = [];
+var withAuth = { authedFetch: function (u) { fetched.push(u); return Promise.resolve({ status: 200, text: function () { return Promise.resolve('{"catalog":{}}'); } }); } };
+var early = load({ search: '?event=ev%201', auth: withAuth });
+var earlyMail = load({ search: '?event=ev-1&tab=mailers', auth: withAuth });
+pending.push(settle().then(function () {
+  var pre = early.sb.RevampSocialPrefetch;
+  check('UX-121: opening on Social posts asks for its catalog with the cards\' posts at once', fetched.length === 1 && fetched[0] === '/api/promo/social/catalog?eventId=ev%201&cards=1' && pre && pre.eventId === 'ev 1' && pre.used === false, fetched);
+  return pre.catalog.then(function (x) {
+    check('UX-121: … kept for the frame as its status and text', x && x.status === 200 && x.text === '{"catalog":{}}', x);
+    check('UX-121: opening on another tab asks for nothing early', !earlyMail.sb.RevampSocialPrefetch);
+  });
+}));
 
 Promise.all(pending).then(function () {
   if (failed) { console.error('promotions-page: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }

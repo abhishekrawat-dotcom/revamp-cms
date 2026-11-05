@@ -19,7 +19,9 @@ var BRIEF = [
   'Expected scale (delegates, speakers, partners): Delegates & partners',
   'Look and tone (photos or graphics; boardroom / energetic / editorial): All'
 ].join('\n');
-var GOOD = 'The ETCIO Annual Conclave brings together India\'s and the world\'s senior technology leaders to move beyond resilience towards reinvention. Over four days of candid boardroom debate, peer conversation and hands-on showcases, CIOs, CTOs and chief digital and AI officers share how they lead transformation across industries.';
+var GOOD = 'The ETCIO Annual Conclave brings India\'s senior technology leaders together to move from resilience to reinvention, through boardroom debate and showcases.';
+/* what the rule used to ask for (two or three sentences): longer than Basics will save */
+var LONG = 'The ETCIO Annual Conclave brings together India\'s and the world\'s senior technology leaders to move beyond resilience towards reinvention. Over four days of candid boardroom debate, peer conversation and hands-on showcases, CIOs, CTOs and chief digital and AI officers share how they lead transformation across industries.';
 var HAND = 'Our flagship gathering of CIOs in Goa, written by the events team.';
 
 /* ---- the brief step: the event's facts are stored, never the description ---- */
@@ -46,7 +48,22 @@ ok(ed.clean('Why attend:\n- Curtain raiser\n- Boardroom battles\n- Innovation hu
 ok(ed.clean('- one\n- two three four five six seven eight nine ten eleven twelve') === '', 'a bullet list is refused');
 ok(ed.clean('Too short.') === '' && ed.clean('') === '' && ed.clean(null) === '', 'too short or nothing is refused');
 var long = ed.clean(new Array(40).join(GOOD + ' '));
-ok(long.length <= 601 && /\.$/.test(long), 'a long answer is cut at a full stop', long.length + ' ' + long.slice(-20));
+ok(long.length <= ed.MAX_LENGTH && /\.$/.test(long), 'a long answer is cut at a full stop', long.length + ' ' + long.slice(-20));
+
+/* ---- it always fits Basics (UX-064): the console saves at most 220 characters, and a longer one there could not be edited ---- */
+ok(ed.IDEAL_LENGTH === 160 && ed.MAX_LENGTH === 220, 'the lengths are 160 (ideal) and 220 (most)', ed.IDEAL_LENGTH + ' / ' + ed.MAX_LENGTH);
+var core = fs.readFileSync(path.join(__dirname, '..', '..', 'edit-event-core.js'), 'utf8');
+var desc = /var DESC = \{ min: (\d+), ideal: (\d+), max: (\d+) \};/.exec(core);
+ok(desc && +desc[2] === ed.IDEAL_LENGTH && +desc[3] === ed.MAX_LENGTH, 'the console\'s Basics and the writer agree on the lengths', desc && desc[0]);
+ok(GOOD.length <= ed.IDEAL_LENGTH && ed.clean(GOOD) === GOOD, 'a description of the asked-for length is kept whole', GOOD.length);
+var cutLong = ed.clean(LONG);
+ok(cutLong === LONG.slice(0, LONG.indexOf('. ') + 1) && cutLong.length <= ed.MAX_LENGTH, 'the older, longer kind is cut to its first sentence', cutLong.length + ' ' + cutLong);
+var oneSentence = 'An evening for India\'s retail leaders ' + new Array(30).join('with candid conversations and showcases ') + 'and more';
+var cutWord = ed.clean(oneSentence);
+ok(cutWord.length <= ed.MAX_LENGTH && /…$/.test(cutWord) && !/\s…$/.test(cutWord) && oneSentence.indexOf(cutWord.slice(0, -1)) === 0 && /\S$/.test(cutWord.slice(0, -1)),
+  'one sentence too long is cut at a whole word, with an ellipsis, and still fits', cutWord.length + ' ' + cutWord.slice(-30));
+ok([LONG, oneSentence, new Array(60).join('Word ')].every(function (t) { return ed.clean(t).length <= ed.MAX_LENGTH; }), 'nothing the writer stores is longer than Basics takes');
+ok(/at most 160 characters/.test(ed.RULE) && !/60 words/.test(ed.RULE), 'the model is asked for at most 160 characters', ed.RULE.slice(0, 80));
 
 /* ---- plan-structure: what it writes ---- */
 ok(JSON.stringify(ed.patch(GOOD, { description: BRIEF }, BRIEF)) === JSON.stringify({ description: GOOD }), 'over the raw brief: written');

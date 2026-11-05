@@ -77,9 +77,10 @@
   }
 
   /* The event rail and where each item leads: the one routing table every in-event page shares.
-     Targets are root-absolute so the same table works from any folder (the payment pages sit two
-     levels down). Dashboard, Content and Settings are views of the console; Design goes through the
-     console as well, because only it knows the event's template, which the editor needs in its URL. */
+     Targets are root-absolute so the same table works from any page. Dashboard, Content, Payment and
+     Settings are views of the console; Design goes through the console as well, because only it knows the
+     event's template, which the editor needs in its URL. Payment is not available yet: its view says so
+     inside the event (the old payment prototype, which showed another event's figures, is not served). */
   var RAIL_SECTIONS = [
     { id:'dashboard', label:'Dashboard', icon:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15.5 3.5A9 9 0 0 1 20.5 8.5H15.5z"/>' },
     { id:'content', label:'Content', icon:'<path d="M12 2.5l9.5 5-9.5 5-9.5-5z"/><path d="M2.5 12.5l9.5 5 9.5-5"/><path d="M2.5 17l9.5 5 9.5-5"/>' },
@@ -96,7 +97,7 @@
     if (section === 'dashboard') return '/edit-event.html?event=' + ev + '#dashboard';
     if (section === 'content')   return '/edit-event.html?event=' + ev + '#content/basics';
     if (section === 'design')    return '/edit-event.html?event=' + ev + '#design/editor';
-    if (section === 'payment')   return '/payment/html_version/index.html?event=' + ev;
+    if (section === 'payment')   return '/edit-event.html?event=' + ev + '#payment';
     if (section === 'marketing') return '/marketing.html?event=' + ev;
     if (section === 'audience')  return '/audience-registrations.html?event=' + ev;
     if (section === 'activity')  return '/edit-event.html?event=' + ev + '#activity';

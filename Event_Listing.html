@@ -35,6 +35,9 @@
 
     --ok: #16794F;
     --ok-soft: #E4F5EC;
+    /* Upcoming's status colour (UX-041): a calm blue, so ET red is left for danger and errors only */
+    --info: #1D5FA3;
+    --info-soft: #E3EEFB;
     --warn: #A9700F;
     --warn-soft: #FBF0DA;
     --crit: #C13333;
@@ -65,6 +68,7 @@
       --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
       --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
       --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+      --info:#7EB6E8; --info-soft:#132A3D;
       --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
       --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
       --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38;
@@ -80,6 +84,7 @@
     --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
     --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
     --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
+    --info:#7EB6E8; --info-soft:#132A3D;
     --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
     --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
     --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38;
@@ -126,6 +131,7 @@
   .icon-btn:hover{ background:var(--surface-2); color:var(--text); }
   .icon-btn.active{ background:var(--accent-soft); color:var(--accent-strong); }
   .spin{ animation:spin .7s linear; }
+  .spin-on{ animation:spin .9s linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
   /* ---------- layout shell ---------- */
@@ -145,24 +151,27 @@
   .main-nav-links a:hover, .mp-btn:hover{ background:var(--surface-2); color:var(--text); }
   .main-nav-links a.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; }
   .main-nav-links a.active svg{ opacity:1; }
-  .main-nav-more{ flex-shrink:0; }
   .main-nav-portals{ flex-shrink:0; }
 
   .main-nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
 
-  /* at phone width, brand + "More Products" + the portal switcher + the account controls (all flex-shrink:0)
-     together exceed the viewport even with .main-nav-scroll squeezed to nothing — the account avatar (the
-     one control a signed-in user actually needs reachable at all times) was getting pushed off-screen with
-     no visible hint there was more to scroll to. Dropping the two secondary, text-labelled nav entries
-     reclaims enough width to keep the essential controls on screen without a horizontal scroll at all. */
+  /* at phone width, brand + the portal switcher + the account controls (all flex-shrink:0) together pushed the
+     account avatar (the one control a signed-in user needs reachable at all times) off-screen. The switcher is
+     dropped there: the phone Filters sheet carries the Portal choice instead. */
   @media (max-width: 640px){
-    .main-nav-more, .main-nav-portals{ display:none; }
+    .main-nav-portals{ display:none; }
+    /* the nav holds only "Events", the page itself (UX-022), and at phone width it was squeezed to a 27 px sliver
+       showing a stray icon (UX-031): the brand and the account controls are enough there */
+    .main-nav-scroll{ display:none; }
   }
 
   /* ---------- section bar: tabs + actions, one compact row ---------- */
-  .section-bar{ position:relative; display:flex; align-items:center; justify-content:flex-end; gap:16px; flex-wrap:wrap; padding:10px 0 0; border-bottom:1px solid var(--border); min-height:46px; }
-  .section-bar-left{ position:absolute; left:50%; top:10px; bottom:0; transform:translateX(-50%); display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; }
-  .section-bar-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; padding-bottom:8px; }
+  /* the tabs first, on the left, sitting on the bar's bottom edge; the list's controls on the right. The tabs used to
+     float in the middle, which four of them (Drafts is a tab now, UX-018) and the Sort menu (UX-037) no longer leave
+     room for at any desktop width: they ran into each other. Narrow screens had this layout already. */
+  .section-bar{ position:relative; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:10px 0 0; border-bottom:1px solid var(--border); min-height:46px; }
+  .section-bar-left{ display:flex; align-items:flex-end; align-self:stretch; gap:18px; flex-wrap:wrap; min-width:0; }
+  .section-bar-right{ display:flex; align-items:center; gap:8px; flex-shrink:0; padding-bottom:8px; margin-left:auto; }
   .sync-btn{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-faint); font-weight:600; padding:6px 9px; border-radius:7px; background:none; border:none; }
   .sync-btn:hover{ background:var(--surface-2); color:var(--text-muted); }
 
@@ -199,6 +208,8 @@
   .kpi-card .kpi-num.kpi-none{ color:var(--text-faint); }
   .kpi-card.is-none{ background:var(--surface-2); box-shadow:none; }
   .kpi-note{ grid-column:1 / -1; font-size:12.5px; color:var(--text-muted); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  /* what the three cards count: the whole tab, or only the events a search or filter leaves (UX-039) */
+  .insights-scope{ font-size:12.5px; color:var(--text-muted); margin-top:3px; }
 
   /* ---------- popovers (generic) ---------- */
   .popover-wrap{ position:relative; }
@@ -210,6 +221,12 @@
   .popover-item:hover{ background:var(--surface-2); }
   .popover-item svg{ color:var(--text-faint); flex-shrink:0; }
   .popover-item.danger{ color:var(--crit); } .popover-item.danger svg{ color:var(--crit); }
+  /* Delete and Restore for someone who is not an approver: still in the menu, so people know where they are and
+     who to ask, but muted and marked "Approvers only" (a click says who the approvers are) */
+  .popover-item.is-locked, .popover-item.is-locked svg{ color:var(--text-muted); }
+  .popover-item.is-locked{ cursor:not-allowed; }
+  .popover-item.is-locked:hover{ background:none; }
+  .popover-item .item-note{ margin-left:auto; padding-left:10px; font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap; }
   .popover-sep{ height:1px; background:var(--border); margin:6px 2px; }
   .check-row{ display:flex; align-items:center; gap:9px; width:100%; padding:7px 9px; border-radius:7px; font-size:13px; background:none; border:none; text-align:left; color:var(--text); }
   .check-row:hover{ background:var(--surface-2); }
@@ -266,11 +283,13 @@
   .ev-table th.sortable{ cursor:pointer; user-select:none; }
   .ev-table th.sortable:hover{ color:var(--text); }
   .ev-table th .sort-ic{ margin-left:4px; opacity:.4; }
+  /* each sortable header is a real button (UX-029), so the keyboard can sort too; it looks like the header it sits in */
+  .ev-table th .th-sort{ display:inline-flex; align-items:center; padding:0; margin:0; background:none; border:none; font:inherit; letter-spacing:inherit; text-transform:inherit; color:inherit; cursor:pointer; white-space:nowrap; }
   .ev-table th.sorted .sort-ic{ opacity:1; color:var(--accent); }
   .ev-table td{ padding:16px; border-bottom:1px solid var(--border); vertical-align:top; }
   .ev-table tbody tr{ transition:background .12s ease; cursor:pointer; }
   .ev-table tbody tr td:first-child{ box-shadow:inset 3px 0 0 transparent; transition:box-shadow .12s ease; }
-  .ev-table tbody tr.st-upcoming td:first-child{ box-shadow:inset 3px 0 0 var(--accent); }
+  .ev-table tbody tr.st-upcoming td:first-child{ box-shadow:inset 3px 0 0 var(--info); }
   .ev-table tbody tr.st-active td:first-child{ box-shadow:inset 3px 0 0 var(--ok); }
   .ev-table tbody tr.st-completed td:first-child{ box-shadow:inset 3px 0 0 var(--text-faint); }
   .ev-table tbody tr.st-cancelled td:first-child{ box-shadow:inset 3px 0 0 var(--warn); }
@@ -281,19 +300,24 @@
 
   .ev-name-cell{ display:flex; gap:11px; align-items:flex-start; min-width:250px; }
   .status-dot{ width:9px; height:9px; border-radius:50%; margin-top:7px; flex-shrink:0; }
-  .status-dot.upcoming{ background:var(--accent); }
+  .status-dot.upcoming{ background:var(--info); }
   .status-dot.active{ background:var(--ok); }
   .status-dot.completed{ background:var(--text-faint); }
   .status-dot.cancelled{ background:var(--warn); }
   .status-dot.draft{ background:var(--draft); }
   .status-dot.deleted{ background:var(--crit); }
   .ev-name-main{ min-width:0; }
-  /* a block as wide as its words: as an inline box its lines took the card's taller line height in standards mode */
-  .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:block; width:fit-content; max-width:100%; cursor:pointer; }
+  /* a block as wide as its words: as an inline box its lines took the card's taller line height in standards mode.
+     A long name with no spaces wraps (UX-036) instead of widening the table past its card, which pushed the Actions
+     column out of view, or running under a card's icons: "anywhere" also lets the name column shrink to fit */
+  .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:block; width:fit-content; max-width:100%; cursor:pointer; overflow-wrap:anywhere; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
   .ev-meta-line{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); margin-top:7px; flex-wrap:wrap; }
   .ev-meta-line .dotsep{ color:var(--text-faint); }
-  .ev-id-chip{ font-size:10.5px; font-weight:800; letter-spacing:.02em; border-radius:100px; padding:3px 10px; color:var(--accent-strong); background:var(--accent-soft); }
+  /* a deleted event: its name is not a link (the console cannot open a deleted event), and when and by whom it went */
+  .ev-name-main .ev-link.is-static{ cursor:default; }
+  .ev-name-main .ev-link.is-static:hover{ color:var(--text); text-decoration:none; }
+  .ev-deleted-note{ font-size:12px; color:var(--text-muted); }
   .ev-tag{ font-size:10.5px; font-weight:800; letter-spacing:.02em; border-radius:100px; padding:3px 10px; }
   .ev-tag-blue{ color:var(--tag-blue); background:var(--tag-blue-soft); }
   .ev-tag-teal{ color:var(--tag-teal); background:var(--tag-teal-soft); }
@@ -304,7 +328,8 @@
 
   .ev-date-cell .d1{ font-weight:600; font-size:13.5px; }
   .ev-date-cell .d2{ font-size:12px; color:var(--text-muted); margin-top:2px; }
-  .ev-date-cell .d3{ font-size:11px; color:var(--accent-strong); margin-top:3px; font-weight:700; }
+  /* "In 3 days" is news, not an alarm: Upcoming's blue, not the red kept for errors (UX-041) */
+  .ev-date-cell .d3{ font-size:11px; color:var(--info); margin-top:3px; font-weight:700; }
   .ev-date-cell .unset{ color:var(--text-faint); font-style:italic; }
   .vis-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
   /* a line of its own (flex, not inline-flex): alone on a line, an inline box takes the line's full height in standards mode */
@@ -313,10 +338,6 @@
   @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
 
   .reg-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
-
-  .pay-amt{ font-weight:700; font-size:14.5px; }
-  .pay-sub{ font-size:11.5px; color:var(--text-faint); margin-top:2px; }
-  .pay-free{ color:var(--text-faint); font-weight:600; }
 
   .row-actions{ text-align:right; position:relative; }
   .row-action-group{ display:inline-flex; align-items:center; gap:6px; }
@@ -364,6 +385,8 @@
   .empty-state h3{ font-size:16px; color:var(--text); margin-bottom:6px; }
   .empty-state p{ font-size:13px; max-width:40ch; margin:0 auto; }
   .empty-state .btn{ margin-top:16px; }
+  /* the events could not be loaded (UX-027): the one message where the list would be, its icon in the alert colour */
+  .empty-state.is-failed > svg{ color:var(--crit); }
   .error-banner{ display:flex; align-items:center; gap:12px; background:var(--crit-soft); color:var(--crit); border-radius:var(--r-md); padding:13px 16px; font-size:13px; font-weight:600; }
   .error-banner button{ margin-left:auto; }
 
@@ -374,87 +397,15 @@
   .pagination button[aria-current="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
   .pagination button[disabled]{ opacity:.4; pointer-events:none; }
 
-  /* ---------- lower dashboard: segmentation + activity ---------- */
+  /* ---------- lower dashboard: Latest activity (the Audience Segmentation card is gone, UX-026: it could only ever
+     show generated audiences, and no real source for it exists yet) ---------- */
   .lower-grid{ display:flex; flex-direction:column; gap:16px; }
   .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-xs); }
   .panel-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .panel-card-head-title{ display:flex; align-items:center; gap:11px; }
-  .panel-icon-avatar{ width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .panel-card-head h3{ font-size:15px; }
   .panel-sub{ font-size:11.5px; color:var(--text-muted); margin-top:1px; }
   .panel-card-head-right{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
   .panel-card-body{ padding:13px 18px 16px; min-height:60px; }
-  .segmented{ display:flex; align-items:center; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; }
-  /* its own buttons are all white-space:nowrap by design (labels shouldn't wrap mid-word) — the group can be
-     wider than a phone viewport on its own, even on its own wrapped line, so it needs to scroll internally
-     rather than push the whole page wider (same pattern as .main-nav-scroll) */
-  .segmented.sm{ padding:2px; flex-shrink:0; max-width:100%; overflow-x:auto; scrollbar-width:none; }
-  .segmented.sm::-webkit-scrollbar{ display:none; }
-  .segmented.sm button{ display:flex; align-items:center; gap:5px; padding:6px 11px; font-size:11.5px; font-weight:600; color:var(--text-muted); background:none; border:none; border-radius:7px; white-space:nowrap; }
-  .segmented.sm button:hover{ color:var(--text); }
-  .segmented.sm button svg{ flex-shrink:0; opacity:.8; }
-  .segmented.sm button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); font-weight:700; }
-  .segmented.sm button[aria-pressed="true"] svg{ opacity:1; }
-  .segmented.sm button.dim-blue[aria-pressed="true"]{ background:var(--tag-blue-soft); color:var(--tag-blue); }
-  .segmented.sm button.dim-teal[aria-pressed="true"]{ background:var(--tag-teal-soft); color:var(--tag-teal); }
-  .segmented.sm button.dim-violet[aria-pressed="true"]{ background:var(--tag-violet-soft); color:var(--tag-violet); }
-  .segmented.sm button.dim-cyan[aria-pressed="true"]{ background:var(--tag-cyan-soft); color:var(--tag-cyan); }
-
-  .seg-select{ padding:6px 8px; border-radius:7px; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--text); }
-  .seg-select-event{ min-width:170px; max-width:260px; }
-  @media (max-width: 480px){
-    .seg-select-event{ min-width:0; max-width:100%; flex:1 1 100%; }
-  }
-  .seg-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 18px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .seg-view-toggle{ display:flex; gap:2px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:2px; flex-shrink:0; }
-  .seg-view-btn{ width:28px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:transparent; border:none; color:var(--text-muted); }
-  .seg-view-btn:hover{ color:var(--text); }
-  .seg-view-btn[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); }
-  .seg-top-row{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:stretch; }
-  .seg-insight{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--accent-strong); background:var(--accent-soft); border-radius:var(--r-md); padding:11px 14px; line-height:1.35; flex:2; min-width:230px; }
-  .seg-insight svg{ flex-shrink:0; }
-  .seg-stat-tile{ flex:1; min-width:150px; display:flex; align-items:center; gap:10px; padding:10px 13px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); }
-  .seg-stat-icon{ width:32px; height:32px; border-radius:9px; background:var(--surface); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-xs); }
-  .seg-stat-label{ font-size:11px; font-weight:600; color:var(--text-muted); }
-  .seg-stat-value{ font-size:18px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
-  .seg-list{ display:flex; flex-direction:column; gap:12px; }
-  .seg-row{ display:flex; align-items:center; gap:10px; }
-  .seg-rank{ width:18px; height:18px; border-radius:5px; background:var(--surface-2); color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-  .seg-row:first-child .seg-rank{ background:var(--accent); color:#fff; }
-  .seg-main{ flex:1; min-width:0; }
-  .seg-name-row{ display:flex; justify-content:space-between; gap:10px; font-size:12.5px; margin-bottom:5px; }
-  .seg-name{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .seg-val{ font-weight:700; flex-shrink:0; }
-  .seg-bar-track{ height:6px; border-radius:100px; background:var(--surface-3); overflow:hidden; }
-  .seg-bar-fill{ height:100%; border-radius:100px; }
-  .seg-chart-row{ display:flex; align-items:center; gap:30px; flex-wrap:wrap; padding:6px 0; }
-  .seg-donut{ flex-shrink:0; }
-  .seg-donut-wrap{ position:relative; display:inline-flex; flex-shrink:0; }
-  .seg-donut-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; pointer-events:none; padding:0 22px; }
-  .seg-donut-center-pct{ font-size:23px; font-weight:800; letter-spacing:-.02em; color:var(--text); }
-  .seg-donut-center-label{ font-size:10.5px; font-weight:700; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
-  .seg-legend{ display:flex; flex-direction:column; gap:10px; flex:1; min-width:190px; }
-  .seg-legend-row{ display:flex; align-items:center; gap:9px; font-size:12.5px; padding:2px 0; }
-  .seg-swatch{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
-  .seg-legend-label{ flex:1; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .seg-legend-val{ font-weight:700; font-family:var(--font-mono); flex-shrink:0; }
-  .seg-legend-pct{ color:var(--text-faint); font-size:11px; width:36px; text-align:right; flex-shrink:0; }
-
-  /* ---------- segmentation table (list view) ---------- */
-  .seg-table-wrap{ overflow-x:auto; }
-  table.seg-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:460px; }
-  .seg-table th{ text-align:left; padding:8px 10px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); border-bottom:1px solid var(--border); white-space:nowrap; }
-  .seg-table td{ padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }
-  .seg-table tbody tr:last-child td{ border-bottom:none; }
-  .seg-rank-cell{ width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-size:11px; font-weight:700; }
-  .seg-name-cell{ display:flex; align-items:center; gap:9px; font-weight:600; }
-  .seg-avatar{ width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; font-family:var(--font-display); flex-shrink:0; }
-  .seg-spark{ display:block; }
-  .intent-badge{ display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:4px 10px; border-radius:100px; white-space:nowrap; }
-  .intent-high{ color:var(--ok); background:var(--ok-soft); }
-  .intent-medium{ color:var(--warn); background:var(--warn-soft); }
-  .intent-low{ color:var(--text-faint); background:var(--surface-3); }
-
   /* ---------- activity accordion ---------- */
   .activity-accordion{ display:flex; flex-direction:column; }
   .activity-item + .activity-item{ border-top:1px solid var(--border); }
@@ -517,6 +468,10 @@
   .view-toggle button{ width:28px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; color:var(--text-muted); }
   .view-toggle button:hover{ color:var(--text); }
   .view-toggle button[aria-pressed="true"]{ background:var(--surface); color:var(--accent-strong); box-shadow:var(--shadow-sm); }
+  /* the list's order, for the table and the cards alike: the headers sort the table, and this also offers Last edited,
+     which Drafts opens on (UX-037) */
+  .sort-pick{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--text-muted); }
+  .sort-pick select{ font-size:12.5px; font-weight:600; color:var(--text); background:var(--surface); border:1px solid var(--border-strong); border-radius:7px; padding:4px 6px; font-family:var(--font-body); }
 
   #results-view.view-list .table-wrap{ display:block; }
   #results-view.view-list .card-list{ display:none; }
@@ -544,11 +499,27 @@
   .email-row{ display:flex; align-items:center; gap:8px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:var(--font-mono); font-size:12px; }
   .email-row button{ margin-left:auto; background:none; border:none; color:var(--text-muted); display:flex; flex-shrink:0; }
   .email-row button:hover{ color:var(--accent-strong); }
+  /* the Clone, Delete and Restore windows (openDialog). --accent-contrast is white in light and near-black in dark,
+     which keeps the red button's words AA in both themes */
+  .btn-danger{ background:var(--crit); color:var(--accent-contrast); }
+  .btn-danger:hover{ filter:brightness(.92); }
+  .dlg-text{ font-size:13px; color:var(--text); line-height:1.5; overflow-wrap:anywhere; }
+  .dlg-text .mono{ font-size:12px; }
+  .field-hint{ font-size:12px; color:var(--text-muted); margin-top:6px; overflow-wrap:anywhere; }
+  .field-hint.is-bad{ color:var(--crit); }
+  .field-hint .pn-link{ font-size:12px; margin-left:4px; }
+  .dlg-error{ font-size:12.5px; font-weight:600; color:var(--crit); background:var(--crit-soft); border-radius:8px; padding:9px 11px; overflow-wrap:anywhere; }
 
   /* ---------- mobile / grid cards ---------- */
   .card-list{ display:none; flex-direction:column; gap:12px; }
   .ev-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px 18px; display:flex; flex-direction:column; gap:12px; transition:box-shadow .15s ease, border-color .15s ease, transform .15s ease; }
   .ev-card:hover{ border-color:var(--border-strong); box-shadow:var(--shadow-sm); transform:translateY(-1px); }
+  /* a tap anywhere on a card opens the event's console (UX-020); a deleted event's card opens nothing */
+  .ev-card{ cursor:pointer; }
+  .ev-card.is-static{ cursor:default; }
+  /* the card's buttons on a row of their own under its figures, so a long name has the card's whole width (UX-036)
+     and the buttons can be full-size touch targets on phones (UX-029) */
+  .ev-card-actions{ display:flex; justify-content:flex-end; }
   .ev-card-top{ display:flex; align-items:flex-start; gap:10px; }
   .ev-card-top .ev-name-main{ flex:1; min-width:0; }
   .ev-card-info{ display:flex; flex-direction:column; gap:10px; padding-top:11px; border-top:1px solid var(--border); }
@@ -557,6 +528,8 @@
   .ev-info-item svg{ color:var(--text-faint); flex-shrink:0; }
   .ev-info-item .v{ color:var(--text); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ev-info-item .v.faint2{ color:var(--text-faint); font-weight:600; font-style:italic; }
+  /* the date line wraps rather than being cut to "13 Oct 2026 · 12:0…" (UX-030) */
+  .ev-info-item .v.v-wrap{ white-space:normal; overflow:visible; }
   .ev-card-foot{ display:flex; align-items:center; justify-content:space-between; font-size:11px; color:var(--text-faint); }
 
   .bottom-sheet-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:70; display:flex; align-items:flex-end; }
@@ -566,7 +539,28 @@
   @media (max-width:880px){
     .table-wrap{ display:none !important; }
     .card-list{ display:flex !important; flex-direction:column; gap:12px; }
-    .toolbar .toolbar-btn.desk-only{ display:none; }
+    /* every desk-only part of the toolbar, its wrappers too: the rule used to name only .toolbar-btn, so the Event Type
+       and Portal buttons (in a .popover-wrap.desk-only) stayed beside the phone's Filters button (UX-031) */
+    .toolbar .desk-only{ display:none; }
+    /* touch targets of about 44 x 44 px (UX-029) */
+    .icon-btn{ width:44px; height:44px; }
+    .toolbar-btn, .sync-btn, .sort-pick select{ min-height:44px; }
+    .popover-item{ min-height:44px; }
+    .pagination button{ min-width:44px; height:44px; }
+    .search-box .clear-btn{ position:relative; }
+    .search-box .clear-btn::after{ content:''; position:absolute; inset:-14px; }
+    /* four tabs do not fit a phone's width: the tabs are a strip of their own that scrolls sideways, on the line under
+       the sort, "Updated" and the ⋯ menu, so the selected tab's underline sits on the bar's bottom edge */
+    .section-bar-left{ order:2; flex:1 1 100%; min-width:0; max-width:100%; }
+    .section-bar-right{ order:1; flex:1 1 100%; justify-content:flex-end; flex-wrap:wrap; padding-bottom:0; }
+    /* the Sort menu, "Updated …" and ⋯ share a phone's width: the word "Sort" is for screen readers only there, and
+       "Updated 12:41 pm" keeps to one line (the row wraps before anything is squeezed) */
+    .sort-pick .sort-word{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+    .sync-btn{ white-space:nowrap; }
+    .tabs-row{ overflow-x:auto; scrollbar-width:none; max-width:100%; }
+    .tabs-row::-webkit-scrollbar{ display:none; }
+    .tabs-row button{ flex-shrink:0; min-height:44px; margin-right:12px; }
+    .tabs-underline{ bottom:0; }
     .search-box{ max-width:none; flex:1; }
     .view-toggle{ display:none; }
     /* the right-hand links wrap among themselves rather than push the page wider than the screen */
@@ -575,13 +569,6 @@
        Event fitted on the filters' row and squeezed the search box to an icon */
     .toolbar-filters-group{ flex:1 1 100%; }
     .toolbar-right-group{ flex:1 1 100%; justify-content:space-between; }
-  }
-  /* below 1100px the status tabs stop floating in the middle of the row (they ran under the list / card switch,
-     "Updated …" and ⋯): the tabs come first, those controls follow on the right, wrapping below when there is no room */
-  @media (max-width:1100px){
-    .section-bar{ justify-content:space-between; }
-    .section-bar-left{ position:static; transform:none; }
-    .section-bar-right{ margin-left:auto; }
   }
   @media (min-width:881px){ .mobile-only{ display:none !important; } }
 
@@ -652,14 +639,6 @@
 
     <div class="main-nav-scroll">
       <nav class="main-nav-links" id="main-nav-links"></nav>
-    </div>
-
-    <div class="main-nav-more popover-wrap">
-      <button class="mp-btn" id="btn-more-products">
-        More Products
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <div class="popover right" id="more-products-menu" hidden></div>
     </div>
 
     <div style="flex:1;"></div>
@@ -735,6 +714,15 @@
       <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
     </div>
     <div class="section-bar-right">
+      <!-- the list's order (UX-037): the table's headers sort it too; Last edited is here only, and Drafts opens on it -->
+      <label class="sort-pick" for="sort-select"><span class="sort-word">Sort</span>
+        <select id="sort-select">
+          <option value="start">Event date</option>
+          <option value="updated">Last edited</option>
+          <option value="registrations">Registrations</option>
+          <option value="visitors">Visitors</option>
+        </select>
+      </label>
       <!-- list or cards: on the row right above the table it changes -->
       <div class="view-toggle" id="view-toggle">
         <button type="button" data-view="list" aria-label="List view" data-tooltip="List view">
@@ -744,9 +732,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
         </button>
       </div>
-      <button class="sync-btn" id="btn-sync" data-tooltip="Refresh event data">
-        <svg id="sync-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
-        <span id="sync-label">Updated 2 min ago</span>
+      <!-- reads the events again; the label says when they were last read (UX-022: it was fixed text that fetched nothing) -->
+      <button class="sync-btn" id="btn-sync" type="button" data-tooltip="Read the events again">
+        <svg id="sync-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        <span id="sync-label">Loading…</span>
       </button>
       <div class="popover-wrap">
         <button class="icon-btn" id="btn-more" aria-haspopup="true" aria-label="More">
@@ -770,10 +759,9 @@
           <tr>
             <th>Event name</th>
             <th class="col-portal">Portal</th>
-            <th class="sortable" data-sort="start">Event date <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-            <th class="sortable" data-sort="visitors">Visitors <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-            <th class="sortable" data-sort="registrations">Registrations <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
-            <th class="sortable" data-sort="payment">Payment <svg class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></th>
+            <th class="sortable" data-sort="start"><button type="button" class="th-sort">Event date <svg aria-hidden="true" class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button></th>
+            <th class="sortable" data-sort="visitors"><button type="button" class="th-sort">Visitors <svg aria-hidden="true" class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button></th>
+            <th class="sortable" data-sort="registrations"><button type="button" class="th-sort">Registrations <svg aria-hidden="true" class="sort-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></button></th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -788,7 +776,10 @@
 
   <section id="insights-section">
     <div class="insights-head">
-      <h2 id="insights-title">Upcoming Event Insights</h2>
+      <div>
+        <h2 id="insights-title">Upcoming Event Insights</h2>
+        <p class="insights-scope" id="insights-scope"></p>
+      </div>
       <div class="popover-wrap">
         <button class="btn btn-secondary btn-sm" id="btn-range">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/></svg>
@@ -801,34 +792,7 @@
     <div class="kpi-grid" id="kpi-grid"></div>
   </section>
 
-  <section class="lower-grid">
-    <div class="card panel-card" id="segment-card">
-      <div class="panel-card-head">
-        <div class="panel-card-head-title">
-          <span class="panel-icon-avatar" id="segment-icon-avatar"></span>
-          <div>
-            <h3>Audience Segmentation</h3>
-            <p class="panel-sub" id="segment-sub">Top Company for this event</p>
-          </div>
-        </div>
-        <div class="panel-card-head-right">
-          <select class="seg-select seg-select-event" id="segment-event-select"></select>
-          <div class="seg-view-toggle" id="segment-view-toggle">
-            <button type="button" class="seg-view-btn" data-segview="list" data-tooltip="List view">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            </button>
-            <button type="button" class="seg-view-btn" data-segview="chart" data-tooltip="Chart view">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="seg-toolbar">
-        <div class="segmented sm" id="segment-dim-tabs"></div>
-      </div>
-      <div class="panel-card-body" id="segment-body"></div>
-    </div>
-
+  <section class="lower-grid" id="lower-panels">
     <div class="card panel-card" id="activity-card">
       <div class="panel-card-head">
         <div>
@@ -870,6 +834,9 @@
 <div id="toast-region"></div>
 
 <script src="theme-toggle.js"></script>
+<!-- the API calls Clone, Delete and Restore make (window.RevampCore: cloneEvent, deleteEvent, restoreEvent,
+     slugAvailable). It only reads window.RevampAuth when an action runs, so it may load before auth.js -->
+<script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
 <!-- ET's portal roster, the person's working portal and the Set portal window (window.RevampPortals) -->
 <script src="portal-picker.js"></script>
@@ -928,7 +895,12 @@
     layers:   svg('<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', 15),
     building: svg('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1"/>', 14),
     share:    svg('<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>', 14),
-    monitor:  svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>', 14)
+    monitor:  svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>', 14),
+    /* the large icons of the empty and failed states: a "+" only where the state offers Create Event (UX-035) */
+    searchLg: svg('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', 40),
+    calendarLg: svg('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/>', 40),
+    trashLg:  svg('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', 40),
+    alertLg:  svg('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.6 17.1A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0z"/>', 40)
   };
 
   function toast(msg){
@@ -955,10 +927,6 @@
   var PORTAL_ROSTER = [];
   var rosterState = 'loading';          // 'loading' | 'ready' | 'failed'
 
-  var uidn = 0;
-  function nextId(){ uidn++; return 'ev_' + uidn; }
-  function mk(o){ o.id = nextId(); return o; }
-
   /* Used to be seeded with ~20 hardcoded demo rows (fake names, registrations, revenue) with zero
      connection to anything Create Event actually builds (backed up to Event_Listing.dummy-data.backup.js,
      2026-10-08), then briefly with a per-browser localStorage merge ('revamp.liveEvents.v1', written by
@@ -974,20 +942,13 @@
   /* A real event straight out of the wizard has zero real registrations/visitors — correct, not a bug (the
      real per-event numbers live behind GET /api/event/dashboard-stats and GET /api/event/registrations,
      which this list view deliberately doesn't call once per row — an N-query fan-out per page load isn't
-     worth it for a first version). eventNo ("Event ID: ####" chip) and crmLeads have no real backend field
-     either; eventNo is a stable hash of the real id purely so the chip has a deterministic, non-churning
-     number to show, and crmLeads stays 0 until this page has a real CRM signal to show instead of an
-     invented one. */
-  function hashToEventNo(id){
-    var hash = 0;
-    String(id).split('').forEach(function(c){ hash = ((hash << 5) - hash + c.charCodeAt(0)) | 0; });
-    return (Math.abs(hash) % 9000) + 1000;
-  }
+     worth it for a first version). The "Event ID: ####" chip is gone (UX-022): it was a hash of the address,
+     used nowhere else, in a red pill that read like an error. */
 
   /* functions/lib/api.js's GET /api/events returns each events/{id} doc close to verbatim (id + whatever
      EVENT_FIELDS that event doc has: name, slug, category, status, start, end, venue, city, payment,
      templateId, createdBy, createdAt, updatedAt, ...) — this maps that straight onto the row shape every
-     render function in this file already expects (metaLine/dateCellHTML/payCellHTML/statusLabel etc.). */
+     render function in this file already expects (metaLine/dateCellHTML/statusLabel etc.). */
   /* Where an event sits in the list (Draft, Upcoming, Active, Completed, Cancelled, Deleted) is worked out by
      event-lifecycle.js (window.RevampLifecycle), loaded before this script. It was this page's own function
      until ETB2B AI needed the very same answer on the server: one rule, so the tabs here and what the bot says
@@ -997,8 +958,8 @@
     var counters = ev.counters || {};
     return {
       id: ev.id, slug: ev.slug || ev.id, name: ev.name || 'Untitled event',
-      venue: ev.venue || 'Venue to be confirmed', city: ev.city || '—',
-      eventNo: hashToEventNo(ev.id),
+      /* no city is no city: it used to be '—', which the venue tooltip printed as "Venue to be confirmed, —" (UX-020) */
+      venue: ev.venue || 'Venue to be confirmed', city: ev.city || '',
       type: ev.category || 'ip',
       /* the event's stored portal (a roster slug, '' for none yet) and its name, both from the server; the two
          facts Set portal's window needs are kept beside them (published is kept further down) */
@@ -1006,9 +967,12 @@
       hasGeneratedSite: ev.hasGeneratedSite === true,
       status: window.RevampLifecycle.of(ev, Date.now()),
       start: ev.start || null, end: ev.end || null,
-      registrations: Number(counters.registrations) || 0, regTarget: null, visitors: Number(counters.views) || 0, crmLeads: 0,
-      payment: { type: (ev.payment && ev.payment.type) || 'free', amount: (ev.payment && ev.payment.amount) || 0, txns: (ev.payment && ev.payment.txns) || 0 },
+      registrations: Number(counters.registrations) || 0, visitors: Number(counters.views) || 0,
+      /* no payment here: payments are not part of this release, so the list has no Payment column, revenue figure
+         or Paid / Free filter (UX-025) */
       createdBy: ev.createdBy || '—',
+      /* a deleted event (GET /api/events?deleted=1): when and by whom, for its row in Deleted Events */
+      deletedAt: typeof ev.deletedAt === 'string' ? ev.deletedAt : null, deletedBy: typeof ev.deletedBy === 'string' ? ev.deletedBy : '',
       /* kept for the list's own date and "created by you" filters (and so ETB2B AI's filters can be shown here):
          when it was made and last changed, whether its site is live and where, and its date as words when the
          date is a month or a quarter rather than a day */
@@ -1041,74 +1005,38 @@
     return !!q && searchLine(e.portal ? portalNameOf(e.portal) : 'No portal yet', 120).toLowerCase().indexOf(q) !== -1;
   }
 
-  /* GET /api/events, admin-gated — same Authorization: Bearer <token> pattern every other authed call in
-     this app uses (see edit-event-core.js's RevampCore.authedFetch()); window.RevampAuth comes from auth.js,
-     already loaded on this page. Resolves to the mapped row array; rejects (never throws) on any failure —
-     not signed in, token expired, network down, server error — so loadAndRender() below can show the
-     existing defensive error banner instead of leaving the page on its loading skeleton forever. */
-  function loadEvents(){
-    if (!window.RevampAuth || typeof window.RevampAuth.getIdToken !== 'function'){
-      return Promise.reject(new Error('Not signed in.'));
-    }
+  /* The two lists this page shows, read with the person's sign-in (window.RevampAuth, from auth.js):
+       GET /api/events            every live event (drafts included) — the tabs and the Draft view
+       GET /api/events?deleted=1  the deleted ones — the Deleted Events view, where an approver restores them
+     Resolves to the mapped rows of both. Rejects (never throws) only when the live list fails, with an Error whose
+     status says why (0: the server could not be reached; 401: the sign-in has ended; 5xx: the server failed), so
+     loadAndRender() can say so in words. A failure of the deleted list alone does not cost the page its events:
+     Deleted Events then says it could not be loaded, with Try again (deletedState). */
+  var deletedState = 'loading';      // 'loading' | 'ok' | 'error'
+  function loadError(message, status){ var err = new Error(message); err.status = status; return err; }
+  function readEventList(url){
+    if (!window.RevampAuth || typeof window.RevampAuth.getIdToken !== 'function') return Promise.reject(loadError('Not signed in.', 401));
     return window.RevampAuth.getIdToken().then(function(token){
-      return fetch('/api/events', { headers: { 'Authorization': 'Bearer ' + token } });
-    }).then(function(res){
-      return res.json().catch(function(){ return {}; }).then(function(data){
-        if (!res.ok) throw new Error((data && data.error) || ('Could not load events (' + res.status + ')'));
-        return (data.items || []).map(mapApiEventToRow);
-      });
+      return fetch(url, { headers: { 'Authorization': 'Bearer ' + token } }).then(function(res){
+        return res.json().catch(function(){ return {}; }).then(function(data){
+          if (!res.ok) throw loadError((data && data.error) || ('Could not load events (' + res.status + ')'), res.status);
+          return Array.isArray(data && data.items) ? data.items : [];
+        });
+      }, function(){ throw loadError('Could not reach the server.', 0); });
+    }, function(){ throw loadError('Not signed in.', 401); });
+  }
+  function loadEvents(){
+    var live = readEventList('/api/events');          // asked first: it is the one the page cannot do without
+    var deleted = readEventList('/api/events?deleted=1').then(function(items){ deletedState = 'ok'; return items; },
+      function(){ deletedState = 'error'; return []; });
+    return Promise.all([live, deleted]).then(function(got){
+      var rows = got[0].map(mapApiEventToRow), seen = {};
+      rows.forEach(function(r){ seen[r.id] = true; });
+      /* only what the server marked deleted, once: an id already in the live list is not drawn twice */
+      got[1].forEach(function(ev){ if (ev && ev.deletedAt && ev.id && !seen[ev.id]){ seen[ev.id] = true; rows.push(mapApiEventToRow(ev)); } });
+      return rows;
     });
   }
-
-  var SEGMENT_DIMENSIONS = { company:'Top Company', designation:'Top Designation', source:'Top Source', device:'Mobile vs Desktop' };
-  var SEG_PALETTE = ['#FF0035','#0F9E8E','#D97706','#7C3AED','#2563EB','#65A30D'];
-
-  /* ---- per-event attendee audience data, generated for IP events only ---- */
-  var COMPANY_POOL = ['TCS','Infosys','Wipro','HDFC Bank','ICICI Bank','Reliance Industries','Larsen & Toubro','Mahindra Group','Tata Steel','Adani Enterprises','Cognizant','Accenture','Google India','Microsoft India','Amazon India'];
-  var DESIGNATION_POOL = ['CISO','IT Head','VP - Technology','CTO','Security Analyst','Compliance Manager','Director - IT','Chief Risk Officer','Head of Engineering','Product Manager'];
-  var SOURCE_POOL = ['Organic Search','Email Campaign','Social Media','Direct','Referral Partner','Paid Ads'];
-  function generateAudience(seedNum, base){
-    base = Math.max(base, 20);
-    function rand(i){ var x = Math.sin(seedNum*13 + i*7.13) * 10000; return x - Math.floor(x); }
-    function makeTrend(seedOffset){
-      var pts = [];
-      for (var d=0; d<7; d++){ pts.push(0.35 + rand(seedOffset + d*3.7) * 0.85); }
-      return pts;
-    }
-    function pickWeighted(pool, count){
-      var idxs = pool.map(function(_,i){ return i; });
-      idxs.sort(function(a,b){ return rand(a) - rand(b); });
-      var chosen = idxs.slice(0, count);
-      var weights = [], wsum = 0;
-      chosen.forEach(function(ci,k){ var w = 0.3 + rand(ci+100)*0.7; weights.push(w); wsum += w; });
-      return chosen.map(function(ci,k){ return { label: pool[ci], value: Math.max(1, Math.round(base * (weights[k]/wsum) * 0.55)), trend: makeTrend(ci*17 + 5) }; })
-        .sort(function(a,b){ return b.value - a.value; });
-    }
-    var mobileShare = 0.45 + rand(999)*0.25;
-    var mobile = Math.round(base * mobileShare);
-    var desktop = Math.max(1, base - mobile);
-    return {
-      companies: pickWeighted(COMPANY_POOL, 8),
-      designations: pickWeighted(DESIGNATION_POOL, 8),
-      sources: pickWeighted(SOURCE_POOL, 5),
-      devices: [{ label:'Mobile', value:mobile, trend:makeTrend(201) }, { label:'Desktop', value:desktop, trend:makeTrend(211) }]
-    };
-  }
-  var EVENT_AUDIENCE = {};
-  var IP_EVENT_IDS = [];
-  /* Rebuilds every EVENTS-derived structure (audience segmentation + activity breakdown, both IP-events-only
-     and still deterministic mock, just no longer seeded from fake rows) — called once at startup (EVENTS is
-     empty, so this is a no-op) and again by loadAndRender() every time EVENTS itself changes (the real
-     GET /api/events fetch resolving, or any retry). findEvent() is defined further down but hoisted, same
-     as every other forward reference in this file. */
-  function recomputeDerived(){
-    EVENT_AUDIENCE = {};
-    IP_EVENT_IDS = [];
-    /* No event gets an audience breakdown or activity figures here: the only ones this page could show are
-       generated (generateAudience above — sample companies, shares and trends), and a live event must not
-       carry invented registrants. The panels that read these lists stay hidden until real figures exist. */
-  }
-  recomputeDerived();
 
   /* =========================================================
      STATE
@@ -1117,7 +1045,9 @@
     tab: 'active',
     specialView: null,          // null | 'draft' | 'cancelled' | 'deleted'
     search: '',
-    filters: { types: [], portals: [], payment: [] },   // portals ('none' = no portal yet) is read only in All portals
+    /* portals ('none' = no portal yet) is read only in All portals. payment stays, always empty, so a list saved
+       before payments left the page (ETB2B AI's Undo keeps one) reads the same; nothing filters on it */
+    filters: { types: [], portals: [], payment: [] },
     created: null,              // null | {from, to}: made between these days (YYYY-MM-DD, India time, both included)
     starts: null,               // null | {from, to}: starts between these days
     mine: false,                // only the events the signed-in person created
@@ -1138,15 +1068,66 @@
     activityRange: { mode:'30', start:null, end:null },
     activityOpenKey: null,
     loading: true,
+    /* the events could not be loaded: { status, offline } (loadAndRender), shown as one message where the list
+       would be, with no counts and no figures (UX-027); null otherwise */
+    loadFailed: null,
+    loadedAt: 0,                     // when the lists were last read (the "Updated 12:41 pm" button)
+    refreshing: false,
+    /* config/approvals' approvers (GET /api/settings/approvals), lower case: [] = none named, so everyone may delete
+       and restore; null = not known yet (or it failed to load), when the server decides on each click */
+    approvers: null,
     openPopover: null,
     openRowMenu: null,
     venuePopoverFor: null,
-    view: 'list',                    // 'list' | 'grid'
-    segmentEventId: IP_EVENT_IDS[0] || null,
-    segmentDimension: 'company',     // 'company' | 'designation' | 'source' | 'device'
-    segmentView: 'list'              // 'list' | 'chart'
+    /* the tab a Cancelled or Deleted view was opened from: its banner's way back (UX-018: it always went to Active) */
+    fromTab: '',
+    view: 'list'                     // 'list' | 'grid'
   };
-  var PAGE_SIZE = 5;
+  /* 20 a page: at 5, the drafts (most of the events) ran to eight pages (UX-037) */
+  var PAGE_SIZE = 20;
+
+  /* What this browser remembers for the person (UX-018, UX-037): the last tab they picked and List or Cards, from one
+     visit to the next; and, for this browser tab only, the list they were last looking at, so "Back to events" in the
+     event console, the site editor and Create Event (plain links to this page) comes back to it, search and all. Any
+     read or write may fail (a private window, blocked storage): the page then just starts on its defaults. */
+  var MEMO_TAB = 'rv.listing.tab', MEMO_LAYOUT = 'rv.listing.layout', MEMO_WHERE = 'rv.listing.where';
+  function memoGet(store, key){
+    try { var s = window[store]; return s ? s.getItem(key) : null; } catch(e){ return null; }
+  }
+  function memoSet(store, key, value){
+    try { var s = window[store]; if (s) s.setItem(key, value); } catch(e){}
+  }
+  if (memoGet('localStorage', MEMO_LAYOUT) === 'grid') state.view = 'grid';
+
+  /* The tabs, in the order an event moves through them (UX-018). Drafts is a tab now, with its count: it was hidden in
+     the ⋯ menu though most events are drafts. It is still the 'draft' view underneath (state.specialView), so the
+     address (#…&view=draft), ETB2B AI's views and its Undo read it exactly as before. Cancelled and Deleted stay in ⋯. */
+  var TABS = [['draft','Drafts'],['upcoming','Upcoming'],['active','Active'],['completed','Completed']];
+  function isTab(b){ return b === 'draft' || b === 'upcoming' || b === 'active' || b === 'completed'; }
+  function currentBucket(){ return state.specialView || state.tab; }
+  /* each list's own order until the person picks one: drafts by when they were last edited, newest first (the work in
+     hand), the others by date, soonest first */
+  function defaultSort(b){ return b === 'draft' ? { field:'updated', dir:'desc' } : { field:'start', dir:'asc' }; }
+  function sameSort(a, b){ return !!a && !!b && a.field === b.field && a.dir === b.dir; }
+  /* The list on one tab or ⋯ view, page 1. A sort the person has not changed moves to the new list's own default; one
+     they picked stays. Nothing is drawn here (goToBucket draws). */
+  function setBucket(b){
+    var from = currentBucket();
+    if (b === 'draft') state.specialView = 'draft';
+    else if (b === 'cancelled' || b === 'deleted'){
+      if (isTab(from)) state.fromTab = from;
+      state.specialView = b;
+    } else { state.specialView = null; state.tab = ['active','upcoming','completed'].indexOf(b) !== -1 ? b : 'active'; }
+    var to = currentBucket();
+    if (to !== from && sameSort(state.sort, defaultSort(from))) state.sort = defaultSort(to);
+    state.page = 1;
+  }
+  /* a tab the person picked is the one the next visit opens on */
+  function goToBucket(b, picked){
+    setBucket(b);
+    if (picked && isTab(b)) memoSet('localStorage', MEMO_TAB, b);
+    closeAll(); renderApp();
+  }
 
   /* ---- days: the list's date filters work in whole days, India time, both ends included ---- */
   var MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1204,17 +1185,18 @@
   }
 
   /* ---- the address keeps the list's view, so a link, a reload or Back shows the same list ----
-     #tab=active|upcoming|completed  &q=<search>  &view=draft|cancelled|deleted  &type=ip,awards
+     #tab=active|upcoming|completed  &q=<search>  &view=draft|cancelled|deleted  &type=ip,awards  (#tab=draft is read as
+     the Drafts tab, which is written as view=draft)
      &created=2026-10-26..2026-11-01  &starts=2026-11-01..2026-11-30  &mine=1
      Only tab and q existed before; "#tab=upcoming&q=x" means exactly what it always did. A key that is junk (an
      unknown tab or type, an impossible day) is left out, never guessed at. */
   function parseListingHash(hash){
-    var out = {};
+    var out = {}, draftTab = false;
     String(hash == null ? '' : hash).replace(/^#/, '').split('&').forEach(function(p){
       if (!p) return;
       var i = p.indexOf('='), k = i === -1 ? p : p.slice(0, i), v = i === -1 ? '' : p.slice(i + 1);
       try { v = decodeURIComponent(v); } catch(e){ return; }
-      if (k === 'tab'){ if (['active','upcoming','completed'].indexOf(v) !== -1) out.tab = v; }
+      if (k === 'tab'){ if (['active','upcoming','completed'].indexOf(v) !== -1) out.tab = v; else if (v === 'draft') draftTab = true; }
       else if (k === 'q'){ if (v) out.search = v; }
       else if (k === 'view'){ if (['draft','cancelled','deleted'].indexOf(v) !== -1) out.specialView = v; }
       else if (k === 'type'){
@@ -1229,6 +1211,8 @@
       }
       else if (k === 'mine'){ if (v === '1') out.mine = true; }
     });
+    /* "#tab=draft" is the Drafts tab, which is the draft view; a view named as well wins */
+    if (draftTab && !out.specialView) out.specialView = 'draft';
     return out;
   }
   function listingHash(s){
@@ -1242,19 +1226,47 @@
   }
   /* what the address says, with every key it leaves out back at its default */
   function applyHashState(p){
+    var from = currentBucket();
     state.tab = p.tab || 'active';
     state.search = p.search || '';
     state.specialView = p.specialView || null;
+    if (currentBucket() !== from && sameSort(state.sort, defaultSort(from))) state.sort = defaultSort(currentBucket());
     state.filters.types = p.types ? p.types.slice() : [];
     state.created = p.created || null;
     state.starts = p.starts || null;
     state.mine = p.mine === true;
   }
-  try { applyHashState(parseListingHash(location.hash)); } catch(e){}
+  /* Where the page opens (UX-018): an address says exactly which list; with none (the console's, the editor's and
+     Create Event's "Back to events" are plain links), the list this browser tab last showed; else the tab last
+     picked; else, once the events are in, the first of Active, Upcoming and Drafts that has any (landingTab). A tab
+     remembered from an earlier visit that is empty today gives way to that too. */
+  var landing = 'address';
+  try {
+    var openedWith = parseListingHash(location.hash);
+    if (!Object.keys(openedWith).length){
+      var where = parseListingHash(memoGet('sessionStorage', MEMO_WHERE) || '');
+      var lastTab = memoGet('localStorage', MEMO_TAB);
+      if (Object.keys(where).length){ openedWith = where; landing = 'where'; }
+      else if (isTab(lastTab)){ openedWith = lastTab === 'draft' ? { specialView: 'draft' } : { tab: lastTab }; landing = 'remembered'; }
+      else landing = 'first';
+    }
+    applyHashState(openedWith);
+  } catch(e){}
+  /* once, on the first load: a list opened from memory or by default that has nothing in it moves to the first tab
+     that has events (the address and this tab's own last list are kept as they are) */
+  function landingTab(){
+    if (landing !== 'remembered' && landing !== 'first') return;
+    landing = 'address';
+    if (listFiltered() || bucketEvents().length) return;
+    var to = ['active','upcoming','draft'].filter(function(b){ return countIn(b) > 0; })[0];
+    if (to && to !== currentBucket()) setBucket(to);
+  }
 
   function syncHash(){
     try {
       var h = listingHash(state);
+      /* this browser tab's last list, for "Back to events" (a plain link here) to come back to */
+      memoSet('sessionStorage', MEMO_WHERE, h);
       if (h === location.hash) return;
       /* a page opened with no address keeps its plain one until the list is changed */
       if (!location.hash && h === '#tab=active') return;
@@ -1283,8 +1295,6 @@
     if (n >= 1000) return (n/1000).toFixed(2).replace(/\.00$/,'') + 'K';
     return String(n);
   }
-  function fmtRupee(n){ return '₹' + fmtCompact(n); }
-  function fmtRupeeFull(n){ return '₹' + Number(n||0).toLocaleString('en-IN'); }
 
   function fmtDate(iso){
     var d = new Date(iso);
@@ -1298,10 +1308,6 @@
     if (n <= 0) return 'Today';
     if (n === 1) return 'Yesterday';
     return n + ' days ago';
-  }
-  function daysUntil(iso){
-    var d = new Date(iso), now = new Date();
-    return Math.round((d.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / 86400000);
   }
 
   function statusLabel(s){ return { upcoming:'Upcoming', active:'Active', completed:'Completed', cancelled:'Cancelled', draft:'Draft', deleted:'Deleted' }[s] || s; }
@@ -1423,60 +1429,38 @@
     mailers: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-4"/><path d="M13 17V8"/><path d="M18 17v-7"/></svg>',
     log: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 8v4l3 2"/><path d="M3.05 11a9 9 0 1 1 .5 4"/><path d="M3 4v5h5"/></svg>'
   };
+  /* Deleted Events, and Cancelled only while some event is cancelled: nothing in the product cancels an event, so a
+     view that could only ever be empty is not offered (UX-034). Drafts is a tab now (UX-018). Counted on the working
+     portal, like the lists they open (bucketEvents), and, with a search or a filter on, what it leaves there, as the
+     tabs count (UX-019); a dash while the events are loading or could not be loaded, never a 0. */
   function renderMoreMenu(){
-    /* counted on the working portal, like the lists these open (bucketEvents) */
-    var draftCount = EVENTS.filter(function(e){ return e.status==='draft' && inWorkingPortal(e); }).length;
-    var cancelledCount = EVENTS.filter(function(e){ return e.status==='cancelled' && inWorkingPortal(e); }).length;
-    var deletedCount = EVENTS.filter(function(e){ return e.status==='deleted' && inWorkingPortal(e); }).length;
+    var known = !state.loading && !state.loadFailed;
+    function item(view, icon, label, count){
+      return '<button class="popover-item" data-special="' + view + '">' + icon + ' ' + label + ' <span class="mono faint" style="margin-left:auto;">' + (known && count !== null ? count : '–') + '</span></button>';
+    }
+    var cancelled = countIn('cancelled');
     $('more-menu').innerHTML =
-      '<button class="popover-item" data-special="draft">' + IC.file + ' Draft Events <span class="mono faint" style="margin-left:auto;">' + draftCount + '</span></button>' +
-      '<button class="popover-item" data-special="cancelled">' + IC.ban + ' Cancelled Events <span class="mono faint" style="margin-left:auto;">' + cancelledCount + '</span></button>' +
-      '<button class="popover-item" data-special="deleted">' + IC.trash2 + ' Deleted Events <span class="mono faint" style="margin-left:auto;">' + deletedCount + '</span></button>' +
+      (cancelled || state.specialView === 'cancelled' ? item('cancelled', IC.ban, 'Cancelled Events', bucketCount('cancelled')) : '') +
+      item('deleted', IC.trash2, 'Deleted Events', deletedState === 'ok' ? bucketCount('deleted') : null) +
       /* the cross-event reports: they used to be buttons on the toolbar, which now keeps Create Event alone */
       '<div class="popover-sep"></div><div class="popover-label">Reports</div>' +
       '<a class="popover-item" href="mailer-performance.html" id="menu-mailer-performance">' + REPORT_IC.mailers + ' Mailer performance</a>' +
       '<a class="popover-item" href="activity-log.html" id="menu-activity-log">' + REPORT_IC.log + ' Activity log</a>';
     $('more-menu').querySelectorAll('[data-special]').forEach(function(b){
-      b.addEventListener('click', function(){ state.specialView = b.getAttribute('data-special'); state.page = 1; closeAll(); renderApp(); });
+      b.addEventListener('click', function(){ goToBucket(b.getAttribute('data-special'), false); });
     });
   }
   $('btn-more').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='more-menu') closeAll(); else openPopover('more-menu'); });
 
   /* =========================================================
-     TOP NAV — links, More Products, Portals (access-gated)
+     TOP NAV — Events only. Awards, CRM, Webinars and More Products (Payments, Event Edition, Marketing Dashboard)
+     all led to index.html, which comes straight back here: links that looked real and went nowhere (UX-022).
+     The portal switcher beside them is real (PORTALS, below).
   ========================================================= */
-  var USER_ACCESS = ['awards','crm','events','webinars','marketing','payments','edition'];
-  var NAV_LINKS = [
-    { key:'awards',   label:'Awards',   href:'index.html', icon:IC.trophy },
-    { key:'crm',      label:'CRM',      href:'index.html', icon:IC.briefcase },
-    { key:'events',   label:'Events',   href:'Event_Listing.html', icon:IC.calendarSm, active:true },
-    { key:'webinars', label:'Webinars', href:'index.html', icon:IC.photo }
-  ];
-  var MORE_PRODUCTS_LINKS = [
-    { key:'payments',  label:'Payments', href:'index.html', icon:IC.wallet },
-    { key:'edition',   label:'Event Edition', href:'index.html', icon:IC.layers },
-    { key:'marketing', label:'Marketing Dashboard', href:'index.html', icon:IC.flag }
-  ];
-
-  function hasAccess(key){ return USER_ACCESS.indexOf(key) !== -1; }
-
   function renderMainNavLinks(){
-    $('main-nav-links').innerHTML = NAV_LINKS.filter(function(l){ return hasAccess(l.key); }).map(function(l){
-      return '<a href="' + l.href + '"' + (l.active ? ' class="active"' : '') + '>' + l.icon + ' ' + l.label + '</a>';
-    }).join('');
+    $('main-nav-links').innerHTML = '<a href="Event_Listing.html" class="active" aria-current="page">' + IC.calendarSm + ' Events</a>';
   }
   renderMainNavLinks();
-
-  function renderMoreProductsMenu(){
-    $('more-products-menu').innerHTML = MORE_PRODUCTS_LINKS.filter(function(l){ return hasAccess(l.key); }).map(function(l){
-      return '<a class="popover-item" href="' + l.href + '">' + l.icon + ' ' + l.label + '</a>';
-    }).join('') || '<div class="popover-label">No other products available</div>';
-  }
-  $('btn-more-products').addEventListener('click', function(e){
-    e.stopPropagation();
-    if (state.openPopover==='more-products-menu'){ closeAll(); return; }
-    renderMoreProductsMenu(); openPopover('more-products-menu');
-  });
 
   /* =========================================================
      PORTALS — the dashboard works on one ET portal at a time
@@ -1800,7 +1784,7 @@
   function renderPortalNotice(){
     var el = $('portal-notice');
     if (!el) return;
-    if (state.loading){ el.innerHTML = ''; return; }
+    if (state.loading || state.loadFailed){ el.innerHTML = ''; return; }
     var c = portalCounts(), html = '';
     var review = '<a class="pn-link" href="portal-review.html">Review suggested portals</a>';
     if (state.portalReturn){
@@ -1838,44 +1822,61 @@
   /* =========================================================
      TABS
   ========================================================= */
+  /* the events of a list (on the working portal) that the search and filters leave */
+  function matchCount(b){ return EVENTS.filter(function(e){ return e.status === b && inWorkingPortal(e) && matches(e); }).length; }
+  /* what a tab or ⋯ view counts: all its events, or, while a search or a filter is on, how many of them match, so the
+     counts say where the matches are (UX-019: they ignored the search, which looked only inside the open tab) */
+  function bucketCount(b){ return listFiltered() ? matchCount(b) : countIn(b); }
+  /* the Drafts tab counts the unfinished Create Event drafts it shows as well (createDraftsShown, UX-048) */
+  function tabCount(b){ return bucketCount(b) + (b === 'draft' ? createDraftsShown().length : 0); }
   function renderTabs(){
-    var counts = { upcoming:0, active:0, completed:0 };
-    EVENTS.forEach(function(e){ if (counts[e.status]!==undefined && inWorkingPortal(e)) counts[e.status]++; });
-    var tabs = [['active','Active'],['upcoming','Upcoming'],['completed','Completed']];
-    $('status-tabs').innerHTML = tabs.map(function(t){
-      var selected = !state.specialView && state.tab === t[0];
-      return '<button role="tab" aria-selected="'+selected+'" data-tab="'+t[0]+'">'+t[1]+' <span class="tc">'+counts[t[0]]+'</span></button>';
+    var filtered = listFiltered(), known = !state.loading && !state.loadFailed;
+    $('status-tabs').innerHTML = TABS.map(function(t){
+      var selected = currentBucket() === t[0];
+      /* a dash, not a 0, until the events have loaded, and when they could not be (UX-027): no count is better
+         than one that says the events are gone */
+      var n = known ? tabCount(t[0]) : '–';
+      return '<button type="button" role="tab" aria-selected="'+selected+'" data-tab="'+t[0]+'">'+t[1]+' <span class="tc">'+n+'</span>' +
+        (known && filtered ? '<span class="sr-only">' + (n === 1 ? ' match' : ' matches') + '</span>' : '') + '</button>';
     }).join('') + '<span class="tabs-underline" id="tabs-underline"></span>';
     $('status-tabs').querySelectorAll('[data-tab]').forEach(function(b){
-      b.addEventListener('click', function(){
-        state.tab = b.getAttribute('data-tab'); state.specialView = null; state.page = 1;
-        syncHash(); renderApp();
-      });
+      b.addEventListener('click', function(){ goToBucket(b.getAttribute('data-tab'), true); });
     });
     requestAnimationFrame(positionUnderline);
   }
   function positionUnderline(){
-    var active = $('status-tabs').querySelector('[aria-selected="true"]');
+    var row = $('status-tabs'), active = row.querySelector('[aria-selected="true"]');
     var underline = $('tabs-underline');
     if (!active || !underline) { if(underline) underline.style.width='0'; return; }
     underline.style.left = active.offsetLeft + 'px';
     underline.style.width = active.offsetWidth + 'px';
+    /* on a phone the tabs scroll sideways: the selected one is brought into view (sideways only, the page stays put) */
+    var left = active.offsetLeft, right = left + active.offsetWidth;
+    if (row.scrollWidth > row.clientWidth){
+      if (left < row.scrollLeft) row.scrollLeft = left;
+      else if (right > row.scrollLeft + row.clientWidth) row.scrollLeft = right - row.clientWidth;
+    }
   }
   window.addEventListener('resize', positionUnderline);
 
   /* =========================================================
      SPECIAL VIEW BANNER
   ========================================================= */
+  /* Cancelled and Deleted Events (the ⋯ views; Drafts is a tab, selected like the others, so it has no banner). The
+     way back is to the tab the view was opened from, named (UX-018: it was always "Back to Active"). */
   function renderSpecialBanner(){
     var el = $('special-banner');
-    if (!state.specialView){ el.innerHTML=''; return; }
-    var labels = { draft:'Draft events', cancelled:'Cancelled events', deleted:'Deleted events' };
-    var icons = { draft:IC.file, cancelled:IC.ban, deleted:IC.trash2 };
+    if (!state.specialView || state.specialView === 'draft'){ el.innerHTML=''; return; }
+    var labels = { cancelled:'Cancelled events', deleted:'Deleted events' };
+    var icons = { cancelled:IC.ban, deleted:IC.trash2 };
     var label = labels[state.specialView] || state.specialView;
     var icon = icons[state.specialView] || IC.file;
-    el.innerHTML = '<div class="special-banner fade-in">' + icon + '<span>Showing <strong>' + label + '</strong></span>' +
-      '<button id="btn-back-tabs">Back to Active</button></div>';
-    $('btn-back-tabs').addEventListener('click', function(){ state.specialView = null; state.tab='active'; state.page=1; renderApp(); });
+    /* Deleted Events says what can be done there, and by whom */
+    var note = state.specialView === 'deleted' ? ' · ' + (mayRemove() ? 'restore any of them from its ⋯ menu' : 'an approver can restore them') : '';
+    var back = isTab(state.fromTab) ? state.fromTab : state.tab;
+    el.innerHTML = '<div class="special-banner fade-in">' + icon + '<span>Showing <strong>' + label + '</strong>' + note + '</span>' +
+      '<button type="button" id="btn-back-tabs">Back to ' + esc(viewName(back)) + '</button></div>';
+    $('btn-back-tabs').addEventListener('click', function(){ goToBucket(back, true); });
   }
 
   /* =========================================================
@@ -1893,10 +1894,31 @@
      (activityPeriod), so it is called that, as Latest activity's picker does */
   function rangeLabelText(){ return activityRangeLabel(state.range); }
 
-  function renderInsightsTitle(){
-    var base = state.specialView ? 'upcoming' : state.tab;
-    $('insights-title').textContent = statusLabel(base) + ' Event Insights';
+  /* The cards follow the list right above them (UX-039): with a search or a filter on, they add up only the events
+     the list shows, and say so; otherwise every event of the tab, on the working portal. They are for the three
+     tabs only: a draft has no live site to visit or register on, and Deleted Events are gone from the web, so in
+     those views (and when the events could not be loaded at all) the section is not shown (UX-034, UX-027). */
+  function insightsShown(){ return !state.specialView && !state.loadFailed; }
+  function insightsEvents(){
+    if (listFiltered()) return getFilteredSorted();
+    return bucketEvents();
+  }
+  function renderInsights(){
+    var shown = insightsShown();
+    $('insights-section').hidden = !shown;
+    if (!shown) return;
+    $('insights-title').textContent = statusLabel(state.tab) + ' Event Insights';
     $('range-label').textContent = rangeLabelText();
+    var scope = '';
+    if (!state.loading){
+      var n = insightsEvents().length, tab = statusLabel(state.tab).toLowerCase();
+      var where = state.portal === 'all' ? '' : ' on ' + portalNameOf(state.portal);
+      scope = listFiltered()
+        ? 'For the ' + (n === 1 ? 'one event' : n + ' events') + ' shown (search and filters applied)'
+        : (n === 1 ? 'The one ' + tab + ' event' : 'All ' + n + ' ' + tab + ' events') + where;
+    }
+    $('insights-scope').textContent = scope;
+    renderKPIs();
   }
 
   /* The three cards for the tab's events in the period picked beside them (QA follow-up, UX-022): visitors and new
@@ -1907,23 +1929,23 @@
      Payments are not part of this release, so the third card says that instead of a revenue figure (it summed the
      ticket prices set on paid events, which is no revenue, and has no period). */
   function renderKPIs(){
+    if (!insightsShown()) return;
     if (state.loading){
       $('kpi-grid').innerHTML = ['Visitors','New registrations','Revenue'].map(function(l){
         return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">'+l+'</span></div><div class="kpi-skel skel"></div></div>';
       }).join('');
       return;
     }
-    var bucket = state.specialView ? 'upcoming' : state.tab;
-    var inTab = {};
-    /* the tab's events on the working portal, as the list shows them (inWorkingPortal) */
-    EVENTS.forEach(function(e){ if (e.status === bucket && inWorkingPortal(e)) inTab[e.id] = true; });
+    var inList = {};
+    /* the events the cards count (insightsEvents): the tab on the working portal, or what the search and filters leave */
+    insightsEvents().forEach(function(e){ inList[e.id] = true; });
     var p = activityPeriod(state.range);
     var part = p ? ensureFigures(p, 'insights') : null;
     var vis = 0, reg = 0, note = '';
     var ok = !!(part && part.state === 'ok'), loading = !!(part && part.state === 'loading');
     if (ok){
       part.data.events.forEach(function(ev){
-        if (!ev || !inTab[ev.eventId] || !ev.window) return;
+        if (!ev || !inList[ev.eventId] || !ev.window) return;
         vis += Math.max(0, Number(ev.window.views) || 0);
         reg += Math.max(0, Number(ev.window.registrations) || 0);
       });
@@ -1943,12 +1965,14 @@
         value + '<span class="kpi-sub">' + (ok || loading ? sub : (p ? 'Could not be loaded' : 'No figure for that period')) + '</span>' +
       '</div>';
     }
+    /* Revenue stays as one muted card that says payments are not available yet, the console's own words for its
+       Payment item: payments are out of scope for launch, and honestly marked rather than shown as ₹0 (UX-025) */
     $('kpi-grid').innerHTML =
       card('Visitors', IC.users, vis, 'Page views of these events’ sites') +
       card('New registrations', IC.ticket, reg, 'People who registered on these events’ sites') +
       '<div class="kpi-card is-none fade-in">' +
         '<div class="kpi-top"><span class="kpi-label">Revenue</span><span class="kpi-icon">' + IC.wallet + '</span></div>' +
-        '<span class="kpi-num kpi-none" aria-label="No figure">—</span><span class="kpi-sub">Payments are not part of Oneworld 2.0 yet</span>' +
+        '<span class="kpi-num kpi-none" aria-label="No figure">—</span><span class="kpi-sub">Payments: not available yet</span>' +
       '</div>' + note;
     var retry = $('kpi-retry');
     if (retry) retry.addEventListener('click', function(){ loadPart(p, 'insights'); renderKPIs(); });
@@ -2065,7 +2089,7 @@
   }
   $('btn-type').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='type-popover'){closeAll();return;} renderTypePopover(); openPopover('type-popover'); });
   $('btn-portal').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='portal-popover'){closeAll();return;} renderPortalPopover(); openPopover('portal-popover'); });
-  $('btn-qr-toolbar').addEventListener('click', function(){ openQRModal(); });
+  $('btn-qr-toolbar').addEventListener('click', function(){ openQRModal(null, $('btn-qr-toolbar')); });
 
   function renderToolbarButtons(){
     var tCount = state.filters.types.length, pCount = state.portal === 'all' ? state.filters.portals.length : 0;
@@ -2081,7 +2105,6 @@
     var chips = [];
     state.filters.types.forEach(function(k){ chips.push({ label:'Type: '+EVENT_TYPES[k], onRemove:function(){ toggleInArray(state.filters.types,k); } }); });
     if (state.portal === 'all') state.filters.portals.forEach(function(k){ chips.push({ label:'Portal: '+portalNameOf(k), onRemove:function(){ toggleInArray(state.filters.portals,k); } }); });
-    state.filters.payment.forEach(function(k){ chips.push({ label:'Payment: '+(k==='paid'?'Paid':'Free'), onRemove:function(){ toggleInArray(state.filters.payment,k); } }); });
     /* the date and "created by you" filters (set from the address or by ETB2B AI) show as chips like the rest,
        so what hides an event is always on screen and one ✕ away */
     if (state.created) chips.push({ label:'Created ' + fmtDayRange(state.created), onRemove:function(){ state.created = null; } });
@@ -2097,6 +2120,11 @@
   }
   function clearDateFilters(){ state.created = null; state.starts = null; state.mine = false; }
   function hasDateFilters(){ return !!(state.created || state.starts || state.mine); }
+  /* a search or a filter is hiding some of the tab's events: the Insights cards then count only what is shown
+     (UX-039), and an empty list says "No events match" rather than that the tab is empty */
+  function listFiltered(){
+    return !!(state.search || state.filters.types.length || (state.portal === 'all' && state.filters.portals.length) || hasDateFilters());
+  }
 
   /* =========================================================
      SEARCH
@@ -2131,7 +2159,6 @@
     /* the Portal filter counts only in All portals: a value left from there (or by the address or ETB2B AI) can
        never hide rows in a one-portal view, where it has no chip and nobody could see why */
     if (state.portal === 'all' && state.filters.portals.length && state.filters.portals.indexOf(e.portal || 'none') === -1) return false;
-    if (state.filters.payment.length && state.filters.payment.indexOf(e.payment.type) === -1) return false;
     if (state.created && !inDays(e.createdAt, state.created)) return false;
     if (state.starts && !inDays(e.start, state.starts)) return false;
     if (state.mine && !isMine(e)) return false;
@@ -2145,51 +2172,109 @@
     var me = listingMe().email.toLowerCase();
     return !!me && String(e.createdBy || '').toLowerCase() === me;
   }
+  /* What a row sorts by; null when it has none (no date yet, never edited). By date: the start as a moment in India
+     time, or the first day of the month or quarter Create Event booked ("June 2027" sorts as 1 June 2027; it was
+     -Infinity, and every undated event came before the next real one on Upcoming, UX-033). */
   function sortValue(e, field){
-    if (field==='start') return e.start ? new Date(e.start).getTime() : -Infinity;
-    if (field==='registrations') return e.registrations;
-    if (field==='visitors') return e.visitors;
-    if (field==='payment') return e.payment.type==='paid' ? e.payment.amount : -1;
-    return 0;
+    if (field === 'start') return dateKey(e);
+    if (field === 'updated'){ var t = Date.parse(e.updatedAt || e.createdAt || ''); return isNaN(t) ? null : t; }
+    if (field === 'registrations') return e.registrations;
+    if (field === 'visitors') return e.visitors;
+    return null;
+  }
+  /* a row with nothing to sort by goes after every row that has something, whichever way the list is sorted; ties
+     keep one fixed order, by name, then by id */
+  function compareRows(a, b, field, dir){
+    var x = sortValue(a, field), y = sortValue(b, field);
+    if (x === null || y === null){ if (x !== y) return x === null ? 1 : -1; }
+    else if (x !== y) return (x < y ? -1 : 1) * dir;
+    return String(a.name).localeCompare(String(b.name), 'en', { sensitivity:'base' }) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   }
   function getFilteredSorted(){
     var list = bucketEvents().filter(matches);
     var field = state.sort.field, dir = state.sort.dir === 'asc' ? 1 : -1;
-    list.sort(function(a,b){ return (sortValue(a,field) - sortValue(b,field)) * dir; });
+    list.sort(function(a,b){ return compareRows(a, b, field, dir); });
     return list;
+  }
+
+  /* ---- an event's date as the person entered it (UX-030) ----
+     Create Event and the console save a start and an end as India wall-clock times ("2026-12-05T10:41", no zone);
+     a server may send a moment with one ("…Z"). A month, a quarter or "to be announced" has no start, only the words
+     Create Event wrote for it (dateLabel: "June 2027", "Q4 2026", "Date to be announced"). */
+  var MONTH_LONG = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  /* -> { day: 'YYYY-MM-DD', time: whether a time was given, h, mi } in India time, or null */
+  function istMoment(v){
+    var s = String(v == null ? '' : v);
+    var m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?)?(Z|[+-]\d{2}:?\d{2})?$/.exec(s);
+    if (m && !m[4]) return validDay(m[1]) ? { day: m[1], time: m[2] !== undefined, h: +(m[2] || 0), mi: +(m[3] || 0) } : null;
+    var t = Date.parse(s);
+    if (isNaN(t)) return null;
+    var d = new Date(t + IST_OFFSET_MIN * 60000);
+    return { day: d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()), time: true, h: d.getUTCHours(), mi: d.getUTCMinutes() };
+  }
+  function clockText(p){ return (p.h % 12 || 12) + ':' + pad2(p.mi) + ' ' + (p.h < 12 ? 'am' : 'pm'); }
+  /* -> { dated, date, time, label }: "5 – 7 Dec 2026" for days apart, "20 Nov 2026" for one; its time only when one
+     was entered ("10:41 am", "9:00 am – 6:00 pm" on one day), never a made-up one; with no start, Create Event's words */
+  function whenOf(e){
+    var a = istMoment(e.start);
+    if (!a) return { dated: false, date: '', time: '', label: String(e.dateLabel || '').trim() };
+    var b = istMoment(e.end);
+    if (b && b.day < a.day) b = null;
+    var apart = !!b && b.day !== a.day;
+    var date = fmtDayRange({ from: a.day, to: apart ? b.day : a.day });
+    var time = !a.time ? '' : (b && !apart && b.time && (b.h * 60 + b.mi) > (a.h * 60 + a.mi)) ? clockText(a) + ' – ' + clockText(b) : clockText(a);
+    return { dated: true, date: date, time: time, label: '' };
+  }
+  /* the moment a row sorts at by date (ms), or null for an event with no date to sort by */
+  function dateKey(e){
+    var a = istMoment(e.start), m;
+    if (a){ var t = Date.parse(a.day + 'T' + pad2(a.h) + ':' + pad2(a.mi) + ':00+05:30'); return isNaN(t) ? null : t; }
+    var label = String(e.dateLabel || '').trim();
+    if ((m = /^([A-Z][a-z]+) (\d{4})$/.exec(label)) && MONTH_LONG.indexOf(m[1]) !== -1) return Date.parse(m[2] + '-' + pad2(MONTH_LONG.indexOf(m[1]) + 1) + '-01T00:00:00+05:30');
+    if ((m = /^Q([1-4]) (\d{4})$/.exec(label))) return Date.parse(m[2] + '-' + pad2((+m[1] - 1) * 3 + 1) + '-01T00:00:00+05:30');
+    return null;
   }
 
   /* =========================================================
      TABLE / CARD RENDER
   ========================================================= */
   function dateCellHTML(e){
-    if (!e.start) return '<div class="unset">Date not set</div>';
-    var out = '<div class="d1">' + fmtDate(e.start) + '</div><div class="d2">' + fmtTime(e.start) + '</div>';
+    var w = whenOf(e);
+    if (!w.dated) return w.label ? '<div class="d1">' + esc(w.label) + '</div>' : '<div class="unset">Date not set</div>';
+    var out = '<div class="d1">' + esc(w.date) + '</div>' + (w.time ? '<div class="d2">' + esc(w.time) + '</div>' : '');
     if (e.status === 'active') out += '<div class="live-tag"><i></i>Live now</div>';
     else if (e.status === 'upcoming'){
-      var du = daysUntil(e.start);
+      /* whole India days from today to the start */
+      var du = Math.round((Date.parse(istMoment(e.start).day + 'T00:00:00Z') - Date.parse(todayIst() + 'T00:00:00Z')) / 86400000);
       if (du >= 0 && du <= 7) out += '<div class="d3">' + (du===0?'Today':du===1?'Tomorrow':'In '+du+' days') + '</div>';
     }
     return out;
   }
+  /* the card's date line: the same words as the table's cell, on one line */
+  function cardWhenText(e){
+    var w = whenOf(e);
+    return w.dated ? w.date + (w.time ? ' · ' + w.time : '') : (w.label || 'Date not set');
+  }
   function regCellHTML(e){
     return '<span class="reg-num">' + fmtNum(e.registrations) + '</span>';
   }
-  function payCellHTML(e){
-    if (e.payment.type === 'free') return '<span class="pay-free">Free</span>';
-    return '<span class="pay-amt" data-tooltip="' + (e.payment.txns||0) + ' transactions">' + fmtRupee(e.payment.amount) + '</span><div class="pay-sub">Collected</div>';
-  }
+  /* the event's type; a deleted event also says when it went and who deleted it */
   function metaLine(e){
-    return '<span class="ev-id-chip mono">Event ID: ' + e.eventNo + '</span>' +
-      '<span class="dotsep">&middot;</span><span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type).replace(' (IP)','')) + '</span>';
+    var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type).replace(' (IP)','')) + '</span>';
+    if (e.status === 'deleted' && e.deletedAt) out += '<span class="dotsep">&middot;</span><span class="ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
+    return out;
   }
 
+  /* shown on mouse hover and keyboard focus only: a click on the name opens the event (UX-020). A missing city is left
+     out (it printed "Venue to be confirmed, —") */
   function venueQuickviewBodyHTML(e){
     var venueText = e.venue === 'Virtual'
       ? (e.city && e.city !== 'Online' ? e.city + ' (Virtual)' : 'Virtual')
       : ((e.venue || 'Venue to be confirmed') + (e.city ? ', ' + e.city : ''));
+    /* and who made it, when that is known (an old event may not say: no "Created by —") */
+    var by = e.createdBy && e.createdBy !== '—' ? e.createdBy : '';
     return '<div class="venue-pop-row">' + IC.pin + '<span>' + esc(venueText) + '</span></div>' +
-      '<div class="venue-pop-row">' + IC.userCircle + '<span>Created by ' + esc(e.createdBy) + '</span></div>';
+      (by ? '<div class="venue-pop-row">' + IC.userCircle + '<span>Created by ' + esc(by) + '</span></div>' : '');
   }
 
   var qvCloseTimer = null;
@@ -2219,38 +2304,34 @@
     return '<button class="icon-btn qa-btn ' + colorClass + '" data-row-action="' + action + '" data-id="' + id + '" data-tooltip="' + label + '" aria-label="' + label + '">' + icon + '</button>';
   }
 
+  /* A row's ⋯ menu: only what really happens (UX-016). Clone, Delete and Restore call the server
+     (POST /api/event/clone, DELETE /api/event, POST /api/event/restore) and the list is read again after each.
+     "Mark as completed" is gone: an event is Completed once its end date has passed (event-lifecycle.js), so a
+     menu item cannot move it there. "Delete permanently" is gone: no route removes an event for good (a deleted
+     event keeps its records and its address, so Restore can always bring it back). Delete and Restore are for
+     approvers (owner decision #4); for anyone else they stay in the menu, muted and marked "Approvers only", and a
+     click says who the approvers are. */
   function rowActionsHTML(e, ctx){
     var menuId = 'rowmenu-' + (ctx||'row') + '-' + e.id;
-    var items = [];
-    if (e.status === 'draft'){
-      items.push(['duplicate', IC.copy, 'Clone Event']);
-      items.push(['sep']);
-      items.push(['delete-forever', IC.trash, 'Delete event', true]);
-    } else if (e.status === 'cancelled'){
-      items.push(['duplicate', IC.copy, 'Clone Event']);
-      items.push(['copylink', IC.link, 'Copy event link']);
-      items.push(['sep']);
-      items.push(['restore', IC.restore, 'Restore to Upcoming']);
-      items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
-    } else if (e.status === 'deleted'){
-      items.push(['restore', IC.restore, 'Restore']);
-      items.push(['sep']);
-      items.push(['delete-forever', IC.trash, 'Delete permanently', true]);
+    var items = [], locked = !mayRemove();
+    if (e.status === 'deleted'){
+      items.push(['restore', IC.restore, 'Restore', false, locked]);
     } else {
-      items.push(['setup', IC.settings, 'Event setup']);
-      items.push(['sep']);
-      items.push(['duplicate', IC.copy, 'Clone Event']);
-      items.push(['copylink', IC.link, 'Copy event link']);
-      if (e.status === 'active'){
-        items.push(['sep']);
-        items.push(['complete', IC.checkCirc, 'Mark as completed']);
-      }
+      if (e.status !== 'draft') items.push(['setup', IC.settings, 'Event setup'], ['sep']);
+      items.push(['duplicate', IC.copy, 'Clone event']);
+      /* a draft has no site on the web yet, so no link to copy */
+      if (e.status !== 'draft') items.push(['copylink', IC.link, 'Copy event link']);
+      /* QR codes for a site that is live: from here they reach phones too, where the toolbar's QR Codes is hidden (UX-031) */
+      if (e.published) items.push(['qr', IC.qrcode, 'QR codes']);
+      items.push(['sep'], ['delete', IC.trash, 'Delete event', true, locked]);
     }
     /* an event with no portal yet: setting one comes first (a deleted event is left as it is) */
     if (!e.portal && e.status !== 'deleted') items.unshift(['set-portal', IC.globe, 'Set portal'], ['sep']);
     var menuHTML = items.map(function(it){
       if (it[0]==='sep') return '<div class="popover-sep"></div>';
-      return '<button class="popover-item' + (it[3]?' danger':'') + '" data-row-action="' + it[0] + '" data-id="' + e.id + '">' + it[1] + ' ' + it[2] + '</button>';
+      var lock = it[4] === true;
+      return '<button type="button" class="popover-item' + (it[3] && !lock ? ' danger' : '') + (lock ? ' is-locked' : '') + '" data-row-action="' + it[0] + '" data-id="' + e.id + '"' +
+        (lock ? ' aria-disabled="true" title="' + esc(whoMayRemove()) + '"' : '') + '>' + it[1] + ' ' + it[2] + (lock ? '<span class="item-note">Approvers only</span>' : '') + '</button>';
     }).join('');
     var quickIcons = '';
     if (e.status === 'draft'){
@@ -2270,8 +2351,113 @@
     '</div>';
   }
 
+  /* ---- the list's empty and failed states (UX-027, UX-035) ---- */
+  function emptyBlock(icon, title, text, actions){
+    return '<div class="empty-state">' + icon + '<h3 style="margin-top:12px;">' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : '') + (actions || '') + '</div>';
+  }
+  function countIn(status){ return EVENTS.filter(function(e){ return e.status === status && inWorkingPortal(e); }).length; }
+  /* Clear search and Clear filters, each only when it is on: one button that cleared both took away the very search
+     the person wanted (UX-019) */
+  function filtersOn(){ return !!(state.filters.types.length || (state.portal === 'all' && state.filters.portals.length) || hasDateFilters()); }
+  function clearButtonsHTML(){
+    return (state.search ? '<button type="button" class="btn btn-secondary" data-empty-clear-search>Clear search</button>' : '') +
+      (filtersOn() ? (state.search ? ' ' : '') + '<button type="button" class="btn btn-secondary" data-empty-clear>Clear filters</button>' : '');
+  }
+  /* A search or a filter that leaves nothing in this list says where its matches are (UX-019: it said "No events
+     match" while they sat in another tab): in the other tabs and ⋯ views, each a button that opens it; else on the
+     other portals, with Show all portals; else nowhere. */
+  var MATCH_ORDER = ['draft','upcoming','active','completed','cancelled','deleted'];
+  function noMatchHTML(bucket){
+    var elsewhere = MATCH_ORDER.filter(function(b){ return b !== bucket && (b !== 'deleted' || deletedState === 'ok'); })
+      .map(function(b){ return { b: b, n: matchCount(b) + (b === 'draft' ? createDraftsShown().length : 0) }; }).filter(function(x){ return x.n > 0; });
+    /* on Drafts, unfinished Create Event drafts that match are in their box above: said, not "No matches" alone */
+    var above = bucket === 'draft' ? createDraftsShown().length : 0;
+    if (above){
+      return emptyBlock(IC.searchLg, 'No draft events match', (above === 1 ? '1 unfinished Create Event draft matches: it is above.' : above + ' unfinished Create Event drafts match: they are above.') +
+        (elsewhere.length ? ' Also ' + elsewhere.map(function(x){ return x.n + ' in ' + viewName(x.b); }).join(', ') + '.' : ''),
+        elsewhere.map(function(x){ return '<button type="button" class="btn btn-secondary" data-empty-tab="' + x.b + '">Show ' + esc(viewName(x.b)) + ' (' + x.n + ')</button>'; }).join(' ') +
+        (clearButtonsHTML() ? ' ' + clearButtonsHTML() : ''));
+    }
+    var clear = clearButtonsHTML();
+    if (elsewhere.length){
+      return emptyBlock(IC.searchLg, 'No matches in ' + viewName(bucket), elsewhere.map(function(x){ return x.n + ' in ' + viewName(x.b); }).join(', ') + '.',
+        elsewhere.map(function(x){ return '<button type="button" class="btn btn-secondary" data-empty-tab="' + x.b + '">Show ' + esc(viewName(x.b)) + ' (' + x.n + ')</button>'; }).join(' ') +
+        (clear ? ' ' + clear : ''));
+    }
+    var others = state.portal === 'all' ? 0 : EVENTS.filter(function(e){ return !inWorkingPortal(e) && (e.status !== 'deleted' || deletedState === 'ok') && matches(e); }).length;
+    if (others){
+      return emptyBlock(IC.searchLg, 'No matches on ' + portalNameOf(state.portal), (others === 1 ? '1 event on another portal matches.' : others + ' events on other portals match.'),
+        '<button type="button" class="btn btn-secondary" data-empty-all-portals>Show all portals</button>' + (clear ? ' ' + clear : ''));
+    }
+    return emptyBlock(IC.searchLg, 'No events match', state.search ? 'No event in any tab matches “' + state.search + '”. Try a different search term' + (filtersOn() ? ', or clear your filters.' : '.') : 'Try different filters, or clear them.', clear);
+  }
+  /* What an empty list says: why it is empty here, and the one step that fits. "Create your first event" only
+     when there is no event at all; a search or a filter that hides everything gets the search icon, not a "+". */
+  function emptyStateHTML(allPortals){
+    var bucket = state.specialView || state.tab;
+    var create = '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a>';
+    if (listFiltered()) return noMatchHTML(bucket);
+    /* on Drafts, with unfinished Create Event drafts above and no draft event yet (UX-048) */
+    if (bucket === 'draft' && createDraftsShown().length){
+      return emptyBlock(IC.calendarLg, 'No draft events', 'Your unfinished Create Event drafts are above. An event is listed here, as a draft, from the moment Create Event creates it until its site is published.');
+    }
+    if (bucket === 'deleted'){
+      if (deletedState === 'error') return emptyBlock(IC.alertLg, 'Deleted Events could not be loaded', 'Your other events are here as usual. Nothing has been lost.',
+        '<button type="button" class="btn btn-secondary" data-empty-retry>Try again</button>');
+      return emptyBlock(IC.trashLg, 'No deleted events', 'An event an approver deletes waits here, and can be restored.');
+    }
+    var anyLive = EVENTS.some(function(e){ return e.status !== 'deleted'; });
+    if (!anyLive && allPortals) return emptyBlock(IC.plusOutline, 'Create your first event', 'It takes about ten minutes.', create);
+    if (!allPortals && !EVENTS.some(function(e){ return e.portal === state.portal && e.status !== 'deleted'; })){
+      /* a portal with no events at all yet: start its first, or look at every portal (for this visit) */
+      return emptyBlock(IC.plusOutline, portalNameOf(state.portal) + ' has no events yet', 'Create its first event, or show the events of every portal.',
+        create + ' <button type="button" class="btn btn-secondary" data-empty-all-portals>Show all portals</button>');
+    }
+    if (bucket === 'active'){
+      var up = countIn('upcoming');
+      return emptyBlock(IC.calendarLg, 'Nothing is live right now', 'Events show here while they run.',
+        up ? '<button type="button" class="btn btn-secondary" data-empty-tab="upcoming">Show upcoming (' + up + ')</button>' : '');
+    }
+    if (bucket === 'upcoming') return emptyBlock(IC.plusOutline, 'No upcoming events', 'A published event shows here until it starts.', create);
+    if (bucket === 'completed') return emptyBlock(IC.calendarLg, 'No completed events', 'Events move here after their end date.');
+    if (bucket === 'draft') return emptyBlock(IC.calendarLg, 'No drafts', 'An event stays here until its site is published.');
+    return emptyBlock(IC.calendarLg, 'No ' + statusLabel(bucket).toLowerCase() + ' events', 'Nothing here right now.');
+  }
+  /* why the events could not be loaded, in words, by its cause: offline, the sign-in ended, the server failed */
+  function loadFailedWords(f){
+    f = f || {};
+    if (f.offline) return { title: 'You’re offline', text: 'Your events load as soon as you are back online. Nothing has been lost.' };
+    if (f.status === 401) return { title: 'Please sign in again', text: 'Your sign-in has ended, so your events could not be loaded. Nothing has been lost.', signIn: true };
+    if (f.status === 403) return { title: 'This account cannot open the events', text: f.message || 'Sign in with your company Google account.', signIn: true };
+    if (f.status >= 500) return { title: 'Our server had a problem', text: 'Your events could not be loaded. Nothing has been lost: try again in a minute.' };
+    if (!f.status) return { title: 'The server could not be reached', text: 'Check your connection, then try again. Nothing has been lost.' };
+    return { title: 'Your events could not be loaded', text: 'Something went wrong while loading them. Nothing has been lost: try again.' };
+  }
+  function loadFailedHTML(){
+    var w = loadFailedWords(state.loadFailed);
+    return '<div class="empty-state is-failed" role="alert">' + IC.alertLg + '<h3 style="margin-top:12px;">' + esc(w.title) + '</h3><p>' + esc(w.text) + '</p>' +
+      '<button type="button" class="btn btn-primary" data-load-retry>Try again</button>' +
+      (w.signIn ? ' <button type="button" class="btn btn-secondary" data-load-signin>Sign in</button>' : '') + '</div>';
+  }
+  /* the buttons of whichever state is drawn, in the table and in the cards alike (the table is hidden on phones) */
+  function wireStateButtons(){
+    function each(sel, fn){
+      [$('table-body'), $('card-list')].forEach(function(root){
+        root.querySelectorAll(sel).forEach(function(b){ b.addEventListener('click', function(){ fn(b); }); });
+      });
+    }
+    /* each clears only what it names: the filters keep the search, and the search keeps the filters */
+    each('[data-empty-clear]', function(){ state.filters={types:[],portals:[],payment:[]}; clearDateFilters(); state.page=1; renderApp(); });
+    each('[data-empty-clear-search]', function(){ state.search=''; state.page=1; showSearch(); renderApp(); try { $('search-input').focus(); } catch(e){} });
+    each('[data-empty-all-portals]', function(){ showAllPortalsForNow(''); });
+    each('[data-empty-tab]', function(b){ goToBucket(b.getAttribute('data-empty-tab'), true); });
+    each('[data-empty-retry]', function(){ refreshEvents(); });
+    each('[data-load-retry]', function(){ loadAndRender(); });
+    each('[data-load-signin]', function(){ if (window.RevampAuth && typeof window.RevampAuth.redirectToSignIn === 'function') window.RevampAuth.redirectToSignIn(); });
+  }
+
   function renderResults(){
-    var list = getFilteredSorted();
+    var list = state.loadFailed ? [] : getFilteredSorted();
     var total = list.length;
     var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     if (state.page > totalPages) state.page = totalPages;
@@ -2280,18 +2466,30 @@
     /* every change to what the list shows passes through here, so the address always matches it */
     syncHash();
     renderChips();
+    /* the tabs and the ⋯ views count the search's and the filters' matches (UX-019), so they are drawn with the list */
+    renderTabs();
+    renderMoreMenu();
     renderPortalNotice();
+    /* the Drafts tab's unfinished Create Event drafts (UX-048): the search and filters narrow them too */
+    renderCreateDrafts();
+    /* the Insights cards count what the list shows, so they are drawn with it (UX-039) */
+    renderInsights();
     /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
-    var allPortals = state.portal === 'all', cols = allPortals ? 7 : 6;
+    var allPortals = state.portal === 'all', cols = allPortals ? 6 : 5;
     $('results-view').classList.toggle('all-portals', allPortals);
-    $('result-line').textContent = state.loading ? '' : ('Showing ' + (total ? ((state.page-1)*PAGE_SIZE+1) : 0) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s') +
+    $('result-line').textContent = state.loading || state.loadFailed ? '' : ('Showing ' + (total ? ((state.page-1)*PAGE_SIZE+1) : 0) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s') +
       (allPortals ? '' : ' on ' + portalNameOf(state.portal)));
 
     document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
-      th.classList.toggle('sorted', th.getAttribute('data-sort') === state.sort.field);
+      var on = th.getAttribute('data-sort') === state.sort.field;
+      th.classList.toggle('sorted', on);
+      /* screen readers hear which column sorts the table, and which way (UX-029) */
+      if (on) th.setAttribute('aria-sort', state.sort.dir === 'desc' ? 'descending' : 'ascending');
+      else th.removeAttribute('aria-sort');
       var ic = th.querySelector('.sort-ic');
-      if (ic) ic.style.transform = (th.getAttribute('data-sort')===state.sort.field && state.sort.dir==='desc') ? 'rotate(180deg)' : 'none';
+      if (ic) ic.style.transform = (on && state.sort.dir==='desc') ? 'rotate(180deg)' : 'none';
     });
+    $('sort-select').value = state.sort.field;
 
     if (state.loading){
       $('table-body').innerHTML = Array(5).fill(0).map(function(){
@@ -2302,73 +2500,58 @@
       return;
     }
 
-    if (!total){
-      var hasFilters = state.search || state.filters.types.length || (allPortals && state.filters.portals.length) || state.filters.payment.length || hasDateFilters();
-      var emptyHTML;
-      if (hasFilters){
-        emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No events match</h3><p>Try a different search term, or clear your filters.</p>' +
-          '<button class="btn btn-secondary" id="empty-clear">Clear filters</button></div>';
-      } else if (!allPortals && !EVENTS.some(function(e){ return e.portal === state.portal && e.status !== 'deleted'; })){
-        /* a portal with no events at all yet: start its first, or look at every portal (for this visit) */
-        var pName = esc(portalNameOf(state.portal));
-        emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">' + pName + ' has no events yet</h3>' +
-          '<p>Create its first event, or show the events of every portal.</p>' +
-          '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a> ' +
-          '<button type="button" class="btn btn-secondary" data-empty-all-portals>Show all portals</button></div>';
-      } else {
-        var bucket = state.specialView || state.tab;
-        var mainBucket = ['active','upcoming','completed'].indexOf(bucket) !== -1;
-        emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No ' + statusLabel(bucket).toLowerCase() + ' events</h3>' +
-          '<p>' + (mainBucket ? 'Create your first event — it takes about ten minutes.' : 'Nothing here right now.') + '</p>' +
-          (mainBucket ? '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a>' : '') + '</div>';
-      }
-      $('table-body').innerHTML = '<tr><td colspan="' + cols + '">' + emptyHTML + '</td></tr>';
-      $('card-list').innerHTML = emptyHTML;
-      var ec = $('empty-clear'); if (ec) ec.addEventListener('click', function(){ state.search=''; $('search-input').value=''; $('btn-clear-search').hidden=true; state.filters={types:[],portals:[],payment:[]}; clearDateFilters(); state.page=1; renderResults(); renderToolbarButtons(); });
-      /* in the table and in the cards alike (the table is hidden on phones) */
-      document.querySelectorAll('[data-empty-all-portals]').forEach(function(b){ b.addEventListener('click', function(){ showAllPortalsForNow(''); }); });
+    /* the events could not be loaded: one message where the list would be, no "create your first event" (UX-027) */
+    if (state.loadFailed || !total){
+      var stateHTML = state.loadFailed ? loadFailedHTML() : emptyStateHTML(allPortals);
+      $('table-body').innerHTML = '<tr><td colspan="' + cols + '">' + stateHTML + '</td></tr>';
+      $('card-list').innerHTML = stateHTML;
       $('pagination').innerHTML = '';
+      wireStateButtons();
       return;
     }
 
     $('table-body').innerHTML = pageList.map(function(e){
       return '<tr data-row="' + e.id + '" data-status="' + e.status + '" class="st-' + e.status + '" tabindex="0">' +
         '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '"></span>' +
-          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '">' + esc(e.name) + '</a>' +
+          '<div class="ev-name-main">' + nameHTML(e, '') +
           '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div></td>' +
         '<td class="col-portal">' + portalCellHTML(e) + '</td>' +
         '<td class="ev-date-cell">' + dateCellHTML(e) + '</td>' +
         '<td><span class="vis-num">' + fmtNum(e.visitors) + '</span></td>' +
         '<td class="reg-cell">' + regCellHTML(e) + '</td>' +
-        '<td>' + payCellHTML(e) + '</td>' +
         '<td class="row-actions">' + rowActionsHTML(e, 'row') + '</td>' +
       '</tr>';
     }).join('');
 
     $('card-list').innerHTML = pageList.map(function(e){
-      var whenText = e.start ? (fmtDate(e.start) + ' · ' + fmtTime(e.start)) : 'Date not set';
-      return '<div class="ev-card fade-in">' +
+      var w = whenOf(e);
+      /* data-card: a tap anywhere on it opens the event's console (wireRowEvents); a deleted event's opens nothing */
+      return '<div class="ev-card fade-in' + (e.status === 'deleted' ? ' is-static' : '') + '" data-card="' + e.id + '">' +
         '<div class="ev-card-top"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '" style="margin-top:7px;"></span>' +
-          '<div class="ev-name-main"><a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '" style="font-weight:700;font-size:14.5px;">' + esc(e.name) + '</a>' +
+          '<div class="ev-name-main">' + nameHTML(e, ' style="font-weight:700;font-size:14.5px;"') +
           '<div class="ev-meta-line">' + metaLine(e) + '</div></div>' +
-          rowActionsHTML(e, 'card') +
         '</div>' +
         '<div class="ev-card-info">' +
           '<div class="ev-card-portal">' + IC.globe + portalCellHTML(e) + '</div>' +
           '<div class="ev-info-row">' +
-            '<span class="ev-info-item">' + IC.calendarSm + '<span class="v' + (e.start?'':' faint2') + '">' + esc(whenText) + '</span></span>' +
-            '<span class="ev-info-item">' + IC.users + '<span class="v">' + fmtNum(e.visitors) + ' visitors</span></span>' +
+            '<span class="ev-info-item">' + IC.calendarSm + '<span class="v v-wrap' + (w.dated || w.label ? '' : ' faint2') + '">' + esc(cardWhenText(e)) + '</span></span>' +
           '</div>' +
           '<div class="ev-info-row">' +
+            '<span class="ev-info-item">' + IC.users + '<span class="v">' + fmtNum(e.visitors) + ' visitors</span></span>' +
             '<span class="ev-info-item">' + IC.ticket + '<span class="v">' + fmtNum(e.registrations) + ' registrations</span></span>' +
-            '<span class="ev-info-item">' + IC.wallet + '<span class="v' + (e.payment.type==='free'?' faint2':'') + '">' + (e.payment.type==='free' ? 'Free' : fmtRupee(e.payment.amount)) + '</span></span>' +
           '</div>' +
         '</div>' +
+        '<div class="ev-card-actions">' + rowActionsHTML(e, 'card') + '</div>' +
       '</div>';
     }).join('');
 
     renderPagination(total, totalPages);
     wireRowEvents();
+  }
+  /* the event's name: a link to its console, except for a deleted event, which the console cannot open */
+  function nameHTML(e, extra){
+    if (e.status === 'deleted') return '<span class="ev-link is-static" data-venue-id="' + e.id + '"' + extra + '>' + esc(e.name) + '</span>';
+    return '<a class="ev-link" href="edit-event.html?event=' + e.id + '" data-venue-id="' + e.id + '"' + extra + '>' + esc(e.name) + '</a>';
   }
 
   function renderPagination(total, totalPages){
@@ -2395,44 +2578,79 @@
       b.setAttribute('aria-pressed', b.getAttribute('data-view') === state.view);
     });
   }
+  /* List or Cards is remembered in this browser (UX-037: it went back to List on every reload) */
   function wireViewToggle(){
     $('view-toggle').querySelectorAll('[data-view]').forEach(function(b){
-      b.addEventListener('click', function(){ state.view = b.getAttribute('data-view'); applyView(); });
+      b.addEventListener('click', function(){
+        state.view = b.getAttribute('data-view') === 'grid' ? 'grid' : 'list';
+        memoSet('localStorage', MEMO_LAYOUT, state.view);
+        applyView();
+      });
     });
   }
 
+  /* each order's first direction: dates soonest first, the rest newest or most first */
+  var SORT_FIRST_DIR = { start:'asc', updated:'desc', registrations:'desc', visitors:'desc' };
+  /* a header's button sorts by its column, and again the other way (UX-029: the headers could not be reached by
+     keyboard); the Sort menu picks an order, Last edited included (UX-037) */
   function wireSortHeaders(){
     document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
       th.addEventListener('click', function(){
         var f = th.getAttribute('data-sort');
-        if (state.sort.field === f) state.sort.dir = state.sort.dir==='asc'?'desc':'asc';
-        else { state.sort.field = f; state.sort.dir = 'asc'; }
+        if (state.sort.field === f) state.sort = { field: f, dir: state.sort.dir === 'asc' ? 'desc' : 'asc' };
+        else state.sort = { field: f, dir: SORT_FIRST_DIR[f] || 'asc' };
+        state.page = 1;
         renderResults();
       });
     });
+    $('sort-select').addEventListener('change', function(){
+      var f = this.value;
+      if (!SORT_FIRST_DIR[f]) return;
+      state.sort = { field: f, dir: SORT_FIRST_DIR[f] };
+      state.page = 1;
+      renderResults();
+    });
+  }
+  /* the event's console; with Ctrl or Cmd held, in a new browser tab, as a link would */
+  function openConsole(id, ev){
+    var url = 'edit-event.html?event=' + id;
+    if (ev && (ev.metaKey || ev.ctrlKey)){ window.open(url, '_blank'); return; }
+    window.location.href = url;
   }
 
   function wireRowEvents(){
     document.querySelectorAll('[data-row]').forEach(function(tr){
+      /* a deleted event's row opens nothing: the console cannot open a deleted event (Restore is in its ⋯ menu) */
+      if (tr.getAttribute('data-status') === 'deleted') return;
       tr.addEventListener('click', function(e){
-        if (e.target.closest('a, button, .popover')) return;
-        window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
+        if (e.target.closest('a, button, select, .popover')) return;
+        openConsole(tr.getAttribute('data-row'), e);
       });
       tr.addEventListener('keydown', function(e){
-        if (e.key==='Enter' && !e.target.closest('a, button')) window.location.href = 'edit-event.html?event=' + tr.getAttribute('data-row');
+        if (e.key==='Enter' && !e.target.closest('a, button, select')) openConsole(tr.getAttribute('data-row'), null);
       });
     });
+    /* a card is one big target (UX-020: it had no handler, and on phones, where the list is always cards, only the
+       small pencil opened an event); its own buttons, links and the portal chip keep doing what they do */
+    document.querySelectorAll('[data-card]').forEach(function(card){
+      if (card.classList.contains('is-static')) return;
+      card.addEventListener('click', function(e){
+        if (e.target.closest('a, button, select, input, label, .popover, .rvp-chip')) return;
+        openConsole(card.getAttribute('data-card'), e);
+      });
+    });
+    /* The name is a link to the console and a click follows it (UX-020: the click was stopped to show the venue and
+       creator instead). They show on mouse hover, where there is a mouse, and on keyboard focus. */
+    var canHover = true;
+    try { canHover = !window.matchMedia || window.matchMedia('(hover: hover)').matches; } catch(err){}
     document.querySelectorAll('[data-venue-id]').forEach(function(a){
       function show(){ cancelCloseQV(); openVenueQuickview(a, a.getAttribute('data-venue-id')); }
-      a.addEventListener('mouseenter', show);
+      if (canHover){
+        a.addEventListener('mouseenter', show);
+        a.addEventListener('mouseleave', scheduleCloseQV);
+      }
       a.addEventListener('focus', show);
-      a.addEventListener('mouseleave', scheduleCloseQV);
       a.addEventListener('blur', scheduleCloseQV);
-      a.addEventListener('click', function(e){
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-        e.preventDefault(); e.stopPropagation();
-        show();
-      });
     });
     document.querySelectorAll('[data-row-menu-btn]').forEach(function(btn){
       btn.addEventListener('click', function(e){
@@ -2463,17 +2681,22 @@
 
   function findEvent(id){ return EVENTS.find(function(e){ return e.id===id; }); }
 
+  /* the ⋯ button of the row a menu item belongs to (an open menu sits in <body>, placeRowMenu: its row is where it
+     came from), so a window opened from the menu gives the focus back to it */
+  function menuButtonOf(from){
+    var wrap = from && from.closest ? from.closest('.popover-wrap') : null;
+    var panel = !wrap && from && from.closest ? from.closest('.row-menu') : null;
+    if (panel && panel._rvHome) wrap = panel._rvHome;
+    return wrap ? wrap.querySelector('[data-row-menu-btn]') : null;
+  }
+
   function handleRowAction(action, id, from){
     var e = findEvent(id);
     if (!e) return;
     switch(action){
       case 'set-portal':
         /* the ⋯ menu closes behind the window, so focus comes back to its ⋯ button */
-        var wrap = from && from.closest ? from.closest('.popover-wrap') : null;
-        /* an open row menu sits in <body> (placeRowMenu): its row is where it came from */
-        var panel = !wrap && from && from.closest ? from.closest('.row-menu') : null;
-        if (panel && panel._rvHome) wrap = panel._rvHome;
-        openSetPortalFor(id, wrap ? wrap.querySelector('[data-row-menu-btn]') : null); break;
+        openSetPortalFor(id, menuButtonOf(from)); break;
       case 'edit': case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
       case 'view':
@@ -2482,32 +2705,321 @@
       case 'reports':
         window.location.href = 'audience-registrations.html?event=' + id; break;
       case 'duplicate':
-        var copy = Object.assign({}, e, { id: nextId(), name: e.name + ' (Copy)', status:'upcoming', registrations:0, visitors:0 });
-        EVENTS.splice(EVENTS.indexOf(e)+1, 0, copy);
-        toast('Duplicated as "' + copy.name + '"'); renderApp(); break;
+        openCloneDialog(e, menuButtonOf(from)); break;
+      case 'qr':
+        openQRModal(id, menuButtonOf(from)); break;
       case 'copylink':
         var url = eventPublicUrl(e);
         if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied — ' + url); }).catch(function(){ toast(url); }); }
         else toast(url);
         break;
-      case 'complete':
-        e.status = 'completed'; toast('"' + e.name + '" marked as completed'); renderApp(); break;
-      case 'cancel':
-        e.status = 'cancelled'; toast('"' + e.name + '" cancelled'); renderApp(); break;
-      case 'archive':
-        e.status = 'deleted'; toast('"' + e.name + '" deleted — restore it anytime from the Deleted tab'); renderApp(); break;
+      case 'delete':
+        if (!mayRemove()){ toast(whoMayRemove()); break; }
+        openDeleteDialog(e, menuButtonOf(from)); break;
       case 'restore':
-        e.status = 'upcoming'; toast('"' + e.name + '" restored to Upcoming'); renderApp(); break;
-      case 'delete-forever':
-        EVENTS.splice(EVENTS.indexOf(e), 1); toast('"' + e.name + '" deleted permanently'); renderApp(); break;
+        if (!mayRemove()){ toast(whoMayRemove()); break; }
+        openRestoreDialog(e, menuButtonOf(from)); break;
     }
   }
 
-  function eventSlug(e){
-    return e.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  /* =========================================================
+     WHO MAY DELETE AND RESTORE — approvers only (owner decision #4: team members draft, edit and ask for approval).
+     An approver is an address in config/approvals' approvers list, read from GET /api/settings/approvals; with none
+     named, every member approves and so may do both (the server's own reading, lib/access.js notAnApprover).
+     While the list is not known (loading, or it failed) both stay offered and the server decides: it refuses
+     anybody else with 403 'not-an-approver', and the window then says who can.
+  ========================================================= */
+  function mayRemove(){
+    if (!state.approvers || !state.approvers.length) return true;
+    return state.approvers.indexOf(listingMe().email.toLowerCase()) !== -1;
   }
+  function whoMayRemove(){
+    return 'Only an approver' + (state.approvers && state.approvers.length ? ' (' + state.approvers.join(', ') + ')' : '') + ' can delete or restore an event.';
+  }
+  /* an answer of the wrong shape is no answer (not known: the server decides), never "no approvers" */
+  function loadApprovers(){
+    return getJson('/api/settings/approvals').then(function(d){
+      state.approvers = Array.isArray(d.approvers) ? d.approvers.map(function(x){ return String(x || '').trim().toLowerCase(); }).filter(Boolean) : null;
+    }, function(){ state.approvers = null; }).then(function(){ if (!state.loading) renderApp(); });
+  }
+  /* a refusal of Delete or Restore, in words; a 403 from the server also corrects who this page thinks the
+     approvers are, so the menu marks the item "Approvers only" from then on */
+  function removeError(err, what){
+    if (err && err.code === 'not-an-approver'){
+      if (Array.isArray(err.approvers)) state.approvers = err.approvers.map(function(x){ return String(x || '').trim().toLowerCase(); }).filter(Boolean);
+      renderApp();
+    }
+    return (err && err.message) || ('The event could not be ' + what + '. Please try again.');
+  }
+
+  /* =========================================================
+     WHAT MAKES A WINDOW A REAL DIALOG (UX-029) — Clone, Delete and Restore, QR codes, Need help? and the phone Filters
+     sheet: it is announced as a dialog with its title (role="dialog", aria-modal, aria-labelledby), Escape closes it,
+     Tab and Shift+Tab go round its own controls only, and the caller moves the focus into it and gives it back to
+     what opened it on closing. QR codes and Need help? had none of this: the focus stayed on the page behind them,
+     where Tab went on through Create Event and the rest under the scrim, and Escape did nothing.
+  ========================================================= */
+  function dialogControls(card){
+    return Array.prototype.filter.call(card.querySelectorAll('button, input, select, textarea, a[href]'), function(x){
+      return !x.disabled && !x.hidden && !(x.closest && x.closest('[hidden]'));
+    });
+  }
+  function asDialog(card, labelId, onEscape){
+    if (!card) return;
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    if (labelId) card.setAttribute('aria-labelledby', labelId);
+    card.addEventListener('keydown', function(ev){
+      if (ev.key === 'Escape' || ev.key === 'Esc'){ ev.preventDefault(); ev.stopPropagation(); onEscape(); return; }
+      if (ev.key !== 'Tab') return;
+      var f = dialogControls(card);
+      if (!f.length){ ev.preventDefault(); return; }
+      var at = document.activeElement, inside = !!at && card.contains(at);
+      if (ev.shiftKey && (at === f[0] || !inside)){ ev.preventDefault(); f[f.length - 1].focus(); }
+      else if (!ev.shiftKey && (at === f[f.length - 1] || !inside)){ ev.preventDefault(); f[0].focus(); }
+    });
+  }
+  /* the focus goes back to what opened a window, when that is still on the page */
+  function giveFocusBack(el){
+    if (el && typeof el.focus === 'function' && el.isConnected !== false){ try { el.focus(); } catch(e){} }
+  }
+
+  /* =========================================================
+     THE WINDOWS FOR CLONE, DELETE AND RESTORE — one at a time, in #sheet-root: a title, what will happen, Cancel
+     and the action. Escape, Cancel, ✕ and a click outside close it, except while the action runs; the focus starts
+     inside it and stays there (Tab wraps), and goes back to the row's ⋯ button when it closes.
+  ========================================================= */
+  function openDialog(o){
+    var root = $('sheet-root');
+    root.innerHTML = '<div class="modal-scrim" id="dlg-scrim"><div class="modal-card fade-in" id="dlg-card" role="dialog" aria-modal="true" aria-labelledby="dlg-title"' + (o.sub ? ' aria-describedby="dlg-sub"' : '') + '>' +
+      '<div class="modal-card-head"><div><h3 id="dlg-title">' + esc(o.title) + '</h3>' + (o.sub ? '<p id="dlg-sub">' + esc(o.sub) + '</p>' : '') + '</div>' +
+        '<button type="button" class="icon-btn" id="dlg-close" aria-label="Close">' + IC.x + '</button></div>' +
+      '<div class="modal-card-body">' + (o.body || '') + '<p class="dlg-error" id="dlg-error" role="alert" hidden></p></div>' +
+      '<div class="modal-card-foot"><button type="button" class="btn btn-secondary" id="dlg-cancel">Cancel</button>' +
+        '<button type="button" class="btn ' + (o.danger ? 'btn-danger' : 'btn-primary') + '" id="dlg-ok" style="margin-left:auto;">' + esc(o.action) + '</button></div>' +
+    '</div></div>';
+    var d = { busy: false, eventId: o.eventId || '', opener: o.opener || null };
+    d.close = function(){
+      if (!$('dlg-scrim')) return;
+      root.innerHTML = '';
+      refocusRow(d);
+    };
+    d.setBusy = function(on, label){
+      d.busy = on;
+      var ok = $('dlg-ok');
+      if (!ok) return;
+      ok.disabled = on; ok.textContent = on ? label : o.action; ok.setAttribute('aria-busy', on ? 'true' : 'false');
+      $('dlg-cancel').disabled = on; $('dlg-close').disabled = on;
+      $('dlg-card').querySelectorAll('input').forEach(function(i){ i.disabled = on; });
+    };
+    d.error = function(msg){ var el = $('dlg-error'); if (!el) return; el.textContent = msg || ''; el.hidden = !msg; };
+    function shut(){ if (!d.busy) d.close(); }
+    function act(){ if (!d.busy) o.onAction(d); }
+    $('dlg-close').addEventListener('click', shut);
+    $('dlg-cancel').addEventListener('click', shut);
+    $('dlg-scrim').addEventListener('click', function(ev){ if (ev.target === $('dlg-scrim')) shut(); });
+    $('dlg-ok').addEventListener('click', act);
+    asDialog($('dlg-card'), 'dlg-title', shut);
+    $('dlg-card').addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' && ev.target && ev.target.tagName === 'INPUT'){ ev.preventDefault(); act(); }
+    });
+    try { ($(o.focus) || $('dlg-ok')).focus(); } catch(e){}
+    return d;
+  }
+  /* the focus goes back to the ⋯ button the window came from; when the list has been drawn again meanwhile, to that
+     event's ⋯ button in the new list (the row's, or the card's on phones and in cards), else to the search box */
+  function refocusRow(d){
+    var b = d.opener && document.body.contains(d.opener) ? d.opener : null;
+    if (!b && d.eventId){
+      var cards = state.view === 'grid' || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 880px)').matches);
+      b = document.querySelector('[data-row-menu-btn="rowmenu-' + (cards ? 'card' : 'row') + '-' + d.eventId + '"]');
+    }
+    try { (b || $('search-input')).focus(); } catch(e){}
+  }
+
+  /* Reads both lists again without blanking the page (after Clone, Delete or Restore, and the "Updated" button): the
+     list keeps its tab, search and page, and shows what the server now has. A failure keeps what is shown and says
+     so; a first load that failed is loaded again from the start (loadAndRender). */
+  var refreshAgain = false;
+  function refreshEvents(){
+    if (state.loading) return Promise.resolve(false);
+    if (state.loadFailed){ loadAndRender(); return Promise.resolve(false); }
+    /* one read at a time; a change made while one is under way (Undo right after Delete) is read once it is done,
+       so the list never settles on an answer older than the change */
+    if (state.refreshing){ refreshAgain = true; return Promise.resolve(false); }
+    state.refreshing = true;
+    renderSync();
+    return loadEvents().then(function(rows){
+      EVENTS.length = 0;
+      rows.forEach(function(row){ EVENTS.push(row); });
+      state.loadedAt = Date.now();
+      state.refreshing = false;
+      forgetActivity();          // the figures and the Activity log are read again too
+      renderApp();
+      if (refreshAgain){ refreshAgain = false; refreshEvents(); }
+      return true;
+    }, function(err){
+      state.refreshing = false;
+      refreshAgain = false;
+      renderSync();
+      toast('The list could not be read again (' + loadFailedWords({ status: Number(err && err.status) || 0, offline: navigator.onLine === false, message: '' }).title.toLowerCase() + '). It still shows what it had.');
+      return false;
+    });
+  }
+
+  /* Clone (POST /api/event/clone): a new draft with the event's details, content, registration forms and saved site,
+     never its registrations, figures or live page. The copy needs a name and an address of its own: both are
+     offered, the address is checked as it is typed (GET /api/event/slug-available), and a taken one comes back
+     with a free one to use instead. */
+  var CLONE_CHECK_MS = 350;
+  function openCloneDialog(e, opener){
+    var C = window.RevampCore;
+    if (!C || typeof C.cloneEvent !== 'function'){ toast('Clone could not start. Reload the page and try again.'); return; }
+    var name = (e.name + ' (Copy)').slice(0, 200);
+    var slugTouched = false, seq = 0, timer = null;
+    var d = openDialog({
+      title: 'Clone “' + e.name + '”', eventId: e.id, opener: opener,
+      sub: 'The copy is a new draft' + (e.portal ? ' on ' + portalNameOf(e.portal) : '') + '. Its details, content, registration forms and saved site are copied; its registrations, figures and live page are not.',
+      body: '<div><label class="flabel" for="clone-name">Name of the copy</label><input class="finput" id="clone-name" type="text" maxlength="200" autocomplete="off"></div>' +
+        '<div><label class="flabel" for="clone-slug">Its address</label><input class="finput mono" id="clone-slug" type="text" maxlength="80" spellcheck="false" autocomplete="off" aria-describedby="clone-slug-hint">' +
+        '<p class="field-hint" id="clone-slug-hint" aria-live="polite"></p></div>',
+      action: 'Clone event', focus: 'clone-name',
+      onAction: function(){ go(); }
+    });
+    var nameEl = $('clone-name'), slugEl = $('clone-slug');
+    nameEl.value = name;
+    slugEl.value = C.slugify(name);
+    function where(slug){ return '<span class="mono">' + esc(C.publicUrl({ id: slug })) + '</span>'; }
+    function useIt(slug){ return slug ? ' <button type="button" class="pn-link" data-use-slug="' + esc(slug) + '">Use “' + esc(slug) + '”</button>' : ''; }
+    function hint(html, bad){
+      var h = $('clone-slug-hint');
+      if (!h) return;
+      h.className = 'field-hint' + (bad ? ' is-bad' : '');
+      h.innerHTML = html;
+      var use = h.querySelector('[data-use-slug]');
+      if (use) use.addEventListener('click', function(){ slugEl.value = use.getAttribute('data-use-slug'); slugTouched = true; check(true); slugEl.focus(); });
+    }
+    /* the address as it is typed: its shape at once is a nuisance mid-word, so the check waits for a pause */
+    function check(now){
+      clearTimeout(timer);
+      var mine = ++seq;
+      timer = setTimeout(function(){
+        var slug = slugEl.value.trim();
+        if (!slug){ hint('Enter an address for the copy.', true); return; }
+        if (C.slugify(slug) !== slug){ hint('An address can use lowercase letters, numbers and single hyphens only.' + useIt(C.slugify(slug)), true); return; }
+        hint('Checking ' + where(slug) + '…');
+        C.slugAvailable(slug).then(function(r){
+          if (mine !== seq) return;
+          if (r && r.available){ hint('Free: the copy will be at ' + where(slug)); return; }
+          /* the address offered at first was taken (an earlier copy has it): the next free one, without a fuss */
+          if (!slugTouched && r && r.suggestion){ slugEl.value = r.suggestion; check(true); return; }
+          hint(esc((r && r.message) || 'That address is taken.') + useIt(r && r.suggestion), true);
+        }, function(err){
+          if (mine !== seq) return;
+          hint('The address could not be checked (' + esc(err && err.message) + '). Clone checks it again.');
+        });
+      }, now ? 0 : CLONE_CHECK_MS);
+    }
+    nameEl.addEventListener('input', function(){ if (!slugTouched){ slugEl.value = C.slugify(nameEl.value); check(); } });
+    slugEl.addEventListener('input', function(){ slugTouched = true; check(); });
+    check(true);
+    function go(){
+      var n = nameEl.value.trim(), slug = slugEl.value.trim();
+      d.error('');
+      if (!n){ d.error('Give the copy a name.'); nameEl.focus(); return; }
+      if (!slug || C.slugify(slug) !== slug){ d.error('Its address can use lowercase letters, numbers and single hyphens only.'); slugEl.focus(); return; }
+      clearTimeout(timer); seq++;
+      d.setBusy(true, 'Cloning… this can take a little while');
+      C.cloneEvent(e.id, slug, n).then(function(res){
+        d.close();
+        refreshEvents();
+        var newId = (res && res.eventId) || slug;
+        toastAction('“' + ((res && res.name) || n) + '” is ready in Drafts.', 'Open copy', function(){ window.location.href = 'edit-event.html?event=' + encodeURIComponent(newId); });
+      }, function(err){
+        d.setBusy(false);
+        if (err && (err.code === 'slug-taken' || err.code === 'slug-reserved')){
+          slugTouched = true;
+          hint(esc(err.message) + useIt(err.suggestion), true);
+          try { slugEl.focus(); } catch(x){}
+          return;
+        }
+        d.error((err && err.message) || 'The event could not be copied. Please try again.');
+      });
+    }
+  }
+
+  /* Delete (DELETE /api/event): the event moves to Deleted Events with its content, registrations and files, and
+     its live site stops at once. The window says all of that before anything happens; the toast after it has
+     Undo, which is a Restore. */
+  function openDeleteDialog(e, opener){
+    var C = window.RevampCore;
+    if (!C || typeof C.deleteEvent !== 'function'){ toast('Delete could not start. Reload the page and try again.'); return; }
+    var lines = ['<p class="dlg-text">It moves to Deleted Events, where an approver can restore it with its content and registrations.</p>'];
+    if (e.published) lines.push('<p class="dlg-text">Its live site stops showing at once: ' + '<span class="mono">' + esc(C.publicUrl(e)) + '</span>. Restoring the event brings it back.</p>');
+    if (e.registrations) lines.push('<p class="dlg-text">Its ' + fmtNum(e.registrations) + ' registration' + (e.registrations === 1 ? ' is' : 's are') + ' kept.</p>');
+    lines.push('<p class="dlg-text">Any shared preview links stop, and stay stopped if it is restored.</p>');
+    var d = openDialog({
+      title: 'Move “' + e.name + '” to Deleted?', eventId: e.id, opener: opener, body: lines.join(''),
+      action: 'Move to Deleted', danger: true, focus: 'dlg-cancel',
+      onAction: function(){
+        d.error('');
+        d.setBusy(true, 'Deleting…');
+        C.deleteEvent(e.id).then(function(){
+          d.close();
+          /* moved at once here, then as the server has it (the row as it is now: the list may have been read again) */
+          var row = findEvent(e.id) || e;
+          row.status = 'deleted'; row.deletedAt = new Date().toISOString(); row.deletedBy = listingMe().email;
+          renderApp();
+          refreshEvents();
+          toastAction('“' + e.name + '” moved to Deleted Events.', 'Undo', function(){ restoreNow(e, null); });
+        }, function(err){ d.setBusy(false); d.error(removeError(err, 'deleted')); });
+      }
+    });
+  }
+
+  /* where a restored event lands: its own dates and whether its site was live decide, as for any event */
+  function landsIn(e){ return window.RevampLifecycle.of({ published: e.published, start: e.start, end: e.end }, Date.now()); }
+  /* a list's name as its tab or its ⋯ item shows it */
+  function viewName(b){ return b === 'draft' ? 'Drafts' : b === 'cancelled' ? 'Cancelled Events' : b === 'deleted' ? 'Deleted Events' : statusLabel(b); }
+  function showBucket(b){ goToBucket(isTab(b) ? b : 'active', false); }
+  /* Restore (POST /api/event/restore): the event exactly as it was, its live site included, which is why it is
+     for approvers too (otherwise it would put a site back on the web without an approval) */
+  function openRestoreDialog(e, opener){
+    var C = window.RevampCore;
+    if (!C || typeof C.restoreEvent !== 'function'){ toast('Restore could not start. Reload the page and try again.'); return; }
+    var to = landsIn(e);
+    var body = '<p class="dlg-text">' + (e.published
+      ? 'Its site goes live again at <span class="mono">' + esc(C.publicUrl(e)) + '</span>, as it was when it was deleted.'
+      : 'It comes back with its content and saved site. Its site is not published.') + '</p>' +
+      '<p class="dlg-text">It will be in ' + esc(viewName(to)) + '.</p>';
+    var d = openDialog({
+      title: 'Restore “' + e.name + '”?', eventId: e.id, opener: opener, body: body, action: 'Restore',
+      onAction: function(){ d.error(''); d.setBusy(true, 'Restoring…'); restoreNow(e, d); }
+    });
+  }
+  /* d: the Restore window, or null for the delete toast's Undo (a failure is then a toast of its own) */
+  function restoreNow(e, d){
+    var C = window.RevampCore;
+    if (!C || typeof C.restoreEvent !== 'function'){ toast('Restore could not start. Reload the page and try again.'); return; }
+    C.restoreEvent(e.id).then(function(){
+      if (d) d.close();
+      var to = landsIn(e), row = findEvent(e.id) || e;
+      row.status = to; row.deletedAt = null; row.deletedBy = '';
+      renderApp();
+      refreshEvents();
+      toastAction('“' + e.name + '” is back in ' + viewName(to) + '.', 'Show it', function(){ showBucket(to); });
+    }, function(err){
+      var msg = removeError(err, 'restored');
+      if (d){ d.setBusy(false); d.error(msg); } else toast(msg);
+    });
+  }
+
+  /* The event's real address, the one its site is served at (RevampCore.publicUrl: /e/<id>, owner decision #2). It
+     was "events.economictimes.indiatimes.com/" plus the name made into a slug, which is not where any site is; the
+     QR codes now reachable from every published row (UX-031) and Copy event link use this one. */
   function eventPublicUrl(e, section){
-    var base = 'https://events.economictimes.indiatimes.com/' + eventSlug(e);
+    var C = window.RevampCore;
+    var base = C && typeof C.publicUrl === 'function' ? C.publicUrl(e) : location.origin + '/e/' + encodeURIComponent(e.id);
     if (section === 'agenda') return base + '/agenda';
     if (section === 'speakers') return base + '/speakers';
     return base;
@@ -2519,19 +3031,28 @@
     { key:'speakers', label:'QR Code — Speakers', icon:'mic',    hint:'Jumps straight to the speaker list' }
   ];
 
-  function openQRModal(id){
+  /* opener: what opened it (the toolbar's QR Codes, or a row's ⋯ button), which gets the focus back when it closes.
+     Each of its three steps is drawn afresh, so each is made a dialog again and given the focus (mount). */
+  function openQRModal(id, opener){
     var root = $('sheet-root');
+    var returnTo = opener || null;
 
-    function close(){ root.innerHTML=''; }
+    function close(){ root.innerHTML=''; giveFocusBack(returnTo); }
+    function mount(focusId){
+      var card = root.querySelector('.modal-card');
+      asDialog(card, 'qr-title', close);
+      var f = focusId ? $(focusId) : null;
+      try { (f || dialogControls(card)[0]).focus(); } catch(e){}
+    }
 
     function renderEventPicker(){
       var list = getFilteredSorted();
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
-        '<div class="modal-card-head"><div><h3>QR Codes</h3><p>Pick an event to generate a QR code for</p></div>' +
+        '<div class="modal-card-head"><div><h3 id="qr-title">QR Codes</h3><p>Pick an event to generate a QR code for</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
           (list.length
-            ? '<div><label class="flabel">Event</label><select class="finput" id="qr-event-select">' +
+            ? '<div><label class="flabel" for="qr-event-select">Event</label><select class="finput" id="qr-event-select">' +
                 list.map(function(ev){ return '<option value="' + ev.id + '">' + esc(ev.name) + '</option>'; }).join('') +
               '</select></div>'
             : '<p style="font-size:12.5px;color:var(--text-muted);">No events match the current filters.</p>') +
@@ -2545,15 +3066,16 @@
       $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
       var cont = $('qr-continue');
       if (cont) cont.addEventListener('click', function(){ renderPicker(findEvent($('qr-event-select').value)); });
+      mount(list.length ? 'qr-event-select' : 'qr-cancel');
     }
 
     function renderPicker(e){
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
-        '<div class="modal-card-head"><div><h3>QR Codes</h3><p>' + esc(e.name) + '</p></div>' +
+        '<div class="modal-card-head"><div><h3 id="qr-title">QR Codes</h3><p>' + esc(e.name) + '</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
           QR_SECTIONS.map(function(s){
-            return '<button type="button" class="qr-pick-row" data-qr-sec="' + s.key + '">' +
+            return '<button type="button" class="qr-pick-row" id="qr-sec-' + s.key + '" data-qr-sec="' + s.key + '">' +
               '<span class="qr-pick-ic">' + IC[s.icon] + '</span>' +
               '<span class="qr-pick-text"><span class="qr-pick-label">' + s.label + '</span><span class="qr-pick-hint">' + s.hint + '</span></span>' +
               '<span class="qr-pick-chev">' + IC.chevDown + '</span>' +
@@ -2568,6 +3090,7 @@
       document.querySelectorAll('[data-qr-sec]').forEach(function(btn){
         btn.addEventListener('click', function(){ renderDetail(e, btn.getAttribute('data-qr-sec')); });
       });
+      mount('qr-sec-website');
     }
 
     function urlWithAg(base, ag){
@@ -2581,13 +3104,13 @@
       var baseUrl = eventPublicUrl(e, key === 'website' ? null : key);
       var url = baseUrl;
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
-        '<div class="modal-card-head"><div><h3>' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
+        '<div class="modal-card-head"><div><h3 id="qr-title">' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
           '<div><label class="flabel" for="qr-ag-code">AG Code <span style="font-weight:400;color:var(--text-muted);">(optional — tag the link to track where a scan came from)</span></label>' +
             '<input class="finput" id="qr-ag-code" type="text" placeholder="e.g. mailer" spellcheck="false" autocomplete="off"></div>' +
           '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" id="qr-img" alt="' + esc(sec.label) + '" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url) + '"></div>' +
-          '<div class="email-row"><span id="qr-link-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" type="button">' + IC.copy + '</button></div>' +
+          '<div class="email-row"><span id="qr-link-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" aria-label="Copy link" type="button">' + IC.copy + '</button></div>' +
         '</div>' +
         '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-back">&larr; Back</button><button class="btn btn-primary" id="qr-done" style="margin-left:auto;">Done</button></div>' +
       '</div></div>';
@@ -2604,6 +3127,7 @@
         if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url); }); }
         else toast(url);
       });
+      mount('qr-ag-code');
     }
 
     var startEvent = id ? findEvent(id) : null;
@@ -2614,8 +3138,28 @@
   /* =========================================================
      MOBILE BOTTOM SHEET (filters)
   ========================================================= */
+  /* The sheet is a dialog too (UX-029). It is drawn afresh at each tick, so the focus is put back on the control that
+     had it (it used to fall to the page behind); closing gives it back to what opened the sheet. */
+  var sheetOpener = null;
+  /* the boxes ticked in the sheet are already the list's filters, so however it is closed (Show results, Escape, a tap
+     outside) the list is drawn with them: it used to keep showing the old list under the new chips' state */
+  function closeMobileFilters(){
+    $('sheet-root').innerHTML = '';
+    state.page = 1;
+    renderResults(); renderToolbarButtons();
+    giveFocusBack(sheetOpener); sheetOpener = null;
+  }
+  function sheetFocusSel(){
+    var a = document.activeElement, root = $('sheet-root');
+    if (!a || !a.getAttribute || !root.contains(a)) return '';
+    if (a.getAttribute('data-mtype')) return '[data-mtype="' + a.getAttribute('data-mtype') + '"]';
+    if (a.getAttribute('data-mportal')) return '[data-mportal="' + a.getAttribute('data-mportal') + '"]';
+    return a.id ? '#' + a.id : '';
+  }
   function openMobileFilters(){
     var root = $('sheet-root');
+    var again = !!$('sheet-scrim'), keep = again ? sheetFocusSel() : '';
+    if (!again) sheetOpener = document.activeElement && document.activeElement !== document.body ? document.activeElement : $('btn-mobile-filters');
     /* the top-bar switcher is hidden on phones, so the sheet opens with the working portal: a native select (the
        whole roster as check boxes would be far too long a sheet, and a select is the surest control on a phone).
        Changing it switches the portal (F2). In All portals the Portal filter's rows follow under Event type. */
@@ -2625,9 +3169,9 @@
         return '<option value="' + esc(p.slug) + '"' + (p.slug === wp ? ' selected' : '') + '>' + esc(p.name) + '</option>';
       }).join('') : (wp !== 'all' ? '<option value="' + esc(wp) + '" selected>' + esc(portalNameOf(wp)) + '</option>' : '') +
         (rosterState === 'failed' ? '<option value="" disabled>The portal list could not be loaded</option>' : '<option value="" disabled>Loading portals…</option>'));
-    root.innerHTML = '<div class="bottom-sheet-scrim" id="sheet-scrim"><div class="bottom-sheet fade-in">' +
+    root.innerHTML = '<div class="bottom-sheet-scrim" id="sheet-scrim"><div class="bottom-sheet' + (again ? '' : ' fade-in') + '" id="sheet-card">' +
       '<div class="bottom-sheet-handle"></div>' +
-      '<h3 style="font-size:16px;margin-bottom:12px;">Filters</h3>' +
+      '<h3 id="sheet-title" style="font-size:16px;margin-bottom:12px;">Filters</h3>' +
       '<label class="popover-label" for="m-portal" style="display:block;">Portal</label>' +
       '<select class="finput" id="m-portal" style="margin-bottom:8px;">' + portalOpts + '</select>' +
       '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
@@ -2639,36 +3183,41 @@
         return '<button class="check-row ' + (on?'on':'') + '" data-mportal="' + esc(p.slug) + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(p.name) +
           ' <span class="mono muted" style="margin-left:auto;">' + p.count + '</span></button>';
       }).join('') : '') +
-      '<div class="popover-label" style="margin-top:8px;">Payment</div>' + [['paid','Paid events'],['free','Free events']].map(function(o){
-        var on = state.filters.payment.indexOf(o[0])!==-1;
-        return '<button class="check-row ' + (on?'on':'') + '" data-mpay="' + o[0] + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + o[1] + '</button>';
-      }).join('') +
       '<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn btn-secondary btn-block" id="sheet-clear" style="flex:1;">Clear all</button><button class="btn btn-primary btn-block" id="sheet-apply" style="flex:1;">Show results</button></div>' +
     '</div></div>';
     function rewire(){
       root.querySelectorAll('[data-mtype]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.types, b.getAttribute('data-mtype')); openMobileFilters(); }); });
       root.querySelectorAll('[data-mportal]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.portals, b.getAttribute('data-mportal')); openMobileFilters(); }); });
-      root.querySelectorAll('[data-mpay]').forEach(function(b){ b.addEventListener('click', function(){ toggleInArray(state.filters.payment, b.getAttribute('data-mpay')); openMobileFilters(); }); });
       $('m-portal').addEventListener('change', function(){ if (this.value){ switchPortal(this.value); openMobileFilters(); } });
     }
     rewire();
-    $('sheet-scrim').addEventListener('click', function(e){ if (e.target===$('sheet-scrim')) root.innerHTML=''; });
+    $('sheet-scrim').addEventListener('click', function(e){ if (e.target===$('sheet-scrim')) closeMobileFilters(); });
     $('sheet-clear').addEventListener('click', function(){ state.filters={types:[],portals:[],payment:[]}; openMobileFilters(); });
-    $('sheet-apply').addEventListener('click', function(){ root.innerHTML=''; state.page=1; renderResults(); renderToolbarButtons(); });
+    $('sheet-apply').addEventListener('click', closeMobileFilters);
+    asDialog($('sheet-card'), 'sheet-title', closeMobileFilters);
+    var f = keep ? root.querySelector(keep) : null;
+    try { (f || $('m-portal')).focus(); } catch(e){}
   }
   $('btn-mobile-filters').addEventListener('click', openMobileFilters);
 
   /* =========================================================
-     SYNC
+     UPDATED — reads the events again (refreshEvents) and says when the list was last read. It used to say "Updated
+     2 min ago" whatever the time, spin, toast "Event data refreshed" and read nothing (UX-022).
   ========================================================= */
+  function renderSync(){
+    var btn = $('btn-sync'), label = $('sync-label'), ic = $('sync-ic');
+    var busy = state.loading || state.refreshing;
+    ic.classList.toggle('spin-on', busy);
+    var at = state.loadedAt ? fmtTime(new Date(state.loadedAt).toISOString()) : '';
+    label.textContent = state.loading ? 'Loading…' : state.refreshing ? 'Updating…' : state.loadFailed ? 'Not loaded' : 'Updated ' + at;
+    btn.setAttribute('aria-label', state.loadFailed ? 'Load the events again' : at ? 'Read the events again. Last read at ' + at : 'Read the events again');
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
   $('btn-sync').addEventListener('click', function(){
-    var ic = $('sync-ic');
-    ic.classList.add('spin');
-    setTimeout(function(){
-      ic.classList.remove('spin');
-      $('sync-label').textContent = 'Updated just now';
-      toast('Event data refreshed');
-    }, 650);
+    if (state.loading || state.refreshing) return;
+    if (state.loadFailed){ loadAndRender(); return; }
+    loadCreateDrafts();          // the unfinished Create Event drafts are read again too
+    refreshEvents().then(function(ok){ if (ok) toast('The list is up to date (read at ' + fmtTime(new Date(state.loadedAt).toISOString()) + ').'); });
   });
 
   /* =========================================================
@@ -2679,179 +3228,6 @@
       '<span>Couldn’t load your events. Check your connection and try again.</span>' +
       '<button class="btn btn-secondary btn-sm" id="btn-retry">Retry</button></div>';
     $('btn-retry').addEventListener('click', function(){ $('error-slot').innerHTML=''; retry(); });
-  }
-
-  /* =========================================================
-     AUDIENCE SEGMENTATION — per IP event: Top Company, Top Designation,
-     Top Source, Mobile vs Desktop. Two presentations: ranked list or donut chart.
-  ========================================================= */
-  var SEG_DIM_KEY = { company:'companies', designation:'designations', source:'sources', device:'devices' };
-  var SEG_DIM_ICONS = { company:IC.building, designation:IC.userCircle, source:IC.share, device:IC.monitor };
-  var SEG_DIM_COLOR_CLASS = { company:'dim-blue', designation:'dim-teal', source:'dim-violet', device:'dim-cyan' };
-  var SEG_NAME_COL_LABEL = { company:'Company', designation:'Designation', source:'Source', device:'Device' };
-
-  function renderSegmentControls(){
-    var validIds = IP_EVENT_IDS.filter(function(id){ var e = findEvent(id); return e && (e.status==='upcoming'||e.status==='active'||e.status==='completed'); });
-    if (validIds.indexOf(state.segmentEventId) === -1) state.segmentEventId = validIds[0] || null;
-
-    var sel = $('segment-event-select');
-    if (!validIds.length){
-      sel.innerHTML = '<option>No IP events yet</option>';
-      sel.disabled = true;
-    } else {
-      sel.disabled = false;
-      sel.innerHTML = validIds.map(function(id){
-        var e = findEvent(id);
-        return '<option value="' + id + '" ' + (state.segmentEventId===id?'selected':'') + '>' + esc(e.name) + '</option>';
-      }).join('');
-    }
-    sel.onchange = function(){ state.segmentEventId = sel.value; renderSegmentControls(); renderSegmentBody(); };
-
-    $('segment-icon-avatar').innerHTML = IC.users;
-
-    $('segment-dim-tabs').innerHTML = Object.keys(SEGMENT_DIMENSIONS).map(function(k){
-      return '<button type="button" class="' + SEG_DIM_COLOR_CLASS[k] + '" aria-pressed="' + (state.segmentDimension===k) + '" data-dim="' + k + '">' + SEG_DIM_ICONS[k] + ' ' + SEGMENT_DIMENSIONS[k] + '</button>';
-    }).join('');
-    $('segment-dim-tabs').querySelectorAll('[data-dim]').forEach(function(b){
-      b.addEventListener('click', function(){ state.segmentDimension = b.getAttribute('data-dim'); renderSegmentControls(); renderSegmentBody(); });
-    });
-
-    $('segment-view-toggle').querySelectorAll('[data-segview]').forEach(function(b){
-      b.setAttribute('aria-pressed', b.getAttribute('data-segview') === state.segmentView);
-      b.onclick = function(){ state.segmentView = b.getAttribute('data-segview'); renderSegmentControls(); renderSegmentBody(); };
-    });
-  }
-
-  function renderSparkline(trend, color){
-    var w = 64, h = 22, pad = 2;
-    var max = Math.max.apply(null, trend), min = Math.min.apply(null, trend);
-    var range = (max - min) || 1;
-    var pts = trend.map(function(v,i){
-      var x = pad + (i/(trend.length-1)) * (w - 2*pad);
-      var y = h - pad - ((v-min)/range) * (h - 2*pad);
-      return x.toFixed(1) + ',' + y.toFixed(1);
-    }).join(' ');
-    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" class="seg-spark"><polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  }
-  function renderIntentBadge(shareFrac){
-    var level = shareFrac >= 0.22 ? 'high' : shareFrac >= 0.12 ? 'medium' : 'low';
-    var glyph = level === 'high' ? '&uarr;' : level === 'medium' ? '&ndash;' : '&darr;';
-    var label = level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low';
-    return '<span class="intent-badge intent-' + level + '">' + glyph + ' ' + label + '</span>';
-  }
-
-  function renderSegTopRow(insightHTML, entries, total){
-    var topN = entries.slice(0, Math.min(5, entries.length)).reduce(function(s,x){ return s + x.value; }, 0);
-    var topPct = total ? Math.round((topN/total)*100) : 0;
-    return '<div class="seg-top-row">' +
-      '<div class="seg-insight">' + insightHTML + '</div>' +
-      '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.users + '</span>' +
-        '<div><div class="seg-stat-label">Total Registrations</div><div class="seg-stat-value mono">' + fmtNum(total) + '</div></div></div>' +
-      '<div class="seg-stat-tile"><span class="seg-stat-icon">' + IC.chart + '</span>' +
-        '<div><div class="seg-stat-label">Top ' + Math.min(5, entries.length) + ' Share</div><div class="seg-stat-value mono">' + topPct + '%</div></div></div>' +
-    '</div>';
-  }
-
-  function renderSegTable(entries, total, fmtVal, dim){
-    var nameLabel = SEG_NAME_COL_LABEL[dim] || 'Name';
-    var rows = entries.map(function(x,i){
-      var pct = total ? Math.round((x.value/total)*100) : 0;
-      var color = SEG_PALETTE[i % SEG_PALETTE.length];
-      return '<tr>' +
-        '<td><span class="seg-rank-cell" style="background:' + color + '22;color:' + color + ';">' + (i+1) + '</span></td>' +
-        '<td><div class="seg-name-cell"><span class="seg-avatar" style="background:' + color + '22;color:' + color + ';">' + esc(x.label.charAt(0)) + '</span><span>' + esc(x.label) + '</span></div></td>' +
-        '<td class="mono">' + fmtVal(x.value) + '</td>' +
-        '<td class="mono">' + pct + '%</td>' +
-        '<td>' + renderSparkline(x.trend, color) + '</td>' +
-        '<td>' + renderIntentBadge(total ? x.value/total : 0) + '</td>' +
-      '</tr>';
-    }).join('');
-    return '<div class="seg-table-wrap"><table class="seg-table"><thead><tr>' +
-      '<th></th><th>' + nameLabel + '</th><th>Registered</th><th>Share</th><th>Trend (7d)</th><th>Attendance Intent</th>' +
-    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-  }
-  var SEG_OTHERS_COLOR = '#C7C3B8';
-  function buildSegSlices(entries){
-    var top = entries.slice(0, 5).map(function(x,i){ return { label:x.label, value:x.value, color:SEG_PALETTE[i % SEG_PALETTE.length] }; });
-    var othersValue = entries.slice(5).reduce(function(s,x){ return s + x.value; }, 0);
-    if (othersValue > 0) top.push({ label:'Others', value:othersValue, color:SEG_OTHERS_COLOR });
-    return top;
-  }
-  function renderSegDonut(slices, total, size){
-    size = size || 176;
-    var r = size/2 - 12, cx = size/2, cy = size/2, circ = 2*Math.PI*r;
-    var offset = 0;
-    var arcs = slices.map(function(s){
-      var frac = total ? s.value/total : 0;
-      var dash = Math.max(0, frac*circ - 3);
-      var html = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s.color + '" stroke-width="16" stroke-linecap="round" ' +
-        'stroke-dasharray="' + dash.toFixed(2) + ' ' + (circ-dash).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')">' +
-        '<title>' + esc(s.label) + ' — ' + Math.round(frac*100) + '%</title></circle>';
-      offset += frac*circ;
-      return html;
-    }).join('');
-    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" class="seg-donut">' + arcs + '</svg>';
-  }
-  function renderSegLegend(slices, total, fmtVal){
-    return '<div class="seg-legend">' + slices.map(function(s){
-      var pct = total ? Math.round((s.value/total)*100) : 0;
-      return '<div class="seg-legend-row"><span class="seg-swatch" style="background:' + s.color + ';"></span>' +
-        '<span class="seg-legend-label">' + esc(s.label) + '</span>' +
-        '<span class="seg-legend-val mono">' + fmtVal(s.value) + '</span>' +
-        '<span class="seg-legend-pct">' + pct + '%</span></div>';
-    }).join('') + '</div>';
-  }
-  function renderSegChartView(entries, total, fmtVal){
-    var slices = buildSegSlices(entries);
-    var hasOthers = entries.length > 5;
-    var centerPct, centerLabel;
-    if (hasOthers){
-      var topN = entries.slice(0, 5).reduce(function(s,x){ return s + x.value; }, 0);
-      centerPct = total ? Math.round((topN/total)*100) : 0;
-      centerLabel = 'Top 5 Share';
-    } else {
-      var top = entries[0];
-      centerPct = total ? Math.round((top.value/total)*100) : 0;
-      centerLabel = top.label;
-    }
-    return '<div class="seg-chart-row">' +
-      '<div class="seg-donut-wrap">' + renderSegDonut(slices, total) +
-        '<div class="seg-donut-center"><div class="seg-donut-center-pct">' + centerPct + '%</div><div class="seg-donut-center-label">' + esc(centerLabel) + '</div></div>' +
-      '</div>' +
-      renderSegLegend(slices, total, fmtVal) +
-    '</div>';
-  }
-
-  function renderSegmentBody(){
-    if (state.loading){
-      $('segment-body').innerHTML = Array(4).fill(0).map(function(){ return '<div class="skel skel-line" style="height:16px;margin-bottom:12px;"></div>'; }).join('');
-      return;
-    }
-    var ev = findEvent(state.segmentEventId);
-    if (!ev){
-      $('segment-sub').textContent = 'No IP events with audience data yet';
-      $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">Audience segmentation is available for Intellectual Property (IP) events once they have registrations.</p>';
-      return;
-    }
-    var dim = state.segmentDimension;
-    var audience = EVENT_AUDIENCE[ev.id] || { companies:[], designations:[], sources:[], devices:[] };
-    var entries = (audience[SEG_DIM_KEY[dim]] || []).slice().sort(function(a,b){ return b.value - a.value; });
-
-    $('segment-sub').textContent = SEGMENT_DIMENSIONS[dim] + ' for ' + ev.name;
-
-    if (!entries.length){ $('segment-body').innerHTML = '<p class="muted" style="font-size:12.5px;">No audience data yet for this event.</p>'; return; }
-
-    var total = entries.reduce(function(s,x){ return s+x.value; }, 0);
-    var top = entries[0];
-    var topShare = total ? Math.round((top.value/total)*100) : 0;
-
-    var insightHTML = IC.chart + '<span><strong>' + esc(top.label) + '</strong> leads registrations with <strong>' + topShare + '%</strong> of total registrations.</span>';
-
-    var bodyHTML = renderSegTopRow(insightHTML, entries, total) + (state.segmentView === 'chart'
-      ? renderSegChartView(entries, total, fmtNum)
-      : renderSegTable(entries.slice(0, 5), total, fmtNum, dim));
-
-    $('segment-body').innerHTML = bodyHTML;
   }
 
   /* =========================================================
@@ -3107,53 +3483,75 @@
   ========================================================= */
   function renderApp(){
     renderPortalView();
-    renderMoreMenu();
-    renderTabs();
     renderSpecialBanner();
-    renderCreateDrafts();
-    renderInsightsTitle();
-    renderKPIs();
     renderToolbarButtons();
-    renderResults();
-    renderSegmentControls();
-    renderSegmentBody();
-    renderActivity();
+    renderResults();              // the Insights cards with it: they count what the list shows (renderInsights)
+    renderSync();
+    /* when the events could not be loaded, Latest activity is not shown either: one failed state, not a page of
+       figures beside a list that says it is empty (UX-027) */
+    $('lower-panels').hidden = !!state.loadFailed;
+    if (!state.loadFailed) renderActivity();
   }
 
   /* =========================================================
      UNFINISHED IN CREATE EVENT (UX-048)
      Create Event saves each draft to the person's own account (create-drafts.js, functions/lib/create-drafts.js), so
-     the Drafts view lists them here, above the draft events, with Resume (it opens on any computer) and Discard. A
-     draft that has already made its event says so: that event is in the list below as well, and stays when the draft
-     is discarded. The working portal narrows them as it narrows the events; one with no portal yet is always shown.
+     the Drafts tab lists them here, above the draft events, with Resume (it opens on any computer) and Discard. They
+     are not events yet, so they sit in a box of their own with its own heading and words, and the tab's count adds
+     them to the draft events. A draft that has already made its event says so: that event is in the list below as
+     well, and stays when the draft is discarded. The working portal narrows them as it narrows the events (one with
+     no portal yet, still on Create Event's first screen, is shown on every portal), and so do the search and the
+     Type and Portal filters; a date filter hides them, since they have no dates yet, and says so.
   ========================================================= */
   var CDRAFTS = { state: 'idle', list: [], error: '' };     // state: idle | loading | ready | error
+  var CDRAFT_TYPE = { IP: 'ip', Client: 'client', Awards: 'awards' };
   function loadCreateDrafts(){
     if (!window.RevampCreateDrafts){ CDRAFTS.state = 'error'; CDRAFTS.error = 'This page did not load completely. Reload it to see them.'; renderCreateDrafts(); return; }
-    if (!CDRAFTS.list.length) CDRAFTS.state = 'loading';
-    renderCreateDrafts();
+    /* nothing is drawn while the first answer is awaited: most people have no unfinished draft, and an empty box that
+       appears and goes would only move the list */
+    if (CDRAFTS.state !== 'ready') CDRAFTS.state = 'loading';
     /* a discard that could not reach the server earlier is made first, so it is never listed again */
     RevampCreateDrafts.flushRemovals().then(function(){ return RevampCreateDrafts.list(); }).then(function(list){
       CDRAFTS.list = list; CDRAFTS.state = 'ready'; CDRAFTS.error = '';
-      renderCreateDrafts();
+      renderCreateDraftsAndCounts();
     }, function(err){
       CDRAFTS.state = 'error'; CDRAFTS.error = (err && err.message) || 'The server could not be reached.';
-      renderCreateDrafts();
+      renderCreateDraftsAndCounts();
     });
   }
+  /* the box, and the Drafts tab's count and an empty list's words, which both count the box too */
+  function renderCreateDraftsAndCounts(){ if (state.loading) renderCreateDrafts(); else renderResults(); }
   /* back from Create Event by the browser's Back button: the page comes from its cache, so the list is read again */
   window.addEventListener('pageshow', function(e){ if (e.persisted) loadCreateDrafts(); });
-  function createDraftsInView(){
+  function createDraftsOnPortal(){
     return CDRAFTS.list.filter(function(d){ var p = d.summary && d.summary.portal; return !p || state.portal === 'all' || p === state.portal; });
+  }
+  /* d (a list() row) against the search and the Type and Portal filters, as an event is (matches) */
+  function createDraftMatches(d){
+    var s = d.summary || {};
+    if (state.filters.types.length && state.filters.types.indexOf(CDRAFT_TYPE[s.category] || '') === -1) return false;
+    if (state.portal === 'all' && state.filters.portals.length && state.filters.portals.indexOf(s.portal || 'none') === -1) return false;
+    if (state.search){
+      var q = searchLine(state.search, 80).toLowerCase();
+      var cells = [s.name || 'Untitled event', s.client || '', s.portal ? portalNameOf(s.portal) : 'No portal yet'];
+      if (!cells.some(function(v){ return searchLine(v, 200).toLowerCase().indexOf(q) !== -1; })) return false;
+    }
+    return true;
+  }
+  /* the unfinished drafts the Drafts tab shows now; none while a date filter is on (they have no dates yet) */
+  function createDraftsShown(){
+    if (CDRAFTS.state !== 'ready' || state.created || state.starts) return [];
+    return createDraftsOnPortal().filter(createDraftMatches);
   }
   function createDraftRow(d){
     var w = RevampCreateDrafts.describe(d, { portalName: function(slug){ return portalNameOf(slug); } });
     var href = 'create-event.html?draft=' + encodeURIComponent(d.id);
     var meta = [w.type, w.portal, w.where, w.when ? 'Last edited ' + w.when : ''].filter(Boolean).join(' · ');
-    return '<li class="cdraft">' +
+    return '<li class="cdraft" data-cdraft="' + esc(d.id) + '">' +
       '<div class="cdraft-main"><a class="cdraft-name" href="' + esc(href) + '">' + esc(w.name) + '</a>' +
         '<div class="cdraft-meta">' + esc(meta) + '</div>' +
-        (w.eventId ? '<div class="cdraft-meta">Its event, <span class="mono">' + esc(w.eventId) + '</span>, is already created: it is in your events as a draft too.</div>' : '') +
+        '<div class="cdraft-meta">' + (w.eventId ? 'Its event, <span class="mono">' + esc(w.eventId) + '</span>, is already created: it is in the draft events below too.'
+          : 'Not an event yet: it becomes one when you finish it in Create Event.') + '</div>' +
       '</div>' +
       '<div class="cdraft-actions"><a class="btn btn-secondary btn-sm" href="' + esc(href) + '" aria-label="Resume ' + esc(w.name) + '">Resume</a>' +
         '<button class="btn btn-ghost btn-sm" type="button" data-cdraft-discard="' + esc(d.id) + '" aria-label="Discard ' + esc(w.name) + '">Discard</button></div>' +
@@ -3162,69 +3560,63 @@
   function renderCreateDrafts(){
     var el = $('create-drafts');
     if (!el) return;
-    if (state.specialView !== 'draft'){ el.innerHTML = ''; return; }
-    var head = '<div class="cdrafts-head"><h2 tabindex="-1">Unfinished in Create Event</h2>';
-    if (CDRAFTS.state === 'idle' || CDRAFTS.state === 'loading'){
-      el.innerHTML = '<div class="cdrafts">' + head + '</div><p class="cdrafts-note">Loading your drafts…</p></div>';
-      return;
-    }
+    if (state.specialView !== 'draft' || CDRAFTS.state === 'idle' || CDRAFTS.state === 'loading'){ el.innerHTML = ''; return; }
+    var head = '<div class="cdrafts-head"><h2 id="cdrafts-title" tabindex="-1">Unfinished in Create Event</h2>';
     if (CDRAFTS.state === 'error'){
-      el.innerHTML = '<div class="cdrafts">' + head + '</div><div class="cdrafts-error" role="alert"><span>Your unfinished drafts could not be loaded: ' + esc(CDRAFTS.error.replace(/\.$/, '')) + '.</span>' +
+      el.innerHTML = '<div class="cdrafts">' + head + '</div><div class="cdrafts-error" role="alert"><span>Your unfinished Create Event drafts could not be loaded: ' + esc(CDRAFTS.error.replace(/\.$/, '')) + '. Your events below are not affected.</span>' +
         '<button class="btn btn-secondary btn-sm" type="button" id="cdrafts-retry">Try again</button></div></div>';
       $('cdrafts-retry').addEventListener('click', loadCreateDrafts);
       return;
     }
-    var shown = createDraftsInView(), elsewhere = CDRAFTS.list.length - shown.length;
-    if (!CDRAFTS.list.length){ el.innerHTML = ''; return; }
+    var onPortal = createDraftsOnPortal(), shown = createDraftsShown();
+    var elsewhere = CDRAFTS.list.length - onPortal.length, hidden = onPortal.length - shown.length;
+    if (!CDRAFTS.list.length || (!shown.length && !elsewhere && !hidden)){ el.innerHTML = ''; return; }
+    var notes = [];
+    if (hidden) notes.push((state.created || state.starts)
+      ? (hidden === 1 ? '1 is' : hidden + ' are') + ' not shown while a date filter is on: they have no dates yet.'
+      : (hidden === 1 ? '1 does' : hidden + ' do') + ' not match the search or filters.');
+    if (elsewhere) notes.push((elsewhere === 1 ? '1 more is' : elsewhere + ' more are') + ' on other portals: choose All portals to see ' + (elsewhere === 1 ? 'it' : 'them') + '.');
     el.innerHTML = '<div class="cdrafts">' + head + '<span class="tc">' + shown.length + '</span></div>' +
-      '<p class="cdrafts-note">Saved to your account as you typed them. Resume one on any computer.' +
-        (elsewhere ? ' ' + (elsewhere === 1 ? '1 more is' : elsewhere + ' more are') + ' on other portals: choose All portals to see ' + (elsewhere === 1 ? 'it' : 'them') + '.' : '') + '</p>' +
+      '<p class="cdrafts-note">Events you started in Create Event and have not finished, saved to your account as you typed them. Resume one on any computer.' +
+        (notes.length ? ' ' + notes.join(' ') : '') + '</p>' +
       (shown.length ? '<ul class="cdrafts-list">' + shown.map(createDraftRow).join('') + '</ul>' : '') +
     '</div>';
     Array.prototype.forEach.call(el.querySelectorAll('[data-cdraft-discard]'), function(b){
       b.addEventListener('click', function(){ confirmDiscardCreateDraft(b.getAttribute('data-cdraft-discard'), b); });
     });
   }
-  /* Discard asks first and names what goes (the draft, its pictures) and what stays (an event it already made) */
-  function confirmDiscardCreateDraft(id, returnTo){
+  /* Discard asks first and names what goes (the draft, its pictures) and what stays (an event it already made). After
+     it, the focus goes to the next unfinished draft, else to the box's heading, else to the search box. */
+  function confirmDiscardCreateDraft(id, opener){
     var d = CDRAFTS.list.filter(function(x){ return x.id === id; })[0];
     if (!d) return;
     var w = RevampCreateDrafts.describe(d, { portalName: portalNameOf });
-    var root = $('sheet-root');
-    root.innerHTML = '<div class="modal-scrim" id="cdd-scrim"><div class="modal-card fade-in" role="dialog" aria-modal="true" aria-labelledby="cdd-title">' +
-      '<div class="modal-card-head"><div><h3 id="cdd-title">Discard “' + esc(w.name) + '”?</h3><p>Everything entered in this draft is deleted, from your account and every computer, with its logo and pictures. This cannot be undone.</p></div>' +
-        '<button class="icon-btn" id="cdd-close" type="button" aria-label="Close">' + IC.x + '</button></div>' +
-      (w.eventId ? '<div class="modal-card-body"><p style="margin:0;font-size:13px;">Its event, <span class="mono">' + esc(w.eventId) + '</span>, is not deleted: it stays in your events.</p></div>' : '') +
-      '<div class="modal-card-foot"><button class="btn btn-secondary" type="button" id="cdd-keep">Keep it</button><button class="btn btn-primary" type="button" id="cdd-go" style="margin-left:auto;">Discard draft</button></div>' +
-    '</div></div>';
-    function close(){
-      document.removeEventListener('keydown', onKey);
-      root.innerHTML = '';
-      if (returnTo && returnTo.isConnected !== false){ try { returnTo.focus(); } catch(e){} }
-    }
-    function onKey(e){ if (e.key === 'Escape') close(); }
-    document.addEventListener('keydown', onKey);
-    $('cdd-close').addEventListener('click', close);
-    $('cdd-keep').addEventListener('click', close);
-    $('cdd-scrim').addEventListener('click', function(e){ if (e.target === $('cdd-scrim')) close(); });
-    $('cdd-go').addEventListener('click', function(){
-      var go = $('cdd-go');
-      go.disabled = true;
-      RevampCreateDrafts.remove(id).then(function(){
-        try { RevampCreateDrafts.forgetLocal(window.localStorage, id); } catch(e){}
-        CDRAFTS.list = CDRAFTS.list.filter(function(x){ return x.id !== id; });
-        returnTo = null;
-        close();
-        renderCreateDrafts();
-        toast('Draft discarded: ' + w.name);
-        var next = document.querySelector('#create-drafts .cdraft-name, #create-drafts h2');
-        if (next){ try { next.focus(); } catch(e){} }
-      }, function(err){
-        go.disabled = false;
-        toast('The draft could not be discarded: ' + ((err && err.message) || 'please try again.'));
-      });
+    openDialog({
+      title: 'Discard “' + w.name + '”?',
+      sub: 'Everything entered in this draft is deleted, from your account and from every computer, with its logo and pictures. This cannot be undone.',
+      body: w.eventId ? '<p style="margin:0;font-size:13px;">Its event, <span class="mono">' + esc(w.eventId) + '</span>, is not deleted: it stays in your draft events.</p>' : '',
+      action: 'Discard draft', danger: true, opener: opener,
+      onAction: function(dlg){
+        dlg.setBusy(true, 'Discarding…');
+        dlg.error('');
+        var ids = shownIds(), at = ids.indexOf(id);
+        RevampCreateDrafts.remove(id).then(function(){
+          try { RevampCreateDrafts.forgetLocal(window.localStorage, id); } catch(e){}
+          CDRAFTS.list = CDRAFTS.list.filter(function(x){ return x.id !== id; });
+          dlg.opener = null;
+          $('sheet-root').innerHTML = '';
+          renderResults();
+          toast('Draft discarded: ' + w.name);
+          var left = shownIds(), next = left[Math.min(at, left.length - 1)];
+          var to = next ? document.querySelector('#create-drafts [data-cdraft="' + next + '"] .cdraft-name') : $('cdrafts-title');
+          try { (to || $('search-input')).focus(); } catch(e){}
+        }, function(err){
+          dlg.setBusy(false);
+          dlg.error('The draft could not be discarded: ' + String((err && err.message) || 'please try again.').replace(/\.$/, '') + '. It is still in your account.');
+        });
+      }
     });
-    try { $('cdd-keep').focus(); } catch(e){}
+    function shownIds(){ return createDraftsShown().map(function(x){ return x.id; }); }
   }
 
   /* =========================================================
@@ -3237,19 +3629,20 @@
   function openHelpModal(returnTo){
     var root = $('sheet-root');
     root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
-      '<div class="modal-card-head"><div><h3>Need help?</h3><p>Send your query about this dashboard or an event, straight to our team.</p></div>' +
+      '<div class="modal-card-head"><div><h3 id="help-title">Need help?</h3><p>Send your query about this dashboard or an event, straight to our team.</p></div>' +
         '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
       '<div class="modal-card-body">' +
-        '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" type="button">' + IC.copy + '</button></div>' +
-        '<div><label class="flabel">Subject</label><input class="finput" id="help-subject" value="Support request — Events dashboard"></div>' +
-        '<div><label class="flabel">Your query</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with — an event, registrations, payments, anything…"></textarea></div>' +
+        '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" aria-label="Copy address" type="button">' + IC.copy + '</button></div>' +
+        '<div><label class="flabel" for="help-subject">Subject</label><input class="finput" id="help-subject" value="Support request — Events dashboard"></div>' +
+        '<div><label class="flabel" for="help-message">Your query</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with: an event, its site, registrations, promotions…"></textarea></div>' +
       '</div>' +
       '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Cancel</button><button class="btn btn-primary" id="help-send" style="margin-left:auto;">' + IC.mail + ' Send via email</button></div>' +
     '</div></div>';
     function close(){
       root.innerHTML='';
-      if (returnTo && typeof returnTo.focus === 'function' && returnTo.isConnected !== false){ try { returnTo.focus(); } catch(e){} }
+      giveFocusBack(returnTo);
     }
+    asDialog(root.querySelector('.modal-card'), 'help-title', close);
     $('help-close').addEventListener('click', close);
     $('help-cancel').addEventListener('click', close);
     $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
@@ -3279,7 +3672,8 @@
      from here: every fact it states comes from its server. Nothing in here deletes, cancels, publishes or
      changes an event.
   ========================================================= */
-  var LISTING_SORTS = { start:1, registrations:1, visitors:1, payment:1 };
+  /* updated: Last edited (UX-037), so an Undo puts a list sorted that way back as it was */
+  var LISTING_SORTS = { start:1, updated:1, registrations:1, visitors:1 };
   function listingMe(){
     var u = null;
     try { u = window.RevampAuth && typeof window.RevampAuth.currentUser === 'function' ? window.RevampAuth.currentUser() : null; } catch(e){}
@@ -3336,14 +3730,14 @@
     return out;
   }
   /* Puts the list on ETB2B AI's view: {view, search, types, mine, created, starts, sort[, portal]}. The list then
-     shows exactly what the bot's card says, so a filter it does not name (a portal or payment pick) is cleared
+     shows exactly what the bot's card says, so a filter it does not name (a portal pick) is cleared
      too; a missing view or sort keeps the current one. portal, when given, is the portal scope to show
      (showScope, which never moves the portal the person works in). Returns the list as it was before, for Undo. */
   function listingApply(patch){
     var before = listingSnapshot();
     var p = patch && typeof patch === 'object' ? patch : {};
-    if (p.view === 'active' || p.view === 'upcoming' || p.view === 'completed'){ state.tab = p.view; state.specialView = null; }
-    else if (p.view === 'draft' || p.view === 'cancelled'){ state.specialView = p.view; }
+    /* the list's own move between tabs (setBucket), so a sort left as it was follows the new list's default */
+    if (['active','upcoming','completed','draft','cancelled'].indexOf(p.view) !== -1) setBucket(p.view);
     state.search = typeof p.search === 'string' ? p.search.trim().slice(0, 80) : '';
     state.filters = { types: knownTypes(p.types), portals: [], payment: [] };
     if (scopeOk(p.portal)) showScope(p.portal);
@@ -3372,7 +3766,7 @@
     state.tab = ['active','upcoming','completed'].indexOf(snap.tab) !== -1 ? snap.tab : 'active';
     state.specialView = ['draft','cancelled','deleted'].indexOf(snap.specialView) !== -1 ? snap.specialView : null;
     state.search = typeof snap.search === 'string' ? snap.search : '';
-    state.filters = { types: knownTypes(f.types), portals: knownPortalFilters(f.portals), payment: knownKeys(f.payment, { paid:1, free:1 }) };
+    state.filters = { types: knownTypes(f.types), portals: knownPortalFilters(f.portals), payment: [] };
     state.created = cleanRange(snap.created);
     state.starts = cleanRange(snap.starts);
     state.mine = snap.mine === true;
@@ -3420,6 +3814,7 @@
   function loadAndRender(){
     $('error-slot').innerHTML = '';
     state.loading = true;
+    state.loadFailed = null;
     forgetActivity();             // a reload (or Try again) reads the activity figures afresh too
     renderApp();
     /* the first list also waits (at most 3 s, and only when this browser remembers nothing) for the working portal */
@@ -3427,18 +3822,24 @@
       var rows = got[0];
       EVENTS.length = 0;
       rows.forEach(function(row){ EVENTS.push(row); });
-      recomputeDerived();
       state.loading = false;
+      state.loadedAt = Date.now();
+      landingTab();
       renderApp();
       markListingReady();
     }).catch(function(err){
+      /* one failed state where the list would be, worded by its cause, with Try again; no counts, no figures and no
+         "Create your first event" beside it, so nobody thinks their events are gone (UX-027) */
       state.loading = false;
+      state.loadFailed = { status: Number(err && err.status) || 0, offline: !!(window.navigator && window.navigator.onLine === false), message: String((err && err.message) || '') };
+      EVENTS.length = 0;
       renderApp();
-      renderErrorBanner(loadAndRender);
       markListingReady();
       console.warn('[Event Listing] Could not load events: ' + (err && err.message));
     });
   }
+  /* back online after a failed load: load again by itself */
+  window.addEventListener('online', function(){ if (state.loadFailed) loadAndRender(); });
 
   function init(){
     try {
@@ -3446,7 +3847,11 @@
       wireViewToggle();
       applyView();
       startPortals();
+      /* the toasts (Clone, Delete, Restore, Updated) are read out by screen readers as they come */
+      $('toast-region').setAttribute('role', 'status');
+      $('toast-region').setAttribute('aria-live', 'polite');
       loadAndRender();
+      loadApprovers();
       loadCreateDrafts();
     } catch(err){
       renderErrorBanner(init);

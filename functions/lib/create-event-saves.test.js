@@ -63,11 +63,11 @@ check('UX-044 the previous-edition button is never the red primary', SRC.indexOf
 check('UX-048 the header says where the draft is, hidden until there is one', /<span class="save-state" id="save-state" title="Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer\." hidden><span class="d"><\/span>Saved to your account<\/span>/.test(page) &&
   page.indexOf('Draft autosaved</span>') === -1 && SRC.indexOf("'Draft autosaved'") === -1);
 check('UX-048 the page loads create-drafts.js before its own script', page.indexOf('<script src="create-drafts.js"></script>') !== -1 && page.indexOf('<script src="create-drafts.js"></script>') < page.indexOf(SRC));
-check('UX-048 the dashboard lists the drafts in its Drafts view, with Resume and Discard', (function () {
+check('UX-048 the dashboard lists the drafts in its Drafts tab, with Resume and Discard', (function () {
   var L = F.read('Event_Listing.html');
   return L.indexOf('<script src="create-drafts.js"></script>') !== -1 && L.indexOf('<section id="create-drafts" aria-label="Unfinished in Create Event"></section>') !== -1 &&
-    /function renderCreateDrafts\(\)\{[\s\S]*?if \(state\.specialView !== 'draft'\)/.test(L) && L.indexOf('>Resume</a>') !== -1 && L.indexOf('data-cdraft-discard=') !== -1 &&
-    /function renderApp\(\)\{[\s\S]*?renderCreateDrafts\(\);/.test(L);
+    /function renderCreateDrafts\(\)\{[\s\S]*?if \(state\.specialView !== 'draft'/.test(L) && L.indexOf('>Resume</a>') !== -1 && L.indexOf('data-cdraft-discard=') !== -1 &&
+    /function renderResults\(\)\{[\s\S]*?renderCreateDrafts\(\);/.test(L);     // events-dashboard-drafts.test.js runs it
 })());
 check('UX-048 Save & exit goes to the dashboard\'s Drafts, where the draft is listed', SRC.indexOf("window.location.href = 'Event_Listing.html' + (toDrafts === true ? '#view=draft' : '');") !== -1 &&
   SRC.indexOf("toast('Draft saved to your account. It is under Drafts on the events dashboard.');") !== -1);

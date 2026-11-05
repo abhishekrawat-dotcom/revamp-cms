@@ -84,13 +84,33 @@
   }
 }
 
+/* Six cards in a row only where each is wide enough for a long word in capitals ("PERSONALISATION" is about 125 px
+   at 16 px): below 1200 px the row was cut into 110-145 px cards and the word was clipped on both sides. Three a
+   row on tablets and small laptops, two on large phones, one on phones (below). A word wider than its card still
+   breaks inside the card instead of being cut off. */
+#conventions-box .conventions-grid li h3 {
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+@media screen and (max-width: 1199px) {
+  #conventions-box .conventions-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media screen and (min-width: 576px) and (max-width: 767px) {
+  #conventions-box .conventions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media screen and (max-width: 767px) {
   #conventions-box .page_hdng4 h2 {
     margin-bottom: 15px;
   }
 
   #conventions-box .conventions-grid {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
     gap: 16px;
   }
 
@@ -105,5 +125,11 @@
   #conventions-box .conventions-grid li h3 {
     font-size: 16px;
     letter-spacing: normal;
+  }
+}
+
+@media screen and (max-width: 575px) {
+  #conventions-box .conventions-grid {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }

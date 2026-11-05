@@ -34,7 +34,7 @@ Three module families exist, each with its own state, styling, and page shell â€
 
 | Family | Pages | Shared module | Own `:root` palette |
 | --- | --- | --- | --- |
-| **Event console** | `dashboard.html`, `edit-event.html`, `edit-event-dashboard.html/js`, `edit-event-marketing.html/js`, `custom_editor.html`, `audience-registrations.html`, `marketing.html`, `settings.html` | `edit-event-core.js` (`RevampCore`) + `edit-event.css` | `edit-event.css` |
+| **Event console** | `dashboard.html`, `edit-event.html`, `edit-event-dashboard.html/js`, `custom_editor.html`, `audience-registrations.html`, `marketing.html`, `settings.html` | `edit-event-core.js` (`RevampCore`) + `edit-event.css` | `edit-event.css` |
 | **Event creation** | `create-event.html` | none (self-contained, ~4000 lines) | own `:root` |
 | **Event catalogue** | `Event_Listing.html` | none | own `:root` |
 | **Payments** | `payment/html_version/*` | own `data.js` / `index.js` / `sidebar.js` | own stylesheet |

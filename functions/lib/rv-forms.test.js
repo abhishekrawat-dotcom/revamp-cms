@@ -222,7 +222,9 @@ check('no class syntax', !/(^|\s)class\s+[A-Z]/.test(code));
   'Loading the form…',
   'This form could not be loaded. Please check your connection and try again.',
   'This form is not available right now.',
-  'Fill in again',
+  'Register someone else',
+  'Send another response',
+  'Add to calendar',
   'Untitled field',
   'no longer exists. Choose another form in the editor.'
 ].forEach(function (s) { check('says "' + s + '"', SRC.indexOf(s) !== -1); });

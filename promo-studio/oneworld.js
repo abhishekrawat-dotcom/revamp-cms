@@ -37,20 +37,32 @@
      - a mail leaves only with its current banner (owner C): before a mailer is opened, moved to another layout,
        downloaded, copied or exported, the page around this frame is asked to draw the event's mail banner if it is
        out of date (promo-banner.js), and a request the server refused for a stale banner is made again, once.
+     - a site that is not published yet (UX-117): every link in a mail leads to it, so the mailer page and the studio
+       say so, and Download to send, Copy HTML and Download all ask before the mail is handed out (owMaySend).
+     - unsaved edits are never dropped without asking (UX-119, UX-125): ←, Escape and another mailer picked in the
+       studio's menu ask in the studio's own dialog (owMayLeave), in the words Social posts and Site-look posts use.
+     - batch B20: the console's header above this frame already names the event, so the mailer page shows one slim
+       line of what only it says (UX-134); award mailers on an event that is not an award are folded away under their
+       heading (UX-138); the mail is scaled to fit a narrow studio (UX-136); the ZIP is named after the event and
+       picture sizes read in KB / MB (UX-136); the dashboard does not say "nothing made yet" while nothing can be
+       recorded (UX-133); the team's page has no nav of its own and lines up with the bar above it (UX-136, UX-139).
 
    Function declarations here replace the platform's of the same name: this file is the last script. Oneworld's
    own versions: mark and crumbs (this page keeps no URL or crumb trail of its own), showPortals (the event's
    mailer page, or the event listing), showAnalytics (the platform's, with the OW_VIEW check and Try again),
    anOpen, anToggleVer (by row index), mlExport, and mailerArt and savedCardHtml (a card's live preview).
-   Wrapped: openMailer, closeMailer, rankCard, mailerCards, refreshMailerCards, paintAnalytics, toast. The
-   platform's code calls owTrackToast, owDashSubline, owDashPickLabel and anOpenRow through the PATCHES in
+   Wrapped: openMailer, closeMailer, mlDownload, mlCopy, mlBusy, mlFit, mlDropShow, uiOpen, rankCard, mailerCards,
+   refreshMailerCards, paintAnalytics, toast. The platform's code calls owTrackToast, owDashSubline, owDashPickLabel,
+   anOpenRow, owMayLeave, owMaySend, owFieldValue, owZipName and owDashNotRecorded through the PATCHES in
    tools/extract-promo-studio.py. */
 
 /* ---------- the event, or the whole team ---------- */
 var EVENT_ID = new URLSearchParams(location.search).get('event') || '';
 /* ?scope=all, with no event, is the team's Mailer performance page: the dashboard over every event's mailers */
 var OW_SCOPE = (!EVENT_ID && new URLSearchParams(location.search).get('scope') === 'all') ? 'all' : 'event';
-var S = { portal: null, portalName: null, event: EVENT_ID, award: null, kind: 'events', product: 'mail', section: 'mail' };
+/* the team's page is styled apart (oneworld.css body.ow-team): no nav row, and its content in the bar's column */
+if (document.body) document.body.classList.toggle('ow-team', OW_SCOPE === 'all');
+var S ={ portal: null, portalName: null, event: EVENT_ID, award: null, kind: 'events', product: 'mail', section: 'mail' };
 function mark() { /* the platform keeps its own URL in step; this page's URL is the event's, and stays */ }
 function crumbs() { /* Promotions and the team page have their own headings: the crumb trail has no place here */ }
 
@@ -239,21 +251,10 @@ function owRenderPage() {
   setProdNav('events');
   var ev = (MAILERS && MAILERS.event) || {};
   var mailCount = ((MAILERS && MAILERS.mailers) || []).filter(function (m) { return m.available; }).length;
-  var site = ev.micrositeUrl;
-  $('content').innerHTML =
-    '<div class="ev-head">' +
-      '<div class="logo grad"' + (ev.siteAccent ? ' style="background:' + escapeHtml(ev.siteAccent) + '"' : '') + '></div>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap"><h2>' + escapeHtml(ev.name || '') + '</h2>' +
-          (ev.hashtag ? '<span class="hchip">' + escapeHtml(ev.hashtag) + '</span>' : '') +
-          (site ? '<a class="chip" href="' + escapeHtml(site) + '" target="_blank" rel="noopener" style="text-decoration:none">Website ↗</a>' : '') + '</div>' +
-        '<div class="row">' +
-          '<div class="stat">' + escapeHtml(ev.dateLabel || '—') + ' <span>date</span></div>' +
-          '<div class="stat">' + escapeHtml(ev.venue || '—') + ' <span>venue</span></div>' +
-          '<div class="stat">' + mailCount + ' <span>mailers available</span></div>' +
-        '</div>' +
-      '</div>' +
-    '</div>' +
+  /* the server sends the site's address only while it is live (promo-mailer.js handleCatalog) */
+  var live = owSiteLive(), site = live ? ev.micrositeUrl : '';
+  $('content').innerHTML = owFactsLine(ev, live, site) +
+    (live ? '' :'<div class="ow-unpub" role="note">' + OW_UNPUBLISHED + ' <a href="' + escapeHtml(owPublishLink()) + '" target="_top">' + OW_PUBLISH_FIRST + '</a></div>') +
     '<div id="evNav" class="secnav">' +
       '<button id="nav-mail" class="on" type="button">Promotional mailers <span class="n">' + mailCount + '</span></button>' +
       '<span class="sp" id="secActions">' +
@@ -269,6 +270,17 @@ function owRenderPage() {
     '</div>';
   owMountPreviews();
   owReportHeight();
+}
+/* UX-134: the console's header above this frame already names the event and its date, and the platform's event
+   card repeated them (with the venue and an empty logo square), filling a phone's first screen. One slim line keeps
+   what only this page says: the hashtag the mails carry, and the site's address while it is live, or that it is not
+   published yet. How many mailers the event can make is on the Promotional mailers tab just below. */
+function owFactsLine(ev, live, site) {
+  return '<div class="ow-facts">' +
+    (ev.hashtag ? '<span class="hchip">' + escapeHtml(ev.hashtag) + '</span>' : '') +
+    (site ? '<a class="chip" href="' + escapeHtml(site) + '" target="_blank" rel="noopener">Website ↗</a>' : '') +
+    (live ? '' : '<span class="chip ow-unpub-chip">Not published yet</span>') +
+  '</div>';
 }
 /* The landing, as the platform's chooseProduct: a deep link (?mailer=) opens the studio; otherwise an event that
    already has a mailer out opens on its dashboard (how did the last one do?), and one with none on its mailer
@@ -292,6 +304,7 @@ function owBoot(page) {
   }).then(function (j) {
     MAILERS = j;
     document.body.classList.toggle('ow-notrack', j.tracking === false);
+    owMarkStudio();
     S.portal = (j.event && j.event.portal) || '';
     S.portalName = (j.event && j.event.portalName) || S.portal;
     owSortCatalog();
@@ -336,6 +349,77 @@ function owPeek() {
   });
 }
 
+/* ---------- a site that is not published yet (UX-117) ----------
+   The Register button and every other link in a mail lead to the event's site, which answers "not found" until it
+   is published. The catalog says whether it is (event.published, promo-mailer.js); a catalog that does not say is
+   taken as live, so nobody is warned for nothing. While it is not: the mailer page shows "Not published yet" in
+   place of Website ↗ and a note above the cards, the studio's bar says so, and Download to send, Copy HTML and
+   Download all (PATCHES P25) hand out the mail only after the sender has chosen to. Publishing is done on the event's
+   own page in the console (its Publish button). */
+var OW_UNPUBLISHED = 'This event’s site isn’t published yet — the Register button and links in these mails will not work until it is.';
+var OW_PUBLISH_FIRST = 'Publish it from the event’s page →';
+function owSiteLive() { return !(MAILERS && MAILERS.event && MAILERS.event.published === false); }
+function owPublishLink() { return '/edit-event.html?event=' + encodeURIComponent(EVENT_ID); }
+/* the studio's bar: a pill beside the version name while the site is not live (the studio's markup is the platform's,
+   so the pill is put in once the catalog has said) */
+function owMarkStudio() {
+  var acts = document.querySelector('#mailer .ed-top .acts'), pill = $('owUnpub');
+  if (!acts) return;
+  if (owSiteLive()) { if (pill && pill.parentNode) pill.parentNode.removeChild(pill); return; }
+  if (pill) return;
+  pill = document.createElement('span');
+  pill.id = 'owUnpub';
+  pill.className = 'ow-unpub-pill';
+  pill.textContent = 'Site not published';
+  pill.title = 'The Register button and links in this mail will not work until the event’s site is published.';
+  acts.insertBefore(pill, acts.firstChild);
+}
+/* true when the mail may be handed out: at once while the site is live, else when the sender chooses to */
+function owMaySend(kind) {
+  if (owSiteLive()) return Promise.resolve(true);
+  var copy = kind === 'copy', what = kind === 'zip' ? 'these mails' : 'this mail';
+  return uiConfirm('This event’s site isn’t published yet',
+    'The Register button and links in ' + what + ' will not work until it is. <a href="' + escapeHtml(owPublishLink()) + '" target="_top">Publish it from the event’s page</a>, or ' +
+      (copy ? 'copy' : 'download') + ' ' + (kind === 'zip' ? 'them' : 'it') + ' now and send ' + (kind === 'zip' ? 'them' : 'it') + ' once the site is live.',
+    { ok: copy ? 'Copy anyway' : 'Download anyway', cancel: 'Cancel' }).then(function (yes) { return !!yes; });
+}
+var owMlDownload = mlDownload, owMlCopy = mlCopy;
+mlDownload = function () { return owMaySend('download').then(function (go) { return go ? owMlDownload() : null; }); };
+/* the menu closes at once, as the platform's own Copy HTML closes it */
+mlCopy = function () { closeMenus(); return owMaySend('copy').then(function (go) { return go ? owMlCopy() : null; }); };
+
+/* ---------- unsaved edits (UX-119, UX-125) ----------
+   ← and Escape (PATCHES P13), and another mailer picked in the studio's menu (P14), ask before a mailer with
+   unsaved edits is put away, in the studio's own dialog and the words Social posts and Site-look posts use. The
+   platform asked only on ←, with the browser's confirm, and the menu dropped the edits without a word. Resolves true
+   when the studio may go on. */
+function owMayLeave(why) {
+  if (typeof MD === 'undefined' || !MD.dirty) return Promise.resolve(true);
+  return uiConfirm('Leave without saving?', 'This mailer has changes that are not saved.' + (why === 'switch' ? ' Opening another mailer drops them.' : ''),
+    { ok: 'Leave without saving', cancel: 'Keep editing', danger: true }).then(function (yes) { return !!yes; });
+}
+
+/* ---------- what a block's setting shows (UX-120, PATCHES P24) ----------
+   Its own value; for a menu with none, the value the mail is drawn with: the field's default, or, where the default
+   follows another field (a speaker layout's "Per row"), the default for that field's value. The platform showed a
+   menu's first choice instead, so every paragraph read Italic: Show and Line height: Tight while the mail was
+   neither, and choosing that first choice changed nothing. Other kinds of field show only the block's own value, as
+   before: a text field's default is not always what the mail prints. */
+function owFieldValue(b, f, schema) {
+  var v = b && b.props ? b.props[f.key] : undefined;
+  if (v != null || f.type !== 'select') return v;
+  var by = f.defaultBy;
+  if (by && by.on && by.map) {
+    var on = b.props[by.on];
+    if (on == null) {
+      var src = ((schema && schema.fields) || []).filter(function (x) { return x.key === by.on; })[0];
+      on = src ? src.default : undefined;
+    }
+    if (on != null && Object.prototype.hasOwnProperty.call(by.map, String(on))) return String(by.map[String(on)]);
+  }
+  return f.default;
+}
+
 /* ---------- the cards: this event's real mail (owner B) ----------
    Each card's picture slot (.ow-prev) names what it shows: data-prev="tpl:<mailerId>" (the mailer as a fresh
    build would send it) or "save:<saveId>" with data-ver="<savedAt>" (that saved version as it is now). One
@@ -374,7 +458,10 @@ function savedCardHtml(s) {
     '\n  </div>';
 }
 /* The platform's template cards; on an event that is not an award, the award mailers (example award facts) after
-   the rest, under "For award events" (owner B, decision 3). owSortCatalog has already put them last. */
+   the rest, under "For award events" (owner B, decision 3). owSortCatalog has already put them last. UX-138: there
+   they are folded away behind the heading's "Show 5 mailers" (five cards this event can never make took a third of
+   its grid); the heading stays, so they are one click away, and a fold opened stays open while the page is up. */
+var OW_AWARD_OPEN = false;
 var owMailerCards = mailerCards;
 mailerCards = function () {
   if (!MAILERS || !Array.isArray(MAILERS.mailers) || owAwardEvent()) return owMailerCards();
@@ -383,10 +470,27 @@ mailerCards = function () {
   var html;
   try {
     MAILERS.mailers = rest; html = owMailerCards();
-    MAILERS.mailers = award; html += '<div class="sec-h ow-award-h">For award events</div>' + owMailerCards();
+    MAILERS.mailers = award;
+    html += '<div class="sec-h ow-award-h"><span>For award events</span>' +
+      '<button type="button" class="btn alt sm ow-award-tg" id="owAwardTg" data-n="' + award.length + '" aria-expanded="' + OW_AWARD_OPEN +
+        '" aria-controls="owAwardCards" title="This event has no award record: these mailers show example award facts" onclick="owAwardToggle()">' +
+        owAwardWord(award.length) + '</button></div>' +
+      '<div class="ow-award-cards" id="owAwardCards"' + (OW_AWARD_OPEN ? '' : ' hidden') + '>' + owMailerCards() + '</div>';
   } finally { MAILERS.mailers = all; }
   return html;
 };
+function owAwardWord(n) { return OW_AWARD_OPEN ? 'Hide' : 'Show ' + n + (n === 1 ? ' mailer' : ' mailers'); }
+/* the cards are shown or hidden where they are, not drawn again: their mails are already in their frames */
+function owAwardToggle() {
+  OW_AWARD_OPEN = !OW_AWARD_OPEN;
+  var box = $('owAwardCards'), btn = $('owAwardTg');
+  if (box) box.hidden = !OW_AWARD_OPEN;
+  if (btn) {
+    btn.textContent = owAwardWord(Number(btn.getAttribute('data-n')) || 0);
+    btn.setAttribute('aria-expanded', String(OW_AWARD_OPEN));
+  }
+  owReportHeight();
+}
 /* the platform rewrites the cards after a save, a rename or a delete: their pictures follow */
 var owRefreshMailerCards = refreshMailerCards;
 refreshMailerCards = function () { owRefreshMailerCards(); owMountPreviews(); owReportHeight(); };
@@ -720,10 +824,28 @@ openMailer = function (preId, saveId, fresh) {
   if (!owStudioOpen()) { owTellParent('close'); owReportHeight(); }
   return r;
 };
+/* The platform's close asks first when there are unsaved edits (PATCHES P13), so it may answer later: the window is
+   given back once it has closed, and not on Keep editing */
 closeMailer = function () {
   var wasOpen = owStudioOpen();
-  owCloseMailer();
-  if (wasOpen && !owStudioOpen()) { owTellParent('close'); owReportHeight(); }
+  function after() { if (wasOpen && !owStudioOpen()) { owTellParent('close'); owReportHeight(); } }
+  var r = owCloseMailer();
+  if (r && typeof r.then === 'function') return r.then(function (v) { after(); return v; });
+  after();
+  return r;
+};
+
+/* A dialog over the mailer page (Download all on a site not published, UX-117) in a tall frame would open in the
+   middle of the whole page, maybe far from view: while it is open the frame takes the window, as the studio does
+   (the social posts page does the same). In the studio, or over the whole-mail view, the frame has the window already. */
+var owUiOpen = uiOpen;
+uiOpen = function (o) {
+  var lift = owTall() && !owStudioOpen() && !OW_LB && OW_TOLD === 'close';
+  if (lift) owTellParent('open');
+  return owUiOpen(o).then(function (v) {
+    if (lift && !owStudioOpen() && !OW_LB) { owTellParent('close'); owReportHeight(); }
+    return v;
+  });
 };
 
 /* ---------- the frame grows to its content (owner B) ----------
@@ -778,16 +900,30 @@ toast = function (m, ms) {
 
 /* ---------- the mailer dashboard (the platform's AN … paintAnalytics, in promo-studio/mailer-studio.js) ---------- */
 function owDashSubline() {
-  return OW_SCOPE === 'all' ? 'Opens and clicks for every mailer downloaded or copied from this platform.'
+  return OW_SCOPE === 'all' ? 'Opens and clicks for every event\'s mailers downloaded or copied from Oneworld.'
     : 'Opens and clicks for every mailer of this event downloaded or copied from Oneworld.';
 }
 function owDashPickLabel() { return OW_SCOPE === 'all' ? 'Pick an event →' : 'Make a mailer →'; }
-/* the nav's second place is this event's mailers, or (for the team) the event listing */
+/* UX-133 (PATCHES P26): while opens and clicks are not recorded, the empty dashboard says that, where the platform
+   said "No mailers generated yet … Download or copy a mailer and its opens and clicks appear here": untrue once
+   mailers have been downloaded, and those never show. Not recorded: the numbers say so (backend 'none', the same
+   answer that puts the "aren't being saved" note above), or this event's mails go out untracked (catalog.tracking
+   false). It has no button, since making a mailer would not change what this page shows. '' leaves the platform's
+   own empty state, for when they are recorded. */
+function owDashNotRecorded(a) {
+  var off = !!(a && a.backend === 'none') || (OW_SCOPE === 'event' && !!MAILERS && MAILERS.tracking === false);
+  if (!off) return '';
+  return '<div class="card an-empty"><div class="e">✉</div><h4>Performance isn’t being recorded yet</h4>\n' +
+    '        <p>Mailers downloaded or copied before it is turned on won’t show here.</p></div>';
+}
+/* The nav's second place is this event's mailers. UX-139: the team's page has one place, its dashboard; its nav's
+   other item, styled as a tab, left the page for the event listing, which the bar above the frame already links to
+   ("Back to events"). So the team's page has no nav row at all (oneworld.css body.ow-team). */
 function owNavLabels() {
   var b = document.querySelector('#prodNav [data-v="events"]');
-  if (!b) return;
-  b.textContent = OW_SCOPE === 'all' ? 'Events' : 'Mailers';
-  b.title = OW_SCOPE === 'all' ? 'Pick an event' : 'This event\'s mailers';
+  if (!b || OW_SCOPE === 'all') return;
+  b.textContent = 'Mailers';
+  b.title = 'This event\'s mailers';
 }
 /* The platform's portal picker, reached from the nav, "New mailer →" and the empty dashboard's button: here it
    is this event's mailer page, or the event listing for the team (the whole window: this page is framed) */
@@ -901,6 +1037,23 @@ function owTrackToast(kind, tracked, fname) {
   return toast('Downloaded — saved edits included. Not tracked this time: download again to see their opens and clicks on your dashboard.', 5000);
 }
 
+/* ---------- file names and sizes (UX-136) ---------- */
+/* "Download all (.zip)" (PATCHES P10) is named after the event, so the ZIPs of several events can be told apart in a
+   downloads folder: "brand-world-summit-2026-mailers.zip". A name with no Latin letters or digits (a Hindi name)
+   leaves nothing to name the file by, so the event's id is used. */
+function owSlugOf(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 60).replace(/-+$/, '');
+}
+function owZipName() {
+  var slug = owSlugOf(MAILERS && MAILERS.event && MAILERS.event.name) || owSlugOf(EVENT_ID);
+  return (slug ? slug + '-' : '') + 'mailers.zip';
+}
+/* a picture's size as people read it: "480 KB", "2.6 MB" (the platform wrote "2611kb") */
+function owSize(bytes) {
+  var n = Number(bytes) || 0, MB = 1024 * 1024;
+  return n >= MB ? (n / MB).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+
 /* ---------- export: a picture of the mail, drawn here; a PDF through the browser's own print ---------- */
 /* the plain render: it leaves the studio, so it waits for a current banner (api) */
 function owMailHtml(doc) {
@@ -965,6 +1118,26 @@ function owExport(body) {
     return new Response(JSON.stringify({ error: String(err && err.message || err) }), { status: 500 });
   });
 }
+/* UX-121: the studio's busy box ("Loading your mailer…", "Making the picture…") is put over the part of the mail in
+   view. The platform pinned it to the top of the canvas, which scrolls: with the mail scrolled down, as it is when a
+   sender exports it, the box was out of sight and a 7-second export showed nothing. It follows the canvas while it is
+   up. */
+var owMlBusy = mlBusy;
+mlBusy = function (on, label) {
+  var r = owMlBusy(on, label), el = $('mlBusy'), st = $('mlStage');
+  if (!el || !st) return r;
+  owBusyPlace(el, st);
+  if (!st.owBusyWatched && st.addEventListener) {
+    st.owBusyWatched = true;
+    st.addEventListener('scroll', function () { var b = $('mlBusy'); if (b && b.classList.contains('on')) owBusyPlace(b, st); });
+  }
+  return r;
+};
+function owBusyPlace(el, st) {
+  el.style.top = (st.scrollTop || 0) + 'px';
+  el.style.height = (st.clientHeight || 0) + 'px';
+  el.style.bottom = 'auto';
+}
 /* the platform's mlExport, with "Save as PDF" told apart: the print dialog is the PDF */
 async function mlExport(format, width) {
   closeMenus();
@@ -974,7 +1147,7 @@ async function mlExport(format, width) {
     catch (e) { toast(String(e && e.message || 'Could not open the PDF'), 4000); }
     return;
   }
-  mlBusy(true, 'Rendering the image…');
+  mlBusy(true, 'Making the picture…');
   var r = await api('/api/mailer/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ doc: MD.doc, format: format, width: width }) });
   mlBusyDone();
   if (!r.ok) { toast('Could not render the ' + format.toUpperCase()); return; }
@@ -985,8 +1158,54 @@ async function mlExport(format, width) {
   a.href = URL.createObjectURL(blob); a.download = stem + suffix + '.' + format;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-  toast(format.toUpperCase() + ' downloaded (' + Math.round(blob.size / 1024) + 'kb)');
+  toast(format.toUpperCase() + ' downloaded (' + owSize(blob.size) + ')');
 }
+
+/* ---------- the mail fits the studio (UX-136) ----------
+   The mail is drawn 790 px wide (412 px on Mobile), and on a laptop the stage between the blocks rail and the
+   settings is narrower (about 700 px at 1280 px): the platform centred the mail there, so both its edges were cut
+   off and could not be scrolled to. It is scaled down to fit (never up), by a transform on the canvas, with negative
+   margins so that its box takes only the room it shows. The studio's code already reads that scale from the stage's
+   --s wherever it maps the pointer into the mail (mlTbPlace, mlEditStart, mlEditAt); the drop line while a block is
+   dragged did not, so it is put right below. Fitted again whenever the mail is measured (mlFit: each render, each
+   picture that lands, Desktop / Mobile) and when the window is resized. */
+var OW_MIN_SCALE = 0.4;
+function owStageScale() {
+  var st = $('mlStage'), s = st && st.style ? parseFloat(st.style.getPropertyValue('--s')) : NaN;
+  return s > 0 ? s : 1;
+}
+function owFitCanvas() {
+  var st = $('mlStage'), cv = $('mlCanvas'), f = $('mlFrame');
+  if (!st || !cv || !f || !owStudioOpen()) return;
+  var cs = window.getComputedStyle(st);
+  var room = st.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  var w = f.offsetWidth, h = f.offsetHeight;
+  if (!(room > 0) || !(w > 0)) return;                     // not laid out (the studio is closing): leave it as it is
+  var s = room >= w ? 1 : Math.max(OW_MIN_SCALE, Math.floor(room / w * 1000) / 1000);
+  if (s === 1) {
+    st.style.removeProperty('--s');
+    cv.style.transform = ''; cv.style.margin = '';
+    st.classList.remove('ow-over');
+    return;
+  }
+  st.style.setProperty('--s', String(s));
+  cv.style.transform = 'scale(' + s + ')';
+  cv.style.margin = '0 ' + (-Math.floor(w * (1 - s) / 2)) + 'px ' + (-Math.floor(h * (1 - s))) + 'px';
+  /* held at OW_MIN_SCALE (a window narrower than any laptop) the mail can still be wider than the stage. The stage
+     centres it, and a centred box that overflows spills past the stage's left edge, where it cannot be scrolled to:
+     it is then started at the left (oneworld.css #mlStage.ow-over), so all of it is reached by scrolling right */
+  if (w * s > room) st.classList.add('ow-over'); else st.classList.remove('ow-over');
+}
+var owMlFit = mlFit;
+mlFit = function () { var r = owMlFit.apply(this, arguments); owFitCanvas(); return r; };
+/* the drop line is placed in the overlay's own (scaled) space: the platform measured it on screen */
+var owMlDropShow = mlDropShow;
+mlDropShow = function () {
+  var r = owMlDropShow.apply(this, arguments), line = $('mlDrop'), s = owStageScale();
+  if (line && s !== 1 && line.style.top) line.style.top = Math.round(parseFloat(line.style.top) / s) + 'px';
+  return r;
+};
+window.addEventListener('resize', owFitCanvas);
 
 window.addEventListener('message', owOnMessage);
 owWatchHeight();

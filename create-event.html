@@ -6988,7 +6988,7 @@
         applyImportedTemplate(body.templateId || ('imported-' + importId));
         showStep2View('landing');
         advanceToDetails('imported');
-        toast('Design imported', { type: 'success' });
+        toast(importReport(body.repairs), { type: 'success', sticky: !!(body.repairs && body.repairs.length) });
       }).catch(function(err){
         if (!isCurrent(run)) return;
         failed = true;
@@ -7005,6 +7005,24 @@
       });
     }
     send();
+  }
+
+  /* What the import put right or took out, said to the owner (the server's site-checks.js repair): the original's
+     own scripts made its menu, film, chat and page links work, and none of them run here. */
+  function importReport(repairs){
+    var list = Array.isArray(repairs) ? repairs : [];
+    if (!list.length) return 'Design imported';
+    var links = 0, forms = 0, gone = [];
+    list.forEach(function(c){
+      if (c && c.what === 'widget') gone.push(c.label === 'Film' ? 'a film with nothing to play' : /menu/i.test(c.label) ? 'a menu button with no menu' : 'a chat that cannot answer here');
+      else if (c && (c.what === 'register' || c.what === 'nominate' || c.what === 'partner')) forms++;
+      else links++;
+    });
+    var bits = [];
+    if (forms) bits.push(forms + (forms === 1 ? ' button now opens' : ' buttons now open') + ' the event\u2019s form');
+    if (links) bits.push(links + (links === 1 ? ' link that led off this site was' : ' links that led off this site were') + ' pointed at the page or ET\u2019s pages, or hidden');
+    if (gone.length) bits.push('taken out: ' + gone.filter(function(g, i, a){ return a.indexOf(g) === i; }).join(', '));
+    return 'Design imported. ' + bits.join('; ') + '.';
   }
 
   var CORE_LIB_IDS = ['about','priorities','attend'];
