@@ -1255,6 +1255,8 @@ async function e6() {
       'function openModal(m){ LOG.modals.push(m); }',
       'function isCurrent(run){ return run === "RUN"; }',
       'function createEventRecord(){ return Promise.resolve(); }', 'function openInEditor(){ return Promise.resolve(); }',
+      /* the pictures and records rows have their own test (create-event-handoff.test.js): this draft has neither */
+      'function pictureCount(){ return { all: 0 }; }', 'function recordKinds(){ return []; }',
       fnSrc(CE_INLINE, 'httpError'), fnSrc(CE_INLINE, 'readJson')
     ].concat(FNS.map(function (n) { return fnSrc(CE_INLINE, n); })).join('\n'), ctx, { filename: 'create-event.html (hero, extracted)' });
     ctx.S.basics.name = 'Retail Leadership Summit'; ctx.S.basics.venue = 'Jio World Centre, Mumbai'; ctx.S.basics.portal = 'retail';

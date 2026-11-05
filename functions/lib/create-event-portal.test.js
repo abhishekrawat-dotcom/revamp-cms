@@ -847,7 +847,7 @@ async function main() {
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "cio"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');
   await tick();
-  check('a portal with no ET events says so by name', p.$('gb-et-status').textContent === 'ETCIO has no ET events to pick from.');
+  check('a portal with no ET events says so by name', p.$('gb-et-status').textContent === 'ETCIO has no ET events to pick from. Paste the link to the previous edition instead.');
   p = load({ etEvents: { '/api/et/events?portal=hr': [{ id: '4865', kind: 'event', title: 'NextTech 2026', link: HR_LINK, dateLabel: 'May 2026' }] } });
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "hr"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');

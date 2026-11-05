@@ -211,7 +211,7 @@
       document.getElementById('btn-publish').hidden = !eventId;
       document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
-      loadSiteInfo();
+      loadSiteInfo().then(saveFirstVersion);
       ownerLogoOffer();
       logoUnitNotice();
       /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
@@ -393,9 +393,33 @@
     }).then(function (kept) {
       if (kept) forgetHandoff();
       pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
+      /* what Create Event handed over for a gallery design is saved as the site's first version once the page is
+         ready (saveFirstVersion): the person's content is then on the server, for every computer and colleague */
+      if (fromCreate() && !/^(gen|imported)-/.test(templateId || '')) firstSaveDue = true;
     });
   }
   var pendingAiHero = null;
+  var firstSaveDue = false;
+  /* The first save of a site Create Event has just filled. Create Event says it saves the event; until this, the
+     page it filled lived in this browser only, and any other browser opened the design's empty sample. Only for a
+     site never saved before (another saved version is never replaced from here), and quietly: the chip beside Save
+     then says "v1 · saved to staging". When it cannot be saved, the person is told it is in this browser only. */
+  var FIRST_SAVE_DELAY_MS = 1700;   // after the page's own touch-ups as it opens (the ET logo in its right version, at 400 and 1500 ms)
+  function saveFirstVersion() {
+    if (!firstSaveDue || !canvas || !eventId) return;
+    firstSaveDue = false;
+    setTimeout(function () {
+      if (!canvas || !eventId) return;
+      // never over a version saved already: the server's answer, and the event's own record of its site
+      var everSaved = (siteInfo && siteInfo.savedVersion) || (currentEvent && currentEvent.site && +currentEvent.site.version);
+      if (!siteInfo || everSaved) return;
+      saveToStaging({ quiet: true }).then(null, function (err) {
+        if (err && err.cancelled) return;
+        showNotice('first-save', { kind: 'warn', dismissible: true,
+          text: 'Your page could not be saved to the server yet, so it is only in this browser. Press Save to keep it for every computer.' });
+      });
+    }, FIRST_SAVE_DELAY_MS);
+  }
 
   /* ETB2B AI's hero picture from the event's own record (events/<id>.aiHero, functions/lib/ai-hero.js), for an editor
      that opens with no copy of the site in this browser and no hand-off: the person changed browser (or cleared it)
@@ -629,9 +653,10 @@
     if (!items || !items.length) return null;
     return { items: items.map(function (f) { return { t: f.question || '', d: f.answer || '' }; }) };
   }
+  /* the caption too: the glimpses' fill rules print it ({caption}), and a glimpse that came with one keeps it */
   function translateGallery(items) {
     if (!items || !items.length) return null;
-    return { items: items.map(function (g) { return { url: g.imageUrl || '' }; }) };
+    return { items: items.map(function (g) { return { url: g.imageUrl || '', caption: g.caption || '' }; }) };
   }
   function translateContacts(items) {
     if (!items || !items.length) return null;
@@ -657,8 +682,10 @@
     // a partner with no tier (or no tiers set up at all) still needs to show somewhere — real data from
     // the Content tab is never silently dropped just because Tiers haven't been configured.
     var fallback = { t: '', logos: [] };
+    // each sponsor's logo and link as well as its name: the partners' fill rules show the logo ({logo}) and link it
+    // ({url}), and drawing the Content's sponsors without them put names where their logos had been
     partners.slice().sort(byOrder).forEach(function (p) {
-      (slots[p.tierId] || fallback).logos.push({ n: p.name || '' });
+      (slots[p.tierId] || fallback).logos.push({ n: p.name || '', logo: p.logoUrl || '', url: p.url || '' });
     });
     if (fallback.logos.length) ordered.push(fallback);
     var tiersOut = ordered.filter(function (t) { return t.logos.length; });
