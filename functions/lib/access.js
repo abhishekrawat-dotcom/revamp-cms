@@ -15,6 +15,8 @@
 //   /t/o/<id>.gif       a mailer's open pixel
 //   /t/c/<id>           a mailer's signed click redirect
 // /preview/<eventId> is NOT public: it shows a site that has not been released.
+// /s/<token> is: a shareable preview link a team member made for someone without an ET account. The 256-bit
+// token is the permission; it stops after 7 days or when stopped (lib/share-preview.js).
 //
 // WHAT: isServableFile() is the one rule for which files of this repository a web server may send, used by
 // server.js and tools/serve.js. It is an allow-list, because the repository is also the deployment: a
@@ -110,6 +112,8 @@ function isPublic(req, urlPath) {
   if (p === null) return false;
   if (p.indexOf('/e/') === 0 || isPublicApi(p)) return true;      // OPTIONS (a browser's preflight) included
   if (/^\/t\/[oc]\/[^/]+$/.test(p)) return true;                  // a mailer's open pixel and click links
+  /* a shared preview link: the unguessable link is the permission (lib/share-preview.js) */
+  if (p.indexOf('/s/') === 0) return true;
   if (p.indexOf('/api/') === 0 || p.indexOf('/preview/') === 0) return false;
   if (PUBLIC_PATHS.has(p)) return true;
   /* app code: any file this server would actually send, other than a page. Something it would not send

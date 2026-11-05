@@ -124,6 +124,27 @@ async function run() {
   try { img = await callGeminiImage('a background'); } finally { releaseLogs(); }
   ok(img.usage && img.usage.pictures === 1 && img.usage.provider === 'gemini' && img.usage.inputTokens === 30 && img.usage.outputTokens === 1290 && img.usage.usd === null, 'usage: a picture made is counted, with its tokens and no price', JSON.stringify(img.usage));
 
+  /* the picture's shape: only a caller that names one asks for it (ETB2B AI's wide banner); site generation's calls
+     name none and are sent exactly as before */
+  var PICTURE_200 = { status: 200, body: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }] }, finishReason: 'STOP' }] } };
+  script = [PICTURE_200]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background', { route: 'plan-structure' }); } finally { releaseLogs(); }
+  ok(JSON.stringify(seen[0].body.generationConfig) === JSON.stringify({ responseModalities: ['IMAGE'] }), 'image: no shape named, the request is as it always was (square)', JSON.stringify(seen[0].body.generationConfig));
+  script = [PICTURE_200]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background', { aspectRatio: '16:9' }); } finally { releaseLogs(); }
+  ok(seen.length === 1 && JSON.stringify(seen[0].body.generationConfig) === JSON.stringify({ responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '16:9' } }) && img.base64 === 'iVBORw0KGgo=',
+    'image: a wide picture is asked for with imageConfig.aspectRatio 16:9', JSON.stringify(seen[0] && seen[0].body.generationConfig));
+  script = [PICTURE_200]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background', { aspectRatio: '16x9' }); } finally { releaseLogs(); }
+  ok(seen.length === 1 && !seen[0].body.generationConfig.imageConfig, 'image: a shape the model does not take is not sent', JSON.stringify(seen[0].body.generationConfig));
+  script = [{ status: 400, body: { error: { message: 'Unknown name "imageConfig"' } } }, PICTURE_200]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background', { aspectRatio: '16:9' }); } finally { releaseLogs(); }
+  ok(seen.length === 2 && seen[0].body.generationConfig.imageConfig && !seen[1].body.generationConfig.imageConfig && img.base64 === 'iVBORw0KGgo=',
+    'image: a model that refuses the shape (400, not billed) is asked once more without it, and answers square', JSON.stringify(seen.map(function (s) { return s.body.generationConfig; })));
+  script = [{ status: 429, body: '{}' }]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background', { aspectRatio: '16:9' }); } finally { releaseLogs(); }
+  ok(seen.length === 1 && img.code === 'ai-quota', 'image: any other failure with a shape is not asked again', JSON.stringify(img));
+
   /* pictures for the text model, a picture to edit, and who answered */
   script = [answerWith('{"a":"b"}')]; seen = []; captureLogs();
   var withPics; try { withPics = await callGeminiJson('p', SCHEMA, { inlineFile: { mimeType: 'application/pdf', data: 'JVBERg==' }, images: [{ mimeType: 'image/png', data: 'iVBORw0KGgo=' }, { mimeType: 'IMAGE/JPEG; q=1', data: '/9j/4AAQ' }] }); } finally { releaseLogs(); }

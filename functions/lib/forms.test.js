@@ -441,7 +441,10 @@ var schema = hooks.chatResponseSchema({ sections: [{ id: 'k-hero' }, { id: 'k-co
   ok(schema.required.indexOf(k) !== -1 && schema.properties[k] && schema.properties[k].type === 'ARRAY', 'the chat schema requires "' + k + '"');
 });
 var nfItem = schema.properties.newForms.items;
-ok(eq(nfItem.required, ['ref', 'template', 'name', 'fields']) && eq(nfItem.properties.template.enum, tplIds), 'newForms: required keys, the template ids');
+/* every field of an entry is required (Claude's strict mode takes at most 24 optional parameters; "" means the
+   template's own), except the two switches whose absence means the template's own setting */
+ok(eq(nfItem.required, ['ref', 'template', 'name', 'title', 'intro', 'fields', 'submitLabel', 'successMessage']) && eq(nfItem.properties.template.enum, tplIds) &&
+   nfItem.required.indexOf('countsAsRegistration') === -1 && nfItem.required.indexOf('needsApproval') === -1, 'newForms: required keys, the template ids');
 ok(eq(nfItem.properties.fields.items.properties.type.enum, F.FIELD_TYPES) && nfItem.properties.fields.items.properties.required.type === 'BOOLEAN' &&
    nfItem.properties.countsAsRegistration.type === 'BOOLEAN' && nfItem.properties.needsApproval.type === 'BOOLEAN', 'newForms: field types and switches');
 ok(eq(schema.properties.ctaLinks.items.properties.sectionId.enum, ['k-hero', 'k-contact']), 'ctaLinks: sections by the page\'s ids');

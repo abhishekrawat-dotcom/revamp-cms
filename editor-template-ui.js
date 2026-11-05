@@ -1245,7 +1245,12 @@
       .then(null, function () { return false; });
   }
 
-  function drawRecords(sectionsAdded) {
+  /* The event's records (Content) drawn into the page as it stands, and nothing else: the undo history is not
+     touched. -> Promise<true when anything was drawn>; rejected when the records could not be read or drawn.
+     drawRecords is this and then the page's baseline; a change in progress uses it on its own (the check that a
+     records section reworked around a new picture kept its records, in runAiTurn), since baking the baseline in
+     the middle of a change would make its Undo step lose what came before it. */
+  function fillRecords(sectionsAdded) {
     // Both detection paths run together — content.map `from` (ported templates) and the DOM
     // data-rv-repeat-template convention (AI-bespoke `gen-` templates) — and contribute additively to
     // one merged apply pass; see fetchGenericRepeatOverlay()'s own comment on why they never compete.
@@ -1262,6 +1267,11 @@
           changed = true;
         });
       }
+      return changed;
+    });
+  }
+  function drawRecords(sectionsAdded) {
+    return fillRecords(sectionsAdded).then(function (changed) {
       if (!changed) return;
       // bakes the overlay into THIS session's baseline, same as any other edit — so Ctrl+Z doesn't revert
       // past it, and it rides along in the snapshot persist() already saves for every other reason.
@@ -3782,6 +3792,7 @@
     var asked = function (t) { var low = t.toLowerCase(); return words.some(function (w) { return low.indexOf(w) !== -1; }); };
     var secs = canvas.sections();
     var share = Math.max(1500, Math.floor(CHAT_TEXTS_BUDGET / Math.max(1, secs.length)));
+    var P = aiPictures(), help = P ? aiPictureHelpers() : null;
     return secs.map(function (sec) {
       // the key, not the type: an edit must reach the one section it was proposed for, copies included
       var id = sec.getAttribute('data-rv-key');
@@ -3800,6 +3811,16 @@
       var buttons = sectionButtonLabels(sec).slice(0, 8).map(short);
       if (buttons.length) out.buttons = buttons;
       if (hasImageHeadline(sec)) out.imageHeadline = true;
+      /* for a new picture (RevampAiPicture.describe): what the section is (the banner, the navigation, the footer,
+         Content's own records), which of its pictures can be replaced and whether it has a background to take
+         one — so the AI asks instead of guessing, and the server checks the same facts. A section that cannot be
+         read is sent without them: the message is never held back for it. */
+      if (P) {
+        try {
+          var pic = plainPictureInfo(P.describe(sec, help));
+          Object.keys(pic).forEach(function (k) { out[k] = pic[k]; });
+        } catch (err) { if (window.console) console.warn('[ETB2B AI] the pictures of a section could not be read:', err); }
+      }
       return out;
     });
   }
@@ -4039,14 +4060,277 @@
     });
   }
 
+  /* ---------- a new picture, made by ETB2B AI and put in at once ----------
+     The owner, 3 Nov 2026: asked for one ("a new hero picture of the Mumbai skyline at dusk", "give the agenda a
+     background picture"), ETB2B AI makes ONE picture under the site's picture rules and puts it in straight away;
+     Undo brings the old one back, as with every other change it makes (it is placed inside the turn's one undo
+     step and checkpoint). The chat's answer only says what will be made and where — newPicture: { n, sectionId,
+     placement, slot, apply: 'swap' | 'rework', kind, alt, subject }. The picture itself is made by a second call
+     on the same route that sends nothing but the turn's id, so its subject is always the one the server checked
+     and kept, never words read from this page. Which element takes it, and what is never touched (the logo unit,
+     the ET logo, Content's own photos), is editor-ai-picture.js's (RevampAiPicture), the same code that tells the
+     AI what each section holds (sectionsContext). Picture-making is offered to the AI only while that part is
+     loaded (canMakePictures), so the AI never answers with a picture this page could not put in. */
+
+  /* aiPictureRules:begin
+     The decisions about a new picture that need nothing but what they are given: whether the AI's answer about it
+     can be used, when phase 2 is asked again, how a failure is worded, whether a reworked section really shows the
+     picture, and when a picture read back with the conversation is offered again. They are kept apart from the
+     editor so they can be tested on their own: functions/lib/ai-picture-panel.test.js runs the code between the
+     two aiPictureRules marks in node, so nothing in it may use the rest of this file. */
+  var aiPictureRules = (function () {
+    var WHERE = { hero: 'banner picture', background: 'background', picture: 'picture' };
+    var UNUSABLE = 'The new picture — the answer about it could not be used. Ask again';
+    /* A section of Content's records reworked to take the new picture (a background it did not have) is kept only
+       if each of its records comes out as it was (RevampAiPicture.recordsState); otherwise it is put back and this
+       is what the owner is told, the picture waiting in the tray (the lead's decision, 3 Nov 2026, finding B) */
+    var RECORDS_CHANGED = 'left as it was — putting the new picture in would have changed what it shows from Content (a name, a role, a photo, a logo or a link)';
+    var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+    function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    /* an entry of the change (a section rework) that names the new picture by its number */
+    function usesPicture(entry, n) {
+      return !!n && !!entry && Array.isArray(entry.pictures) && entry.pictures.indexOf(n) !== -1;
+    }
+    /* The answer's newPicture, checked against this page before anything is paid for.
+       c: { loaded: the part that puts pictures in (RevampAiPicture) is there, eventId, turnId,
+            attached: [url] sent with the message, known(sectionId): that section is on the page,
+            edits: the change's section reworks }
+       -> { ask } to make and put in, or { note } said in its place (nothing is made) */
+    function checkAsk(ask, c) {
+      var n = parseInt(ask && ask.n, 10), attached = c.attached || [];
+      // its number follows the pictures attached to the message (at most 6), and is none of theirs
+      var shaped = !!ask && typeof ask === 'object' && n >= 1 && n <= 7 && !attached[n - 1] &&
+        typeof ask.placement === 'string' && has(WHERE, ask.placement) && (ask.apply === 'swap' || ask.apply === 'rework');
+      if (!c.loaded) return { note: 'The new picture — this editor could not load the part that puts pictures in. Reload the editor and ask again' };
+      if (!c.eventId || !c.turnId) return { note: 'The new picture could not be started — ask again' };
+      if (!shaped) return { note: UNUSABLE };
+      if (!c.known(ask.sectionId)) return { note: 'The new picture — the section it was for is no longer on the page' };
+      // a rework puts it in: without one that names it, the picture would be paid for and never placed
+      if (ask.apply === 'rework' && !(c.edits || []).some(function (e) { return usesPicture(e, n); })) return { note: UNUSABLE };
+      return { ask: {
+        n: n, sectionId: ask.sectionId, placement: ask.placement, slot: Math.max(0, parseInt(ask.slot, 10) || 0), apply: ask.apply,
+        kind: String(ask.kind || ''), alt: String(ask.alt || '').replace(/\s+/g, ' ').trim().slice(0, 150),
+        subject: String(ask.subject || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+      } };
+    }
+    /* Phase 2 again, or not? r: its last answer, { ok, status, body } or null (no answer at all).
+       s: { retried, waited (ms since the first ask), waitMs }.
+       'retry': no answer, or an error page from in front of the API — asked once more: the server answers a picture
+         it already made without making another [C9];
+       'wait':  the server is still making it (409) — asked again in a few seconds, which costs nothing, for as long
+         as waitMs;
+       'stop':  this answer stands. */
+    function nextRequest(r, s) {
+      if ((!r || (!r.body && r.status >= 500)) && !s.retried) return 'retry';
+      if (r && r.status === 409 && s.waited < s.waitMs) return 'wait';
+      return 'stop';
+    }
+    /* Phase 2 asked until its answer stands (nextRequest). once() -> Promise<answer | null>, never rejected;
+       wait(ms) -> Promise; now() -> ms. -> Promise<the answer that stands | null> */
+    function askUntilAnswered(once, wait, now, waitMs, pollMs) {
+      var since = now(), retried = false;
+      function ask() {
+        return once().then(function (r) {
+          var next = nextRequest(r, { retried: retried, waited: now() - since, waitMs: waitMs });
+          if (next === 'retry') { retried = true; return ask(); }
+          if (next === 'wait') return wait(pollMs).then(ask);
+          return r;
+        });
+      }
+      return ask();
+    }
+    /* phase 2's answer -> { url } of the new picture, or { why } it is not there, in plain words; { url, held: true,
+       why } for a picture made but kept off the page (its check found people, words or a logo where its place takes
+       none, twice): it goes to the tray, and why is said.
+       madeHere(url): the address is one of this event's own generated pictures [C14] */
+    var HELD = 'The new picture did not pass its check, so I did not put it on the page.';
+    function outcome(r, madeHere) {
+      var url = r && r.ok && r.body && typeof r.body.url === 'string' ? r.body.url : '';
+      if (url && madeHere(url)) return r.body.held === true ? { url: url, held: true, why: String(r.body.heldWhy || '').replace(/\s+/g, ' ').trim().slice(0, 400) || HELD } : { url: url };
+      return { why: url ? 'The picture came back from an address that is not this event’s own, so it was not used. Nothing on your site changed — ask again.'
+        : r && r.body && r.body.error ? String(r.body.error)
+        : r ? 'The picture could not be made (error ' + r.status + '). Nothing on your site changed — ask again.'
+        : 'ETB2B AI could not be reached to make the picture. Nothing on your site changed — check your connection and ask again.' };
+    }
+    /* A picture that could not be made. The server's sentence says the site did not change, which is true of a
+       message that asked only for the picture. itemCount: what the message planned to change, the picture's own item
+       included; reworksWithIt: the reworks that only put the picture in (they go with it). When the message changes
+       other things too, the sentence says that no picture changed instead. */
+    function failedLine(why, itemCount, reworksWithIt) {
+      var others = itemCount - 1 - reworksWithIt > 0;
+      return others ? String(why).replace(/Nothing on (your|the) (site|page) changed/, 'No picture was changed') : String(why);
+    }
+    /* Is the picture at url drawn by this markup or CSS (a reworked section, and its own stylesheet)? Only where a
+       picture is drawn from counts: an <img>'s or <source>'s src and srcset, a video's poster, an svg <image>'s
+       href, a CSS url() (a style="" one too). The address named in an alt text, a link or a data- attribute does
+       not show it. Its WebP copies (pictures.storeVariants: "<address>.rv-<hash>.<w>x<h>.w<width>.webp") count as
+       it. */
+    function shows(text, url) {
+      text = String(text || '');
+      if (!text || !url) return false;
+      var u = escRe(url) + '(?:\\.rv-[0-9a-f]{8}\\.\\d+x\\d+\\.w\\d+\\.webp)?(?:\\?[^"\'\\s)&]*)?';
+      var q = '(?:["\']|&quot;|&#39;)';
+      return new RegExp('\\s(?:src|poster)\\s*=\\s*' + q + u + q, 'i').test(text) ||
+        new RegExp('\\ssrcset\\s*=\\s*' + q + '(?:[^"\']*?[\\s,])?' + u + '(?=[\\s,"\']|&quot;|&#39;)', 'i').test(text) ||
+        new RegExp('<image\\b[^>]*\\s(?:xlink:)?href\\s*=\\s*' + q + u + q, 'i').test(text) ||
+        new RegExp('url\\(\\s*' + q + '?' + u + q + '?\\s*\\)', 'i').test(text);
+    }
+    /* A picture ETB2B AI made, read back with the conversation: is "Use this picture" (into the tray) offered under
+       it? status: its change's; onPage: whether the page shows it now (null: not known). A change that went through
+       ("applied") put it in — one whose picture was not put in always ends "partly" or "failed" — and an undone one
+       was taken back on purpose. A "partly" one may have left it out: offered unless the page shows it. Any other
+       (not done, closed while it was being made) never put it in. */
+    function offerAgain(status, onPage) {
+      if (status === 'applied' || status === 'undone') return false;
+      if (status === 'partly') return onPage !== true;
+      return true;
+    }
+    return { WHERE: WHERE, RECORDS_CHANGED: RECORDS_CHANGED, usesPicture: usesPicture, checkAsk: checkAsk, nextRequest: nextRequest, askUntilAnswered: askUntilAnswered, outcome: outcome,
+      failedLine: failedLine, shows: shows, offerAgain: offerAgain };
+  })();
+  /* aiPictureRules:end */
+
+  var AI_PICTURE_WHERE = aiPictureRules.WHERE;
+  /* how long a picture the server is still making is waited for: the server may make a second one when the first
+     fails its check (functions/lib/chat-picture.js, all within its 180 s deadline), then store it */
+  var AI_PICTURE_WAIT_MS = 240000;
+  var AI_PICTURE_POLL_MS = 5000;
+  var offerPicture = null;             // puts a picture in the tray above the message box (wireChatPanel sets it)
+  function aiPictures() {
+    var P = window.RevampAiPicture;
+    return P && typeof P.describe === 'function' && typeof P.slotOf === 'function' && typeof P.target === 'function' &&
+      typeof P.place === 'function' && typeof P.unitState === 'function' && typeof P.recordsState === 'function' ? P : null;
+  }
+  /* the event's banner video is playing on the site (Design › Banner video): a new banner picture would not be seen */
+  function heroVideoOn() {
+    if (!heroVideo) return false;
+    var core = window.RevampHeroVideoCore;
+    try { return core && core.clean ? !!core.clean(heroVideo) : heroVideo.enabled !== false; } catch (e) { return false; }
+  }
+  /* what RevampAiPicture needs to know of this editor (its "h"): the canvas, the event, whether the banner video plays */
+  function aiPictureHelpers() {
+    return { canvas: canvas, eventId: eventId, videoOn: heroVideoOn() };
+  }
+  /* Storage's public address of a file kept with this event (events/<id>/…), as RevampCore.uploadImage and the
+     server store them. This page does not know the bucket's name, so any bucket name is accepted there. */
+  function ownPictureRe(rest) {
+    var id = String(eventId || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('^https://storage\\.googleapis\\.com/[a-z0-9][a-z0-9._-]{1,220}/events/' + id + '/' + rest + '(\\?v=\\d+)?$');
+  }
+  function isOwnPicture(url) { return !!eventId && ownPictureRe('[^?#\\s"\'()<>\\\\]+').test(String(url || '')); }
+  /* a picture ETB2B AI made is used only from this event's own generated pictures: anything else the answer
+     carried is not put on the page [C14] */
+  function madeHere(url) { return !!eventId && ownPictureRe('generated/[A-Za-z0-9._-]+').test(String(url || '')); }
+  /* the 1-based place of a selected picture among its section's pictures as the AI is shown them (describe's
+     list), 0 when it is not one of them — so "this picture" means that one, also on the server */
+  function pictureSlotOf(sec, el) {
+    var P = aiPictures();
+    if (!P || !sec || !el) return 0;
+    try { return Math.max(0, parseInt(P.slotOf(sec, el, aiPictureHelpers()), 10) || 0); }
+    catch (err) { if (window.console) console.warn('[ETB2B AI] the selected picture could not be found among its section\'s pictures:', err); }
+    return 0;
+  }
+  /* What the AI is told of a section's pictures (sectionsContext): only plain values, never an element */
+  function plainPictureInfo(d) {
+    var out = {};
+    if (!d || typeof d !== 'object') return out;
+    if (d.role) out.role = String(d.role);
+    if (d.video) out.video = true;
+    if (d.heroMode) out.heroMode = String(d.heroMode);
+    var p = d.pics;
+    if (p && typeof p === 'object') {
+      out.pics = {
+        slots: Math.max(0, parseInt(p.slots, 10) || 0),
+        list: (Array.isArray(p.list) ? p.list : []).slice(0, 6).map(function (x) {
+          if (x == null || typeof x !== 'object') return String(x == null ? '' : x);
+          var o = {};
+          Object.keys(x).forEach(function (k) { if (typeof x[k] === 'string' || typeof x[k] === 'number' || typeof x[k] === 'boolean') o[k] = x[k]; });
+          return o;
+        }),
+        background: !!p.background,
+        heroTarget: String(p.heroTarget || ''),
+        wide: p.wide === true,
+        own: (Array.isArray(p.own) ? p.own : []).filter(isOwnPicture).slice(0, 4)
+      };
+    }
+    return out;
+  }
+  function pause(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+  /* POST /api/chat-edit { step: 'picture', turnId }: the turn's picture made and stored, or the one already made for
+     it. With no answer at all (the connection dropped, or an error page from in front of the API) it is asked once
+     more: the server answers a picture it already made without making another [C9]. While the server says it is
+     still being made (409), it is asked again every few seconds, which costs nothing.
+     -> Promise<{ ok, status, body } | null> — null: no answer */
+  function requestPicture(turnId) {
+    if (!window.RevampAuth || !RevampAuth.authedFetch) return Promise.resolve(null);
+    function once() {
+      return RevampAuth.authedFetch('/api/chat-edit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: eventId, step: 'picture', turnId: turnId })
+      }).then(function (res) {
+        return res.text().then(function (text) {
+          var body = null;
+          try { body = JSON.parse(text); } catch (e) { /* not JSON: an error page from in front of the API */ }
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      }).then(null, function () { return null; });
+    }
+    return aiPictureRules.askUntilAnswered(once, pause, function () { return Date.now(); }, AI_PICTURE_WAIT_MS, AI_PICTURE_POLL_MS);
+  }
+  /* the picture ETB2B AI made, small, under its message. follow: it arrives while the owner waits for the change,
+     so the conversation is kept at its end as it grows (unless the owner has scrolled up to read something) */
+  function drawMadePicture(bubble, url, about, follow) {
+    if (!bubble || !url) return null;
+    var thread = follow ? chatThread() : null;
+    var atEnd = function () { return !!thread && thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80; };
+    var wasAtEnd = atEnd();
+    var box = document.createElement('div');
+    box.className = 'chat-made-pic';
+    var im = document.createElement('img');
+    im.alt = about ? 'New picture: ' + about : 'New picture made by ETB2B AI';
+    if (wasAtEnd) im.addEventListener('load', function () { thread.scrollTop = thread.scrollHeight; });
+    im.src = url;
+    box.appendChild(im);
+    bubble.appendChild(box);
+    if (wasAtEnd) thread.scrollTop = thread.scrollHeight;
+    return box;
+  }
+  /* The elements a picture is put on, as they were, so a placement that has to be taken back is taken back exactly.
+     What a placement may change inside an element is kept too: an <svg> icon's drawing, and the <source>s of the
+     <picture> around an <img> (they are taken out, or they would be shown instead of the new picture). */
+  function keepPictureEls(els) {
+    var all = [];
+    els.forEach(function (el) {
+      if (!el || el.nodeType !== 1) return;
+      all.push(el);
+      if (el.parentElement && el.parentElement.tagName === 'PICTURE') all.push(el.parentElement);
+    });
+    return all.filter(function (el, i) { return all.indexOf(el) === i; }).map(function (el) {
+      var inner = el.namespaceURI === 'http://www.w3.org/2000/svg' || el.tagName === 'PICTURE';
+      return { el: el, attrs: Array.prototype.map.call(el.attributes, function (a) { return [a.name, a.value]; }), inner: inner ? el.innerHTML : null };
+    });
+  }
+  function putPictureElsBack(kept) {
+    kept.forEach(function (k) {
+      Array.prototype.slice.call(k.el.attributes).forEach(function (a) { k.el.removeAttribute(a.name); });
+      k.attrs.forEach(function (a) { k.el.setAttribute(a[0], a[1]); });
+      if (k.inner !== null) k.el.innerHTML = k.inner;
+    });
+  }
+  function sameLogoUnit(a, b) { try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; } }
+
   /* An AI answer of kind "edit", applied at once (the owner, 28 Oct 2026: no proposal to accept). Its message is the
      AI's own sentence; under it, while it works, what is being done; then what really changed and what could not
      be done, with Undo. The page as it was just before is kept as the change's checkpoint (undoAiTurn). The
      server is told how it went, so the conversation remembers it (and the event's History has it).
      -> Promise that settles when the change is on the page (or could not be made). */
   function plainText(html) { var d = document.createElement('div'); d.innerHTML = html; return String(d.textContent || '').replace(/\s+/g, ' ').trim(); }
-  function runAiTurn(result, turnId, attached) {
-    attached = attached || [];
+  /* sent: { pictureEl } — the picture the owner had selected when the message was sent (a new picture replaces it) */
+  function runAiTurn(result, turnId, attached, sent) {
+    // a copy: the new picture takes its number in it once made, for the rework that uses it (picturesFor)
+    attached = (attached || []).slice();
+    sent = sent || {};
     /* the pictures an entry names by number, as { n, url } for the request that reworks its section */
     function picturesFor(entry) {
       return (entry.pictures || []).map(function (n) { return attached[n - 1] ? { n: n, url: attached[n - 1] } : null; }).filter(Boolean);
@@ -4068,6 +4352,18 @@
     var edits = (result.sectionEdits || []).filter(function (e) { return e && known(e.sectionId) && e.instruction; });
     var ops = (result.sectionOps || []).filter(function (o) { return o && known(o.sectionId); });
     var additions = (result.newSections || []).filter(function (n) { return n && n.instruction; });
+
+    /* a new picture to make: checked against this page before anything is paid for */
+    var P = aiPictures(), np = null;
+    var usesNew = function (e) { return !!np && aiPictureRules.usesPicture(e, np.n); };
+    if (result.newPicture) {
+      var checked = aiPictureRules.checkAsk(result.newPicture, { loaded: !!P, eventId: eventId, turnId: turnId, attached: attached, known: known, edits: edits });
+      if (checked.note) notes.push(checked.note);
+      else {
+        np = checked.ask;
+        np.label = sectionLabel(np.sectionId);     // named now, while the section is there: it may be gone by the time the picture is made
+      }
+    }
     var OP_WORDS = { hide: 'hide', show: 'show again', remove: 'remove', move: 'move' };
     var items = Object.keys(design).map(function (k) { return designChangeHtml(k, design[k]); })
       .concat(textEdits.map(function (t) {
@@ -4079,7 +4375,11 @@
         return escHtml(sectionLabel(o.sectionId)) + ' — ' + OP_WORDS[o.op] + ' this section' +
           (o.op === 'move' ? (o.beforeSectionId && known(o.beforeSectionId) ? ' to just before ' + escHtml(sectionLabel(o.beforeSectionId)) : ' to the end of the page') : '');
       }))
-      .concat(edits.map(function (e) { return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction) + (picturesFor(e).length ? ' <em>(uses attached picture ' + picturesFor(e).map(function (x) { return x.n; }).join(', ') + ')</em>' : ''); }))
+      .concat(edits.map(function (e) {
+        return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction) +
+          (picturesFor(e).length ? ' <em>(uses attached picture ' + picturesFor(e).map(function (x) { return x.n; }).join(', ') + ')</em>' : '') +
+          (usesNew(e) ? ' <em>(uses the new picture)</em>' : '');
+      }))
       .concat(additions.map(function (n) { return 'New section &ldquo;' + escHtml(n.name) + '&rdquo;' + (n.afterSectionId && known(n.afterSectionId) ? ' after ' + escHtml(sectionLabel(n.afterSectionId)) : '') + ' — ' + escHtml(n.instruction); }));
 
     /* forms: new ones made first, then buttons that open them and forms put in the page (the server checked
@@ -4125,6 +4425,7 @@
       return 'New section ' + (e.afterSectionId && known(e.afterSectionId) ? 'after &ldquo;' + escHtml(sectionLabel(e.afterSectionId)) + '&rdquo;' : 'before the footer') +
         ' with the form &ldquo;' + escHtml(nameOfForm(e.form)) + '&rdquo;';
     }));
+    if (np) items.push('New picture for &ldquo;' + escHtml(np.label) + '&rdquo; (' + AI_PICTURE_WHERE[np.placement] + '): ' + escHtml(np.subject));
     var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
     var usable = items.length > 0;
     var notDone = notes.map(plainText).concat(cannot.map(function (c) { return 'I can’t do this here: ' + c; }));
@@ -4134,6 +4435,11 @@
     var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, card: card, result: result, startedAt: Date.now() };
     /* the change as steps, planned before anything is done — each lit as it runs and as it ends */
     var S = {};
+    // the new picture is made first (before forms, before the page changes): every later step may need it
+    if (np) {
+      S.picMake = card.step('Make a new picture: ' + (np.subject || np.alt || 'as you asked'));
+      if (np.apply === 'swap') S.picPlace = card.step('Put it in “' + np.label + '” as its ' + AI_PICTURE_WHERE[np.placement]);
+    }
     if (newForms.length) S.forms = card.step(newForms.length === 1 ? 'Create the form “' + refNames[newForms[0].ref] + '”' : 'Create ' + newForms.length + ' forms');
     if (Object.keys(design).length) S.design = card.step('Update the design: ' + Object.keys(design).map(function (k) { return designLabel(k); }).join(', '));
     var textBy = {};
@@ -4141,7 +4447,7 @@
     Object.keys(textBy).forEach(function (sid) { S['text:' + sid] = card.step('Change the wording in “' + sectionLabel(sid) + '”' + (textBy[sid].length > 1 ? ' (' + textBy[sid].length + ' places)' : '')); });
     var OP_STEP = { hide: 'Hide', show: 'Show', remove: 'Remove', move: 'Move' };
     ops.forEach(function (o, i) { S['op' + i] = card.step(OP_STEP[o.op] + ' “' + sectionLabel(o.sectionId) + '”'); });
-    var jobSteps = edits.map(function (e) { return card.step('Rework “' + sectionLabel(e.sectionId) + '”'); })
+    var jobSteps = edits.map(function (e) { return card.step('Rework “' + sectionLabel(e.sectionId) + '”' + (usesNew(e) ? ' with the new picture' : '')); })
       .concat(additions.map(function (n) { return card.step('Add the section “' + n.name + '”'); }));
     if (ctaLinks.length || formEmbeds.length) S.formOps = card.step(ctaLinks.length && formEmbeds.length ? 'Link buttons to forms and place forms on the page'
       : ctaLinks.length ? 'Link ' + (ctaLinks.length === 1 ? 'a button' : ctaLinks.length + ' buttons') + ' to ' + (ctaLinks.length === 1 ? 'its form' : 'their forms')
@@ -4169,12 +4475,16 @@
     card.onProgress = function (n, of) { setChatStatus('working', 'Applying your change — ' + n + ' of ' + of + ' steps done'); };
     card.onProgress(0, card.count());
 
-    /* forms first: a button or an embed can only point at a form that exists. If one cannot be made, those
-       already made are deleted again and nothing on the page changes. */
-    var formsMade = !newForms.length ? Promise.resolve({ ids: {}, forms: [] }) : (function () {
+    /* the new picture first (it takes about half a minute; nothing on the page has changed while it is made), then
+       forms: a button or an embed can only point at a form that exists. If one cannot be made, those already made
+       are deleted again and nothing on the page changes. */
+    var madePic = null;               // { url, placed } once the new picture is made
+    var pictureMade = np ? makeNewPicture() : Promise.resolve();
+    var formsMade = pictureMade.then(function () {
+      if (!newForms.length) return { ids: {}, forms: [] };
       S.forms.set('run');
       return fApi.createForms(newForms).then(function (made) { S.forms.set('done'); return made; });
-    })();
+    });
     return formsMade.then(function (made) {
       if (!canvas || remounting) {
         if ((made.forms || []).length) formsChanged();
@@ -4187,11 +4497,118 @@
       card.steps().forEach(function (st) { if (st.state === 'wait' || st.state === 'run') st.set('fail', 'not done'); });
       t.status = 'failed';
       card.status('failed');
-      card.note('Nothing on the page changed.');
+      // a picture already made is not lost with the rest: it waits in the tray to be placed
+      var keptPic = keepMadePicture('The new picture');
+      card.note('Nothing on the page changed.' + (keptPic ? ' ' + keptPic : ''));
       reportTurn(t.turnId, 'failed', [], [why]);
       setAiWorking(false);
       return t;
     });
+
+    /* POST /api/chat-edit { step: 'picture' }: resolves either way — a picture that could not be made is a step
+       not done, the rest of the change still goes ahead */
+    function makeNewPicture() {
+      S.picMake.set('run');
+      setChatStatus('working', 'Making a new picture — about half a minute…');
+      card.note('Making a new picture takes about half a minute.');
+      return requestPicture(t.turnId).then(function (r) {
+        card.note('');
+        var got = aiPictureRules.outcome(r, madeHere);
+        /* made, but kept off the page by its check: it waits in the tray, nothing is put in with it, and why is said */
+        if (got.url && got.held) {
+          madePic = { url: got.url, placed: false, offered: false };
+          return pictureHeld(got.why);
+        }
+        if (got.url) {
+          madePic = { url: got.url, placed: false, offered: false };
+          attached[np.n - 1] = madePic.url;        // a rework that uses it finds it by its number (picturesFor)
+          S.picMake.set('done');
+          drawMadePicture(bubble, madePic.url, np.alt || np.subject, true);
+          return;
+        }
+        pictureFailed(got.why);
+      }, function (err) {
+        card.note('');
+        if (window.console) console.error(err);
+        pictureFailed('The picture could not be made. Nothing on your site changed — ask again.');
+      });
+    }
+    /* A picture that could not be made: its sentence (aiPictureRules.failedLine words it for a message that changes
+       other things too), and the steps that needed the picture are not done. */
+    function pictureFailed(why) {
+      var line = aiPictureRules.failedLine(why, items.length, edits.filter(usesNew).length);
+      S.picMake.set('fail', line);
+      notDone.push(line);
+      withoutNewPicture('the new picture could not be made');
+    }
+    /* A picture made but kept off the page by its check (the server's sentence says why): it is not put anywhere, and
+       neither is any rework that would have used it; it waits in the tray (keepMadePicture, when the change ends). */
+    function pictureHeld(why) {
+      S.picMake.set('fail', why);
+      notDone.push(why);
+      withoutNewPicture('the new picture was kept off the page');
+    }
+    /* the steps that needed the new picture are not done: its placing, and each rework that would have used it */
+    function withoutNewPicture(because) {
+      if (S.picPlace) S.picPlace.set('fail', 'not done — ' + because);
+      for (var i = edits.length - 1; i >= 0; i--) {
+        if (!usesNew(edits[i])) continue;
+        jobSteps[i].set('fail', 'not done — ' + because);
+        notDone.push('“' + sectionLabel(edits[i].sectionId) + '” was not reworked: ' + because + '.');
+        edits.splice(i, 1);
+        jobSteps.splice(i, 1);
+      }
+    }
+    /* A picture made and paid for that is not on the page is never lost: it goes in the tray above the message box,
+       to be sent with where it goes; when the tray cannot take it, "Use this picture" under this message puts it
+       there later. lead: how the sentence names it ('It' or 'The new picture').
+       -> the sentence that says where it is; '' when it is on the page or none was made */
+    function keepMadePicture(lead) {
+      if (!madePic || madePic.placed) return '';
+      if (offerPicture && offerPicture(madePic.url, true)) return lead + ' is in the tray above the message box: tell me where it goes.';
+      if (!madePic.offered) { madePic.offered = true; drawUsePicture(bubble, madePic.url); }
+      return lead + ' is under my message: “Use this picture” puts it in the tray, then tell me where it goes.';
+    }
+    /* A swap: the picture goes on the element RevampAiPicture.target() chooses — the banner's picture, a section's
+       background or one of its pictures — and on nothing else. Never inside the logo unit or the ET logo; and if
+       the logo unit reads differently afterwards (its picture, its dark copy, its note), the place is put back as it
+       was. A place that is gone (the section removed meanwhile) leaves the picture in the tray: nothing is reworked
+       to make up for it, which would be a second paid call nobody asked for. */
+    function placeNewPicture(changedEls, done, said) {
+      var label = np.label, sec = canvas.sectionByKey(np.sectionId), step = S.picPlace;
+      function lost(why) {
+        var line = 'I made the picture but could not put it in “' + label + '” — ' + why + '. ' + keepMadePicture('It');
+        said.push(line);
+        step.set('fail', line);
+        madePic.told = true;            // the step says where it is: the card's last line need not say it again
+      }
+      if (!isLive(sec)) return lost('the section is no longer on the page');
+      var help = aiPictureHelpers();
+      var focusEl = sent.pictureEl && sent.pictureEl.isConnected && sec.contains(sent.pictureEl) ? sent.pictureEl : null;
+      var tg = null;
+      try { tg = P.target(sec, np, focusEl, help); } catch (err) { if (window.console) console.error(err); }
+      if (!tg || tg.none || !tg.el || tg.el.nodeType !== 1 || !sec.contains(tg.el)) return lost(String((tg && tg.none) || 'it has no place for a picture now'));
+      if (tg.el.closest('[data-rv-logo-unit], [data-rv-logo], [data-rv-etnav]')) return lost('that place belongs to the logo');
+      var touched = [tg.el];
+      Object.keys(tg).forEach(function (k) { if (tg[k] && tg[k].nodeType === 1) touched.push(tg[k]); });
+      Array.prototype.forEach.call(sec.querySelectorAll('.hero-veil'), function (v) { touched.push(v); });
+      var kept = keepPictureEls(touched), unitBefore = P.unitState(canvas.doc), put = false;
+      // place() answers false, having changed nothing, for a place or an address it may not use
+      try { put = P.place(tg, madePic.url, np.alt, help) === true; } catch (err) { if (window.console) console.error(err); }
+      if (!put) {
+        putPictureElsBack(kept);
+        return lost('the picture could not be set there');
+      }
+      if (!sameLogoUnit(unitBefore, P.unitState(canvas.doc))) {
+        putPictureElsBack(kept);
+        said.push('“' + label + '” was left as it was — the change would have altered the logo unit. ' + keepMadePicture('The new picture'));
+        return step.set('fail', 'left as it was — the change would have altered the logo unit');
+      }
+      madePic.placed = true;
+      changedEls.push(tg.el);
+      done.push('New picture made and put in “' + label + '” (' + AI_PICTURE_WHERE[np.placement] + ')');
+      step.set('done');
+    }
 
     function applyPage(made) {
       var formIds = (made.forms || []).map(function (f) { return f.id; });
@@ -4228,6 +4645,7 @@
         }
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
+      if (madePic && np.apply === 'swap') placeNewPicture(changedEls, done, said);
 
       /* sections reworked or written by the AI: asked for side by side (each takes a while), then ONE undo step.
          A new section's empty place is made first, in order, so two after the same section keep their order. */
@@ -4244,17 +4662,54 @@
       return Promise.all(jobs.map(function (job) {
         if (!isLive(job.sec)) { said.push('“' + job.label + '” is no longer on the page, so it was left out.'); job.step.set('fail', 'no longer on the page'); return null; }
         job.step.set('run');
+        // the rework that puts the new picture in (a background or a picture for a section that has no place for one)
+        var withPic = !!job.edit && !!madePic && usesNew(job.edit);
         return requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
           if (!isLive(job.sec)) throw new Error('the section was removed meanwhile');
+          /* the logo unit is never the new picture's to change: a rewrite that leaves it reading differently is
+             taken back, section and CSS */
+          var unitBefore = withPic ? P.unitState(canvas.doc) : null;
+          var oldHtml = withPic ? canvas.copyOf(job.sec).outerHTML : '';
+          var oldCss = withPic && code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(job.sec) : null;
+          /* the section's records from Content (a section of records, or one holding Content's items), as they are
+             before the rework: '' when it shows none */
+          var recordsBefore = withPic ? P.recordsState(job.sec) : '';
           var fresh = applySectionCode(job.sec, code);
           if (!fresh) throw new Error('the AI’s answer was not a usable section');
-          changedEls.push(fresh);
-          done.push('“' + job.label + '” ' + (job.edit ? 'reworked' : 'added'));
-          job.step.set('done');
+          function putBack(why) {
+            if (isLive(fresh)) canvas.replaceSection(fresh, oldHtml, oldCss);
+            if (canvas.retag) canvas.sections().forEach(function (s) { canvas.retag(s); });
+            throw new Error(why);
+          }
+          if (withPic && !sameLogoUnit(unitBefore, P.unitState(canvas.doc))) putBack('left as it was — the change would have altered the logo unit');
+          /* A section of records reworked around the new picture is kept only if every record in it comes out as it
+             was: its records are drawn into the rewrite first (the AI writes one example item; fillRecords draws them
+             without touching the undo history), then read again. Records that could not be drawn count as changed. */
+          var recordsKept = !recordsBefore ? Promise.resolve(true) : fillRecords(false).then(null, function () { return false; }).then(function () {
+            return isLive(fresh) && P.recordsState(fresh) === recordsBefore;
+          });
+          return recordsKept.then(function (same) {
+            if (!same) putBack(aiPictureRules.RECORDS_CHANGED);
+            /* The new picture is put in only if the rewritten section really draws it: the model may leave out the
+               picture it was given, and the server does not say so. Then the rework stands (Undo takes it back), the
+               card does not claim the picture, and the picture, made and paid for, waits in the tray. */
+            var picShown = withPic && aiPictureRules.shows(fresh.outerHTML + '\n' + (code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(fresh) : ''), madePic.url);
+            if (picShown) madePic.placed = true;
+            changedEls.push(fresh);
+            done.push('“' + job.label + '” ' + (job.edit ? 'reworked' + (picShown ? ' with the new picture' : '') : 'added'));
+            var unused = withPic && !picShown ? keepMadePicture('It') : '';
+            if (unused) {
+              said.push('“' + job.label + '” was reworked, but the new picture was not used in it. ' + unused);
+              job.step.set('done', 'the new picture was not used in it. ' + unused);
+              madePic.told = true;
+            } else job.step.set('done');
+          });
         }).then(null, function (err) {
           if (job.add && isLive(job.sec)) canvas.removeSection(job.sec);       // an empty shell is not left behind
           var why = (err && err.message) || 'the AI could not do it';
-          said.push('“' + job.label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + why + '.');
+          // the picture was made and paid for: it waits in the tray to be placed
+          var kept = withPic ? keepMadePicture('The new picture') : '';
+          said.push('“' + job.label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + why + '.' + (kept ? ' ' + kept : ''));
           job.step.set('fail', why);
         });
       })).then(function () {
@@ -4267,7 +4722,11 @@
           else S.formOps.set('fail', said.slice(saidBefore).join(' ') || 'not done');
         }
         var redraw = changedEls.some(function (el) { return el.querySelector && el.querySelector('[data-rv-repeat-template]'); });
-        var changed = commitNow();
+        /* An undo step only when something the AI did took effect (each one is in `done`). Otherwise — a picture
+           that could not be made, wording no longer on the page — the turn changed nothing, and the editor's own
+           marks set while it ran (retag above; restore sets them again after an Undo) are not a change to record:
+           recorded, they made such a turn read "partly made" with an Undo that does nothing visible. */
+        var changed = done.length ? commitNow() : false;
         if (formIds.length || ctaLinks.length || formEmbeds.length) {
           drawFormPreviews(false);
           if (fApi) fApi.afterAiChange();
@@ -4286,7 +4745,13 @@
         t.after = changed ? canvas.snapshot() : null;        // the page as this change left it
         var notAll = said.concat(notDone);
         t.status = !changed && !formIds.length ? 'failed' : notAll.length ? 'partly' : 'applied';
-        finishAiCard(t);
+        /* A made picture that is not on the page waits in the tray, and the card's last line says so — also when it
+           was put back to protect Content's records or the logo unit and nothing else changed (QA follow-up 2, F3:
+           the card ended with only "Nothing on the page changed.") — unless a step already says where it is. */
+        finishAiCard(t, madePic && !madePic.told ? keepMadePicture('The new picture') : '');
+        if (madePic && madePic.placed && t.status !== 'failed') {
+          card.note(np.apply === 'swap' ? 'Undo brings the old picture back.' : 'Undo puts “' + np.label + '” back as it was, without the new picture.');
+        }
         reportTurn(t.turnId, t.status, done, notAll);
         if (t.status !== 'failed') keepCheckpoint(t); else t.before = null;
         setAiWorking(false);
@@ -4297,7 +4762,11 @@
           canvas.openItem(first);
           canvas.scrollToSection(isShown(around) ? around : first.closest('[data-rv-section]'));
         }
-        if (redraw) drawRecords(false);         // the event's records, drawn into what was rewritten
+        /* the event's records, drawn into what was rewritten. The "Edit with AI" live view was drawn at the commit
+           above, from the rewrite as the AI sent it back (one model session, no day tabs), so it is told again once
+           the records are in — else it shows a one-session agenda until the next change (QA, 3 Nov 2026: "give
+           the Agenda a background picture"). */
+        if (redraw) drawRecords(false).then(function () { pageChanged(); });
         return t;
       });
     }
@@ -4357,11 +4826,14 @@
     api.status('run');
     return api;
   }
-  /* how a change ended: its badge, and Undo with how long it took (also for a turn read back from the server) */
-  function finishAiCard(t) {
+  /* how a change ended: its badge, and Undo with how long it took (also for a turn read back from the server).
+     kept: where a picture ETB2B AI made and did not put on the page is now ("The new picture is in the tray above
+     the message box: tell me where it goes."), said last on the card; '' when there is none. */
+  function finishAiCard(t, kept) {
     var card = t.card;
     card.status(t.status === 'applying' ? 'run' : t.status);
-    if (t.status === 'failed') { card.note('Nothing on the page changed.'); return; }
+    if (t.status === 'failed') { card.note('Nothing on the page changed.' + (kept ? ' ' + kept : '')); return; }
+    if (kept) card.note(kept);
     var foot = card.foot;
     foot.textContent = '';
     foot.hidden = false;
@@ -4523,6 +4995,37 @@
     }
     return mine;
   }
+  /* A turn read back with a picture ETB2B AI made: the picture under its message. One that may not be on the page
+     (the editor was closed while it was being made, the change could not be applied, or it was left out of the
+     change and went to the tray, which a reload empties) is not lost: "Use this picture" puts it in the tray, to be
+     sent with a message that says where it goes (aiPictureRules.offerAgain). */
+  function drawHistoryPicture(bubble, h) {
+    var pic = h && h.newPicture;
+    if (!pic || pic.state !== 'made' || !madeHere(pic.url)) return;
+    drawMadePicture(bubble, pic.url, String(pic.subject || '').slice(0, 140));
+    // only a "partly" change needs the page read: whether the picture is on it now (null: the page cannot be read)
+    var onPage = null;
+    if (h.status === 'partly' && canvas && !remounting && canvas.doc && canvas.doc.documentElement) {
+      try { onPage = aiPictureRules.shows(canvas.doc.documentElement.outerHTML, pic.url); } catch (e) { onPage = null; }
+    }
+    if (aiPictureRules.offerAgain(h.status, onPage)) drawUsePicture(bubble, pic.url);
+  }
+  /* "Use this picture" under a picture ETB2B AI made: puts it in the tray above the message box */
+  function drawUsePicture(bubble, url) {
+    if (!bubble || !url) return;
+    var use = document.createElement('button');
+    use.type = 'button';
+    use.className = 'btn btn-secondary btn-sm chat-use-pic';
+    use.textContent = 'Use this picture';
+    use.title = 'Put this picture in the tray above the message box, then say where it goes';
+    use.addEventListener('click', function () {
+      if (!offerPicture || !offerPicture(url)) return;
+      showToast('The picture is in the tray above the message box — say where it goes and send.');
+      var box = document.getElementById('chat-input');
+      if (box && !box.disabled) box.focus();
+    });
+    bubble.appendChild(use);
+  }
   /* The conversation so far, read back when the editor opens: each turn as it was, with what happened; Undo where
      this browser still keeps the change's checkpoint. -> Promise<number of turns> */
   function loadChatHistory() {
@@ -4538,6 +5041,7 @@
         return chain.then(function () {
           drawUserTurn(h.question, h.focus, null, h.pictures);
           var bubble = appendChatMsg('ai', h.answer);
+          drawHistoryPicture(bubble, h);
           if (h.kind !== 'edit') return;
           var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, card: taskCard(bubble.parentNode) };
           aiTurns.push(t);
@@ -4827,6 +5331,21 @@
         });
       });
     }
+    /* a picture ETB2B AI made that could not be put where it was meant to go: in the tray, ready to be sent with the
+       next message ("put it in the agenda") — it is already stored with the event, so it is placed like any attached
+       picture. quiet: a full tray is not said in a toast (the caller says where the picture is instead).
+       -> true when it is in the tray */
+    offerPicture = function (url, quiet) {
+      if (!url) return false;
+      if (attachments.some(function (a) { return a.url === url; })) return true;
+      if (attachments.length + uploading >= MAX_ATTACHED) {
+        if (!quiet) showToast('The tray above the message box is full: remove a picture from it, then try again.', { kind: 'error' });
+        return false;
+      }
+      attachments.push({ url: url, name: 'New picture made by ETB2B AI' });
+      drawTray();
+      return true;
+    };
     if (attachBtn && fileBox) {
       attachBtn.addEventListener('click', function () { fileBox.click(); });
       fileBox.addEventListener('change', function () { attach(fileBox.files); fileBox.value = ''; });
@@ -4856,6 +5375,14 @@
       var sent = attachments.map(function (a) { return a.url; });
       attachments = []; drawTray();
       var focus = chatFocus();
+      /* a picture selected on the page is the one a new picture replaces: it is remembered for when the change is
+         made (the selection is let go of then), and the AI is told its place among the section's pictures */
+      var pictureEl = null;
+      if (focus && focus.element && focus.element.kind === 'image' && selectedEl && selectedEl.isConnected) {
+        pictureEl = selectedEl;
+        var slot = pictureSlotOf(canvas.sectionByKey(focus.sectionId), pictureEl);
+        if (slot) focus.slot = slot;
+      }
       drawUserTurn(instruction, focus ? focus.name + (focus.element && focus.element.text ? ' · “' + (focus.element.text.length > 40 ? focus.element.text.slice(0, 39) + '…' : focus.element.text) + '”' : '') : '', sent);
       if (welcome && welcome.parentNode) welcome.parentNode.removeChild(welcome);
       var dots = document.createElement('div');
@@ -4891,7 +5418,9 @@
         body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
           view: view.shots, viewWhat: view.what, viewLeftOut: view.leftOut || 0, viewUndrawn: view.undrawn || [],
           // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
-          forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [] })
+          forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [],
+          // ETB2B AI may make a new picture only for an editor that can put one in (an older one is never offered it)
+          canMakePictures: !!aiPictures() })
         });
       })
         .then(function (res) {
@@ -4929,7 +5458,7 @@
             if (!eventId) pushLocal('assistant', body.summary);
             return;
           }
-          runAiTurn(body, body.turnId, sent).then(function (t) {
+          runAiTurn(body, body.turnId, sent, { pictureEl: pictureEl }).then(function (t) {
             if (!eventId) pushLocal('assistant', body.summary + ' (' + (t && t.status) + ')');
           });
         });

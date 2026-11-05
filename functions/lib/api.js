@@ -77,6 +77,10 @@
 //                                           preview transform, answered, never stored.
 //   GET   /e/<eventId>                      PUBLIC — the published site, served from private Storage.
 //   GET   /preview/<eventId>                signed-in — what would be published right now.
+//   GET   /s/<token>[/<slug>]               PUBLIC — a shareable preview link: the site as last saved, for people
+//                                           without an ET account, for 7 days or until stopped. With
+//                                           GET/POST /api/event/share-preview and POST /api/event/share-preview/stop
+//                                           (make, list, stop), all in lib/share-preview.js (see shareRoute()).
 //
 //   Routed here, implemented elsewhere (loaded on demand; see inModule()):
 //     lib/api-events.js    POST /api/event/upload, GET /api/event/slug-available, DELETE /api/event,
@@ -157,6 +161,8 @@ const { getFirebase } = require('./firebase');
 const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
 const { logActivity, actorOf, maskEmail, sectionNames } = require('./activity');
+/* a shareable preview link's address, written into a log line without its token (lib/share-token.js) */
+const shareToken = require('./share-token');
 const { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL } = require('./gemini');
 /* every text call goes through llm.js: Claude first when its key is set, Gemini as the fallback */
 const llm = require('./llm');
@@ -635,6 +641,10 @@ function chatHistoryText(payload) {
   if (Array.isArray(payload.turns) && payload.turns.length) {
     return payload.turns.slice(-CHAT_MEMORY_TURNS).map(function (t) {
       var lines = ['User: ' + String(t.question || '').slice(0, 2000), 'You: ' + String(t.answer || '').slice(0, 1500)];
+      /* a picture the AI made (or could not make): the model remembers what and where, so "make it brighter"
+         or "try another" can mean that picture */
+      var picLine = t.newPicture ? chatPicture.historyLine(t.newPicture) : '';
+      if (picLine) lines.push(picLine);
       var what = chatOutcomeText(t);
       if (what) lines.push('[What happened: ' + what + ']');
       return lines.join('\n');
@@ -655,6 +665,10 @@ function chatOutcomeText(t) {
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
   var history = chatHistoryText(payload);
+  /* Making a new picture is offered only to an editor that says it can place one (canMakePictures). An editor
+     still running older code gets exactly the prompt it always had, so it is never answered with a picture
+     it cannot put on the page. */
+  var canPics = payload.canMakePictures === true;
   return [
     'You are ETB2B AI, a real conversation partner helping someone edit their already-built event microsite for ET Oneworld. You can change ANYTHING on the page the owner asks for — wording, design, the layout or content of any section, the order of sections, hiding, removing or adding sections — through the tools below. What you return is APPLIED TO THE PAGE AT ONCE (the owner can undo it with one click, and nothing goes live until they publish), so do what is asked — no more. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
     '',
@@ -668,7 +682,7 @@ function buildChatPrompt(payload) {
         (payload.seenPictures ? 'You can SEE ' + (payload.seenPictures === payload.attachmentCount ? 'them' : 'pictures ' + payload.seenNumbers.join(', ')) + ': they come with this message as images, in that order. Look at them properly. When the owner asks for the look of a picture (its colours, its mood, its layout), read it from the picture itself and give real values — colours as hex codes (e.g. "#0b1f3a deep navy, #c9a227 gold accent"). Never say you cannot see an attached picture you were given. ' : 'You cannot see them; the owner\'s words say what they are for. ') +
         (payload.unseenNote ? payload.unseenNote + ' ' : '') +
         'To place a picture on the page, the owner\'s words say what it is for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
-      : ''),
+      : '') + (canPics ? chatPictureLines(payload) : ''),
     ET_LOGO_COLOUR_RULE,
     '',
     'The site\'s current design settings:',
@@ -677,7 +691,9 @@ function buildChatPrompt(payload) {
     'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it; buttons: the labels of the buttons in it):',
     JSON.stringify(sections.map(function (s) {
       var buttons = (Array.isArray(s.buttons) ? s.buttons : []).map(function (b) { return String(b || '').replace(/\s+/g, ' ').trim().slice(0, 80); }).filter(Boolean).slice(0, 8);
-      return { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, texts: s.texts || [], buttons: buttons.length ? buttons : undefined };
+      var row = { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, texts: s.texts || [], buttons: buttons.length ? buttons : undefined };
+      /* with pictures: its role, its replaceable pictures, a background, the banner's slot, a video (never `own`) */
+      return canPics ? Object.assign(row, chatPicture.promptFields(s)) : row;
     }), null, 2),
     '',
     'The site\'s forms right now (what visitors fill in — a button opens one in a pop-up, or it is placed in a section; formId -> its name, purpose and questions):',
@@ -696,7 +712,7 @@ function buildChatPrompt(payload) {
     '   - `newForms`: [{ref, template, name, title, intro, fields, submitLabel, successMessage, countsAsRegistration, needsApproval}] — a NEW form. Only when the owner asks for a form or it is plainly implied ("add a VIP delegate form", "add an Express interest button" when no such form exists). If a form with that purpose or name already exists above, use it instead and do not make another. `ref` is a short id of your own ("new-1") that ctaLinks and formEmbeds use to point at it. `template` is the closest of: register (Register now — counts as a registration), interest (Express interest — an enquiry), partner (Join as partner), vip (VIP delegates — needs approval, counts as a registration), speaker (Speaker application — needs approval), blank (anything else). `fields` are its questions in order, each {label, type, required, options, placeholder, help}; type is one of ' + formsLib.FIELD_TYPES.join(', ') + '; a select, radio or multiselect question needs its `options`. Every form starts with the seven standard questions, first and in this order, all required: Official email (email), First name (text), Last name (text), Mobile number (phone — visitors pick their country code), Company (text), Designation (text), Location (location — city, state and country); list them first, then only the questions the purpose needs (never a separate full-name, phone or city question). Every form also ends with ET\'s consent box (privacy, cookie and terms), which the platform adds by itself: never add a consent, terms or privacy question. Never invent facts (dates, prices, places, names) in the intro or the success message. countsAsRegistration: true only for forms that sign people up to attend; needsApproval: true when the organisers choose who gets in.',
     '   - `ctaLinks`: [{sectionId, buttonText, newButtonLabel, form}] — make a button open a form (an existing formId, or a newForms ref). To link a button that is already there, give its label exactly as listed in that section\'s buttons as `buttonText` (newButtonLabel empty); to add a new button, give `newButtonLabel` (at most 40 characters; buttonText empty). "Add an Express interest button to the hero" means a newForms entry if no such form exists, plus a ctaLinks entry for the hero with newButtonLabel "Express interest". Only when asked.',
     '   - `formEmbeds`: [{form, sectionId, afterSectionId, heading, intro}] — put a form IN the page instead of a pop-up. With `sectionId`, it goes at the end of that section ("embed the Express interest form in the contact section"). With sectionId empty, a new section holding the form is made after `afterSectionId` (empty: just before the footer), with `heading` (at most 80 characters) and a one-line `intro` (at most 300). Only when asked.',
-    '   What you still cannot do: make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above); add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves; and take payments, or send confirmation emails or WhatsApp messages — those are not available yet. If the request needs one of these, say so in `summary` and do the rest.',
+    '   What you still cannot do: ' + (canPics ? chatPicture.CANNOT_PICTURE_AFTER : 'make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above)') + '; add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves; and take payments, or send confirmation emails or WhatsApp messages — those are not available yet. If the request needs one of these, say so in `summary` and do the rest.',
     '5. Write `summary` LAST, after deciding the above. For an edit, it tells the owner in plain, friendly words what you are changing — "I\'m making the buttons green and fully rounded, and tightening the agenda\'s spacing." — the way a designer would say it: no hex codes, CSS terms or pixel values unless the owner used them, and no claim of anything that is not in `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` or `formEmbeds` — the page shows the owner a list of what really changed beside it, so any mismatch is a bug.'
   ].join('\n');
 }
@@ -729,35 +745,60 @@ function chatResponseSchema(payload) {
     },
     required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds']
   };
+  /* STRICT MODE. Claude's structured output refuses a schema with more than 24 optional parameters — a property its object does not list as required, counted over every object — and this one had 32,
+     so every chat message was refused once and asked again in plain mode (QA, 3 Nov 2026). So every field of a
+     list's entry is required, and "not said" is written as "" (a string), [] (a list) or false (a box not ticked);
+     the validators already read those as not said: cleanAiFormOps / cleanAiForm (lib/forms.js) take "" as the
+     template's own wording, [] as no options and false as not required; an empty beforeSectionId is the end of the
+     page; an empty pictures list uses no attached picture. Only two kinds of field stay optional: the design patch's
+     (any subset, as before — "" would be a value to check, and an absent field is not changed) and the two form
+     switches whose absence means the template's own setting (countsAsRegistration, needsApproval), where false
+     would turn a registration form into an enquiry. functions/lib/chat.test.js counts them through claude.js. */
   /* forms (lib/forms.js; the answer is checked by cleanAiFormOps) */
   schema.properties.newForms = { type: 'ARRAY', items: { type: 'OBJECT', properties: {
     ref: { type: 'STRING' },
     template: { type: 'STRING', enum: formsLib.FORM_TEMPLATES.map(function (t) { return t.id; }) },
-    name: { type: 'STRING' }, title: { type: 'STRING' }, intro: { type: 'STRING' },
+    name: { type: 'STRING' },
+    title: { type: 'STRING', description: 'the form\'s heading; "" to use its name' },
+    intro: { type: 'STRING', description: 'a line under the heading; "" for none' },
     fields: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
-      label: { type: 'STRING' }, type: { type: 'STRING', enum: formsLib.FIELD_TYPES }, required: { type: 'BOOLEAN' },
-      options: { type: 'ARRAY', items: { type: 'STRING' } }, placeholder: { type: 'STRING' }, help: { type: 'STRING' }
-    }, required: ['label', 'type'] } },
-    submitLabel: { type: 'STRING' }, successMessage: { type: 'STRING' },
+      label: { type: 'STRING' }, type: { type: 'STRING', enum: formsLib.FIELD_TYPES },
+      required: { type: 'BOOLEAN', description: 'true when it must be answered' },
+      options: { type: 'ARRAY', items: { type: 'STRING' }, description: 'the choices of a select, radio or multiselect question; [] for any other' },
+      placeholder: { type: 'STRING', description: 'grey example text in the box; "" for none' },
+      help: { type: 'STRING', description: 'a hint under the question; "" for none' }
+    }, required: ['label', 'type', 'required', 'options', 'placeholder', 'help'] } },
+    submitLabel: { type: 'STRING', description: 'the button\'s words; "" for the template\'s own' },
+    successMessage: { type: 'STRING', description: 'what a visitor reads after sending it; "" for the template\'s own' },
     countsAsRegistration: { type: 'BOOLEAN' }, needsApproval: { type: 'BOOLEAN' }
-  }, required: ['ref', 'template', 'name', 'fields'] } };
+  }, required: ['ref', 'template', 'name', 'title', 'intro', 'fields', 'submitLabel', 'successMessage'] } };
   schema.properties.ctaLinks = { type: 'ARRAY', items: { type: 'OBJECT', properties: {
-    sectionId: { type: 'STRING' }, buttonText: { type: 'STRING' }, newButtonLabel: { type: 'STRING' },
+    sectionId: { type: 'STRING' },
+    buttonText: { type: 'STRING', description: 'the label of a button already in the section, as listed; "" when a new button is added' },
+    newButtonLabel: { type: 'STRING', description: 'the label of a new button (at most 40 characters); "" when an existing button is linked' },
     form: { type: 'STRING', description: 'an existing formId, or the ref of one of newForms' }
-  }, required: ['sectionId', 'form'] } };
+  }, required: ['sectionId', 'buttonText', 'newButtonLabel', 'form'] } };
   schema.properties.formEmbeds = { type: 'ARRAY', items: { type: 'OBJECT', properties: {
     form: { type: 'STRING', description: 'an existing formId, or the ref of one of newForms' },
     sectionId: { type: 'STRING', description: 'the section to put it in, or empty for a new section' },
-    afterSectionId: { type: 'STRING' }, heading: { type: 'STRING' }, intro: { type: 'STRING' }
-  }, required: ['form'] } };
-  schema.properties.sectionEdits = { type: 'ARRAY', items: { type: 'OBJECT', properties: { sectionId: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this edit uses' } }, required: ['sectionId', 'instruction'] } };
-  schema.properties.sectionOps = { type: 'ARRAY', items: { type: 'OBJECT', properties: { op: { type: 'STRING', enum: CHAT_SECTION_OPS }, sectionId: { type: 'STRING' }, beforeSectionId: { type: 'STRING' } }, required: ['op', 'sectionId'] } };
-  schema.properties.newSections = { type: 'ARRAY', items: { type: 'OBJECT', properties: { afterSectionId: { type: 'STRING' }, name: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this section uses' } }, required: ['afterSectionId', 'name', 'instruction'] } };
+    afterSectionId: { type: 'STRING', description: 'for a new section: the section it follows ("" for just before the footer; "" too when sectionId is given)' },
+    heading: { type: 'STRING', description: 'for a new section: its heading; "" for the form\'s name' },
+    intro: { type: 'STRING', description: 'for a new section: one line under the heading; "" for the usual line' }
+  }, required: ['form', 'sectionId', 'afterSectionId', 'heading', 'intro'] } };
+  schema.properties.sectionEdits = { type: 'ARRAY', items: { type: 'OBJECT', properties: { sectionId: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this edit uses; [] for none' } }, required: ['sectionId', 'instruction', 'pictures'] } };
+  schema.properties.sectionOps = { type: 'ARRAY', items: { type: 'OBJECT', properties: { op: { type: 'STRING', enum: CHAT_SECTION_OPS }, sectionId: { type: 'STRING' }, beforeSectionId: { type: 'STRING', description: 'for "move": the section it goes before ("" for the end of the page); "" for any other op' } }, required: ['op', 'sectionId', 'beforeSectionId'] } };
+  schema.properties.newSections = { type: 'ARRAY', items: { type: 'OBJECT', properties: { afterSectionId: { type: 'STRING' }, name: { type: 'STRING' }, instruction: { type: 'STRING' }, pictures: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'numbers of the attached pictures this section uses; [] for none' } }, required: ['afterSectionId', 'name', 'instruction', 'pictures'] } };
   if (sectionIds.length) {
     schema.properties.textEdits.items.properties.sectionId.enum = sectionIds;
     schema.properties.sectionEdits.items.properties.sectionId.enum = sectionIds;
     schema.properties.sectionOps.items.properties.sectionId.enum = sectionIds;
     schema.properties.ctaLinks.items.properties.sectionId.enum = sectionIds;
+  }
+  /* a new picture the AI makes (lib/chat-picture.js; the answer is checked by chatPicture.planAsk): only for an
+     editor that can place one, so an older editor's schema is unchanged */
+  if (payload.canMakePictures === true) {
+    schema.properties.newPictures = chatPicture.schemaItem(sectionIds);
+    schema.required.push('newPictures');
   }
   return schema;
 }
@@ -804,6 +845,45 @@ function chatPictures(eventId, urls) {
    happened after each answer (applied, partly, undone). */
 var CHAT_ANSWER_CHARS = 4000;
 var CHAT_MAX_PICTURES = 6;          // what one model call takes (gemini.js / claude.js MAX_IMAGES)
+
+/* ETB2B AI may make ONE new picture when the owner asks for one, and places it at once, with Undo (the owner,
+   3 Nov 2026). The rules, the checks, the wording and the making live in lib/chat-picture.js; what follows only
+   wires them into this chat. It is required here, not with the modules at the top of the file, so the chat's
+   code stays in one place. */
+var chatPicture = require('./chat-picture');
+/* the prompt's lines about making a picture, placed right after the attachments' */
+function chatPictureLines(payload) {
+  var text = String(chatPicture.promptLines(payload) || '').trim();
+  return text ? text + '\n' : '';
+}
+/* The section fields the editor sends for pictures (role, video, heroMode, pics), cleaned by
+   chatPicture.cleanSectionFields: nothing is used as the browser sent it. `own` keeps only this event's own
+   Storage addresses (it counts people pictures and is never shown to the model); with no event there are none. */
+function chatPictureSections(fb, eventId, sections) {
+  var own = eventId && fb && fb.bucket && fb.bucket.name ? 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/' : '';
+  return (Array.isArray(sections) ? sections : []).map(function (s) { return s && typeof s === 'object' ? chatPicture.cleanSectionFields(s, own) : s; });
+}
+/* what the owner had selected, for planAsk, with which of the section's pictures it is (slot, 1-based; 0 = none) */
+function chatPictureFocus(focus) {
+  if (!focus || typeof focus !== 'object') return null;
+  var slot = parseInt(focus.slot, 10);
+  return Object.assign({}, focus, { sectionId: String(focus.sectionId || '').slice(0, 120), slot: slot >= 1 && slot <= 50 ? slot : 0 });
+}
+/* the newest stored turn's picture: a short follow-up ("try another") may mean the same place */
+function chatLastPicture(turns) {
+  var last = Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null;
+  return last && last.newPicture && typeof last.newPicture === 'object' ? last.newPicture : null;
+}
+/* the owner's own messages in the two newest stored turns, oldest first: a scene named there ("make a picture of
+   the Gateway of India") and placed in this message is still the owner's (chatPicture.planAsk ownerSubject) */
+function chatEarlierAsks(turns) {
+  return (Array.isArray(turns) ? turns : []).slice(-2).map(function (t) { return t && typeof t.question === 'string' ? t.question.slice(0, 2000) : ''; }).filter(Boolean);
+}
+/* whether an answer still changes anything on the page */
+function chatAnswerChanges(answer) {
+  return !!(Object.keys(answer.design || {}).length || answer.newPicture ||
+    ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].some(function (k) { return (answer[k] || []).length; }));
+}
 var CHAT_STATUSES = ['answered', 'applying', 'applied', 'partly', 'failed', 'undone'];
 function chatUserRef(fb, eventId, uid) { return eventDocRef(fb, eventId).collection('aiChats').doc(String(uid).replace(/[^A-Za-z0-9_@.-]/g, '_').slice(0, 120)); }
 function chatUid(decoded) { return String((decoded && (decoded.uid || decoded.email)) || 'anon'); }
@@ -828,18 +908,43 @@ function chatLine(text, max) { return String(text || '').replace(/\s+/g, ' ').tr
 
 function handleChatEdit(req, res) {
   withAdminBody(req, res, BODY_LIMITS.ai, function (fb, decoded, payload) {
+    /* the second step of a new picture: make the picture a stored turn asked for */
+    if (payload.step === 'picture') return handleChatPictureStep(fb, decoded, payload, res);
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
     var eventId = isEventId(String(payload.eventId || '')) ? String(payload.eventId) : '';
     var uid = chatUid(decoded);
     if (!chatRateOk(uid)) return sendJson(res, 429, { error: 'That is a lot of messages in a short time. Please wait a few minutes and try again.', code: 'chat-rate', retryable: true });
     var userRef = eventId ? chatUserRef(fb, eventId, uid) : null;
+    /* a new picture is offered only to an editor that can place one; the section fields it sends are cleaned */
+    var canPics = payload.canMakePictures === true, eventData = null;
+    payload.canMakePictures = canPics;
+    if (canPics) {
+      payload.eventId = eventId;
+      payload.sections = chatPictureSections(fb, eventId, payload.sections);
+      payload.picturesLeft = 0;
+      payload.picturesPerDay = chatPicture.PER_DAY;
+    }
 
-    /* the event must exist (its usage and its conversation are kept with it), and the conversation so far is read */
+    /* the event must exist (its usage and its conversation are kept with it), and the conversation so far is read
+       (with the person's new pictures left today, when the editor can place one) */
     var ready = !eventId ? Promise.resolve(null) : eventDocRef(fb, eventId).get().then(function (snap) {
       if (!snap.exists) throw httpError(404, 'This event does not exist.', { code: 'no-event' });
-      return chatTurnsFor(fb, eventId, uid, CHAT_MEMORY_TURNS).catch(function (err) {
-        console.error('chat-edit: the conversation of ' + eventId + ' could not be read — ' + (err && err.message));
-        return [];
+      eventData = snap.data() || {};
+      return Promise.all([
+        chatTurnsFor(fb, eventId, uid, CHAT_MEMORY_TURNS).catch(function (err) {
+          console.error('chat-edit: the conversation of ' + eventId + ' could not be read — ' + (err && err.message));
+          return [];
+        }),
+        canPics ? chatPicture.readLeft(fb.db, uid, Date.now()) : null
+      ]).then(function (got) {
+        if (got[1]) {
+          payload.pictureQuota = got[1];
+          payload.picturesLeft = got[1].left;
+          payload.picturesPerDay = got[1].perDay;
+          var owner = eventData.designPlan && eventData.designPlan.owner;
+          payload.ownerGraphics = !!(owner && owner.pictures === 'graphics');
+        }
+        return got[0];
       });
     });
     ready.then(function (turns) {
@@ -884,16 +989,75 @@ function handleChatEdit(req, res) {
 
       function brief(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 1500); }
       var attached = Math.max(0, Math.min(6, parseInt(payload.attachmentCount, 10) || 0));
-      function picturesOf(v) {
-        var out = [];
-        (Array.isArray(v) ? v : []).forEach(function (n) { n = parseInt(n, 10); if (n >= 1 && n <= attached && out.indexOf(n) === -1) out.push(n); });
+      /* a new picture is number attached + 1; a rework may list it only while the picture is really asked
+         for (planAsk below), so it is let through here and taken out again after */
+      var newN = canPics && eventId ? attached + 1 : 0;
+      function picturesOf(v, upTo) {
+        var out = [], top = upTo || attached;
+        (Array.isArray(v) ? v : []).forEach(function (n) { n = parseInt(n, 10); if (n >= 1 && n <= top && out.indexOf(n) === -1) out.push(n); });
         return out;
       }
       var sectionEdits = [], edited = {};
       (parsed.sectionEdits || []).forEach(function (e) {
         if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || edited[e.sectionId] || !brief(e.instruction)) return;
         edited[e.sectionId] = true;
-        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures) });
+        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, newN) });
+      });
+
+      /* A new picture (lib/chat-picture.js planAsk): only for an edit, from an editor that can place one, and
+         only one. planAsk checks that the owner asked for it, where it goes, what it shows and the day's limit;
+         a refusal or a question costs nothing. */
+      var pictureAsk = null, pictureSay = '', pictureUnasked = false;
+      var pictureWanted = canPics && parsed.kind !== 'reply' && parsed.kind !== 'undo' && Array.isArray(parsed.newPictures) && parsed.newPictures.length > 0;
+      if (pictureWanted) {
+        var planned = chatPicture.planAsk(parsed.newPictures, {
+          canMakePictures: true, eventId: eventId, sections: payload.sections || [], focus: chatPictureFocus(payload.focus),
+          instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: attached,
+          picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
+          lastTurnPicture: chatLastPicture(payload.turns), earlier: chatEarlierAsks(payload.turns), sectionEdits: sectionEdits
+        }) || {};
+        pictureAsk = planned.ask && typeof planned.ask === 'object' ? planned.ask : null;
+        if (pictureAsk && (pictureAsk.n !== newN || knownSectionIds.indexOf(pictureAsk.sectionId) === -1)) {
+          console.error('chat-edit: a new picture was planned as number ' + pictureAsk.n + ' for "' + chatLine(pictureAsk.sectionId, 60) + '" (expected ' + newN + ') — not made');
+          pictureAsk = null;
+        }
+        pictureSay = pictureAsk ? '' : chatLine(planned.reply, 600);
+        /* "your message did not ask for one" is said only when nothing else was asked for either: beside another
+           change, a picture the owner never asked for is dropped without a word */
+        pictureUnasked = !pictureAsk && planned.reply === chatPicture.sentence('notAsked');
+        if (pictureAsk && planned.note) skipped.push(chatLine(planned.note, 600));
+        /* planAsk's list: the rework that places the picture added (or merged into the model's), its number nowhere else */
+        if (pictureAsk && Array.isArray(planned.edits)) {
+          var plannedFor = {};
+          sectionEdits = planned.edits.filter(function (e) {
+            if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || plannedFor[e.sectionId] || !brief(e.instruction)) return false;
+            plannedFor[e.sectionId] = true;
+            return true;
+          }).map(function (e) { return { sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, newN) }; });
+        }
+        /* a rework that places the new picture must list it, or the picture would be paid for and never shown */
+        if (pictureAsk && pictureAsk.apply === 'rework' && !sectionEdits.some(function (e) { return e.sectionId === pictureAsk.sectionId && e.pictures.indexOf(newN) !== -1; })) {
+          console.error('chat-edit: the rework that places a new picture in "' + chatLine(pictureAsk.sectionId, 60) + '" is missing — not made');
+          pictureAsk = null;
+          pictureSay = chatPicture.sentence('started');
+        }
+      }
+      /* A rework the model planned around the new picture cannot be done as briefed while no picture is being
+         made — refused, never asked for, or left out of `newPictures` altogether (the model listed number newN
+         in a rework and asked for no picture). Sent on, the redesign would put the section's old picture, or
+         none, where the brief says the new one goes, and the summary would promise a picture never made. */
+      var reworkLost = [];
+      if (newN && !pictureAsk) {
+        sectionEdits = sectionEdits.filter(function (e) {
+          if (e.pictures.indexOf(newN) === -1) return true;
+          reworkLost.push(e.sectionId);
+          return false;
+        });
+      }
+      /* the new picture's number is kept only by a rework of the section it goes in (never the banner, which is
+         not reworked), and by nothing else */
+      sectionEdits.forEach(function (e) {
+        e.pictures = e.pictures.filter(function (n) { return n <= attached || (pictureAsk && pictureAsk.placement !== 'hero' && e.sectionId === pictureAsk.sectionId && n === newN); });
       });
       var sectionOps = (parsed.sectionOps || []).map(function (o) {
         if (!o || CHAT_SECTION_OPS.indexOf(o.op) === -1 || knownSectionIds.indexOf(o.sectionId) === -1) return null;
@@ -911,17 +1075,39 @@ function handleChatEdit(req, res) {
       skipped = skipped.concat(formOps.skipped);
 
       var summary = String(parsed.summary || '').trim().slice(0, CHAT_ANSWER_CHARS);
-      var hasChange = Object.keys(design).length || textEdits.length || sectionEdits.length || sectionOps.length || newSections.length ||
+      var hasOther = Object.keys(design).length || textEdits.length || sectionEdits.length || sectionOps.length || newSections.length ||
         formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length;
+      var hasChange = hasOther || !!pictureAsk;
+      /* A picture that is not made (refused, unclear, or never asked for): when it was the only change, the
+         answer is the server's sentence, since the model's summary promised a picture; else the sentence is
+         one of the things not done, and the rest is applied. */
+      var pictureReply = pictureWanted && !pictureAsk && !hasOther;
+      if (pictureReply) summary = pictureSay || chatPicture.sentence('notAsked');
+      else if (pictureWanted && !pictureAsk && pictureSay && !pictureUnasked) skipped.push(pictureSay);
+      /* the model asked for no picture but briefed a rework around one: said in the server's words, as the
+         answer when nothing else changes, else as a thing not done */
+      var asEdit = parsed.kind !== 'reply' && parsed.kind !== 'undo';
+      var lostReply = !pictureWanted && reworkLost.length > 0 && !hasOther && asEdit;
+      if (lostReply) summary = chatPicture.sentence('notMade');
+      else if (!pictureWanted && reworkLost.length && asEdit) {
+        var lostNames = reworkLost.map(function (id) {
+          var sec = (payload.sections || []).filter(function (s) { return s && s.id === id; })[0];
+          return '“' + chatLine((sec && sec.name) || id, 60) + '”';
+        });
+        skipped.push(chatPicture.sentence('notMadePart', { name: lostNames.join(', ') }));
+      }
       if (!summary && !hasChange) {
         return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
       }
-      var kind = parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
+      var kind = pictureReply || lostReply ? 'reply' : parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
+      if (!summary && pictureAsk) summary = 'I\'m making a new picture for “' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”; it takes about half a minute.';
       var answer = { kind: kind, summary: summary || 'Done.', design: design, textEdits: textEdits,
         sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections,
         newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped };
       if (kind !== 'edit') ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].forEach(function (k) { answer[k] = []; });
       if (kind !== 'edit') answer.design = {};
+      /* the picture is made in a second step from the stored turn, so it needs an event to keep the turn under */
+      if (kind === 'edit' && pictureAsk && userRef) answer.newPicture = chatPicture.answerOf(pictureAsk);
       if (!userRef) return sendJson(res, 200, answer);
       /* kept under the person who asked: a reply is finished; a change is "applying" until the editor says how it went */
       var now = new Date().toISOString(), turnRef = userRef.collection('turns').doc();
@@ -929,6 +1115,8 @@ function handleChatEdit(req, res) {
       var turn = { question: String(payload.instruction).trim().slice(0, 4000), answer: answer.summary, kind: kind,
         status: kind === 'edit' ? 'applying' : 'answered', done: [], notDone: [], focus: focus,
         pictures: Math.max(0, Math.min(6, (payload.attachments || []).length || 0)), at: now, updatedAt: now };
+      /* what the second step makes the picture from: never anything the browser sends then */
+      if (answer.newPicture) turn.newPicture = chatPicture.turnRecord(pictureAsk, payload.design);
       return Promise.all([
         userRef.set({ uid: uid, email: String(decoded.email || ''), name: chatName(decoded), lastAt: now }, { merge: true }),
         turnRef.set(turn)
@@ -940,9 +1128,51 @@ function handleChatEdit(req, res) {
         /* the answer is not withheld because it could not be kept: the owner is told the conversation was not saved */
         console.error('chat-edit: the turn of ' + eventId + ' was not kept — ' + (err && err.message));
         answer.notKept = true;
+        /* the picture step reads the stored turn, so a picture whose turn was not kept cannot be made, nor the
+           rework that would have placed it */
+        if (answer.newPicture) {
+          delete answer.newPicture;
+          answer.sectionEdits = answer.sectionEdits.filter(function (e) { return e.pictures.indexOf(newN) === -1; });
+          if (chatAnswerChanges(answer)) answer.skipped.push(chatPicture.sentence('started'));
+          else {
+            answer.kind = 'reply';
+            answer.summary = chatPicture.sentence('started');
+          }
+        }
         sendJson(res, 200, answer);
       });
     }).catch(function (err) { sendStepFailure(res, err, err && err.status === 404 ? 404 : 500, 'The chat could not answer. Please try again.'); });
+  });
+}
+
+/* POST /api/chat-edit { eventId, step: 'picture', turnId } — the second step of a new picture: makes the ONE
+   picture that this person's stored turn asked for (its subject, place and kind were checked and kept by the
+   first step), stores it under the event and answers { url, n, sectionId, placement, slot, apply, alt, kind },
+   or { error, code, retryable } in plain words with nothing changed. Nothing but the turn's id comes from the
+   browser, so a page cannot have a picture of its own made; the turn sits under the caller's own uid, so
+   nobody can make another person's picture. The day's limit, a retry of a picture already made (answered
+   free) and the making itself are lib/chat-picture.js make(). It is the same route as the chat, so the AI
+   budget that counts the chat counts this too. */
+function handleChatPictureStep(fb, decoded, payload, res) {
+  var eventId = String(payload.eventId || '').trim(), turnId = String(payload.turnId || '').trim();
+  if (!isEventId(eventId) || !/^[A-Za-z0-9]{10,40}$/.test(turnId)) return sendJson(res, 400, { error: 'eventId and turnId are required.', code: 'bad-request' });
+  var uid = chatUid(decoded);
+  if (!chatRateOk(uid)) return sendJson(res, 429, { error: 'That is a lot of messages in a short time. Please wait a few minutes and try again.', code: 'chat-rate', retryable: true });
+  eventDocRef(fb, eventId).get().then(function (snap) {
+    if (!snap.exists) return { status: 404, body: { error: 'This event does not exist.', code: 'no-event' } };
+    /* the picture model's calls under chat-picture; the check of each picture made (a low-cost look for people, words
+       and logos, lib/chat-picture.js checkPicture) under its own route */
+    return chatPicture.make({ record: aiUsageRecorder(fb, eventId, 'chat-picture') || function () {}, recordCheck: aiUsageRecorder(fb, eventId, 'chat-picture-check') || function () {}, logActivity: logActivity }, {
+      fb: fb, eventId: eventId, uid: uid, turnRef: chatUserRef(fb, eventId, uid).collection('turns').doc(turnId),
+      eventData: snap.data() || {}, decoded: decoded, now: Date.now()
+    });
+  }).then(function (out) {
+    if (!out || !out.status || !out.body) throw new Error('the picture step gave no answer');
+    sendJson(res, out.status, out.body);
+  }).catch(function (err) {
+    if (err && err.status && err.body) return sendJson(res, err.status, err.body);
+    console.error('chat-edit: the new picture of ' + eventId + ' failed — ' + (err && (err.stack || err.message)));
+    sendJson(res, 500, { error: 'The picture could not be made. Nothing on your site changed — ask again.', code: 'chat-picture-failed', retryable: true });
   });
 }
 
@@ -981,7 +1211,14 @@ function handleChatHistory(req, res) {
   withAdmin(req, res, function (fb, decoded) {
     var q = queryOf(req), eventId = String(q.get('eventId') || '').trim();
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'eventId is required.' });
-    function shape(t) { return { id: t.id, question: t.question, answer: t.answer, kind: t.kind, status: t.status, done: t.done || [], notDone: t.notDone || [], focus: t.focus || '', pictures: t.pictures || 0, at: t.at }; }
+    function shape(t) {
+      var out = { id: t.id, question: t.question, answer: t.answer, kind: t.kind, status: t.status, done: t.done || [], notDone: t.notDone || [], focus: t.focus || '', pictures: t.pictures || 0, at: t.at };
+      /* a new picture the AI was asked for: the editor draws a made one again, and offers one that was made
+         but never placed (the tab was closed) to be put in the tray */
+      var np = chatPicture.historyFields(t.newPicture);
+      if (np) out.newPicture = np;
+      return out;
+    }
     if (q.get('all') !== '1') {
       return chatTurnsFor(fb, eventId, chatUid(decoded), 60).then(function (turns) { sendJson(res, 200, { turns: turns.map(shape) }); })
         .catch(function (err) { sendFailure(res, 'chat history', err, 'The conversation could not be loaded.'); });
@@ -8929,7 +9166,13 @@ function contentMapFor(templateId) {
            publicBase: 'https://host' or '', forms: the event's public form definitions (lib/forms.js
            publicFormsPayload; optional — without it the forms runtime fetches them),
            pictures: the WebP copies of the page's pictures (pictures.prepare; optional — without it the
-           pictures are left as they are) } */
+           pictures are left as they are),
+           shareView: true for a shareable preview link (lib/share-preview.js, mode 'preview'): the ribbon says
+           "not live yet", none of the editor's tools, #rv-site-config says shared (its forms send nothing),
+           shareLive: with shareView, when the event is already published: 'changed' (the saved site has changes
+           the live one has not) or 'same' — the ribbon says so, and #rv-site-config says live with the live
+           site's path, so its forms send a guest there instead of saying the site is not open,
+           pageBase: the address its internal-page links start from ('/s/<token>') } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -9099,6 +9342,9 @@ function publishTransform(html, opts) {
   /* ---- 4. the live-site runtime and its config, exactly once ---- */
   var contentMap = contentMapFor(opts.templateId);
   var config = { eventId: opts.eventId, mode: mode, templateId: opts.templateId || null, contentMap: contentMap || [] };
+  if (opts.shareView === true) config.shared = true;      // a guest's shared link: rv-forms.js sends nothing
+  /* ...and when the event is live, its forms point the guest to the live site, where they do work */
+  if (opts.shareView === true && opts.shareLive) { config.live = true; config.livePath = publicPathOf(opts.eventId); }
   /* "<" must not appear inside the block: "</script" in a field's text would end it early */
   var tail = ['<script id="rv-site-config" type="application/json" data-rv-runtime>' + scriptJson(config) + '</script>'];
   /* the event's forms as they are now — a live page's runtime asks for them again anyway (they change
@@ -9134,7 +9380,7 @@ function publishTransform(html, opts) {
   /* ---- 5. preview ribbon ---- */
   var liveView = mode === 'preview' && opts.liveView === true;
   var ribbon = mode === 'preview' && !liveView
-    ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">Preview — not published</div>'
+    ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">' + shareRibbonText(opts) + '</div>'
     : '';
 
   var headText = head.join('\n') + '\n', tailText = tail.join('\n') + '\n';
@@ -9149,9 +9395,11 @@ function publishTransform(html, opts) {
   if (ribbon) { if (bodyOpen !== -1) out[bodyOpen] = out[bodyOpen] + ribbon + '\n'; else tailText = ribbon + '\n' + tailText; }
   /* ---- 6. preview of an AI-designed site: its themes, to try on the page itself; and the way back into the
      editor, at the section in view. Neither is on a published page, nor in the editor's own live view. ---- */
-  var switcher = mode === 'preview' && !liveView ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
+  /* a shareable preview link (opts.shareView) is a guest's page: none of the team's tools on it */
+  var editorTools = mode === 'preview' && !liveView && opts.shareView !== true;
+  var switcher = editorTools ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
   if (switcher) tailText += switcher;
-  if (mode === 'preview' && !liveView && opts.editButton === true) tailText += '<script src="/templates/_shared/rv-preview-edit.js" data-rv-runtime></script>\n';
+  if (editorTools && opts.editButton === true) tailText += '<script src="/templates/_shared/rv-preview-edit.js" data-rv-runtime></script>\n';
   /* the editor's live view: the one signal runtime code reads to know it is there (et-runtime.js) */
   if (liveView && htmlOpen !== -1) {
     setAttr(tokens[htmlOpen], 'data-rv-editor-mode', 'ai');
@@ -9167,8 +9415,15 @@ function publishTransform(html, opts) {
      alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
   page = siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
   /* ---- 9. internal pages: each page link's address, so the pages work with no script ---- */
-  if (sitePageList.length && opts.eventId) page = sitePages.setPageLinks(page, mode === 'live' ? publicPathOf(opts.eventId) : '/preview/' + opts.eventId, TOKEN_KIT);
+  if (sitePageList.length && opts.eventId) page = sitePages.setPageLinks(page, mode === 'live' ? publicPathOf(opts.eventId) : opts.pageBase || '/preview/' + opts.eventId, TOKEN_KIT);
   return page;
+}
+/* The preview ribbon's words. A shareable link (opts.shareView) is seen by guests, and it often shows the
+   coming changes of a site that is already live: it must not tell them the site is not open when it is. */
+function shareRibbonText(opts) {
+  if (opts.shareView !== true) return 'Preview — not published';
+  if (opts.shareLive === 'same') return 'Preview — this version is live';
+  return opts.shareLive ? 'Preview — changes not live yet' : 'Preview — not live yet';
 }
 /* the tokenizer above, for site-a11y.js's page pass */
 var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrValue, classListOf: classListOf, writeTag: writeTag,
@@ -10041,6 +10296,42 @@ function handlePreviewPage(req, res, eventId, slug) {
   });
 }
 
+/* lib/share-preview.js (shareable preview links: /s/<token> and the make / list / stop routes) is handed the
+   helpers below on every call, like the Promotions modules. It has its own loader rather than inModule(): that
+   one logs req.url, and an /s/ address is a working link to an unreleased site, so this one logs it without
+   the token (shareToken.redactUrl). When the module cannot be loaded a shared link gets a plain HTML page, not
+   inModule()'s JSON. */
+function shareHelpers() {
+  return { withAdmin, withAdminBody, BODY_LIMITS, eventIdOr400, eventDocRef, eventStateOf, siteVersionOf, sitePath, readObject,
+    publicFormsFor, preparePictures: function (fb, html) { return pictures.prepare(fb, html); }, publishTransform, withHeroVideo,
+    selectSitePage, deliverPage, messagePage, acceptedEncoding, compressHtml, publicBaseFor, unansweredLogoNote, sendFailure };
+}
+/* an /s/ answer when lib/share-preview.js is not there to give it: the headers of every /s/ answer (no-store,
+   noindex, Referrer-Policy: strict-origin — sendHtml's policy would hand the token to our own host as the Referer) */
+function shareErrorPage(req, res, status) {
+  if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+  var body = Buffer.from(messagePage('This preview is temporarily unavailable', 'Please try again in a few minutes.'), 'utf8');
+  var headers = shareToken.shareHeaders();
+  headers['Content-Type'] = 'text/html; charset=utf-8';
+  headers['Content-Length'] = body.length;
+  res.writeHead(status, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
+function shareRoute(handlerName) {
+  return function (req, res) {
+    var mod = null;
+    try { mod = require('./share-preview'); mod.wire(shareHelpers()); }
+    catch (err) {
+      mod = null;
+      console.error('api: could not load lib/share-preview.js for ' + req.method + ' ' + shareToken.redactUrl(req.url) + ' — ' + (err && err.stack || err));
+    }
+    if (mod && typeof mod[handlerName] === 'function') return mod[handlerName](req, res);
+    if (mod) console.error('api: lib/share-preview.js has no ' + handlerName + '() for ' + req.method + ' ' + shareToken.redactUrl(req.url));
+    if (/^\/s\//.test(String(req.url))) return shareErrorPage(req, res, 503);
+    return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+  };
+}
+
 /* =====================================================================================================
    GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
    published event's /e/<id> (and /e/<id>/<slug> for each of its internal pages, event.publishedPages) at the address this server is reached at (PUBLIC_BASE_URL when set), except one
@@ -10104,8 +10395,9 @@ function handleSitemapXml(req, res) {
 function handleApi(req, res) {
   try { return routeApi(req, res); }
   catch (err) {
-    console.error('api: unhandled error on ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+    console.error('api: unhandled error on ' + req.method + ' ' + shareToken.redactUrl(req.url) + ' — ' + (err && err.stack || err));
     if (res.headersSent) { try { res.end(); } catch (e) { /* socket already gone */ } return; }
+    if (/^\/s\//.test(String(req.url))) return shareErrorPage(req, res, 500);
     if (/^\/(e|preview)\//.test(String(req.url))) {
       return sendHtml(req, res, 500, messagePage('Something went wrong', 'Please try again in a few minutes.'), 'no-store');
     }
@@ -10344,6 +10636,10 @@ var ROUTES = {
   'POST /api/event/unpublish': handleEventUnpublish,
   'POST /api/event/stage': handleEventStage,
   'POST /api/event/live-view': handleEventLiveView,
+  /* shareable preview links (lib/share-preview.js): make, list, stop */
+  'POST /api/event/share-preview': shareRoute('handleCreate'),
+  'GET /api/event/share-preview': shareRoute('handleList'),
+  'POST /api/event/share-preview/stop': shareRoute('handleStop'),
 
   'POST /api/event/seed': audience('handleSeed'),
   'GET /api/event/registrations': audience('handleRegistrationsList'),
@@ -10418,6 +10714,9 @@ function isPublicApiPath(urlPath) {
 
 function routeApi(req, res) {
   var urlPath = String(req.url || '').split('?')[0];
+
+  /* /s/<token>[/<slug>]: a shareable preview link (lib/share-preview.js) — public; it answers every method itself */
+  if (urlPath === '/s' || urlPath.indexOf('/s/') === 0) return shareRoute('handleSharedPage')(req, res);
 
   /* /e/<id> and /preview/<id>, and a site's internal pages: /e/<id>/<slug>, /preview/<id>/<slug> (site-pages.js) */
   var page = /^\/(e|preview)\/([^\/]*)(?:\/([^\/]+))?\/?$/.exec(urlPath);

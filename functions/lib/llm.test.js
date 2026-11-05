@@ -77,7 +77,7 @@ async function run() {
   var want = {
     'plan-structure': [CLAUDE_OPUS, 'medium', 120000, 20000], 'generate-content': [CLAUDE_OPUS, 'low', 120000, 28000], 'redesign-section': [CLAUDE_SONNET, 'low', 120000, 28000],
     'chat-edit': [CLAUDE_SONNET, 'low', 75000, 12000], 'suggest-design': [CLAUDE_SONNET, 'low', 75000, 12000], 'extract-brief': [CLAUDE_HAIKU, 'low', 90000, 12000],
-    'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000],
+    'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000], 'picture-check': [CLAUDE_HAIKU, 'low', 30000, 2000],
     'promo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'promo-ai-fast': [CLAUDE_HAIKU, 'low', 60000, 12000], 'promo-ai-deep': [CLAUDE_OPUS, 'high', 150000, 32000], 'event-description': [CLAUDE_SONNET, 'low', 60000, 4000], 'dash-bot': [CLAUDE_HAIKU, 'low', 45000, 6000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
   };
   ok(Object.keys(PROFILES).sort().join() === Object.keys(want).sort().join(), 'the profiles are the routes we know', Object.keys(PROFILES).join());
@@ -100,7 +100,9 @@ async function run() {
   ok(activeProvider() === 'claude', 'key set: the active provider is claude');
   ok(r.parsed && r.parsed.a === 'claude' && r.provider === 'claude' && r.model === CLAUDE_SONNET && r.fellBack === undefined, 'key set: Claude answers', JSON.stringify(r));
   ok(claude.seen.length === 1 && gemini.seen.length === 0, 'key set: one Claude request, zero Gemini requests', claude.seen.length + ' / ' + gemini.seen.length);
-  ok(claude.seen[0].body.max_tokens === 12000 && claude.seen[0].body.output_config.effort === 'low', 'key set: Claude gets the profile\'s numbers, not the caller\'s Gemini ones', JSON.stringify(claude.seen[0].body).slice(0, 160));
+  /* the chat route starts in plain mode (its schema is too big for strict mode): the profile's token limit, and no
+     structured-output parameters at all */
+  ok(claude.seen[0].body.max_tokens === 12000 && !claude.seen[0].body.output_config && !claude.seen[0].body.thinking, 'key set: Claude gets the profile\'s numbers, not the caller\'s Gemini ones (chat-edit: plain mode)', JSON.stringify(claude.seen[0].body).slice(0, 160));
   ok(llmLines().length === 0, 'key set: no llm log line when nothing fell back');
   var d = describeModels();
   ok(d.provider === 'claude' && d.text.indexOf(CLAUDE_OPUS) !== -1 && d.text.indexOf(CLAUDE_SONNET) !== -1 && d.text.indexOf(GEMINI_TEXT_MODEL) !== -1 && /fallback/.test(d.text), 'key set: describeModels names Claude with Gemini as the fallback', JSON.stringify(d));
@@ -109,7 +111,9 @@ async function run() {
   for (var route of Object.keys(want)) {
     await ask(KEYED, [fromClaude()], [], { route: route });
     var sent = claude.seen[0].body;
-    ok(sent.model === want[route][0] && sent.output_config.effort === want[route][1] && sent.max_tokens === want[route][3], 'route ' + route + ' uses its profile', sent.model + ' ' + sent.output_config.effort + ' ' + sent.max_tokens);
+    /* a plain-mode route (chat-edit) sends no structured-output parameters, so no effort either */
+    var plainRoute = route === 'chat-edit';
+    ok(sent.model === want[route][0] && (plainRoute ? !sent.output_config : sent.output_config.effort === want[route][1]) && sent.max_tokens === want[route][3], 'route ' + route + ' uses its profile', sent.model + ' ' + (sent.output_config ? sent.output_config.effort : 'plain') + ' ' + sent.max_tokens);
   }
   await ask(KEYED, [fromClaude()], [], { route: 'never-heard-of-it' });
   ok(claude.seen[0].body.model === CLAUDE_SONNET && claude.seen[0].body.max_tokens === 12000, 'an unknown route uses the default profile');
@@ -133,7 +137,7 @@ async function run() {
   /* every way Claude can fail -> Gemini answers */
   var ways = {
     'ai-quota': [{ status: 429 }], 'ai-config': [{ status: 401 }], 'ai-unavailable': [{ status: 502 }],
-    'ai-rejected': [{ status: 400 }, { status: 400 }],                    // strict refused, then plain refused
+    'ai-rejected': [{ status: 400 }],                                     // chat-edit starts in plain mode: one refused request (claude.test covers strict-then-plain)
     'ai-blocked': [fromClaude('no', 'refusal')], 'ai-bad-output': [fromClaude('not json')],
     'ai-timeout': [{ hang: true }]
   };

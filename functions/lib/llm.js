@@ -45,12 +45,17 @@ var PROFILES = {
   /* effort 'low': the section code is most of what a site costs, and most of that was Opus thinking */
   'generate-content': { model: CLAUDE_OPUS, effort: 'low', timeoutMs: 120000, maxOutputTokens: 28000 },
   'redesign-section': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 120000, maxOutputTokens: 28000 },
-  'chat-edit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
+  /* plain: the chat's answer schema is too big for Claude's strict mode (refused as "compiled grammar too large"),
+     so every message cost a refused strict request first; it starts in plain mode, read leniently (claude.js) */
+  'chat-edit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000, plain: true },
   'suggest-design': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
   /* reading a brief or a page is extraction, not design: Haiku, at a twentieth of Sonnet's price */
   'extract-brief': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 90000, maxOutputTokens: 12000 },
   'ingest-source': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 },
   'logo-unit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 6000 },
+  /* the check of a picture ETB2B AI made (lib/chat-picture.js): three yes/no answers about one picture — are there
+     people, words, a logo in it — is looking, not writing: Haiku, a fraction of a cent a picture */
+  'picture-check': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 30000, maxOutputTokens: 2000 },
   /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
   'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
   /* the mailer studio's AI (lib/promo-mailer.js, the promotional platform's four tools): subject lines, a field
@@ -111,7 +116,7 @@ function callJson(prompt, schema, opts) {
   return callClaudeJson(prompt, schema, {
     model: profile.model, effort: profile.effort, timeoutMs: profile.timeoutMs, maxOutputTokens: profile.maxOutputTokens,
     inlineFile: opts.inlineFile, images: opts.images, deadlineAt: deadlineAt,
-    route: opts.route, eventId: opts.eventId, user: opts.user
+    route: opts.route, eventId: opts.eventId, user: opts.user, plain: profile.plain === true
   }).then(function (first) {
     report(opts, first);
     if (!first.code) return first;
